@@ -1,0 +1,24 @@
+#!/bin/sh
+
+set -eu
+
+if [ "${#}" -eq 0 ]; then
+    STATE_FILE=/var/lib/live/config/tails.mac-spoofing-failed
+    # The title is the first line in the state file
+    TITLE="$(head -n 1 "$STATE_FILE")"
+    # The text is the rest of the file
+    TEXT="$(tail -n +2 "$STATE_FILE")"
+else
+    TITLE="${1}"
+    TEXT="${2}"
+fi
+
+ret=$(notify-send \
+    --icon=network-wireless-offline \
+    --urgency=critical \
+    --action=open_doc="Learn About MAC Address Anonymization" \
+    -- "$TITLE" "$TEXT")
+
+if [ "$ret" = "open_doc" ]; then
+    tails-documentation doc/first_steps/welcome_screen/mac_spoofing
+fi

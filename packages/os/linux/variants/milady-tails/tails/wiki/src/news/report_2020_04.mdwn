@@ -1,0 +1,158 @@
+[[!meta title="Tails report for April, 2020"]]
+[[!meta date="Tue, 12 May 2020 16:30:04 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 4.5 was released on April 7|news/version_4.5]].
+
+* [[Tails 4.6 was released on May 5|news/version_4.6]].
+
+* Tails 4.7 is [[scheduled for June 2|contribute/calendar]].
+
+The following changes were introduced in Tails 4.5:
+
+- Tails now starts on computers with Secure Boot enabled.
+
+- Update *Tor Browser* to [9.0.9](https://blog.torproject.org/new-release-tor-browser-909).
+
+  This update fixes several [[!mfsa 2020-13 desc="vulnerabilities"]] in
+  *Firefox*, including [[!mfsa 2020-11 desc="some critical ones"]].
+
+Documentation and website
+=========================
+
+Installation instructions
+-------------------------
+
+- Updated our installation instructions to the support of Secure Boot:
+  ([[!tails_ticket 17492]])
+
+  * On PC
+  * On Mac
+  * When adding boot options
+
+- Added a link to try downloading from another mirror in case the download
+  fails. ([[!tails_ticket 15754]])
+
+  Click on [[Download USB image|install/download]] and the link below it
+  changes.
+
+- Fixed a buggy content reuse on the cloning instructions for
+  [[PC|install/clone/pc]] and [[Mac|install/clone/mac]]. ([[!tails_ticket
+  17502]])
+
+- Added shortcuts to download for DVDs and
+  virtual machines from [[install]].
+  ([[!tails_ticket 17609]])
+
+- Added a **Skip download** link on the [[download only
+  pages|install/download]]. ([[!tails_ticket 17549]])
+
+Terminology
+-----------
+
+- Implemented the terminology [[*Persistent
+  Storage*|contribute/how/documentation/style_guide#persistent-storage]]
+  consistently in all our documentation.
+  ([[!tails_ticket 8948]])
+
+- Renamed *Tails Greeter* into [[*Welcome
+  Screen|doc/first_steps/welcome_screen]]*. ([[!tails_ticket 15122]])
+
+Known issues
+------------
+
+- Documented that importing OpenPGP public
+  keys using the
+  *Passwords and Keys* utility is broken since Tails 4.0 (October 2019).
+  ([[!tails_ticket 17183]])
+
+- Documented that [[opening *VeraCrypt*
+  volumes|doc/encryption_and_privacy/veracrypt#parameters]] fails if the
+  passphrase is more than 64 characters long. ([[!tails_ticket 17474]])
+
+- Removed warnings about *Electrum* not working in Tails
+  ([[!tails_ticket 17581]])
+
+User experience
+===============
+
+- [Andrés Fernández Cordón](https://anhdres.com/) finished the
+  illustrations for the new Home and
+  About pages.
+
+  sajolida finished writing and testing the written content and most of the
+  responsive web design.
+
+- Changed our sidebar to a top bar. ([[!tails_ticket 15112]])
+
+  It has a better contrast for accessibility, prevents [[right-rail
+  blindess|https://www.nngroup.com/articles/fight-right-rail-blindness]],
+  and is more visible on mobile.
+
+Funding
+=======
+
+- Sent 2 grant applications:
+
+  * To the OTF Core Infrastructure
+    Fund to
+    improve the user experience of [[!tails_blueprint desc="connecting to
+    Tor" network_connection]] and using Tails to circumvent
+    censorship.
+
+  * To [Reset](https://www.reset.tech/) to integrate mobile messaging
+    applications (Signal, Telegram, Wire, Matrix, etc.).
+
+- Redesigned our **Donate** button to fit in the top bar, even on mobile.
+
+- Added ourselves to a list of nonprofits who accept
+  lumens.
+
+Translations
+============
+
+## All the website
+
+  - fr: 85% (5541) strings translated, 7% strings fuzzy
+  - es: 49% (3172) strings translated, 7% strings fuzzy
+  - de: 32% (2087) strings translated, 13% strings fuzzy
+  - it: 29% (1878) strings translated, 9% strings fuzzy
+  - fa: 23% (1551) strings translated, 13% strings fuzzy
+  - pt: 22% (1479) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - fr: 85% (1577) strings translated, 10% strings fuzzy
+  - es: 83% (1538) strings translated, 10% strings fuzzy
+  - it: 55% (1023) strings translated, 21% strings fuzzy
+  - de: 55% (1012) strings translated, 22% strings fuzzy
+  - pt: 41% (772) strings translated, 17% strings fuzzy
+  - fa: 28% (524) strings translated, 19% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - zh_TW: 28% (427) strings translated, 12% strings fuzzy
+  - zh: 14% (225) strings translated, 6% strings fuzzy
+  - ru: 10% (160) strings translated, 5% strings fuzzy
+  - pl: 8% (133) strings translated, 4% strings fuzzy
+  - tr: 8% (133) strings translated, 4% strings fuzzy
+  - ar: 7% (119) strings translated, 5% strings fuzzy
+  - ca: 7% (115) strings translated, 5% strings fuzzy
+  - id: 5% (91) strings translated, 2% strings fuzzy
+  - sr_Latn: 4% (62) strings translated, 1% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 936&#8239;560 times this month. This makes 31&#8239;219 boots a day on average.
+
+  That's 8.7% more than in March and the biggest increase in usage since 2015.
+  It's most likely due to the COVID-19 quarantine and people staying at home
+  but it might also be a good sign from the support of Secure Boot and an
+  easier adoption by new users.
+

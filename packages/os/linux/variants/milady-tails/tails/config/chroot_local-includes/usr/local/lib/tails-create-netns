@@ -1,0 +1,166 @@
+#!/bin/sh
+
+
+#ns=tbbNs
+guestVeth="veth0"
+
+set -ue
+
+increment_ip_address() {
+    echo "$1" | \
+        python3  -c 'base, host = input().rsplit(".", 1); print("%s.%s" % (base, int(host)+1))'
+}
+
+decrement_ip_address() {
+    echo "$1" | \
+        python3  -c 'base, host = input().rsplit(".", 1); print("%s.%s" % (base, int(host)-1))'
+}
+
+get_netns_guest_address() {
+    ns="$1"
+    ip netns exec "$ns" ip -4 a show dev "$guestVeth" |  grep -Po 'inet \K[\d.]+'
+}
+
+get_netns_host_address() {
+    ns="$1"
+    decrement_ip_address "$(get_netns_guest_address "$ns")"
+}
+
+expose() {
+    if [ $# -ne 3 ]
+    then
+        echo 'Wrong expose usage' >&2
+        exit 2
+    fi
+    ns="$1"
+    guestPort="$2"
+    hostPort="$3"
+    hostAddress="$(get_netns_host_address "$ns")"
+    guestAddress="$(get_netns_guest_address "$ns")"
+    hostVeth="veth-${ns}"
+    # $1 is netNs name
+    # $2 is netNs port
+    # $3 is host port
+    ip netns exec "$ns" iptables -t nat \
+        -A OUTPUT -o lo -d 127.0.0.1 -p tcp --dport "$guestPort" \
+        -j DNAT  --to-destination "$hostAddress:$hostPort"
+
+}
+
+expose_all() {
+    ns="$1"
+    hostAddress="$(get_netns_host_address "$ns")"
+    guestAddress="$(get_netns_guest_address "$ns")"
+    hostVeth="veth-${ns}"
+    netmask=30
+
+    ip netns exec "${ns}" ip route add default via "${hostAddress}"
+    tails-add-session-firewall-rule --apply -A FORWARD -i "${hostVeth}" -j ACCEPT
+    tails-add-session-firewall-rule --apply -A FORWARD -o "${hostVeth}" -j ACCEPT
+    tails-add-session-firewall-rule --apply -t nat -A POSTROUTING -s "${guestAddress}/${netmask}" -j MASQUERADE
+    sysctl net.ipv4.ip_forward=1
+    sysctl "net.ipv4.conf.${hostVeth}.forwarding=1"
+}
+
+forbid_incoming() {
+    ns="$1"
+    ip netns exec "$ns" iptables -P INPUT DROP
+    ip netns exec "$ns" iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+    ip netns exec "$ns" iptables -A INPUT -i lo -j ACCEPT
+
+}
+
+delete_netns() {
+    # $1 = netns basename
+    basename="$1"
+    nsName="${basename}"
+    hostVeth="veth-${basename}"
+    ip link del "$hostVeth" || true
+    ip netns del "$nsName" || true
+}
+
+create_netns() {
+    # $1 = netns basename
+    # $2 = first address; implies /30
+    if ! [ $# -eq 2 ]; then
+        echo "Wrong usage for create_netns" >&2
+        exit 2
+    fi
+    basename="$1"
+    hostAddress="$2"
+    netmask=30
+    nsName="${basename}"
+    hostVeth="veth-${basename}"
+    if [ "${#hostVeth}" -ge 16 ]
+    then
+        echo "netns name too long '${hostVeth}'; it would have a veth name >= 16"
+        exit 2
+    fi
+    guestAddress="$(increment_ip_address "$hostAddress")"
+    ip netns add "$nsName"
+
+    # create veth
+    ip netns exec "$nsName" ip link set dev lo up
+    ip link add "$hostVeth" type veth peer name "$guestVeth"
+
+    # setup veth
+    ip link set veth0 netns "$nsName"
+    ip addr add "${hostAddress}/$netmask" dev "$hostVeth"
+    ip link set dev "$hostVeth" up
+    ip netns exec "$nsName" ip addr add "${guestAddress}/$netmask" dev "$guestVeth"
+    ip netns exec "$nsName" ip link set dev "$guestVeth" up
+
+    # setup iptables
+    ## forbid IP spoofing
+    ip netns exec "$nsName" iptables -A OUTPUT -o veth0 ! --src "$guestAddress" -j REJECT
+    ip netns exec "$nsName" sysctl net.ipv4.ip_forward=0
+    ip netns exec "$nsName" sysctl net.ipv4.conf.all.forwarding=0
+    ip netns exec "$nsName" sysctl net.ipv4.conf.lo.forwarding=0
+    ip netns exec "$nsName" sysctl net.ipv4.conf.all.route_localnet=1
+
+    ip netns exec "$nsName" iptables -t nat -A POSTROUTING -j MASQUERADE
+
+    sysctl "net.ipv4.conf.${hostVeth}.forwarding=0"
+}
+
+if [ "$#" -ne 1 ]
+then
+    echo "Wrong usage: $0 start|stop" >&2
+    exit 2
+fi
+
+if [ "$1" = stop ]
+then
+    delete_netns tbb
+    delete_netns onioncircs
+    delete_netns tca
+    delete_netns onionshare
+    delete_netns clearnet
+    exit
+fi
+
+if [ "$1" = start ]
+then
+    modprobe veth
+    modprobe xt_MASQUERADE
+    modprobe xt_nat
+    netBase='10.200.1'
+    create_netns tbb "${netBase}.1"
+    create_netns onioncircs "${netBase}.5"
+    create_netns tca "${netBase}.9"
+    create_netns onionshare "${netBase}.13"
+    create_netns clearnet "${netBase}.17"
+
+    # Exposing specific services to applications confined in netns
+    expose tbb 9050 9050
+    expose tbb 951 951
+    expose onioncircs 951 951
+    expose tca 951 951
+    expose onionshare 9050 9050
+    expose onionshare 951 951
+    expose_all clearnet
+    # We consider applications inside the clearnet namespace particularly untrusted:
+    # therefore, we also forbid them from receiving any external connection
+    forbid_incoming clearnet
+fi
+

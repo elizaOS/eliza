@@ -1,0 +1,35 @@
+.personas {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+}
+
+.personas a {
+  text-decoration: none !important;
+  color: black !important;
+  flex-basis: calc(50% - 15px);
+}
+
+.personas a h2 {
+  text-decoration: underline;
+}
+
+.personas a img {
+  display: block;
+  width: 224px;
+  margin: 0 auto;
+}
+
+.personas a blockquote {
+  font-style: italic;
+  margin: 30px 0;
+  background: white;
+}
+
+.personas a blockquote:before {
+  content: '« ';
+}
+
+.personas a blockquote:after {
+  content: ' »';
+}

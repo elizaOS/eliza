@@ -1,0 +1,24 @@
+[[!meta title="Proposing, reviewing, and merging changes"]]
+
+<div id="intro">
+
+<p>Tails is developed in [[contribute/working_together/GitLab]],
+using a number of [[Git repositories|contribute/git]].</p>
+
+[[!toc levels=2]]
+
+</div>
+
+# Common rules
+
+[[!inline pages="contribute/merge_policy/common_rules" raw=yes sort="age"]]
+
+<a id="submit"></a>
+
+# How to submit your proposed changes
+
+[[!inline pages="contribute/merge_policy/submit" raw=yes sort="age"]]
+
+# How to review and merge proposed changes
+
+[[!inline pages="contribute/merge_policy/review" raw=yes sort="age"]]

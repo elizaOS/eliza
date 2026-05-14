@@ -1,0 +1,73 @@
+#!/bin/sh
+
+set -eu
+
+# Import tails_network_enabled()
+. /usr/local/lib/tails-shell-library/tails-greeter.sh
+
+if ! tails_network_enabled; then
+    local dialog_title dialog_text
+    dialog_title=$(gettext "Tor Connection")
+    dialog_text=$(gettext "You turned on Offline Mode in the Welcome Screen.
+It is impossible to connect to Tor in Offline Mode.
+To connect to Tor and the Internet, restart Tails without Offline Mode.")
+    exec zenity --error --no-wrap --title "$dialog_title" --text="$dialog_text"
+fi
+
+# If this script is run as amnesia, re-run it as root, so that we have
+# the privileges required to run tca in a separate network namespace.
+# Before doing so, save the environment in a file, so that we can pass
+# it to the tca process later.
+if [ "$(id -u)" = 1000 ]; then
+    ENVFILE=$(mktemp --suffix -env)
+    export ENVFILE
+    env --null >"${ENVFILE}"
+    exec sudo "$0" "$@"
+fi
+
+CONFIG_FILE=/var/lib/tca/tca.conf
+STATE_FILE=/run/tca/tca.state
+PORTAL_SOCKET=/run/tca-portal.sock
+
+# Create empty config and state files if they don't exist yet.
+mkdir -p "$(dirname "${CONFIG_FILE}")" "$(dirname "${STATE_FILE}")"
+chmod 700 "$(dirname "${CONFIG_FILE}")" "$(dirname "${STATE_FILE}")"
+touch "${CONFIG_FILE}" "${STATE_FILE}"
+chmod 600 "${CONFIG_FILE}" "${STATE_FILE}"
+
+# Explanation of the following command:
+#
+# 1. `/usr/local/lib/inherit-fd` opens the state file read-write as
+#    file descriptor 3 and the portal socket as file descriptor 4.
+#
+# 2. `ip netns exec tca` runs the following command in the `tca` network
+#    namespace, which enforces that the tor control port traffic is
+#    filtered by the tca onion-grater profile configured in
+#    config/chroot_local-includes/etc/onion-grater.d/tor-connection-assistant.yml.
+#
+# 3. `sudo --close-from=5 -u amnesia` drops privileges to the amnesia
+#    user and closes all file descriptors greater than 4, with 3 and 4
+#    being the file descriptors opened above by inherit-fd. This is
+#    to avoid inadvertently having the unprivileged tca process
+#    inherit any other file descriptors opened as a privileged user.
+#
+# 4. `/usr/local/lib/run-with-env` reads the environment from
+#    the file we created above and passes the allowed environment
+#    variables to the tca process (see
+#    config/chroot_local-includes/usr/lib/python3/dist-packages/tailslib/userenv.py
+#    for the list of allowed variables).
+#
+# 5. `run-with-ibus-and-a11y-bus-proxy` sets up the accessibility bus
+#    proxy and the IBus bus proxy, so that tca can use them even though
+#    it is running in a separate network namespace.
+#
+# 6. `/usr/lib/python3/dist-packages/tca/application.py`
+#    runs the actual tca process.
+
+exec \
+    /usr/local/lib/inherit-fd --file "${STATE_FILE}" --socket "${PORTAL_SOCKET}" \
+    /bin/ip netns exec tca \
+    sudo --close-from=5 -u amnesia \
+    /usr/local/lib/run-with-env --env-file="${ENVFILE}" --delete -- \
+    /usr/local/lib/run-with-ibus-and-a11y-bus-proxy -- \
+    /usr/lib/python3/dist-packages/tca/application.py

@@ -1,0 +1,150 @@
+[[!meta title="Tails report for June, 2015"]]
+[[!meta date="Tue, 04 Aug 2015 11:35:53 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+The release date for Tails 1.4.1 had been postponed because Mozilla changed
+their release schedule.  It was released in the beginning of July. Once again, this report 
+consists of non-code news :)
+
+[[!toc]]
+
+Releases
+========
+
+* The next release (1.5) is [[planned for August 11|contribute/calendar/]].
+
+* We decided on a new [[version number scheme|contribute/release_schedule#versioning]].
+
+Documentation and website
+=========================
+
+* A small note about non-free firmware was added to our [[licence page|doc/about/license]].
+
+* Our [[documentation for reviewers|contribute/merge_policy/review]] now
+  explains how to do a good and nice review.
+
+* We warn that *OpenPGP Applet* can lead to
+  encoding problems for emails.
+
+User experience
+===============
+
+- On the Installation Assistant:
+  - We wrote a full synopsis of the installation process for
+    Windows, submitted it for
+    review, and started testing it ([[!tails_ticket 9202 desc="#9202"]]).
+  - We started writing an ikiwiki and Bootstrap prototype of the Installation
+    Assistant in web/assistant.
+
+* People are working on the Greeter mockups.
+
+Infrastructure
+==============
+
+* Our test suite covers 182 scenarios, just as in May. We removed outdated
+  scenarios again, so there are actually new tests :) New tests add coverage
+  for the Tor Browser's _New Identity_ feature and confirm that the hardware clock is not 
+  updated by Tails. Additionally, a huge amount of work was put into making our test suite
+  more robust.
+
+* We decided to publicly archive the tails-support mailing list, since external
+  websites were archiving it anyway.
+
+* Great progress was made towards automatically [[!tails_ticket 6196 desc="building all active branches"]]
+  with Jenkins. Live deployment is now a matter of days.
+
+* We have [[!tails_ticket 8649 desc="specified"]] the requirements for our
+  upcoming monitoring system.
+
+Funding
+=======
+
+* If you want to help us develop and maintain Tails, please donate :)
+
+* We sent our final report for the Access Innovation Prize received in
+  March 2014.
+
+* We submitted our second quarterly report to the
+  [Digital Defenders Partnership](https://digitaldefenders.org/).
+
+Outreach
+========
+
+* A workshop about Tails
+  took place on June 18th in Brest, France.
+
+* Tchou and Fiodor Tonti gave a talk about Tails and UX
+in Pas Sage en Seine 2015 at NUMA in Paris, France on June 18th. The
+[[slides|contribute/how/promote/slides/PSES15-20150618/UX_et_logiciels_libres.pdf]] are online and it has already received positive feedback. :)
+
+* [A workshop about Tor and Tails](https://jardin-entropique.eu.org/ateliers)
+  was held in Rennes, France, during the Jardin entropique event on June 28th.
+
+Upcoming events
+---------------
+
+* A talk about Tails will take place during
+  [DebConf15](http://debconf15.debconf.org/) in August in Heidelberg, Germany.
+
+* Please let us know if you organize an event about Tails, we'll be glad to announce it :)
+
+On-going discussions
+====================
+
+* We discussed our release versioning
+  and decided upon a new way to do it: always increment the first number with major
+  Debian version, or whenever it makes sense for Tails only (user-visible
+  changes); second number: even for bugfix releases, odd for major ones; an
+  extra 3rd number will be added for emergency releases.
+
+* intrigeri started a discussion about tightening a bit the Evince and Totem AppArmor policy.
+
+* genghiskant proposed making a fork of Tails without non-free firmware.
+
+* We're talking about the design of a persistent Tor state.
+
+* We're also discussing the automated tests specification.
+
+Press and testimonials
+======================
+
+* We gave an interview to Amaelle Guiton from
+  Libération about our relationship with the Tor
+  ecosystem.
+
+* We provided some data to Patrick Howell O'Neill from The Daily Dot for
+  his article about The state of encryption tools, 2 years after Snowden leaks.
+
+Translation
+===========
+
+All website PO files
+--------------------
+
+  - de: 18% (1256) strings translated, 0% strings fuzzy, 17% words translated
+  - fr: 45% (3046) strings translated, 2% strings fuzzy, 43% words translated
+  - pt: 28% (1861) strings translated, 3% strings fuzzy, 26% words translated
+
+Total original words: 76665
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+--------------------------------------
+
+  - de: 60% (791) strings translated, 1% strings fuzzy, 68% words translated
+  - fr: 91% (1205) strings translated, 4% strings fuzzy, 92% words translated
+  - pt: 84% (1119) strings translated, 8% strings fuzzy, 87% words translated
+
+Total original words: 14258
+
+Metrics
+=======
+
+* Tails has been started more than 391,084 times this month. This makes 13,036 boots a day on average.
+
+* 19,284 downloads of the OpenPGP signature of Tails ISO from our website.
+
+* 57 bug reports were received through WhisperBack.
+
+
+-- Report by BitingBird for Tails folks
+

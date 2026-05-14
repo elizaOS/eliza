@@ -1,0 +1,109 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-21 08:54+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Arabic <http://translate.tails.net/projects/tails/shutdown/ar/"
+">\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Shutting down Tails\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "There are 2 ways of shutting down Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"With both techniques, all the data stored in [[!wikipedia Random-access_memory\n"
+"desc=\"RAM\"]] is securely erased to protect you from [[cold boot\n"
+"attacks|doc/advanced_topics/cold_boot_attacks]].\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Shutdown from the system menu"
+msgstr ""
+
+#. type: Plain text
+msgid "Click on the system menu in the upper right corner of the screen."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Choose [[!img lib/system-shutdown.png link=\"no\" class=\"symbolic\" "
+"alt=\"Power Off\"]] to shutdown the computer."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Choose [[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" "
+"alt=\"Restart\"]] to restart the computer on Tails or on your regular "
+"operating system."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!img desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img introduction_to_gnome_and_the_tails_desktop/system.png link=\"no\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Emergency shutdown"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To trigger an emergency shutdown, unplug the USB stick or eject the DVD from "
+"which Tails is running. Doing so might be faster than shutting down from the "
+"system menu."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "  <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You risk breaking your Persistent Storage and losing data when you unplug\n"
+"your USB stick while Tails is running.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you use a Persistent Storage, only unplug your Tails USB stick in an\n"
+"emergency.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "</div>\n"
+msgstr "  </div>\n"
+
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"bug\">\n"

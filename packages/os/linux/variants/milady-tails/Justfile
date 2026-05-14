@@ -1,0 +1,58 @@
+# milady-tails — Justfile recipes
+#
+# Mirrors usbeliza's Justfile shape so the dev workflow is identical:
+#   just iso-stage    — preflight + stage the chroot tree
+#   just iso-build    — full ISO build via live-build
+#   just iso-debug    — boot the squashfs in systemd-nspawn (no QEMU)
+#   just iso-boot     — boot the latest ISO in QEMU
+#   just dev-watch    — rsync agent source to running VM + restart service
+#
+# These recipes are stubs while Phase 1 is in progress. When the
+# Tails-derived live-build config lands, they'll become real.
+
+default:
+    @just --list
+
+# --- Phase-0 / Phase-1 stubs ------------------------------------------------
+
+# Initial setup: ensure live-build + debootstrap are installed on the host.
+setup:
+    @command -v lb >/dev/null 2>&1 || { echo "Install live-build first: sudo apt install live-build"; exit 1; }
+    @command -v debootstrap >/dev/null 2>&1 || { echo "Install debootstrap first: sudo apt install debootstrap"; exit 1; }
+    @echo "Phase 0: scaffold only. No live-build config yet — see PLAN.md."
+
+# Stage the chroot tree. Will populate when Phase 1 lands.
+iso-stage:
+    @echo "[milady-tails] iso-stage — not yet implemented"
+    @echo "Phase 1 work: derive Tails' config/ skeleton from /home/nubs/Git/tails"
+    @echo "See PLAN.md § Phase 1 for the checklist."
+    @exit 1
+
+# Full ISO build. Depends on iso-stage.
+iso-build: iso-stage
+    @echo "[milady-tails] iso-build — not yet implemented"
+    @exit 1
+
+# Quick test in systemd-nspawn — no QEMU, ~30s feedback for non-GUI agent edits.
+iso-debug:
+    @echo "[milady-tails] iso-debug — not yet implemented"
+    @exit 1
+
+# Boot the latest ISO in QEMU.
+iso-boot:
+    @echo "[milady-tails] iso-boot — not yet implemented (no ISO output yet)"
+    @exit 1
+
+# --- Shared ----------------------------------------------------------------
+
+# Lint / typecheck — runs against the agent which is shared with usbeliza.
+lint:
+    cd ../../agent && bun run typecheck
+
+test:
+    cd ../../agent && bun test
+
+# Clean Phase-1 outputs (when they start landing).
+clean:
+    rm -rf out/ live-build/cache/ live-build/chroot/ live-build/binary/
+    @echo "Phase 1+ build artifacts cleared. Run `just iso-stage` to start fresh."

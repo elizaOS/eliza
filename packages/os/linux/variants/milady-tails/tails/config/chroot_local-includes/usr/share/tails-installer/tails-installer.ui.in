@@ -1,0 +1,392 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generated with glade 3.22.2 -->
+<interface domain="tails">
+  <requires lib="gtk+" version="3.0"/>
+  <object class="GtkImage" id="image_next">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="icon_name">next</property>
+  </object>
+  <object class="GtkImage" id="image_question">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="icon_name">gtk-dialog-question</property>
+  </object>
+  <object class="GtkFileFilter" id="isofilter">
+    <patterns>
+      <pattern>*.iso</pattern>
+      <pattern>*.ISO</pattern>
+    </patterns>
+  </object>
+  <object class="GtkListStore" id="liststore_target">
+    <columns>
+      <!-- column-name name -->
+      <column type="gchararray"/>
+      <!-- column-name id -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
+  <object class="GtkBox" id="box_installer">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="GtkImage" id="image_header">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="halign">baseline</property>
+        <property name="xalign">0</property>
+        <property name="pixbuf">tails-liveusb-header.png</property>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkInfoBar" id="infobar">
+        <property name="app_paintable">True</property>
+        <property name="can_focus">False</property>
+        <property name="no_show_all">True</property>
+        <property name="show_close_button">True</property>
+        <signal name="response" handler="on_infobar_response" swapped="no"/>
+        <child internal-child="action_area">
+          <object class="GtkButtonBox" id="infobar-action_area">
+            <property name="can_focus">False</property>
+            <property name="spacing">6</property>
+            <property name="layout_style">end</property>
+            <child>
+              <placeholder/>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child internal-child="content_area">
+          <object class="GtkBox" id="infobar-content_area">
+            <property name="can_focus">False</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkLabel" id="label_infobar_title">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="wrap">True</property>
+                <property name="xalign">0</property>
+                <attributes>
+                  <attribute name="weight" value="bold"/>
+                </attributes>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="label_infobar_details">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="wrap">True</property>
+                <property name="xalign">0</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkLinkButton" id="help_link">
+        <property name="label" translatable="yes">Installation Instructions</property>
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="receives_default">False</property>
+        <property name="margin_right">18</property>
+        <property name="xalign">1</property>
+        <property name="uri">install</property>
+	<signal name="activate-link" handler="on_activate_link_button" swapped="no"/>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">2</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="box_source">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="margin_left">18</property>
+        <property name="margin_right">18</property>
+        <property name="margin_top">18</property>
+        <property name="margin_bottom">12</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">6</property>
+        <child>
+          <object class="GtkBox" id="box_source_select">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="orientation">vertical</property>
+            <property name="spacing">6</property>
+            <child>
+              <object class="GtkRadioButton" id="radio_button_source_device">
+                <property name="label" translatable="yes">Clone the current Tails</property>
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="receives_default">False</property>
+                <property name="xalign">0</property>
+                <property name="draw_indicator">True</property>
+                <property name="group">radio_button_source_iso</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkCheckButton" id="check_button_clone_persistent_storage">
+                <property name="label" translatable="yes">Clone the current Persistent Storage</property>
+                <property name="visible">True</property>
+                <property name="sensitive">False</property>
+                <property name="margin_start">20</property>
+                <property name="draw_indicator">True</property>
+                <signal name="toggled" handler="on_check_button_clone_persistent_storage_toggled" swapped="no"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox" id="box_source_file">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="spacing">6</property>
+                <child>
+                  <object class="GtkRadioButton" id="radio_button_source_iso">
+                    <property name="label" translatable="yes">Use a downloaded Tails ISO image</property>
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="receives_default">False</property>
+                    <property name="xalign">0</property>
+                    <property name="draw_indicator">True</property>
+                    <signal name="toggled" handler="on_radio_button_source_iso_toggled" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">False</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLinkButton" id="help_link_question">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="receives_default">False</property>
+                    <property name="image">image_question</property>
+                    <property name="always_show_image">True</property>
+                    <property name="uri">https://tails.net/install/</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkFileChooserButton" id="filechooserbutton_source_file">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="filter">isofilter</property>
+                    <property name="width_chars">17</property>
+                    <signal name="file-set" handler="on_source_file_set" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">2</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">3</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="box_target">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="margin_left">18</property>
+        <property name="margin_right">18</property>
+        <property name="margin_bottom">12</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">6</property>
+        <child>
+          <object class="GtkLabel" id="label_target">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="margin_top">12</property>
+            <property name="label" translatable="yes">Target USB stick:</property>
+            <property name="xalign">0</property>
+            <attributes>
+              <attribute name="weight" value="bold"/>
+            </attributes>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkComboBox" id="combobox_target">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="model">liststore_target</property>
+            <signal name="changed" handler="on_target_partitions_changed" swapped="no"/>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">4</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkScrolledWindow" id="scrolledwindow_log">
+        <property name="visible">True</property>
+        <property name="can_focus">True</property>
+        <property name="margin_left">18</property>
+        <property name="margin_right">18</property>
+        <property name="margin_bottom">6</property>
+        <property name="shadow_type">in</property>
+        <property name="min_content_height">130</property>
+        <child>
+          <object class="GtkTextView" id="textview_log">
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="editable">False</property>
+            <property name="wrap_mode">word</property>
+            <property name="left_margin">6</property>
+            <property name="right_margin">6</property>
+            <property name="cursor_visible">False</property>
+            <property name="accepts_tab">False</property>
+          </object>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">5</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkProgressBar" id="progressbar_progress">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="margin_left">18</property>
+        <property name="margin_right">18</property>
+        <property name="margin_bottom">12</property>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">6</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkLinkButton" id="check_force_reinstall">
+        <property name="label" translatable="yes">Reinstall (delete all data)</property>
+        <property name="can_focus">True</property>
+        <property name="receives_default">False</property>
+        <property name="margin_left">18</property>
+        <property name="margin_right">18</property>
+        <property name="margin_bottom">18</property>
+        <property name="xalign">1</property>
+        <signal name="activate-link" handler="on_force_reinstall_clicked" swapped="no"/>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">7</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkButton" id="button_start">
+        <property name="label" translatable="yes">Install</property>
+        <property name="name">1</property>
+        <property name="visible">True</property>
+        <property name="can_focus">True</property>
+        <property name="receives_default">True</property>
+        <property name="margin_left">18</property>
+        <property name="margin_right">18</property>
+        <property name="margin_bottom">18</property>
+        <property name="image">image_next</property>
+        <signal name="clicked" handler="on_start_clicked" swapped="no"/>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">8</property>
+      </packing>
+    </child>
+  </object>
+</interface>

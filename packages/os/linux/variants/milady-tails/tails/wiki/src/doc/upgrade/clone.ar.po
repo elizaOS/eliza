@@ -1,0 +1,78 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2022-02-25 15:41-0600\n"
+"PO-Revision-Date: 2023-07-29 21:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Arabic <http://translate.tails.net/projects/tails/"
+"upgrade-clone/ar/>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Manually upgrade from another Tails\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr ""
+"[[!meta stylesheet=\"install/inc/stylesheets/overview\" rel=\"stylesheet\" "
+"title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/upgrade-clone\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/overview\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+"[[!inline pages=\"install/inc/overview.ar\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/restart_first_time.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+"[[!inline pages=\"install/inc/steps/restart_first_time.inline.ar\" raw=\"yes"
+"\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/verify_up-to-date.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+"[[!inline pages=\"install/inc/steps/verify_up-to-date.inline.ar\" raw=\"yes\""
+" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/clone.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+"[[!inline pages=\"install/inc/steps/clone.inline.ar\" raw=\"yes\" sort=\"age"
+"\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta robots=\"noindex\"]]\n"
+#~ msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta stylesheet=\"bootstrap.min\" rel=\"stylesheet\" title=\"\"]]\n"
+#~ msgstr "[[!meta stylesheet=\"bootstrap.min\" rel=\"stylesheet\" title=\"\"]]\n"

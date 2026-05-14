@@ -1,0 +1,245 @@
+[[!meta title="Tails report for June and July, 2014"]]
+[[!meta date="Fri, 08 Aug 2014 09:56:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Releases
+========
+
+  - Tails 1.1~beta1 was released on May 30.
+  - Tails 1.0.1 was released on June 10.
+  - Tails 1.1 was released on July 22. This marked our migration to Debian
+    Wheezy and GNOME 3.
+
+Metrics
+=======
+
+In June 2014:
+
+   - Tails has been started more than 331 862 times in June.
+     This makes 11 062 boots a day in average.
+   - 25 124 downloads of the OpenPGP signature of Tails ISO from our
+     website.
+   - 71 bug reports were received through WhisperBack.
+
+In July 2014:
+
+   - Tails has been started more than 355 608 times in July.
+     This makes 11 471 boots a day in average.
+   - 35 134 downloads of the OpenPGP signature of Tails ISO from our
+     website.
+   - 160 bug reports were received through WhisperBack.
+     We discovered in late July than one of our WhisperBack relay was not
+     sending emails anymore since our fixes of the Heartbleed bug. This
+     explains the bump in the number of bug reports.
+
+Code
+====
+
+  - Fixed device removal before Tails Greeter login ([[!tails_ticket 7333]]).
+  - Disabled the GnuPG functionality of GNOME Keyring ([[!tails_ticket 7330]]).
+  - Removed `dselect` ([[!tails_ticket 7336]]).
+  - Updated Tor browser to 24.6.0.
+  - Installed Linux 3.14.
+  - Fixed links to anchors in Yelp ([[!tails_ticket 7285]]).
+  - Included `syslinux` binaries in the ISO filesystem.
+  - Prevented `iproute2` from being installed ([[!tails_ticket 7337]]).
+  - Changed local documentation to open in Yelp.
+  - Set the UID of `tails-persistence-setup` to the same as it was in Squeeze
+    ([[!tails_ticket 7343]]).
+  - Forbidden the desktop user to pass arguments to `tails-upgrade-frontend`
+    ([[!tails_ticket 7410]]).
+  - Fixed many things to have a Windows 8 camouflage ready for Tails 1.1
+    ([[!tails_ticket 6342]]).
+  - Fixed the migration of NetworkManager persistent settings ([[!tails_ticket
+    7338]]).
+  - Worked with the people from Freepto on pushing our tool for
+    RAM wiping to Debian, and we made some progress towards using the
+    `wiperam` Debian package in
+    Tails.
+  - Shipped Windows binaries of `syslinux` in Tails ([[!tails_ticket 7425]]).
+  - Fixed the red theme of the Unsafe Browser ([[!tails_ticket 7473]]).
+  - Tightened up the permissions on `/home/amnesia` ([[!tails_ticket 7463]]).
+  - Fixed unsafe permissions on persistent files ([[!tails_ticket 7443]]).
+  - Prepared a solution to be able to "Upgrade from ISO" 1.0.1 to 1.1
+    ([[!tails_ticket 7345]]).
+  - Disabled the `proxy://` protocol handle of FoxyProxy ([[!tails_ticket
+    7479]]).
+  - Installed Tor 0.2.5.x on a topic branch.
+  - Removed the default bookmarks were removed from the Unsafe Browser
+    ([[!tails_ticket 7594]]).
+  - Fixed a bug that broke incremental upgrades for Tails > 1.1 ([[!tails_ticket
+    7641]]).
+  - Fixed our security check notification that were broken for months
+    ([[!tails_ticket 7657]]).
+  - Migrated our Vagrant basebox to Wheezy ([[!tails_ticket 7133]],
+    [[!tails_ticket 6736]]).
+  - Started to work on Tails Jessie. It is now possible to build Tails
+    based on Jessie!
+  - Jacob Appelbaum simplified our IPv6 firewall rules ([[!tails_ticket 7668]]).
+  - Disabled TCP timestamps ([[!tails_ticket 6579]]).
+  - Installed Linux 3.14-2.
+  - Prevented dhclient from sending the `amnesia` hostname over the network
+    ([[!tails_ticket 7688]]).
+  - Worked a bit towards towards supporting USB devices exposed as non-removable.
+  - Installed `gnome-user-guide` to fix the Help launcher in the menus
+    ([[!tails_ticket 7618]]).
+  - Fixed the configuration of printers from the GNOME control center
+    ([[!tails_ticket 7636]]).
+  - Worked on installing `rngd` ([[!tails_ticket 5650]]).
+  - Compressed our ISO images more aggressively. They should be back to less
+    than 1 GB ([[!tails_ticket 7706]]).
+  - Started drafting a list of kernel modules to
+    blacklist.
+
+Documentation and website
+=========================
+
+  - Explained that OTR is disabled by default.
+  - Reworked our documentation about working on sensitive documents:
+    - [[Office suite|doc/sensitive_documents/office_suite]]
+    - [[Graphics|doc/sensitive_documents/graphics]]
+    - [[Sound and video|doc/sensitive_documents/sound_and_video]]
+  - Adapted our documentation now that Tails supports UEFI.
+  - Added a utility script to erase [[auto-generated PO
+    files|contribute/l10n_tricks/#index9h1]].
+  - Improved our documentation on [[building Tails|contribute/build]].
+  - Pointed to the release notes from the [[upgrade
+    instructions|doc/upgrade]] ([[!tails_ticket 7665]]).
+  - Added a script to retrieve the [[list of translators on
+    Transifex|contribute/l10n_tricks#index10h1]].
+  - Redirected press requests to <tails-press@boum.org>.
+
+Homepage defacement
+-------------------
+
+The homepage of our website was briefly
+defaced
+on June 29 by rodit. This was later was Git-reverted, ikiwiki misconfiguration
+was corrected. The underlying vulnerability has not been used for malicious purposes.
+
+Translation and internationalization
+====================================
+
+A new team started to translate our website into
+Spanish.
+
+All website PO files
+--------------------
+
+  - de: 11% (613) strings translated, +36 since May
+  - fr: 48% (2576) strings translated, +19 since May
+  - pt: 36% (1953) strings translated, +704 since May
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+----------------------------------------------------------
+
+  - de: 26% (338) strings translated, +31 since May
+  - fr: 95% (1207) strings translated, -5 since May
+  - pt: 99% (1257) strings translated, +488 since May
+
+Infrastructure
+==============
+
+  - Our test suite covers 87 scenarios, 3 more that in May.
+  - We now use OpenJDK7 to run our test suite ([[!tails_ticket 7175]]).
+  - We've adapted our infrastructure to the last version of the shared
+    postfix Puppet module.
+  - Our infrastructure was cleaned up from Squeeze-area bits
+    ([[!tails_ticket 7215]]).
+  - lizard's outgoing email setup was fixed ([[!tails_ticket 7485]]).
+  - Pushing to our master Git repository now automatically pushed to
+    the repository that triggers Jenkins builds ([[!tails_ticket 5558]]).
+
+On-going discussions
+====================
+
+  - Tahoe-LAFS persistence
+  - The future of Vagrant Tails builds
+  - vpwned
+  - How the traffic confirmation attack on Tor affects Tails
+
+Funding
+=======
+
+  - Sent our final report for the OpenITP grant from fall 2013. 
+  - The FPF crowdfunding extended their crowdfunding
+    campaign.
+  - Signed the agreement with Access for their Innovation Prize we've won.
+  - Started working on two new grant applications to be submitted in August.
+  - Worked on a web form for
+    donations
+    in fiat currencies ([[!tails_ticket 7156]]).
+
+Outreach
+========
+
+We organized a very successful [[HackFest|news/Tails_HackFest_2014]] attended
+by more than hundred people. This event was followed by our yearly
+summit, attended by 15 people.
+
+Among the concrete work done during those ten days, here is was can be found
+in our blueprints:
+
+  - Made plans to fix in the long-term our mirror
+    infrastructure.
+  - Had ideas to better track our delta with
+    Debian.
+  - Improved and published the future user interface of Tails
+    Greeter.
+  - Drafted plans to fix our Vagrant basebox, and
+    considered Docker for replacement.
+  - Designed a Firefox extension to download and automatically verify a Tails
+    ISO image.
+  - Drafted a design document about [[random numbers in
+    Tails|contribute/design/random]].
+  - Decided on a roadmap for our UX work.
+  - Brainstormed on a future structure for our
+    website and
+    homepage.
+
+Press & Testimonials
+====================
+
+* 2014-07-26: [Tails 1.1 is announced](http://linuxfr.org/news/tails-1-1-est-disponible), in French,
+  in an article by pamputt on LinuxFr
+* 2014-07: I2P bug and zero-days buzz:
+  - 2014-07-21: Exodus Intelligence [tweets about multiple RCE/deanonymization
+    zero-days](https://twitter.com/ExodusIntel/status/491247299054428160) on the
+    day before Tails 1.1 is released.
+  - Several news websites relay that information before the details of the
+    vulnerability are disclosed:
+    - [Exploit Dealer: Snowden's Favorite OS Tails Has Zero-Day Vulnerabilities
+      Lurking
+      Inside](https://www.forbes.com/sites/thomasbrewster/2014/07/21/exploit-dealer-snowdens-favourite-os-tails-has-zero-day-vulnerabilities-lurking-inside/)
+      by Thomas Brewster on Forbes.
+    - [Don't look, Snowden: Security biz chases Tails with zero-day flaws
+      alert](http://www.theregister.co.uk/2014/07/21/security_researchers_chase_tails_with_zeroday_flaw_disclosure/)
+      by Iain Thomson on The Register.
+    - [The world's most secure OS may have a serious
+      problem](http://www.theverge.com/2014/7/22/5927917/the-worlds-most-secure-os-may-have-a-serious-problem)
+      by Russell Brandom on The Verge
+  - 2014-07-23: We made our users [[aware of that
+    process|news/On_0days_exploits_and_disclosure]].
+  - 2014-07-23: Exodus Intelligence publishes [Silver Bullets and Fairy
+    Tails](http://blog.exodusintel.com/2014/07/23/silverbullets_and_fairytails/)
+    to explain the vulnerability.
+  - 2014-07-25: We publish a [[security
+    advisory|security/Security_hole_in_I2P_0.9.13]] explaining the scope of the
+    problem, and temporary solutions.
+* 2014-07-08: In the July 8th Keiser Report on RT.
+  The Tails related part of the Keiser Report starts at 15'40".
+* 2014-07-03: Tails above the Rest:
+  [Installation](http://www.linuxjournal.com/content/tails-above-rest-installation),
+  [Part II](http://www.linuxjournal.com/content/tails-above-rest-part-ii),
+  [Part III](http://www.linuxjournal.com/content/tails-above-rest-part-iii) by Kyle Rankin in the Linux Journal.
+* 2014-07-03: Some articles on Tails users being targeted by NSA XKeyscore:
+  - In NSA targets the privacy-conscious
+    by J. Appelbaum, A. Gibson, J. Goetz, V. Kabisch, L. Kampf, L. Ryge.
+  - In Von der NSA als Extremist gebrandmarkt
+    by  Lena Kampf, Jacob Appelbaum and John Goetz (in German).
+  - In If you read Boing Boing, the NSA considers you a target for deep surveillance
+    by Cory Doctorow.
+  - In [TOR, logiciel-clé de protection de la vie privée, dans le viseur de la NSA](http://www.lemonde.fr/pixels/article/2014/07/03/un-logiciel-cle-de-protection-de-la-vie-privee-dans-le-viseur-de-la-nsa_4450718_4408996.html)
+    by Martin Untersinger on LeMonde.fr (in French).
+* 2014-06-25: [Dai segreti di Snowden ai social: il raduno italiano degli hacker](http://corrieredibologna.corriere.it/bologna/notizie/cronaca/2014/25-giugno-2014/dai-segreti-snowden-social-raduno-italiano-hacker-223459532934.shtml) by Andrea Rinaldi, in Corriere di Bologna (in Italian).
+* 2014-06-30: [Tails, il sistema operativo incognito che frega l'NSA](http://www.wired.it/gadget/computer/2014/04/15/tails-sistema-operativo-incognito/) by Carola Frediani, in Wired.it (in Italian).

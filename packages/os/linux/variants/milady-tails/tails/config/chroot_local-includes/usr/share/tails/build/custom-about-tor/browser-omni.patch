@@ -1,0 +1,230 @@
+diff --git a/browser/components/abouttor/AboutTorParent.sys.mjs b/browser/components/abouttor/AboutTorParent.sys.mjs
+index 6bf714991751..f8d50364d0f5 100644
+--- a/actors/AboutTorParent.sys.mjs
++++ b/actors/AboutTorParent.sys.mjs
+@@ -10,6 +10,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
+ const initializedActors = new Set();
+ const onionizePref = "torbrowser.homepage.search.onionize";
+ const surveyDismissVersionPref = "torbrowser.homepage.survey.dismiss_version";
++const tailsPref = "torbrowser.running_in_tails";
+ 
+ /**
+  * Actor parent class for the about:tor page.
+@@ -111,6 +112,7 @@ export class AboutTorParent extends JSWindowActorParent {
+       dismissYEC: AboutTorParent.#dismissYEC,
+       toolNum1,
+       toolNum2,
++      isTails: Services.prefs.getBoolPref(tailsPref, false),
+     };
+   }
+ 
+diff --git a/browser/components/abouttor/content/aboutTor.css b/browser/components/abouttor/content/aboutTor.css
+index 28e3a260b7b4..08b3ba8fc588 100644
+--- a/chrome/browser/content/browser/abouttor/aboutTor.css
++++ b/chrome/browser/content/browser/abouttor/aboutTor.css
+@@ -12,6 +12,7 @@ body {
+     "heading heading heading" auto
+     "tor-check tor-check tor-check" auto
+     ". form ." min-content
++    "tails tails tails" auto
+     "message message message" auto
+     "survey survey survey" auto
+     /* End space: unfilled.
+@@ -520,3 +521,29 @@ body.show-yec h1 {
+     --in-content-button-background-active: var(--yec-button-background-active);
+   }
+ }
++
++/* Tails customization */
++
++body:not(.is-tails) .tails-only {
++  display: none;
++}
++body.is-tails .hide-if-tails {
++  display: none;
++}
++body.show-survey .hide-if-survey {
++  display: none;
++}
++
++#tails-message {
++  grid-area: tails;
++  font-weight: 400;
++  text-align: center;
++  margin-block: 0.6em;
++}
++
++#tails-message ul {
++  display: flex;
++  justify-content: space-around;
++  list-style: none;
++  padding-inline-start: 0;
++}
+diff --git a/browser/components/abouttor/content/aboutTor.html b/browser/components/abouttor/content/aboutTor.html
+index f79fa9f1b3ea..b50f4fed2300 100644
+--- a/chrome/browser/content/browser/abouttor/aboutTor.html
++++ b/chrome/browser/content/browser/abouttor/aboutTor.html
+@@ -109,7 +109,7 @@
+         data-l10n-attrs="label"
+       ></moz-toggle>
+     </form>
+-    <p id="home-message-updated" class="home-message">
++    <p id="home-message-updated" class="home-message hide-if-tails">
+       <img
+         class="message-emoji"
+         alt=""
+@@ -136,7 +136,7 @@
+         ></a>
+       </span>
+     </p>
+-    <p class="home-message home-message-rotating-stable">
++    <p class="home-message home-message-rotating-stable hide-if-tails">
+       <img
+         class="message-emoji"
+         alt=""
+@@ -150,7 +150,7 @@
+         ></a>
+       </span>
+     </p>
+-    <p class="home-message home-message-rotating-testing">
++    <p class="home-message home-message-rotating-testing hide-if-tails">
+       <img
+         class="message-emoji"
+         alt=""
+@@ -164,6 +164,41 @@
+         ></a>
+       </span>
+     </p>
++    <p class="home-message home-message-rotating-stable tails-only">
++      <img
++        class="message-emoji"
++        alt=""
++        src="chrome://browser/content/abouttor/1f4e3-megaphone.svg"
++      />
++      <span data-l10n-id="tails-newsletter">
++          <a
++            data-l10n-name="news-link"
++            href="https://newsletter.torproject.org"
++            target="_blank"
++          ></a>
++          <a
++            data-l10n-name="tails-newsletter-link"
++            href="https://tails.net/news/"
++            target="_blank"
++          ></a>
++      </span>
++    </p>
++    <div id="tails-message" class="tails-only">
++      <p>
++        <img
++          class="message-emoji"
++          alt=""
++          src="chrome://browser/content/abouttor/2728-sparkles.svg"
++        />
++        <span data-l10n-id="tails-release-notes">
++          <a
++            data-l10n-name="tails-release-notes-link"
++            href="https://tails.net/news/version_7.7.3"
++            target="_blank"
++          ></a>
++        </span>
++      </p>
++    </div>
+     <!-- Survey element, initially used for tor-browser#43504. -->
+     <article id="survey" class="tor-home-box" aria-labelledby="survey-heading">
+       <img
+diff --git a/browser/components/abouttor/content/aboutTor.js b/browser/components/abouttor/content/aboutTor.js
+index 80c2866584d7..6943c8b4b3d2 100644
+--- a/chrome/browser/content/browser/abouttor/aboutTor.js
++++ b/chrome/browser/content/browser/abouttor/aboutTor.js
+@@ -85,6 +85,7 @@ const MessageArea = {
+   _initialized: false,
+   _messageData: null,
+   _isStable: null,
++  _isTails: null,
+   _torConnectEnabled: null,
+ 
+   /**
+@@ -92,7 +93,6 @@ const MessageArea = {
+    */
+   init() {
+     this._initialized = true;
+-    this._update();
+   },
+ 
+   /**
+@@ -103,11 +103,13 @@ const MessageArea = {
+    * @param {boolean} isStable - Whether this is the stable release version.
+    * @param {boolean} torConnectEnabled - Whether TorConnect is enabled, and
+    *   therefore the Tor process was configured with about:torconnect.
++   * @param {boolean} isTails - Whether we're running in Tails.
+    */
+-  setMessageData(messageData, isStable, torConnectEnabled) {
++  setMessageData(messageData, isStable, torConnectEnabled, isTails) {
+     this._messageData = messageData;
+-    this._isStable = isStable;
++    this._isStable = isStable || isTails;
+     this._torConnectEnabled = torConnectEnabled;
++    this._isTails = isTails;
+     this._update();
+   },
+ 
+@@ -127,10 +129,26 @@ const MessageArea = {
+     // Set heading.
+     document.body.classList.toggle("is-testing", !this._isStable);
+ 
+-    document.body.classList.toggle("show-tor-check", !this._torConnectEnabled);
++    document.body.classList.toggle("show-tor-check", !this._torConnectEnabled && !this._isTails);
++
++    document.body.classList.toggle("is-tails", this._isTails);
+ 
+     const { updateVersion, updateURL, number } = this._messageData;
+ 
++    // Before picking the random element to be shown, let's delete every
++    // irrelevant message: Tails messages outside of Tails, and non-Tails
++    // messages within Tails.
++    document.querySelectorAll(
++        "body:not(.is-tails) .home-message.tails-only, body.is-tails .home-message.hide-if-tails"
++    ).forEach((message) => message.remove())
++
++    // Also, we want to hide *every* rotation message in Tails, when a survey is active
++    if (this._isTails) {
++      document.querySelectorAll(
++        "body.show-survey .home-message"
++      ).forEach((message) => message.remove())
++    }
++
+     if (updateVersion) {
+       const updatedElement = document.getElementById("home-message-updated");
+       updatedElement.querySelector("a").href = updateURL;
+@@ -146,7 +164,7 @@ const MessageArea = {
+           ? ".home-message-rotating-stable"
+           : ".home-message-rotating-testing"
+       );
+-      messageElements[number % messageElements.length].classList.add(
++      messageElements[number % messageElements.length]?.classList?.add(
+         "shown-message"
+       );
+     }
+@@ -665,11 +683,20 @@ window.addEventListener("InitialData", event => {
+     dismissYEC,
+     toolNum1,
+     toolNum2,
++    isTails,
+   } = event.detail;
+   SearchWidget.setOnionizeState(!!searchOnionize);
+-  MessageArea.setMessageData(messageData, !!isStable, !!torConnectEnabled);
++  MessageArea.setMessageData(
++    messageData,
++    !!isStable,
++    !!torConnectEnabled,
++    !!isTails
++  );
+   SurveyArea.potentiallyShow(surveyDismissVersion, isStable, appLocale);
+   YecArea.potentiallyShow(dismissYEC, isStable, appLocale, toolNum1, toolNum2);
++  // MessageArea must be updated after SurveyArea does its job, because it relies on
++  // body.show-survey being set.
++  MessageArea._update()
+ 
+   gInitialData = true;
+   maybeComplete();

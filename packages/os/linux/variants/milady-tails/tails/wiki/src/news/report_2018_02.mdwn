@@ -1,0 +1,153 @@
+[[!meta title="Tails report for February, 2018"]]
+[[!meta date="Tue, 06 Mar 2018 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* Tails 3.6 is [[scheduled for March 13|contribute/calendar]].
+
+The following changes will be introduced in Tails 3.6:
+
+* Upgrade Tor to 3.2.9.
+
+* Upgrade Linux kernel to 4.15.0.
+
+* Upgrade Thunderbird to 52.6.0 and enable its apparmor profile.
+
+* Upgrade Electrum to 3.0.6.
+
+* Add support for screen locking, even without administration password.
+
+* Upgrade tails-additional-softwares, which does not block anymore the
+  opening of the Desktop while installing the packages, and is more robust
+  when booting in offline mode.
+
+* Upgrade Tails installer to fix bugs when using it in languages
+  different than english.
+
+* Upgrade OpenPGP Applet, it does not hang anymore when decrypting large
+  text from the clipboard.
+
+Code
+====
+
+- We've continued our work on the [[!tails_ticket 14568 desc="Additional
+  Software feature"]].
+
+- We started [[!tails_ticket 11198 desc="replacing some of our shell scripts
+  with Python ports"]]. Thanks to GoodCrypto & segfault!
+
+Documentation and website
+=========================
+
+- We've improved the contributor's documentation for verifying reproducible ISO
+  builds.
+
+- We improved our installation instructions for Windows to
+  prevent people from skipping the *Fat32 Format* option of *Universal USB
+  Installer*.
+
+- We fixed our installation instructions for
+  Ubuntu after the removal of the splash screen of
+  *Tails Installer*.
+
+User experience
+===============
+
+- We rethought in depth the installation process and made plans to distribute
+  *USB images* in addition to *ISO images*.
+  Doing so will drastically simplify the installation for Windows and macOS
+  and improve support for UEFI computers.
+
+- We made plans to improve the user experience of Tails upgrades:
+  - on the short term, we will make automatic upgrades more powerful
+    to remove the need for any manual upgrade (except when releasing
+    a version of Tails based on a new Debian release):
+    [[!tails_ticket 15281]], Endless_upgrades
+  - on the long term, we want to
+    [[!tails_ticket desc="research" 15277]]
+    existing system upgrade technologies
+
+- We simplified the [[manual upgrade instructions from Tails|doc/upgrade/tails]] to
+  remove a whole step. Doing a manual upgrade should now be less confusing and
+  take half the time!
+
+- We designed an error message
+  when Tails is incompatible with a given graphics card. It will help users
+  understand the failure better and get better help from our help desk.
+
+Hot topics on our help desk
+===========================
+
+1. Users are still complaining about
+   [[!tails_ticket desc="Electrum being outdated" 15022]]
+
+2. A lot of reports are about the
+   [[!tails_ticket desc="Tails Installer Unicode issue" 15254]]
+
+Funding
+=======
+
+- We submitted a proposal for our work on distributing USB
+  images to the ISC Project's 2018 Round
+  of Small Technology Grants.
+
+- We renewed the agreement what have with Tor for them to pay for the hosting
+  of our main server.
+
+Outreach
+========
+
+Past events
+-----------
+
+* Tails was presented by syl at Festival des Libertés
+  Numériques
+  in Rennes, France.
+
+Upcoming events
+---------------
+
+In March some Tails contributors will attend
+
+* the [Internet Freedom Festival](https://internetfreedomfestival.org/) in Valencia, Spain.
+* the Tor developer meeting in Rome, Italy.
+
+Translation
+===========
+
+Our website can be read in Spanish again, after some years in which the
+translation was discontinued. We thank all translators for their efforts!
+
+## All the website
+
+  - de: 51% (2808) strings translated, 7% strings fuzzy, 45% words translated
+  - es: 44% (2419) strings translated, 1% strings fuzzy, 34% words translated
+  - fa: 38% (2070) strings translated, 10% strings fuzzy, 40% words translated
+  - fr: 90% (4916) strings translated, 1% strings fuzzy, 88% words translated
+  - it: 34% (1889) strings translated, 6% strings fuzzy, 30% words translated
+  - pt: 22% (1244) strings translated, 9% strings fuzzy, 19% words translated
+
+Total original words: 57937
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 75% (1422) strings translated, 14% strings fuzzy, 74% words translated
+  - es: 93% (1768) strings translated, 2% strings fuzzy, 89% words translated
+  - fa: 33% (636) strings translated, 11% strings fuzzy, 33% words translated
+  - fr: 97% (1845) strings translated, 2% strings fuzzy, 95% words translated
+  - it: 69% (1312) strings translated, 14% strings fuzzy, 68% words translated
+  - pt: 41% (780) strings translated, 15% strings fuzzy, 41% words translated
+
+Total original words: 17280
+
+Metrics
+=======
+
+* Tails has been started more than 570.813 times this month. This makes 20.386 boots a day on average.
+* 7.587 downloads of the OpenPGP signature of Tails ISO from our website.
+* 75 bug reports were received through WhisperBack.
+

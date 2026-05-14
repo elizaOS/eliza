@@ -1,0 +1,36 @@
+[[!meta date="Wed, 11 Nov 2020 21:15:09 +0000"]]
+[[!meta title="JavaScript vulnerability in Tor Browser"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+A [critical vulnerability](https://www.mozilla.org/en-US/security/advisories/mfsa2020-49/)
+was discovered in the JavaScript engine of *Firefox* and *Tor Browser*.
+
+Until Tails 4.13 (November 17), we recommend all users to set the
+[[security level of *Tor
+Browser*|doc/anonymous_internet/Tor_Browser#security-level]] to *Safer*
+or *Safest*.
+
+This vulnerability was discovered during the Tianfu Cup 2020 International
+Cybersecurity Contest. The details of the vulnerability
+were not disclosed.
+
+We are not aware of any use of this vulnerability against actual users.
+
+The *Safer* or *Safest* security level of *Tor Browser* are not affected
+because the feature of JavaScript that is affected, the *[[!wikipedia
+just-in-time compilation]]*, is disabled at these security levels.
+
+Mozilla fixed this vulnerability in *Firefox* 78.4.1 and Tor fixed this
+vulnerability in *Tor Browser* 10.0.4.
+
+We decided not to release an emergency upgrade of Tails because:
+
+- Tails 4.13 is already scheduled for November 17 and will fix this
+  vulnerability.
+- Our main release manager left the team recently and we have very
+  limited staffpower right now.
+- The details of the vulnerability were not disclosed, making it harder
+  to exploit, and we are not aware of any use of this vulnerability
+  against actual users.

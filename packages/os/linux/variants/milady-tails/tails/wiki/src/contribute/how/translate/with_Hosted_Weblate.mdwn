@@ -1,0 +1,11 @@
+[[!meta title="Translate Tails using Weblate"]]
+
+Most of Tails can be translated directly online, through a simple web interface,
+after logging in with [Hosted Weblate](https://hosted.weblate.org/).
+
+- [Most Tails translatable strings](https://hosted.weblate.org/projects/tor/tails-gui/)
+
+Beware, we don't host Hosted Weblate, they do have their own privacy policy.
+
+If you want to go further and [[translate the Tails website|translate]], please get in touch via our
+translation mailing list.

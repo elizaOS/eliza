@@ -1,0 +1,35 @@
+/* Classes with different colors for the progress bar, to be able to
+   change the color according to the password strength */
+.weak progress {
+  background-image: none;
+  background-color: #FF6347;
+  border-style: none;
+}
+
+.fair progress {
+  background-image: none;
+  background-color: #FFA500;
+  border-style: none;
+}
+
+.good progress {
+  background-image: none;
+  background-color: #1E90FF;
+  border-style: none;
+}
+
+.strong progress {
+  background-image: none;
+  background-color: #32CD32;
+  border-style: none;
+}
+
+/* Increase progress bar height */
+progress, trough {
+    min-height: 15px;
+}
+
+/* Increase progress bar text font size */
+text {
+    font-size: medium;
+}

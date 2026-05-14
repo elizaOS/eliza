@@ -1,0 +1,162 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-20 17:57+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Connecting to a local network\"]]\n"
+msgstr "Um eine Verbindung mit einem Wi-Fi-Netzwerk herzustellen:"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "Connecting to a local network"
+msgstr "Um eine Verbindung mit einem Wi-Fi-Netzwerk herzustellen:"
+
+#. type: Plain text
+msgid ""
+"You can connect to a local network using a wired, Wi-Fi, or mobile data "
+"connection:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open the system menu in the top-right corner."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img doc/first_steps/desktop/system-with-wired.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If a wired connection is detected, Tails automatically connects to the "
+"network."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"To connect to a Wi-Fi network, click [[!img lib/go-next.png link=\"no\" "
+"class=\"symbolic\" alt=\"\"]] on the right of the **Wi-Fi** button."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     A list of available Wi-Fi networks appears below the **Wi-Fi** button.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     <div class=\"bug\">\n"
+msgstr "     <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <p>If there is no <b>Wi-Fi</b> menu, your Wi-Fi interface might not\n"
+"     be compatible with Tails. See [[Troubleshooting Wi-Fi not\n"
+"     working|no-wifi]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "     </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '   - '
+#, fuzzy
+msgid "To connect to a mobile data network, choose **Mobile Broadband**."
+msgstr "Um sich mit einem mobilen Breitbandnetzwerk zu verbinden:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"note\">\n"
+msgstr "   <div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>It is currently impossible to [[use a VPN in\n"
+"   Tails|support/faq#vpn]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"After you connect to a local network, the *Tor Connection* assistant appears "
+"to help you [[connect to the Tor network|tor]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img tor/tor-connection.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Saving your network settings"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To remember the password for Wi-Fi networks and custom network "
+"configurations across different Tails sessions, turn on the [[Network "
+"Connections|persistent_storage/configure#network_connections]] feature of "
+"the Persistent Storage."
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Modifying your network settings"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To modify your network settings, for example, to configure whether or not to "
+"automatically connect to a Wi-Fi network, choose **Apps&nbsp;▸ System "
+"Tools&nbsp;▸ Settings&nbsp;▸ Network**."
+msgstr ""
+
+#~ msgid ""
+#~ "If you want to reuse your custom\n"
+#~ "configuration or the passwords of encrypted wireless connections across "
+#~ "separate\n"
+#~ "working sessions, you can activate the [[<span class=\"guilabel\">Network "
+#~ "connections</span> persistence\n"
+#~ "feature|first_steps/persistence/configure#network_connections]].\n"
+#~ msgstr ""
+#~ "Falls Sie Ihre angepasste Konfiguration\n"
+#~ "oder die Passwörter von verschlüsselten Drahtlosverbindungen\n"
+#~ "über mehrere Arbeitssitzungen hinweg wiederverwenden möchten, können Sie "
+#~ "die [[Funktion für\n"
+#~ "**Netzwerkverbindungen** des beständigen Speicherbereichs|first_steps/"
+#~ "persistence/configure#network_connections]]\n"
+#~ " aktivieren.\n"
+
+#~ msgid "To connect to a Wi-Fi network:"
+#~ msgstr "Um eine Verbindung mit einem Wi-Fi-Netzwerk herzustellen:"

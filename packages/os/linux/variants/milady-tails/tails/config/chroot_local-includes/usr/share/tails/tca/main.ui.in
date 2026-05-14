@@ -1,0 +1,2719 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generated with glade 3.40.0 -->
+<interface domain="tails">
+  <requires lib="gtk+" version="3.24"/>
+  <object class="GtkBox" id="box_main_container">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="GtkBox">
+        <property name="height-request">650</property>
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="baseline-position">bottom</property>
+        <child>
+          <object class="GtkImage" id="main_img_side">
+            <property name="name">main_img_side</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="valign">center</property>
+            <property name="stock">gtk-missing-image</property>
+            <child internal-child="accessible">
+              <object class="AtkObject" id="main_img_side-atkobject">
+                <property name="AtkObject::accessible-role" translatable="no">image</property>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow" id="box_main_container_scroll">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="hscrollbar-policy">never</property>
+            <property name="propagate-natural-height">True</property>
+            <child>
+              <object class="GtkViewport">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <child>
+                  <object class="GtkStack" id="box_main_container_stack">
+                    <property name="name">box_main_container_stack</property>
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="vhomogeneous">False</property>
+                    <child>
+                      <placeholder/>
+                    </child>
+                  </object>
+                </child>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">20</property>
+      </packing>
+    </child>
+  </object>
+  <object class="GtkBox" id="step_bridge_box">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="GtkLabel" id="step_bridge_box_heading">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="halign">start</property>
+        <property name="label" translatable="yes">Configure a Tor bridge</property>
+        <accessibility>
+          <relation type="label-for" target="step_bridge_box"/>
+        </accessibility>
+        <child internal-child="accessible">
+          <object class="AtkObject" id="step_bridge_box_heading-atkobject">
+            <property name="AtkObject::accessible-role" translatable="no">heading</property>
+          </object>
+        </child>
+        <style>
+          <class name="step-title"/>
+        </style>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkLabel">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="halign">start</property>
+        <property name="label" translatable="yes">Bridges are secret Tor relays. Use a bridge as your first Tor relay if accessing Tor is blocked from where you are.
+
+You can use &lt;i&gt;obfs4&lt;/i&gt; and &lt;i&gt;WebTunnel&lt;/i&gt; bridges in Tails.
+</property>
+        <property name="use-markup">True</property>
+        <property name="wrap">True</property>
+        <property name="xalign">0</property>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkLabel">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="halign">start</property>
+        <property name="margin-top">12</property>
+        <property name="label" translatable="yes">&lt;a href="doc/anonymous_internet/tor"&gt;Learn more about Tor bridges&lt;/a&gt;</property>
+        <property name="use-markup">True</property>
+        <property name="track-visited-links">False</property>
+        <signal name="activate-link" handler="on_link_help_clicked" swapped="no"/>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">2</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="margin-top">18</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkRadioButton" id="step_bridge_radio_default">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">False</property>
+            <property name="margin-bottom">12</property>
+            <property name="draw-indicator">True</property>
+            <property name="group">step_bridge_radio_none</property>
+            <signal name="toggled" handler="cb_step_bridge_radio_changed" swapped="no"/>
+            <child>
+              <object class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <child>
+                  <object class="GtkLabel" id="step_bridge_default_label">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="label" translatable="yes">Use a _default bridge</property>
+                    <property name="use-underline">True</property>
+                    <accessibility>
+                      <relation type="label-for" target="step_bridge_combo"/>
+                    </accessibility>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkComboBoxText" id="step_bridge_combo">
+                    <property name="visible">True</property>
+                    <property name="sensitive">False</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">center</property>
+                    <property name="valign">start</property>
+                    <property name="margin-start">12</property>
+                    <property name="active">0</property>
+                    <property name="button-sensitivity">on</property>
+                    <items>
+                      <item id="obfs4" translatable="yes">obfs4 (recommended)</item>
+                      <item id="webtunnel" translatable="yes">WebTunnel</item>
+                    </items>
+                    <accessibility>
+                      <relation type="labelled-by" target="step_bridge_default_label"/>
+                    </accessibility>
+                  </object>
+                  <packing>
+                    <property name="expand">True</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkRadioButton" id="step_bridge_radio_none">
+            <property name="label" translatable="yes">None</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">False</property>
+            <property name="halign">start</property>
+            <property name="active">True</property>
+            <property name="draw-indicator">True</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_bridge_box_moat">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="orientation">horizontal</property>
+            <child>
+              <object class="GtkRadioButton" id="step_bridge_radio_moat">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">False</property>
+                <property name="halign">start</property>
+                <property name="margin-bottom">6</property>
+                <property name="draw-indicator">True</property>
+                <property name="group">step_bridge_radio_none</property>
+                <signal name="toggled" handler="cb_step_bridge_radio_changed" swapped="no"/>
+                <child>
+                  <object class="GtkLabel" id="step_bridge_label_moat">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="label" translatable="yes">Ask for a bridge based on your _region</property>
+                    <property name="use-underline">True</property>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+            <child>
+              <object class="GtkComboBox" id="step_bridge_moat_region_combo">
+                <property name="visible">True</property>
+                <property name="sensitive">False</property>
+                <property name="can-focus">False</property>
+                <property name="button-sensitivity">on</property>
+                <property name="margin-start">12</property>
+                <property name="has-entry">True</property>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_bridge_box_scan">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="valign">start</property>
+            <property name="margin-top">18</property>
+            <property name="margin-bottom">6</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkRadioButton" id="step_bridge_radio_scan">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">False</property>
+                <property name="halign">start</property>
+                <property name="margin-bottom">6</property>
+                <property name="draw-indicator">True</property>
+                <property name="group">step_bridge_radio_none</property>
+                <signal name="toggled" handler="cb_step_bridge_radio_changed" swapped="no"/>
+                <child>
+                  <object class="GtkLabel" id="step_bridge_label_scan">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="label" translatable="yes">_Ask for a bridge by email</property>
+                    <property name="use-underline">True</property>
+                    <property name="mnemonic-widget">step_bridge_radio_scan</property>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="step_bridge_label_explain_scan">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="margin-start">24</property>
+                <property name="margin-bottom">6</property>
+                <property name="label" translatable="yes">Send an empty email to &lt;tt&gt;bridges@torproject.org&lt;/tt&gt; from a Gmail or Riseup email address with your phone and scan the QR code that is attached to the automatic reply.</property>
+                <property name="use-markup">True</property>
+                <property name="wrap">True</property>
+                <property name="xalign">0</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="step_bridge_btn_scanqrcode">
+                <property name="label" translatable="yes">Scan _QR code</property>
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">False</property>
+                <property name="margin-start">24</property>
+                <property name="margin-top">6</property>
+                <property name="use-underline">True</property>
+                <signal name="clicked" handler="cb_step_bridge_btn_scanqrcode_clicked" swapped="no"/>
+                <accessibility>
+                  <relation type="controller-for" target="step_bridge_label_scanresult"/>
+                </accessibility>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox" id="step_bridge_box_scanerror">
+                <property name="can-focus">False</property>
+                <property name="margin-start">24</property>
+                <property name="margin-top">6</property>
+                <child>
+                  <object class="GtkImage">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="icon-name">gtk-dialog-warning</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="step_bridge_label_scanerror">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="margin-start">12</property>
+                    <property name="hexpand">True</property>
+                    <property name="label" translatable="yes">Error</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">3</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="step_bridge_label_scanresult">
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="margin-start">24</property>
+                <property name="margin-top">6</property>
+                <property name="use-markup">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">4</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_bridge_box_type">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="valign">start</property>
+            <property name="margin-top">18</property>
+            <property name="margin-bottom">6</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkRadioButton" id="step_bridge_radio_type">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">False</property>
+                <property name="halign">start</property>
+                <property name="margin-bottom">6</property>
+                <property name="draw-indicator">True</property>
+                <property name="group">step_bridge_radio_none</property>
+                <signal name="toggled" handler="cb_step_bridge_radio_changed" swapped="no"/>
+                <child>
+                  <object class="GtkLabel" id="step_bridge_label_type">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="label" translatable="yes">_Enter a bridge that you already know</property>
+                    <property name="use-underline">True</property>
+                    <property name="mnemonic-widget">step_bridge_radio_type</property>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <placeholder/>
+            </child>
+            <child>
+              <object class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="margin-start">24</property>
+                <property name="margin-bottom">6</property>
+                <property name="spacing">12</property>
+                <child>
+                  <object class="GtkLabel">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes">Bridge</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkEntry" id="step_bridge_text">
+                    <property name="visible">True</property>
+                    <property name="sensitive">False</property>
+                    <property name="can-focus">True</property>
+                    <property name="placeholder-text" translatable="yes">obfs4 or webtunnel…</property>
+                    <property name="input-hints">GTK_INPUT_HINT_NO_SPELLCHECK | GTK_INPUT_HINT_NO_EMOJI | GTK_INPUT_HINT_NONE</property>
+                    <signal name="backspace" handler="cb_step_bridge_text_changed" swapped="no"/>
+                    <accessibility>
+                      <relation type="controlled-by" target="step_bridge_btn_scanqrcode"/>
+                      <relation type="labelled-by" target="step_bridge_radio_type"/>
+                      <relation type="labelled-by" target="step_bridge_label_type"/>
+                      <relation type="described-by" target="step_bridge_label_warning"/>
+                      <relation type="described-by" target="step_bridge_persistence_help_label"/>
+                    </accessibility>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox" id="step_bridge_box_warning">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="margin-start">30</property>
+                <child>
+                  <object class="GtkImage">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="icon-name">gtk-dialog-warning</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="step_bridge_label_warning">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="margin-start">12</property>
+                    <property name="hexpand">True</property>
+                    <property name="label" translatable="yes">Error</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">5</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox" id="step_bridge_persistence_switch_box">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="margin-start">30</property>
+                <property name="margin-top">6</property>
+                <child>
+                  <object class="GtkLabel" id="step_bridge_persistence_switch_label">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="label" translatable="yes">Save bridge to _Persistent Storage</property>
+                    <property name="use-underline">True</property>
+                    <property name="mnemonic-widget">step_bridge_persistence_switch</property>
+                    <accessibility>
+                      <relation type="label-for" target="step_bridge_persistence_switch"/>
+                    </accessibility>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkSwitch" id="step_bridge_persistence_switch">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="margin-start">12</property>
+                    <signal name="state-set" handler="cb_step_bridge_persistence_switch_toggled" swapped="no"/>
+                    <accessibility>
+                      <relation type="labelled-by" target="step_bridge_persistence_switch_label"/>
+                      <relation type="labelled-by" target="step_bridge_persistence_error_label"/>
+                    </accessibility>
+                    <child internal-child="accessible">
+                      <object class="AtkObject" id="step_bridge_persistence_switch-atkobject">
+                        <property name="AtkObject::accessible-name" translatable="yes">Save bridge to Persistent Storage</property>
+                        <property name="AtkObject::accessible-role" translatable="no">toggle-button</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkSpinner" id="step_bridge_persistence_spinner">
+                    <property name="can-focus">False</property>
+                    <property name="margin-start">12</property>
+                    <property name="active">True</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">2</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">6</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox" id="step_bridge_persistence_help_box">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="margin-start">24</property>
+                <property name="margin-top">6</property>
+                <child>
+                  <object class="GtkLabel" id="step_bridge_persistence_help_label">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="use-markup">True</property>
+                    <signal name="activate-link" handler="on_link_help_clicked" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <placeholder/>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">7</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox" id="step_bridge_persistence_error_box">
+                <property name="can-focus">False</property>
+                <property name="margin-start">30</property>
+                <child>
+                  <object class="GtkImage">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="margin-start">6</property>
+                    <property name="icon-name">gtk-dialog-warning</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLabel" id="step_bridge_persistence_error_label">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="margin-start">12</property>
+                    <property name="hexpand">True</property>
+                    <property name="label" translatable="yes">Error</property>
+                    <property name="wrap">True</property>
+                    <accessibility>
+                      <relation type="label-for" target="step_bridge_persistence_switch"/>
+                    </accessibility>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">8</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">4</property>
+          </packing>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">5</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkButtonBox">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <child>
+          <object class="GtkButton" id="step_bridge_btn_back">
+            <property name="label">gtk-go-back</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+            <property name="use-stock">True</property>
+            <signal name="clicked" handler="cb_step_bridge_btn_back_clicked" swapped="no"/>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="step_bridge_btn_submit">
+            <property name="label" translatable="yes">_Connect to Tor</property>
+            <property name="visible">True</property>
+            <property name="sensitive">False</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+            <property name="use-underline">True</property>
+            <signal name="clicked" handler="cb_step_bridge_btn_submit_clicked" swapped="no"/>
+            <style>
+              <class name="suggested-action"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <style>
+          <class name="suggested-action-box"/>
+        </style>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="pack-type">end</property>
+        <property name="position">60</property>
+      </packing>
+    </child>
+    <style>
+      <class name="step-box"/>
+    </style>
+  </object>
+  <object class="GtkBox" id="step_error_box">
+    <property name="name">step_error_box</property>
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="GtkBox" id="step_error_headers_box">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkBox" id="step_error_header_generic_box">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Error connecting to Tor</property>
+                <style>
+                  <class name="step-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="step_error_label_explain">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="margin-bottom">12</property>
+                <property name="wrap">True</property>
+                <property name="xalign">0</property>
+                <property name="selectable">True</property>
+                <property name="label" translatable="yes">This local network seems to be blocking access to Tor.</property>
+                <style>
+                  <class name="step-error-header-text"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_error_header_tor_fail_box">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Error connecting to Tor with this bridge</property>
+                <style>
+                  <class name="step-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Either this Tor bridge is not working or your network is blocking access to it.</property>
+                <style>
+                  <class name="step-error-header-text"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="step_error_header_tor_fail_bridge">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label"></property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Try configuring another bridge.</property>
+                <style>
+                  <class name="step-error-header-text"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">3</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_error_header_default_bridges_fail_box">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Error connecting to Tor with default bridges</property>
+                <style>
+                  <class name="step-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Your network is blocking access to Tor and the default bridges.</property>
+                <style>
+                  <class name="step-error-header-text"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Bridge: &lt;b&gt;default bridges&lt;/b&gt;</property>
+                <property name="use-markup">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Try configuring another bridge.</property>
+                <style>
+                  <class name="step-error-header-text"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">3</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_error_header_moat_settings_failed_box">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Error connecting to Tor with bridges</property>
+                <style>
+                  <class name="step-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">None of the bridges recommended for this region worked.</property>
+                <style>
+                  <class name="step-error-header-text"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Try another region or getting a bridge by mail.</property>
+                <style>
+                  <class name="step-error-header-text"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_error_header_moat_failed_box">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Error asking for a bridge</property>
+                <style>
+                  <class name="step-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Tails failed to ask for a bridge based on your region.</property>
+                <style>
+                  <class name="step-error-header-text"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Please, &lt;a href="support/talk"&gt;report this error&lt;/a&gt; and try asking for a bridge by email.</property>
+                <property name="use-markup">True</property>
+                <signal name="activate-link" handler="on_link_help_clicked" swapped="no"/>
+                <style>
+                  <class name="step-error-header-text"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkBox">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="orientation">horizontal</property>
+                <property name="margin-top">5</property>
+                <child>
+                  <object class="GtkLabel" id="step_error_header_moat_failed_code">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="label"></property>
+                    <style>
+                      <class name="step-error-header-text"/>
+                    </style>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkButton">
+                    <property name="label" translatable="yes">Open _details</property>
+                    <property name="visible">True</property>
+                    <property name="sensitive">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="margin-start">20</property>
+                    <property name="receives-default">False</property>
+                    <property name="use-underline">True</property>
+                    <signal name="clicked" handler="cb_step_error_btn_open_details" swapped="no"/>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">3</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="step_error_box_actions">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="orientation">vertical</property>
+        <property name="margin-top">5</property>
+        <child>
+          <object class="GtkBox" id="step_error_box_wrong_clock">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="valign">center</property>
+            <property name="margin-bottom">12</property>
+            <property name="vexpand">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">• Wrong clock</property>
+                <attributes>
+                  <attribute name="weight" value="semibold"/>
+                </attributes>
+                <style>
+                  <class name="step-error-section-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="margin-top">6</property>
+                <property name="label" translatable="yes">Your clock and time zone need to be correct to connect to Tor.</property>
+                <style>
+                  <class name="step-error-section-description"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="step_error_btn_time">
+                <property name="label" translatable="yes">Fix _Clock</property>
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">True</property>
+                <property name="halign">end</property>
+                <property name="margin-top">6</property>
+                <property name="use-underline">True</property>
+                <signal name="clicked" handler="cb_step_error_btn_time_clicked" swapped="no"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <style>
+              <class name="step-error-section"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_error_box_captive_portal">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="valign">center</property>
+            <property name="margin-bottom">12</property>
+            <property name="vexpand">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">• Public network</property>
+                <attributes>
+                  <attribute name="weight" value="semibold"/>
+                </attributes>
+                <style>
+                  <class name="step-error-section-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="margin-top">6</property>
+                <property name="label" translatable="yes">If you are in a shop, hotel, or airport, you might need to sign in to the local network using the Unsafe Browser.</property>
+                <style>
+                  <class name="step-error-section-description"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="step_error_btn_captive">
+                <property name="label" translatable="yes">Try _Signing in to the Network</property>
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">True</property>
+                <property name="halign">end</property>
+                <property name="margin-top">6</property>
+                <property name="use-underline">True</property>
+                <signal name="activate" handler="cb_step_error_btn_captive_clicked" swapped="no"/>
+                <signal name="clicked" handler="cb_step_error_btn_captive_clicked" swapped="no"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <style>
+              <class name="step-error-section"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_error_box_proxy">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="valign">center</property>
+            <property name="margin-bottom">12</property>
+            <property name="vexpand">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">• Local proxy</property>
+                <attributes>
+                  <attribute name="weight" value="semibold"/>
+                </attributes>
+                <style>
+                  <class name="step-error-section-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="step_error_proxy_explain_label">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="margin-top">6</property>
+                <property name="label" translatable="yes">If you are on a corporate or university network, you might need to configure a local proxy.</property>
+                <style>
+                  <class name="step-error-section-description"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="step_error_proxy_address_label">
+                <property name="visible">False</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="margin-top">6</property>
+                <property name="label"></property>
+                <style>
+                  <class name="step-error-section-description"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="step_error_btn_proxy">
+                <property name="label" translatable="yes">Configure a Local _Proxy</property>
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">True</property>
+                <property name="halign">end</property>
+                <property name="margin-top">6</property>
+                <property name="use-underline">True</property>
+                <signal name="activate" handler="cb_step_error_btn_proxy_clicked" swapped="no"/>
+                <signal name="clicked" handler="cb_step_error_btn_proxy_clicked" swapped="no"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">3</property>
+              </packing>
+            </child>
+            <style>
+              <class name="step-error-section"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_error_box_bridge">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="valign">center</property>
+            <property name="margin-bottom">12</property>
+            <property name="vexpand">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">• Tor bridge</property>
+                <attributes>
+                  <attribute name="weight" value="semibold"/>
+                </attributes>
+                <style>
+                  <class name="step-error-section-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="step_error_label_explain_bridge">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="margin-top">6</property>
+                <property name="label" translatable="yes">Tor bridges are secret Tor relays. Use a bridge as your first Tor relay if connections to Tor are blocked, for example in some countries, by some public networks, or by some parental controls.</property>
+                <property name="use-markup">True</property>
+                <property name="wrap">True</property>
+                <property name="xalign">0</property>
+                <style>
+                  <class name="step-error-section-description"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton">
+                <property name="label" translatable="yes">Configure a Tor _Bridge</property>
+                <property name="visible">True</property>
+                <property name="sensitive">True</property>
+                <property name="can-focus">True</property>
+                <property name="halign">end</property>
+                <property name="receives-default">False</property>
+                <property name="use-underline">True</property>
+                <signal name="clicked" handler="cb_step_error_btn_configure_bridge_clicked" swapped="no"/>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <style>
+              <class name="step-error-section"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">4</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">2</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkLabel" id="step_error_link_troubleshooting">
+        <property name="name">step_error_link_troubleshooting</property>
+        <property name="visible">True</property>
+        <property name="can-focus">True</property>
+        <property name="halign">start</property>
+        <property name="margin-top">12</property>
+        <property name="label" translatable="yes">&lt;a href="doc/anonymous_internet/tor/troubleshoot"&gt;Troubleshooting connecting to Tor&lt;/a&gt;</property>
+        <property name="use-markup">True</property>
+        <property name="track-visited-links">False</property>
+        <signal name="activate-link" handler="on_link_help_clicked" swapped="no"/>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">False</property>
+        <property name="position">4</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkButton" id="step_error_btn_submit">
+        <property name="label" translatable="yes">_Connect to Tor</property>
+        <property name="name">step_error_btn_submit</property>
+        <property name="visible">True</property>
+        <property name="can-focus">True</property>
+        <property name="receives-default">True</property>
+        <property name="halign">end</property>
+        <property name="valign">end</property>
+        <property name="use-underline">True</property>
+        <signal name="clicked" handler="cb_step_error_btn_submit_clicked" swapped="no"/>
+        <style>
+          <class name="suggested-action"/>
+          <class name="suggested-action-box"/>
+        </style>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">False</property>
+        <property name="position">5</property>
+      </packing>
+    </child>
+  </object>
+  <object class="GtkBox" id="step_hide_box">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="orientation">vertical</property>
+    <property name="spacing">12</property>
+    <property name="baseline-position">top</property>
+    <child>
+      <object class="GtkLabel">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="halign">start</property>
+        <property name="label" translatable="yes">Everything you do on the Internet from Tails goes through the Tor network.</property>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">False</property>
+        <property name="padding">5</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkLabel">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="halign">start</property>
+        <property name="label" translatable="yes">Tor encrypts and anonymizes your connection by passing it through 3 relays.
+Tor relays are servers operated by different organizations and volunteers around the world.</property>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">False</property>
+        <property name="padding">5</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="step_hide_radio_buttons">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkBox" id="unnoticed_no_heading">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="margin-bottom">6</property>
+            <child>
+              <object class="GtkRadioButton" id="radio_unnoticed_no">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">False</property>
+                <property name="halign">start</property>
+                <property name="active">True</property>
+                <property name="draw-indicator">True</property>
+                <property name="group">radio_unnoticed_none</property>
+                <signal name="toggled" handler="cb_step_hide_radio_changed" swapped="no"/>
+                <child>
+                  <object class="GtkLabel" id="label_unnoticed_no">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="margin-start">6</property>
+                    <property name="label" translatable="yes">&lt;b&gt;Connect to Tor _automatically&lt;/b&gt;</property>
+                    <property name="use-markup">True</property>
+                    <property name="use-underline">True</property>
+                    <property name="wrap">True</property>
+                    <property name="mnemonic-widget">radio_unnoticed_no</property>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="padding">6</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLinkButton" id="step_hide_unnoticed_no_help_button">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">True</property>
+                <property name="relief">none</property>
+                <signal name="activate-link" handler="cb_toggle_help_unnoticed_no" swapped="no"/>
+                <child>
+                  <object class="GtkImage">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="icon-name">tails-help</property>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="unnoticed_no_explanation">
+            <property name="name">unnoticed_no_explanation</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="margin-start">36</property>
+            <property name="label" translatable="yes">We recommend connecting to Tor automatically if you are on a public Wi-Fi network or if many people in your country use Tor to circumvent censorship.</property>
+            <property name="use-markup">True</property>
+            <property name="wrap">True</property>
+            <property name="max-width-chars">70</property>
+            <property name="xalign">0</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="unnoticed_no_help">
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="margin-start">36</property>
+            <property name="margin-top">12</property>
+            <property name="label" translatable="yes">Tails will try different ways of connecting to Tor until it succeeds.
+
+Someone monitoring your Internet connection could identify these attempts as coming from a Tails user.</property>
+            <property name="use-markup">True</property>
+            <property name="wrap">True</property>
+            <property name="max-width-chars">70</property>
+            <property name="xalign">0</property>
+            <signal name="activate-link" handler="on_link_help_clicked" swapped="no"/>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="step_hide_box_bridge">
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="margin-start">30</property>
+            <property name="margin-top">6</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkBox" id="step_hide_bridge_heading">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="valign">start</property>
+                <property name="margin-top">6</property>
+                <property name="margin-bottom">6</property>
+                <property name="hexpand">False</property>
+                <property name="vexpand">False</property>
+                <child>
+                  <object class="GtkCheckButton" id="radio_unnoticed_no_bridge">
+                    <property name="label" translatable="yes">Configure a Tor _bridge</property>
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">False</property>
+                    <property name="use-underline">True</property>
+                    <property name="draw-indicator">True</property>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">0</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkLinkButton" id="step_hide_link_helpbridge">
+                    <property name="visible">True</property>
+                    <property name="can-focus">True</property>
+                    <property name="receives-default">True</property>
+                    <property name="halign">end</property>
+                    <property name="relief">none</property>
+                    <signal name="activate-link" handler="cb_toggle_help_bridges" swapped="no"/>
+                    <child>
+                      <object class="GtkImage">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="icon-name">tails-help</property>
+                      </object>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">1</property>
+                  </packing>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="bridges_help">
+                <property name="can-focus">False</property>
+                <property name="margin-start">24</property>
+                <property name="label" translatable="yes">Tor bridges are secret Tor relays. Use a bridge as your first Tor relay if connections to Tor are blocked, for example in some countries, by some public networks, or by some parental controls.
+
+Choose this option if you already know that you need a bridge. Otherwise, Tails will autodetect whether you need a bridge to connect to Tor from your local network.</property>
+                <property name="wrap">True</property>
+                <property name="max-width-chars">70</property>
+                <property name="xalign">0</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">4</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox" id="unnoticed_yes_heading">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="margin-top">18</property>
+            <property name="margin-bottom">6</property>
+            <child>
+              <object class="GtkRadioButton" id="radio_unnoticed_yes">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">False</property>
+                <property name="halign">start</property>
+                <property name="active">True</property>
+                <property name="draw-indicator">True</property>
+                <property name="group">radio_unnoticed_none</property>
+                <signal name="toggled" handler="cb_step_hide_radio_changed" swapped="no"/>
+                <child>
+                  <object class="GtkLabel" id="label_unnoticed_yes">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="halign">start</property>
+                    <property name="margin-start">6</property>
+                    <property name="label" translatable="yes">&lt;b&gt;_Hide to my local network that I'm connecting to Tor&lt;/b&gt;</property>
+                    <property name="use-markup">True</property>
+                    <property name="use-underline">True</property>
+                    <property name="wrap">True</property>
+                    <property name="mnemonic-widget">radio_unnoticed_yes</property>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="padding">6</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLinkButton" id="step_hide_unnoticed_yes_help_button">
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">True</property>
+                <property name="relief">none</property>
+                <signal name="activate-link" handler="cb_toggle_help_unnoticed_yes" swapped="no"/>
+                <child>
+                  <object class="GtkImage">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <property name="icon-name">tails-help</property>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">5</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="unnoticed_yes_explanation">
+            <property name="name">unnoticed_yes_explanation</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="margin-start">36</property>
+            <property name="label" translatable="yes">You might need to go unnoticed if using Tor could look suspicious to someone who monitors your Internet connection.</property>
+            <property name="use-markup">True</property>
+            <property name="wrap">True</property>
+            <property name="max-width-chars">70</property>
+            <property name="xalign">0</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">8</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="unnoticed_yes_help">
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="margin-start">36</property>
+            <property name="margin-top">12</property>
+            <property name="label" translatable="yes">Tails will only connect to Tor after you configured a Tor bridge. Bridges are secret Tor relays that hide that you are connecting to Tor.
+
+Our team is doing its best to help you connect to Tor using the most discreet types of Tor bridges.
+
+You will have to do extra configuration if you don't know any Tor bridges yet, if you connect from a public Wi-Fi network, or if you are in the Eastern Hemisphere.</property>
+            <property name="use-markup">True</property>
+            <property name="wrap">True</property>
+            <property name="max-width-chars">70</property>
+            <property name="xalign">0</property>
+            <signal name="activate-link" handler="on_link_help_clicked" swapped="no"/>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">9</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkRadioButton" id="radio_unnoticed_none">
+            <property name="label" translatable="yes">None</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">False</property>
+            <property name="halign">start</property>
+            <property name="active">True</property>
+            <property name="draw-indicator">True</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="padding">6</property>
+            <property name="position">10</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">2</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkLabel">
+        <property name="visible">True</property>
+        <property name="can-focus">True</property>
+        <property name="halign">start</property>
+        <property name="label" translatable="yes">&lt;a href="doc/anonymous_internet/tor"&gt;Learn more about how Tails connects to Tor&lt;/a&gt;</property>
+        <property name="use-markup">True</property>
+        <signal name="activate-link" handler="on_link_help_clicked" swapped="no"/>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">3</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkButton" id="step_hide_btn_submit">
+        <property name="label" translatable="yes">_Connect to Tor</property>
+        <property name="visible">True</property>
+        <property name="sensitive">True</property>
+        <property name="can-focus">True</property>
+        <property name="receives-default">True</property>
+        <property name="halign">end</property>
+        <property name="valign">end</property>
+        <property name="use-underline">True</property>
+        <signal name="clicked" handler="cb_step_hide_btn_connect_clicked" swapped="no"/>
+        <style>
+          <class name="suggested-action"/>
+          <class name="suggested-action-box"/>
+        </style>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">False</property>
+        <property name="position">4</property>
+      </packing>
+    </child>
+    <style>
+      <class name="step-box"/>
+    </style>
+  </object>
+  <object class="GtkBox" id="step_offline_box">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="GtkBox">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="valign">baseline</property>
+        <property name="vexpand">False</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">12</property>
+        <property name="baseline-position">top</property>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="valign">start</property>
+            <property name="label" translatable="yes">Everything you do on the Internet from Tails goes through the Tor network.</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="padding">5</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="valign">start</property>
+            <property name="label" translatable="yes">Tor encrypts and anonymizes your connection by passing it through 3 relays.
+Tor relays are servers operated by different organizations and volunteers around the world.</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="padding">5</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+
+          <object class="GtkBox" id="step_offline_wifi_not_available">
+            <property name="orientation">vertical</property>
+
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">No Wi-Fi hardware detected</property>
+                <style>
+                  <class name="step-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="valign">start</property>
+                <property name="label" translatable="yes">Tails couldn't find any Wi-Fi interface on your computer. If your computer has a Wi-Fi interface, it might not work on Tails.
+
+To connect to the Internet you can try to:
+
+ • Use an Ethernet cable instead of Wi-Fi. Wired interfaces work much more reliably than Wi-Fi in Tails.
+ • Use USB tethering to share the Wi-Fi or mobile data connection of your phone using a cable.
+ • Buy a USB Wi-Fi adapter that works in Tails.
+                </property>
+                <property name="wrap">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="padding">5</property>
+                <property name="position">3</property>
+              </packing>
+            </child>
+
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="valign">start</property>
+                <property name="label" translatable="yes">
+&lt;a href="doc/anonymous_internet/no-wifi"&gt;
+Learn more about troubleshooting Wi-Fi not working.
+&lt;/a&gt;
+                </property>
+                <property name="use-markup">True</property>
+                <signal name="activate-link" handler="on_link_help_clicked" swapped="no"/>
+                <property name="wrap">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="padding">5</property>
+                <property name="position">3</property>
+              </packing>
+            </child>
+
+          </object> <!-- step_offline_wifi_not_available -->
+        </child>
+
+        <child>
+          <object class="GtkBox" id="step_offline_wifi_available">
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="label" translatable="yes">Connect to a local network</property>
+                <style>
+                  <class name="step-title"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="halign">start</property>
+                <property name="valign">start</property>
+                <property name="label" translatable="yes">You are not connected to a local network yet. To be able to connect to the Tor network, you first need to connect to a Wi-Fi, wired, or mobile network.</property>
+                <property name="wrap">True</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">False</property>
+                <property name="padding">5</property>
+                <property name="position">3</property>
+              </packing>
+            </child>
+          </object> <!-- step_offline_wifi_available -->
+        </child>
+        <child>
+          <object class="GtkButton" id="step_offline_wificonf">
+            <property name="label" translatable="yes">Open Wi-Fi Settings</property>
+            <property name="name">step_offline_wificonf</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+            <property name="halign">end</property>
+            <signal name="clicked" handler="cb_step_offline_wificonf_clicked" swapped="no"/>
+            <style>
+              <class name="suggested-action"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">4</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+  </object>
+  <object class="GtkBox" id="step_progress_box">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="GtkBox" id="step_progress_box_internettest">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <child>
+          <object class="GtkSpinner" id="step_progress_spinner_internet">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="active">True</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="label" translatable="yes">Testing Internet access…</property>
+            <style>
+              <class name="progress-box-text"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="step_progress_box_internetok">
+        <property name="can-focus">False</property>
+        <child>
+          <object class="GtkImage">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="stock">gtk-apply</property>
+            <style>
+              <class name="progress-box-icon"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="label" translatable="yes">You have access to the Internet</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="step_progress_box_tortest">
+        <property name="can-focus">False</property>
+        <child>
+          <object class="GtkSpinner" id="step_progress_spinner_tortest">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="active">True</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="label" translatable="yes">Testing access to Tor…</property>
+            <style>
+              <class name="progress-box-text"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <style>
+          <class name="progress-box"/>
+        </style>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">2</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="step_progress_box_torok">
+        <property name="can-focus">False</property>
+        <child>
+          <object class="GtkImage" id="step_progress_img_torok">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="stock">gtk-apply</property>
+            <style>
+              <class name="progress-box-icon"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="step_progress_label_torok">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="label" translatable="yes">You can connect to Tor</property>
+            <style>
+              <class name="progress-box-text"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <style>
+          <class name="progress-box"/>
+        </style>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">3</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="step_progress_box_tor_direct_fail">
+        <property name="can-focus">False</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="label" translatable="yes">Failed to connect to Tor without bridges.</property>
+            <style>
+              <class name="progress-box-heading"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="label" translatable="yes">This local network is blocking access to Tor.</property>
+            <style>
+              <class name="progress-box-text"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <style>
+          <class name="progress-box"/>
+        </style>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">4</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="step_progress_box_torconnect">
+        <property name="name">step_progress_box_torconnect</property>
+        <property name="can-focus">False</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">12</property>
+        <child>
+          <object class="GtkLabel" id="step_progress_label_status">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="label" translatable="yes">Connecting to Tor…</property>
+            <style>
+              <class name="progress-box-heading"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkProgressBar" id="step_progress_pbar_torconnect">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="pulse-step">0.029999999999999999</property>
+            <property name="show-text">True</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">5</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="step_progress_box_tortestok">
+        <property name="can-focus">False</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <child>
+              <object class="GtkImage">
+                <property name="can-focus">False</property>
+                <property name="stock">gtk-apply</property>
+                <style>
+                  <class name="progress-box-icon"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkLabel" id="step_progress_label_connected">
+                <property name="name">step_progress_label_connected</property>
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="label" translatable="yes">Connected to Tor successfully</property>
+                <style>
+                  <class name="progress-box-heading"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="step_progress_label_connected_explain">
+            <property name="name">step_progress_label_connected_explain</property>
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">start</property>
+            <property name="margin-top">18</property>
+            <property name="label" translatable="yes">You can now browse the Internet anonymously and uncensored.</property>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">6</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkBox" id="step_progress_box_start">
+        <property name="can-focus">False</property>
+        <property name="valign">end</property>
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkButton" id="step_progress_btn_tbb">
+            <property name="label" translatable="yes">Start Tor Browser</property>
+            <property name="name">step_progress_btn_tbb</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+            <signal name="clicked" handler="cb_step_progress_btn_starttbb_clicked" swapped="no"/>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <child>
+              <object class="GtkButton">
+                <property name="label" translatable="yes">View Tor Circuits</property>
+                <property name="visible">True</property>
+                <property name="can-focus">True</property>
+                <property name="receives-default">True</property>
+                <signal name="clicked" handler="cb_step_progress_btn_onioncircuits_clicked" swapped="no"/>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">False</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">7</property>
+      </packing>
+    </child>
+    <style>
+      <class name="step-box"/>
+    </style>
+  </object>
+  <object class="GtkBox" id="step_proxy_box">
+    <property name="visible">True</property>
+    <property name="can-focus">False</property>
+    <property name="orientation">vertical</property>
+    <child>
+      <object class="GtkLabel" id="proxy_config_title">
+        <property name="name">proxy_config_title</property>
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="halign">start</property>
+        <property name="label" translatable="yes">Configure a Local Proxy</property>
+        <style>
+          <class name="step-title"/>
+        </style>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <!-- n-columns=3 n-rows=5 -->
+      <object class="GtkGrid">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="valign">center</property>
+        <property name="margin-bottom">18</property>
+        <property name="hexpand">True</property>
+        <child>
+          <object class="GtkLabel" id="step_proxy_label_type">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">end</property>
+            <property name="margin-end">12</property>
+            <property name="margin-bottom">6</property>
+            <property name="label" translatable="yes">Proxy Type</property>
+            <accessibility>
+              <relation type="label-for" target="step_proxy_combo"/>
+            </accessibility>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkComboBoxText" id="step_proxy_combo">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="margin-bottom">6</property>
+            <property name="active-id">no</property>
+            <items>
+              <item id="no" translatable="yes">No proxy</item>
+              <item id="Socks4" translatable="yes">SOCKS 4</item>
+              <item id="Socks5" translatable="yes">SOCKS 5</item>
+              <item id="HTTPS" translatable="yes">HTTP / HTTPS</item>
+            </items>
+            <signal name="changed" handler="cb_step_proxy_combo_changed" swapped="no"/>
+            <accessibility>
+              <relation type="labelled-by" target="step_proxy_label_type"/>
+            </accessibility>
+          </object>
+          <packing>
+            <property name="left-attach">1</property>
+            <property name="top-attach">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="step_proxy_label_address">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">end</property>
+            <property name="margin-end">12</property>
+            <property name="margin-bottom">6</property>
+            <property name="label" translatable="yes">Address</property>
+            <accessibility>
+              <relation type="label-for" target="step_proxy_entry_address"/>
+            </accessibility>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="step_proxy_label_username">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">end</property>
+            <property name="margin-end">12</property>
+            <property name="margin-bottom">6</property>
+            <property name="label" translatable="yes">Username</property>
+            <accessibility>
+              <relation type="label-for" target="step_proxy_entry_username"/>
+            </accessibility>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkEntry" id="step_proxy_entry_address">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="margin-bottom">6</property>
+            <property name="hexpand">True</property>
+            <property name="max-length">15</property>
+            <property name="placeholder-text" translatable="yes">IP address or hostname</property>
+            <property name="input-hints">GTK_INPUT_HINT_NO_SPELLCHECK | GTK_INPUT_HINT_LOWERCASE | GTK_INPUT_HINT_NONE</property>
+            <accessibility>
+              <relation type="labelled-by" target="step_proxy_label_address"/>
+            </accessibility>
+          </object>
+          <packing>
+            <property name="left-attach">1</property>
+            <property name="top-attach">1</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="step_proxy_label_port">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">end</property>
+            <property name="margin-end">12</property>
+            <property name="margin-bottom">6</property>
+            <property name="label" translatable="yes">Port</property>
+            <accessibility>
+              <relation type="label-for" target="step_proxy_entry_port"/>
+            </accessibility>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkLabel" id="step_proxy_label_password">
+            <property name="visible">True</property>
+            <property name="can-focus">False</property>
+            <property name="halign">end</property>
+            <property name="margin-end">12</property>
+            <property name="margin-bottom">6</property>
+            <property name="label" translatable="yes">Password</property>
+            <accessibility>
+              <relation type="label-for" target="step_proxy_entry_password"/>
+            </accessibility>
+          </object>
+          <packing>
+            <property name="left-attach">0</property>
+            <property name="top-attach">4</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkEntry" id="step_proxy_entry_username">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="margin-bottom">6</property>
+            <property name="hexpand">True</property>
+            <property name="input-hints">GTK_INPUT_HINT_NO_SPELLCHECK | GTK_INPUT_HINT_NONE</property>
+            <accessibility>
+              <relation type="labelled-by" target="step_proxy_label_username"/>
+            </accessibility>
+          </object>
+          <packing>
+            <property name="left-attach">1</property>
+            <property name="top-attach">3</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkEntry" id="step_proxy_entry_port">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="margin-bottom">6</property>
+            <property name="hexpand">True</property>
+            <property name="input-purpose">digits</property>
+            <property name="input-hints">GTK_INPUT_HINT_NO_SPELLCHECK | GTK_INPUT_HINT_NONE</property>
+            <accessibility>
+              <relation type="labelled-by" target="step_proxy_label_port"/>
+            </accessibility>
+          </object>
+          <packing>
+            <property name="left-attach">1</property>
+            <property name="top-attach">2</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkEntry" id="step_proxy_entry_password">
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="margin-bottom">6</property>
+            <property name="hexpand">True</property>
+            <property name="visibility">False</property>
+            <property name="invisible-char">●</property>
+            <property name="input-purpose">password</property>
+            <property name="input-hints">GTK_INPUT_HINT_NO_SPELLCHECK | GTK_INPUT_HINT_NONE</property>
+            <accessibility>
+              <relation type="labelled-by" target="step_proxy_label_password"/>
+            </accessibility>
+          </object>
+          <packing>
+            <property name="left-attach">1</property>
+            <property name="top-attach">4</property>
+          </packing>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+        <child>
+          <placeholder/>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">True</property>
+        <property name="fill">True</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkButtonBox">
+        <property name="visible">True</property>
+        <property name="can-focus">False</property>
+        <property name="hexpand">True</property>
+        <child>
+          <object class="GtkButton">
+            <property name="label">gtk-go-back</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+            <property name="use-stock">True</property>
+            <property name="always-show-image">True</property>
+            <signal name="clicked" handler="cb_step_proxy_btn_back_clicked" swapped="no"/>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkButton" id="step_proxy_btn_submit">
+            <property name="label" translatable="yes">_Save Proxy Settings</property>
+            <property name="visible">True</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">True</property>
+            <property name="valign">end</property>
+            <property name="use-underline">True</property>
+            <signal name="activate" handler="cb_step_proxy_btn_submit_clicked" swapped="no"/>
+            <signal name="clicked" handler="cb_step_proxy_btn_submit_clicked" swapped="no"/>
+            <style>
+              <class name="suggested-action"/>
+            </style>
+          </object>
+          <packing>
+            <property name="expand">True</property>
+            <property name="fill">True</property>
+            <property name="position">2</property>
+          </packing>
+        </child>
+        <style>
+          <class name="suggested-action-box"/>
+        </style>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">2</property>
+      </packing>
+    </child>
+    <style>
+      <class name="step-box"/>
+    </style>
+  </object>
+</interface>

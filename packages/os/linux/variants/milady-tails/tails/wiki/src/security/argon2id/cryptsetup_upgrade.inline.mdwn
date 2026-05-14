@@ -1,0 +1,51 @@
+[[!tag security/fixed]]
+
+   1. To verify whether your encrypted volume uses PBKDF2 or Argon2id, execute
+      the following command.
+      Replace <span class="command-placeholder">[partition]</span> with the
+      partition name found in step 1.6.
+
+      <p class="pre command-template">cryptsetup luksDump /dev/<span class="command-placeholder">[partition]</span></p>
+
+      In the output:
+
+      - `Version` indicates the version of LUKS,
+        either `1` or `2`.
+
+      - `PBKDF` indicates the key derivation function,
+        either `pbkdf2` or `argon2id`.
+
+      If your encrypted volume already uses LUKS2 and Argon2id, you can stop
+      here.
+
+   1. Execute the following command to do a backup of your LUKS1 header.
+      Replace <span class="command-placeholder">[partition]</span> with the
+      partition name found in step 1.6.
+
+      <p class="pre command-template">cryptsetup luksHeaderBackup /dev/<span class="command-placeholder">[partition]</span> --header-backup-file /home/amnesia/luks1header</p>
+
+      If something goes wrong, you will be able to restore your LUKS1 header
+      from this backup with:
+
+      <p class="pre command-template">cryptsetup luksHeaderRestore /dev/<span class="command-placeholder">[partition]</span> --header-backup-file /home/amnesia/luks1header</p>
+
+   1. To update your LUKS header to LUKS2, execute the following command.
+      Replace <span class="command-placeholder">[partition]</span> with the
+      device name found in step 1.6.
+
+      <p class="pre command-template">cryptsetup convert /dev/<span class="command-placeholder">[partition]</span> --type luks2</p>
+
+   1. To verify that Argon2id is the new key derivation function, execute the
+      following command again.
+      Replace <span class="command-placeholder">[partition]</span> with the
+      partition name found in step 1.6.
+
+      <p class="pre command-template">cryptsetup luksDump /dev/<span class="command-placeholder">[partition]</span></p>
+
+      In the output, verify that:
+
+      - The `Version` is `2` and not `1`.
+
+      - The `PBKDF` is `argon2id` and not `pbkdf2`.
+
+   1. Try to unlock your encrypted volume.

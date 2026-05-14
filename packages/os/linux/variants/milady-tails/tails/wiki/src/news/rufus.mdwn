@@ -1,0 +1,40 @@
+[[!meta title="Replacing balenaEtcher with Rufus as installer for Windows"]]
+[[!meta date="Wed, 19 Feb 2025 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+We replaced *balenaEtcher* with *Rufus* in our [[installation instructions for
+Windows|install/windows]] to solve privacy concerns with *balenaEtcher*.
+
+Since [[January 2019|report_2019_01]], we had been recommending
+[*balenaEtcher*](https://etcher.balena.io/) to install Tails from Windows and
+macOS. We loved the simplicity of *balenaEtcher*, which was really easier to
+use and worked on macOS as well.
+
+Shortly after, *balenaEtcher* started displaying ads. Although we didn't like
+that, we initially didn't view it as a significant privacy risk and had no
+better alternative at the time.
+
+However, in 2024, the situation changed: *balenaEtcher* started
+sharing the file name of the image and the model of the USB stick with the
+Balena company and possibly with third parties. While we have not experienced
+or heard of any attacks against Tails users stemming from this change, we
+believe it introduces potential for abuse. To eliminate that risk altogether,
+we started looking again for alternatives.
+
+After evaluating [[!tails_ticket 20423 desc="7 other tools"]], we finally chose
+[*Rufus*](https://rufus.ie/). We had [[!tails_ticket 7034 desc="tested *Rufus*
+many years ago"]], even before recommending *balenaEtcher*, but it was much
+harder to use and modified the Tails image in ways that were risky.
+
+Congratulations to Akeo Consulting, the company behind *Rufus*, for really
+improving the usability and reliability of their tool!
+
+We have not yet replaced *balenaEtcher* in our installation instructions for
+macOS because *Rufus* doesn't work on macOS. Also, as Tails doesn't work on
+Apple M1 and M2 processors, people who install Tails from macOS represent less
+than 10% of installations nowadays.
+
+Still, we recommend [[2 alternatives for macOS|/install/mac#etcher]]:
+installing Tails using `dd` on the command line or using [*Raspberry Pi
+Imager*](https://www.raspberrypi.com/software/).

@@ -1,0 +1,143 @@
+[[!meta title="Tails report for August, 2015"]]
+[[!meta date="Thu, 04 Feb 2016 11:52:50 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+We're sorry it took us so long to publish this report. We'll publish
+fresher news soon :)
+
+The 16th of August was Tails 6th birthday. Well, Tails existed before, but it was the birthday of [the first public release](https://lists.torproject.org/pipermail/tor-talk/2009-August/002667.html). Actually, it was named amnesia then, it was before the fusion with Incognito.
+
+Never mind the details. Let's celebrate!
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 1.5 was released on August 11, 2015|news/version_1.5]] (major release).
+
+* [[Tails 1.5.1 was released on August 28, 2015|news/version_1.5.1]] (minor emergency release to update Tor Browser to 5.0.2).
+
+The following changes were introduced in Tails 1.5:
+
+  - **Disable access to the local network** in the *Tor Browser*. You
+    should now use the *Unsafe Browser* to access the local network.
+  - Install *Tor Browser* 5.0 (based on Firefox 38esr).
+  - Install a *32-bit GRUB EFI boot loader*. Tails should now start on
+    some tablets with Intel Bay Trail processors among others.
+  - Let the user know when *Tails Installer* has rejected a device
+    because it is too small.
+
+Documentation and website
+=========================
+
+* We finally found a good formulation about Tails not protecting against BIOS malware.
+
+* We documented [[the languages in which user support is available|support]].
+
+* We reorganized information between the Start Tails and the Tails does not start pages.
+
+* We published an (incomplete) list of organizations doing Tails training.
+
+* We documented how to workaround issues on [[switchable graphics computer|support/known_issues#switchable_graphics]].
+
+* We explained better why we disabled the [[circuit view of Tor
+  Browser|doc/anonymous_internet/Tor_Browser#torbutton]] in Tails.
+
+* We explained why Tails had [[no antivirus software|support/faq#antivirus]].
+
+* We explained how to analyse [[Wi-Fi problems with Broadcom interfaces|support/known_issues#wireless]].
+
+User experience
+===============
+
+- On the Download and Verify extension for Firefox:
+  * sajolida sent an email to give the status of our work.
+  * Giorgio Maone explained the changes in the landscape of Firefox extensions and how they affect the technology that we can use.
+  * Clarified what happens in case of an interrupted download.
+
+- On the Installation Assistant:
+  * We [[!tails_ticket 10047 desc="took decisions"]] from the testing of the
+    Windows installation scenario that was tested in June.
+
+Infrastructure
+==============
+
+* We asked our mirrors to disable HTTP ETag to better support resumed
+  downloads and documented how to do that.
+
+* Despite of the [Tor bug](https://trac.torproject.org/projects/tor/ticket/11741)
+  limiting our pool of HTTP mirrors is getting small. We need mirrors again and
+  [[stopped saying that our pool is full|contribute/how/mirror#http]].
+
+* Our test suite covers 191 scenarios, 6 more than in July.
+
+Funding
+=======
+
+* We finally signed a contract with OTF, running from February 2015 to July
+  2016, and sent our first report.
+
+* We created ourselves a Flattr account.
+
+Outreach
+========
+
+* We have Tails stickers again! We'll share them during upcoming events, you can also [[make your own|contribute/how/promote/stickers]].
+
+* Alan attended [GUADEC, the GNOME conference](https://2015.guadec.org/) in Gothenburg, Sweden on August 7 – 9  and connected us better with the GNOME community.
+
+* A talk about Tails took place during DebConf15 in Heidelberg, Germany, on August 15th.
+
+* DrWhax did a lightning talk about Tails at [CCCamp](https://events.ccc.de/camp/2015/wiki/Main_Page) on August 13 - 17 in Zehdenick, Germany.
+
+On-going discussions
+====================
+
+* Alan submitted for review a new version of
+  Tor Monitor
+  (to replace Vidalia) and Sascha Steinbiss proposed to
+  package it for Debian.
+
+* We drafted a script to [[!tails_ticket 9993 desc="run a Mumble server"]] from
+  Tails, verified that the Mumble client in Tails Jessie works well, and
+  started using it for internal meetings.
+
+Press and testimonials
+======================
+
+* 2015-08-04: [Cinq systèmes d’exploitation pour snober Windows 10 (et Mac OS X)](http://www.lemonde.fr/pixels/article/2015/08/04/cinq-systemes-d-exploitation-pour-snober-windows-10-et-mac-os_4710726_4408996.html) by Damien Leloup in Le Monde (in French).
+
+* 2015-08-29: [Tails OS 1.5 Offers Out-of-the-Box Privacy Protection](http://www.greycoder.com/tails-os-1-5-offers-out-of-the-box-privacy-protection/) by Tracy Knauer on GreyCoder.
+
+Translation
+===========
+
+At the end of the month:
+
+All website PO files
+
+  - de: 18% (1265) strings translated, 0% strings fuzzy, 17% words translated
+  - fr: 46% (3223) strings translated, 2% strings fuzzy, 43% words translated
+  - pt: 26% (1842) strings translated, 3% strings fuzzy, 24% words translated
+
+Total original words: 79407
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 59% (794) strings translated, 1% strings fuzzy, 66% words translated
+  - fr: 91% (1219) strings translated, 3% strings fuzzy, 92% words translated
+  - pt: 82% (1102) strings translated, 9% strings fuzzy, 85% words translated
+
+Total original words: 14404
+
+Metrics
+=======
+
+* Tails has been started more than 469,870 times this month. This makes 15,157 boots a day on average.
+
+* 31,870 downloads of the OpenPGP signature of Tails ISO from our website.
+
+* 127 bug reports were received through WhisperBack.
+
+-- Report by BitingBird for Tails folks

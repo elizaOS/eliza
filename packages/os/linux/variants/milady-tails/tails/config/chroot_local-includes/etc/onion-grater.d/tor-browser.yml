@@ -1,0 +1,29 @@
+---
+- hosts:
+    - '10.200.1.2'
+  users:
+    - 'amnesia'
+  commands:
+    # Used of the "New Identity" feature
+    SIGNAL:
+      - 'NEWNYM'
+    # Circuit view
+    GETINFO:
+      - 'circuit-status'
+      - 'net/listeners/socks'
+      - 'ns/id/[a-fA-F0-9]+'
+      - 'ip-to-country/\d+\.\d+\.\d+\.\d+'
+    # Required for providing the key when accessing onion sites using
+    # v3 client authorization
+    ONION_CLIENT_AUTH_ADD:
+      - '.+'
+  confs:
+    # Circuit view
+    bridge:
+  events:
+    # Circuit view
+    STREAM:
+    CIRC:
+  # Restricts Tor Browser to only see circuits/stream events used by
+  # its own connections
+  tor-browser-mode: true

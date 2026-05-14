@@ -1,0 +1,73 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+
+NAME=$(basename "${0}")
+LONGOPTS="version:,isos:,release-branch:,matching-jenkins-images-build-id:"
+OPTS=$(getopt -o "" --longoptions $LONGOPTS -n "${NAME}" -- "$@")
+eval set -- "$OPTS"
+while [ $# -gt 0 ]; do
+    case $1 in
+    --version)
+        shift
+        VERSION="$1"
+        ;;
+    --isos)
+        shift
+        ISOS="$1"
+        ;;
+    --release-branch)
+        shift
+        RELEASE_BRANCH="$1"
+        ;;
+    --matching-jenkins-images-build-id)
+        shift
+        MATCHING_JENKINS_IMAGES_BUILD_ID="$1"
+        ;;
+    esac
+    shift
+done
+
+# shellcheck disable=SC2029
+ssh misc.lizard mkdir -p "tails-amd64-${VERSION:?}"
+
+scp "${ISOS:?}/tails-amd64-${VERSION:?}/tails-amd64-${VERSION:?}."{apt-sources,build-manifest,buildlog,packages,iso.sig,img.sig} \
+    "misc.lizard:tails-amd64-${VERSION:?}"
+
+ssh misc.lizard gpg --import <"wiki/src/tails-signing.key"
+
+echo "Downloading"
+
+# shellcheck disable=SC2087
+ssh misc.lizard <<EOF
+   (
+    set -eu
+    cd tails-amd64-${VERSION:?}
+    wget --continue \
+       "https://nightly.tails.boum.org/build_Tails_ISO_${RELEASE_BRANCH:?}/builds/${MATCHING_JENKINS_IMAGES_BUILD_ID:?}/archive/build-artifacts/tails-amd64-${VERSION:?}.iso" \
+       "https://nightly.tails.boum.org/build_Tails_ISO_${RELEASE_BRANCH:?}/builds/${MATCHING_JENKINS_IMAGES_BUILD_ID:?}/archive/build-artifacts/tails-amd64-${VERSION:?}.img"
+    gpg --verify tails-amd64-${VERSION:?}.iso{.sig,}
+    gpg --verify tails-amd64-${VERSION:?}.img{.sig,}
+   )
+EOF
+
+echo "Doing git annex things"
+
+# shellcheck disable=SC2087
+ssh misc.lizard <<EOF
+   ( [ -d isos ] || git clone gitolite@puppet-git.lizard:isos.git ) && \
+   (
+    set -eux
+    cd isos
+    git annex init
+    git annex sync --no-content
+    git annex import ../tails-amd64-${VERSION:?}
+    rmdir ../tails-amd64-${VERSION:?}
+    git commit -m "Add Tails ${VERSION:?}"
+    git annex sync --no-content
+    git annex copy tails-amd64-${VERSION:?} --to origin
+    git annex drop tails-amd64-${VERSION:?}
+    git annex sync --no-content
+   )
+EOF

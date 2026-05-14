@@ -1,0 +1,17 @@
+@import url("upgrade-os.css");
+
+span.upgrade-linux, a.upgrade-linux {
+  display: inline;
+}
+
+div.upgrade-linux, img.upgrade-linux, p.upgrade-linux, h1.upgrade-linux, h2.upgrade-linux {
+  display: block;
+}
+
+li.upgrade-linux {
+  display: list-item;
+}
+
+h1.step:before, span.next-counter:before {
+  content: counter(step)'/6';
+}

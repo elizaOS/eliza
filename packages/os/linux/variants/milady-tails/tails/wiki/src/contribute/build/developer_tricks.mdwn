@@ -1,0 +1,71 @@
+[[!meta title="Developer tricks"]]
+
+[[!toc]]
+
+<div class="caution">
+Tricks mentioned here are only intended for <strong>development</strong>. Please don't use them in your
+regular Tails!
+</div>
+
+# Kernel command line options
+
+ - `early_patch`: see [[contribute/build/early-patch]]
+
+ - `login`: skip the greeter, using the default options
+
+ - `unlock=<password>`: automatically unlock the Persistent Storage
+
+ - `rootpw=<password>` set the root password (not the amnesia password)
+
+ - `break=init` stop boot before starting the init and give you a shell. Useful for small customizations that
+   must be done before boot.
+   If you need to do the same thing over and over, consider using [[contribute/build/early-patch]] instead
+
+# Refresh patches
+
+Sometimes, Tails FTBFS because of problems applying patches. Here is how you could fix that:
+
+```sh
+export TAILS_BUILD_OPTIONS="${TAILS_BUILD_OPTIONS:-} rescue"
+rake build
+rake vm:ssh
+export PATCHING_FILE='/path/to/file/'
+sudo PATCHING_FILE="${PATCHING_FILE}" chroot "$(ls /tmp/tails-build.* -dt|head -n1)/chroot/"
+```
+
+Set `PATCHING_FILE` to the file Tails is trying to patch. For example, it could be `/usr/share/mozilla/extensions/{ec8030f7-c20a-464f-9b0e-13a3a9e97384}/uBlock0@raymondhill.net/js/background.js`
+
+```sh
+cp "${PATCHING_FILE}.orig" "${PATCHING_FILE}"
+sensible-editor "${PATCHING_FILE}"
+diff -u "${PATCHING_FILE}.orig" "${PATCHING_FILE}"
+```
+
+copy-paste the output into `config/chroot-local_includes${PATCHING_FILE}`
+
+Edit the patch, removing `.orig` from the first line:
+
+```sh
+sensible-editor "config/chroot-local_includes${PATCHING_FILE}"
+git add "config/chroot-local_includes${PATCHING_FILE}"
+```
+
+# Run iso from commandline
+
+To run an ISO directly without clicking through virt-manager:
+
+```sh
+kvm -m 2048 -cdrom <ISO NAME>.iso
+```
+
+you can even share a directory with the client system:
+
+```sh
+kvm -m 2048 -virtfs local,path=/path/to/tails-git-dir,security_model=passthrough,mount_tag=src --cdrom /path/to/tails.iso
+```
+
+By passing through the Tails Git directory, the `early_patch` kernel command-line option can be used (see  [[contribute/build/early-patch]]). To mount the directory manually in the VM (after setting an admin password):
+
+```sh
+sudo mount -t 9p -o trans=virtio src /mnt/
+```

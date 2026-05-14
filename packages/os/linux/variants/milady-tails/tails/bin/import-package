@@ -1,0 +1,87 @@
+#!/bin/sh
+
+# Usage: ./bin/import-package SOURCE_PACKAGE
+#
+# This script automates a part of the process to grant a freeze exception
+# to a Debian package:
+# https://tails.net/contribute/APT_repository/time-based_snapshots/#freeze-exception
+#
+# It imports the specified source package, and all binary packages built
+# from it, into the Tails custom APT repository's $TARGET_DIST suite.
+#
+# Packages are downloaded with APT in a pbuilder chroot environment.
+# To choose the Debian distribution packages must be pulled from
+# (or whatever other options you want to pass to pbuilder),
+# use $PBUILDER_OPTIONS: its value will be passed to the pbuilder command-line.
+#
+# If $TARGET_DIST is unset, packages are added to the APT suite
+# corresponding to the current Git branch.
+#
+# Example:
+#
+#   PBUILDER_OPTIONS='--basetgz /var/cache/pbuilder/base-sid-amd64.tgz' \
+#   TARGET_DIST='testing' \
+#   ./bin/import-package libgsecuredelete
+
+set -x
+set -e
+set -u
+
+SRC_PKG="$1"
+
+GIT_TOPLEVEL_DIR=$(git rev-parse --show-toplevel)
+. "$GIT_TOPLEVEL_DIR"/auto/scripts/utils.sh
+PBUILDER_OPTIONS="${PBUILDER_OPTIONS:-}"
+TARGET_DIST="${TARGET_DIST:-$(branch_name_to_suite "$(git_current_branch)")}"
+REMOTE_USER_AT_HOST='reprepro@incoming.deb.tails.boum.org'
+
+umask 0022
+WORKDIR=$(mktemp -d)
+
+# shellcheck disable=SC2064
+trap "rm -r '$WORKDIR'" EXIT HUP INT QUIT TERM
+
+(
+   cd "$WORKDIR"
+
+   # download source and binary packages
+   cat > script <<EOF
+#!/bin/sh
+set -x
+set -e
+set -u
+
+umask 0022
+sed --regexp-extended -e 's,^deb(\s+.*),deb\1 contrib non-free non-free-firmware,' \
+   /etc/apt/sources.list \
+   > /etc/apt/sources.list.d/tmp-deb.list
+sed --regexp-extended -e 's,^deb(\s+),deb-src\1,' \
+   /etc/apt/sources.list.d/tmp-deb.list \
+   > /etc/apt/sources.list.d/tmp-deb-src.list
+apt-get update
+apt-get install dctrl-tools
+
+cd '$WORKDIR'
+ORIG_OWNER=\$(stat --format='%u:%g' '$WORKDIR')
+# allow APT 1.1+ to drop privileges
+if getent passwd _apt >/dev/null 2>&1 ; then
+   chown _apt '$WORKDIR'
+fi
+apt-get --download-only source '$SRC_PKG'
+apt-get download \
+        \$(grep-aptavail -S '$SRC_PKG' --exact-match -s Package --no-field-names)
+chown "\$ORIG_OWNER" '$WORKDIR'
+EOF
+   chmod 755 script
+   # shellcheck disable=SC2086
+   sudo pbuilder execute --bindmounts "$WORKDIR" $PBUILDER_OPTIONS -- script
+   rm script
+
+   REMOTE_WORKDIR=$(ssh "$REMOTE_USER_AT_HOST" mktemp -d)
+   scp ./* "$REMOTE_USER_AT_HOST":"$REMOTE_WORKDIR"/
+   # shellcheck disable=SC2029
+   ssh "$REMOTE_USER_AT_HOST" \
+       "reprepro includedsc '$TARGET_DIST' '$REMOTE_WORKDIR'/*.dsc && \
+        reprepro includedeb '$TARGET_DIST' '$REMOTE_WORKDIR'/*.deb && \
+        rm -r '$REMOTE_WORKDIR'"
+)

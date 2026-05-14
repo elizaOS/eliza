@@ -1,0 +1,127 @@
+#!/bin/bash
+set -e
+set -u
+
+set -o pipefail
+
+BASE_URL=http://time-based.snapshots.deb.tails.boum.org/
+CONFIG=config/APT_snapshots.d
+SERIAL_ONLY=
+APT_SNAPSHOTS_SERIALS=
+FREEZE_EXCEPTIONS=debian-security
+
+get_latest_serial() {
+	origin=$1
+	wget -q "$BASE_URL/$origin/project/trace/$origin" -O - \
+		| awk -F': ' '/^Archive serial: / {print $2}'
+}
+
+list_origins () {
+	find "$CONFIG" -mindepth 1 -maxdepth 1 -type d -printf '%f\n'
+}
+
+if [ $# -eq 0 ]; then
+	action="cat"
+	ORIGINS="$(list_origins)"
+else
+	action="${1}"
+	shift
+	if [ "${1:-}" = --print-serials-only ]; then
+		SERIAL_ONLY=yes
+		shift
+	fi
+	if [ "${1:-}" = --freeze-debian-security ]; then
+		FREEZE_EXCEPTIONS=
+		shift
+	fi
+	case "$action" in
+		prepare-build)
+			if [ $# -eq 1 ]; then
+				APT_SNAPSHOTS_SERIALS="${1}"
+				shift
+			fi
+		;;
+		cat-json)
+			if [ $# -eq 1 ]; then
+				CONFIG="${1}"
+				shift
+			fi
+		;;
+		cat|get-latest|freeze|thaw)
+			if [ $# -eq 0 ]; then
+				ORIGINS="$(list_origins)"
+			else
+				ORIGINS="${@}"
+			fi
+		;;
+	esac
+fi
+
+case "$action" in
+	cat)
+		for origin in $ORIGINS; do
+			[ -z "${SERIAL_ONLY}" ] && echo -n "$origin: "
+			cat "$CONFIG/$origin/serial"
+		done
+	;;
+	cat-json)
+		"$(dirname "$0")"/apt-snapshots-serials-cat-json "$CONFIG"
+	;;
+	get-latest)
+		for origin in $ORIGINS; do
+			[ -z "${SERIAL_ONLY}" ] && echo -n "$origin: "
+			get_latest_serial "$origin"
+		done
+	;;
+	freeze)
+		for origin in $ORIGINS; do
+			serial_file="$CONFIG/$origin/serial"
+			git=$(cat "$serial_file")
+			# shellcheck disable=SC2254
+			case "$origin" in
+				${FREEZE_EXCEPTIONS})
+					new=latest
+					;;
+				*)
+					new=$(get_latest_serial "$origin")
+			esac
+			printf "Origin %s:\n  old: %s\n  new: %s\n" \
+			       "$origin" "$git" "$new"
+			echo "$new" > "$serial_file"
+		done
+		printf "\nAll files (%s/*/serial) have been updated with new serials\n" "$CONFIG" >&2
+	;;
+	thaw)
+		for origin in $ORIGINS; do
+			serial_file="$CONFIG/$origin/serial"
+			git=$(cat "$serial_file")
+			printf "Origin %s:\n  old: %s\n  new: latest\n" \
+			       "$origin" "$git"
+			echo 'latest' > "$serial_file"
+		done
+	;;
+	prepare-build)
+		rm -rf tmp/APT_snapshots.d
+		mkdir -p tmp
+		cp -r config/APT_snapshots.d tmp/
+		if [ "${APT_SNAPSHOTS_SERIALS}" ]; then
+			"$(dirname "$0")"/apt-snapshots-serials-load-json \
+				"$APT_SNAPSHOTS_SERIALS" \
+				> tmp/cached_APT_snapshots_serials
+		else
+			$0 get-latest > tmp/cached_APT_snapshots_serials
+		fi
+		for origin_dir in tmp/APT_snapshots.d/*; do
+			origin=$(basename "$origin_dir")
+			if grep -qs '^latest$' "$origin_dir"/serial; then
+				awk -F': ' "/^$origin: / {print \$2}" \
+					tmp/cached_APT_snapshots_serials \
+					> "$origin_dir"/serial
+			fi
+		done
+	;;
+	*)
+		printf "unknown action (%s), use either 'cat', 'cat-json', 'get-latest', 'prepare-build', 'freeze' or 'thaw'\n" "$action" >&2
+		exit 1
+	;;
+esac

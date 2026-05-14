@@ -1,0 +1,384 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-06-12 12:56+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Running Tails in a virtual machine\"]]\n"
+msgstr "[[!meta title=\"Tails in einer virtuellen Maschine benutzen\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+msgid ""
+"It is sometimes convenient to be able to run Tails without having to restart "
+"your computer every time. This is possible using [[!wikipedia "
+"Virtual_machine desc=\"virtual machines\"]]."
+msgstr ""
+"Es ist manchmal angenehm, Tails ausführen zu können, ohne den Computer jedes "
+"Mal neu zu starten. Dies ist mit der Nutzung einer [[!wikipedia_de "
+"Virtuelle_Maschine desc=\"virtuellen Maschine\"]] möglich."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "With virtual machines, it is possible to run Tails inside a *host* "
+#| "operating system (Linux, Windows, or macOS). A virtual machine emulates a "
+#| "real computer and its operating system, called a *guest*, which appears "
+#| "in a window on the *host* operating system."
+msgid ""
+"With virtual machines, it is possible to run Tails inside a *host* operating "
+"system. A virtual machine emulates a real computer and its operating system, "
+"called a *guest*, which appears in a window on the *host* operating system."
+msgstr ""
+"Mit virtuellen Maschinen ist es möglich, Tails innerhalb eines *Host*-"
+"Betriebssystems auszuführen (Linux, Windows, oder macOS). Eine virtuelle "
+"Maschine emuliert einen echten Computer und sein Betriebssystem, genannt "
+"*Gast*, und erscheint in einem Fenster auf dem *Host*-Betriebssystem."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Because, <i>VirtualBox</i> works pretty badly with Tails, we stopped\n"
+"advertising solutions for using virtual machines in Windows or macOS.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We only present below 2 solutions for Linux: <i>GNOME Boxes</i> and\n"
+"<i>virt-manager</i>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"When running Tails in a virtual machine, you can use most features of Tails "
+"from your usual operating system, and you can use both Tails and your usual "
+"operating system in parallel, without the need to restart the computer."
+msgstr ""
+"Wenn Sie Tails in einer virtuellen Maschine ausführen, können Sie die "
+"meisten Funktionen von Tails von Ihrem normalen Betriebssystem aus ausführen "
+"und beide gleichzeitig benutzen, ohne dass der Computer neugestartet werden "
+"muss."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We do not currently provide a solution for running a virtual machine\n"
+"inside a Tails host.</p>\n"
+msgstr ""
+"<p>Wir bieten derzeit keine Lösung zum Betreiben von virtuellen Maschinen auf\n"
+"einem Tails-Host.</p>\n"
+
+#. type: Plain text
+msgid "This is how Tails looks when run in a virtual machine on a Debian host."
+msgstr ""
+"So sieht Tails aus, wenn es in einer virtuellen Maschine auf einem Debian-"
+"Host ausgeführt wird."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img tails-in-vm.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img tails-in-vm.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"security\"></a>\n"
+msgstr "<a id=\"security\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Security considerations"
+msgstr "Sicherheitsbedenken"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Running Tails inside a virtual machine has various security\n"
+"implications. Depending on the host operating system and your security\n"
+"needs, running Tails in a virtual machine might be dangerous.</p>\n"
+msgstr ""
+"<p>Die Benutzung von Tails in einer virtuellen Maschine hat verschiedene Konsequenzen \n"
+"für die Sicherheit. Abhängig von Ihrem Hostbetriebssystem und Ihren \n"
+"Sicherheitsanforderungen könnte die Benutzung von Tails in einer virtuellen Maschine gefährlich sein.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"trustworthy\"></a>\n"
+msgstr "<a id=\"trustworthy\"></a>\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"Both the host operating system and the [[virtualization software|"
+"virtualization#software]] are able to monitor what you are doing in Tails."
+msgstr ""
+"Sowohl das Hostbetriebssystem als auch die [[Virtualisierungssoftware|"
+"virtualization#software]] sind in der Lage, zu überwachen, was Sie in Tails "
+"tun."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "    If the host operating system is compromised with a software\n"
+#| "    keylogger or other malware, then it can break the security features\n"
+#| "    of Tails.\n"
+msgid ""
+"    If the host operating system is compromised with a software\n"
+"    keylogger or other malware, then it can break the security built into\n"
+"    Tails.\n"
+msgstr ""
+"    Wenn das Hostbetriebssystem mit einem Softwarekeylogger\n"
+"    oder anderer Schadsoftware kompromittiert ist, kann dies die in\n"
+"    Tails eingebauten Sicherheitsmechanismen unwirksam machen.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    <div class=\"caution\">\n"
+msgstr "    <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    <p>Only run Tails in a virtual machine if both the host operating\n"
+"    system and the virtualization software are trustworthy.</p>\n"
+msgstr ""
+"    <p>Führen Sie Tails nur in einer virtuellen Maschine aus, wenn sowohl das Hostbetriebssystem\n"
+"    als auch die Virtualisierungssoftware vertrauenswürdig sind.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    </div>\n"
+msgstr "    </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    <div class=\"attack\">\n"
+msgstr "    <div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    <p>For example, when using virtual machines in Windows, <a\n"
+"    href=\"https://support.microsoft.com/en-us/windows/retrace-your-steps-with-recall-aa03f8a0-a78b-4b3e-b0a1-2eb8ac48701c\"><i>Microsoft\n"
+"    Recall</i></a> might be taking regular screenshots of your activity.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"traces\"></a>\n"
+msgstr "<a id=\"traces\"></a>\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"Traces of your Tails session are likely to be left on the local hard disk. "
+"For example, host operating systems usually use swapping (or *paging*) which "
+"copies part of the RAM to the hard disk."
+msgstr ""
+"Es werden voraussichtlich Spuren Ihrer Tails-Sitzung auf der lokalen "
+"Festplatte hinterlassen. Beispielsweise nutzen Hostbetriebssysteme "
+"üblicherweise Swapping (oder *Paging*), wodurch Teile des Arbeitsspeichers "
+"auf die Festplatte kopiert werden."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    <p>Only run Tails in a virtual machine if leaving traces on the hard disk\n"
+"    is not a concern for you.</p>\n"
+msgstr ""
+"    <p>Benutzen Sie Tails nur in einer virtuellen Maschine, wenn das Hinterlassen von Spuren\n"
+"    auf der Festplatte kein Problem für Sie ist.</p>\n"
+
+#. type: Plain text
+msgid ""
+"This is why Tails warns you when it is running inside a virtual machine."
+msgstr "Deshalb warnt Sie Tails, wenn es in einer virtuellen Maschine läuft."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>The Tails virtual machine does not modify the behaviour of the host\n"
+#| "operating system and the network traffic of the host is not anonymized. The MAC\n"
+#| "address of the computer is not modified by the [[MAC address\n"
+#| "anonymization|first_steps/welcome_screen/mac_spoofing]] feature of Tails\n"
+#| "when run in a virtual machine.</p>\n"
+msgid ""
+"<p>The Tails virtual machine does not modify the behavior of the host\n"
+"operating system and the network traffic of the host is not anonymized. The MAC\n"
+"address of the computer is not modified by the [[MAC address\n"
+"anonymization|first_steps/welcome_screen/mac_spoofing]] feature of Tails\n"
+"when run in a virtual machine.</p>\n"
+msgstr ""
+"<p>Die virtuelle Maschine Tails verändert das Verhalten des Host-Betriebssystems\n"
+"nicht und der Netzwerkverkehr des Hosts wird nicht anonymisiert. Die MAC-Adresse\n"
+"des Computers wird durch die [[MAC-Adressen-Anonymisierung|first_steps/welcome_screen/mac_spoofing]]\n"
+"Funktion von Tails nicht verändert, wenn sie in einer virtuellen Maschine ausgeführt wird.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"software\"></a>\n"
+msgstr "<a id=\"software\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Virtualization solutions"
+msgstr "Lösungen zur Virtualisierung"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To run Tails inside a virtual machine, you need to have virtualization "
+#| "software installed on the host operating system.  Different "
+#| "virtualization software exists for Linux, Windows, and macOS."
+msgid ""
+"To run Tails inside a virtual machine, you need to have virtualization "
+"software installed on the host operating system.  Different virtualization "
+"software exists for Linux, Windows, and macOS.  Unfortunately, we only know "
+"of virtualization solutions for Linux that work well with Tails."
+msgstr ""
+"Um Tails in einer virtuellen Maschine auszuführen, ist es nötig, dass Sie "
+"Virtualisierungssoftware auf dem Hostbetriebssystem installiert haben.  Es "
+"gibt verschiedene Lösungen zur Virtualisierung für Linux, Windows und MacOS."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We only mention Free Software, because we believe that it is a necessary\n"
+"condition to be trustworthy. Proprietary virtualization software exist, such as\n"
+"<i>VMWare</i>, but is not listed here on purpose.</p>\n"
+msgstr ""
+
+#. type: Bullet: '  - '
+#, fuzzy
+#| msgid ""
+#| "**<em>GNOME Boxes</em>** is available on Linux. It has a simple user "
+#| "interface but does not allow use of a Persistent Storage."
+msgid ""
+"***GNOME Boxes*** is only available on Linux. It has a simpler user "
+"interface than *virt-manager* but does not allow to use a Persistent Storage."
+msgstr ""
+"**<em>GNOME Boxes</em>** ist unter Linux verfügbar. Es verfügt über eine "
+"einfache Benutzeroberfläche, erlaubt jedoch nicht die Verwendung eines "
+"persistenten Speichers."
+
+#. type: Plain text
+#, no-wrap
+msgid "    See [[running Tails in *GNOME Boxes*|boxes]].\n"
+msgstr ""
+
+#. type: Bullet: '  - '
+#, fuzzy
+#| msgid ""
+#| "**<em>virt-manager</em>** is available on Linux. It has a more complex "
+#| "user interface and allows use of a Persistent Storage, either by:"
+msgid ""
+"***virt-manager*** is only available on Linux. It has a more complex user "
+"interface than *GNOME Boxes* but allows to use a Persistent Storage, either "
+"by:"
+msgstr ""
+"**<em>virt-manager</em>** ist auf Linux verfügbar. Er verfügt über eine "
+"komplexere Benutzeroberfläche und ermöglicht die Verwendung eines "
+"permanenten Speichers, entweder durch:"
+
+#. type: Bullet: '    - '
+msgid "Starting Tails from a USB stick."
+msgstr "Starten von Tails von einem USB-Stick."
+
+#. type: Bullet: '    - '
+msgid ""
+"Creating a virtual USB storage volume saved as a single file on the host "
+"operating system."
+msgstr ""
+"Erstellen eines virtuellen USB-Speichermediums, welches als einzelne Datei "
+"auf dem Hostbetriebssystem gespeichert wird."
+
+#. type: Plain text
+#, no-wrap
+msgid "    See [[running Tails in *virt-manager*|virt-manager]].\n"
+msgstr "    Siehe [[Tails im *virt-manager* ausführen|virt-manager]].\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "**<em>VirtualBox</em>** is available on Linux, Windows, and Mac. Its "
+#~| "free software version does not include support for USB devices and does "
+#~| "not allow use of a Persistent Storage."
+#~ msgid ""
+#~ "***VirtualBox*** is available on Linux, Windows, and Mac. Its Free "
+#~ "Software version does not include support for USB devices and does not "
+#~ "allow to use a Persistent Storage."
+#~ msgstr ""
+#~ "<em>VirtualBox</em> ist verfügbar für Linux, Windows und Mac. Die "
+#~ "kostenlose Softwareversion beinhaltet keine Unterstützung für USB-Geräte "
+#~ "und erlaubt nicht die Nutzung von persistentem Speicher."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The following list includes only free software as we believe that\n"
+#~ "this is a necessary condition for the software to be trustworthy. See the\n"
+#~ "[[previous warning|virtualization#trustworthy]] and our statement about\n"
+#~ "[[free software and public scrutiny|about/trust#free_software]].</p>\n"
+#~ msgstr ""
+#~ "<p>Die folgende Liste enthält nur Freie Software, da wir glauben, dass\n"
+#~ "dies eine notwendige Voraussetzung für Vertrauenswürdigkeit der Software ist. Lesen Sie die\n"
+#~ "[[vorangegangene Warnung|virtualization#trustworthy]] und unsere Stellungnahme zu\n"
+#~ "[[Freier Software und öffentlicher Kontrolle|about/trust#free_software]].</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Proprietary virtualization software solutions exist such as <span\n"
+#~ "class=\"application\">VMWare</span> but are not listed here on\n"
+#~ "purpose.</p>\n"
+#~ msgstr ""
+#~ "<p>Es gibt auch proprietäre Virtualisierungslösungen wie <span\n"
+#~ "class=\"application\">VMWare</span>, diese sind hier aber absichtlich\n"
+#~ "nicht aufgeführt.</p>\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|virtualbox]]\n"
+#~ msgstr "    [[Lesen Sie die entsprechende Dokumentation.|virtualbox]]\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|boxes]]\n"
+#~ msgstr "    [[Lesen Sie die entsprechende Dokumentation.|boxes]]\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|virt-manager]]\n"
+#~ msgstr "    [[Lesen Sie die entsprechende Dokumentation.|virt-manager]]\n"

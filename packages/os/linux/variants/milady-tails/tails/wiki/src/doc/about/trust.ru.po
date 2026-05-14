@@ -1,0 +1,368 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-22 08:55+0000\n"
+"PO-Revision-Date: 2024-04-26 12:05+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta title=\"Trusting Tails\"]]\n"
+msgid "[[!meta title=\"How can I trust Tails?\"]]\n"
+msgstr "[[!meta title=\"Доверие к Tails\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta stylesheet=\"donate/testimonials.inline\" rel=\"stylesheet\" title=\"\"]]\n"
+msgid "[[!meta stylesheet=\"doc/about/trust/testimonials.inline\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"donate/testimonials.inline\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails will never try to harm you or any of our users, as a core principle of "
+"our [social contract](https://community.torproject.org/policies/"
+"social_contract/). As part of that commitment, we have written this page to "
+"help you make an informed decision about whether you can trust Tails."
+msgstr ""
+
+#. type: Plain text
+msgid "We think that Tails is a trustworthy project because:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Our work is public**"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"Tails is [[Free Software|about/license]] and security researchers can "
+"examine our [[!tails_gitlab tails/tails desc=\"source code\"]]."
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"Tails is [[audited by independent security researchers|security#audits]] and "
+"we publish the results of these audits."
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"Known issues in Tails are described publicly in our [[!tails_gitlab tails/"
+"tails/-/issues desc=\"GitLab issue tracker\"]]. We might hide embargoed "
+"security vulnerabilities in Tails while we work on a solution, but only as a "
+"way of protecting our users."
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"The most sensitive parts of Tails are explained in our [[design documents|"
+"contribute/design]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Tails is based on Tor and Debian**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  The software included in Tails is either written by us or inherited from\n"
+"  Debian and other Tor projects:\n"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"[Debian](https://debian.org/) is the Linux distribution with the most "
+"derivatives, including Ubuntu."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    Debian and its derivatives\n"
+"    are [the most popular Linux distributions on web\n"
+"    servers](https://w3techs.com/technologies/details/os-linux) across the\n"
+"    Internet.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    The Debian project is coordinated over the Internet by a team of\n"
+"    volunteers whose work is entirely public. All this makes Debian one of the\n"
+"    Free Software projects under the most scrutiny by security researchers.\n"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[Tor](https://torproject.org/) is the best anonymity network available."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    Tails is made by the Tor Project, the same organization that makes the Tor\n"
+"    software and *Tor Browser*.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    Tor\n"
+"    has partnered with leading research institutions and has been subjected to\n"
+"    intensive academic research. Tor has received awards from institutions\n"
+"    such as the [EFF](https://www.eff.org/awards/pioneer/2012) and the [Free\n"
+"    Software\n"
+"    Foundation](https://www.fsf.org/news/2010-free-software-awards-announced).\n"
+"    Even the NSA qualified Tor as \"[the King of high secure, low latency Internet\n"
+"    Anonymity](https://www.theguardian.com/world/interactive/2013/oct/04/tor-high-secure-internet-anonymity).\"\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Our downloads are verifiable**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Making sure that our users are really downloading an unmodified version of\n"
+"  our work is also critical to trust and security:\n"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"We provide [[strong and easy-to-use verification mechanisms|contribute/"
+"design/download_verification]] to make sure that our users are downloading a "
+"genuine copy of Tails."
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"Our downloads are [[reproducible|contribute/build/reproducible]] to make "
+"sure that the process of building the downloads from our source code was not "
+"altered by our own infrastructure."
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"However, Tails, like Debian, includes closed source binary firmware in order "
+"to work on as much hardware as possible."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "**Tails is recommended by renown and diverse people and organizations**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  See also our list of [[supporters|https://www.torproject.org/about/supporters/]].\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!inline pages=\"donate/testimonials.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgid "[[!inline pages=\"doc/about/trust/testimonials.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"donate/testimonials.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "Trust is a very problematic issue, and that's the essence of why security "
+#~ "is difficult in every field, including computers and Internet "
+#~ "communication. Do you trust Tails and its developers? Do you think we "
+#~ "have planted backdoors in Tails so we can take control of your computer, "
+#~ "or that we make Tails generate compromised encryption keys in order to "
+#~ "enable the government to spy on you? Do you simply trust our word that we "
+#~ "are legit?"
+#~ msgstr ""
+#~ "Доверие – весьма сложный вопрос. Именно поэтому с безопасностью всё не "
+#~ "так просто в любой сфере, включая компьютеры и связь через Интернет. Вы "
+#~ "доверяете Tails и его разработчикам? А вдруг мы настроили Tails так, "
+#~ "чтобы контролировать ваш компьютер? Или Tails генерирует "
+#~ "скомпрометированные ключи шифрования, чтобы правительство могло за вами "
+#~ "шпионить? Верите ли вы нам на слово?"
+
+#~ msgid ""
+#~ "No matter what your opinion is in this matter you should ask yourself how "
+#~ "you reached your conclusion. Both trust and distrust need to be "
+#~ "established based on facts, not gut feelings, paranoid suspicion, "
+#~ "unfounded hearsay, or our word. Of course, we claim to be honest, but "
+#~ "written assurances are worthless. In order to make an informed decision "
+#~ "you must look at the greater picture of what Tails is comprised of, our "
+#~ "affiliations, and possibly how others trust us."
+#~ msgstr ""
+#~ "Что бы вы ни думали, спросите себя: как вы пришли к такому заключению? И "
+#~ "доверие, и недоверие должны опираться на факты, а не на чутьё, "
+#~ "параноидальные подозрения, необоснованные слухи или наше слово. Конечно, "
+#~ "мы утверждаем, что мы честные. Но письменные заверения ничего не стоят. "
+#~ "Чтобы принять информированное решение, вам нужно видеть  картину целиком: "
+#~ "из чего состоит Tails, с кем мы сотрудничаем, доверяют ли нам другие."
+
+#, no-wrap
+#~ msgid "[[!toc levels=2]]\n"
+#~ msgstr "[[!toc levels=2]]\n"
+
+#, no-wrap
+#~ msgid "<a id=\"free_software\"></a>\n"
+#~ msgstr "<a id=\"free_software\"></a>\n"
+
+#, no-wrap
+#~ msgid "Free software and public scrutiny"
+#~ msgstr "Бесплатные программы и общественный контроль"
+
+#~ msgid ""
+#~ "Free software, [[like Tails|about/license]], enables its users to check "
+#~ "exactly what the software distribution consists of and how it functions, "
+#~ "since the source code must be made available to all who receive it. Hence "
+#~ "a thorough audit of the code can reveal if any malicious code, like a "
+#~ "backdoor, is present. Furthermore, with the source code it is possible to "
+#~ "build the software, and then compare the result against any version that "
+#~ "is already built and being distributed, like the Tails images that you "
+#~ "can download from us. That way it can be determined whether the "
+#~ "distributed version actually was built with the source code, or if any "
+#~ "malicious changes have been made."
+#~ msgstr ""
+#~ "Свободное программное обеспечение [[вроде Tails|about/license]] позволяет "
+#~ "людям проверить, что входит в дистрибутив и как всё работает. Исходный "
+#~ "код должен быть открыт. Тщательная проверка может показать, есть ли в "
+#~ "коде что-то вредоносное, например, программные закладки. Обладая исходным "
+#~ "кодом, можно скомпилировать программу и сравнить результат с любой "
+#~ "версией, которая уже распространяется. Например, с Tails, скачанной у "
+#~ "нас. Так можно определить, скомпилирована ли распространяемая версия из "
+#~ "исходного кода, нет ли в ней каких-либо вредоносных изменений."
+
+#~ msgid ""
+#~ "Of course, most people do not have the knowledge, skills or time required "
+#~ "to do this, but due to public scrutiny anyone can have a certain degree "
+#~ "of implicit trust in Free software, at least if it is popular enough that "
+#~ "other developers look into the source code and do what was described in "
+#~ "the previous paragraph. After all, there is a strong tradition within the "
+#~ "Free software community to publicly report serious issues that are found "
+#~ "within software."
+#~ msgstr ""
+#~ "Конечно, у большинства людей нет для этого знаний, навыков или времени. "
+#~ "Но благодаря общественной открытости всякий может в некоторой степени "
+#~ "доверять свободному программному обеспечению. По крайней мере, если "
+#~ "программа достаточно популярна, другие специалисты могут взглянуть на "
+#~ "исходный код и сделать то, что описано в предыдущем абзаце. В сообществе "
+#~ "свободного программного обеспечения есть традиция: если в программе "
+#~ "обнаружена серьёзная проблема, о ней заявляют публично."
+
+#, no-wrap
+#~ msgid "<a id=\"trust_debian\"></a>\n"
+#~ msgstr "<a id=\"trust_debian\"></a>\n"
+
+#, no-wrap
+#~ msgid "Trusting Debian GNU/Linux"
+#~ msgstr "Доверие к Debian GNU/Linux"
+
+#~ msgid ""
+#~ "The vast majority of all software shipped in Tails comes from the "
+#~ "[[Debian GNU/Linux distribution|https://www.debian.org/]]. Debian is "
+#~ "arguably the Linux distribution whose software packages are under the "
+#~ "deepest public scrutiny. Not only is Debian itself one of the largest "
+#~ "Linux distros, but it's also one of the most popular distros to make "
+#~ "derivatives from. Ubuntu Linux, for instance, is a Debian derivative, and "
+#~ "the same goes transitively for all of its derivatives, like Linux Mint. "
+#~ "Thus there are countless people using Debian's software packages, and "
+#~ "countless developers inspect their integrity. Very serious security "
+#~ "issues have been discovered (like the infamous [[Debian SSH PRNG "
+#~ "vulnerability|https://lists.debian.org/debian-security-announce/2008/"
+#~ "msg00152.html]]), but backdoors or other types of intentionally placed "
+#~ "security holes have never been found to our knowledge."
+#~ msgstr ""
+#~ "Заметное большинство программ в Tails взято из [[дистрибутивов Debian GNU/"
+#~ "Linux|https://www.debian.org/]]. Debian – дистрибутив Linux, чьи пакеты, "
+#~ "вероятно, находятся под самым серьёзным публичным контролем. Это не "
+#~ "только один из самых больших дистрибутивов Linux, но и один из самых "
+#~ "популярных «конструкторов». Например, на основе Debian сделана "
+#~ "операционная система Ubuntu Linux, а на основе Ubuntu – Linux Mint. Таким "
+#~ "образом пакеты Debian использует огромное количество людей. Многие "
+#~ "разработчики проверяют их надёжность. Бывало, что в Debian обнаруживали "
+#~ "серьёзные проблемы с безопасностью (вроде печально известной [[уязвимости "
+#~ "Debian SSH PRNG|https://lists.debian.org/debian-security-announce/2008/"
+#~ "msg00152.html]]). Но, насколько мы знаем, программные «закладки» или "
+#~ "другие преднамеренные уязвимости не находили."
+
+#, no-wrap
+#~ msgid "Trusting Tor"
+#~ msgstr "Доверие к Tor"
+
+#~ msgid ""
+#~ "Tails anonymity is based on Tor, which is developed by [[The Tor Project|"
+#~ "https://www.torproject.org/]]. The development of Tor is under a lot of "
+#~ "public scrutiny both academically (research on attacks and defenses on "
+#~ "onion routing) and engineering-wise (Tor's code has gone through several "
+#~ "external audits, and many independent developers have read through the "
+#~ "sources for other reasons). Again, security issues have been reported, "
+#~ "but nothing malicious like a backdoor -- we would argue that it's only "
+#~ "uninformed conspiracy theorists that speculate about deliberate backdoors "
+#~ "in Tor these days. Furthermore, Tor's distributed trust model makes it "
+#~ "hard for a single entity to capture an individual's traffic and "
+#~ "effectively identify them."
+#~ msgstr ""
+#~ "Анонимность Tails базируется на Tor, продукте [[Tor Project|https://"
+#~ "www.torproject.org/ru/]]. Разработка Tor идёт под серьёзным общественным "
+#~ "контролем как со стороны науки (исследования защиты и атак на луковую "
+#~ "маршрутизацию), так и с инженерно-технической стороны (код Tor "
+#~ "подвергался нескольким внешним проверкам, и многие независимые "
+#~ "разработчики изучали код по другим причинам). Были найдены проблемы "
+#~ "безопасности, но ничего злонамеренного вроде «закладок». Мы считаем, что "
+#~ "в наши дни о преднамеренных уязвимостях в Tor рассуждают только "
+#~ "неинформированные конспирологи. Более того, модель распределённого "
+#~ "доверия Tor усложняет отдельному злоумышленнику задачу по отслеживанию "
+#~ "чьего-то трафика и идентификации жертвы."
+
+#, no-wrap
+#~ msgid "Trusting Tails"
+#~ msgstr "Доверие к Tails"
+
+#~ msgid ""
+#~ "One could say that Tails is the union of Debian and Tor. What we do, "
+#~ "essentially, is gluing it all together. Hence, if you trust Debian and "
+#~ "The Tor Project, what remains to establish trust for Tails is to trust "
+#~ "our \"glue\". As has been mentioned, Tails is Free software, so its "
+#~ "source code is completely open for inspection, and it mainly consists of "
+#~ "a specification for which Debian software packages to install and how "
+#~ "they should be configured. While Tails surely doesn't get the same amount "
+#~ "of attention as Debian or Tor, we do have some eyes on us, especially the "
+#~ "Tor community, and also some of the general security community (see our "
+#~ "[[audits page|security/audits]]).  Given that Tails' source code is "
+#~ "comparably small and devoid of complexities, we're in a pretty good spot "
+#~ "compared to many other projects of similar nature. Our [[specification "
+#~ "and design document|contribute/design]] is a good starting point to "
+#~ "understand how Tails works, by the way."
+#~ msgstr ""
+#~ "Можно сказать, что Tails – союз Debian и Tor. В сущности, мы и правда их "
+#~ "совместили. Если вы доверяете Debian и Tor Project, для доверия к Tails "
+#~ "остаётся довериться нам. Как мы уже говорили, Tails – свободное "
+#~ "программное обеспечение. Его исходный код полностью открыт для проверок. "
+#~ "Он в основном состоит из спецификаций – какие пакеты Debian нужно "
+#~ "установить и как их настроить. Конечно, Tails не получает столько "
+#~ "внимания, сколько Debian или Tor. Но за нами все равно наблюдают, "
+#~ "особенно сообщество Tor, а так же эксперты в области безопасности "
+#~ "(подробнее об этом на нашей [[странице аудитов|security/audits]]). "
+#~ "Исходный код Tails сравнительно небольшой и несложный, поэтому наше "
+#~ "положение выигрышное по сравнению с другими подобными проектами. Наш "
+#~ "[[документ со спецификациями и дизайном|contribute/design]] – хорошая "
+#~ "начальная точка, чтобы понять, как работает Tails."
+
+#~ msgid ""
+#~ "With all this in light (which you ideally also should try to verify), you "
+#~ "should be able to make an informed decision on whether or not you should "
+#~ "trust our software."
+#~ msgstr ""
+#~ "Руководствуясь сказанным выше (в идеале вам было бы неплохо проверить и "
+#~ "это), вы можете принять информированное решение: доверять нашим "
+#~ "программам или нет."

@@ -1,0 +1,107 @@
+[[!meta robots="noindex"]]
+
+<p>Most computers do not start automatically on the Tails USB stick, but you can
+press a Boot Menu key to display a list of possible devices to start from.</p>
+
+<div class="tip">
+
+<p>If Windows is
+<span class="linux upgrade-linux">also</span>
+installed on the computer, you can refer instead to the [[instructions
+on starting Tails from Windows|doc/first_steps/start/pc#windows-restart]].
+Starting Tails from Windows is easier than using the Boot Menu key.</p>
+
+</div>
+
+<p>The following screenshot is an example of a Boot Menu:</p>
+
+<p>[[!img install/inc/screenshots/boot_menu.png class="screenshot" alt=""]]</p>
+
+<p id="animation">This animation summarizes how to use the Boot Menu key to
+start on the USB stick:</p>
+
+<p>
+  <video controls="true" width="640" height="360" poster="https://tails.net/install/inc/videos/boot-menu-key.png">
+    <source src="https://tails.net/install/inc/videos/boot-menu-key.webm" type="video/webm" />
+    <source src="https://tails.net/install/inc/videos/boot-menu-key.mp4" type="video/mp4" />
+  </video>
+</p>
+
+<p>The following instructions explain in detail how to use the Boot Menu key
+to start on the USB stick:</p>
+
+<ol>
+
+<li class="standalone">
+  <p>Make sure that you have installed Tails using either:</p>
+  <ul>
+    <li>[[<i>Rufus</i> from Windows|install/windows#rufus]]</li>
+    <li>[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]</li>
+    <li>[[<i>GNOME Disks</i> from Linux|install/linux#install]]</li>
+    <li>[[the Linux command line|install/expert#install]]</li>
+  </ul>
+</li>
+
+<li>
+  <p class="usb upgrade-linux">Shut down the computer while leaving the USB stick plugged in.</p>
+  <p class="standalone">Shut down the computer and plug in the Tails USB stick.</p>
+  <p class="clone upgrade-tails">Shut down the computer.</p>
+  <p class="clone">Plug in the other Tails USB stick that you want to
+  <span class="pc-clone">install</span>
+  <span class="upgrade">upgrade</span>
+  from.</p>
+  <p class="upgrade-tails">Unplug your Tails USB stick while leaving the intermediary USB stick plugged in.</p>
+</li>
+
+<li>
+  <p>Identify the possible Boot Menu keys for the computer depending on
+  the computer manufacturer in the following list:</p>
+
+  <table>
+    <tr><th>Manufacturer</th><th>Key</th></tr>
+    <tr><td>Acer</td><td>F12, F9, F2, Esc</td></tr>
+    <tr><td>Apple</td><td>Option</td></tr>
+    <tr><td>Asus</td><td>Esc</td></tr>
+    <tr><td>Clevo</td><td>F7</td></tr>
+    <tr><td>Dell</td><td>F12</td></tr>
+    <tr><td>Fujitsu</td><td>F12, Esc</td></tr>
+    <tr><td>HP</td><td>F9</td></tr>
+    <tr><td>Huawei</td><td>F12</td></tr>
+    <tr><td>Intel</td><td>F10</td></tr>
+    <tr><td>Lenovo</td><td>F12, <a href="https://support.lenovo.com/solutions/ht062552">Novo</a></td></tr>
+    <tr><td>MSI</td><td>F11</td></tr>
+    <tr><td>Samsung</td><td>Esc, F12, F2</td></tr>
+    <tr><td>Sony</td><td>F11, Esc, F10</td></tr>
+    <tr><td>Toshiba</td><td>F12</td></tr>
+    <tr><td>Others&hellip;</td><td>F12, Esc</td></tr>
+  </table>
+
+  <div class="tip">
+  <p>On many computers, a message is displayed very briefly when switching on
+  that also explains how to get to the Boot Menu or edit the BIOS settings.</p>
+  </div>
+</li>
+
+<li>
+  <p>Switch on the computer.</p>
+
+  <p>Immediately press several times the first
+  possible Boot Menu key identified in step 2.</p>
+</li>
+
+<li>
+  <p>If the computer starts on another operating system or returns an
+  error message, shut down the computer again and repeat step
+  3 for all the possible Boot Menu keys identified in step 2.</p>
+
+  <p>If a Boot Menu with a list of devices appears, select your USB stick
+  and press <b>Enter</b>.</p>
+</li>
+
+<li><p>If the computer starts on Tails, the Boot Loader appears and Tails
+    starts automatically after 4 seconds.</p>
+
+    <p>[[!img install/inc/screenshots/grub.png class="screenshot" alt="Black screen ('GNU GRUB') with Tails
+       logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'."]]</p>
+
+</ol>

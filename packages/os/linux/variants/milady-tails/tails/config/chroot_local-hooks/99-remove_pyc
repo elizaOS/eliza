@@ -1,0 +1,7 @@
+#!/bin/sh
+
+set -e
+
+# Note: this must happen *after* 99-dedup_usr_share_doc
+echo "Removing *.pyc"
+find /usr -type f -name "*.pyc" -delete

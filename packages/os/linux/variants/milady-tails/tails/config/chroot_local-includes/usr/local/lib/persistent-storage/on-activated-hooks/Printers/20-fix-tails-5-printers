@@ -1,0 +1,19 @@
+#!/bin/sh
+
+set -eu
+
+# Import set_log_tag(), log()
+. /usr/local/lib/tails-shell-library/log.sh
+set_log_tag fix-tails-5-printers
+
+CUPS_CONFIG_FILE=/etc/cups/cups-files.conf
+[ -f "${CUPS_CONFIG_FILE}" ] || exit 0
+
+if grep -q '^SystemGroup lpadmin' "${CUPS_CONFIG_FILE}"
+then
+    log "Old CUPS configuration file found, updating"
+    set -x
+    sed -i -e 's@^SystemGroup lpadmin$@SystemGroup root lpadmin@' /etc/cups/cups-files.conf
+fi
+
+exit 0

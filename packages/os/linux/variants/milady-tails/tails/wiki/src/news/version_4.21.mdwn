@@ -1,0 +1,57 @@
+[[!meta title="Tails 4.21 is out"]]
+[[!meta date="Tue, 10 Aug 2021 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [10.5.4](https://blog.torproject.org/new-release-tor-browser-1054).
+
+- Update *Thunderbird* to [78.12](https://www.thunderbird.net/en-US/thunderbird/78.12.0/releasenotes/)
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Prevent *Tails Installer* from deleting a Persistent Storage when doing a
+  manual upgrade and choosing **Cancel** in the confirmation dialog.
+  ([[!tails_ticket 18494]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 4.21</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 4.19 or later to 4.21.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.21 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+<h1 id="next">What's coming up?</h1>
+
+Tails 4.22 is [[scheduled|contribute/calendar]] for September 7.
+

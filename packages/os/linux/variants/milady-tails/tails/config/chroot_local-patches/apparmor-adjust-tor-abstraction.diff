@@ -1,0 +1,11 @@
+--- a/etc/apparmor.d/abstractions/tor	2022-01-19 10:24:50.480981198 +0000
++++ b/etc/apparmor.d/abstractions/tor	2022-01-19 10:25:07.861118731 +0000
+@@ -19,6 +19,7 @@
+ 
+   # Needed by obfs4proxy
+   /proc/sys/net/core/somaxconn r,
++  /sys/kernel/mm/transparent_hugepage/hpage_pmd_size r,
+ 
+   /proc/sys/kernel/random/uuid r,
+   /sys/devices/system/cpu/ r,
+

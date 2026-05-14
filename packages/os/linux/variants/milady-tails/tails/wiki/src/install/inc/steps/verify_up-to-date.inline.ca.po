@@ -1,0 +1,96 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-04-06 12:18+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"verify-other\" class=\"step\">Verify that the other Tails is up-to-date</h1>\n"
+msgstr "<h1 id=\"verify-other\" class=\"step\">Verifiqueu que l'altre Tails estigui actualitzat</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"To prevent\n"
+"<span class=\"pc-clone mac-clone\">installing</span>\n"
+"<span class=\"upgrade-clone\">upgrading to</span>\n"
+"an outdated version of Tails with known security issues, make sure that the Tails you are\n"
+"<span class=\"pc-clone mac-clone\">installing</span>\n"
+"<span class=\"upgrade-clone\">upgrading</span>\n"
+"from is up-to-date:\n"
+msgstr ""
+"Per prevenir\n"
+"<span class=\"pc-clone mac-clone\">la instal·lació d'</span>\n"
+"<span class=\"upgrade-clone\">l'actualització a</span>\n"
+"una versió obsoleta de Tails amb problemes de seguretat coneguts, assegureu-vos que el Tails des del que esteu\n"
+"<span class=\"pc-clone mac-clone\">instal·lant</span>\n"
+"<span class=\"upgrade-clone\">actualitzant</span>\n"
+"està actualitzat:\n"
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Tails&nbsp;▸ About Tails**."
+msgstr "Seleccioneu **Aplicacions</span>&nbsp;▸ Tails&nbsp;▸ Quant a Tails**."
+
+#. type: Bullet: '1. '
+msgid ""
+"Verify that you are running **Tails [[!inline pages=\"inc/"
+"stable_amd64_version\" raw=\"yes\" sort=\"age\"]]** released on [[!inline "
+"pages=\"inc/stable_amd64_date\" raw=\"yes\" sort=\"age\"]]:"
+msgstr ""
+"Verifiqueu que esteu executant **Tails "
+"[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]]** "
+"publicat el "
+"[[!inline pages=\"inc/stable_amd64_date\" raw=\"yes\" sort=\"age\"]]:"
+
+#. type: Bullet: '   - '
+msgid ""
+"If you are running Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]], continue with the next step."
+msgstr ""
+"Si esteu executant Tails "
+"[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]], "
+"podeu continuar amb el pas següent."
+
+#. type: Bullet: '   - '
+msgid ""
+"If you are not running Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]], click **Check for Upgrades**."
+msgstr ""
+"Si no esteu executant el Tails "
+"[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]], feu "
+"clic a **Comprova si hi ha actualitzacions**."
+
+#. type: Plain text
+#, no-wrap
+msgid "     Apply all upgrades as requested.\n"
+msgstr "     Aplica totes les millores, com s'ha demanat.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   b. If you are not running [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]] then connect to the Internet\n"
+#~ "   and to Tor. After a minute or two, *Tails Upgrader*\n"
+#~ "   appears with instructions on how to upgrade. Apply all upgrades as requested.\n"
+#~ msgstr ""
+#~ "   b. Si no esteu executant [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]], connecteu-vos a Internet\n"
+#~ "   i a Tor. Al cap d'un o dos minuts, *Tails Upgrader*\n"
+#~ "   apareix amb instruccions sobre com actualitzar. Apliqueu totes les actualitzacions segons se us sol·liciti.\n"

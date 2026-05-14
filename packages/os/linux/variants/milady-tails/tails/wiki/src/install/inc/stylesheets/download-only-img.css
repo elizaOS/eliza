@@ -1,0 +1,11 @@
+span.download-only-img, a.download-only-img, ul.download-only-img, h1.download-only-img {
+  display: inline;
+}
+
+div.download-only-img, p.download-only-img {
+  display: block;
+}
+
+h1.step:before, span.next-counter:before {
+  content: counter(step)'/3';
+}

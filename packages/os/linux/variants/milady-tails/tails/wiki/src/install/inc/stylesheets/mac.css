@@ -1,0 +1,17 @@
+@import url("usb.css");
+
+span.mac, a.mac {
+  display: inline;
+}
+
+div.mac, img.mac, p.mac, h1.mac, h2.mac {
+  display: block;
+}
+
+li.mac {
+  display: list-item;
+}
+
+h1.step:before {
+  content: counter(step)'/8';
+}
