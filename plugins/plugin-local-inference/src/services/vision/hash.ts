@@ -42,9 +42,10 @@ const DEFAULT_FAMILY = "qwen3-vl";
  * backend. Throws on `url:` inputs — those must be fetched by the
  * caller; the hash step does not own HTTP.
  */
-export function resolveImageBytes(
-	input: VisionImageInput,
-): { bytes: Uint8Array; mimeType?: string } {
+export function resolveImageBytes(input: VisionImageInput): {
+	bytes: Uint8Array;
+	mimeType?: string;
+} {
 	switch (input.kind) {
 		case "bytes":
 			return { bytes: input.bytes, mimeType: input.mimeType };

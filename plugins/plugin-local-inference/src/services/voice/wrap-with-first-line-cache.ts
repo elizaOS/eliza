@@ -212,7 +212,8 @@ interface AssembleArgs {
 }
 
 async function assembleFromHit(args: AssembleArgs): Promise<TtsHandlerOutput> {
-	const { hit, snip, originalText, input, inner, runtime, options, codec } = args;
+	const { hit, snip, originalText, input, inner, runtime, options, codec } =
+		args;
 	const remainder = originalText.slice(snip.endOffset).trimStart();
 	const concatEnabled = options.concatRemainder ?? canConcat(codec);
 

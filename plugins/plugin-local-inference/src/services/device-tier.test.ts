@@ -314,9 +314,9 @@ describe("effectiveModelMemoryGb", () => {
 	});
 
 	it("returns totalRamGb / 2 for CPU-only", () => {
-		expect(
-			effectiveModelMemoryGb(probe({ totalRamGb: 32, gpu: null })),
-		).toBe(16);
+		expect(effectiveModelMemoryGb(probe({ totalRamGb: 32, gpu: null }))).toBe(
+			16,
+		);
 	});
 });
 

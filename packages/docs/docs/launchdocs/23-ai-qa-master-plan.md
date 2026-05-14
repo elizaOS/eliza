@@ -332,7 +332,7 @@ User constraint: *"we are using qwen3.5 for text and stuff, and qwen3 for asr an
 6. **HuggingFace delivery** — extend `scripts/release-v1-prep.mjs` and the Eliza-1 bundle manifest to include the VL weights + projector + tokenizer + license manifest. Upload target: the `elizaos` org on HF, same pattern as existing Eliza-1 artifacts.
 7. **Eval gates** — extend `packages/training/scripts/manifest/test_stage_eliza1_bundle_assets.py` (and the wave-2 manifest test that just landed) to validate the VL bundle: SHA-256 of weights, projector hash, license file present, smoke eval pass.
 
-**Done when:** `bun run --cwd packages/training release:vl --variant=7B` produces a complete bundle (weights + projector + tokenizer + license + eval evidence) that uploads cleanly to `elizaos/eliza-1-vl-7b` on HuggingFace, and `plugin-local-inference` can load it and answer a vision prompt via the VS-1 service abstraction.
+**Done when:** the training release operator produces a complete 7B VL bundle (weights + projector + tokenizer + license + eval evidence) that uploads cleanly to `elizaos/eliza-1-vl-7b` on HuggingFace, and `plugin-local-inference` can load it and answer a vision prompt via the VS-1 service abstraction.
 
 #### Workstream WS7-4 — Desktop P0 fixes (from WS4 findings)
 

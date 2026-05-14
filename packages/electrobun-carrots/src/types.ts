@@ -3,6 +3,7 @@ export const HOST_PERMISSIONS = [
   "tray",
   "notifications",
   "storage",
+  "manage-carrots",
 ] as const;
 
 export const BUN_PERMISSIONS = [

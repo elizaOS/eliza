@@ -3788,6 +3788,7 @@
     "@elizaos/agent": "workspace:*",
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-solana": "2.0.0-alpha.3",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@farcaster/quick-auth": "0.0.8",

@@ -160,7 +160,8 @@ export function welfordUpdate(args: {
 	) {
 		throw new Error("[welfordUpdate] dim mismatch");
 	}
-	const mean = args.mean.length === dim ? args.mean.slice() : new Array(dim).fill(0);
+	const mean =
+		args.mean.length === dim ? args.mean.slice() : new Array(dim).fill(0);
 	const m2 = args.m2.length === dim ? args.m2.slice() : new Array(dim).fill(0);
 	for (let i = 0; i < dim; i += 1) {
 		const x = args.observation[i];
@@ -172,7 +173,10 @@ export function welfordUpdate(args: {
 	return { mean, m2, count: n };
 }
 
-export function welfordVariance(m2: readonly number[], count: number): number[] {
+export function welfordVariance(
+	m2: readonly number[],
+	count: number,
+): number[] {
 	const denom = Math.max(1, count - 1);
 	return m2.map((v) => v / denom);
 }
@@ -223,8 +227,10 @@ export class VoiceProfileStore {
 			this.hotCacheSize,
 			options.coldDiskMax ?? DEFAULT_COLD_DISK,
 		);
-		this.matchThreshold = options.matchThreshold ?? DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD;
-		this.unmatchedThreshold = options.unmatchedClusterThreshold ?? DEFAULT_UNMATCHED_THRESHOLD;
+		this.matchThreshold =
+			options.matchThreshold ?? DEFAULT_VOICE_IMPRINT_MATCH_THRESHOLD;
+		this.unmatchedThreshold =
+			options.unmatchedClusterThreshold ?? DEFAULT_UNMATCHED_THRESHOLD;
 	}
 
 	get matchThresholdValue(): number {
@@ -344,15 +350,15 @@ export class VoiceProfileStore {
 		const evictionCandidates = index.entries
 			.filter((entry) => entry.entityId === null)
 			.sort((a, b) => a.lruRank - b.lruRank);
-		while (index.entries.length > this.coldDiskMax && evictionCandidates.length > 0) {
+		while (
+			index.entries.length > this.coldDiskMax &&
+			evictionCandidates.length > 0
+		) {
 			const victim = evictionCandidates.shift();
 			if (!victim) break;
 			const record = await this.readProfileFromDisk(victim.profileId);
 			if (record && record.entityId !== null) continue;
-			if (
-				record &&
-				(record.confidence >= 0.5 || record.sampleCount >= 3)
-			) {
+			if (record && (record.confidence >= 0.5 || record.sampleCount >= 3)) {
 				continue;
 			}
 			await fsp.unlink(this.profilePath(victim.profileId)).catch(() => {});
@@ -363,7 +369,9 @@ export class VoiceProfileStore {
 		}
 	}
 
-	private async ensureLoaded(profileId: string): Promise<VoiceProfileRecord | null> {
+	private async ensureLoaded(
+		profileId: string,
+	): Promise<VoiceProfileRecord | null> {
 		const hot = this.hot.get(profileId);
 		if (hot) {
 			this.touchHot(hot);
@@ -434,7 +442,10 @@ export class VoiceProfileStore {
 	 * before we wanted it to".
 	 */
 	beginMatch(args: {
-		embed: () => Promise<{ embedding: Float32Array; embeddingModel: string } | null>;
+		embed: () => Promise<{
+			embedding: Float32Array;
+			embeddingModel: string;
+		} | null>;
 		signal?: AbortSignal;
 	}): VoiceImprintMatchHandle {
 		let current: VoiceImprintMatch | null = null;
@@ -496,13 +507,18 @@ export class VoiceProfileStore {
 			lastObservedAt: now,
 			lastRefinedAt: now,
 			entityId: args.entityId ?? null,
-			imprintClusterId: args.imprintClusterId ?? `cluster_${crypto.randomUUID()}`,
+			imprintClusterId:
+				args.imprintClusterId ?? `cluster_${crypto.randomUUID()}`,
 			confidence: Math.max(0, Math.min(1, args.confidence)),
 			consent: {
 				attributionAuthorized: args.consent?.attributionAuthorized ?? false,
 				synthesisAuthorized: args.consent?.synthesisAuthorized ?? false,
-				...(args.consent?.grantedAt ? { grantedAt: args.consent.grantedAt } : {}),
-				...(args.consent?.grantedBy ? { grantedBy: args.consent.grantedBy } : {}),
+				...(args.consent?.grantedAt
+					? { grantedAt: args.consent.grantedAt }
+					: {}),
+				...(args.consent?.grantedBy
+					? { grantedBy: args.consent.grantedBy }
+					: {}),
 			},
 			...(args.audioRef ? { audioRefs: [args.audioRef] } : {}),
 			...(args.metadata ? { metadata: args.metadata } : {}),
@@ -563,12 +579,14 @@ export class VoiceProfileStore {
 			welfordM2: w.m2,
 			variance: welfordVariance(w.m2, w.count),
 			sampleCount: w.count,
-			totalDurationMs: record.totalDurationMs + Math.max(0, Math.round(args.durationMs)),
+			totalDurationMs:
+				record.totalDurationMs + Math.max(0, Math.round(args.durationMs)),
 			confidence: Math.max(
 				0,
 				Math.min(
 					1,
-					(record.confidence * record.sampleCount + Math.max(0, Math.min(1, args.confidence))) /
+					(record.confidence * record.sampleCount +
+						Math.max(0, Math.min(1, args.confidence))) /
 						(record.sampleCount + 1),
 				),
 			),

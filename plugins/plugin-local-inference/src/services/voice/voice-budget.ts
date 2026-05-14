@@ -60,7 +60,9 @@ const BYTES_PER_GB = 1024 ** 3;
  *  back to the per-role priority number in `RESIDENT_ROLE_PRIORITY`. */
 export type AllocationPriority = "hot" | "warm" | "cold";
 
-export function priorityClassForRole(role: ResidentModelRole): AllocationPriority {
+export function priorityClassForRole(
+	role: ResidentModelRole,
+): AllocationPriority {
 	const p = RESIDENT_ROLE_PRIORITY[role];
 	if (p >= 40) return "hot";
 	if (p >= 25) return "warm";
