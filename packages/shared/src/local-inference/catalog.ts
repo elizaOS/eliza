@@ -1,10 +1,10 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Default local inference is restricted to the active Eliza-1 line, all on
- * Qwen3.5 bases: 0.8B, 2B, 4B, 9B, and 27B (including long-context 27B
- * variants at 256k and 1M). The 2026-05-12 mandate retired the legacy
- * Qwen3 bases and any Qwen3.6 references; see
+ * Default local inference is restricted to the active Eliza-1 line: Qwen3.5
+ * bases for 0.8B, 2B, 4B, and 9B, plus Qwen3.6 for the 27B variants
+ * (including long-context 27B variants at 256k and 1M). The 2026-05-12
+ * mandate retired the legacy Qwen3 bases; see
  * packages/training/scripts/training/model_registry.py for the active
  * registry. External Hub search remains custom/opt-in and never enters
  * first-run or default eligibility.
@@ -17,7 +17,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -114,14 +114,12 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy (Wave-2):
- *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Kokoro is ~310 MB
- *     fp32 / ~80 MB int8 and hits ~97ms CPU TTFB, which dominates the
- *     time budget on small/mobile devices. OmniVoice is not shipped in
- *     these bundles — callers that need voice cloning must use a larger
- *     tier or the standalone (legacy) plugin-omnivoice.
- *   - 9b → both supported, Kokoro first. 9b is the boundary tier where
- *     either makes sense depending on the workload (Kokoro for low TTFB,
- *     OmniVoice for higher quality / cloning).
+ *   - Small tiers (0_8b / 2b / 4b) → OmniVoice first, Kokoro fallback.
+ *     This keeps the fused voice path active on the smallest bundles while
+ *     preserving Kokoro as the low-latency escape hatch on constrained
+ *     devices.
+ *   - 9b → both supported, OmniVoice first. 9b is the boundary tier where
+ *     either makes sense depending on workload and thermal headroom.
  *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
@@ -130,10 +128,10 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
-  "eliza-1-2b": ["kokoro"],
-  "eliza-1-4b": ["kokoro"],
-  "eliza-1-9b": ["kokoro", "omnivoice"],
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
+  "eliza-1-4b": ["omnivoice", "kokoro"],
+  "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],
@@ -397,18 +395,16 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
  * full Q3..Q8 ladder so a `--memory-budget okay` host can step down to
  * Q3_K_M and a `--memory-budget good` host can take Q6_K.
  *
- * Tiers whose default voice backend is Kokoro (0_8b/2b/4b currently) do
- * not publish an OmniVoice ladder — the empty list signals "no voice
- * ladder for this tier". The publish wiring (stage_eliza1_bundle_assets.py)
- * skips OmniVoice staging entirely for these tiers; the runtime serves
- * Kokoro at `tts/kokoro/model_q4.onnx`.
+ * Every active tier publishes an OmniVoice ladder. Small tiers keep the
+ * ladder narrow so the installer can stay inside mobile RAM budgets while
+ * still defaulting to the fused OmniVoice path.
  */
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": [],
-  "eliza-1-2b": [],
-  "eliza-1-4b": [],
+  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],

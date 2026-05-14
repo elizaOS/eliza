@@ -119,8 +119,8 @@ interface LocalInferenceTranscriptionService {
  *
  * The concrete return type is intentionally `unknown` here to keep this
  * provider file free of a hard dependency on `./services/memory-arbiter`;
- * consumers should import the `MemoryArbiter` type from
- * `@elizaos/plugin-local-inference/services` and cast.
+ * consumers should import the `MemoryArbiter` type from the
+ * `@elizaos/plugin-local-inference` barrel and cast.
  */
 interface LocalInferenceArbiterAccessor {
 	getMemoryArbiter?: () => unknown;

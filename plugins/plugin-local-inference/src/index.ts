@@ -1,9 +1,5 @@
-// Plugin entry point — handler dispatch, error types, plugin definition.
-// For runtime wiring (boot-time handler registration, embedding warm-up)
-// import from `@elizaos/plugin-local-inference/runtime`.
-// For HTTP compat routes import from `@elizaos/plugin-local-inference/routes`.
-// For deep service surfaces (engine, voice, catalog, dflash) import from
-// `@elizaos/plugin-local-inference/services`.
+// Plugin entry point — public barrel for handler dispatch, routes, runtime
+// wiring, service helpers, error types, and plugin definition.
 
 export {
 	getLocalInferenceActiveModelId,
@@ -27,3 +23,6 @@ export {
 	localInferencePlugin,
 	localInferencePlugin as default,
 } from "./provider.js";
+export * from "./routes/index.js";
+export * from "./runtime/index.js";
+export * from "./services/index.js";

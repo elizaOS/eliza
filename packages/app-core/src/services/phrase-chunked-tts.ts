@@ -31,8 +31,8 @@ import type {
   AcceptedToken,
   Phrase,
   PhraseChunkerConfig,
-} from "@elizaos/plugin-local-inference/services";
-import { PhraseChunker } from "@elizaos/plugin-local-inference/services";
+} from "@elizaos/plugin-local-inference";
+import { PhraseChunker } from "@elizaos/plugin-local-inference";
 
 export interface PhraseChunkedTtsOptions {
   /** Phrase chunker configuration. See `PhraseChunkerConfig`. */

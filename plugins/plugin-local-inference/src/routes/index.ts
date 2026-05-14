@@ -1,9 +1,8 @@
 /**
  * Route-side exports for plugin-local-inference.
  *
- * Consumers (app-core/api/server.ts) import from
- * `@elizaos/plugin-local-inference/routes` to mount the HTTP compat routes
- * for model catalog, downloads, status, and chat commands.
+ * The package root re-exports these handlers so app consumers can use the
+ * public `@elizaos/plugin-local-inference` barrel instead of a route subpath.
  */
 
 export * from "./local-inference-compat-routes.js";

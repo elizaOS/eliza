@@ -47,8 +47,8 @@ import {
 } from "../services/cache-bridge";
 import { deviceBridge } from "../services/device-bridge";
 import { localInferenceEngine } from "../services/engine";
-import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { handlerRegistry } from "../services/handler-registry";
+import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { listInstalledModels } from "../services/registry";
 import { installRouterHandler } from "../services/router-handler";
 import {

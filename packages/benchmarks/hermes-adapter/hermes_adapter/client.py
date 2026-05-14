@@ -279,25 +279,55 @@ def _resolve_telemetry_path() -> str | None:
 
 
 def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
-    def pick(*keys: str) -> int | None:
+    def pick(source: Mapping[str, object], *keys: str) -> int | None:
         for key in keys:
-            value = usage.get(key)
-            if isinstance(value, (int, float)) and value:
+            value = source.get(key)
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, (int, float)):
                 return int(value)
         return None
 
+    details_raw = usage.get("prompt_tokens_details")
+    details = details_raw if isinstance(details_raw, Mapping) else {}
+    prompt_tokens = pick(usage, "prompt_tokens", "promptTokens", "input_tokens")
+    completion_tokens = pick(
+        usage, "completion_tokens", "completionTokens", "output_tokens"
+    )
+    total_tokens = pick(usage, "total_tokens", "totalTokens")
+    if total_tokens is None and prompt_tokens is not None and completion_tokens is not None:
+        total_tokens = prompt_tokens + completion_tokens
+    cache_read_input_tokens = pick(
+        usage,
+        "cache_read_input_tokens",
+        "cacheReadInputTokens",
+        "cachedTokens",
+        "cached_tokens",
+    )
+    if cache_read_input_tokens is None:
+        cache_read_input_tokens = pick(
+            details, "cached_tokens", "cache_read_input_tokens", "cacheReadInputTokens"
+        )
+    cache_creation_input_tokens = pick(
+        usage,
+        "cache_creation_input_tokens",
+        "cacheCreationInputTokens",
+        "cache_write_tokens",
+    )
+    if cache_creation_input_tokens is None:
+        cache_creation_input_tokens = pick(
+            details,
+            "cache_creation_input_tokens",
+            "cacheCreationInputTokens",
+            "cache_write_tokens",
+        )
+
     return {
-        "prompt_tokens": pick("prompt_tokens", "promptTokens", "input_tokens"),
-        "completion_tokens": pick(
-            "completion_tokens", "completionTokens", "output_tokens"
-        ),
-        "total_tokens": pick("total_tokens", "totalTokens"),
-        "cache_read_input_tokens": pick(
-            "cache_read_input_tokens", "cachedTokens", "cached_tokens"
-        ),
-        "cache_creation_input_tokens": pick(
-            "cache_creation_input_tokens", "cacheCreationInputTokens"
-        ),
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+        "total_tokens": total_tokens,
+        "cache_read_input_tokens": cache_read_input_tokens,
+        "cache_creation_input_tokens": cache_creation_input_tokens,
     }
 
 

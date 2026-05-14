@@ -238,10 +238,17 @@ def _release_evidence_errors(bundle_dir: Path, tier: str) -> list[str]:
                             "evidence/release.json hf.uploadEvidence.uploadedPaths "
                             f"missing required path(s): {missing_paths}"
                         )
+        elif isinstance(hf_status, str) and hf_status.startswith("blocked-"):
+            if evidence.get("publishEligible") is True and release_state in PUBLISHABLE_RELEASE_STATES:
+                errors.append(
+                    "evidence/release.json hf.status is blocked but release evidence "
+                    "claims publishEligible"
+                )
         elif hf_status not in {"pending-upload", "upload-ready"}:
             errors.append(
                 "evidence/release.json hf.status must be 'pending-upload', "
-                "'upload-ready', or 'uploaded' with uploadEvidence"
+                "'upload-ready', a 'blocked-*' pending state, or 'uploaded' "
+                "with uploadEvidence"
             )
     return errors
 

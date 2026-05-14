@@ -87,7 +87,7 @@ def _write_bundle(
             "sizeFirstRepoIds": True,
         },
         "hf": {
-            "repoId": "elizaos/eliza-1",
+            "repoId": "elizalabs/eliza-1",
             "pathPrefix": f"bundles/{tier}",
             "status": "upload-ready",
         },
@@ -198,6 +198,7 @@ def test_plan_bundle_blocks_non_publishable_release_evidence(tmp_path: Path):
     release["releaseState"] = "weights-staged"
     release["publishEligible"] = False
     release["final"]["evals"] = False
+    release["hf"]["status"] = "blocked-weights-staged"
     release_path.write_text(json.dumps(release), encoding="utf-8")
 
     plan = P.plan_bundle(tmp_path, "2b")
@@ -206,6 +207,7 @@ def test_plan_bundle_blocks_non_publishable_release_evidence(tmp_path: Path):
     assert any("releaseState" in e for e in plan.errors)
     assert any("publishEligible" in e for e in plan.errors)
     assert any("final.evals" in e for e in plan.errors)
+    assert not any("hf.status" in e for e in plan.errors)
 
 
 def test_plan_bundle_blocks_uploaded_status_without_hf_evidence(tmp_path: Path):
