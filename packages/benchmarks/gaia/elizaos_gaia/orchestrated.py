@@ -24,7 +24,6 @@ _RESEARCH_CAPABILITIES = {
     "research.web_browse",
     "research.docs_lookup",
 }
-_CANONICAL_HARNESSES = {"eliza", "hermes", "openclaw"}
 _HARNESS_ALIASES = {
     "eliza": "eliza",
     "elizaos": "eliza",

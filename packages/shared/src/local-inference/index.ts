@@ -64,6 +64,14 @@ export {
   registryPath,
 } from "./paths.js";
 export * from "./kokoro/index.js";
+export {
+  buildKokoroOrtSessionOptions,
+  DEFAULT_KOKORO_EXECUTION_PROVIDER,
+  type KokoroExecutionProvider,
+  KOKORO_EXECUTION_PROVIDER_IDS,
+  type KokoroOrtSessionOptionsPatch,
+  parseKokoroExecutionProvider,
+} from "./kokoro-execution-provider.js";
 export type {
   ProviderEnableState,
   ProviderId,
