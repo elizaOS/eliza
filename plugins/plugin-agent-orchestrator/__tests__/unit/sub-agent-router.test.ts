@@ -451,6 +451,50 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("[verification:");
     });
 
+    it("ignores route-template URL stems when a concrete app URL verifies", async () => {
+      const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === "https://nubilio.org/apps/") {
+          return new Response("not found", { status: 404 });
+        }
+        if (url === "https://nubilio.org/apps/counter/") {
+          return new Response('<script src="app.js"></script>', {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          });
+        }
+        if (url === "https://nubilio.org/apps/counter/app.js") {
+          return new Response("let count = 0;", {
+            status: 200,
+            headers: { "content-type": "application/javascript" },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      session = sessionWithTask("build a counter");
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response:
+          "Route note: verify https://nubilio.org/apps/<slug>/. Built and verified https://nubilio.org/apps/counter/",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        "https://nubilio.org/apps/",
+        expect.anything(),
+      );
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).not.toContain("[verification:");
+    });
+
     it("does not retry when ELIZA_BUILD_VERIFY_MAX_RETRIES=0", async () => {
       process.env.ELIZA_BUILD_VERIFY_MAX_RETRIES = "0";
       session = sessionWithTask(`build it at ${DEAD_URL}`);
