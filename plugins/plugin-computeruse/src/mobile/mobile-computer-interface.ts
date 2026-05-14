@@ -418,8 +418,9 @@ export function makeMobileComputerInterface(
 
 function unwrap<T>(result: AndroidBridgeResult<T>, label: string): T {
   if (result.ok) return result.data;
+  const err = result as { ok: false; code: string; message: string };
   throw new Error(
-    `[computeruse/mobile] ${label} failed: ${result.code} — ${result.message}`,
+    `[computeruse/mobile] ${label} failed: ${err.code} — ${err.message}`,
   );
 }
 
