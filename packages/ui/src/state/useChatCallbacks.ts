@@ -78,16 +78,6 @@ function traceGreeting(phase: string, detail?: Record<string, unknown>): void {
   }
 }
 
-function isTransientConversationHydrationFetchFailure(err: unknown): boolean {
-  if (!(err instanceof Error)) return false;
-  if (!/^(Failed to fetch|Request aborted)$/i.test(err.message)) return false;
-  if (err.name === "TypeError") return true;
-  return (
-    err.name === "ApiError" &&
-    (err as Error & { kind?: string }).kind === "network"
-  );
-}
-
 import { isRoutineCodingAgentMessage } from "../chat";
 
 const COMPANION_STALE_THREAD_MAX_AGE_MS = 30 * 60 * 1000;
@@ -547,7 +537,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
           conversationMessagesRef.current = nextMessages;
           setConversationMessages(nextMessages);
           return nextMessages.length === 0 ? restoredConversation.id : null;
-        } catch (err) {
+        } catch {
           if (!isCurrentHydration()) {
             return null;
           }

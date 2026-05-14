@@ -31,7 +31,7 @@ import {
   type LocalInferenceChatMetadata,
   type LocalInferenceCommandIntent,
 } from "@elizaos/plugin-local-inference";
-import type { ReadJsonBodyOptions } from "@elizaos/shared";
+import type { LogEntry, ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   asRecord,
   normalizeCharacterLanguage,
@@ -86,7 +86,7 @@ import {
 } from "./server-helpers.ts";
 import type { ChatImageAttachment } from "./server-types.ts";
 
-export type { ChatImageAttachment };
+export type { ChatImageAttachment, LogEntry };
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 
@@ -127,13 +127,7 @@ export interface ChatGenerateOptions {
   timeoutDuration?: number;
 }
 
-export interface LogEntry {
-  timestamp: number;
-  level: string;
-  message: string;
-  source: string;
-  tags: string[];
-}
+// LogEntry is canonical in @elizaos/shared and re-exported above.
 
 type CallbackMergeMode = "append" | "replace";
 

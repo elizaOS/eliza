@@ -29,6 +29,10 @@ import {
   resolveStylePresetById,
   resolveStylePresetByName,
 } from "@elizaos/shared";
+import type {
+  AgentStartupDiagnostics,
+  ConversationMetadata,
+} from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import { resolveStateDir } from "../config/paths.ts";
 import {
@@ -181,22 +185,17 @@ export function initializeOGCodeInState(): void {
 // Types
 // ---------------------------------------------------------------------------
 
+// AgentStartupDiagnostics is canonical in @elizaos/shared.
+export type { AgentStartupDiagnostics } from "@elizaos/shared";
+
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
   id: string;
   title: string;
   roomId: UUID;
-  metadata?: import("./server-types.ts").ConversationMetadata;
+  metadata?: ConversationMetadata;
   createdAt: string;
   updatedAt: string;
-}
-
-export interface AgentStartupDiagnostics {
-  phase: string;
-  attempt: number;
-  lastError?: string;
-  lastErrorAt?: number;
-  nextRetryAt?: number;
 }
 
 // ---------------------------------------------------------------------------

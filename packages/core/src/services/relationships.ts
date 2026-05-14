@@ -634,7 +634,7 @@ export class RelationshipsService extends Service {
 		entityId: UUID,
 	): Promise<Component | null> {
 		if (typeof this.runtime.getComponent === "function") {
-			return await this.runtime.getComponent(
+			return this.runtime.getComponent(
 				entityId,
 				"contact_info",
 				this.getRelationshipsWorldId(),

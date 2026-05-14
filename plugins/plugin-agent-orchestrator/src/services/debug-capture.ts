@@ -1,9 +1,9 @@
 /**
  * Debug PTY Capture — optional session recording for offline analysis.
  *
- * Activated by setting `PARALLAX_DEBUG_CAPTURE=1`. When enabled, all PTY
+ * Activated by setting `ELIZA_DEBUG_CAPTURE=1`. When enabled, all PTY
  * output and stdin are recorded per-session using `pty-state-capture`.
- * Capture files persist in `.parallax/pty-captures/<sessionId>/` after
+ * Capture files persist in `.eliza/pty-captures/<sessionId>/` after
  * the agent session is killed, enabling post-mortem analysis of state
  * transitions, stall classifications, and coordinator timing.
  *
@@ -38,12 +38,12 @@ let initAttempted = false;
  * Returns true if debug capture is enabled via environment variable.
  */
 export function isDebugCaptureEnabled(): boolean {
-  return process.env.PARALLAX_DEBUG_CAPTURE === "1";
+  return process.env.ELIZA_DEBUG_CAPTURE === "1";
 }
 
 /**
  * Lazily initialize the capture manager. Returns null if:
- * - PARALLAX_DEBUG_CAPTURE is not set to "1"
+ * - ELIZA_DEBUG_CAPTURE is not set to "1"
  * - pty-state-capture is not installed
  * - Initialization fails for any reason
  */
@@ -58,12 +58,12 @@ async function ensureCaptureManager(): Promise<CaptureManagerLike | null> {
     const mod = await import("pty-state-capture");
     const { PTYStateCaptureManager } = mod;
     captureManager = new PTYStateCaptureManager({
-      outputRootDir: ".parallax/pty-captures",
+      outputRootDir: ".eliza/pty-captures",
       defaultRows: 80,
       defaultCols: 220,
     });
     logger.info(
-      "[debug-capture] PTY state capture enabled — writing to .parallax/pty-captures/",
+      "[debug-capture] PTY state capture enabled — writing to .eliza/pty-captures/",
     );
     return captureManager;
   } catch {

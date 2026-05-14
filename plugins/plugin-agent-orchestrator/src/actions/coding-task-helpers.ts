@@ -51,7 +51,7 @@ function resolveNonColliding(baseDir: string, name: string): string {
 /**
  * Create a scratch sandbox directory for non-repo tasks.
  *
- * When `PARALLAX_CODING_DIRECTORY` is set (e.g. `~/Projects`), creates a
+ * When `ELIZA_CODING_DIRECTORY` is set (e.g. `~/Projects`), creates a
  * named subdir like `~/Projects/todo-app/` derived from the task label.
  * Otherwise falls back to `~/.eliza/workspaces/{uuid}`.
  */
@@ -64,9 +64,9 @@ export function createScratchDir(
   // Config file is checked directly because runtime.getSetting() doesn't read
   // the config env section, and process.env is only set at boot time.
   const codingDir =
-    (runtime?.getSetting("PARALLAX_CODING_DIRECTORY") as string) ??
-    readConfigEnvKey("PARALLAX_CODING_DIRECTORY") ??
-    process.env.PARALLAX_CODING_DIRECTORY;
+    (runtime?.getSetting("ELIZA_CODING_DIRECTORY") as string) ??
+    readConfigEnvKey("ELIZA_CODING_DIRECTORY") ??
+    process.env.ELIZA_CODING_DIRECTORY;
 
   if (codingDir?.trim()) {
     const resolved = codingDir.startsWith("~")

@@ -9,8 +9,12 @@ import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import type { CloudRouteState } from "@elizaos/plugin-elizacloud";
 import type {
   AgentAutomationMode,
+  AgentStartupDiagnostics,
+  ChatImageAttachment,
   ConversationMetadata,
+  LogEntry,
   PluginParamDef,
+  SkillEntry,
   StreamEventEnvelope,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
@@ -25,10 +29,14 @@ import type { ConnectorHealthMonitor } from "./connector-health.ts";
 // Re-export shared types so existing imports from this module continue to work.
 export type {
   AgentAutomationMode,
+  AgentStartupDiagnostics,
+  ChatImageAttachment,
   ConversationAutomationType,
   ConversationMetadata,
   ConversationScope,
+  LogEntry,
   PluginParamDef,
+  SkillEntry,
   StreamEventEnvelope,
   StreamEventType,
 } from "@elizaos/shared";
@@ -39,18 +47,8 @@ export type {
 
 import type { TrainingServiceWithRuntime } from "./training-service-like.ts";
 
-// ---------------------------------------------------------------------------
-// Chat image attachments
-// ---------------------------------------------------------------------------
-
-export interface ChatImageAttachment {
-  /** Base64-encoded image data (no data URL prefix). */
-  data: string;
-  mimeType: string;
-  name: string;
-}
-
-// ConversationScope, ConversationAutomationType, ConversationMetadata are
+// ConversationScope, ConversationAutomationType, ConversationMetadata,
+// ChatImageAttachment, SkillEntry, LogEntry, AgentStartupDiagnostics are
 // canonical in @elizaos/shared and re-exported at the top of this file.
 
 /** Metadata for a web-chat conversation. */
@@ -61,18 +59,6 @@ export interface ConversationMeta {
   metadata?: ConversationMetadata;
   createdAt: string;
   updatedAt: string;
-}
-
-// ---------------------------------------------------------------------------
-// Agent startup diagnostics
-// ---------------------------------------------------------------------------
-
-export interface AgentStartupDiagnostics {
-  phase: string;
-  attempt: number;
-  lastError?: string;
-  lastErrorAt?: number;
-  nextRetryAt?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -87,23 +73,6 @@ export interface ShareIngestItem {
   text?: string;
   suggestedPrompt: string;
   receivedAt: number;
-}
-
-export interface SkillEntry {
-  id: string;
-  name: string;
-  description: string;
-  enabled: boolean;
-  /** Set automatically when a scan report exists for this skill. */
-  scanStatus?: "clean" | "warning" | "critical" | "blocked" | null;
-}
-
-export interface LogEntry {
-  timestamp: number;
-  level: string;
-  message: string;
-  source: string;
-  tags: string[];
 }
 
 // StreamEventType, StreamEventEnvelope, AgentAutomationMode, PluginParamDef are

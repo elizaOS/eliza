@@ -497,7 +497,7 @@ async function loadPersistedTrajectoriesForExport(
   } catch (err) {
     coreLogger.warn(
       "[trajectory-persistence] exportPersistedTrajectoriesRaw failed:",
-      err,
+      err instanceof Error ? err.message : String(err),
     );
     return [];
   }
@@ -756,7 +756,7 @@ export async function installDatabaseTrajectoryLogger(
 
       return { trajectories, total, offset, limit };
     } catch (err) {
-      coreLogger.error("[trajectory-persistence] listTrajectories error:", err);
+      coreLogger.error("[trajectory-persistence] listTrajectories error:", err instanceof Error ? err.message : String(err));
       return { trajectories: [], total: 0, offset, limit };
     }
   };
@@ -1381,7 +1381,7 @@ export class DatabaseTrajectoryLogger extends Service {
     } catch (err) {
       coreLogger.error(
         "[DatabaseTrajectoryLogger] listTrajectories error:",
-        err,
+        err instanceof Error ? err.message : String(err),
       );
       return { trajectories: [], total: 0, offset, limit };
     }
@@ -1538,7 +1538,7 @@ export async function pruneOldTrajectories(
     } catch (err) {
       coreLogger.warn(
         "[trajectory-persistence] Could not write compressed trajectory archive, skipping prune",
-        err,
+        err instanceof Error ? err.message : String(err),
       );
       return null;
     }

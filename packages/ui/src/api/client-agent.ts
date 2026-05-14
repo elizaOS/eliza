@@ -2972,7 +2972,7 @@ ElizaClient.prototype.getWebsiteBlockerStatus = async function (
 ) {
   const plugin = getNativeWebsiteBlockerPluginIfAvailable();
   if (plugin) {
-    return await plugin.getStatus();
+    return plugin.getStatus();
   }
   return this.fetch("/api/website-blocker");
 };
@@ -2983,7 +2983,7 @@ ElizaClient.prototype.startWebsiteBlock = async function (
 ) {
   const plugin = getNativeWebsiteBlockerPluginIfAvailable();
   if (plugin) {
-    return await plugin.startBlock(options);
+    return plugin.startBlock(options);
   }
   return this.fetch("/api/website-blocker", {
     method: "PUT",
@@ -2994,7 +2994,7 @@ ElizaClient.prototype.startWebsiteBlock = async function (
 ElizaClient.prototype.stopWebsiteBlock = async function (this: ElizaClient) {
   const plugin = getNativeWebsiteBlockerPluginIfAvailable();
   if (plugin) {
-    return await plugin.stopBlock();
+    return plugin.stopBlock();
   }
   return this.fetch("/api/website-blocker", {
     method: "DELETE",
@@ -3004,7 +3004,7 @@ ElizaClient.prototype.stopWebsiteBlock = async function (this: ElizaClient) {
 ElizaClient.prototype.getAppBlockerStatus = async function (this: ElizaClient) {
   const plugin = getNativeAppBlockerPluginIfAvailable();
   if (plugin) {
-    return await plugin.getStatus();
+    return plugin.getStatus();
   }
   return {
     available: false,
@@ -3024,7 +3024,7 @@ ElizaClient.prototype.checkAppBlockerPermissions = async function (
 ) {
   const plugin = getNativeAppBlockerPluginIfAvailable();
   if (plugin) {
-    return await plugin.checkPermissions();
+    return plugin.checkPermissions();
   }
   return {
     status: "not-applicable",
@@ -3038,7 +3038,7 @@ ElizaClient.prototype.requestAppBlockerPermissions = async function (
 ) {
   const plugin = getNativeAppBlockerPluginIfAvailable();
   if (plugin) {
-    return await plugin.requestPermissions();
+    return plugin.requestPermissions();
   }
   return {
     status: "not-applicable",
@@ -3052,7 +3052,7 @@ ElizaClient.prototype.getInstalledAppsToBlock = async function (
 ) {
   const plugin = getNativeAppBlockerPluginIfAvailable();
   if (plugin) {
-    return await plugin.getInstalledApps();
+    return plugin.getInstalledApps();
   }
   return { apps: [] as AppBlockerInstalledApp[] };
 };
@@ -3062,7 +3062,7 @@ ElizaClient.prototype.selectAppBlockerApps = async function (
 ) {
   const plugin = getNativeAppBlockerPluginIfAvailable();
   if (plugin) {
-    return await plugin.selectApps();
+    return plugin.selectApps();
   }
   return {
     apps: [] as AppBlockerInstalledApp[],
@@ -3076,7 +3076,7 @@ ElizaClient.prototype.startAppBlock = async function (
 ) {
   const plugin = getNativeAppBlockerPluginIfAvailable();
   if (plugin) {
-    return await plugin.blockApps(options);
+    return plugin.blockApps(options);
   }
   return {
     success: false,
@@ -3089,7 +3089,7 @@ ElizaClient.prototype.startAppBlock = async function (
 ElizaClient.prototype.stopAppBlock = async function (this: ElizaClient) {
   const plugin = getNativeAppBlockerPluginIfAvailable();
   if (plugin) {
-    return await plugin.unblockApps();
+    return plugin.unblockApps();
   }
   return {
     success: false,

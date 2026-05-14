@@ -575,12 +575,7 @@ async function runModify(
 			const effectiveScope = resolveModifyScope(scopeHint, isAdmin);
 
 			if (effectiveScope === "user") {
-				return await handleUserPreference(
-					runtime,
-					message,
-					messageText,
-					callback,
-				);
+				return handleUserPreference(runtime, message, messageText, callback);
 			}
 
 			isUserRequested = true;
@@ -1487,7 +1482,7 @@ async function handleUserPreference(
 		}
 
 		if (preference.action === "reset") {
-			return await handlePreferenceReset(runtime, message, callback);
+			return handlePreferenceReset(runtime, message, callback);
 		}
 
 		const existingPrefs = await runtime.getMemories({

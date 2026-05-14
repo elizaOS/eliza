@@ -140,7 +140,7 @@ export async function handleAuthBootstrapRoutes(
       { store },
     ).catch((err: unknown) => {
       // Audit failure must not change auth outcome — but it must surface.
-      Logger.error("[AuthBootstrapRoutes] audit append failed", { err });
+      Logger.error("[AuthBootstrapRoutes] audit append failed", err instanceof Error ? err.message : String(err));
     });
     const status =
       result.reason === "missing_token"
@@ -207,7 +207,7 @@ export async function handleAuthBootstrapRoutes(
     },
     { store },
   ).catch((err: unknown) => {
-    Logger.error("[AuthBootstrapRoutes] audit append failed", { err });
+    Logger.error("[AuthBootstrapRoutes] audit append failed", err instanceof Error ? err.message : String(err));
   });
 
   sendJsonResponse(res, 200, {

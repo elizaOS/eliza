@@ -207,3 +207,47 @@ export interface RuntimeServiceOrderItem {
   count: number;
   instances: RuntimeOrderItem[];
 }
+
+// ── Log entry ────────────────────────────────────────────────────────────────
+
+/** A single log line captured by the API server log buffer. */
+export interface LogEntry {
+  timestamp: number;
+  level: string;
+  message: string;
+  source: string;
+  tags: string[];
+}
+
+// ── Skill entry ───────────────────────────────────────────────────────────────
+
+/** A skill surfaced by the skills API. */
+export interface SkillEntry {
+  id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  /** Set automatically when a scan report exists for this skill. */
+  scanStatus?: "clean" | "warning" | "critical" | "blocked" | null;
+}
+
+// ── Agent startup diagnostics ─────────────────────────────────────────────────
+
+/** Tracks agent restart / startup state surfaced by the status endpoint. */
+export interface AgentStartupDiagnostics {
+  phase: string;
+  attempt: number;
+  lastError?: string;
+  lastErrorAt?: number;
+  nextRetryAt?: number;
+}
+
+// ── Chat image attachment ─────────────────────────────────────────────────────
+
+/** An image attachment sent with a chat message. */
+export interface ChatImageAttachment {
+  /** Base64-encoded image data (no data URL prefix). */
+  data: string;
+  mimeType: string;
+  name: string;
+}

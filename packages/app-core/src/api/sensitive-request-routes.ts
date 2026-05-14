@@ -368,7 +368,7 @@ async function ensureCallerAuthorized(
     return true;
   }
 
-  return await ensureRouteAuthorized(req, res, state);
+  return ensureRouteAuthorized(req, res, state);
 }
 
 async function defaultFulfillSecret(
