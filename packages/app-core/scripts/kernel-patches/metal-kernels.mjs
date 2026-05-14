@@ -66,6 +66,34 @@ const STANDALONE_METAL_DIR = fs.existsSync(LEGACY_STANDALONE_METAL_DIR)
   ? LEGACY_STANDALONE_METAL_DIR
   : PLUGIN_STANDALONE_METAL_DIR;
 
+// Reference C kernels (TCQ codebook source) — same restructure drift: older
+// workstreams kept these under packages/inference/reference; the native plugin
+// now owns them.
+const LEGACY_STANDALONE_REFERENCE_DIR = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "inference",
+  "reference",
+);
+const PLUGIN_STANDALONE_REFERENCE_DIR = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "plugins",
+  "plugin-local-inference",
+  "native",
+  "reference",
+);
+export const STANDALONE_REFERENCE_DIR = fs.existsSync(
+  LEGACY_STANDALONE_REFERENCE_DIR,
+)
+  ? LEGACY_STANDALONE_REFERENCE_DIR
+  : PLUGIN_STANDALONE_REFERENCE_DIR;
+
 // Map: standalone-shader-filename → in-fork relative path (under cacheDir).
 // Each standalone is copied verbatim — its content is not edited. Per agent
 // contract, verified shader math lives under packages/inference/metal/ and the
@@ -964,15 +992,7 @@ function patchMetalQjlAttnDispatch(cacheDir, { dryRun }) {
 }
 
 function readTcqCodebookLiteral() {
-  const referencePath = path.resolve(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "inference",
-    "reference",
-    "turbo_kernels.c",
-  );
+  const referencePath = path.join(STANDALONE_REFERENCE_DIR, "turbo_kernels.c");
   const source = fs.readFileSync(referencePath, "utf8");
   const match = source.match(
     /const float ELIZA_TURBO3_TCQ_CODEBOOK\[512\]\s*=\s*\{([\s\S]*?)\};/,

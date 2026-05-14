@@ -28,8 +28,10 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// packages/app-core/scripts/kernel-patches/  ->  packages/inference/cuda/
-const STANDALONE_CUDA_DIR = path.resolve(
+// packages/app-core/scripts/kernel-patches/  ->  plugin-local-inference/native/cuda/
+// Older workstreams staged these under packages/inference/cuda; the current
+// native plugin owns the verified standalone kernel sources.
+const LEGACY_STANDALONE_CUDA_DIR = path.resolve(
   __dirname,
   "..",
   "..",
@@ -37,6 +39,20 @@ const STANDALONE_CUDA_DIR = path.resolve(
   "inference",
   "cuda",
 );
+const PLUGIN_STANDALONE_CUDA_DIR = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "plugins",
+  "plugin-local-inference",
+  "native",
+  "cuda",
+);
+const STANDALONE_CUDA_DIR = fs.existsSync(LEGACY_STANDALONE_CUDA_DIR)
+  ? LEGACY_STANDALONE_CUDA_DIR
+  : PLUGIN_STANDALONE_CUDA_DIR;
 
 // standalone-filename -> in-fork relative path under cacheDir.
 export const CUDA_KERNEL_FILES = ["fused-attn-qjl-tbq.cu"];

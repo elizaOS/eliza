@@ -87,6 +87,25 @@ import {
 } from "./omnivoice-fuse/prepare.mjs";
 import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
+// The native inference tree (llama.cpp submodule + standalone kernel sources +
+// verify evidence) moved from packages/inference/ to
+// plugins/plugin-local-inference/native/ in the f51c36f0c1 restructure. Older
+// checkouts still carry the legacy layout, so resolve against whichever exists.
+function resolveNativeDir(...segments) {
+  const legacy = path.resolve(__dirname, "..", "..", "inference", ...segments);
+  if (fs.existsSync(legacy)) return legacy;
+  return path.resolve(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "plugins",
+    "plugin-local-inference",
+    "native",
+    ...segments,
+  );
+}
+
 // elizaOS/llama.cpp @ 33c888a7b — the unified fork that
 // composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
 // GGML_OP_ATTN_SCORE_QJL, GGML_OP_FUSED_ATTN_QJL_TBQ) + Q4_POLAR (Q4_POLAR=47)
@@ -97,9 +116,9 @@ import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 // lineage as compile-libllama.mjs (AOSP cross-compile path) so both build
 // paths land on identical kernels.
 //
-// The fork ships in-tree as a git submodule at
-// plugins/plugin-local-inference/native/llama.cpp (next to the kernel sources
-// under plugins/plugin-local-inference/native/{metal,vulkan,cuda}).
+// The fork ships in-tree as a git submodule under the native inference tree
+// (currently plugins/plugin-local-inference/native/llama.cpp; older checkouts
+// used packages/inference/llama.cpp).
 // `bun install` runs `git submodule update --init --recursive` so a fresh
 // checkout has it. The build defaults to that submodule checkout; set
 // ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF (or pass --cache-dir / --ref) to build
@@ -112,16 +131,7 @@ const DEFAULT_REF = "33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e";
 const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || DEFAULT_REF;
 // The in-repo submodule checkout of the fork. When it is initialized this is
 // the default build source (no clone needed); see resolveSourceCheckout().
-const SUBMODULE_DIR = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "plugins",
-  "plugin-local-inference",
-  "native",
-  "llama.cpp",
-);
+const SUBMODULE_DIR = resolveNativeDir("llama.cpp");
 // The fork is wired as a submodule unless the operator forces a standalone
 // clone via ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF or an explicit --cache-dir.
 const USING_FORK_OVERRIDE = Boolean(
@@ -145,19 +155,11 @@ const MIN_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
 // disable `--spec-type dflash` at load time.
 const SWA_SPEC_DECODE_FALLBACK_COMMIT =
   "2fdfa49b95f1e39f3c208a9d6d5bdfd7d1bf527d";
-const METAL_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "inference",
+const METAL_RUNTIME_DISPATCH_EVIDENCE = resolveNativeDir(
   "verify",
   "metal-runtime-dispatch-evidence.json",
 );
-const VULKAN_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "inference",
+const VULKAN_RUNTIME_DISPATCH_EVIDENCE = resolveNativeDir(
   "verify",
   "vulkan-runtime-dispatch-evidence.json",
 );
