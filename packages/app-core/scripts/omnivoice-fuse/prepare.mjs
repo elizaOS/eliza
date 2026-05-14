@@ -1242,7 +1242,24 @@ int eliza_inference_tts_synthesize_stream(
     ov_tts_default_params(&params);
     eliza_apply_tts_env_overrides(&params);
     params.text = text_owned.c_str();
-    params.instruct = speaker_preset_id ? speaker_preset_id : "";
+    /* Default to OmniVoice's auto-voice path. The preset (if any)
+     * overwrites params.instruct / ref_audio_tokens / ref_text via
+     * eliza_apply_preset_to_params below. */
+    params.instruct = "";
+    if (speaker_preset_id && speaker_preset_id[0] != '\\0') {
+        std::string preset_err;
+        const EliVoicePreset * preset = nullptr;
+        {
+            std::lock_guard<std::mutex> preset_lock(ctx->preset_mutex);
+            preset = eliza_load_voice_preset_locked(ctx, speaker_preset_id, preset_err);
+        }
+        if (preset && !preset->empty_payload) {
+            eliza_apply_preset_to_params(*preset, &params);
+        }
+        /* A missing or v1-only preset is not fatal — auto-voice mode
+         * still produces audio. The preset_err is only surfaced via
+         * out_error when synthesis itself fails. */
+    }
     params.cancel = eliza_tts_cancel_requested;
     params.cancel_user_data = ctx;
 
