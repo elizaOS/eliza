@@ -158,7 +158,7 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
     }))
     (bundle / "evidence").mkdir(parents=True)
     (bundle / "evidence" / "release.json").write_text(json.dumps({
-        "schemaVersion": 1, "tier": tier, "repoId": "elizaos/eliza-1",
+        "schemaVersion": 1, "tier": tier, "repoId": "elizalabs/eliza-1",
         "repoPath": f"bundles/{tier}",
         "releaseState": "weights-staged",
         "final": {"weights": True, "hashes": False, "evals": False, "licenses": False,

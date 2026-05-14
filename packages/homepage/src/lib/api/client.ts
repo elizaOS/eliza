@@ -4,7 +4,7 @@
  * Calls the backend directly; no local proxy.
  */
 
-const ELIZACLOUD_DEFAULT_URL = "https://api.elizacloud.ai";
+export const ELIZACLOUD_DEFAULT_URL = "https://api.elizacloud.ai";
 
 function getBaseUrl(): string {
   return (

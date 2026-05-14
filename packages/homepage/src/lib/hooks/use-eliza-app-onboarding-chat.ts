@@ -50,7 +50,9 @@ function uid(): string {
 
 function getStoredSessionId(): string | null {
   if (typeof window === "undefined") return null;
-  const fromUrl = new URLSearchParams(window.location.search).get("onboardingSession");
+  const fromUrl = new URLSearchParams(window.location.search).get(
+    "onboardingSession",
+  );
   if (fromUrl) return fromUrl;
   return localStorage.getItem(SESSION_KEY);
 }
@@ -60,7 +62,9 @@ function setStoredSessionId(sessionId: string): void {
   localStorage.setItem(SESSION_KEY, sessionId);
 }
 
-function toMessages(messages: ApiMessage[] | undefined): OnboardingChatMessage[] {
+function toMessages(
+  messages: ApiMessage[] | undefined,
+): OnboardingChatMessage[] {
   if (!messages?.length) {
     return [
       {
@@ -77,13 +81,23 @@ function toMessages(messages: ApiMessage[] | undefined): OnboardingChatMessage[]
   }));
 }
 
-function toActions(data: OnboardingChatResponse["data"]): OnboardingChatAction[] {
+function toActions(
+  data: OnboardingChatResponse["data"],
+): OnboardingChatAction[] {
   const actions: OnboardingChatAction[] = [];
   if (data?.requiresLogin && data.loginUrl) {
-    actions.push({ type: "login", label: "Connect Eliza Cloud", href: data.loginUrl });
+    actions.push({
+      type: "login",
+      label: "Connect Eliza Cloud",
+      href: data.loginUrl,
+    });
   }
   if (data?.controlPanelUrl && !data.requiresLogin) {
-    actions.push({ type: "control-panel", label: "Open control panel", href: data.controlPanelUrl });
+    actions.push({
+      type: "control-panel",
+      label: "Open control panel",
+      href: data.controlPanelUrl,
+    });
   }
   if (data?.launchUrl) {
     actions.push({ type: "launch", label: "Open agent", href: data.launchUrl });
@@ -92,8 +106,12 @@ function toActions(data: OnboardingChatResponse["data"]): OnboardingChatAction[]
 }
 
 export function useElizaAppOnboardingChat(active: boolean) {
-  const [sessionId, setSessionId] = useState<string | null>(() => getStoredSessionId());
-  const [messages, setMessages] = useState<OnboardingChatMessage[]>(() => toMessages(undefined));
+  const [sessionId, setSessionId] = useState<string | null>(() =>
+    getStoredSessionId(),
+  );
+  const [messages, setMessages] = useState<OnboardingChatMessage[]>(() =>
+    toMessages(undefined),
+  );
   const [actions, setActions] = useState<OnboardingChatAction[]>([]);
   const [containerStatus, setContainerStatus] = useState<string>("none");
   const [agentId, setAgentId] = useState<string | null>(null);
@@ -109,7 +127,10 @@ export function useElizaAppOnboardingChat(active: boolean) {
 
       const trimmed = message?.trim();
       if (trimmed && options?.optimistic !== false) {
-        setMessages((prev) => [...prev, { id: uid(), role: "user", content: trimmed }]);
+        setMessages((prev) => [
+          ...prev,
+          { id: uid(), role: "user", content: trimmed },
+        ]);
       }
       setIsLoading(true);
 
@@ -144,7 +165,8 @@ export function useElizaAppOnboardingChat(active: boolean) {
           {
             id: uid(),
             role: "assistant",
-            content: "I'm having trouble reaching Eliza Cloud. Try again in a moment.",
+            content:
+              "I'm having trouble reaching Eliza Cloud. Try again in a moment.",
           },
         ]);
       } finally {
@@ -161,7 +183,12 @@ export function useElizaAppOnboardingChat(active: boolean) {
   }, [active, callOnboarding]);
 
   useEffect(() => {
-    if (!active || handoffComplete || containerStatus === "none" || containerStatus === "running") {
+    if (
+      !active ||
+      handoffComplete ||
+      containerStatus === "none" ||
+      containerStatus === "running"
+    ) {
       return;
     }
     const timer = setInterval(() => {

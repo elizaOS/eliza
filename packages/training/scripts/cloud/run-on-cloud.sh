@@ -277,7 +277,7 @@ fi
 
 # 5. Run bootstrap + task.
 log "running bootstrap + $TASK on the instance (this can take 10-40 min)..."
-ssh -o StrictHostKeyChecking=no "$SSH_HOSTPORT" "bash -lc 'mkdir -p /workspace && cd /workspace && cat > bootstrap.sh' " <<< "$REMOTE_SCRIPT"$'\n'"$REMOTE_TASK"
+ssh -o StrictHostKeyChecking=no "$SSH_HOSTPORT" "bash -lc 'mkdir -p /workspace && cd /workspace && cat > bootstrap.sh'" <<< "$REMOTE_SCRIPT"$'\n'"$REMOTE_TASK"
 ssh -o StrictHostKeyChecking=no "$SSH_HOSTPORT" "bash -l /workspace/bootstrap.sh"
 
 # 6. Pull evidence.

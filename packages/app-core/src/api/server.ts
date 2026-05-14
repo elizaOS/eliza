@@ -116,9 +116,7 @@ let _localInference:
   | undefined;
 async function getLocalInference() {
   if (!_localInference) {
-    _localInference = await import(
-      "@elizaos/plugin-local-inference"
-    );
+    _localInference = await import("@elizaos/plugin-local-inference");
   }
   return _localInference;
 }

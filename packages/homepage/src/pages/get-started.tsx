@@ -1107,8 +1107,7 @@ export default function GetStartedPage() {
     navigate("/connected");
   };
 
-  const showBackButton =
-    step !== "SELECT_METHOD" && step !== "CHAT_ONBOARDING";
+  const showBackButton = step !== "SELECT_METHOD" && step !== "CHAT_ONBOARDING";
 
   // ============================================================================
   // Render

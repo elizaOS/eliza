@@ -743,8 +743,7 @@ function makeImageDescriptionHandler(): ImageDescriptionHandler {
 	return async (runtime, params) => {
 		const arbiter = tryGetMemoryArbiter();
 		if (
-			!arbiter ||
-			!arbiter.hasCapability("vision-describe") ||
+			!arbiter?.hasCapability("vision-describe") ||
 			typeof arbiter.requestVisionDescribe !== "function"
 		) {
 			throw new Error(

@@ -49,12 +49,12 @@ vi.mock("./auth.ts", async (importOriginal) => {
 });
 
 // Loaded lazily to avoid a static boundary violation from src/ into plugin packages.
-import type { EndToEndLatencyTracer } from "@elizaos/plugin-local-inference/services";
+import type { EndToEndLatencyTracer } from "@elizaos/plugin-local-inference";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 
 let voiceLatencyTracer: EndToEndLatencyTracer;
 beforeAll(async () => {
-  const mod = await import("@elizaos/plugin-local-inference/services");
+  const mod = await import("@elizaos/plugin-local-inference");
   voiceLatencyTracer = mod.voiceLatencyTracer;
 });
 

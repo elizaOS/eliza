@@ -23,9 +23,14 @@ describe("local inference provider catalog", () => {
 		const completeLocalProviders = BUILT_IN_PROVIDERS.filter(
 			(provider) =>
 				(provider.kind === "local" || provider.kind === "device-bridge") &&
-				["TEXT_SMALL", "TEXT_LARGE", "TEXT_EMBEDDING", "TEXT_TO_SPEECH", "TRANSCRIPTION", "IMAGE_DESCRIPTION"].every(
-					(slot) => provider.supportedSlots.includes(slot as never),
-				),
+				[
+					"TEXT_SMALL",
+					"TEXT_LARGE",
+					"TEXT_EMBEDDING",
+					"TEXT_TO_SPEECH",
+					"TRANSCRIPTION",
+					"IMAGE_DESCRIPTION",
+				].every((slot) => provider.supportedSlots.includes(slot as never)),
 		).map((provider) => provider.id);
 
 		expect(completeLocalProviders).toEqual(["eliza-local-inference"]);

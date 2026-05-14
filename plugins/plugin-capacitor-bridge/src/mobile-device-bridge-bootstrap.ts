@@ -363,7 +363,9 @@ class MobileDeviceBridge {
 			this.requirePairingToken &&
 			(!this.expectedPairingToken || queryToken !== this.expectedPairingToken)
 		) {
-			logger.warn("[mobile-device-bridge] Rejecting connection: bad query token");
+			logger.warn(
+				"[mobile-device-bridge] Rejecting connection: bad query token",
+			);
 			socket.close(4001, "unauthorized");
 			return;
 		}

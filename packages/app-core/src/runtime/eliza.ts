@@ -58,9 +58,7 @@ let _localInferenceRuntime:
   | undefined;
 async function _localInference() {
   if (!_localInferenceRuntime) {
-    _localInferenceRuntime = await import(
-      "@elizaos/plugin-local-inference"
-    );
+    _localInferenceRuntime = await import("@elizaos/plugin-local-inference");
   }
   return _localInferenceRuntime;
 }
