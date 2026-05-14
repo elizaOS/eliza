@@ -58,6 +58,7 @@
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.3.1",
     "@capacitor/docgen": "^0.3.0",
+    "@elizaos/native-plugin-shared-types": "workspace:*",
     "rimraf": "^6.0.0",
     "rollup": "^4.60.2",
     "typescript": "^6.0.3"

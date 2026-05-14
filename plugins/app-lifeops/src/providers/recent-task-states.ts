@@ -28,7 +28,7 @@ import { asCacheRuntime } from "../lifeops/runtime-cache.js";
 import type {
   ScheduledTaskKind,
   TerminalState,
-} from "../lifeops/wave1-types.js";
+} from "../lifeops/scheduled-task/index.js";
 
 export interface RecentTaskStateEntry {
   taskId: string;

@@ -150,7 +150,9 @@ export const deliverOAuthLinkAction: Action = {
 		const oauthIntentId =
 			typeof params.oauthIntentId === "string" ? params.oauthIntentId : "";
 		const target =
-			typeof params.target === "string" ? (params.target as DeliveryTarget) : undefined;
+			typeof params.target === "string"
+				? (params.target as DeliveryTarget)
+				: undefined;
 		if (!oauthIntentId || !target || !ALL_TARGETS.has(target)) {
 			return {
 				success: false,
@@ -161,7 +163,9 @@ export const deliverOAuthLinkAction: Action = {
 
 		const envelope = await client.get(oauthIntentId);
 		if (!envelope) {
-			logger.warn(`[DELIVER_OAUTH_LINK] oauthIntentId=${oauthIntentId} not found`);
+			logger.warn(
+				`[DELIVER_OAUTH_LINK] oauthIntentId=${oauthIntentId} not found`,
+			);
 			return {
 				success: false,
 				text: `OAuth intent ${oauthIntentId} not found.`,
@@ -198,7 +202,8 @@ export const deliverOAuthLinkAction: Action = {
 		}
 
 		const channelId =
-			typeof params.targetChannelId === "string" && params.targetChannelId.length > 0
+			typeof params.targetChannelId === "string" &&
+			params.targetChannelId.length > 0
 				? params.targetChannelId
 				: typeof message.roomId === "string"
 					? message.roomId

@@ -1,12 +1,9 @@
 /**
- * BLOCK umbrella — Audit B Defer #1.
+ * BLOCK umbrella — folds phone-app blocking and desktop website blocking into
+ * a single umbrella keyed by `target: "app" | "website"`. Each target
+ * dispatches into its own backend handler.
  *
- * Folds phone-app blocking and desktop website blocking into a single
- * umbrella keyed by
- * `target: "app" | "website"`. The runtime backends stay untouched: each
- * action value dispatches into the existing backend handlers.
- *
- * Actions (union of both legacy surfaces):
+ * Actions (union of both surfaces):
  *   block | unblock | status | request_permission | release | list_active
  *
  * Target/action support matrix:

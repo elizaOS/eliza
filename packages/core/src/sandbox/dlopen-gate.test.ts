@@ -99,14 +99,17 @@ describe("dlopen-gate", () => {
 			},
 		);
 
-		(isDarwin ? it : it.skip)("rejects /tmp/evil.dylib outside the bundle", () => {
-			const { contents } = makeFakeBundle();
-			setBuildVariant("store");
-			_setAppBundleRootForTests(contents);
-			expect(() => assertDlopenPathAllowed("/tmp/evil.dylib")).toThrow(
-				/Refusing to dlopen outside app bundle in store build/,
-			);
-		});
+		(isDarwin ? it : it.skip)(
+			"rejects /tmp/evil.dylib outside the bundle",
+			() => {
+				const { contents } = makeFakeBundle();
+				setBuildVariant("store");
+				_setAppBundleRootForTests(contents);
+				expect(() => assertDlopenPathAllowed("/tmp/evil.dylib")).toThrow(
+					/Refusing to dlopen outside app bundle in store build/,
+				);
+			},
+		);
 
 		(isDarwin ? it : it.skip)(
 			"rejects bundle-relative path with .. traversal that escapes the bundle",
@@ -193,11 +196,16 @@ describe("dlopen-gate", () => {
 			},
 		);
 
-		(isDarwin ? it : it.skip)("returns false for paths outside the bundle", () => {
-			const { contents } = makeFakeBundle();
-			_setAppBundleRootForTests(contents);
-			expect(isPathInsideAppBundle(`${tmpdir()}${sep}evil.dylib`)).toBe(false);
-		});
+		(isDarwin ? it : it.skip)(
+			"returns false for paths outside the bundle",
+			() => {
+				const { contents } = makeFakeBundle();
+				_setAppBundleRootForTests(contents);
+				expect(isPathInsideAppBundle(`${tmpdir()}${sep}evil.dylib`)).toBe(
+					false,
+				);
+			},
+		);
 
 		(isDarwin ? it : it.skip)("returns false for relative paths", () => {
 			const { contents } = makeFakeBundle();
@@ -205,11 +213,14 @@ describe("dlopen-gate", () => {
 			expect(isPathInsideAppBundle("./lib.dylib")).toBe(false);
 		});
 
-		(isDarwin ? it : it.skip)("returns false when no bundle is resolvable", () => {
-			_setAppBundleRootForTests(null);
-			expect(
-				isPathInsideAppBundle("/Applications/Eliza.app/Contents/lib"),
-			).toBe(false);
-		});
+		(isDarwin ? it : it.skip)(
+			"returns false when no bundle is resolvable",
+			() => {
+				_setAppBundleRootForTests(null);
+				expect(
+					isPathInsideAppBundle("/Applications/Eliza.app/Contents/lib"),
+				).toBe(false);
+			},
+		);
 	});
 });

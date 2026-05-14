@@ -9,7 +9,9 @@ import { deliverOAuthLinkAction } from "./deliver-oauth-link";
 
 const SENSITIVE_DISPATCH_REGISTRY_SERVICE = "SensitiveRequestDispatchRegistry";
 
-function envelope(overrides: Partial<OAuthIntentEnvelope> = {}): OAuthIntentEnvelope {
+function envelope(
+	overrides: Partial<OAuthIntentEnvelope> = {},
+): OAuthIntentEnvelope {
 	return {
 		oauthIntentId: "oauth_1",
 		provider: "google",
@@ -123,7 +125,9 @@ describe("DELIVER_OAUTH_LINK", () => {
 			}) as never,
 			message() as never,
 			undefined,
-			{ parameters: { oauthIntentId: "oauth_1", target: "instruct_dm_only" } } as never,
+			{
+				parameters: { oauthIntentId: "oauth_1", target: "instruct_dm_only" },
+			} as never,
 		);
 
 		expect(result.success).toBe(false);

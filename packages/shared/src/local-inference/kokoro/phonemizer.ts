@@ -22,7 +22,7 @@ import {
 	type KokoroPhonemeSequence,
 	type KokoroPhonemizer,
 	KokoroPhonemizerError,
-} from "./types";
+} from "./types.js";
 
 /**
  * Kokoro v1.0 phoneme vocabulary. The model embeds 178 phoneme ids; this

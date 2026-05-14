@@ -770,15 +770,13 @@ export const paymentAction: Action = {
 		},
 		{
 			name: "targetChannelId",
-			description:
-				"For deliver_link: override delivery channel id.",
+			description: "For deliver_link: override delivery channel id.",
 			required: false,
 			schema: { type: "string" as const },
 		},
 		{
 			name: "proof",
-			description:
-				"For verify_payload/settle: provider proof payload.",
+			description: "For verify_payload/settle: provider proof payload.",
 			required: false,
 			schema: { type: "object" as const },
 		},
@@ -790,8 +788,7 @@ export const paymentAction: Action = {
 		},
 		{
 			name: "timeoutMs",
-			description:
-				"For await_callback: wait timeout ms. Default 600000.",
+			description: "For await_callback: wait timeout ms. Default 600000.",
 			required: false,
 			schema: { type: "number" as const },
 		},

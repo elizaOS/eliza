@@ -63,6 +63,7 @@ export {
   localInferenceRoot,
   registryPath,
 } from "./paths.js";
+export * from "./kokoro/index.js";
 export type {
   ProviderEnableState,
   ProviderId,

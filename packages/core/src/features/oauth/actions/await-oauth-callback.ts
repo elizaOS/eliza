@@ -42,7 +42,8 @@ export const awaitOAuthCallbackAction: Action = {
 	name: "AWAIT_OAUTH_CALLBACK",
 	suppressPostActionContinuation: true,
 	similes: ["WAIT_FOR_OAUTH_CALLBACK", "AWAIT_OAUTH_BIND"],
-	description: "Wait for the OAuth callback bus to deliver a result for an intent.",
+	description:
+		"Wait for the OAuth callback bus to deliver a result for an intent.",
 	descriptionCompressed: "Await OAuth callback for an intent id.",
 	parameters: [
 		{

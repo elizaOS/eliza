@@ -187,16 +187,16 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 // inside the elizaOS source checkout it's the elizaOS repo root.
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
-// elizaOS/llama.cpp @ v1.0.0-eliza (same tree as the prior v0.4.0-eliza tag,
-// commit 08032d57 — re-tagged on the elizaOS rename). Composes TBQ (apothic) +
+// elizaOS/llama.cpp @ 33c888a7b. Composes TBQ (apothic) +
 // QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + DFlash spec-decode
 // (W2) + W3-B fused CPU kernels + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto
-// upstream b8198. See docs/porting/unified-fork-strategy.md for the full
+// upstream b9213. See docs/porting/unified-fork-strategy.md for the full
 // migration story.
 //
-// The fork ships in-tree as the git submodule at packages/inference/llama.cpp
-// (next to the dflash build at scripts/build-llama-cpp-dflash.mjs — same
-// pinned commit so both build paths land on identical kernels). When that
+// The fork ships in-tree as the git submodule at
+// plugins/plugin-local-inference/native/llama.cpp (next to the DFlash build at
+// scripts/build-llama-cpp-dflash.mjs — same pinned commit so both build paths
+// land on identical kernels). When that
 // submodule is initialized this path defaults to it (no clone needed); pass
 // `--src-dir` to point at another checkout, or `--cache-dir` to force a
 // standalone clone of `${LLAMA_CPP_REMOTE}` at `${LLAMA_CPP_TAG}`.
@@ -208,16 +208,19 @@ const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 // baked in. apply-patches.mjs is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
 export const LLAMA_CPP_TAG = "v1.2.0-eliza";
-export const LLAMA_CPP_COMMIT = "a61c93aa";
+export const LLAMA_CPP_COMMIT = "33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
+const SWA_SPEC_DECODE_FALLBACK_COMMIT =
+  "2fdfa49b95f1e39f3c208a9d6d5bdfd7d1bf527d";
 
-// The in-repo submodule checkout of the fork (packages/inference/llama.cpp).
+// The in-repo submodule checkout of the fork.
 // `repoRoot` resolves to the repo root that contains a top-level package.json.
 const LLAMA_CPP_SUBMODULE_DIR = path.join(
   repoRoot,
-  "packages",
-  "inference",
+  "plugins",
+  "plugin-local-inference",
+  "native",
   "llama.cpp",
 );
 // True when the submodule is checked out (has a worktree). When so, the AOSP

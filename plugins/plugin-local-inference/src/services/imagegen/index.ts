@@ -58,7 +58,12 @@ export {
 	type MfluxBackendOptions,
 } from "./mflux";
 export {
+	assertPngOutput,
+	defaultSpawn,
 	loadSdCppImageGenBackend,
+	PNG_SIGNATURE,
+	pickSeed,
+	resolveSeed,
 	type SdCppBackendOptions,
 	type SdCppSpawnLike,
 } from "./sd-cpp";

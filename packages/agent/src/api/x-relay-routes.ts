@@ -41,7 +41,7 @@ interface CloudHelperModule {
     config: ElizaConfig,
     runtime?: XRelayRuntime | null,
   ) => string | null;
-  validateCloudBaseUrl: (baseUrl: string) => Promise<string | null>;
+  validateCloudBaseUrl: (baseUrl: string) => string | null;
 }
 
 let cloudHelpersPromise: Promise<CloudHelperModule> | null = null;

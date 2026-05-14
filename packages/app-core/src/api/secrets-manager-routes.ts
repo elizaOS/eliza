@@ -7,14 +7,14 @@ import {
   getAutofillAllowed,
   getSavedLogin,
   type InstallMethod,
+  type LoginListEntry,
+  type LoginListResult,
+  type LoginReveal,
   type ManagerPreferences,
   resolveRunnableMethods,
   type SecretsManager,
   setAutofillAllowed,
   setSavedLogin,
-  type LoginListEntry,
-  type LoginListResult,
-  type LoginReveal,
 } from "@elizaos/vault";
 import {
   _resetSecretsManagerInstallerForTesting,

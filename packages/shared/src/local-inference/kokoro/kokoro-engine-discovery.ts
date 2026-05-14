@@ -20,10 +20,10 @@
  */
 
 import { existsSync, readdirSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import type { KokoroModelLayout, KokoroVoicePack } from "./types";
-import { KOKORO_DEFAULT_VOICE_ID, KOKORO_VOICE_PACKS } from "./voice-presets";
+import { elizaModelsDir } from "../paths.js";
+import type { KokoroModelLayout, KokoroVoicePack } from "./types.js";
+import { KOKORO_DEFAULT_VOICE_ID, KOKORO_VOICE_PACKS } from "./voice-presets.js";
 
 /** Canonical Kokoro v1.0 output sample rate. */
 export const KOKORO_DEFAULT_SAMPLE_RATE = 24_000;
@@ -77,13 +77,7 @@ export interface KokoroEngineDiscoveryResult {
 export function kokoroEngineModelDir(): string {
 	const env = process.env.ELIZA_KOKORO_MODEL_DIR?.trim();
 	if (env) return env;
-	return path.join(
-		os.homedir(),
-		".eliza",
-		"local-inference",
-		"models",
-		"kokoro",
-	);
+	return path.join(elizaModelsDir(), "kokoro");
 }
 
 /**

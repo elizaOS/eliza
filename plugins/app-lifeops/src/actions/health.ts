@@ -344,9 +344,7 @@ export const HEALTH_PARAMETERS: readonly ActionParameter[] = [
 /**
  * Handler function backing the OWNER_HEALTH umbrella.
  *
- * Folded out of the legacy `HEALTH` action surface — Audit F. The umbrella
- * in `./owner-surfaces.ts` is the only caller; no `HEALTH`-named action is
- * registered.
+ * Called from `./owner-surfaces.ts`; no `HEALTH`-named action is registered.
  */
 export async function runHealthHandler(
   runtime: IAgentRuntime,

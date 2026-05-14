@@ -172,8 +172,7 @@ export const linearAction: Action = {
   name: "LINEAR",
   description:
     "Manage Linear issues/comments/activity. Ops: create_issue, get_issue, update_issue, delete_issue, create_comment, update_comment, delete_comment, list_comments, get_activity, clear_activity, search_issues. Infer op if omitted.",
-  descriptionCompressed:
-    "Linear: issue CRUD, comment CRUD/list, search issues, get/clear activity",
+  descriptionCompressed: "Linear: issue CRUD, comment CRUD/list, search issues, get/clear activity",
   similes: [
     // Group/router-style names
     "LINEAR_ISSUE",

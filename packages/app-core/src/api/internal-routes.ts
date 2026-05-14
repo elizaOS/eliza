@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
-import { type Service, ServiceType, resolveStateDir } from "@elizaos/core";
+import { resolveStateDir, type Service, ServiceType } from "@elizaos/core";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { readCompatJsonBody } from "./compat-route-shared";
 import { sendJson } from "./response";

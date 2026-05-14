@@ -25,16 +25,15 @@ import type {
 	SpeakerPreset,
 	StreamingTtsBackend,
 	TtsPcmChunk,
-} from "../types";
-} from "./voice-types";
-import type { KokoroRuntime } from "./kokoro-runtime";
-import { resolvePhonemizer } from "./phonemizer";
+} from "./voice-types.js";
+import type { KokoroRuntime } from "./kokoro-runtime.js";
+import { resolvePhonemizer } from "./phonemizer.js";
 import type {
 	KokoroBackendOptions,
 	KokoroPhonemizer,
 	KokoroVoicePack,
-} from "./types";
-import { resolveKokoroVoiceOrDefault } from "./voices";
+} from "./types.js";
+import { resolveKokoroVoiceOrDefault } from "./voices.js";
 
 export interface KokoroTtsBackendDeps extends KokoroBackendOptions {
 	/** The concrete model runner. Wire `KokoroOnnxRuntime` in production

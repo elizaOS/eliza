@@ -43,7 +43,7 @@ describe("catalog invariants", () => {
 
     test("default local entries resolve from the elizaOS repo", () => {
         for (const model of MODEL_CATALOG) {
-            expect(model.hfRepo).toBe("elizaos/eliza-1");
+            expect(model.hfRepo).toBe("elizalabs/eliza-1");
         }
     });
 });
@@ -54,7 +54,7 @@ describe("buildHuggingFaceResolveUrl", () => {
         if (model === undefined) throw new Error("eliza-1-0_8b missing");
         const url = buildHuggingFaceResolveUrl(model);
         expect(url).toContain("https://huggingface.co/");
-        expect(url).toContain("/elizaos/eliza-1/resolve/main/");
+        expect(url).toContain("/elizalabs/eliza-1/resolve/main/");
         expect(url).toContain("bundles/0_8b/text/eliza-1-0_8b-32k.gguf");
         expect(url).toContain("?download=true");
     });

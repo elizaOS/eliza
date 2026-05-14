@@ -62,7 +62,10 @@ function buildInput(
 		return { error: "Invalid or missing provider" };
 	}
 	const scopes = params.scopes;
-	if (!Array.isArray(scopes) || !scopes.every((s) => typeof s === "string" && s.length > 0)) {
+	if (
+		!Array.isArray(scopes) ||
+		!scopes.every((s) => typeof s === "string" && s.length > 0)
+	) {
 		return { error: "scopes must be a non-empty string array" };
 	}
 	const stateTokenHash = params.stateTokenHash;
@@ -76,10 +79,16 @@ function buildInput(
 		stateTokenHash,
 	};
 
-	if (typeof params.expectedIdentityId === "string" && params.expectedIdentityId.length > 0) {
+	if (
+		typeof params.expectedIdentityId === "string" &&
+		params.expectedIdentityId.length > 0
+	) {
 		input.expectedIdentityId = params.expectedIdentityId;
 	}
-	if (typeof params.pkceVerifierHash === "string" && params.pkceVerifierHash.length > 0) {
+	if (
+		typeof params.pkceVerifierHash === "string" &&
+		params.pkceVerifierHash.length > 0
+	) {
 		input.pkceVerifierHash = params.pkceVerifierHash;
 	}
 	if (typeof params.hostedUrl === "string" && params.hostedUrl.length > 0) {
@@ -107,7 +116,8 @@ export const createOAuthIntentAction: Action = {
 	similes: ["NEW_OAUTH_INTENT", "OPEN_OAUTH_INTENT", "START_OAUTH_FLOW"],
 	description:
 		"Create a new OAuth intent for a provider (google, discord, linkedin, linear, shopify, calendly).",
-	descriptionCompressed: "Create OAuth intent: provider, scopes, stateTokenHash.",
+	descriptionCompressed:
+		"Create OAuth intent: provider, scopes, stateTokenHash.",
 	parameters: [
 		{
 			name: "provider",
@@ -123,7 +133,8 @@ export const createOAuthIntentAction: Action = {
 		},
 		{
 			name: "stateTokenHash",
-			description: "Hashed (SHA-256 hex) OAuth state token. Caller hashes the raw state.",
+			description:
+				"Hashed (SHA-256 hex) OAuth state token. Caller hashes the raw state.",
 			required: true,
 			schema: { type: "string" as const },
 		},
@@ -173,7 +184,8 @@ export const createOAuthIntentAction: Action = {
 	): Promise<boolean> => {
 		const built = buildInput(readParams(options));
 		return (
-			runtime.getService(OAUTH_INTENTS_CLIENT_SERVICE) !== null && "input" in built
+			runtime.getService(OAUTH_INTENTS_CLIENT_SERVICE) !== null &&
+			"input" in built
 		);
 	},
 

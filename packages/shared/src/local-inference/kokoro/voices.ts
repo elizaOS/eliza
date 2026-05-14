@@ -13,18 +13,18 @@
  * Upstream registry: https://huggingface.co/hexgrad/Kokoro-82M/tree/main/voices
  */
 
-import type { KokoroVoiceId, KokoroVoicePack } from "./types";
+import type { KokoroVoiceId, KokoroVoicePack } from "./types.js";
 import {
 	findKokoroVoice,
 	KOKORO_DEFAULT_VOICE_ID,
 	KOKORO_VOICE_PACKS,
-} from "./voice-presets";
+} from "./voice-presets.js";
 
 export {
 	findKokoroVoice,
 	KOKORO_DEFAULT_VOICE_ID,
 	KOKORO_VOICE_PACKS,
-} from "./voice-presets";
+} from "./voice-presets.js";
 
 /** All voice ids that ship with the upstream Kokoro v1.0 release. */
 export function listKokoroVoiceIds(): ReadonlyArray<KokoroVoiceId> {

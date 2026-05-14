@@ -405,9 +405,8 @@ async function handleWhitelistList(
  * Handler function backing the CREDENTIALS umbrella's autofill subactions
  * (`fill`, `whitelist_add`, `whitelist_list`).
  *
- * Folded out of the legacy `AUTOFILL` action surface — Audit B Defer #5.
- * The umbrella in `./credentials.ts` is the only caller; no Action object
- * is registered for this handler anymore.
+ * Called from `./credentials.ts`; no Action object is registered for this
+ * handler directly.
  */
 export async function runAutofillHandler(
   runtime: IAgentRuntime,

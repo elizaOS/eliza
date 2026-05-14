@@ -138,8 +138,7 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description:
-			"Verb-led intents. Lowercase. No punctuation. ~6 words max.",
+		description: "Verb-led intents. Lowercase. No punctuation. ~6 words max.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -355,7 +354,7 @@ export const emotionFieldEvaluator: ResponseHandlerFieldEvaluator<ExpressiveEmot
 	{
 		name: "emotion",
 		description:
-			'User expressed emotion this turn. Single tag: none/happy/sad/angry/nervous/calm/excited/whisper. Default none; use none when ambiguous/no strong cue. Read text + transcript metadata only; do NOT use prior turns. User-side read; assistant emotion uses inline [happy]/[sad]/[excited] tags in replyText when TTS supports.',
+			"User expressed emotion this turn. Single tag: none/happy/sad/angry/nervous/calm/excited/whisper. Default none; use none when ambiguous/no strong cue. Read text + transcript metadata only; do NOT use prior turns. User-side read; assistant emotion uses inline [happy]/[sad]/[excited] tags in replyText when TTS supports.",
 		priority: 95,
 		schema: {
 			type: "string",

@@ -1,16 +1,12 @@
 /**
  * WorkflowStepRegistry — open registry of executable workflow step kinds.
  *
- * Replaces the closed 9-branch `if/else` switch on `step.kind` that used to
- * live in `service-mixin-workflows.ts:850–915`. Plugins (and tests) can now
+ * Open registry of executable workflow step kinds. Plugins and tests can
  * register a new step kind at runtime by contributing a
- * `WorkflowStepContribution`; the dispatcher consults this registry instead
- * of hardcoding the branch set.
+ * `WorkflowStepContribution`; the dispatcher consults this registry.
  *
- * Wave: lifts Audit C top-2 finding ("workflow step dispatch") into the same
- * pattern as `AnchorRegistry` / `EventKindRegistry` / `FamilyRegistry`:
- * per-runtime `WeakMap` binding, default-pack registration at plugin init,
- * structural validation via Zod schemas owned by each contribution.
+ * Follows the same per-runtime `WeakMap` binding pattern as
+ * `AnchorRegistry` / `EventKindRegistry` / `FamilyRegistry`.
  */
 
 import type { IAgentRuntime } from "@elizaos/core";

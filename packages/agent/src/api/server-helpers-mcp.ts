@@ -12,6 +12,7 @@ import {
 import { hasBlockedObjectKeyDeep } from "./server-helpers.ts";
 import type { TerminalRunRejection } from "./server-helpers-auth.ts";
 import { resolveTerminalRunRejection } from "./server-helpers-auth.ts";
+import { isBlockedObjectKey } from "./server-helpers-config.ts";
 
 const ALLOWED_MCP_CONFIG_TYPES = new Set([
   "stdio",
@@ -205,17 +206,6 @@ async function resolveMcpRemoteUrlRejection(
   return null;
 }
 
-function isBlockedObjectKey(key: string): boolean {
-  return (
-    key === "__proto__" ||
-    key === "constructor" ||
-    key === "prototype" ||
-    // Block config include directives -- if an API caller embeds "$include"
-    // inside a config patch, the next loadElizaConfig() -> resolveConfigIncludes
-    // pass would read arbitrary local files and merge them into the config.
-    key === "$include"
-  );
-}
 
 export async function validateMcpServerConfig(
   config: Record<string, unknown>,

@@ -1,0 +1,23 @@
+{
+  "gate": "dashboard_alerts",
+  "status": "pass",
+  "completedAt": "2026-05-14T13:23:12.690Z",
+  "organizationId": "ebd6f0ce-0d64-4267-8aac-95ed3826ebb7",
+  "policiesEvaluated": 2,
+  "projectionAlertsGenerated": 3,
+  "redStateRendered": true,
+  "yellowStateRendered": true,
+  "alertEventsPersisted": 3,
+  "alertEventIds": [
+    "24546771-5df2-4fbd-ad41-8980977cbde5",
+    "b962f8c8-03bf-4f58-87f6-08f4cc96029e",
+    "bbc39551-bdda-49e4-addd-58a3b2daec99"
+  ],
+  "renderVerification": {
+    "attempted": true,
+    "redStateRendered": true,
+    "yellowStateRendered": true,
+    "reason": null
+  },
+  "summary": "generated 3 projection alerts; persisted 3; red rendered true; yellow rendered true"
+}

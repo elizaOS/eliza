@@ -6,6 +6,8 @@ export * from "./coding-agent-settings-shared";
 export * from "./GlobalPrefsSection";
 export * from "./LlmProviderSection";
 export * from "./ModelConfigSection";
+export * from "./PtyConsoleBase";
+export * from "./PtyConsoleSidePanel";
 export * from "./register-slots";
 export * from "./session-hydration";
 

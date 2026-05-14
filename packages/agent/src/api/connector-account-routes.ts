@@ -14,6 +14,7 @@ import {
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
+import { isBlockedObjectKey } from "./server-helpers-config.ts";
 
 const z = zod.z ?? zod;
 
@@ -285,10 +286,6 @@ function authorizationRequestForPath(
     ...(action ? { action } : {}),
     ...(accountId ? { accountId } : {}),
   };
-}
-
-function isBlockedObjectKey(key: string): boolean {
-  return key === "__proto__" || key === "constructor" || key === "prototype";
 }
 
 function normalizeMetadataKey(key: string): string {
