@@ -32,17 +32,31 @@ declare module "ws" {
   export default ws;
 }
 
-// `@huggingface/transformers` is an optional dependency. Same story.
+// `@huggingface/transformers` is an optional dependency. Same story. The
+// upstream package's `types/transformers.d.ts` is missing from the published
+// tarball, so this ambient module fills in the slot.
 declare module "@huggingface/transformers" {
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  // biome-ignore-start lint/suspicious/noExplicitAny: loose ambient stubs for an optional dep
   export const AutoTokenizer: any;
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export const AutoProcessor: any;
   export const AutoModelForSequenceClassification: any;
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export class Florence2ForConditionalGeneration {
+    static from_pretrained(...args: any[]): Promise<any>;
+    [k: string]: any;
+  }
+  export class Florence2Processor {
+    static from_pretrained(...args: any[]): Promise<any>;
+    [k: string]: any;
+  }
+  export const RawImage: any;
   export const pipeline: any;
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
+  export const env: any;
+  export type PreTrainedTokenizer = any;
+  export type ProgressCallback = any;
+  export type ProgressInfo = any;
+  export type Tensor = any;
   export type TextToAudioPipeline = any;
-  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for an optional dep
   const transformers: any;
   export default transformers;
+  // biome-ignore-end lint/suspicious/noExplicitAny: loose ambient stubs for an optional dep
 }
