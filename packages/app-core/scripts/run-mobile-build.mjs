@@ -2335,9 +2335,7 @@ export function resolveIosCustomPods({
           ],
         ]
       : []),
-    ...(includeLlama && !appStoreBuild
-      ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]]
-      : []),
+    ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
     ...(includeFullBunEngine
       ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
       : []),
@@ -2461,20 +2459,11 @@ function isIosLlamaRequested(env = process.env) {
 }
 
 function shouldIncludeIosLlama(env = process.env) {
-  return !isIosAppStoreBuild(env) && isIosLlamaRequested(env);
-}
-
-function isIosAppStoreLocalRuntimeEnabled(env = process.env) {
-  return !/^(0|false|no|off)$/i.test(
-    String(env.ELIZA_IOS_APP_STORE_LOCAL_RUNTIME ?? "1").trim(),
-  );
+  return isIosLlamaRequested(env);
 }
 
 function shouldIncludeIosFullBunEngine(env = process.env) {
-  return (
-    isFullIosBunEngineRequested(env) ||
-    (isIosAppStoreBuild(env) && isIosAppStoreLocalRuntimeEnabled(env))
-  );
+  return !isIosAppStoreBuild(env) && isFullIosBunEngineRequested(env);
 }
 
 export function isIosAppStoreBuild(env = process.env) {
@@ -4915,7 +4904,6 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
-  setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
     "generic/platform=iOS Simulator",
@@ -4932,9 +4920,6 @@ function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("RUNTIME_MODE", "cloud");
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "cloud");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "cloud");
-  if (isIosAppStoreLocalRuntimeEnabled()) {
-    setDefaultProcessEnv("ELIZA_IOS_FULL_BUN_ENGINE", "1");
-  }
 }
 
 async function buildIos({ local = false } = {}) {
