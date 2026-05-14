@@ -136,7 +136,18 @@ export class TTSManager {
 					"Using legacy plugin-local-ai Transformers.js TTS path; prefer @elizaos/plugin-local-inference for Eliza-1 voice.",
 				);
 				logger.info(`Loading legacy TTS pipeline for model: ${modelName}`);
-				this.synthesizer = await pipeline("text-to-audio", modelName);
+				// The transformers.js `pipeline()` overload returns a discriminated
+				// union of every pipeline kind whose width exceeds TS's
+				// representable union limit (TS2590). Cast through `unknown` to
+				// avoid the explosion; runtime is gated by the task literal
+				// "text-to-audio" so this is always a TextToAudioPipeline.
+				const synth = await (
+					pipeline as unknown as (
+						task: string,
+						model: string,
+					) => Promise<TextToAudioPipeline>
+				)("text-to-audio", modelName);
+				this.synthesizer = synth;
 				logger.success(
 					`TTS pipeline loaded successfully for model: ${modelName}`,
 				);
