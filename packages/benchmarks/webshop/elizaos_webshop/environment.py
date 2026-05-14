@@ -52,14 +52,47 @@ def _patch_search_engine_for_bm25_fallback() -> None:
     string ``{"id": <asin>}``.
     """
     _ensure_upstream_on_path()
+
+    # Determine whether pyserini is usable BEFORE we import the upstream
+    # engine module (which does `from pyserini.search.lucene import
+    # LuceneSearcher` at the top level).
+    pyserini_available = False
+    try:
+        from pyserini.search.lucene import LuceneSearcher  # noqa: F401  # type: ignore[import-not-found]
+        pyserini_available = True
+    except Exception:
+        pyserini_available = False
+
+    if not pyserini_available:
+        # Inject a stub ``pyserini.search.lucene.LuceneSearcher`` into
+        # ``sys.modules`` so the upstream engine module imports cleanly.
+        import types as _types
+
+        if "pyserini" not in sys.modules:
+            sys.modules["pyserini"] = _types.ModuleType("pyserini")
+        if "pyserini.search" not in sys.modules:
+            mod = _types.ModuleType("pyserini.search")
+            sys.modules["pyserini.search"] = mod
+            sys.modules["pyserini"].search = mod  # type: ignore[attr-defined]
+        if "pyserini.search.lucene" not in sys.modules:
+            stub = _types.ModuleType("pyserini.search.lucene")
+
+            class _StubLuceneSearcher:  # noqa: D401 - stub
+                def __init__(self, *args: Any, **kwargs: Any) -> None:
+                    raise RuntimeError(
+                        "pyserini stub: real Lucene index is not available. "
+                        "WebShopEnvironment should never instantiate this; "
+                        "the BM25 fallback is installed by SimServer."
+                    )
+
+            stub.LuceneSearcher = _StubLuceneSearcher  # type: ignore[attr-defined]
+            sys.modules["pyserini.search.lucene"] = stub
+            sys.modules["pyserini.search"].lucene = stub  # type: ignore[attr-defined]
+
     from web_agent_site.engine import engine as _engine  # type: ignore[import-not-found]
 
-    try:
-        # If pyserini imports cleanly, leave it alone.
-        from pyserini.search.lucene import LuceneSearcher  # noqa: F401  # type: ignore[import-not-found]
+    if pyserini_available:
         return
-    except Exception:
-        pass
 
     if getattr(_engine, "_elizaos_bm25_patched", False):
         return

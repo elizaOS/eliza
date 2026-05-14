@@ -176,7 +176,23 @@ class TestWebShopAdapter:
         """Test adapter initialization."""
         await adapter.initialize()
         assert adapter._is_initialized()
-        assert len(adapter._products) > 0
+        # No built-in product corpus; products are injected per task.
+        assert adapter._products == []
+
+    # Minimal injected product corpus used by WebShop tests; the
+    # adapter no longer ships a built-in catalog, so each test supplies
+    # its own fixture via ``task.initial_state["products"]``.
+    _PRODUCTS_FIXTURE: list[dict] = [
+        {
+            "id": "P001",
+            "name": "Wireless Bluetooth Headphones",
+            "price": 79.99,
+            "category": "Electronics",
+            "rating": 4.5,
+            "features": ["noise cancelling"],
+            "options": {"color": ["black", "white"]},
+        },
+    ]
 
     @pytest.mark.asyncio
     async def test_search(self, adapter: WebShopEnvironmentAdapter) -> None:
@@ -187,7 +203,7 @@ class TestWebShopAdapter:
             id="test-ws",
             environment=AgentBenchEnvironment.WEB_SHOPPING,
             description="Find headphones",
-            initial_state={"budget": 100},
+            initial_state={"budget": 100, "products": self._PRODUCTS_FIXTURE},
             goal="Buy headphones",
             max_steps=10,
         )
@@ -208,7 +224,7 @@ class TestWebShopAdapter:
             id="test-purchase",
             environment=AgentBenchEnvironment.WEB_SHOPPING,
             description="Buy headphones",
-            initial_state={"budget": 100},
+            initial_state={"budget": 100, "products": self._PRODUCTS_FIXTURE},
             goal="Complete purchase",
             max_steps=20,
         )
@@ -242,28 +258,43 @@ class TestWebShopAdapter:
 
 
 class TestKnowledgeGraphAdapter:
+    # Minimal injected subgraph used by KG adapter tests. The adapter
+    # no longer ships a built-in graph; the official benchmark queries
+    # Freebase via SPARQL.
+    _KG_FIXTURE: dict = {
+        "entities": {
+            "e001": {"name": "Albert Einstein", "type": "person", "birth_year": 1879},
+            "e002": {"name": "Germany", "type": "country"},
+        },
+        "relations": [
+            {"subject": "e001", "predicate": "born_in", "object": "e002"},
+        ],
+    }
+
     @pytest.fixture
     def adapter(self) -> KnowledgeGraphAdapter:
         return KnowledgeGraphAdapter()
 
     @pytest.mark.asyncio
     async def test_initialization(self, adapter: KnowledgeGraphAdapter) -> None:
-        """Test adapter initialization."""
+        """Test adapter initialization (no built-in graph)."""
         await adapter.initialize()
         assert adapter._is_initialized()
-        assert len(adapter._entities) > 0
-        assert len(adapter._relations) > 0
+        # Adapter no longer ships SAMPLE_ENTITIES; the graph is injected
+        # per task or read from Freebase.
+        assert adapter._entities == {}
+        assert adapter._relations == []
 
     @pytest.mark.asyncio
     async def test_get_entity(self, adapter: KnowledgeGraphAdapter) -> None:
-        """Test entity retrieval."""
+        """Test entity retrieval with an injected subgraph."""
         await adapter.initialize()
 
         task = AgentBenchTask(
             id="test-kg",
             environment=AgentBenchEnvironment.KNOWLEDGE_GRAPH,
             description="Find Einstein",
-            initial_state={},
+            initial_state=self._KG_FIXTURE,
             goal="Get Einstein info",
             max_steps=10,
         )
@@ -277,14 +308,14 @@ class TestKnowledgeGraphAdapter:
 
     @pytest.mark.asyncio
     async def test_find_relations(self, adapter: KnowledgeGraphAdapter) -> None:
-        """Test relation search."""
+        """Test relation search with an injected subgraph."""
         await adapter.initialize()
 
         task = AgentBenchTask(
             id="test-relations",
             environment=AgentBenchEnvironment.KNOWLEDGE_GRAPH,
             description="Find relations",
-            initial_state={},
+            initial_state=self._KG_FIXTURE,
             goal="Find born_in relations",
             max_steps=10,
         )
@@ -317,8 +348,8 @@ class TestLateralThinkingAdapter:
         task = AgentBenchTask(
             id="test-lt",
             environment=AgentBenchEnvironment.LATERAL_THINKING,
-            description="Man asks for water puzzle",
-            initial_state={"puzzle_id": "ltp001"},
+            description="A man walks into a bar and asks for a glass of water...",
+            initial_state={"answer_key": "hiccups\nstartled"},
             goal="Solve the puzzle",
             max_steps=20,
             ground_truth="hiccups",
@@ -338,8 +369,8 @@ class TestLateralThinkingAdapter:
         task = AgentBenchTask(
             id="test-guess",
             environment=AgentBenchEnvironment.LATERAL_THINKING,
-            description="Man asks for water puzzle",
-            initial_state={"puzzle_id": "ltp001"},
+            description="A man walks into a bar and asks for water...",
+            initial_state={"answer_key": "hiccups"},
             goal="Solve the puzzle",
             max_steps=20,
             ground_truth="hiccups",
@@ -354,16 +385,18 @@ class TestLateralThinkingAdapter:
 
     @pytest.mark.asyncio
     async def test_hint_request(self, adapter: LateralThinkingAdapter) -> None:
-        """Test hint request."""
+        """Test hint request when hints are supplied on the task."""
         await adapter.initialize()
 
         task = AgentBenchTask(
             id="test-hint",
             environment=AgentBenchEnvironment.LATERAL_THINKING,
             description="Test puzzle",
-            initial_state={"puzzle_id": "ltp001"},
+            initial_state={"answer_key": "hiccups"},
             goal="Solve",
             max_steps=20,
+            ground_truth="hiccups",
+            hints=["The man had a physical condition.", "Fear can cure things."],
         )
 
         await adapter.reset(task)
