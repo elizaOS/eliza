@@ -296,7 +296,11 @@ export function compositePressureSource(
 	opts: { now?: () => number } = {},
 ): MemoryPressureSource {
 	const now = opts.now ?? (() => Date.now());
-	const lastBySource = new Map<string, MemoryPressureEvent>();
+	// Index by position rather than by `source.id` — two underlying sources of
+	// the same kind (e.g. two `capacitor` bridges) must each get their own
+	// slot, otherwise the second one overwrites the first and we lose visibility
+	// into the first source's level.
+	const latestBySlot: (MemoryPressureEvent | null)[] = sources.map(() => null);
 	const listeners = new Set<MemoryPressureListener>();
 	const subs: Array<() => void> = [];
 
@@ -304,7 +308,8 @@ export function compositePressureSource(
 		let level: MemoryPressureLevel = "nominal";
 		let freeMb: number | undefined;
 		let totalMb: number | undefined;
-		for (const e of lastBySource.values()) {
+		for (const e of latestBySlot) {
+			if (!e) continue;
 			if (rank(e.level) > rank(level)) {
 				level = e.level;
 				freeMb = e.freeMb;
@@ -338,8 +343,8 @@ export function compositePressureSource(
 	let started = false;
 	let lastLevel: MemoryPressureLevel | null = null;
 
-	const handle = (e: MemoryPressureEvent): void => {
-		lastBySource.set(e.source, e);
+	const handleAt = (slot: number) => (e: MemoryPressureEvent) => {
+		latestBySlot[slot] = e;
 		const w = worst();
 		if (lastLevel === w.level) return;
 		lastLevel = w.level;
@@ -362,10 +367,10 @@ export function compositePressureSource(
 		start() {
 			if (started) return;
 			started = true;
-			for (const s of sources) {
+			sources.forEach((s, idx) => {
 				s.start();
-				subs.push(s.subscribe(handle));
-			}
+				subs.push(s.subscribe(handleAt(idx)));
+			});
 		},
 		stop() {
 			if (!started) return;
@@ -379,7 +384,7 @@ export function compositePressureSource(
 				}
 			}
 			for (const s of sources) s.stop();
-			lastBySource.clear();
+			for (let i = 0; i < latestBySlot.length; i++) latestBySlot[i] = null;
 			lastLevel = null;
 		},
 		current(): MemoryPressureEvent {
