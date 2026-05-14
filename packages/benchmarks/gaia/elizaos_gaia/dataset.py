@@ -18,11 +18,21 @@ from elizaos_gaia.types import (
 
 logger = logging.getLogger(__name__)
 
-# HuggingFace dataset info
+# HuggingFace dataset info.
+#
+# Upstream gaia-benchmark/GAIA migrated to parquet in October 2025
+# (see https://huggingface.co/datasets/gaia-benchmark/GAIA). The current
+# layout exposes per-level parquet files plus a combined metadata.parquet
+# under 2023/<split>/. We prefer parquet but fall back to the legacy
+# metadata.jsonl path for older cached snapshots.
 DATASET_REPO = "gaia-benchmark/GAIA"
 DATASET_FILES = {
     "validation": "2023/validation/metadata.jsonl",
     "test": "2023/test/metadata.jsonl",
+}
+DATASET_PARQUET_FILES = {
+    "validation": "2023/validation/metadata.parquet",
+    "test": "2023/test/metadata.parquet",
 }
 
 
@@ -113,12 +123,21 @@ class GAIADataset:
 
             self._files_dir = Path(dataset_dir) / "2023" / split
 
-            # Load metadata
-            metadata_path = self._files_dir / "metadata.jsonl"
-            if not metadata_path.exists():
-                raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
-
-            questions = await self._parse_metadata(metadata_path)
+            # Prefer the current parquet layout; fall back to the legacy
+            # metadata.jsonl path for older cached snapshots.
+            parquet_path = self._files_dir / "metadata.parquet"
+            jsonl_path = self._files_dir / "metadata.jsonl"
+            if parquet_path.exists():
+                questions = await self._parse_metadata_parquet(parquet_path)
+            elif jsonl_path.exists():
+                logger.info(
+                    "Loading legacy JSONL metadata (parquet not found in snapshot)"
+                )
+                questions = await self._parse_metadata(jsonl_path)
+            else:
+                raise FileNotFoundError(
+                    f"Metadata file not found: tried {parquet_path} and {jsonl_path}"
+                )
 
             if split == "validation":
                 self.validation_set = questions
@@ -212,7 +231,7 @@ class GAIADataset:
 
         return [self._parse_question(item) for item in sample]
     async def _parse_metadata(self, metadata_path: Path) -> list[GAIAQuestion]:
-        """Parse metadata JSONL file into GAIAQuestion objects."""
+        """Parse metadata JSONL file into GAIAQuestion objects (legacy layout)."""
         questions: list[GAIAQuestion] = []
 
         with open(metadata_path, encoding="utf-8") as f:
@@ -224,6 +243,37 @@ class GAIADataset:
                 question = self._parse_question(data)
                 questions.append(question)
 
+        return questions
+
+    async def _parse_metadata_parquet(
+        self, metadata_path: Path
+    ) -> list[GAIAQuestion]:
+        """Parse the current parquet metadata layout into GAIAQuestion objects.
+
+        Uses pandas (already a dependency) to read the parquet file rather
+        than pulling in the optional ``datasets`` library.
+        """
+        try:
+            import pandas as pd
+        except ImportError as exc:
+            raise RuntimeError(
+                "pandas is required to read GAIA parquet metadata. "
+                "Install pandas (already a declared dependency)."
+            ) from exc
+
+        df = pd.read_parquet(metadata_path)
+        questions: list[GAIAQuestion] = []
+        for row in df.to_dict(orient="records"):
+            # Annotator Metadata may come back as a nested dict / NaN; normalize.
+            meta = row.get("Annotator Metadata")
+            if meta is not None and not isinstance(meta, dict):
+                try:
+                    # pandas may surface structs as numpy/record-like objects.
+                    meta = dict(meta)
+                except (TypeError, ValueError):
+                    meta = None
+                row["Annotator Metadata"] = meta
+            questions.append(self._parse_question(row))
         return questions
 
     def _parse_question(self, data: dict[str, object]) -> GAIAQuestion:

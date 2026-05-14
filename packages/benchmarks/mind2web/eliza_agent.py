@@ -19,8 +19,11 @@ from typing import Any
 
 from benchmarks.mind2web.types import (
     Mind2WebAction,
+    Mind2WebActionStep,
     Mind2WebConfig,
+    Mind2WebElement,
     Mind2WebOperation,
+    Mind2WebRankerMode,
     Mind2WebTask,
 )
 

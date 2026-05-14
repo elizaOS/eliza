@@ -7,6 +7,7 @@ Evaluates agent predictions against ground truth actions.
 from __future__ import annotations
 
 import logging
+import math
 
 from benchmarks.mind2web.types import (
     Mind2WebAction,
@@ -39,6 +40,7 @@ class Mind2WebEvaluator:
         *,
         trial_number: int = 1,
         latency_ms: float = 0.0,
+        ranker_recalls: list[float] | None = None,
     ) -> Mind2WebResult:
         """Evaluate agent predictions for a task.
 
@@ -47,6 +49,9 @@ class Mind2WebEvaluator:
             predictions: Agent's predicted actions
             trial_number: Trial number for this evaluation
             latency_ms: Total latency for the task
+            ranker_recalls: Per-step Recall@K from the stage-1 ranker (NaN if
+                the ranker was not invoked for that step). Aggregated into the
+                task-level ``ranker_recall_at_k``.
 
         Returns:
             Mind2WebResult with evaluation metrics
@@ -62,6 +67,8 @@ class Mind2WebEvaluator:
             predicted = predictions[i] if i < len(predictions) else None
 
             step_result = self._evaluate_step(i, predicted, ground_truth)
+            if ranker_recalls is not None and i < len(ranker_recalls):
+                step_result.ranker_recall_at_k = ranker_recalls[i]
             step_results.append(step_result)
 
             if step_result.element_correct:
@@ -78,6 +85,12 @@ class Mind2WebEvaluator:
         # Task is successful if all steps are correct
         success = step_correct_count == total_steps and total_steps > 0
 
+        if ranker_recalls:
+            valid = [r for r in ranker_recalls if not math.isnan(r)]
+            task_recall = sum(valid) / len(valid) if valid else float("nan")
+        else:
+            task_recall = float("nan")
+
         return Mind2WebResult(
             task_id=task.annotation_id,
             instruction=task.confirmed_task,
@@ -93,6 +106,7 @@ class Mind2WebEvaluator:
             step_results=step_results,
             latency_ms=latency_ms,
             agent_trajectory=list(predictions),
+            ranker_recall_at_k=task_recall,
         )
 
     def _evaluate_step(
@@ -253,10 +267,17 @@ class Mind2WebEvaluator:
 
         n = len(results)
 
+        # Ranker Recall@K aggregated across results that actually ran the ranker.
+        recall_values = [
+            r.ranker_recall_at_k for r in results if not math.isnan(r.ranker_recall_at_k)
+        ]
+        avg_recall = sum(recall_values) / len(recall_values) if recall_values else float("nan")
+
         return {
             "overall_element_accuracy": total_element_acc / n,
             "overall_operation_accuracy": total_operation_acc / n,
             "overall_step_accuracy": total_step_acc / n,
             "overall_task_success_rate": total_success / n,
             "average_latency_ms": total_latency / n,
+            "overall_ranker_recall_at_k": avg_recall,
         }
