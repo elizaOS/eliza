@@ -56,6 +56,66 @@ function gap(where, message) {
   findings.push({ kind: "gap", where, message });
 }
 
+/**
+ * Asserts that an imagegen artifact entry has either a real download URL
+ * (HTTP/HTTPS) or an explicit `staged: true` marker with a build plan.
+ * Entries that have neither are publishing-pipeline gaps: the validator
+ * cannot prove the file will exist at install time.
+ *
+ * Surfaces missing URLs as hard errors so CI fails until either the
+ * upstream HF URL is known or the in-house build plan is committed.
+ */
+function assertPublishingState(where, entry) {
+  const hasUrl =
+    typeof entry?.url === "string" &&
+    /^https?:\/\//i.test(entry.url.trim());
+  const staged = entry?.staged === true;
+  if (!hasUrl && !staged) {
+    err(
+      where,
+      "missing publishing state: entry needs either a `url` (https://...) or `staged: true` with a `buildPlan`",
+    );
+    return;
+  }
+  if (hasUrl && staged) {
+    err(
+      where,
+      "ambiguous publishing state: entry is both `staged: true` and has a `url`. Pick one — staged entries are not yet downloadable.",
+    );
+    return;
+  }
+  if (staged) {
+    const plan = entry.buildPlan;
+    if (!plan || typeof plan !== "object") {
+      err(
+        where,
+        "staged entry missing `buildPlan` object",
+      );
+      return;
+    }
+    for (const key of ["tool", "source", "command"]) {
+      if (typeof plan[key] !== "string" || !plan[key].trim()) {
+        err(
+          where,
+          `staged entry buildPlan.${key} must be a non-empty string`,
+        );
+        return;
+      }
+    }
+  }
+  if (hasUrl && entry.sha256 !== undefined) {
+    if (
+      typeof entry.sha256 !== "string" ||
+      !/^[0-9a-f]{64}$/i.test(entry.sha256.trim())
+    ) {
+      gap(
+        where,
+        "optional `sha256` field is present but not a 64-char hex digest; the installer will skip verification (consider fixing or removing)",
+      );
+    }
+  }
+}
+
 function readJson(absPath, label) {
   if (!fs.existsSync(absPath)) {
     err(label, `file missing: ${absPath}`);
@@ -195,12 +255,33 @@ if (extras && catalogFacts) {
         "extras.imagegen",
         `tier "${tierId}" missing default.file`,
       );
+    } else {
+      assertPublishingState(
+        `extras.imagegen.${tierId}.default`,
+        entry.default,
+      );
     }
     if (!Array.isArray(entry?.optional)) {
       err(
         "extras.imagegen",
         `tier "${tierId}" optional is not an array`,
       );
+    } else {
+      for (let i = 0; i < entry.optional.length; i += 1) {
+        const opt = entry.optional[i];
+        const optId = typeof opt?.id === "string" ? opt.id : `#${i}`;
+        if (!opt?.file) {
+          err(
+            "extras.imagegen",
+            `tier "${tierId}" optional "${optId}" missing file`,
+          );
+          continue;
+        }
+        assertPublishingState(
+          `extras.imagegen.${tierId}.optional.${optId}`,
+          opt,
+        );
+      }
     }
   }
 

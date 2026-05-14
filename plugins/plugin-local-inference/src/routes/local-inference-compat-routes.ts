@@ -13,6 +13,7 @@
 
 import type http from "node:http";
 import {
+	CandidateModelActivationError,
 	type KvOffloadMode,
 	type LocalInferenceLoadOverrides,
 	validateLocalInferenceLoadArgs,
@@ -687,6 +688,21 @@ export async function handleLocalInferenceCompatRoutes(
 			);
 			sendJsonResponse(res, 200, active);
 		} catch (err) {
+			// #7679: refuse to activate a candidate-only / weights-staged
+			// bundle whose manifest reports `evals.textEval.passed=false`.
+			// Surface the structured payload (modelId, manifestVersion,
+			// failedEvals) verbatim so the UI can render an actionable
+			// "this tier isn't ready" message instead of `[unused]` tokens
+			// downstream.
+			if (err instanceof CandidateModelActivationError) {
+				sendJsonResponse(res, 422, {
+					error: err.message,
+					modelId: err.modelId,
+					manifestVersion: err.manifestVersion,
+					failedEvals: err.failedEvals,
+				});
+				return true;
+			}
 			sendJsonErrorResponse(
 				res,
 				400,
