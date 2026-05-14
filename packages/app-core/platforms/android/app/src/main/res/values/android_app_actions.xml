@@ -21,12 +21,16 @@
     </string-array>
     <string-array name="app_action_daily_brief_features">
         <item>daily brief</item>
+        <item>daily briefing</item>
+        <item>lifeops daily brief</item>
         <item>briefing</item>
         <item>recap</item>
     </string-array>
     <string-array name="app_action_tasks_features">
+        <item>task</item>
         <item>tasks</item>
         <item>lifeops tasks</item>
         <item>reminders</item>
+        <item>to do</item>
     </string-array>
 </resources>

@@ -36,6 +36,12 @@ The installer copies the handoff helper to:
 ~/Library/Application Support/elizaOS/Shortcuts/eliza-assistant-handoff.sh
 ```
 
+It also installs a verifier at:
+
+```text
+~/Library/Application Support/elizaOS/Shortcuts/verify-eliza-shortcuts.sh
+```
+
 Then create the Shortcut in the macOS Shortcuts app:
 
 1. Create a new Shortcut named `Ask Eliza`.
@@ -65,6 +71,12 @@ Dry-run URL construction:
 printf 'remind me to stand up in 20 minutes' | "$HOME/Library/Application Support/elizaOS/Shortcuts/eliza-assistant-handoff.sh" --dry-run
 ```
 
+Installed helper verification:
+
+```sh
+"$HOME/Library/Application Support/elizaOS/Shortcuts/verify-eliza-shortcuts.sh"
+```
+
 Live app handoff, with the Electrobun app installed or running:
 
 ```sh
@@ -74,6 +86,7 @@ printf 'remind me to stand up in 20 minutes' | "$HOME/Library/Application Suppor
 Shortcut execution after manual creation:
 
 ```sh
+"$HOME/Library/Application Support/elizaOS/Shortcuts/verify-eliza-shortcuts.sh" --require-shortcut
 printf 'remind me to stand up in 20 minutes' | shortcuts run "Ask Eliza" --input-path -
 ```
 

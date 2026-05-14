@@ -227,6 +227,7 @@ export function buildMetric(args: {
     tokens_per_second: tps,
     skip_ratio: skipRatio,
     raw_output: args.result.rawOutput,
+    warnings: args.result.warnings,
     error: args.result.error,
   };
 }

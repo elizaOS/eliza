@@ -687,6 +687,26 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		);
 	});
 
+	it("falls back when alternation is not explicitly grouped", () => {
+		clearResponseGrammarCache();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("ALT", {
+				parameters: [
+					{
+						name: "id",
+						description: "task id",
+						required: true,
+						schema: { type: "string", pattern: "^foo|bar$" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_ALT_p_id ::= "\\"id\\":" jsonstring/,
+		);
+	});
+
 	it("recurses into object-typed properties with declared sub-properties", () => {
 		// Mirrors paymentContext in real actions: object with enum-typed
 		// sub-properties. The strict grammar should pin the sub-property

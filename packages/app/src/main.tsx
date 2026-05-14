@@ -99,12 +99,12 @@ import {
 } from "./app-config";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
-import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 
 declare global {
   interface Window {

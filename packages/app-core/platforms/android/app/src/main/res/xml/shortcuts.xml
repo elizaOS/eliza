@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <capability android:name="actions.intent.OPEN_APP_FEATURE">
-        <intent>
+        <intent android:action="android.intent.action.VIEW">
             <url-template android:value="eliza://assistant/open?source=android-app-actions{&amp;feature}" />
             <parameter
                 android:name="feature"
@@ -10,20 +10,20 @@
     </capability>
 
     <capability android:name="actions.intent.CREATE_MESSAGE">
-        <intent>
+        <intent android:action="android.intent.action.VIEW">
             <url-template android:value="eliza://chat?source=android-app-actions&amp;action=ask{&amp;text}" />
             <parameter
                 android:name="message.text"
                 android:key="text"
                 android:required="true" />
         </intent>
-        <intent>
+        <intent android:action="android.intent.action.VIEW">
             <url-template android:value="eliza://chat?source=android-app-actions&amp;action=chat" />
         </intent>
     </capability>
 
     <capability android:name="actions.intent.CREATE_THING">
-        <intent>
+        <intent android:action="android.intent.action.VIEW">
             <url-template android:value="eliza://lifeops/task/new?source=android-app-actions{&amp;title,description}" />
             <parameter
                 android:name="thing.name"
@@ -33,20 +33,20 @@
                 android:name="thing.description"
                 android:key="description" />
         </intent>
-        <intent>
+        <intent android:action="android.intent.action.VIEW">
             <url-template android:value="eliza://lifeops/task/new?source=android-app-actions" />
         </intent>
     </capability>
 
     <capability android:name="actions.intent.GET_THING">
-        <intent>
+        <intent android:action="android.intent.action.VIEW">
             <url-template android:value="eliza://chat?source=android-app-actions&amp;action=ask{&amp;query}" />
             <parameter
                 android:name="thing.name"
                 android:key="query"
                 android:required="true" />
         </intent>
-        <intent>
+        <intent android:action="android.intent.action.VIEW">
             <url-template android:value="eliza://chat?source=android-app-actions&amp;action=ask" />
         </intent>
     </capability>

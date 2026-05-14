@@ -185,6 +185,18 @@ function assertJsonStringArrayIncludes(value, expected, label) {
   }
 }
 
+function assertJsonValue(value, expected, label) {
+  if (value !== expected) {
+    fail(`${label} must be ${expected}; found ${String(value)}`);
+  }
+}
+
+function assertSourceIncludes(source, needle, label) {
+  if (!source.includes(needle)) {
+    fail(`${label} is missing ${needle}`);
+  }
+}
+
 function run(command, args) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
@@ -492,6 +504,66 @@ export function validateProductLayer(vendorDir, brand) {
     ["android.intent.action.ASSIST", "android.intent.action.VOICE_COMMAND"],
     "AOSP capability manifest assistantEntryPoints",
   );
+  assertJsonValue(
+    capabilityManifest.assistantResolution?.role,
+    "android.app.role.ASSISTANT",
+    "AOSP capability manifest assistantResolution.role",
+  );
+  assertJsonValue(
+    capabilityManifest.assistantResolution?.defaultHolderResource,
+    "config_defaultAssistant",
+    "AOSP capability manifest assistantResolution.defaultHolderResource",
+  );
+  assertJsonValue(
+    capabilityManifest.assistantResolution?.defaultHolder,
+    brand.packageName,
+    "AOSP capability manifest assistantResolution.defaultHolder",
+  );
+  assertJsonValue(
+    capabilityManifest.assistantResolution?.activity,
+    `${brand.packageName}.${brand.classPrefix}AssistActivity`,
+    "AOSP capability manifest assistantResolution.activity",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.assistantResolution?.intentActions,
+    ["android.intent.action.ASSIST", "android.intent.action.VOICE_COMMAND"],
+    "AOSP capability manifest assistantResolution.intentActions",
+  );
+  assertJsonValue(
+    capabilityManifest.directBoot?.receiver,
+    `${brand.classPrefix}BootReceiver`,
+    "AOSP capability manifest directBoot.receiver",
+  );
+  assertJsonValue(
+    capabilityManifest.directBoot?.directBootAware,
+    true,
+    "AOSP capability manifest directBoot.directBootAware",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.directBoot?.actions,
+    [
+      "android.intent.action.LOCKED_BOOT_COMPLETED",
+      "android.intent.action.BOOT_COMPLETED",
+      "android.intent.action.MY_PACKAGE_REPLACED",
+    ],
+    "AOSP capability manifest directBoot.actions",
+  );
+  for (const service of [
+    ["ElizaAgentService", "specialUse"],
+    ["GatewayConnectionService", "dataSync"],
+    ["ElizaVoiceCaptureService", "microphone"],
+    ["ScreenCapture", "mediaProjection"],
+  ]) {
+    const [component, type] = service;
+    const found = capabilityManifest.foregroundServices?.some(
+      (entry) => entry?.component === component && entry?.type === type,
+    );
+    if (!found) {
+      fail(
+        `AOSP capability manifest foregroundServices is missing ${component}/${type}`,
+      );
+    }
+  }
   assertJsonStringArrayIncludes(
     capabilityManifest.privilegedPermissions,
     privilegedPermissions,
@@ -513,13 +585,92 @@ export function validateProductLayer(vendorDir, brand) {
     "screenCapture",
     "inputControl",
     "appInventory",
+    "voiceCommand",
   ]) {
     if (!capabilityManifest.capabilityDeclarations?.[capability]) {
       fail(`AOSP capability manifest is missing ${capability} declaration`);
     }
   }
+  assertJsonValue(
+    capabilityManifest.systemImageRequirements?.installPath,
+    `/system/priv-app/${brand.appName}/${brand.appName}.apk`,
+    "AOSP capability manifest systemImageRequirements.installPath",
+  );
+  assertJsonValue(
+    capabilityManifest.systemImageRequirements?.soong?.privileged,
+    true,
+    "AOSP capability manifest systemImageRequirements.soong.privileged",
+  );
+  assertJsonValue(
+    capabilityManifest.systemImageRequirements?.soong?.certificate,
+    "platform",
+    "AOSP capability manifest systemImageRequirements.soong.certificate",
+  );
   if (capabilityManifest.playStorePolicy?.stripTarget !== "android-cloud") {
     fail("AOSP capability manifest must route Play-safe stripping to android-cloud");
+  }
+  if (capabilityManifest.playStorePolicy?.allowed !== false) {
+    fail("AOSP capability manifest playStorePolicy.allowed must be false");
+  }
+  assertJsonStringArrayIncludes(
+    capabilityManifest.playStorePolicy?.mustStripComponents,
+    [
+      "ElizaAgentService",
+      "ElizaAssistActivity",
+      "ElizaBootReceiver",
+      "ElizaVoiceCaptureService",
+    ],
+    "AOSP capability manifest playStorePolicy.mustStripComponents",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.playStorePolicy?.mustStripPermissions,
+    [
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+      "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+      "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+      "android.permission.PACKAGE_USAGE_STATS",
+      "android.permission.MANAGE_APP_OPS_MODES",
+      "android.permission.MANAGE_VIRTUAL_MACHINE",
+      "android.permission.READ_FRAME_BUFFER",
+      "android.permission.INJECT_EVENTS",
+      "android.permission.REAL_GET_TASKS",
+    ],
+    "AOSP capability manifest playStorePolicy.mustStripPermissions",
+  );
+  assertJsonStringArrayIncludes(
+    capabilityManifest.playStorePolicy?.mustStripPlugins,
+    [
+      "@elizaos/capacitor-agent",
+      "@elizaos/capacitor-bun-runtime",
+      "@elizaos/capacitor-screencapture",
+      "@elizaos/capacitor-system",
+    ],
+    "AOSP capability manifest playStorePolicy.mustStripPlugins",
+  );
+
+  const mobileBuildScript = read(
+    path.join(repoRoot, "packages", "app-core", "scripts", "run-mobile-build.mjs"),
+  );
+  for (const component of capabilityManifest.playStorePolicy.mustStripComponents) {
+    assertSourceIncludes(
+      mobileBuildScript,
+      `"${component}"`,
+      "android-cloud stripped component policy",
+    );
+  }
+  for (const permission of capabilityManifest.playStorePolicy.mustStripPermissions) {
+    assertSourceIncludes(
+      mobileBuildScript,
+      `"${permission.replace("android.permission.", "")}"`,
+      "android-cloud stripped permission policy",
+    );
+  }
+  for (const plugin of capabilityManifest.playStorePolicy.mustStripPlugins) {
+    assertSourceIncludes(
+      mobileBuildScript,
+      `"${plugin}"`,
+      "android-cloud stripped native plugin policy",
+    );
   }
 
   const obsoleteRoleFiles = findFiles(vendorDir, (file) =>

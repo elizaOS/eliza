@@ -255,7 +255,7 @@ function compileSimplePatternToGbnf(pattern: string): string | null {
 		index: 1,
 		end: pattern.length - 1,
 	};
-	const parsed = parseSimpleRegexAlternation(state, false);
+	const parsed = parseSimpleRegexSequence(state, false);
 	if (parsed === null || state.index !== state.end) return null;
 	return compileSimpleRegexNode(parsed);
 }

@@ -96,6 +96,8 @@ export interface CaseMetric {
   skip_ratio?: number;
   /** Raw text the mode returned, for debugging. */
   raw_output?: string;
+  /** Non-fatal generation diagnostics, such as fallback path usage. */
+  warnings?: string[];
   /** Error message when the mode threw / produced no output. */
   error?: string;
 }
@@ -204,6 +206,8 @@ export interface ModeResult {
   firstTokenLatencyMs: number | null;
   totalLatencyMs: number;
   tokensGenerated: number;
+  /** Non-fatal generation diagnostics, such as fallback path usage. */
+  warnings?: string[];
   error?: string;
   /** Optional: skeleton used (for skip_ratio computation). */
   _skeleton?: unknown;
