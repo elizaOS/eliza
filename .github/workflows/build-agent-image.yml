@@ -97,16 +97,24 @@ jobs:
           fi
           rm -f "$install_log"
 
-      - name: Materialize @types packages
-        # Belt-and-suspenders: even with postinstall enabled, the
-        # `@types/*` packages occasionally end up in Bun's virtual store
-        # rather than under `node_modules/@types/*`. The per-plugin `tsc`
-        # declaration step trips `TS2688: Cannot find type definition file
-        # for 'bun' / 'node'` when that happens. Run the same script
-        # `docker-ci-smoke.sh` runs after install to be safe.
+      - name: Apply postinstall patches
+        # Belt-and-suspenders for the postinstall path: even with
+        # `bun install` (postinstall enabled), the silent fallback that
+        # kicks in when frozen-lockfile drifts doesn't always re-run the
+        # repo postinstall in CI. Explicitly run the patches the
+        # per-plugin builds depend on:
+        #   - patch-tsup-dts.mjs: rewires tsup's runtime require to
+        #     @rollup/wasm-node AND wraps the resulting `await` calls in
+        #     async functions. Without this patch tsup's worker thread
+        #     crashes with `SyntaxError: await is only valid in async
+        #     functions` (CJS file with top-level await) the moment any
+        #     plugin tries to emit .d.ts via tsup.
+        #   - ensure-type-package-aliases: materializes @types/* under
+        #     node_modules/@types so `tsc --build` resolves them.
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
+          bun scripts/patch-tsup-dts.mjs || true
           node packages/app-core/scripts/ensure-type-package-aliases.mjs
 
       - name: Build workspace plugins
