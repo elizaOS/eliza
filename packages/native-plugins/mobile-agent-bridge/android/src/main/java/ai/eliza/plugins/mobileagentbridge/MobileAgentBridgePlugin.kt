@@ -27,6 +27,7 @@ class MobileAgentBridgePlugin : Plugin() {
     private var relayUrl: String? = null
     private var deviceId: String? = null
     private var pairingToken: String? = null
+    private var localAgentApiBase: String = DEFAULT_LOCAL_AGENT_API_BASE
     private var state: String = "idle"
     private var lastError: String? = null
 
@@ -47,6 +48,16 @@ class MobileAgentBridgePlugin : Plugin() {
         relayUrl = relay
         deviceId = id
         pairingToken = call.getString("pairingToken")?.trim()?.takeIf { it.isNotEmpty() }
+        val localBase = call.getString("localAgentApiBase")?.trim()?.takeIf { it.isNotEmpty() }
+        localAgentApiBase = if (localBase == null) {
+            DEFAULT_LOCAL_AGENT_API_BASE
+        } else {
+            normalizeLocalAgentApiBase(localBase) ?: run {
+                transition("error", "Invalid localAgentApiBase: $localBase")
+                call.resolve(status())
+                return
+            }
+        }
 
         val url = buildRelayUrl(relay, id, pairingToken)
         if (url == null) {
@@ -105,6 +116,7 @@ class MobileAgentBridgePlugin : Plugin() {
         relayUrl = null
         deviceId = null
         pairingToken = null
+        localAgentApiBase = DEFAULT_LOCAL_AGENT_API_BASE
         state = "idle"
         lastError = null
         if (notify) notifyListeners("stateChange", JSObject().apply { put("state", "idle") })
@@ -124,6 +136,7 @@ class MobileAgentBridgePlugin : Plugin() {
             put("state", state)
             put("relayUrl", relayUrl)
             put("deviceId", deviceId)
+            put("localAgentApiBase", localAgentApiBase)
             put("lastError", lastError)
         }
     }
@@ -198,7 +211,7 @@ class MobileAgentBridgePlugin : Plugin() {
         val timeoutMs = frame.optInt("timeoutMs", frame.optInt("timeout_ms", 30_000))
             .coerceIn(1_000, 120_000)
         val body = frame.opt("body")?.takeUnless { it == JSONObject.NULL }?.toString()
-        val url = URL("http://127.0.0.1:31337$path")
+        val url = URL("${localAgentApiBase.trimEnd('/')}$path")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             requestMethod = method
             connectTimeout = timeoutMs
@@ -272,5 +285,23 @@ class MobileAgentBridgePlugin : Plugin() {
 
     private fun sendFrame(frame: JSONObject) {
         socket?.send(frame.toString())
+    }
+
+    private fun normalizeLocalAgentApiBase(raw: String): String? {
+        return try {
+            val uri = Uri.parse(raw)
+            val scheme = uri.scheme?.lowercase(Locale.US)
+            val host = uri.host?.lowercase(Locale.US)
+            if (scheme != "http") return null
+            if (host !in setOf("127.0.0.1", "localhost", "10.0.2.2")) return null
+            val port = if (uri.port > 0) ":${uri.port}" else ""
+            "http://$host$port"
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private companion object {
+        private const val DEFAULT_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337"
     }
 }
