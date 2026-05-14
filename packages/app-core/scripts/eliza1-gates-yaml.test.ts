@@ -17,7 +17,7 @@ describe("eliza1_gates.yaml", () => {
   >;
 
   // Loaded lazily to avoid a static boundary violation from scripts/ into plugin packages.
-  let ELIZA_1_TIERS: readonly string[];
+  let ELIZA_1_TIERS: readonly string[] = [];
   beforeAll(async () => {
     const mod = await import("@elizaos/plugin-local-inference/services");
     ELIZA_1_TIERS = mod.ELIZA_1_TIERS;
