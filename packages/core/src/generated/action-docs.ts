@@ -7396,7 +7396,7 @@ export const allActionsSpec = {
 		{
 			name: "TASKS",
 			description:
-				"Single planner-visible surface for the orchestrator's task-agent and workspace lifecycle. ",
+				"Orchestrator surface for delegating coding work to dedicated sub-agents (claude / codex / opencode / gemini / aider). ",
 			parameters: [
 				{
 					name: "action",
@@ -7893,7 +7893,7 @@ export const allActionsSpec = {
 				},
 			],
 			descriptionCompressed:
-				"tasks: action=create|spawn_agent|send|stop_agent|list_agents|cancel|history|control|share|provision_workspace|submit_workspace|manage_issues|archive|reopen",
+				"delegate coding work to a sub-agent (claude/codex/opencode/gemini/aider). action=spawn_agent for new work, send to talk to one, control to pause/resume, list_agents/history to read state",
 			similes: [
 				"CREATE_AGENT_TASK",
 				"CREATE_TASK",

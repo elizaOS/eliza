@@ -1702,7 +1702,10 @@ export class LocalInferenceEngine {
 		}
 	}
 
-	async synthesizeSpeech(text: string, signal?: AbortSignal): Promise<Uint8Array> {
+	async synthesizeSpeech(
+		text: string,
+		signal?: AbortSignal,
+	): Promise<Uint8Array> {
 		this.markActivity();
 		const bridge = this.requireVoiceBridge("synthesize speech");
 		if ((bridge.backend as { id?: string }).id === "stub") {
@@ -1750,9 +1753,25 @@ export class LocalInferenceEngine {
 		).playFirstAudioFiller();
 	}
 
-	async transcribePcm(args: TranscriptionAudio): Promise<string> {
+	async transcribePcm(
+		args: TranscriptionAudio,
+		signal?: AbortSignal,
+	): Promise<string> {
 		this.markActivity();
-		return this.requireVoiceBridge("transcribe audio").transcribePcm(args);
+		if (signal?.aborted) {
+			throw signal.reason instanceof Error
+				? signal.reason
+				: new DOMException("Aborted", "AbortError");
+		}
+		const transcript = await this.requireVoiceBridge(
+			"transcribe audio",
+		).transcribePcm(args, signal);
+		if (signal?.aborted) {
+			throw signal.reason instanceof Error
+				? signal.reason
+				: new DOMException("Aborted", "AbortError");
+		}
+		return transcript;
 	}
 
 	/**

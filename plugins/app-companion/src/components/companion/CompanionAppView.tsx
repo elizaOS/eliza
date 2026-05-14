@@ -11,14 +11,7 @@ import {
   usePtySessions,
   useRenderGuard,
 } from "@elizaos/ui";
-import {
-  memo,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { memo, Suspense, useCallback, useMemo, useState } from "react";
 import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { CompanionSettingsPanel } from "./CompanionSettingsPanel";

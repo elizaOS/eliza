@@ -21,6 +21,11 @@
 	# elizaOS/omnivoice.cpp. Initialized by postinstall via
 	# scripts/ensure-omnivoice-submodule.mjs. CMakeLists.txt probed by
 	# build-omnivoice.mjs. build/ is gitignored so only the gitlink is tracked.
+	#
+	# Tracks elizaOS/omnivoice.cpp `master` (the fork's primary branch — there
+	# is no `develop` branch on the elizaOS fork). The fused libelizainference
+	# build (packages/app-core/scripts/omnivoice-fuse/) grafts sources from
+	# this tree into the llama.cpp fork at fuse time.
 	path = plugins/plugin-local-inference/native/omnivoice.cpp
 	url = https://github.com/elizaOS/omnivoice.cpp.git
-	branch = develop
+	branch = master

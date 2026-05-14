@@ -12,6 +12,7 @@ import {
 	ModelType,
 	type PromptSegment,
 	type ResponseSkeleton,
+	type SpanSamplerPlan,
 	type TextGenerationModelType,
 	type ToolCall,
 	type ToolChoice,
@@ -60,6 +61,7 @@ import type {
 } from "./planner-types";
 import {
 	buildPlannerActionGrammarStrict,
+	buildSpanSamplerPlan,
 	withGuidedDecodeProviderOptions,
 } from "./response-grammar";
 import type {
@@ -777,6 +779,7 @@ async function callPlanner(params: {
 		toolChoice?: ToolChoice;
 		responseSkeleton?: ResponseSkeleton;
 		grammar?: string;
+		spanSamplerPlan?: SpanSamplerPlan;
 	} = {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
@@ -828,6 +831,15 @@ async function callPlanner(params: {
 		if (plannerActionGrammar) {
 			modelParams.responseSkeleton = plannerActionGrammar.responseSkeleton;
 			modelParams.grammar = plannerActionGrammar.grammar;
+			// Per-span argmax sampling for the planner envelope: the `action`
+			// enum span gets temperature=0 / topK=1 so the model never randomly
+			// picks the minority action under non-zero call-level temperature.
+			// `parameters` (free-json) and `thought` (free-string) keep the
+			// call-level sampler. Engines that don't honor per-span sampling
+			// ignore the field (grammar still constrains the same tokens).
+			modelParams.spanSamplerPlan = buildSpanSamplerPlan(
+				plannerActionGrammar.responseSkeleton,
+			);
 			modelParams.providerOptions = {
 				...(modelParams.providerOptions as Record<string, unknown>),
 				eliza: {
@@ -1648,16 +1660,13 @@ function normalizeBarePlannerAction(
 }
 
 /**
- * The LLM sees the stable Stage 2 wrapper surface, so every action invocation
- * arrives wrapped:
- * `{ name: "PLAN_ACTIONS", args: { action, parameters, thought } }`.
- * Holding the tool list fixed keeps prompt-cache hashes stable across requests
- * no matter which actions are gated this turn.
- *
- * We unwrap at the parse boundary so all downstream logic — context-event
- * lookup, trajectory recording, terminal sentinels (REPLY/IGNORE/STOP),
- * failure attribution — sees the actual action name, not the wrapper.
- *
+ * Normalize a single raw planner tool call to a `PlannerToolCall`. With actions
+ * exposed directly as native tools (post-PLAN_ACTIONS-wrapper refactor) the
+ * tool name IS the action name; the universal terminal sentinels REPLY /
+ * IGNORE / STOP arrive under their own names. We accept several legacy
+ * adjacent fields (`toolName`, `tool`, `action`, `actionName`, `function`) so
+ * provider quirks don't surface as parse failures, but no envelope unwrap or
+ * compound-name decoding happens here anymore.
  */
 
 function normalizeToolCall(entry: unknown): PlannerToolCall | null {

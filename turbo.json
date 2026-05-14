@@ -95,10 +95,6 @@
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []
     },
-    "@elizaos/example-form#build": {
-      "dependsOn": ["@elizaos/core#build", "^build"],
-      "outputs": []
-    },
     "@elizaos/example-lp-manager#build": {
       "dependsOn": ["@elizaos/core#build", "^build"],
       "outputs": []

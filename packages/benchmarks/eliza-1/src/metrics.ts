@@ -165,6 +165,35 @@ export function approxTokens(text: string): number {
   return Math.max(1, Math.round(text.length / 4));
 }
 
+/**
+ * Compute skip_ratio from a skeleton: sum of literal span lengths / total output bytes.
+ * Returns undefined if skeleton is not available or not computable.
+ */
+export function computeSkipRatio(
+  skeleton: unknown,
+  rawOutput: string,
+): number | undefined {
+  if (!skeleton || typeof skeleton !== "object") return undefined;
+  const skel = skeleton as { spans?: Array<{ value?: string }> };
+  if (!Array.isArray(skel.spans)) return undefined;
+
+  let literalBytes = 0;
+  for (const span of skel.spans) {
+    if (
+      span &&
+      typeof span === "object" &&
+      span.value &&
+      typeof span.value === "string"
+    ) {
+      literalBytes += span.value.length;
+    }
+  }
+
+  const totalBytes = rawOutput.length;
+  if (totalBytes === 0) return undefined;
+  return literalBytes / totalBytes;
+}
+
 /** Build a `CaseMetric` from a `ModeResult` and a (parse, schema, label) decision. */
 export function buildMetric(args: {
   taskId: TaskName;
@@ -181,6 +210,10 @@ export function buildMetric(args: {
       ? args.result.tokensGenerated
       : approxTokens(args.result.rawOutput);
   const tps = total > 0 ? (tokens / total) * 1000 : 0;
+  const skipRatio = computeSkipRatio(
+    args.result._skeleton,
+    args.result.rawOutput,
+  );
   return {
     taskId: args.taskId,
     modeId: args.modeId,
@@ -192,6 +225,7 @@ export function buildMetric(args: {
     total_latency_ms: total,
     tokens_generated: tokens,
     tokens_per_second: tps,
+    skip_ratio: skipRatio,
     raw_output: args.result.rawOutput,
     error: args.result.error,
   };
@@ -236,6 +270,13 @@ export function summarize(cases: CaseMetric[]): ModeSummary[] {
       .map((c) => c.first_token_latency_ms)
       .filter((v): v is number => typeof v === "number");
     const tpsSum = list.reduce((acc, c) => acc + c.tokens_per_second, 0);
+    const skipRatios = list
+      .map((c) => c.skip_ratio)
+      .filter((v): v is number => typeof v === "number");
+    const meanSkipRatio =
+      skipRatios.length > 0
+        ? skipRatios.reduce((a, b) => a + b, 0) / skipRatios.length
+        : undefined;
     out.push({
       taskId,
       modeId,
@@ -249,6 +290,7 @@ export function summarize(cases: CaseMetric[]): ModeSummary[] {
       total_latency_p50_ms: percentile(totalLatencies, 50) ?? 0,
       total_latency_p95_ms: percentile(totalLatencies, 95) ?? 0,
       mean_tokens_per_second: total === 0 ? 0 : tpsSum / total,
+      mean_skip_ratio: meanSkipRatio,
     });
   }
   out.sort((a, b) =>

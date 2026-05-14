@@ -99,6 +99,64 @@ def build_context(scenario_config: dict, scenario: str) -> dict:
     return context
 
 
+def _json_object(value: object) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _normalize_tool_call(entry: object) -> dict | None:
+    if not isinstance(entry, dict):
+        return None
+    function = entry.get("function")
+    function_obj = function if isinstance(function, dict) else {}
+    name = (
+        entry.get("tool")
+        or entry.get("name")
+        or entry.get("tool_name")
+        or function_obj.get("name")
+    )
+    if not isinstance(name, str) or not name.strip():
+        return None
+    raw_args = (
+        entry.get("args")
+        if "args" in entry
+        else entry.get("arguments")
+        if "arguments" in entry
+        else function_obj.get("arguments")
+    )
+    return {"tool": name.strip(), "args": _json_object(raw_args)}
+
+
+def _extract_response_tool_calls(response: object) -> list[dict]:
+    params = getattr(response, "params", {}) or {}
+    if not isinstance(params, dict):
+        params = {}
+
+    raw_tool_calls = params.get("tool_calls")
+    normalized: list[dict] = []
+    if isinstance(raw_tool_calls, list):
+        for entry in raw_tool_calls:
+            call = _normalize_tool_call(entry)
+            if call is not None:
+                normalized.append(call)
+    if normalized:
+        return normalized
+
+    calls: list[dict] = []
+    for action in getattr(response, "actions", []) or []:
+        if not isinstance(action, str) or not action:
+            continue
+        calls.append({"tool": action, "args": _json_object(params.get(action, {}))})
+    return calls
+
+
 class ElizaClawBenchRunner:
     """Run ClawBench scenarios against the eliza benchmark server."""
 
@@ -121,10 +179,7 @@ class ElizaClawBenchRunner:
         response = self.client.send_message(text=prompt, context=context)
         duration_ms = (time.time() - start_time) * 1000
 
-        for action in response.actions:
-            self.tool_calls.append(
-                {"tool": action, "args": response.params.get(action, {})}
-            )
+        self.tool_calls.extend(_extract_response_tool_calls(response))
 
         result: dict = {
             "scenario": scenario,

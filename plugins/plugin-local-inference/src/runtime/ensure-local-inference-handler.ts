@@ -55,10 +55,7 @@ import {
 	elizaHarnessSchemaFromSkeleton,
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
-import {
-	decodeMonoPcm16Wav,
-	type TranscriptionAudio,
-} from "../services/voice";
+import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,
@@ -90,6 +87,7 @@ interface LocalTranscriptionParams {
 	audio?: Uint8Array | ArrayBuffer | Buffer;
 	sampleRateHz?: number;
 	sampleRate?: number;
+	signal?: AbortSignal;
 }
 
 type LocalModelHandler =
@@ -140,7 +138,8 @@ export function shouldRegisterLocalInferenceHandlers(mode: string): boolean {
 function normalizeRuntimeMode(value: unknown): string | null {
 	if (typeof value !== "string") return null;
 	const normalized = value.trim().toLowerCase();
-	if (normalized === "local-safe" || normalized === "local-yolo") return "local";
+	if (normalized === "local-safe" || normalized === "local-yolo")
+		return "local";
 	if (
 		normalized === "local" ||
 		normalized === "local-only" ||
@@ -303,6 +302,7 @@ function engineGenerateArgsFromParams(
 	grammar?: string;
 	streamStructured?: boolean;
 	elizaSchema?: ElizaHarnessSchema;
+	spanSamplerPlan?: GenerateTextParams["spanSamplerPlan"];
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 	voiceOutput?: "user-visible" | "internal";
 } {
@@ -364,6 +364,7 @@ function engineGenerateArgsFromParams(
 		grammar: params.grammar,
 		streamStructured: streamStructured || undefined,
 		elizaSchema: elizaHarnessSchemaFromParams(params),
+		spanSamplerPlan: params.spanSamplerPlan,
 		onTextChunk,
 		voiceOutput:
 			params.voiceOutput ??
@@ -607,10 +608,29 @@ function extractTranscriptionAudio(
 	);
 }
 
+function extractTranscriptionSignal(
+	params: TranscriptionParams | Buffer | string | LocalTranscriptionParams,
+): AbortSignal | undefined {
+	return typeof params === "object" && params !== null
+		? (params as { signal?: AbortSignal }).signal
+		: undefined;
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+	if (!signal?.aborted) return;
+	throw signal.reason instanceof Error
+		? signal.reason
+		: new DOMException("Aborted", "AbortError");
+}
+
 function makeTranscriptionHandler(): TranscriptionHandler {
 	return async (_runtime, params) => {
+		const signal = extractTranscriptionSignal(params);
+		throwIfAborted(signal);
 		const audio = extractTranscriptionAudio(params);
-		return localInferenceEngine.transcribePcm(audio);
+		const transcript = await localInferenceEngine.transcribePcm(audio, signal);
+		throwIfAborted(signal);
+		return transcript;
 	};
 }
 

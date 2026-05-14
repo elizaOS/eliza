@@ -195,13 +195,18 @@ def validate_quantization_args(args: argparse.Namespace) -> None:
 
     Currently:
     - ``--calibration PATH`` (when set) must point at an existing file.
-    - ``--device cuda`` requires CUDA on this host.
+    - ``--device cuda`` requires CUDA on this host unless this is only a
+      ``--dry-run`` CLI/recipe validation pass.
     """
     if args.calibration is not None and not args.calibration.exists():
         raise FileNotFoundError(
             f"--calibration path does not exist: {args.calibration}"
         )
-    if args.device == "cuda" and not torch.cuda.is_available():
+    if (
+        args.device == "cuda"
+        and not getattr(args, "dry_run", False)
+        and not torch.cuda.is_available()
+    ):
         raise RuntimeError("CUDA requested but not available")
 
 

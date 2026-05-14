@@ -18,8 +18,6 @@
 		"test": "bunx vitest run --config vitest.electrobun.config.ts --passWithNoTests",
 		"lint": "bunx @biomejs/biome check src",
 		"build:preload": "node ../../scripts/build-electrobun-preload.mjs",
-		"build:whisper": "bash scripts/build-whisper.sh",
-		"build:whisper:universal": "bash scripts/build-whisper-universal.sh",
 		"build:native-effects": "bash scripts/build-macos-effects.sh"
 	},
 	"dependencies": {

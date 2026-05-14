@@ -45,12 +45,20 @@ export const computerStateProvider: Provider = {
       const screen = service.getScreenDimensions();
       const recent = service.getRecentActions();
       const approvals = service.getApprovalSnapshot();
+      const displays = service.getDisplays();
 
       const text = `\`\`\`json\n${JSON.stringify(
         {
           computer_use: {
             platform: currentPlatform(),
             screen: { width: screen.width, height: screen.height },
+            displays: displays.map((d) => ({
+              id: d.id,
+              name: d.name,
+              bounds: d.bounds,
+              scaleFactor: d.scaleFactor,
+              primary: d.primary,
+            })),
             approvals: {
               mode: approvals.mode,
               pendingCount: approvals.pendingCount,
@@ -97,6 +105,8 @@ export const computerStateProvider: Provider = {
           platform: currentPlatform(),
           screenWidth: screen.width,
           screenHeight: screen.height,
+          displayCount: displays.length,
+          primaryDisplayId: displays.find((d) => d.primary)?.id ?? 0,
         },
         data: {
           approvals: {
@@ -105,6 +115,7 @@ export const computerStateProvider: Provider = {
           },
           capabilities: caps,
           screenSize: screen,
+          displays,
           recentActions: recent.slice(-5),
         },
       };

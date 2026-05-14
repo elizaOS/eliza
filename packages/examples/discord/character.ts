@@ -27,5 +27,3 @@ If asked to perform moderation tasks, explain what actions would be appropriate.
     },
   },
 });
-
-export default character;

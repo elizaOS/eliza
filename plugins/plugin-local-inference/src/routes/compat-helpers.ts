@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import type http from "node:http";
 import { isIP } from "node:net";
-import { isLoopbackBindHost, resolveApiToken } from "@elizaos/shared";
 import type { AgentRuntime } from "@elizaos/core";
+import { isLoopbackBindHost, resolveApiToken } from "@elizaos/shared";
 
 const MAX_BODY_BYTES = 1_048_576;
 
@@ -33,11 +33,13 @@ export function getProvidedApiToken(
 		if (match?.[1]) return match[1].trim();
 	}
 	return (
-		firstHeaderValue(req.headers["x-eliza-token"]) ??
-		firstHeaderValue(req.headers["x-elizaos-token"]) ??
-		firstHeaderValue(req.headers["x-api-key"]) ??
-		firstHeaderValue(req.headers["x-api-token"])
-	)?.trim() || null;
+		(
+			firstHeaderValue(req.headers["x-eliza-token"]) ??
+			firstHeaderValue(req.headers["x-elizaos-token"]) ??
+			firstHeaderValue(req.headers["x-api-key"]) ??
+			firstHeaderValue(req.headers["x-api-token"])
+		)?.trim() || null
+	);
 }
 
 export function tokenMatches(expected: string, provided: string): boolean {
@@ -49,7 +51,9 @@ export function tokenMatches(expected: string, provided: string): boolean {
 	);
 }
 
-function isLoopbackRemoteAddress(remoteAddress: string | null | undefined): boolean {
+function isLoopbackRemoteAddress(
+	remoteAddress: string | null | undefined,
+): boolean {
 	if (!remoteAddress) return false;
 	const normalized = remoteAddress.trim().toLowerCase();
 	return (
@@ -152,7 +156,8 @@ export function isTrustedLocalRequest(
 }
 
 function scrubStackFields(value: unknown): unknown {
-	if (value instanceof Error) return { error: value.message || "Internal error" };
+	if (value instanceof Error)
+		return { error: value.message || "Internal error" };
 	if (Array.isArray(value)) return value.map(scrubStackFields);
 	if (value && typeof value === "object") {
 		const out: Record<string, unknown> = {};
@@ -253,7 +258,9 @@ export async function readCompatJsonBody(
 
 	if (chunks.length === 0) return {};
 	try {
-		const parsed = JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+		const parsed = JSON.parse(
+			Buffer.concat(chunks).toString("utf8"),
+		) as unknown;
 		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
 			sendJsonError(res, 400, "Invalid JSON body");
 			return null;

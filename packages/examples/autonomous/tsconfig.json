@@ -10,7 +10,18 @@
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": {
+      "@elizaos/plugin-capacitor-bridge": [
+        "../../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-inmemorydb": [
+        "../../../plugins/plugin-inmemorydb/index.ts"
+      ],
+      "@elizaos/plugin-local-inference": [
+        "../../../plugins/plugin-local-inference/src/index.ts"
+      ]
+    }
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"],

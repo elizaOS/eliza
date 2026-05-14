@@ -5,22 +5,22 @@
  * Send a voice message, get a voice response back — the full optimized
  * voice-assistant loop the W1–W13 swarm landed, run interactively:
  *
- *   mic → VAD (RMS + Silero v5 ONNX) → streaming ASR (fused / whisper.cpp)
+ *   mic → VAD (RMS + Silero v5 ONNX) → streaming ASR (fused Qwen3-ASR)
  *      → turn controller (prewarm-on-speech-start, speculative-on-pause,
  *        abort-on-resume, promote-or-rerun on speech-end)
  *      → runtime message handler (Stage-1 forced-JSON grammar, streamed)
  *      → phrase chunker (`, . ! ?` / N words)
- *      → streaming OmniVoice TTS
+ *      → streaming TTS (Kokoro / OmniVoice per tier)
  *      → PCM ring buffer → system audio sink (aplay / afplay / paplay)
  *
  * with DFlash speculative decoding, KV-prefix prewarm, streaming LLM→TTS,
  * barge-in (pause/resume/hard-stop), and force-stop on a keypress.
  *
  * **No faking.** If the real `eliza-1-2b` bundle, the DFlash `llama-server`
- * binary, the fused `libelizainference` (or whisper.cpp), a mic, or the
- * Silero VAD model is missing, this prints the exact missing-prereq
- * checklist + the fix command and exits non-zero. It never emits
- * silence-and-calls-it-TTS and never pretends a model loaded.
+ * binary, the fused `libelizainference`, a mic, or the Silero VAD model is
+ * missing, this prints the exact missing-prereq checklist + the fix
+ * command and exits non-zero. It never emits silence-and-calls-it-TTS
+ * and never pretends a model loaded.
  *
  * Run:
  *   bun run voice:interactive                       # real mic interactive
@@ -339,7 +339,7 @@ async function inspectActiveOptimizations(args) {
     });
   }
 
-  // ── ASR backend (fused only — whisper.cpp interim has been removed) ───
+  // ── ASR backend (fused Qwen3-ASR via libelizainference only) ───────────
   let asrBackend = null;
   if (bundleRoot && existsSync(path.join(bundleRoot, "asr"))) {
     asrBackend = "fused (Qwen3-ASR region in the bundle)";
@@ -349,7 +349,7 @@ async function inspectActiveOptimizations(args) {
   } else {
     missing.push({
       what: "no ASR backend (no fused Qwen3-ASR region in the bundle)",
-      fix: "rebuild or download a libelizainference bundle that ships the Qwen3-ASR region (asr/ subdirectory). The whisper.cpp interim fallback has been removed.",
+      fix: "rebuild or download a libelizainference bundle that ships the Qwen3-ASR region (asr/ subdirectory).",
     });
   }
 
@@ -533,8 +533,7 @@ const PLATFORM_MATRIX = [
         mic: "arecord / parec / sox",
         player: "aplay / paplay / sox / ffplay",
         vad: "onnxruntime-node",
-        ttsAsr:
-          "fused libelizainference (CPU build) / whisper.cpp ASR fallback",
+        ttsAsr: "fused libelizainference (CPU build)",
         verified:
           "CPU SIMD kernels reference-verified; build runs on this host",
       },
@@ -612,8 +611,7 @@ const PLATFORM_MATRIX = [
         mic: "ffmpeg -f dshow (DirectShow) — or renderer getUserMedia → PushMicSource",
         player: "ffplay (ffmpeg) — or renderer AudioContext",
         vad: "onnxruntime-node",
-        ttsAsr:
-          "fused libelizainference (CPU build) / whisper.cpp ASR fallback",
+        ttsAsr: "fused libelizainference (CPU build)",
         verified:
           "build needs MSVC/mingw (cross from this Linux host: --dry-run only)",
       },
@@ -867,12 +865,6 @@ async function tryAutoDownloadVad(_bundleRoot) {
     );
     return null;
   }
-}
-
-async function tryAutoDownloadWhisper() {
-  // whisper.cpp interim ASR has been removed from this package.
-  // ASR is delivered exclusively through the fused libelizainference bundle.
-  return null;
 }
 
 async function tryAutoDownloadBundle(catalogEntry) {
@@ -1325,20 +1317,13 @@ async function main() {
     process.exit(0);
   }
 
-  // Auto-download cheap prereqs (VAD ~2 MB; whisper model ~140 MB if a
-  // whisper binary exists). These never fake — a failed download is a
-  // missing prereq, not silence.
+  // Auto-download cheap prereqs (VAD ~2 MB). These never fake — a failed
+  // download is a missing prereq, not silence.
   if (!report.vadPath) {
     const vp = await tryAutoDownloadVad(report.bundleRoot);
     if (vp) process.env.ELIZA_VAD_MODEL_PATH = vp;
   }
-  if (!report.asrBackend) {
-    const w = await tryAutoDownloadWhisper();
-    if (w) {
-      process.env.ELIZA_WHISPER_BIN = w.bin;
-      process.env.ELIZA_WHISPER_MODEL = w.model;
-    }
-  }
+  // ASR is delivered exclusively through the fused libelizainference bundle.
   // The bundle is large — only auto-download if explicitly requested via env.
   if (!report.bundleRoot && process.env.ELIZA_AUTO_DOWNLOAD_BUNDLE === "1") {
     const br = await tryAutoDownloadBundle(report.catalogEntry);

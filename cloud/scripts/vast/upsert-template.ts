@@ -167,6 +167,11 @@ async function main(): Promise<void> {
         if (value) env[key] = value;
       }
     }
+    // TODO(wave3): vLLM cannot load from a subpath; the canonical bundle repo
+    // elizaos/eliza-1 contains GGUFs, not safetensors. Per-tier vLLM repos
+    // (elizaos/eliza-1-2b safetensors checkpoint) need to be published before
+    // this default is reachable. Today it is a placeholder; live deployments
+    // must override MODEL_REPO via env or a manifest.
     env.MODEL_REPO = readEnv(
       "MODEL_REPO",
       manifest?.manifest.model ?? manifest?.manifest.model_repo ?? "elizaos/eliza-1-2b",
@@ -209,13 +214,15 @@ async function main(): Promise<void> {
         if (value) env[key] = value;
       }
     }
+    // llama.cpp can resolve a subpath inside the bundle repo. Canonical default
+    // is the consolidated elizaos/eliza-1 + bundles/<tier>/... layout.
     env.MODEL_REPO = readEnv(
       "MODEL_REPO",
-      manifest?.manifest.model_repo ?? manifest?.manifest.model ?? "elizaos/eliza-1-27b-fp8",
+      manifest?.manifest.model_repo ?? manifest?.manifest.model ?? "elizaos/eliza-1",
     );
     env.MODEL_FILE = readEnv(
       "MODEL_FILE",
-      manifest?.manifest.model_file ?? "text/eliza-1-pro-27b-128k.gguf",
+      manifest?.manifest.model_file ?? "bundles/27b/text/eliza-1-pro-27b-128k.gguf",
     );
     env.MODEL_ALIAS = readEnv("MODEL_ALIAS", manifest?.manifest.model_alias ?? "vast/eliza-1-27b");
     env.LLAMA_CONTEXT = readEnv("LLAMA_CONTEXT", String(manifest?.manifest.max_model_len ?? 32768));
@@ -245,9 +252,18 @@ async function main(): Promise<void> {
     ]);
   }
 
-  const hfToken = process.env.HF_TOKEN_SECRET ?? process.env.HUGGING_FACE_HUB_TOKEN;
+  // Canonical caller env: HF_TOKEN. HF_TOKEN_SECRET is the Vast-side
+  // secret slot, HUGGINGFACE_HUB_TOKEN matches the Python convention,
+  // HUGGING_FACE_HUB_TOKEN is the legacy TS variant. Whichever the
+  // operator sets, we forward as HUGGINGFACE_HUB_TOKEN inside the worker
+  // (the name huggingface_hub recognizes natively).
+  const hfToken =
+    process.env.HF_TOKEN ??
+    process.env.HF_TOKEN_SECRET ??
+    process.env.HUGGINGFACE_HUB_TOKEN ??
+    process.env.HUGGING_FACE_HUB_TOKEN;
   if (hfToken && hfToken.trim().length > 0) {
-    env.HUGGING_FACE_HUB_TOKEN = hfToken.trim();
+    env.HUGGINGFACE_HUB_TOKEN = hfToken.trim();
   }
 
   const config: TemplateConfig = {

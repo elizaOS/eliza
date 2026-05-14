@@ -44,6 +44,8 @@ import type {
 	JSONSchema,
 	ResponseSkeleton,
 	ResponseSkeletonSpan,
+	SpanSamplerOverride,
+	SpanSamplerPlan,
 } from "../types/model.js";
 
 // ---------------------------------------------------------------------------
@@ -329,7 +331,10 @@ function spanKindForKey(key: string): ResponseSkeletonSpan["kind"] {
 
 /**
  * Skeleton span kind for a registered field evaluator's value, derived from its
- * declared JSON schema.
+ * declared JSON schema. Typed primitives (`number` / `integer` / `boolean`) are
+ * tagged with their own span kinds so the per-span sampler plan can force
+ * argmax on them (the model never tips a numerical or boolean decision under
+ * non-zero temperature when there's a clear argmax winner).
  */
 function spanKindForFieldSchema(
 	schema: JSONSchema,
@@ -347,6 +352,8 @@ function spanKindForFieldSchema(
 		}
 		return "free-string";
 	}
+	if (type === "number" || type === "integer") return "number";
+	if (type === "boolean") return "boolean";
 	return "free-json";
 }
 
@@ -406,6 +413,14 @@ function gbnfRefForFieldSchema(
 		}
 		builder.useShared("jsonstring");
 		return "jsonstring";
+	}
+	if (type === "number" || type === "integer") {
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+	if (type === "boolean") {
+		builder.useShared("jsonbool");
+		return "jsonbool";
 	}
 	builder.useShared("jsonvalue");
 	return "jsonvalue";
@@ -687,6 +702,50 @@ export function withGuidedDecodeProviderOptions<
 	return providerOptions;
 }
 
+/**
+ * Derive a {@link SpanSamplerPlan} from a {@link ResponseSkeleton} using the
+ * canonical policy: every `enum` (with ≥2 values), `number`, and `boolean` span
+ * gets `temperature: 0, topK: 1` (argmax). `literal`, `free-string`, and
+ * `free-json` spans get no override — the call-level temperature applies.
+ *
+ * `spanIndex` addresses the position INTO `skeleton.spans` directly, so the
+ * caller (and tests) can stare at `skeleton.spans[overrides[i].spanIndex]` to
+ * verify the policy. Engines that need free-span addressing convert at the
+ * boundary by counting non-literal spans up to `spanIndex`.
+ *
+ * Single-value enums are skipped because they collapse to `literal` upstream;
+ * defensively skipped here too. Returns a plan with `overrides: []` when the
+ * skeleton has no argmax-eligible spans (caller decides whether to send it).
+ *
+ * Hardcoded policy matches the user's request: "for any enum or numerical
+ * temperature, we should turn temperature to 0 and in fact just select the
+ * most likely token." Applies to local inference and Eliza Cloud hosted
+ * `eliza-1` (Wave 3 wires the cloud honor path).
+ */
+export function buildSpanSamplerPlan(
+	skeleton: ResponseSkeleton,
+): SpanSamplerPlan {
+	const overrides: SpanSamplerOverride[] = [];
+	for (let i = 0; i < skeleton.spans.length; i += 1) {
+		const span = skeleton.spans[i];
+		if (span.kind === "literal") continue;
+		if (
+			span.kind === "enum" &&
+			(!Array.isArray(span.enumValues) || span.enumValues.length <= 1)
+		) {
+			continue;
+		}
+		if (
+			span.kind === "enum" ||
+			span.kind === "number" ||
+			span.kind === "boolean"
+		) {
+			overrides.push({ spanIndex: i, temperature: 0, topK: 1 });
+		}
+	}
+	return { overrides };
+}
+
 // ---------------------------------------------------------------------------
 // Stage-2: planner action grammar
 // ---------------------------------------------------------------------------
@@ -855,6 +914,10 @@ export function buildPlannerActionGrammar(
  *
  * Returns `null` when no actions are exposed.
  */
+/**
+ * Group action names by longest common prefix (≥3 chars, ≥2 names sharing it).
+ * Returns a map of prefix → suffixes, plus a list of ungrouped names.
+ */
 export function buildPlannerActionGrammarStrict(
 	actions: ReadonlyArray<
 		Pick<Action, "name" | "parameters" | "allowAdditionalParameters">
@@ -885,13 +948,24 @@ export function buildPlannerActionGrammarStrict(
 	const sortedDescriptors = descriptors
 		.slice()
 		.sort((a, b) => a.name.localeCompare(b.name));
+
+	// One branch per action. A previous version of this function tried to
+	// factor common UPPER_SNAKE_CASE prefixes (e.g. emit "MESSAGE_" once with a
+	// shared `suffix_MESSAGE_` rule). That optimization was broken on two
+	// fronts: (1) the suffix alternation used JSON-quoted literals so the
+	// concatenation produced malformed JSON like `{"action":"MESSAGE_"READ""…`;
+	// and (2) the shared suffix rule decoupled the action name from the
+	// per-action params rule — the model could legally pair `MESSAGE_READ` with
+	// `paramsofaction_MESSAGE_SEND`. Each branch must encode the full action
+	// name as a literal, then bind to its own params rule.
 	for (const descriptor of sortedDescriptors) {
-		const sanitized = sanitizeGbnfRuleName(descriptor.name);
+		const fullName = descriptor.name;
+		const sanitized = sanitizeGbnfRuleName(fullName);
 		const paramsRuleName = `paramsofaction_${sanitized}`;
 		emitActionParamsRule(builder, paramsRuleName, descriptor.parametersSchema);
 		const branchRuleName = `callofaction_${sanitized}`;
 		const branchBody = [
-			gbnfLiteral(`{"action":${JSON.stringify(descriptor.name)}`),
+			gbnfLiteral(`{"action":${JSON.stringify(fullName)}`),
 			gbnfLiteral(',"parameters":'),
 			paramsRuleName,
 			gbnfLiteral(',"thought":'),
@@ -901,6 +975,7 @@ export function buildPlannerActionGrammarStrict(
 		builder.rule(branchRuleName, branchBody);
 		branchRuleNames.push(branchRuleName);
 	}
+
 	builder.root([branchRuleNames.join(" | ")]);
 
 	// Minimal skeleton — the grammar carries the entire structural contract.
@@ -1030,6 +1105,74 @@ function emitObjectRule(
  * `contextRuleName` is the parent-scoped namespace prefix used to mint stable
  * unique rule names for nested constructs (e.g. `..._obj`, `..._item`).
  */
+/**
+ * Build a GBNF rule that matches only numbers within a [min, max] range.
+ * For integers: emits a union of literal ranges and digit-length cases.
+ * For numbers: allows integer part + optional fractional digits, bounded by min/max.
+ * Returns a rule name to reference in the GBNF.
+ */
+function buildBoundedNumberRule(
+	builder: GbnfBuilder,
+	ruleName: string,
+	schema: JSONSchema,
+): string {
+	const type = (schema as { type?: unknown }).type;
+	const minimum = (schema as { minimum?: number }).minimum;
+	const maximum = (schema as { maximum?: number }).maximum;
+
+	// No bounds specified: use the shared unbounded rule.
+	if (typeof minimum !== "number" && typeof maximum !== "number") {
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
+	// For integers, emit a rule that matches only in-range values.
+	if (type === "integer") {
+		const min =
+			typeof minimum === "number"
+				? Math.ceil(minimum)
+				: Number.NEGATIVE_INFINITY;
+		const max =
+			typeof maximum === "number"
+				? Math.floor(maximum)
+				: Number.POSITIVE_INFINITY;
+
+		// Handle edge cases: if bounds are missing, fall back to unbounded.
+		if (!Number.isFinite(min) && !Number.isFinite(max)) {
+			builder.useShared("jsonnumber");
+			return "jsonnumber";
+		}
+
+		// For manageable integer ranges, enumerate directly.
+		// This is pragmatic for small ranges like [0, 100].
+		if (Number.isFinite(min) && Number.isFinite(max) && max - min <= 200) {
+			const literals: string[] = [];
+			for (let i = min; i <= max; i++) {
+				literals.push(gbnfJsonStringLiteral(String(i)));
+			}
+			builder.rule(ruleName, literals.join(" | "));
+			return ruleName;
+		}
+
+		// For larger ranges, fall back to unbounded (the grammar won't tightly constrain).
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
+	// For floats, emit a pattern: optional minus, digits, optional fractional part.
+	// Validation of bounds happens server-side (we can't easily express arbitrary float ranges in GBNF).
+	if (type === "number") {
+		// Pragmatic: emit a rule that allows signed integers and decimals.
+		// The server-side validation will reject out-of-range values.
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
+	// Unknown type: use unbounded.
+	builder.useShared("jsonnumber");
+	return "jsonnumber";
+}
+
 function propertyValueGbnf(
 	builder: GbnfBuilder,
 	propSchema: JSONSchema,
@@ -1051,6 +1194,13 @@ function propertyValueGbnf(
 		return "jsonstring";
 	}
 	if (type === "number" || type === "integer") {
+		const minimum = (propSchema as { minimum?: number }).minimum;
+		const maximum = (propSchema as { maximum?: number }).maximum;
+		// If bounds are specified, emit a bounded rule; otherwise use the shared rule.
+		if (typeof minimum === "number" || typeof maximum === "number") {
+			const boundedRuleName = `${contextRuleName}_bounded`;
+			return buildBoundedNumberRule(builder, boundedRuleName, propSchema);
+		}
 		builder.useShared("jsonnumber");
 		return "jsonnumber";
 	}
@@ -1166,6 +1316,10 @@ export function buildPlannerParamsSkeleton(
 			} else {
 				spans.push({ kind: "free-string", key });
 			}
+		} else if (type === "number" || type === "integer") {
+			spans.push({ kind: "number", key });
+		} else if (type === "boolean") {
+			spans.push({ kind: "boolean", key });
 		} else {
 			spans.push({ kind: "free-json", key });
 		}

@@ -4,7 +4,7 @@ import type { Task as CoreTask, UUID } from "@elizaos/core";
 // JSON-safe value types (no `any` / `unknown`)
 // ============================================================================
 
-export type JsonPrimitive = string | number | boolean | null;
+type JsonPrimitive = string | number | boolean | null;
 export type JsonValue =
   | JsonPrimitive
   | JsonValue[]
@@ -57,14 +57,14 @@ interface TaskTraceBase {
   [key: string]: JsonValue | undefined;
 }
 
-export interface TaskTraceNoteEvent extends TaskTraceBase {
+interface TaskTraceNoteEvent extends TaskTraceBase {
   kind: "note";
   level: TaskTraceLevel;
   message: string;
   [key: string]: JsonValue | undefined;
 }
 
-export interface TaskTraceLlmEvent extends TaskTraceBase {
+interface TaskTraceLlmEvent extends TaskTraceBase {
   kind: "llm";
   iteration: number;
   modelType: string;
@@ -74,7 +74,7 @@ export interface TaskTraceLlmEvent extends TaskTraceBase {
   [key: string]: JsonValue | undefined;
 }
 
-export interface TaskTraceToolCallEvent extends TaskTraceBase {
+interface TaskTraceToolCallEvent extends TaskTraceBase {
   kind: "tool_call";
   iteration: number;
   name: string;
@@ -82,7 +82,7 @@ export interface TaskTraceToolCallEvent extends TaskTraceBase {
   [key: string]: JsonValue | undefined;
 }
 
-export interface TaskTraceToolResultEvent extends TaskTraceBase {
+interface TaskTraceToolResultEvent extends TaskTraceBase {
   kind: "tool_result";
   iteration: number;
   name: string;
@@ -92,7 +92,7 @@ export interface TaskTraceToolResultEvent extends TaskTraceBase {
   [key: string]: JsonValue | undefined;
 }
 
-export interface TaskTraceStatusEvent extends TaskTraceBase {
+interface TaskTraceStatusEvent extends TaskTraceBase {
   kind: "status";
   status: TaskTraceStatus;
   message?: string;
@@ -153,7 +153,7 @@ interface SubAgentTodo {
 }
 
 /** Extended metadata for code tasks */
-export interface CodeTaskMetadata {
+interface CodeTaskMetadata {
   status: TaskStatus;
   progress: number;
   output: string[];
@@ -234,7 +234,7 @@ export interface CodeTaskService {
 // Event Types
 // ============================================================================
 
-export type TaskEventType =
+type TaskEventType =
   | "task:created"
   | "task:started"
   | "task:progress"

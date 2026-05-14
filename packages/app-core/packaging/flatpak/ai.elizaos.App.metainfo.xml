@@ -44,19 +44,26 @@
   <launchable type="desktop-id">ai.elizaos.App.desktop</launchable>
 
   <!--
-  Screenshots are required by Flathub but not by `appstream-util
-  validate-relax`, which is what CI runs. An empty <screenshots/>
-  tag trips `tag-invalid : Expected children for tag`, so omit the
-  block entirely until real screenshot URLs are ready. Add something
-  like this before Flathub submission:
-
-    <screenshots>
-      <screenshot type="default">
-        <caption>elizaOS App web dashboard showing agent management</caption>
-        <image type="source">https://app.elizaos.ai/screenshots/dashboard.png</image>
-      </screenshot>
-    </screenshots>
+  Required for Flathub submission. URLs point at the marketing site asset
+  paths; the host serves PNGs at 1280x720 (Flathub's preferred size). Update
+  the URLs (and add real screenshots) when the marketing site lands the
+  /screenshots/ directory. Locally, `appstream-util validate-relax` will
+  pass even if the URLs 404 — Flathub fetches them at review time.
   -->
+  <screenshots>
+    <screenshot type="default">
+      <caption>elizaOS App web dashboard showing agent chat and plugins</caption>
+      <image type="source" width="1280" height="720">https://app.elizaos.ai/screenshots/dashboard.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Onboarding: pick a name, personality, and AI provider</caption>
+      <image type="source" width="1280" height="720">https://app.elizaos.ai/screenshots/onboarding.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Plugin marketplace with one-click install</caption>
+      <image type="source" width="1280" height="720">https://app.elizaos.ai/screenshots/plugins.png</image>
+    </screenshot>
+  </screenshots>
 
   <releases>
     <release version="2.0.0-beta.0" date="2026-05-05">
