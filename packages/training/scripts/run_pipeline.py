@@ -222,6 +222,13 @@ def main() -> int:
                     help="Default: <registry-key>-apollo-<unix-ts>.")
     ap.add_argument("--epochs", type=float, default=3.0)
     ap.add_argument(
+        "--max-steps", type=int, default=0,
+        help="Hard cap on training steps. 0 = use --epochs. Forwarded to "
+             "train_local.py --max-steps. Use when wall-clock budgets matter "
+             "(see .swarm/STATUS.md 2026-05-13 v4 incident — the run hit a "
+             "6h watcher cap with --epochs 1 at step 1000 of 9615).",
+    )
+    ap.add_argument(
         "--lr", type=float, default=1e-5,
         help="Learning rate for full-parameter SFT with APOLLO. Default "
              "1e-5 follows the APOLLO paper §5 SFT recipe — train_local.py's "
@@ -551,6 +558,8 @@ def main() -> int:
         ]
         if args.max_samples and not args.trajectory_export:
             cmd += ["--max-samples", str(args.max_samples)]
+        if args.max_steps:
+            cmd += ["--max-steps", str(args.max_steps)]
         if args.micro_batch:
             cmd += ["--batch-size", str(args.micro_batch)]
         if args.grad_accum:
