@@ -70,7 +70,7 @@ session layer. See [`docs/relationship-to-usbeliza.md`](./docs/relationship-to-u
 
 ## Architecture
 
-We **start from a full copy of Tails** (77 MB, 6101 files, in
+We **start from a full copy of Tails** (6077 tracked files, in
 `tails/`) and **add Milady on top** — additive only, no deletion.
 Tor, AppArmor, MAC spoofing, persistence-setup, Plymouth — all
 preserved. The Milady additions live as new chroot hooks + package
@@ -98,6 +98,10 @@ See [`PLAN.md`](./PLAN.md) for the 11 phases.
 - [`PLAN.md`](./PLAN.md) — phased work order with success criteria
 - [`docs/user-experience.md`](./docs/user-experience.md) — what users
   actually see at boot, plain language
+- [`docs/mode-parity.md`](./docs/mode-parity.md) — feature behavior
+  across storage/privacy combinations
+- [`docs/privacy-mode-v1-gap.md`](./docs/privacy-mode-v1-gap.md) —
+  known Chromium WebView privacy-mode caveat
 - [`docs/relationship-to-usbeliza.md`](./docs/relationship-to-usbeliza.md) —
   architecture split between this variant and usbeliza
 - [`tails/README.md`](./tails/README.md) — upstream Tails README,

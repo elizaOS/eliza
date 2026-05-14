@@ -204,6 +204,7 @@ class VMStorage
 
   def guestfs_disk_helper(*disks)
     assert(block_given?)
+    g = nil
     g = Guestfs::Guestfs.new
     g.set_trace(1)
     message_callback = proc do |event, _, message, _|
@@ -224,6 +225,6 @@ class VMStorage
     g.launch
     yield(g, *g.list_devices)
   ensure
-    g.close
+    g.close if g
   end
 end

@@ -349,6 +349,7 @@ def enter_boot_menu_cmdline
   # The below code is not completely reliable, so we might have to
   # retry by rebooting.
   try_for(boot_timeout) do
+    kill_up_spammer = proc {}
     begin
       _up_spammer_job, kill_up_spammer = start_up_spammer($vm.domain_name)
       @screen.wait_any(boot_menu_images, 15)

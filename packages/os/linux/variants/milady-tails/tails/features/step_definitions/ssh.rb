@@ -69,10 +69,11 @@ Given /^I (?:am prompted to )?verify the SSH fingerprint for the (?:Git|SSH) (?:
 end
 
 def get_free_tcp_port
+  server = nil
   server = TCPServer.new('127.0.0.1', 0)
   server.addr[1]
 ensure
-  server.close
+  server.close if server
 end
 
 Given /^an SSH server is running on the LAN$/ do

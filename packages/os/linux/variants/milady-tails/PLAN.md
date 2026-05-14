@@ -58,8 +58,8 @@ v1.1 work (patch Electrobun to inject `--proxy-server` flag).
 
 ### Architecture: full-fork of Tails, additive modifications
 
-- Tails source lives in `tails/` at this directory's root (77 MB,
-  6101 files, copied from `/home/nubs/Git/tails` minus `.git`).
+- Tails source lives in `tails/` at this directory's root (6077
+  tracked files, copied from `/home/nubs/Git/tails` minus `.git`).
 - We **never delete** Tails code. All Milady additions are overlays,
   hooks, package-list additions, and replacement files inside Tails'
   tree. Tor, AppArmor, MAC spoofing, persistence-setup, Plymouth — all
@@ -201,7 +201,8 @@ identical Milady experience minus speed.
   - `privacy=off` → NetworkManager-managed
 - [ ] Add Milady chat action "show me my network status" reporting
   current mode + trade-offs
-- [ ] Document `docs/privacy-mode-v1-gap.md` — the Chromium WebView leak
+- [ ] Update `docs/privacy-mode-v1-gap.md` with implementation evidence
+  for the Chromium WebView leak
 - [ ] Test both boot entries in QEMU; confirm direct + Tor traffic
 
 **Effort**: 5-7 days. Firewall rule ordering is subtle — wrong move
@@ -302,7 +303,7 @@ and add chat-driven prompts.
 Goal: All 4 combos work the same. Anything that doesn't = documented
 gap, not silent failure.
 
-- [ ] Write `docs/mode-parity.md` — comprehensive feature matrix
+- [ ] Finalize `docs/mode-parity.md` with verified mode coverage
 - [ ] Build mode-parity test harness: for each of 4 combos
   (normal+amnesia, normal+persist, privacy+amnesia, privacy+persist):
   - Boot ISO with that config
@@ -438,7 +439,7 @@ want the full live-USB. Lower priority — the live-USB IS the product.
 1. **Tails build system complexity** — hundreds of config files,
    APT snapshot pins, build-host package requirements. Phase 1 will
    probably fail several times before clean.
-2. **77 MB monorepo bloat** — PR maintainers may push back on
+2. **Large monorepo bloat** — PR maintainers may push back on
    committing all of Tails. Fallback: submodule pattern. Pivot-friendly
    mid-PR.
 3. **GPL-3 inheritance** — anything derived from Tails is GPL-3.

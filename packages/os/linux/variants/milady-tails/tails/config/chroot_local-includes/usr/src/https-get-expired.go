@@ -158,12 +158,12 @@ func main() {
 	}}
 
 	request, err := http.NewRequest("HEAD", urlString, nil)
-	if *user_agent != "" {
-		request.Header.Set("User-Agent", *user_agent)
-	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error preparing the request")
 		os.Exit(1)
+	}
+	if *user_agent != "" {
+		request.Header.Set("User-Agent", *user_agent)
 	}
 	response, err := client.Do(request)
 

@@ -34,6 +34,8 @@ When /^I bump the (hardware clock's|system) time with "([^"]+)"$/ do |clock_type
     old_time = DateTime.parse($vm.execute_successfully('date').stdout).to_time
     $vm.execute_successfully("date -s 'now #{timediff}'")
     new_time = DateTime.parse($vm.execute_successfully('date').stdout).to_time
+  else
+    raise ArgumentError, "unexpected clock type: #{clock_type}"
   end
   expected_time_lower_bound = DateTime.parse(
     cmd_helper(['date', '--rfc-3339=seconds', '-d', "#{old_time} #{timediff}"])
