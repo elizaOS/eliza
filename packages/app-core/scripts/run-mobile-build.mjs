@@ -1360,6 +1360,101 @@ function ensureAndroidMainActivityUrlSchemeFilter(xml) {
   return xml.replace(mainActivityRe, `$1${authFilter}$2`);
 }
 
+export function ensureAndroidMainActivityShortcutsMetadata(xml) {
+  const mainActivityRe =
+    /(<activity\b(?=[\s\S]*?android:name="\.?MainActivity")[\s\S]*?)(\n\s*<\/activity>)/m;
+  const match = xml.match(mainActivityRe);
+  if (!match) return xml;
+
+  const mainActivity = `${match[1]}${match[2]}`;
+  if (
+    mainActivity.includes('android:name="android.app.shortcuts"') &&
+    mainActivity.includes('android:resource="@xml/shortcuts"')
+  ) {
+    return xml;
+  }
+
+  const shortcutsMetadata = `
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+`;
+  return xml.replace(mainActivityRe, `$1${shortcutsMetadata}$2`);
+}
+
+export function patchAndroidAppActionsXmlResource(
+  xml,
+  { androidPackage, urlScheme },
+) {
+  let patched = xml
+    .replace(
+      /\bandroid:targetPackage="[^"]+"/g,
+      `android:targetPackage="${androidPackage}"`,
+    )
+    .replace(
+      /\bandroid:targetClass="[^"]*\.MainActivity"/g,
+      `android:targetClass="${androidPackage}.MainActivity"`,
+    );
+
+  const escapedSchemes = [
+    "eliza",
+    "ai.elizaos.app",
+    "app.eliza",
+    androidPackage,
+  ].filter(Boolean);
+  for (const scheme of escapedSchemes) {
+    patched = patched.replace(
+      new RegExp(`${escapeRegExp(scheme)}://`, "g"),
+      `${urlScheme}://`,
+    );
+  }
+
+  return patched;
+}
+
+function syncAndroidAppActionsResources() {
+  const templateResDir = path.join(
+    platformsDir,
+    "android",
+    "app",
+    "src",
+    "main",
+    "res",
+  );
+  const targetResDir = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "res",
+  );
+  const resourceFiles = [
+    path.join("xml", "shortcuts.xml"),
+    path.join("values", "android_app_actions.xml"),
+  ];
+  for (const relPath of resourceFiles) {
+    const templatePath = path.join(templateResDir, relPath);
+    const targetPath = path.join(targetResDir, relPath);
+    if (!fs.existsSync(templatePath) || fs.existsSync(targetPath)) continue;
+    fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+    fs.copyFileSync(templatePath, targetPath);
+    console.log(`[mobile-build] Added Android App Actions resource ${relPath}.`);
+  }
+
+  const shortcutsPath = path.join(targetResDir, "xml", "shortcuts.xml");
+  if (!fs.existsSync(shortcutsPath)) return;
+
+  const current = fs.readFileSync(shortcutsPath, "utf8");
+  const patched = patchAndroidAppActionsXmlResource(current, {
+    androidPackage: APP.appId,
+    urlScheme: APP.urlScheme,
+  });
+  if (patched !== current) {
+    fs.writeFileSync(shortcutsPath, patched, "utf8");
+    console.log("[mobile-build] Rewrote Android App Actions package and scheme.");
+  }
+}
+
 function overlayAndroid() {
   const srcJava = path.join(
     platformsDir,
@@ -1512,6 +1607,11 @@ function overlayAndroid() {
     const withUrlSchemeFilter = ensureAndroidMainActivityUrlSchemeFilter(xml);
     if (withUrlSchemeFilter !== xml) {
       xml = withUrlSchemeFilter;
+      dirty = true;
+    }
+    const withShortcutsMetadata = ensureAndroidMainActivityShortcutsMetadata(xml);
+    if (withShortcutsMetadata !== xml) {
+      xml = withShortcutsMetadata;
       dirty = true;
     }
     const gatewayServiceName = `${androidPackage}.GatewayConnectionService`;
@@ -2024,6 +2124,44 @@ export const IOS_OFFICIAL_PODS = [
   ["CapacitorStatusBar", "@capacitor/status-bar"],
 ];
 
+export function resolveIosCustomPods({
+  includeLlama = false,
+  includeFullBunEngine = false,
+  appStoreBuild = false,
+} = {}) {
+  const includeStoreSafeFullBun = !appStoreBuild && includeFullBunEngine;
+  const includeLocalExecutionBridgePods =
+    !appStoreBuild && includeStoreSafeFullBun;
+  return [
+    ["ElizaosCapacitorAgent", "@elizaos/capacitor-agent"],
+    ["ElizaosCapacitorAppblocker", "@elizaos/capacitor-appblocker"],
+    ["ElizaosCapacitorCamera", "@elizaos/capacitor-camera"],
+    ["ElizaosCapacitorCalendar", "@elizaos/capacitor-calendar"],
+    ["ElizaosCapacitorCanvas", "@elizaos/capacitor-canvas"],
+    ["ElizaosCapacitorElizaTasks", "@elizaos/capacitor-eliza-tasks"],
+    ["ElizaosCapacitorGateway", "@elizaos/capacitor-gateway"],
+    ["ElizaosCapacitorLocation", "@elizaos/capacitor-location"],
+    ["ElizaosCapacitorMobileSignals", "@elizaos/capacitor-mobile-signals"],
+    ["ElizaosCapacitorScreencapture", "@elizaos/capacitor-screencapture"],
+    ["ElizaosCapacitorSwabble", "@elizaos/capacitor-swabble"],
+    ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
+    ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
+    ...(includeLocalExecutionBridgePods
+      ? [
+          ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
+          [
+            "ElizaosCapacitorMobileAgentBridge",
+            "@elizaos/capacitor-mobile-agent-bridge",
+          ],
+        ]
+      : []),
+    ...(includeLlama ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]] : []),
+    ...(includeStoreSafeFullBun
+      ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
+      : []),
+  ];
+}
+
 const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set(
   IOS_OFFICIAL_PODS.map(([name]) => name),
 );
@@ -2444,6 +2582,7 @@ function patchInstalledLlamaCapacitorBuildGradle() {
 function patchAndroidGradle() {
   patchAndroidGradleWrapperForReleaseCompat();
   patchInstalledLlamaCapacitorBuildGradle();
+  syncAndroidAppActionsResources();
   // Overwrite root build.gradle with our template (Maven mirrors, Kotlin version)
   const templateGradle = path.join(platformsDir, "android", "build.gradle");
   const targetGradle = path.join(androidDir, "build.gradle");

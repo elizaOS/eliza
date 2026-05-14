@@ -811,9 +811,11 @@ function packageDesktopBuild() {
 
   // Mac App Store post-package codesign: when building the store variant on
   // macOS with real signing enabled, walk the bundle and re-sign every nested
-  // Mach-O with mas-child.entitlements (sandbox + cs.inherit), then sign the
-  // parent .app with mas.entitlements. Required because Electrobun's config
-  // exposes only one entitlements field; helpers must inherit explicitly.
+  // Mach-O with the narrowest applicable entitlements. Most helpers get
+  // mas-child.entitlements, the Bun helper gets mas-bun.entitlements
+  // (Bun-scoped allow-jit), and the parent .app gets mas.entitlements.
+  // Required because Electrobun's config exposes only one entitlements field;
+  // helpers must inherit explicitly.
   if (
     process.platform === "darwin" &&
     buildVariant === "store" &&

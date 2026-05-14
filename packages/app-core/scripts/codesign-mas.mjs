@@ -64,6 +64,12 @@ const MACHO_MAGIC = new Set([
   0xbebafeca, // fat
 ]);
 
+const FORBIDDEN_MAS_CODE_SIGNING_EXCEPTIONS = [
+  "com.apple.security.cs.allow-unsigned-executable-memory",
+  "com.apple.security.cs.disable-library-validation",
+  "com.apple.security.cs.allow-dyld-environment-variables",
+];
+
 function parseArgs(argv) {
   const out = {};
   for (const arg of argv.slice(2)) {
@@ -177,6 +183,18 @@ function plistLint(filePath) {
   }
 }
 
+function assertNoForbiddenMasExceptions(filePath) {
+  const content = readFileSync(filePath, "utf8");
+  const forbidden = FORBIDDEN_MAS_CODE_SIGNING_EXCEPTIONS.filter((key) =>
+    content.includes(key),
+  );
+  if (forbidden.length === 0) return;
+  throw new Error(
+    `MAS entitlements file contains forbidden code-signing exception(s): ${filePath}\n` +
+      forbidden.map((key) => `  - ${key}`).join("\n"),
+  );
+}
+
 function sign(target, entitlements, identity, dryRun) {
   runOrPrint(
     "codesign",
@@ -246,6 +264,9 @@ function main() {
   plistLint(PARENT_ENTITLEMENTS);
   plistLint(CHILD_ENTITLEMENTS);
   plistLint(BUN_ENTITLEMENTS);
+  assertNoForbiddenMasExceptions(PARENT_ENTITLEMENTS);
+  assertNoForbiddenMasExceptions(CHILD_ENTITLEMENTS);
+  assertNoForbiddenMasExceptions(BUN_ENTITLEMENTS);
 
   console.log(`MAS codesign for ${appPath}`);
   console.log(`  identity: ${identity}`);

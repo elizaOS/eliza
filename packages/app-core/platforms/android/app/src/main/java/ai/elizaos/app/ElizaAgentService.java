@@ -1544,7 +1544,28 @@ public class ElizaAgentService extends Service {
                     current = agentProcess;
                 }
                 if (current == null) {
-                    // Service is up but no process — caller must explicitly start.
+                    if (detachedAgentMode) {
+                        ProbeResult probe = probeHealth();
+                        if (probe == ProbeResult.OK) {
+                            if (unhealthyTicks > 0) {
+                                Log.i(TAG, "Detached agent health restored.");
+                            }
+                            unhealthyTicks = 0;
+                            restartAttempts = 0;
+                            if (!"running".equals(currentStatus)) {
+                                currentStatus = "running";
+                                updateNotification();
+                            }
+                        } else if (probe == ProbeResult.DEAD) {
+                            unhealthyTicks++;
+                            Log.w(TAG, "Detached agent health probe failed ("
+                                + unhealthyTicks + " consecutive).");
+                            if (unhealthyTicks >= HEALTH_FAIL_STRIKES) {
+                                unhealthyTicks = 0;
+                                scheduleRestart();
+                            }
+                        }
+                    }
                     continue;
                 }
                 if (!current.isAlive()) {
@@ -1603,44 +1624,6 @@ public class ElizaAgentService extends Service {
             }
         }
 
-        private ProbeResult probeHealth() {
-            HttpURLConnection conn = null;
-            try {
-                URL url = new URL(HEALTH_URL);
-                conn = (HttpURLConnection) url.openConnection();
-                conn.setConnectTimeout((int) HEALTH_TIMEOUT_MS);
-                conn.setReadTimeout((int) HEALTH_TIMEOUT_MS);
-                conn.setRequestMethod("GET");
-                int status = conn.getResponseCode();
-                if (status >= 200 && status < 500) {
-                    return ProbeResult.OK;
-                }
-                // 5xx: agent process is up but reported a server error.
-                // Treat as DEAD so strikes accumulate — a 5xx on
-                // /api/health is a crash signal, not a busy signal.
-                return ProbeResult.DEAD;
-            } catch (IOException error) {
-                // HTTP request failed (timeout / connect refused / read
-                // interrupt). If the agent process is still alive the
-                // most likely cause is bun synchronously inside a native
-                // FFI call (long llama_decode on a multi-thousand-token
-                // prompt). The event loop will resume when the FFI call
-                // returns. If the process IS dead, scheduleRestart()
-                // already fired from the outer loop on the
-                // !current.isAlive() path on the previous tick — a
-                // strike here would be redundant.
-                Process current;
-                synchronized (processLock) {
-                    current = agentProcess;
-                }
-                if (current != null && current.isAlive()) {
-                    return ProbeResult.BUSY;
-                }
-                return ProbeResult.DEAD;
-            } finally {
-                if (conn != null) conn.disconnect();
-            }
-        }
     }
 
     /**

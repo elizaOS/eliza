@@ -1792,11 +1792,21 @@ async function initializeMobileDeviceBridge(): Promise<void> {
         import("@elizaos/capacitor-llama"),
         getOrCreateDeviceBridgeId(),
       ]);
+      const pairingToken =
+        runtimeConfig.deviceBridgeToken?.trim() ||
+        (isAndroid && runtimeConfig.mode === "local"
+          ? await readAndroidLocalAgentToken()
+          : undefined);
+      if (isAndroid && runtimeConfig.mode === "local" && !pairingToken) {
+        window.setTimeout(
+          () => void initializeMobileDeviceBridge(),
+          BACKGROUND_RUNNER_CONFIG_RETRY_MS,
+        );
+        return;
+      }
       mobileDeviceBridgeClient = startDeviceBridgeClient({
         agentUrl,
-        ...(runtimeConfig.deviceBridgeToken
-          ? { pairingToken: runtimeConfig.deviceBridgeToken }
-          : {}),
+        ...(pairingToken ? { pairingToken } : {}),
         deviceId,
         onStateChange: (state, detail) => {
           console.info(

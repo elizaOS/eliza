@@ -10,7 +10,7 @@ export const cloudModelProviderPlugin: Plugin = {
   description: "Eliza Cloud model handlers for cloud-hosted runtimes",
   config: elizaOSCloudPlugin.config,
   init: elizaOSCloudPlugin.init,
-  models: elizaOSCloudPlugin.models,
+  models: elizaOSCloudPlugin.models as Plugin["models"],
 };
 
 export default cloudModelProviderPlugin;

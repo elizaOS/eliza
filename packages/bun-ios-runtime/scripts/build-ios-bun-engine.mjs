@@ -40,6 +40,24 @@ const requiredSymbols = [
   "_eliza_bun_engine_free",
 ];
 const allowedExportedSymbols = new Set(requiredSymbols);
+const appStoreExecutionProfile = "ios-app-store-nojit";
+const forbiddenRuntimeImports = [
+  "_dlopen",
+  "_dlsym",
+  "_posix_spawn",
+  "_fork",
+  "_execve",
+  "_system",
+  "_pthread_jit_write_protect_np",
+  "_mach_vm_protect",
+  "_vm_protect",
+];
+const forbiddenRuntimeStringPatterns = [
+  /\bMAP_JIT\b/i,
+  /\ballow-jit\b/i,
+  /\bdynamic-codesigning\b/i,
+  /\bunsigned-executable-memory\b/i,
+];
 
 function argValue(name, fallback = null) {
   const prefix = `${name}=`;
@@ -73,6 +91,23 @@ function runCapture(command, args, options = {}) {
     encoding: "utf8",
     maxBuffer: options.maxBuffer ?? 256 * 1024 * 1024,
   });
+}
+
+function runMaybeCapture(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: options.cwd ?? repoRoot,
+    env: options.env ?? process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+    maxBuffer: options.maxBuffer ?? 256 * 1024 * 1024,
+  });
+  return {
+    status: result.status ?? (result.error ? 1 : 0),
+    stdout: result.stdout ?? "",
+    stderr:
+      result.stderr ??
+      (result.error ? `${result.error.name}: ${result.error.message}` : ""),
+  };
 }
 
 function targetInfo(raw) {
