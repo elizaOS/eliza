@@ -190,9 +190,7 @@ export const activeWorkspaceContextProvider: Provider = {
       if (pending.length > 0) {
         lines.push("pendingConfirmations:");
         lines.push(`  count: ${pending.length}`);
-        lines.push(
-          "  supervision: acp",
-        );
+        lines.push("  supervision: acp");
         lines.push(
           `pendingItems[${pending.length}]{label,prompt,suggestedAction}:`,
         );

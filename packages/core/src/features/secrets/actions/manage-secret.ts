@@ -150,8 +150,7 @@ export const secretsAction: Action = {
 		},
 		{
 			name: "key",
-			description:
-				"Secret key; key array for check; omit for list.",
+			description: "Secret key; key array for check; omit for list.",
 			required: false,
 			schema: { type: "string" as const },
 		},
@@ -172,15 +171,13 @@ export const secretsAction: Action = {
 		},
 		{
 			name: "mask",
-			description:
-				"true masks returned value for display. action=get.",
+			description: "true masks returned value for display. action=get.",
 			required: false,
 			schema: { type: "boolean" as const },
 		},
 		{
 			name: "prefix",
-			description:
-				"Key prefix filter for action=list, case-insensitive.",
+			description: "Key prefix filter for action=list, case-insensitive.",
 			required: false,
 			schema: { type: "string" as const },
 		},

@@ -24,6 +24,7 @@ import { PriceEnrichmentService } from "./priceEnrichmentService";
  * Price Data Service that combines historical and enrichment functionality
  */
 export class PriceDataService {
+	private runtime: IAgentRuntime;
 	private historicalService: HistoricalPriceService;
 	private enrichmentService: PriceEnrichmentService;
 

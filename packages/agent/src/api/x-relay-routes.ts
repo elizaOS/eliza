@@ -9,14 +9,13 @@
 
 import type http from "node:http";
 import { type Service, sendJsonError } from "@elizaos/core";
+import {
+  isCloudAuthApiKeyService,
+  normalizeCloudApiKey,
+} from "@elizaos/plugin-elizacloud";
 import { normalizeCloudSiteUrl, sendJson } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import type { CloudProxyConfigLike } from "../types/config-like.ts";
-
-interface CloudAuthApiKeyService {
-  isAuthenticated: () => boolean;
-  getApiKey?: () => string | undefined;
-}
 
 interface XRelayRuntime {
   getService(serviceType: string): Service | null;
@@ -41,7 +40,9 @@ interface CloudHelperModule {
     config: ElizaConfig,
     runtime?: XRelayRuntime | null,
   ) => string | null;
-  validateCloudBaseUrl: (baseUrl: string) => Promise<string | null>;
+  validateCloudBaseUrl: (
+    baseUrl: string,
+  ) => Promise<string | null> | string | null;
 }
 
 let cloudHelpersPromise: Promise<CloudHelperModule> | null = null;
@@ -49,25 +50,6 @@ let cloudHelpersPromise: Promise<CloudHelperModule> | null = null;
 function getCloudHelpers(): Promise<CloudHelperModule> {
   cloudHelpersPromise ??= import("@elizaos/plugin-elizacloud");
   return cloudHelpersPromise;
-}
-
-function isCloudAuthApiKeyService(
-  value: Service | null,
-): value is Service & CloudAuthApiKeyService {
-  return (
-    value !== null &&
-    typeof (value as Partial<CloudAuthApiKeyService>).isAuthenticated ===
-      "function"
-  );
-}
-
-function normalizeCloudApiKey(value: string | null | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") {
-    return null;
-  }
-  return trimmed;
 }
 
 async function resolveProxyApiKey(

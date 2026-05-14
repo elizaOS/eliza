@@ -19,7 +19,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { openaiPlugin } from "@elizaos/plugin-openai";
 
 import type { ChatResponse, ErrorResponse, HealthResponse } from "./types.ts";
 
@@ -65,6 +64,7 @@ async function getRuntime(): Promise<IAgentRuntime> {
     console.log("[elizaOS] Initializing runtime...");
 
     const character = getCharacter();
+    const { openaiPlugin } = await import("@elizaos/plugin-openai");
 
     const newRuntime = new AgentRuntime({
       character,

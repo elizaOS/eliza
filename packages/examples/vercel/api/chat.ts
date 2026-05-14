@@ -14,8 +14,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 
 export const config = {
@@ -65,6 +63,10 @@ async function initializeRuntime(): Promise<AgentRuntime> {
   initializationPromise = (async () => {
     console.log("Initializing elizaOS runtime...");
     const character = getCharacter();
+    const [{ default: sqlPlugin }, { openaiPlugin }] = await Promise.all([
+      import("@elizaos/plugin-sql"),
+      import("@elizaos/plugin-openai"),
+    ]);
     const newRuntime = new AgentRuntime({
       character,
       plugins: [sqlPlugin, openaiPlugin], // bootstrapPlugin auto-included by runtime

@@ -1162,9 +1162,10 @@ export class MessageManager {
 					await Promise.race([generationPromise, timeoutPromise]);
 				}
 			} catch (generationError) {
-				const activeTaskAgentWork =
-					generationTimedOut &&
-					hasActiveTaskAgentWorkForMessage(this.runtime, messageId);
+					const activeTaskAgentWork =
+						generationTimedOut &&
+						!!messageId &&
+						hasActiveTaskAgentWorkForMessage(this.runtime, messageId);
 				this.runtime.logger.error(
 					{
 						src: "plugin:discord",
@@ -1316,7 +1317,11 @@ export class MessageManager {
 						}>;
 				  } & Service)
 				| null;
-			if (videoService?.isVideoUrl(url)) {
+				if (
+					typeof videoService?.isVideoUrl === "function" &&
+					typeof videoService.processVideo === "function" &&
+					videoService.isVideoUrl(url)
+				) {
 				try {
 					const videoInfo = await videoService.processVideo(url, this.runtime);
 
@@ -1372,11 +1377,14 @@ export class MessageManager {
 				}
 
 				try {
-					this.runtime.logger.debug(
-						`Fetching page content for cleaned URL: "${url}"`,
-					);
-					const { title, description: summary } =
-						await browserService.getPageContent(url, this.runtime);
+						this.runtime.logger.debug(
+							`Fetching page content for cleaned URL: "${url}"`,
+						);
+						if (typeof browserService.getPageContent !== "function") {
+							continue;
+						}
+						const { title, description: summary } =
+							await browserService.getPageContent(url, this.runtime);
 
 					attachments.push({
 						id: webpageAttachmentId(url),

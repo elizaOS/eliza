@@ -539,7 +539,7 @@ export const settingsAction: Action = {
     "AI provider, toggle a capability, toggle/configure auto-training, set " +
     "the owner display name, or write to the world's settings registry.",
   descriptionCompressed:
-    "owner-only settings mutation dispatch on action update AI provider, toggle capability, toggle/configure auto-train, set owner display name, write world settings registry",
+    "owner settings action: AI provider|capability|auto-train|display name|world registry",
 
   validate: async () => true,
 

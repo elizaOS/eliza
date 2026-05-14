@@ -268,7 +268,7 @@ function resolveGooglePrompt(
   return (
     renderChatMessagesForPrompt(params.messages, {
       omitDuplicateSystem: systemInstruction,
-    }) ?? params.prompt
+    }) ?? params.prompt ?? ""
   );
 }
 

@@ -1,7 +1,10 @@
 #!/usr/bin/env bun
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { loadElizaInferenceFfi } from "../../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings";
+
+const { loadElizaInferenceFfi } = await import(
+  "../../../../plugins/plugin-local-inference/src/services/voice/ffi-bindings"
+);
 
 function arg(name: string, fallback: string): string {
   const idx = process.argv.indexOf(name);

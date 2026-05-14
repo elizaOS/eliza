@@ -58,9 +58,7 @@ export async function handleCodingAgentRoutes(
 /**
  * Create route handler with services from runtime
  */
-export function createCodingAgentRouteHandler(
-  runtime: IAgentRuntime,
-) {
+export function createCodingAgentRouteHandler(runtime: IAgentRuntime) {
   return (req: IncomingMessage, res: ServerResponse, pathname: string) => {
     const ctx: RouteContext = {
       runtime,

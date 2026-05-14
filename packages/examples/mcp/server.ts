@@ -15,8 +15,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -101,6 +99,10 @@ async function initializeRuntime(): Promise<AgentRuntime> {
 
   console.error("🚀 Initializing elizaOS runtime...");
 
+  const [{ default: sqlPlugin }, { openaiPlugin }] = await Promise.all([
+    import("@elizaos/plugin-sql"),
+    import("@elizaos/plugin-openai"),
+  ]);
   runtime = new AgentRuntime({
     character: CHARACTER,
     plugins: [sqlPlugin, openaiPlugin],

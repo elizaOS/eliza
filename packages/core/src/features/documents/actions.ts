@@ -1003,7 +1003,7 @@ export const documentAction: Action = {
 	description:
 		"List, search, read, write, edit, delete, and import stored documents. Select one action and provide the fields needed for that operation.",
 	descriptionCompressed:
-		"Dispatches document operations using action: list, search, read, write, edit, delete, import_file, import_url.",
+		"documents action=list|search|read|write|edit|delete|import_file|import_url",
 	suppressPostActionContinuation: true,
 	parameters: [
 		{

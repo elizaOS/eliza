@@ -2,7 +2,7 @@
 
 ## 0.2.0 (unreleased)
 
-ACP-based spawn, PTY sessions, and workspace services into
+ACP-based spawn, sub-agent routing, and workspace services into
 a single package at `plugins/plugin-agent-orchestrator`. Internal
 `@elizaos/plugin-acpx` callers were rewritten to the package.
 
@@ -48,7 +48,7 @@ a single package at `plugins/plugin-agent-orchestrator`. Internal
 
 ### Removed
 
-- Removed the legacy `swarm-*` / `pty-*` implementation family. The plugin now
+- Removed the legacy swarm/terminal implementation family. The plugin now
   has one task-agent transport: `AcpService` + `SubAgentRouter`.
 
 ## 0.1.0

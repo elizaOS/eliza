@@ -3167,22 +3167,19 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "accountId",
-		description:
-			"Connector account id for multi-account messages.",
+		description: "Connector account id for multi-account messages.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "sources",
-		description:
-			"Inbox sources for triage, list_inbox, search_inbox.",
+		description: "Inbox sources for triage, list_inbox, search_inbox.",
 		required: false,
 		schema: { type: "array", items: { type: "string" } },
 	},
 	{
 		name: "folder",
-		description:
-			"Inbox folder hint for triage/list/search/draft/respond.",
+		description: "Inbox folder hint for triage/list/search/draft/respond.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -3315,8 +3312,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "content",
-		description:
-			"Inbox search text or lookup hint for triage/draft/respond.",
+		description: "Inbox search text or lookup hint for triage/draft/respond.",
 		required: false,
 		schema: { type: "string" },
 	},
@@ -3365,15 +3361,13 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "draftId",
-		description:
-			"Draft ID for send_draft or schedule_draft_send.",
+		description: "Draft ID for send_draft or schedule_draft_send.",
 		required: false,
 		schema: { type: "string" },
 	},
 	{
 		name: "confirmed",
-		description:
-			"Explicit send confirmation for op=send_draft.",
+		description: "Explicit send confirmation for op=send_draft.",
 		required: false,
 		schema: { type: "boolean" },
 	},
@@ -3392,8 +3386,7 @@ export const MESSAGE_PARAMETERS: ActionParameter[] = [
 	},
 	{
 		name: "inReplyToId",
-		description:
-			"Alias for messageId for draft/respond.",
+		description: "Alias for messageId for draft/respond.",
 		required: false,
 		schema: { type: "string" },
 	},

@@ -140,12 +140,15 @@ class DiscordUserAccountScraperImpl
     return relaunchDiscordDesktopForCdp();
   }
 
-  sendViaDesktopCdp(args: {
-    channelId: string;
-    text: string;
-  }): Promise<{ ok: boolean; error?: string }> {
-    return sendDiscordViaDesktopCdp(args);
-  }
+	sendViaDesktopCdp(args: {
+		channelId: string;
+		text: string;
+	}): Promise<{ ok: boolean; error?: string }> {
+		return sendDiscordViaDesktopCdp(args).then((result) => ({
+			ok: result.ok,
+			...(result.error ? { error: result.error } : {}),
+		}));
+	}
 }
 
 export { DiscordUserAccountScraperImpl };

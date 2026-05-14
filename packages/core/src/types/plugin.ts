@@ -1,3 +1,4 @@
+import type { AppPackageRouteContext } from "../api/route-helpers";
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import type { Character } from "./agent";
@@ -321,7 +322,7 @@ export interface PluginAppLaunchPreparation {
 }
 
 export interface PluginAppBridge {
-	handleAppRoutes?: (ctx: unknown) => Promise<boolean>;
+	handleAppRoutes?: (ctx: AppPackageRouteContext) => Promise<boolean>;
 	prepareLaunch?: (
 		ctx: PluginAppBridgeLaunchContext,
 	) => Promise<PluginAppLaunchPreparation | null>;

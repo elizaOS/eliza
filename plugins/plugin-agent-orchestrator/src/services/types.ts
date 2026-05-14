@@ -1,8 +1,4 @@
-export type AgentType =
-  | "claude"
-  | "codex"
-  | "opencode"
-  | string;
+export type AgentType = "claude" | "codex" | "opencode" | string;
 
 export type ApprovalPreset =
   | "readonly"

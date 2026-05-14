@@ -24,6 +24,10 @@
 import * as fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import {
+	clearWorkspaceFolderConfig,
+	writeWorkspaceFolderConfig,
+} from "@elizaos/core";
 import Electrobun, {
 	type ApplicationMenuItemConfig,
 	BrowserView,
@@ -38,10 +42,6 @@ import Electrobun, {
 	Updater,
 	Utils,
 } from "electrobun/bun";
-import {
-	clearWorkspaceFolderConfig,
-	writeWorkspaceFolderConfig,
-} from "@elizaos/core";
 import { getBrandConfig } from "../brand-config";
 import { logger } from "../logger";
 import type {

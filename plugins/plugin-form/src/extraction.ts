@@ -176,7 +176,7 @@ export function buildFormExtractorPromptSection(params: {
     };
   });
 
-  return `Extract form intent and field values for the active form session.
+  return `Extract active form intent + field values.
 
 Context JSON:
 ${JSON.stringify(
@@ -194,7 +194,7 @@ ${JSON.stringify(
   2,
 )}
 
-Populate this evaluator's section as:
+Return:
 {
   "formIntent": "one of intent_options",
   "formExtractions": [
@@ -204,9 +204,9 @@ Populate this evaluator's section as:
 
 Rules:
 - Choose exactly one intent.
-- For fill_form, extract every mentioned field value.
-- Use an empty formExtractions array when no fields were extracted.
-- Confidence is a number from 0.0 to 1.0.`;
+- fill_form: extract every mentioned field value.
+- No fields -> formExtractions=[].
+- confidence 0.0-1.0.`;
 }
 
 /**

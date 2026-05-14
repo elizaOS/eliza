@@ -20,6 +20,7 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": false,
+    "strictNullChecks": true,
     "skipLibCheck": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,

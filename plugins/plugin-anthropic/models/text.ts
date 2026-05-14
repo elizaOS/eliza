@@ -130,12 +130,11 @@ interface NativeGenerateTextResult {
   providerMetadata?: Record<string, unknown>;
 }
 
-const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as ModelTypeName;
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeName;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
-  "RESPONSE_HANDLER") as ModelTypeName;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO) as ModelTypeName;
+const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM) as ModelTypeName;
+const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA) as ModelTypeName;
+const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER) as ModelTypeName;
+const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER) as ModelTypeName;
 type TextModelType =
   | typeof TEXT_NANO_MODEL_TYPE
   | typeof ModelType.TEXT_SMALL
@@ -345,7 +344,7 @@ function isOpus4Model(modelName: ModelName): boolean {
 }
 
 function buildUserContent(params: GenerateTextParamsWithProviderOptions): UserContent {
-  const content: AnthropicUserContentPart[] = [{ type: "text", text: params.prompt }];
+  const content: AnthropicUserContentPart[] = [{ type: "text", text: params.prompt ?? "" }];
 
   appendAttachments(content, params.attachments);
 
@@ -707,7 +706,7 @@ function resolveTextParams(
   modelName: ModelName,
   cotBudget: number
 ): ResolvedTextParams {
-  const prompt = params.prompt;
+  const prompt = params.prompt ?? "";
   const stopSequences = params.stopSequences ?? [];
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;
@@ -796,6 +795,8 @@ async function generateTextWithModel(
     params: paramsWithAttachments,
     fallback: buildCanonicalSystemPrompt({ character: runtime.character }),
   });
+  const cotBudget = getCoTBudget(runtime, modelSize);
+  const resolved = resolveTextParams(params, modelName, cotBudget);
 
   if (getAuthMode(runtime) === "cli") {
     if (shouldReturnNativeResult) {
@@ -806,7 +807,7 @@ async function generateTextWithModel(
     if (params.stream) {
       return streamViaCli(
         runtime,
-        params.prompt,
+        resolved.prompt,
         modelName,
         modelType,
         params.maxTokens,
@@ -815,7 +816,7 @@ async function generateTextWithModel(
     }
     const result = await generateViaCli(
       runtime,
-      params.prompt,
+      resolved.prompt,
       modelName,
       modelType,
       params.maxTokens,
@@ -826,11 +827,9 @@ async function generateTextWithModel(
 
   const anthropic = createAnthropicClientWithTopPSupport(runtime);
   const experimentalTelemetry = getExperimentalTelemetry(runtime);
-  const cotBudget = getCoTBudget(runtime, modelSize);
 
   logger.log(`[Anthropic] Using ${modelType} model: ${modelName}`);
 
-  const resolved = resolveTextParams(params, modelName, cotBudget);
   // cache_control is always-on: getRuntimeCacheControl always returns a value.
   // Callers can still override by supplying anthropic.cacheControl in providerOptions.
   const runtimeCacheControl = getRuntimeCacheControl(runtime);
@@ -1087,10 +1086,8 @@ export async function handleActionPlanner(
   );
 }
 
-const TEXT_REASONING_SMALL_MODEL_TYPE = (ModelType.TEXT_REASONING_SMALL ??
-  "REASONING_SMALL") as ModelTypeName;
-const TEXT_REASONING_LARGE_MODEL_TYPE = (ModelType.TEXT_REASONING_LARGE ??
-  "REASONING_LARGE") as ModelTypeName;
+const TEXT_REASONING_SMALL_MODEL_TYPE = (ModelType.TEXT_REASONING_SMALL) as ModelTypeName;
+const TEXT_REASONING_LARGE_MODEL_TYPE = (ModelType.TEXT_REASONING_LARGE) as ModelTypeName;
 
 export async function handleReasoningSmall(
   runtime: IAgentRuntime,

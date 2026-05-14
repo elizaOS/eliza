@@ -132,7 +132,9 @@ function isActiveSession(session: SessionInfo | null): boolean {
   return false;
 }
 
-function readSessionMetadata(session: SessionInfo | null): Record<string, unknown> {
+function readSessionMetadata(
+  session: SessionInfo | null,
+): Record<string, unknown> {
   const raw = session?.metadata;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     return raw;
@@ -151,10 +153,7 @@ function toJsonValue(value: unknown): JsonValue {
 }
 
 function readOriginRoomId(metadata: Record<string, unknown>): string | null {
-  return (
-    readString(metadata.originRoomId) ??
-    readString(metadata.roomId)
-  );
+  return readString(metadata.originRoomId) ?? readString(metadata.roomId);
 }
 
 function normalizeDocumentSources(value: unknown): JsonValue[] {

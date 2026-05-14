@@ -1,4 +1,4 @@
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { type ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
@@ -223,7 +223,7 @@ async function getFreePort(): Promise<number> {
 }
 
 async function waitForChildExit(
-	child: ChildProcessWithoutNullStreams,
+	child: ChildProcess,
 	timeoutMs: number,
 ): Promise<boolean> {
 	if (child.exitCode !== null) {
