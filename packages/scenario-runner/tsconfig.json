@@ -55,6 +55,7 @@
   "include": [
     "src/**/*.ts",
     "src/**/*.d.ts",
-    "../../plugins/app-companion/src/ambient-modules.d.ts"
+    "../../plugins/app-companion/src/ambient-modules.d.ts",
+    "../../plugins/plugin-local-inference/src/adapters/node-llama-cpp/declarations.d.ts"
   ]
 }
