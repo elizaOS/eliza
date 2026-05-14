@@ -40,14 +40,23 @@ const requiredApkPermissions = [
   ...defaultGrantPermissions,
   "android.permission.MANAGE_OWN_CALLS",
   "android.permission.RECEIVE_BOOT_COMPLETED",
+  "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
   "android.permission.PACKAGE_USAGE_STATS",
   "android.permission.SYSTEM_ALERT_WINDOW",
   "android.permission.MANAGE_APP_OPS_MODES",
+  "android.permission.MANAGE_VIRTUAL_MACHINE",
+  "android.permission.READ_FRAME_BUFFER",
+  "android.permission.INJECT_EVENTS",
+  "android.permission.REAL_GET_TASKS",
 ];
 
 const privilegedPermissions = [
   "android.permission.PACKAGE_USAGE_STATS",
   "android.permission.MANAGE_APP_OPS_MODES",
+  "android.permission.MANAGE_VIRTUAL_MACHINE",
+  "android.permission.READ_FRAME_BUFFER",
+  "android.permission.INJECT_EVENTS",
+  "android.permission.REAL_GET_TASKS",
 ];
 
 export function parseSubArgs(argv, brand) {
