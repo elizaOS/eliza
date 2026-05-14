@@ -394,7 +394,9 @@ function extractPcmTranscriptionParams(
 			"[local-inference] TRANSCRIPTION { pcm } requires a positive sampleRateHz",
 		);
 	}
-	return { pcm: record.pcm, sampleRate, signal: record.signal };
+	return record.signal
+		? { pcm: record.pcm, sampleRate, signal: record.signal }
+		: { pcm: record.pcm, sampleRate };
 }
 
 function extractTranscriptionSignal(params: unknown): AbortSignal | undefined {
@@ -532,11 +534,11 @@ function createTranscriptionHandler() {
 			return transcript;
 		}
 		if (typeof service.transcribePcm === "function") {
+			const pcmParams = extractPcmTranscriptionParams(params);
 			const transcript = normalizeTranscript(
-				await service.transcribePcm(
-					extractPcmTranscriptionParams(params),
-					signal,
-				),
+				await (signal
+					? service.transcribePcm(pcmParams, signal)
+					: service.transcribePcm(pcmParams)),
 			);
 			throwIfAborted(signal);
 			return transcript;
