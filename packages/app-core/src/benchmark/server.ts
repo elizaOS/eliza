@@ -2001,6 +2001,6 @@ export async function startBenchmarkServer() {
 }
 
 startBenchmarkServer().catch((err) => {
-  console.error("Failed to start benchmark server:", err);
+  elizaLogger.error("[bench] Failed to start benchmark server", { err });
   process.exit(1);
 });
