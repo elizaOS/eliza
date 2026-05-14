@@ -1272,7 +1272,6 @@ async function setActiveTrainingServiceIfAvailable(
   }
 }
 
-// mcpServersIncludeStdio, resolveMcpTerminalAuthorizationRejection extracted to server-helpers-mcp.ts
 const resolveMcpTerminalAuthorizationRejection =
   _resolveMcpTerminalAuthorizationRejection;
 
@@ -1603,7 +1602,6 @@ async function handleRequest(
     // Gemini CLI and Aider — no proxy support via ElizaCloud inference
   };
 
-  // ── POST /api/provider/switch (extracted to provider-switch-routes.ts) ──
   if (method === "POST" && pathname === "/api/provider/switch") {
     if (
       await handleProviderSwitchRoutes({
@@ -1681,9 +1679,6 @@ async function handleRequest(
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Health / status / runtime routes (extracted to health-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (
     await handleHealthRoutes({
       req,
@@ -2000,11 +1995,8 @@ async function handleRequest(
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Skills routes (extracted to skills-routes.ts)
-  // Curated-skills routes live at /api/skills/curated/* and must be dispatched
-  // before the generic skills routes (which reject "/" in skill IDs).
-  // ═══════════════════════════════════════════════════════════════════════
+  // Curated-skills routes must be dispatched before generic skills routes
+  // (which reject "/" in skill IDs).
   if (pathname.startsWith("/api/skills/curated")) {
     if (
       await handleCuratedSkillsRoutes({
@@ -2212,7 +2204,6 @@ async function handleRequest(
     return;
   }
 
-  // ── Update routes (extracted to update-routes.ts) ─────────────────────
   if (
     await handleUpdateRoutes({
       req,
@@ -2230,7 +2221,6 @@ async function handleRequest(
     return;
   }
 
-  // ── Connector routes (extracted to connector-routes.ts) ──────────────
   if (
     await handleConnectorRoutes({
       req,
@@ -2280,20 +2270,6 @@ async function handleRequest(
     return;
   }
 
-  // ── iMessage routes (/api/imessage/*) ─────────────────────────────────
-  // Extracted to @elizaos/plugin-imessage setup-routes.ts (Plugin.routes).
-  // The plugin registers rawPath routes that serve the same legacy paths.
-
-  // ── Telegram setup routes (/api/setup/telegram/*) ────────────────────
-  // Extracted to @elizaos/plugin-telegram setup-routes.ts (Plugin.routes).
-
-  // ── Telegram account routes (/api/setup/telegram-account/*) ──────────
-  // Extracted to @elizaos/plugin-telegram account-setup-routes.ts (Plugin.routes).
-
-  // ── Discord Local routes (/api/discord-local/*) — extracted to @elizaos/plugin-discord (setup-routes.ts) ──
-
-  // ── Signal routes (/api/signal/*) — extracted to @elizaos/plugin-signal (setup-routes.ts) ──
-
   // ── Restart ──────────────────────────────────────────────────────────
   if (method === "POST" && pathname === "/api/restart") {
     state.agentState = "restarting";
@@ -2304,7 +2280,6 @@ async function handleRequest(
     return;
   }
 
-  // ── TTS routes (extracted to tts-routes.ts) ──────────────────────────
   if (
     await handleTtsRoutes({
       req,
@@ -2329,7 +2304,6 @@ async function handleRequest(
     return;
   }
 
-  // ── Avatar routes (extracted to avatar-routes.ts) ───────────────────
   if (
     await handleAvatarRoutes({
       req,
@@ -2343,9 +2317,6 @@ async function handleRequest(
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Config routes (extracted to config-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (
     pathname === "/api/config" ||
     pathname === "/api/config/schema" ||
@@ -2377,7 +2348,6 @@ async function handleRequest(
     }
   }
 
-  // ── Permissions extra routes (extracted to permissions-routes-extra.ts) ──
   if (
     await handlePermissionsExtraRoutes({
       req,
@@ -2621,10 +2591,6 @@ async function handleRequest(
     return;
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // ═══════════════════════════════════════════════════════════════════════
-  // Workbench routes (extracted to workbench-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (pathname.startsWith("/api/workbench")) {
     if (
       await handleWorkbenchRoutes({
@@ -2662,9 +2628,6 @@ async function handleRequest(
   // runtime plugin route system. See app-lifeops/src/routes/plugin.ts.
   // ═══════════════════════════════════════════════════════════════════════
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // MCP routes (extracted to mcp-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (pathname.startsWith("/api/mcp")) {
     if (
       await handleMcpRoutes({
@@ -2690,9 +2653,6 @@ async function handleRequest(
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════════════
-  // Misc routes (extracted to misc-routes.ts)
-  // ═══════════════════════════════════════════════════════════════════════
   if (
     await handleMiscRoutes({
       req,

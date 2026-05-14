@@ -17,7 +17,7 @@ let streamingSettingsModulePromise: Promise<StreamingSettingsModule> | null =
 function getStreamingSettingsModule(): Promise<StreamingSettingsModule> {
   streamingSettingsModulePromise ??= import(
     "@elizaos/plugin-streaming"
-  ) as Promise<StreamingSettingsModule>;
+  ) as unknown as Promise<StreamingSettingsModule>;
   return streamingSettingsModulePromise;
 }
 

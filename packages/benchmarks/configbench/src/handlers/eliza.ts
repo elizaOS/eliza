@@ -1,4 +1,4 @@
-/** Real ElizaOS agent handler. Requires GROQ_API_KEY or OPENAI_API_KEY. */
+/** Real ElizaOS agent handler. Requires a configured LLM provider API key. */
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";

@@ -34,6 +34,7 @@ import {
 
 const TIERS_WITHOUT_DEDICATED_EMBEDDING: ReadonlySet<string> = new Set([
 	"eliza-1-0_8b",
+	"eliza-1-2b",
 ]);
 
 describe("per-tier text + embedding bundle resolution", () => {

@@ -349,7 +349,9 @@ function normalizeNativeTools(
       // User-supplied schemas may still contain empty-properties subobjects
       // even after sanitizeJsonSchema. Apply Cerebras-specific normalization
       // recursively so deep schemas are accepted by the grammar compiler.
-      inputSchema = normalizeSchemaForCerebras(inputSchema) as JSONSchema7;
+      // Pass isRoot: true so the top-level invariant is enforced (must be
+      // type:"object" with no root oneOf/anyOf/enum/not).
+      inputSchema = normalizeSchemaForCerebras(inputSchema, true) as JSONSchema7;
     }
 
     // Cerebras's grammar compiler rejects function names containing characters

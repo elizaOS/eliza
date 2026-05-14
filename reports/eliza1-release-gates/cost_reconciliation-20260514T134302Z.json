@@ -1,0 +1,18 @@
+{
+  "gate": "cost_reconciliation",
+  "status": "pass",
+  "completedAt": "2026-05-14T13:43:02.582Z",
+  "organizationId": "ebd6f0ce-0d64-4267-8aac-95ed3826ebb7",
+  "provider": "vast",
+  "model": "vast/eliza-1-27b-256k",
+  "startDate": "2026-05-14T00:00:00.000Z",
+  "endDate": "2026-05-15T00:00:00.000Z",
+  "billingRecordCount": 1,
+  "usageRecordsTotal": 0.00018,
+  "ledgerTotal": 0.00018,
+  "providerSpendTotal": 1.47276,
+  "drift": 0,
+  "maxDrift": 0.01,
+  "providerSpendRecorded": true,
+  "summary": "1 AI billing records; usage 0.00018; ledger 0.00018; provider spend 1.47276; drift 0"
+}

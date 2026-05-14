@@ -47,6 +47,10 @@ const config: CapacitorConfig = {
         process.env.VITE_ELIZA_IOS_RUNTIME_MODE ??
         process.env.VITE_ELIZA_MOBILE_RUNTIME_MODE ??
         "",
+      fullBunAvailable:
+        process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE ??
+        process.env.VITE_ELIZA_IOS_FULL_BUN_STRICT ??
+        "",
       apiBase:
         process.env.VITE_ELIZA_IOS_API_BASE ??
         process.env.VITE_ELIZA_MOBILE_API_BASE ??
