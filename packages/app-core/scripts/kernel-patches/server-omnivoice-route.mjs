@@ -103,7 +103,7 @@ struct route_voice_preset {
     bool empty_payload = true;
 };
 
-// voiceId path-safety: lowercase letters/digits/`._-`, no `..`.
+// voiceId path-safety: lowercase letters/digits/dot-underscore-dash, no parent.
 static bool ov_route_safe_voice_id(const std::string & v) {
     if (v.empty()) return false;
     if (v.find("..") != std::string::npos) return false;
@@ -149,9 +149,9 @@ static bool ov_route_read_file(const std::string & path, std::vector<uint8_t> & 
     return got == (size_t) n;
 }
 
-// Parse v2 ELZ2 voice preset bytes into `out`. v1 files are accepted
+// Parse v2 ELZ2 voice preset bytes into \`out\`. v1 files are accepted
 // (no payload extracted — empty_payload stays true). Returns false on
-// hard format errors with `err` populated; missing/unsafe inputs are
+// hard format errors with \`err\` populated; missing/unsafe inputs are
 // the caller's job to surface.
 static bool ov_route_parse_preset(const std::vector<uint8_t> & bytes,
                                   route_voice_preset & out,
@@ -220,7 +220,7 @@ static bool ov_route_parse_preset(const std::vector<uint8_t> & bytes,
     return true;
 }
 
-// Resolve `voice` to a preset. Returns false (with err set) when the
+// Resolve \`voice\` to a preset. Returns false (with err set) when the
 // id is unsafe or the file is missing/malformed. Returns true with
 // empty_payload=true when the voice resolves to "default" or "" —
 // in those cases the caller stays on OmniVoice auto-voice.
@@ -432,7 +432,7 @@ static server_http_context::handler_t audio_speech_handler() {
         if (in.contains("response_format") && in["response_format"].is_string()) {
             fmt = in["response_format"].get<std::string>();
         }
-        // OpenAI-compatible `voice` field. Resolves to
+        // OpenAI-compatible \`voice\` field. Resolves to
         // <bundle>/cache/voice-preset-<voice>.bin (ELZ2 v2). v1 / empty /
         // missing presets fall through to OmniVoice auto-voice mode.
         // R6 §3.3 / brief §3: load instruct + ref_audio_tokens + ref_text
@@ -448,10 +448,10 @@ static server_http_context::handler_t audio_speech_handler() {
             // A bad/malformed preset id is a 400, not a silent fall-through.
             return error_res(400, std::string("invalid voice preset: ") + preset_err);
         }
-        // `?interactive=0` (or JSON {"interactive": false}) is the
+        // \`?interactive=0\` (or JSON {"interactive": false}) is the
         // explicit non-interactive path. The default route keeps the
         // synchronous-mutex behaviour; interactive turns are expected
-        // to use the FFI streaming path (`ttsSynthesizeStream`) where
+        // to use the FFI streaming path (\`ttsSynthesizeStream\`) where
         // mid-utterance cancellation is supported (R11 / brief §6
         // Path B).
         bool interactive = true;
@@ -494,9 +494,9 @@ static server_http_context::handler_t audio_speech_handler() {
         if (interactive) {
             // Interactive turns should route through the FFI streaming
             // path. Return 409 with the diagnostic so the JS layer can
-            // pick `OmniVoiceFfiBackend.ttsStream` instead of the HTTP
+            // pick \`OmniVoiceFfiBackend.ttsStream\` instead of the HTTP
             // route. The HTTP route stays available for batch jobs that
-            // explicitly opt out with `interactive: false`.
+            // explicitly opt out with \`interactive: false\`.
             return error_res(409, "interactive=true: use FFI streaming "
                                   "(eliza_inference_tts_synthesize_stream) for "
                                   "mid-utterance cancellation; pass "

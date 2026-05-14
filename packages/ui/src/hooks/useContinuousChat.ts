@@ -155,7 +155,9 @@ export function useContinuousChat(
   const [interrupting, setInterrupting] = useState(false);
   const interruptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeTokenRef = useRef<ContinuousChatCancellationToken | null>(null);
-  const lastModeRef = useRef<VoiceContinuousMode>(DEFAULT_VOICE_CONTINUOUS_MODE);
+  const lastModeRef = useRef<VoiceContinuousMode>(
+    DEFAULT_VOICE_CONTINUOUS_MODE,
+  );
   const onContinuousStopRef = useRef(onContinuousStop);
   onContinuousStopRef.current = onContinuousStop;
 
@@ -274,7 +276,8 @@ export function useContinuousChat(
     if (interrupting) return "interrupting";
     if (voice.isSpeaking) return "speaking";
     if (assistantGenerating) return "thinking";
-    if (voice.isListening && voice.captureMode === "passive") return "listening";
+    if (voice.isListening && voice.captureMode === "passive")
+      return "listening";
     if (mode === "off") return "idle";
     return "idle";
   }, [

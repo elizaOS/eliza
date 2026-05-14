@@ -9,9 +9,9 @@
  *   sheet (we just expose the toggle + a click handler).
  */
 
+import { Mic, Radio, Volume2 } from "lucide-react";
 // biome-ignore lint/correctness/noUnusedImports: Required for JSX transform in tests.
 import * as React from "react";
-import { Mic, Radio, Volume2 } from "lucide-react";
 
 import { cn } from "../../../lib/utils";
 import {

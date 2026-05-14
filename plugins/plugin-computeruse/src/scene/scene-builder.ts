@@ -210,7 +210,7 @@ export class SceneBuilder extends EventEmitter {
       // Agent turns ALWAYS re-OCR — the planner has to see fresh text even
       // if the screen looks pixel-identical (e.g. blinking cursor in a
       // text box that just received an enter key).
-      const wholeFrameCacheHit =
+      const wholeFrameMatch =
         mode !== "agent-turn" &&
         !changed &&
         state.lastScene.dhash !== null &&
@@ -221,23 +221,34 @@ export class SceneBuilder extends EventEmitter {
       const idleNow = t0 - state.lastChangeAt > IDLE_THRESHOLD_MS;
       const wantOcr = mode === "agent-turn" || (mode === "active" && !idleNow);
 
-      if (wholeFrameCacheHit && state.lastScene.scene.ocr) {
+      // Compute block-grid diff up-front so the dirty-block fast path can
+      // fire even when the whole-frame dHash is unchanged. A single text
+      // field flipping characters typically does not shift the resampled
+      // 8×8 frame dHash but does flip one or two 16×16 blocks.
+      const grid = wantOcr ? blockGrid(capture.frame) : null;
+      const dims = wantOcr ? pngDimensions(capture.frame) : null;
+      const dirty =
+        wantOcr && grid && state.lastBlockGrid && dims
+          ? diffBlocks(state.lastBlockGrid, grid, dims.width, dims.height)
+          : null;
+      const totalBlocks = grid ? grid.cols * grid.rows : 0;
+      const dirtyFraction =
+        dirty && totalBlocks > 0 ? dirty.length / totalBlocks : 1;
+      const prevOcr = state.lastScene.scene.ocr ?? [];
+
+      // 1. Whole-frame match + zero dirty blocks → cache hit.
+      if (
+        wholeFrameMatch &&
+        state.lastScene.scene.ocr &&
+        dirty !== null &&
+        dirty.length === 0
+      ) {
         const cached = state.lastScene.scene.ocr.filter((b) => b.displayId === displayId);
         ocr.push(...cached);
       } else if (wantOcr) {
-        const grid = blockGrid(capture.frame);
-        const dims = pngDimensions(capture.frame);
-        const dirty =
-          grid && state.lastBlockGrid && dims
-            ? diffBlocks(state.lastBlockGrid, grid, dims.width, dims.height)
-            : null;
-        const totalBlocks = grid ? grid.cols * grid.rows : 0;
-        const dirtyFraction =
-          dirty && totalBlocks > 0 ? dirty.length / totalBlocks : 1;
-        const prevOcr = state.lastScene.scene.ocr ?? [];
-        // Dirty-block fast path: only re-capture + re-OCR the changed
-        // rectangles. We coalesce adjacent dirty blocks so a single
-        // changed text field is one OS region capture, not a dozen.
+        // 2. Dirty-block fast path: only re-capture + re-OCR the changed
+        //    rectangles. We coalesce adjacent dirty blocks so a single
+        //    changed text field is one OS region capture, not a dozen.
         if (
           dirty &&
           grid &&
@@ -290,6 +301,7 @@ export class SceneBuilder extends EventEmitter {
             ocr.push(...refreshed);
           }
         } else {
+          // 3. Full-frame OCR (no usable dirty diff, or too many blocks dirty).
           const refreshed = await this.deps.runOcrOnFrame(
             capture.frame,
             displayId,

@@ -18,9 +18,7 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
 import type { CloudVoiceCatalogEntry } from "@elizaos/plugin-elizacloud";
-import {
-  ensureRouteAuthorized as defaultEnsureRouteAuthorized,
-} from "./auth.ts";
+import { ensureRouteAuthorized as defaultEnsureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import {
   sendJsonError as sendJsonErrorResponse,
@@ -65,10 +63,13 @@ export async function handleCloudVoiceRoutes(
   const fetchCatalog =
     deps.fetchCatalog ??
     (async (rt: AgentRuntime) => {
-      const { fetchCloudVoiceCatalog } = await import("@elizaos/plugin-elizacloud");
+      const { fetchCloudVoiceCatalog } = await import(
+        "@elizaos/plugin-elizacloud"
+      );
       return fetchCloudVoiceCatalog(rt);
     });
-  const ensureAuthorized = deps.ensureAuthorized ?? defaultEnsureRouteAuthorized;
+  const ensureAuthorized =
+    deps.ensureAuthorized ?? defaultEnsureRouteAuthorized;
 
   const method = (req.method ?? "GET").toUpperCase();
   const url = new URL(req.url ?? "/", "http://localhost");

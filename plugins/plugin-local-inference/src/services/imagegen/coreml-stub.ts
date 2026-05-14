@@ -83,7 +83,7 @@ export async function loadCoreMlImageGenBackend(
 	const { bridge, modelKey } = opts;
 	const now = opts.now ?? Date.now;
 
-	if (!bridge || !bridge.isAvailable()) {
+	if (!bridge?.isAvailable()) {
 		throw new ImageGenBackendUnavailableError(
 			"coreml",
 			"binding_unavailable",
@@ -116,7 +116,7 @@ export async function loadCoreMlImageGenBackend(
 					"[imagegen/coreml] generate called after dispose()",
 				);
 			}
-			if (!req.prompt || !req.prompt.trim()) {
+			if (!req.prompt?.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"coreml",
 					"unsupported_request",

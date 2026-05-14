@@ -5,8 +5,8 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import { logger } from "@elizaos/core";
-import { getCloudSecret } from "@elizaos/shared";
 import {
+  getCloudSecret,
   migrateLegacyRuntimeConfig,
   normalizeDeploymentTargetConfig,
   normalizeLinkedAccountFlagsConfig,

@@ -21,7 +21,7 @@
  * Keeping this file in `voice/` makes its surface area obvious.
  */
 
-import { type DeviceTier } from "../device-tier";
+import type { DeviceTier } from "../device-tier";
 
 export type VoiceBackendMode = "auto" | "force-local" | "force-cloud";
 export type VoiceModelQualityPreset = "max" | "balanced" | "minimal";

@@ -50,10 +50,10 @@
  */
 
 import { resolveImageBytes } from "./hash";
-import {
-	type VisionDescribeBackend,
-	type VisionDescribeRequest,
-	type VisionDescribeResult,
+import type {
+	VisionDescribeBackend,
+	VisionDescribeRequest,
+	VisionDescribeResult,
 } from "./types";
 
 export interface LlamaServerVisionBackendOptions {

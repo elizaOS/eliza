@@ -205,7 +205,7 @@ export function attributeVoiceEmotion(
 	// confidence so a low-mass continuous read does not dominate the lexicon
 	// (the projection table itself abstains under `confidence < 0.35`).
 	const modelOutput = input.model?.output;
-	if (modelOutput && modelOutput.emotion) {
+	if (modelOutput?.emotion) {
 		const w = clamp01(modelOutput.confidence) * 0.92;
 		if (w > 0) {
 			addScore(scores, modelOutput.emotion, w);

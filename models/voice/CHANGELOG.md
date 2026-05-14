@@ -98,6 +98,33 @@ Stable model ids:
 
 ## omnivoice
 
+### 0.1.1 — 2026-05-14 (samantha preset + FFI wiring)
+
+- **What changed:**
+  - `voice-preset-samantha.bin` lands as a per-bundle preset alongside
+    the existing `voice-preset-default.bin`; the default preset is now
+    the samantha freeze itself (no more 1052-byte zero-fp32 placeholder).
+  - FFI bridge (ABI v4) now exports `eliza_inference_encode_reference` /
+    `eliza_inference_free_tokens`. `prepare.mjs` wires the synth +
+    streaming paths to resolve `speaker_preset_id` through the bundle's
+    `cache/voice-preset-<id>.bin` (was `params.instruct = preset_id`
+    literal — broken VoiceDesign validation).
+  - `server-omnivoice-route.mjs` (`POST /v1/audio/speech`) now honors
+    the OpenAI `voice` field by loading the same preset file; the
+    interactive path returns `409` directing callers to the FFI
+    streaming path that supports mid-utterance cancellation (R11).
+  - Native `ov_encode_reference` exposes the encode-only half of the
+    pipeline so `freeze-voice.mjs` can persist pre-encoded
+    `[K=8, ref_T]` reference-audio tokens directly into the ELZ2 v2
+    preset (no per-utterance encode cost at runtime).
+- **Quantization rules (R6 §5.6):** PolarQuant / TurboQuant weight
+  quant applies to the OmniVoice LM (Qwen3-0.6B bidir). V-cache
+  PolarQuant DOES NOT apply (MaskGIT has no KV cache between steps).
+  QJL-K is conditional and deferred to I8. K-quants Q4–Q8 already work
+  via `omnivoice/tools/quantize.cpp`.
+- **Net improvement:** wiring-only release; quality unchanged vs 0.1.0
+  but voice routing now actually selects the bundled samantha preset.
+
 ### 0.1.0 — 2026-05-14
 
 - **Initial release.** Ships with the I6 OmniVoice freeze pipeline.
