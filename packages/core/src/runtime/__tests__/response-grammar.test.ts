@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import type { Action } from "../../types";
+import type { ResponseSkeleton } from "../../types/model";
 import {
 	buildPlannerActionGrammar,
 	buildPlannerActionGrammarStrict,
 	buildPlannerParamsSkeleton,
 	buildResponseGrammar,
+	buildSpanSamplerPlan,
 	clearResponseGrammarCache,
 	withGuidedDecodeProviderOptions,
 } from "../response-grammar";
@@ -1046,5 +1048,208 @@ describe("withGuidedDecodeProviderOptions", () => {
 			foo: 1,
 			guidedDecode: true,
 		});
+	});
+});
+
+describe("buildSpanSamplerPlan — per-span argmax policy", () => {
+	it("emits T=0 / topK=1 for every multi-value enum span", () => {
+		const skeleton: ResponseSkeleton = {
+			id: "test#multi-enum",
+			spans: [
+				{ kind: "literal", value: '{"shouldRespond":' },
+				{
+					kind: "enum",
+					key: "shouldRespond",
+					enumValues: ["RESPOND", "IGNORE", "STOP"],
+				},
+				{ kind: "literal", value: ',"thought":' },
+				{ kind: "free-string", key: "thought" },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = buildSpanSamplerPlan(skeleton);
+		expect(plan.overrides).toEqual([
+			{ spanIndex: 1, temperature: 0, topK: 1 },
+		]);
+		// The override addresses skeleton.spans[1] — the enum span.
+		expect(skeleton.spans[plan.overrides[0].spanIndex].kind).toBe("enum");
+	});
+
+	it("emits T=0 / topK=1 for number and boolean spans", () => {
+		const skeleton: ResponseSkeleton = {
+			id: "test#numeric",
+			spans: [
+				{ kind: "literal", value: '{"count":' },
+				{ kind: "number", key: "count" },
+				{ kind: "literal", value: ',"requiresTool":' },
+				{ kind: "boolean", key: "requiresTool" },
+				{ kind: "literal", value: ',"replyText":' },
+				{ kind: "free-string", key: "replyText" },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = buildSpanSamplerPlan(skeleton);
+		expect(plan.overrides).toEqual([
+			{ spanIndex: 1, temperature: 0, topK: 1 },
+			{ spanIndex: 3, temperature: 0, topK: 1 },
+		]);
+	});
+
+	it("skips literal, free-string, and free-json spans", () => {
+		const skeleton: ResponseSkeleton = {
+			id: "test#all-free",
+			spans: [
+				{ kind: "literal", value: '{"thought":' },
+				{ kind: "free-string", key: "thought" },
+				{ kind: "literal", value: ',"extract":' },
+				{ kind: "free-json", key: "extract" },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = buildSpanSamplerPlan(skeleton);
+		expect(plan.overrides).toEqual([]);
+	});
+
+	it("skips single-value enums (defensive — they collapse to literals upstream)", () => {
+		const skeleton: ResponseSkeleton = {
+			id: "test#single-enum",
+			spans: [
+				{ kind: "literal", value: '{"mode":' },
+				// A defensive single-value enum that didn't get collapsed.
+				{ kind: "enum", key: "mode", enumValues: ["ONLY"] },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = buildSpanSamplerPlan(skeleton);
+		expect(plan.overrides).toEqual([]);
+	});
+
+	it("covers the canonical Stage-1 envelope (shouldRespond enum + requiresTool boolean)", () => {
+		clearResponseGrammarCache();
+		const { responseSkeleton } = buildResponseGrammar(
+			{ actions: [] },
+			{ contexts: ["general"] },
+		);
+		const plan = buildSpanSamplerPlan(responseSkeleton);
+		// shouldRespond gets an override; replyText / thought / contexts do not.
+		const overriddenKinds = plan.overrides.map(
+			(o) => responseSkeleton.spans[o.spanIndex].kind,
+		);
+		const overriddenKeys = plan.overrides.map(
+			(o) => responseSkeleton.spans[o.spanIndex].key,
+		);
+		expect(overriddenKinds).toContain("enum");
+		expect(overriddenKeys).toContain("shouldRespond");
+		// Every override carries T=0 and topK=1 — the user's explicit rule.
+		for (const o of plan.overrides) {
+			expect(o.temperature).toBe(0);
+			expect(o.topK).toBe(1);
+		}
+		// Free-string / free-json spans are not overridden.
+		expect(overriddenKeys).not.toContain("replyText");
+		expect(overriddenKeys).not.toContain("thought");
+		expect(overriddenKeys).not.toContain("extract");
+	});
+
+	it("returns an empty plan (no overrides) for a skeleton with only free spans", () => {
+		const skeleton: ResponseSkeleton = {
+			id: "test#empty",
+			spans: [
+				{ kind: "literal", value: "{" },
+				{ kind: "free-string", key: "any" },
+				{ kind: "literal", value: "}" },
+			],
+		};
+		const plan = buildSpanSamplerPlan(skeleton);
+		expect(plan.overrides).toEqual([]);
+		expect(plan.strict).toBeUndefined();
+	});
+});
+
+describe("buildPlannerParamsSkeleton — typed number/boolean span kinds", () => {
+	it("emits a number span for an integer action parameter", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("SET_COUNT", {
+				parameters: [
+					{
+						name: "count",
+						description: "how many",
+						required: true,
+						schema: { type: "integer" },
+					},
+				],
+			}),
+		);
+		const countSpan = sk.spans.find((s) => s.key === "count");
+		expect(countSpan?.kind).toBe("number");
+	});
+
+	it("emits a number span for a `number`-typed action parameter", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("FRAC", {
+				parameters: [
+					{
+						name: "ratio",
+						description: "decimal ratio",
+						required: true,
+						schema: { type: "number" },
+					},
+				],
+			}),
+		);
+		const ratioSpan = sk.spans.find((s) => s.key === "ratio");
+		expect(ratioSpan?.kind).toBe("number");
+	});
+
+	it("emits a boolean span for a boolean action parameter", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("TOGGLE", {
+				parameters: [
+					{
+						name: "enabled",
+						description: "on/off",
+						required: true,
+						schema: { type: "boolean" },
+					},
+				],
+			}),
+		);
+		const enabledSpan = sk.spans.find((s) => s.key === "enabled");
+		expect(enabledSpan?.kind).toBe("boolean");
+	});
+
+	it("derives T=0 overrides via buildSpanSamplerPlan for a mixed-shape params skeleton", () => {
+		const sk = buildPlannerParamsSkeleton(
+			makeAction("MIXED", {
+				parameters: [
+					{
+						name: "count",
+						description: "how many",
+						required: true,
+						schema: { type: "number" },
+					},
+					{
+						name: "enabled",
+						description: "on/off",
+						required: true,
+						schema: { type: "boolean" },
+					},
+					{
+						name: "label",
+						description: "free text",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+			}),
+		);
+		const plan = buildSpanSamplerPlan(sk);
+		const overriddenKeys = plan.overrides.map(
+			(o) => sk.spans[o.spanIndex].key,
+		);
+		// Order matches property emission order in the skeleton.
+		expect(overriddenKeys.sort()).toEqual(["count", "enabled"].sort());
+		// `label` (free-string) gets no override.
+		expect(overriddenKeys).not.toContain("label");
 	});
 });
