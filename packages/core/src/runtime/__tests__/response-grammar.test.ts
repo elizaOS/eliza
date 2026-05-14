@@ -497,6 +497,32 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		expect(r.grammar).toMatch(/^paramsofaction_EMPTY ::= "\{\}"$/m);
 	});
 
+	it("does NOT factor SNAKE_CASE prefixes — each branch must pin the full action name", () => {
+		// Regression: a prior version of this function grouped actions by common
+		// prefix (e.g. emit "MESSAGE_" once with a shared suffix rule). That was
+		// broken on two fronts: (1) the suffix alternation produced malformed
+		// JSON like `{"action":"MESSAGE_"READ""…` because each suffix was
+		// JSON-quoted on top of the already-opened action-value quote; (2) the
+		// shared suffix rule decoupled the action name from its params rule, so
+		// the model could legally pair `MESSAGE_READ` with
+		// `paramsofaction_MESSAGE_SEND`. Each call branch must encode the full
+		// action name as a single quoted literal.
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("MESSAGE_SEND"),
+			makeAction("MESSAGE_READ"),
+			makeAction("MESSAGE_SEARCH"),
+			makeAction("REPLY"),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		// Each branch contains the full action name as a single literal.
+		expect(r.grammar).toContain('"{\\"action\\":\\"MESSAGE_SEND\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"MESSAGE_READ\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"MESSAGE_SEARCH\\""');
+		expect(r.grammar).toContain('"{\\"action\\":\\"REPLY\\""');
+		// The grammar must NOT contain a `suffix_MESSAGE_` shared rule.
+		expect(r.grammar).not.toMatch(/^suffix_MESSAGE_ ::= /m);
+	});
+
 	it("pins a multi-value string enum as a GBNF alternation in the params rule", () => {
 		const r = buildPlannerActionGrammarStrict([
 			makeAction("MSG", {
@@ -1068,9 +1094,7 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 			],
 		};
 		const plan = buildSpanSamplerPlan(skeleton);
-		expect(plan.overrides).toEqual([
-			{ spanIndex: 1, temperature: 0, topK: 1 },
-		]);
+		expect(plan.overrides).toEqual([{ spanIndex: 1, temperature: 0, topK: 1 }]);
 		// The override addresses skeleton.spans[1] — the enum span.
 		expect(skeleton.spans[plan.overrides[0].spanIndex].kind).toBe("enum");
 	});
@@ -1244,9 +1268,7 @@ describe("buildPlannerParamsSkeleton — typed number/boolean span kinds", () =>
 			}),
 		);
 		const plan = buildSpanSamplerPlan(sk);
-		const overriddenKeys = plan.overrides.map(
-			(o) => sk.spans[o.spanIndex].key,
-		);
+		const overriddenKeys = plan.overrides.map((o) => sk.spans[o.spanIndex].key);
 		// Order matches property emission order in the skeleton.
 		expect(overriddenKeys.sort()).toEqual(["count", "enabled"].sort());
 		// `label` (free-string) gets no override.

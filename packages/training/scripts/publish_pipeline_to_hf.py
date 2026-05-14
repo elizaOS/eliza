@@ -9,9 +9,10 @@ that bundles the training scripts so a fresh Vast.ai box can:
     bash scripts/train_vast.sh ...
 
 Companion to ``publish_dataset_to_hf.py`` (data) and
-``push_model_to_hf.py`` (trained checkpoints). Distinct from the legacy
-``push_pipeline_to_hf.py`` which targets the older
-``elizaos/eliza-1-pipeline`` repo and includes a wider tree.
+``publish.publish_eliza1_model_repo`` (trained bundles). The wave2 cleanup
+consolidated all three under ``scripts/publish/``: see
+``scripts/publish/publish_pipeline.py``, ``scripts/publish/publish_dataset.py``,
+and ``scripts/publish/publish_model.py``. Those wrappers forward here.
 
 Usage::
 

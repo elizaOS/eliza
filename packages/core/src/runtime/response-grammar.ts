@@ -1121,18 +1121,21 @@ function buildBoundedNumberRule(
 	const maximum = (schema as { maximum?: number }).maximum;
 
 	// No bounds specified: use the shared unbounded rule.
-	if (
-		typeof minimum !== "number" &&
-		typeof maximum !== "number"
-	) {
+	if (typeof minimum !== "number" && typeof maximum !== "number") {
 		builder.useShared("jsonnumber");
 		return "jsonnumber";
 	}
 
 	// For integers, emit a rule that matches only in-range values.
 	if (type === "integer") {
-		const min = typeof minimum === "number" ? Math.ceil(minimum) : Number.NEGATIVE_INFINITY;
-		const max = typeof maximum === "number" ? Math.floor(maximum) : Number.POSITIVE_INFINITY;
+		const min =
+			typeof minimum === "number"
+				? Math.ceil(minimum)
+				: Number.NEGATIVE_INFINITY;
+		const max =
+			typeof maximum === "number"
+				? Math.floor(maximum)
+				: Number.POSITIVE_INFINITY;
 
 		// Handle edge cases: if bounds are missing, fall back to unbounded.
 		if (!Number.isFinite(min) && !Number.isFinite(max)) {
