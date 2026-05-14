@@ -114,9 +114,9 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. These tiers are
- *     phone-first and must keep TTFA/RSS predictable.
- *   - 9b → Kokoro first with OmniVoice bundled for expressive desktop voice.
+ *   - Small tiers (0_8b / 2b / 4b / 9b) → OmniVoice first with Kokoro
+ *     fallback. The fused expressive TTS path stays default, while Kokoro
+ *     remains available for low-latency/thermal fallback on constrained hosts.
  *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
@@ -125,10 +125,10 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
-  "eliza-1-2b": ["kokoro"],
-  "eliza-1-4b": ["kokoro"],
-  "eliza-1-9b": ["kokoro", "omnivoice"],
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
+  "eliza-1-4b": ["omnivoice", "kokoro"],
+  "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],
@@ -386,16 +386,18 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
  * from this list. The ladder is monotonically decreasing in bits-per-weight
  * (smallest first): {@link OmniVoiceQuantLevel}.
  *
- * Kokoro-only tiers publish no OmniVoice ladder. 9B and 27B-class tiers ship
+ * Every active tier publishes an OmniVoice ladder. Small tiers keep the
+ * ladder narrow so the installer can stay inside mobile RAM budgets while
+ * still defaulting to the fused OmniVoice path. 9B and 27B-class tiers ship
  * the full Q3..Q8 ladder so a `--memory-budget okay` host can step down to
  * Q3_K_M and a `--memory-budget good` host can take Q6_K.
  */
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": [],
-  "eliza-1-2b": [],
-  "eliza-1-4b": [],
+  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
