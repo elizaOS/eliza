@@ -47,6 +47,10 @@ import type {
 } from "../services/workspace-service.js";
 import { getCodingWorkspaceService } from "../services/workspace-service.js";
 import {
+  resolvePinnedAdapter,
+  resolveSpawnWorkdir,
+} from "./coding-task-helpers.js";
+import {
   callbackText,
   contentRecord,
   emitSessionEvent,
@@ -73,10 +77,6 @@ import {
   shortId,
   waitForSpawnSlot,
 } from "./common.js";
-import {
-  resolvePinnedAdapter,
-  resolveSpawnWorkdir,
-} from "./coding-task-helpers.js";
 import { resolveTaskThreadTarget } from "./task-thread-target.js";
 
 const MAX_CONCURRENT_AGENTS = 8;

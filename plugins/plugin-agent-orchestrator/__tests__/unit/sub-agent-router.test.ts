@@ -487,16 +487,14 @@ describe("normalizeUrlsInText", () => {
   it("replaces a Unicode non-breaking hyphen inside a URL with ASCII hyphen", () => {
     // gpt-oss-class models emit U+2011 where they meant "-", so the link
     // 404s even though the directory exists under the ASCII-hyphen name.
-    const text =
-      "app is live at https://nubilio.org/apps/bmi‑calc‑1/";
+    const text = "app is live at https://nubilio.org/apps/bmi‑calc‑1/";
     expect(normalizeUrlsInText(text)).toBe(
       "app is live at https://nubilio.org/apps/bmi-calc-1/",
     );
   });
 
   it("normalizes en dash and em dash inside URLs", () => {
-    const text =
-      "see http://localhost:6900/apps/my–app—1/index.html";
+    const text = "see http://localhost:6900/apps/my–app—1/index.html";
     expect(normalizeUrlsInText(text)).toBe(
       "see http://localhost:6900/apps/my-app-1/index.html",
     );
@@ -510,8 +508,7 @@ describe("normalizeUrlsInText", () => {
   });
 
   it("normalizes every URL when several are present", () => {
-    const text =
-      "http://127.0.0.1/a‑b/ and https://nubilio.org/c‑d/";
+    const text = "http://127.0.0.1/a‑b/ and https://nubilio.org/c‑d/";
     expect(normalizeUrlsInText(text)).toBe(
       "http://127.0.0.1/a-b/ and https://nubilio.org/c-d/",
     );
