@@ -1,4 +1,4 @@
-import { ASSISTANT_LAUNCH_TEXT_KEYS } from "@elizaos/ui";
+import { ASSISTANT_LAUNCH_TEXT_KEYS } from "@elizaos/ui/platform";
 
 const ASSISTANT_ENTRY_SOURCE = "assistant-entry";
 
