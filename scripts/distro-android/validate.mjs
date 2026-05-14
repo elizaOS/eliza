@@ -733,8 +733,40 @@ function validateApkManifest(manifest, brand) {
   );
   assertManifestBlockIncludes(
     assistActivity,
+    "android.intent.action.VOICE_COMMAND",
+    cls("AssistActivity"),
+  );
+  assertManifestBlockIncludes(
+    assistActivity,
     "android.intent.category.DEFAULT",
     cls("AssistActivity"),
+  );
+
+  const agentService = manifestComponentBlock(
+    manifest,
+    "service",
+    fq("AgentService"),
+  );
+  assertManifestBlockIncludes(
+    agentService,
+    "android:foregroundServiceType",
+    cls("AgentService"),
+  );
+  assertManifestBlockIncludes(
+    agentService,
+    "android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE",
+    cls("AgentService"),
+  );
+
+  const gatewayService = manifestComponentBlock(
+    manifest,
+    "service",
+    fq("GatewayConnectionService"),
+  );
+  assertManifestBlockIncludes(
+    gatewayService,
+    "android:foregroundServiceType",
+    cls("GatewayConnectionService"),
   );
 
   const inCallService = manifestComponentBlock(
@@ -836,6 +868,11 @@ function validateApkManifest(manifest, brand) {
     manifest,
     "receiver",
     fq("BootReceiver"),
+  );
+  assertManifestBlockIncludes(
+    bootReceiver,
+    "android:directBootAware",
+    cls("BootReceiver"),
   );
   assertManifestBlockIncludes(
     bootReceiver,
