@@ -22,6 +22,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { logger } from "../../logger";
 import type { Memory } from "../../types/memory";
 import type { IAgentRuntime } from "../../types/runtime";
 import type { State } from "../../types/state";
@@ -300,26 +301,23 @@ liveDescribe("ResponseHandlerFieldRegistry — live Cerebras smoke", () => {
 		// Trace shape: every evaluator should have a trace row.
 		expect(dispatchResult.traces.length).toBe(registry.size());
 
-		console.log(
-			"[field-registry-cerebras] usage:",
-			response.usage,
-			"\n[field-registry-cerebras] parsed.shouldRespond:",
-			dispatchResult.parsed.shouldRespond,
-			"\n[field-registry-cerebras] parsed.contexts:",
-			dispatchResult.parsed.contexts,
-			"\n[field-registry-cerebras] parsed.intents:",
-			dispatchResult.parsed.intents,
-			"\n[field-registry-cerebras] parsed.candidateActionNames:",
-			dispatchResult.parsed.candidateActionNames,
-			"\n[field-registry-cerebras] parsed.replyText:",
-			dispatchResult.parsed.replyText,
-			"\n[field-registry-cerebras] traces:",
-			dispatchResult.traces.map((t) => ({
-				field: t.fieldName,
-				active: t.active,
-				outcome: t.parseOutcome,
-				handled: t.handled,
-			})),
+		logger.debug(
+			{
+				src: "test:field-registry-cerebras",
+				usage: response.usage,
+				shouldRespond: dispatchResult.parsed.shouldRespond,
+				contexts: dispatchResult.parsed.contexts,
+				intents: dispatchResult.parsed.intents,
+				candidateActionNames: dispatchResult.parsed.candidateActionNames,
+				replyText: dispatchResult.parsed.replyText,
+				traces: dispatchResult.traces.map((t) => ({
+					field: t.fieldName,
+					active: t.active,
+					outcome: t.parseOutcome,
+					handled: t.handled,
+				})),
+			},
+			"[field-registry-cerebras] dispatch result",
 		);
 	}, 60_000);
 
@@ -396,9 +394,9 @@ liveDescribe("ResponseHandlerFieldRegistry — live Cerebras smoke", () => {
 			? threadOpsValue.filter((op) => op?.type === "abort")
 			: [];
 
-		console.log(
-			"[field-registry-cerebras] abort-test parsed:",
-			JSON.stringify(rawParsed, null, 2),
+		logger.debug(
+			{ src: "test:field-registry-cerebras", rawParsed },
+			"[field-registry-cerebras] abort-test parsed",
 		);
 
 		expect(abortOps.length).toBeGreaterThan(0);

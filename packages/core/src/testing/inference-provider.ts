@@ -245,12 +245,10 @@ export async function detectInferenceProviders(): Promise<InferenceProviderDetec
 export async function requireInferenceProvider(): Promise<InferenceProviderInfo> {
 	const detection = await detectInferenceProviders();
 
-	// Log the detection result
-	console.log(`\n${"=".repeat(60)}`);
-	console.log("INFERENCE PROVIDER DETECTION");
-	console.log("=".repeat(60));
-	console.log(detection.summary);
-	console.log(`${"=".repeat(60)}\n`);
+	logger.info(
+		{ src: "testing:inference-provider" },
+		`\n${"=".repeat(60)}\nINFERENCE PROVIDER DETECTION\n${"=".repeat(60)}\n${detection.summary}\n${"=".repeat(60)}\n`,
+	);
 
 	if (!detection.hasProvider || !detection.primaryProvider) {
 		throw new Error(
