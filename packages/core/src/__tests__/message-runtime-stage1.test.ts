@@ -166,7 +166,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
-
 	it("packages Stage 1 as stable system plus dynamic user context without provider internals", async () => {
 		const runtime = makeRuntime([
 			{

@@ -13,19 +13,6 @@ export {
 	readBackendOverride,
 	resolveCatalogForPlan,
 } from "./backend";
-export { deviceBridge, type DeviceBridgeStatus } from "./device-bridge";
-export {
-	type HandlerRegistration,
-	handlerRegistry,
-	type PublicRegistration,
-	toPublicRegistration,
-} from "./handler-registry";
-export {
-	LocalInferenceEngine,
-	localInferenceEngine,
-	resolveIdleUnloadMs,
-	resolveMaxConcurrentSpeculativeResponses,
-} from "./engine";
 export {
 	ELIZA_1_PLACEHOLDER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
@@ -41,13 +28,26 @@ export {
 	type LocalGenerateOutcome,
 	makeCloudFallbackHandler,
 } from "./cloud-fallback";
-export { getDflashRuntimeStatus } from "./dflash-server";
+export { type DeviceBridgeStatus, deviceBridge } from "./device-bridge";
 export {
 	type DflashDoctorCheck,
 	type DflashDoctorReport,
 	type DflashDoctorStatus,
 	runDflashDoctor,
 } from "./dflash-doctor";
+export { getDflashRuntimeStatus } from "./dflash-server";
+export {
+	LocalInferenceEngine,
+	localInferenceEngine,
+	resolveIdleUnloadMs,
+	resolveMaxConcurrentSpeculativeResponses,
+} from "./engine";
+export {
+	type HandlerRegistration,
+	handlerRegistry,
+	type PublicRegistration,
+	toPublicRegistration,
+} from "./handler-registry";
 export { assessFit, probeHardware } from "./hardware";
 export {
 	InferenceTelemetry,
@@ -87,13 +87,13 @@ export {
 	type LocalUsageBlock,
 	parsePrometheusMetrics,
 } from "./llama-server-metrics";
+export * from "./manifest/index";
 export {
 	MLX_BACKEND_ID,
 	MlxLocalServer,
 	mlxBackendEligible,
 	mlxLocalServer,
 } from "./mlx-server";
-export * from "./manifest/index";
 export {
 	buildPlanActionsSkeleton,
 	buildPlannerGuidedDecode,
@@ -134,7 +134,6 @@ export {
 	type SupportedHostPlatform,
 } from "./runtime-target";
 export { LocalInferenceService, localInferenceService } from "./service";
-export * from "./voice/index";
 export type {
 	ActiveModelState,
 	CatalogModel,
@@ -156,3 +155,4 @@ export type {
 	ModelHubSnapshot,
 	TextGenerationSlot,
 } from "./types";
+export * from "./voice/index";

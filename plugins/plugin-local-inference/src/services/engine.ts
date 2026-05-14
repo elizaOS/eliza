@@ -1702,7 +1702,10 @@ export class LocalInferenceEngine {
 		}
 	}
 
-	async synthesizeSpeech(text: string, signal?: AbortSignal): Promise<Uint8Array> {
+	async synthesizeSpeech(
+		text: string,
+		signal?: AbortSignal,
+	): Promise<Uint8Array> {
 		this.markActivity();
 		const bridge = this.requireVoiceBridge("synthesize speech");
 		if ((bridge.backend as { id?: string }).id === "stub") {

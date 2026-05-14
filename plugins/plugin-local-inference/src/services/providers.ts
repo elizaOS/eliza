@@ -407,7 +407,9 @@ type OptionalAccountPoolModule = {
 	};
 };
 
-async function listLinkedAccounts(providerId: string): Promise<LinkedAccountLike[]> {
+async function listLinkedAccounts(
+	providerId: string,
+): Promise<LinkedAccountLike[]> {
 	try {
 		const dynamicImport = new Function("id", "return import(id)") as (
 			id: string,
