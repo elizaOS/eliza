@@ -230,7 +230,7 @@ if [ -n "$_seen_registry_key" ]; then
 fi
 unset _seen_pipeline _seen_registry_key
 
-REGISTRY_KEY="${REGISTRY_KEY:-qwen3.6-27b}"
+REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-27b}"
 # PIPELINE selects which training stage the launcher drives end-to-end on the
 # remote box. Default = SFT (the historical behaviour); --pipeline dpo|grpo
 # overrides via the CLI pre-scan above or via the PIPELINE env var.
@@ -255,14 +255,6 @@ case "$PIPELINE" in
         DEFAULT_FSDP_WORLD_SIZE=1
         ;;
       qwen3.5-27b)
-        # Registry budget: 130 GB working set on a single 141 GB H200 or 183
-        # GB B200 (apollo_mini rank-1, grad ckpt, Liger CE, micro_batch=1
-        # seq=32k). B200-1x is the cheapest single-GPU fit (≈$3.8/hr × ~50h
-        # ≈ $190) and FSDP_WORLD_SIZE=1 matches the registry's extras block.
-        DEFAULT_GPU_TARGET="b200-1x"
-        DEFAULT_FSDP_WORLD_SIZE=1
-        ;;
-      qwen3.6-27b)
         DEFAULT_GPU_TARGET="b200-2x"
         DEFAULT_FSDP_WORLD_SIZE=2
         ;;
@@ -645,7 +637,7 @@ run_remote() {
   # ~25 GB on this hardware tier. Refuse the combo and point operators at
   # b200-2x or h200-2x (default) or blackwell6000-4x (192 GB/rank under
   # FSDP-4 leaves real headroom).
-  if [ "$REGISTRY_KEY" = "qwen3.6-27b" ] \
+  if [ "$REGISTRY_KEY" = "qwen3.5-27b" ] \
      && [ "$VAST_GPU_TARGET" = "blackwell6000-2x" ] \
      && [ "${ELIZA_FORCE_27B_BLACKWELL2X:-0}" != "1" ]; then
     log_err "27B on blackwell6000-2x has been empirically shown to OOM"

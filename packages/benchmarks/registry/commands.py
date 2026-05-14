@@ -1599,7 +1599,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider = (model.provider or "").strip().lower() or "vllm"
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         if agent in {"eliza", "hermes", "openclaw"}:
-            provider = "eliza"
+            provider = agent
         args = [
             python,
             "-m",
