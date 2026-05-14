@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { PersonDetector } from "./person-detector";
 import { MediaPipeFaceDetector } from "./face-detector-mediapipe";
+import { PersonDetector } from "./person-detector";
 import { YOLODetector } from "./yolo-detector";
 
 describe("YOLODetector availability + lifecycle", () => {
@@ -12,7 +12,10 @@ describe("YOLODetector availability + lifecycle", () => {
   it("constructs with default and custom config", () => {
     const yolo = new YOLODetector();
     expect(yolo).toBeInstanceOf(YOLODetector);
-    const filtered = new YOLODetector({ classFilter: ["person"], scoreThreshold: 0.5 });
+    const filtered = new YOLODetector({
+      classFilter: ["person"],
+      scoreThreshold: 0.5,
+    });
     expect(filtered).toBeInstanceOf(YOLODetector);
   });
 
@@ -32,7 +35,9 @@ describe("PersonDetector", () => {
   });
 
   it("availability mirrors YOLODetector", async () => {
-    expect(await PersonDetector.isAvailable()).toBe(await YOLODetector.isAvailable());
+    expect(await PersonDetector.isAvailable()).toBe(
+      await YOLODetector.isAvailable(),
+    );
   });
 });
 

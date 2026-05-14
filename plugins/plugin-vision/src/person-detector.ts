@@ -12,7 +12,7 @@
 
 import { logger } from "@elizaos/core";
 import type { PersonInfo } from "./types";
-import { YOLODetector, type YOLOConfig } from "./yolo-detector";
+import { type YOLOConfig, YOLODetector } from "./yolo-detector";
 
 export interface PersonDetectorConfig extends Omit<YOLOConfig, "classFilter"> {
   /** Score threshold specifically for person detections (defaults to 0.4). */

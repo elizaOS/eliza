@@ -29,18 +29,86 @@ const DEFAULT_MODEL_URL =
 const DEFAULT_MODEL_SHA256 = process.env.ELIZA_YOLO_MODEL_SHA256 ?? null;
 
 const COCO_CLASSES = [
-  "person", "bicycle", "car", "motorcycle", "airplane", "bus", "train",
-  "truck", "boat", "traffic light", "fire hydrant", "stop sign",
-  "parking meter", "bench", "bird", "cat", "dog", "horse", "sheep", "cow",
-  "elephant", "bear", "zebra", "giraffe", "backpack", "umbrella", "handbag",
-  "tie", "suitcase", "frisbee", "skis", "snowboard", "sports ball", "kite",
-  "baseball bat", "baseball glove", "skateboard", "surfboard", "tennis racket",
-  "bottle", "wine glass", "cup", "fork", "knife", "spoon", "bowl", "banana",
-  "apple", "sandwich", "orange", "broccoli", "carrot", "hot dog", "pizza",
-  "donut", "cake", "chair", "couch", "potted plant", "bed", "dining table",
-  "toilet", "tv", "laptop", "mouse", "remote", "keyboard", "cell phone",
-  "microwave", "oven", "toaster", "sink", "refrigerator", "book", "clock",
-  "vase", "scissors", "teddy bear", "hair drier", "toothbrush",
+  "person",
+  "bicycle",
+  "car",
+  "motorcycle",
+  "airplane",
+  "bus",
+  "train",
+  "truck",
+  "boat",
+  "traffic light",
+  "fire hydrant",
+  "stop sign",
+  "parking meter",
+  "bench",
+  "bird",
+  "cat",
+  "dog",
+  "horse",
+  "sheep",
+  "cow",
+  "elephant",
+  "bear",
+  "zebra",
+  "giraffe",
+  "backpack",
+  "umbrella",
+  "handbag",
+  "tie",
+  "suitcase",
+  "frisbee",
+  "skis",
+  "snowboard",
+  "sports ball",
+  "kite",
+  "baseball bat",
+  "baseball glove",
+  "skateboard",
+  "surfboard",
+  "tennis racket",
+  "bottle",
+  "wine glass",
+  "cup",
+  "fork",
+  "knife",
+  "spoon",
+  "bowl",
+  "banana",
+  "apple",
+  "sandwich",
+  "orange",
+  "broccoli",
+  "carrot",
+  "hot dog",
+  "pizza",
+  "donut",
+  "cake",
+  "chair",
+  "couch",
+  "potted plant",
+  "bed",
+  "dining table",
+  "toilet",
+  "tv",
+  "laptop",
+  "mouse",
+  "remote",
+  "keyboard",
+  "cell phone",
+  "microwave",
+  "oven",
+  "toaster",
+  "sink",
+  "refrigerator",
+  "book",
+  "clock",
+  "vase",
+  "scissors",
+  "teddy bear",
+  "hair drier",
+  "toothbrush",
 ];
 
 export interface YOLOConfig {
@@ -68,9 +136,16 @@ interface OnnxSession {
 }
 interface OnnxRuntime {
   InferenceSession: {
-    create(modelPath: string, opts?: Record<string, unknown>): Promise<OnnxSession>;
+    create(
+      modelPath: string,
+      opts?: Record<string, unknown>,
+    ): Promise<OnnxSession>;
   };
-  Tensor: new (type: string, data: ArrayLike<number>, dims: number[]) => unknown;
+  Tensor: new (
+    type: string,
+    data: ArrayLike<number>,
+    dims: number[],
+  ) => unknown;
 }
 
 let onnxPromise: Promise<OnnxRuntime | null> | null = null;
@@ -78,7 +153,9 @@ async function loadOnnx(): Promise<OnnxRuntime | null> {
   if (!onnxPromise) {
     onnxPromise = (async (): Promise<OnnxRuntime | null> => {
       try {
-        const mod = (await import("onnxruntime-node")) as unknown as OnnxRuntime;
+        const mod = (await import(
+          "onnxruntime-node"
+        )) as unknown as OnnxRuntime;
         if (!mod?.InferenceSession?.create || !mod?.Tensor) return null;
         return mod;
       } catch (error) {
@@ -95,7 +172,9 @@ async function loadOnnx(): Promise<OnnxRuntime | null> {
 
 function getModelDir(custom?: string): string {
   if (custom) return custom;
-  const stateDir = process.env.ELIZA_STATE_DIR ?? path.join(process.env.HOME ?? "/tmp", ".milady");
+  const stateDir =
+    process.env.ELIZA_STATE_DIR ??
+    path.join(process.env.HOME ?? "/tmp", ".milady");
   return path.join(stateDir, "models", "yolo");
 }
 
@@ -111,7 +190,9 @@ async function ensureModelOnDisk(
     if (trusted || !sha256) return;
     const actual = createHash("sha256").update(existing).digest("hex");
     if (actual === sha256) return;
-    logger.warn(`[YOLO] checksum mismatch for ${path.basename(dest)} — re-downloading`);
+    logger.warn(
+      `[YOLO] checksum mismatch for ${path.basename(dest)} — re-downloading`,
+    );
   } catch {
     // not yet on disk
   }
@@ -151,7 +232,8 @@ export class YOLODetector {
   private onnx: OnnxRuntime | null = null;
   private readonly cfg: Required<
     Pick<YOLOConfig, "modelDir" | "scoreThreshold" | "nmsIouThreshold">
-  > & YOLOConfig;
+  > &
+    YOLOConfig;
   private initPromise: Promise<void> | null = null;
   private initialized = false;
   private readonly classes: string[];
@@ -188,7 +270,9 @@ export class YOLODetector {
   private async _initialize(): Promise<void> {
     this.onnx = await loadOnnx();
     if (!this.onnx) {
-      throw new Error("onnxruntime-node not installed — YOLODetector requires it.");
+      throw new Error(
+        "onnxruntime-node not installed — YOLODetector requires it.",
+      );
     }
     const trusted = this.cfg.trusted ?? process.env.ELIZA_YOLO_TRUSTED === "1";
     const modelPath = path.join(this.cfg.modelDir, "yolo.onnx");
@@ -197,7 +281,9 @@ export class YOLODetector {
     await ensureModelOnDisk(url, sha256, modelPath, trusted);
     this.session = await this.onnx.InferenceSession.create(
       modelPath,
-      this.cfg.executionProviders ? { executionProviders: this.cfg.executionProviders } : undefined,
+      this.cfg.executionProviders
+        ? { executionProviders: this.cfg.executionProviders }
+        : undefined,
     );
     this.initialized = true;
     logger.info(`[YOLO] initialized (model=${modelPath})`);
@@ -219,7 +305,9 @@ export class YOLODetector {
     const padH = Math.round((inSize - origH * scale) / 2);
 
     const { data: rgb } = await sharp(imageBuffer)
-      .resize(Math.round(origW * scale), Math.round(origH * scale), { fit: "fill" })
+      .resize(Math.round(origW * scale), Math.round(origH * scale), {
+        fit: "fill",
+      })
       .extend({
         top: padH,
         bottom: inSize - Math.round(origH * scale) - padH,
@@ -237,7 +325,12 @@ export class YOLODetector {
       float[i + inSize * inSize] = rgb[i * 3 + 1] / 255;
       float[i + 2 * inSize * inSize] = rgb[i * 3 + 2] / 255;
     }
-    const tensor = new this.onnx.Tensor("float32", float, [1, 3, inSize, inSize]);
+    const tensor = new this.onnx.Tensor("float32", float, [
+      1,
+      3,
+      inSize,
+      inSize,
+    ]);
     // Feed under common YOLO export names; runtime picks the right one.
     const output = await this.session.run({ images: tensor, input: tensor });
     const firstKey = Object.keys(output)[0];
@@ -246,7 +339,9 @@ export class YOLODetector {
 
     const detections = this.parseYoloV8(raw, inSize, scale, padW, padH);
     const filtered = this.classFilterLower
-      ? detections.filter((d) => this.classFilterLower!.has(d.className.toLowerCase()))
+      ? detections.filter((d) =>
+          this.classFilterLower!.has(d.className.toLowerCase()),
+        )
       : detections;
 
     return filtered.map((d, idx) => ({
@@ -317,7 +412,8 @@ export class YOLODetector {
       const top = sorted.shift()!;
       kept.push(top);
       for (let i = sorted.length - 1; i >= 0; i--) {
-        if (this.iou(top, sorted[i]) > this.cfg.nmsIouThreshold) sorted.splice(i, 1);
+        if (this.iou(top, sorted[i]) > this.cfg.nmsIouThreshold)
+          sorted.splice(i, 1);
       }
     }
     return kept;

@@ -130,7 +130,10 @@ export class VisionServiceLifecycleManager {
     if (sub.loaded) return true;
     if (!sub.handle.acquire) return false;
     if (this.arbiter) {
-      const ok = await this.arbiter.acquire(sub.handle.id, sub.handle.memoryBytes);
+      const ok = await this.arbiter.acquire(
+        sub.handle.id,
+        sub.handle.memoryBytes,
+      );
       if (!ok) {
         logger.warn(
           `[VisionLifecycle] arbiter refused acquisition of ${sub.handle.id}`,
@@ -229,9 +232,7 @@ export class VisionServiceLifecycleManager {
       .sort((a, b) => a.lastUsed - b.lastUsed);
 
     for (const sub of candidates) {
-      logger.info(
-        `[VisionLifecycle] pressure release: ${sub.handle.id}`,
-      );
+      logger.info(`[VisionLifecycle] pressure release: ${sub.handle.id}`);
       await this.release(sub.handle.id);
     }
   }
