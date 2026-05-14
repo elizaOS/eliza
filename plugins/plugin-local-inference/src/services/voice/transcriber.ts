@@ -32,24 +32,24 @@
  */
 
 import type {
-  ElizaInferenceContextHandle,
-  ElizaInferenceFfi,
+	ElizaInferenceContextHandle,
+	ElizaInferenceFfi,
 } from "./ffi-bindings";
 import {
-  makeOpenVinoWhisperDecoder,
-  resolveOpenVinoWhisperRuntime,
+	makeOpenVinoWhisperDecoder,
+	resolveOpenVinoWhisperRuntime,
 } from "./openvino-whisper-asr";
 import type {
-  PcmFrame,
-  StreamingTranscriber,
-  TranscriberEvent,
-  TranscriberEventListener,
-  TranscriptUpdate,
-  VadEvent,
-  VadEventSource,
-  VoiceInputSource,
-  VoiceSpeaker,
-  VoiceTurnMetadata,
+	PcmFrame,
+	StreamingTranscriber,
+	TranscriberEvent,
+	TranscriberEventListener,
+	TranscriptUpdate,
+	VadEvent,
+	VadEventSource,
+	VoiceInputSource,
+	VoiceSpeaker,
+	VoiceTurnMetadata,
 } from "./types";
 
 /** The local voice runtime resamples mic input to 16 kHz mono for ASR. */
@@ -62,10 +62,10 @@ export const ASR_SAMPLE_RATE = 16_000;
  * string as a successful transcription.
  */
 export class AsrUnavailableError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "AsrUnavailableError";
-  }
+	constructor(message: string) {
+		super(message);
+		this.name = "AsrUnavailableError";
+	}
 }
 
 /* ==================================================================== *
@@ -76,8 +76,8 @@ const WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}'-]*/gu;
 const VAD_PREROLL_MAX_FRAMES = 10;
 
 function extractWords(text: string): string[] {
-  const out = text.match(WORD_RE);
-  return out ? Array.from(out) : [];
+	const out = text.match(WORD_RE);
+	return out ? Array.from(out) : [];
 }
 
 /**
@@ -87,22 +87,22 @@ function extractWords(text: string): string[] {
  * resampling so this is interim-batch only.
  */
 export function resampleLinear(
-  pcm: Float32Array,
-  fromRate: number,
-  toRate: number,
+	pcm: Float32Array,
+	fromRate: number,
+	toRate: number,
 ): Float32Array {
-  if (fromRate === toRate || pcm.length === 0) return pcm;
-  const ratio = toRate / fromRate;
-  const outLen = Math.max(1, Math.round(pcm.length * ratio));
-  const out = new Float32Array(outLen);
-  for (let i = 0; i < outLen; i++) {
-    const srcPos = i / ratio;
-    const i0 = Math.floor(srcPos);
-    const i1 = Math.min(i0 + 1, pcm.length - 1);
-    const frac = srcPos - i0;
-    out[i] = pcm[i0] * (1 - frac) + pcm[i1] * frac;
-  }
-  return out;
+	if (fromRate === toRate || pcm.length === 0) return pcm;
+	const ratio = toRate / fromRate;
+	const outLen = Math.max(1, Math.round(pcm.length * ratio));
+	const out = new Float32Array(outLen);
+	for (let i = 0; i < outLen; i++) {
+		const srcPos = i / ratio;
+		const i0 = Math.floor(srcPos);
+		const i1 = Math.min(i0 + 1, pcm.length - 1);
+		const frac = srcPos - i0;
+		out[i] = pcm[i0] * (1 - frac) + pcm[i1] * frac;
+	}
+	return out;
 }
 
 /**
@@ -112,179 +112,179 @@ export function resampleLinear(
  * call `emitPartial` / `emitFinal`.
  */
 export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
-  private readonly listeners = new Set<TranscriberEventListener>();
-  private readonly metadata: TranscriptMetadataDefaults;
-  /** True between `speech-start`/first-frame and the next `flush()`. */
-  protected segmentOpen = false;
-  /** Latched once `words` is emitted for the current segment. */
-  private wordsEmitted = false;
-  /** When set, frames are only forwarded while the VAD is in an active speech window. */
-  private vadActive: boolean | null = null;
-  private readonly vadPrerollFrames: PcmFrame[] = [];
-  private vadUnsub: (() => void) | null = null;
-  private disposed = false;
+	private readonly listeners = new Set<TranscriberEventListener>();
+	private readonly metadata: TranscriptMetadataDefaults;
+	/** True between `speech-start`/first-frame and the next `flush()`. */
+	protected segmentOpen = false;
+	/** Latched once `words` is emitted for the current segment. */
+	private wordsEmitted = false;
+	/** When set, frames are only forwarded while the VAD is in an active speech window. */
+	private vadActive: boolean | null = null;
+	private readonly vadPrerollFrames: PcmFrame[] = [];
+	private vadUnsub: (() => void) | null = null;
+	private disposed = false;
 
-  constructor(vad?: VadEventSource, metadata: TranscriptMetadataDefaults = {}) {
-    this.metadata = metadata;
-    if (vad) {
-      this.vadActive = false;
-      this.vadUnsub = vad.onVadEvent((ev) => this.onVadEvent(ev));
-    }
-  }
+	constructor(vad?: VadEventSource, metadata: TranscriptMetadataDefaults = {}) {
+		this.metadata = metadata;
+		if (vad) {
+			this.vadActive = false;
+			this.vadUnsub = vad.onVadEvent((ev) => this.onVadEvent(ev));
+		}
+	}
 
-  on(listener: TranscriberEventListener): () => void {
-    this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
-  }
+	on(listener: TranscriberEventListener): () => void {
+		this.listeners.add(listener);
+		return () => this.listeners.delete(listener);
+	}
 
-  feed(frame: PcmFrame): void {
-    if (this.disposed) {
-      throw new Error("[asr] feed() called on a disposed transcriber");
-    }
-    if (frame.pcm.length === 0) return;
-    // VAD gating: while the async VAD is still deciding, retain a tiny
-    // leading pre-roll so the first voiced frames are not lost.
-    if (this.vadActive === false) {
-      this.rememberVadPreroll(frame);
-      return;
-    }
-    if (!this.segmentOpen) {
-      this.segmentOpen = true;
-      this.wordsEmitted = false;
-    }
-    this.onFrame(frame);
-  }
+	feed(frame: PcmFrame): void {
+		if (this.disposed) {
+			throw new Error("[asr] feed() called on a disposed transcriber");
+		}
+		if (frame.pcm.length === 0) return;
+		// VAD gating: while the async VAD is still deciding, retain a tiny
+		// leading pre-roll so the first voiced frames are not lost.
+		if (this.vadActive === false) {
+			this.rememberVadPreroll(frame);
+			return;
+		}
+		if (!this.segmentOpen) {
+			this.segmentOpen = true;
+			this.wordsEmitted = false;
+		}
+		this.onFrame(frame);
+	}
 
-  async flush(): Promise<TranscriptUpdate> {
-    if (this.disposed) {
-      throw new Error("[asr] flush() called on a disposed transcriber");
-    }
-    const update = this.withMetadata(await this.onFlush());
-    this.segmentOpen = false;
-    this.wordsEmitted = false;
-    this.emit({ kind: "final", update });
-    return update;
-  }
+	async flush(): Promise<TranscriptUpdate> {
+		if (this.disposed) {
+			throw new Error("[asr] flush() called on a disposed transcriber");
+		}
+		const update = this.withMetadata(await this.onFlush());
+		this.segmentOpen = false;
+		this.wordsEmitted = false;
+		this.emit({ kind: "final", update });
+		return update;
+	}
 
-  dispose(): void {
-    if (this.disposed) return;
-    this.disposed = true;
-    this.vadUnsub?.();
-    this.vadUnsub = null;
-    this.listeners.clear();
-    this.onDispose();
-  }
+	dispose(): void {
+		if (this.disposed) return;
+		this.disposed = true;
+		this.vadUnsub?.();
+		this.vadUnsub = null;
+		this.listeners.clear();
+		this.onDispose();
+	}
 
-  /** Subclass hook: a (VAD-gated) PCM frame for the current speech segment. */
-  protected abstract onFrame(frame: PcmFrame): void;
-  /** Subclass hook: drain buffered audio, run a final decode, return the final transcript. */
-  protected abstract onFlush(): Promise<TranscriptUpdate>;
-  /** Subclass hook: release native resources. */
-  protected abstract onDispose(): void;
+	/** Subclass hook: a (VAD-gated) PCM frame for the current speech segment. */
+	protected abstract onFrame(frame: PcmFrame): void;
+	/** Subclass hook: drain buffered audio, run a final decode, return the final transcript. */
+	protected abstract onFlush(): Promise<TranscriptUpdate>;
+	/** Subclass hook: release native resources. */
+	protected abstract onDispose(): void;
 
-  private rememberVadPreroll(frame: PcmFrame): void {
-    this.vadPrerollFrames.push({
-      ...frame,
-      pcm: frame.pcm.slice(),
-    });
-    while (this.vadPrerollFrames.length > VAD_PREROLL_MAX_FRAMES) {
-      this.vadPrerollFrames.shift();
-    }
-  }
+	private rememberVadPreroll(frame: PcmFrame): void {
+		this.vadPrerollFrames.push({
+			...frame,
+			pcm: frame.pcm.slice(),
+		});
+		while (this.vadPrerollFrames.length > VAD_PREROLL_MAX_FRAMES) {
+			this.vadPrerollFrames.shift();
+		}
+	}
 
-  private drainVadPreroll(): void {
-    if (this.vadPrerollFrames.length === 0) return;
-    const frames = this.vadPrerollFrames.splice(0);
-    if (!this.segmentOpen) {
-      this.segmentOpen = true;
-      this.wordsEmitted = false;
-    }
-    for (const frame of frames) this.onFrame(frame);
-  }
+	private drainVadPreroll(): void {
+		if (this.vadPrerollFrames.length === 0) return;
+		const frames = this.vadPrerollFrames.splice(0);
+		if (!this.segmentOpen) {
+			this.segmentOpen = true;
+			this.wordsEmitted = false;
+		}
+		for (const frame of frames) this.onFrame(frame);
+	}
 
-  /** Emit a running-partial event and (the first time it has words) a `words` event. */
-  protected emitPartial(update: TranscriptUpdate): void {
-    const enriched = this.withMetadata(update);
-    this.emit({ kind: "partial", update: enriched });
-    if (!this.wordsEmitted) {
-      const words = extractWords(enriched.partial);
-      if (words.length > 0) {
-        this.wordsEmitted = true;
-        this.emit({ kind: "words", words });
-      }
-    }
-  }
+	/** Emit a running-partial event and (the first time it has words) a `words` event. */
+	protected emitPartial(update: TranscriptUpdate): void {
+		const enriched = this.withMetadata(update);
+		this.emit({ kind: "partial", update: enriched });
+		if (!this.wordsEmitted) {
+			const words = extractWords(enriched.partial);
+			if (words.length > 0) {
+				this.wordsEmitted = true;
+				this.emit({ kind: "words", words });
+			}
+		}
+	}
 
-  private withMetadata(update: TranscriptUpdate): TranscriptUpdate {
-    if (
-      !this.metadata.source &&
-      !this.metadata.speaker &&
-      !this.metadata.turn
-    ) {
-      return update;
-    }
-    const source = update.source ?? this.metadata.source;
-    const speaker = update.speaker ?? this.metadata.speaker;
-    const segments =
-      update.segments ?? update.turn?.segments ?? this.metadata.turn?.segments;
-    const turn =
-      update.turn || this.metadata.turn
-        ? {
-            ...this.metadata.turn,
-            ...update.turn,
-            source:
-              update.turn?.source ??
-              update.source ??
-              this.metadata.turn?.source ??
-              source,
-            primarySpeaker:
-              update.turn?.primarySpeaker ??
-              update.speaker ??
-              this.metadata.turn?.primarySpeaker ??
-              speaker,
-          }
-        : undefined;
-    return {
-      ...update,
-      ...(source ? { source } : {}),
-      ...(speaker ? { speaker } : {}),
-      ...(segments ? { segments } : {}),
-      ...(turn ? { turn } : {}),
-    };
-  }
+	private withMetadata(update: TranscriptUpdate): TranscriptUpdate {
+		if (
+			!this.metadata.source &&
+			!this.metadata.speaker &&
+			!this.metadata.turn
+		) {
+			return update;
+		}
+		const source = update.source ?? this.metadata.source;
+		const speaker = update.speaker ?? this.metadata.speaker;
+		const segments =
+			update.segments ?? update.turn?.segments ?? this.metadata.turn?.segments;
+		const turn =
+			update.turn || this.metadata.turn
+				? {
+						...this.metadata.turn,
+						...update.turn,
+						source:
+							update.turn?.source ??
+							update.source ??
+							this.metadata.turn?.source ??
+							source,
+						primarySpeaker:
+							update.turn?.primarySpeaker ??
+							update.speaker ??
+							this.metadata.turn?.primarySpeaker ??
+							speaker,
+					}
+				: undefined;
+		return {
+			...update,
+			...(source ? { source } : {}),
+			...(speaker ? { speaker } : {}),
+			...(segments ? { segments } : {}),
+			...(turn ? { turn } : {}),
+		};
+	}
 
-  private emit(event: TranscriberEvent): void {
-    for (const l of this.listeners) l(event);
-  }
+	private emit(event: TranscriberEvent): void {
+		for (const l of this.listeners) l(event);
+	}
 
-  private onVadEvent(ev: VadEvent): void {
-    switch (ev.type) {
-      case "speech-start":
-      case "speech-active":
-        this.vadActive = true;
-        this.drainVadPreroll();
-        break;
-      case "speech-pause":
-        // Pause keeps the segment "armed" but stops accepting new audio
-        // until speech resumes. The turn controller decides whether a
-        // pause finalizes; this layer just stops decoding.
-        this.vadActive = false;
-        break;
-      case "speech-end":
-        this.vadActive = false;
-        this.vadPrerollFrames.length = 0;
-        break;
-      case "blip":
-        // A blip never opens a speech window — ignore.
-        break;
-    }
-  }
+	private onVadEvent(ev: VadEvent): void {
+		switch (ev.type) {
+			case "speech-start":
+			case "speech-active":
+				this.vadActive = true;
+				this.drainVadPreroll();
+				break;
+			case "speech-pause":
+				// Pause keeps the segment "armed" but stops accepting new audio
+				// until speech resumes. The turn controller decides whether a
+				// pause finalizes; this layer just stops decoding.
+				this.vadActive = false;
+				break;
+			case "speech-end":
+				this.vadActive = false;
+				this.vadPrerollFrames.length = 0;
+				break;
+			case "blip":
+				// A blip never opens a speech window — ignore.
+				break;
+		}
+	}
 }
 
 export interface TranscriptMetadataDefaults {
-  source?: VoiceInputSource;
-  speaker?: VoiceSpeaker;
-  turn?: VoiceTurnMetadata;
+	source?: VoiceInputSource;
+	speaker?: VoiceSpeaker;
+	turn?: VoiceTurnMetadata;
 }
 
 /* ==================================================================== *
@@ -298,10 +298,10 @@ export interface TranscriptMetadataDefaults {
  * pick the fused path over the fused-batch interim adapter.
  */
 export function ffiSupportsStreamingAsr(
-  ffi: ElizaInferenceFfi | null | undefined,
+	ffi: ElizaInferenceFfi | null | undefined,
 ): boolean {
-  if (!ffi || typeof ffi.asrStreamSupported !== "function") return false;
-  return ffi.asrStreamSupported();
+	if (!ffi || typeof ffi.asrStreamSupported !== "function") return false;
+	return ffi.asrStreamSupported();
 }
 
 /**
@@ -318,75 +318,75 @@ export function ffiSupportsStreamingAsr(
  * to a `VoiceLifecycleError`). That is intentional — no fake transcripts.
  */
 export class FfiStreamingTranscriber extends BaseStreamingTranscriber {
-  private readonly ffi: ElizaInferenceFfi;
-  private readonly getContext: () => ElizaInferenceContextHandle;
-  /** Token count to ask the library for per partial; 0 = don't request tokens. */
-  private readonly maxTokens: number;
-  private stream: bigint | null = null;
+	private readonly ffi: ElizaInferenceFfi;
+	private readonly getContext: () => ElizaInferenceContextHandle;
+	/** Token count to ask the library for per partial; 0 = don't request tokens. */
+	private readonly maxTokens: number;
+	private stream: bigint | null = null;
 
-  constructor(args: {
-    ffi: ElizaInferenceFfi;
-    getContext: () => ElizaInferenceContextHandle;
-    vad?: VadEventSource;
-    metadata?: TranscriptMetadataDefaults;
-    source?: VoiceInputSource;
-    /** Cap on token ids read back per transcript snapshot. Default 256. */
-    maxTokens?: number;
-  }) {
-    super(args.vad, {
-      ...args.metadata,
-      source: args.metadata?.source ?? args.source,
-    });
-    if (!ffiSupportsStreamingAsr(args.ffi)) {
-      throw new AsrUnavailableError(
-        "[asr] fused libelizainference does not advertise a working streaming ASR decoder (eliza_inference_asr_stream_supported() == 0) — rebuild the fused omnivoice target or use the fused-batch interim adapter",
-      );
-    }
-    this.ffi = args.ffi;
-    this.getContext = args.getContext;
-    this.maxTokens = Math.max(0, Math.floor(args.maxTokens ?? 256));
-  }
+	constructor(args: {
+		ffi: ElizaInferenceFfi;
+		getContext: () => ElizaInferenceContextHandle;
+		vad?: VadEventSource;
+		metadata?: TranscriptMetadataDefaults;
+		source?: VoiceInputSource;
+		/** Cap on token ids read back per transcript snapshot. Default 256. */
+		maxTokens?: number;
+	}) {
+		super(args.vad, {
+			...args.metadata,
+			source: args.metadata?.source ?? args.source,
+		});
+		if (!ffiSupportsStreamingAsr(args.ffi)) {
+			throw new AsrUnavailableError(
+				"[asr] fused libelizainference does not advertise a working streaming ASR decoder (eliza_inference_asr_stream_supported() == 0) — rebuild the fused omnivoice target or use the fused-batch interim adapter",
+			);
+		}
+		this.ffi = args.ffi;
+		this.getContext = args.getContext;
+		this.maxTokens = Math.max(0, Math.floor(args.maxTokens ?? 256));
+	}
 
-  private ensureStream(): bigint {
-    if (this.stream !== null) return this.stream;
-    this.stream = this.ffi.asrStreamOpen({
-      ctx: this.getContext(),
-      sampleRateHz: ASR_SAMPLE_RATE,
-    });
-    return this.stream;
-  }
+	private ensureStream(): bigint {
+		if (this.stream !== null) return this.stream;
+		this.stream = this.ffi.asrStreamOpen({
+			ctx: this.getContext(),
+			sampleRateHz: ASR_SAMPLE_RATE,
+		});
+		return this.stream;
+	}
 
-  protected onFrame(frame: PcmFrame): void {
-    const pcm = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
-    const handle = this.ensureStream();
-    this.ffi.asrStreamFeed({ stream: handle, pcm });
-    const update = this.ffi.asrStreamPartial({
-      stream: handle,
-      maxTokens: this.maxTokens,
-    });
-    this.emitPartial({ ...update, isFinal: false });
-  }
+	protected onFrame(frame: PcmFrame): void {
+		const pcm = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
+		const handle = this.ensureStream();
+		this.ffi.asrStreamFeed({ stream: handle, pcm });
+		const update = this.ffi.asrStreamPartial({
+			stream: handle,
+			maxTokens: this.maxTokens,
+		});
+		this.emitPartial({ ...update, isFinal: false });
+	}
 
-  protected async onFlush(): Promise<TranscriptUpdate> {
-    if (this.stream === null) {
-      return { partial: "", isFinal: true };
-    }
-    const handle = this.stream;
-    const update = this.ffi.asrStreamFinish({
-      stream: handle,
-      maxTokens: this.maxTokens,
-    });
-    this.ffi.asrStreamClose(handle);
-    this.stream = null;
-    return { ...update, isFinal: true };
-  }
+	protected async onFlush(): Promise<TranscriptUpdate> {
+		if (this.stream === null) {
+			return { partial: "", isFinal: true };
+		}
+		const handle = this.stream;
+		const update = this.ffi.asrStreamFinish({
+			stream: handle,
+			maxTokens: this.maxTokens,
+		});
+		this.ffi.asrStreamClose(handle);
+		this.stream = null;
+		return { ...update, isFinal: true };
+	}
 
-  protected onDispose(): void {
-    if (this.stream !== null) {
-      this.ffi.asrStreamClose(this.stream);
-      this.stream = null;
-    }
-  }
+	protected onDispose(): void {
+		if (this.stream !== null) {
+			this.ffi.asrStreamClose(this.stream);
+			this.stream = null;
+		}
+	}
 }
 
 /* ==================================================================== *
@@ -394,17 +394,17 @@ export class FfiStreamingTranscriber extends BaseStreamingTranscriber {
  * ==================================================================== */
 
 export interface FfiBatchTranscriberOptions {
-  ffi: ElizaInferenceFfi;
-  getContext: () => ElizaInferenceContextHandle;
-  vad?: VadEventSource;
-  metadata?: TranscriptMetadataDefaults;
-  source?: VoiceInputSource;
-  /** Sliding-window length, seconds. Each batch decode covers ≤ this + overlap. Default 6.0. */
-  windowSeconds?: number;
-  /** Trailing overlap kept when committing a prefix chunk, seconds. Default 1.0. */
-  overlapSeconds?: number;
-  /** Minimum new audio (seconds) accumulated before the next decode pass. Default 1.2. */
-  stepSeconds?: number;
+	ffi: ElizaInferenceFfi;
+	getContext: () => ElizaInferenceContextHandle;
+	vad?: VadEventSource;
+	metadata?: TranscriptMetadataDefaults;
+	source?: VoiceInputSource;
+	/** Sliding-window length, seconds. Each batch decode covers ≤ this + overlap. Default 6.0. */
+	windowSeconds?: number;
+	/** Trailing overlap kept when committing a prefix chunk, seconds. Default 1.0. */
+	overlapSeconds?: number;
+	/** Minimum new audio (seconds) accumulated before the next decode pass. Default 1.2. */
+	stepSeconds?: number;
 }
 
 /**
@@ -428,119 +428,119 @@ export interface FfiBatchTranscriberOptions {
  * — the `EngineVoiceBridge` lifecycle does this when voice input is armed.
  */
 export class FfiBatchTranscriber extends BaseStreamingTranscriber {
-  private readonly ffi: ElizaInferenceFfi;
-  private readonly getContext: () => ElizaInferenceContextHandle;
-  private readonly windowSamples: number;
-  private readonly overlapSamples: number;
-  private readonly stepSamples: number;
-  /** All 16 kHz samples accumulated for the current speech segment. */
-  private buf: Float32Array = new Float32Array(0);
-  /** Samples in `buf` already folded into `committed`. */
-  private committedSamples = 0;
-  /** Text decoded from `buf[0 .. committedSamples)`. */
-  private committed = "";
-  /** `buf.length` at the last decode pass — throttles to `stepSamples`. */
-  private lastDecodeAt = 0;
-  /** Decode chain — `asr_transcribe` calls serialize on the native ASR mutex anyway. */
-  private decodeChain: Promise<void> = Promise.resolve();
+	private readonly ffi: ElizaInferenceFfi;
+	private readonly getContext: () => ElizaInferenceContextHandle;
+	private readonly windowSamples: number;
+	private readonly overlapSamples: number;
+	private readonly stepSamples: number;
+	/** All 16 kHz samples accumulated for the current speech segment. */
+	private buf: Float32Array = new Float32Array(0);
+	/** Samples in `buf` already folded into `committed`. */
+	private committedSamples = 0;
+	/** Text decoded from `buf[0 .. committedSamples)`. */
+	private committed = "";
+	/** `buf.length` at the last decode pass — throttles to `stepSamples`. */
+	private lastDecodeAt = 0;
+	/** Decode chain — `asr_transcribe` calls serialize on the native ASR mutex anyway. */
+	private decodeChain: Promise<void> = Promise.resolve();
 
-  constructor(opts: FfiBatchTranscriberOptions) {
-    super(opts.vad, {
-      ...opts.metadata,
-      source: opts.metadata?.source ?? opts.source,
-    });
-    this.ffi = opts.ffi;
-    this.getContext = opts.getContext;
-    const windowSeconds = opts.windowSeconds ?? 6.0;
-    const overlapSeconds = Math.min(opts.overlapSeconds ?? 1.0, windowSeconds);
-    const stepSeconds = opts.stepSeconds ?? 1.2;
-    this.windowSamples = Math.round(windowSeconds * ASR_SAMPLE_RATE);
-    this.overlapSamples = Math.round(overlapSeconds * ASR_SAMPLE_RATE);
-    this.stepSamples = Math.round(stepSeconds * ASR_SAMPLE_RATE);
-  }
+	constructor(opts: FfiBatchTranscriberOptions) {
+		super(opts.vad, {
+			...opts.metadata,
+			source: opts.metadata?.source ?? opts.source,
+		});
+		this.ffi = opts.ffi;
+		this.getContext = opts.getContext;
+		const windowSeconds = opts.windowSeconds ?? 6.0;
+		const overlapSeconds = Math.min(opts.overlapSeconds ?? 1.0, windowSeconds);
+		const stepSeconds = opts.stepSeconds ?? 1.2;
+		this.windowSamples = Math.round(windowSeconds * ASR_SAMPLE_RATE);
+		this.overlapSamples = Math.round(overlapSeconds * ASR_SAMPLE_RATE);
+		this.stepSamples = Math.round(stepSeconds * ASR_SAMPLE_RATE);
+	}
 
-  private decodeWindow(pcm16k: Float32Array): string {
-    if (pcm16k.length === 0) return "";
-    return this.ffi
-      .asrTranscribe({
-        ctx: this.getContext(),
-        pcm: pcm16k,
-        sampleRateHz: ASR_SAMPLE_RATE,
-      })
-      .trim();
-  }
+	private decodeWindow(pcm16k: Float32Array): string {
+		if (pcm16k.length === 0) return "";
+		return this.ffi
+			.asrTranscribe({
+				ctx: this.getContext(),
+				pcm: pcm16k,
+				sampleRateHz: ASR_SAMPLE_RATE,
+			})
+			.trim();
+	}
 
-  protected onFrame(frame: PcmFrame): void {
-    const pcm = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
-    this.buf = concatFloat32(this.buf, pcm);
-    if (this.buf.length - this.lastDecodeAt < this.stepSamples) return;
-    this.lastDecodeAt = this.buf.length;
-    this.scheduleDecode(false);
-  }
+	protected onFrame(frame: PcmFrame): void {
+		const pcm = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
+		this.buf = concatFloat32(this.buf, pcm);
+		if (this.buf.length - this.lastDecodeAt < this.stepSamples) return;
+		this.lastDecodeAt = this.buf.length;
+		this.scheduleDecode(false);
+	}
 
-  protected async onFlush(): Promise<TranscriptUpdate> {
-    this.scheduleDecode(true);
-    await this.decodeChain;
-    const final = this.committed.trim();
-    this.resetSegment();
-    return { partial: final, isFinal: true };
-  }
+	protected async onFlush(): Promise<TranscriptUpdate> {
+		this.scheduleDecode(true);
+		await this.decodeChain;
+		const final = this.committed.trim();
+		this.resetSegment();
+		return { partial: final, isFinal: true };
+	}
 
-  protected onDispose(): void {
-    this.resetSegment();
-  }
+	protected onDispose(): void {
+		this.resetSegment();
+	}
 
-  private resetSegment(): void {
-    this.buf = new Float32Array(0);
-    this.committedSamples = 0;
-    this.committed = "";
-    this.lastDecodeAt = 0;
-  }
+	private resetSegment(): void {
+		this.buf = new Float32Array(0);
+		this.committedSamples = 0;
+		this.committed = "";
+		this.lastDecodeAt = 0;
+	}
 
-  private scheduleDecode(final: boolean): void {
-    this.decodeChain = this.decodeChain.then(() => this.runDecode(final));
-  }
+	private scheduleDecode(final: boolean): void {
+		this.decodeChain = this.decodeChain.then(() => this.runDecode(final));
+	}
 
-  private async runDecode(final: boolean): Promise<void> {
-    const total = this.buf.length;
-    if (total <= this.committedSamples && !final) return;
+	private async runDecode(final: boolean): Promise<void> {
+		const total = this.buf.length;
+		if (total <= this.committedSamples && !final) return;
 
-    // Commit any prefix that has scrolled fully out of the sliding window.
-    while (total - this.committedSamples > this.windowSamples) {
-      const chunkEnd = Math.min(
-        total,
-        this.committedSamples + this.windowSamples,
-      );
-      const chunk = this.buf.subarray(this.committedSamples, chunkEnd);
-      const text = this.decodeWindow(chunk);
-      this.committed = joinTranscriptParts(this.committed, text);
-      const advance = Math.max(1, this.windowSamples - this.overlapSamples);
-      this.committedSamples = Math.min(total, this.committedSamples + advance);
-    }
+		// Commit any prefix that has scrolled fully out of the sliding window.
+		while (total - this.committedSamples > this.windowSamples) {
+			const chunkEnd = Math.min(
+				total,
+				this.committedSamples + this.windowSamples,
+			);
+			const chunk = this.buf.subarray(this.committedSamples, chunkEnd);
+			const text = this.decodeWindow(chunk);
+			this.committed = joinTranscriptParts(this.committed, text);
+			const advance = Math.max(1, this.windowSamples - this.overlapSamples);
+			this.committedSamples = Math.min(total, this.committedSamples + advance);
+		}
 
-    const tail = this.buf.subarray(this.committedSamples, total);
-    const tailText = this.decodeWindow(tail);
+		const tail = this.buf.subarray(this.committedSamples, total);
+		const tailText = this.decodeWindow(tail);
 
-    if (final) {
-      this.committed = joinTranscriptParts(this.committed, tailText);
-      this.committedSamples = total;
-      return;
-    }
+		if (final) {
+			this.committed = joinTranscriptParts(this.committed, tailText);
+			this.committedSamples = total;
+			return;
+		}
 
-    this.emitPartial({
-      partial: joinTranscriptParts(this.committed, tailText).trim(),
-      isFinal: false,
-    });
-  }
+		this.emitPartial({
+			partial: joinTranscriptParts(this.committed, tailText).trim(),
+			isFinal: false,
+		});
+	}
 }
 
 function concatFloat32(a: Float32Array, b: Float32Array): Float32Array {
-  if (a.length === 0) return b.slice();
-  if (b.length === 0) return a;
-  const out = new Float32Array(a.length + b.length);
-  out.set(a, 0);
-  out.set(b, a.length);
-  return out;
+	if (a.length === 0) return b.slice();
+	if (b.length === 0) return a;
+	const out = new Float32Array(a.length + b.length);
+	out.set(a, 0);
+	out.set(b, a.length);
+	return out;
 }
 
 /**
@@ -550,19 +550,19 @@ function concatFloat32(a: Float32Array, b: Float32Array): Float32Array {
  * both sides clearly continue the same token-ish run.
  */
 function joinTranscriptParts(head: string, tail: string): string {
-  const h = head.trimEnd();
-  const t = tail.trimStart();
-  if (!h) return t;
-  if (!t) return h;
-  // If `tail` starts with a continuation of `head`'s last word, prefer
-  // `tail`'s spelling of the overlap region: drop `head`'s last word when
-  // `tail`'s first word starts with the same prefix (case-insensitive).
-  const headLast = h.match(/[\p{L}\p{N}'-]+$/u)?.[0] ?? "";
-  const tailFirst = t.match(/^[\p{L}\p{N}'-]+/u)?.[0] ?? "";
-  if (headLast && tailFirst?.toLowerCase().startsWith(headLast.toLowerCase())) {
-    return `${h.slice(0, h.length - headLast.length).trimEnd()} ${t}`.trim();
-  }
-  return `${h} ${t}`;
+	const h = head.trimEnd();
+	const t = tail.trimStart();
+	if (!h) return t;
+	if (!t) return h;
+	// If `tail` starts with a continuation of `head`'s last word, prefer
+	// `tail`'s spelling of the overlap region: drop `head`'s last word when
+	// `tail`'s first word starts with the same prefix (case-insensitive).
+	const headLast = h.match(/[\p{L}\p{N}'-]+$/u)?.[0] ?? "";
+	const tailFirst = t.match(/^[\p{L}\p{N}'-]+/u)?.[0] ?? "";
+	if (headLast && tailFirst?.toLowerCase().startsWith(headLast.toLowerCase())) {
+		return `${h.slice(0, h.length - headLast.length).trimEnd()} ${t}`.trim();
+	}
+	return `${h} ${t}`;
 }
 
 /* ==================================================================== *
@@ -573,26 +573,26 @@ function joinTranscriptParts(head: string, tail: string): string {
 export type StreamingPcmDecoder = (pcm16k: Float32Array) => Promise<string>;
 
 export interface OpenVinoStreamingTranscriberOptions {
-  vad?: VadEventSource;
-  /** Optional attribution metadata stamped onto emitted transcript updates. */
-  metadata?: TranscriptMetadataDefaults;
-  /** Convenience shorthand for `metadata.source`. */
-  source?: VoiceInputSource;
-  /** Sliding-window length, seconds. Default 3.0. */
-  windowSeconds?: number;
-  /** Trailing overlap kept when committing a prefix chunk, seconds. Default 0.5. */
-  overlapSeconds?: number;
-  /** Minimum new audio (seconds) accumulated before the next decode pass. Default 0.7. */
-  stepSeconds?: number;
-  /** The decoder. Required — the OpenVINO adapter supplies its python-worker decoder here. */
-  decoder: StreamingPcmDecoder;
-  /**
-   * Extra cleanup invoked from `dispose()` after segment buffers are reset.
-   * Used when the injected `decoder` owns a persistent subprocess (the
-   * OpenVINO whisper worker) that needs to be torn down with the
-   * transcriber.
-   */
-  onDispose?: () => void;
+	vad?: VadEventSource;
+	/** Optional attribution metadata stamped onto emitted transcript updates. */
+	metadata?: TranscriptMetadataDefaults;
+	/** Convenience shorthand for `metadata.source`. */
+	source?: VoiceInputSource;
+	/** Sliding-window length, seconds. Default 3.0. */
+	windowSeconds?: number;
+	/** Trailing overlap kept when committing a prefix chunk, seconds. Default 0.5. */
+	overlapSeconds?: number;
+	/** Minimum new audio (seconds) accumulated before the next decode pass. Default 0.7. */
+	stepSeconds?: number;
+	/** The decoder. Required — the OpenVINO adapter supplies its python-worker decoder here. */
+	decoder: StreamingPcmDecoder;
+	/**
+	 * Extra cleanup invoked from `dispose()` after segment buffers are reset.
+	 * Used when the injected `decoder` owns a persistent subprocess (the
+	 * OpenVINO whisper worker) that needs to be torn down with the
+	 * transcriber.
+	 */
+	onDispose?: () => void;
 }
 
 /**
@@ -603,103 +603,103 @@ export interface OpenVinoStreamingTranscriberOptions {
  * Qwen2-BPE vocab).
  */
 export class OpenVinoStreamingTranscriber extends BaseStreamingTranscriber {
-  private readonly windowSamples: number;
-  private readonly overlapSamples: number;
-  private readonly stepSamples: number;
-  private readonly decode: StreamingPcmDecoder;
-  private readonly extraDispose: (() => void) | undefined;
-  /** All 16 kHz samples accumulated for the current speech segment. */
-  private buf: Float32Array = new Float32Array(0);
-  /** Samples in `buf` already folded into `committed`. */
-  private committedSamples = 0;
-  /** Text decoded from `buf[0 .. committedSamples)`. */
-  private committed = "";
-  /** Samples present at the last decode pass — used to throttle to `stepSamples`. */
-  private lastDecodeAt = 0;
-  private decodeChain: Promise<void> = Promise.resolve();
+	private readonly windowSamples: number;
+	private readonly overlapSamples: number;
+	private readonly stepSamples: number;
+	private readonly decode: StreamingPcmDecoder;
+	private readonly extraDispose: (() => void) | undefined;
+	/** All 16 kHz samples accumulated for the current speech segment. */
+	private buf: Float32Array = new Float32Array(0);
+	/** Samples in `buf` already folded into `committed`. */
+	private committedSamples = 0;
+	/** Text decoded from `buf[0 .. committedSamples)`. */
+	private committed = "";
+	/** Samples present at the last decode pass — used to throttle to `stepSamples`. */
+	private lastDecodeAt = 0;
+	private decodeChain: Promise<void> = Promise.resolve();
 
-  constructor(opts: OpenVinoStreamingTranscriberOptions) {
-    super(opts.vad, {
-      ...opts.metadata,
-      source: opts.metadata?.source ?? opts.source,
-    });
-    const windowSeconds = opts.windowSeconds ?? 3.0;
-    const overlapSeconds = Math.min(opts.overlapSeconds ?? 0.5, windowSeconds);
-    const stepSeconds = opts.stepSeconds ?? 0.7;
-    this.windowSamples = Math.round(windowSeconds * ASR_SAMPLE_RATE);
-    this.overlapSamples = Math.round(overlapSeconds * ASR_SAMPLE_RATE);
-    this.stepSamples = Math.round(stepSeconds * ASR_SAMPLE_RATE);
-    this.decode = opts.decoder;
-    this.extraDispose = opts.onDispose;
-  }
+	constructor(opts: OpenVinoStreamingTranscriberOptions) {
+		super(opts.vad, {
+			...opts.metadata,
+			source: opts.metadata?.source ?? opts.source,
+		});
+		const windowSeconds = opts.windowSeconds ?? 3.0;
+		const overlapSeconds = Math.min(opts.overlapSeconds ?? 0.5, windowSeconds);
+		const stepSeconds = opts.stepSeconds ?? 0.7;
+		this.windowSamples = Math.round(windowSeconds * ASR_SAMPLE_RATE);
+		this.overlapSamples = Math.round(overlapSeconds * ASR_SAMPLE_RATE);
+		this.stepSamples = Math.round(stepSeconds * ASR_SAMPLE_RATE);
+		this.decode = opts.decoder;
+		this.extraDispose = opts.onDispose;
+	}
 
-  protected onFrame(frame: PcmFrame): void {
-    const pcm = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
-    this.buf = concatFloat32(this.buf, pcm);
-    if (this.buf.length - this.lastDecodeAt < this.stepSamples) return;
-    this.lastDecodeAt = this.buf.length;
-    this.scheduleDecode(false);
-  }
+	protected onFrame(frame: PcmFrame): void {
+		const pcm = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
+		this.buf = concatFloat32(this.buf, pcm);
+		if (this.buf.length - this.lastDecodeAt < this.stepSamples) return;
+		this.lastDecodeAt = this.buf.length;
+		this.scheduleDecode(false);
+	}
 
-  protected async onFlush(): Promise<TranscriptUpdate> {
-    this.scheduleDecode(true);
-    await this.decodeChain;
-    const final = this.committed.trim();
-    this.resetSegment();
-    return { partial: final, isFinal: true };
-  }
+	protected async onFlush(): Promise<TranscriptUpdate> {
+		this.scheduleDecode(true);
+		await this.decodeChain;
+		const final = this.committed.trim();
+		this.resetSegment();
+		return { partial: final, isFinal: true };
+	}
 
-  protected onDispose(): void {
-    this.resetSegment();
-    if (this.extraDispose) {
-      try {
-        this.extraDispose();
-      } catch {
-        /* dispose hooks are best-effort */
-      }
-    }
-  }
+	protected onDispose(): void {
+		this.resetSegment();
+		if (this.extraDispose) {
+			try {
+				this.extraDispose();
+			} catch {
+				/* dispose hooks are best-effort */
+			}
+		}
+	}
 
-  private resetSegment(): void {
-    this.buf = new Float32Array(0);
-    this.committedSamples = 0;
-    this.committed = "";
-    this.lastDecodeAt = 0;
-  }
+	private resetSegment(): void {
+		this.buf = new Float32Array(0);
+		this.committedSamples = 0;
+		this.committed = "";
+		this.lastDecodeAt = 0;
+	}
 
-  private scheduleDecode(final: boolean): void {
-    this.decodeChain = this.decodeChain.then(() => this.runDecode(final));
-  }
+	private scheduleDecode(final: boolean): void {
+		this.decodeChain = this.decodeChain.then(() => this.runDecode(final));
+	}
 
-  private async runDecode(final: boolean): Promise<void> {
-    const total = this.buf.length;
-    if (total <= this.committedSamples && !final) return;
+	private async runDecode(final: boolean): Promise<void> {
+		const total = this.buf.length;
+		if (total <= this.committedSamples && !final) return;
 
-    // Commit any prefix that has scrolled fully out of the sliding window.
-    while (total - this.committedSamples > this.windowSamples) {
-      const chunkEnd = Math.min(
-        total,
-        this.committedSamples + this.windowSamples,
-      );
-      const chunk = this.buf.subarray(this.committedSamples, chunkEnd);
-      const text = (await this.decode(chunk)).trim();
-      this.committed = joinTranscriptParts(this.committed, text);
-      const advance = Math.max(1, this.windowSamples - this.overlapSamples);
-      this.committedSamples = Math.min(total, this.committedSamples + advance);
-    }
+		// Commit any prefix that has scrolled fully out of the sliding window.
+		while (total - this.committedSamples > this.windowSamples) {
+			const chunkEnd = Math.min(
+				total,
+				this.committedSamples + this.windowSamples,
+			);
+			const chunk = this.buf.subarray(this.committedSamples, chunkEnd);
+			const text = (await this.decode(chunk)).trim();
+			this.committed = joinTranscriptParts(this.committed, text);
+			const advance = Math.max(1, this.windowSamples - this.overlapSamples);
+			this.committedSamples = Math.min(total, this.committedSamples + advance);
+		}
 
-    const tail = this.buf.subarray(this.committedSamples, total);
-    const tailText = tail.length > 0 ? (await this.decode(tail)).trim() : "";
+		const tail = this.buf.subarray(this.committedSamples, total);
+		const tailText = tail.length > 0 ? (await this.decode(tail)).trim() : "";
 
-    if (final) {
-      this.committed = joinTranscriptParts(this.committed, tailText);
-      this.committedSamples = total;
-      return;
-    }
+		if (final) {
+			this.committed = joinTranscriptParts(this.committed, tailText);
+			this.committedSamples = total;
+			return;
+		}
 
-    const partialText = joinTranscriptParts(this.committed, tailText).trim();
-    this.emitPartial({ partial: partialText, isFinal: false });
-  }
+		const partialText = joinTranscriptParts(this.committed, tailText).trim();
+		this.emitPartial({ partial: partialText, isFinal: false });
+	}
 }
 
 /* ==================================================================== *
@@ -707,39 +707,39 @@ export class OpenVinoStreamingTranscriber extends BaseStreamingTranscriber {
  * ==================================================================== */
 
 export interface CreateStreamingTranscriberOptions {
-  /** Fused FFI handle (when a `libelizainference` build is loaded), else null. */
-  ffi?: ElizaInferenceFfi | null;
-  /** Provider for the fused context pointer (the bridge owns the lazy create). */
-  getContext?: () => ElizaInferenceContextHandle;
-  /**
-   * Whether a bundled ASR model directory is present. The fused path is
-   * only chosen when this is true AND the library advertises streaming
-   * ASR.
-   */
-  asrBundlePresent?: boolean;
-  /** VAD event stream to gate decoding (W1). */
-  vad?: VadEventSource;
-  /** Optional attribution metadata stamped onto emitted transcript updates. */
-  metadata?: TranscriptMetadataDefaults;
-  /** Convenience shorthand for `metadata.source`. */
-  source?: VoiceInputSource;
-  /** Fused-batch-interim window/step overrides (see `FfiBatchTranscriber`). */
-  ffiBatch?: Omit<FfiBatchTranscriberOptions, "ffi" | "getContext">;
-  /**
-   * Force a specific backend.
-   *   `"fused"`            → fused streaming ASR only (throws if unavailable),
-   *   `"ffi-batch"`        → fused batch (interim) only (throws if unavailable),
-   *   `"openvino-whisper"` → OpenVINO Whisper (NPU→CPU autoprobe) only,
-   *   `"auto"`             (default) → fused streaming → fused batch →
-   *                                    OpenVINO whisper (when enabled) → throw.
-   */
-  prefer?: "auto" | "fused" | "ffi-batch" | "openvino-whisper";
-  /**
-   * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Off by default
-   * — Eliza-1 voice bridges run only the fused path. Set explicitly to `true`
-   * to keep the OpenVINO Whisper tier when the fused build is unavailable.
-   */
-  allowOpenVinoWhisper?: boolean;
+	/** Fused FFI handle (when a `libelizainference` build is loaded), else null. */
+	ffi?: ElizaInferenceFfi | null;
+	/** Provider for the fused context pointer (the bridge owns the lazy create). */
+	getContext?: () => ElizaInferenceContextHandle;
+	/**
+	 * Whether a bundled ASR model directory is present. The fused path is
+	 * only chosen when this is true AND the library advertises streaming
+	 * ASR.
+	 */
+	asrBundlePresent?: boolean;
+	/** VAD event stream to gate decoding (W1). */
+	vad?: VadEventSource;
+	/** Optional attribution metadata stamped onto emitted transcript updates. */
+	metadata?: TranscriptMetadataDefaults;
+	/** Convenience shorthand for `metadata.source`. */
+	source?: VoiceInputSource;
+	/** Fused-batch-interim window/step overrides (see `FfiBatchTranscriber`). */
+	ffiBatch?: Omit<FfiBatchTranscriberOptions, "ffi" | "getContext">;
+	/**
+	 * Force a specific backend.
+	 *   `"fused"`            → fused streaming ASR only (throws if unavailable),
+	 *   `"ffi-batch"`        → fused batch (interim) only (throws if unavailable),
+	 *   `"openvino-whisper"` → OpenVINO Whisper (NPU→CPU autoprobe) only,
+	 *   `"auto"`             (default) → fused streaming → fused batch →
+	 *                                    OpenVINO whisper (when enabled) → throw.
+	 */
+	prefer?: "auto" | "fused" | "ffi-batch" | "openvino-whisper";
+	/**
+	 * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Off by default
+	 * — Eliza-1 voice bridges run only the fused path. Set explicitly to `true`
+	 * to keep the OpenVINO Whisper tier when the fused build is unavailable.
+	 */
+	allowOpenVinoWhisper?: boolean;
 }
 
 /**
@@ -758,93 +758,93 @@ export interface CreateStreamingTranscriberOptions {
  * interim fallback has been removed.
  */
 export function createStreamingTranscriber(
-  opts: CreateStreamingTranscriberOptions = {},
+	opts: CreateStreamingTranscriberOptions = {},
 ): StreamingTranscriber {
-  const prefer = opts.prefer ?? "auto";
-  const allowOpenVinoWhisper = opts.allowOpenVinoWhisper === true;
+	const prefer = opts.prefer ?? "auto";
+	const allowOpenVinoWhisper = opts.allowOpenVinoWhisper === true;
 
-  const tryFusedStreaming = (): StreamingTranscriber | null => {
-    if (!opts.ffi || !opts.getContext) return null;
-    if (!opts.asrBundlePresent) return null;
-    if (!ffiSupportsStreamingAsr(opts.ffi)) return null;
-    return new FfiStreamingTranscriber({
-      ffi: opts.ffi,
-      getContext: opts.getContext,
-      vad: opts.vad,
-      metadata: opts.metadata,
-      source: opts.source,
-    });
-  };
+	const tryFusedStreaming = (): StreamingTranscriber | null => {
+		if (!opts.ffi || !opts.getContext) return null;
+		if (!opts.asrBundlePresent) return null;
+		if (!ffiSupportsStreamingAsr(opts.ffi)) return null;
+		return new FfiStreamingTranscriber({
+			ffi: opts.ffi,
+			getContext: opts.getContext,
+			vad: opts.vad,
+			metadata: opts.metadata,
+			source: opts.source,
+		});
+	};
 
-  const tryFusedBatch = (): StreamingTranscriber | null => {
-    if (!opts.ffi || !opts.getContext) return null;
-    if (!opts.asrBundlePresent) return null;
-    if (typeof opts.ffi.asrTranscribe !== "function") return null;
-    return new FfiBatchTranscriber({
-      ...opts.ffiBatch,
-      ffi: opts.ffi,
-      getContext: opts.getContext,
-      vad: opts.vad,
-      metadata: opts.metadata,
-      source: opts.source,
-    });
-  };
+	const tryFusedBatch = (): StreamingTranscriber | null => {
+		if (!opts.ffi || !opts.getContext) return null;
+		if (!opts.asrBundlePresent) return null;
+		if (typeof opts.ffi.asrTranscribe !== "function") return null;
+		return new FfiBatchTranscriber({
+			...opts.ffiBatch,
+			ffi: opts.ffi,
+			getContext: opts.getContext,
+			vad: opts.vad,
+			metadata: opts.metadata,
+			source: opts.source,
+		});
+	};
 
-  const tryOpenVinoWhisper = (): StreamingTranscriber | null => {
-    const runtime = resolveOpenVinoWhisperRuntime();
-    if (!runtime) return null;
-    const { decoder, dispose } = makeOpenVinoWhisperDecoder(runtime);
-    try {
-      return new OpenVinoStreamingTranscriber({
-        vad: opts.vad,
-        metadata: opts.metadata,
-        source: opts.source,
-        decoder,
-        onDispose: dispose,
-      });
-    } catch (err) {
-      try {
-        dispose();
-      } catch {
-        /* ignore */
-      }
-      throw err;
-    }
-  };
+	const tryOpenVinoWhisper = (): StreamingTranscriber | null => {
+		const runtime = resolveOpenVinoWhisperRuntime();
+		if (!runtime) return null;
+		const { decoder, dispose } = makeOpenVinoWhisperDecoder(runtime);
+		try {
+			return new OpenVinoStreamingTranscriber({
+				vad: opts.vad,
+				metadata: opts.metadata,
+				source: opts.source,
+				decoder,
+				onDispose: dispose,
+			});
+		} catch (err) {
+			try {
+				dispose();
+			} catch {
+				/* ignore */
+			}
+			throw err;
+		}
+	};
 
-  if (prefer === "fused") {
-    const fused = tryFusedStreaming();
-    if (fused) return fused;
-    throw new AsrUnavailableError(
-      "[asr] fused streaming ASR was requested but is not available (no libelizainference handle, no bundled ASR model, or the build does not export eliza_inference_asr_stream_*)",
-    );
-  }
-  if (prefer === "ffi-batch") {
-    const batch = tryFusedBatch();
-    if (batch) return batch;
-    throw new AsrUnavailableError(
-      "[asr] fused batch ASR was requested but is not available (no libelizainference handle, no bundled ASR model, or the build does not export eliza_inference_asr_transcribe)",
-    );
-  }
-  if (prefer === "openvino-whisper") {
-    const ov = tryOpenVinoWhisper();
-    if (ov) return ov;
-    throw new AsrUnavailableError(
-      "[asr] OpenVINO whisper ASR was requested but is not available (no openvino python venv, no whisper IR model, or worker script missing — set ELIZA_OPENVINO_PYTHON / ELIZA_OPENVINO_WHISPER_MODEL / ELIZA_OPENVINO_WHISPER_WORKER)",
-    );
-  }
+	if (prefer === "fused") {
+		const fused = tryFusedStreaming();
+		if (fused) return fused;
+		throw new AsrUnavailableError(
+			"[asr] fused streaming ASR was requested but is not available (no libelizainference handle, no bundled ASR model, or the build does not export eliza_inference_asr_stream_*)",
+		);
+	}
+	if (prefer === "ffi-batch") {
+		const batch = tryFusedBatch();
+		if (batch) return batch;
+		throw new AsrUnavailableError(
+			"[asr] fused batch ASR was requested but is not available (no libelizainference handle, no bundled ASR model, or the build does not export eliza_inference_asr_transcribe)",
+		);
+	}
+	if (prefer === "openvino-whisper") {
+		const ov = tryOpenVinoWhisper();
+		if (ov) return ov;
+		throw new AsrUnavailableError(
+			"[asr] OpenVINO whisper ASR was requested but is not available (no openvino python venv, no whisper IR model, or worker script missing — set ELIZA_OPENVINO_PYTHON / ELIZA_OPENVINO_WHISPER_MODEL / ELIZA_OPENVINO_WHISPER_WORKER)",
+		);
+	}
 
-  // auto
-  const fused = tryFusedStreaming();
-  if (fused) return fused;
-  const batch = tryFusedBatch();
-  if (batch) return batch;
-  if (allowOpenVinoWhisper) {
-    const ov = tryOpenVinoWhisper();
-    if (ov) return ov;
-  }
+	// auto
+	const fused = tryFusedStreaming();
+	if (fused) return fused;
+	const batch = tryFusedBatch();
+	if (batch) return batch;
+	if (allowOpenVinoWhisper) {
+		const ov = tryOpenVinoWhisper();
+		if (ov) return ov;
+	}
 
-  throw new AsrUnavailableError(
-    "[asr] no fused ASR decoder available — load the fused libelizainference build with a bundled ASR model (eliza_inference_asr_stream_* or eliza_inference_asr_transcribe). The whisper.cpp interim fallback has been removed; the local-inference path requires the fused omnivoice build.",
-  );
+	throw new AsrUnavailableError(
+		"[asr] no fused ASR decoder available — load the fused libelizainference build with a bundled ASR model (eliza_inference_asr_stream_* or eliza_inference_asr_transcribe). The whisper.cpp interim fallback has been removed; the local-inference path requires the fused omnivoice build.",
+	);
 }

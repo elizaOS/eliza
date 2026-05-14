@@ -32,38 +32,38 @@
  */
 
 export interface TaggedAudioChunk {
-  pcm: Float32Array;
-  /**
-   * Inclusive token-index range the audio chunk covers.
-   * [start, end] where start <= end. Both values are in the
-   * scheduler's token-index space (same as `Phrase.fromIndex` /
-   * `Phrase.toIndex`).
-   */
-  tokenRange: [number, number];
-  /**
-   * Wall-clock duration of this chunk in milliseconds, computed from
-   * `pcm.length / sampleRate * 1000`. Stored here so the queue can
-   * report total retained duration to telemetry without knowing the
-   * sample rate.
-   */
-  durationMs: number;
+	pcm: Float32Array;
+	/**
+	 * Inclusive token-index range the audio chunk covers.
+	 * [start, end] where start <= end. Both values are in the
+	 * scheduler's token-index space (same as `Phrase.fromIndex` /
+	 * `Phrase.toIndex`).
+	 */
+	tokenRange: [number, number];
+	/**
+	 * Wall-clock duration of this chunk in milliseconds, computed from
+	 * `pcm.length / sampleRate * 1000`. Stored here so the queue can
+	 * report total retained duration to telemetry without knowing the
+	 * sample rate.
+	 */
+	durationMs: number;
 }
 
 export interface RollbackResult {
-  /** Chunks retained (token range ends at or before divergencePoint). */
-  retained: TaggedAudioChunk[];
-  /** Chunks dropped (token range starts after divergencePoint). */
-  dropped: TaggedAudioChunk[];
-  /**
-   * Chunks that straddled the divergence point
-   * (started at or before, ended after) — kept in `retained` at phrase
-   * granularity. Callers can inspect this for telemetry.
-   */
-  straddled: TaggedAudioChunk[];
-  /** Sum of retained chunk durations in milliseconds. */
-  retainedDurationMs: number;
-  /** Sum of dropped chunk durations in milliseconds. */
-  droppedDurationMs: number;
+	/** Chunks retained (token range ends at or before divergencePoint). */
+	retained: TaggedAudioChunk[];
+	/** Chunks dropped (token range starts after divergencePoint). */
+	dropped: TaggedAudioChunk[];
+	/**
+	 * Chunks that straddled the divergence point
+	 * (started at or before, ended after) — kept in `retained` at phrase
+	 * granularity. Callers can inspect this for telemetry.
+	 */
+	straddled: TaggedAudioChunk[];
+	/** Sum of retained chunk durations in milliseconds. */
+	retainedDurationMs: number;
+	/** Sum of dropped chunk durations in milliseconds. */
+	droppedDurationMs: number;
 }
 
 /**
@@ -79,84 +79,84 @@ export interface RollbackResult {
  * Thread-safety: single-threaded JS — no locking needed.
  */
 export class PrefixPreservingQueue {
-  private readonly chunks: TaggedAudioChunk[] = [];
+	private readonly chunks: TaggedAudioChunk[] = [];
 
-  /** Number of chunks currently in the queue. */
-  get size(): number {
-    return this.chunks.length;
-  }
+	/** Number of chunks currently in the queue. */
+	get size(): number {
+		return this.chunks.length;
+	}
 
-  /**
-   * Add a tagged audio chunk to the tail of the queue. Chunks MUST be
-   * enqueued in token-range order (ascending `tokenRange[0]`) — the queue
-   * does not sort. Violations produce unspecified rollback behaviour.
-   */
-  enqueue(chunk: TaggedAudioChunk): void {
-    this.chunks.push(chunk);
-  }
+	/**
+	 * Add a tagged audio chunk to the tail of the queue. Chunks MUST be
+	 * enqueued in token-range order (ascending `tokenRange[0]`) — the queue
+	 * does not sort. Violations produce unspecified rollback behaviour.
+	 */
+	enqueue(chunk: TaggedAudioChunk): void {
+		this.chunks.push(chunk);
+	}
 
-  /**
-   * Partition the queue at `divergencePoint` (the last committed token
-   * index). Clears the queue and returns the three-way split.
-   *
-   * Decision per chunk:
-   *   chunk.tokenRange[1] <= divergencePoint  → retained (prefix)
-   *   chunk.tokenRange[0] >  divergencePoint  → dropped  (post-divergence)
-   *   otherwise (straddle)                    → retained (best-effort)
-   *
-   * After this call the queue is empty. Callers should replay `retained`
-   * into the audio sink.
-   */
-  rollbackAt(divergencePoint: number): RollbackResult {
-    const retained: TaggedAudioChunk[] = [];
-    const dropped: TaggedAudioChunk[] = [];
-    const straddled: TaggedAudioChunk[] = [];
-    let retainedDurationMs = 0;
-    let droppedDurationMs = 0;
+	/**
+	 * Partition the queue at `divergencePoint` (the last committed token
+	 * index). Clears the queue and returns the three-way split.
+	 *
+	 * Decision per chunk:
+	 *   chunk.tokenRange[1] <= divergencePoint  → retained (prefix)
+	 *   chunk.tokenRange[0] >  divergencePoint  → dropped  (post-divergence)
+	 *   otherwise (straddle)                    → retained (best-effort)
+	 *
+	 * After this call the queue is empty. Callers should replay `retained`
+	 * into the audio sink.
+	 */
+	rollbackAt(divergencePoint: number): RollbackResult {
+		const retained: TaggedAudioChunk[] = [];
+		const dropped: TaggedAudioChunk[] = [];
+		const straddled: TaggedAudioChunk[] = [];
+		let retainedDurationMs = 0;
+		let droppedDurationMs = 0;
 
-    for (const chunk of this.chunks) {
-      const [start, end] = chunk.tokenRange;
-      if (end <= divergencePoint) {
-        // Fully before or at the divergence point — keep.
-        retained.push(chunk);
-        retainedDurationMs += chunk.durationMs;
-      } else if (start > divergencePoint) {
-        // Fully after the divergence point — drop.
-        dropped.push(chunk);
-        droppedDurationMs += chunk.durationMs;
-      } else {
-        // Straddles the divergence point — keep at phrase granularity.
-        retained.push(chunk);
-        straddled.push(chunk);
-        retainedDurationMs += chunk.durationMs;
-      }
-    }
+		for (const chunk of this.chunks) {
+			const [start, end] = chunk.tokenRange;
+			if (end <= divergencePoint) {
+				// Fully before or at the divergence point — keep.
+				retained.push(chunk);
+				retainedDurationMs += chunk.durationMs;
+			} else if (start > divergencePoint) {
+				// Fully after the divergence point — drop.
+				dropped.push(chunk);
+				droppedDurationMs += chunk.durationMs;
+			} else {
+				// Straddles the divergence point — keep at phrase granularity.
+				retained.push(chunk);
+				straddled.push(chunk);
+				retainedDurationMs += chunk.durationMs;
+			}
+		}
 
-    this.chunks.length = 0;
-    return {
-      retained,
-      dropped,
-      straddled,
-      retainedDurationMs,
-      droppedDurationMs,
-    };
-  }
+		this.chunks.length = 0;
+		return {
+			retained,
+			dropped,
+			straddled,
+			retainedDurationMs,
+			droppedDurationMs,
+		};
+	}
 
-  /**
-   * Drop all queued chunks without replaying any of them. Used by the
-   * hard-stop / full-cancel path as a fallback when the new utterance
-   * does not continue the topic.
-   */
-  clear(): TaggedAudioChunk[] {
-    const all = this.chunks.splice(0);
-    return all;
-  }
+	/**
+	 * Drop all queued chunks without replaying any of them. Used by the
+	 * hard-stop / full-cancel path as a fallback when the new utterance
+	 * does not continue the topic.
+	 */
+	clear(): TaggedAudioChunk[] {
+		const all = this.chunks.splice(0);
+		return all;
+	}
 
-  /**
-   * Peek at the current queue without modifying it (snapshot for
-   * telemetry / tests).
-   */
-  snapshot(): ReadonlyArray<TaggedAudioChunk> {
-    return this.chunks.slice();
-  }
+	/**
+	 * Peek at the current queue without modifying it (snapshot for
+	 * telemetry / tests).
+	 */
+	snapshot(): ReadonlyArray<TaggedAudioChunk> {
+		return this.chunks.slice();
+	}
 }

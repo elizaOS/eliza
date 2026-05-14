@@ -60,7 +60,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const names = collectPluginNames(config);
 
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(true);
-    expect(names.has("@elizaos/plugin-local-embedding")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-ollama")).toBe(false);
     expect(names.has("@elizaos/plugin-local-ai")).toBe(false);
@@ -96,7 +96,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
     const names = collectPluginNames(config);
 
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
-    expect(names.has("@elizaos/plugin-local-embedding")).toBe(false);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(false);
     expect(names.has("@elizaos/plugin-openai")).toBe(false);
     expect(names.has("@elizaos/plugin-ollama")).toBe(false);
     expect(names.has("@elizaos/plugin-local-ai")).toBe(false);
@@ -113,7 +113,7 @@ describe("collectPluginNames runtime mode provider policy", () => {
 
     const names = collectPluginNames(config);
 
-    expect(names.has("@elizaos/plugin-local-embedding")).toBe(true);
+    expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
     expect(names.has("@elizaos/plugin-ollama")).toBe(true);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
   });

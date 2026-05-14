@@ -5,9 +5,9 @@
  * compute the same SHA256 / GGUF-magic checks against on-disk models.
  */
 export {
-  __registryPathForTests,
-  hashFile,
-  type VerifyResult,
-  type VerifyState,
-  verifyInstalledModel,
+	__registryPathForTests,
+	hashFile,
+	type VerifyResult,
+	type VerifyState,
+	verifyInstalledModel,
 } from "@elizaos/shared";

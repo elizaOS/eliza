@@ -5,22 +5,22 @@
 
 import type { z } from "zod";
 import type {
-  ELIZA_1_PROVENANCE_SLOTS,
-  ELIZA_1_RELEASE_CHANNELS,
-  ELIZA_1_RELEASE_STATES,
-  Eliza1BackendEnumSchema,
-  Eliza1EvalsSchema,
-  Eliza1FileEntrySchema,
-  Eliza1FilesSchema,
-  Eliza1KernelEnumSchema,
-  Eliza1KernelsSchema,
-  Eliza1LineageSchema,
-  Eliza1ManifestSchema,
-  Eliza1ProvenanceSchema,
-  Eliza1RamBudgetSchema,
-  Eliza1TierEnumSchema,
-  Eliza1VerifiedBackendStatusSchema,
-  Eliza1VoiceSchema,
+	ELIZA_1_PROVENANCE_SLOTS,
+	ELIZA_1_RELEASE_CHANNELS,
+	ELIZA_1_RELEASE_STATES,
+	Eliza1BackendEnumSchema,
+	Eliza1EvalsSchema,
+	Eliza1FileEntrySchema,
+	Eliza1FilesSchema,
+	Eliza1KernelEnumSchema,
+	Eliza1KernelsSchema,
+	Eliza1LineageSchema,
+	Eliza1ManifestSchema,
+	Eliza1ProvenanceSchema,
+	Eliza1RamBudgetSchema,
+	Eliza1TierEnumSchema,
+	Eliza1VerifiedBackendStatusSchema,
+	Eliza1VoiceSchema,
 } from "./schema";
 
 export type Eliza1Tier = z.infer<typeof Eliza1TierEnumSchema>;
@@ -38,7 +38,7 @@ export type Eliza1ProvenanceSlot = (typeof ELIZA_1_PROVENANCE_SLOTS)[number];
 export type Eliza1ReleaseState = (typeof ELIZA_1_RELEASE_STATES)[number];
 export type Eliza1ReleaseChannel = (typeof ELIZA_1_RELEASE_CHANNELS)[number];
 export type Eliza1VerifiedBackendStatus = z.infer<
-  typeof Eliza1VerifiedBackendStatusSchema
+	typeof Eliza1VerifiedBackendStatusSchema
 >;
 export type Eliza1Manifest = z.infer<typeof Eliza1ManifestSchema>;
 
@@ -48,6 +48,6 @@ export type Eliza1Manifest = z.infer<typeof Eliza1ManifestSchema>;
  * `canSetAsDefault()` checks the manifest's verifiedBackends against this.
  */
 export interface Eliza1DeviceCaps {
-  availableBackends: ReadonlyArray<Eliza1Backend>;
-  ramMb: number;
+	availableBackends: ReadonlyArray<Eliza1Backend>;
+	ramMb: number;
 }

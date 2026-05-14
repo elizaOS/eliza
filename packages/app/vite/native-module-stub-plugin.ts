@@ -204,7 +204,7 @@ export function nativeModuleStubPlugin(
     // Their exports maps nest browser/node conditional exports that Vite 6's
     // commonjs--resolver cannot walk. Stubbing returns an empty Proxy virtual
     // module so the browser bundle never tries to execute server-only code.
-    "@elizaos/plugin-local-embedding",
+    "@elizaos/plugin-local-inference",
     "@elizaos/plugin-anthropic",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-sql",
@@ -336,7 +336,7 @@ export function nativeModuleStubPlugin(
           "const handler = { get: (_, p) => (p === Symbol.toPrimitive ? () => 0 : typeof p === 'string' ? (() => {}) : undefined) };",
           "const stub = new Proxy({}, handler);",
           "export default stub;",
-          // Known named exports used by @elizaos/plugin-local-embedding and
+          // Known named exports used by @elizaos/plugin-local-inference and
           // other consumers — extend as needed:
           "export const getLlama = () => Promise.resolve(stub);",
           "export const LlamaLogLevel = Object.freeze({ error: 0, warn: 1, info: 2, debug: 3 });",

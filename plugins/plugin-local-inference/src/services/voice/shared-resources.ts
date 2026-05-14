@@ -24,9 +24,9 @@
 
 /** Minimal structural logger — keeps this module free of upstream deps. */
 interface Logger {
-  debug?(message: string): void;
-  warn?(message: string): void;
-  info?(message: string): void;
+	debug?(message: string): void;
+	warn?(message: string): void;
+	info?(message: string): void;
 }
 
 /**
@@ -39,13 +39,13 @@ interface Logger {
  * — it's co-resident in that process, so "evict" is heavy).
  */
 export type ResidentModelRole =
-  | "drafter"
-  | "vision"
-  | "embedding"
-  | "vad"
-  | "asr"
-  | "tts"
-  | "text-target";
+	| "drafter"
+	| "vision"
+	| "embedding"
+	| "vad"
+	| "asr"
+	| "tts"
+	| "text-target";
 
 /**
  * Eviction priority by role — lower evicts first. Matches the brief's
@@ -53,15 +53,15 @@ export type ResidentModelRole =
  * (cheap — just `unload()`) just above vision and `vad` near ASR.
  */
 export const RESIDENT_ROLE_PRIORITY: Readonly<
-  Record<ResidentModelRole, number>
+	Record<ResidentModelRole, number>
 > = {
-  drafter: 10,
-  vision: 20,
-  embedding: 25,
-  vad: 35,
-  asr: 40,
-  tts: 50,
-  "text-target": 100,
+	drafter: 10,
+	vision: 20,
+	embedding: 25,
+	vad: 35,
+	asr: 40,
+	tts: 50,
+	"text-target": 100,
 };
 
 /**
@@ -72,28 +72,28 @@ export const RESIDENT_ROLE_PRIORITY: Readonly<
  * frees memory, it never re-loads.
  */
 export interface EvictableModelRole extends RefCountedResource {
-  readonly role: ResidentModelRole;
-  /** Lower evicts first. Defaults to `RESIDENT_ROLE_PRIORITY[role]`. */
-  readonly evictionPriority: number;
-  /** True while the underlying weights/pages are still resident. */
-  isResident(): boolean;
-  /** Drop the resident weights/pages. Idempotent; re-loads lazily on demand. */
-  evict(): Promise<void>;
-  /** Best-effort estimate of RAM (MB) reclaimed by `evict()`. 0 when unknown. */
-  estimatedResidentMb(): number;
+	readonly role: ResidentModelRole;
+	/** Lower evicts first. Defaults to `RESIDENT_ROLE_PRIORITY[role]`. */
+	readonly evictionPriority: number;
+	/** True while the underlying weights/pages are still resident. */
+	isResident(): boolean;
+	/** Drop the resident weights/pages. Idempotent; re-loads lazily on demand. */
+	evict(): Promise<void>;
+	/** Best-effort estimate of RAM (MB) reclaimed by `evict()`. 0 when unknown. */
+	estimatedResidentMb(): number;
 }
 
 function isEvictableModelRole(
-  value: RefCountedResource,
+	value: RefCountedResource,
 ): value is EvictableModelRole {
-  const candidate = value as Partial<EvictableModelRole>;
-  return (
-    typeof candidate.role === "string" &&
-    typeof candidate.evictionPriority === "number" &&
-    typeof candidate.isResident === "function" &&
-    typeof candidate.evict === "function" &&
-    typeof candidate.estimatedResidentMb === "function"
-  );
+	const candidate = value as Partial<EvictableModelRole>;
+	return (
+		typeof candidate.role === "string" &&
+		typeof candidate.evictionPriority === "number" &&
+		typeof candidate.isResident === "function" &&
+		typeof candidate.evict === "function" &&
+		typeof candidate.estimatedResidentMb === "function"
+	);
 }
 
 /**
@@ -103,31 +103,31 @@ function isEvictableModelRole(
  * the monitor know roughly how much it will reclaim — pass 0 when unknown.
  */
 export function createEvictableModelRole(args: {
-  id?: string;
-  role: ResidentModelRole;
-  evictionPriority?: number;
-  estimatedMb?: number;
-  isResident: () => boolean;
-  evict: () => Promise<void>;
-  release?: () => Promise<void>;
+	id?: string;
+	role: ResidentModelRole;
+	evictionPriority?: number;
+	estimatedMb?: number;
+	isResident: () => boolean;
+	evict: () => Promise<void>;
+	release?: () => Promise<void>;
 }): EvictableModelRole {
-  const id = args.id ?? `model-role:${args.role}`;
-  const priority = args.evictionPriority ?? RESIDENT_ROLE_PRIORITY[args.role];
-  const estimatedMb = args.estimatedMb ?? 0;
-  return {
-    id,
-    role: args.role,
-    evictionPriority: priority,
-    isResident: args.isResident,
-    estimatedResidentMb: () => (args.isResident() ? estimatedMb : 0),
-    async evict(): Promise<void> {
-      if (!args.isResident()) return;
-      await args.evict();
-    },
-    async release(): Promise<void> {
-      await args.release?.();
-    },
-  };
+	const id = args.id ?? `model-role:${args.role}`;
+	const priority = args.evictionPriority ?? RESIDENT_ROLE_PRIORITY[args.role];
+	const estimatedMb = args.estimatedMb ?? 0;
+	return {
+		id,
+		role: args.role,
+		evictionPriority: priority,
+		isResident: args.isResident,
+		estimatedResidentMb: () => (args.isResident() ? estimatedMb : 0),
+		async evict(): Promise<void> {
+			if (!args.isResident()) return;
+			await args.evict();
+		},
+		async release(): Promise<void> {
+			await args.release?.();
+		},
+	};
 }
 
 /**
@@ -137,9 +137,9 @@ export function createEvictableModelRole(args: {
  * a pointer into the freed range.
  */
 export interface RefCountedResource {
-  readonly id: string;
-  /** Released for real when the last ref drops. Idempotent. */
-  release(): Promise<void>;
+	readonly id: string;
+	/** Released for real when the last ref drops. Idempotent. */
+	release(): Promise<void>;
 }
 
 /**
@@ -149,25 +149,25 @@ export interface RefCountedResource {
  * binding to a specific backend.
  */
 export interface MmapRegionHandle extends RefCountedResource {
-  /** Absolute path of the file backing the mmap region. */
-  readonly path: string;
-  /** Byte size of the mapped region. */
-  readonly sizeBytes: number;
-  /**
-   * Release memory pressure for this region. Backends may implement this
-   * as a page hint or as a full voice-runtime unload. Common mappings:
-   *   - POSIX (Linux/Android/macOS-bg): `madvise(addr, len, MADV_DONTNEED)`
-   *   - macOS (foreground / iOS):        `madvise(addr, len, MADV_FREE_REUSABLE)`
-   *   - Windows:                         `VirtualUnlock` + `OfferVirtualMemory`
-   *
-   * The lifecycle test mocks this to assert the call happened.
-   */
-  evictPages(): Promise<void>;
+	/** Absolute path of the file backing the mmap region. */
+	readonly path: string;
+	/** Byte size of the mapped region. */
+	readonly sizeBytes: number;
+	/**
+	 * Release memory pressure for this region. Backends may implement this
+	 * as a page hint or as a full voice-runtime unload. Common mappings:
+	 *   - POSIX (Linux/Android/macOS-bg): `madvise(addr, len, MADV_DONTNEED)`
+	 *   - macOS (foreground / iOS):        `madvise(addr, len, MADV_FREE_REUSABLE)`
+	 *   - Windows:                         `VirtualUnlock` + `OfferVirtualMemory`
+	 *
+	 * The lifecycle test mocks this to assert the call happened.
+	 */
+	evictPages(): Promise<void>;
 }
 
 /** Minimal tokenizer surface text + voice both consume. */
 export interface SharedTokenizer extends RefCountedResource {
-  readonly vocabSize: number;
+	readonly vocabSize: number;
 }
 
 /**
@@ -176,25 +176,25 @@ export interface SharedTokenizer extends RefCountedResource {
  * (AGENTS.md §3 #5: "the runtime MUST log the kernel set on startup").
  */
 export interface KernelSet extends RefCountedResource {
-  readonly kernels: ReadonlyArray<string>;
+	readonly kernels: ReadonlyArray<string>;
 }
 
 /** Scheduler graph slot. One per active engine, refcounted by surface. */
 export interface SchedulerSlot extends RefCountedResource {
-  /** Surface (text/voice) currently holding a ref. */
-  surfaces(): ReadonlyArray<"text" | "voice">;
+	/** Surface (text/voice) currently holding a ref. */
+	surfaces(): ReadonlyArray<"text" | "voice">;
 }
 
 /** DFlash drafter is shared between text-only and voice modes (AGENTS.md §4). */
 export interface DflashDrafterHandle extends RefCountedResource {
-  readonly drafterModelId: string;
-  /**
-   * Absolute path of the drafter GGUF the running llama-server was launched
-   * with (`-md`). Co-resident with the target for the lifetime of the
-   * server — `release()` here just drops the refcount; the actual unmap
-   * happens when the server stops.
-   */
-  readonly drafterModelPath: string;
+	readonly drafterModelId: string;
+	/**
+	 * Absolute path of the drafter GGUF the running llama-server was launched
+	 * with (`-md`). Co-resident with the target for the lifetime of the
+	 * server — `release()` here just drops the refcount; the actual unmap
+	 * happens when the server stops.
+	 */
+	readonly drafterModelPath: string;
 }
 
 /**
@@ -207,25 +207,25 @@ export interface DflashDrafterHandle extends RefCountedResource {
  * backend has no drafter — text-only, no speculative decoding).
  */
 export function createDflashDrafterHandle(args: {
-  drafterModelId: string;
-  drafterModelPath: string;
+	drafterModelId: string;
+	drafterModelPath: string;
 }): DflashDrafterHandle {
-  return {
-    id: `dflash-drafter:${args.drafterModelPath}`,
-    drafterModelId: args.drafterModelId,
-    drafterModelPath: args.drafterModelPath,
-    async release(): Promise<void> {
-      // The drafter's mmap lifetime is owned by the llama-server process;
-      // dropping the last ref here does not unmap it. This is intentional:
-      // the drafter is "always wired" (AGENTS.md §4) and re-acquired the
-      // moment voice arms again, so churn is wasteful.
-    },
-  };
+	return {
+		id: `dflash-drafter:${args.drafterModelPath}`,
+		drafterModelId: args.drafterModelId,
+		drafterModelPath: args.drafterModelPath,
+		async release(): Promise<void> {
+			// The drafter's mmap lifetime is owned by the llama-server process;
+			// dropping the last ref here does not unmap it. This is intentional:
+			// the drafter is "always wired" (AGENTS.md §4) and re-acquired the
+			// moment voice arms again, so churn is wasteful.
+		},
+	};
 }
 
 interface RegistryEntry<T extends RefCountedResource> {
-  readonly resource: T;
-  refCount: number;
+	readonly resource: T;
+	refCount: number;
 }
 
 /**
@@ -238,99 +238,99 @@ interface RegistryEntry<T extends RefCountedResource> {
  * the lifecycle state machine can observe completion.
  */
 export class SharedResourceRegistry {
-  private readonly entries = new Map<
-    string,
-    RegistryEntry<RefCountedResource>
-  >();
-  private readonly log?: Logger;
+	private readonly entries = new Map<
+		string,
+		RegistryEntry<RefCountedResource>
+	>();
+	private readonly log?: Logger;
 
-  constructor(opts: { logger?: Logger } = {}) {
-    this.log = opts.logger;
-  }
+	constructor(opts: { logger?: Logger } = {}) {
+		this.log = opts.logger;
+	}
 
-  /**
-   * Register a resource if absent, increment refcount otherwise. Returns
-   * the canonical instance — callers MUST use the returned value, not the
-   * one passed in, so a second registration with the same id resolves to
-   * the original (deduplication by id).
-   */
-  acquire<T extends RefCountedResource>(resource: T): T {
-    const existing = this.entries.get(resource.id);
-    if (existing) {
-      existing.refCount++;
-      return existing.resource as T;
-    }
-    this.entries.set(resource.id, { resource, refCount: 1 });
-    return resource;
-  }
+	/**
+	 * Register a resource if absent, increment refcount otherwise. Returns
+	 * the canonical instance — callers MUST use the returned value, not the
+	 * one passed in, so a second registration with the same id resolves to
+	 * the original (deduplication by id).
+	 */
+	acquire<T extends RefCountedResource>(resource: T): T {
+		const existing = this.entries.get(resource.id);
+		if (existing) {
+			existing.refCount++;
+			return existing.resource as T;
+		}
+		this.entries.set(resource.id, { resource, refCount: 1 });
+		return resource;
+	}
 
-  /**
-   * Decrement refcount; release the resource when it hits zero. Throws
-   * on unknown id — silent no-ops would hide leaks.
-   */
-  async release(id: string): Promise<void> {
-    const entry = this.entries.get(id);
-    if (!entry) {
-      throw new Error(
-        `[shared-resources] release(${id}): unknown resource — possible double release or registry desync`,
-      );
-    }
-    entry.refCount--;
-    if (entry.refCount > 0) return;
-    this.entries.delete(id);
-    await entry.resource.release();
-    this.log?.debug?.(`[SharedResourceRegistry] released ${id}`);
-  }
+	/**
+	 * Decrement refcount; release the resource when it hits zero. Throws
+	 * on unknown id — silent no-ops would hide leaks.
+	 */
+	async release(id: string): Promise<void> {
+		const entry = this.entries.get(id);
+		if (!entry) {
+			throw new Error(
+				`[shared-resources] release(${id}): unknown resource — possible double release or registry desync`,
+			);
+		}
+		entry.refCount--;
+		if (entry.refCount > 0) return;
+		this.entries.delete(id);
+		await entry.resource.release();
+		this.log?.debug?.(`[SharedResourceRegistry] released ${id}`);
+	}
 
-  /** Diagnostic: current refcount, or 0 when not present. */
-  refCount(id: string): number {
-    return this.entries.get(id)?.refCount ?? 0;
-  }
+	/** Diagnostic: current refcount, or 0 when not present. */
+	refCount(id: string): number {
+		return this.entries.get(id)?.refCount ?? 0;
+	}
 
-  /** Diagnostic: snapshot of currently-tracked resource ids. */
-  ids(): ReadonlyArray<string> {
-    return Array.from(this.entries.keys());
-  }
+	/** Diagnostic: snapshot of currently-tracked resource ids. */
+	ids(): ReadonlyArray<string> {
+		return Array.from(this.entries.keys());
+	}
 
-  /** Total tracked resources. */
-  size(): number {
-    return this.entries.size;
-  }
+	/** Total tracked resources. */
+	size(): number {
+		return this.entries.size;
+	}
 
-  /**
-   * Currently-resident evictable model roles, ascending by eviction
-   * priority (cheapest-to-evict first). Used by `MemoryMonitor` to walk
-   * roles under RAM pressure. Non-resident roles are filtered out — there's
-   * nothing to reclaim.
-   */
-  evictableRoles(): ReadonlyArray<EvictableModelRole> {
-    const out: EvictableModelRole[] = [];
-    for (const entry of this.entries.values()) {
-      if (isEvictableModelRole(entry.resource) && entry.resource.isResident()) {
-        out.push(entry.resource);
-      }
-    }
-    return out.sort((a, b) => a.evictionPriority - b.evictionPriority);
-  }
+	/**
+	 * Currently-resident evictable model roles, ascending by eviction
+	 * priority (cheapest-to-evict first). Used by `MemoryMonitor` to walk
+	 * roles under RAM pressure. Non-resident roles are filtered out — there's
+	 * nothing to reclaim.
+	 */
+	evictableRoles(): ReadonlyArray<EvictableModelRole> {
+		const out: EvictableModelRole[] = [];
+		for (const entry of this.entries.values()) {
+			if (isEvictableModelRole(entry.resource) && entry.resource.isResident()) {
+				out.push(entry.resource);
+			}
+		}
+		return out.sort((a, b) => a.evictionPriority - b.evictionPriority);
+	}
 
-  /**
-   * Evict the lowest-priority resident role and return its `id`, or `null`
-   * when nothing is evictable. Observable: emits an `info` log line so the
-   * eviction is visible in the dev console. The role re-loads lazily on
-   * next use — this only frees memory.
-   */
-  async evictLowestPriorityRole(): Promise<{
-    id: string;
-    role: ResidentModelRole;
-    estimatedMb: number;
-  } | null> {
-    const [target] = this.evictableRoles();
-    if (!target) return null;
-    const estimatedMb = target.estimatedResidentMb();
-    await target.evict();
-    this.log?.info?.(
-      `[SharedResourceRegistry] evicted role ${target.role} (${target.id}); reclaimed ~${estimatedMb} MB`,
-    );
-    return { id: target.id, role: target.role, estimatedMb };
-  }
+	/**
+	 * Evict the lowest-priority resident role and return its `id`, or `null`
+	 * when nothing is evictable. Observable: emits an `info` log line so the
+	 * eviction is visible in the dev console. The role re-loads lazily on
+	 * next use — this only frees memory.
+	 */
+	async evictLowestPriorityRole(): Promise<{
+		id: string;
+		role: ResidentModelRole;
+		estimatedMb: number;
+	} | null> {
+		const [target] = this.evictableRoles();
+		if (!target) return null;
+		const estimatedMb = target.estimatedResidentMb();
+		await target.evict();
+		this.log?.info?.(
+			`[SharedResourceRegistry] evicted role ${target.role} (${target.id}); reclaimed ~${estimatedMb} MB`,
+		);
+		return { id: target.id, role: target.role, estimatedMb };
+	}
 }

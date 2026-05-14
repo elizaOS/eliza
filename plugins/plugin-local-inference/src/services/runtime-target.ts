@@ -69,33 +69,33 @@ export type InferenceRuntimeMode = "spawn" | "ffi" | "native-bridge";
  * into the public API of this module.
  */
 export type SupportedHostPlatform =
-  | "darwin"
-  | "linux"
-  | "win32"
-  | "ios"
-  | "android"
-  | "unknown";
+	| "darwin"
+	| "linux"
+	| "win32"
+	| "ios"
+	| "android"
+	| "unknown";
 
 export interface InferenceRuntimeModeInput {
-  /**
-   * Raw `process.platform` value (or a synthetic one in tests). Optional —
-   * defaults to the live `process.platform`. Anything other than the
-   * recognised set is treated as `"unknown"` and routed to `"spawn"`
-   * unless an env override or Capacitor marker overrides it.
-   */
-  platform?: SupportedHostPlatform | NodeJS.Platform;
-  /**
-   * Whether the JS runtime is currently embedded inside a Capacitor
-   * native shell. Defaults to inspecting `globalThis.Capacitor`. Tests
-   * pass `false` to keep the env-var / platform branches deterministic.
-   */
-  isCapacitorNative?: boolean;
-  /**
-   * Environment-variable bag. Defaults to `process.env`. The function
-   * reads `MILADY_INFERENCE_MODE` (canonical) and falls back to
-   * `ELIZA_INFERENCE_MODE` (legacy alias) for the override.
-   */
-  env?: NodeJS.ProcessEnv;
+	/**
+	 * Raw `process.platform` value (or a synthetic one in tests). Optional —
+	 * defaults to the live `process.platform`. Anything other than the
+	 * recognised set is treated as `"unknown"` and routed to `"spawn"`
+	 * unless an env override or Capacitor marker overrides it.
+	 */
+	platform?: SupportedHostPlatform | NodeJS.Platform;
+	/**
+	 * Whether the JS runtime is currently embedded inside a Capacitor
+	 * native shell. Defaults to inspecting `globalThis.Capacitor`. Tests
+	 * pass `false` to keep the env-var / platform branches deterministic.
+	 */
+	isCapacitorNative?: boolean;
+	/**
+	 * Environment-variable bag. Defaults to `process.env`. The function
+	 * reads `MILADY_INFERENCE_MODE` (canonical) and falls back to
+	 * `ELIZA_INFERENCE_MODE` (legacy alias) for the override.
+	 */
+	env?: NodeJS.ProcessEnv;
 }
 
 /**
@@ -105,25 +105,25 @@ export interface InferenceRuntimeModeInput {
  * same as unset (callers can warn upstream if they want).
  */
 export function readRuntimeModeEnvOverride(
-  env: NodeJS.ProcessEnv = process.env,
+	env: NodeJS.ProcessEnv = process.env,
 ): InferenceRuntimeMode | null {
-  const raw = (env.MILADY_INFERENCE_MODE ?? env.ELIZA_INFERENCE_MODE ?? "")
-    .trim()
-    .toLowerCase();
-  if (raw === "") return null;
-  if (raw === "spawn" || raw === "http" || raw === "http-server") {
-    return "spawn";
-  }
-  if (raw === "ffi" || raw === "ffi-streaming") return "ffi";
-  if (
-    raw === "native-bridge" ||
-    raw === "native" ||
-    raw === "bridge" ||
-    raw === "capacitor"
-  ) {
-    return "native-bridge";
-  }
-  return null;
+	const raw = (env.MILADY_INFERENCE_MODE ?? env.ELIZA_INFERENCE_MODE ?? "")
+		.trim()
+		.toLowerCase();
+	if (raw === "") return null;
+	if (raw === "spawn" || raw === "http" || raw === "http-server") {
+		return "spawn";
+	}
+	if (raw === "ffi" || raw === "ffi-streaming") return "ffi";
+	if (
+		raw === "native-bridge" ||
+		raw === "native" ||
+		raw === "bridge" ||
+		raw === "capacitor"
+	) {
+		return "native-bridge";
+	}
+	return null;
 }
 
 /**
@@ -135,16 +135,16 @@ export function readRuntimeModeEnvOverride(
  * policy belongs to the backend-selector, not to platform detection.
  */
 export function isCapacitorNativeRuntime(
-  global: typeof globalThis = globalThis,
+	global: typeof globalThis = globalThis,
 ): boolean {
-  const cap = (global as { Capacitor?: { isNativePlatform?: () => boolean } })
-    .Capacitor;
-  if (!cap || typeof cap.isNativePlatform !== "function") return false;
-  try {
-    return cap.isNativePlatform() === true;
-  } catch {
-    return false;
-  }
+	const cap = (global as { Capacitor?: { isNativePlatform?: () => boolean } })
+		.Capacitor;
+	if (!cap || typeof cap.isNativePlatform !== "function") return false;
+	try {
+		return cap.isNativePlatform() === true;
+	} catch {
+		return false;
+	}
 }
 
 /**
@@ -152,27 +152,27 @@ export function isCapacitorNativeRuntime(
  * controls every input. See file header for the decision rules.
  */
 export function inferenceRuntimeMode(
-  input: InferenceRuntimeModeInput = {},
+	input: InferenceRuntimeModeInput = {},
 ): InferenceRuntimeMode {
-  const env = input.env ?? process.env;
-  const override = readRuntimeModeEnvOverride(env);
-  if (override) return override;
+	const env = input.env ?? process.env;
+	const override = readRuntimeModeEnvOverride(env);
+	if (override) return override;
 
-  const capacitor =
-    input.isCapacitorNative !== undefined
-      ? input.isCapacitorNative
-      : isCapacitorNativeRuntime();
-  if (capacitor) return "ffi";
+	const capacitor =
+		input.isCapacitorNative !== undefined
+			? input.isCapacitorNative
+			: isCapacitorNativeRuntime();
+	if (capacitor) return "ffi";
 
-  const platform = (input.platform ??
-    (process.platform as NodeJS.Platform)) as string;
-  if (platform === "ios" || platform === "android") return "ffi";
-  if (platform === "darwin" || platform === "linux" || platform === "win32") {
-    return "spawn";
-  }
-  // Exotic / unknown — default to spawn so the existing desktop fallbacks
-  // keep working. Operators who need otherwise set MILADY_INFERENCE_MODE.
-  return "spawn";
+	const platform = (input.platform ??
+		(process.platform as NodeJS.Platform)) as string;
+	if (platform === "ios" || platform === "android") return "ffi";
+	if (platform === "darwin" || platform === "linux" || platform === "win32") {
+		return "spawn";
+	}
+	// Exotic / unknown — default to spawn so the existing desktop fallbacks
+	// keep working. Operators who need otherwise set MILADY_INFERENCE_MODE.
+	return "spawn";
 }
 
 /**
@@ -184,8 +184,8 @@ export function inferenceRuntimeMode(
  * as a mobile device (Capacitor shell that opted out of `bun:ffi`).
  */
 export function inferencePlatformClass(
-  mode: InferenceRuntimeMode = inferenceRuntimeMode(),
+	mode: InferenceRuntimeMode = inferenceRuntimeMode(),
 ): "desktop" | "mobile" {
-  if (mode === "spawn") return "desktop";
-  return "mobile";
+	if (mode === "spawn") return "desktop";
+	return "mobile";
 }

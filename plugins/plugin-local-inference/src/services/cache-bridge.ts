@@ -32,15 +32,15 @@ import { localInferenceRoot } from "./paths";
  * out — which matches how llama-server writes the slot file each turn.
  */
 export interface CacheTtls {
-  short: number;
-  long: number;
-  extended?: number;
+	short: number;
+	long: number;
+	extended?: number;
 }
 
 export const DEFAULT_CACHE_TTLS: CacheTtls = {
-  short: 5 * 60 * 1000,
-  long: 60 * 60 * 1000,
-  extended: 24 * 60 * 60 * 1000,
+	short: 5 * 60 * 1000,
+	long: 60 * 60 * 1000,
+	extended: 24 * 60 * 60 * 1000,
 };
 
 /**
@@ -48,7 +48,7 @@ export const DEFAULT_CACHE_TTLS: CacheTtls = {
  * Eliza-owned and safe to delete to reset the cache.
  */
 export function llamaCacheRoot(): string {
-  return path.join(localInferenceRoot(), "llama-cache");
+	return path.join(localInferenceRoot(), "llama-cache");
 }
 
 /**
@@ -57,10 +57,10 @@ export function llamaCacheRoot(): string {
  * wipe the cache.
  */
 export function cacheRoot(modelHash: string): string {
-  if (!modelHash) {
-    throw new Error("[cache-bridge] cacheRoot requires a non-empty modelHash");
-  }
-  return path.join(llamaCacheRoot(), modelHash);
+	if (!modelHash) {
+		throw new Error("[cache-bridge] cacheRoot requires a non-empty modelHash");
+	}
+	return path.join(llamaCacheRoot(), modelHash);
 }
 
 /**
@@ -69,7 +69,7 @@ export function cacheRoot(modelHash: string): string {
  * `cache_prompt: true`. One directory per model hash.
  */
 export function slotSavePath(modelHash: string): string {
-  return cacheRoot(modelHash);
+	return cacheRoot(modelHash);
 }
 
 /**
@@ -78,24 +78,24 @@ export function slotSavePath(modelHash: string): string {
  * configurations don't share a slot directory.
  */
 export function buildModelHash(input: {
-  targetModelPath: string;
-  drafterModelPath?: string | null;
-  cacheTypeK?: string | null;
-  cacheTypeV?: string | null;
-  /** Optional extra discriminator (context size, parallel, etc.). */
-  extra?: string | null;
+	targetModelPath: string;
+	drafterModelPath?: string | null;
+	cacheTypeK?: string | null;
+	cacheTypeV?: string | null;
+	/** Optional extra discriminator (context size, parallel, etc.). */
+	extra?: string | null;
 }): string {
-  const hash = createHash("sha256");
-  hash.update(input.targetModelPath);
-  hash.update("");
-  hash.update(input.drafterModelPath ?? "");
-  hash.update("");
-  hash.update(input.cacheTypeK ?? "");
-  hash.update("");
-  hash.update(input.cacheTypeV ?? "");
-  hash.update("");
-  hash.update(input.extra ?? "");
-  return hash.digest("hex").slice(0, 16);
+	const hash = createHash("sha256");
+	hash.update(input.targetModelPath);
+	hash.update("");
+	hash.update(input.drafterModelPath ?? "");
+	hash.update("");
+	hash.update(input.cacheTypeK ?? "");
+	hash.update("");
+	hash.update(input.cacheTypeV ?? "");
+	hash.update("");
+	hash.update(input.extra ?? "");
+	return hash.digest("hex").slice(0, 16);
 }
 
 /**
@@ -114,15 +114,15 @@ export function buildModelHash(input: {
  * llama-server "any free slot" sentinel).
  */
 export function deriveSlotId(promptCacheKey: string, parallel: number): number {
-  if (!Number.isFinite(parallel) || parallel <= 0) return -1;
-  if (!promptCacheKey) return -1;
-  const integerParallel = Math.max(1, Math.floor(parallel));
-  if (integerParallel === 1) return 0;
-  const digest = createHash("sha256").update(promptCacheKey).digest();
-  // Read first 4 bytes as an unsigned big-endian int. Plenty of entropy
-  // for parallel ≤ 64.
-  const value = digest.readUInt32BE(0);
-  return value % integerParallel;
+	if (!Number.isFinite(parallel) || parallel <= 0) return -1;
+	if (!promptCacheKey) return -1;
+	const integerParallel = Math.max(1, Math.floor(parallel));
+	if (integerParallel === 1) return 0;
+	const digest = createHash("sha256").update(promptCacheKey).digest();
+	// Read first 4 bytes as an unsigned big-endian int. Plenty of entropy
+	// for parallel ≤ 64.
+	const value = digest.readUInt32BE(0);
+	return value % integerParallel;
 }
 
 /**
@@ -131,12 +131,12 @@ export function deriveSlotId(promptCacheKey: string, parallel: number): number {
  * sweep uses when deciding whether a slot file is still live.
  */
 export function ttlMsForKey(
-  ttl: "short" | "long" | "extended" | undefined,
-  ttls: CacheTtls = DEFAULT_CACHE_TTLS,
+	ttl: "short" | "long" | "extended" | undefined,
+	ttls: CacheTtls = DEFAULT_CACHE_TTLS,
 ): number {
-  if (ttl === "long") return ttls.long;
-  if (ttl === "extended") return ttls.extended ?? ttls.long;
-  return ttls.short;
+	if (ttl === "long") return ttls.long;
+	if (ttl === "extended") return ttls.extended ?? ttls.long;
+	return ttls.short;
 }
 
 /** TTL classes that can be encoded into a slot `.bin` filename. */
@@ -152,10 +152,10 @@ export type SlotCacheTtlClass = "short" | "long" | "extended";
  * for those files.
  */
 export function slotCacheFileName(
-  base: string,
-  ttl: SlotCacheTtlClass,
+	base: string,
+	ttl: SlotCacheTtlClass,
 ): string {
-  return `${base}.${ttl}.bin`;
+	return `${base}.${ttl}.bin`;
 }
 
 /**
@@ -165,23 +165,23 @@ export function slotCacheFileName(
  * (the prior global behaviour for persisted slot files).
  */
 export function parseSlotCacheTtlClass(
-  fileName: string,
+	fileName: string,
 ): SlotCacheTtlClass | undefined {
-  // `<base>.<ttl>.bin` — the penultimate dot-component is the class.
-  const withoutBin = fileName.endsWith(".bin")
-    ? fileName.slice(0, -".bin".length)
-    : fileName;
-  const lastDot = withoutBin.lastIndexOf(".");
-  if (lastDot < 0) return undefined;
-  const candidate = withoutBin.slice(lastDot + 1);
-  if (
-    candidate === "short" ||
-    candidate === "long" ||
-    candidate === "extended"
-  ) {
-    return candidate;
-  }
-  return undefined;
+	// `<base>.<ttl>.bin` — the penultimate dot-component is the class.
+	const withoutBin = fileName.endsWith(".bin")
+		? fileName.slice(0, -".bin".length)
+		: fileName;
+	const lastDot = withoutBin.lastIndexOf(".");
+	if (lastDot < 0) return undefined;
+	const candidate = withoutBin.slice(lastDot + 1);
+	if (
+		candidate === "short" ||
+		candidate === "long" ||
+		candidate === "extended"
+	) {
+		return candidate;
+	}
+	return undefined;
 }
 
 /**
@@ -196,46 +196,46 @@ export function parseSlotCacheTtlClass(
  * errors — eviction on a clean install just no-ops.
  */
 export async function evictExpired(
-  rootDir: string,
-  ttls: CacheTtls = DEFAULT_CACHE_TTLS,
-  now: number = Date.now(),
+	rootDir: string,
+	ttls: CacheTtls = DEFAULT_CACHE_TTLS,
+	now: number = Date.now(),
 ): Promise<number> {
-  let entries: string[];
-  try {
-    entries = await fs.readdir(rootDir);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
-    throw err;
-  }
-  let deleted = 0;
-  for (const entry of entries) {
-    const full = path.join(rootDir, entry);
-    let stat: Awaited<ReturnType<typeof fs.stat>>;
-    try {
-      stat = await fs.stat(full);
-    } catch {
-      continue;
-    }
-    if (!stat.isFile()) continue;
-    const ttlClass = parseSlotCacheTtlClass(entry) ?? "long";
-    const horizon = ttlMsForKey(ttlClass, ttls);
-    if (now - stat.mtimeMs > horizon) {
-      try {
-        await fs.unlink(full);
-        deleted += 1;
-      } catch {
-        // Best-effort cleanup; another process may already have removed it.
-      }
-    }
-  }
-  return deleted;
+	let entries: string[];
+	try {
+		entries = await fs.readdir(rootDir);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return 0;
+		throw err;
+	}
+	let deleted = 0;
+	for (const entry of entries) {
+		const full = path.join(rootDir, entry);
+		let stat: Awaited<ReturnType<typeof fs.stat>>;
+		try {
+			stat = await fs.stat(full);
+		} catch {
+			continue;
+		}
+		if (!stat.isFile()) continue;
+		const ttlClass = parseSlotCacheTtlClass(entry) ?? "long";
+		const horizon = ttlMsForKey(ttlClass, ttls);
+		if (now - stat.mtimeMs > horizon) {
+			try {
+				await fs.unlink(full);
+				deleted += 1;
+			} catch {
+				// Best-effort cleanup; another process may already have removed it.
+			}
+		}
+	}
+	return deleted;
 }
 
 export interface CacheStatsEntry {
-  file: string;
-  sizeBytes: number;
-  mtimeMs: number;
-  ageMs: number;
+	file: string;
+	sizeBytes: number;
+	mtimeMs: number;
+	ageMs: number;
 }
 
 /**
@@ -243,35 +243,35 @@ export interface CacheStatsEntry {
  * `getLocalCacheStats()` debugging endpoint.
  */
 export async function readCacheStats(
-  rootDir: string,
-  now: number = Date.now(),
+	rootDir: string,
+	now: number = Date.now(),
 ): Promise<CacheStatsEntry[]> {
-  let entries: string[];
-  try {
-    entries = await fs.readdir(rootDir);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw err;
-  }
-  const out: CacheStatsEntry[] = [];
-  for (const entry of entries) {
-    const full = path.join(rootDir, entry);
-    let stat: Awaited<ReturnType<typeof fs.stat>>;
-    try {
-      stat = await fs.stat(full);
-    } catch {
-      continue;
-    }
-    if (!stat.isFile()) continue;
-    out.push({
-      file: entry,
-      sizeBytes: stat.size,
-      mtimeMs: stat.mtimeMs,
-      ageMs: Math.max(0, now - stat.mtimeMs),
-    });
-  }
-  out.sort((left, right) => left.file.localeCompare(right.file));
-  return out;
+	let entries: string[];
+	try {
+		entries = await fs.readdir(rootDir);
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw err;
+	}
+	const out: CacheStatsEntry[] = [];
+	for (const entry of entries) {
+		const full = path.join(rootDir, entry);
+		let stat: Awaited<ReturnType<typeof fs.stat>>;
+		try {
+			stat = await fs.stat(full);
+		} catch {
+			continue;
+		}
+		if (!stat.isFile()) continue;
+		out.push({
+			file: entry,
+			sizeBytes: stat.size,
+			mtimeMs: stat.mtimeMs,
+			ageMs: Math.max(0, now - stat.mtimeMs),
+		});
+	}
+	out.sort((left, right) => left.file.localeCompare(right.file));
+	return out;
 }
 
 /**
@@ -282,12 +282,12 @@ export async function readCacheStats(
  * "_default" session in that case.
  */
 export function extractPromptCacheKey(providerOptions: unknown): string | null {
-  if (!providerOptions || typeof providerOptions !== "object") return null;
-  const eliza = (providerOptions as Record<string, unknown>).eliza;
-  if (!eliza || typeof eliza !== "object") return null;
-  const raw = (eliza as Record<string, unknown>).promptCacheKey;
-  if (typeof raw !== "string" || raw.length === 0) return null;
-  return raw;
+	if (!providerOptions || typeof providerOptions !== "object") return null;
+	const eliza = (providerOptions as Record<string, unknown>).eliza;
+	if (!eliza || typeof eliza !== "object") return null;
+	const raw = (eliza as Record<string, unknown>).promptCacheKey;
+	if (typeof raw !== "string" || raw.length === 0) return null;
+	return raw;
 }
 
 /**
@@ -303,12 +303,12 @@ export function extractPromptCacheKey(providerOptions: unknown): string | null {
  * slot regardless of how their tail content differs.
  */
 export function extractPrefixHash(providerOptions: unknown): string | null {
-  if (!providerOptions || typeof providerOptions !== "object") return null;
-  const eliza = (providerOptions as Record<string, unknown>).eliza;
-  if (!eliza || typeof eliza !== "object") return null;
-  const raw = (eliza as Record<string, unknown>).prefixHash;
-  if (typeof raw !== "string" || raw.length === 0) return null;
-  return raw;
+	if (!providerOptions || typeof providerOptions !== "object") return null;
+	const eliza = (providerOptions as Record<string, unknown>).eliza;
+	if (!eliza || typeof eliza !== "object") return null;
+	const raw = (eliza as Record<string, unknown>).prefixHash;
+	if (typeof raw !== "string" || raw.length === 0) return null;
+	return raw;
 }
 
 /**
@@ -322,8 +322,8 @@ export function extractPrefixHash(providerOptions: unknown): string | null {
  * backends without a hard dep on `@elizaos/core`.
  */
 export interface AnnotatedPromptSegment {
-  content: string;
-  stable: boolean;
+	content: string;
+	stable: boolean;
 }
 
 /**
@@ -338,19 +338,19 @@ export interface AnnotatedPromptSegment {
  * realistic concern for any plausible number of concurrent prefixes.
  */
 export function hashStablePrefix(
-  segments: readonly AnnotatedPromptSegment[],
+	segments: readonly AnnotatedPromptSegment[],
 ): string | null {
-  if (segments.length === 0) return null;
-  const hash = createHash("sha256");
-  let consumed = 0;
-  for (const segment of segments) {
-    if (!segment.stable) break;
-    hash.update(segment.content);
-    hash.update("");
-    consumed += 1;
-  }
-  if (consumed === 0) return null;
-  return hash.digest("hex").slice(0, 16);
+	if (segments.length === 0) return null;
+	const hash = createHash("sha256");
+	let consumed = 0;
+	for (const segment of segments) {
+		if (!segment.stable) break;
+		hash.update(segment.content);
+		hash.update("");
+		consumed += 1;
+	}
+	if (consumed === 0) return null;
+	return hash.digest("hex").slice(0, 16);
 }
 
 /**
@@ -363,22 +363,22 @@ export function hashStablePrefix(
  * to `extractPromptCacheKey` / `extractPrefixHash`.
  */
 export function extractAnnotatedSegments(
-  providerOptions: unknown,
+	providerOptions: unknown,
 ): AnnotatedPromptSegment[] | null {
-  if (!providerOptions || typeof providerOptions !== "object") return null;
-  const eliza = (providerOptions as Record<string, unknown>).eliza;
-  if (!eliza || typeof eliza !== "object") return null;
-  const raw = (eliza as Record<string, unknown>).promptSegments;
-  if (!Array.isArray(raw)) return null;
-  const out: AnnotatedPromptSegment[] = [];
-  for (const entry of raw) {
-    if (!entry || typeof entry !== "object") return null;
-    const content = (entry as { content?: unknown }).content;
-    const stable = (entry as { stable?: unknown }).stable;
-    if (typeof content !== "string" || typeof stable !== "boolean") return null;
-    out.push({ content, stable });
-  }
-  return out;
+	if (!providerOptions || typeof providerOptions !== "object") return null;
+	const eliza = (providerOptions as Record<string, unknown>).eliza;
+	if (!eliza || typeof eliza !== "object") return null;
+	const raw = (eliza as Record<string, unknown>).promptSegments;
+	if (!Array.isArray(raw)) return null;
+	const out: AnnotatedPromptSegment[] = [];
+	for (const entry of raw) {
+		if (!entry || typeof entry !== "object") return null;
+		const content = (entry as { content?: unknown }).content;
+		const stable = (entry as { stable?: unknown }).stable;
+		if (typeof content !== "string" || typeof stable !== "boolean") return null;
+		out.push({ content, stable });
+	}
+	return out;
 }
 
 /**
@@ -391,12 +391,12 @@ export function extractAnnotatedSegments(
  * agentic loops.
  */
 export function extractConversationId(providerOptions: unknown): string | null {
-  if (!providerOptions || typeof providerOptions !== "object") return null;
-  const eliza = (providerOptions as Record<string, unknown>).eliza;
-  if (!eliza || typeof eliza !== "object") return null;
-  const raw = (eliza as Record<string, unknown>).conversationId;
-  if (typeof raw !== "string" || raw.length === 0) return null;
-  return raw;
+	if (!providerOptions || typeof providerOptions !== "object") return null;
+	const eliza = (providerOptions as Record<string, unknown>).eliza;
+	if (!eliza || typeof eliza !== "object") return null;
+	const raw = (eliza as Record<string, unknown>).conversationId;
+	if (typeof raw !== "string" || raw.length === 0) return null;
+	return raw;
 }
 
 /**
@@ -410,14 +410,14 @@ export function extractConversationId(providerOptions: unknown): string | null {
  * Returns null when none are available.
  */
 export function resolveLocalCacheKey(providerOptions: unknown): string | null {
-  const conversationId = extractConversationId(providerOptions);
-  if (conversationId) return `conv:${conversationId}`;
-  const segments = extractAnnotatedSegments(providerOptions);
-  if (segments) {
-    const hashed = hashStablePrefix(segments);
-    if (hashed) return `seg:${hashed}`;
-  }
-  const prefixHash = extractPrefixHash(providerOptions);
-  if (prefixHash) return `pfx:${prefixHash}`;
-  return extractPromptCacheKey(providerOptions);
+	const conversationId = extractConversationId(providerOptions);
+	if (conversationId) return `conv:${conversationId}`;
+	const segments = extractAnnotatedSegments(providerOptions);
+	if (segments) {
+		const hashed = hashStablePrefix(segments);
+		if (hashed) return `seg:${hashed}`;
+	}
+	const prefixHash = extractPrefixHash(providerOptions);
+	if (prefixHash) return `pfx:${prefixHash}`;
+	return extractPromptCacheKey(providerOptions);
 }

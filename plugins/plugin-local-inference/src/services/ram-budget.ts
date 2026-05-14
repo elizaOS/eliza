@@ -52,22 +52,22 @@ const DEFAULT_RAM_HEADROOM_RESERVE_MB = 1536;
 const FALLBACK_DEFAULT_CONTEXT_TOKENS = 32768;
 
 export function ramHeadroomReserveMb(): number {
-  const raw = process.env.ELIZA_LOCAL_RAM_HEADROOM_MB?.trim();
-  if (raw) {
-    const parsed = Number.parseInt(raw, 10);
-    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
-  }
-  return DEFAULT_RAM_HEADROOM_RESERVE_MB;
+	const raw = process.env.ELIZA_LOCAL_RAM_HEADROOM_MB?.trim();
+	if (raw) {
+		const parsed = Number.parseInt(raw, 10);
+		if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+	}
+	return DEFAULT_RAM_HEADROOM_RESERVE_MB;
 }
 
 export interface RamBudget {
-  /** Minimum RAM the bundle will boot under, in megabytes. */
-  minMb: number;
-  /** RAM the bundle expects for nominal workloads, in megabytes. */
-  recommendedMb: number;
-  /** Where the numbers came from. `manifest` only when both came from
-   *  a validated `eliza-1.manifest.json` next to the installed bundle. */
-  source: "manifest" | "catalog";
+	/** Minimum RAM the bundle will boot under, in megabytes. */
+	minMb: number;
+	/** RAM the bundle expects for nominal workloads, in megabytes. */
+	recommendedMb: number;
+	/** Where the numbers came from. `manifest` only when both came from
+	 *  a validated `eliza-1.manifest.json` next to the installed bundle. */
+	source: "manifest" | "catalog";
 }
 
 /**
@@ -75,19 +75,19 @@ export interface RamBudget {
  * Production callers pass `defaultManifestLoader`; tests inject a stub.
  */
 export type ManifestLoader = (
-  modelId: string,
-  installed: InstalledModel | undefined,
+	modelId: string,
+	installed: InstalledModel | undefined,
 ) => Eliza1Manifest | null;
 
 const ELIZA_1_TIER_ID_SET: ReadonlySet<string> = new Set(ELIZA_1_TIER_IDS);
 
 function isEliza1TierId(id: string): id is Eliza1TierId {
-  return ELIZA_1_TIER_ID_SET.has(id);
+	return ELIZA_1_TIER_ID_SET.has(id);
 }
 
 function manifestTierFromId(id: Eliza1TierId): string {
-  // Catalog id `eliza-1-<tier>` → manifest tier `<tier>`.
-  return id.slice("eliza-1-".length);
+	// Catalog id `eliza-1-<tier>` → manifest tier `<tier>`.
+	return id.slice("eliza-1-".length);
 }
 
 /**
@@ -103,40 +103,40 @@ function manifestTierFromId(id: Eliza1TierId): string {
  * manifest validation error, or tier mismatch.
  */
 export function defaultManifestLoader(
-  modelId: string,
-  installed: InstalledModel | undefined,
+	modelId: string,
+	installed: InstalledModel | undefined,
 ): Eliza1Manifest | null {
-  if (!installed?.path) return null;
-  if (!isEliza1TierId(modelId)) return null;
+	if (!installed?.path) return null;
+	if (!isEliza1TierId(modelId)) return null;
 
-  const expectedTier = manifestTierFromId(modelId);
-  const candidates = [
-    path.join(
-      path.dirname(path.dirname(installed.path)),
-      "eliza-1.manifest.json",
-    ),
-    path.join(path.dirname(installed.path), "eliza-1.manifest.json"),
-  ];
+	const expectedTier = manifestTierFromId(modelId);
+	const candidates = [
+		path.join(
+			path.dirname(path.dirname(installed.path)),
+			"eliza-1.manifest.json",
+		),
+		path.join(path.dirname(installed.path), "eliza-1.manifest.json"),
+	];
 
-  for (const candidate of candidates) {
-    let raw: string;
-    try {
-      raw = fs.readFileSync(candidate, "utf8");
-    } catch {
-      continue;
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-    const result = validateManifest(parsed);
-    if (!result.ok) continue;
-    if (result.manifest.tier !== expectedTier) continue;
-    return result.manifest;
-  }
-  return null;
+	for (const candidate of candidates) {
+		let raw: string;
+		try {
+			raw = fs.readFileSync(candidate, "utf8");
+		} catch {
+			continue;
+		}
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(raw);
+		} catch {
+			continue;
+		}
+		const result = validateManifest(parsed);
+		if (!result.ok) continue;
+		if (result.manifest.tier !== expectedTier) continue;
+		return result.manifest;
+	}
+	return null;
 }
 
 /**
@@ -146,13 +146,13 @@ export function defaultManifestLoader(
  * a far better "fits vs tight" cutoff than reusing the floor verbatim.
  */
 function catalogRecommendedMb(model: CatalogModel, minMb: number): number {
-  const ctxTokens =
-    typeof model.contextLength === "number" && model.contextLength > 0
-      ? model.contextLength
-      : FALLBACK_DEFAULT_CONTEXT_TOKENS;
-  const kvBytes = estimateQuantizedKvBytesPerToken(model.params) * ctxTokens;
-  const kvMb = Math.ceil(kvBytes / BYTES_PER_MB);
-  return minMb + kvMb;
+	const ctxTokens =
+		typeof model.contextLength === "number" && model.contextLength > 0
+			? model.contextLength
+			: FALLBACK_DEFAULT_CONTEXT_TOKENS;
+	const kvBytes = estimateQuantizedKvBytesPerToken(model.params) * ctxTokens;
+	const kvMb = Math.ceil(kvBytes / BYTES_PER_MB);
+	return minMb + kvMb;
 }
 
 /**
@@ -164,51 +164,51 @@ function catalogRecommendedMb(model: CatalogModel, minMb: number): number {
  * passes both at call sites where it has the installed-models list.
  */
 export function resolveRamBudget(
-  model: CatalogModel,
-  installed?: InstalledModel,
-  manifestLoader: ManifestLoader = defaultManifestLoader,
+	model: CatalogModel,
+	installed?: InstalledModel,
+	manifestLoader: ManifestLoader = defaultManifestLoader,
 ): RamBudget {
-  if (isEliza1TierId(model.id) && installed) {
-    const manifest = manifestLoader(model.id, installed);
-    if (manifest) {
-      return {
-        minMb: manifest.ramBudgetMb.min,
-        recommendedMb: manifest.ramBudgetMb.recommended,
-        source: "manifest",
-      };
-    }
-  }
-  const minMb = Math.round(model.minRamGb * MB_PER_GB);
-  return {
-    minMb,
-    recommendedMb: catalogRecommendedMb(model, minMb),
-    source: "catalog",
-  };
+	if (isEliza1TierId(model.id) && installed) {
+		const manifest = manifestLoader(model.id, installed);
+		if (manifest) {
+			return {
+				minMb: manifest.ramBudgetMb.min,
+				recommendedMb: manifest.ramBudgetMb.recommended,
+				source: "manifest",
+			};
+		}
+	}
+	const minMb = Math.round(model.minRamGb * MB_PER_GB);
+	return {
+		minMb,
+		recommendedMb: catalogRecommendedMb(model, minMb),
+		source: "catalog",
+	};
 }
 
 export interface RamFitOptions {
-  installed?: InstalledModel;
-  manifestLoader?: ManifestLoader;
-  /**
-   * Override the headroom reserved for the OS/runtime. Defaults to
-   * `ramHeadroomReserveMb()`. Pass 0 to assess against raw memory (the
-   * recommender does this — it works in "effective memory available to
-   * the model" terms, where the OS reserve is already discounted).
-   */
-  reserveMb?: number;
+	installed?: InstalledModel;
+	manifestLoader?: ManifestLoader;
+	/**
+	 * Override the headroom reserved for the OS/runtime. Defaults to
+	 * `ramHeadroomReserveMb()`. Pass 0 to assess against raw memory (the
+	 * recommender does this — it works in "effective memory available to
+	 * the model" terms, where the OS reserve is already discounted).
+	 */
+	reserveMb?: number;
 }
 
 export type RamFitLevel = "fits" | "tight" | "wontfit";
 
 export interface RamFitDecision {
-  level: RamFitLevel;
-  /** True for `fits` and `tight`; false only for `wontfit`. */
-  fits: boolean;
-  budget: RamBudget;
-  /** Memory after subtracting the headroom reserve, in MB. */
-  usableMb: number;
-  /** Headroom reserve applied, in MB. */
-  reserveMb: number;
+	level: RamFitLevel;
+	/** True for `fits` and `tight`; false only for `wontfit`. */
+	fits: boolean;
+	budget: RamBudget;
+	/** Memory after subtracting the headroom reserve, in MB. */
+	usableMb: number;
+	/** Headroom reserve applied, in MB. */
+	reserveMb: number;
 }
 
 /**
@@ -224,33 +224,33 @@ export interface RamFitDecision {
  *   - `fits`    : comfortable headroom.
  */
 export function assessRamFit(
-  model: CatalogModel,
-  hostRamMb: number,
-  options: RamFitOptions = {},
+	model: CatalogModel,
+	hostRamMb: number,
+	options: RamFitOptions = {},
 ): RamFitDecision {
-  const budget = resolveRamBudget(
-    model,
-    options.installed,
-    options.manifestLoader ?? defaultManifestLoader,
-  );
-  const reserveMb = options.reserveMb ?? ramHeadroomReserveMb();
-  const usableMb = Math.max(0, hostRamMb - reserveMb);
-  let level: RamFitLevel;
-  if (usableMb < budget.minMb) level = "wontfit";
-  else if (usableMb < budget.recommendedMb) level = "tight";
-  else level = "fits";
-  return {
-    level,
-    fits: level !== "wontfit",
-    budget,
-    usableMb,
-    reserveMb,
-  };
+	const budget = resolveRamBudget(
+		model,
+		options.installed,
+		options.manifestLoader ?? defaultManifestLoader,
+	);
+	const reserveMb = options.reserveMb ?? ramHeadroomReserveMb();
+	const usableMb = Math.max(0, hostRamMb - reserveMb);
+	let level: RamFitLevel;
+	if (usableMb < budget.minMb) level = "wontfit";
+	else if (usableMb < budget.recommendedMb) level = "tight";
+	else level = "fits";
+	return {
+		level,
+		fits: level !== "wontfit",
+		budget,
+		usableMb,
+		reserveMb,
+	};
 }
 
 /** Display name with a trailing `-<ctx>` window suffix stripped. */
 function contextVariantStem(model: CatalogModel): string {
-  return model.displayName.replace(/-(?:\d+k|\d+m)$/i, "");
+	return model.displayName.replace(/-(?:\d+k|\d+m)$/i, "");
 }
 
 /**
@@ -267,27 +267,27 @@ function contextVariantStem(model: CatalogModel): string {
  * `27b`. Only `runtimeRole !== "dflash-drafter"` entries are candidates.
  */
 export function pickFittingContextVariant(
-  model: CatalogModel,
-  hostRamMb: number,
-  options: RamFitOptions = {},
-  catalog: ReadonlyArray<CatalogModel> = MODEL_CATALOG,
+	model: CatalogModel,
+	hostRamMb: number,
+	options: RamFitOptions = {},
+	catalog: ReadonlyArray<CatalogModel> = MODEL_CATALOG,
 ): CatalogModel | null {
-  const stem = contextVariantStem(model);
-  const variants = catalog.filter(
-    (candidate) =>
-      candidate.runtimeRole !== "dflash-drafter" &&
-      candidate.params === model.params &&
-      contextVariantStem(candidate) === stem,
-  );
-  // Largest context first; ties (shouldn't happen) keep catalog order.
-  const ranked = [...(variants.length > 0 ? variants : [model])].sort(
-    (left, right) => (right.contextLength ?? 0) - (left.contextLength ?? 0),
-  );
-  for (const candidate of ranked) {
-    const installed = candidate.id === model.id ? options.installed : undefined;
-    if (assessRamFit(candidate, hostRamMb, { ...options, installed }).fits) {
-      return candidate;
-    }
-  }
-  return null;
+	const stem = contextVariantStem(model);
+	const variants = catalog.filter(
+		(candidate) =>
+			candidate.runtimeRole !== "dflash-drafter" &&
+			candidate.params === model.params &&
+			contextVariantStem(candidate) === stem,
+	);
+	// Largest context first; ties (shouldn't happen) keep catalog order.
+	const ranked = [...(variants.length > 0 ? variants : [model])].sort(
+		(left, right) => (right.contextLength ?? 0) - (left.contextLength ?? 0),
+	);
+	for (const candidate of ranked) {
+		const installed = candidate.id === model.id ? options.installed : undefined;
+		if (assessRamFit(candidate, hostRamMb, { ...options, installed }).fits) {
+			return candidate;
+		}
+	}
+	return null;
 }

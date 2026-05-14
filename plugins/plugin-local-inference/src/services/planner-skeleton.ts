@@ -42,17 +42,17 @@
  */
 
 import {
-  type Action,
-  buildPlannerActionGrammar,
-  buildPlannerParamsSkeleton,
-  type JSONSchema,
-  normalizeActionJsonSchema,
-  type ResponseSkeleton,
+	type Action,
+	buildPlannerActionGrammar,
+	buildPlannerParamsSkeleton,
+	type JSONSchema,
+	normalizeActionJsonSchema,
+	type ResponseSkeleton,
 } from "@elizaos/core";
 
 import {
-  type ElizaHarnessSchema,
-  elizaHarnessSchemaFromSkeleton,
+	type ElizaHarnessSchema,
+	elizaHarnessSchemaFromSkeleton,
 } from "./structured-output";
 
 /**
@@ -61,8 +61,8 @@ import {
  * validators need stubbing).
  */
 export type PlannerAction = Pick<
-  Action,
-  "name" | "parameters" | "allowAdditionalParameters"
+	Action,
+	"name" | "parameters" | "allowAdditionalParameters"
 >;
 
 /**
@@ -70,42 +70,42 @@ export type PlannerAction = Pick<
  * to constrain a `PLAN_ACTIONS` generation.
  */
 export interface PlannerGuidedDecode {
-  /**
-   * Top-level skeleton: `{"action": <enum>, "parameters": <free-json>,
-   * "thought": <free-string>}`. Compiles to a lazy GBNF via
-   * `compileSkeletonToGbnf` — `action` is the alternation of registered
-   * action names (or a literal when only one action is exposed).
-   */
-  responseSkeleton: ResponseSkeleton;
-  /**
-   * Pre-built GBNF for the top-level envelope. Wins over compiling the
-   * skeleton (the explicit grammar carries the same alternation as the
-   * skeleton's enum span — they are byte-equivalent — but the explicit
-   * grammar is what the cloud-mirroring code path in
-   * `@elizaos/core`'s `buildPlannerActionGrammar` already produces).
-   */
-  grammar: string;
-  /**
-   * Map of action name → normalized JSON Schema for its `parameters` object.
-   * The engine uses this for the optional second constrained pass once
-   * `action` is committed. Cloud adapters ignore it; tools carry the
-   * equivalent (unforced) contract for them.
-   */
-  actionSchemas: Record<string, JSONSchema>;
-  /**
-   * Per-action `parameters` skeleton (single-value enums collapse to
-   * literals; multi-value enums stay as enum spans). Keyed by action name.
-   * Engines may compile each entry on demand for the second pass.
-   */
-  paramsSkeletons: Record<string, ResponseSkeleton>;
-  /**
-   * Eliza harness schema for the top-level envelope — the bundle of
-   * skeleton + grammar + derived prefill plan. Pass this on
-   * {@link StructuredGenerateParams.elizaSchema} to engage the
-   * deterministic-token prefill-plan fast-forward on top of the GBNF
-   * constrained decode.
-   */
-  elizaSchema: ElizaHarnessSchema;
+	/**
+	 * Top-level skeleton: `{"action": <enum>, "parameters": <free-json>,
+	 * "thought": <free-string>}`. Compiles to a lazy GBNF via
+	 * `compileSkeletonToGbnf` — `action` is the alternation of registered
+	 * action names (or a literal when only one action is exposed).
+	 */
+	responseSkeleton: ResponseSkeleton;
+	/**
+	 * Pre-built GBNF for the top-level envelope. Wins over compiling the
+	 * skeleton (the explicit grammar carries the same alternation as the
+	 * skeleton's enum span — they are byte-equivalent — but the explicit
+	 * grammar is what the cloud-mirroring code path in
+	 * `@elizaos/core`'s `buildPlannerActionGrammar` already produces).
+	 */
+	grammar: string;
+	/**
+	 * Map of action name → normalized JSON Schema for its `parameters` object.
+	 * The engine uses this for the optional second constrained pass once
+	 * `action` is committed. Cloud adapters ignore it; tools carry the
+	 * equivalent (unforced) contract for them.
+	 */
+	actionSchemas: Record<string, JSONSchema>;
+	/**
+	 * Per-action `parameters` skeleton (single-value enums collapse to
+	 * literals; multi-value enums stay as enum spans). Keyed by action name.
+	 * Engines may compile each entry on demand for the second pass.
+	 */
+	paramsSkeletons: Record<string, ResponseSkeleton>;
+	/**
+	 * Eliza harness schema for the top-level envelope — the bundle of
+	 * skeleton + grammar + derived prefill plan. Pass this on
+	 * {@link StructuredGenerateParams.elizaSchema} to engage the
+	 * deterministic-token prefill-plan fast-forward on top of the GBNF
+	 * constrained decode.
+	 */
+	elizaSchema: ElizaHarnessSchema;
 }
 
 /**
@@ -130,11 +130,11 @@ export interface PlannerGuidedDecode {
  * {@link PlannerGuidedDecode.paramsSkeletons} once `action` is committed.
  */
 export function buildPlanActionsSkeleton(
-  actions: ReadonlyArray<PlannerAction>,
+	actions: ReadonlyArray<PlannerAction>,
 ): ResponseSkeleton | null {
-  const result = buildPlannerActionGrammar(actions);
-  if (result === null) return null;
-  return result.responseSkeleton;
+	const result = buildPlannerActionGrammar(actions);
+	if (result === null) return null;
+	return result.responseSkeleton;
 }
 
 /**
@@ -145,29 +145,29 @@ export function buildPlanActionsSkeleton(
  * Returns `null` when no actions are exposed.
  */
 export function buildPlannerGuidedDecode(
-  actions: ReadonlyArray<PlannerAction>,
+	actions: ReadonlyArray<PlannerAction>,
 ): PlannerGuidedDecode | null {
-  const result = buildPlannerActionGrammar(actions);
-  if (result === null) return null;
+	const result = buildPlannerActionGrammar(actions);
+	if (result === null) return null;
 
-  const paramsSkeletons: Record<string, ResponseSkeleton> = {};
-  for (const action of actions) {
-    if (!action.name) continue;
-    paramsSkeletons[action.name] = buildPlannerParamsSkeleton(action);
-  }
+	const paramsSkeletons: Record<string, ResponseSkeleton> = {};
+	for (const action of actions) {
+		if (!action.name) continue;
+		paramsSkeletons[action.name] = buildPlannerParamsSkeleton(action);
+	}
 
-  const elizaSchema = elizaHarnessSchemaFromSkeleton({
-    skeleton: result.responseSkeleton,
-    grammar: result.grammar,
-  });
+	const elizaSchema = elizaHarnessSchemaFromSkeleton({
+		skeleton: result.responseSkeleton,
+		grammar: result.grammar,
+	});
 
-  return {
-    responseSkeleton: result.responseSkeleton,
-    grammar: result.grammar,
-    actionSchemas: result.actionSchemas,
-    paramsSkeletons,
-    elizaSchema,
-  };
+	return {
+		responseSkeleton: result.responseSkeleton,
+		grammar: result.grammar,
+		actionSchemas: result.actionSchemas,
+		paramsSkeletons,
+		elizaSchema,
+	};
 }
 
 /**
@@ -177,5 +177,5 @@ export function buildPlannerGuidedDecode(
  * pulling `@elizaos/core/runtime/...`.
  */
 export function planActionParameterSchema(action: PlannerAction): JSONSchema {
-  return normalizeActionJsonSchema(action);
+	return normalizeActionJsonSchema(action);
 }

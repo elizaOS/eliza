@@ -5,9 +5,9 @@
  * (`@elizaos/ui`) need byte-identical path semantics.
  */
 export {
-  downloadsStagingDir,
-  elizaModelsDir,
-  isWithinElizaRoot,
-  localInferenceRoot,
-  registryPath,
+	downloadsStagingDir,
+	elizaModelsDir,
+	isWithinElizaRoot,
+	localInferenceRoot,
+	registryPath,
 } from "@elizaos/shared";

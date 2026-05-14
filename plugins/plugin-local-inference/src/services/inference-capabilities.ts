@@ -37,29 +37,29 @@
 export type ThermalState = "nominal" | "fair" | "serious" | "critical";
 
 export interface InferenceCapabilities {
-  streamingLlm: boolean;
-  dflashSupported: boolean;
-  omnivoiceStreaming: boolean;
-  mmprojSupported: boolean;
-  thermalState: ThermalState;
-  /** Platform tag for diagnostics + routing. */
-  platform: "android" | "ios" | "desktop" | "unknown";
+	streamingLlm: boolean;
+	dflashSupported: boolean;
+	omnivoiceStreaming: boolean;
+	mmprojSupported: boolean;
+	thermalState: ThermalState;
+	/** Platform tag for diagnostics + routing. */
+	platform: "android" | "ios" | "desktop" | "unknown";
 }
 
 /** Minimal probe surface — what the caller hands in. */
 export interface CapabilityProbes {
-  /** True only when `eliza_inference_llm_stream_supported()` returns 1. */
-  llmStreamSupported(): boolean;
-  /** True only when `eliza_inference_tts_stream_supported()` returns 1. */
-  ttsStreamSupported(): boolean;
-  /** True only when the drafter GGUF is resident in the bundle + mapped. */
-  drafterResident(): boolean;
-  /** True only when the mmproj weights are present in the bundle. */
-  mmprojResident(): boolean;
-  /** Current thermal snapshot.  May return `nominal` on platforms without a thermal API. */
-  thermalState(): ThermalState;
-  /** Platform tag. */
-  platform(): "android" | "ios" | "desktop" | "unknown";
+	/** True only when `eliza_inference_llm_stream_supported()` returns 1. */
+	llmStreamSupported(): boolean;
+	/** True only when `eliza_inference_tts_stream_supported()` returns 1. */
+	ttsStreamSupported(): boolean;
+	/** True only when the drafter GGUF is resident in the bundle + mapped. */
+	drafterResident(): boolean;
+	/** True only when the mmproj weights are present in the bundle. */
+	mmprojResident(): boolean;
+	/** Current thermal snapshot.  May return `nominal` on platforms without a thermal API. */
+	thermalState(): ThermalState;
+	/** Platform tag. */
+	platform(): "android" | "ios" | "desktop" | "unknown";
 }
 
 /**
@@ -79,29 +79,29 @@ export interface CapabilityProbes {
  *     side has no fallback path for streaming TTS, only for batch.
  */
 export function probeCapabilities(
-  probes: CapabilityProbes,
+	probes: CapabilityProbes,
 ): InferenceCapabilities {
-  const streamingLlm = probes.llmStreamSupported();
-  const omnivoiceStreaming = probes.ttsStreamSupported();
-  const drafterResident = probes.drafterResident();
-  const mmprojResident = probes.mmprojResident();
-  const thermalState = probes.thermalState();
-  const platform = probes.platform();
+	const streamingLlm = probes.llmStreamSupported();
+	const omnivoiceStreaming = probes.ttsStreamSupported();
+	const drafterResident = probes.drafterResident();
+	const mmprojResident = probes.mmprojResident();
+	const thermalState = probes.thermalState();
+	const platform = probes.platform();
 
-  const thermalBlocksDflash =
-    thermalState === "serious" || thermalState === "critical";
+	const thermalBlocksDflash =
+		thermalState === "serious" || thermalState === "critical";
 
-  const dflashSupported =
-    streamingLlm && drafterResident && !thermalBlocksDflash;
+	const dflashSupported =
+		streamingLlm && drafterResident && !thermalBlocksDflash;
 
-  return {
-    streamingLlm,
-    dflashSupported,
-    omnivoiceStreaming,
-    mmprojSupported: mmprojResident,
-    thermalState,
-    platform,
-  };
+	return {
+		streamingLlm,
+		dflashSupported,
+		omnivoiceStreaming,
+		mmprojSupported: mmprojResident,
+		thermalState,
+		platform,
+	};
 }
 
 /**
@@ -111,12 +111,12 @@ export function probeCapabilities(
  * without branching on "no probe registered".
  */
 export function defaultsForNoBinding(): InferenceCapabilities {
-  return {
-    streamingLlm: false,
-    dflashSupported: false,
-    omnivoiceStreaming: false,
-    mmprojSupported: false,
-    thermalState: "nominal",
-    platform: "unknown",
-  };
+	return {
+		streamingLlm: false,
+		dflashSupported: false,
+		omnivoiceStreaming: false,
+		mmprojSupported: false,
+		thermalState: "nominal",
+		platform: "unknown",
+	};
 }

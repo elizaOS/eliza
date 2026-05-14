@@ -50,22 +50,22 @@ import {
   type AppRoutePluginRegistryEntry,
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
-import type { EmbeddingProgressCallback } from "./embedding-manager-support.js";
+import type { EmbeddingProgressCallback } from "@elizaos/plugin-local-inference/runtime";
 import {
   DEFAULT_MODELS_DIR,
+  detectEmbeddingPreset,
   embeddingGgufFilePresent,
+  ensureLocalInferenceHandler,
   ensureModel,
   findExistingEmbeddingModelForWarmupReuse,
   isEmbeddingWarmupReuseDisabled,
-} from "./embedding-manager-support.js";
-import { detectEmbeddingPreset } from "./embedding-presets.js";
-import { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy.js";
-import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
+  shouldEnableMobileLocalInference,
+  shouldWarmupLocalEmbeddingModel,
+} from "@elizaos/plugin-local-inference/runtime";
 import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
 } from "./ensure-text-to-speech-handler.js";
-import { shouldEnableMobileLocalInference } from "./mobile-local-inference-gate.js";
 import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
 import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
 import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";

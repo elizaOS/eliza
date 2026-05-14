@@ -39,7 +39,7 @@
       "@elizaos/plugin-agent-orchestrator": [
         "../../plugins/plugin-agent-orchestrator/src/index.ts"
       ],
-      "@elizaos/plugin-local-embedding": [
+      "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-embedding/src/index.ts"
       ],
       "@elizaos/plugin-local-inference": [

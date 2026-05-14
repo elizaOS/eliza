@@ -1,36 +1,39 @@
 import type { JSONSchema, ToolDefinition } from "@elizaos/core";
 import {
-  type ChatModelFunctionCall,
-  type ChatSessionModelFunctions,
-  defineChatSessionFunction,
-  type GbnfJsonSchema,
-  type Llama,
-  LlamaGrammar,
-  LlamaJsonSchemaGrammar,
+	type ChatModelFunctionCall,
+	type ChatSessionModelFunctions,
+	defineChatSessionFunction,
+	type GbnfJsonSchema,
+	type Llama,
+	LlamaGrammar,
+	LlamaJsonSchemaGrammar,
 } from "node-llama-cpp";
 
 export interface ToolCallResult {
-  id: string;
-  name: string;
-  arguments: Record<string, unknown>;
-  type: "function";
+	id: string;
+	name: string;
+	arguments: Record<string, unknown>;
+	type: "function";
 }
 
 export interface StructuredOutputContext {
-  llama: Llama;
+	llama: Llama;
 }
 
 type LlamaFunctionDefinition = ChatSessionModelFunctions[string];
-type LlamaJsonSchemaGrammarForAnySchema = LlamaJsonSchemaGrammar<GbnfJsonSchema>;
-const defineDeferredChatSessionFunction = defineChatSessionFunction as unknown as (definition: {
-  description?: string;
-  params?: GbnfJsonSchema;
-  handler: () => string;
-}) => LlamaFunctionDefinition;
-const LlamaJsonSchemaGrammarForAnySchemaCtor = LlamaJsonSchemaGrammar as unknown as new (
-  llama: Llama,
-  schema: GbnfJsonSchema
-) => LlamaJsonSchemaGrammarForAnySchema;
+type LlamaJsonSchemaGrammarForAnySchema =
+	LlamaJsonSchemaGrammar<GbnfJsonSchema>;
+const defineDeferredChatSessionFunction =
+	defineChatSessionFunction as unknown as (definition: {
+		description?: string;
+		params?: GbnfJsonSchema;
+		handler: () => string;
+	}) => LlamaFunctionDefinition;
+const LlamaJsonSchemaGrammarForAnySchemaCtor =
+	LlamaJsonSchemaGrammar as unknown as new (
+		llama: Llama,
+		schema: GbnfJsonSchema,
+	) => LlamaJsonSchemaGrammarForAnySchema;
 
 /**
  * Convert an elizaOS-shaped JSON schema to the Gbnf variant accepted by
@@ -39,12 +42,14 @@ const LlamaJsonSchemaGrammarForAnySchemaCtor = LlamaJsonSchemaGrammar as unknown
  * `properties` / `required` plus the standard scalar types — so we forward
  * the schema as-is. We narrow the type with a runtime check.
  */
-export function toGbnfJsonSchema(schema: JSONSchema | undefined): GbnfJsonSchema | undefined {
-  if (schema == null) return undefined;
-  if (typeof schema !== "object") {
-    throw new Error("[plugin-local-ai] JSON schema must be an object");
-  }
-  return schema as GbnfJsonSchema;
+export function toGbnfJsonSchema(
+	schema: JSONSchema | undefined,
+): GbnfJsonSchema | undefined {
+	if (schema == null) return undefined;
+	if (typeof schema !== "object") {
+		throw new Error("[plugin-local-ai] JSON schema must be an object");
+	}
+	return schema as GbnfJsonSchema;
 }
 
 /**
@@ -53,21 +58,23 @@ export function toGbnfJsonSchema(schema: JSONSchema | undefined): GbnfJsonSchema
  * raw call objects back from `promptWithMeta`, not in-loop tool execution.
  * The runtime is responsible for executing the tool and looping back.
  */
-export function buildLlamaFunctions(tools: readonly ToolDefinition[]): ChatSessionModelFunctions {
-  const out: Record<string, LlamaFunctionDefinition> = {};
-  for (const tool of tools) {
-    if (!tool?.name) continue;
-    const params = toGbnfJsonSchema(tool.parameters);
-    out[tool.name] = defineDeferredChatSessionFunction({
-      description: tool.description,
-      params,
-      // The handler intentionally returns a sentinel. We collect the parsed
-      // call from `promptWithMeta`'s response array; we do not execute the
-      // tool in-process. node-llama-cpp requires a handler to be defined.
-      handler: () => "[deferred to runtime]",
-    }) as LlamaFunctionDefinition;
-  }
-  return out;
+export function buildLlamaFunctions(
+	tools: readonly ToolDefinition[],
+): ChatSessionModelFunctions {
+	const out: Record<string, LlamaFunctionDefinition> = {};
+	for (const tool of tools) {
+		if (!tool?.name) continue;
+		const params = toGbnfJsonSchema(tool.parameters);
+		out[tool.name] = defineDeferredChatSessionFunction({
+			description: tool.description,
+			params,
+			// The handler intentionally returns a sentinel. We collect the parsed
+			// call from `promptWithMeta`'s response array; we do not execute the
+			// tool in-process. node-llama-cpp requires a handler to be defined.
+			handler: () => "[deferred to runtime]",
+		}) as LlamaFunctionDefinition;
+	}
+	return out;
 }
 
 /**
@@ -83,30 +90,30 @@ export function buildLlamaFunctions(tools: readonly ToolDefinition[]): ChatSessi
  * dispatches correctly without needing the text-recovery paths.
  */
 export function extractToolCalls(
-  response: ReadonlyArray<string | ChatModelFunctionCall | unknown>
+	response: ReadonlyArray<string | ChatModelFunctionCall | unknown>,
 ): ToolCallResult[] {
-  const calls: ToolCallResult[] = [];
-  let i = 0;
-  for (const entry of response) {
-    if (
-      entry &&
-      typeof entry === "object" &&
-      (entry as { type?: string }).type === "functionCall"
-    ) {
-      const fc = entry as ChatModelFunctionCall;
-      calls.push({
-        id: `call_${i++}`,
-        name: fc.name,
-        arguments: (fc.params ?? {}) as Record<string, unknown>,
-        type: "function",
-      });
-    }
-  }
+	const calls: ToolCallResult[] = [];
+	let i = 0;
+	for (const entry of response) {
+		if (
+			entry &&
+			typeof entry === "object" &&
+			(entry as { type?: string }).type === "functionCall"
+		) {
+			const fc = entry as ChatModelFunctionCall;
+			calls.push({
+				id: `call_${i++}`,
+				name: fc.name,
+				arguments: (fc.params ?? {}) as Record<string, unknown>,
+				type: "function",
+			});
+		}
+	}
 
-  // No content-text recovery: actions are exposed to the model as individual
-  // native tools, so any non-tool-call text is treated as a plain message
-  // (and surfaced via the regular planner-loop messageToUser path).
-  return calls;
+	// No content-text recovery: actions are exposed to the model as individual
+	// native tools, so any non-tool-call text is treated as a plain message
+	// (and surfaced via the regular planner-loop messageToUser path).
+	return calls;
 }
 
 /**
@@ -115,14 +122,16 @@ export function extractToolCalls(
  * matching the schema.
  */
 export function buildJsonSchemaGrammar(
-  llama: Llama,
-  schema: JSONSchema
+	llama: Llama,
+	schema: JSONSchema,
 ): LlamaJsonSchemaGrammarForAnySchema {
-  const gbnf = toGbnfJsonSchema(schema);
-  if (gbnf == null) {
-    throw new Error("[plugin-local-ai] responseSchema is required to build a JSON schema grammar");
-  }
-  return new LlamaJsonSchemaGrammarForAnySchemaCtor(llama, gbnf);
+	const gbnf = toGbnfJsonSchema(schema);
+	if (gbnf == null) {
+		throw new Error(
+			"[plugin-local-ai] responseSchema is required to build a JSON schema grammar",
+		);
+	}
+	return new LlamaJsonSchemaGrammarForAnySchemaCtor(llama, gbnf);
 }
 
 /**
@@ -130,14 +139,16 @@ export function buildJsonSchemaGrammar(
  * caller passes `responseFormat: { type: "json_object" }` without a specific
  * schema — output is constrained to be any valid JSON value.
  */
-export async function buildGenericJsonGrammar(llama: Llama): Promise<LlamaGrammar> {
-  return await LlamaGrammar.getFor(llama, "json");
+export async function buildGenericJsonGrammar(
+	llama: Llama,
+): Promise<LlamaGrammar> {
+	return await LlamaGrammar.getFor(llama, "json");
 }
 
 export interface StructuredRequestPlan {
-  kind: "text" | "tools" | "schema" | "json_object";
-  functions?: ChatSessionModelFunctions;
-  grammar?: LlamaGrammar;
+	kind: "text" | "tools" | "schema" | "json_object";
+	functions?: ChatSessionModelFunctions;
+	grammar?: LlamaGrammar;
 }
 
 /**
@@ -145,27 +156,27 @@ export interface StructuredRequestPlan {
  * Tools take priority over schema; schema takes priority over generic JSON.
  */
 export async function planStructuredRequest(
-  ctx: StructuredOutputContext,
-  params: {
-    tools?: readonly ToolDefinition[];
-    responseSchema?: JSONSchema;
-    responseFormat?: { type: "json_object" | "text" } | string | undefined;
-  }
+	ctx: StructuredOutputContext,
+	params: {
+		tools?: readonly ToolDefinition[];
+		responseSchema?: JSONSchema;
+		responseFormat?: { type: "json_object" | "text" } | string | undefined;
+	},
 ): Promise<StructuredRequestPlan> {
-  if (params.tools && params.tools.length > 0) {
-    return { kind: "tools", functions: buildLlamaFunctions(params.tools) };
-  }
-  if (params.responseSchema) {
-    const grammar = buildJsonSchemaGrammar(ctx.llama, params.responseSchema);
-    return { kind: "schema", grammar };
-  }
-  if (
-    params.responseFormat &&
-    typeof params.responseFormat === "object" &&
-    params.responseFormat.type === "json_object"
-  ) {
-    const grammar = await buildGenericJsonGrammar(ctx.llama);
-    return { kind: "json_object", grammar };
-  }
-  return { kind: "text" };
+	if (params.tools && params.tools.length > 0) {
+		return { kind: "tools", functions: buildLlamaFunctions(params.tools) };
+	}
+	if (params.responseSchema) {
+		const grammar = buildJsonSchemaGrammar(ctx.llama, params.responseSchema);
+		return { kind: "schema", grammar };
+	}
+	if (
+		params.responseFormat &&
+		typeof params.responseFormat === "object" &&
+		params.responseFormat.type === "json_object"
+	) {
+		const grammar = await buildGenericJsonGrammar(ctx.llama);
+		return { kind: "json_object", grammar };
+	}
+	return { kind: "text" };
 }

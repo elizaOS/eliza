@@ -45,23 +45,23 @@
  * conversation history. `mergeContext` joins them in that order.
  */
 export interface ContextPartial {
-  /**
-   * Ordered list of system / pre-amble text blocks. Each element is a
-   * distinct structural unit (e.g. persona block, skills block, tool-defs
-   * block). They are joined in order during `mergeContext`.
-   */
-  systemBlocks: string[];
-  /**
-   * Conversation history turns up to (but NOT including) the new user
-   * message. Stored as alternating `{role, content}` entries for
-   * compatibility with the elizaOS message format.
-   */
-  historyBlocks: Array<{ role: "user" | "assistant"; content: string }>;
-  /**
-   * Free-form metadata for diagnostics / telemetry. Not included in the
-   * merged prompt text.
-   */
-  meta?: Record<string, unknown>;
+	/**
+	 * Ordered list of system / pre-amble text blocks. Each element is a
+	 * distinct structural unit (e.g. persona block, skills block, tool-defs
+	 * block). They are joined in order during `mergeContext`.
+	 */
+	systemBlocks: string[];
+	/**
+	 * Conversation history turns up to (but NOT including) the new user
+	 * message. Stored as alternating `{role, content}` entries for
+	 * compatibility with the elizaOS message format.
+	 */
+	historyBlocks: Array<{ role: "user" | "assistant"; content: string }>;
+	/**
+	 * Free-form metadata for diagnostics / telemetry. Not included in the
+	 * merged prompt text.
+	 */
+	meta?: Record<string, unknown>;
 }
 
 /**
@@ -69,21 +69,21 @@ export interface ContextPartial {
  * inference call. Produced by `mergeContext` from the two halves.
  */
 export interface FullContext {
-  /**
-   * The fully assembled system string (deterministic blocks joined by
-   * double-newline, message-dependent blocks appended after).
-   */
-  systemText: string;
-  /**
-   * Full conversation history including the new user message at the end.
-   */
-  history: Array<{ role: "user" | "assistant"; content: string }>;
-  /** ISO timestamp of when the deterministic part was built. */
-  deterministicBuiltAt: string;
-  /** ISO timestamp of when `complete()` was called. */
-  completedAt: string;
-  /** True when the deterministic context was rebuilt inside `complete()` due to staleness. */
-  deterministicWasStale: boolean;
+	/**
+	 * The fully assembled system string (deterministic blocks joined by
+	 * double-newline, message-dependent blocks appended after).
+	 */
+	systemText: string;
+	/**
+	 * Full conversation history including the new user message at the end.
+	 */
+	history: Array<{ role: "user" | "assistant"; content: string }>;
+	/** ISO timestamp of when the deterministic part was built. */
+	deterministicBuiltAt: string;
+	/** ISO timestamp of when `complete()` was called. */
+	completedAt: string;
+	/** True when the deterministic context was rebuilt inside `complete()` due to staleness. */
+	deterministicWasStale: boolean;
 }
 
 /**
@@ -97,7 +97,7 @@ export type BuildDeterministicFn = () => Promise<ContextPartial>;
  * the actual user message text.
  */
 export type BuildMessageDependentFn = (
-  userMessage: string,
+	userMessage: string,
 ) => Promise<ContextPartial>;
 
 // ---------------------------------------------------------------------------
@@ -107,17 +107,17 @@ export type BuildMessageDependentFn = (
 const DEFAULT_STALE_MS = 30_000;
 
 export interface EagerContextBuilderOptions {
-  buildDeterministic: BuildDeterministicFn;
-  buildMessageDependent: BuildMessageDependentFn;
-  /**
-   * How many milliseconds before the cached deterministic context is
-   * considered stale and must be rebuilt. Default 30 000 ms.
-   */
-  staleCutoffMs?: number;
-  /**
-   * Optional clock injection for tests. Defaults to `Date.now`.
-   */
-  now?: () => number;
+	buildDeterministic: BuildDeterministicFn;
+	buildMessageDependent: BuildMessageDependentFn;
+	/**
+	 * How many milliseconds before the cached deterministic context is
+	 * considered stale and must be rebuilt. Default 30 000 ms.
+	 */
+	staleCutoffMs?: number;
+	/**
+	 * Optional clock injection for tests. Defaults to `Date.now`.
+	 */
+	now?: () => number;
 }
 
 /**
@@ -127,98 +127,98 @@ export interface EagerContextBuilderOptions {
  * transcript).
  */
 export class EagerContextBuilder {
-  private deterministic: ContextPartial | null = null;
-  private builtAt: number = 0;
-  private readonly staleCutoffMs: number;
-  private readonly buildDeterministicFn: BuildDeterministicFn;
-  private readonly buildMessageDependentFn: BuildMessageDependentFn;
-  private readonly nowFn: () => number;
+	private deterministic: ContextPartial | null = null;
+	private builtAt: number = 0;
+	private readonly staleCutoffMs: number;
+	private readonly buildDeterministicFn: BuildDeterministicFn;
+	private readonly buildMessageDependentFn: BuildMessageDependentFn;
+	private readonly nowFn: () => number;
 
-  /** In-flight prebuild promise — prevents concurrent duplicate prebuilds. */
-  private prebuildInFlight: Promise<void> | null = null;
+	/** In-flight prebuild promise — prevents concurrent duplicate prebuilds. */
+	private prebuildInFlight: Promise<void> | null = null;
 
-  constructor(opts: EagerContextBuilderOptions) {
-    this.buildDeterministicFn = opts.buildDeterministic;
-    this.buildMessageDependentFn = opts.buildMessageDependent;
-    this.staleCutoffMs = opts.staleCutoffMs ?? DEFAULT_STALE_MS;
-    this.nowFn = opts.now ?? (() => Date.now());
-  }
+	constructor(opts: EagerContextBuilderOptions) {
+		this.buildDeterministicFn = opts.buildDeterministic;
+		this.buildMessageDependentFn = opts.buildMessageDependent;
+		this.staleCutoffMs = opts.staleCutoffMs ?? DEFAULT_STALE_MS;
+		this.nowFn = opts.now ?? (() => Date.now());
+	}
 
-  /**
-   * Fire on `speech-start` (fire-and-forget). Builds and caches the
-   * deterministic context half so it is ready when `complete` is called.
-   *
-   * Concurrent calls are collapsed into a single in-flight build — safe to
-   * call multiple times without double-spending GPU/compute resources.
-   */
-  prebuildDeterministic(): void {
-    if (this.prebuildInFlight) return;
-    this.prebuildInFlight = this.runPrebuild().finally(() => {
-      this.prebuildInFlight = null;
-    });
-  }
+	/**
+	 * Fire on `speech-start` (fire-and-forget). Builds and caches the
+	 * deterministic context half so it is ready when `complete` is called.
+	 *
+	 * Concurrent calls are collapsed into a single in-flight build — safe to
+	 * call multiple times without double-spending GPU/compute resources.
+	 */
+	prebuildDeterministic(): void {
+		if (this.prebuildInFlight) return;
+		this.prebuildInFlight = this.runPrebuild().finally(() => {
+			this.prebuildInFlight = null;
+		});
+	}
 
-  /**
-   * Call on `speech-end` with the actual final transcript. Returns the fully
-   * merged context.
-   *
-   * If the cached deterministic context is absent or stale it is rebuilt
-   * inline (blocking). The returned `deterministicWasStale` flag lets callers
-   * emit latency telemetry when the eager pre-build didn't complete in time.
-   */
-  async complete(userMessage: string): Promise<FullContext> {
-    let deterministicWasStale = false;
-    // If a prebuild is in-flight, wait for it first (avoids duplicate work).
-    if (this.prebuildInFlight) {
-      await this.prebuildInFlight;
-    }
-    let det = this.deterministic;
-    if (det === null || this.isStale()) {
-      deterministicWasStale = det !== null; // null means never built; stale = was built but expired
-      await this.runPrebuild();
-      det = this.deterministic;
-      if (det === null) {
-        throw new Error(
-          "deterministic context prebuild did not produce a result",
-        );
-      }
-    }
-    const msgDep = await this.buildMessageDependentFn(userMessage);
-    return mergeContext(det, msgDep, {
-      deterministicBuiltAt: new Date(this.builtAt).toISOString(),
-      completedAt: new Date(this.nowFn()).toISOString(),
-      deterministicWasStale,
-    });
-  }
+	/**
+	 * Call on `speech-end` with the actual final transcript. Returns the fully
+	 * merged context.
+	 *
+	 * If the cached deterministic context is absent or stale it is rebuilt
+	 * inline (blocking). The returned `deterministicWasStale` flag lets callers
+	 * emit latency telemetry when the eager pre-build didn't complete in time.
+	 */
+	async complete(userMessage: string): Promise<FullContext> {
+		let deterministicWasStale = false;
+		// If a prebuild is in-flight, wait for it first (avoids duplicate work).
+		if (this.prebuildInFlight) {
+			await this.prebuildInFlight;
+		}
+		let det = this.deterministic;
+		if (det === null || this.isStale()) {
+			deterministicWasStale = det !== null; // null means never built; stale = was built but expired
+			await this.runPrebuild();
+			det = this.deterministic;
+			if (det === null) {
+				throw new Error(
+					"deterministic context prebuild did not produce a result",
+				);
+			}
+		}
+		const msgDep = await this.buildMessageDependentFn(userMessage);
+		return mergeContext(det, msgDep, {
+			deterministicBuiltAt: new Date(this.builtAt).toISOString(),
+			completedAt: new Date(this.nowFn()).toISOString(),
+			deterministicWasStale,
+		});
+	}
 
-  /**
-   * Returns true if the cached deterministic context is older than
-   * `staleCutoffMs`.
-   */
-  isStale(): boolean {
-    if (this.deterministic === null) return true;
-    return this.nowFn() - this.builtAt > this.staleCutoffMs;
-  }
+	/**
+	 * Returns true if the cached deterministic context is older than
+	 * `staleCutoffMs`.
+	 */
+	isStale(): boolean {
+		if (this.deterministic === null) return true;
+		return this.nowFn() - this.builtAt > this.staleCutoffMs;
+	}
 
-  /**
-   * Discard the cached deterministic context. Useful when the conversation
-   * is reset or the runtime is re-initialised. Thread-safe — can be called
-   * from any context.
-   */
-  invalidate(): void {
-    this.deterministic = null;
-    this.builtAt = 0;
-  }
+	/**
+	 * Discard the cached deterministic context. Useful when the conversation
+	 * is reset or the runtime is re-initialised. Thread-safe — can be called
+	 * from any context.
+	 */
+	invalidate(): void {
+		this.deterministic = null;
+		this.builtAt = 0;
+	}
 
-  // -------------------------------------------------------------------------
-  // private
-  // -------------------------------------------------------------------------
+	// -------------------------------------------------------------------------
+	// private
+	// -------------------------------------------------------------------------
 
-  private async runPrebuild(): Promise<void> {
-    const result = await this.buildDeterministicFn();
-    this.deterministic = result;
-    this.builtAt = this.nowFn();
-  }
+	private async runPrebuild(): Promise<void> {
+		const result = await this.buildDeterministicFn();
+		this.deterministic = result;
+		this.builtAt = this.nowFn();
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -234,29 +234,29 @@ export class EagerContextBuilder {
  * @internal Exported for tests.
  */
 export function mergeContext(
-  det: ContextPartial,
-  msgDep: ContextPartial,
-  timestamps: {
-    deterministicBuiltAt: string;
-    completedAt: string;
-    deterministicWasStale: boolean;
-  },
+	det: ContextPartial,
+	msgDep: ContextPartial,
+	timestamps: {
+		deterministicBuiltAt: string;
+		completedAt: string;
+		deterministicWasStale: boolean;
+	},
 ): FullContext {
-  const systemBlocks = [...det.systemBlocks, ...msgDep.systemBlocks];
-  const systemText = systemBlocks.filter(Boolean).join("\n\n");
+	const systemBlocks = [...det.systemBlocks, ...msgDep.systemBlocks];
+	const systemText = systemBlocks.filter(Boolean).join("\n\n");
 
-  // History: deterministic half contains history up to last turn; message-
-  // dependent half contains the new user message (and any injected turns).
-  const history: FullContext["history"] = [
-    ...det.historyBlocks,
-    ...msgDep.historyBlocks,
-  ];
+	// History: deterministic half contains history up to last turn; message-
+	// dependent half contains the new user message (and any injected turns).
+	const history: FullContext["history"] = [
+		...det.historyBlocks,
+		...msgDep.historyBlocks,
+	];
 
-  return {
-    systemText,
-    history,
-    deterministicBuiltAt: timestamps.deterministicBuiltAt,
-    completedAt: timestamps.completedAt,
-    deterministicWasStale: timestamps.deterministicWasStale,
-  };
+	return {
+		systemText,
+		history,
+		deterministicBuiltAt: timestamps.deterministicBuiltAt,
+		completedAt: timestamps.completedAt,
+		deterministicWasStale: timestamps.deterministicWasStale,
+	};
 }

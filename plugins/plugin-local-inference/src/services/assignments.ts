@@ -21,37 +21,37 @@ import type { AgentModelSlot, InstalledModel, ModelAssignments } from "./types";
 const ASSIGNMENTS_FILENAME = "assignments.json";
 
 interface AssignmentsFile {
-  version: 1;
-  assignments: ModelAssignments;
+	version: 1;
+	assignments: ModelAssignments;
 }
 
 function assignmentsPath(): string {
-  return path.join(localInferenceRoot(), ASSIGNMENTS_FILENAME);
+	return path.join(localInferenceRoot(), ASSIGNMENTS_FILENAME);
 }
 
 async function ensureRoot(): Promise<void> {
-  await fs.mkdir(localInferenceRoot(), { recursive: true });
+	await fs.mkdir(localInferenceRoot(), { recursive: true });
 }
 
 export async function readAssignments(): Promise<ModelAssignments> {
-  try {
-    const raw = await fs.readFile(assignmentsPath(), "utf8");
-    const parsed = JSON.parse(raw) as AssignmentsFile;
-    if (!parsed || parsed.version !== 1 || !parsed.assignments) return {};
-    return parsed.assignments;
-  } catch {
-    return {};
-  }
+	try {
+		const raw = await fs.readFile(assignmentsPath(), "utf8");
+		const parsed = JSON.parse(raw) as AssignmentsFile;
+		if (!parsed || parsed.version !== 1 || !parsed.assignments) return {};
+		return parsed.assignments;
+	} catch {
+		return {};
+	}
 }
 
 function pickLargestInstalledModel(
-  installed: InstalledModel[],
+	installed: InstalledModel[],
 ): InstalledModel | null {
-  return (
-    installed
-      .filter((model) => typeof model.id === "string" && model.id.length > 0)
-      .sort((left, right) => right.sizeBytes - left.sizeBytes)[0] ?? null
-  );
+	return (
+		installed
+			.filter((model) => typeof model.id === "string" && model.id.length > 0)
+			.sort((left, right) => right.sizeBytes - left.sizeBytes)[0] ?? null
+	);
 }
 
 /**
@@ -69,59 +69,59 @@ function pickLargestInstalledModel(
  * tool, not into Eliza loading those weights through llama.cpp.
  */
 export function buildRecommendedAssignments(
-  installed: InstalledModel[],
+	installed: InstalledModel[],
 ): ModelAssignments {
-  const ownDownloads = installed.filter(
-    (model) =>
-      model.source === "eliza-download" &&
-      isDefaultEligibleId(model.id) &&
-      typeof model.bundleVerifiedAt === "string" &&
-      model.bundleVerifiedAt.length > 0,
-  );
-  const best = pickLargestInstalledModel(ownDownloads);
-  if (!best) return {};
-  return {
-    TEXT_SMALL: best.id,
-    TEXT_LARGE: best.id,
-    TEXT_TO_SPEECH: best.id,
-    TRANSCRIPTION: best.id,
-  };
+	const ownDownloads = installed.filter(
+		(model) =>
+			model.source === "eliza-download" &&
+			isDefaultEligibleId(model.id) &&
+			typeof model.bundleVerifiedAt === "string" &&
+			model.bundleVerifiedAt.length > 0,
+	);
+	const best = pickLargestInstalledModel(ownDownloads);
+	if (!best) return {};
+	return {
+		TEXT_SMALL: best.id,
+		TEXT_LARGE: best.id,
+		TEXT_TO_SPEECH: best.id,
+		TRANSCRIPTION: best.id,
+	};
 }
 
 export async function readEffectiveAssignments(): Promise<ModelAssignments> {
-  const [saved, installed] = await Promise.all([
-    readAssignments(),
-    listInstalledModels(),
-  ]);
-  return {
-    ...buildRecommendedAssignments(installed),
-    ...saved,
-  };
+	const [saved, installed] = await Promise.all([
+		readAssignments(),
+		listInstalledModels(),
+	]);
+	return {
+		...buildRecommendedAssignments(installed),
+		...saved,
+	};
 }
 
 export async function writeAssignments(
-  assignments: ModelAssignments,
+	assignments: ModelAssignments,
 ): Promise<void> {
-  await ensureRoot();
-  const payload: AssignmentsFile = { version: 1, assignments };
-  const tmp = `${assignmentsPath()}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
-  await fs.rename(tmp, assignmentsPath());
+	await ensureRoot();
+	const payload: AssignmentsFile = { version: 1, assignments };
+	const tmp = `${assignmentsPath()}.tmp`;
+	await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
+	await fs.rename(tmp, assignmentsPath());
 }
 
 export async function setAssignment(
-  slot: AgentModelSlot,
-  modelId: string | null,
+	slot: AgentModelSlot,
+	modelId: string | null,
 ): Promise<ModelAssignments> {
-  const current = await readAssignments();
-  const next: ModelAssignments = { ...current };
-  if (modelId) {
-    next[slot] = modelId;
-  } else {
-    delete next[slot];
-  }
-  await writeAssignments(next);
-  return next;
+	const current = await readAssignments();
+	const next: ModelAssignments = { ...current };
+	if (modelId) {
+		next[slot] = modelId;
+	} else {
+		delete next[slot];
+	}
+	await writeAssignments(next);
+	return next;
 }
 
 /**
@@ -137,20 +137,20 @@ export async function setAssignment(
  * `e5-`). External GGUFs without a catalog entry default to generative.
  */
 function isEmbeddingModelId(modelId: string): boolean {
-  const catalog = findCatalogModel(modelId);
-  if (catalog) {
-    if ((catalog.category as string) === "embedding") return true;
-    if ((catalog.bucket as string) === "embedding") return true;
-    return false;
-  }
-  const lowered = modelId.toLowerCase();
-  return (
-    lowered.includes("nomic-embed") ||
-    lowered.includes("bge-") ||
-    lowered.includes("all-minilm") ||
-    lowered.includes("gte-") ||
-    lowered.includes("e5-")
-  );
+	const catalog = findCatalogModel(modelId);
+	if (catalog) {
+		if ((catalog.category as string) === "embedding") return true;
+		if ((catalog.bucket as string) === "embedding") return true;
+		return false;
+	}
+	const lowered = modelId.toLowerCase();
+	return (
+		lowered.includes("nomic-embed") ||
+		lowered.includes("bge-") ||
+		lowered.includes("all-minilm") ||
+		lowered.includes("gte-") ||
+		lowered.includes("e5-")
+	);
 }
 
 /**
@@ -167,35 +167,35 @@ function isEmbeddingModelId(modelId: string): boolean {
  * actively cleared the assignment.
  */
 export async function ensureDefaultAssignment(
-  modelId: string,
+	modelId: string,
 ): Promise<ModelAssignments> {
-  const current = await readAssignments();
-  if (!isDefaultEligibleId(modelId)) return current;
+	const current = await readAssignments();
+	if (!isDefaultEligibleId(modelId)) return current;
 
-  const next: ModelAssignments = { ...current };
+	const next: ModelAssignments = { ...current };
 
-  if (isEmbeddingModelId(modelId)) {
-    if (!next.TEXT_EMBEDDING) next.TEXT_EMBEDDING = modelId;
-  } else {
-    if (!next.TEXT_SMALL) next.TEXT_SMALL = modelId;
-    if (!next.TEXT_LARGE) next.TEXT_LARGE = modelId;
-    if (!next.TEXT_TO_SPEECH) next.TEXT_TO_SPEECH = modelId;
-    if (!next.TRANSCRIPTION) next.TRANSCRIPTION = modelId;
-  }
+	if (isEmbeddingModelId(modelId)) {
+		if (!next.TEXT_EMBEDDING) next.TEXT_EMBEDDING = modelId;
+	} else {
+		if (!next.TEXT_SMALL) next.TEXT_SMALL = modelId;
+		if (!next.TEXT_LARGE) next.TEXT_LARGE = modelId;
+		if (!next.TEXT_TO_SPEECH) next.TEXT_TO_SPEECH = modelId;
+		if (!next.TRANSCRIPTION) next.TRANSCRIPTION = modelId;
+	}
 
-  // Cheap shortcut: skip the rewrite when nothing changed.
-  if (
-    next.TEXT_SMALL === current.TEXT_SMALL &&
-    next.TEXT_LARGE === current.TEXT_LARGE &&
-    next.TEXT_EMBEDDING === current.TEXT_EMBEDDING &&
-    next.TEXT_TO_SPEECH === current.TEXT_TO_SPEECH &&
-    next.TRANSCRIPTION === current.TRANSCRIPTION
-  ) {
-    return current;
-  }
+	// Cheap shortcut: skip the rewrite when nothing changed.
+	if (
+		next.TEXT_SMALL === current.TEXT_SMALL &&
+		next.TEXT_LARGE === current.TEXT_LARGE &&
+		next.TEXT_EMBEDDING === current.TEXT_EMBEDDING &&
+		next.TEXT_TO_SPEECH === current.TEXT_TO_SPEECH &&
+		next.TRANSCRIPTION === current.TRANSCRIPTION
+	) {
+		return current;
+	}
 
-  await writeAssignments(next);
-  return next;
+	await writeAssignments(next);
+	return next;
 }
 
 /**
@@ -209,19 +209,19 @@ export async function ensureDefaultAssignment(
  * excluded - see `buildRecommendedAssignments` for the rationale.
  */
 export async function autoAssignAtBoot(
-  installed: InstalledModel[],
+	installed: InstalledModel[],
 ): Promise<ModelAssignments | null> {
-  const ownDownloads = installed.filter(
-    (model) =>
-      model.source === "eliza-download" &&
-      isDefaultEligibleId(model.id) &&
-      typeof model.bundleVerifiedAt === "string" &&
-      model.bundleVerifiedAt.length > 0,
-  );
-  if (ownDownloads.length !== 1) return null;
-  const current = await readAssignments();
-  if (Object.keys(current).length > 0) return null;
-  const onlyInstalled = ownDownloads[0];
-  if (!onlyInstalled || typeof onlyInstalled.id !== "string") return null;
-  return ensureDefaultAssignment(onlyInstalled.id);
+	const ownDownloads = installed.filter(
+		(model) =>
+			model.source === "eliza-download" &&
+			isDefaultEligibleId(model.id) &&
+			typeof model.bundleVerifiedAt === "string" &&
+			model.bundleVerifiedAt.length > 0,
+	);
+	if (ownDownloads.length !== 1) return null;
+	const current = await readAssignments();
+	if (Object.keys(current).length > 0) return null;
+	const onlyInstalled = ownDownloads[0];
+	if (!onlyInstalled || typeof onlyInstalled.id !== "string") return null;
+	return ensureDefaultAssignment(onlyInstalled.id);
 }

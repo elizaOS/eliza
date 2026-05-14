@@ -14,19 +14,19 @@
  * would be a cycle).
  */
 export class VoiceStartupError extends Error {
-  readonly code:
-    | "missing-ffi"
-    | "missing-speaker-preset"
-    | "missing-bundle-root"
-    | "missing-fused-build"
-    | "missing-turn-detector"
-    | "already-started"
-    | "not-started"
-    | "invalid-options";
+	readonly code:
+		| "missing-ffi"
+		| "missing-speaker-preset"
+		| "missing-bundle-root"
+		| "missing-fused-build"
+		| "missing-turn-detector"
+		| "already-started"
+		| "not-started"
+		| "invalid-options";
 
-  constructor(code: VoiceStartupError["code"], message: string) {
-    super(message);
-    this.name = "VoiceStartupError";
-    this.code = code;
-  }
+	constructor(code: VoiceStartupError["code"], message: string) {
+		super(message);
+		this.name = "VoiceStartupError";
+		this.code = code;
+	}
 }
