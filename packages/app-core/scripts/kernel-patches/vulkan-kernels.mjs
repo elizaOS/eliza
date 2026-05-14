@@ -50,12 +50,18 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { patchGgmlTbqPolarAttnOps } from "./metal-kernels.mjs";
+import {
+  patchGgmlTbqPolarAttnOps,
+  STANDALONE_REFERENCE_DIR,
+} from "./metal-kernels.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const STANDALONE_VULKAN_DIR = path.resolve(
+// packages/app-core/scripts/kernel-patches/  →  plugin-local-inference/native/vulkan/
+// Older workstreams staged these under packages/inference/vulkan; the current
+// native plugin owns the verified standalone shader sources.
+const LEGACY_STANDALONE_VULKAN_DIR = path.resolve(
   __dirname,
   "..",
   "..",
@@ -63,6 +69,20 @@ const STANDALONE_VULKAN_DIR = path.resolve(
   "inference",
   "vulkan",
 );
+const PLUGIN_STANDALONE_VULKAN_DIR = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "..",
+  "plugins",
+  "plugin-local-inference",
+  "native",
+  "vulkan",
+);
+const STANDALONE_VULKAN_DIR = fs.existsSync(LEGACY_STANDALONE_VULKAN_DIR)
+  ? LEGACY_STANDALONE_VULKAN_DIR
+  : PLUGIN_STANDALONE_VULKAN_DIR;
 
 const PATCHES_DIR = path.resolve(__dirname, "vulkan-dispatch-patches");
 
@@ -419,15 +439,7 @@ function repairFusedAttnPipelinePushRanges(cacheDir, { dryRun }) {
 }
 
 function extractTcqCodebookSource() {
-  const referencePath = path.resolve(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "inference",
-    "reference",
-    "turbo_kernels.c",
-  );
+  const referencePath = path.join(STANDALONE_REFERENCE_DIR, "turbo_kernels.c");
   const source = fs.readFileSync(referencePath, "utf8");
   const match = source.match(
     /const float ELIZA_TURBO3_TCQ_CODEBOOK\[512\]\s*=\s*\{([\s\S]*?)\};/,
