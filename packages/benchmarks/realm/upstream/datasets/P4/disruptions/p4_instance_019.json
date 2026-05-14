@@ -1,0 +1,183 @@
+{
+  "instance_id": "p4_instance_019",
+  "city_map": {
+    "locations": [
+      "suburb",
+      "stadium",
+      "hospital",
+      "downtown",
+      "mall",
+      "park",
+      "airport",
+      "university"
+    ],
+    "distances": {
+      "suburb-stadium": 44,
+      "stadium-suburb": 44,
+      "suburb-hospital": 43,
+      "hospital-suburb": 43,
+      "suburb-downtown": 40,
+      "downtown-suburb": 40,
+      "suburb-mall": 23,
+      "mall-suburb": 23,
+      "suburb-park": 34,
+      "park-suburb": 34,
+      "suburb-airport": 5,
+      "airport-suburb": 5,
+      "suburb-university": 12,
+      "university-suburb": 12,
+      "stadium-hospital": 44,
+      "hospital-stadium": 44,
+      "stadium-downtown": 26,
+      "downtown-stadium": 26,
+      "stadium-mall": 18,
+      "mall-stadium": 18,
+      "stadium-park": 32,
+      "park-stadium": 32,
+      "stadium-airport": 6,
+      "airport-stadium": 6,
+      "stadium-university": 17,
+      "university-stadium": 17,
+      "hospital-downtown": 27,
+      "downtown-hospital": 27,
+      "hospital-mall": 6,
+      "mall-hospital": 6,
+      "hospital-park": 24,
+      "park-hospital": 24,
+      "hospital-airport": 10,
+      "airport-hospital": 10,
+      "hospital-university": 17,
+      "university-hospital": 17,
+      "downtown-mall": 38,
+      "mall-downtown": 38,
+      "downtown-park": 44,
+      "park-downtown": 44,
+      "downtown-airport": 41,
+      "airport-downtown": 41,
+      "downtown-university": 40,
+      "university-downtown": 40,
+      "mall-park": 7,
+      "park-mall": 7,
+      "mall-airport": 13,
+      "airport-mall": 13,
+      "mall-university": 19,
+      "university-mall": 19,
+      "park-airport": 45,
+      "airport-park": 45,
+      "park-university": 25,
+      "university-park": 25,
+      "airport-university": 16,
+      "university-airport": 16
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "mall",
+      "dropoff": "hospital",
+      "time_window": [
+        12.75,
+        12.116666666666667
+      ],
+      "deadline": 47
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "downtown",
+      "dropoff": "park",
+      "time_window": [
+        10.5,
+        10.0
+      ],
+      "deadline": 42
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "airport",
+      "dropoff": "suburb",
+      "time_window": [
+        10.75,
+        10.166666666666666
+      ],
+      "deadline": 33
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "hospital",
+      "dropoff": "university",
+      "time_window": [
+        13.25,
+        13.6
+      ],
+      "deadline": 55
+    },
+    {
+      "passenger_id": "p005",
+      "pickup": "mall",
+      "dropoff": "downtown",
+      "time_window": [
+        11.0,
+        11.466666666666667
+      ],
+      "deadline": 49
+    },
+    {
+      "passenger_id": "p006",
+      "pickup": "park",
+      "dropoff": "hospital",
+      "time_window": [
+        16.75,
+        16.233333333333334
+      ],
+      "deadline": 39
+    },
+    {
+      "passenger_id": "p007",
+      "pickup": "mall",
+      "dropoff": "park",
+      "time_window": [
+        16.5,
+        16.016666666666666
+      ],
+      "deadline": 22
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "suburb",
+      "capacity": 3,
+      "fuel": 78
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "university",
+      "capacity": 4,
+      "fuel": 69
+    }
+  ],
+  "description": "Urban ride-sharing with disruptions instance",
+  "disruptions": [
+    {
+      "type": "accident",
+      "location": "downtown",
+      "start_time": 10,
+      "duration": 81,
+      "impact": "local_traffic_congestion"
+    },
+    {
+      "type": "accident",
+      "location": "stadium",
+      "start_time": 12,
+      "duration": 76,
+      "impact": "local_traffic_congestion"
+    },
+    {
+      "type": "road_closure",
+      "route": "mall-university",
+      "start_time": 12,
+      "duration": 173,
+      "impact": "route_unavailable"
+    }
+  ]
+}

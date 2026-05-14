@@ -1,0 +1,54 @@
+{
+  "instance_id": "p1_instance_048",
+  "locations": [
+    "entrance",
+    "library",
+    "cafeteria",
+    "gym",
+    "student_center"
+  ],
+  "start_location": "entrance",
+  "end_location": "entrance",
+  "distances": {
+    "entrance-library": 17,
+    "entrance-cafeteria": 12,
+    "entrance-gym": 18,
+    "entrance-student_center": 13,
+    "library-entrance": 19,
+    "library-cafeteria": 12,
+    "library-gym": 25,
+    "library-student_center": 10,
+    "cafeteria-entrance": 23,
+    "cafeteria-library": 22,
+    "cafeteria-gym": 16,
+    "cafeteria-student_center": 30,
+    "gym-entrance": 30,
+    "gym-library": 12,
+    "gym-cafeteria": 16,
+    "gym-student_center": 12,
+    "student_center-entrance": 22,
+    "student_center-library": 29,
+    "student_center-cafeteria": 8,
+    "student_center-gym": 25
+  },
+  "time_windows": {
+    "library": [
+      9,
+      12
+    ],
+    "cafeteria": [
+      11,
+      14
+    ],
+    "gym": [
+      15,
+      18
+    ],
+    "student_center": [
+      10,
+      16
+    ]
+  },
+  "max_duration": 180,
+  "description": "Single-agent campus tour with time windows"
+}

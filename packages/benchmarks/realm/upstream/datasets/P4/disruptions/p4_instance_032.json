@@ -1,0 +1,116 @@
+{
+  "instance_id": "p4_instance_032",
+  "city_map": {
+    "locations": [
+      "park",
+      "stadium",
+      "suburb",
+      "university",
+      "mall",
+      "downtown"
+    ],
+    "distances": {
+      "park-stadium": 26,
+      "stadium-park": 26,
+      "park-suburb": 30,
+      "suburb-park": 30,
+      "park-university": 18,
+      "university-park": 18,
+      "park-mall": 17,
+      "mall-park": 17,
+      "park-downtown": 5,
+      "downtown-park": 5,
+      "stadium-suburb": 22,
+      "suburb-stadium": 22,
+      "stadium-university": 44,
+      "university-stadium": 44,
+      "stadium-mall": 9,
+      "mall-stadium": 9,
+      "stadium-downtown": 38,
+      "downtown-stadium": 38,
+      "suburb-university": 16,
+      "university-suburb": 16,
+      "suburb-mall": 6,
+      "mall-suburb": 6,
+      "suburb-downtown": 10,
+      "downtown-suburb": 10,
+      "university-mall": 44,
+      "mall-university": 44,
+      "university-downtown": 21,
+      "downtown-university": 21,
+      "mall-downtown": 6,
+      "downtown-mall": 6
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "suburb",
+      "dropoff": "park",
+      "time_window": [
+        9.75,
+        9.366666666666667
+      ],
+      "deadline": 59
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "university",
+      "dropoff": "mall",
+      "time_window": [
+        13.75,
+        13.416666666666666
+      ],
+      "deadline": 42
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "suburb",
+      "dropoff": "stadium",
+      "time_window": [
+        17.5,
+        17.116666666666667
+      ],
+      "deadline": 33
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "downtown",
+      "capacity": 6,
+      "fuel": 98
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "stadium",
+      "capacity": 3,
+      "fuel": 64
+    }
+  ],
+  "description": "Urban ride-sharing with disruptions instance",
+  "disruptions": [
+    {
+      "type": "construction",
+      "route": "stadium-park",
+      "start_time": 9,
+      "duration": 135,
+      "impact": "reduced_capacity"
+    },
+    {
+      "type": "traffic_delay",
+      "route": "suburb-park",
+      "delay": 23,
+      "start_time": 8,
+      "duration": 47,
+      "impact": "increased_travel_time"
+    },
+    {
+      "type": "accident",
+      "location": "downtown",
+      "start_time": 9,
+      "duration": 68,
+      "impact": "local_traffic_congestion"
+    }
+  ]
+}

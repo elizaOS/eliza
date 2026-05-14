@@ -1,0 +1,150 @@
+{
+  "instance_id": "p3_instance_043",
+  "city_map": {
+    "locations": [
+      "suburb",
+      "university",
+      "downtown",
+      "airport",
+      "hospital",
+      "stadium",
+      "mall",
+      "park"
+    ],
+    "distances": {
+      "suburb-university": 26,
+      "university-suburb": 26,
+      "suburb-downtown": 21,
+      "downtown-suburb": 21,
+      "suburb-airport": 14,
+      "airport-suburb": 14,
+      "suburb-hospital": 21,
+      "hospital-suburb": 21,
+      "suburb-stadium": 45,
+      "stadium-suburb": 45,
+      "suburb-mall": 40,
+      "mall-suburb": 40,
+      "suburb-park": 22,
+      "park-suburb": 22,
+      "university-downtown": 34,
+      "downtown-university": 34,
+      "university-airport": 36,
+      "airport-university": 36,
+      "university-hospital": 33,
+      "hospital-university": 33,
+      "university-stadium": 37,
+      "stadium-university": 37,
+      "university-mall": 32,
+      "mall-university": 32,
+      "university-park": 43,
+      "park-university": 43,
+      "downtown-airport": 31,
+      "airport-downtown": 31,
+      "downtown-hospital": 45,
+      "hospital-downtown": 45,
+      "downtown-stadium": 36,
+      "stadium-downtown": 36,
+      "downtown-mall": 38,
+      "mall-downtown": 38,
+      "downtown-park": 15,
+      "park-downtown": 15,
+      "airport-hospital": 5,
+      "hospital-airport": 5,
+      "airport-stadium": 31,
+      "stadium-airport": 31,
+      "airport-mall": 20,
+      "mall-airport": 20,
+      "airport-park": 26,
+      "park-airport": 26,
+      "hospital-stadium": 44,
+      "stadium-hospital": 44,
+      "hospital-mall": 32,
+      "mall-hospital": 32,
+      "hospital-park": 16,
+      "park-hospital": 16,
+      "stadium-mall": 14,
+      "mall-stadium": 14,
+      "stadium-park": 6,
+      "park-stadium": 6,
+      "mall-park": 37,
+      "park-mall": 37
+    }
+  },
+  "ride_requests": [
+    {
+      "passenger_id": "p001",
+      "pickup": "stadium",
+      "dropoff": "hospital",
+      "time_window": [
+        16.75,
+        16.25
+      ],
+      "deadline": 40
+    },
+    {
+      "passenger_id": "p002",
+      "pickup": "downtown",
+      "dropoff": "suburb",
+      "time_window": [
+        15.0,
+        15.633333333333333
+      ],
+      "deadline": 34
+    },
+    {
+      "passenger_id": "p003",
+      "pickup": "hospital",
+      "dropoff": "downtown",
+      "time_window": [
+        8.25,
+        8.733333333333333
+      ],
+      "deadline": 55
+    },
+    {
+      "passenger_id": "p004",
+      "pickup": "park",
+      "dropoff": "mall",
+      "time_window": [
+        17.75,
+        17.116666666666667
+      ],
+      "deadline": 54
+    },
+    {
+      "passenger_id": "p005",
+      "pickup": "hospital",
+      "dropoff": "park",
+      "time_window": [
+        11.25,
+        11.666666666666666
+      ],
+      "deadline": 34
+    },
+    {
+      "passenger_id": "p006",
+      "pickup": "mall",
+      "dropoff": "park",
+      "time_window": [
+        13.75,
+        13.233333333333333
+      ],
+      "deadline": 39
+    }
+  ],
+  "vehicles": [
+    {
+      "vehicle_id": "v001",
+      "location": "suburb",
+      "capacity": 5,
+      "fuel": 65
+    },
+    {
+      "vehicle_id": "v002",
+      "location": "airport",
+      "capacity": 4,
+      "fuel": 52
+    }
+  ],
+  "description": "Urban ride-sharing instance"
+}
