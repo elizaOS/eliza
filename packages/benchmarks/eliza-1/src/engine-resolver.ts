@@ -76,8 +76,7 @@ interface SharedPathsLike {
  *   ELIZA_STATE_DIR > MILADY_STATE_DIR > ~/.${ELIZA_NAMESPACE ?? "eliza"}
  */
 function benchElizaModelsDir(): string {
-  const explicit =
-    process.env.ELIZA_STATE_DIR ?? process.env.MILADY_STATE_DIR;
+  const explicit = process.env.ELIZA_STATE_DIR ?? process.env.MILADY_STATE_DIR;
   const ns = process.env.ELIZA_NAMESPACE ?? "eliza";
   const stateDir = explicit ?? path.join(homedir(), `.${ns}`);
   return path.join(stateDir, "local-inference", "models");
@@ -105,10 +104,10 @@ async function tryImport<T>(spec: string): Promise<T | null> {
 }
 
 function pluginLocalInferenceServicesUrl(): string {
-	return new URL(
-		"../../../../plugins/plugin-local-inference/src/services/index.ts",
-		import.meta.url,
-	).href;
+  return new URL(
+    "../../../../plugins/plugin-local-inference/src/services/index.ts",
+    import.meta.url,
+  ).href;
 }
 
 /**
