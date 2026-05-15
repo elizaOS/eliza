@@ -3,9 +3,9 @@
   "id": "asr",
   "version": "0.1.0",
   "hfRepo": "elizaos/eliza-1-voice-asr",
-  "hfRevision": "main",
+  "hfRevision": "c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f",
   "publishedToHfAt": "2026-05-14T00:00:00Z",
-  "displayName": "Eliza-1 ASR — Qwen3-ASR GGUF",
+  "displayName": "Eliza-1 ASR \u2014 Qwen3-ASR GGUF",
   "purpose": "Streaming speech recognition (ASR) for the Eliza-1 voice pipeline",
   "architecture": "Qwen3-ASR (whisper-style encoder-decoder)",
   "license": "Apache-2.0",
@@ -19,21 +19,25 @@
   },
   "files": [
     {
-      "filename": "eliza-1-asr-q4_k_m.gguf",
+      "filename": "eliza-1-asr-q8_0.gguf",
       "role": "primary-weights",
-      "quant": "q4_k_m",
+      "quant": "q8_0",
       "format": "gguf",
-      "approxSizeBytes": 918748160,
-      "sha256": "TBD-populated-by-publish-pipeline"
+      "approxSizeBytes": 2165034944,
+      "sha256": "58e22d0532d4eacaf034cfac17a6fed159f37c41390c710186783be439d1fc57",
+      "sizeBytes": 2165034944,
+      "assetStatus": "available"
     },
     {
       "filename": "eliza-1-asr-mmproj.gguf",
       "role": "audio-projector",
-      "quant": "fp16",
+      "quant": "q8_0",
       "format": "gguf",
-      "approxSizeBytes": 52428800,
-      "sha256": "TBD-populated-by-publish-pipeline"
+      "approxSizeBytes": 355709344,
+      "sha256": "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+      "sizeBytes": 355709344,
+      "assetStatus": "available"
     }
   ],
-  "notes": "Primary ASR model for Eliza-1 voice pipeline. The mmproj file is the audio projector connecting the Whisper-style encoder to the Qwen3 decoder. Q4_K_M quant; 16kHz mono input expected."
+  "notes": "Primary ASR model for Eliza-1 voice pipeline. Public payload is Q8_0; Q4_K_M requires a downstream quantization build before publishing a Q4 artifact. 16kHz mono input expected."
 }

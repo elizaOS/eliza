@@ -20,6 +20,7 @@ export type {
   AndroidCameraOpenOptions,
   AndroidCameraOpenResult,
   AndroidComputerUseBridge,
+  AndroidFeatureCheckResult,
   AndroidMemoryPressureSnapshot,
   AndroidPressureLevel,
   AppUsageEntry,
@@ -35,6 +36,8 @@ export type {
 export {
   ANDROID_BRIDGE_JS_NAME,
   ANDROID_DEFAULT_FPS,
+  featureCheck as androidFeatureCheck,
+  getAndroidBridge,
 } from "./android-bridge.js";
 export {
   findIosAppIntent,
@@ -58,6 +61,7 @@ export type {
   IosBridgeProbe,
   IosBridgeResult,
   IosComputerUseBridge,
+  IosFeatureCheckResult,
   IPressureSignal,
   MemoryPressureSample,
   ReplayKitForegroundFrame,
@@ -68,6 +72,8 @@ export type {
   VisionOcrResult,
 } from "./ios-bridge.js";
 export {
+  featureCheck as iosFeatureCheck,
+  getIosBridge,
   IOS_APP_GROUP_ID,
   IOS_BRIDGE_JS_NAME,
   REPLAYKIT_FOREGROUND_MAX_BUFFER,

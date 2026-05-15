@@ -705,7 +705,8 @@ async function loadBunFfi(): Promise<BunFfiLoadResult> {
   // We surface the real error so AOSP-only debugging on Android can see the
   // root cause instead of the generic "bun:ffi unavailable" message.
   try {
-    const mod = await import("bun:ffi");
+    const bunFfiSpecifier = "bun:ffi";
+    const mod = await import(bunFfiSpecifier);
     if (!isBunFFIModule(mod)) {
       throw new Error("bun:ffi module did not expose the expected FFI API");
     }

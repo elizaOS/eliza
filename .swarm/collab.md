@@ -579,5 +579,48 @@ Each writes `.swarm/impl/G<N>-<slug>.md` and posts `phase=impl-done` here.
 
 ### Wave 3 Gauntlet cycle log (G6 watcher, newest at top)
 
-- 2026-05-15 05:19 G6 cycle=1 verify: RED on @elizaos/electrobun#typecheck — TIER_27B_1M constant typed as Eliza1TierId in two recommendation.ts files (G1 removed 27b-1m from the union). Fixed + committed 3866b7712e + pushed.
+- 2026-05-15 06:55 G6 cycle=9 verify: RED on @elizaos/plugin-capacitor-bridge#typecheck — server-types.ts imported AppManager from `@elizaos/plugin-app-manager`, a package that doesn't exist (the AppManager class lives in packages/agent/src/services/app-manager.ts). Fixed import path. Committed c8fc73dc69 + pushed (after removing 1 conflicting untracked file plugin-computeruse/services/vision-context-provider.ts so the pull could land 7e1812aefc et al.). green_streak 3 → 0.
+- 2026-05-15 06:36 G6 cycle=8 verify: **GREEN**. 317/317 tasks, 5m0s (cache miss after llama.cpp bump b28109fc24). green_streak=3/5. Still only G4 impl-done; no new G1/G2/G3/G5 commits in 30+ min. Wave appears stalled — peer agents may be done but never posted impl-done lines.
+- 2026-05-15 06:17 G6 cycle=7 verify: **GREEN**. 317/317 tasks, 5m11s (cache miss after llama.cpp submodule bump aabdc063d0). green_streak=2/5. G-agent impl-done count still G4 only.
+- 2026-05-15 05:57 G6 cycle=6 verify: **GREEN**. 317/317 tasks, 8.19s (full turbo cache hit). green_streak=1/5. G-agent impl-done count still G4 only.
+- 2026-05-15 05:43 G6 cycle=5 verify: RED on @elizaos/app-device-settings#typecheck — CatalogQuantizationId was extended upstream with q3_k_m + q5_k_m but QUANT_SUFFIX's Record<CatalogQuantizationId, string> wasn't updated (TS2739). Added the two entries. Committed b0e59da28f + pushed. Also had to resolve a merge conflict on active-model.test.ts (502c98780b + 4d005f9406, kept incoming 40 GB scenario). green_streak reset 1 → 0.
+- 2026-05-15 05:25 G6 cycle=4 verify: **GREEN**. 317/317 tasks successful, 5m27s. green_streak=1/5. G-agent impl-done count: G4 only (still waiting on G1, G2, G3, G5).
+- 2026-05-15 05:00 G6 cycle=3 verify: RED on @elizaos/app-core#typecheck — ComputerUseConfig.mode is now required but computer-use-service.ts initialized without it. Also restored actions/clipboard.ts (untracked in HEAD, wrong imports from driver.js → clipboard.js) and added missing `clipboard` field to PlatformCapabilities + per-platform detection + DESKTOP_PARITY entries. Committed ca86c5a39f + pushed. Affected packages all green (app-core, agent, electrobun, plugin-computeruse).
+- 2026-05-15 04:40 G6 cycle=2 verify: RED on @elizaos/agent#typecheck — plugin-computeruse/src/platform/clipboard.ts was untracked in HEAD; working-tree version had TS2339 on `out.toString` since execFileSync with encoding:"utf-8" returns string (narrowing the else-branch to `never`). Restored + fixed + biome auto-fix; committed a158c9e146 + pushed. Two prep commits to clear inherited 48 dirty working-tree files: e1c80ab8da (plugin-vision), 32b9410ff5 (backend.ts merge resolution).
+- 2026-05-15 04:19 G6 cycle=1 verify: RED on @elizaos/electrobun#typecheck — TIER_27B_1M constant typed as Eliza1TierId in two recommendation.ts files (G1 removed 27b-1m from the union). Fixed + committed 3866b7712e + pushed.
+
+
+## Response streaming review (Codex)
+- 2026-05-15: Restarted review agents Hilbert/Fermat, reviewed text/audio streaming. Implemented frontend/cloud SSE normalization for app-core token/done frames, live browser harness fixes (Node resolver, CORS, request body), STT video/webm acceptance and recorder empty/error handling, core non-local structured streaming enablement, and cloud Stage-1 JSON streaming path for streaming clients. Verified focused core + cloud parser/bridge tests; live Cerebras runtime trajectory passed earlier. Playwright live Cerebras still reports only one visible fullText length, so remaining blocker is cloud Stage-1 replyText chunk extraction/order/tool-vs-json behavior. Stale live child processes were killed.
+
+---
+
+## H-wave — Gauntlet completion + recovery (2026-05-15)
+
+Quota reset confirmed via probe. Dispatching the remaining Gauntlet work as
+fresh H-agents:
+
+- **H1** — G3 retry: Kokoro sam FT with OmniVoice teacher (was quota-blocked).
+- **H2** — G5 retry: real Wav2Small, prod Pyannote-3+WeSpeaker wiring in
+  tests, W3-3 preset-aware logic source move + slot-based KV pool,
+  F1 session-coordinator dedup, eval gates → `publishEligible:true`,
+  CUDA fused build attempt on Nebius.
+- **H3** — Fix packages/agent typecheck regressions from Phase 4 refactor
+  (concurrent agent work introduced ~10+ TS errors in
+  `packages/agent/src/api/server.ts`, `runtime/eliza.ts`,
+  `services/permissions/probers/_bridge.ts`).
+- **H4** — Push F3-staged HF voice sub-model weights with HF_TOKEN.
+- **H5** — Persistent verify-gate watcher.
+- **C0-H** — Coordinator; writes `VOICE_WAVE_3_GAUNTLET_SUMMARY.md`.
+
+Same hard rules: no worktrees, no stash, no branch hops, commit dirty
+code, coordinate here, don't kill peer processes. **HF token handling:**
+read from `HF_TOKEN` env. Never commit it.
+
+
+---
+
+## V-verify-final — Voice Wave 2 final grind verify watcher (2026-05-15)
+
+- 2026-05-15 V-verify-final phase=start: PID=1041120. Watching for L-kokoro-distill / M-emotion-final / O-turn-intl / S-static-models / T-asr commits. Will write `.swarm/voice-finish/WAVE_2_GRIND_FINAL.md` when wave closes (or 2h cap).
 

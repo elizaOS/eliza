@@ -45,6 +45,7 @@ export type VoiceModelQuant =
   | "q6_k"
   | "q8_0"
   | "fp16"
+  | "onnx-fp32"
   | "onnx-fp16"
   | "onnx-int8";
 
@@ -179,7 +180,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-15T04:50:24Z",
     hfRepo: "elizaos/eliza-1-voice-omnivoice",
-    hfRevision: "aa1bdb6731d7c4227e4fcc0da8cb87ea69c2ad28",
+    hfRevision: "b766eb23d5f6c84d580973c0f2013b6fcbd561c0",
     ggufAssets: [
       {
         filename: "omnivoice-base-q4_k_m.gguf",
@@ -202,13 +203,12 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
         sizeBytes: 656_395_008,
         quant: "q8_0",
       },
-    ],
-    missingAssets: [
       {
         filename: "presets/voice-preset-same.bin",
+        sha256:
+          "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6",
+        sizeBytes: 716,
         quant: "fp16",
-        expectedSizeBytes: 8_192,
-        reason: "missing-from-local-staging",
       },
     ],
     evalDeltas: { netImprovement: true },
@@ -299,24 +299,33 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-emotion",
-    hfRevision: "edfeb4e5704c8ca13eccf01cc78324d9422824d0",
-    ggufAssets: [],
-    missingAssets: [
+    hfRevision: "da50fd9719dd78857829b144d6f72ce3c4e3464a",
+    ggufAssets: [
       {
         filename: "wav2small-msp-dim-int8.onnx",
+        sha256:
+          "2fcde4aa2a6881b0e7407a3a706fab1889b69233139ee10b8669795b02b06efc",
+        sizeBytes: 516_877,
         quant: "onnx-int8",
-        expectedSizeBytes: 122_880,
-        reason: "missing-from-local-staging",
       },
       {
         filename: "wav2small-msp-dim-fp32.onnx",
-        quant: "onnx-fp16",
-        expectedSizeBytes: 491_520,
-        reason: "missing-from-local-staging",
+        sha256:
+          "3f5a8bf8f035132798b170c57ab61b90d52bb0cb0dd1ef95fd40a97f466f65f7",
+        sizeBytes: 1_211_917,
+        quant: "onnx-fp32",
+      },
+      {
+        filename: "wav2small-msp-dim-fp32.onnx.data",
+        sha256:
+          "5a3a84e879c786317570b551ee6240294c8deded27856a52d872c03b12c63d01",
+        sizeBytes: 989_472,
+        quant: "onnx-fp32",
       },
     ],
-    evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — Wav2Small acoustic V-A-D classifier.",
+    evalDeltas: { f1Delta: -0.0308, netImprovement: false },
+    changelogEntry:
+      "Initial release — Wav2Small acoustic V-A-D classifier staged with evalGatePass=false for projection macro-F1; auxiliary head macro-F1=0.355.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -324,7 +333,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-kokoro",
-    hfRevision: "04d3d497fec65a8d31f1d48d4fd69e971ea83a9b",
+    hfRevision: "967f7449f79414d2b49db3b2441ea683630c11ab",
     ggufAssets: [
       {
         filename: "kokoro-v1.0-q4.onnx",
@@ -340,13 +349,12 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
         sizeBytes: 522_240,
         quant: "fp16",
       },
-    ],
-    missingAssets: [
       {
         filename: "voices/af_same.bin",
+        sha256:
+          "cf2810d3eb73cdcff22e285b0c51711773acb99b6d7606656f3c63ee414c628e",
+        sizeBytes: 522_240,
         quant: "fp16",
-        expectedSizeBytes: 524_288,
-        reason: "missing-from-local-staging",
       },
     ],
     evalDeltas: { netImprovement: true },
@@ -421,14 +429,28 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-wakeword",
-    hfRevision: "d6fe9bfb2b9dac99e7f7c79cfdc60025bfaab721",
-    ggufAssets: [],
-    missingAssets: [
+    hfRevision: "85bef810f8bb0ca57e8625ec36abe1c617fd3e39",
+    ggufAssets: [
+      {
+        filename: "melspectrogram.onnx",
+        sha256:
+          "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
+        sizeBytes: 1_087_958,
+        quant: "onnx-fp32",
+      },
+      {
+        filename: "embedding_model.onnx",
+        sha256:
+          "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
+        sizeBytes: 1_326_578,
+        quant: "onnx-fp32",
+      },
       {
         filename: "hey-eliza-int8.onnx",
+        sha256:
+          "e565952901cd4203baacef7cb8700891c9bee4e6f42fc9bc0aa03b9c39a2da92",
+        sizeBytes: 630_032,
         quant: "onnx-int8",
-        expectedSizeBytes: 1_048_576,
-        reason: "missing-from-local-staging",
       },
     ],
     evalDeltas: { netImprovement: true },

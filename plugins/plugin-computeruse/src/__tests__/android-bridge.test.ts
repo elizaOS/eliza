@@ -395,6 +395,18 @@ describe("onTrimMemory → dispatchMemoryPressure call chain", () => {
   });
 });
 
+describe("Android bridge featureCheck", () => {
+  it("reports unsupported when Capacitor is absent (Node test host)", async () => {
+    const { featureCheck, getAndroidBridge } = await import(
+      "../mobile/android-bridge.js"
+    );
+    const result = featureCheck();
+    expect(result.supported).toBe(false);
+    expect(result.reason).toMatch(/Capacitor/i);
+    expect(getAndroidBridge()).toBeNull();
+  });
+});
+
 // ── Fake bridge builder ───────────────────────────────────────────────────────
 
 function buildFakeAndroidBridge(

@@ -27,7 +27,7 @@ import {
   chromium,
   type Page,
 } from "playwright-core";
-import { afterAll, beforeAll, expect } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
 
@@ -53,14 +53,7 @@ if (LIVE_TESTS_ENABLED && !CHROME_AVAILABLE) {
   );
 }
 
-const REPO_ROOT = path.resolve(
-  import.meta.dirname,
-  "..",
-  "..",
-  "..",
-  "..",
-  "..",
-);
+const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 const READY_TIMEOUT_MS = 120_000;
 const STREAM_DEADLINE_MS = 90_000;
 
@@ -128,6 +121,7 @@ function makeHarnessHtml(apiBase: string): string {
 
     window.__samples = [];
     window.__startStream = async function(prompt) {
+      try {
       status.textContent = 'creating-conversation';
       const created = await fetch(apiBase + '/api/conversations', {
         method: 'POST',
@@ -149,7 +143,7 @@ function makeHarnessHtml(apiBase: string): string {
       const resp = await fetch(apiBase + '/api/conversations/' + convId + '/messages/stream', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ content: { text: prompt } })
+        body: JSON.stringify({ text: prompt })
       });
       if (!resp.ok || !resp.body) {
         status.textContent = 'stream-failed:' + resp.status;
@@ -181,6 +175,9 @@ function makeHarnessHtml(apiBase: string): string {
         }
       }
       status.textContent = 'done';
+      } catch (error) {
+        status.textContent = 'exception:' + (error && error.message ? error.message : String(error));
+      }
     };
   </script>
 </body>
@@ -225,6 +222,7 @@ async function startStack(): Promise<Stack> {
         ALLOW_NO_DATABASE: "",
         ELIZA_API_PORT: String(apiPort),
         ELIZA_PORT: String(apiPort),
+        ELIZA_ALLOWED_ORIGINS: `http://127.0.0.1:${harnessPort}`,
         ELIZA_STATE_DIR: stateDir,
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -319,7 +317,9 @@ describeLive("streaming-visible-text live e2e", () => {
       if (!stack || !page) throw new Error("stack/page not initialized");
 
       await page.goto(stack.harnessUrl);
-      await page.waitForSelector('[data-testid="assistant-message"]');
+      await page.waitForSelector('[data-testid="assistant-message"]', {
+        state: "attached",
+      });
 
       // Kick off the streamed completion.
       await page.evaluate(() => {
@@ -356,7 +356,8 @@ describeLive("streaming-visible-text live e2e", () => {
         if (status === "done" && len > 0) break;
         if (
           status.startsWith("create-failed") ||
-          status.startsWith("stream-failed")
+          status.startsWith("stream-failed") ||
+          status.startsWith("exception:")
         ) {
           throw new Error(`Harness reported error: ${status}`);
         }

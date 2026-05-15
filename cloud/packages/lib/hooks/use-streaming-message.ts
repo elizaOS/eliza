@@ -256,7 +256,7 @@ export async function sendStreamingMessage({
  * Parse a single SSE message block and invoke appropriate callbacks.
  * Handles proper SSE format with multi-line data support.
  */
-function processSSEMessage(
+export function processSSEMessage(
   message: string,
   onMessage: (message: StreamingMessage) => void,
   onChunk?: (chunk: StreamChunkData) => void,
@@ -300,8 +300,16 @@ function processSSEMessage(
   // Handle different event types
   switch (eventType) {
     case "message":
-      // Validate message structure before passing to callback
-      if (isValidStreamingMessage(data)) {
+      if (isLocalTokenFrame(data)) {
+        onChunk?.({
+          messageId: data.messageId ?? "local-stream",
+          chunk: data.text,
+          timestamp: Date.now(),
+        });
+      } else if (isLocalDoneFrame(data)) {
+        onComplete?.();
+      } else if (isValidStreamingMessage(data)) {
+        // Validate message structure before passing to callback
         onMessage(data);
       } else {
         console.warn("[Stream] Invalid message format:", data);
@@ -342,6 +350,27 @@ function processSSEMessage(
     default:
       console.debug(`[Stream] Unhandled event type: ${eventType}`, data);
   }
+}
+
+function isLocalTokenFrame(data: unknown): data is {
+  type: "token";
+  text: string;
+  fullText?: string;
+  messageId?: string;
+} {
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    (data as { type?: unknown }).type === "token" &&
+    typeof (data as { text?: unknown }).text === "string"
+  );
+}
+
+function isLocalDoneFrame(data: unknown): data is {
+  type: "done";
+  fullText?: string;
+} {
+  return typeof data === "object" && data !== null && (data as { type?: unknown }).type === "done";
 }
 
 /**

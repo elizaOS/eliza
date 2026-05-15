@@ -187,4 +187,37 @@ describe("ResponseSkeletonStreamExtractor", () => {
 
 		expect(chunks.join("")).toBe("Line 1\nLine 2 \u2728");
 	});
+
+	it("streams selected fields when provider JSON field order differs", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			unordered: true,
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		extractor.push('{"contexts":[],"reply');
+		extractor.push('Text":"Hello ');
+		extractor.push('there","shouldRespond":"RESPOND","facts":[]}');
+		extractor.flush();
+
+		expect(chunks).toEqual(["Hello ", "there"]);
+	});
+
+	it("hides think tags while streaming selected JSON fields", () => {
+		const chunks: string[] = [];
+		const extractor = new ResponseSkeletonStreamExtractor({
+			skeleton,
+			streamFields: ["replyText"],
+			unordered: true,
+			onChunk: (chunk) => chunks.push(chunk),
+		});
+
+		extractor.push('{"replyText":"Hello <thi');
+		extractor.push('nk>secret</think>there"}');
+		extractor.flush();
+
+		expect(chunks.join("")).toBe("Hello there");
+	});
 });

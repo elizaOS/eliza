@@ -308,6 +308,11 @@ BENCHMARK_STRATEGIES: dict[str, BaselineStrategy] = {
         "Uniform over visual question choices",
         True,
     ),
+    "vision_language": BaselineStrategy(
+        "multiple_choice",
+        "Uniform over vision-language smoke fixtures",
+        True,
+    ),
     "mint": BaselineStrategy(
         "function_call",
         "Pick uniformly from MINT tool set, junk args",

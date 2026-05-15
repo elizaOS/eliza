@@ -22,6 +22,7 @@ try:
         _score_from_clawbench_json,
         _score_from_configbench_json,
         _score_from_contextbench_json,
+        _score_from_eliza_format_json,
         _score_from_gaia_json,
         _score_from_gauntlet_json,
         _score_from_gsm8k_json,
@@ -73,6 +74,7 @@ except ImportError:
         _score_from_clawbench_json,
         _score_from_configbench_json,
         _score_from_contextbench_json,
+        _score_from_eliza_format_json,
         _score_from_gaia_json,
         _score_from_gauntlet_json,
         _score_from_gsm8k_json,
@@ -568,7 +570,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--model", model.model])
         provider_name = (model.provider or "").strip().lower()
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"eliza", "hermes", "openclaw"} or provider_name == "cerebras":
+        if extra.get("mock") is True or provider_name == "mock":
+            args.extend(["--provider", "heuristic"])
+        elif agent in {"eliza", "hermes", "openclaw"} or provider_name == "cerebras":
             args.extend(["--provider", "eliza"])
         elif model.provider in {"openai", "anthropic", "groq", "heuristic", "eliza", "vllm"}:
             args.extend(["--provider", model.provider])
@@ -841,6 +845,34 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _visualwebbench_result(output_dir: Path) -> Path:
         return output_dir / "visualwebbench-results.json"
 
+    def _vision_language_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
+        benchmark = str(extra.get("vision_benchmark") or extra.get("sub_benchmark") or "textvqa").strip().lower()
+        if benchmark not in {"textvqa", "docvqa", "chartqa", "screenspot", "osworld"}:
+            benchmark = "textvqa"
+        tier = str(extra.get("tier") or "stub").strip() or "stub"
+        samples = extra.get("samples")
+        sample_count = str(samples if isinstance(samples, int) and samples > 0 else 5)
+        args = [
+            "bun",
+            "run",
+            "src/runner.ts",
+            "--smoke",
+            "--stub",
+            "--tier",
+            tier,
+            "--benchmark",
+            benchmark,
+            "--samples",
+            sample_count,
+            "--output",
+            str(output_dir / "vision-language-results.json"),
+        ]
+        _ = model
+        return args
+
+    def _vision_language_result(output_dir: Path) -> Path:
+        return output_dir / "vision-language-results.json"
+
     def _rlm_bench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for RLM benchmark.
 
@@ -981,8 +1013,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
-        (model.provider or "").strip().lower()
-        if agent in {"deterministic", "python"}:
+        provider_name = (model.provider or "").strip().lower()
+        if agent in {"deterministic", "python"} or extra.get("mock") is True or provider_name == "mock":
             args.extend(["--mode", "deterministic"])
         else:
             args.extend(["--mode", "eliza"])
@@ -1136,7 +1168,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         mode = extra.get("mode")
-        if isinstance(mode, str) and mode.strip() in {"execution", "conceptual"}:
+        provider_name = (model.provider or "").strip().lower()
+        if extra.get("mock") is True or provider_name == "mock":
+            # Conceptual standalone mode is the only no-key path in this
+            # adapter. It is useful for smoke/readiness, not scored parity.
+            args.extend(["--mode", "conceptual"])
+        elif isinstance(mode, str) and mode.strip() in {"execution", "conceptual"}:
             args.extend(["--mode", mode.strip()])
         else:
             # Default to execution: real file/exec validation, not keyword matching.
@@ -1208,12 +1245,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider_name = (model.provider or "").strip().lower()
         if isinstance(profile_raw, str) and profile_raw.strip():
             profile = profile_raw.strip().lower()
+        elif extra.get("mock") is True or provider_name == "mock":
+            profile = "mock"
+        elif not os.environ.get("GROQ_API_KEY"):
+            profile = "mock"
         elif provider_name == "elevenlabs":
             profile = "elevenlabs"
         else:
             profile = "groq"
-        if profile not in {"groq", "elevenlabs"}:
-            raise ValueError(f"voicebench: unsupported profile '{profile}' (expected groq or elevenlabs)")
+        if profile not in {"groq", "elevenlabs", "mock"}:
+            raise ValueError(f"voicebench: unsupported profile '{profile}' (expected groq, elevenlabs, or mock)")
         args.append(f"--profile={profile}")
         iterations = extra.get("iterations")
         if isinstance(iterations, int) and iterations > 0:
@@ -2252,6 +2293,23 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             extract_score=_score_from_visualwebbench_json,
         ),
         BenchmarkDefinition(
+            id="vision_language",
+            display_name="Vision-Language Bench",
+            description="TextVQA, DocVQA, ChartQA, ScreenSpot, and OSWorld vision-language smoke harness",
+            cwd_rel="benchmarks/vision-language",
+            requirements=BenchmarkRequirements(
+                env_vars=(),
+                paths=(),
+                notes=(
+                    "Orchestrator smoke uses bundled fixtures with the deterministic "
+                    "stub runtime. Full runs require upstream datasets/model assets."
+                ),
+            ),
+            build_command=_vision_language_cmd,
+            locate_result=_vision_language_result,
+            extract_score=_score_from_eliza_format_json,
+        ),
+        BenchmarkDefinition(
             id="rlm_bench",
             display_name="RLM-Bench",
             description="Recursive Language Model benchmark (S-NIAH, OOLONG) - arXiv:2512.24601",
@@ -2387,7 +2445,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 env_vars=(),
                 paths=("benchmarks/voicebench/run.sh", "benchmarks/voicebench/typescript/src/bench.ts"),
                 notes=(
-                    "Bun runtime via run.sh. Profiles: groq (needs GROQ_API_KEY), "
+                    "Bun runtime via run.sh. Profiles: mock (no credentials, scoreable smoke artifact), "
+                    "groq (needs GROQ_API_KEY), "
                     "elevenlabs (needs GROQ_API_KEY and ELEVENLABS_API_KEY). Audio fixture resolved from "
                     "VOICEBENCH_AUDIO_PATH or repo defaults. "
                     "Reports avg/p95/p99 end-to-end latency; lower is better."

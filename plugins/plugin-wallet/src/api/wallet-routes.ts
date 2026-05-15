@@ -41,6 +41,7 @@ export interface WalletRpcReadinessSnapshot {
   avalancheRpcUrls: string[];
   solanaRpcUrls: string[];
 }
+
 import {
   normalizeWalletRpcSelections,
   PostWalletGenerateRequestSchema,
@@ -89,7 +90,9 @@ type CloudHelperBundle = {
 };
 
 async function loadCloudHelpers(): Promise<CloudHelperBundle> {
-  return (await import("@elizaos/plugin-elizacloud")) as unknown as CloudHelperBundle;
+  return (await import(
+    "@elizaos/plugin-elizacloud"
+  )) as unknown as CloudHelperBundle;
 }
 
 const WALLET_CONFIG_COMPAT_KEYS = new Set([
@@ -214,9 +217,7 @@ export interface WalletRouteDependencies {
   fetchSolanaBalances: (
     address: string,
     heliusKey: string,
-  ) => Promise<
-    Omit<NonNullable<WalletBalancesResponse["solana"]>, "address">
-  >;
+  ) => Promise<Omit<NonNullable<WalletBalancesResponse["solana"]>, "address">>;
   fetchSolanaNativeBalanceViaRpc: (
     address: string,
     rpcUrls: string[],
@@ -237,7 +238,9 @@ export interface WalletRouteDependencies {
   };
   deriveSolanaAddress: (privateKey: string) => string;
   setSolanaWalletEnv: (privateKey: string) => void;
-  resolveWalletRpcReadiness: (config: ElizaConfig) => WalletRpcReadinessSnapshot;
+  resolveWalletRpcReadiness: (
+    config: ElizaConfig,
+  ) => WalletRpcReadinessSnapshot;
   resolveWalletNetworkMode: (config: ElizaConfig) => "mainnet" | "testnet";
   getStoredWalletRpcSelections: (config: ElizaConfig) => WalletRpcSelections;
   applyWalletRpcConfigUpdate: (
@@ -1336,7 +1339,10 @@ export async function handleWalletRoutes(
         return true;
       }
       try {
-        json(res, await signLocalBrowserSolanaMessage(body, deriveSolanaAddress));
+        json(
+          res,
+          await signLocalBrowserSolanaMessage(body, deriveSolanaAddress),
+        );
       } catch (err) {
         error(res, err instanceof Error ? err.message : String(err), 503);
       }

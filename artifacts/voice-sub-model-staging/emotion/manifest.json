@@ -3,23 +3,33 @@
   "id": "voice-emotion",
   "version": "0.1.0",
   "hfRepo": "elizaos/eliza-1-voice-emotion",
-  "hfRevision": "main",
+  "hfRevision": "da50fd9719dd78857829b144d6f72ce3c4e3464a",
   "publishedToHfAt": "2026-05-14T00:00:00Z",
-  "displayName": "Eliza-1 Voice Emotion — Wav2Small distilled",
+  "displayName": "Eliza-1 Voice Emotion \u2014 Wav2Small distilled",
   "purpose": "Continuous valence-arousal-dominance emotion regression from audio",
   "architecture": "Wav2Small (student distilled from audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim)",
   "license": "Apache-2.0",
-  "attribution": "Student distilled from audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim (CC-BY-NC-SA-4.0 teacher — NOT bundled). Architecture: Wagner et al., arXiv:2408.13920.",
+  "attribution": "Student distilled from audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim (CC-BY-NC-SA-4.0 teacher \u2014 NOT bundled). Architecture: Wagner et al., arXiv:2408.13920.",
   "runtime": "onnxruntime-node",
   "minBundleVersion": "0.0.0",
   "evalMetrics": {
     "cccValenceMspPodcast": 0.65,
     "cccArousalMspPodcast": 0.71,
     "cccDominanceMspPodcast": 0.43,
-    "paramCount": 72256,
+    "paramCount": 71666,
     "sampleRate": 16000,
     "outputDims": 3,
-    "outputLabels": ["valence", "arousal", "dominance"]
+    "outputLabels": [
+      "valence",
+      "arousal",
+      "dominance"
+    ],
+    "mseVadRavdess": 0.1350007802248001,
+    "macroF1RavdessProjection": 0.3192081316463701,
+    "macroF1RavdessAux": 0.3550366459436933,
+    "accuracyRavdess": 0.4603174603174603,
+    "evalGatePass": false,
+    "evalGateThreshold": 0.35
   },
   "files": [
     {
@@ -28,7 +38,11 @@
       "quant": "onnx-int8",
       "format": "onnx",
       "approxSizeBytes": 122880,
-      "sha256": "TBD-populated-by-publish-pipeline"
+      "sha256": "2fcde4aa2a6881b0e7407a3a706fab1889b69233139ee10b8669795b02b06efc",
+      "sizeBytes": 516877,
+      "assetStatus": "available",
+      "sourceRepo": "local-distill",
+      "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.onnx"
     },
     {
       "filename": "wav2small-msp-dim-fp32.onnx",
@@ -36,8 +50,24 @@
       "quant": "onnx-fp16",
       "format": "onnx",
       "approxSizeBytes": 491520,
-      "sha256": "TBD-populated-by-publish-pipeline"
+      "sha256": "3f5a8bf8f035132798b170c57ab61b90d52bb0cb0dd1ef95fd40a97f466f65f7",
+      "sizeBytes": 1211917,
+      "assetStatus": "available",
+      "sourceRepo": "local-distill",
+      "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.fp32.onnx"
+    },
+    {
+      "filename": "wav2small-msp-dim-fp32.onnx.data",
+      "role": "fp32-reference-external-data",
+      "quant": "onnx-fp32",
+      "format": "onnx-data",
+      "approxSizeBytes": 967000,
+      "sha256": "5a3a84e879c786317570b551ee6240294c8deded27856a52d872c03b12c63d01",
+      "sizeBytes": 989472,
+      "assetStatus": "available",
+      "sourceRepo": "local-distill",
+      "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.fp32.onnx.data"
     }
   ],
-  "notes": "IMPORTANT: The CC-BY-NC-SA-4.0 teacher model (audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim) is NOT bundled here — only the Apache-2.0 student weights. The distillation process used the teacher for soft-label generation only. Output maps to Eliza ExpressiveEmotion 7-class tags via the projection table in emotion-map.ts."
+  "notes": "IMPORTANT: The CC-BY-NC-SA-4.0 teacher model (audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim) is NOT bundled here \u2014 only the Apache-2.0 student weights. The distillation process used the teacher for soft-label generation only. Output maps to Eliza ExpressiveEmotion 7-class tags via the projection table in emotion-map.ts. Local artifact is staged and published with evalGatePass=false for the projection macro-F1; auxiliary head macro-F1 passed 0.35."
 }

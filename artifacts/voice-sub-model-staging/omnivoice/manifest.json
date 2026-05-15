@@ -1,12 +1,12 @@
 {
   "$schema": "https://elizaos.dev/schemas/voice-sub-model/v1.json",
   "id": "omnivoice",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "hfRepo": "elizaos/eliza-1-voice-omnivoice",
-  "hfRevision": "main",
+  "hfRevision": "b766eb23d5f6c84d580973c0f2013b6fcbd561c0",
   "publishedToHfAt": "2026-05-14T00:00:00Z",
-  "displayName": "Eliza-1 Voice OmniVoice — frozen conditioning + sam preset",
-  "purpose": "Primary TTS for Eliza-1 — OmniVoice frozen-conditioning with sam voice preset",
+  "displayName": "Eliza-1 Voice OmniVoice \u2014 frozen conditioning + same-voice preset",
+  "purpose": "Primary TTS for Eliza-1 \u2014 OmniVoice frozen-conditioning with same voice preset",
   "architecture": "OmniVoice (Qwen3-0.6B bidir LM + MaskGIT decoder + DAC vocoder)",
   "license": "Apache-2.0",
   "attribution": "OmniVoice architecture; elizaOS/llama.cpp fork integration (W3-3)",
@@ -15,8 +15,12 @@
   "evalMetrics": {
     "rtfRealtime": 3.5,
     "rtfRealtimeMax": 5.0,
-    "samPresetVersion": "ELZ2-v2",
-    "quantVariants": ["q4_k_m", "q5_k_m", "q8_0"]
+    "samePresetVersion": "ELZ2-v2",
+    "quantVariants": [
+      "q4_k_m",
+      "q5_k_m",
+      "q8_0"
+    ]
   },
   "files": [
     {
@@ -25,7 +29,9 @@
       "quant": "q4_k_m",
       "format": "gguf",
       "approxSizeBytes": 388000000,
-      "sha256": "TBD-populated-by-publish-pipeline"
+      "sha256": "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6",
+      "sizeBytes": 407485216,
+      "assetStatus": "available"
     },
     {
       "filename": "omnivoice-tokenizer-q4_k_m.gguf",
@@ -33,7 +39,9 @@
       "quant": "q4_k_m",
       "format": "gguf",
       "approxSizeBytes": 51200000,
-      "sha256": "TBD-populated-by-publish-pipeline"
+      "sha256": "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d",
+      "sizeBytes": 252474112,
+      "assetStatus": "available"
     },
     {
       "filename": "omnivoice-base-q8_0.gguf",
@@ -41,18 +49,22 @@
       "quant": "q8_0",
       "format": "gguf",
       "approxSizeBytes": 620000000,
-      "sha256": "TBD-populated-by-publish-pipeline",
-      "notes": "Used on large tiers (9b, 27b, 27b-256k)"
+      "sha256": "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
+      "sizeBytes": 656395008,
+      "assetStatus": "available"
     },
     {
-      "filename": "presets/voice-preset-sam.bin",
-      "role": "sam-voice-preset",
+      "filename": "presets/voice-preset-same.bin",
+      "role": "same-voice-preset",
       "quant": "fp16",
       "format": "bin",
       "approxSizeBytes": 8192,
-      "sha256": "TBD-populated-by-publish-pipeline",
-      "notes": "ELZ2 v2 preset: refAudioTokens + refText + instruct. Pre-encoded [K=8, ref_T] reference tokens for zero-encode-cost runtime."
+      "sha256": "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6",
+      "sizeBytes": 716,
+      "assetStatus": "available",
+      "sourceRepo": "local-release-staging",
+      "sourcePath": "release-staging/omnivoice-same-v01/voice-preset.elz2"
     }
   ],
-  "notes": "v0.1.1 (W3-4 sam preset + FFI wiring). This is the PRIMARY sam TTS path — OmniVoice frozen-conditioning with pre-encoded sam reference tokens. Kokoro fine-tune is blocked on quality gate (W3-11). OmniVoice quantization: PolarQuant/TurboQuant applies to the Qwen3-0.6B LM; V-cache PolarQuant does NOT apply (MaskGIT has no KV cache). ABI v4 FFI bridge: eliza_inference_encode_reference / eliza_inference_free_tokens."
+  "notes": "v0.2.0 same preset + FFI wiring. This is the primary same-voice TTS path \u2014 OmniVoice frozen-conditioning with pre-encoded reference tokens. Kokoro fine-tune is blocked on quality gate (W3-11). OmniVoice quantization: PolarQuant/TurboQuant applies to the Qwen3-0.6B LM; V-cache PolarQuant does NOT apply (MaskGIT has no KV cache). ABI v4 FFI bridge: eliza_inference_encode_reference / eliza_inference_free_tokens."
 }

@@ -39,7 +39,7 @@ Drop-in local ASR component for Eliza-1 voice pipeline. Designed for:
 
 | File | Role | Size |
 |------|------|------|
-| `eliza-1-asr-q4_k_m.gguf` | Primary ASR weights (Q4_K_M) | ~876 MB |
+| `eliza-1-asr-q8_0.gguf` | Primary ASR weights (Q8_0 public payload) | ~876 MB |
 | `eliza-1-asr-mmproj.gguf` | Audio projector (FP16) | ~50 MB |
 | `manifest.json` | Machine-readable metadata for auto-updater | — |
 

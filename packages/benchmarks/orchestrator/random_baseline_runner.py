@@ -674,6 +674,7 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "trust": ("trust-results.json", _trust_payload),
     "vending_bench": ("vending-bench-results.json", _vending_payload),
     "visualwebbench": ("visualwebbench-results.json", _visualwebbench_payload),
+    "vision_language": ("vision-language-results.json", _metrics_score_payload),
     "voiceagentbench": ("voiceagentbench_random_v1.json", _voiceagentbench_payload),
     "voicebench": ("voicebench-results.json", _voicebench_payload),
     "voicebench_quality": ("voicebench-quality-results.json", _voicebench_quality_payload),

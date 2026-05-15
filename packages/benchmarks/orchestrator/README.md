@@ -110,6 +110,13 @@ and overrides any profile `extra` keys:
   --extra '{"per_benchmark":{"bfcl":{"sample":10}}}'
 ```
 
+For `cerebras-gpt-oss-120b`, the profile pins `reasoning_effort=low`.
+The orchestrator exports that value as both `OPENAI_REASONING_EFFORT` and
+`CEREBRAS_REASONING_EFFORT` for subprocesses, so OpenAI-compatible Eliza
+runtime paths and direct Cerebras benchmark clients use the same setting.
+Keep `CEREBRAS_API_KEY` in the shell environment or secret manager only; do
+not commit it to a profile or `.env` file.
+
 ## Orchestrated Subagent Tracks
 
 New orchestrator-centric benchmark IDs:

@@ -1,22 +1,22 @@
 # elizaos/eliza-1-voice-speaker
 
-**Eliza-1 Voice Speaker Encoder** — WeSpeaker ECAPA-TDNN distilled, 256-dim speaker embeddings.
+**Eliza-1 Voice Speaker Encoder** — WeSpeaker ResNet34-LM, 256-dim speaker embeddings.
 
 ## Model Card
 
 | Field | Value |
 |-------|-------|
-| Architecture | ECAPA-TDNN distilled from WeSpeaker ResNet34-LM |
+| Architecture | WeSpeaker ResNet34-LM (VoxCeleb-trained) |
 | Embedding dim | 256 (L2-normalized) |
-| Quantization | ONNX INT8 (primary), ONNX FP32 (reference) |
+| Quantization | ONNX (single asset, FP16 weights) |
 | Runtime | onnxruntime-node |
 | License | CC-BY-4.0 |
-| Input | 16 kHz mono |
+| Input | 16 kHz mono → 80-dim fbank, T frames |
 | VoxCeleb1-O EER | 0.72% |
 
 ## Parent Model
 
-Distilled from [WeSpeaker/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM) (CC-BY-4.0).
+[WeSpeaker/wespeaker-voxceleb-resnet34-LM](https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM) (CC-BY-4.0).
 
 ## Eval Baselines
 
@@ -37,9 +37,21 @@ Real-time speaker embedding for the Eliza-1 voice pipeline. Powers:
 
 | File | Role | Size |
 |------|------|------|
-| `wespeaker-ecapa-tdnn-256-int8.onnx` | Primary (INT8) | ~7 MB |
-| `wespeaker-ecapa-tdnn-256-fp32.onnx` | FP32 reference | ~25 MB |
+| `wespeaker-resnet34-lm.onnx` | Primary weights (ONNX) | ~26 MB |
 | `manifest.json` | Machine-readable metadata | — |
+
+## Usage
+
+```python
+import onnxruntime as ort
+import numpy as np
+
+sess = ort.InferenceSession("wespeaker-resnet34-lm.onnx", providers=["CPUExecutionProvider"])
+# Input: 80-dim fbank features at 16 kHz, shape (1, T, 80)
+fbank = np.random.randn(1, 300, 80).astype(np.float32)  # ~3 seconds
+emb = sess.run(None, {sess.get_inputs()[0].name: fbank})[0]
+# emb.shape == (1, 256)
+```
 
 ## License
 
