@@ -17,7 +17,7 @@ import os
 import re
 import time
 import tracemalloc
-from dataclasses import asdict
+from dataclasses import asdict, dataclass, is_dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -171,10 +171,10 @@ def write_trajectory_artifacts(
     rows = getattr(results, "results", [])
     with open(canonical, "w", encoding="utf-8") as handle:
         for result in rows:
-            handle.write(json.dumps(GAIARunner._to_serializable(result), default=str) + "\n")
+            handle.write(json.dumps(_trajectory_jsonable(result), default=str) + "\n")
     with open(native, "w", encoding="utf-8") as handle:
         for result in rows:
-            handle.write(json.dumps(GAIARunner._to_serializable(result), default=str) + "\n")
+            handle.write(json.dumps(_trajectory_jsonable(result), default=str) + "\n")
     paths = {"canonical": str(canonical), "native": str(native)}
     if latest:
         canonical_latest = output_dir / f"{run_kind}-trajectories-latest.jsonl"
@@ -184,6 +184,20 @@ def write_trajectory_artifacts(
         paths["canonical_latest"] = str(canonical_latest)
         paths["native_latest"] = str(native_latest)
     return paths
+
+
+def _trajectory_jsonable(value: object) -> object:
+    if is_dataclass(value):
+        return _trajectory_jsonable(asdict(value))
+    if isinstance(value, dict):
+        return {str(k): _trajectory_jsonable(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_trajectory_jsonable(v) for v in value]
+    if hasattr(value, "value"):
+        return value.value
+    if isinstance(value, Path):
+        return str(value)
+    return value
 
 
 class MemoryTracker:

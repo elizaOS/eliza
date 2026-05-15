@@ -549,7 +549,7 @@ describe("local inference downloader status", () => {
 		await downloader.start(model);
 		const job = await failed;
 		expect(job.state).toBe("failed");
-		expect(job.error).toMatch(/no required-kernel backend/i);
+		expect(job.error).toMatch(/kernels\.verifiedBackends/i);
 		// Manifest is fetched (it's metadata, not a weight); nothing else is.
 		const weightFetches = fetchSpy.mock.calls.filter(
 			([u]) => remotePathOf(u) !== bundleRemotePath(model, manifestFile),

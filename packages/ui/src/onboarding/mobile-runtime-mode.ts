@@ -71,7 +71,7 @@ export function readPersistedMobileRuntimeMode(): MobileRuntimeMode | null {
 
 export function isElizaCloudRuntimeLocked(): boolean {
   const mode = readPersistedMobileRuntimeMode();
-  return mode === "cloud" || mode === "cloud-hybrid";
+  return mode === "cloud";
 }
 
 async function persistNativeMobileRuntimeMode(

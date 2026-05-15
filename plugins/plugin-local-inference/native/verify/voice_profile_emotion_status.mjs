@@ -407,7 +407,6 @@ const activeTierMatrix = [
   "9b",
   "27b",
   "27b-256k",
-  "27b-1m",
 ];
 
 const defaultRoundTripTts = ttsSummary(defaultTtsPath);

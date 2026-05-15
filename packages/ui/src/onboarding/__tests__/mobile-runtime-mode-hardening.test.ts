@@ -49,6 +49,7 @@ vi.mock("@capacitor/preferences", () => ({
 
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
 import {
+  isElizaCloudRuntimeLocked,
   MOBILE_RUNTIME_MODE_STORAGE_KEY,
   mobileRuntimeModeForServerTarget,
   normalizeMobileRuntimeMode,
@@ -157,6 +158,19 @@ describe("readPersistedMobileRuntimeMode", () => {
     } finally {
       getItem.mockRestore();
     }
+  });
+});
+
+describe("isElizaCloudRuntimeLocked", () => {
+  it("locks exact cloud mode but leaves cloud-hybrid eligible for on-device runtime", () => {
+    window.localStorage.setItem(MOBILE_RUNTIME_MODE_STORAGE_KEY, "cloud");
+    expect(isElizaCloudRuntimeLocked()).toBe(true);
+
+    window.localStorage.setItem(
+      MOBILE_RUNTIME_MODE_STORAGE_KEY,
+      "cloud-hybrid",
+    );
+    expect(isElizaCloudRuntimeLocked()).toBe(false);
   });
 });
 
