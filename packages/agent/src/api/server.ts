@@ -194,7 +194,12 @@ import { ConnectorHealthMonitor } from "./connector-health.ts";
 import { handleConnectorRoutes } from "./connector-routes.ts";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
-import { handleCuratedSkillsRoutes } from "./curated-skills-routes.ts";
+// === Phase 4E: skills routes + helpers moved to plugin-agent-skills ===
+import {
+  discoverSkills,
+  handleCuratedSkillsRoutes,
+  handleSkillsRoutes,
+} from "@elizaos/plugin-agent-skills";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
 import { handleHealthRoutes } from "./health-routes.ts";
 import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
