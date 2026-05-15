@@ -1,13 +1,13 @@
-# F2 Kokoro sam full fine-tune config.
+# F2 Kokoro same full fine-tune config.
 # Tuned for augmented+distilled corpus (~50+ min vs original 3.5 min).
 extends: base.yaml
 
-voice_name: af_sam
-voice_display_name: Sam (AI Voices) — F2 Full FT
+voice_name: af_same
+voice_display_name: Same (AI Voices) — F2 Full FT
 voice_lang: a
 voice_tags:
   - female
-  - sam
+  - same
   - eliza-1-voice
   - ai-voices-derived
   - research-only
@@ -37,7 +37,7 @@ mel_loss_weight: 1.0
 duration_loss_weight: 0.0
 f0_loss_weight: 0.0
 
-# Relaxed gates for F2 (self-distill corpus uses Kokoro voice not real sam)
+# Relaxed gates for F2 (self-distill corpus uses Kokoro voice not real same)
 # The beatsBaseline comparison vs af_bella is the real gate
 gates:
   utmos_min: 3.8
