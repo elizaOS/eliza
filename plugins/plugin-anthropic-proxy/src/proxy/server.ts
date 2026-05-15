@@ -40,6 +40,7 @@ export interface ProxyServerOptions {
 	bindHost?: string;
 	credentialsPath?: string;
 	envToken?: string;
+	proxyAuthToken?: string;
 	verbose?: boolean;
 	replacements?: ReadonlyArray<Pair>;
 	toolRenames?: ReadonlyArray<Pair>;
@@ -86,6 +87,7 @@ export class ProxyServer {
 	private readonly bindHost: string;
 	private readonly credentialsPath?: string;
 	private readonly envToken?: string;
+	private readonly proxyAuthToken?: string;
 	private readonly verbose: boolean;
 	private readonly replacements: ReadonlyArray<Pair>;
 	private readonly toolRenames: ReadonlyArray<Pair>;
@@ -101,6 +103,7 @@ export class ProxyServer {
 		this.bindHost = opts.bindHost ?? DEFAULT_BIND;
 		this.credentialsPath = opts.credentialsPath;
 		this.envToken = opts.envToken;
+		this.proxyAuthToken = opts.proxyAuthToken;
 		this.verbose = opts.verbose ?? false;
 		this.replacements = opts.replacements ?? DEFAULT_REPLACEMENTS;
 		this.toolRenames = opts.toolRenames ?? DEFAULT_TOOL_RENAMES;
@@ -202,6 +205,11 @@ export class ProxyServer {
 	private handleRequest(req: IncomingMessage, res: ServerResponse): void {
 		if (req.url === "/health" && req.method === "GET") {
 			this.handleHealth(res);
+			return;
+		}
+		if (this.proxyAuthToken && !this.isAuthorized(req)) {
+			res.writeHead(401, { "Content-Type": "application/json" });
+			res.end(JSON.stringify({ type: "error", error: { message: "unauthorized" } }));
 			return;
 		}
 
@@ -351,6 +359,12 @@ export class ProxyServer {
 			upstream.write(body);
 			upstream.end();
 		});
+	}
+
+	private isAuthorized(req: IncomingMessage): boolean {
+		const auth = req.headers.authorization;
+		if (auth === `Bearer ${this.proxyAuthToken}`) return true;
+		return req.headers["x-claude-max-proxy-token"] === this.proxyAuthToken;
 	}
 
 	private handleHealth(res: ServerResponse): void {

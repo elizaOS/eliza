@@ -25,7 +25,16 @@ async function handleStatus(
 		return;
 	}
 	const status = await service.getStatus();
-	res.status(200).json(status);
+	res.status(200).json({
+		...status,
+		stats: status.stats
+			? {
+					...status.stats,
+					credsPath: undefined,
+					subscriptionType: undefined,
+				}
+			: null,
+	});
 }
 
 export const anthropicProxyRoutes: Route[] = [

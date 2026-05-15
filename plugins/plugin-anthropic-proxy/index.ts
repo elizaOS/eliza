@@ -34,20 +34,6 @@ export { reverseMap } from "./src/proxy/reverse-map.js";
 export { computeBillingFingerprint } from "./src/proxy/billing-fingerprint.js";
 export { loadCredentials } from "./src/utils/credentials-loader.js";
 
-const SENTINEL = "auto";
-
-/**
- * Decide whether ANTHROPIC_BASE_URL should be set by us.
- * - unset: yes
- * - explicit value: leave alone
- * - "auto": yes (sentinel meaning "let the plugin pick")
- */
-function shouldSetBaseUrl(current: string | undefined): boolean {
-	if (current === undefined || current === "") return true;
-	if (current.toLowerCase() === SENTINEL) return true;
-	return false;
-}
-
 const anthropicProxyPlugin: Plugin = {
 	name: "anthropic-proxy",
 	description:
@@ -89,32 +75,9 @@ const anthropicProxyPlugin: Plugin = {
 			return;
 		}
 
-		// We can't query the running service here (start happens after init in
-		// most setups). Build the URL deterministically from config.
-		let target: string | null = null;
-		if (cfg.mode === "shared") {
-			target = cfg.upstream?.replace(/\/$/, "") ?? null;
-		} else if (cfg.mode === "inline") {
-			target = `http://${cfg.bindHost}:${cfg.port}`;
-		}
-		if (!target) {
-			logger.warn(
-				`[anthropic-proxy] init — mode=${cfg.mode} but no target URL resolvable; ANTHROPIC_BASE_URL unchanged`,
-			);
-			return;
-		}
-
-		const current = process.env.ANTHROPIC_BASE_URL;
-		if (shouldSetBaseUrl(current)) {
-			process.env.ANTHROPIC_BASE_URL = target;
-			logger.info(
-				`[anthropic-proxy] init — set ANTHROPIC_BASE_URL=${target} (mode=${cfg.mode})`,
-			);
-		} else {
-			logger.info(
-				`[anthropic-proxy] init — ANTHROPIC_BASE_URL already set (${current}); leaving as-is`,
-			);
-		}
+		logger.info(
+			`[anthropic-proxy] init — mode=${cfg.mode}; service start will set ANTHROPIC_BASE_URL after validation`,
+		);
 	},
 };
 

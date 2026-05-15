@@ -154,6 +154,49 @@ describe("AnthropicProxyService modes", () => {
 			expect(service.getEffectiveMode()).toBe("off");
 		}
 	});
+
+	it("rejects non-loopback inline binds without proxy auth", async () => {
+		const service = await withEnv(
+			{
+				CLAUDE_MAX_PROXY_MODE: "inline",
+				CLAUDE_MAX_PROXY_BIND_HOST: "0.0.0.0",
+				CLAUDE_MAX_PROXY_AUTH_TOKEN: undefined,
+				CLAUDE_CODE_OAUTH_TOKEN: "test-oauth-token-not-real",
+			},
+			() => AnthropicProxyService.start({} as unknown as never),
+		);
+		cleanup.push(() => service.stop());
+		expect(service.getEffectiveMode()).toBe("off");
+		expect(service.getStartError()).toMatch(/CLAUDE_MAX_PROXY_AUTH_TOKEN/);
+	});
+
+	it("rejects plain-http shared upstreams unless they are private", async () => {
+		const service = await withEnv(
+			{
+				CLAUDE_MAX_PROXY_MODE: "shared",
+				CLAUDE_MAX_PROXY_UPSTREAM: "http://example.com/proxy",
+			},
+			() => AnthropicProxyService.start({} as unknown as never),
+		);
+		cleanup.push(() => service.stop());
+		expect(service.getEffectiveMode()).toBe("off");
+		expect(service.getStartError()).toMatch(/https/);
+	});
+
+	it("does not poison ANTHROPIC_BASE_URL when inline startup falls back to off", async () => {
+		const service = await withEnv(
+			{
+				ANTHROPIC_BASE_URL: "auto",
+				CLAUDE_MAX_PROXY_MODE: "inline",
+				CLAUDE_CODE_OAUTH_TOKEN: undefined,
+				CLAUDE_MAX_CREDENTIALS_PATH: "/nonexistent/path/that/does/not/exist.json",
+			},
+			() => AnthropicProxyService.start({} as unknown as never),
+		);
+		cleanup.push(() => service.stop());
+		expect(service.getEffectiveMode()).toBe("off");
+		expect(process.env.ANTHROPIC_BASE_URL).toBe("auto");
+	});
 });
 
 describe("credentials loader", () => {

@@ -1580,31 +1580,19 @@ function appendPriorDialogueEvents(
 		return;
 	}
 	const dialogue = recentMessages
-			.filter((memory): memory is Memory => {
-				if (!memory || typeof memory !== "object") return false;
-				const m = memory as Memory;
-				if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
-				if (m.agentId === runtime.agentId || m.entityId === runtime.agentId) {
-					return false;
-				}
-				if (
-					typeof m.content?.source === "string" &&
-					m.content.source.includes("sub-agent")
-				) {
-					return false;
-				}
-				if (
-					m.content?.metadata &&
-					typeof m.content.metadata === "object" &&
-					(m.content.metadata as { subAgent?: unknown }).subAgent === true
-				) {
-					return false;
-				}
-				const contentType =
+		.filter((memory): memory is Memory => {
+			if (!memory || typeof memory !== "object") return false;
+			const m = memory as Memory;
+			if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
+			if (m.entityId === runtime.agentId) {
+				return false;
+			}
+			const contentType =
 				m.content && typeof m.content === "object"
 					? (m.content as { type?: string }).type
 					: undefined;
 			if (contentType === "action_result") return false;
+			if (isSubAgentCompletionArtifact(m)) return false;
 			const text =
 				typeof m.content?.text === "string" ? m.content.text.trim() : "";
 			if (looksLikePriorDialogueArtifact(text)) return false;
@@ -1636,6 +1624,20 @@ function looksLikePriorDialogueArtifact(text: string): boolean {
 	return /^\s*\[(?:sub-agent|tool output|tool result|command output)\b/im.test(
 		text,
 	);
+}
+
+function isSubAgentCompletionArtifact(memory: Memory): boolean {
+	const content = memory.content;
+	if (!content || typeof content !== "object") return false;
+	const metadata =
+		content.metadata && typeof content.metadata === "object"
+			? (content.metadata as Record<string, unknown>)
+			: {};
+	if (metadata.subAgent === true) return true;
+	const source = typeof content.source === "string" ? content.source : "";
+	if (source.startsWith("acpx:sub-agent-router")) return true;
+	const text = typeof content.text === "string" ? content.text.trim() : "";
+	return text.startsWith("[sub-agent:");
 }
 
 function hasStructuredRecentMessagesProvider(state: State): boolean {

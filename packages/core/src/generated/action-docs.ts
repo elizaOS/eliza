@@ -7606,17 +7606,6 @@ export const allActionsSpec = {
 						"Working directory for action=create/action=spawn_agent.",
 				},
 				{
-					name: "lockWorkdir",
-					description:
-						"When true, the supplied `workdir` is used verbatim and operator ",
-					required: false,
-					schema: {
-						type: "boolean",
-					},
-					descriptionCompressed:
-						"When true, the supplied `workdir` is used verbatim and operator",
-				},
-				{
 					name: "memoryContent",
 					description:
 						"Additional memory/context for action=create / action=spawn_agent.",
@@ -8148,7 +8137,6 @@ export const allActionsSpec = {
 							agents: "example",
 							repo: "example",
 							workdir: "example",
-							lockWorkdir: false,
 							memoryContent: "example",
 							label: "example",
 							approvalPreset: "readonly",

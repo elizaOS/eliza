@@ -22,6 +22,7 @@ export interface ProxyServiceConfig {
 	upstream?: string;
 	credentialsPath?: string;
 	envToken?: string;
+	proxyAuthToken?: string;
 	verbose: boolean;
 }
 
@@ -29,6 +30,47 @@ function readEnv(name: string): string | undefined {
 	if (typeof process === "undefined") return undefined;
 	const v = process.env[name];
 	return v === undefined || v === "" ? undefined : v;
+}
+
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+
+function isLoopbackHost(host: string): boolean {
+	const normalized = host.trim().toLowerCase();
+	return LOOPBACK_HOSTS.has(normalized) || normalized.startsWith("127.");
+}
+
+function isPrivateHost(host: string): boolean {
+	const normalized = host.trim().toLowerCase();
+	if (isLoopbackHost(normalized)) return true;
+	if (normalized.endsWith(".local") || normalized.endsWith(".internal")) return true;
+	if (/^10\./.test(normalized)) return true;
+	if (/^192\.168\./.test(normalized)) return true;
+	const match = normalized.match(/^172\.(\d+)\./);
+	return !!match && Number(match[1]) >= 16 && Number(match[1]) <= 31;
+}
+
+function validateSharedUpstream(upstream: string): string {
+	const url = new URL(upstream);
+	if (url.protocol === "https:") return upstream.replace(/\/$/, "");
+	if (url.protocol === "http:" && isPrivateHost(url.hostname)) {
+		return upstream.replace(/\/$/, "");
+	}
+	throw new Error(
+		"CLAUDE_MAX_PROXY_UPSTREAM must use https unless it points to a loopback/private host",
+	);
+}
+
+function shouldSetBaseUrl(current: string | undefined): boolean {
+	if (current === undefined || current === "") return true;
+	return current.toLowerCase() === "auto";
+}
+
+function setAnthropicBaseUrl(target: string): void {
+	const current = process.env.ANTHROPIC_BASE_URL;
+	if (shouldSetBaseUrl(current)) {
+		process.env.ANTHROPIC_BASE_URL = target;
+		logger.info(`[anthropic-proxy] set ANTHROPIC_BASE_URL=${target}`);
+	}
 }
 
 export function resolveConfig(): ProxyServiceConfig {
@@ -48,6 +90,7 @@ export function resolveConfig(): ProxyServiceConfig {
 		upstream: readEnv("CLAUDE_MAX_PROXY_UPSTREAM"),
 		credentialsPath: readEnv("CLAUDE_MAX_CREDENTIALS_PATH"),
 		envToken: readEnv("CLAUDE_CODE_OAUTH_TOKEN"),
+		proxyAuthToken: readEnv("CLAUDE_MAX_PROXY_AUTH_TOKEN"),
 		verbose: readEnv("CLAUDE_MAX_PROXY_VERBOSE") === "true",
 	};
 }
@@ -88,7 +131,15 @@ export class AnthropicProxyService extends Service {
 				return service;
 			}
 			service.effectiveMode = "shared";
-			service.effectiveUrl = config.upstream.replace(/\/$/, "");
+			try {
+				service.effectiveUrl = validateSharedUpstream(config.upstream);
+			} catch (e) {
+				service.startError = (e as Error).message;
+				logger.warn(`[anthropic-proxy] ${service.startError} — falling back to off`);
+				service.effectiveMode = "off";
+				return service;
+			}
+			setAnthropicBaseUrl(service.effectiveUrl);
 			logger.info(
 				`[anthropic-proxy] mode=shared — using upstream ${service.effectiveUrl}`,
 			);
@@ -96,11 +147,19 @@ export class AnthropicProxyService extends Service {
 		}
 
 		// inline
+		if (!isLoopbackHost(config.bindHost) && !config.proxyAuthToken) {
+			service.startError =
+				"CLAUDE_MAX_PROXY_AUTH_TOKEN is required when CLAUDE_MAX_PROXY_BIND_HOST is not loopback";
+			logger.warn(`[anthropic-proxy] ${service.startError} — falling back to off`);
+			service.effectiveMode = "off";
+			return service;
+		}
 		const server = new ProxyServer({
 			port: config.port,
 			bindHost: config.bindHost,
 			credentialsPath: config.credentialsPath,
 			envToken: config.envToken,
+			proxyAuthToken: config.proxyAuthToken,
 			verbose: config.verbose,
 			logger: {
 				info: (m) => logger.info(`[anthropic-proxy] ${m}`),
@@ -113,6 +172,7 @@ export class AnthropicProxyService extends Service {
 			service.server = server;
 			service.effectiveMode = "inline";
 			service.effectiveUrl = server.getUrl();
+			setAnthropicBaseUrl(service.effectiveUrl);
 			logger.info(
 				`[anthropic-proxy] mode=inline — listening on ${service.effectiveUrl}`,
 			);

@@ -1042,6 +1042,7 @@ describe("runV5MessageRuntimeStage1", () => {
 								{
 									id: "00000000-0000-0000-0000-00000000aaaa" as UUID,
 									entityId: "00000000-0000-0000-0000-00000000ffff" as UUID,
+									agentId: "00000000-0000-0000-0000-000000000003" as UUID,
 									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
 									createdAt: 1,
 									content: { text: longUserText },
