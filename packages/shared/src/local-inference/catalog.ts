@@ -26,7 +26,6 @@ export const ELIZA_1_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
@@ -39,7 +38,6 @@ export const ELIZA_1_VISION_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 const ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
@@ -53,7 +51,6 @@ export const ELIZA_1_DFLASH_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 const ELIZA_1_DFLASH_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
@@ -167,7 +164,6 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
-  "eliza-1-27b-1m": ["omnivoice"],
 };
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
@@ -316,24 +312,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     hasVision: true,
     hasImageGen: true,
   },
-  "eliza-1-27b-1m": {
-    id: "eliza-1-27b-1m",
-    params: "27B",
-    parameterLabel: "27B 1M",
-    sizeGb: 16.8,
-    minRamGb: 141,
-    q4MinRamGb: 141,
-    bucket: "large",
-    contextLength: 1_048_576,
-    textFile: "text/eliza-1-27b-1m.gguf",
-    drafterParams: "4B",
-    drafterSizeGb: 2.6,
-    drafterMinRamGb: 141,
-    gpuProfile: "h200",
-    hasEmbedding: true,
-    hasVision: true,
-    hasImageGen: true,
-  },
 };
 
 function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
@@ -426,7 +404,6 @@ const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
-  "eliza-1-27b-1m": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
 };
 
 export function voiceQuantLadderForTier(
@@ -582,8 +559,6 @@ function blurbForTier(id: Eliza1TierId): string {
       return "eliza-1-27b - high-quality local tier for GPU workstations.";
     case "eliza-1-27b-256k":
       return "eliza-1-27b-256k - high-quality local tier with a 256k context window.";
-    case "eliza-1-27b-1m":
-      return "eliza-1-27b-1m - high-quality local tier with a 1M context window.";
   }
 }
 
