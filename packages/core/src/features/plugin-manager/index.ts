@@ -6,6 +6,7 @@ import { pluginStateProvider } from "./providers/pluginStateProvider.ts";
 import { registryPluginsProvider } from "./providers/registryPluginsProvider.ts";
 import { CoreManagerService } from "./services/coreManagerService.ts";
 import { PluginManagerService } from "./services/pluginManagerService.ts";
+import { PluginManagerServiceType } from "./types.ts";
 import * as pluginRegistry from "./services/pluginRegistryService.ts";
 import * as types from "./types.ts";
 
