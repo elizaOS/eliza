@@ -14,13 +14,11 @@
 
 import crypto from "node:crypto";
 
-import {
-  type AgentRuntime,
-  type Content,
-  type createMessageMemory,
-  ModelType,
-  parseJSONObjectFromText,
-  type UUID,
+import type {
+  AgentRuntime,
+  Content,
+  createMessageMemory,
+  UUID,
 } from "@elizaos/core";
 import { normalizeCharacterLanguage } from "@elizaos/shared";
 import { extractCompatTextContent } from "./compat-utils.ts";
@@ -78,10 +76,123 @@ const CHAT_DOCUMENTS_THRESHOLD = 0.2;
 const CHAT_DOCUMENTS_LIMIT = 4;
 const CHAT_DOCUMENTS_SNIPPET_MAX_CHARS = 700;
 const CHAT_DOCUMENTS_RECOVERY_QUERY_LIMIT = 3;
+const DEFAULT_CHAT_DOCUMENTS_LOOKUP_TIMEOUT_MS = 4_000;
+const DEFAULT_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS = 5_000;
+const MAX_CHAT_DOCUMENTS_LOOKUP_TIMEOUT_MS = 30_000;
+const MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS = 30_000;
+const CHAT_DOCUMENTS_RECOVERY_MODEL = "TEXT_LARGE";
+
+export interface ChatDocumentAugmentationOptions {
+  signal?: AbortSignal;
+  lookupTimeoutMs?: number;
+  recoveryTimeoutMs?: number;
+}
+
+function resolveTimeoutMs(
+  explicit: number | undefined,
+  envName: string,
+  defaultMs: number,
+  maxMs: number,
+): number {
+  if (
+    typeof explicit === "number" &&
+    Number.isFinite(explicit) &&
+    explicit > 0
+  ) {
+    return Math.max(1, Math.floor(explicit));
+  }
+
+  const env = process.env[envName]?.trim();
+  if (!env) return defaultMs;
+
+  const parsed = Number.parseInt(env, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return defaultMs;
+  }
+
+  return Math.min(parsed, maxMs);
+}
+
+function resolveLookupTimeoutMs(explicit?: number): number {
+  return resolveTimeoutMs(
+    explicit,
+    "ELIZA_CHAT_DOCUMENT_LOOKUP_TIMEOUT_MS",
+    DEFAULT_CHAT_DOCUMENTS_LOOKUP_TIMEOUT_MS,
+    MAX_CHAT_DOCUMENTS_LOOKUP_TIMEOUT_MS,
+  );
+}
+
+function resolveRecoveryTimeoutMs(explicit?: number): number {
+  return resolveTimeoutMs(
+    explicit,
+    "ELIZA_CHAT_DOCUMENT_RECOVERY_TIMEOUT_MS",
+    DEFAULT_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS,
+    MAX_CHAT_DOCUMENTS_RECOVERY_TIMEOUT_MS,
+  );
+}
+
+function parseJsonObjectFromModelText(
+  text: string,
+): Record<string, unknown> | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  const parseCandidate = (
+    candidate: string,
+  ): Record<string, unknown> | null => {
+    try {
+      const parsed = JSON.parse(candidate);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  const direct = parseCandidate(trimmed);
+  if (direct) return direct;
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  if (start === -1 || end <= start) return null;
+  return parseCandidate(trimmed.slice(start, end + 1));
+}
+
+async function withOptionalTimeout<T>(
+  runtime: AgentRuntime,
+  label: string,
+  timeoutMs: number,
+  fallback: T,
+  signal: AbortSignal | undefined,
+  operation: () => Promise<T>,
+): Promise<{ value: T; timedOut: boolean }> {
+  if (signal?.aborted) {
+    return { value: fallback, timedOut: false };
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation().then((value) => ({ value, timedOut: false })),
+      new Promise<{ value: T; timedOut: boolean }>((resolve) => {
+        timeoutHandle = setTimeout(() => {
+          runtime.logger.warn(
+            { src: "api:chat-augmentation", timeoutMs },
+            `${label} timed out; skipping optional document context`,
+          );
+          resolve({ value: fallback, timedOut: true });
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
 
 export async function maybeAugmentChatMessageWithDocuments(
   runtime: AgentRuntime,
   message: ReturnType<typeof createMessageMemory>,
+  options: ChatDocumentAugmentationOptions = {},
 ): Promise<ReturnType<typeof createMessageMemory>> {
   const userPrompt = extractCompatTextContent(message.content).trim();
   if (!userPrompt || !runtime.agentId) return message;
@@ -122,26 +233,44 @@ export async function maybeAugmentChatMessageWithDocuments(
     createdAt: Date.now(),
   };
 
-  const loadMatches = async (scopeRoomId: UUID, queryText: string) =>
-    documents.service?.searchDocuments(
-      {
-        ...searchMessage,
-        content: {
-          ...(searchMessage.content as Content),
-          text: queryText,
-        },
-      },
-      { roomId: scopeRoomId },
-    ) ?? [];
+  const lookupTimeoutMs = resolveLookupTimeoutMs(options.lookupTimeoutMs);
+  const loadMatches = async (
+    scopeRoomId: UUID,
+    queryText: string,
+  ): Promise<{ matches: DocumentMatches; timedOut: boolean }> => {
+    const result = await withOptionalTimeout<DocumentMatches>(
+      runtime,
+      "Document lookup",
+      lookupTimeoutMs,
+      [],
+      options.signal,
+      async () =>
+        (await documents.service?.searchDocuments(
+          {
+            ...searchMessage,
+            content: {
+              ...(searchMessage.content as Content),
+              text: queryText,
+            },
+          },
+          { roomId: scopeRoomId },
+        )) ?? [],
+    );
+    return { matches: result.value, timedOut: result.timedOut };
+  };
 
   const loadMatchesAcrossScopes = async (
     queryText: string,
-  ): Promise<DocumentMatches> => {
-    let matches = await loadMatches(roomId, queryText);
+  ): Promise<{ matches: DocumentMatches; timedOut: boolean }> => {
+    const initial = await loadMatches(roomId, queryText);
+    if (initial.timedOut) return initial;
+    let matches = initial.matches;
     if (matches.length === 0 && roomId !== agentId) {
-      matches = await loadMatches(agentId, queryText);
+      const fallback = await loadMatches(agentId, queryText);
+      if (fallback.timedOut) return fallback;
+      matches = fallback.matches;
     }
-    return matches;
+    return { matches, timedOut: false };
   };
 
   const selectRelevantMatches = (matches: DocumentMatches): DocumentMatches =>
@@ -174,13 +303,54 @@ export async function maybeAugmentChatMessageWithDocuments(
       `User request: ${JSON.stringify(userPrompt)}`,
     ].join("\n");
 
+    const timeoutMs = resolveRecoveryTimeoutMs(options.recoveryTimeoutMs);
+    const controller = new AbortController();
+    const abortRecovery = (reason?: unknown): void => {
+      if (!controller.signal.aborted) {
+        controller.abort(reason);
+      }
+    };
+    const onAbort = (): void => abortRecovery(options.signal?.reason);
+    if (options.signal?.aborted) {
+      onAbort();
+    } else {
+      options.signal?.addEventListener("abort", onAbort, { once: true });
+    }
+
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+
     try {
-      const result = await runtime.useModel(ModelType.TEXT_LARGE, { prompt });
+      const modelPromise = runtime
+        .useModel(CHAT_DOCUMENTS_RECOVERY_MODEL, {
+          prompt,
+          maxTokens: 96,
+          temperature: 0,
+          responseFormat: { type: "json_object" },
+          signal: controller.signal,
+        })
+        .catch((error) => {
+          if (timedOut || controller.signal.aborted) {
+            return "";
+          }
+          throw error;
+        });
+
+      const timeoutPromise = new Promise<never>((_resolve, reject) => {
+        timeoutHandle = setTimeout(() => {
+          timedOut = true;
+          abortRecovery(
+            new Error(`Document query recovery timed out after ${timeoutMs}ms`),
+          );
+          reject(
+            new Error(`Document query recovery timed out after ${timeoutMs}ms`),
+          );
+        }, timeoutMs);
+      });
+
+      const result = await Promise.race([modelPromise, timeoutPromise]);
       const raw = typeof result === "string" ? result : "";
-      const parsed = parseJSONObjectFromText(raw) as Record<
-        string,
-        unknown
-      > | null;
+      const parsed = parseJsonObjectFromModelText(raw);
       if (!parsed) {
         return [];
       }
@@ -207,23 +377,29 @@ export async function maybeAugmentChatMessageWithDocuments(
         "Document query recovery model call failed",
       );
       return [];
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+      options.signal?.removeEventListener("abort", onAbort);
     }
   };
 
   let relevantMatches: DocumentMatches = [];
   try {
-    relevantMatches = selectRelevantMatches(
-      await loadMatchesAcrossScopes(userPrompt),
-    )
+    const initialMatches = await loadMatchesAcrossScopes(userPrompt);
+    if (initialMatches.timedOut) return message;
+
+    relevantMatches = selectRelevantMatches(initialMatches.matches)
       .sort((left, right) => (right.similarity ?? 0) - (left.similarity ?? 0))
       .slice(0, CHAT_DOCUMENTS_LIMIT);
 
     if (relevantMatches.length === 0) {
       const recoveredQueries = await recoverDocumentSearchQueriesWithLlm();
       for (const query of recoveredQueries) {
-        const recoveredMatches = selectRelevantMatches(
-          await loadMatchesAcrossScopes(query),
-        )
+        const recovered = await loadMatchesAcrossScopes(query);
+        if (recovered.timedOut) return message;
+        const recoveredMatches = selectRelevantMatches(recovered.matches)
           .sort(
             (left, right) => (right.similarity ?? 0) - (left.similarity ?? 0),
           )
