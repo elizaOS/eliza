@@ -10,6 +10,14 @@ export {
 	type VoiceCancellationCoordinatorOptions,
 } from "./cancellation-coordinator";
 export {
+	DEFAULT_OPTIMISTIC_EOT_THRESHOLD,
+	OptimisticGenerationPolicy,
+	type OptimisticPolicyOptions,
+	type PowerSourceState,
+	type ResolveOptimisticPolicyArgs,
+	resolveOptimisticPolicyEnabled,
+} from "./optimistic-policy";
+export {
 	type CheckpointHandle,
 	CheckpointHandleInvalidError,
 	CheckpointManager,
