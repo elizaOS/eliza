@@ -6,6 +6,7 @@
  * registration, embedding warm-up policy, and the mobile inference gate.
  */
 
+export { detectEmbeddingPreset } from "../config/embedding-presets.js";
 export {
 	DEFAULT_MODELS_DIR,
 	type EmbeddingProgressCallback,
@@ -14,7 +15,6 @@ export {
 	findExistingEmbeddingModelForWarmupReuse,
 	isEmbeddingWarmupReuseDisabled,
 } from "./embedding-manager-support.js";
-export { detectEmbeddingPreset } from "./embedding-presets.js";
 export { shouldWarmupLocalEmbeddingModel } from "./embedding-warmup-policy.js";
 export { ensureLocalInferenceHandler } from "./ensure-local-inference-handler.js";
 export { shouldEnableMobileLocalInference } from "./mobile-local-inference-gate.js";
