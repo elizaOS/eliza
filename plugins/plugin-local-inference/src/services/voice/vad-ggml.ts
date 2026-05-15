@@ -147,8 +147,8 @@ interface DlopenResult {
 	libraryPath: string;
 }
 
-function dlopenLibrary(libraryPath: string): DlopenResult {
-	const ffi = loadBunFfi();
+async function dlopenLibrary(libraryPath: string): Promise<DlopenResult> {
+	const ffi = await loadBunFfi();
 	const T = ffi.FFIType;
 	const lib = ffi.dlopen(libraryPath, {
 		silero_vad_open: { args: [T.cstring, T.ptr], returns: T.i32 },
@@ -222,7 +222,7 @@ export class SileroVadGgml implements VadLike {
 			);
 		}
 
-		const { lib, ffi } = dlopenLibrary(libraryPath);
+		const { lib, ffi } = await dlopenLibrary(libraryPath);
 
 		// `silero_vad_open` writes the new handle into `*out` (a u64
 		// pointer). We allocate an 8-byte BigUint64 view, hand its
@@ -263,6 +263,14 @@ export class SileroVadGgml implements VadLike {
 	/** Diagnostic — name of the active dispatch path inside the library. */
 	activeBackend(): string {
 		const cstr = this.lib.symbols.silero_vad_active_backend();
+		// bun:ffi with `returns: T.cstring` already hands back a CString;
+		// fall back to constructing one from a raw pointer if the
+		// runtime returned a number/bigint instead (older Bun versions).
+		if (cstr && typeof (cstr as { toString?: () => string }).toString === "function"
+			&& typeof cstr !== "number"
+			&& typeof cstr !== "bigint") {
+			return String(cstr);
+		}
 		return new this.ffi.CString(cstr).toString();
 	}
 

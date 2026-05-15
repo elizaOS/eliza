@@ -27,7 +27,7 @@
       "@elizaos/plugin-steward-app": ["../plugin-steward-app/src/index.ts"],
       "@elizaos/plugin-wallet-ui": ["../plugin-wallet-ui/src/index.ts"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
       "@elizaos/ui/api/client-types-cloud": [
         "../../packages/ui/src/api/client-types-cloud.ts"
       ],

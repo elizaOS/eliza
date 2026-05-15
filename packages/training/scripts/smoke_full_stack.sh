@@ -309,6 +309,41 @@ if [[ $HAS_PYTHON_H -eq 0 ]]; then
     echo "[smoke]          On Vast (devel image) this step runs cleanly."
     mark_skip_tooling "vllm-toolcall"
 else
+# Preflight: does vLLM actually know how to load this architecture? vLLM's
+# ModelRegistry tracks supported architectures by class name; new HF model
+# families (e.g. Qwen3_5ForCausalLM) land in transformers before vLLM
+# adds an in-tree implementation. If the checkpoint's `architectures[0]`
+# is not registered, vLLM aborts at engine-init and the smoke fails for
+# reasons unrelated to the recipe pipeline. Mark the step SKIPPED with
+# an architecture-incompatibility tag so Gate 5 doesn't penalize it.
+ARCH_CHECK="$(SFT_DIR="$SFT_DIR" "${PY_RUN[@]}" - <<'PY'
+import json, os, sys
+cfg_path = os.path.join(os.environ["SFT_DIR"], "config.json")
+arch = (json.load(open(cfg_path)).get("architectures") or [""])[0]
+try:
+    from vllm.model_executor.models.registry import ModelRegistry
+    supported = set(ModelRegistry.get_supported_archs())
+except Exception as e:
+    print(f"unknown:{arch}:vllm-import-failed:{type(e).__name__}")
+    sys.exit(0)
+print(f"{'ok' if arch in supported else 'missing'}:{arch}")
+PY
+)"
+case "$ARCH_CHECK" in
+    ok:*)
+        : ;;  # supported, proceed
+    missing:*)
+        echo "[smoke]   SKIP: vLLM does not support architecture ${ARCH_CHECK#missing:}"
+        echo "[smoke]          (Qwen3_5/Qwen3_6 hybrid linear+full attention models"
+        echo "[smoke]           are not yet in vLLM's ModelRegistry.)"
+        mark_skip_incompat "vllm-toolcall"
+        ARCH_INCOMPAT=1
+        ;;
+    *)
+        echo "[smoke]   WARN: vLLM preflight inconclusive ($ARCH_CHECK) — attempting serve anyway"
+        ;;
+esac
+if [[ "${ARCH_INCOMPAT:-0}" -ne 1 ]]; then
 VLLM_LOG="$LOG_DIR/06-vllm.log"
 : > "$VLLM_LOG"
 # Serve the SFT checkpoint via vLLM. --gpu-target single is the local-debug
@@ -409,6 +444,7 @@ fi
 cleanup_vllm
 trap - EXIT
 mark_pass "vllm-toolcall"
+fi  # end of ARCH_INCOMPAT branch
 fi  # end of HAS_PYTHON_H gate for STEP 8
 
 # ---------- STEP 9/9: summary + acceptance gate ----------

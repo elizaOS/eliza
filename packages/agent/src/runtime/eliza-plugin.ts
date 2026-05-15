@@ -144,7 +144,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
                 description: skill.description.substring(0, 80),
                 textAliases: [`/${slug}`],
                 scope: "both",
-                category: "tools",
+                category: "skills",
                 acceptsArgs: true,
                 args: [
                   {

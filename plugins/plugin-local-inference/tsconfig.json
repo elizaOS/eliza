@@ -30,8 +30,8 @@
 			],
 			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
-			"@elizaos/ui/*": ["../../packages/ui/src/*"]
+			"@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+			"@elizaos/ui/*": ["../../packages/ui/dist/*"]
 		}
 	},
 	"include": ["src/**/*"],
