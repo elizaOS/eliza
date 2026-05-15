@@ -231,10 +231,12 @@ export const Eliza1FilesSchema = z.object({
 	cache: z.array(Eliza1FileEntrySchema).min(1),
 	// Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
 	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers) and
-	// a Silero-VAD ONNX + an optional openWakeWord ONNX. All three are
-	// optional in the schema — the 0_8b tier intentionally omits the
-	// dedicated embedding (pools from text backbone) and a tier may
-	// ship without wake-word support.
+	// a Silero-VAD ONNX + an optional openWakeWord GGUF (replacing the
+	// previous three-file ONNX layout — the combined GGUF carries the
+	// mel filterbank + speech embedding model + every per-phrase head).
+	// All three are optional in the schema — the 0_8b tier intentionally
+	// omits the dedicated embedding (pools from text backbone) and a
+	// tier may ship without wake-word support.
 	//
 	// Schema-level optionality: empty array = "this bundle does not
 	// ship this component"; the validator enforces tier-specific

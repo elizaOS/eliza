@@ -17,6 +17,7 @@
  */
 
 import {
+	logger,
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
@@ -1485,6 +1486,25 @@ export class LocalInferenceEngine {
 		if (!bridge) {
 			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
+				// Detect + auto-regenerate the Samantha placeholder preset
+				// before the bridge's synchronous load hits it. The
+				// regenerator is a no-op when a real preset is already in
+				// place (kind="real-preset"); when regen cannot run it logs
+				// loudly and the bridge falls through to af_bella via the
+				// kokoro discovery layer.
+				const { ensureSamanthaPresetReady } = await import(
+					"./voice/samantha-preset-regenerator"
+				);
+				const outcome = await ensureSamanthaPresetReady(bundle.root);
+				if (outcome.kind === "regenerated") {
+					logger.info(
+						`[voice] regenerated Samantha preset on first boot: ${outcome.bytes} bytes (K=${outcome.K}, refT=${outcome.refT})`,
+					);
+				} else if (outcome.kind === "placeholder-no-regen") {
+					logger.warn(
+						`[voice] Samantha preset is the I-wave placeholder and on-the-fly regen is unavailable (reason=${outcome.reason}, detail=${outcome.detail}). The runtime will fall back to af_bella; run packages/training/scripts/voice/samantha_lora/RUNBOOK.md or plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs to produce a real preset.`,
+					);
+				}
 				bridge = this.startVoice({
 					bundleRoot: bundle.root,
 					useFfiBackend: true,
