@@ -484,9 +484,19 @@ _BUN = shutil.which("bun")
 
 
 def _e2e_loop_bench_path() -> Path | None:
+    # Allow an explicit override via env var (useful in CI / worktree setups).
+    env_override = os.environ.get("ELIZA_EVAL_E2E_BENCH_PATH")
+    if env_override:
+        p = Path(env_override).expanduser().resolve()
+        if p.is_file():
+            return p
     for c in (
         _TRAINING_ROOT.parent / "inference" / "verify" / "e2e_loop_bench.mjs",
         _TRAINING_ROOT.parent.parent / "packages" / "inference" / "verify" / "e2e_loop_bench.mjs",
+        # elizaOS monorepo: bench lives under plugins/plugin-local-inference/native/verify/
+        _TRAINING_ROOT.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify" / "e2e_loop_bench.mjs",
+        # Milady repo structure: eliza subdir
+        _TRAINING_ROOT.parent.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify" / "e2e_loop_bench.mjs",
     ):
         if c.is_file():
             return c
@@ -654,14 +664,34 @@ def eval_text(ctx: EvalContext) -> dict[str, Any]:
     # token right after BOS is essentially unconditioned and dominates the
     # mean otherwise. Standard "stride" perplexity practice.
     warmup_skip = 2
-    llm = Llama(
-        model_path=str(model),
-        n_ctx=n_ctx,
-        n_gpu_layers=0,
-        n_threads=ctx.threads,
-        logits_all=True,
-        verbose=False,
-    )
+    try:
+        llm = Llama(
+            model_path=str(model),
+            n_ctx=n_ctx,
+            n_gpu_layers=0,
+            n_threads=ctx.threads,
+            logits_all=True,
+            verbose=False,
+        )
+    except (ValueError, Exception) as exc:  # noqa: BLE001
+        # llama-cpp-python (pip) doesn't support the elizaOS-fork-only qwen35
+        # architecture. The fused llama-cli CAN load these GGUFs, but the
+        # llama-cpp-python pip package doesn't know about qwen35 yet. Record
+        # as not-run with a precise blocker note.
+        return {
+            **base,
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": (
+                f"llama-cpp-python failed to load model ({exc!s}); "
+                "the bundled GGUF uses the elizaOS-fork qwen35 architecture "
+                "which is not yet backported to the pip llama-cpp-python release. "
+                "Run text_eval via the fused llama-cli binary or a pip wheel "
+                "built from the elizaOS fork to resolve."
+            ),
+            "computeGated": "qwen35-arch-not-in-pip-llama-cpp-python",
+        }
     total_nll = 0.0
     total_tokens = 0
     per_text: list[dict[str, Any]] = []

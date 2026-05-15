@@ -184,20 +184,19 @@ def test_opencode_command_uses_stdin_and_cerebras_model(
     cmd = _subtask_provider_command("opencode", "gpt-oss-120b")
 
     assert cmd[:2] == [str(fake), "run"]
-    assert cmd[cmd.index("--model") + 1] == "cerebras/gpt-oss-120b"
+    assert cmd[cmd.index("--model") + 1] == "cerebras-bench/gpt-oss-120b"
     assert "--dangerously-skip-permissions" in cmd
 
 
 def test_opencode_config_registers_cerebras_openai_compatible() -> None:
-    config = _opencode_config_content("cerebras/gpt-oss-120b")
+    config = _opencode_config_content("cerebras-bench/gpt-oss-120b")
     parsed = __import__("json").loads(config)
 
-    provider = parsed["provider"]["cerebras"]
+    provider = parsed["provider"]["cerebras-bench"]
     assert provider["npm"] == "@ai-sdk/openai-compatible"
     assert provider["options"]["baseURL"] == "https://api.cerebras.ai/v1"
     assert provider["models"]["gpt-oss-120b"]["reasoning"] is False
-    assert provider["models"]["gpt-oss-120b"]["interleaved"] is False
-    assert parsed["model"] == "cerebras/gpt-oss-120b"
+    assert parsed["model"] == "cerebras-bench/gpt-oss-120b"
 
 
 @pytest.mark.asyncio

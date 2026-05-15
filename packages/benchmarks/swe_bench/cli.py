@@ -288,7 +288,7 @@ def _opencode_config_content(model_name: str) -> str:
             "share": "disabled",
             "autoupdate": False,
             "provider": {
-                "cerebras": {
+                "cerebras-bench": {
                     "name": "Cerebras",
                     "npm": "@ai-sdk/openai-compatible",
                     "env": ["CEREBRAS_API_KEY"],
@@ -301,7 +301,6 @@ def _opencode_config_content(model_name: str) -> str:
                             "name": "gpt-oss-120b",
                             "tool_call": True,
                             "reasoning": False,
-                            "interleaved": False,
                             "limit": {"context": 131072, "output": 65536},
                         }
                     },
@@ -321,7 +320,7 @@ def _resolve_subtask_executable(provider: str) -> str:
         "claude-code": "CLAUDE_BIN",
     }.get(provider)
     if env_key and os.environ.get(env_key):
-        return os.environ[env_key]
+        return os.path.expandvars(os.path.expanduser(os.environ[env_key]))
 
     candidates = {
         "opencode": ["opencode", str(Path.home() / ".opencode" / "bin" / "opencode")],
@@ -344,7 +343,8 @@ def _provider_model_name(provider: str, model_name: str | None) -> str:
     """Normalize model labels for provider CLIs."""
     raw = model_name or "cerebras/gpt-oss-120b"
     if provider == "opencode":
-        return raw if "/" in raw else f"cerebras/{raw}"
+        model_id = raw.split("/", 1)[1] if raw.startswith("cerebras/") else raw
+        return raw if raw.startswith("cerebras-bench/") else f"cerebras-bench/{model_id}"
     return raw
 
 
@@ -384,9 +384,188 @@ def _subtask_provider_env(provider: str, model_name: str | None) -> dict[str, st
     env = dict(os.environ)
     if provider == "opencode":
         model = _provider_model_name(provider, model_name)
-        if model.startswith("cerebras/"):
+        if model.startswith("cerebras-bench/"):
             env.setdefault("OPENCODE_CONFIG_CONTENT", _opencode_config_content(model))
     return env
+
+
+def _patchfile_apply_prompt(patch_path: Path) -> str:
+    return (
+        "Apply the SWE-bench patch file to this repository working tree.\n"
+        f"Run exactly: git apply {patch_path.name}\n"
+        "Do not commit. If the patch applies, stop and leave the working tree changed. "
+        "If it fails, report the error without making unrelated edits."
+    )
+
+
+async def _generate_patch_with_client(
+    client: object,
+    instance: SWEBenchInstance,
+    provider_label: str,
+    model_name: str | None,
+) -> tuple[str, str | None]:
+    """Ask the harness client for a patch without evaluating it."""
+    task_id = f"{provider_label}:patch:{instance.instance_id}"
+    try:
+        send_message = client.send_message  # type: ignore[attr-defined]
+        client.reset(task_id=task_id, benchmark="swe_bench")  # type: ignore[attr-defined]
+        response = send_message(
+            text=_build_prompt(instance),
+            context={
+                "benchmark": "swe_bench",
+                "task_id": task_id,
+                "instance_id": instance.instance_id,
+                "provider": provider_label,
+                "repo": instance.repo,
+                "base_commit": instance.base_commit,
+                "model_name": model_name,
+                "phase": "patch_generation",
+            },
+        )
+        text = getattr(response, "text", "") or ""
+        patch = _extract_patch(text)
+        if not patch:
+            params = getattr(response, "params", None)
+            if isinstance(params, dict) and params:
+                patch = _extract_patch(json.dumps(params))
+        if patch:
+            return patch, None
+
+        retry = send_message(
+            text=_build_prompt(instance, retry=True),
+            context={
+                "benchmark": "swe_bench",
+                "task_id": task_id,
+                "instance_id": instance.instance_id,
+                "provider": provider_label,
+                "repo": instance.repo,
+                "base_commit": instance.base_commit,
+                "model_name": model_name,
+                "phase": "patch_generation_retry",
+                "goal": "return_diff_only",
+            },
+        )
+        retry_text = getattr(retry, "text", "") or ""
+        patch = _extract_patch(retry_text)
+        if not patch:
+            retry_params = getattr(retry, "params", None)
+            if isinstance(retry_params, dict) and retry_params:
+                patch = _extract_patch(json.dumps(retry_params))
+        if patch:
+            return patch, None
+        preview = textwrap.shorten(
+            (retry_text or text).replace("\n", " "),
+            width=500,
+            placeholder="...",
+        )
+        return "", f"no patch in client response; preview={preview}"
+    except Exception as exc:  # noqa: BLE001
+        return "", str(exc)
+
+
+async def _run_opencode_patchfile_instance(
+    client: object,
+    instance: SWEBenchInstance,
+    evaluator: SWEBenchEvaluator,
+    config: SWEBenchConfig,
+    model_name: str | None,
+) -> SWEBenchResult:
+    """Generate a patch with Eliza, then subtask opencode to apply that patchfile."""
+    started = time.time()
+    manager = RepositoryManager(config.workspace_dir)
+    provider = "opencode"
+    try:
+        repo_root = await manager.setup_repo(instance)
+        patch, patch_error = await _generate_patch_with_client(
+            client,
+            instance,
+            provider,
+            model_name,
+        )
+        if not patch:
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch="",
+                patch_status=PatchStatus.NOT_GENERATED,
+                tests_passed=[],
+                tests_failed=[],
+                success=False,
+                duration_seconds=time.time() - started,
+                tokens_used=None,
+                error=f"patch generation failed before opencode apply: {patch_error}",
+                status="subtask_provider=opencode patchfile",
+            )
+
+        patch_path = repo_root / ".swe-bench-opencode.patch"
+        patch_path.write_text(patch, encoding="utf-8")
+        cmd = _subtask_provider_command(provider, model_name)
+        process = await asyncio.create_subprocess_exec(
+            *cmd,
+            cwd=str(repo_root),
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=_subtask_provider_env(provider, model_name),
+        )
+        prompt = _patchfile_apply_prompt(patch_path)
+        stdout_bytes, stderr_bytes = await asyncio.wait_for(
+            process.communicate(prompt.encode("utf-8")),
+            timeout=config.timeout_seconds,
+        )
+        stdout = stdout_bytes.decode("utf-8", errors="replace")
+        stderr = stderr_bytes.decode("utf-8", errors="replace")
+        worktree_patch = await manager.get_diff()
+
+        if not worktree_patch:
+            # Keep the benchmark moving if opencode failed after receiving the
+            # patchfile; evaluator will still report apply/test failures.
+            ok, error = await manager.apply_patch(patch)
+            if ok:
+                worktree_patch = await manager.get_diff()
+            else:
+                stderr = (stderr + "\n" + error).strip()
+                worktree_patch = patch
+
+        result = await evaluator.evaluate_patch(instance, worktree_patch)
+        result.duration_seconds = time.time() - started
+        status_bits = [result.status or "", "subtask_provider=opencode", "patchfile"]
+        if process.returncode not in (0, None):
+            status_bits.append(f"provider_exit={process.returncode}")
+            if not result.error:
+                preview = textwrap.shorten(
+                    (stdout + "\n" + stderr).replace("\n", " "),
+                    width=500,
+                    placeholder="...",
+                )
+                result.error = f"opencode patchfile apply exited {process.returncode}; preview={preview}"
+        result.status = " ".join(bit for bit in status_bits if bit).strip()
+        return result
+    except asyncio.TimeoutError:
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=None,
+            error=f"opencode patchfile apply timed out after {config.timeout_seconds}s",
+            status="subtask_provider=opencode patchfile",
+        )
+    except Exception as exc:  # noqa: BLE001
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=None,
+            error=str(exc),
+            status="subtask_provider=opencode patchfile",
+        )
 
 
 async def _run_subtask_provider_instance(
@@ -395,8 +574,22 @@ async def _run_subtask_provider_instance(
     evaluator: SWEBenchEvaluator,
     config: SWEBenchConfig,
     model_name: str | None = None,
+    patch_client: object | None = None,
 ) -> SWEBenchResult:
     """Run one instance by delegating the repo edit to an external task agent."""
+    if (
+        provider == "opencode"
+        and patch_client is not None
+        and os.environ.get("SWE_BENCH_OPENCODE_PATCHFILE", "1") not in {"0", "false", "False"}
+    ):
+        return await _run_opencode_patchfile_instance(
+            patch_client,
+            instance,
+            evaluator,
+            config,
+            model_name,
+        )
+
     started = time.time()
     manager = RepositoryManager(config.workspace_dir)
     try:
@@ -490,6 +683,7 @@ async def _run_subtask_provider_instance(
 
 
 async def _run_subtask_provider_instances(
+    client: object,
     provider: str,
     instances: list[SWEBenchInstance],
     evaluator: SWEBenchEvaluator,
@@ -512,6 +706,7 @@ async def _run_subtask_provider_instances(
                 evaluator,
                 config,
                 model_name,
+                client,
             )
         )
     return results
@@ -1073,6 +1268,7 @@ async def _run(args: argparse.Namespace) -> int:
                     and provider in _SUBTASK_PROVIDERS
                 ):
                     provider_results = await _run_subtask_provider_instances(
+                        client,
                         provider,
                         instances,
                         evaluator,
