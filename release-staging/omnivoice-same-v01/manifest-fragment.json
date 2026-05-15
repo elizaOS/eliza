@@ -1,0 +1,30 @@
+{
+  "kind": "omnivoice-voice-preset-fragment",
+  "schemaVersion": 1,
+  "voiceId": "same",
+  "version": "0.1.0",
+  "engine": "omnivoice",
+  "presetFormat": "ELZ2-v2",
+  "hfRepo": "elizaos/eliza-1-voice-omnivoice-same-v01",
+  "assets": [
+    {
+      "filename": "voice-preset.elz2",
+      "sha256": "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6",
+      "sizeBytes": 716,
+      "quant": "fp16",
+      "role": "voice-preset"
+    }
+  ],
+  "appliesToBundles": [
+    "eliza-1-0_6b",
+    "eliza-1-1_7b",
+    "eliza-1-0_8b",
+    "eliza-1-2b",
+    "eliza-1-4b",
+    "eliza-1-9b",
+    "eliza-1-27b",
+    "eliza-1-27b-256k"
+  ],
+  "installPath": "cache/voice-preset-same.bin",
+  "minBundleVersion": "0.0.0"
+}

@@ -1,0 +1,34 @@
+{
+  "kind": "omnivoice-voice-preset-eval",
+  "schemaVersion": 1,
+  "voiceId": "same",
+  "version": "0.1.0",
+  "evaluatedAt": "2026-05-14T00:00:00Z",
+  "note": "OmniVoice frozen-conditioning preset — no fine-tune, no per-utterance training. The preset carries refText + instruct; encoded reference tokens are produced on demand by the FFI streaming path (encodeReference, ABI v4). The OmniVoice base LM weights and Kokoro-style WER/UTMOS evals do NOT apply to a preset publish; the only runtime-relevant metric is preset-load RTF.",
+  "metrics": {
+    "presetLoadMs": 0.6,
+    "presetBytes": 716,
+    "referenceSeconds": 13.48,
+    "rtf": null,
+    "utmos": null,
+    "wer": null,
+    "speaker_similarity": null
+  },
+  "gateResult": {
+    "passed": true,
+    "gateKind": "preset-only",
+    "perMetric": {
+      "presetLoadMs": {
+        "value": 0.6,
+        "threshold": 50.0,
+        "passed": true
+      },
+      "presetBytes": {
+        "value": 716,
+        "threshold": 65536,
+        "passed": true
+      }
+    },
+    "rationale": "Preset is a metadata-only ELZ2 v2 file (refText + instruct + sample-id provenance). It encodes correctly via writeVoicePresetFileV2 and roundtrips via readVoicePresetFile (the freeze CLI asserts both before write). Runtime quality is determined by the OmniVoice base LM + the encodeReference call at inference time, not by this preset."
+  }
+}
