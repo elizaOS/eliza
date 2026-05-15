@@ -13,8 +13,8 @@ import type {
   AppSessionState,
   AppViewerConfig,
 } from "@elizaos/shared";
-import { resolveStateDir } from "../config/paths.ts";
-import { writeJsonAtomicSync } from "../utils/atomic-json.ts";
+import { resolveStateDir } from "@elizaos/agent/config/paths";
+import { writeJsonAtomicSync } from "@elizaos/agent/utils/atomic-json";
 
 const APP_RUN_STORE_VERSION = 2;
 const MAX_RECORDED_RUN_EVENTS = 20;
