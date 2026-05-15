@@ -516,11 +516,13 @@ function findAndroidVulkanInclude(ndk) {
   return null;
 }
 
-// Locate a glslc usable for the host. The Android NDK ships its own glslc
-// under shader-tools/<host>/glslc.
-function findGlslc(ndk) {
+// Locate glslc. Native desktop Vulkan builds should prefer the host shaderc
+// package so they don't inherit old Android NDK shader optimizer bugs; Android
+// cross-builds should prefer the NDK's matching shader-tools binary.
+function findGlslc(ndk, { preferNdk = false } = {}) {
   const explicit = process.env.GLSLC?.trim();
   if (explicit && fs.existsSync(explicit)) return explicit;
+  let ndkGlslc = null;
   if (ndk) {
     const hostDirs = [
       "linux-x86_64",
@@ -530,16 +532,20 @@ function findGlslc(ndk) {
     ];
     for (const host of hostDirs) {
       const candidate = path.join(ndk, "shader-tools", host, "glslc");
-      if (fs.existsSync(candidate)) return candidate;
+      if (fs.existsSync(candidate)) {
+        ndkGlslc = candidate;
+        break;
+      }
     }
   }
+  let hostGlslc = null;
   if (has("glslc")) {
     const out = spawnSync("which", ["glslc"], {
       encoding: "utf8",
     }).stdout?.trim();
-    return out || "glslc";
+    hostGlslc = out || "glslc";
   }
-  return null;
+  return preferNdk ? ndkGlslc || hostGlslc : hostGlslc || ndkGlslc;
 }
 
 // Find a usable x86_64-w64-mingw32 cross-toolchain on the host.
@@ -1127,6 +1133,67 @@ function fetchHeadersRepo({ name, repo, ref, sentinelRel }) {
   return includeDir;
 }
 
+function ensureSpirvHeadersPackage(spirvInclude) {
+  const explicitDir = process.env.ELIZA_DFLASH_SPIRV_HEADERS_CMAKE_DIR?.trim();
+  if (explicitDir) {
+    const configPath = path.join(explicitDir, "SPIRV-HeadersConfig.cmake");
+    if (!fs.existsSync(configPath)) {
+      throw new Error(
+        `ELIZA_DFLASH_SPIRV_HEADERS_CMAKE_DIR=${explicitDir} is missing SPIRV-HeadersConfig.cmake`,
+      );
+    }
+    return {
+      spirvHeadersDir: explicitDir,
+      spirvPrefix: path.resolve(explicitDir, "..", "..", ".."),
+    };
+  }
+
+  const sourceRoot =
+    path.basename(spirvInclude) === "include"
+      ? path.dirname(spirvInclude)
+      : null;
+  if (
+    !sourceRoot ||
+    !fs.existsSync(path.join(sourceRoot, "CMakeLists.txt"))
+  ) {
+    throw new Error(
+      `SPIRV-Headers CMake package is required by llama.cpp Vulkan builds; ` +
+        `set ELIZA_DFLASH_SPIRV_HEADERS_CMAKE_DIR or point ` +
+        `ELIZA_DFLASH_SPIRV_HEADERS_DIR at a Khronos SPIRV-Headers checkout`,
+    );
+  }
+
+  const installPrefix = path.join(sourceRoot, ".eliza-cmake-install");
+  const buildDir = path.join(sourceRoot, ".eliza-cmake-build");
+  const spirvHeadersDir = path.join(
+    installPrefix,
+    "share",
+    "cmake",
+    "SPIRV-Headers",
+  );
+  const configPath = path.join(spirvHeadersDir, "SPIRV-HeadersConfig.cmake");
+  const installedHeader = path.join(
+    installPrefix,
+    "include",
+    "spirv",
+    "unified1",
+    "spirv.hpp",
+  );
+  if (!fs.existsSync(configPath) || !fs.existsSync(installedHeader)) {
+    run("cmake", [
+      "-S",
+      sourceRoot,
+      "-B",
+      buildDir,
+      `-DCMAKE_INSTALL_PREFIX=${installPrefix}`,
+      "-DSPIRV_HEADERS_ENABLE_TESTS=OFF",
+      "-DSPIRV_HEADERS_ENABLE_INSTALL=ON",
+    ]);
+    run("cmake", ["--install", buildDir]);
+  }
+  return { spirvHeadersDir, spirvPrefix: installPrefix };
+}
+
 function prepareVulkanHeaders() {
   let vulkanInclude;
   const explicitVulkan = process.env.ELIZA_DFLASH_VULKAN_HEADERS_DIR?.trim();
@@ -1158,7 +1225,9 @@ function prepareVulkanHeaders() {
       sentinelRel: path.join("spirv", "unified1", "spirv.hpp"),
     });
   }
-  return { vulkanInclude, spirvInclude };
+  const { spirvHeadersDir, spirvPrefix } =
+    ensureSpirvHeadersPackage(spirvInclude);
+  return { vulkanInclude, spirvInclude, spirvHeadersDir, spirvPrefix };
 }
 
 // Resolve the system libvulkan.so.1 on Linux when libvulkan-dev isn't
@@ -1396,11 +1465,13 @@ function cmakeFlagsForTarget(target, ctx) {
     }
   } else if (backend === "vulkan") {
     flags[flags.indexOf("-DGGML_VULKAN=OFF")] = "-DGGML_VULKAN=ON";
-    if (ctx.glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${ctx.glslc}`);
+    const glslc = platform === "android" ? ctx.androidGlslc : ctx.hostGlslc;
+    if (glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${glslc}`);
     // The fork includes vulkan.hpp + spirv/unified1/spirv.hpp, neither of
     // which ships in the NDK *or* in Linux libvulkan-runtime-only installs.
     // ctx.vulkanHpp is the result of safelyPrepareVulkanHeaders() —
-    // { vulkanInclude, spirvInclude } pointing at fetched Khronos checkouts.
+    // { vulkanInclude, spirvInclude, spirvHeadersDir } pointing at fetched
+    // Khronos checkouts plus the installed SPIRV-Headers CMake package.
     if (ctx.vulkanHpp) {
       const isystem = [ctx.vulkanHpp.vulkanInclude, ctx.vulkanHpp.spirvInclude]
         .filter(Boolean)
@@ -1419,6 +1490,12 @@ function cmakeFlagsForTarget(target, ctx) {
           flags.push(`-DVulkan_INCLUDE_DIR=${ctx.vulkanHpp.vulkanInclude}`);
           flags.push(`-DVulkan_LIBRARY=${libVulkan}`);
         }
+      }
+      if (ctx.vulkanHpp.spirvHeadersDir) {
+        flags.push(`-DSPIRV-Headers_DIR=${ctx.vulkanHpp.spirvHeadersDir}`);
+      }
+      if (ctx.vulkanHpp.spirvPrefix) {
+        flags.push(`-DCMAKE_PREFIX_PATH=${ctx.vulkanHpp.spirvPrefix}`);
       }
     }
   }
@@ -1659,7 +1736,10 @@ function targetCompatibility(target, ctx) {
       reason: "OpenVINO_DIR or INTEL_OPENVINO_DIR is required",
     };
   }
-  if (backend === "vulkan" && !ctx.glslc) {
+  if (
+    backend === "vulkan" &&
+    !(platform === "android" ? ctx.androidGlslc : ctx.hostGlslc)
+  ) {
     return { ok: false, reason: "no glslc (Vulkan shader compiler)" };
   }
   if (backend === "sycl" && !(has("icpx") && has("icx"))) {
@@ -3697,7 +3777,8 @@ function build(args) {
   const ctx = {
     androidNdk,
     androidVulkanInclude: findAndroidVulkanInclude(androidNdk),
-    glslc: findGlslc(androidNdk),
+    hostGlslc: findGlslc(androidNdk),
+    androidGlslc: findGlslc(androidNdk, { preferNdk: true }),
     vulkanHpp: willBuildVulkan ? safelyPrepareVulkanHeaders() : null,
     mingw,
     mingwToolchainFile: mingw ? writeMingwToolchainFile({ mingw }) : null,
