@@ -24,7 +24,6 @@
  *
  * Usage:
  *   node packages/inference/verify/eliza1_gates_collect.mjs \
- *     [--tier 0_8b|2b|4b|9b|27b|27b-256k|27b-1m] [--gates PATH] [--report PATH] [--json]
  */
 
 import fs from "node:fs";
@@ -69,14 +68,19 @@ const DEFAULT_GATES = path.join(
   "eliza1_gates.yaml",
 );
 const ACTIVE_VISION_TIERS = new Set([
-  "0_8b",
+  "4b",
+  "9b",
+  "27b",
+  "27b-256k",
+]);
+const ACTIVE_DFLASH_TIERS = new Set([
   "2b",
   "4b",
   "9b",
   "27b",
   "27b-256k",
-  "27b-1m",
 ]);
+const DFLASH_GATE_NAMES = new Set(["dflash_acceptance", "dflash_speedup"]);
 
 function timestamp() {
   return new Date()
@@ -590,6 +594,8 @@ async function main() {
     e2eDflashAcceptance ??
     null;
   const dflashSpeedup = dflashBench ? extractDflashSpeedup(dflashBench.data) : null;
+  const requiresDflash = ACTIVE_DFLASH_TIERS.has(args.tier);
+  const evaluateDflash = requiresDflash;
   const vadLatencyMs = vadQuality?.data?.summary?.vadLatencyMs ?? null;
   const vadBoundaryMaeMs = vadQuality?.data?.summary?.vadBoundaryMaeMs ?? null;
   const vadEndpointP95Ms = vadQuality?.data?.summary?.vadEndpointP95Ms ?? null;
@@ -678,6 +684,13 @@ async function main() {
     r.required = Boolean(cfg?.required);
     r.provisional = Boolean(cfg?.provisional ?? def?.provisional);
     r.needsHardware = Boolean(cfg?.needs_hardware ?? def?.needs_hardware);
+    if (!evaluateDflash && DFLASH_GATE_NAMES.has(name)) {
+      r.status = "not-applicable";
+      r.required = false;
+      r.provisional = false;
+      r.needsHardware = false;
+      r.reason = `${args.tier} is not a DFlash tier; DFlash gates are skipped`;
+    }
     results.push(r);
   }
 
@@ -763,7 +776,7 @@ async function main() {
     ...(e2eLoopOk !== null ? { e2eLoopOk } : {}),
     ...(vadLatencyEval ? { vadLatencyMs: vadLatencyEval } : {}),
     ...(expressiveManifest ? { expressive: expressiveManifest } : {}),
-    dflash: dflashEval,
+    ...(evaluateDflash ? { dflash: dflashEval } : {}),
   };
 
   function gateRow(name, area, source, reasonOverride = null, blockingOverride = null) {
@@ -827,25 +840,30 @@ async function main() {
   const streamingTtsActive = boolOrNull(e2eOptimizations?.streamingTtsActive);
   const dflashDraftingActive = boolOrNull(e2eOptimizations?.dflashDraftingActive);
   const requiresVision = ACTIVE_VISION_TIERS.has(args.tier);
-  const visionStatus =
-    visionSmoke?.data?.passed === true
+  const unexpectedVisionFailure =
+    !requiresVision &&
+    visionSmoke?.data?.status === "fail" &&
+    visionSmoke?.data?.action === "remove-unexpected-vision-artifact";
+  const visionStatus = !requiresVision
+    ? unexpectedVisionFailure
+      ? "fail"
+      : "not-applicable"
+    : visionSmoke?.data?.passed === true
       ? "pass"
       : visionSmoke
-        ? requiresVision
-          ? "fail"
-          : visionSmoke.data?.status === "not-applicable"
-            ? "not-applicable"
-            : "fail"
+        ? "fail"
         : "needs-data";
-  const visionReason =
-    visionStatus === "pass"
+  const visionReason = !requiresVision
+    ? unexpectedVisionFailure
+      ? (visionSmoke?.data?.reason ??
+        `${args.tier} must not ship image-vision artifacts`)
+      : `${args.tier} is not a vision tier; image-vision smoke is skipped`
+    : visionStatus === "pass"
       ? "vision smoke passed"
-      : visionSmoke?.data?.status === "not-applicable" && requiresVision
+      : visionSmoke?.data?.status === "not-applicable"
         ? "active Eliza-1 tier requires vision; stale not-applicable vision evidence is invalid"
         : (visionSmoke?.data?.reason ??
-          (requiresVision
-            ? "configured vision tier has no vision smoke evidence"
-            : "no vision smoke evidence for this tier"));
+          "configured vision tier has no vision smoke evidence");
   const iosStatus = iosSmoke?.data?.status === "passed" ? "pass" : iosSmoke ? "fail" : "needs-data";
   const iosBlocker = iosSmoke?.data?.blocker;
   const localVoiceLoopbackPass =
@@ -1024,12 +1042,20 @@ async function main() {
     {
       area: "worker-output",
       gate: "dflash_drafting_active",
-      status: dflashDraftingActive === true ? "pass" : dflashDraftingActive === false ? "fail" : "needs-data",
-      blocking: dflashDraftingActive !== true,
+      status: !evaluateDflash
+        ? "not-applicable"
+        : dflashDraftingActive === true
+          ? "pass"
+          : dflashDraftingActive === false
+            ? "fail"
+            : "needs-data",
+      blocking: evaluateDflash && dflashDraftingActive !== true,
       measured: dflashDraftingActive,
-      threshold: "true",
+      threshold: evaluateDflash ? "true" : "not-applicable",
       reason:
-        dflashDraftingActive === true
+        !evaluateDflash
+          ? `${args.tier} is not a DFlash tier; DFlash gates are skipped`
+          : dflashDraftingActive === true
           ? "e2e loop observed DFlash drafting"
           : "required optimization is inactive in the selected e2e loop",
       source: sourcePath(e2eLoop),

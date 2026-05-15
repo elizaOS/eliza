@@ -13,15 +13,13 @@ const MODELS_ROOT = path.join(
 );
 
 const VISION_TIERS = new Set([
-  "0_8b",
-  "2b",
   "4b",
   "9b",
   "27b",
   "27b-256k",
-  "27b-1m",
 ]);
-const TEXT_VOICE_ONLY_TIERS = new Set(["0_6b", "1_7b"]);
+const OPTIONAL_VISION_TIERS = new Set();
+const TEXT_VOICE_ONLY_TIERS = new Set(["0_8b", "2b", "0_6b", "1_7b"]);
 
 function usage() {
   return [
@@ -95,6 +93,12 @@ function parseArgs(argv) {
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+function inferTierFromBundleDir(bundleDir) {
+  const base = path.basename(bundleDir).replace(/\.bundle$/, "");
+  const prefix = "eliza-1-";
+  return base.startsWith(prefix) ? base.slice(prefix.length) : "";
 }
 
 function listFiles(dir) {
@@ -393,7 +397,38 @@ function buildReport(args) {
   const bundleDir = path.resolve(args.bundleDir);
   const manifestPath = path.join(bundleDir, "eliza-1.manifest.json");
   if (!fs.existsSync(manifestPath)) {
-    throw new Error(`manifest not found: ${manifestPath}`);
+    const tier = args.tier || inferTierFromBundleDir(bundleDir);
+    return {
+      schemaVersion: 1,
+      metric: "vision_smoke",
+      generatedAt: new Date().toISOString(),
+      bundleDir,
+      tier,
+      expectedVisionTier: VISION_TIERS.has(tier),
+      optionalVisionTier: OPTIONAL_VISION_TIERS.has(tier),
+      textVoiceOnlyTier: TEXT_VOICE_ONLY_TIERS.has(tier),
+      supported: false,
+      passed: false,
+      status: "fail",
+      action: VISION_TIERS.has(tier)
+        ? "stage-bundle-with-compatible-mmproj"
+        : "stage-bundle-manifest",
+      reason: `${tier || "unknown tier"} bundle manifest is missing: ${manifestPath}`,
+      manifest: { path: manifestPath, exists: false },
+      inventory: {
+        visionFiles: relativeFiles(bundleDir, "vision"),
+        sourceVisionFiles: relativeFiles(bundleDir, "source/vision"),
+        asrMmprojFiles: relativeFiles(bundleDir, "asr").filter((file) =>
+          /mmproj/i.test(file),
+        ),
+      },
+      imageAnalysis: {
+        attempted: false,
+        status: "skipped",
+        reason: "skipped because bundle manifest is missing",
+      },
+      visionAssetCommands: visionAssetCommands(tier || "<tier>", bundleDir),
+    };
   }
   const manifest = readJson(manifestPath);
   const tier = args.tier || manifest.tier;
@@ -407,8 +442,13 @@ function buildReport(args) {
   const asrMmprojFiles = relativeFiles(bundleDir, "asr").filter((file) =>
     /mmproj/i.test(file),
   );
-  const expectedVisionTier = VISION_TIERS.has(tier);
-  const textVoiceOnlyTier = TEXT_VOICE_ONLY_TIERS.has(tier);
+  const configuredVisionTier = VISION_TIERS.has(tier);
+  const optionalVisionTier = OPTIONAL_VISION_TIERS.has(tier);
+  const expectedVisionTier =
+    configuredVisionTier || (optionalVisionTier && manifestVisionFiles.length > 0);
+  const textVoiceOnlyTier =
+    TEXT_VOICE_ONLY_TIERS.has(tier) ||
+    (optionalVisionTier && manifestVisionFiles.length === 0);
   const mmprojRel = manifestVisionFiles[0]?.path;
   const mmprojPath =
     typeof mmprojRel === "string" ? path.join(bundleDir, mmprojRel) : "";
@@ -426,6 +466,7 @@ function buildReport(args) {
     bundleDir,
     tier,
     expectedVisionTier,
+    optionalVisionTier,
     textVoiceOnlyTier,
     supported: manifestVisionFiles.length > 0,
     passed: false,
@@ -470,6 +511,12 @@ function buildReport(args) {
           "vision",
           "mmproj-27b-256k.gguf",
         ),
+        path.join(
+          MODELS_ROOT,
+          
+          "vision",
+          
+        ),
       ].filter((file) => fs.existsSync(file)),
     },
     appCorePath: {
@@ -500,23 +547,21 @@ function buildReport(args) {
     report.status = "not-applicable";
     report.action = "mark-text-voice-only";
     report.reason =
-      `${tier} is text/voice-only by the Eliza-1 tier contract: packages/inference/AGENTS.md marks Vision=no for ${tier}, ` +
-      "packages/shared/src/local-inference/catalog.ts has no sourceModel.components.vision for this tier, " +
-      "packages/training/scripts/manifest/stage_eliza1_source_weights.py has no vision source for this tier, " +
-      "and manifest.files.vision is empty. The ASR mmproj is audio-only and cannot be reused for image analysis; " +
+      `${tier} is text/voice-only for image vision. ` +
+      "manifest.files.vision is empty. The ASR mmproj is audio-only and cannot be reused for image analysis; " +
       "the local 9B/27B mmproj files are tied to different text backbones and are not compatible substitutes.";
     report.imageAnalysis.reason = "skipped because manifest.files.vision is empty";
     return report;
   }
 
-  if (!expectedVisionTier && manifestVisionFiles.length > 0) {
+  if (!configuredVisionTier && !optionalVisionTier && manifestVisionFiles.length > 0) {
     report.status = "fail";
     report.action = "remove-unexpected-vision-artifact";
     report.reason = `${tier} is not a configured vision tier but manifest.files.vision is non-empty`;
     return report;
   }
 
-  if (expectedVisionTier && manifestVisionFiles.length === 0) {
+  if (configuredVisionTier && manifestVisionFiles.length === 0) {
     report.status = "fail";
     report.action = "stage-compatible-mmproj";
     report.reason = `${tier} is a configured vision tier but manifest.files.vision is empty`;
