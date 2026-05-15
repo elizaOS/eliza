@@ -305,11 +305,13 @@ export function ChatView({
   const {
     beginVoiceCapture,
     endVoiceCapture,
+    continuous,
     handleEditMessage,
     handleSpeakMessage,
     stopSpeaking,
     voice,
     voiceLatency,
+    voiceSpeaker,
   } = useChatVoiceController({
     agentVoiceMuted,
     chatFirstTokenReceived,
@@ -326,6 +328,7 @@ export function ChatView({
     isGameModal,
     setState,
     uiLanguage,
+    continuousMode: continuousChatMode,
   });
   // Stop any in-flight voice playback when the user switches conversations.
   // useLayoutEffect (not useEffect): must run *before* useChatVoiceController's
