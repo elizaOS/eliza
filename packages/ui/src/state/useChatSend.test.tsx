@@ -10,7 +10,7 @@ import type {
   ImageAttachment,
 } from "../api";
 import type { LoadConversationMessagesResult } from "./internal";
-import { useChatSend, type UseChatSendDeps } from "./useChatSend";
+import { type UseChatSendDeps, useChatSend } from "./useChatSend";
 
 const mocks = vi.hoisted(() => ({
   client: {
@@ -58,10 +58,12 @@ function abortError(): Error {
   return err;
 }
 
-function makeDeps(overrides: {
-  activeConversationId?: string | null;
-  conversations?: Conversation[];
-} = {}): UseChatSendDeps {
+function makeDeps(
+  overrides: {
+    activeConversationId?: string | null;
+    conversations?: Conversation[];
+  } = {},
+): UseChatSendDeps {
   const conversationsRef = {
     current: overrides.conversations ?? [],
   } as MutableRefObject<Conversation[]>;

@@ -665,3 +665,42 @@ backend nightly.
   architecture rules apply here too: dependencies point inward, no
   polymorphism for runtime branching in code (kernels are a registry,
   not an `if`), no `try/catch` that swallows.
+
+---
+
+## 11. ONNX deprecation status (as of J3 wave, 2026-05-15)
+
+**Single runtime policy:** every local-inference model path must flow through
+the elizaOS llama.cpp fork. ONNX (`onnxruntime-node` / `onnxruntime-web`) is
+deprecated and will be removed from the runtime path once all native ports land.
+
+### Completed (fork path active)
+
+| Model | Path | Status |
+|---|---|---|
+| OmniVoice TTS | fork FFI `libelizainference` (`tools/omnivoice/`) | DONE (W3-3) |
+| Silero VAD | fork FFI `eliza_inference_vad_*` | DONE (I1 audit) |
+| hey-eliza wakeword | fork FFI `eliza_inference_wakeword_*` | DONE (I1 audit) |
+| ASR (Qwen3-ASR) | fork FFI `eliza_pick_asr_files()` | DONE (T-asr) |
+| DFlash speculative decoding | fork `llama-server` `--spec-type dflash` | DONE |
+| Text EOT (Eliza1EotClassifier) | fork `node-llama-cpp` P(`<|im_end|>`) | DONE (preferred path when text model loaded) |
+
+### Compute-gated (ONNX still active in resolved runtime)
+
+| Model | Gate | Owner | Est. |
+|---|---|---|---|
+| Wav2Small emotion | `voice-classifier-cpp/src/voice_emotion_*.c` returns `-ENOSYS` | J1 | 1 worker-day |
+| WeSpeaker R34-LM | `voice-classifier-cpp/src/voice_speaker_*.c` returns `-ENOSYS` | J1 | 2 worker-days |
+| pyannote-3 diarizer | No ggml scaffold yet | J1 | 1 worker-day |
+| audio EOT (LiveKit fallback) | `voice-classifier-cpp/src/voice_eot_*.c` returns `-ENOSYS`; ONNX used as fallback only when no text model loaded | J1 | 1 worker-day |
+| Kokoro TTS | `LLM_ARCH_KOKORO` stub exists (W3-1 `d087c94933`); StyleTTS-2 GGML graph not implemented | J2 | 5-10 worker-days |
+
+**Rule:** do NOT remove `onnxruntime-node` from `plugin-local-inference/package.json`
+until every compute-gated head above is replaced. Premature removal crashes the
+voice pipeline. The per-model migration protocol (flip `manifest.json` runtime field,
+rename GGML variant to canonical, delete ONNX file, run verify gate) is documented
+in `.swarm/impl/I1-single-runtime.md §F`.
+
+**HF deprecation runway:** ONNX model files remain on HF alongside GGUFs for one
+release after each native port lands. Do not delete ONNX from HF until the GGUF
+path has been in production for one release cycle.

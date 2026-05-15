@@ -15,6 +15,8 @@ export interface ResponseHandlerPatch {
 	addCandidateActions?: readonly string[];
 	addParentActionHints?: readonly string[];
 	addContextSlices?: readonly string[];
+	clearCandidateActions?: boolean;
+	clearParentActionHints?: boolean;
 	clearReply?: boolean;
 	reply?: string;
 	debug?: readonly string[];
@@ -144,12 +146,20 @@ function applyResponseHandlerPatch(
 		);
 		changed.push("candidateActions:add");
 	}
+	if (patch.clearCandidateActions) {
+		delete messageHandler.plan.candidateActions;
+		changed.push("candidateActions:clear");
+	}
 	if (patch.addParentActionHints) {
 		messageHandler.plan.parentActionHints = mergeUniqueStrings(
 			messageHandler.plan.parentActionHints,
 			patch.addParentActionHints,
 		);
 		changed.push("parentActionHints:add");
+	}
+	if (patch.clearParentActionHints) {
+		delete messageHandler.plan.parentActionHints;
+		changed.push("parentActionHints:clear");
 	}
 	if (patch.addContextSlices) {
 		messageHandler.plan.contextSlices = mergeUniqueStrings(

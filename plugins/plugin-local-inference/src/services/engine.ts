@@ -1689,12 +1689,14 @@ export class LocalInferenceEngine {
 			{ VoiceTurnController },
 			{ InMemoryAudioSink },
 			eotMod,
+			eotGgmlMod,
 		] = await Promise.all([
 			import("./voice/mic-source"),
 			import("./voice/vad"),
 			import("./voice/turn-controller"),
 			import("./voice/ring-buffer"),
 			import("./voice/eot-classifier"),
+			import("./voice/eot-classifier-ggml"),
 		]);
 
 		const micSource = opts.micSource ?? new DesktopMicSource();
@@ -1750,11 +1752,30 @@ export class LocalInferenceEngine {
 				"[voice] useEliza1Eot:true requested but the in-process text model is not loaded — load a node-llama-cpp model before starting the voice session, or set useEliza1Eot:false.",
 			);
 		}
+		// Resolver order (J1.d single-runtime policy): prefer the
+		// fork-served GGUF over the legacy ONNX path. The GGUF binding
+		// loads the Qwen2-style decoder through `node-llama-cpp` (the
+		// canonical fork wrapper), so the resolved path drops ONNX +
+		// `@huggingface/transformers` entirely. The ONNX fallback exists
+		// as a one-release deprecation runway and is retired in the
+		// follow-up J3 wave.
+		const ggmlTurnDetector =
+			opts.turnDetector === false
+				? undefined
+				: await eotGgmlMod
+						.createBundledLiveKitGgmlTurnDetector({
+							...(opts.turnDetectorModelDir
+								? { modelDir: opts.turnDetectorModelDir }
+								: {}),
+							...(tierRevision ? { revision: tierRevision } : {}),
+						})
+						.catch(() => null);
 		const turnDetector =
 			opts.turnDetector === false
 				? undefined
 				: (opts.turnDetector ??
 					eliza1EotClassifier ??
+					ggmlTurnDetector ??
 					(await eotMod.createBundledLiveKitTurnDetector({
 						...(opts.turnDetectorModelDir
 							? { modelDir: opts.turnDetectorModelDir }

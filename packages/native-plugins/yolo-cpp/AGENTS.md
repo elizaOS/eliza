@@ -9,17 +9,39 @@ unchanged.
 
 This document is the contract the port must satisfy.
 
-Today the library is **partially real**:
-- `src/yolo_classes.c` — real COCO-80 lookup table.
-- `src/yolo_nms.c` — real per-class non-max suppression.
-- `src/yolo_postprocess.c` — real decoupled-head decode.
-- `src/yolo_stub.c` — ENOSYS stub for the four entry points that
-  depend on the ggml graph (`yolo_open`, `yolo_detect`,
-  `yolo_active_backend`; `yolo_close` is NULL-safe and returns 0).
+Today (Phase 2 partial) the library is **real for everything except
+the forward pass**:
+- `src/yolo_classes.c`     — real COCO-80 lookup table.
+- `src/yolo_nms.c`         — real per-class non-max suppression.
+- `src/yolo_postprocess.c` — real decoupled-head decode helper.
+- `src/yolo_gguf.c`        — real GGUF v3 reader (mmap, fp16+fp32).
+- `src/yolo_letterbox.c`   — real bilinear letterbox + RGB→CHW fp32
+                             preprocessor (matches Ultralytics'
+                             default 114-grey neutral pad).
+- `src/yolo_kernels.c`     — pure-C scalar Conv2D / BN-fold / SiLU /
+                             Concat / Upsample2 / MaxPool / Softmax
+                             kernel set used by the eventual forward
+                             pass.
+- `src/yolo_runtime.c`     — `yolo_open` mmaps the GGUF, validates
+                             metadata, fp16→fp32 promotes every Conv2D
+                             weight, materialises every tensor in
+                             heap. `yolo_detect` exercises the real
+                             letterbox preprocessor end-to-end and
+                             returns `-ENOSYS` honestly until the
+                             scalar-C op-schedule that wires
+                             backbone+neck+head lands. `yolo_close`
+                             releases the session. `yolo_active_backend`
+                             reports `"cpu-ref"`.
 
-CMake builds `libyolo.a` plus three test binaries: `yolo_stub_smoke`
-(ABI link probe), `yolo_nms_test` (NMS behaviour), `yolo_classes_test`
-(class table). All three pass on the dev host.
+CMake builds `libyolo.a` (static) PLUS `libyolo.so` (shared, for
+`bun:ffi` from `plugins/plugin-vision/src/yolo-detector-ggml.ts`) plus
+five test binaries: `yolo_stub_smoke` (ABI link probe + lifecycle
+contract), `yolo_nms_test` (NMS behaviour), `yolo_classes_test`
+(class table), `yolo_letterbox_test` (preprocessor identity + center-
+pad + grey-pad assertions), `yolo_runtime_test` (open / metadata
+validation / detect-staged-forward path; runs the full open+letterbox
+roundtrip when `YOLO_TEST_GGUF` env var points at a real GGUF). All
+five pass on the dev host.
 
 ## Why this lives here
 
@@ -43,9 +65,14 @@ CMake builds `libyolo.a` plus three test binaries: `yolo_stub_smoke`
 ## Upstream pin
 
 - Repo: https://github.com/ultralytics/ultralytics
-- Commit: **TODO — pin at conversion time and record both here and in
-  the GGUF metadata key `yolo.upstream_commit`** (see
-  `scripts/yolo_to_gguf.py`).
+- Tag:  `v8.4.51` (the latest stable tag at Phase 2 conversion time).
+- Commit: `14ea57b11969cd872f15291e5d0bdc965bdb59f7` — recorded both
+  here and in `scripts/yolo_to_gguf.py`'s `ULTRALYTICS_UPSTREAM_COMMIT`
+  constant. The runtime reads `yolo.upstream_commit` from the GGUF and
+  could refuse to load an unknown commit (today the runtime only
+  validates `yolo.detector` / `yolo.input_size` / `yolo.num_classes` /
+  `yolo.dfl_bins`; the upstream-commit refusal lands when we have a
+  second pin to validate against).
 - Models the port targets (Phase 2 verifies parity against the
   upstream Python reference for both):
   - `yolov8n` — ~3.2M params, 8.7 GFLOPs, 640×640 input, COCO 80
@@ -179,26 +206,63 @@ Output: `libyolo.a` plus three test binaries — `yolo_stub_smoke`,
 that's the contract the port preserves while it grows real
 implementations behind the same ABI.
 
-## What's missing before the port is real
+## What's done vs. still missing
 
-- Pinned ultralytics/ultralytics upstream commit + recorded weights
-  download recipe.
-- `discover_conv_tensors`, `discover_batchnorm_tensors`,
-  `discover_head_tensors`, `write_gguf` implementations in
-  `scripts/yolo_to_gguf.py` (TODO blocks call out the exact work).
-- Backbone + neck + head graph builder in C, dispatched through the
-  elizaOS/llama.cpp fork's ggml ops. Land YOLOv8n first; YOLOv11n is
-  a second op-schedule once the graph builder is in place.
-- BN-into-Conv fusion at session-open time.
-- Letterbox helper in C (the postprocess decoder takes the scale and
-  pad already; the `yolo_detect` entry point needs the inverse:
-  letterbox the input image into a 640×640 RGB plane the graph
-  consumes).
-- Parity test: ingest a small fixture set of real images, run both
-  the Ultralytics Python reference and this library, assert
-  per-detection IoU ≥ 0.95 against the same class id and confidence
-  within 1e-2 over the fixture set.
+Done in Phase 2 (this commit set):
+
+- Pinned ultralytics commit (`14ea57b119` / tag `v8.4.51`), recorded
+  here and in `scripts/yolo_to_gguf.py` and embedded in the GGUF
+  metadata key `yolo.upstream_commit`.
+- Real `scripts/yolo_to_gguf.py` — downloads or loads the Ultralytics
+  pretrained weights, walks the state_dict, drops
+  `num_batches_tracked` scalars, sanity-checks key+shape against a
+  pinned reference table, packs Conv2D weights as fp16 and BN
+  params + DFL projection as fp32, emits a single ~6.2 MB GGUF.
+- Real `src/yolo_gguf.c` — minimal GGUF v3 reader, mmap-backed,
+  fp16+fp32 supported, scalar/string/array metadata getters, tensor
+  lookup by name with PyTorch-outer-first dim reporting.
+- Real `src/yolo_letterbox.c` — bilinear resize + center pad with
+  Ultralytics' 114-grey neutral, reports scale + pad offsets so the
+  postprocess can un-letterbox bboxes.
+- Real `src/yolo_kernels.c` — scalar Conv2D, BN-fold to per-channel
+  (scale, shift), SiLU, sigmoid, channel-axis concat, 2× nearest
+  upsample, MaxPool2D-same, per-row softmax. The op set the v8/v11
+  forward pass needs.
+- Real `src/yolo_runtime.c` — `yolo_open` mmaps GGUF, validates
+  metadata (variant, input size, classes, DFL bins, BN eps),
+  fp16→fp32 promotes every tensor into heap. `yolo_close` releases.
+  `yolo_active_backend` reports `"cpu-ref"`. `yolo_detect` runs the
+  real letterbox preprocessor; the forward pass itself is staged.
+- Shared library target `libyolo.so` for `bun:ffi` consumption.
+- New ctests: `yolo_letterbox_test` (preprocessor behaviour) and
+  `yolo_runtime_test` (open + metadata + staged-forward contract).
+- TS binding `plugins/plugin-vision/src/yolo-detector-ggml.ts` now
+  `dlopen`s `libyolo.so` through `bun:ffi`, calls the real C ABI,
+  marshals the `yolo_image` + `yolo_detection` records by hand,
+  honours the `-ENOSYS` staged-forward signal, and falls back to the
+  ONNX detector silently when the native lib isn't built.
+- Parity-test harness `test/yolo_parity_test.py` — runs both the
+  Ultralytics Python reference and `libyolo` via ctypes, asserts
+  per-detection class match + IoU ≥ 0.95 + confidence within 1e-2,
+  and exits with CTest's "skipped" code (77) while the C-side
+  forward pass is staged. When the forward lands, the parity asserts
+  trigger and this script becomes the production gate.
+
+Still missing (Phase 3 work):
+
+- Scalar-C v8n forward pass: wire `yolo_detect`'s op schedule
+  (CSPDarknet backbone → SPPF → PANet neck → decoupled head with
+  DFL+stride decode → `yolo_decode_one` → `yolo_nms_inplace` →
+  un-letterbox). Every kernel the schedule needs is already in
+  `yolo_kernels.c`. The slow path is acceptable for a parity gate;
+  the fast path needs the next bullet.
+- Either ggml-dispatcher integration against the elizaOS/llama.cpp
+  fork (preferred for production — gets Vulkan / Metal "for free")
+  OR an im2col + AVX2/NEON GEMM dispatcher inline in this package
+  (mirrors `qjl-cpu`). Phase 2 keeps the contract honest by
+  reporting `"cpu-ref"` until either lands.
+- YOLOv11n op schedule (same kernels, different head index +
+  C2f-PSA backbone). The runtime accepts the v11n metadata tag
+  today; the schedule lands alongside its parity tests.
 - `fork-integration/` patches if any new ggml ops are needed (none
-  expected for the first pass).
-- Phase 2: AVX2 / NEON kernels for the inner Conv2d hot loops
-  (mirror the `qjl-cpu` SIMD dispatcher).
+  expected — every YOLO op exists in the fork today).

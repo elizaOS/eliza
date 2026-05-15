@@ -570,4 +570,6 @@ packages/training/out/
 plugins/plugin-vision/eng.traineddata
 dev-desktop.pid
 reports/
-docs/
+docs/yolov8n.pt
+yolov8n.pt
+*.pt

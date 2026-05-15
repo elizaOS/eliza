@@ -104,7 +104,9 @@ set(CMAKE_MAKEFILE_PRODUCTS
 # Dependency information for all targets:
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/wakeword.dir/DependInfo.cmake"
+  "CMakeFiles/wakeword_shared.dir/DependInfo.cmake"
   "CMakeFiles/wakeword_stub_smoke.dir/DependInfo.cmake"
   "CMakeFiles/wakeword_melspec_test.dir/DependInfo.cmake"
   "CMakeFiles/wakeword_window_test.dir/DependInfo.cmake"
+  "CMakeFiles/wakeword_runtime_test.dir/DependInfo.cmake"
   )

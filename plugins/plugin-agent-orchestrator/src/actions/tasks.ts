@@ -150,6 +150,16 @@ function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function requestsDeferredUserReply(text: string): boolean {
+  const normalized = text.toLowerCase();
+  return (
+    /\b(?:reply|respond)\s+only\s+after\b/.test(normalized) ||
+    /\b(?:reply|respond)\s+only\s+when\b/.test(normalized) ||
+    /\bdo\s+not\s+(?:reply|respond)\s+until\b/.test(normalized) ||
+    /\bdon't\s+(?:reply|respond)\s+until\b/.test(normalized)
+  );
+}
+
 function readOp(params: Record<string, unknown>): TaskOp | null {
   const raw = typeof params.action === "string" ? params.action : undefined;
   if (!raw) return null;
@@ -465,6 +475,9 @@ async function runSpawnAgent(
       content,
       "keepAliveAfterComplete",
     );
+    const deferUserReply =
+      pickBoolean(params, content, "deferUserReply") === true ||
+      requestsDeferredUserReply(task);
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
 
     // Resolve the connector source for routing the sub-agent's eventual
@@ -534,8 +547,10 @@ async function runSpawnAgent(
     // request was dispatched without us claiming completion (the
     // sub-agent runs async; its actual result is reported separately
     // via the task-event channel).
-    const ackText = `On it — spawning ${agentType} sub-agent to handle your request.`;
-    if (callback) {
+    const ackText = deferUserReply
+      ? ""
+      : `On it — spawning ${agentType} sub-agent to handle your request.`;
+    if (callback && ackText) {
       await callbackText(callback, ackText);
     }
     return {
@@ -567,6 +582,7 @@ async function runSpawnAgent(
         workdir: session.workdir,
         status: session.status,
         label,
+        deferredUserReply: deferUserReply,
         suppressActionResultClipboard: true,
       },
     };
@@ -600,7 +616,9 @@ async function runSend(
   }
 
   try {
-    const sessionId = pickString(params, content, "sessionId");
+    const routedCompletion = routedSubAgentCompletion(content);
+    const sessionId =
+      pickString(params, content, "sessionId") ?? routedCompletion?.sessionId;
     const input = pickString(params, content, "input");
     const task = pickString(params, content, "task");
     const keys = pickString(params, content, "keys");
@@ -629,7 +647,10 @@ async function runSend(
       };
     }
 
-    const textInput = input ?? task;
+    const plannerInput = input ?? task;
+    const textInput = routedCompletion
+      ? buildSubAgentCompletionFollowUp(routedCompletion, plannerInput)
+      : plannerInput;
     if (textInput) {
       await service.sendToSession(target.session.id, textInput);
       const text = task ? "Assigned new task to agent" : "Sent input to agent";
@@ -655,6 +676,48 @@ async function runSend(
     await callbackText(callback, `Failed to send to agent: ${msg}`);
     return { success: false, error: msg };
   }
+}
+
+function routedSubAgentCompletion(
+  content: Record<string, unknown>,
+): { completionText: string; sessionId: string } | undefined {
+  if (content.source !== "sub_agent") return undefined;
+  const metadata =
+    content.metadata !== null && typeof content.metadata === "object"
+      ? (content.metadata as Record<string, unknown>)
+      : undefined;
+  if (
+    metadata?.subAgent !== true ||
+    textValue(metadata.subAgentEvent) !== "task_complete"
+  ) {
+    return undefined;
+  }
+  const sessionId = textValue(metadata.subAgentSessionId);
+  if (!sessionId) return undefined;
+  return {
+    sessionId,
+    completionText: textValue(content.text) ?? "",
+  };
+}
+
+function buildSubAgentCompletionFollowUp(
+  completion: { completionText: string; sessionId: string },
+  plannerInput: string | undefined,
+): string {
+  const parts = [
+    "Continue the original task in this same sub-agent session.",
+    "Your previous completion was incomplete or mostly raw tool output. Do not ask the user for command output, and do not just restate the partial result.",
+  ];
+  if (plannerInput) {
+    parts.push(`Parent follow-up:\n${plannerInput}`);
+  }
+  if (completion.completionText) {
+    parts.push(`Previous completion:\n${completion.completionText}`);
+  }
+  parts.push(
+    "Run any additional commands needed, then return one complete user-facing answer that satisfies the original request.",
+  );
+  return parts.join("\n\n");
 }
 
 // ── action: stop_agent (STOP_AGENT) ─────────────────────────────────────────
@@ -2213,6 +2276,13 @@ export const tasksAction: Action & {
       required: false,
       schema: { type: "boolean" as const },
     },
+    {
+      name: "deferUserReply",
+      description:
+        "For action=spawn_agent, suppress the immediate visible acknowledgement when the user explicitly requested no interim reply, such as 'reply only after verification'. The sub-agent completion router will post the final result.",
+      required: false,
+      schema: { type: "boolean" as const },
+    },
     // send
     {
       name: "input",
@@ -2458,15 +2528,25 @@ export const tasksAction: Action & {
     // Always allow when ACP service is available — action switch handles dispatch.
     if (!getAcpService(runtime)) return false;
     // Sub-agent task_complete events are routed back through the runtime as
-    // synthetic inbound messages so the parent agent can compose the
-    // user-facing reply. The parent should NOT re-spawn from those echoes;
-    // it should just summarise the result. Gating TASKS out of the candidate
-    // surface for sub-agent-sourced inbounds is the structural fix for the
-    // duplicate-spawn / "On it × N" loop observed when a single user
-    // request kicks off an asynchronous spawn whose completion event the
-    // planner would otherwise interpret as a fresh delegation request.
-    const source = (message.content as { source?: unknown })?.source;
-    if (source === "sub_agent") return false;
+    // synthetic inbound messages. Most verified completions are handled by
+    // the response evaluator, but incomplete completions still need the TASKS
+    // surface so the parent can send a follow-up to the same session instead
+    // of asking the user to paste command output.
+    const content = message.content as {
+      metadata?: unknown;
+      source?: unknown;
+    };
+    if (content.source === "sub_agent") {
+      const metadata =
+        content.metadata !== null && typeof content.metadata === "object"
+          ? (content.metadata as Record<string, unknown>)
+          : undefined;
+      return (
+        metadata?.subAgent === true &&
+        typeof metadata.subAgentSessionId === "string" &&
+        typeof metadata.subAgentEvent === "string"
+      );
+    }
     if (
       hasExplicitPayload(message, [
         "action",

@@ -3,7 +3,10 @@ import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-fi
 import type { ResponseHandlerEvaluator } from "../runtime/response-handler-evaluators";
 import type { ResponseHandlerFieldEvaluator } from "../runtime/response-handler-field-evaluator";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
-import { runV5MessageRuntimeStage1 } from "../services/message";
+import {
+	messageHandlerFromFieldResult,
+	runV5MessageRuntimeStage1,
+} from "../services/message";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import { ChannelType, type UUID } from "../types/primitives";
@@ -264,6 +267,568 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("preserves direct app-build routing when explicitly addressed Stage 1 stays empty", async () => {
+		const runtime = makeRuntime([
+			"",
+			"",
+			"",
+			{
+				thought: "A coding task should be delegated.",
+				toolCalls: [
+					{
+						id: "spawn-app-builder",
+						name: "TASKS_SPAWN_AGENT",
+						args: { task: "Build a random tweet app." },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "The app-build task was delegated.",
+				messageToUser: "Started the app build.",
+			}),
+		]);
+		const fileHandler = vi.fn(async () => ({
+			success: true,
+			text: "File should not be selected first.",
+			data: { actionName: "FILE" },
+		}));
+		const taskHandler = vi.fn(async () => ({
+			success: true,
+			text: "Spawned coding agent.",
+			data: { actionName: "TASKS_SPAWN_AGENT" },
+		}));
+		runtime.actions = [
+			{
+				name: "FILE",
+				similes: ["WRITE_FILE"],
+				description: "Read or write files directly.",
+				examples: [],
+				validate: async () => true,
+				handler: fileHandler,
+			},
+			{
+				name: "TASKS_SPAWN_AGENT",
+				similes: ["SPAWN_AGENT"],
+				description: "Spawn a coding task agent.",
+				parameters: [
+					{
+						name: "task",
+						description: "Coding task to perform",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: taskHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "build an app that generates a random tweet",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(taskHandler).toHaveBeenCalledTimes(1);
+		expect(fileHandler).not.toHaveBeenCalled();
+		const calls = useModelCalls(runtime);
+		expect(calls[3]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerCall = calls[3]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain(
+			'"candidateActions":["TASKS_SPAWN_AGENT"]',
+		);
+		expect(plannerUserContent).toContain(
+			'"tierAParents":["TASKS_SPAWN_AGENT"]',
+		);
+	});
+
+	it("executes an umbrella action directly when the planner supplies its dispatcher enum", async () => {
+		const runtime = makeRuntime([
+			"",
+			"",
+			"",
+			{
+				thought: "A coding task should be delegated.",
+				toolCalls: [
+					{
+						id: "spawn-app-builder",
+						name: "TASKS",
+						args: {
+							action: "spawn_agent",
+							task: "Build a random tweet app.",
+						},
+					},
+				],
+			},
+		]);
+		const parentHandler = vi.fn(async (_runtime, _message, _state, options) => {
+			expect(options.parameters).toMatchObject({
+				action: "spawn_agent",
+				task: "Build a random tweet app.",
+			});
+			return {
+				success: true,
+				text: "Spawned coding agent.",
+				continueChain: false,
+				data: { actionName: "TASKS" },
+			};
+		});
+		const childHandler = vi.fn(async () => ({
+			success: true,
+			text: "Child should not be selected by a sub-planner.",
+			data: { actionName: "TASKS_SPAWN_AGENT" },
+		}));
+		runtime.actions = [
+			{
+				name: "TASKS",
+				similes: ["SPAWN_AGENT"],
+				description: "Planner surface for coding task delegation.",
+				parameters: [
+					{
+						name: "action",
+						description: "Task operation",
+						required: false,
+						schema: { type: "string", enum: ["create", "spawn_agent"] },
+					},
+					{
+						name: "task",
+						description: "Coding task to perform",
+						required: false,
+						schema: { type: "string" },
+					},
+				],
+				subActions: ["TASKS_SPAWN_AGENT"],
+				examples: [],
+				validate: async () => true,
+				handler: parentHandler,
+			},
+			{
+				name: "TASKS_SPAWN_AGENT",
+				similes: ["SPAWN_AGENT"],
+				description: "Spawn a coding task agent.",
+				parameters: [
+					{
+						name: "task",
+						description: "Coding task to perform",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: childHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "build an app that generates a random tweet",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(parentHandler).toHaveBeenCalledTimes(1);
+		expect(childHandler).not.toHaveBeenCalled();
+		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.RESPONSE_HANDLER,
+			ModelType.ACTION_PLANNER,
+		]);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe("Spawned coding agent.");
+		}
+	});
+
+	it("preserves direct current-info candidates when explicitly addressed Stage 1 stays empty", async () => {
+		const runtime = makeRuntime([
+			"",
+			"",
+			"",
+			{
+				thought: "Fallback planner can use search.",
+				toolCalls: [
+					{
+						id: "search-current-price",
+						name: "SEARCH",
+						args: { query: "current Bitcoin price USD" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Search returned current market data.",
+				messageToUser: "Current BTC price fetched from search.",
+			}),
+		]);
+		const searchHandler = vi.fn(async () => ({
+			success: true,
+			text: "BTC current price: 1 USD",
+			data: { actionName: "SEARCH" },
+		}));
+		runtime.actions = [
+			{
+				name: "SEARCH",
+				similes: ["WEB_SEARCH", "SEARCH_WEB"],
+				description: "Search current public data.",
+				parameters: [
+					{
+						name: "query",
+						description: "Search query",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: searchHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "What is the current Bitcoin price in USD right now?",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(searchHandler).toHaveBeenCalledTimes(1);
+		const calls = useModelCalls(runtime);
+		expect(calls[3]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerCall = calls[3]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain('"candidateActions":["SEARCH"]');
+		expect(plannerUserContent).toContain('"requiresTool":true');
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Current BTC price fetched from search.",
+			);
+		}
+	});
+
+	it("routes text HANDLE_RESPONSE acknowledgements for current-info requests through web search", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				shouldRespond: "RESPOND",
+				contexts: [],
+				intents: ["check btc price"],
+				candidateActionNames: [],
+				replyText: "On it.",
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			}),
+			{
+				thought: "Search can fetch the current market price.",
+				toolCalls: [
+					{
+						id: "search-current-price",
+						name: "WEB_SEARCH",
+						args: { query: "current BTC price in USD" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Search returned current market data.",
+				messageToUser: "Current BTC price fetched from search.",
+			}),
+		]);
+		const searchHandler = vi.fn(async () => ({
+			success: true,
+			text: "BTC current price: 1 USD",
+			data: { actionName: "WEB_SEARCH" },
+		}));
+		runtime.actions = [
+			{
+				name: "WEB_SEARCH",
+				similes: ["SEARCH", "SEARCH_WEB"],
+				description: "Search current public data.",
+				parameters: [
+					{
+						name: "query",
+						description: "Search query",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: searchHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "What is the current BTC price in USD right now? Use a current source if needed.",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(searchHandler).toHaveBeenCalledTimes(1);
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerCall = calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain('"candidateActions":["WEB_SEARCH"]');
+		expect(plannerUserContent).toContain('"requiresTool":true');
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Current BTC price fetched from search.",
+			);
+		}
+	});
+
+	it("routes legacy Stage 1 current-info acknowledgements to shell when no web search action is registered", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				processMessage: "RESPOND",
+				thought: "",
+				plan: {
+					contexts: [],
+					reply: "On it.",
+					simple: false,
+					requiresTool: true,
+					candidateActions: [],
+				},
+				extract: {
+					facts: [],
+					relationships: [],
+					addressedTo: ["e2e"],
+				},
+			}),
+			{
+				thought: "Shell can fetch a current market quote.",
+				toolCalls: [
+					{
+						id: "shell-current-price",
+						name: "SHELL",
+						args: { command: "curl -s https://api.coingecko.com/api/v3/ping" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Shell returned current market data.",
+				messageToUser: "BTC current price fetched from shell.",
+			}),
+		]);
+		const shellHandler = vi.fn(async () => ({
+			success: true,
+			text: "BTC current price: 1 USD",
+			data: { actionName: "SHELL" },
+		}));
+		runtime.actions = [
+			{
+				name: "SHELL",
+				similes: ["RUN_COMMAND", "TERMINAL"],
+				description: "Run a shell command.",
+				parameters: [
+					{
+						name: "command",
+						description: "Shell command",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "what is btc at rn?",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(shellHandler).toHaveBeenCalledTimes(1);
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerCall = calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain('"candidateActions":["SHELL"]');
+		expect(plannerUserContent).toContain('"requiresTool":true');
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"BTC current price fetched from shell.",
+			);
+		}
+	});
+
+	it("routes synthetic current-price Stage 1 candidates to a real shell lookup action", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: [],
+				candidateActionNames: ["GET_CRYPTO_PRICE"],
+				replyText: "On it.",
+			}),
+			{
+				thought: "Shell can fetch the current market quote.",
+				toolCalls: [
+					{
+						id: "shell-current-price",
+						name: "SHELL",
+						args: { command: "curl -s https://api.coingecko.com/api/v3/ping" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Shell returned current market data.",
+				messageToUser: "BTC current price fetched from shell.",
+			}),
+		]);
+		const shellHandler = vi.fn(async () => ({
+			success: true,
+			text: "BTC current price: 1 USD",
+			data: { actionName: "SHELL" },
+		}));
+		const browserHandler = vi.fn(async () => ({
+			success: true,
+			text: "Browser was not needed.",
+			data: { actionName: "BROWSER" },
+		}));
+		runtime.actions = [
+			{
+				name: "BROWSER",
+				similes: ["USE_BROWSER"],
+				description: "Control a browser tab.",
+				examples: [],
+				validate: async () => true,
+				handler: browserHandler,
+			},
+			{
+				name: "SHELL",
+				similes: ["RUN_COMMAND", "TERMINAL"],
+				description: "Run a shell command.",
+				parameters: [
+					{
+						name: "command",
+						description: "Shell command",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "what is btc at rn?",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(shellHandler).toHaveBeenCalledTimes(1);
+		expect(browserHandler).not.toHaveBeenCalled();
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerCall = calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain(
+			'"candidateActions":["GET_CRYPTO_PRICE","SHELL"]',
+		);
+		expect(plannerUserContent).toContain('"tierAParents":["SHELL"]');
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"BTC current price fetched from shell.",
+			);
+		}
+	});
+
+	it("routes progress-only coding delegation replies through the planner", () => {
+		const routed = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				intents: ["build static app"],
+				replyText: "Spawning the sub-agent now.",
+				candidateActionNames: [],
+				facts: [],
+				relationships: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [{ name: "TASKS" }],
+				messageText:
+					"Use the OpenCode coding sub-agent to build a tiny static app with index.html, style.css, app.js, and verify the public URL.",
+			},
+		);
+
+		expect(routed.plan.simple).toBe(false);
+		expect(routed.plan.requiresTool).toBe(true);
+		expect(routed.plan.contexts).toContain("general");
+		expect(routed.plan.candidateActions).toEqual(["TASKS"]);
+	});
+
 	it("falls back to the planner when an explicitly addressed Stage 1 turn is unparseable", async () => {
 		const runtime = makeRuntime([
 			"{not valid HANDLE_RESPONSE",
@@ -497,12 +1062,12 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 		expect(systemContent).toContain("message_handler_stage:");
 		expect(systemContent).toContain("available_contexts");
-		// Stage 1 keeps both provider text and structured prior messages. This
-		// preserves long provider payloads while still giving the model clean
-		// chat-message-shaped prior turns.
-		expect(userContent).toContain("provider:RECENT_MESSAGES:");
-		expect(userContent).toContain("# Conversation Messages");
-		expect(userContent).toContain("full recent provider text");
+		// Stage 1 uses structured prior messages when RECENT_MESSAGES exposes
+		// data.recentMessages. Rendering the provider text too would duplicate the
+		// dialogue and can leak stored assistant thought/action metadata.
+		expect(userContent).not.toContain("provider:RECENT_MESSAGES:");
+		expect(userContent).not.toContain("# Conversation Messages");
+		expect(userContent).not.toContain("full recent provider text");
 		expect(userContent).toContain("message:user:");
 		expect(userContent).toContain(longUserText);
 		expect(userContent).toContain("Can you check my calendar?");

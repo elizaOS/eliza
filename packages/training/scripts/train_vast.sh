@@ -621,6 +621,22 @@ sync_tree() {
     --include='README.md' \
     --include='*/' \
     --exclude='*'
+
+  # Resume support: the top-level rsync above excludes `checkpoints/` so we
+  # don't ship every old run to the remote. If RESUME_FROM_CHECKPOINT is set,
+  # ship ONLY that one checkpoint dir on top so HF Trainer can pick it up via
+  # --resume-from-checkpoint. The path is interpreted RELATIVE to packages/training/
+  # (e.g. checkpoints/eliza-1-0_8b-apollo-fullcorpus-h200-1778619044/checkpoint-1000).
+  if [ -n "${RESUME_FROM_CHECKPOINT:-}" ]; then
+    local _resume_local="$ROOT/$RESUME_FROM_CHECKPOINT"
+    if [ ! -d "$_resume_local" ]; then
+      log_err "RESUME_FROM_CHECKPOINT=$RESUME_FROM_CHECKPOINT not found at $_resume_local"
+      exit 2
+    fi
+    echo "[train_vast] [sync] shipping resume checkpoint $RESUME_FROM_CHECKPOINT (overrides checkpoints/ exclude)"
+    ssh_run "mkdir -p $REMOTE_TRAIN_DIR/$(dirname "$RESUME_FROM_CHECKPOINT")"
+    rsync_remote to "$_resume_local/" "$REMOTE_TRAIN_DIR/$RESUME_FROM_CHECKPOINT/"
+  fi
 }
 
 run_remote() {

@@ -1013,7 +1013,7 @@ export function PageScopedChatPane({
             data-testid={`page-scoped-chat-voice-status-bar-${scope}`}
           />
         ) : null}
-        {voice.supported ? (
+        {voice.supported && continuousChatMode !== "off" ? (
           <div className="mb-1 flex justify-end px-1">
             <ContinuousChatToggle
               compact

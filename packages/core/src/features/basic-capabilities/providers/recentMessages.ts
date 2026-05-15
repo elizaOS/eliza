@@ -264,7 +264,9 @@ export const recentMessagesProvider: Provider = {
 						!(msg.content && msg.content.type === "action_result") &&
 						!isInternalBridgeMessage(msg),
 				),
-			).slice(-conversationLength);
+			)
+				.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+				.slice(-conversationLength);
 
 			// Room entity lookups only include current participants. Historical room
 			// context can still contain messages from senders who left the room or

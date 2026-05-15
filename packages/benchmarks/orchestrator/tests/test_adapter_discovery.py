@@ -1652,6 +1652,28 @@ def test_terminalbench_no_docker_uses_local_sandbox_not_dry_run(tmp_path: Path) 
     assert command[command.index("--model") + 1] == "gpt-oss-120b"
 
 
+def test_terminalbench_forwards_task_ids_and_single(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "terminal_bench"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {
+            "agent": "hermes",
+            "task_ids": ["png-generation", "jsonl-aggregator"],
+            "single": "assign-seats",
+        },
+    )
+
+    assert command[command.index("--task-ids") + 1 : command.index("--task-ids") + 3] == [
+        "png-generation",
+        "jsonl-aggregator",
+    ]
+    assert command[command.index("--single") + 1] == "assign-seats"
+
+
 def test_swe_registry_forwards_harness_and_bare_cerebras_model(
     tmp_path: Path,
 ) -> None:

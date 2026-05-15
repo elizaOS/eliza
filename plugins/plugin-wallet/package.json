@@ -15,12 +15,22 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "eliza-source": {
+        "types": "./src/index.ts",
+        "import": "./src/index.ts",
+        "default": "./src/index.ts"
+      },
       "import": "./dist/index.mjs",
       "default": "./dist/index.mjs"
     },
     "./package.json": "./package.json",
     "./*.css": "./dist/*.css",
     "./*": {
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
       "import": "./dist/*.js",
       "default": "./dist/*.js",
       "types": "./dist/*.d.ts"

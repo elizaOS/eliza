@@ -1,19 +1,19 @@
 /*
- * Internal layout shared by the real (non-stub) wakeword TUs.
+ * Internal layout shared by the wakeword runtime TUs.
  *
- * The numbers in this header are the contract the streaming pipeline is
- * built against. They mirror the openWakeWord melspectrogram graph as
- * the real port will eventually re-implement it via ggml ops, plus the
- * task-brief override (80-mel / 0–8000 Hz / hop 160) the first-pass
- * pure-C reference is dimensioned around.
+ * Phase 2 reconciles these constants with the openWakeWord upstream
+ * exactly. The numbers are read from each GGUF's metadata at session
+ * open and re-validated against these macros — a mismatch is hard
+ * `-EINVAL`, never silently accepted (see `wakeword_runtime.c`).
  *
- * STFT (n_fft=400, hop=160) gives a 25 ms / 10 ms time grid at 16 kHz
- * — that is the openWakeWord melspectrogram time grid. The first-pass
- * mel filter bank below uses 80 mels / 0–8000 Hz so the unit test can
- * assert a 1 kHz tone lights up the right mel bin without dragging the
- * full openWakeWord 32-bin float-cluster definition into pure C. Phase
- * 2 will swap this for the openWakeWord-exact 32-bin filter bank when
- * the embedding/classifier GGUFs are real.
+ * STFT (n_fft=512, hop=160) gives a 32 ms / 10 ms time grid at 16 kHz —
+ * the openWakeWord melspectrogram time grid. The mel filter matrix is
+ * NOT computed in C anymore; it loads as a (257, 32) tensor from
+ * `melspec.gguf`, exactly as it appears in the upstream ONNX. The C
+ * side just needs to read it back.
+ *
+ * Streaming hop: 80 ms (1280 samples) — one classifier evaluation per
+ * 80 ms of audio, matching the openWakeWord Python reference.
  */
 
 #ifndef WAKEWORD_INTERNAL_H
@@ -24,21 +24,31 @@
 
 #include "wakeword/wakeword.h"
 
-/* STFT parameters (16 kHz, openWakeWord time grid). */
-#define WW_N_FFT      400
+/* STFT parameters (openWakeWord upstream — locked). */
+#define WW_N_FFT      512
 #define WW_HOP_LEN    160
-#define WW_WIN_LEN    400  /* equal to n_fft; Hann window length. */
-#define WW_N_MELS     80
-#define WW_FMIN_HZ    0.0f
-#define WW_FMAX_HZ    8000.0f
+#define WW_WIN_LEN    512   /* Conv1D kernel length matches n_fft. */
+#define WW_N_BINS     257   /* WW_N_FFT/2 + 1 */
+#define WW_N_MELS     32
 
-/* Streaming window: 80 ms frames @ 16 kHz with an 80 ms hop = no
- * overlap between successive `wakeword_window_*` emissions. The
- * embedding model upstream of this windowing layer slides at a finer
- * 10 ms cadence inside a single emitted frame; that cadence is internal
- * to the embedding TU and not exposed here. */
+/* Embedding model inputs / outputs. */
+#define WW_EMBEDDING_WINDOW 76   /* mel frames per embedding step */
+#define WW_EMBEDDING_DIM    96   /* output dim of one embedding step  */
+
+/* Classifier head. */
+#define WW_HEAD_WINDOW      16   /* embeddings per classifier step    */
+#define WW_HEAD_FLAT        (WW_HEAD_WINDOW * WW_EMBEDDING_DIM) /* 1536 */
+
+/* Streaming window: 80 ms / 1280 samples per `wakeword_process` hop. */
 #define WW_FRAME_SAMPLES 1280  /* 80 ms */
-#define WW_FRAME_HOP     1280  /* 80 ms */
+#define WW_FRAME_HOP     1280  /* 80 ms; no overlap */
+
+/* dB-log floor used by the openWakeWord melspec post-processing.
+ * Mirrors the ONNX `Sub_33` constant. */
+#define WW_MEL_DB_FLOOR  80.0f
+/* Clip floor for numerical stability before log. Mirrors ONNX
+ * `Clip_39`. */
+#define WW_MEL_LOG_CLIP  1e-10f
 
 #ifdef __cplusplus
 extern "C" {
@@ -47,43 +57,64 @@ extern "C" {
 /* ---------------- melspectrogram (`wakeword_melspec.c`) ---------------- */
 
 /*
- * Compute a single mel-spectrogram column from `WW_N_FFT` float samples
- * (already pre-windowed by the caller's STFT loop is *not* required:
- * this function applies the Hann window itself for ergonomics).
+ * Streaming, GGUF-backed log-mel spectrogram. The state owns the carry
+ * buffer, the dB-log post-processing reference, and pointers to the
+ * mel-bank tensors loaded by the runtime — it does NOT own them, so
+ * the runtime is free to keep one mel-bank in memory across multiple
+ * sessions if it chooses.
  *
- * `pcm_window` length MUST equal `WW_N_FFT`. `mel_out` length MUST
- * equal `WW_N_MELS`. Output is log-mel energy (natural log of power +
- * 1e-10 floor) — the same shape any downstream embedding CNN expects.
- *
- * Returns 0 on success, -EINVAL on bad input.
- */
-int wakeword_melspec_column(const float *pcm_window, float *mel_out);
-
-/*
- * Stream variant: feed an arbitrary chunk of PCM, the impl manages an
- * internal STFT carry buffer and writes one mel column per
- * `WW_HOP_LEN` samples consumed (counting carry).
- *
- * `out_columns` must point to space for at least
- * `wakeword_melspec_max_columns(n_samples)` mel columns
- * (each `WW_N_MELS` floats). On return, `*out_n_columns` carries the
- * actual count produced.
- *
- * Carry state lives in `state`, which the caller owns. Initialize with
- * `wakeword_melspec_state_init`.
- *
- * Returns 0 on success, -EINVAL on bad input.
+ * Why this is *not* in the runtime TU directly: the unit test in
+ * `test/wakeword_melspec_test.c` exercises the streaming melspec on a
+ * synthetic tone, without spinning up a full session. The runtime
+ * builds a melspec state on top of the loaded GGUF tensors and reuses
+ * the same hop/STFT plumbing the unit test does.
  */
 typedef struct {
     /* Up to `WW_N_FFT - 1` carried samples from the previous call. */
     float carry[WW_N_FFT];
     size_t n_carry;
+
+    /* Read-only borrowed pointers to the loaded tensors. The runtime
+     * owns the storage; this state just reads from it. NULL when the
+     * caller has not bound a GGUF (e.g. the unit test runs without a
+     * GGUF — see `wakeword_melspec_use_legacy_bank`). */
+    const float *stft_real;     /* (257, 1, 512) row-major */
+    const float *stft_imag;     /* (257, 1, 512) row-major */
+    const float *mel_filter;    /* (257, 32)     row-major */
 } wakeword_melspec_state;
 
-void wakeword_melspec_state_init(wakeword_melspec_state *state);
+/*
+ * Initialize a melspec state. Bind the GGUF-loaded tensors in
+ * `*_tensors`; pass NULL for any of them to fall back to the C-side
+ * legacy filter bank used by the unit tests (a generic 80-mel bank
+ * that lights up the right bin for a 1 kHz tone). The legacy bank is
+ * activated by passing all three pointers as NULL.
+ */
+void wakeword_melspec_state_init(wakeword_melspec_state *state,
+                                 const float *stft_real_tensors,
+                                 const float *stft_imag_tensors,
+                                 const float *mel_filter_tensor);
 
-size_t wakeword_melspec_max_columns(size_t n_input_samples);
-
+/*
+ * Feed an arbitrary chunk of PCM. Writes one mel column per
+ * `WW_HOP_LEN` samples consumed (counting carry).
+ *
+ * `out_columns` MUST have space for at least
+ * `wakeword_melspec_max_columns(n_samples)` mel columns of width
+ * `WW_N_MELS` each. The post-processing applies the openWakeWord
+ * dB-log followed by a per-call relmax floor at -80 dB:
+ *   mel_db = 10 * log10(clip(mel_pow, 1e-10, inf))
+ *   peak   = max(mel_db over all (T, M))
+ *   out    = clip(mel_db, peak - 80, inf)
+ *
+ * That floor is applied per call (matches the ONNX). For the streaming
+ * runtime it means short calls produce slightly different floor values
+ * than long ones — the openWakeWord upstream has the same property.
+ *
+ * Returns 0 on success, -EINVAL on bad input, or -ENOMEM on allocation
+ * failure (the workspace allocates per-call scratch space proportional
+ * to the input chunk size).
+ */
 int wakeword_melspec_stream(wakeword_melspec_state *state,
                             const float *pcm,
                             size_t n_samples,
@@ -91,22 +122,33 @@ int wakeword_melspec_stream(wakeword_melspec_state *state,
                             size_t *out_n_columns);
 
 /*
- * Diagnostic: return the centre frequency (Hz) of mel bin `mel_idx`.
- * Used by the unit test to map a tone frequency to its expected bin.
+ * Convenience: compute a single mel column from `WW_N_FFT` samples.
+ * Applies the same dB-log + relmax-floor (with the per-call peak
+ * being just this one column).
+ */
+int wakeword_melspec_column(const wakeword_melspec_state *state,
+                            const float *pcm_window,
+                            float *mel_out);
+
+/* Maximum number of mel columns produced by an input chunk of
+ * `n_input_samples`, bounded loosely (assumes the carry is already
+ * full at WW_N_FFT - 1 samples). */
+size_t wakeword_melspec_max_columns(size_t n_input_samples);
+
+/*
+ * Diagnostic: return the centre frequency (Hz) of mel bin `mel_idx`
+ * **for the C-side legacy filter bank**. The unit test exercises a
+ * generic 80-mel bank to validate Hann + DFT + filter-bank wiring on a
+ * 1 kHz tone; the upstream-bank centres are not exposed.
  */
 float wakeword_mel_bin_center_hz(int mel_idx);
 
+/* Number of mels in the legacy (unit-test-only) filter bank. The unit
+ * test uses this when iterating bins. */
+#define WW_LEGACY_N_MELS 80
+
 /* ---------------- sliding window (`wakeword_window.c`) ---------------- */
 
-/*
- * Frame the streaming PCM into back-to-back `WW_FRAME_SAMPLES`-long
- * non-overlapping windows. The embedding stage upstream of this is
- * what owns the finer 10 ms mel cadence; this layer only governs the
- * 80 ms wake-classifier hop.
- *
- * The state buffers the residual when the caller's chunk does not land
- * on a frame boundary.
- */
 typedef struct {
     float buffer[WW_FRAME_SAMPLES];
     size_t n_buffered;
@@ -117,14 +159,6 @@ typedef struct {
 
 void wakeword_window_state_init(wakeword_window_state *state);
 
-/*
- * Push `n_samples` of PCM. Writes up to `max_frames` complete frames
- * (each `WW_FRAME_SAMPLES` floats) into `out_frames` and stores the
- * actual count in `*out_n_frames`. Any partial residue stays in
- * `state` for the next call.
- *
- * Returns 0 on success, -EINVAL on bad input.
- */
 int wakeword_window_push(wakeword_window_state *state,
                          const float *pcm,
                          size_t n_samples,

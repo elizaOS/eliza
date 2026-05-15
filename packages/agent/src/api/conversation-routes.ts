@@ -1625,7 +1625,7 @@ export async function handleConversationRoutes(
           );
           if (!streamedText && resolvedText) {
             for (const chunk of chunkVisibleTextForSse(resolvedText)) {
-              if (aborted) break;
+              if (disconnectTracker.isAborted()) break;
               streamedText += chunk;
               writeChatTokenSse(res, chunk, streamedText);
               await new Promise((resolve) => setTimeout(resolve, 60));

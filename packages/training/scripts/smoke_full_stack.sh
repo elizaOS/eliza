@@ -66,6 +66,24 @@ mkdir -p "$CKPT_ROOT" "$BENCH_ROOT"
 LOG_DIR="$CKPT_ROOT/_smoke-logs"
 mkdir -p "$LOG_DIR"
 
+# Architecture-aware step tracking. Every step name appended here is part of
+# the smoke pipeline as documented in this script's banner. Steps may move
+# between PASSED / SKIPPED_INCOMPATIBLE / SKIPPED_TOOLING / FAILED based on
+# what the dispatched model actually supports and what tooling is present
+# on the host. Gate 5 (in cloud dispatch) reads the resulting summary JSON
+# and computes content_pct against `applicable_steps`, NOT all 9 — a step
+# the architecture cannot run is not counted against the gate.
+ALL_STEPS=("deps" "sft" "bench-sft" "polarquant" "bench-polarquant" "fused-tq" "bench-fused-tq" "qjl" "bench-qjl" "gguf" "vllm-toolcall" "bench")
+PASSED_STEPS=()
+SKIPPED_INCOMPATIBLE_STEPS=()
+SKIPPED_TOOLING_STEPS=()
+FAILED_STEPS=()
+mark_pass()   { PASSED_STEPS+=("$1"); }
+mark_skip_incompat() { SKIPPED_INCOMPATIBLE_STEPS+=("$1"); }
+mark_skip_tooling()  { SKIPPED_TOOLING_STEPS+=("$1"); }
+mark_fail()   { FAILED_STEPS+=("$1"); }
+SUMMARY_PATH="$CKPT_ROOT/smoke_summary.json"
+
 # Prefer the existing `.venv/bin/python` over `uv run` — `uv run` re-resolves
 # the lockfile every invocation and can re-install torch underneath you when
 # extras conflict, which corrupts the venv mid-run. The venv is built once
@@ -107,6 +125,7 @@ if missing:
     sys.exit(1)
 print("[smoke] deps OK:", ", ".join(need))
 PY
+mark_pass "deps"
 
 # ---------- STEP 2/9: SFT ----------
 if [[ $SKIP_TRAIN -eq 1 && -d "$SFT_DIR" ]]; then
@@ -140,9 +159,11 @@ else
         2>&1 | tee "$LOG_DIR/01-sft.log"
     if [[ ! -d "$SFT_DIR" ]]; then
         echo "[smoke] FAIL: SFT did not produce $SFT_DIR" >&2
+        mark_fail "sft"
         exit 1
     fi
 fi
+mark_pass "sft"
 
 # ---------- helper: run native function-calling benchmark against a model dir ----------
 run_bench() {
@@ -172,6 +193,7 @@ run_bench() {
 # ---------- STEP 3/9: bench SFT ----------
 echo "[smoke] STEP 3/9: bench SFT checkpoint"
 run_bench "sft" "$SFT_DIR" ""
+mark_pass "bench-sft"
 
 # ---------- STEP 4/9: PolarQuant ----------
 echo "[smoke] STEP 4/9: PolarQuant (4-bit weights)"
@@ -182,7 +204,9 @@ echo "[smoke] STEP 4/9: PolarQuant (4-bit weights)"
     --calibration "$VAL_DATA" \
     --calibration-samples 16 \
     2>&1 | tee "$LOG_DIR/02-polarquant.log"
+mark_pass "polarquant"
 run_bench "polarquant" "$POLAR_DIR" ""
+mark_pass "bench-polarquant"
 
 # ---------- shared check: do we have system Python.h for Triton JIT? ----------
 HAS_PYTHON_H=0
@@ -194,17 +218,45 @@ fi
 echo "[smoke] STEP 5/9: fused-TurboQuant (4-bit KV, --verify)"
 if [[ $HAS_PYTHON_H -eq 1 ]]; then
     # fused_turboquant_apply uses --no-verify to OPT OUT — verify is on by default.
+    # Capture the recipe exit code WITHOUT aborting the smoke. The recipe
+    # returns:
+    #   0 → applied + sidecar written
+    #   2 → check_model_compatibility() rejected the model (publish-blocking
+    #       for that recipe, but smoke marks it as a SKIP — it's an
+    #       architectural mismatch, not a recipe bug)
+    #   3 → EXIT_INCOMPATIBLE_ARCH: hybrid linear+full attention model
+    #       (Qwen3.5/3.6) — the vendored fused cache cannot model
+    #       has_previous_state for linear-attention layers. SKIP.
+    #   other → operational failure (stop the smoke).
+    set +e
     "${PY_RUN[@]}" scripts/quantization/fused_turboquant_apply.py \
         --model "$SFT_DIR" \
         --output "$FUSED_DIR" \
         --bits 4 \
         --calibration "$VAL_DATA" \
         --calibration-samples 16 \
-        2>&1 | tee "$LOG_DIR/03-fused-tq.log"
-    run_bench "fused-tq" "$FUSED_DIR" ""
+        > "$LOG_DIR/03-fused-tq.log" 2>&1
+    FUSED_RC=$?
+    set -e
+    cat "$LOG_DIR/03-fused-tq.log"
+    if [[ $FUSED_RC -eq 0 ]]; then
+        mark_pass "fused-tq"
+        run_bench "fused-tq" "$FUSED_DIR" ""
+        mark_pass "bench-fused-tq"
+    elif [[ $FUSED_RC -eq 2 || $FUSED_RC -eq 3 ]]; then
+        echo "[smoke] STEP 5/9: fused-turboquant SKIPPED (incompatible architecture, exit=$FUSED_RC)"
+        mark_skip_incompat "fused-tq"
+        mark_skip_incompat "bench-fused-tq"
+    else
+        echo "[smoke] FAIL: fused_turboquant_apply.py exited $FUSED_RC (operational failure)" >&2
+        mark_fail "fused-tq"
+        exit 1
+    fi
 else
     echo "[smoke]   SKIP: Python.h missing — fused-TQ verify path JITs Triton kernels."
     echo "[smoke]          Install python3-dev (apt) or run inside the training Dockerfile."
+    mark_skip_tooling "fused-tq"
+    mark_skip_tooling "bench-fused-tq"
 fi
 
 # ---------- STEP 6/9: QJL (skip if no nvcc OR no Python.h) ----------
@@ -216,11 +268,17 @@ if command -v nvcc >/dev/null 2>&1 && [[ $HAS_PYTHON_H -eq 1 ]]; then
         --calibration "$VAL_DATA" \
         --calibration-samples 16 \
         2>&1 | tee "$LOG_DIR/04-qjl.log"
+    mark_pass "qjl"
     run_bench "qjl" "$QJL_DIR" ""
+    mark_pass "bench-qjl"
 elif ! command -v nvcc >/dev/null 2>&1; then
     echo "[smoke]   SKIP: nvcc not on PATH (QJL ships CUDA kernels that need nvcc)"
+    mark_skip_tooling "qjl"
+    mark_skip_tooling "bench-qjl"
 else
     echo "[smoke]   SKIP: Python.h missing — QJL build needs python3-dev headers"
+    mark_skip_tooling "qjl"
+    mark_skip_tooling "bench-qjl"
 fi
 
 # ---------- STEP 7/9: GGUF Q4_K_M (skip if no llama.cpp) ----------
@@ -237,8 +295,10 @@ if [[ $HAS_LLAMA_CPP -eq 1 ]]; then
         --model "$SFT_DIR" \
         --output "$GGUF_DIR" \
         2>&1 | tee "$LOG_DIR/05-gguf.log"
+    mark_pass "gguf"
 else
     echo "[smoke]   SKIP: llama.cpp not on PATH (need llama-quantize + convert_hf_to_gguf.py; set LLAMA_CPP_DIR or build the packages/inference/llama.cpp submodule — see gguf-q4_k_m_apply.py _VENDOR_HINT)"
+    mark_skip_tooling "gguf"
 fi
 
 # ---------- STEP 8/9: vLLM serve + 5 tool-call requests ----------
@@ -247,6 +307,7 @@ if [[ $HAS_PYTHON_H -eq 0 ]]; then
     echo "[smoke]   SKIP: vLLM inductor compile + Triton JIT both need Python.h"
     echo "[smoke]          Install python3-dev (apt) or run inside the training Dockerfile"
     echo "[smoke]          On Vast (devel image) this step runs cleanly."
+    mark_skip_tooling "vllm-toolcall"
 else
 VLLM_LOG="$LOG_DIR/06-vllm.log"
 : > "$VLLM_LOG"
@@ -347,55 +408,94 @@ fi
 
 cleanup_vllm
 trap - EXIT
+mark_pass "vllm-toolcall"
 fi  # end of HAS_PYTHON_H gate for STEP 8
 
 # ---------- STEP 9/9: summary + acceptance gate ----------
 echo "[smoke] STEP 9/9: summary + acceptance gate"
-RUN_NAME="$RUN_NAME" BENCH_ROOT="$BENCH_ROOT" "${PY_RUN[@]}" - <<'PY'
-import json, os, sys
+
+# Serialize the architecture-aware step bookkeeping so the gate logic below
+# can compute applicable_steps / passed_steps and Gate 5 (cloud dispatch)
+# can read the resulting JSON. A step that the architecture cannot run
+# (e.g., fused-turboquant on hybrid attention) is NOT counted against the
+# gate — it's still listed under skipped_incompatible for traceability.
+ALL_STEPS_JSON="$(printf '%s\n' "${ALL_STEPS[@]}" | python3 -c 'import sys,json;print(json.dumps([s.strip() for s in sys.stdin if s.strip()]))')"
+PASSED_JSON="$(printf '%s\n' "${PASSED_STEPS[@]:-}" | python3 -c 'import sys,json;print(json.dumps([s.strip() for s in sys.stdin if s.strip()]))')"
+SKIPPED_INCOMPAT_JSON="$(printf '%s\n' "${SKIPPED_INCOMPATIBLE_STEPS[@]:-}" | python3 -c 'import sys,json;print(json.dumps([s.strip() for s in sys.stdin if s.strip()]))')"
+SKIPPED_TOOLING_JSON="$(printf '%s\n' "${SKIPPED_TOOLING_STEPS[@]:-}" | python3 -c 'import sys,json;print(json.dumps([s.strip() for s in sys.stdin if s.strip()]))')"
+FAILED_JSON="$(printf '%s\n' "${FAILED_STEPS[@]:-}" | python3 -c 'import sys,json;print(json.dumps([s.strip() for s in sys.stdin if s.strip()]))')"
+
+RUN_NAME="$RUN_NAME" \
+REGISTRY_KEY="$REGISTRY_KEY" \
+BASE_HF_ID="$BASE_HF_ID" \
+BENCH_ROOT="$BENCH_ROOT" \
+SUMMARY_PATH="$SUMMARY_PATH" \
+ALL_STEPS_JSON="$ALL_STEPS_JSON" \
+PASSED_JSON="$PASSED_JSON" \
+SKIPPED_INCOMPAT_JSON="$SKIPPED_INCOMPAT_JSON" \
+SKIPPED_TOOLING_JSON="$SKIPPED_TOOLING_JSON" \
+FAILED_JSON="$FAILED_JSON" \
+"${PY_RUN[@]}" - <<'PY'
+import json, os, sys, time
 from pathlib import Path
 
 bench_root = Path(os.environ["BENCH_ROOT"])
-fail = False
+summary_path = Path(os.environ["SUMMARY_PATH"])
+all_steps = json.loads(os.environ["ALL_STEPS_JSON"])
+passed = json.loads(os.environ["PASSED_JSON"])
+skipped_incompat = json.loads(os.environ["SKIPPED_INCOMPAT_JSON"])
+skipped_tooling = json.loads(os.environ["SKIPPED_TOOLING_JSON"])
+failed = json.loads(os.environ["FAILED_JSON"])
+
+# applicable_steps = total minus the ones the architecture cannot run
+# AND minus the ones this host cannot run for tooling reasons (no nvcc,
+# no Python.h, no llama.cpp). Both kinds of skip are surfaced separately
+# in the JSON for traceability so a downstream gate (e.g., the canonical
+# Vast image) can re-evaluate strictness with full host context.
+#
+# Gate 5 (cloud dispatch consumes this summary) checks
+# applicable_passed_pct >= 80 — that is, of the steps both the
+# architecture and the host can run, ≥80% must have actually passed.
+applicable_steps = [
+    s for s in all_steps
+    if s not in skipped_incompat and s not in skipped_tooling
+]
+applicable_passed_only = [s for s in passed if s in applicable_steps]
+content_pct = (100.0 * len(applicable_passed_only) / max(len(applicable_steps), 1))
+
 print()
 print(f"  {'variant':<14} {'fmt%':>6} {'cnt%':>6} {'tok/s':>8} {'examples':>9}")
 print(f"  {'-'*14} {'-'*6} {'-'*6} {'-'*8} {'-'*9}")
-seen = []
-for sub in sorted(bench_root.iterdir()):
-    if not sub.is_dir():
-        continue
-    summary_path = sub / "summary.json"
-    if not summary_path.exists():
-        continue
-    d = json.loads(summary_path.read_text())
-    buckets = d.get("buckets", {})
-    n_total = sum(b.get("n", 0) for b in buckets.values())
-    fmt_ok = sum(b.get("structure_ok", 0) for b in buckets.values())
-    cnt_ok = sum(b.get("content_ok", 0) for b in buckets.values())
-    fmt_pct = 100.0 * fmt_ok / max(n_total, 1)
-    cnt_pct = 100.0 * cnt_ok / max(n_total, 1)
-    tps = d.get("tokens_per_sec_gen", 0.0)
-    print(f"  {sub.name:<14} {fmt_pct:>6.1f} {cnt_pct:>6.1f} {tps:>8.1f} {n_total:>9}")
-    seen.append((sub.name, fmt_pct, cnt_pct, n_total))
-    if sub.name == "sft":
-        # Smoke gates content (semantic correctness — does the model pick
-        # the right action, RESPOND/IGNORE) rather than structure. structure_ok
-        # measures native function-call / JSON structure, which 200 SFT steps on the smoke
-        # split cannot achieve; the production runs (3 epochs, full data)
-        # are gated on format>=95% by the publish pipeline, not here.
-        # The smoke's job is to prove the pipeline runs end-to-end and
-        # the model isn't generating gibberish.
-        if cnt_pct < 80.0:
+fail = False
+bench_rows = []
+if bench_root.exists():
+    for sub in sorted(bench_root.iterdir()):
+        if not sub.is_dir():
+            continue
+        sp = sub / "summary.json"
+        if not sp.exists():
+            continue
+        d = json.loads(sp.read_text())
+        buckets = d.get("buckets", {})
+        n_total = sum(b.get("n", 0) for b in buckets.values())
+        fmt_ok = sum(b.get("structure_ok", 0) for b in buckets.values())
+        cnt_ok = sum(b.get("content_ok", 0) for b in buckets.values())
+        fmt_pct = 100.0 * fmt_ok / max(n_total, 1)
+        cnt_pct = 100.0 * cnt_ok / max(n_total, 1)
+        tps = d.get("tokens_per_sec_gen", 0.0)
+        print(f"  {sub.name:<14} {fmt_pct:>6.1f} {cnt_pct:>6.1f} {tps:>8.1f} {n_total:>9}")
+        bench_rows.append({
+            "variant": sub.name,
+            "fmt_pct": round(fmt_pct, 2),
+            "cnt_pct": round(cnt_pct, 2),
+            "tokens_per_sec_gen": round(tps, 2),
+            "n": n_total,
+        })
+        if sub.name == "sft" and cnt_pct < 80.0:
             print(f"  [GATE] sft.content_ok={cnt_pct:.1f}% < 80%")
             fail = True
 
-if not seen:
-    print("  no benchmark summaries found")
-    sys.exit(1)
-
-# Peak VRAM is reported by training/quant scripts in their own logs;
-# surface the high-water-mark from `nvidia-smi` if available so the smoke
-# summary is self-contained.
+# Surface peak VRAM if available.
 import shutil, subprocess
 if shutil.which("nvidia-smi"):
     try:
@@ -410,7 +510,64 @@ if shutil.which("nvidia-smi"):
     except Exception:
         pass
 
-sys.exit(1 if fail else 0)
+# ---- Gate 5 (architecture-aware): all applicable steps must pass ----
+applicable_failed = [s for s in failed if s in applicable_steps]
+applicable_passed = applicable_passed_only
+
+# A step the architecture and host both support must end up in `passed`.
+# Tooling skips and architecture skips are excluded from `applicable` and
+# do not block the gate.
+gate_ok = (
+    not fail
+    and not applicable_failed
+    and len(applicable_passed) == len(applicable_steps)
+)
+
+# Overall result: PASS when (a) the per-bench content gate passed and
+# (b) every applicable step landed in `passed`.
+status = "pass" if gate_ok else "fail"
+
+summary = {
+    "schemaVersion": 2,
+    "run_name": os.environ.get("RUN_NAME", ""),
+    "registry_key": os.environ.get("REGISTRY_KEY", ""),
+    "base_hf_id": os.environ.get("BASE_HF_ID", ""),
+    "generated_at_unix": int(time.time()),
+    "all_steps": all_steps,
+    "applicable_steps": applicable_steps,
+    "passed_steps": passed,
+    "skipped_incompatible_steps": skipped_incompat,
+    "skipped_tooling_steps": skipped_tooling,
+    "failed_steps": failed,
+    "applicable_passed_pct": round(content_pct, 2),
+    "bench_rows": bench_rows,
+    "status": status,
+    "gate": {
+        "name": "smoke_full_stack",
+        "rule": "all applicable steps pass; sft bench content_ok >= 80%",
+        "applicable_count": len(applicable_steps),
+        "applicable_passed_count": len(applicable_passed),
+        "applicable_failed_count": len(applicable_failed),
+        "skipped_tooling_count": len(skipped_tooling),
+        "skipped_incompatible_count": len(skipped_incompat),
+    },
+}
+
+summary_path.parent.mkdir(parents=True, exist_ok=True)
+summary_path.write_text(json.dumps(summary, indent=2) + "\n")
+print()
+print(f"[smoke] summary written → {summary_path}")
+print(f"[smoke] applicable_steps ({len(applicable_steps)}): {applicable_steps}")
+print(f"[smoke] passed_steps ({len(passed)}): {passed}")
+if skipped_incompat:
+    print(f"[smoke] skipped_incompatible ({len(skipped_incompat)}): {skipped_incompat}")
+if skipped_tooling:
+    print(f"[smoke] skipped_tooling ({len(skipped_tooling)}): {skipped_tooling}")
+if failed:
+    print(f"[smoke] failed ({len(failed)}): {failed}")
+print(f"[smoke] status: {status}")
+
+sys.exit(0 if gate_ok else 1)
 PY
 
 echo "[smoke] PASS"

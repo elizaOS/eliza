@@ -1,2 +1,2 @@
-/usr/bin/ar qc libsilero_vad.a CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o CMakeFiles/silero_vad.dir/src/silero_vad_state.c.o CMakeFiles/silero_vad.dir/src/silero_vad_resample.c.o
+/usr/bin/ar qc libsilero_vad.a CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o CMakeFiles/silero_vad.dir/src/silero_vad_state.c.o CMakeFiles/silero_vad.dir/src/silero_vad_resample.c.o
 /usr/bin/ranlib libsilero_vad.a

@@ -12,7 +12,8 @@ export type CommandCategory =
 	| "management"
 	| "media"
 	| "tools"
-	| "docks";
+	| "docks"
+	| "skills";
 
 export interface CommandArgDefinition {
 	name: string;

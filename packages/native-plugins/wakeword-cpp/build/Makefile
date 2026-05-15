@@ -140,6 +140,19 @@ wakeword/fast:
 .PHONY : wakeword/fast
 
 #=============================================================================
+# Target rules for targets named wakeword_shared
+
+# Build rule for target.
+wakeword_shared: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 wakeword_shared
+.PHONY : wakeword_shared
+
+# fast build rule for target.
+wakeword_shared/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/build
+.PHONY : wakeword_shared/fast
+
+#=============================================================================
 # Target rules for targets named wakeword_stub_smoke
 
 # Build rule for target.
@@ -178,12 +191,26 @@ wakeword_window_test/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_window_test.dir/build.make CMakeFiles/wakeword_window_test.dir/build
 .PHONY : wakeword_window_test/fast
 
+#=============================================================================
+# Target rules for targets named wakeword_runtime_test
+
+# Build rule for target.
+wakeword_runtime_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 wakeword_runtime_test
+.PHONY : wakeword_runtime_test
+
+# fast build rule for target.
+wakeword_runtime_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_runtime_test.dir/build.make CMakeFiles/wakeword_runtime_test.dir/build
+.PHONY : wakeword_runtime_test/fast
+
 src/wakeword_melspec.o: src/wakeword_melspec.c.o
 .PHONY : src/wakeword_melspec.o
 
 # target to build an object file
 src/wakeword_melspec.c.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_melspec.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/src/wakeword_melspec.c.o
 .PHONY : src/wakeword_melspec.c.o
 
 src/wakeword_melspec.i: src/wakeword_melspec.c.i
@@ -192,6 +219,7 @@ src/wakeword_melspec.i: src/wakeword_melspec.c.i
 # target to preprocess a source file
 src/wakeword_melspec.c.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_melspec.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/src/wakeword_melspec.c.i
 .PHONY : src/wakeword_melspec.c.i
 
 src/wakeword_melspec.s: src/wakeword_melspec.c.s
@@ -200,31 +228,35 @@ src/wakeword_melspec.s: src/wakeword_melspec.c.s
 # target to generate assembly for a file
 src/wakeword_melspec.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_melspec.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/src/wakeword_melspec.c.s
 .PHONY : src/wakeword_melspec.c.s
 
-src/wakeword_stub.o: src/wakeword_stub.c.o
-.PHONY : src/wakeword_stub.o
+src/wakeword_runtime.o: src/wakeword_runtime.c.o
+.PHONY : src/wakeword_runtime.o
 
 # target to build an object file
-src/wakeword_stub.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_stub.c.o
-.PHONY : src/wakeword_stub.c.o
+src/wakeword_runtime.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_runtime.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/src/wakeword_runtime.c.o
+.PHONY : src/wakeword_runtime.c.o
 
-src/wakeword_stub.i: src/wakeword_stub.c.i
-.PHONY : src/wakeword_stub.i
+src/wakeword_runtime.i: src/wakeword_runtime.c.i
+.PHONY : src/wakeword_runtime.i
 
 # target to preprocess a source file
-src/wakeword_stub.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_stub.c.i
-.PHONY : src/wakeword_stub.c.i
+src/wakeword_runtime.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_runtime.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/src/wakeword_runtime.c.i
+.PHONY : src/wakeword_runtime.c.i
 
-src/wakeword_stub.s: src/wakeword_stub.c.s
-.PHONY : src/wakeword_stub.s
+src/wakeword_runtime.s: src/wakeword_runtime.c.s
+.PHONY : src/wakeword_runtime.s
 
 # target to generate assembly for a file
-src/wakeword_stub.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_stub.c.s
-.PHONY : src/wakeword_stub.c.s
+src/wakeword_runtime.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_runtime.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/src/wakeword_runtime.c.s
+.PHONY : src/wakeword_runtime.c.s
 
 src/wakeword_window.o: src/wakeword_window.c.o
 .PHONY : src/wakeword_window.o
@@ -232,6 +264,7 @@ src/wakeword_window.o: src/wakeword_window.c.o
 # target to build an object file
 src/wakeword_window.c.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_window.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/src/wakeword_window.c.o
 .PHONY : src/wakeword_window.c.o
 
 src/wakeword_window.i: src/wakeword_window.c.i
@@ -240,6 +273,7 @@ src/wakeword_window.i: src/wakeword_window.c.i
 # target to preprocess a source file
 src/wakeword_window.c.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_window.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/src/wakeword_window.c.i
 .PHONY : src/wakeword_window.c.i
 
 src/wakeword_window.s: src/wakeword_window.c.s
@@ -248,6 +282,7 @@ src/wakeword_window.s: src/wakeword_window.c.s
 # target to generate assembly for a file
 src/wakeword_window.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword.dir/build.make CMakeFiles/wakeword.dir/src/wakeword_window.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/src/wakeword_window.c.s
 .PHONY : src/wakeword_window.c.s
 
 test/wakeword_melspec_test.o: test/wakeword_melspec_test.c.o
@@ -273,6 +308,30 @@ test/wakeword_melspec_test.s: test/wakeword_melspec_test.c.s
 test/wakeword_melspec_test.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_melspec_test.dir/build.make CMakeFiles/wakeword_melspec_test.dir/test/wakeword_melspec_test.c.s
 .PHONY : test/wakeword_melspec_test.c.s
+
+test/wakeword_runtime_test.o: test/wakeword_runtime_test.c.o
+.PHONY : test/wakeword_runtime_test.o
+
+# target to build an object file
+test/wakeword_runtime_test.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_runtime_test.dir/build.make CMakeFiles/wakeword_runtime_test.dir/test/wakeword_runtime_test.c.o
+.PHONY : test/wakeword_runtime_test.c.o
+
+test/wakeword_runtime_test.i: test/wakeword_runtime_test.c.i
+.PHONY : test/wakeword_runtime_test.i
+
+# target to preprocess a source file
+test/wakeword_runtime_test.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_runtime_test.dir/build.make CMakeFiles/wakeword_runtime_test.dir/test/wakeword_runtime_test.c.i
+.PHONY : test/wakeword_runtime_test.c.i
+
+test/wakeword_runtime_test.s: test/wakeword_runtime_test.c.s
+.PHONY : test/wakeword_runtime_test.s
+
+# target to generate assembly for a file
+test/wakeword_runtime_test.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_runtime_test.dir/build.make CMakeFiles/wakeword_runtime_test.dir/test/wakeword_runtime_test.c.s
+.PHONY : test/wakeword_runtime_test.c.s
 
 test/wakeword_stub_smoke.o: test/wakeword_stub_smoke.c.o
 .PHONY : test/wakeword_stub_smoke.o
@@ -333,20 +392,25 @@ help:
 	@echo "... test"
 	@echo "... wakeword"
 	@echo "... wakeword_melspec_test"
+	@echo "... wakeword_runtime_test"
+	@echo "... wakeword_shared"
 	@echo "... wakeword_stub_smoke"
 	@echo "... wakeword_window_test"
 	@echo "... src/wakeword_melspec.o"
 	@echo "... src/wakeword_melspec.i"
 	@echo "... src/wakeword_melspec.s"
-	@echo "... src/wakeword_stub.o"
-	@echo "... src/wakeword_stub.i"
-	@echo "... src/wakeword_stub.s"
+	@echo "... src/wakeword_runtime.o"
+	@echo "... src/wakeword_runtime.i"
+	@echo "... src/wakeword_runtime.s"
 	@echo "... src/wakeword_window.o"
 	@echo "... src/wakeword_window.i"
 	@echo "... src/wakeword_window.s"
 	@echo "... test/wakeword_melspec_test.o"
 	@echo "... test/wakeword_melspec_test.i"
 	@echo "... test/wakeword_melspec_test.s"
+	@echo "... test/wakeword_runtime_test.o"
+	@echo "... test/wakeword_runtime_test.i"
+	@echo "... test/wakeword_runtime_test.s"
 	@echo "... test/wakeword_stub_smoke.o"
 	@echo "... test/wakeword_stub_smoke.i"
 	@echo "... test/wakeword_stub_smoke.s"

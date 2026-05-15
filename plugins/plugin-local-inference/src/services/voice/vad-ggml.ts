@@ -1,20 +1,17 @@
 /**
- * EXPERIMENTAL — ggml-backed Silero VAD binding.
+ * ggml-backed Silero VAD binding.
  *
  * This module is the JS-side proxy for the C ABI declared in
  * `packages/native-plugins/silero-vad-cpp/include/silero_vad/silero_vad.h`.
- * Today the underlying C library is a stub: `silero_vad_open`,
- * `silero_vad_reset_state`, `silero_vad_process`, and `silero_vad_close`
- * all return `-ENOSYS`. The binding is wired so the higher-level voice
- * pipeline can adopt it as soon as the real ggml-backed implementation
- * lands without any TypeScript-side changes.
+ * As of Phase 2 the underlying C library is a real, GGUF-backed
+ * scalar-C runtime that loads the Silero v5 (16 kHz) graph and
+ * runs it per 32 ms / 512-sample window with parity vs the upstream
+ * `silero-vad` Python `OnnxWrapper` (verified at ±0.02 by
+ * `packages/native-plugins/silero-vad-cpp/test/silero_vad_parity_test.py`).
  *
- * Goal: replace `SileroVad` in `./vad.ts` (and, with it, the
- * `onnxruntime-node` dependency) once the native library is real.
- * Until then this file is marked EXPERIMENTAL — it is NOT wired into
- * `vadProviderOrder` in `./vad.ts`. Do not import it from production
- * paths yet; the existing `silero-onnx` and `silero-native` providers
- * are still the live ones.
+ * The binding is wired into `./vad.ts`'s `vadProviderOrder` ahead of
+ * the `silero-onnx` provider; the ONNX path stays as a fallback
+ * until the ggml runtime has soaked in production.
  *
  * Runtime: production runs under Bun (Electrobun shell, Capacitor
  * bridge). The loader uses `bun:ffi`. Calling this loader from a
@@ -24,9 +21,7 @@
  * Contract: the exported `SileroVadGgml` class implements the same
  * `VadLike` interface as `SileroVad` and `NativeSileroVad`
  * (`process(window: Float32Array): Promise<number>`, `reset(): void`,
- * `windowSamples`, `sampleRate`) — once the native side is real, the
- * provider resolver in `./vad.ts` can swap providers without any
- * changes to `VadDetector` or its callers.
+ * `windowSamples`, `sampleRate`).
  */
 
 import { existsSync } from "node:fs";
@@ -88,17 +83,24 @@ interface BunFfiModule {
 	read: { u64(buf: unknown, offset?: number): bigint };
 }
 
-function loadBunFfi(): BunFfiModule {
-	const req: ((id: string) => unknown) | undefined = (
-		globalThis as { Bun?: { __require?: (id: string) => unknown } }
-	).Bun?.__require;
-	if (typeof req !== "function") {
+async function loadBunFfi(): Promise<BunFfiModule> {
+	const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
+	if (!isBun) {
 		throw new VadGgmlUnavailableError(
 			"ffi-unavailable",
 			"[vad-ggml] bun:ffi is unavailable. The ggml-backed Silero VAD binding requires Bun (Electrobun / Capacitor bridge); plain Node cannot dlopen libsilero_vad.",
 		);
 	}
-	return req("bun:ffi") as BunFfiModule;
+	// `import("bun:ffi")` is a Bun-only module specifier — wrapping the
+	// dynamic import in a Function constructor keeps tsc/Node from
+	// resolving it at build time. Under Bun the runtime resolves the
+	// specifier natively.
+	const dynamicImport = new Function(
+		"specifier",
+		"return import(specifier);",
+	) as (specifier: string) => Promise<unknown>;
+	const mod = (await dynamicImport("bun:ffi")) as BunFfiModule;
+	return mod;
 }
 
 /* ---- Library resolution ----------------------------------------- */
@@ -236,7 +238,13 @@ export class SileroVadGgml implements VadLike {
 			lib.close();
 			throw new VadGgmlUnavailableError(
 				"open-failed",
-				`[vad-ggml] silero_vad_open returned ${rc} for ${opts.ggufPath}. The library is currently a stub (ENOSYS=-${38}); this binding is wired for the future ggml-backed implementation. See packages/native-plugins/silero-vad-cpp/AGENTS.md.`,
+				`[vad-ggml] silero_vad_open returned ${rc} for ${opts.ggufPath}. ` +
+					"Common causes: -2 (ENOENT) the GGUF file is unreadable, " +
+					"-22 (EINVAL) the GGUF metadata mismatched the expected " +
+					"silero_vad_v5 / 16 kHz / 512-sample / 128-dim contract. " +
+					"Re-run scripts/silero_vad_to_gguf.py from the pinned commit " +
+					"and confirm `silero_vad.variant` reads `silero_vad_v5`. " +
+					"See packages/native-plugins/silero-vad-cpp/AGENTS.md.",
 			);
 		}
 

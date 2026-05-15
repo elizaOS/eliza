@@ -8,27 +8,52 @@
 	"exports": {
 		".": {
 			"types": "./src/index.ts",
+			"eliza-source": {
+				"types": "./src/index.ts",
+				"import": "./src/index.ts",
+				"default": "./src/index.ts"
+			},
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
 		"./runtime": {
 			"types": "./src/runtime/index.ts",
+			"eliza-source": {
+				"types": "./src/runtime/index.ts",
+				"import": "./src/runtime/index.ts",
+				"default": "./src/runtime/index.ts"
+			},
 			"import": "./dist/runtime/index.js",
 			"default": "./dist/runtime/index.js"
 		},
 		"./routes": {
 			"types": "./src/routes/index.ts",
+			"eliza-source": {
+				"types": "./src/routes/index.ts",
+				"import": "./src/routes/index.ts",
+				"default": "./src/routes/index.ts"
+			},
 			"import": "./dist/routes/index.js",
 			"default": "./dist/routes/index.js"
 		},
 		"./services": {
 			"types": "./src/services/index.ts",
+			"eliza-source": {
+				"types": "./src/services/index.ts",
+				"import": "./src/services/index.ts",
+				"default": "./src/services/index.ts"
+			},
 			"import": "./dist/services/index.js",
 			"default": "./dist/services/index.js"
 		},
 		"./*.css": "./dist/*.css",
 		"./*": {
 			"types": "./src/*.ts",
+			"eliza-source": {
+				"types": "./src/*.ts",
+				"import": "./src/*.ts",
+				"default": "./src/*.ts"
+			},
 			"import": "./dist/*.js",
 			"default": "./dist/*.js"
 		}

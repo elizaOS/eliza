@@ -53,6 +53,11 @@
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./services/app-session-gate": {
       "types": "./src/services/app-session-gate.d.ts",
+      "eliza-source": {
+        "types": "./src/services/app-session-gate.ts",
+        "import": "./src/services/app-session-gate.ts",
+        "default": "./src/services/app-session-gate.ts"
+      },
       "bun": {
         "types": "./src/services/app-session-gate.ts",
         "import": "./src/services/app-session-gate.ts",
@@ -63,6 +68,11 @@
     },
     "./security/*": {
       "types": "./src/security/*.d.ts",
+      "eliza-source": {
+        "types": "./src/security/*.ts",
+        "import": "./src/security/*.ts",
+        "default": "./src/security/*.ts"
+      },
       "bun": {
         "types": "./src/security/*.ts",
         "import": "./src/security/*.ts",
@@ -73,6 +83,11 @@
     },
     "./services/*": {
       "types": "./src/services/*.d.ts",
+      "eliza-source": {
+        "types": "./src/services/*.ts",
+        "import": "./src/services/*.ts",
+        "default": "./src/services/*.ts"
+      },
       "bun": {
         "types": "./src/services/*.ts",
         "import": "./src/services/*.ts",
@@ -83,6 +98,11 @@
     },
     "./config/*": {
       "types": "./src/config/*.d.ts",
+      "eliza-source": {
+        "types": "./src/config/*.ts",
+        "import": "./src/config/*.ts",
+        "default": "./src/config/*.ts"
+      },
       "bun": {
         "types": "./src/config/*.ts",
         "import": "./src/config/*.ts",
@@ -93,6 +113,11 @@
     },
     "./utils/*": {
       "types": "./src/utils/*.d.ts",
+      "eliza-source": {
+        "types": "./src/utils/*.ts",
+        "import": "./src/utils/*.ts",
+        "default": "./src/utils/*.ts"
+      },
       "bun": {
         "types": "./src/utils/*.ts",
         "import": "./src/utils/*.ts",
@@ -104,6 +129,11 @@
     "./*.css": "./dist/*.css",
     "./*": {
       "types": "./dist/*.d.ts",
+      "eliza-source": {
+        "types": "./src/*.ts",
+        "import": "./src/*.ts",
+        "default": "./src/*.ts"
+      },
       "import": "./dist/*.js",
       "default": "./dist/*.js"
     }

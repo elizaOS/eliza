@@ -34,6 +34,8 @@ onnxruntime>=1.20.0
 # Evaluation
 openai-whisper>=20240930
 speechbrain>=1.0.0
+# UTMOS MOS predictor (primary path in eval_kokoro.py; SQUIM_SUBJECTIVE is fallback)
+utmos>=0.1.0,<2.0
 
 # Logging (optional — pipeline runs without it)
 tensorboard>=2.18.0
