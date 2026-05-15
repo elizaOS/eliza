@@ -18,11 +18,9 @@ from __future__ import annotations
 
 import json
 import os
-import sys
 import time
 import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Any
 
 from ..types import AgentFn, MessageTurn
@@ -34,33 +32,6 @@ from ..types import AgentFn, MessageTurn
 
 _DEFAULT_ELIZA_API_BASE = "http://localhost:31337"
 _HTTP_TIMEOUT_S = 120.0
-_ELIZA_SERVER_MANAGER: Any | None = None
-
-
-def _ensure_eliza_adapter_importable() -> None:
-    adapter_root = Path(__file__).resolve().parents[3] / "eliza-adapter"
-    if adapter_root.exists() and str(adapter_root) not in sys.path:
-        sys.path.insert(0, str(adapter_root))
-
-
-def _ensure_eliza_server() -> None:
-    global _ELIZA_SERVER_MANAGER
-    if os.environ.get("ELIZA_BENCH_URL") or os.environ.get("ELIZA_API_BASE"):
-        return
-    _ensure_eliza_adapter_importable()
-    try:
-        from eliza_adapter.server_manager import ElizaServerManager
-    except ImportError as exc:
-        raise RuntimeError(
-            "Cannot auto-spawn the eliza bench server: "
-            "eliza_adapter.server_manager is unavailable. Install "
-            "eliza-adapter or set ELIZA_BENCH_URL to a running server."
-        ) from exc
-    manager = ElizaServerManager()
-    manager.start()
-    _ELIZA_SERVER_MANAGER = manager
-    os.environ["ELIZA_BENCH_URL"] = manager.client.base_url
-    os.environ["ELIZA_BENCH_TOKEN"] = manager.token
 
 
 def _eliza_api_base() -> str:
@@ -74,15 +45,11 @@ def _eliza_api_base() -> str:
 def _eliza_post(path: str, body: dict[str, object]) -> dict[str, object]:
     url = f"{_eliza_api_base()}{path}"
     data = json.dumps(body).encode("utf-8")
-    headers = {"Content-Type": "application/json"}
-    token = os.environ.get("ELIZA_BENCH_TOKEN")
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
     req = urllib.request.Request(
         url,
         data=data,
         method="POST",
-        headers=headers,
+        headers={"Content-Type": "application/json"},
     )
     timeout = float(os.environ.get("ELIZA_BENCH_HTTP_TIMEOUT", str(_HTTP_TIMEOUT_S)))
     try:
@@ -199,7 +166,6 @@ def build_eliza_agent(**kwargs: Any) -> AgentFn:
     (default ``http://localhost:31337``).  Start it with ``bun run dev``
     before running the benchmark.
     """
-    _ensure_eliza_server()
     return _ElizaHttpAgent(**kwargs)  # type: ignore[return-value]
 
 

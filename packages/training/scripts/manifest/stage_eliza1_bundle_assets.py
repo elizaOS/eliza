@@ -140,6 +140,7 @@ VOICE_PRESET_HEADER_BYTES: Final[int] = 24
 HF_RETRY_ATTEMPTS: Final[int] = 4
 HF_RETRY_BASE_DELAY_SEC: Final[float] = 2.0
 
+
 def require_hf_hub(*, require_download: bool = False) -> tuple[Any, Any]:
     global HfApi, hf_hub_download
     if HfApi is None or (require_download and hf_hub_download is None):
@@ -160,6 +161,7 @@ def require_hf_hub(*, require_download: bool = False) -> tuple[Any, Any]:
         )
     return HfApi, hf_hub_download
 
+
 def retry_hf(callable_, *args: Any, **kwargs: Any) -> Any:
     last_error: Exception | None = None
     for attempt in range(HF_RETRY_ATTEMPTS):
@@ -173,12 +175,14 @@ def retry_hf(callable_, *args: Any, **kwargs: Any) -> Any:
     assert last_error is not None
     raise last_error
 
+
 def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:
         for block in iter(lambda: fh.read(chunk), b""):
             h.update(block)
     return h.hexdigest()
+
 
 def bundle_relpath(bundle_dir: Path, path: Path) -> str:
     root = bundle_dir.resolve()
@@ -187,6 +191,7 @@ def bundle_relpath(bundle_dir: Path, path: Path) -> str:
         return target.relative_to(root).as_posix()
     except ValueError as exc:
         raise ValueError(f"staged path escapes bundle root: {path}") from exc
+
 
 def _all_checksum_inputs(bundle_dir: Path) -> list[Path]:
     out: list[Path] = []
@@ -200,6 +205,7 @@ def _all_checksum_inputs(bundle_dir: Path) -> list[Path]:
             continue
         out.append(path)
     return out
+
 
 def regenerate_checksums(bundle_dir: Path, *, dry_run: bool) -> dict[str, Any] | None:
     if dry_run:
@@ -216,6 +222,7 @@ def regenerate_checksums(bundle_dir: Path, *, dry_run: bool) -> dict[str, Any] |
         "entryCount": len(lines),
         "sha256": sha256_file(checksum_path),
     }
+
 
 def _slot_for_bundle_path(rel: str) -> str | None:
     if rel.startswith("tts/"):
@@ -236,6 +243,7 @@ def _slot_for_bundle_path(rel: str) -> str | None:
     if rel == "cache/voice-preset-default.bin":
         return "cache"
     return None
+
 
 def merge_manifest_asset_entries(
     bundle_dir: Path,
@@ -319,6 +327,7 @@ def merge_manifest_asset_entries(
         "updatedPaths": sorted(set(changed_paths)),
     }
 
+
 def merge_release_evidence_assets(
     bundle_dir: Path,
     staged_files: Sequence[Mapping[str, Any]],
@@ -363,6 +372,7 @@ def merge_release_evidence_assets(
         encoding="utf-8",
     )
     return {"path": str(evidence_path), "weights": evidence["weights"]}
+
 
 def copy_hf_file(
     *,
@@ -416,6 +426,7 @@ def copy_hf_file(
         "sha256": sha256_file(destination),
     }
 
+
 def download_url_file(
     *,
     url: str,
@@ -445,6 +456,7 @@ def download_url_file(
         "sha256": sha256_file(destination),
     }
 
+
 def choose_gguf_file(
     api: Any,
     *,
@@ -468,6 +480,7 @@ def choose_gguf_file(
     if not files:
         raise ValueError(f"no GGUF files found in {repo_id}")
     return sorted(files)[0]
+
 
 def choose_mmproj_file(
     api: Any,
@@ -493,6 +506,7 @@ def choose_mmproj_file(
     if not files:
         raise ValueError(f"no ASR mmproj GGUF files found in {repo_id}")
     return sorted(files)[0]
+
 
 def stage_turn_detector(
     *,
@@ -592,6 +606,7 @@ def stage_turn_detector(
         "files": files,
     }
 
+
 def write_voice_preset(path: Path, *, dry_run: bool) -> dict[str, Any]:
     """Write a deterministic neutral v1 voice preset cache.
 
@@ -627,6 +642,7 @@ def write_voice_preset(path: Path, *, dry_run: bool) -> dict[str, Any]:
         "phraseSeedCount": 0,
         "dryRun": dry_run,
     }
+
 
 def merge_lineage(
     bundle_dir: Path,
@@ -687,6 +703,7 @@ def merge_lineage(
         }
     if not dry_run:
         path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
+
 
 def write_license_notes(
     bundle_dir: Path,
@@ -766,12 +783,14 @@ def write_license_notes(
         ):
             target.write_text(text)
 
+
 def resolve_revisions(api: Any, repos: tuple[str, ...]) -> dict[str, str]:
     out: dict[str, str] = {}
     for repo in repos:
         info = retry_hf(api.model_info, repo)
         out[repo] = str(info.sha)
     return out
+
 
 def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
     tier = args.tier
@@ -1036,6 +1055,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
         evidence.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
     return report
 
+
 def upload_assets(args: argparse.Namespace) -> None:
     if not args.upload_repo or args.dry_run:
         return
@@ -1069,6 +1089,7 @@ def upload_assets(args: argparse.Namespace) -> None:
             "licenses/LICENSE.turn",
         ],
     )
+
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -1180,12 +1201,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--public", action="store_true")
     return ap.parse_args(argv)
 
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     report = stage_assets(args)
     upload_assets(args)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

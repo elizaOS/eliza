@@ -175,21 +175,6 @@ const STRICT_RELEASE_STATES: ReadonlySet<string> = new Set([
 	"final",
 ]);
 
-const _DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
-	"2b",
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
-]);
-
-const _VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
-]);
-
 function collectContractErrors(m: Eliza1Manifest): string[] {
 	const errors: string[] = [];
 
@@ -221,43 +206,6 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 				"kernels.required: text variant with ctx > 64k requires turbo3_tcq",
 			);
 		}
-	}
-
-	const dflashEnabled = DFLASH_TIERS.has(m.tier);
-	const visionEnabled = VISION_TIERS.has(m.tier);
-	if (dflashEnabled) {
-		if (m.files.dflash.length === 0) {
-			errors.push(`files.dflash: required for DFlash-enabled tier ${m.tier}`);
-		}
-		if (m.files.dflash.length > 0 && !m.lineage.drafter) {
-			errors.push("lineage.drafter: required when files.dflash is non-empty");
-		}
-		if (m.lineage.drafter && m.files.dflash.length === 0) {
-			errors.push("files.dflash: required when lineage.drafter is present");
-		}
-	} else {
-		if (m.files.dflash.length > 0) {
-			errors.push(
-				`files.dflash: unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-		if (declaredRequired.has("dflash")) {
-			errors.push(
-				`kernels.required: dflash is unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-		if (m.lineage.drafter) {
-			errors.push(
-				`lineage.drafter: unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-	}
-	if (visionEnabled) {
-		if (m.files.vision.length === 0) {
-			errors.push(`files.vision: required for vision-enabled tier ${m.tier}`);
-		}
-	} else if (m.files.vision.length > 0) {
-		errors.push(`files.vision: unsupported for text/voice-only tier ${m.tier}`);
 	}
 
 	// Backend kernel-verify coverage. A production release must verify every
@@ -458,8 +406,8 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 			const requiredSlots: Array<keyof typeof m.provenance.sourceModels> = [
 				"text",
 				"voice",
+				"drafter",
 			];
-			if (dflashEnabled) requiredSlots.push("drafter");
 			for (const slot of ["asr", "vad", "embedding", "vision"] as const) {
 				if ((m.files[slot] ?? []).length > 0) requiredSlots.push(slot);
 			}
@@ -480,13 +428,10 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 	// measurements, but a default bundle is not eligible unless speculative
 	// decoding was actually measured and passed.
 	if (!m.evals.dflash) {
-		if (m.defaultEligible && dflashEnabled) {
+		if (m.defaultEligible) {
 			errors.push("evals.dflash: required when defaultEligible=true");
 		}
 	} else {
-		if (!dflashEnabled) {
-			errors.push(`evals.dflash: unsupported for DFlash-disabled tier ${m.tier}`);
-		}
 		if (
 			m.evals.dflash.passed &&
 			(m.evals.dflash.acceptanceRate === null ||
@@ -496,7 +441,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 				"evals.dflash: passed=true but acceptanceRate/speedup is null — a needs-hardware bench cannot pass",
 			);
 		}
-		if (m.defaultEligible && dflashEnabled) {
+		if (m.defaultEligible) {
 			if (!m.evals.dflash.passed) {
 				errors.push("evals.dflash.passed: false for defaultEligible manifest");
 			}

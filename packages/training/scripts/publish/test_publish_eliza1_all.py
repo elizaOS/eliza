@@ -13,11 +13,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.publish import publish_eliza1_all as P  # noqa: E402
+
 
 def test_dry_run_returns_zero_and_emits_summary(capsys, monkeypatch):
     # No HF_TOKEN -> forced dry-run; --skip-bundle-status to keep it offline.
@@ -32,12 +34,14 @@ def test_dry_run_returns_zero_and_emits_summary(capsys, monkeypatch):
     # Nothing pushed in dry-run.
     assert "nothing was pushed" in out
 
+
 def test_bundle_dry_run_missing_bundle_is_pending():
     out = P._bundle_dry_run("2b", Path("/nonexistent/eliza-1-2b.bundle"))
     assert out.status == "pending"
     assert out.repo == "elizaos/eliza-1"
     assert out.kind == "model-bundle"
     assert "bundles/2b/" in out.detail
+
 
 def test_bundle_dry_run_red_gate_is_pending(tmp_path, monkeypatch):
     # Point at an empty dir: the orchestrator will fail layout validation (exit
@@ -48,6 +52,7 @@ def test_bundle_dry_run_red_gate_is_pending(tmp_path, monkeypatch):
     assert out.status == "pending"
     assert "exit=" in out.detail
 
+
 def test_sft_weights_status_pending_without_final(monkeypatch, tmp_path):
     # Repoint TRAINING_ROOT/checkpoints at an empty tree.
     fake_root = tmp_path / "training"
@@ -56,6 +61,7 @@ def test_sft_weights_status_pending_without_final(monkeypatch, tmp_path):
     out = P._sft_weights_status()
     assert out.status == "pending"
     assert out.repo == "elizaos/eliza-1"
+
 
 def test_bundle_tiers_cover_full_active_matrix():
     assert P.BUNDLE_TIERS == (

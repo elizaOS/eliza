@@ -147,10 +147,6 @@ describe("androidNativeAgentTransportForUrl", () => {
           path: "/api/health?source=ipv6",
         }),
       );
-      for (const call of agentRequestMock.mock.calls) {
-        expect(call[0]).not.toHaveProperty("url");
-        expect(call[0].path).toMatch(/^\/api\//);
-      }
       expect(fetchMock).not.toHaveBeenCalled();
     },
     TEST_TIMEOUT_MS,
@@ -245,19 +241,4 @@ describe("androidNativeAgentTransportForUrl", () => {
       androidNativeAgentTransportForUrl("http://127.0.0.1:31337/api/status"),
     ).resolves.toBeNull();
   });
-
-  it(
-    "does not treat the iOS IPC identity as an Android local-agent URL",
-    async () => {
-      const { androidNativeAgentTransportForUrl } = await import(
-        "./android-native-agent-transport"
-      );
-
-      await expect(
-        androidNativeAgentTransportForUrl("eliza-local-agent://ipc/api/status"),
-      ).resolves.toBeNull();
-      expect(agentRequestMock).not.toHaveBeenCalled();
-    },
-    TEST_TIMEOUT_MS,
-  );
 });

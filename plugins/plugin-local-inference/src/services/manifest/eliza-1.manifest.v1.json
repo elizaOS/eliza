@@ -35,13 +35,14 @@
 		"lineage": {
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["text", "voice"],
+			"required": ["text", "voice", "drafter"],
 			"properties": {
 				"text": { "$ref": "#/$defs/lineageEntry" },
 				"voice": { "$ref": "#/$defs/lineageEntry" },
 				"drafter": { "$ref": "#/$defs/lineageEntry" },
 				"asr": { "$ref": "#/$defs/lineageEntry" },
 				"embedding": { "$ref": "#/$defs/lineageEntry" },
+				"imagegen": { "$ref": "#/$defs/lineageEntry" },
 				"vision": { "$ref": "#/$defs/lineageEntry" },
 				"vad": { "$ref": "#/$defs/lineageEntry" },
 				"wakeword": { "$ref": "#/$defs/lineageEntry" },
@@ -52,7 +53,7 @@
 		"files": {
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["text", "voice", "asr", "vision", "cache"],
+			"required": ["text", "voice", "asr", "vision", "dflash", "cache"],
 			"properties": {
 				"text": {
 					"type": "array",
@@ -68,6 +69,7 @@
 				"vision": { "type": "array", "items": { "$ref": "#/$defs/fileEntry" } },
 				"dflash": {
 					"type": "array",
+					"minItems": 1,
 					"items": { "$ref": "#/$defs/fileEntry" }
 				},
 				"cache": {
@@ -76,6 +78,10 @@
 					"items": { "$ref": "#/$defs/fileEntry" }
 				},
 				"embedding": {
+					"type": "array",
+					"items": { "$ref": "#/$defs/fileEntry" }
+				},
+				"imagegen": {
 					"type": "array",
 					"items": { "$ref": "#/$defs/fileEntry" }
 				},
@@ -337,6 +343,7 @@
 						"asr": { "$ref": "#/$defs/sourceModelEntry" },
 						"vad": { "$ref": "#/$defs/sourceModelEntry" },
 						"embedding": { "$ref": "#/$defs/sourceModelEntry" },
+						"imagegen": { "$ref": "#/$defs/sourceModelEntry" },
 						"vision": { "$ref": "#/$defs/sourceModelEntry" },
 						"drafter": { "$ref": "#/$defs/sourceModelEntry" }
 					}

@@ -167,46 +167,6 @@ function fullBunStartupError(message: string, cause?: unknown): Error {
   );
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function localUnavailablePayload(reason: string, message: string): string {
-  return JSON.stringify({
-    error: "local-unavailable",
-    code: "local-unavailable",
-    reason,
-    message,
-  });
-}
-
-function localUnavailableNativeResult(
-  reason: string,
-  message: string,
-): IosLocalAgentNativeRequestResult {
-  return {
-    status: 503,
-    statusText: "Local Agent Unavailable",
-    headers: { "content-type": "application/json" },
-    body: localUnavailablePayload(reason, message),
-  };
-}
-
-function localUnavailableResponse(reason: string, message: string): Response {
-  return nativeResultToResponse(localUnavailableNativeResult(reason, message));
-}
-
-function createIosLocalUnavailableTransport(
-  reason: string,
-  message: string,
-): AgentRequestTransport {
-  return {
-    async request() {
-      return localUnavailableResponse(reason, message);
-    },
-  };
-}
-
 function isNativeIos(): boolean {
   try {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
@@ -300,7 +260,7 @@ function isMobileLocalAgentUrl(value: string): boolean {
   return (
     parsed.protocol === "http:" &&
     parsed.port === LOCAL_AGENT_PORT &&
-    LOCAL_AGENT_HOSTS.has(normalizeHost(parsed.hostname))
+    LOCAL_AGENT_HOSTS.has(parsed.hostname)
   );
 }
 
@@ -543,17 +503,10 @@ async function dispatchIosLocalAgentRequest(
   request: Request,
   context?: { timeoutMs?: number },
 ): Promise<Response> {
-  try {
-    const options = await requestToNativeBridgeOptions(request, context);
-    return nativeResultToResponse(
-      await handleIosLocalAgentNativeRequest(options),
-    );
-  } catch (error) {
-    return localUnavailableResponse(
-      "ios-local-agent-request-failed",
-      `iOS local-agent IPC request failed: ${errorMessage(error)}`,
-    );
-  }
+  const options = await requestToNativeBridgeOptions(request, context);
+  return nativeResultToResponse(
+    await handleIosLocalAgentNativeRequest(options),
+  );
 }
 
 export async function handleIosLocalAgentNativeRequest(
@@ -570,38 +523,21 @@ export async function handleIosLocalAgentNativeRequest(
     throw new Error("Unsupported HTTP method");
   }
 
-  let fullBunResult: IosLocalAgentNativeRequestResult | null;
-  try {
-    fullBunResult = await tryFullBunNativeRequest({
-      ...options,
-      method,
-      path,
-    });
-  } catch (error) {
-    if (shouldRequireFullBunRuntime()) {
-      return localUnavailableNativeResult(
-        "ios-full-bun-unavailable",
-        errorMessage(error),
-      );
-    }
-    throw error;
-  }
+  const fullBunResult = await tryFullBunNativeRequest({
+    ...options,
+    method,
+    path,
+  });
   if (fullBunResult) return fullBunResult;
 
   if (isNativeIosStoreBuild()) {
-    return localUnavailableNativeResult(
-      "ios-ittp-disabled",
-      fullBunStartupError(
-        "the foreground ITTP compatibility transport is disabled for iOS store builds",
-      ).message,
+    throw fullBunStartupError(
+      "the foreground ITTP compatibility transport is disabled for iOS store builds",
     );
   }
   if (!canUseJsContextCompatibilityFallback()) {
-    return localUnavailableNativeResult(
-      "ios-jscontext-disabled",
-      fullBunStartupError(
-        "the JSContext compatibility transport is disabled outside iOS development builds",
-      ).message,
+    throw fullBunStartupError(
+      "the JSContext compatibility transport is disabled outside iOS development builds",
     );
   }
 

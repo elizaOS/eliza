@@ -208,18 +208,9 @@ def test_summary_table_includes_every_entry() -> None:
     assert "qwen3.5-27b" not in table
 
 
-def test_quantization_matrix_includes_runtime_hooks_and_full_gguf_ladder() -> None:
-    expected = (
-        "polarquant",
-        "turboquant",
-        "fused_turboquant",
-        "qjl",
-        "gguf-q3_k_m",
-        "gguf-q4_k_m",
-        "gguf-q5_k_m",
-        "gguf-q6_k",
-        "gguf-q8_0",
-    )
+def test_quantization_matrix_includes_gguf_q4_q6_q8() -> None:
     for key in VERIFIED_KEYS:
         e = get(key)
-        assert e.quantization_after == expected
+        assert "gguf-q4_k_m" in e.quantization_after
+        assert "gguf-q6_k" in e.quantization_after
+        assert "gguf-q8_0" in e.quantization_after

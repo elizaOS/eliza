@@ -23,7 +23,7 @@ by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
   - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B-Base``   → ``eliza-1-2b``    (mid local tier; full-param SFT on a 16-24 GB GPU)
   - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B-Base``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24-28 GB GPU)
   - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
-  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2; also serves ``eliza-1-27b-256k``)
+  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2; also serves ``eliza-1-27b-256k`` alias)
 
 All active bases are published on the Hub. The 9b/27b tiers need workstation /
 cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's DFlash
@@ -254,18 +254,6 @@ DFLASH_DRAFTER_BASE: dict[str, str] = {
     "eliza-1-27b-256k": "Qwen/Qwen3.5-0.8B-Base",
 }
 
-ELIZA1_REQUIRED_QUANTIZATION_AFTER: tuple[str, ...] = (
-    "polarquant",
-    "turboquant",
-    "fused_turboquant",
-    "qjl",
-    "gguf-q3_k_m",
-    "gguf-q4_k_m",
-    "gguf-q5_k_m",
-    "gguf-q6_k",
-    "gguf-q8_0",
-)
-
 REGISTRY: dict[str, ModelEntry] = {
     # ─────────────────────────── REAL ENTRIES ───────────────────────────
     # Buildable Qwen3.5 dense base models, mapped onto the size-first
@@ -307,7 +295,14 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=28672, infer_max_out=4096,
         infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
-        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
+        quantization_after=(
+            "polarquant",
+            "fused_turboquant",
+            "qjl",
+            "gguf-q4_k_m",
+            "gguf-q6_k",
+            "gguf-q8_0",
+        ),
         notes="New smallest published eliza-1 tier, on the Qwen3.5-0.8B "
               "backbone. "
               "Full-param APOLLO SFT fits a 16 GB consumer GPU; runs the "
@@ -333,7 +328,14 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=6, infer_kv_heads=2, infer_kv_head_dim=256,
-        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
+        quantization_after=(
+            "polarquant",
+            "fused_turboquant",
+            "qjl",
+            "gguf-q4_k_m",
+            "gguf-q6_k",
+            "gguf-q8_0",
+        ),
         notes="Mid local tier (eliza-1-2b). Trains from Qwen/Qwen3.5-2B-Base "
               "(pretrain checkpoint, not the instruct release).",
     ),
@@ -347,7 +349,14 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=7, infer_kv_heads=2, infer_kv_head_dim=256,
-        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
+        quantization_after=(
+            "polarquant",
+            "fused_turboquant",
+            "qjl",
+            "gguf-q4_k_m",
+            "gguf-q6_k",
+            "gguf-q8_0",
+        ),
         notes="Local/workstation tier (eliza-1-4b) on the Qwen3.5-4B-Base "
               "backbone. Full-param APOLLO SFT fits a single H200 easily. "
               "Replaces the legacy qwen3-4b for the Qwen3.5 fused-model line "
@@ -363,7 +372,14 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=8, infer_kv_heads=4, infer_kv_head_dim=256,
-        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
+        quantization_after=(
+            "polarquant",
+            "fused_turboquant",
+            "qjl",
+            "gguf-q4_k_m",
+            "gguf-q6_k",
+            "gguf-q8_0",
+        ),
         notes="Workstation/cloud tier. Full-param APOLLO SFT uses Vast/FSDP "
               "and the 9B Qwen3.5 checkpoint.",
     ),
@@ -377,7 +393,14 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
-        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
+        quantization_after=(
+            "polarquant",
+            "fused_turboquant",
+            "qjl",
+            "gguf-q4_k_m",
+            "gguf-q6_k",
+            "gguf-q8_0",
+        ),
         notes="Legacy 27B lookup retained for experiments only. The active "
               "eliza-1 27B release family uses Qwen/Qwen3.6-27B.",
         extra={"legacy": "true", "replaced_by": "qwen3.6-27b"},
@@ -392,9 +415,16 @@ REGISTRY: dict[str, ModelEntry] = {
         train_dtype="bf16",
         infer_max_in=131072, infer_max_out=16384,
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
-        quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
+        quantization_after=(
+            "polarquant",
+            "fused_turboquant",
+            "qjl",
+            "gguf-q4_k_m",
+            "gguf-q6_k",
+            "gguf-q8_0",
+        ),
         notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
-              "27B backbone. Use this for the 27B, 27B-256k, "
+              "27B backbone. Use this for the 27B, 27B-256k, and 27B-1m "
               "release families.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
     ),

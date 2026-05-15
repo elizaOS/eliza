@@ -122,6 +122,7 @@ REQUIRED_RELEASE_DIRS: Final[tuple[str, ...]] = (
     "quantization",
 )
 
+
 @dataclass(frozen=True, slots=True)
 class StagedFile:
     role: str
@@ -132,6 +133,7 @@ class StagedFile:
     method: str
     provenance: str
 
+
 def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:
@@ -139,11 +141,14 @@ def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
             h.update(block)
     return h.hexdigest()
 
+
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
+
 def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
 
 def _first_existing(candidates: Sequence[Path], label: str) -> Path:
     for path in candidates:
@@ -152,11 +157,13 @@ def _first_existing(candidates: Sequence[Path], label: str) -> Path:
     rendered = "\n  - ".join(str(p) for p in candidates)
     raise FileNotFoundError(f"no local {label} stand-in found:\n  - {rendered}")
 
+
 def _bundle_source_candidates(bundle_dir: Path, subdir: str) -> tuple[Path, ...]:
     source_dir = bundle_dir / "source" / subdir
     if not source_dir.is_dir():
         return ()
     return tuple(sorted(p for p in source_dir.glob("*.gguf") if p.is_file()))
+
 
 def _is_under(path: Path, parent: Path) -> bool:
     try:
@@ -164,6 +171,7 @@ def _is_under(path: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
 
 def _choose_source(
     *,
@@ -180,13 +188,16 @@ def _choose_source(
         return bundled[0]
     return _first_existing(fallback_candidates, label)
 
+
 def _json_write(path: Path, data: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
+
 def _text_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
+
 
 def _stage_file(
     *,
@@ -225,6 +236,7 @@ def _stage_file(
         provenance=provenance,
     )
 
+
 def _link_or_copy(source: Path, destination: Path) -> str:
     try:
         os.link(source, destination)
@@ -233,9 +245,11 @@ def _link_or_copy(source: Path, destination: Path) -> str:
         shutil.copy2(source, destination)
         return "copy"
 
+
 def _ensure_release_dirs(bundle_dir: Path) -> None:
     for rel in REQUIRED_RELEASE_DIRS:
         (bundle_dir / rel).mkdir(parents=True, exist_ok=True)
+
 
 def _load_smoke_report(path: Path | None) -> dict[str, Any] | None:
     if path is None:
@@ -247,10 +261,12 @@ def _load_smoke_report(path: Path | None) -> dict[str, Any] | None:
         raise ValueError(f"local smoke report must contain a JSON object: {path}")
     return data
 
+
 def _default_smoke_report() -> Path | None:
     root = _repo_root() / "packages" / "inference" / "reports" / "local-e2e"
     candidates = sorted(root.glob("*/fused-voice-ffi-smoke.json"))
     return candidates[-1] if candidates else None
+
 
 def _voice_rtf_from_smoke(smoke: Mapping[str, Any] | None) -> float:
     if not smoke:
@@ -266,10 +282,12 @@ def _voice_rtf_from_smoke(smoke: Mapping[str, Any] | None) -> float:
         return 0.0
     return round(float(synthesize_ms) / (float(audio_seconds) * 1000.0), 4)
 
+
 def _source_result(smoke: Mapping[str, Any] | None) -> str:
     if not smoke:
         return "not-run"
     return str(smoke.get("result") or "unknown")
+
 
 def _publish_blocking_reasons(
     *,
@@ -292,6 +310,7 @@ def _publish_blocking_reasons(
     elif smoke is None:
         reasons.append("no local fused voice smoke report was attached")
     return reasons
+
 
 def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
     license_texts = {
@@ -331,9 +350,11 @@ def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
         written.append(f"licenses/{name}")
     return written
 
+
 _GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = (
     "dflash-draft.target_checkpoint_sha256"
 )
+
 
 def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
     """Read the target text-checkpoint sha256 the drafter was distilled
@@ -358,6 +379,7 @@ def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
         return str(field.parts[field.data[0]].tobytes().decode("utf-8"))
     except Exception:
         return None
+
 
 def _write_target_meta(
     *,
@@ -437,6 +459,7 @@ def _write_target_meta(
             "publishBlockingReasons": list(reasons),
         },
     )
+
 
 def _write_eval_files(
     *,
@@ -531,6 +554,7 @@ def _write_eval_files(
     )
     return gate_report.to_dict()
 
+
 def _write_backend_reports(
     *,
     bundle_dir: Path,
@@ -599,6 +623,7 @@ def _write_backend_reports(
         )
     return out
 
+
 def _write_platform_evidence(
     *,
     bundle_dir: Path,
@@ -630,6 +655,7 @@ def _write_platform_evidence(
             "publishBlockingReasons": list(reasons),
         },
     )
+
 
 def _write_quantization_sidecars(
     *,
@@ -668,6 +694,7 @@ def _write_quantization_sidecars(
         written.append(str(rel))
     return written
 
+
 def _collect_files(bundle_dir: Path) -> dict[str, list[FileEntry]]:
     def entries(subdir: str, *, text: bool = False) -> list[FileEntry]:
         root = bundle_dir / subdir
@@ -694,6 +721,7 @@ def _collect_files(bundle_dir: Path) -> dict[str, list[FileEntry]]:
         "vad": entries("vad"),
     }
 
+
 def _read_lineage(bundle_dir: Path) -> dict[str, LineageEntry]:
     path = bundle_dir / "lineage.json"
     data: dict[str, Any] = {}
@@ -707,6 +735,7 @@ def _read_lineage(bundle_dir: Path) -> dict[str, LineageEntry]:
                 license=str(spec.get("license") or ""),
             )
     return out
+
 
 def _write_lineage(
     *,
@@ -748,6 +777,7 @@ def _write_lineage(
     _json_write(bundle_dir / "lineage.json", existing)
     return _read_lineage(bundle_dir)
 
+
 def _load_source_models(path: Path | None) -> dict[str, dict[str, Any]] | None:
     """Load a `{slot: {repo, file?, convertedVia?, note?}}` JSON file.
 
@@ -762,6 +792,7 @@ def _load_source_models(path: Path | None) -> dict[str, dict[str, Any]] | None:
     if not isinstance(data, dict):
         raise ValueError(f"--source-models must be a JSON object: {path}")
     return {str(k): dict(v) for k, v in data.items() if isinstance(v, dict)}
+
 
 def _provenance_for(
     *, release_state: str | None, source_models: Mapping[str, Any] | None
@@ -780,6 +811,7 @@ def _provenance_for(
         "finetuned": release_state == "finetuned-v2",
         "sourceModels": dict(source_models) if source_models else {},
     }
+
 
 def _manifest_for_local_bundle(
     *,
@@ -836,6 +868,7 @@ def _manifest_for_local_bundle(
         require_publish_ready=False,
     )
 
+
 def _render_readme(
     *,
     bundle_dir: Path,
@@ -856,6 +889,7 @@ def _render_readme(
     ]
     _text_write(bundle_dir / "README.md", "\n".join(lines))
 
+
 def _all_checksum_inputs(bundle_dir: Path) -> list[Path]:
     out: list[Path] = []
     for path in sorted(bundle_dir.rglob("*")):
@@ -869,6 +903,7 @@ def _all_checksum_inputs(bundle_dir: Path) -> list[Path]:
         out.append(path)
     return out
 
+
 def write_checksum_manifest(bundle_dir: Path) -> Path:
     checksum_path = bundle_dir / CHECKSUM_PATH
     checksum_path.parent.mkdir(parents=True, exist_ok=True)
@@ -878,6 +913,7 @@ def write_checksum_manifest(bundle_dir: Path) -> Path:
     ]
     checksum_path.write_text("\n".join(lines) + "\n")
     return checksum_path
+
 
 def validate_checksum_manifest(bundle_dir: Path) -> tuple[str, ...]:
     checksum_path = bundle_dir / CHECKSUM_PATH
@@ -903,6 +939,7 @@ def validate_checksum_manifest(bundle_dir: Path) -> tuple[str, ...]:
         if recorded[rel] != actual:
             errors.append(f"{CHECKSUM_PATH}: checksum mismatch for {rel}")
     return tuple(errors)
+
 
 def _write_release_evidence(
     *,
@@ -1014,6 +1051,7 @@ def _write_release_evidence(
         ]
     _json_write(bundle_dir / "evidence" / "release.json", evidence)
 
+
 def _write_bundle_completion_evidence(
     *,
     bundle_dir: Path,
@@ -1041,6 +1079,7 @@ def _write_bundle_completion_evidence(
             "publishBlockingReasons": list(reasons),
         },
     )
+
 
 def _write_repo_evidence(
     *,
@@ -1096,6 +1135,7 @@ def _write_repo_evidence(
     )
     return report_path
 
+
 def _git_short_sha() -> str:
     import subprocess
 
@@ -1108,6 +1148,7 @@ def _git_short_sha() -> str:
     if proc.returncode == 0 and proc.stdout.strip():
         return proc.stdout.strip()
     return "unknown"
+
 
 def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
     tier = args.tier
@@ -1319,6 +1360,7 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
         "publishBlockingReasons": reasons,
     }
 
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--tier", default="2b", choices=tuple(CONTEXTS_BY_TIER))
@@ -1362,11 +1404,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--force", action="store_true")
     return ap.parse_args(argv)
 
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     report = stage_local_bundle(args)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 1 if report["checksumValidation"]["errors"] else 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

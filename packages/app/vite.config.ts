@@ -13,7 +13,7 @@ import {
   resolveDesktopUiPortPreference,
   syncElizaEnvAliases,
 } from "@elizaos/shared";
-import { resolveAppBranding } from "@elizaos/ui";
+import { resolveAppBranding } from "@elizaos/ui/config/app-config";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import {
