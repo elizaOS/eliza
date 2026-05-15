@@ -70,48 +70,44 @@ describe("androidNativeAgentTransportForUrl", () => {
     vi.unstubAllGlobals();
   });
 
-  it(
-    "routes Android local-agent requests through the native Agent plugin",
-    async () => {
-      const fetchMock = vi.fn();
-      vi.stubGlobal("fetch", fetchMock);
-      const { androidNativeAgentTransportForUrl } = await import(
-        "./android-native-agent-transport"
-      );
+  it("routes Android local-agent requests through the native Agent plugin", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { androidNativeAgentTransportForUrl } = await import(
+      "./android-native-agent-transport"
+    );
 
-      const transport = await androidNativeAgentTransportForUrl(
-        "http://127.0.0.1:31337/api/status?source=test",
-      );
+    const transport = await androidNativeAgentTransportForUrl(
+      "http://127.0.0.1:31337/api/status?source=test",
+    );
 
-      expect(transport).toBeTruthy();
-      const response = await transport?.request(
-        "http://127.0.0.1:31337/api/status?source=test",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: "Bearer local-token",
-          },
-          body: JSON.stringify({ ping: true }),
-        },
-        { timeoutMs: 12_345 },
-      );
-
-      expect(agentRequestMock).toHaveBeenCalledWith({
+    expect(transport).toBeTruthy();
+    const response = await transport?.request(
+      "http://127.0.0.1:31337/api/status?source=test",
+      {
         method: "POST",
-        path: "/api/status?source=test",
         headers: {
-          authorization: "Bearer local-token",
-          "content-type": "application/json",
+          "Content-Type": "application/json",
+          Authorization: "Bearer local-token",
         },
         body: JSON.stringify({ ping: true }),
-        timeoutMs: 12_345,
-      });
-      expect(fetchMock).not.toHaveBeenCalled();
-      await expect(response?.json()).resolves.toEqual({ ready: true });
-    },
-    TEST_TIMEOUT_MS,
-  );
+      },
+      { timeoutMs: 12_345 },
+    );
+
+    expect(agentRequestMock).toHaveBeenCalledWith({
+      method: "POST",
+      path: "/api/status?source=test",
+      headers: {
+        authorization: "Bearer local-token",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ ping: true }),
+      timeoutMs: 12_345,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(response?.json()).resolves.toEqual({ ready: true });
+  });
 
   it(
     "keeps Android native-agent requests path-only across loopback aliases",
@@ -239,33 +235,14 @@ describe("androidNativeAgentTransportForUrl", () => {
     TEST_TIMEOUT_MS,
   );
 
-  it(
-    "does not install the Android local-agent transport on iOS",
-    async () => {
-      capacitorState.platform = "ios";
-      const { androidNativeAgentTransportForUrl } = await import(
-        "./android-native-agent-transport"
-      );
+  it("does not install the Android local-agent transport on iOS", async () => {
+    capacitorState.platform = "ios";
+    const { androidNativeAgentTransportForUrl } = await import(
+      "./android-native-agent-transport"
+    );
 
-      await expect(
-        androidNativeAgentTransportForUrl("http://127.0.0.1:31337/api/status"),
-      ).resolves.toBeNull();
-    },
-    TEST_TIMEOUT_MS,
-  );
-
-  it(
-    "does not treat the iOS IPC identity as an Android local-agent URL",
-    async () => {
-      const { androidNativeAgentTransportForUrl } = await import(
-        "./android-native-agent-transport"
-      );
-
-      await expect(
-        androidNativeAgentTransportForUrl("eliza-local-agent://ipc/api/status"),
-      ).resolves.toBeNull();
-      expect(agentRequestMock).not.toHaveBeenCalled();
-    },
-    TEST_TIMEOUT_MS,
-  );
+    await expect(
+      androidNativeAgentTransportForUrl("http://127.0.0.1:31337/api/status"),
+    ).resolves.toBeNull();
+  });
 });

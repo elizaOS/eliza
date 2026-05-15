@@ -328,7 +328,6 @@ def _install_optional_dependency_stubs() -> None:
             def __init__(self, text: str) -> None:
                 self.text = text
                 self.lemma_ = text.lower()
-                self.pos_ = "NOUN"
 
         class _Doc(list[_Token]):
             @property

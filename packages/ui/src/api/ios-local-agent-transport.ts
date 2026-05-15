@@ -167,46 +167,6 @@ function fullBunStartupError(message: string, cause?: unknown): Error {
   );
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function localUnavailablePayload(reason: string, message: string): string {
-  return JSON.stringify({
-    error: "local-unavailable",
-    code: "local-unavailable",
-    reason,
-    message,
-  });
-}
-
-function localUnavailableNativeResult(
-  reason: string,
-  message: string,
-): IosLocalAgentNativeRequestResult {
-  return {
-    status: 503,
-    statusText: "Local Agent Unavailable",
-    headers: { "content-type": "application/json" },
-    body: localUnavailablePayload(reason, message),
-  };
-}
-
-function localUnavailableResponse(reason: string, message: string): Response {
-  return nativeResultToResponse(localUnavailableNativeResult(reason, message));
-}
-
-function createIosLocalUnavailableTransport(
-  reason: string,
-  message: string,
-): AgentRequestTransport {
-  return {
-    async request() {
-      return localUnavailableResponse(reason, message);
-    },
-  };
-}
-
 function isNativeIos(): boolean {
   try {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
@@ -300,7 +260,7 @@ function isMobileLocalAgentUrl(value: string): boolean {
   return (
     parsed.protocol === "http:" &&
     parsed.port === LOCAL_AGENT_PORT &&
-    LOCAL_AGENT_HOSTS.has(normalizeHost(parsed.hostname))
+    LOCAL_AGENT_HOSTS.has(parsed.hostname)
   );
 }
 
@@ -543,17 +503,10 @@ async function dispatchIosLocalAgentRequest(
   request: Request,
   context?: { timeoutMs?: number },
 ): Promise<Response> {
-  try {
-    const options = await requestToNativeBridgeOptions(request, context);
-    return nativeResultToResponse(
-      await handleIosLocalAgentNativeRequest(options),
-    );
-  } catch (error) {
-    return localUnavailableResponse(
-      "ios-local-agent-request-failed",
-      `iOS local-agent IPC request failed: ${errorMessage(error)}`,
-    );
-  }
+  const options = await requestToNativeBridgeOptions(request, context);
+  return nativeResultToResponse(
+    await handleIosLocalAgentNativeRequest(options),
+  );
 }
 
 export async function handleIosLocalAgentNativeRequest(
@@ -570,38 +523,21 @@ export async function handleIosLocalAgentNativeRequest(
     throw new Error("Unsupported HTTP method");
   }
 
-  let fullBunResult: IosLocalAgentNativeRequestResult | null;
-  try {
-    fullBunResult = await tryFullBunNativeRequest({
-      ...options,
-      method,
-      path,
-    });
-  } catch (error) {
-    if (shouldRequireFullBunRuntime()) {
-      return localUnavailableNativeResult(
-        "ios-full-bun-unavailable",
-        errorMessage(error),
-      );
-    }
-    throw error;
-  }
+  const fullBunResult = await tryFullBunNativeRequest({
+    ...options,
+    method,
+    path,
+  });
   if (fullBunResult) return fullBunResult;
 
   if (isNativeIosStoreBuild()) {
-    return localUnavailableNativeResult(
-      "ios-ittp-disabled",
-      fullBunStartupError(
-        "the foreground ITTP compatibility transport is disabled for iOS store builds",
-      ).message,
+    throw fullBunStartupError(
+      "the foreground ITTP compatibility transport is disabled for iOS store builds",
     );
   }
   if (!canUseJsContextCompatibilityFallback()) {
-    return localUnavailableNativeResult(
-      "ios-jscontext-disabled",
-      fullBunStartupError(
-        "the JSContext compatibility transport is disabled outside iOS development builds",
-      ).message,
+    throw fullBunStartupError(
+      "the JSContext compatibility transport is disabled outside iOS development builds",
     );
   }
 
@@ -636,52 +572,36 @@ export function installIosLocalAgentNativeRequestBridge(): void {
   globalRequestHandlerInstalled = true;
 }
 
-type FetchBridgeDecision =
-  | { action: "bridge" }
-  | { action: "passthrough" }
-  | { action: "unavailable"; reason: string; message: string };
-
-function decideFetchBridgeUrl(url: URL): FetchBridgeDecision {
-  if (!isNativeIos()) return { action: "passthrough" };
+function shouldBridgeFetchUrl(url: URL): boolean {
+  if (!isNativeIos()) return false;
   if (isNativeIosStoreBuild() && isLoopbackLocalAgentUrl(url.toString())) {
-    return {
-      action: "unavailable",
-      reason: "ios-store-loopback-blocked",
-      message:
-        "iOS store builds must use eliza-local-agent://ipc for local-agent requests.",
-    };
+    throw new TypeError(
+      "iOS store builds must use eliza-local-agent://ipc for local-agent requests",
+    );
   }
   if (isIosLocalAgentIpcUrl(url) && !canUseIosLocalAgentIpc()) {
-    return {
-      action: "unavailable",
-      reason: "ios-ipc-disabled",
-      message:
-        "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active.",
-    };
+    throw new TypeError(
+      "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
+    );
   }
   if (
     usesStrictIosNetworkPolicy() &&
     isCleartextNetworkUrl(url) &&
     (isNativeIosStoreBuild() || isPrivateOrLoopbackHost(url.hostname))
   ) {
-    return {
-      action: "unavailable",
-      reason: "ios-cleartext-private-network-blocked",
-      message:
-        "iOS store/cloud builds block cleartext loopback or private-network requests.",
-    };
+    throw new TypeError(
+      "iOS store/cloud builds block cleartext loopback or private-network requests",
+    );
   }
-  if (isMobileLocalAgentUrl(url.toString())) return { action: "bridge" };
+  if (isMobileLocalAgentUrl(url.toString())) return true;
   if (url.pathname.startsWith("/api/")) {
     return (
       shouldRequireFullBunRuntime() ||
       readPersistedRuntimeMode() === "local" ||
       isIosInProcessLocalAgentBase(getElizaApiBase())
-    )
-      ? { action: "bridge" }
-      : { action: "passthrough" };
+    );
   }
-  return { action: "passthrough" };
+  return false;
 }
 
 function localAgentUrlForFetch(url: URL): string {
@@ -699,12 +619,7 @@ export function installIosLocalAgentFetchBridge(): void {
     init?: RequestInit,
   ) => {
     const original = originalFetch;
-    if (!original) {
-      return localUnavailableResponse(
-        "ios-fetch-bridge-unavailable",
-        "iOS local-agent fetch bridge was installed without an original fetch transport.",
-      );
-    }
+    if (!original) return fetch(input, init);
 
     const request = input instanceof Request ? input.clone() : null;
     const rawUrl = request?.url ?? String(input);
@@ -720,11 +635,7 @@ export function installIosLocalAgentFetchBridge(): void {
       return original(input, init);
     }
 
-    const decision = decideFetchBridgeUrl(url);
-    if (decision.action === "unavailable") {
-      return localUnavailableResponse(decision.reason, decision.message);
-    }
-    if (decision.action !== "bridge") return original(input, init);
+    if (!shouldBridgeFetchUrl(url)) return original(input, init);
 
     const bridgedUrl = localAgentUrlForFetch(url);
     const bridgedRequest = request
@@ -744,12 +655,6 @@ export function installIosLocalAgentFetchBridge(): void {
 export async function iosInProcessAgentTransportForUrl(
   url: string,
 ): Promise<AgentRequestTransport | null> {
-  if (isNativeIosStoreBuild() && isLoopbackLocalAgentUrl(url)) {
-    return createIosLocalUnavailableTransport(
-      "ios-store-loopback-blocked",
-      "iOS store builds must use eliza-local-agent://ipc for local-agent requests.",
-    );
-  }
   if (!isIosInProcessLocalAgentUrl(url)) return null;
   installIosLocalAgentNativeRequestBridge();
   installIosLocalAgentFetchBridge();
