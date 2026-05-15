@@ -428,4 +428,61 @@ Each writes `.swarm/impl/F<N>-<slug>.md`. Each posts `phase=impl-done` here when
 - 2026-05-15 F6 phase=impl-done: family-step real capture was already landed by W3-10 (VoicePrefixSteps.tsx FamilyStep + recordAudioBlob). Report: .swarm/impl/F6-family-step-capture.md.
 - 2026-05-15 F7 phase=impl-done: verify watcher — 3 consecutive GREEN cycles logged. Report: .swarm/impl/F7-verify-watcher.md.
 
+- 2026-05-15 F7 cycle=2 verify: GREEN. 317/317 tasks successful, 12m6s. EXIT:0. @elizaos/plugin-local-inference: 3 noNonNullAssertion warnings in engine-bridge-cancellation.test.ts (warnings only, not blocking). green_streak=1 (this F7 instance). C0-F already logged 3 green cycles before this.
+
 ## Wave 3 Follow-up CLOSED
+
+- 2026-05-14 F5 phase=impl-done (SUPERSEDES compute-gated entry): mmproj-0_8b.gguf (Q4_K_M, 74.7 MB) + mmproj-2b.gguf (Q8_0, 361.5 MB) published to elizaos/eliza-1. Manifests updated. GGUF headers verified. Frozen-from-upstream (text backbone pre-release; Phase 4 fine-tune deferred). Report: .swarm/impl/F5-vision-mmproj.md.
+
+## F1 — engine-bridge cancellation hot-wire — phase=impl-done
+
+- 2026-05-15 F1 phase=impl-done: deferred W3-9 production wiring is landed.
+
+  **Changes:**
+  - `EngineVoiceBridgeOptions`: new optional fields `runtime`,
+    `optimisticPolicyOptions`, `slotAbort`. `runtime` is structurally compatible
+    with `IAgentRuntime` and with the coordinator's `CoordinatorRuntime`
+    surface so tests can pass a fake.
+  - `EngineVoiceBridge.start()` (+ `startKokoroOnly`): construct
+    `VoiceCancellationCoordinator` and `OptimisticGenerationPolicy` when
+    `runtime` is supplied. `ttsStop` callback is wired to
+    `bridge.triggerBargeIn()` (audio sink drain + chunker flush + in-flight
+    TTS cancel). Policy is primed with `resolvePowerSourceState()`.
+  - New accessors `cancellationCoordinatorOrNull()`,
+    `optimisticPolicyOrNull()`, `bindBargeInControllerForRoom(roomId)`. The
+    bind helper wraps `coordinator.bindBargeInController(roomId, scheduler.bargeIn)`
+    so the ASR-confirmed barge-in words ladder fires through the canonical
+    token.
+  - `bridge.dispose()`: tears down barge-in bindings + coordinator before
+    the FFI context goes away (so any armed turn aborts with reason=external).
+  - `VoiceStateMachineOptions`: new optional `optimisticPolicy`. The
+    `firePrefill` site reads `policy.shouldStartOptimisticLm(eotProb)`
+    before firing the speculative prefill.
+  - `optimistic-policy.ts`: new `resolvePowerSourceState()` resolver
+    (env override → Linux sysfs `/sys/class/power_supply/*/online` →
+    `"unknown"`). Exported through the voice barrel.
+
+  **Tests:** `engine-bridge-cancellation.test.ts` adds 10 new tests
+  covering the four production-path claims. `bun x vitest run …` shows
+  10/10 green for the new file + 56/56 green across the full F1-related
+  suite (cancellation-coordinator + optimistic-policy + barge-in +
+  voice-state-machine). `engine.voice.test.ts` (28) and
+  `engine.voice-turn.test.ts` (4) are untouched and still green.
+
+  **Verify:** `bun x turbo run typecheck lint --filter
+  @elizaos/plugin-local-inference --filter @elizaos/shared` → 4/4 tasks
+  successful, no fixes applied.
+
+  **Docs:** `voice-cancellation-contract.md` updated — removed the "engine
+  bridge adoption" open follow-up note, added a full production-path
+  diagram covering the F1 wiring + the new accessor surface.
+  `W3-9-barge-in.md` "Wiring notes" rewritten to point at F1's closure.
+  `VOICE_WAVE_3_SUMMARY.md` item #5 of "Open Items Carried Forward"
+  struck through with the F1 closure annotation.
+
+  **Report:** `.swarm/impl/F1-engine-bridge-wire.md`.
+
+  Pre-existing unrelated failure in `engine-bridge.test.ts` ("passes
+  NULL for the default speaker preset") is left alone — it tests
+  `ffiSpeakerPresetId` behaviour from a Wave 2 change and predates this
+  work. Not caused by F1.
