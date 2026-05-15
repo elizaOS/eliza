@@ -28,6 +28,7 @@ import {
   tasksSandboxStubAction,
 } from "./actions/sandbox-stub.js";
 import { tasksAction } from "./actions/tasks.js";
+import { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
 import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 import { activeWorkspaceContextProvider } from "./providers/active-workspace-context.js";
@@ -132,6 +133,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
     services: orchestratorServices,
     actions: orchestratorActions,
     providers: orchestratorProviders,
+    responseHandlerEvaluators: codeExecutionAllowed
+      ? [subAgentCompletionResponseEvaluator]
+      : [],
   };
 }
 
@@ -182,6 +186,7 @@ export {
   createTaskAgentRouteHandler,
   handleCodingAgentRoutes,
 } from "./api/routes.js";
+export { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
 // Providers
 export { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 export {
