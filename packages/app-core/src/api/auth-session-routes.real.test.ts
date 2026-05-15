@@ -13,7 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuthStore, type DrizzleDatabase } from "../services/auth-store";
-import { _resetAuthRateLimiter } from "./auth";
+import { _resetAuthRateLimiter } from "./auth.ts";
 import { SESSION_COOKIE_NAME } from "./auth/sessions";
 import {
   _resetAuthSessionRoutesLimiter,
