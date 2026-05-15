@@ -24,27 +24,22 @@ import {
   CONNECTOR_PLUGINS,
   STREAMING_PLUGINS,
 } from "@elizaos/shared";
-import { VaultMissError } from "@elizaos/vault";
-import { loadRegistry } from "../registry";
-import type { ConfigField, RegistryEntry } from "../registry/schema";
 import {
   _resetSharedVaultForTesting,
-  mirrorPluginSensitiveToVault,
-  sharedVault,
-} from "../services/vault-mirror";
-import {
+  type CompatRuntimeState,
+  type ConfigField,
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
-} from "./auth.ts";
-import {
-  type CompatRuntimeState,
+  loadRegistry,
+  mirrorPluginSensitiveToVault,
   readCompatJsonBody,
+  type RegistryEntry,
   scheduleCompatRuntimeRestart,
-} from "./compat-route-shared";
-import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "./response";
+  sharedVault,
+} from "@elizaos/app-core";
+import { VaultMissError } from "@elizaos/vault";
 
 const require = createRequire(import.meta.url);
 
