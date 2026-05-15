@@ -5,7 +5,7 @@ This is one of three canonical operator-facing publishers in
 
   - ``publish_model.py``    — this file. Pushes trained weights / GGUF
                               bundles to HuggingFace under the consolidated
-                              ``elizaos/eliza-1`` repo (or, for the legacy
+                              ``elizalabs/eliza-1`` repo (or, for the legacy
                               fused-GGUF flow, to ``elizaos/<base>-optimized``).
   - ``publish_dataset.py``  — pushes the SFT dataset bundles to
                               ``elizalabs/eliza-1-training`` (and siblings).
@@ -18,7 +18,7 @@ the chosen mode:
   - ``--mode bundle``    → ``python -m scripts.publish.orchestrator``
                           (full bundle gate + push, the canonical release path)
   - ``--mode tier``      → ``scripts.publish.publish_eliza1_model_repo``
-                          (per-tier ``elizaos/eliza-1/bundles/<tier>/`` upload
+                          (per-tier ``elizalabs/eliza-1/bundles/<tier>/`` upload
                           when the gate ran elsewhere)
   - ``--mode optimized`` → ``scripts.publish_eliza1_model``
                           (single fused-GGUF publish, legacy nightly path

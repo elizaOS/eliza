@@ -3,7 +3,7 @@
 Composes the per-technique apply scripts in dependency order, runs the
 ``elizaOS/llama.cpp`` GGUF conversion (fork-aware, understands the new
 GGML types ``Q4_POLAR=47`` and ``QJL1_256=46``), and publishes into the
-single ``elizaos/eliza-1`` HuggingFace repo under ``bundles/<tier>/`` so
+single ``elizalabs/eliza-1`` HuggingFace repo under ``bundles/<tier>/`` so
 the on-device Eliza-1 downloader can consume the bundle.
 
 The orchestrator is **idempotent**: each step writes its sidecar
@@ -20,18 +20,18 @@ Usage::
         --output-dir checkpoints/eliza-1-0_8b \\
         --apply polarquant qjl turboquant fused_turboquant \\
         --gguf-target packages/inference \\
-        --hf-repo elizaos/eliza-1 \\
+        --hf-repo elizalabs/eliza-1 \\
         --dry-run
 
     # Real run (needs the elizaOS/llama.cpp v1.0.0-eliza checkout
     # at $LLAMA_CPP_DIR for the convert step + a real HF token).
-    # Published artifacts land at elizaos/eliza-1/bundles/0_8b/.
+    # Published artifacts land at elizalabs/eliza-1/bundles/0_8b/.
     HF_TOKEN=hf_xxx LLAMA_CPP_DIR=$HOME/src/eliza-llama.cpp \\
         uv run python scripts/optimize_for_eliza1.py \\
             --base-model Qwen/Qwen3.5-0.8B-Base \\
             --output-dir checkpoints/eliza-1-0_8b \\
             --apply polarquant qjl turboquant fused_turboquant \\
-            --hf-repo elizaos/eliza-1
+            --hf-repo elizalabs/eliza-1
 
 The downstream ``llama-server`` invocation that the published manifest
 documents looks like::
@@ -758,7 +758,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo to publish to (canonical: elizaos/eliza-1; "
+        help="HuggingFace repo to publish to (canonical: elizalabs/eliza-1; "
              "tier and bundle path are derived from --tier). "
              "When omitted the pipeline stops after manifest emission.",
     )

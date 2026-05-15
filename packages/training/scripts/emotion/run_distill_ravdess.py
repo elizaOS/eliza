@@ -753,7 +753,7 @@ def main(argv: list[str] | None = None) -> int:
         "test_metrics": test_metrics,
         "onnx_sha256": sha,
         "onnx_size_bytes": size,
-        "onnx_path": str(onnx_path.relative_to(_REPO_ROOT)),
+        "onnx_path": str(onnx_path.resolve()),
         "teacher_repo": args.teacher,
         "teacher_license": "CC-BY-NC-SA-4.0",
         "corpus": "xbgoose/ravdess",

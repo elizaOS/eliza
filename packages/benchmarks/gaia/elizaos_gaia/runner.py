@@ -13,18 +13,17 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
-import re
 import time
 import tracemalloc
-from dataclasses import asdict, dataclass, is_dataclass
+from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
 from elizaos_gaia.dataset import DatasetAccessError, GAIADataset
 from elizaos_gaia.evaluator import GAIAEvaluator
+from elizaos_gaia.harness import create_gaia_agent, resolve_harness
 from elizaos_gaia.metrics import MetricsCalculator
-from elizaos_gaia.providers import ModelConfig
+from elizaos_gaia.trajectory import write_trajectory_artifacts
 from elizaos_gaia.types import (
     GAIABenchmarkResults,
     GAIAConfig,
@@ -34,170 +33,6 @@ from elizaos_gaia.types import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class HarnessRoute:
-    harness: str
-    backend: str
-
-
-def normalize_harness_label(value: str | None) -> str | None:
-    if value is None:
-        return None
-    normalized = value.strip().lower().replace("_", "-")
-    return {
-        "eliza": "eliza",
-        "eliza-bridge": "eliza",
-        "eliza-ts": "eliza",
-        "hermes": "hermes",
-        "hermes-agent": "hermes",
-        "openclaw": "openclaw",
-        "open-claw": "openclaw",
-    }.get(normalized)
-
-
-def resolve_harness(config: GAIAConfig | None = None, *, explicit: str | None = None) -> HarnessRoute:
-    requested = explicit or (config.harness if config is not None else None)
-    harness = normalize_harness_label(requested) or "eliza"
-    if harness != "eliza":
-        raise ValueError(f"GAIA does not implement native {harness} harness routing")
-    return HarnessRoute(harness="eliza", backend="eliza_ts_bridge")
-
-
-def harness_env_updates(route: HarnessRoute) -> dict[str, str]:
-    if route.harness != "eliza":
-        raise ValueError(f"GAIA does not implement native {route.harness} harness routing")
-    return {
-        "BENCHMARK_HARNESS": route.harness,
-        "ELIZA_BENCH_HARNESS": route.harness,
-        "BENCHMARK_AGENT": route.harness,
-    }
-
-
-class ElizaBridgeGAIAAgent:
-    def __init__(self, config: GAIAConfig, route: HarnessRoute) -> None:
-        self.config = config
-        self.route = route
-        self.model_config = ModelConfig.from_model_string(
-            config.model_name,
-            temperature=config.temperature,
-            max_tokens=config.max_tokens,
-            api_key=config.api_key or "",
-            api_base=config.api_base or "",
-        )
-        self._client = None
-
-    async def solve(self, question: GAIAQuestion) -> GAIAResult:
-        from eliza_adapter.client import ElizaClient
-
-        if self._client is None:
-            self._client = ElizaClient()
-            self._client.wait_until_ready(timeout=120)
-        start = time.time()
-        response = self._client.send_message(
-            text=(
-                "Answer the GAIA benchmark question. Return the final answer only.\n\n"
-                f"Question: {question.question}"
-            ),
-            context={
-                "benchmark": "gaia",
-                "task_id": question.task_id,
-                "question": question.question,
-                "level": question.level.value,
-                "model_name": self.config.model_name,
-            },
-        )
-        return GAIAResult(
-            task_id=question.task_id,
-            level=question.level,
-            question=question.question,
-            predicted_answer=_extract_gaia_answer(response.text or "", response.params),
-            expected_answer=question.final_answer,
-            is_correct=False,
-            latency_ms=(time.time() - start) * 1000,
-            token_usage=_latest_telemetry_tokens(),
-        )
-
-    async def close(self) -> None:
-        self._client = None
-
-
-def create_gaia_agent(config: GAIAConfig, *, route: HarnessRoute | None = None) -> ElizaBridgeGAIAAgent:
-    return ElizaBridgeGAIAAgent(config, route or resolve_harness(config))
-
-
-def _extract_gaia_answer(text: str, params: dict[str, object]) -> str:
-    for key in ("FINAL_ANSWER", "ANSWER", "BENCHMARK_ACTION"):
-        value = params.get(key)
-        if isinstance(value, dict):
-            for field in ("answer", "final_answer", "response"):
-                inner = value.get(field)
-                if isinstance(inner, str) and inner.strip():
-                    return inner.strip()
-        elif isinstance(value, str) and value.strip():
-            return value.strip()
-    match = re.search(r"<final_answer>([\s\S]*?)</final_answer>", text, re.IGNORECASE)
-    return match.group(1).strip() if match else text.strip()
-
-
-def _latest_telemetry_tokens() -> int:
-    path = os.environ.get("BENCHMARK_TELEMETRY_JSONL")
-    if not path or not os.path.exists(path):
-        return 0
-    total = 0
-    try:
-        with open(path, encoding="utf-8") as handle:
-            for line in handle:
-                if line.strip():
-                    row = json.loads(line)
-                    total = int(row.get("total_tokens") or row.get("totalTokens") or total)
-    except Exception:
-        return total
-    return total
-
-
-def write_trajectory_artifacts(
-    results: object,
-    output_dir: Path,
-    *,
-    timestamp: str,
-    run_kind: str,
-    latest: bool = True,
-) -> dict[str, str]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    canonical = output_dir / f"{run_kind}-trajectories-{timestamp}.jsonl"
-    native = output_dir / f"{run_kind}-native-trajectories-{timestamp}.jsonl"
-    rows = getattr(results, "results", [])
-    with open(canonical, "w", encoding="utf-8") as handle:
-        for result in rows:
-            handle.write(json.dumps(_trajectory_jsonable(result), default=str) + "\n")
-    with open(native, "w", encoding="utf-8") as handle:
-        for result in rows:
-            handle.write(json.dumps(_trajectory_jsonable(result), default=str) + "\n")
-    paths = {"canonical": str(canonical), "native": str(native)}
-    if latest:
-        canonical_latest = output_dir / f"{run_kind}-trajectories-latest.jsonl"
-        native_latest = output_dir / f"{run_kind}-native-trajectories-latest.jsonl"
-        canonical_latest.write_text(canonical.read_text(encoding="utf-8"), encoding="utf-8")
-        native_latest.write_text(native.read_text(encoding="utf-8"), encoding="utf-8")
-        paths["canonical_latest"] = str(canonical_latest)
-        paths["native_latest"] = str(native_latest)
-    return paths
-
-
-def _trajectory_jsonable(value: object) -> object:
-    if is_dataclass(value):
-        return _trajectory_jsonable(asdict(value))
-    if isinstance(value, dict):
-        return {str(k): _trajectory_jsonable(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_trajectory_jsonable(v) for v in value]
-    if hasattr(value, "value"):
-        return value.value
-    if isinstance(value, Path):
-        return str(value)
-    return value
 
 
 class MemoryTracker:
