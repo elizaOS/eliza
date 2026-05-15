@@ -1,32 +1,181 @@
-import type { ImageDescriptionParams, ImageDescriptionResult } from "@elizaos/core";
+/**
+ * Soft cloud fallback wrapper for local IMAGE_DESCRIPTION handlers.
+ *
+ * The local vision path can report recoverable unavailability (missing
+ * projector, inactive bundle, backend pressure) without forcing callers to
+ * know which cloud provider is paired. The wrapper keeps that state explicit:
+ * handlers either return a normal image description or a typed fallback
+ * outcome that the next layer can handle.
+ */
 
-export type VisionFallbackReason = "local-unavailable" | "local-overloaded" | "local-error" | "local-aborted-pre-completion" | "cloud-unavailable" | "cloud-error";
-export type LocalVisionOutcome = ImageDescriptionResult | { kind: "fallback"; reason: VisionFallbackReason; cause?: Error };
-export type LocalImageDescriptionHandler = (params: ImageDescriptionParams | string) => Promise<LocalVisionOutcome>;
+import type {
+	ImageDescriptionParams,
+	ImageDescriptionResult,
+} from "@elizaos/core";
+
+export type VisionFallbackReason =
+	| "local-unavailable"
+	| "local-overloaded"
+	| "local-error"
+	| "local-aborted-pre-completion"
+	| "local-not-registered";
+
+export type LocalVisionOutcome =
+	| ImageDescriptionResult
+	| string
+	| { kind: "ok"; result: ImageDescriptionResult | string }
+	| { kind: "fallback"; reason: VisionFallbackReason; cause?: Error };
+
+export type LocalVisionResult = Exclude<
+	LocalVisionOutcome,
+	{ kind: "fallback"; reason: VisionFallbackReason; cause?: Error }
+>;
+
+export type LocalImageDescriptionHandler = (
+	params: ImageDescriptionParams | string,
+) => Promise<LocalVisionOutcome>;
+
 export type WrappedImageDescriptionHandler = LocalImageDescriptionHandler;
-export interface VisionCloudFallbackOptions { handler?: LocalImageDescriptionHandler; log?: (message: string, detail?: Record<string, unknown>) => void; }
 
-export function classifyLocalVisionError(err: unknown): { fallback: boolean; reason: VisionFallbackReason } {
+export interface VisionCloudFallbackOptions {
+	handler?: (
+		params: ImageDescriptionParams | string,
+		reason: VisionFallbackReason,
+	) => Promise<ImageDescriptionResult | string>;
+	log?: (message: string, detail?: Record<string, unknown>) => void;
+}
+
+export interface LocalVisionErrorClassification {
+	fallback: boolean;
+	reason: VisionFallbackReason;
+}
+
+export function classifyLocalVisionError(
+	err: unknown,
+): LocalVisionErrorClassification {
 	if (err instanceof Error) {
-		const name = err.name; const msg = err.message.toLowerCase();
-		if (name === "AbortError") return { fallback: false, reason: "local-aborted-pre-completion" };
-		if (msg.includes("not installed") || msg.includes("not available") || msg.includes("missing") || msg.includes("no local") || msg.includes("mtmd") || msg.includes("mmproj") || msg.includes("dlopen")) return { fallback: true, reason: "local-unavailable" };
-		if (msg.includes("busy") || msg.includes("thermal") || msg.includes("low-power")) return { fallback: true, reason: "local-overloaded" };
-		if (msg.includes("llama") || msg.includes("ggml") || msg.includes("decode")) return { fallback: true, reason: "local-error" };
+		if (err.name === "AbortError") {
+			return { fallback: false, reason: "local-aborted-pre-completion" };
+		}
+		const msg = err.message.toLowerCase();
+		if (
+			msg.includes("no local") ||
+			msg.includes("not registered") ||
+			msg.includes("not installed") ||
+			msg.includes("requires an active") ||
+			msg.includes("missing") ||
+			msg.includes("dlopen")
+		) {
+			return { fallback: true, reason: "local-unavailable" };
+		}
+		if (
+			msg.includes("busy") ||
+			msg.includes("overloaded") ||
+			msg.includes("thermal") ||
+			msg.includes("low-power")
+		) {
+			return { fallback: true, reason: "local-overloaded" };
+		}
+		if (
+			msg.includes("llama_decode") ||
+			msg.includes("mtmd") ||
+			msg.includes("projector") ||
+			msg.includes("ggml_assert")
+		) {
+			return { fallback: true, reason: "local-error" };
+		}
 	}
 	return { fallback: false, reason: "local-error" };
 }
-function asError(err: unknown): Error { return err instanceof Error ? err : new Error(String(err)); }
-export function wrapImageDescriptionHandlerWithCloudFallback(local: LocalImageDescriptionHandler, options: VisionCloudFallbackOptions = {}): WrappedImageDescriptionHandler {
+
+export function isVisionFallbackOutcome(
+	outcome: LocalVisionOutcome,
+): outcome is {
+	kind: "fallback";
+	reason: VisionFallbackReason;
+	cause?: Error;
+} {
+	return (
+		typeof outcome === "object" &&
+		outcome !== null &&
+		"kind" in outcome &&
+		outcome.kind === "fallback"
+	);
+}
+
+export function normalizeVisionDescription(
+	result: LocalVisionResult,
+): ImageDescriptionResult {
+	if (typeof result === "object" && result !== null && "kind" in result) {
+		return normalizeVisionDescription(result.result);
+	}
+	if (typeof result === "string") {
+		const description = result.trim();
+		if (!description) {
+			throw new Error(
+				"[vision-fallback] IMAGE_DESCRIPTION backend returned an empty description",
+			);
+		}
+		return {
+			title: description.split(/[.!?]/, 1)[0]?.trim() || "Image",
+			description,
+		};
+	}
+	if (
+		result &&
+		typeof result.title === "string" &&
+		typeof result.description === "string" &&
+		result.title.trim() &&
+		result.description.trim()
+	) {
+		return {
+			title: result.title.trim(),
+			description: result.description.trim(),
+		};
+	}
+	throw new Error(
+		"[vision-fallback] IMAGE_DESCRIPTION backend returned an invalid description",
+	);
+}
+
+export function wrapImageDescriptionHandlerWithCloudFallback(
+	local: LocalImageDescriptionHandler,
+	options: VisionCloudFallbackOptions = {},
+): WrappedImageDescriptionHandler {
 	const log = options.log ?? (() => undefined);
 	return async (params) => {
 		let localOutcome: LocalVisionOutcome;
-		try { localOutcome = await local(params); } catch (err) { const classified = classifyLocalVisionError(err); if (!classified.fallback) throw err; localOutcome = { kind: "fallback", reason: classified.reason, cause: asError(err) }; }
-		if (typeof localOutcome === "object" && localOutcome !== null && "kind" in localOutcome && localOutcome.kind === "fallback") {
-			if (!options.handler) return localOutcome;
-			log("[vision/cloud-fallback] forwarding IMAGE_DESCRIPTION", { reason: localOutcome.reason });
-			try { return await options.handler(params); } catch (err) { return { kind: "fallback", reason: "cloud-error", cause: asError(err) }; }
+		try {
+			localOutcome = await local(params);
+		} catch (err) {
+			const classification = classifyLocalVisionError(err);
+			if (!classification.fallback) throw err;
+			localOutcome = {
+				kind: "fallback",
+				reason: classification.reason,
+				cause: err instanceof Error ? err : undefined,
+			};
 		}
-		return localOutcome;
+
+		if (!isVisionFallbackOutcome(localOutcome)) {
+			return normalizeVisionDescription(localOutcome);
+		}
+
+		log("[vision/cloud-fallback] local handler requested fallback", {
+			reason: localOutcome.reason,
+		});
+		if (!options.handler) return localOutcome;
+
+		try {
+			return normalizeVisionDescription(
+				await options.handler(params, localOutcome.reason),
+			);
+		} catch (err) {
+			return {
+				kind: "fallback",
+				reason: "local-error",
+				cause: err instanceof Error ? err : undefined,
+			};
+		}
 	};
 }
