@@ -804,4 +804,68 @@ async function broadcastViewEvent(
 	return `Attempted to broadcast view event "${eventType}".`;
 }
 
+/**
+ * POST /api/views/:id/navigate with action=pin-tab — ask the frontend to pin
+ * this view as a desktop tab (Electrobun only; no-op on web/mobile).
+ */
+async function pinViewAsTab(viewId: string): Promise<string> {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+
+	try {
+		const resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/navigate`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action: "pin-tab" }),
+				signal: AbortSignal.timeout(5_000),
+			},
+		);
+		if (resp.ok || resp.status === 501 || resp.status === 404) {
+			return `Pinned view "${viewId}" as a desktop tab.`;
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/pin navigate returned ${resp.status}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+
+	return `Attempted to pin view "${viewId}" as a desktop tab.`;
+}
+
+/**
+ * POST /api/views/:id/navigate with action=open-window — ask the frontend to
+ * open this view in a separate Electrobun native window.
+ */
+async function openViewInWindow(viewId: string): Promise<string> {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+
+	try {
+		const resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/navigate`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action: "open-window" }),
+				signal: AbortSignal.timeout(5_000),
+			},
+		);
+		if (resp.ok || resp.status === 501 || resp.status === 404) {
+			return `Opened view "${viewId}" in a new window.`;
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/window navigate returned ${resp.status}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+
+	return `Attempted to open view "${viewId}" in a new window.`;
+}
+
 export const viewsAction: Action = createViewsAction();
