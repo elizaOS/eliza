@@ -213,12 +213,9 @@ export class OpenWakeWordGgmlModel implements WakeWordModel {
 
 	/**
 	 * Load a wake-word model from its three GGUFs and the
-	 * `libwakeword` shared library.
-	 *
-	 * Throws `WakeWordGgmlUnavailableError({code: "stub"})` on the
-	 * current build — the native ABI is a stub and `wakeword_open`
-	 * returns `-ENOSYS`. Phase 2 swaps in the ggml-backed
-	 * implementation behind the same ABI; callers do not need to change.
+	 * `libwakeword` shared library. Returns a ready-to-use detector
+	 * with a fresh streaming session. Throws
+	 * `WakeWordGgmlUnavailableError` on dlopen / ABI / GGUF failure.
 	 */
 	static async load(args: {
 		libraryPath: string;
@@ -233,14 +230,6 @@ export class OpenWakeWordGgmlModel implements WakeWordModel {
 			Buffer.from(`${args.paths.classifier}\0`, "utf8"),
 			out,
 		);
-		if (rc === ENOSYS) {
-			lib.close();
-			throw new WakeWordGgmlUnavailableError(
-				"stub",
-				"[wake-word-ggml] libwakeword is a stub build (returned -ENOSYS); " +
-					"see packages/native-plugins/wakeword-cpp/AGENTS.md Phase 2 for the port plan",
-			);
-		}
 		if (rc !== 0) {
 			lib.close();
 			throw new WakeWordGgmlUnavailableError(
@@ -312,7 +301,7 @@ export class OpenWakeWordGgmlModel implements WakeWordModel {
 		this.lib.close();
 	}
 
-	/** Diagnostics: `"stub"` on the current build, `"ggml-cpu"` etc. on Phase 2. */
+	/** Diagnostics: `"native-cpu"` on this build (pure-fp32 reference). */
 	activeBackend(): string {
 		const raw = this.lib.bindings.wakeword_active_backend();
 		return typeof raw === "string" ? raw : String(raw ?? "");
