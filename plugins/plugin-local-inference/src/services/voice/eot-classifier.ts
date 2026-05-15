@@ -424,10 +424,6 @@ export class LiveKitTurnDetector implements EotClassifier {
 
 	constructor(opts: LiveKitTurnDetectorOptions = {}) {
 		this.modelDir = opts.modelDir ?? DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
-		this.onnxPath = path.join(
-			this.modelDir,
-			opts.onnxFilename ?? DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
-		);
 		this.maxHistoryTokens = opts.maxHistoryTokens ?? 128;
 		this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
 		this.revision = opts.revision;
@@ -722,10 +718,6 @@ export class TurnsenseEotClassifier implements EotClassifier {
 
 	constructor(opts: TurnsenseEotClassifierOptions = {}) {
 		this.modelDir = opts.modelDir ?? DEFAULT_TURNSENSE_DIR;
-		this.onnxPath = path.join(
-			this.modelDir,
-			opts.onnxFilename ?? DEFAULT_TURNSENSE_ONNX,
-		);
 		this.maxHistoryTokens = opts.maxHistoryTokens ?? 256;
 		this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
 		this.model = opts.model ?? TURNSENSE_HF_REPO;
