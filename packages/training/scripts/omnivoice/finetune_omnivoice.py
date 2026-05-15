@@ -75,24 +75,24 @@ Usage
     # CI smoke:
     python3 finetune_omnivoice.py \\
         --run-dir /tmp/omnivoice-runs/sam \\
-        --config omnivoice_sam.yaml \\
+        --config omnivoice_same.yaml \\
         --synthetic-smoke
 
     # Real training (RTX 5080 / H200):
     python3 finetune_omnivoice.py \\
         --run-dir /tmp/omnivoice-runs/sam \\
-        --config omnivoice_sam.yaml \\
-        --data-dir packages/training/data/voice/sam \\
+        --config omnivoice_same.yaml \\
+        --data-dir packages/training/data/voice/same \\
         --real-train
 
     # Eval + conditional push:
     python3 finetune_omnivoice.py \\
         --run-dir /tmp/omnivoice-runs/sam \\
-        --config omnivoice_sam.yaml \\
-        --data-dir packages/training/data/voice/sam \\
+        --config omnivoice_same.yaml \\
+        --data-dir packages/training/data/voice/same \\
         --real-train \\
         --baseline-eval artifacts/voice-fine-tune/omnivoice-baseline/eval.json \\
-        --hf-repo elizaos/eliza-1-voice-omnivoice-sam-v01 \\
+        --hf-repo elizaos/eliza-1-voice-omnivoice-same-v01 \\
         --operator-sign-off
 """
 
@@ -396,7 +396,7 @@ def _load_corpus(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Load WAV+transcript pairs.
 
-    Expected layout (matches packages/training/data/voice/sam/):
+    Expected layout (matches packages/training/data/voice/same/):
 
         <data_dir>/
             manifest.jsonl   # {id, wav, transcript}

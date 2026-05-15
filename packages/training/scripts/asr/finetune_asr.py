@@ -43,21 +43,21 @@ Usage
     # Smoke (CI):
     python3 finetune_asr.py \\
         --run-dir /tmp/asr-runs/sam \\
-        --config asr_sam.yaml \\
+        --config asr_same.yaml \\
         --synthetic-smoke
 
     # Real training (requires GPU + transformers + datasets):
     python3 finetune_asr.py \\
         --run-dir /tmp/asr-runs/sam \\
-        --config asr_sam.yaml \\
-        --data-dir packages/training/data/voice/sam \\
+        --config asr_same.yaml \\
+        --data-dir packages/training/data/voice/same \\
         --real-train
 
     # With eval + HF push:
     python3 finetune_asr.py \\
         --run-dir /tmp/asr-runs/sam \\
-        --config asr_sam.yaml \\
-        --data-dir packages/training/data/voice/sam \\
+        --config asr_same.yaml \\
+        --data-dir packages/training/data/voice/same \\
         --real-train \\
         --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json \\
         --hf-push-if beats-baseline \\
@@ -99,7 +99,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("asr.finetune")
 
 # ---------------------------------------------------------------------------
-# Default config — matches what asr_sam.yaml extends.
+# Default config — matches what asr_same.yaml extends.
 # ---------------------------------------------------------------------------
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -412,7 +412,7 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 def _load_corpus(data_dir: Path, cfg: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Load WAV+transcript pairs from the sam corpus format.
 
-    Corpus layout expected (matches packages/training/data/voice/sam/):
+    Corpus layout expected (matches packages/training/data/voice/same/):
 
         <data_dir>/
             manifest.jsonl    # one JSON record per line: {id, wav, transcript}

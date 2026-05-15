@@ -35,7 +35,7 @@ def test_finetune_synthetic_smoke_writes_manifest(tmp_path: Path) -> None:
             "--run-dir",
             str(run_dir),
             "--config",
-            str(ASR_DIR / "configs" / "asr_sam.yaml"),
+            str(ASR_DIR / "configs" / "asr_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -58,7 +58,7 @@ def test_finetune_synthetic_smoke_writes_eval(tmp_path: Path) -> None:
             "--run-dir",
             str(run_dir),
             "--config",
-            str(ASR_DIR / "configs" / "asr_sam.yaml"),
+            str(ASR_DIR / "configs" / "asr_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -87,7 +87,7 @@ def test_finetune_synthetic_smoke_writes_artifact_receipt(tmp_path: Path, monkey
             "--run-dir",
             str(run_dir),
             "--config",
-            str(ASR_DIR / "configs" / "asr_sam.yaml"),
+            str(ASR_DIR / "configs" / "asr_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -109,7 +109,7 @@ def test_eval_synthetic_smoke_writes_eval_json(tmp_path: Path) -> None:
             "--run-dir",
             str(run_dir),
             "--config",
-            str(ASR_DIR / "configs" / "asr_sam.yaml"),
+            str(ASR_DIR / "configs" / "asr_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -135,8 +135,8 @@ def test_config_defaults() -> None:
 
 
 def test_config_sam_yaml() -> None:
-    """Load asr_sam.yaml — overrides should be applied."""
-    cfg = finetune_asr._load_config(str(ASR_DIR / "configs" / "asr_sam.yaml"))
+    """Load asr_same.yaml — overrides should be applied."""
+    cfg = finetune_asr._load_config(str(ASR_DIR / "configs" / "asr_same.yaml"))
     assert cfg["voice_name"] == "sam"
     assert cfg["learning_rate"] < 2e-5, "sam config should lower LR vs base"
 

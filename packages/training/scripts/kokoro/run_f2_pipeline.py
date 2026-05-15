@@ -14,7 +14,7 @@ Run dir: /tmp/kokoro-f2-<timestamp>/
 
 Usage:
     python3 run_f2_pipeline.py \\
-        --corpus-dir packages/training/data/voice/sam \\
+        --corpus-dir packages/training/data/voice/same \\
         [--hf-token <token>] \\
         [--skip-synthesis]     # skip distillation if already done \\
         [--skip-augmentation]  # skip augmentation if already done \\
@@ -43,7 +43,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[3]
 
 CORPUS_DIR = REPO_ROOT / "packages/training/data/voice/sam"
-HF_REPO = "elizaos/eliza-1-voice-kokoro-sam-v01"
+HF_REPO = "elizaos/eliza-1-voice-kokoro-same-v01"
 
 # Mel-fit hyperparameter sweep grid (based on Q1 re-eval diagnosis)
 MELFIT_SWEEP = [
@@ -76,7 +76,7 @@ def run_pipeline(args: argparse.Namespace) -> int:  # noqa: C901
     merged_dir = base_dir / "corpus-merged"
 
     artifacts_dir = (
-        REPO_ROOT / f"artifacts/voice-fine-tune/kokoro-sam-f2/{run_id}"
+        REPO_ROOT / f"artifacts/voice-fine-tune/kokoro-same-f2/{run_id}"
     )
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -174,7 +174,7 @@ def run_pipeline(args: argparse.Namespace) -> int:  # noqa: C901
         _py(
             str(SCRIPT_DIR / "eval_kokoro.py"),
             "--run-dir", str(base_dir),
-            "--config", "kokoro_sam.yaml",
+            "--config", "kokoro_same.yaml",
             "--eval-out", str(baseline_eval_path),
             "--allow-gate-fail",
             check=False,
@@ -199,7 +199,7 @@ def run_pipeline(args: argparse.Namespace) -> int:  # noqa: C901
 
         # Run extract_voice_embedding.py
         clips_dir = corpus_dir / "audio"
-        out_bin = run_dir / "af_sam.bin"
+        out_bin = run_dir / "af_same.bin"
         melfit_cmd = [
             str(SCRIPT_DIR / "extract_voice_embedding.py"),
             "--clips-dir", str(clips_dir),
@@ -219,7 +219,7 @@ def run_pipeline(args: argparse.Namespace) -> int:  # noqa: C901
         eval_cmd = [
             str(SCRIPT_DIR / "eval_kokoro.py"),
             "--run-dir", str(run_dir),
-            "--config", "kokoro_sam.yaml",
+            "--config", "kokoro_same.yaml",
             "--voice-bin", str(out_bin),
             "--eval-out", str(eval_out),
             "--allow-gate-fail",
@@ -275,13 +275,13 @@ def run_pipeline(args: argparse.Namespace) -> int:  # noqa: C901
     )
 
     # Config: use low LR + more steps on larger corpus
-    ft_config_path = SCRIPT_DIR / "configs" / "kokoro_sam_f2.yaml"
+    ft_config_path = SCRIPT_DIR / "configs" / "kokoro_same_f2.yaml"
     _write_f2_config(ft_config_path)
 
     ft_cmd = [
         str(SCRIPT_DIR / "finetune_kokoro_full.py"),
         "--run-dir", str(ft_run_dir),
-        "--config", "kokoro_sam_f2.yaml",
+        "--config", "kokoro_same_f2.yaml",
         "--init-from-voice", "af_bella",
         "--skip-inline-eval",
     ]
@@ -308,7 +308,7 @@ def run_pipeline(args: argparse.Namespace) -> int:  # noqa: C901
         eval_cmd = [
             str(SCRIPT_DIR / "eval_kokoro.py"),
             "--run-dir", str(ft_run_dir),
-            "--config", "kokoro_sam_f2.yaml",
+            "--config", "kokoro_same_f2.yaml",
             "--voice-bin", str(best_bin),
             "--eval-out", str(ft_eval_out),
             "--allow-gate-fail",
@@ -439,7 +439,7 @@ def _write_f2_config(path: Path) -> None:
 # Tuned for augmented+distilled corpus (~50+ min vs original 3.5 min).
 extends: base.yaml
 
-voice_name: af_sam
+voice_name: af_same
 voice_display_name: Sam (AI Voices) — F2 Full FT
 voice_lang: a
 voice_tags:

@@ -1,0 +1,56 @@
+{
+  "_doc": {
+    "purpose": "Single source of truth for tier -> {min_vram_gb, recommended_provider, default_*_gpu, notes}.",
+    "consumers": [
+      "packages/training/scripts/cloud/dispatch-vast.sh   (read_tier_field)",
+      "packages/training/scripts/cloud/dispatch-nebius.sh (read_tier_field)",
+      "packages/training/scripts/cloud/run-on-cloud.sh    (auto-routing default)",
+      "packages/training/scripts/cloud/README.md          (cost matrix)"
+    ],
+    "rule": "If --provider is not set, run-on-cloud.sh picks tiers[$TIER].recommended_provider. min_vram_gb is the hard floor: dispatch refuses to provision a GPU below it."
+  },
+  "tiers": {
+    "0_8b": {
+      "min_vram_gb": 8,
+      "recommended_provider": "local",
+      "default_vast_gpu": "rtx4090",
+      "default_nebius_preset": "gpu-h200x1",
+      "notes": "0.8B fits in 8GB at int4. Run locally; cloud is overkill. Cloud fallback uses the cheapest 24GB+ card."
+    },
+    "2b": {
+      "min_vram_gb": 20,
+      "recommended_provider": "vast",
+      "default_vast_gpu": "rtx4090",
+      "default_nebius_preset": "gpu-h200x1",
+      "notes": "2B fp16 SFT fits on a 24GB consumer card. Vast RTX 4090 is the cheap path."
+    },
+    "4b": {
+      "min_vram_gb": 40,
+      "recommended_provider": "vast",
+      "default_vast_gpu": "a100",
+      "default_nebius_preset": "gpu-h200x1",
+      "notes": "4B fp16 SFT needs 40GB+. A100-40 / L40S 48GB / H100 80GB on Vast; H200 on Nebius."
+    },
+    "9b": {
+      "min_vram_gb": 80,
+      "recommended_provider": "vast",
+      "default_vast_gpu": "h100",
+      "default_nebius_preset": "gpu-h200x1",
+      "notes": "9B fp16 SFT needs ~80GB peak. H100 80GB / H200 / A100-80. Single GPU."
+    },
+    "27b": {
+      "min_vram_gb": 141,
+      "recommended_provider": "nebius",
+      "default_vast_gpu": "h200",
+      "default_nebius_preset": "gpu-h200x2",
+      "notes": "27B fp16 SFT needs 141GB+ for activations + optimizer state. H200 141GB single, or 2x H100 80GB with FSDP. Nebius 8x H200 preset is the no-fuss path; expensive."
+    },
+    "27b-256k": {
+      "min_vram_gb": 200,
+      "recommended_provider": "nebius",
+      "default_vast_gpu": "b200",
+      "default_nebius_preset": "gpu-h200x2",
+      "notes": "27B at 256k context needs 200GB+ for KV cache. B200 192GB single or H200x2/8 with sequence-parallel attention. Heavy."
+    }
+  }
+}

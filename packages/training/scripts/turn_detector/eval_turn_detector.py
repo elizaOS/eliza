@@ -109,6 +109,25 @@ def gate_report(*, f1: float, mean_latency_ms: float) -> dict[str, Any]:
     }
 
 
+LIVEKIT_IM_END_TOKEN: Final[str] = "<|im_end|>"
+
+
+def _format_livekit_prompt(tokenizer: Any, transcript: str) -> str:
+    """Replicate ``formatLiveKitTurnDetectorPrompt`` from
+    ``plugins/plugin-local-inference/src/services/voice/eot-classifier.ts``.
+    """
+    templated = tokenizer.apply_chat_template(
+        [{"role": "user", "content": transcript}],
+        add_generation_prompt=False,
+        tokenize=False,
+        add_special_tokens=False,
+    )
+    ix = templated.rfind(LIVEKIT_IM_END_TOKEN)
+    if ix >= 0:
+        templated = templated[:ix]
+    return templated
+
+
 def run_onnx_eval(
     *,
     model_path: Path,
@@ -118,12 +137,13 @@ def run_onnx_eval(
 ) -> dict[str, Any]:
     """Run the fine-tuned ONNX against ``records``.
 
-    Imports are deferred so the smoke tests can exercise the
-    threshold/gate logic without onnxruntime/transformers being
-    installed. The decision rule mirrors the runtime: probability >=
-    ``decision_threshold`` ⇒ predict EOU.
+    Scoring matches ``probabilityFromOnnxOutput`` in
+    ``plugins/plugin-local-inference/src/services/voice/eot-classifier.ts``:
+    apply the chat template (minus trailing ``<|im_end|>``), forward,
+    then ``P(EOU) = softmax(logits[:, last_real_pos, :])[<|im_end|>]``.
     """
     try:
+        import numpy as np
         import onnxruntime  # type: ignore[import-not-found]
         from transformers import AutoTokenizer  # type: ignore[import-not-found]
     except ModuleNotFoundError as exc:  # pragma: no cover - env-only path
@@ -133,6 +153,14 @@ def run_onnx_eval(
         ) from exc
 
     tokenizer = AutoTokenizer.from_pretrained(str(tokenizer_path.parent))
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    im_end_ids = tokenizer(LIVEKIT_IM_END_TOKEN, add_special_tokens=False)[
+        "input_ids"
+    ]
+    if not im_end_ids:
+        raise SystemExit("tokenizer did not produce an <|im_end|> id")
+    im_end_id = int(im_end_ids[0])
     session = onnxruntime.InferenceSession(
         str(model_path), providers=["CPUExecutionProvider"]
     )
@@ -141,8 +169,9 @@ def run_onnx_eval(
     total_ms = 0.0
     for r in records:
         started = time.perf_counter()
+        prompt = _format_livekit_prompt(tokenizer, r.transcript)
         encoded = tokenizer(
-            r.transcript,
+            prompt,
             return_tensors="np",
             max_length=128,
             truncation=True,
@@ -151,13 +180,11 @@ def run_onnx_eval(
         outputs = session.run(
             None, {"input_ids": encoded["input_ids"].astype("int64")}
         )
-        # Softmax of the last position; index 1 = EOU on Turnsense exports;
-        # the LiveKit ONNX returns logits over vocab — both paths route
-        # through the runtime classifier shape, so the real driver here
-        # should call the same TS helpers. Scaffold uses argmax-style.
-        logits = outputs[0]
-        # Flatten + softmax over the last axis. Argmax sign-bit only.
-        probability = float(logits.flatten()[-1])
+        logits = outputs[0]  # [1, seq, vocab]
+        last_logits = logits[0, -1, :].astype("float64")
+        last_logits = last_logits - last_logits.max()
+        probs = np.exp(last_logits) / np.exp(last_logits).sum()
+        probability = float(probs[im_end_id])
         predictions.append(1 if probability >= decision_threshold else 0)
         golds.append(r.label)
         total_ms += (time.perf_counter() - started) * 1000.0
