@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	ActiveModelCoordinator,
 	assertManifestEvalsPassed,
 	assertModelFitsHost,
 	assertVoiceBundleFitsHost,
@@ -11,9 +12,9 @@ import {
 	VoiceBundleDoesNotFitError,
 	validateLocalInferenceLoadArgs,
 } from "./active-model";
-import { resolveIdleUnloadMs } from "./engine";
+import { localInferenceEngine, resolveIdleUnloadMs } from "./engine";
 import type { Eliza1Manifest } from "./manifest";
-import type { InstalledModel } from "./types";
+import type { HardwareProbe, InstalledModel } from "./types";
 
 function makeInstalledModel(id: string, filePath: string): InstalledModel {
 	return {
@@ -159,6 +160,59 @@ describe("KV cache type classifiers", () => {
 });
 
 const noopManifestLoader = () => null;
+
+const baseHardwareProbe: HardwareProbe = {
+	totalRamGb: 32,
+	freeRamGb: 24,
+	gpu: { backend: "vulkan", totalVramGb: 16, freeVramGb: 12 },
+	cpuCores: 8,
+	platform: "linux",
+	arch: "x64",
+	appleSilicon: false,
+	recommendedBucket: "large",
+	source: "node-llama-cpp",
+};
+
+describe("ActiveModelCoordinator effective runtime reporting", () => {
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("reports the actual llama-server load config instead of requested catalog KV", async () => {
+		const installed: InstalledModel = {
+			...makeInstalledModel("external-runtime-model", "/tmp/runtime.gguf"),
+			source: "external-scan",
+		};
+		vi.spyOn(localInferenceEngine, "load").mockResolvedValue(undefined);
+		vi.spyOn(localInferenceEngine, "currentRuntimeLoadConfig").mockReturnValue({
+			contextSize: 32768,
+			cacheTypeK: null,
+			cacheTypeV: null,
+			gpuLayers: 99,
+			parallel: 4,
+			binaryPath: "/tmp/llama-server",
+		});
+
+		const coordinator = new ActiveModelCoordinator();
+		const state = await coordinator.switchTo(
+			null,
+			installed,
+			{
+				contextSize: 65536,
+				cacheTypeK: "qjl1_256",
+				cacheTypeV: "q4_polar",
+				gpuLayers: 12,
+			},
+			{ hardware: baseHardwareProbe, manifestLoader: noopManifestLoader },
+		);
+
+		expect(state.status).toBe("ready");
+		expect(state.loadedContextSize).toBe(32768);
+		expect(state.loadedCacheTypeK).toBeNull();
+		expect(state.loadedCacheTypeV).toBeNull();
+		expect(state.loadedGpuLayers).toBe(99);
+	});
+});
 
 describe("assertModelFitsHost (RAM-budget admission control)", () => {
 	it("returns fits when the host comfortably clears the recommended budget", () => {

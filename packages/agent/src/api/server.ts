@@ -644,7 +644,7 @@ type OptionalTrainingConfigApi = {
   saveTrainingConfig: (config: OptionalTrainingConfig) => void;
 };
 
-const TRAINING_CONFIG_MODULE = "@elizaos/app-training";
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
 
 function defaultTrainingConfig(): OptionalTrainingConfig {
   return {
@@ -1271,7 +1271,8 @@ type TrainingServiceCtor = new (options: {
   setConfig: (nextConfig: ElizaConfig) => void;
 }) => TrainingServiceWithRuntime;
 
-const TRAINING_SERVICE_REGISTRY_MODULE: string = "@elizaos/app-training";
+const TRAINING_SERVICE_REGISTRY_MODULE: string =
+  "@elizaos/app-training/services/training-service-registry";
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   if (isMobilePlatform()) {
@@ -1281,7 +1282,7 @@ async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null>
 
   const candidates = [
     "../services/training-service",
-    "@elizaos/app-training",
+    "@elizaos/app-training/services/training-service",
     "@elizaos/plugin-training",
   ] as const;
 

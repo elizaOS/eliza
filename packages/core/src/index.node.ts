@@ -300,6 +300,7 @@ export * from "./types/plugin-manifest";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
+export { addHeader, composePromptFromState, parseKeyValueXml } from "./utils";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";

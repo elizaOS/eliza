@@ -154,6 +154,7 @@ export interface ChatGenerateOptions {
   onChunk?: (chunk: string) => void;
   onSnapshot?: (text: string) => void;
   isAborted?: () => boolean;
+  abortSignal?: AbortSignal;
   resolveNoResponseText?: () => string;
   preferredLanguage?: string;
   timeoutDuration?: number;
@@ -1214,6 +1215,22 @@ export async function generateChatResponse(
     generationTimedOut = true;
     throw createChatGenerationTimeoutError(generationTimeoutMs);
   }
+  const generationAbortController = new AbortController();
+  const abortGeneration = (reason?: unknown): void => {
+    if (!generationAbortController.signal.aborted) {
+      generationAbortController.abort(reason);
+    }
+  };
+  const onExternalAbort = (): void => {
+    abortGeneration(opts?.abortSignal?.reason);
+  };
+  if (opts?.abortSignal?.aborted) {
+    onExternalAbort();
+  } else {
+    opts?.abortSignal?.addEventListener("abort", onExternalAbort, {
+      once: true,
+    });
+  }
   try {
     const originalUserText = String(
       extractCompatTextContent(message.content) ?? "",
@@ -1538,6 +1555,7 @@ export async function generateChatResponse(
               },
               {
                 timeoutDuration: generationTimeoutMs,
+                abortSignal: generationAbortController.signal,
                 keepExistingResponses: true,
                 onStreamChunk: opts?.onChunk
                   ? async (chunk: string) => {
@@ -1734,6 +1752,7 @@ export async function generateChatResponse(
         () => createChatGenerationTimeoutError(generationTimeoutMs),
         () => {
           generationTimedOut = true;
+          abortGeneration(createChatGenerationTimeoutError(generationTimeoutMs));
         },
       ),
     );
@@ -1856,6 +1875,7 @@ export async function generateChatResponse(
       usage: buildChatUsage(runtime, message, finalText, capturedUsage),
     };
   } finally {
+    opts?.abortSignal?.removeEventListener("abort", onExternalAbort);
     try {
       await persistMessageTrajectoryGrouping(runtime, message);
     } catch (err) {

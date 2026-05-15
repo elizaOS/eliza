@@ -6,6 +6,7 @@
  * instead of being silently swallowed.
  */
 
+import { EventEmitter } from "node:events";
 import http from "node:http";
 import { ChannelType, logger, stringToUuid, type UUID } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,6 +17,9 @@ let persistResolve: ((value?: unknown) => void) | null = null;
 let persistReject: ((err: unknown) => void) | null = null;
 let persistCalledAt: number | null = null;
 let persistResolvedAt: number | null = null;
+let captureGenerateAbortSignal: AbortSignal | undefined;
+let generateWaitsForAbort = false;
+let generateThrowsTurnAbort = false;
 
 vi.mock("../chat-routes.ts", async () => {
   const actual =
@@ -63,6 +67,23 @@ vi.mock("../chat-routes.ts", async () => {
       });
     }),
     generateChatResponse: vi.fn(async (_runtime, _msg, agentName, opts) => {
+      captureGenerateAbortSignal = opts?.abortSignal;
+      if (generateThrowsTurnAbort) {
+        const err = new Error("Turn aborted: ui-chat-abort") as Error & {
+          code?: string;
+        };
+        err.name = "TurnAbortedError";
+        err.code = "TURN_ABORTED";
+        throw err;
+      }
+      if (generateWaitsForAbort) {
+        await new Promise<void>((resolve) => {
+          opts?.abortSignal?.addEventListener("abort", () => resolve(), {
+            once: true,
+          });
+        });
+        throw new Error("aborted");
+      }
       // Stream a single token so the SSE wire format mirrors a real turn.
       opts?.onChunk?.("ok");
       return {
@@ -121,6 +142,7 @@ import type {
   ConversationRouteState,
 } from "../conversation-routes.ts";
 import { handleConversationRoutes } from "../conversation-routes.ts";
+import { readChatRequestPayload } from "../chat-routes.ts";
 
 interface MockResponseRecord {
   writes: string[];
@@ -128,11 +150,27 @@ interface MockResponseRecord {
   endedAt: number | null;
 }
 
-function createMockReq(): http.IncomingMessage {
+type MockSocket = EventEmitter & {
+  destroyed: boolean;
+  writable: boolean;
+};
+
+function createMockSocket(): MockSocket {
+  return Object.assign(new EventEmitter(), {
+    destroyed: false,
+    writable: true,
+  });
+}
+
+function createMockReq(socket: MockSocket): http.IncomingMessage {
   const req = Object.assign(new http.IncomingMessage(null as never), {
     method: "POST",
     url: "/api/conversations/conv-1/messages/stream",
     headers: {},
+  });
+  Object.defineProperty(req, "socket", {
+    configurable: true,
+    value: socket,
   });
   return req as http.IncomingMessage;
 }
@@ -201,8 +239,10 @@ function createCtx(): {
   ctx: ConversationRouteContext;
   record: MockResponseRecord;
   state: ConversationRouteState;
+  socket: MockSocket;
 } {
-  const req = createMockReq();
+  const socket = createMockSocket();
+  const req = createMockReq(socket);
   const { res, record } = createMockRes();
   const state = createState();
   const ctx: ConversationRouteContext = {
@@ -218,7 +258,7 @@ function createCtx(): {
       response.end();
     }),
   } as unknown as ConversationRouteContext;
-  return { ctx, record, state };
+  return { ctx, record, state, socket };
 }
 
 describe("conversation-routes streaming persistence ordering", () => {
@@ -227,6 +267,9 @@ describe("conversation-routes streaming persistence ordering", () => {
     persistReject = null;
     persistCalledAt = null;
     persistResolvedAt = null;
+    captureGenerateAbortSignal = undefined;
+    generateWaitsForAbort = false;
+    generateThrowsTurnAbort = false;
   });
 
   afterEach(() => {
@@ -290,5 +333,53 @@ describe("conversation-routes streaming persistence ordering", () => {
     });
     expect(call).toBeDefined();
     errorSpy.mockRestore();
+  });
+
+  it("aborts generation when the client socket closes after request body parsing", async () => {
+    generateWaitsForAbort = true;
+    const { ctx, record, socket } = createCtx();
+
+    vi.mocked(readChatRequestPayload).mockImplementationOnce(async () => {
+      // Bun emits req.close when the POST body finishes. This must not abort
+      // the SSE turn, but the already-installed socket listener must still see
+      // a later client disconnect.
+      ctx.req.emit("close");
+      return {
+        prompt: "hello",
+        channelType: ChannelType.DM,
+        images: undefined,
+        preferredLanguage: undefined,
+        source: "api",
+        metadata: undefined,
+      };
+    });
+
+    const handlerDone = handleConversationRoutes(ctx);
+    for (let i = 0; i < 10 && !captureGenerateAbortSignal; i++) {
+      await new Promise((r) => setImmediate(r));
+    }
+
+    expect(captureGenerateAbortSignal).toBeDefined();
+    expect(captureGenerateAbortSignal?.aborted).toBe(false);
+
+    socket.destroyed = true;
+    socket.writable = false;
+    socket.emit("close");
+
+    await handlerDone;
+    expect(captureGenerateAbortSignal?.aborted).toBe(true);
+    expect(record.ended).toBe(true);
+  });
+
+  it("ends the stream without fallback generation when the turn is aborted externally", async () => {
+    generateThrowsTurnAbort = true;
+    const { ctx, record } = createCtx();
+
+    await handleConversationRoutes(ctx);
+
+    expect(record.ended).toBe(true);
+    expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(false);
+    expect(record.writes.some((w) => w.includes('"type":"error"'))).toBe(false);
+    expect(persistCalledAt).toBeNull();
   });
 });

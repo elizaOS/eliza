@@ -15,6 +15,42 @@ function chromiumFlags(
 	) as Record<string, string | true>;
 }
 
+function isTruthyEnv(value: string | undefined): boolean {
+	const normalized = value?.trim().toLowerCase();
+	return (
+		normalized === "1" ||
+		normalized === "true" ||
+		normalized === "yes" ||
+		normalized === "on"
+	);
+}
+
+function linuxCefChromiumFlags(): Record<string, string | true> {
+	// Linux CEF WebGPU/Vulkan is still experimental in Electrobun. Keep the
+	// default renderer path stable and let hardware debugging opt in explicitly.
+	if (!isTruthyEnv(process.env.ELIZA_ELECTROBUN_ENABLE_CEF_WEBGPU)) {
+		return {};
+	}
+
+	return chromiumFlags({
+		"enable-unsafe-webgpu": true,
+		"enable-features": "Vulkan",
+		"disable-gpu": false,
+		"disable-gpu-compositing": false,
+		"disable-gpu-sandbox": false,
+		"enable-software-rasterizer": false,
+		"force-software-rasterizer": false,
+		"disable-accelerated-2d-canvas": false,
+		"disable-accelerated-video-decode": false,
+		"disable-accelerated-video-encode": false,
+		"disable-gpu-memory-buffer-video-frames": false,
+	});
+}
+
+const linuxCefEnabled = isTruthyEnv(
+	process.env.ELIZA_ELECTROBUN_ENABLE_LINUX_CEF,
+);
+
 export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
 	return (
 		fs.existsSync(path.join(candidateDir, "bun.lock")) &&
@@ -439,23 +475,13 @@ export function createElectrobunConfig(): ElectrobunConfig {
 							},
 			},
 			linux: {
-				bundleCEF: true,
+				// Linux CEF remains opt-in until its helper processes are stable
+				// enough for the default desktop shell.
+				bundleCEF: linuxCefEnabled,
 				bundleWGPU: true,
-				defaultRenderer: "cef",
+				defaultRenderer: "native",
 				icon: "assets/appIcon.png",
-				chromiumFlags: chromiumFlags({
-					"enable-unsafe-webgpu": true,
-					"enable-features": "Vulkan",
-					"disable-gpu": false,
-					"disable-gpu-compositing": false,
-					"disable-gpu-sandbox": false,
-					"enable-software-rasterizer": false,
-					"force-software-rasterizer": false,
-					"disable-accelerated-2d-canvas": false,
-					"disable-accelerated-video-decode": false,
-					"disable-accelerated-video-encode": false,
-					"disable-gpu-memory-buffer-video-frames": false,
-				}),
+				chromiumFlags: linuxCefEnabled ? linuxCefChromiumFlags() : {},
 			},
 			win: {
 				bundleCEF: true,

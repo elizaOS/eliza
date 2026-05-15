@@ -106,7 +106,7 @@ function resolveNativeDir(...segments) {
   );
 }
 
-// elizaOS/llama.cpp @ 33c888a7b — the unified fork that
+// elizaOS/llama.cpp @ 6f3b50425 — the unified fork that
 // composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
 // GGML_OP_ATTN_SCORE_QJL, GGML_OP_FUSED_ATTN_QJL_TBQ) + Q4_POLAR (Q4_POLAR=47)
 // + the eliza Metal/Vulkan/CUDA kernels + DFlash spec-decode (--spec-type
@@ -127,7 +127,7 @@ function resolveNativeDir(...segments) {
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
-const DEFAULT_REF = "33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e";
+const DEFAULT_REF = "6f3b5042594ea63b78bf7e594a958d2f4a43bc4a";
 const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || DEFAULT_REF;
 // The in-repo submodule checkout of the fork. When it is initialized this is
 // the default build source (no clone needed); see resolveSourceCheckout().
@@ -2948,13 +2948,22 @@ function readVulkanRuntimeDispatchEvidence() {
 function vulkanEvidencePayloadForTarget(evidence, target) {
   const data = evidence?.data;
   if (!data || typeof data !== "object") return null;
+  const targetCandidates = [
+    target,
+    target ? baseTargetTriple(target) : null,
+  ].filter(
+    (candidate, index, all) => candidate && all.indexOf(candidate) === index,
+  );
   if (target && data.targets && typeof data.targets === "object") {
-    const targetPayload = data.targets[target];
-    if (targetPayload && typeof targetPayload === "object") {
-      return targetPayload;
+    for (const candidate of targetCandidates) {
+      const targetPayload = data.targets[candidate];
+      if (targetPayload && typeof targetPayload === "object") {
+        return targetPayload;
+      }
     }
   }
-  if (!target || !data.target || data.target === target) return data;
+  if (!target) return data;
+  if (data.target && targetCandidates.includes(data.target)) return data;
   return null;
 }
 
