@@ -943,13 +943,22 @@ def export_student_onnx(
     out_path: pathlib.Path,
     opset: int = DEFAULT_OPSET,
     smoke_input_seconds: float = 8.0,
+    head: str = "vad",
 ) -> None:
     """Export the trained student to int8 ONNX.
 
-    Output shape ``[batch, 3]`` (V-A-D), output name ``vad``. The 7-class
-    aux head is dropped at export — the shipped model only exposes V-A-D;
-    the discretisation to ``EXPRESSIVE_EMOTION_TAGS`` happens in TS at
-    ``voice-emotion-classifier.ts``.
+    ``head`` selects which head to export:
+
+      - ``"vad"`` (default): output shape ``[batch, 3]``, output name
+        ``vad`` — the legacy V-A-D contract; the runtime projection table
+        in ``voice-emotion-classifier.ts`` discretises to
+        ``EXPRESSIVE_EMOTION_TAGS``.
+      - ``"cls7"``: output shape ``[batch, 7]``, output name
+        ``cls_logits`` — the direct 7-class classifier head. The runtime
+        adapter does ``argmax`` over the logits and skips the V-A-D
+        projection. This is the Path-B contract used when the V-A-D
+        projection is too lossy (see G-emotion findings: aux F1=0.355
+        passes the 0.35 gate that the projection metric (0.319) misses).
 
     The int8 quantisation uses
     ``onnxruntime.quantization.quantize_dynamic`` with ``QuantType.QInt8`` —
@@ -959,16 +968,40 @@ def export_student_onnx(
     label order at load time.
     """
     import torch
+    from torch import nn
 
     if out_path.suffix != ".onnx":
         raise ValueError(
             f"out_path must end in '.onnx', got {out_path.suffix!r}",
         )
+    if head not in ("vad", "cls7"):
+        raise ValueError(f"head must be 'vad' or 'cls7', got {head!r}")
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fp32_path = out_path.with_suffix(".fp32.onnx")
 
     student = student.eval().cpu()
+
+    if head == "cls7":
+        # Wrap the student to expose the aux 7-class classifier head as the
+        # sole output. The wrapper is a transparent `nn.Module` so the
+        # exporter sees the same forward graph as the V-A-D path up to the
+        # last linear (just emitting `head_aux` instead of `head_vad`).
+        class _ClsHeadWrapper(nn.Module):
+            def __init__(self, base: nn.Module) -> None:
+                super().__init__()
+                self.base = base
+
+            def forward(self, pcm: "torch.Tensor") -> "torch.Tensor":
+                _vad, cls_logits = self.base.forward_with_aux(pcm)
+                return cls_logits
+
+        exporter = _ClsHeadWrapper(student).eval()
+        output_name = "cls_logits"
+    else:
+        exporter = student
+        output_name = "vad"
+
     sample_len = int(smoke_input_seconds * WAV2SMALL_SAMPLE_RATE)
     dummy = torch.zeros(1, sample_len, dtype=torch.float32)
     # `dynamo=True` produces a real dynamic-shape ONNX graph; the legacy
@@ -977,13 +1010,16 @@ def export_student_onnx(
     # at 8 s would refuse to run on 4 s inputs. The runtime accepts inputs
     # from 1 s through MAX_WINDOW, so dynamic shapes are required.
     torch.onnx.export(
-        student,
+        exporter,
         dummy,
         str(fp32_path),
         input_names=["pcm"],
-        output_names=["vad"],
+        output_names=[output_name],
         opset_version=opset,
-        dynamic_axes={"pcm": {0: "batch", 1: "samples"}, "vad": {0: "batch"}},
+        dynamic_axes={
+            "pcm": {0: "batch", 1: "samples"},
+            output_name: {0: "batch"},
+        },
         dynamo=True,
     )
 
@@ -1006,7 +1042,7 @@ def export_student_onnx(
         meta.value = str(WAV2SMALL_SAMPLE_RATE)
         meta = model_proto.metadata_props.add()
         meta.key = "head"
-        meta.value = "vad"
+        meta.value = head
         onnx.save(model_proto, str(fp32_path))
     except ImportError:
         # `onnx` is part of the standard training env. Operator gets a
@@ -1043,14 +1079,16 @@ def export_student_onnx(
         session = ort.InferenceSession(
             str(out_path), providers=["CPUExecutionProvider"],
         )
+        expected_dim = 3 if head == "vad" else len(EXPRESSIVE_EMOTION_TAGS)
         for sec in (1.0, 4.0, 8.0):
             smoke_len = int(sec * WAV2SMALL_SAMPLE_RATE)
             smoke = np.zeros((1, smoke_len), dtype="float32")
             outputs = session.run(None, {"pcm": smoke})
-            if outputs[0].shape != (1, 3):
+            if outputs[0].shape != (1, expected_dim):
                 raise RuntimeError(
                     f"exported ONNX returned unexpected output shape "
-                    f"{outputs[0].shape} at {sec}-sec input; expected (1, 3)",
+                    f"{outputs[0].shape} at {sec}-sec input; expected "
+                    f"(1, {expected_dim})",
                 )
     except ImportError:
         # If onnxruntime isn't installed in the training env, this is the
