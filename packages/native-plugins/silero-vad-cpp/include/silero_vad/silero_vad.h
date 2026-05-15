@@ -74,12 +74,15 @@ extern "C" {
 
 /*
  * LSTM hidden / cell state width. The Silero v5 graph carries a single
- * recurrent layer with 64-dim hidden and 64-dim cell state. The state
- * object exposed via `silero_vad_state.c` packs both as flat
- * `float[64]` arrays.
+ * recurrent layer with 128-dim hidden and 128-dim cell state (the ONNX
+ * model's `state` input is shaped `[2, B, 128]` — first slab is `h`,
+ * second is `c`). The state object exposed via `silero_vad_state.c`
+ * packs both as flat `float[128]` arrays. The Phase 1 ABI mistakenly
+ * advertised 64; that has been corrected after inspecting the upstream
+ * weights at the pinned commit.
  */
-#define SILERO_VAD_STATE_HIDDEN_DIM 64
-#define SILERO_VAD_STATE_CELL_DIM   64
+#define SILERO_VAD_STATE_HIDDEN_DIM 128
+#define SILERO_VAD_STATE_CELL_DIM   128
 
 /* Opaque handle to a loaded VAD session. The implementation owns the
  * loaded ggml graph, scratch buffers, and per-session LSTM state. */

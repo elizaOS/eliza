@@ -1,6 +1,7 @@
-CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o: \
- /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_stub.c \
+CMakeFiles/silero_vad_shared.dir/src/silero_vad_state.c.o: \
+ /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_state.c \
  /usr/include/stdc-predef.h \
+ /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_state.h \
  /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/include/silero_vad/silero_vad.h \
  /usr/lib/gcc/x86_64-linux-gnu/13/include/stddef.h \
  /usr/lib/gcc/x86_64-linux-gnu/13/include/stdint.h /usr/include/stdint.h \
@@ -18,7 +19,5 @@ CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o: \
  /usr/include/x86_64-linux-gnu/bits/wchar.h \
  /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
  /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
- /usr/include/x86_64-linux-gnu/bits/stdint-least.h /usr/include/errno.h \
- /usr/include/x86_64-linux-gnu/bits/errno.h /usr/include/linux/errno.h \
- /usr/include/x86_64-linux-gnu/asm/errno.h \
- /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h
+ /usr/include/x86_64-linux-gnu/bits/stdint-least.h /usr/include/string.h \
+ /usr/include/x86_64-linux-gnu/bits/string_fortified.h

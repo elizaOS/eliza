@@ -68,6 +68,13 @@
 
 ## Active agents
 
+- 2026-05-15 I2 phase=impl-done: af_sam.bin shipped to elizaos/eliza-1-voice-kokoro:voices/af_sam.bin
+  per user override (H1 NO-SHIP overridden). HF revision 4b8809b197aa90ae486f83c1e0a5dc7effb6b285.
+  Eval: WER=1.0/UTMOS=2.32/SpkSim=0.15 (all gate-fail, documented honestly). Synthesis smoke PASS
+  (3.2s non-silent). Registry: manifest.json kokoro v0.2.0, CHANGELOG.md updated, voice-models.ts
+  kokoro v0.2.0 entry added (netImprovement=false). af_same.bin was not present in HF repo (no deletion
+  needed). Report: .swarm/impl/I2-kokoro-ship.md.
+
 - 2026-05-15 H3 phase=impl-done: @elizaos/agent and @elizaos/plugin-local-inference
   typecheck both GREEN (EXIT:0). Four fixes: (1) plugin-compiler.ts bunGlobal.Bun?.Transpiler
   optional chain; (2) removed bare `declare module "@elizaos/plugin-commands"` stub from
@@ -775,3 +782,27 @@ coordinate here, don't kill peers.
     @elizaos/plugin-local-inference --filter @elizaos/shared` →
     20/20 tasks success (1m32s).
   - Impl report: .swarm/impl/H2-cleanup.md.
+
+- 2026-05-15 I1-single-runtime phase=impl-audit-done: comprehensive audit
+  of every `node-llama-cpp` + ONNX + external-runtime touchpoint landed at
+  .swarm/impl/I1-single-runtime.md. Findings: (1) VAD + wakeword
+  resolved-runtime paths are already on the fork's FFI
+  (`eliza_inference_vad_*` / `eliza_inference_wakeword_*` on
+  libelizainference) — DONE; (2) five voice sub-models still hit ONNX in
+  the resolved path (Wav2Small, WeSpeaker, pyannote-3 diarizer, Kokoro
+  TTS, LiveKit turn-detector) — each compute-gated with a precise
+  next-step + worker-day estimate (1d Wav2Small, 2d WeSpeaker, 1d
+  pyannote, 5-10d Kokoro, 1d turn-detector); (3) `node-llama-cpp@3.18.1`
+  npm dep stays — it IS the canonical wrapper for the fork's libllama +
+  llama-server per native/AGENTS.md; (4) `voice-classifier-cpp` C ABI
+  exists with `-ENOSYS` model heads — Phase-2 worker unblocked to land
+  the ggml graphs without touching the fork. Hard policy enforceable
+  end-to-end once those stubs become real. Bookkeeping landed:
+  registry description ("no more ONNX"), CHANGELOG I1 section,
+  manifest assetAudit note. NO source deletions this wave —
+  removing the ONNX paths today would crash voice (AGENTS.md §3
+  "no silent fallback" is intact). Commits: 2e8eab3d87
+  (docs(I1): drop "+ ONNX" from local-inference registry description).
+  Manifest + CHANGELOG bookkeeping picked up by peer auto-commits prior
+  to my commit (already in HEAD). Report:
+  .swarm/impl/I1-single-runtime.md.

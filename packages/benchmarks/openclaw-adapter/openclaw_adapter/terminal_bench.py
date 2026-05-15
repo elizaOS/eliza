@@ -220,6 +220,7 @@ class OpenClawTerminalAgent:
 
                 response = self._client.send_message(text=prompt, context=context)
                 text = response.text or ""
+                session.model_responses.append(text)
 
                 if _signals_complete(text, response.params):
                     self._record("assistant", text)
@@ -252,6 +253,14 @@ class OpenClawTerminalAgent:
                     continue
 
                 self._record("assistant", text)
+                session.tool_calls.append(
+                    {
+                        "type": "command",
+                        "name": "terminal.execute",
+                        "params": {"command": command},
+                        "command": command,
+                    }
+                )
                 cmd_result = await self._environment.execute(command)
                 session.commands.append(cmd_result)
                 feedback = (
@@ -274,6 +283,8 @@ class OpenClawTerminalAgent:
             )
 
         session.end_time = datetime.now()
+        session.final_test_output = test_output
+        session.final_test_exit_code = test_exit_code
         total_execution_time = sum(c.execution_time_ms for c in session.commands)
 
         return TerminalBenchResult(
