@@ -1038,12 +1038,19 @@ def validate_manifest(
         "drafter",
     )
     for slot in optional_component_slots:
-        component_files = files.get("dflash") or [] if slot == "drafter" else files.get(slot) or []
+        if slot == "drafter":
+            component_files = files.get("dflash") or []
+            file_slot = "dflash"
+        else:
+            component_files = files.get(slot) or []
+            file_slot = slot
         component_lineage = lineage.get(slot)
         if component_files and not component_lineage:
-            errors.append(f"lineage.{slot}: required when files.{slot} is non-empty")
+            errors.append(
+                f"lineage.{slot}: required when files.{file_slot} is non-empty"
+            )
         if component_lineage and not component_files:
-            errors.append(f"files.{slot}: required when lineage.{slot} is present")
+            errors.append(f"files.{file_slot}: required when lineage.{slot} is present")
 
     dflash_files = files.get("dflash") or []
     if tier in ELIZA_1_DFLASH_TIERS:

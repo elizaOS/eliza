@@ -149,10 +149,10 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Those bundles optimize
- *     for install size, TTFA, and phone thermals.
- *   - 9B → Kokoro first with OmniVoice bundled for hosts with enough memory.
- *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
+ *   - Small tiers (0_8b / 2b / 4b) → OmniVoice first with Kokoro bundled as
+ *     the low-latency fallback.
+ *   - 9B → OmniVoice first with Kokoro bundled for hosts with enough memory.
+ *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
  */
@@ -160,9 +160,9 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
-  "eliza-1-2b": ["kokoro"],
-  "eliza-1-4b": ["kokoro"],
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
+  "eliza-1-4b": ["omnivoice", "kokoro"],
   "eliza-1-9b": ["kokoro", "omnivoice"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
