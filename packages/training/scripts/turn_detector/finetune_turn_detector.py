@@ -391,6 +391,264 @@ def build_eou_prefix_corpus(
     return out_path
 
 
+# OpenAssistant/oasst1 — Apache-2.0, ~85k multilingual conversation
+# messages. We pull the `prompter` (user) messages, filter by language,
+# split each message into utterance-sized chunks on sentence boundaries,
+# and apply the same prefix-augmentation strategy as
+# `build_eou_prefix_corpus`. This matches the runtime EOU signal across
+# the LiveKit v0.4.1-intl target locales (en, es, fr, de, it, pt, nl, ru,
+# zh, ja, ko, tr, id, hi). 12/14 of those locales have material OASST1
+# coverage; the other two (nl, hi) rely on the base model's pretraining
+# and the cross-lingual signal in the shared Qwen2 tokenizer.
+
+OASST1_HF_REPO: Final[str] = "OpenAssistant/oasst1"
+
+# LiveKit v0.4.1-intl locales — keep in sync with `languages.json` on
+# `livekit/turn-detector@v0.4.1-intl`. The codes are ISO-639-1 except
+# `pt-BR` which OASST1 uses for Brazilian Portuguese (we accept both
+# `pt` and `pt-BR` as Portuguese).
+LIVEKIT_INTL_LOCALES: Final[tuple[str, ...]] = (
+    "en", "es", "fr", "de", "it", "pt", "nl",
+    "ru", "zh", "ja", "ko", "tr", "id", "hi",
+)
+
+
+def _split_into_utterances(text: str, max_words: int = 40) -> list[str]:
+    """Split a free-form message into approximately one-sentence utterances.
+
+    Splits on terminal punctuation (`. ! ? 。 ！ ？`) while keeping multi-byte
+    boundaries safe. The result is short enough to look like an ASR
+    transcript turn rather than a multi-paragraph email.
+    """
+    import re
+
+    # Replace CJK terminal punctuation with their ASCII equivalents so the
+    # downstream prefix-stripping logic works on Japanese/Chinese too.
+    normalized = text.replace("。", ". ").replace("！", "! ").replace("？", "? ")
+    # Newlines are strong turn boundaries.
+    parts = re.split(r"(?<=[.!?])\s+|\n+", normalized)
+    out: list[str] = []
+    for part in parts:
+        sent = part.strip()
+        if not sent:
+            continue
+        words = sent.split()
+        if not words:
+            continue
+        # Hard cap on word count so a single bullet point doesn't become
+        # one giant utterance.
+        if len(words) > max_words:
+            for i in range(0, len(words), max_words):
+                chunk = " ".join(words[i:i + max_words])
+                if chunk:
+                    out.append(chunk)
+        else:
+            out.append(sent)
+    return out
+
+
+def build_multilingual_eou_corpus(
+    out_dir: Path,
+    *,
+    per_lang_cap: int = 6000,
+    min_words: int = 3,
+    seed: int = 20260515,
+    locales: tuple[str, ...] = LIVEKIT_INTL_LOCALES,
+) -> Path:
+    """Build a multilingual EOU corpus from OpenAssistant/oasst1.
+
+    Strategy mirrors `build_eou_prefix_corpus` but with a language-balanced
+    OASST1 source. Each utterance (sentence-split chunk of a user-role
+    OASST1 message) becomes:
+
+      - a positive (full utterance, ``eou_label=1``)
+      - a randomly truncated mid-utterance prefix (trailing punctuation
+        stripped, ``eou_label=0``).
+
+    ``per_lang_cap`` caps the *utterance count* per language (so the
+    total positives per language is ≤ ``per_lang_cap``). Negatives are
+    one per positive. The cap is the levelling knob — without it the
+    corpus is ~70% English.
+
+    Output JSONL schema mirrors `build_eou_prefix_corpus`::
+
+        {"utterance": str, "eou_label": 0|1,
+         "dialogue_id": "oasst1-<message_id>", "turn_idx": int,
+         "lang": str}
+
+    The extra ``lang`` field is for per-language eval splits — the
+    training loop ignores it.
+    """
+    try:
+        from datasets import load_dataset  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise RuntimeError(
+            "build_multilingual_eou_corpus requires `datasets`"
+        ) from exc
+
+    import random
+    import re
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "oasst1-eou-prefix-intl.jsonl"
+
+    # Normalize `pt-BR` → `pt` for the supported-locale check.
+    locale_aliases: dict[str, str] = {"pt-BR": "pt"}
+    accepted = set(locales)
+    rng = random.Random(seed)
+
+    def _strip_trailing_punct(text: str) -> str:
+        tokens = text.split()
+        while tokens and re.fullmatch(r"[\.\?\!,;:…]+", tokens[-1]):
+            tokens.pop()
+        return " ".join(tokens)
+
+    ds = load_dataset(OASST1_HF_REPO, split="train")
+    lang_counts: dict[str, int] = {}
+    written = 0
+    with out_path.open("w", encoding="utf-8") as fh:
+        for row in ds:
+            role = row.get("role")
+            if role != "prompter":
+                continue
+            lang_raw = row.get("lang") or ""
+            lang = locale_aliases.get(lang_raw, lang_raw)
+            if lang not in accepted:
+                continue
+            if lang_counts.get(lang, 0) >= per_lang_cap:
+                continue
+            text = row.get("text")
+            if not isinstance(text, str):
+                continue
+            message_id = row.get("message_id") or f"row-{written}"
+            for turn_idx, utterance in enumerate(_split_into_utterances(text)):
+                if lang_counts.get(lang, 0) >= per_lang_cap:
+                    break
+                tokens = utterance.split()
+                if len(tokens) < min_words:
+                    continue
+                # Positive.
+                fh.write(
+                    json.dumps(
+                        {
+                            "utterance": utterance,
+                            "eou_label": 1,
+                            "dialogue_id": f"oasst1-{message_id}",
+                            "turn_idx": turn_idx,
+                            "lang": lang,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+                # Negative: prefix with terminal punctuation stripped.
+                stripped_tokens = _strip_trailing_punct(utterance).split()
+                if len(stripped_tokens) < 2:
+                    lang_counts[lang] = lang_counts.get(lang, 0) + 1
+                    written += 1
+                    continue
+                cut = rng.randint(1, max(1, len(stripped_tokens) - 1))
+                prefix = " ".join(stripped_tokens[:cut])
+                fh.write(
+                    json.dumps(
+                        {
+                            "utterance": prefix,
+                            "eou_label": 0,
+                            "dialogue_id": f"oasst1-{message_id}",
+                            "turn_idx": turn_idx,
+                            "lang": lang,
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+                lang_counts[lang] = lang_counts.get(lang, 0) + 1
+                written += 1
+    # Drop a sidecar with the per-language counts for the model card.
+    (out_dir / "oasst1-intl-lang-counts.json").write_text(
+        json.dumps(lang_counts, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return out_path
+
+
+def stage_multilingual_train_eval(
+    *,
+    out_dir: Path,
+    per_lang_cap: int = 6000,
+    val_ratio: float = 0.05,
+    eval_max_per_lang: int = 200,
+    train_max: int | None = None,
+    seed: int = 20260515,
+    locales: tuple[str, ...] = LIVEKIT_INTL_LOCALES,
+) -> "tuple[Path, Path]":
+    """Stage OASST1 multilingual EOU corpus and split it into train/eval.
+
+    Eval split is *language-stratified*: up to ``eval_max_per_lang`` rows
+    per language. This is what makes per-locale F1 measurable.
+
+    Returns ``(train_path, eval_path)``. The eval split uses the runtime
+    schema (``{"transcript": str, "label": 0|1, "lang": str}``) so
+    ``eval_turn_detector`` can consume it directly.
+    """
+    import random
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    base = build_multilingual_eou_corpus(
+        out_dir,
+        per_lang_cap=per_lang_cap,
+        seed=seed,
+        locales=locales,
+    )
+    train_path = out_dir / "oasst1-intl.train.jsonl"
+    eval_path = out_dir / "oasst1-intl.eval.jsonl"
+
+    by_lang: dict[str, list[dict[str, Any]]] = {}
+    with base.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            record = json.loads(line)
+            lang = record.get("lang", "und")
+            by_lang.setdefault(lang, []).append(record)
+
+    rng = random.Random(seed)
+    train_rows: list[dict[str, Any]] = []
+    eval_rows: list[dict[str, Any]] = []
+    for lang, rows in sorted(by_lang.items()):
+        rng.shuffle(rows)
+        # Stratified split: at most ``eval_max_per_lang`` for eval, but
+        # respect ``val_ratio`` lower bound so tiny languages still get an
+        # eval split.
+        n_eval = min(eval_max_per_lang, max(1, int(len(rows) * val_ratio)))
+        eval_rows.extend(rows[:n_eval])
+        train_rows.extend(rows[n_eval:])
+    rng.shuffle(train_rows)
+    rng.shuffle(eval_rows)
+
+    if train_max is not None:
+        train_rows = train_rows[:train_max]
+
+    with train_path.open("w", encoding="utf-8") as fh:
+        for r in train_rows:
+            fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+    with eval_path.open("w", encoding="utf-8") as fh:
+        for r in eval_rows:
+            fh.write(
+                json.dumps(
+                    {
+                        "transcript": r["utterance"],
+                        "label": int(r["eou_label"]),
+                        "lang": r.get("lang", "und"),
+                    },
+                    ensure_ascii=False,
+                )
+                + "\n"
+            )
+    return train_path, eval_path
+
+
 def build_sft_corpus(
     pretrain_jsonl: Path,
     out_dir: Path,
@@ -1161,10 +1419,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--pretrain-corpus",
         type=str,
         default=None,
-        choices=("dailydialog",),
+        choices=("dailydialog", "oasst1-intl"),
         help=(
-            "Auto-stage DailyDialog as the pretrain + eval JSONL under "
-            "<run-dir>/data/turn/. Overrides --config.train_data / eval_data."
+            "Auto-stage a pretrain + eval JSONL under <run-dir>/data/turn/. "
+            "`dailydialog` for the English-only v1.2.2-en target, "
+            "`oasst1-intl` for the multilingual v0.4.1-intl target "
+            "(14 LiveKit locales, OpenAssistant/oasst1 source, "
+            "language-stratified eval). Overrides "
+            "--config.train_data / eval_data."
+        ),
+    )
+    ap.add_argument(
+        "--per-lang-cap",
+        type=int,
+        default=6000,
+        help=(
+            "For --pretrain-corpus oasst1-intl: max utterances per "
+            "language. Default 6000 — yields ~50k positives across 12 "
+            "well-represented OASST1 locales."
         ),
     )
     ap.add_argument(
@@ -1289,6 +1561,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.pretrain_corpus == "dailydialog":
         data_dir = run_dir / "data" / "turn"
         train_path, eval_path = stage_dailydialog_train_eval(out_dir=data_dir)
+        resolved = dataclasses.replace(
+            resolved,
+            train_data=[str(train_path)],
+            eval_data=[str(eval_path)],
+        )
+    elif args.pretrain_corpus == "oasst1-intl":
+        data_dir = run_dir / "data" / "turn"
+        train_path, eval_path = stage_multilingual_train_eval(
+            out_dir=data_dir, per_lang_cap=args.per_lang_cap,
+        )
         resolved = dataclasses.replace(
             resolved,
             train_data=[str(train_path)],

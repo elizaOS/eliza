@@ -34,19 +34,26 @@ MEAN_LATENCY_MS_GATE: Final[float] = 30.0
 
 @dataclass(frozen=True)
 class EvalRecord:
-    """A single (transcript, gold_label) row."""
+    """A single (transcript, gold_label, lang) row.
+
+    ``lang`` is optional — only the multilingual eval JSONL sets it. When
+    absent we treat the row as `"und"` (undetermined). Per-language F1
+    rolls up by this field; the gate is still computed on the full set.
+    """
 
     transcript: str
     label: int  # 1 = end-of-turn, 0 = mid-turn
+    lang: str = "und"
 
 
 def load_records(path: Path) -> list[EvalRecord]:
     """Load JSONL records from ``path``.
 
-    Each row must be ``{"transcript": str, "label": 0|1}``. Lines that
-    fail validation are rejected; we never silently coerce labels (a
-    model that mis-classifies is a measured failure, but a corrupt eval
-    fixture is a contract bug).
+    Each row must be ``{"transcript": str, "label": 0|1}`` and may
+    optionally carry ``"lang": str`` (used to stratify the report).
+    Lines that fail validation are rejected; we never silently coerce
+    labels (a model that mis-classifies is a measured failure, but a
+    corrupt eval fixture is a contract bug).
     """
     out: list[EvalRecord] = []
     with path.open("r", encoding="utf-8") as fh:
@@ -67,7 +74,13 @@ def load_records(path: Path) -> list[EvalRecord]:
                 raise ValueError(
                     f"{path}:{line_no}: label must be 0 or 1, got {label!r}"
                 )
-            out.append(EvalRecord(transcript=transcript, label=int(label)))
+            lang_value = record.get("lang")
+            lang = str(lang_value) if isinstance(lang_value, str) else "und"
+            out.append(
+                EvalRecord(
+                    transcript=transcript, label=int(label), lang=lang,
+                )
+            )
     return out
 
 
@@ -141,6 +154,10 @@ def run_onnx_eval(
     ``plugins/plugin-local-inference/src/services/voice/eot-classifier.ts``:
     apply the chat template (minus trailing ``<|im_end|>``), forward,
     then ``P(EOU) = softmax(logits[:, last_real_pos, :])[<|im_end|>]``.
+
+    When any record carries a non-``"und"`` ``lang`` field we additionally
+    roll up ``f1ByLang[<lang>]`` into the report so the multilingual
+    publisher can record per-locale gate numbers in the model card.
     """
     try:
         import numpy as np
@@ -166,6 +183,7 @@ def run_onnx_eval(
     )
     predictions: list[int] = []
     golds: list[int] = []
+    langs: list[str] = []
     total_ms = 0.0
     for r in records:
         started = time.perf_counter()
@@ -187,10 +205,28 @@ def run_onnx_eval(
         probability = float(probs[im_end_id])
         predictions.append(1 if probability >= decision_threshold else 0)
         golds.append(r.label)
+        langs.append(r.lang)
         total_ms += (time.perf_counter() - started) * 1000.0
     f1 = compute_f1(predictions, golds)
     mean_latency_ms = total_ms / max(1, len(records))
-    return gate_report(f1=f1, mean_latency_ms=mean_latency_ms)
+    report = gate_report(f1=f1, mean_latency_ms=mean_latency_ms)
+    # If we have language-tagged rows, roll up per-lang F1.
+    by_lang_counts: dict[str, int] = {}
+    by_lang_buckets: dict[str, tuple[list[int], list[int]]] = {}
+    for p, g, lang in zip(predictions, golds, langs, strict=True):
+        if lang == "und":
+            continue
+        by_lang_counts[lang] = by_lang_counts.get(lang, 0) + 1
+        pl, gl = by_lang_buckets.setdefault(lang, ([], []))
+        pl.append(p)
+        gl.append(g)
+    if by_lang_buckets:
+        per_lang_f1: dict[str, float] = {}
+        for lang, (pl, gl) in by_lang_buckets.items():
+            per_lang_f1[lang] = round(compute_f1(pl, gl), 4)
+        report["f1ByLang"] = dict(sorted(per_lang_f1.items()))
+        report["countByLang"] = dict(sorted(by_lang_counts.items()))
+    return report
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
