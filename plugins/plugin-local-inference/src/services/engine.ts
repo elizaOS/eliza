@@ -49,7 +49,6 @@ import {
 } from "./dflash-server";
 import type { LocalUsageBlock } from "./llama-server-metrics";
 import { MemoryMonitor } from "./memory-monitor";
-import { mlxLocalServer } from "./mlx-server";
 import { listInstalledModels } from "./registry";
 import {
 	DEFAULT_SESSION_KEY,
@@ -646,12 +645,12 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 		if (dflashLlamaServer.hasLoadedModel()) {
 			return dflashLlamaServer.generate(args);
 		}
-		// Apple-Silicon convenience path: when the MLX adapter has a model
-		// loaded (opt-in via ELIZA_LOCAL_MLX, text-only, never the voice path,
-		// never `defaultEligible`), route text generation to `mlx_lm.server`.
-		if (mlxLocalServer.hasLoadedModel()) {
-			return mlxLocalServer.generate(args);
-		}
+		// MLX routing was previously gated on `mlxLocalServer.hasLoadedModel()`,
+		// which is permanently `false` now that the spawn+HTTP transport has
+		// been removed (local inference must stay in-process — see
+		// `services/mlx-server.ts` and `plugins/plugin-local-inference/MLX_IN_PROCESS_PLAN.md`).
+		// No production callsite ever invoked `mlxLocalServer.load()`, so this
+		// fallthrough is dead and the branch is intentionally absent.
 		const pool = this.sessionPool;
 		if (!pool) {
 			throw new Error(

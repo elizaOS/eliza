@@ -430,8 +430,18 @@ export function validateHash(hash: string): Hash {
 }
 
 export type { Address, Chain, Hash, Hex, Log } from "viem";
+export interface KyberSwapRouteSummary {
+  amountOut: string;
+  amountOutUsd?: string;
+  gas?: string;
+  gasUsd?: string;
+  gasPrice?: string;
+  // Full summary is forwarded verbatim to the KyberSwap build endpoint.
+  [key: string]: unknown;
+}
+
 export interface KyberSwapRouteData {
-  routeSummary: unknown;
+  routeSummary: KyberSwapRouteSummary;
   routerAddress: string;
   chainSlug: string;
   fromToken: string;
