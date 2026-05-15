@@ -514,6 +514,100 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("routes synthetic current-price Stage 1 candidates to a real shell lookup action", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: [],
+				candidateActionNames: ["GET_CRYPTO_PRICE"],
+				replyText: "On it.",
+			}),
+			{
+				thought: "Shell can fetch the current market quote.",
+				toolCalls: [
+					{
+						id: "shell-current-price",
+						name: "SHELL",
+						args: { command: "curl -s https://api.coingecko.com/api/v3/ping" },
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Shell returned current market data.",
+				messageToUser: "BTC current price fetched from shell.",
+			}),
+		]);
+		const shellHandler = vi.fn(async () => ({
+			success: true,
+			text: "BTC current price: 1 USD",
+			data: { actionName: "SHELL" },
+		}));
+		const browserHandler = vi.fn(async () => ({
+			success: true,
+			text: "Browser was not needed.",
+			data: { actionName: "BROWSER" },
+		}));
+		runtime.actions = [
+			{
+				name: "BROWSER",
+				similes: ["USE_BROWSER"],
+				description: "Control a browser tab.",
+				examples: [],
+				validate: async () => true,
+				handler: browserHandler,
+			},
+			{
+				name: "SHELL",
+				similes: ["RUN_COMMAND", "TERMINAL"],
+				description: "Run a shell command.",
+				parameters: [
+					{
+						name: "command",
+						description: "Shell command",
+						required: true,
+						schema: { type: "string" },
+					},
+				],
+				examples: [],
+				validate: async () => true,
+				handler: shellHandler,
+			},
+		] as never;
+		const message = makeMessage();
+		message.content = {
+			...message.content,
+			text: "what is btc at rn?",
+			mentionContext: { isMention: true },
+		};
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message,
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		expect(shellHandler).toHaveBeenCalledTimes(1);
+		expect(browserHandler).not.toHaveBeenCalled();
+		const calls = useModelCalls(runtime);
+		expect(calls[1]?.[0]).toBe(ModelType.ACTION_PLANNER);
+		const plannerCall = calls[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain(
+			'"candidateActions":["GET_CRYPTO_PRICE","SHELL"]',
+		);
+		expect(plannerUserContent).toContain('"tierAParents":["SHELL"]');
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"BTC current price fetched from shell.",
+			);
+		}
+	});
+
 	it("routes progress-only coding delegation replies through the planner", () => {
 		const routed = messageHandlerFromFieldResult(
 			{

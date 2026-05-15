@@ -42,6 +42,7 @@ function makeAction(name: string): Action {
 const TASKS_SPAWN_AGENT = makeAction("TASKS_SPAWN_AGENT");
 const SHELL = makeAction("SHELL");
 const SEARCH = makeAction("SEARCH");
+const BROWSER = makeAction("BROWSER");
 const REAL_ACTIONS: Action[] = [TASKS_SPAWN_AGENT, SHELL, SEARCH];
 
 describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
@@ -320,5 +321,33 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.contexts).toEqual(["general"]);
 		expect(handler.plan.candidateActions).toEqual(["SEARCH"]);
 		expect(handler.plan.reply).toBe("");
+	});
+
+	it("adds a real lookup action when Stage 1 emits only a synthetic current-price candidate", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: ["GET_CRYPTO_PRICE"],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [BROWSER, SHELL],
+				messageText: "what is btc at rn?",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual([
+			"GET_CRYPTO_PRICE",
+			"SHELL",
+		]);
+		expect(handler.plan.reply).toBe("On it.");
 	});
 });

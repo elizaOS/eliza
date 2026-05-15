@@ -2705,8 +2705,14 @@ export function messageHandlerFromFieldResult(
 	const replyTextRaw =
 		typeof result.replyText === "string" ? result.replyText : "";
 	const currentMessageText = runtimeContext?.messageText ?? "";
+	const initialValidCandidateCount = runtimeContext
+		? countValidMessageHandlerCandidates(
+				candidateActions,
+				runtimeContext.actions,
+			)
+		: candidateActions.length;
 	const inferredAckCandidateActions =
-		candidateActions.length === 0 &&
+		initialValidCandidateCount === 0 &&
 		hasAckOnlyActionableIntent(result, replyTextRaw, currentMessageText)
 			? inferAckIntentCandidateActions(
 					result,
@@ -2715,7 +2721,7 @@ export function messageHandlerFromFieldResult(
 				)
 			: [];
 	const inferredDirectCandidateActions =
-		candidateActions.length === 0 &&
+		initialValidCandidateCount === 0 &&
 		inferredAckCandidateActions.length === 0 &&
 		currentMessageText.trim().length > 0
 			? inferDirectCurrentRequestCandidateActions(
@@ -2735,13 +2741,10 @@ export function messageHandlerFromFieldResult(
 	// only context is "simple". When no `runtimeContext` is provided, behaviour
 	// is unchanged (back-compat).
 	const validCandidateCount = runtimeContext
-		? effectiveCandidateActions.filter((name) => {
-				const normalized = normalizeActionIdentifier(name);
-				if (canonicalPlannerControlActionName(normalized) !== null) return true;
-				return runtimeContext.actions.some(
-					(action) => normalizeActionIdentifier(action.name) === normalized,
-				);
-			}).length
+		? countValidMessageHandlerCandidates(
+				effectiveCandidateActions,
+				runtimeContext.actions,
+			)
 		: effectiveCandidateActions.length;
 	const facts = Array.isArray(result.facts)
 		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
@@ -2831,6 +2834,19 @@ export function messageHandlerFromFieldResult(
 		plan,
 		...(extract ? { extract } : {}),
 	};
+}
+
+function countValidMessageHandlerCandidates(
+	candidateActions: readonly string[],
+	actions: ReadonlyArray<Pick<Action, "name">>,
+): number {
+	return candidateActions.filter((name) => {
+		const normalized = normalizeActionIdentifier(name);
+		if (canonicalPlannerControlActionName(normalized) !== null) return true;
+		return actions.some(
+			(action) => normalizeActionIdentifier(action.name) === normalized,
+		);
+	}).length;
 }
 
 const PLANNING_ACK_REPLIES = new Set([
