@@ -41,7 +41,7 @@ export interface ElizaConfig {
       workspace?: string;
     };
   };
-  env?: Record<string, string>;
+  env?: Record<string, unknown>;
   skills?: {
     denyBundled?: string[];
     allowBundled?: string[];

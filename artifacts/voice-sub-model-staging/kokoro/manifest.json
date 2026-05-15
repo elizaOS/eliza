@@ -3,7 +3,7 @@
   "id": "kokoro",
   "version": "0.1.0",
   "hfRepo": "elizaos/eliza-1-voice-kokoro",
-  "hfRevision": "04d3d497fec65a8d31f1d48d4fd69e971ea83a9b",
+  "hfRevision": "967f7449f79414d2b49db3b2441ea683630c11ab",
   "publishedToHfAt": "2026-05-14T00:00:00Z",
   "displayName": "Eliza-1 Voice Kokoro \u2014 base model + sam preset",
   "purpose": "Kokoro-82M TTS base weights and sam voice preset for Eliza-1",
@@ -26,7 +26,14 @@
       "bf_isabella",
       "bm_george",
       "bm_lewis"
-    ]
+    ],
+    "afSameGatePass": false,
+    "afSameMetrics": {
+      "utmos": 2.359347184499105,
+      "wer": 1.0,
+      "speaker_similarity": 0.09929967019706964,
+      "rtf": 67.65664182996137
+    }
   },
   "files": [
     {
@@ -55,11 +62,12 @@
       "quant": "fp16",
       "format": "bin",
       "approxSizeBytes": 524288,
-      "sha256": null,
-      "sizeBytes": null,
-      "assetStatus": "missing",
-      "missingReason": "binary not present in local staging or public HF repo"
+      "sha256": "cf2810d3eb73cdcff22e285b0c51711773acb99b6d7606656f3c63ee414c628e",
+      "sizeBytes": 522240,
+      "assetStatus": "available",
+      "sourceRepo": "local-kokoro-same-sweep",
+      "sourcePath": "packages/training/out/kokoro-same-sweep/anchor-0.0/af_same-anchor-0.0.bin"
     }
   ],
-  "notes": "W3-11 post-mortem: kokoro sam fine-tune regressed (WER +53%, SpkSim -0.21, UTMOS -34). The sam fine-tune is blocked on quality gate. This repo holds the base kokoro weights plus the best-available voice presets. The primary sam TTS path for production is OmniVoice frozen-conditioning (elizaos/eliza-1-voice-omnivoice). See .swarm/impl/W3-11-kokoro-post-mortem.md."
+  "notes": "W3-11 post-mortem: kokoro sam fine-tune regressed (WER +53%, SpkSim -0.21, UTMOS -34). The sam fine-tune is blocked on quality gate. This repo holds the base kokoro weights plus the best-available voice presets. The primary sam TTS path for production is OmniVoice frozen-conditioning (elizaos/eliza-1-voice-omnivoice). See .swarm/impl/W3-11-kokoro-post-mortem.md. voices/af_same.bin is included for reproducibility but remains quality-gate failed and should not be the default production voice."
 }

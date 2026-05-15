@@ -42,7 +42,6 @@ import {
   parseAppIsolation,
   parseAppPermissions,
 } from "@elizaos/shared";
-import { isLegacyAppsWorkspaceDiscoveryEnabled } from "@elizaos/agent/config/feature-flags";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
@@ -85,6 +84,18 @@ interface LocalAppPackageJson {
       heroImage?: unknown;
     };
   };
+}
+
+function isLegacyAppsWorkspaceDiscoveryEnabled(): boolean {
+  const raw = process.env.ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY;
+  if (raw === undefined || raw === null || raw === "") return false;
+  const normalized = String(raw).trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
 }
 
 async function streamAppHero(
@@ -1104,7 +1115,7 @@ export async function handleAppsRoutes(
         // ~/.eliza/plugins/installed without depending on a plugin-manager
         // service. The runtime plugin resolver already searches that dir.
         const { installPlugin: installPluginDirect } = await import(
-          /* webpackIgnore: true */ "../services/plugin-installer.js"
+          /* webpackIgnore: true */ "@elizaos/plugin-registry"
         );
         result = await installPluginDirect(name, recordProgress, version);
       }

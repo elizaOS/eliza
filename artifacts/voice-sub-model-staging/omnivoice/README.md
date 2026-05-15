@@ -31,7 +31,7 @@ ABI v4 exports:
 
 ## Presets
 
-The sam preset (`presets/voice-preset-sam.bin`) is an ELZ2 v2 preset containing pre-encoded `[K=8, ref_T]` reference-audio tokens. This eliminates per-utterance encode cost at runtime (`ov_encode_reference` is only needed to create new presets, not to use them).
+The same-voice preset (`presets/voice-preset-same.bin`) is an ELZ2 v2 preset containing pre-encoded `[K=8, ref_T]` reference-audio tokens. This eliminates per-utterance encode cost at runtime (`ov_encode_reference` is only needed to create new presets, not to use them).
 
 ## Files
 
@@ -40,7 +40,7 @@ The sam preset (`presets/voice-preset-sam.bin`) is an ELZ2 v2 preset containing 
 | `omnivoice-base-q4_k_m.gguf` | Primary weights Q4_K_M (small tiers) | ~370 MB |
 | `omnivoice-tokenizer-q4_k_m.gguf` | Tokenizer Q4_K_M | ~49 MB |
 | `omnivoice-base-q8_0.gguf` | High-quality Q8_0 (large tiers) | ~591 MB |
-| `presets/voice-preset-sam.bin` | Sam ELZ2 v2 preset | ~8 KB |
+| `presets/voice-preset-same.bin` | Same-voice ELZ2 v2 preset | ~8 KB |
 | `manifest.json` | Machine-readable metadata | — |
 
 ## Tier Routing

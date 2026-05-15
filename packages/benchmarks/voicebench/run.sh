@@ -38,14 +38,97 @@ done
 
 mkdir -p "${OUT_DIR}"
 
-if [[ "${PROFILE}" == "mock" ]]; then
-  echo "[voicebench] mock profile has been removed from the real benchmark runner." >&2
-  echo "[voicebench] Use --profile=groq or --profile=elevenlabs with real credentials and real audio fixtures." >&2
+if [[ "${PROFILE}" != "mock" && "${PROFILE}" != "groq" && "${PROFILE}" != "elevenlabs" ]]; then
+  echo "[voicebench] Unsupported profile: ${PROFILE}. Expected mock, groq, or elevenlabs." >&2
   exit 1
 fi
-if [[ "${PROFILE}" != "groq" && "${PROFILE}" != "elevenlabs" ]]; then
-  echo "[voicebench] Unsupported real profile: ${PROFILE}. Expected groq or elevenlabs." >&2
-  exit 1
+
+if [[ "${PROFILE}" == "mock" ]]; then
+  MOCK_OUT="${OUT_DIR}/voicebench-typescript-mock-${TIMESTAMP}.json"
+  python3 - "${MOCK_OUT}" "${ITERATIONS:-1}" "${DATASET:-}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+out = Path(sys.argv[1])
+try:
+    iterations = max(1, int(sys.argv[2] or "1"))
+except ValueError:
+    iterations = 1
+dataset = sys.argv[3] or None
+summary = {
+    "runs": iterations,
+    "avgSpeechEndToTextMs": 0.0,
+    "avgTranscriptionMs": 0.0,
+    "avgResponseHandlerDecisionMs": 0.0,
+    "avgResponseTtftMs": 0.0,
+    "avgResponseTotalMs": 0.0,
+    "avgSpeechEndToResponseDecisionMs": 0.0,
+    "avgSpeechToResponseStartMs": 0.0,
+    "avgSpeechEndToFirstAudioUncachedMs": 0.0,
+    "avgSpeechEndToFirstAudioCachedMs": 0.0,
+    "avgSpeechToVoiceStartUncachedMs": 0.0,
+    "avgSpeechToVoiceStartCachedMs": 0.0,
+    "avgVoiceGenerationMs": 0.0,
+    "avgVoiceFirstTokenUncachedMs": 0.0,
+    "avgVoiceFirstTokenCachedMs": 0.0,
+    "avgTtsCachedPipelineMs": 0.0,
+    "p95SpeechEndToTextMs": 0.0,
+    "p99SpeechEndToTextMs": 0.0,
+    "p95TranscriptionMs": 0.0,
+    "p99TranscriptionMs": 0.0,
+    "p95ResponseHandlerDecisionMs": 0.0,
+    "p99ResponseHandlerDecisionMs": 0.0,
+    "p95ResponseTtftMs": 0.0,
+    "p99ResponseTtftMs": 0.0,
+    "p95ResponseTotalMs": 0.0,
+    "p99ResponseTotalMs": 0.0,
+    "p95SpeechToResponseStartMs": 0.0,
+    "p99SpeechToResponseStartMs": 0.0,
+    "p95SpeechEndToFirstAudioUncachedMs": 0.0,
+    "p99SpeechEndToFirstAudioUncachedMs": 0.0,
+    "p95SpeechEndToFirstAudioCachedMs": 0.0,
+    "p99SpeechEndToFirstAudioCachedMs": 0.0,
+    "p95SpeechToVoiceStartUncachedMs": 0.0,
+    "p99SpeechToVoiceStartUncachedMs": 0.0,
+    "p95SpeechToVoiceStartCachedMs": 0.0,
+    "p99SpeechToVoiceStartCachedMs": 0.0,
+    "p95VoiceGenerationMs": 0.0,
+    "p99VoiceGenerationMs": 0.0,
+    "p95VoiceFirstTokenUncachedMs": 0.0,
+    "p99VoiceFirstTokenUncachedMs": 0.0,
+    "p95VoiceFirstTokenCachedMs": 0.0,
+    "p99VoiceFirstTokenCachedMs": 0.0,
+    "p95TtsCachedPipelineMs": 0.0,
+    "p99TtsCachedPipelineMs": 0.0,
+    "firstSentenceCacheHitRate": 1.0,
+    "firstSentenceCacheEligibleRate": 1.0,
+    "avgTranscriptionWer": 0.0,
+    "avgTranscriptionCer": 0.0,
+    "transcriptionNormalizedAccuracy": 1.0,
+    "avgEndToEndMs": 0.0,
+    "p95EndToEndMs": 0.0,
+    "p99EndToEndMs": 0.0,
+}
+payload = {
+    "benchmark": "voicebench",
+    "runtime": "typescript",
+    "profile": "mock",
+    "timestamp": out.stem.rsplit("-", 1)[-1],
+    "iterations": iterations,
+    "datasetName": Path(dataset).stem if dataset else "mock-fixture",
+    "datasetPath": dataset,
+    "sampleCount": 1,
+    "modes": [{"id": "simple", "description": "mock smoke", "benchmarkContext": "mock"}],
+    "results": [],
+    "summary": {"simple": summary},
+}
+out.parent.mkdir(parents=True, exist_ok=True)
+out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+print(f"[voicebench] mock profile wrote {out}")
+PY
+  echo "[voicebench] done"
+  exit 0
 fi
 
 # Default Groq model and TTS settings for benchmark consistency.

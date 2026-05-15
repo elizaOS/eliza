@@ -4,11 +4,13 @@
   "generatedAt": "2026-05-14T00:00:00Z",
   "assetAudit": {
     "auditedAt": "2026-05-15T00:00:00Z",
-    "status": "partial-binaries-hydrated",
+    "status": "all-discovered-binaries-hydrated-with-quality-notes",
     "notes": [
       "Public upstream payloads were downloaded into artifacts/voice-sub-model-staging and verified by sha256.",
       "Binary-bearing voice repos were published to Hugging Face and hfRevision pins point at the publish commits.",
-      "Custom Eliza-only assets remain missing until their training/build pipelines produce binaries."
+      "Custom Eliza-only assets remain missing until their training/build pipelines produce binaries.",
+      "Remaining local custom payloads were staged where available: voice-emotion, Kokoro same, OmniVoice same preset, and wakeword.",
+      "Kokoro same and voice-emotion projection metrics remain quality-gate failed and are marked in sub-model manifests."
     ]
   },
   "models": [
@@ -88,57 +90,44 @@
     },
     {
       "id": "turn-detector",
-      "displayName": "LiveKit turn-detector + turnsense fallback",
+      "displayName": "LiveKit turn-detector v0.2.0 (DailyDialog fine-tune)",
       "purpose": "end-of-turn detection for the voice pipeline",
       "runtime": "onnxruntime-node",
-      "currentVersion": "0.1.0",
+      "currentVersion": "0.2.0",
       "license": "Apache-2.0",
-      "attribution": "Based on livekit/turn-detector v1.2.2-en and v0.4.1-intl",
+      "attribution": "Based on livekit/turn-detector v1.2.2-en; fine-tuned on DailyDialog (APOLLO-Mini, prefix-augmented EOU corpus)",
       "introducedIn": "R1/I1",
       "variants": [
         {
-          "variantId": "turn-detector-en-int8",
-          "filename": "turn-detector-en-int8.onnx",
+          "variantId": "turn-detector-en-q8-onnx",
+          "filename": "onnx/model_q8.onnx",
           "format": "onnx",
           "precision": "int8",
-          "approxSizeBytes": 65700000,
-          "sizeBytes": 65712276,
-          "sha256": "fdd695a99bda01155fb0b5ce71d34cb9fd3902c62496db7a6c2c7bdeac310ac7",
+          "approxSizeBytes": 37736316,
+          "sizeBytes": 37736316,
+          "sha256": "52a132ed9c53fe41381cd97a800a9d36b7494d5ea608183de03adfc0723662f8",
           "assetStatus": "available",
-          "stagedPath": "artifacts/voice-sub-model-staging/turn/turn-detector-en-int8.onnx",
-          "sourceRepo": "livekit/turn-detector",
+          "stagedPath": "models/voice/turn-detector-en/model_q8.onnx",
+          "sourceRepo": "elizaos/eliza-1-voice-turn",
           "sourcePath": "onnx/model_q8.onnx",
-          "sourceRevision": "v1.2.2-en"
+          "sourceRevision": "9eaff4947ebd87b1d811e27dec939e29362a9e42"
         },
         {
-          "variantId": "turn-detector-intl-int8",
-          "filename": "turn-detector-intl-int8.onnx",
-          "format": "onnx",
-          "precision": "int8",
-          "approxSizeBytes": 396000000,
-          "sizeBytes": 396316457,
-          "sha256": "bd2c30776882138a1d95a07faddc13756fe1a35bef6323505f1124fca349bc9c",
+          "variantId": "turn-detector-en-q8-gguf",
+          "filename": "onnx/turn-detector-en-q8.gguf",
+          "format": "gguf",
+          "precision": "q8_0",
+          "approxSizeBytes": 41275296,
+          "sizeBytes": 41275296,
+          "sha256": "04bc18aeec5f59a94ae338aa66a48e204fc02785a6217d9055145f95d2192980",
           "assetStatus": "available",
-          "stagedPath": "artifacts/voice-sub-model-staging/turn/turn-detector-intl-int8.onnx",
-          "sourceRepo": "livekit/turn-detector",
-          "sourcePath": "onnx/model_q8.onnx",
-          "sourceRevision": "v0.4.1-intl"
-        },
-        {
-          "variantId": "turnsense-fallback-int8",
-          "filename": "turnsense-fallback-int8.onnx",
-          "format": "onnx",
-          "precision": "int8",
-          "approxSizeBytes": 8000000,
-          "sizeBytes": 176072860,
-          "sha256": "a423adf55f5f33cf4ee9e3fe73ec133d0106affae3aa14693417b4a1c79e2df8",
-          "assetStatus": "available",
-          "stagedPath": "artifacts/voice-sub-model-staging/turn/turnsense-fallback-int8.onnx",
-          "sourceRepo": "latishab/turnsense",
-          "sourcePath": "model_quantized.onnx"
+          "stagedPath": "models/voice/turn-detector-en-q8.gguf",
+          "sourceRepo": "elizaos/eliza-1-voice-turn",
+          "sourcePath": "onnx/turn-detector-en-q8.gguf",
+          "sourceRevision": "9eaff4947ebd87b1d811e27dec939e29362a9e42"
         }
       ],
-      "hfRevision": "6fb5a2ef8942c857904d78ca10ab91a22dba1e06"
+      "hfRevision": "9eaff4947ebd87b1d811e27dec939e29362a9e42"
     },
     {
       "id": "voice-emotion",
@@ -156,10 +145,12 @@
           "format": "onnx",
           "precision": "int8",
           "approxSizeBytes": 122880,
-          "sizeBytes": null,
-          "sha256": null,
-          "assetStatus": "missing",
-          "missingReason": "binary not present in local staging or public HF repo"
+          "sizeBytes": 516877,
+          "sha256": "2fcde4aa2a6881b0e7407a3a706fab1889b69233139ee10b8669795b02b06efc",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/emotion/wav2small-msp-dim-int8.onnx",
+          "sourceRepo": "local-distill",
+          "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.onnx"
         },
         {
           "variantId": "wav2small-msp-dim-fp32",
@@ -167,13 +158,28 @@
           "format": "onnx",
           "precision": "fp32",
           "approxSizeBytes": 491520,
-          "sizeBytes": null,
-          "sha256": null,
-          "assetStatus": "missing",
-          "missingReason": "binary not present in local staging or public HF repo"
+          "sizeBytes": 1211917,
+          "sha256": "3f5a8bf8f035132798b170c57ab61b90d52bb0cb0dd1ef95fd40a97f466f65f7",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/emotion/wav2small-msp-dim-fp32.onnx",
+          "sourceRepo": "local-distill",
+          "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.fp32.onnx"
+        },
+        {
+          "variantId": "wav2small-msp-dim-fp32-onnx-data",
+          "filename": "wav2small-msp-dim-fp32.onnx.data",
+          "format": "onnx-data",
+          "precision": "onnx-fp32",
+          "approxSizeBytes": 967000,
+          "sizeBytes": 989472,
+          "sha256": "5a3a84e879c786317570b551ee6240294c8deded27856a52d872c03b12c63d01",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/emotion/wav2small-msp-dim-fp32.onnx.data",
+          "sourceRepo": "local-distill",
+          "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.fp32.onnx.data"
         }
       ],
-      "hfRevision": "edfeb4e5704c8ca13eccf01cc78324d9422824d0"
+      "hfRevision": "da50fd9719dd78857829b144d6f72ce3c4e3464a"
     },
     {
       "id": "kokoro",
@@ -217,13 +223,15 @@
           "format": "bin",
           "precision": "fp16",
           "approxSizeBytes": 524288,
-          "sizeBytes": null,
-          "sha256": null,
-          "assetStatus": "missing",
-          "missingReason": "binary not present in local staging or public HF repo"
+          "sizeBytes": 522240,
+          "sha256": "cf2810d3eb73cdcff22e285b0c51711773acb99b6d7606656f3c63ee414c628e",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/kokoro/voices/af_same.bin",
+          "sourceRepo": "local-kokoro-same-sweep",
+          "sourcePath": "packages/training/out/kokoro-same-sweep/anchor-0.0/af_same-anchor-0.0.bin"
         }
       ],
-      "hfRevision": "04d3d497fec65a8d31f1d48d4fd69e971ea83a9b"
+      "hfRevision": "967f7449f79414d2b49db3b2441ea683630c11ab"
     },
     {
       "id": "omnivoice",
@@ -280,13 +288,15 @@
           "format": "bin",
           "precision": "fp16",
           "approxSizeBytes": 8192,
-          "sizeBytes": null,
-          "sha256": null,
-          "assetStatus": "missing",
-          "missingReason": "binary not present in local staging or public HF repo"
+          "sizeBytes": 716,
+          "sha256": "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/omnivoice/presets/voice-preset-same.bin",
+          "sourceRepo": "local-release-staging",
+          "sourcePath": "release-staging/omnivoice-same-v01/voice-preset.elz2"
         }
       ],
-      "hfRevision": "aa1bdb6731d7c4227e4fcc0da8cb87ea69c2ad28"
+      "hfRevision": "b766eb23d5f6c84d580973c0f2013b6fcbd561c0"
     },
     {
       "id": "vad",
@@ -343,13 +353,41 @@
           "format": "onnx",
           "precision": "int8",
           "approxSizeBytes": 1048576,
-          "sizeBytes": null,
-          "sha256": null,
-          "assetStatus": "missing",
-          "missingReason": "binary not present in local staging or public HF repo"
+          "sizeBytes": 630032,
+          "sha256": "e565952901cd4203baacef7cb8700891c9bee4e6f42fc9bc0aa03b9c39a2da92",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/wakeword/hey-eliza-int8.onnx",
+          "sourceRepo": "local-installed-bundle",
+          "sourcePath": "/home/shaw/.eliza/local-inference/models/eliza-1-1_7b.bundle/wake/hey-eliza.onnx"
+        },
+        {
+          "variantId": "melspectrogram-onnx",
+          "filename": "melspectrogram.onnx",
+          "format": "onnx",
+          "precision": "onnx-fp32",
+          "approxSizeBytes": 1050000,
+          "sizeBytes": 1087958,
+          "sha256": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/wakeword/melspectrogram.onnx",
+          "sourceRepo": "openWakeWord v0.5.1",
+          "sourcePath": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx"
+        },
+        {
+          "variantId": "embedding_model-onnx",
+          "filename": "embedding_model.onnx",
+          "format": "onnx",
+          "precision": "onnx-fp32",
+          "approxSizeBytes": 1300000,
+          "sizeBytes": 1326578,
+          "sha256": "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/wakeword/embedding_model.onnx",
+          "sourceRepo": "openWakeWord v0.5.1",
+          "sourcePath": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx"
         }
       ],
-      "hfRevision": "d6fe9bfb2b9dac99e7f7c79cfdc60025bfaab721"
+      "hfRevision": "85bef810f8bb0ca57e8625ec36abe1c617fd3e39"
     },
     {
       "id": "embedding",

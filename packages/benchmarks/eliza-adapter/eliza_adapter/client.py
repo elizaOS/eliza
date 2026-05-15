@@ -690,10 +690,12 @@ def _build_delegate_client():
         from hermes_adapter.client import HermesClient  # noqa: WPS433
 
         timeout_s = float(os.environ.get("HERMES_TIMEOUT_S", "1200"))
+        mode = (os.environ.get("HERMES_MODE") or "in_process").strip() or "in_process"
         return HermesClient(
             provider=provider,
             model=model,
             base_url=base_url,
+            mode=mode,
             timeout_s=timeout_s,
             temperature=temperature,
             reasoning_effort=reasoning_effort.strip() if isinstance(reasoning_effort, str) else None,
@@ -717,6 +719,7 @@ def _build_delegate_client():
             temperature=temperature,
             reasoning_effort=reasoning_effort.strip() if isinstance(reasoning_effort, str) else None,
             max_tokens=max_tokens,
+            direct_openai_compatible=True,
         )
     return None
 

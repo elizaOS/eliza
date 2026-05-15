@@ -21,6 +21,7 @@ import {
   type PluginParamInfo,
   type PluginWidgetDeclarationServer,
   type RegistryPluginManagerInfo as RegistryPluginInfo,
+  resolvePlugins,
   resolveAdvancedCapabilitiesEnabled,
   resolveDefaultAgentWorkspaceDir,
   type ResolvedPlugin,
@@ -661,7 +662,6 @@ export async function handlePluginRoutes(
   const resolvePluginsSnapshot = async (
     config: ElizaConfig,
   ): Promise<ResolvedPlugin[]> => {
-    const { resolvePlugins } = await import("../runtime/plugin-resolver.ts");
     return resolvePlugins(config, { quiet: true });
   };
 

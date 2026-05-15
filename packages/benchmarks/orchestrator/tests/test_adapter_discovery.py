@@ -151,6 +151,22 @@ def test_default_env_respects_disabled_benchmark_stub_embedding(
     assert env["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] == "0"
 
 
+def test_default_env_maps_profile_reasoning_effort_to_provider_env() -> None:
+    env = _default_env(
+        _workspace_root(),
+        RunRequest(
+            benchmarks=("bfcl",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={"reasoning_effort": " low "},
+        ),
+    )
+
+    assert env["OPENAI_REASONING_EFFORT"] == "low"
+    assert env["CEREBRAS_REASONING_EFFORT"] == "low"
+
+
 def test_cross_matrix_validation_constructs_all_compatible_cells() -> None:
     report = build_cross_matrix_report(
         _workspace_root().parent,
@@ -183,6 +199,58 @@ def test_cross_matrix_validation_constructs_all_compatible_cells() -> None:
 
     incompatible = [cell for cell in report.cells if not cell.compatible]
     assert all(cell.reason for cell in incompatible)
+
+
+def test_direct_and_native_rows_keep_truthful_matrix_compatibility() -> None:
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    cells = {(cell.benchmark_id, cell.harness): cell for cell in report.cells}
+
+    for benchmark_id in ("openclaw_bench", "interrupt_bench"):
+        for harness in ("eliza", "hermes", "openclaw"):
+            cell = cells[(benchmark_id, harness)]
+            assert cell.compatible is False
+            assert cell.command is None
+            assert cell.reason == (
+                f"harness '{harness}' not in adapter compatibility (none)"
+            )
+
+    for benchmark_id in (
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_yc_bench",
+        "hermes_swe_env",
+    ):
+        hermes_cell = cells[(benchmark_id, "hermes")]
+        assert hermes_cell.compatible is True
+        assert hermes_cell.command
+        assert "hermes-adapter/run_env_cli.py" in hermes_cell.command_display
+
+        for harness in ("eliza", "openclaw"):
+            cell = cells[(benchmark_id, harness)]
+            assert cell.compatible is False
+            assert cell.command is None
+            assert cell.reason == (
+                f"harness '{harness}' not in adapter compatibility (hermes)"
+            )
+
+    compactbench_hermes = cells[("compactbench", "hermes")]
+    assert compactbench_hermes.compatible is True
+    assert compactbench_hermes.command is not None
+    assert (
+        "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
+        in compactbench_hermes.command
+    )
+
+    compactbench_openclaw = cells[("compactbench", "openclaw")]
+    assert compactbench_openclaw.compatible is False
+    assert compactbench_openclaw.command is None
+    assert compactbench_openclaw.reason == (
+        "harness 'openclaw' not in adapter compatibility (eliza, hermes)"
+    )
 
 
 def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
@@ -230,6 +298,51 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
     assert voiceagentbench.extract_score(
         {"pass_at_1": 1.0, "tasks": [{"task_id": "t1"}]}
     ).score == 1.0
+
+
+def test_live_gated_domain_benchmarks_have_no_key_smoke_routes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    registry = {entry.id: entry for entry in get_benchmark_registry(_workspace_root())}
+    mock_model = ModelSpec(provider="mock", model="mock")
+
+    vending_command = registry["vending_bench"].build_command(
+        tmp_path / "vending",
+        mock_model,
+        {"mock": True, "max_tasks": 1},
+    )
+    assert vending_command[vending_command.index("--provider") + 1] == "heuristic"
+    assert vending_command[vending_command.index("--runs") + 1] == "1"
+
+    hyperliquid_command = registry["hyperliquid_bench"].build_command(
+        tmp_path / "hyperliquid",
+        mock_model,
+        {"max_steps": 1},
+    )
+    assert hyperliquid_command[hyperliquid_command.index("--mode") + 1] == "deterministic"
+
+    lifecycle_command = registry["orchestrator_lifecycle"].build_command(
+        tmp_path / "lifecycle",
+        mock_model,
+        {"max_scenarios": 1},
+    )
+    assert lifecycle_command[lifecycle_command.index("--mode") + 1] == "simulate"
+
+    openclaw_command = registry["openclaw_bench"].build_command(
+        tmp_path / "openclaw",
+        mock_model,
+        {"task": "setup"},
+    )
+    assert openclaw_command[openclaw_command.index("--mode") + 1] == "conceptual"
+
+    voicebench_command = registry["voicebench"].build_command(
+        tmp_path / "voicebench",
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"iterations": 1},
+    )
+    assert "--profile=mock" in voicebench_command
 
 
 def test_eliza_1_score_rejects_all_adapter_errors(tmp_path: Path) -> None:
@@ -326,12 +439,21 @@ def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
 def test_eliza_only_registry_bridges_are_not_published_as_cross_harness_rows() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
 
-    for benchmark_id in ("compactbench", "framework", "eliza_1"):
+    for benchmark_id in ("configbench", "framework", "eliza_1"):
         adapter = adapters[benchmark_id]
         assert adapter.agent_compatibility == ("eliza",)
         assert _is_harness_compatible(adapter, "eliza") is True
         assert _is_harness_compatible(adapter, "hermes") is False
         assert _is_harness_compatible(adapter, "openclaw") is False
+
+
+def test_compactbench_publishes_only_real_compactor_harnesses() -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["compactbench"]
+
+    assert adapter.agent_compatibility == ("eliza", "hermes")
+    assert _is_harness_compatible(adapter, "eliza") is True
+    assert _is_harness_compatible(adapter, "hermes") is True
+    assert _is_harness_compatible(adapter, "openclaw") is False
 
 
 def test_agentbench_routes_cross_harness_adapter_clients(
@@ -952,7 +1074,42 @@ def test_compactbench_adapter_uses_repaired_scorer_by_default(tmp_path: Path) ->
     assert command[command.index("--valid-hit-output") + 1] == str(
         tmp_path / "out" / "compactbench-results.valid-hits.jsonl"
     )
-    assert adapter.agent_compatibility == ("eliza",)
+    assert command[command.index("--method") + 1] == (
+        "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
+    )
+    assert adapter.agent_compatibility == ("eliza", "hermes")
+
+
+def test_compactbench_hermes_adapter_uses_native_tool_compactor(
+    tmp_path: Path,
+) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    adapter = adapters["compactbench"]
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=RunRequest(
+            benchmarks=("compactbench",),
+            agent="hermes",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={"case_count": 1, "drift_cycles": 1},
+        ),
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+    env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
+
+    assert command[command.index("--method") + 1] == (
+        "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
+    )
+    assert "--analyze-valid-hits" in command
+    assert env["HERMES_BENCH_PROVIDER"] == "cerebras"
 
 
 def test_compactbench_score_prefers_repaired_valid_hit_analysis(tmp_path: Path) -> None:
@@ -1114,7 +1271,7 @@ def test_compactbench_score_requires_repaired_valid_hit_analysis(tmp_path: Path)
         raise AssertionError("expected missing repaired analysis to fail scoring")
 
 
-def test_compare_label_remains_incompatible_with_eliza_only_compactbench() -> None:
+def test_compare_label_runs_multi_harness_compactbench() -> None:
     adapter = discover_adapters(_workspace_root()).adapters["compactbench"]
     request = RunRequest(
         benchmarks=("compactbench",),
@@ -1127,9 +1284,9 @@ def test_compare_label_remains_incompatible_with_eliza_only_compactbench() -> No
 
     effective = _effective_request(adapter, request)
 
-    assert adapter.agent_compatibility == ("eliza",)
+    assert adapter.agent_compatibility == ("eliza", "hermes")
     assert effective.agent == "compare"
-    assert _is_harness_compatible(adapter, "compare") is False
+    assert _is_harness_compatible(adapter, "compare") is True
 
 
 def test_compare_label_still_runs_multi_harness_adapters() -> None:
@@ -1547,6 +1704,29 @@ def test_visualwebbench_registry_forwards_mock_mode(tmp_path: Path) -> None:
     assert "--use-sample-tasks" in command
     assert "--fixture" not in command
     assert command[command.index("--model") + 1] == "gpt-oss-120b"
+
+
+def test_vision_language_registry_runs_smoke_stub_to_explicit_output(
+    tmp_path: Path,
+) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "vision_language"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"sub_benchmark": "screenspot", "samples": 3},
+    )
+
+    assert command[:3] == ["bun", "run", "src/runner.ts"]
+    assert "--smoke" in command
+    assert "--stub" in command
+    assert command[command.index("--benchmark") + 1] == "screenspot"
+    assert command[command.index("--samples") + 1] == "3"
+    assert command[command.index("--output") + 1] == str(
+        tmp_path / "vision-language-results.json"
+    )
 
 
 def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:

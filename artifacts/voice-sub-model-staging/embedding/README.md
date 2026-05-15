@@ -10,7 +10,7 @@
 | Vocab | BPE (Qwen3 tokenizer) |
 | Embedding dim | 1024 |
 | Max sequence length | 8192 tokens |
-| Quantization | Q4_K_M |
+| Quantization | Q8_0 (Q4_K_M planned) |
 | Runtime | llama.cpp GGUF (elizaOS fork) |
 | License | Apache-2.0 |
 | MTEB average | 64.1% |
@@ -37,8 +37,20 @@ Text-side embedding for the Eliza-1 voice pipeline, specifically:
 
 | File | Role | Size |
 |------|------|------|
-| `eliza-1-embedding-q4_k_m.gguf` | Primary (Q4_K_M) | ~500 MB |
+| `eliza-1-embedding-q8_0.gguf` | Primary (Q8_0) | ~610 MB |
 | `manifest.json` | Machine-readable metadata | — |
+
+A `Q4_K_M` variant (~330 MB) is planned for follow-up; the runtime currently consumes the Q8_0 file via the embedding sidecar on the 4b+ tiers.
+
+## Usage
+
+```python
+from llama_cpp import Llama
+
+llm = Llama(model_path="eliza-1-embedding-q8_0.gguf", embedding=True, n_ctx=512)
+vec = llm.embed("hello world")
+# len(vec[0]) == 1024
+```
 
 ## Coordination Note
 

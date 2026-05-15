@@ -380,3 +380,17 @@ describe("Bridge type contract", () => {
     }
   });
 });
+
+// ── Runtime feature-detect ───────────────────────────────────────────────────
+
+describe("iOS bridge featureCheck", () => {
+  it("reports unsupported when Capacitor is absent (Node test host)", async () => {
+    const { featureCheck, getIosBridge } = await import(
+      "../mobile/ios-bridge.js"
+    );
+    const result = featureCheck();
+    expect(result.supported).toBe(false);
+    expect(result.reason).toMatch(/Capacitor/i);
+    expect(getIosBridge()).toBeNull();
+  });
+});

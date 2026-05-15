@@ -109,8 +109,11 @@ import {
   loadElizaConfig,
   saveElizaConfig,
 } from "../config/config.ts";
+import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.ts";
 import { CharacterSchema } from "../config/zod-schema.ts";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+import { persistConfigEnv } from "./config-env.ts";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
@@ -240,14 +243,30 @@ import {
 } from "./server-route-dispatch.ts";
 import { handleSubscriptionRoutes } from "./subscription-routes.ts";
 import { handleUpdateRoutes } from "./update-routes.ts";
-import { getWalletAddresses, initStewardWalletCache } from "./wallet.ts";
+import {
+  deriveSolanaAddress,
+  fetchEvmBalances,
+  fetchSolanaBalances,
+  fetchSolanaNativeBalanceViaRpc,
+  generateWalletForChain,
+  getWalletAddresses,
+  importWallet,
+  initStewardWalletCache,
+  setSolanaWalletEnv,
+  validatePrivateKey,
+} from "./wallet.ts";
 import {
   EVM_PLUGIN_PACKAGE,
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
 import { handleWalletRoutes } from "@elizaos/plugin-wallet";
-import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
+import {
+  applyWalletRpcConfigUpdate,
+  getStoredWalletRpcSelections,
+  resolveWalletNetworkMode,
+  resolveWalletRpcReadiness,
+} from "./wallet-rpc.ts";
 import { handleWorkbenchRoutes } from "./workbench-routes.ts";
 
 export {
@@ -2160,6 +2179,41 @@ async function handleRequest(
         readJsonBody,
         json,
         error,
+        deps: {
+          fetchEvmBalances,
+          fetchSolanaBalances,
+          fetchSolanaNativeBalanceViaRpc,
+          validatePrivateKey,
+          importWallet,
+          generateWalletForChain,
+          deriveSolanaAddress,
+          setSolanaWalletEnv,
+          resolveWalletRpcReadiness: coerce<
+            Parameters<typeof handleWalletRoutes>[0]["deps"]["resolveWalletRpcReadiness"]
+          >(resolveWalletRpcReadiness),
+          resolveWalletNetworkMode: coerce<
+            Parameters<typeof handleWalletRoutes>[0]["deps"]["resolveWalletNetworkMode"]
+          >(resolveWalletNetworkMode),
+          getStoredWalletRpcSelections: coerce<
+            Parameters<typeof handleWalletRoutes>[0]["deps"]["getStoredWalletRpcSelections"]
+          >(getStoredWalletRpcSelections),
+          applyWalletRpcConfigUpdate: coerce<
+            Parameters<typeof handleWalletRoutes>[0]["deps"]["applyWalletRpcConfigUpdate"]
+          >(applyWalletRpcConfigUpdate),
+          resolveWalletCapabilityStatus: coerce<
+            Parameters<typeof handleWalletRoutes>[0]["deps"]["resolveWalletCapabilityStatus"]
+          >((args) =>
+            resolveWalletCapabilityStatus({
+              config: args.config,
+              runtime: args.runtime,
+            }),
+          ),
+          isCloudWalletEnabled,
+          persistConfigEnv,
+          createIntegrationTelemetrySpan: coerce<
+            Parameters<typeof handleWalletRoutes>[0]["deps"]["createIntegrationTelemetrySpan"]
+          >(createIntegrationTelemetrySpan),
+        },
         runtime: state.runtime ?? null,
       })
     ) {

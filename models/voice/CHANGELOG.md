@@ -16,7 +16,7 @@ Stable model ids:
 - `diarizer` — Pyannote-segmentation-3.0 ONNX (R2/I2).
 - `turn-detector` — LiveKit turn-detector + turnsense fallback (R1/I1).
 - `voice-emotion` — Wav2Small acoustic emotion classifier (R3/I3).
-- `kokoro` — Kokoro same fine-tuned TTS (R7/I7).
+- `kokoro` — Kokoro sam fine-tuned TTS (R7/I7).
 - `omnivoice` — OmniVoice frozen-conditioning TTS (R6/I6).
 - `vad` — Silero VAD endpoint detector.
 - `wakeword` — `hey-eliza` wake-word head.
@@ -37,13 +37,13 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 |------|--------|
 | elizaos/eliza-1-voice-asr | c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f |
 | elizaos/eliza-1-voice-turn | 6fb5a2ef8942c857904d78ca10ab91a22dba1e06 |
-| elizaos/eliza-1-voice-emotion | edfeb4e5704c8ca13eccf01cc78324d9422824d0 |
+| elizaos/eliza-1-voice-emotion | da50fd9719dd78857829b144d6f72ce3c4e3464a |
 | elizaos/eliza-1-voice-speaker | f6a2c964e0f36091e995e69b506bd36e1e645289 |
 | elizaos/eliza-1-voice-diarizer | d3c4974d391d45ac9261221a96f2eeb4750aa2cf |
 | elizaos/eliza-1-voice-vad | 9d8f7eefc72fda18b9d8ae6e8d4cc413a939a7a7 |
-| elizaos/eliza-1-voice-wakeword | d6fe9bfb2b9dac99e7f7c79cfdc60025bfaab721 |
-| elizaos/eliza-1-voice-kokoro | 04d3d497fec65a8d31f1d48d4fd69e971ea83a9b |
-| elizaos/eliza-1-voice-omnivoice | aa1bdb6731d7c4227e4fcc0da8cb87ea69c2ad28 |
+| elizaos/eliza-1-voice-wakeword | 85bef810f8bb0ca57e8625ec36abe1c617fd3e39 |
+| elizaos/eliza-1-voice-kokoro | 967f7449f79414d2b49db3b2441ea683630c11ab |
+| elizaos/eliza-1-voice-omnivoice | b766eb23d5f6c84d580973c0f2013b6fcbd561c0 |
 | elizaos/eliza-1-voice-embedding | acddce031d74deebe1027382feb143df7dd1500e |
 | elizaos/eliza-1 (27b-1m delete) | 824d6f2cc353feccf421dd71bf0c4ac0d12d7a87 |
 
@@ -172,7 +172,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - **Initial release.** Ships with the I3 emotion pipeline.
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-emotion` @ rev `edfeb4e5704c8ca13eccf01cc78324d9422824d0`.
+- **HF repo:** `elizaos/eliza-1-voice-emotion` @ rev `da50fd9719dd78857829b144d6f72ce3c4e3464a`.
 - **GGUF assets:** populated by the publish pipeline (~120 KB ONNX,
   Wav2Small int8).
 - **Eval deltas:** baseline (CCC: V 0.65 / A 0.71 / D 0.43 on MSP-Podcast).
@@ -217,7 +217,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 - **Initial release.** Ships with the I7 kokoro same voice-clone
   infrastructure (plumbing, no quality-passing weights).
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-kokoro` @ rev `04d3d497fec65a8d31f1d48d4fd69e971ea83a9b` (pending quality).
+- **HF repo:** `elizaos/eliza-1-voice-kokoro` @ rev `967f7449f79414d2b49db3b2441ea683630c11ab` (pending quality).
 - **GGUF assets:** populated by the publish pipeline (kokoro 82M F16, plus
   per-voice same style embedding — BLOCKED on quality gate).
 - **Eval deltas:** baseline (MOS expressive: 4.21 internal; RTF 0.42 M1 Air).
@@ -236,7 +236,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - OmniVoice ELZ2 v2 frozen-conditioning preset for the 'same' voice (Her-derivative)
 - **Parent:** 0.1.0.
-- **HF repo:** `elizaos/eliza-1-voice-omnivoice` @ rev `aa1bdb6731d7c4227e4fcc0da8cb87ea69c2ad28`.
+- **HF repo:** `elizaos/eliza-1-voice-omnivoice` @ rev `b766eb23d5f6c84d580973c0f2013b6fcbd561c0`.
 - **Eval deltas:** (none recorded)
 - **Net improvement:** yes.
 ### 0.1.2 — 2026-05-14 (F3 — HF repo staging)
@@ -275,7 +275,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - **Initial release.** Ships with the I6 OmniVoice freeze pipeline.
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-omnivoice` @ rev `aa1bdb6731d7c4227e4fcc0da8cb87ea69c2ad28`.
+- **HF repo:** `elizaos/eliza-1-voice-omnivoice` @ rev `b766eb23d5f6c84d580973c0f2013b6fcbd561c0`.
 - **GGUF assets:** populated by the publish pipeline (omnivoice-frozen
   Q5_K_M and Q4_K_M variants).
 - **Eval deltas:** baseline.
@@ -314,7 +314,7 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 - **Initial release.** `hey-eliza` head (the renamed `hey_jarvis` ONNX).
 - **Parent:** none.
-- **HF repo:** `elizaos/eliza-1-voice-wakeword` @ rev `d6fe9bfb2b9dac99e7f7c79cfdc60025bfaab721`.
+- **HF repo:** `elizaos/eliza-1-voice-wakeword` @ rev `85bef810f8bb0ca57e8625ec36abe1c617fd3e39`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline (FAR ≤ 0.5/h on quiet office).
 - **Net improvement:** n/a (initial).

@@ -6,27 +6,30 @@
 
 | Field | Value |
 |-------|-------|
-| Architecture | hey-eliza ONNX head (hey_jarvis architecture) |
+| Architecture | openWakeWord head (16 frames × 96-dim features → scalar) |
 | Quantization | ONNX INT8 |
 | Runtime | onnxruntime-node |
-| License | Apache-2.0 |
+| License | Apache-2.0 (Milady-trained head) |
 | Trigger phrase | "hey eliza" |
-| Input | 16 kHz mono, 100ms chunks |
-| False accept rate | ≤0.5/hour (quiet office) |
-| False reject rate | ~2% |
+| Input | 16 kHz mono, 100 ms chunks (16-frame sliding window of 96-d embeddings) |
+| Held-out true-accept rate | 99.63% |
+| Held-out false-accept rate | 8.15% (270/270 split, threshold=0.5) |
+| Target false-accept rate | ≤0.5/hour in quiet office |
+| Training data | 1800 positives + 1800 negatives, OmniVoice-GGUF synthesized, 5× augmented, 100 epochs |
 | CPU budget | <5% on modern ARM/x86 |
 
 ## Parent Model
 
-hey_jarvis open wake-word architecture, fine-tuned for the "hey eliza" trigger phrase.
+[openWakeWord v0.5.1](https://github.com/dscripka/openWakeWord) front-end (melspectrogram + 96-d embedding extractor, Apache-2.0); custom Milady-trained "hey eliza" head on top.
 
 ## Eval Baselines
 
 | Metric | Score | Condition |
 |--------|-------|-----------|
-| False accept rate | ≤0.5/hour | Quiet office |
-| False reject rate | ~2% | Normal speech |
-| Latency | ~50ms | From phrase end |
+| Held-out TAR | 99.63% | 270 positives, threshold=0.5 |
+| Held-out FAR | 8.15% | 270 negatives, threshold=0.5 |
+| Target false accept rate | ≤0.5/hour | Quiet office, integrated runtime |
+| Latency | ~50 ms | From phrase end |
 
 ## Intended Use
 

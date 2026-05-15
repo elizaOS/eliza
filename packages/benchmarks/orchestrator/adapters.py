@@ -90,10 +90,10 @@ IGNORED_BENCHMARK_DIRS = {
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
 AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
-    # CompactBench currently exercises elizaOS conversation-compactor
-    # implementations through a Python bridge. Hermes/OpenClaw rows would be
-    # misleading labels unless explicit per-agent compactor methods are added.
-    "compactbench": ("eliza",),
+    # CompactBench has concrete Eliza and Hermes compactor methods. OpenClaw's
+    # current CLI path intentionally fails closed because it has no
+    # transcript-in/artifact-out native compactor API.
+    "compactbench": ("eliza", "hermes"),
     # Vending-Bench currently has heuristic/direct providers and an Eliza TS
     # bridge path. Hermes/OpenClaw labels would still exercise the Eliza bridge
     # or a non-agent provider, so publish only the concrete Eliza harness row.
@@ -118,8 +118,10 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # LLM. It does not invoke Hermes/OpenClaw, so tri-harness labels are
     # misleading until real per-harness framework drivers exist.
     "framework": ("eliza",),
-    # VoiceBench currently instantiates the local TypeScript runtime directly;
-    # Hermes/OpenClaw labels run the same mock voice path with zero LLM calls.
+    # VoiceBench currently instantiates the local TypeScript runtime directly
+    # for real profiles, with an explicit mock artifact path for no-key smoke
+    # validation. Hermes/OpenClaw labels would still run the same voicebench
+    # runtime/profile rather than distinct agent harnesses.
     "voicebench": ("eliza",),
     # eliza-1 bench compares local eliza-1 decode modes / Cerebras reference
     # mode, not Hermes/OpenClaw agent harnesses.
@@ -140,8 +142,6 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
-    if benchmark_id == "voicebench" and not os.environ.get("GROQ_API_KEY"):
-        return ()
     return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
 
 
@@ -1432,12 +1432,17 @@ def _score_from_framework(path: Path) -> ScoreSummary:
 
 
 def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    method = str(
-        ctx.request.extra_config.get(
-            "method",
-            "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor",
-        )
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
+    default_method = (
+        "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
+        if harness == "hermes"
+        else "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
     )
+    method = str(ctx.request.extra_config.get("method", default_method))
     compactbench_root = Path(adapter.cwd)
     venv_python = compactbench_root / ".venv" / "bin" / "python"
     python_executable = str(venv_python) if venv_python.exists() else sys.executable
@@ -1477,6 +1482,14 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
             ]
         )
     return args
+
+
+def _env_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
+    provider = ctx.request.provider.strip().lower()
+    env: dict[str, str] = {}
+    if provider:
+        env["HERMES_BENCH_PROVIDER"] = provider
+    return env
 
 
 def _score_from_compactbench(path: Path) -> ScoreSummary:
@@ -1955,6 +1968,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_tasks": 1,
             "task_types": "web_caption",
         },
+        "vision_language": {
+            "sub_benchmark": "textvqa",
+            "samples": 5,
+            "tier": "stub",
+        },
         "abliteration-robustness": {
             "max_examples": 2,
             "max_new_tokens": 128,
@@ -2029,6 +2047,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
         "voicebench_quality": "voicebench-quality",
+        "vision_language": "vision-language",
         "mmlu": "standard",
         "humaneval": "standard",
         "gsm8k": "standard",
@@ -2213,6 +2232,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             description="CompactBench conversation-compaction benchmark",
             cwd=str((benchmarks_root / "compactbench").resolve()),
             command_builder=_command_compactbench,
+            env_builder=_env_compactbench,
             result_patterns=["compactbench-results.jsonl", "*.jsonl"],
             score_extractor=_score_from_compactbench,
             default_extra_config={

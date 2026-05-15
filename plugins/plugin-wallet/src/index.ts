@@ -1,12 +1,6 @@
 import "./core-augmentation.js";
 
 export * from "./actions/index.js";
-// === Phase 4D: extracted wallet routes from packages/agent ===
-// `handleWalletRoutes` is consumed by the agent HTTP server at
-// `packages/agent/src/api/server.ts`. The file itself is deliberately
-// `@elizaos/agent`-free; the agent injects all required helpers via the
-// `WalletRouteContext.deps` interface.
-export * from "./api/wallet-routes.js";
 export { BirdeyeService } from "./analytics/birdeye/service.js";
 export { DexScreenerService } from "./analytics/dexscreener/index.js";
 // Analytics surface (formerly @elizaos/plugin-{lpinfo,dexscreener,defi-news,birdeye}).
@@ -24,6 +18,12 @@ export {
   TOKEN_INFO_SERVICE_TYPE,
   TokenInfoService,
 } from "./analytics/token-info/index.js";
+// === Phase 4D: extracted wallet routes from packages/agent ===
+// `handleWalletRoutes` is consumed by the agent HTTP server at
+// `packages/agent/src/api/server.ts`. The file itself is deliberately
+// `@elizaos/agent`-free; the agent injects all required helpers via the
+// `WalletRouteContext.deps` interface.
+export * from "./api/wallet-routes.js";
 export * from "./audit/audit-log.js";
 export { walletRouterAction } from "./chains/wallet-action.js";
 export * from "./contracts.js";

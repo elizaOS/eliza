@@ -3638,11 +3638,18 @@ export async function runV5MessageRuntimeStage1(args: {
 		const stage1SpanSamplerPlan = buildSpanSamplerPlan(
 			responseGrammar.responseSkeleton,
 		);
+		const shouldStreamStage1Envelope = Boolean(
+			getStreamingContext()?.onStreamChunk,
+		);
 		const stage1ModelParams = {
 			messages: messageHandlerInput.messages,
 			promptSegments: messageHandlerInput.promptSegments,
-			tools: messageHandlerTools,
-			toolChoice: "required" as const,
+			...(shouldStreamStage1Envelope
+				? { responseFormat: { type: "json_object" as const } }
+				: {
+						tools: messageHandlerTools,
+						toolChoice: "required" as const,
+					}),
 			maxTokens: 1024,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
