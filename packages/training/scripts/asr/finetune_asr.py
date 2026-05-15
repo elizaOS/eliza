@@ -81,10 +81,8 @@ Outputs
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import logging
-import os
 import random
 import subprocess
 import sys
@@ -592,7 +590,6 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
         )
 
     stats = TrainStats()
-    top_k: list[dict[str, Any]] = []
     step = 0
     accum_loss = 0.0
     accum_steps = 0
@@ -619,7 +616,6 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
                 continue
 
             # Encode input features.
-            import numpy as np  # noqa: PLC0415
 
             input_features = torch.from_numpy(log_mel).unsqueeze(0).to(device)
             if cfg["bf16"] and device == "cuda":
@@ -797,7 +793,6 @@ def _evaluate_wer(
             log_mel = _extract_features(
                 rec["wav"], target_sr=cfg["sample_rate"], mel_bins=cfg["mel_bins"]
             )
-            import numpy as np  # noqa: PLC0415
 
             input_features = torch.from_numpy(log_mel).unsqueeze(0).to(device)
             if cfg.get("bf16") and device == "cuda":
@@ -826,7 +821,6 @@ def _estimate_rtf(model: Any, processor: Any, records: list[dict[str, Any]], cfg
     """Estimate RTF on up to 5 val clips."""
     import time
     import torch  # noqa: PLC0415
-    import numpy as np  # noqa: PLC0415
 
     total_audio_s = 0.0
     total_wall_s = 0.0

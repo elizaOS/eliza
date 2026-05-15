@@ -204,8 +204,8 @@ def run_augmentation(
 
     # Write train/val splits
     val_line_ids = {r["id"] for r in records if r["id"] in val_ids}
-    train_lines = [l for l in all_lines if not any(l.startswith(f"wavs_norm/{vid}.wav|") for vid in val_line_ids)]
-    val_lines = [l for l in all_lines if any(l.startswith(f"wavs_norm/{vid}.wav|") for vid in val_line_ids)]
+    train_lines = [line for line in all_lines if not any(line.startswith(f"wavs_norm/{vid}.wav|") for vid in val_line_ids)]
+    val_lines = [line for line in all_lines if any(line.startswith(f"wavs_norm/{vid}.wav|") for vid in val_line_ids)]
 
     (out_dir / "train_list.txt").write_text("\n".join(train_lines) + "\n", encoding="utf-8")
     (out_dir / "val_list.txt").write_text("\n".join(val_lines) + "\n", encoding="utf-8")
