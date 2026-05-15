@@ -66,7 +66,7 @@ Backbones (do not change without explicit human approval):
   | --------------------- | ----------------------- | -------- |
   | `0_8b` / `2b` / `4b`  | Kokoro only             | Kokoro   |
   | `9b`                  | Kokoro **and** OmniVoice| Kokoro   |
-  | `27b` / `27b-256k` / `27b-1m` | OmniVoice only  | OmniVoice|
+  | `27b` / `27b-256k` | OmniVoice only  | OmniVoice|
 
   - **Kokoro** = Kokoro-82M ONNX (`onnx-community/Kokoro-82M-v1.0-ONNX`,
     ~80 MB int8). ~97ms CPU TTFB. Fixed voice packs, no per-user
@@ -199,7 +199,6 @@ hosted under the `elizaos` HuggingFace org under `eliza-1-<tier>`.
 | `9b`         | desktop / midrange GPU          | 9B    | Kokoro + OmniVoice | mmproj | 64k   | yes    | TurboQuant Q4 + QJL + Polar     |
 | `27b`        | flagship GPU                    | 27B   | OmniVoice       | mmproj | 64k      | yes    | TurboQuant Q4 + QJL + Polar TCQ |
 | `27b-256k`  | long-context flagship            | 27B   | OmniVoice       | mmproj | 256k     | yes    | + turbo3_tcq                    |
-| `27b-1m`    | extreme long-context             | 27B   | OmniVoice       | mmproj | 1m       | yes    | + turbo3_tcq + spill            |
 
 Context-length variants (32k / 64k / 128k / 256k) are *not* separate
 tiers — they are dimensions inside a tier. A tier's manifest lists which
@@ -223,7 +222,7 @@ elizaos/eliza-1/
       kokoro/model_q4.onnx
       kokoro/tokenizer.json
       kokoro/voices/<voice>.bin
-      # OmniVoice shipped on 9b/27b/27b-256k/27b-1m. Default install
+      # OmniVoice shipped on 9b/27b/27b-256k. Default install
       # stages a single quant (VOICE_QUANT_BY_TIER); --include-voice-ladder
       # at stage time emits the full ladder (Q3_K_M, Q4_K_M, Q5_K_M, Q6_K,
       # Q8_0) so the downloader can pick the level matching the host's
@@ -238,7 +237,7 @@ elizaos/eliza-1/
     vad/
       silero-vad-v5.1.2.ggml.bin   # every tier
     vision/
-      mmproj-<tier>.gguf           # 4b/9b/27b/27b-256k/27b-1m
+      mmproj-<tier>.gguf           # 4b/9b/27b/27b-256k
     dflash/
       drafter-<tier>.gguf
       target-meta.json             # acceptance windows, kernel caps
@@ -267,14 +266,14 @@ elizaos/eliza-1/
 The **runtime default** voice quant per tier (the level the runtime
 selects when no device-class override applies) is the value returned by
 `voiceQuantForTier()` in `packages/shared/src/local-inference/catalog.ts`:
-`Q4_K_M` for `0_8b/2b/4b`, `Q8_0` for `9b/27b/27b-256k/27b-1m`.
+`Q4_K_M` for `0_8b/2b/4b`, `Q8_0` for `9b/27b/27b-256k`.
 
 The **publish ladder** per tier (every level that gets staged when
 `--include-voice-ladder` is passed) is the value returned by
 `voiceQuantLadderForTier()`:
 
 - Mobile tiers (`0_8b/2b/4b`) ship Kokoro only — empty OmniVoice ladder.
-- All OmniVoice-shipping tiers (`9b/27b/27b-256k/27b-1m`) publish
+- All OmniVoice-shipping tiers (`9b/27b/27b-256k`) publish
   `Q3_K_M, Q4_K_M, Q5_K_M, Q6_K, Q8_0`.
 
 The downloader picks the level matching the host's memory class at

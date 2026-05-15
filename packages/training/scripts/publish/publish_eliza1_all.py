@@ -38,6 +38,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("publish_eliza1_all")
@@ -54,7 +55,7 @@ MODEL_REPO_ID = M.ELIZA_1_HF_REPO
 
 # Active Eliza-1 device bundles. Retired Qwen3 size-specific repos are handled
 # by deprecation tooling, not by the current release publisher.
-BUNDLE_TIERS = tuple(tier for tier in M.ELIZA_1_TIERS if tier != "27b-1m")
+BUNDLE_TIERS: Final[tuple[str, ...]] = M.ELIZA_1_TIERS
 
 # Where the staged bundles live on a dev box (see docs/eliza-1-pipeline/06-test-matrix.md). The path can
 # be overridden with --bundles-root.
