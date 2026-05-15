@@ -245,4 +245,19 @@ describe("androidNativeAgentTransportForUrl", () => {
       androidNativeAgentTransportForUrl("http://127.0.0.1:31337/api/status"),
     ).resolves.toBeNull();
   });
+
+  it(
+    "does not treat the iOS IPC identity as an Android local-agent URL",
+    async () => {
+      const { androidNativeAgentTransportForUrl } = await import(
+        "./android-native-agent-transport"
+      );
+
+      await expect(
+        androidNativeAgentTransportForUrl("eliza-local-agent://ipc/api/status"),
+      ).resolves.toBeNull();
+      expect(agentRequestMock).not.toHaveBeenCalled();
+    },
+    TEST_TIMEOUT_MS,
+  );
 });

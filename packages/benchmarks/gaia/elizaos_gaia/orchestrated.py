@@ -39,8 +39,8 @@ DEFAULT_PROVIDER_CAPABILITIES: dict[str, set[str]] = {
     "codex": set(_RESEARCH_CAPABILITIES),
     "swe-agent": set(_RESEARCH_CAPABILITIES),
     "eliza": set(_RESEARCH_CAPABILITIES),
-    "hermes": set(_RESEARCH_CAPABILITIES),
-    "openclaw": set(_RESEARCH_CAPABILITIES),
+    "hermes": set(),
+    "openclaw": set(),
 }
 
 
@@ -51,7 +51,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset", choices=["sample", "gaia", "jsonl"], default="sample")
     parser.add_argument("--dataset-path", default=None)
     parser.add_argument("--max-questions", type=int, default=1)
-    parser.add_argument("--providers", nargs="+", default=["eliza", "hermes", "openclaw"])
+    parser.add_argument("--providers", nargs="+", default=["eliza"])
     parser.add_argument("--execution-mode", default="orchestrated")
     parser.add_argument("--matrix", action="store_true")
     parser.add_argument("--strict-capabilities", action="store_true")
@@ -99,15 +99,29 @@ def _current_harness() -> str | None:
 def _effective_provider_labels(providers: list[str]) -> list[str]:
     requested = [provider.strip() for provider in providers if provider.strip()]
     if not requested:
-        return [_current_harness() or "eliza"]
+        inherited_harness = _current_harness() or "eliza"
+        if inherited_harness in {"hermes", "openclaw"}:
+            raise ValueError(
+                f"GAIA orchestrated does not implement native {inherited_harness} harness routing"
+            )
+        return [inherited_harness]
 
     inherited_harness = _current_harness()
     if inherited_harness and tuple(requested) == _LEGACY_PROVIDER_DEFAULTS:
+        if inherited_harness in {"hermes", "openclaw"}:
+            raise ValueError(
+                f"GAIA orchestrated does not implement native {inherited_harness} harness routing"
+            )
         return [inherited_harness]
 
     effective: list[str] = []
     for provider in requested:
-        effective.append(_normalize_harness_label(provider) or provider)
+        normalized = _normalize_harness_label(provider)
+        if normalized in {"hermes", "openclaw"}:
+            raise ValueError(
+                f"GAIA orchestrated does not implement native {normalized} harness routing"
+            )
+        effective.append(normalized or provider)
     return effective
 
 
