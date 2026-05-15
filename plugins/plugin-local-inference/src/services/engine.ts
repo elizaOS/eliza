@@ -231,8 +231,8 @@ function toBackendLoadOverrides(
 
 interface LlamaContextSequence {
 	dispose(): Promise<void>;
-	clearHistory?(): Promise<void>;
-	controlledEvaluate?(
+	clearHistory(): Promise<void>;
+	controlledEvaluate(
 		input: Array<
 			| number
 			| [
