@@ -12,6 +12,7 @@ import type {
 import {
 	isVisionFallbackOutcome,
 	type LocalVisionOutcome,
+	type LocalVisionResult,
 	normalizeVisionDescription,
 	type VisionFallbackReason,
 	type WrappedImageDescriptionHandler,
@@ -83,7 +84,7 @@ async function callVastVision(
 	if (!response.ok) {
 		throw new Error(`VAST image fallback failed with ${response.status}`);
 	}
-	return normalizeVisionDescription((await response.json()) as LocalVisionOutcome);
+	return normalizeVisionDescription((await response.json()) as ImageDescriptionResult);
 }
 
 export function wrapImageDescriptionHandlerWithVastFallback(

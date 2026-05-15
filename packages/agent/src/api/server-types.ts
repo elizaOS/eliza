@@ -15,7 +15,7 @@ import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
 export type CloudManagerLike = unknown;
-export type AppManagerLike = unknown;
+export type AppManagerLike = AppManager;
 
 export interface StoppablePairingSession {
   stop: () => void | Promise<void>;

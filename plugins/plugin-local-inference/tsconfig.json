@@ -20,9 +20,13 @@
 			"@elizaos/plugin-local-inference": ["./src/index.ts"],
 			"@elizaos/plugin-local-inference/*": ["./src/*"],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/contracts": ["../../packages/contracts/src/index.ts"],
+			"@elizaos/contracts/*": ["../../packages/contracts/src/*"],
 			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
 			"@elizaos/agent/*": ["../../packages/agent/src/*"],
 			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
+			"@elizaos/cloud-shared": ["../../packages/cloud-shared/src/index.ts"],
+			"@elizaos/cloud-shared/*": ["../../packages/cloud-shared/src/*"],
 			"@elizaos/shared/local-inference": [
 				"../../packages/shared/src/local-inference/index.ts"
 			],
@@ -32,6 +36,8 @@
 			],
 			"@elizaos/plugin-app-manager": ["../plugin-app-manager/src/index.ts"],
 			"@elizaos/plugin-app-manager/*": ["../plugin-app-manager/src/*"],
+			"@elizaos/plugin-commands": ["../plugin-commands/src/index.ts"],
+			"@elizaos/plugin-commands/*": ["../plugin-commands/src/*"],
 			"@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
 			"@elizaos/app-core/*": ["../../packages/app-core/src/*"],
 			"@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
