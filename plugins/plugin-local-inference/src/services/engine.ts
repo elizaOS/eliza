@@ -228,6 +228,7 @@ function toBackendLoadOverrides(
 	if (args.mmap !== undefined) overrides.mmap = args.mmap;
 	if (args.mlock !== undefined) overrides.mlock = args.mlock;
 	if (args.useGpu !== undefined) overrides.useGpu = args.useGpu;
+	if (args.mmprojPath !== undefined) overrides.mmprojPath = args.mmprojPath;
 	return overrides;
 }
 

@@ -72,6 +72,7 @@ from benchmarks.eliza1_gates import (  # noqa: E402  - sys.path mutated above
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
     ELIZA_1_BACKENDS,
+    ELIZA_1_HF_REPO,
     ELIZA_1_PROVENANCE_SLOTS,
     ELIZA_1_VOICE_MANIFEST_VERSION,
     REQUIRED_KERNELS_BY_TIER,
@@ -707,7 +708,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
 
 
 def validate_destination_repo(ctx: PublishContext) -> None:
-    expected = f"{ELIZA_1_HF_ORG}/eliza-1"
+    expected = ELIZA_1_HF_REPO
     if ctx.repo_id != expected:
         raise OrchestratorError(
             f"Eliza-1 bundle publishes must target {expected}; got {ctx.repo_id!r}. "
@@ -2541,7 +2542,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         "--repo-id",
         default=None,
         help=(
-            "HF repo id. Must equal elizaos/eliza-1; accepted only "
+            f"HF repo id. Must equal {ELIZA_1_HF_REPO}; accepted only "
             "so wrappers can pass the resolved destination explicitly."
         ),
     )
@@ -2594,7 +2595,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     )
     args = ap.parse_args(argv)
 
-    repo_id = args.repo_id or f"{ELIZA_1_HF_ORG}/eliza-1"
+    repo_id = args.repo_id or ELIZA_1_HF_REPO
     template_path = (
         Path(__file__).resolve().parent / "templates" / "README.md.j2"
     )
