@@ -8,13 +8,12 @@ import {
   type WalletRpcCredentialKey,
   type WalletRpcSelections,
 } from "@elizaos/shared";
-import type { ElizaConfig } from "../config/config.ts";
-
-const {
-  normalizeCloudSecret: normalizeSecret,
+import {
+  normalizeCloudSecret as normalizeSecret,
   resolveCloudApiBaseUrl,
   resolveCloudApiKey,
-} = await import("@elizaos/plugin-elizacloud");
+} from "@elizaos/plugin-elizacloud";
+import type { ElizaConfig } from "../config/config.ts";
 
 // Cloud-auth helpers (`resolveCloudApiKey`, `resolveCloudApiBaseUrl`,
 // `DEFAULT_CLOUD_API_BASE_URL`, `CloudApiKeyRuntimeLike`) live in
