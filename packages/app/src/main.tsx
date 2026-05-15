@@ -85,15 +85,6 @@ import {
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui";
-import type {
-  IosLocalAgentNativeRequestOptions,
-  IosLocalAgentNativeRequestResult,
-} from "@elizaos/ui/api/ios-local-agent-transport";
-import {
-  installIosLocalAgentFetchBridge,
-  installIosLocalAgentNativeRequestBridge,
-  primeIosFullBunRuntime,
-} from "@elizaos/ui/api/ios-local-agent-transport";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import {
