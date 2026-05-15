@@ -64,3 +64,6 @@ void qjl_score_qk_neon(const float *q_sketch,
 }
 
 #endif /* __ARM_NEON */
+
+/* Avoid ISO C "empty translation unit" pedantic diagnostics when NEON is undefined. */
+typedef int qjl_score_neon_iso_c_tu_stub;
