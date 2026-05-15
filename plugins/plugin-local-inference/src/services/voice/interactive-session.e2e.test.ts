@@ -43,6 +43,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LocalInferenceEngine } from "../engine";
 import { voiceLatencyTracer } from "../latency-trace";
+import type { InstalledModel } from "../types";
 import { makeSpeechWithSilenceFixture } from "./__test-helpers__/synthetic-speech";
 import type { VoiceLifecycleLoaders } from "./lifecycle";
 import { PushMicSource } from "./mic-source";
@@ -206,14 +207,19 @@ afterEach(async () => {
 });
 
 // Is a real model + fused TTS + required kernels present? Conservative gate:
-// the catalog's required kernels are advertised by the installed llama-server
-// AND it is a fused build. Almost never true in CI — that's the point.
-const realBundleId = "eliza-1-2b";
+// the requested bundle is installed, the catalog's required kernels are
+// advertised by the installed llama-server, AND it is a fused build. Almost
+// never true in CI — that's the point.
+const realBundleId = process.env.ELIZA_VOICE_E2E_BUNDLE_ID ?? "eliza-1-2b";
+let realInstalledTarget: InstalledModel | null = null;
 let realBackendPresent = false;
 try {
 	const { findCatalogModel } = await import("@elizaos/shared");
 	const { getDflashRuntimeStatus } = await import("../dflash-server");
+	const { listInstalledModels } = await import("../registry");
 	const entry = findCatalogModel(realBundleId);
+	const installed = await listInstalledModels();
+	realInstalledTarget = installed.find((m) => m.id === realBundleId) ?? null;
 	const status = getDflashRuntimeStatus();
 	const required = entry?.runtime?.optimizations?.requiresKernel ?? [];
 	const advertised = status.capabilities?.kernels ?? null;
@@ -221,8 +227,11 @@ try {
 		required.length > 0 &&
 		advertised != null &&
 		required.every((k) => (advertised as Record<string, boolean>)[k] === true);
-	realBackendPresent = Boolean(kernelsOk && status.capabilities?.fused);
+	realBackendPresent = Boolean(
+		realInstalledTarget?.bundleRoot && kernelsOk && status.capabilities?.fused,
+	);
 } catch {
+	realInstalledTarget = null;
 	realBackendPresent = false;
 }
 
@@ -540,7 +549,7 @@ describe("interactive voice path — wiring (stub backends)", () => {
 // ── Real-output — gated ────────────────────────────────────────────────────
 
 describe.skipIf(!realBackendPresent)(
-	"interactive voice path — real eliza-1-2b + fused TTS",
+	`interactive voice path — real ${realBundleId} + fused TTS`,
 	() => {
 		it("runs one synthetic-speech turn end to end and produces real audio", async () => {
 			// Only reachable on a box with the bundle + fused build + required
@@ -549,12 +558,10 @@ describe.skipIf(!realBackendPresent)(
 			// loop via `engine.startVoiceSession`.
 			const { localInferenceEngine } = await import("../engine");
 			const eng = localInferenceEngine;
-			const { listInstalledModels } = await import("../registry");
-			const installed = await listInstalledModels();
-			const target = installed.find((m) => m.id === realBundleId);
+			const target = realInstalledTarget;
 			expect(target).toBeTruthy();
 			if (!target?.bundleRoot)
-				throw new Error("real eliza-1-2b bundle has no bundleRoot");
+				throw new Error(`real ${realBundleId} bundle has no bundleRoot`);
 			const targetBundleRoot = target.bundleRoot;
 			await eng.load(target.path);
 			eng.startVoice({ bundleRoot: targetBundleRoot, useFfiBackend: true });

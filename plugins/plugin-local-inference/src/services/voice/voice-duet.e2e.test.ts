@@ -19,16 +19,22 @@
  */
 
 import { describe, expect, it } from "vitest";
+import type { InstalledModel } from "../types";
 
 const ASR_RATE = 16_000;
-const realBundleId = "eliza-1-0_8b";
+const realBundleId =
+	process.env.ELIZA_VOICE_DUET_E2E_BUNDLE_ID ?? "eliza-1-0_8b";
+let realInstalledTarget: InstalledModel | null = null;
 
 /** Probe — lazy import so collection stays cheap when nothing is present. */
 async function probeRealBackend(): Promise<boolean> {
 	try {
 		const { findCatalogModel } = await import("@elizaos/shared");
 		const { getDflashRuntimeStatus } = await import("../dflash-server");
+		const { listInstalledModels } = await import("../registry");
 		const entry = findCatalogModel(realBundleId);
+		const installed = await listInstalledModels();
+		realInstalledTarget = installed.find((m) => m.id === realBundleId) ?? null;
 		const status = getDflashRuntimeStatus();
 		const required = entry?.runtime?.optimizations?.requiresKernel ?? [];
 		const advertised = status.capabilities?.kernels ?? null;
@@ -38,8 +44,13 @@ async function probeRealBackend(): Promise<boolean> {
 			required.every(
 				(k) => (advertised as Record<string, boolean>)[k] === true,
 			);
-		return Boolean(kernelsOk && status.capabilities?.fused);
+		return Boolean(
+			realInstalledTarget?.bundleRoot &&
+				kernelsOk &&
+				status.capabilities?.fused,
+		);
 	} catch {
+		realInstalledTarget = null;
 		return false;
 	}
 }
@@ -47,21 +58,19 @@ async function probeRealBackend(): Promise<boolean> {
 const realBackendPresent = await probeRealBackend();
 
 describe.skipIf(!realBackendPresent)(
-	"voice:duet — real eliza-1-0_8b + fused TTS",
+	`voice:duet — real ${realBundleId} + fused TTS`,
 	() => {
 		it("boots two engines on the same bundle, wires the duet bridge, and produces audio crossing the loop", async () => {
 			const { LocalInferenceEngine } = await import("../engine");
-			const { listInstalledModels } = await import("../registry");
 			const { DuetAudioBridge } = await import(
-				"../../../../scripts/lib/duet-bridge.mjs"
+				"../../../../../packages/app-core/scripts/lib/duet-bridge.mjs"
 			);
 			const { PushMicSource } = await import("./mic-source");
 
-			const installed = await listInstalledModels();
-			const target = installed.find((m) => m.id === realBundleId);
+			const target = realInstalledTarget;
 			expect(target).toBeTruthy();
 			if (!target?.bundleRoot) {
-				throw new Error("real eliza-1-0_8b bundle has no bundleRoot");
+				throw new Error(`real ${realBundleId} bundle has no bundleRoot`);
 			}
 			const bundleRoot = target.bundleRoot;
 			const pushA = new PushMicSource({ sampleRate: ASR_RATE });
