@@ -21,7 +21,6 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import { libraryFilenames, locateBundleLibrary } from "./engine-bridge-paths";
 import {
 	type ElizaInferenceContextHandle,
 	type ElizaInferenceFfi,
@@ -51,6 +50,41 @@ export interface RegenerateResult {
 	K: number;
 	refT: number;
 	embeddingDim: number;
+}
+
+/**
+ * Platform-specific filenames probed when locating the OmniVoice fused
+ * shared library inside a bundle. Mirrors the matching helper inside
+ * `engine-bridge.ts` (kept private there); regenerator and bridge resolve
+ * the same set of names so a bundle that loads at boot also loads at
+ * regeneration time.
+ */
+function libraryFilenames(): string[] {
+	if (process.platform === "darwin") return ["libelizainference.dylib"];
+	if (process.platform === "win32") {
+		return ["elizainference.dll", "libelizainference.dll"];
+	}
+	return ["libelizainference.so"];
+}
+
+function locateBundleLibrary(bundleRoot: string): string {
+	const exact = process.env.ELIZA_INFERENCE_LIBRARY?.trim();
+	if (exact && existsSync(exact)) return exact;
+	const dirs = [
+		path.join(bundleRoot, "lib"),
+		exact ? path.dirname(exact) : null,
+		process.env.ELIZA_INFERENCE_LIB_DIR?.trim() || null,
+	].filter((dir): dir is string => Boolean(dir));
+	for (const dir of dirs) {
+		for (const name of libraryFilenames()) {
+			const candidate = path.join(dir, name);
+			if (existsSync(candidate)) return candidate;
+		}
+	}
+	return path.join(
+		dirs[0] ?? path.join(bundleRoot, "lib"),
+		libraryFilenames()[0] ?? "libelizainference.so",
+	);
 }
 
 /**
