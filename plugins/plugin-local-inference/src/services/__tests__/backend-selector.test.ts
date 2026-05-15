@@ -7,7 +7,6 @@ describe("selectBackend", () => {
 		expect(
 			selectBackend({
 				platform: "mobile",
-				preferFfi: false,
 				ffiSupported: true,
 			}),
 		).toBe("ffi-streaming");
@@ -17,37 +16,24 @@ describe("selectBackend", () => {
 		expect(() =>
 			selectBackend({
 				platform: "mobile",
-				preferFfi: false,
 				ffiSupported: false,
 			}),
 		).toThrow(/streaming-LLM FFI symbols/);
 	});
 
-	it("desktop defaults to http-server", () => {
+	it("desktop defaults to ffi-streaming when FFI is supported", () => {
 		expect(
 			selectBackend({
 				platform: "desktop",
-				preferFfi: false,
-				ffiSupported: true,
-			}),
-		).toBe("http-server");
-	});
-
-	it("desktop opts in to ffi-streaming with preferFfi + ffiSupported", () => {
-		expect(
-			selectBackend({
-				platform: "desktop",
-				preferFfi: true,
 				ffiSupported: true,
 			}),
 		).toBe("ffi-streaming");
 	});
 
-	it("desktop preferFfi without ffiSupported stays on http-server", () => {
+	it("desktop falls back to http-server when FFI symbols are absent", () => {
 		expect(
 			selectBackend({
 				platform: "desktop",
-				preferFfi: true,
 				ffiSupported: false,
 			}),
 		).toBe("http-server");
@@ -57,7 +43,6 @@ describe("selectBackend", () => {
 		expect(
 			selectBackend({
 				platform: "desktop",
-				preferFfi: false,
 				ffiSupported: true,
 				envOverride: "ffi",
 			}),
@@ -68,19 +53,27 @@ describe("selectBackend", () => {
 		expect(() =>
 			selectBackend({
 				platform: "desktop",
-				preferFfi: false,
 				ffiSupported: false,
 				envOverride: "ffi",
 			}),
 		).toThrow(/does not export the streaming-LLM symbols/);
 	});
 
-	it("envOverride=http forces http-server on desktop", () => {
+	it("envOverride=http forces http-server on desktop even when FFI is supported", () => {
 		expect(
 			selectBackend({
 				platform: "desktop",
-				preferFfi: true,
 				ffiSupported: true,
+				envOverride: "http",
+			}),
+		).toBe("http-server");
+	});
+
+	it("envOverride=http on desktop with no FFI still picks http-server", () => {
+		expect(
+			selectBackend({
+				platform: "desktop",
+				ffiSupported: false,
 				envOverride: "http",
 			}),
 		).toBe("http-server");
@@ -90,11 +83,20 @@ describe("selectBackend", () => {
 		expect(() =>
 			selectBackend({
 				platform: "mobile",
-				preferFfi: false,
 				ffiSupported: true,
 				envOverride: "http",
 			}),
 		).toThrow(/not supported on mobile/);
+	});
+
+	it("envOverride=auto on desktop with FFI keeps the new default (ffi-streaming)", () => {
+		expect(
+			selectBackend({
+				platform: "desktop",
+				ffiSupported: true,
+				envOverride: "auto",
+			}),
+		).toBe("ffi-streaming");
 	});
 });
 
