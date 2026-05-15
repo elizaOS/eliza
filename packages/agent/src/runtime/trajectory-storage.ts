@@ -311,7 +311,7 @@ interface TrainingTriggerEntry {
 /**
  * Fire-and-forget notification to the optional TrainingTriggerService.
  *
- * Registered by `@elizaos/app-core` when `@elizaos/app-training` is installed
+ * Registered by `@elizaos/app-core` when `@elizaos/plugin-training` is installed
  * (see `runtime/eliza.ts` → `registerTrackCTrainingCrons`). Slim installs
  * never register the service and this resolves to a no-op.
  *

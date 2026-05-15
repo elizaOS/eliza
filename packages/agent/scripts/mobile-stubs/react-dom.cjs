@@ -1,6 +1,6 @@
 // react-dom.cjs — mobile bundle stub matching ./react.cjs.
 // The agent runtime never renders DOM on-device; transitive imports
-// (e.g. from `@elizaos/app-lifeops` UI re-exports) get this no-op shim.
+// (e.g. from `@elizaos/plugin-lifeops` UI re-exports) get this no-op shim.
 "use strict";
 
 const NOOP_FN = function noopReactDomStub() {

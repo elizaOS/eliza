@@ -654,7 +654,7 @@ type OptionalTrainingConfigApi = {
   saveTrainingConfig: (config: OptionalTrainingConfig) => void;
 };
 
-const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
+const TRAINING_CONFIG_MODULE = "@elizaos/plugin-training/core/training-config";
 
 function defaultTrainingConfig(): OptionalTrainingConfig {
   return {
@@ -996,7 +996,7 @@ type StewardWalletCoreRoutesHandler = (
   state: unknown,
 ) => Promise<boolean>;
 
-const STEWARD_WALLET_CORE_ROUTES_MODULE: string = "@elizaos/app-steward";
+const STEWARD_WALLET_CORE_ROUTES_MODULE: string = "@elizaos/plugin-steward-app";
 
 // ---------------------------------------------------------------------------
 import {
@@ -1282,7 +1282,7 @@ type TrainingServiceCtor = new (options: {
 }) => TrainingServiceWithRuntime;
 
 const TRAINING_SERVICE_REGISTRY_MODULE: string =
-  "@elizaos/app-training/services/training-service-registry";
+  "@elizaos/plugin-training/services/training-service-registry";
 
 async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null> {
   if (isMobilePlatform()) {
@@ -1292,7 +1292,7 @@ async function resolveTrainingServiceCtor(): Promise<TrainingServiceCtor | null>
 
   const candidates = [
     "../services/training-service",
-    "@elizaos/app-training/services/training-service",
+    "@elizaos/plugin-training/services/training-service",
     "@elizaos/plugin-training",
   ] as const;
 
@@ -1875,7 +1875,7 @@ async function handleRequest(
   }
 
   // Training routes (/api/training/*) and trajectory routes
-  // (/api/trajectories/*) are now provided by the @elizaos/app-training
+  // (/api/trajectories/*) are now provided by the @elizaos/plugin-training
   // plugin via the runtime route registry.
 
   // Knowledge routes (/api/knowledge/*) are now provided by the
@@ -1964,7 +1964,7 @@ async function handleRequest(
   }
 
   // Experience routes (/api/experiences/*, /api/character/experiences/*) are
-  // served by the @elizaos/app-training plugin via Plugin.routes.
+  // served by the @elizaos/plugin-training plugin via Plugin.routes.
 
   // Compatibility route used by legacy health probes and desktop name lookup.
   if (method === "GET" && pathname === "/api/agents") {
@@ -2192,7 +2192,7 @@ async function handleRequest(
 
   // ═══════════════════════════════════════════════════════════════════════
   // Wallet core routes (addresses, balances, generate, config, export)
-  // Canonical implementation lives in @elizaos/app-steward; wired here
+  // Canonical implementation lives in @elizaos/plugin-steward-app; wired here
   // so the API server exposes them without requiring plugin registration.
   // ═══════════════════════════════════════════════════════════════════════
   if (pathname.startsWith("/api/wallet/")) {
@@ -2206,7 +2206,7 @@ async function handleRequest(
       if (isWalletBridgeImportFailure(err)) {
         logger.debug(
           { err },
-          "[eliza-api] Wallet core routes unavailable from @elizaos/app-steward; falling back to local bridge",
+          "[eliza-api] Wallet core routes unavailable from @elizaos/plugin-steward-app; falling back to local bridge",
         );
       } else {
         logger.error({ err }, "[eliza-api] Wallet core route bridge failed");
@@ -2557,7 +2557,7 @@ async function handleRequest(
 
   // ═══════════════════════════════════════════════════════════════════════
   // BSC trade routes and wallet trade execute — now handled by
-  // @elizaos/app-steward plugin routes. See plugins/app-steward/src/plugin.ts.
+  // @elizaos/plugin-steward-app plugin routes. See plugins/plugin-steward-app/src/plugin.ts.
   // ═══════════════════════════════════════════════════════════════════════
 
   if (
@@ -2614,7 +2614,7 @@ async function handleRequest(
   }
 
   // Trajectory routes (/api/trajectories/*) are now provided by the
-  // @elizaos/app-training plugin via the runtime route registry.
+  // @elizaos/plugin-training plugin via the runtime route registry.
 
   // Coding Agent API routes (/api/coding-agents/*, /api/workspace/*,
   // /api/issues/*) are now provided by the @elizaos/plugin-agent-orchestrator
@@ -3550,7 +3550,7 @@ export async function startApiServer(opts?: {
     })();
 
     // ERC-8004 RegistryService + DropService construction has moved into
-    // elizaMakerPlugin.init() in @elizaos/app-elizamaker. The plugin reads
+    // elizaMakerPlugin.init() in @elizaos/plugin-elizamaker. The plugin reads
     // the live services via getElizaMakerRegistryService() /
     // getElizaMakerDropService() in this package.
 

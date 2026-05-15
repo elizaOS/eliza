@@ -11,67 +11,67 @@
   },
   "packages": [
     {
-      "name": "@elizaos/app-2004scape",
+      "name": "@elizaos/plugin-2004scape",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-2004scape"
+      "directory": "plugins/plugin-2004scape"
     },
     {
-      "name": "@elizaos/app-babylon",
+      "name": "@elizaos/plugin-babylon",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-babylon"
+      "directory": "plugins/plugin-babylon"
     },
     {
-      "name": "@elizaos/app-clawville",
+      "name": "@elizaos/plugin-clawville",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-clawville"
+      "directory": "plugins/plugin-clawville"
     },
     {
-      "name": "@elizaos/app-companion",
+      "name": "@elizaos/plugin-companion",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-companion"
+      "directory": "plugins/plugin-companion"
     },
     {
-      "name": "@elizaos/app-contacts",
+      "name": "@elizaos/plugin-contacts",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-contacts"
+      "directory": "plugins/plugin-contacts"
     },
     {
-      "name": "@elizaos/app-defense-of-the-agents",
+      "name": "@elizaos/plugin-defense-of-the-agents",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-defense-of-the-agents"
+      "directory": "plugins/plugin-defense-of-the-agents"
     },
     {
-      "name": "@elizaos/app-device-settings",
+      "name": "@elizaos/plugin-device-settings",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-device-settings"
+      "directory": "plugins/plugin-device-settings"
     },
     {
       "name": "@elizaos/app-documents",
@@ -83,76 +83,76 @@
       "directory": "plugins/app-documents"
     },
     {
-      "name": "@elizaos/app-elizamaker",
+      "name": "@elizaos/plugin-elizamaker",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-elizamaker"
+      "directory": "plugins/plugin-elizamaker"
     },
     {
-      "name": "@elizaos/app-hyperliquid",
+      "name": "@elizaos/plugin-hyperliquid-app",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-hyperliquid"
+      "directory": "plugins/plugin-hyperliquid-app"
     },
     {
-      "name": "@elizaos/app-hyperscape",
+      "name": "@elizaos/plugin-hyperscape",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-hyperscape"
+      "directory": "plugins/plugin-hyperscape"
     },
     {
-      "name": "@elizaos/app-lifeops",
+      "name": "@elizaos/plugin-lifeops",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-lifeops"
+      "directory": "plugins/plugin-lifeops"
     },
     {
-      "name": "@elizaos/app-messages",
+      "name": "@elizaos/plugin-messages",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-messages"
+      "directory": "plugins/plugin-messages"
     },
     {
-      "name": "@elizaos/app-phone",
+      "name": "@elizaos/plugin-phone",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-phone"
+      "directory": "plugins/plugin-phone"
     },
     {
-      "name": "@elizaos/app-polymarket",
+      "name": "@elizaos/plugin-polymarket-app",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-polymarket"
+      "directory": "plugins/plugin-polymarket-app"
     },
     {
-      "name": "@elizaos/app-scape",
+      "name": "@elizaos/plugin-scape",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-scape"
+      "directory": "plugins/plugin-scape"
     },
     {
       "name": "@elizaos/app-screenshare",
@@ -164,76 +164,76 @@
       "directory": "plugins/app-screenshare"
     },
     {
-      "name": "@elizaos/app-shopify",
+      "name": "@elizaos/plugin-shopify-ui",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-shopify"
+      "directory": "plugins/plugin-shopify-ui"
     },
     {
-      "name": "@elizaos/app-steward",
+      "name": "@elizaos/plugin-steward-app",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-steward"
+      "directory": "plugins/plugin-steward-app"
     },
     {
-      "name": "@elizaos/app-task-coordinator",
+      "name": "@elizaos/plugin-task-coordinator",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-task-coordinator"
+      "directory": "plugins/plugin-task-coordinator"
     },
     {
-      "name": "@elizaos/app-training",
+      "name": "@elizaos/plugin-training",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-training"
+      "directory": "plugins/plugin-training"
     },
     {
-      "name": "@elizaos/app-trajectory-logger",
+      "name": "@elizaos/plugin-trajectory-logger",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-trajectory-logger"
+      "directory": "plugins/plugin-trajectory-logger"
     },
     {
-      "name": "@elizaos/app-vincent",
+      "name": "@elizaos/plugin-vincent",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-vincent"
+      "directory": "plugins/plugin-vincent"
     },
     {
-      "name": "@elizaos/app-wallet",
+      "name": "@elizaos/plugin-wallet-ui",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-wallet"
+      "directory": "plugins/plugin-wallet-ui"
     },
     {
-      "name": "@elizaos/app-wifi",
+      "name": "@elizaos/plugin-wifi",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
       "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
-      "directory": "plugins/app-wifi"
+      "directory": "plugins/plugin-wifi"
     },
     {
       "name": "@elizaos/plugin-agent-orchestrator",

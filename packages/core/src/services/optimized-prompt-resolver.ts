@@ -41,7 +41,7 @@ export interface OptimizedPromptRuntimeLike {
  *
  * When the artifact carries `fewShotExamples`, they are inlined into the
  * system prompt under a `Demonstrations:` block. The structure mirrors
- * `plugins/app-training/src/optimizers/bootstrap-fewshot.ts#renderDemonstrations`
+ * `plugins/plugin-training/src/optimizers/bootstrap-fewshot.ts#renderDemonstrations`
  * so an artifact written by either backend renders identically at the call
  * site.
  */
@@ -72,7 +72,7 @@ export function resolveOptimizedPrompt(
  * the model in-context. Recorded inputs include the full provider block +
  * tool catalog (often ~30K chars); for ICL we only need the user's
  * current-turn request. Mirrors the same heuristic in
- * `plugins/app-training/src/optimizers/bootstrap-fewshot.ts:trimDemonstrationInput`.
+ * `plugins/plugin-training/src/optimizers/bootstrap-fewshot.ts:trimDemonstrationInput`.
  */
 function trimDemonstrationInput(rawInput: string): string {
 	const userMatch =
