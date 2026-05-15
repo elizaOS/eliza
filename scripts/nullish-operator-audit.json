@@ -1,17 +1,17 @@
 {
-  "generatedAt": "2026-05-15T10:24:29.430Z",
+  "generatedAt": "2026-05-15T10:26:04.487Z",
   "roots": [
     "packages/app-core"
   ],
   "testsIncluded": false,
   "tsconfig": "packages/app-core/tsconfig.json",
   "typeAware": true,
-  "apply": false,
+  "apply": true,
   "summary": {
     "filesScanned": 291,
     "total": 6023,
     "typeObviousRemovable": 7,
-    "appliedEdits": 0
+    "appliedEdits": 7
   },
   "byKind": {
     "binary-??": 1136,

@@ -1,6 +1,6 @@
 # Nullish Operator Audit Report
 
-Generated: 2026-05-15T10:24:29.430Z
+Generated: 2026-05-15T10:26:04.487Z
 
 ## Summary
 
@@ -9,7 +9,7 @@ Generated: 2026-05-15T10:24:29.430Z
 | TypeScript files scanned | 291 |
 | Operators found | 6023 |
 | Type-obvious removable | 7 |
-| Applied edits | 0 |
+| Applied edits | 7 |
 
 ## By Kind
 
