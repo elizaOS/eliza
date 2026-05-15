@@ -18,7 +18,8 @@
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
-			"@elizaos/agent": ["../../packages/agent/src/index.ts"]
+			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
+			"@elizaos/plugin-commands": ["../../plugins/plugin-commands/src/index.ts"]
 		}
 	},
 	"include": ["src/**/*"],

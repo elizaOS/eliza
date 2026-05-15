@@ -355,14 +355,21 @@ declare module "@elizaos/plugin-mcp" {
   export function handleMcpRoutes(...args: unknown[]): unknown;
 }
 
-declare module "@elizaos/app-contacts" {
+declare module "@elizaos/plugin-contacts" {
   import type { Plugin, Provider } from "@elizaos/core";
 
   export const contactsProvider: Provider;
   export const appContactsPlugin: Plugin;
 }
 
-declare module "@elizaos/app-wifi" {
+declare module "@elizaos/plugin-phone" {
+  import type { Plugin, Provider } from "@elizaos/core";
+
+  export const phoneCallLogProvider: Provider;
+  export const appPhonePlugin: Plugin;
+}
+
+declare module "@elizaos/plugin-wifi" {
   import type { Plugin, Provider } from "@elizaos/core";
 
   export const appWifiPlugin: Plugin;

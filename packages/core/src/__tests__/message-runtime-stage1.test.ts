@@ -971,8 +971,8 @@ describe("runV5MessageRuntimeStage1", () => {
 				toolCalls: [
 					{
 						id: "mh-1",
-						toolName: "HANDLE_RESPONSE",
-						input: {
+						name: "HANDLE_RESPONSE",
+						arguments: {
 							shouldRespond: "RESPOND",
 							thought: "Direct answer.",
 							replyText: "Hello.",

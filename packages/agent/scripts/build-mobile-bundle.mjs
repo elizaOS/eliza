@@ -1365,9 +1365,9 @@ const manifest = {
   plugins: {
     core: ["@elizaos/plugin-sql", "@elizaos/plugin-background-runner"],
     aospOnly: [
-      "@elizaos/app-wifi",
-      "@elizaos/app-contacts",
-      "@elizaos/app-phone",
+      "@elizaos/plugin-wifi",
+      "@elizaos/plugin-contacts",
+      "@elizaos/plugin-phone",
       "@elizaos/plugin-shell",
       "@elizaos/plugin-coding-tools",
       "agent-orchestrator",

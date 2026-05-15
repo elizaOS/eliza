@@ -39,7 +39,7 @@
       "@elizaos/capacitor-llama": ["../native-plugins/llama/src/index.ts"],
       "@elizaos/capacitor-phone": ["../native-plugins/phone/src/index.ts"],
       "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
-      "@elizaos/app-phone": ["../../plugins/app-phone/src/index.ts"],
+      "@elizaos/plugin-phone": ["../../plugins/plugin-phone/src/index.ts"],
       "@elizaos/app-elizamaker": ["../../plugins/app-elizamaker/src/index.ts"],
       "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
       "@elizaos/plugin-app-manager": [
@@ -49,7 +49,7 @@
         "../../plugins/plugin-registry/src/index.ts"
       ],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
-      "@elizaos/app-wifi": ["../../plugins/app-wifi/src/index.ts"],
+      "@elizaos/plugin-wifi": ["../../plugins/plugin-wifi/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/app-steward": ["../../plugins/app-steward/src/index.ts"],
       "@elizaos/app-shopify": ["../../plugins/app-shopify/src/index.ts"],
@@ -64,11 +64,16 @@
       "@elizaos/app-task-coordinator": [
         "../../plugins/app-task-coordinator/src/index.ts"
       ],
-      "@elizaos/app-contacts": ["../../plugins/app-contacts/src/index.ts"],
+      "@elizaos/plugin-contacts": [
+        "../../plugins/plugin-contacts/src/index.ts"
+      ],
       "@elizaos/agent": ["./src/index.ts"],
       "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/src/index.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
+      ],
+      "@elizaos/plugin-commands": [
+        "../../plugins/plugin-commands/src/index.ts"
       ],
       "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-computeruse": [
