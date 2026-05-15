@@ -80,6 +80,7 @@ function inferMode(
 	const trimmed = text.trim();
 	if (!trimmed) return null;
 
+	if (INTERACT_VERBS.test(trimmed)) return "interact";
 	if (BROADCAST_VERBS.test(trimmed)) return "broadcast";
 	if (MANAGER_VERBS.test(trimmed)) return "manager";
 	if (SHOW_ALL_VIEWS_MANAGER.test(trimmed)) return "manager";
@@ -202,6 +203,27 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				description: "JSON payload to include with the broadcast event.",
 				required: false,
 				schema: { type: "object" },
+			},
+			{
+				name: "capability",
+				description:
+					"Capability to invoke on the view (interact mode), e.g. 'click-button', 'get-state', 'get-text', 'refresh', 'focus-element'.",
+				required: false,
+				schema: { type: "string" },
+			},
+			{
+				name: "params",
+				description:
+					"Parameters for the capability (interact mode), e.g. { buttonId: 'submit' } or { selector: '#my-input' }.",
+				required: false,
+				schema: { type: "object" },
+			},
+			{
+				name: "timeoutMs",
+				description:
+					"Timeout in ms for interact responses. Default 5000.",
+				required: false,
+				schema: { type: "number" },
 			},
 		],
 
