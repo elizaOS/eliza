@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import path from "node:path";
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildTestRuntimeEnv,
@@ -10,7 +10,7 @@ import {
 } from "./lib/test-runtime.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "..");
+const repoRoot = path.resolve(here, "..", "..");
 const vitestCli = path.join(repoRoot, "node_modules", "vitest", "vitest.mjs");
 
 function exitFromResult(result) {

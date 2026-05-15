@@ -142,7 +142,6 @@ export function wrapImageDescriptionHandlerWithCloudFallback(
 	local: LocalImageDescriptionHandler,
 	options: VisionCloudFallbackOptions = {},
 ): WrappedImageDescriptionHandler {
-
 	const log = options.log ?? (() => undefined);
 	return async (params) => {
 		let localOutcome: LocalVisionOutcome;
