@@ -97,11 +97,19 @@ function stubAgentResponse(userMessage: string): string {
     return "Open Settings from the sidebar, then choose Account or Connected Accounts to configure your account and connection details.";
   }
 
+  if (lower === "go home" || lower.includes("go home") || lower === "home") {
+    return "Navigating to the main Chat view (home).";
+  }
+
+  if (lower.includes("show apps") || lower.includes("open apps")) {
+    return "Opening the View Manager so you can browse all available views.";
+  }
+
   if (lower.includes("open the wallet") || lower.includes("wallet")) {
     return "I've opened the Wallet view for you. You can now manage your crypto assets.";
   }
 
-  if (lower.includes("go to settings") || lower.includes("open settings")) {
+  if (lower.includes("go to settings") || lower === "settings" || lower.includes("open settings")) {
     return "Navigating to Settings now.";
   }
 
@@ -151,6 +159,26 @@ function stubAgentResponse(userMessage: string): string {
 
   if (lower.includes("install")) {
     return "Installing the weather plugin… Done! A new Weather view is now available. You can access it from the View Manager.";
+  }
+
+  if (lower.includes("click") || lower.includes("press") || lower.includes("button")) {
+    return "I've clicked the Send button in the Wallet view for you.";
+  }
+
+  if (lower.includes("refresh")) {
+    return "The Wallet view has been refreshed with the latest data.";
+  }
+
+  if (lower.includes("fill") || lower.includes("recipient") || lower.includes("address")) {
+    return "I've filled in the recipient address field in the wallet Send form.";
+  }
+
+  if (lower.includes("send funds") || lower.includes("transfer")) {
+    return "To send funds, I'll need the recipient address and amount. Please confirm and I'll initiate the transfer in the Wallet view.";
+  }
+
+  if (lower.includes("what can you do") || lower.includes("capabilities") || lower.includes("help me")) {
+    return "I can navigate to views, search for capabilities, interact with views on your behalf, and install new plugins. Try saying 'show me all views' to explore what's available.";
   }
 
   return "I can help you navigate to a view. The available views are: Wallet, Trading, Chat, and Settings.";
