@@ -213,6 +213,13 @@ interface ConversationStreamDisconnectTracker {
   markCompleted: () => void;
 }
 
+interface RequestDisconnectAbortTracker {
+  signal: AbortSignal;
+  dispose: () => void;
+  isAborted: () => boolean;
+  markCompleted: () => void;
+}
+
 function isStreamEventSource(value: unknown): value is StreamEventSource {
   return (
     typeof value === "object" &&
@@ -223,6 +230,70 @@ function isStreamEventSource(value: unknown): value is StreamEventSource {
 
 function isStreamSocketLike(value: unknown): value is StreamSocketLike {
   return typeof value === "object" && value !== null;
+}
+
+function createRequestDisconnectAbortTracker({
+  req,
+  res,
+  operation,
+}: {
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+  operation: string;
+}): RequestDisconnectAbortTracker {
+  const abortController = new AbortController();
+  const registrations: Array<{
+    source: StreamEventSource;
+    event: string;
+    listener: StreamEventListener;
+  }> = [];
+  let aborted = false;
+  let completed = false;
+
+  const abort = (reason?: unknown) => {
+    if (completed || aborted) return;
+    aborted = true;
+    abortController.abort(
+      reason instanceof Error ? reason : new Error(`${operation} aborted`),
+    );
+  };
+
+  const register = (
+    source: unknown,
+    event: string,
+    listener: StreamEventListener,
+  ) => {
+    if (!isStreamEventSource(source)) return;
+    source.on?.(event, listener);
+    registrations.push({ source, event, listener });
+  };
+
+  const onClientGone = () => abort(new Error(`${operation} client disconnected`));
+  const onResponseClose = () => {
+    const ended = Boolean(
+      (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
+    );
+    if (!ended) onClientGone();
+  };
+
+  register(req, "aborted", onClientGone);
+  register(req, "error", onClientGone);
+  register(res, "close", onResponseClose);
+  register(res, "error", onClientGone);
+
+  return {
+    signal: abortController.signal,
+    dispose: () => {
+      for (const { source, event, listener } of registrations) {
+        source.off?.(event, listener);
+      }
+      registrations.length = 0;
+    },
+    isAborted: () => aborted,
+    markCompleted: () => {
+      completed = true;
+    },
+  };
 }
 
 function createConversationStreamDisconnectTracker({
@@ -1913,11 +1984,24 @@ export async function handleConversationRoutes(
         );
       }
 
-      const newTitle = await generateConversationTitle(
-        state.runtime,
-        prompt,
-        state.agentName,
-      );
+      const titleAbortTracker = createRequestDisconnectAbortTracker({
+        req,
+        res,
+        operation: "conversation title generation",
+      });
+      let newTitle: string | null = null;
+      try {
+        newTitle = await generateConversationTitle(
+          state.runtime,
+          prompt,
+          state.agentName,
+          { signal: titleAbortTracker.signal },
+        );
+      } finally {
+        titleAbortTracker.markCompleted();
+        titleAbortTracker.dispose();
+      }
+      if (titleAbortTracker.isAborted()) return true;
 
       const fallbackTitle = prompt
         .replace(/\s+/g, " ")

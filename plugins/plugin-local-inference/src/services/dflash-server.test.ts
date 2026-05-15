@@ -495,7 +495,7 @@ describe("DFlash draft CLI flag drift", () => {
 	});
 
 	for (const backend of ["metal", "vulkan"] as const) {
-		it(`downgrades compressed QJL/Polar KV to q8_0 on ${backend} runtime graph dispatch`, () => {
+		it(`downgrades fork-only compressed KV to q8_0 on ${backend} runtime graph dispatch`, () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), `${backend}-kv-`));
 			const binary = path.join(root, "llama-server");
 			fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
@@ -508,7 +508,12 @@ describe("DFlash draft CLI flag drift", () => {
 							? "darwin-arm64-metal-fused"
 							: "linux-x64-vulkan-fused",
 					backend,
-					kernels: { dflash: true, qjl_full: true, polarquant: true },
+					kernels: {
+						dflash: true,
+						qjl_full: true,
+						polarquant: true,
+						turbo3: true,
+					},
 				}),
 				"utf8",
 			);
@@ -517,7 +522,7 @@ describe("DFlash draft CLI flag drift", () => {
 				binaryPath: binary,
 				targetModelPath: "/models/eliza-1-2b.gguf",
 				cacheTypeK: "qjl1_256",
-				cacheTypeV: "q4_polar",
+				cacheTypeV: "tbq3_0",
 				emitWarning: false,
 			});
 

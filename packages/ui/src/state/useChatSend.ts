@@ -793,10 +793,22 @@ export function useChatSend(deps: UseChatSendDeps) {
             message.role === "user" && !message.id.startsWith("temp-"),
         ).length;
 
-        if (userMessageCount === 1) {
+        if (
+          userMessageCount === 1 &&
+          data.completed !== false &&
+          data.text.trim() &&
+          !data.failureKind
+        ) {
           void client
             .renameConversation(convId, "", { generate: true })
             .then(() => {
+              void loadConversations();
+            })
+            .catch((err) => {
+              console.warn(
+                "Failed to generate conversation title",
+                err instanceof Error ? err.message : err,
+              );
               void loadConversations();
             });
         } else {
