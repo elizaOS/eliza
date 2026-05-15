@@ -44,9 +44,9 @@ const STORE_BUILD_LOCAL_EXECUTION_PLUGINS = new Set<string>([
  * Eliza loads it via STATIC_ELIZA_PLUGINS["agent-orchestrator"].
  */
 function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
-  const agentEntry = config.agents?.list?.[0];
-  const fromEntry = agentEntry?.agentOrchestrator;
-  const fromDefaults = config.agents?.defaults?.agentOrchestrator;
+	const agentEntry = config.agents?.list?.[0];
+	const fromEntry = agentEntry?.agentOrchestrator;
+	const fromDefaults = config.agents?.defaults?.agentOrchestrator;
   if (typeof fromEntry === "boolean") {
     return fromEntry;
   }
@@ -54,10 +54,18 @@ function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
     return fromDefaults;
   }
   const raw = process.env.ELIZA_AGENT_ORCHESTRATOR?.trim().toLowerCase();
-  if (raw === "0" || raw === "false" || raw === "no") {
-    return false;
-  }
-  return raw === "1" || raw === "true" || raw === "yes";
+	if (raw === "0" || raw === "false" || raw === "no") {
+		return false;
+	}
+	if (raw === "1" || raw === "true" || raw === "yes") {
+		return true;
+	}
+	return [
+		"ELIZA_DEFAULT_AGENT_TYPE",
+		"ELIZA_ACP_DEFAULT_AGENT",
+		"ELIZA_AGENT_SELECTION_STRATEGY",
+		"ELIZA_MAX_CONCURRENT_SPAWNS",
+	].some((key) => Boolean(process.env[key]?.trim()));
 }
 
 function isElizaOsAndroidRuntime(): boolean {

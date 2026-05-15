@@ -12,23 +12,32 @@
 
 import { execFile } from "node:child_process";
 import * as fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import {
-  type CreateIssueOptions,
+import type {
+  CreateIssueOptions,
+  CredentialService as CredentialServiceInstance,
+  GitHubPatClient as GitHubPatClientInstance,
+  IssueComment,
+  IssueInfo,
+  IssueState,
+  PullRequestInfo,
+  WorkspaceConfig,
+  WorkspaceEvent,
+  WorkspaceService as WorkspaceServiceInstance,
+} from "git-workspace-service";
+
+const {
   CredentialService,
   GitHubPatClient,
-  type IssueComment,
-  type IssueInfo,
-  type IssueState,
   MemoryTokenStore,
-  type PullRequestInfo,
-  type WorkspaceConfig,
-  type WorkspaceEvent,
   WorkspaceService,
-} from "git-workspace-service";
+} = createRequire(import.meta.url)(
+  "git-workspace-service",
+) as typeof import("git-workspace-service");
 
 import type { AuthPromptCallback } from "./workspace-github.js";
 import {
@@ -191,10 +200,10 @@ export class CodingWorkspaceService {
   capabilityDescription = "Manages git workspaces for coding tasks";
 
   private runtime: IAgentRuntime;
-  private workspaceService: WorkspaceService | null = null;
-  private credentialService: CredentialService | null = null;
-  private githubClient: GitHubPatClient | null = null;
-  private githubAuthInProgress: Promise<GitHubPatClient> | null = null;
+  private workspaceService: WorkspaceServiceInstance | null = null;
+  private credentialService: CredentialServiceInstance | null = null;
+  private githubClient: GitHubPatClientInstance | null = null;
+  private githubAuthInProgress: Promise<GitHubPatClientInstance> | null = null;
   private serviceConfig: CodingWorkspaceConfig;
   private workspaces: Map<string, WorkspaceResult> = new Map();
   private labels: Map<string, string> = new Map(); // label -> workspaceId
@@ -471,11 +480,11 @@ export class CodingWorkspaceService {
     return {
       runtime: this.runtime,
       githubClient: this.githubClient,
-      setGithubClient: (client: GitHubPatClient) => {
+      setGithubClient: (client: GitHubPatClientInstance) => {
         this.githubClient = client;
       },
       githubAuthInProgress: this.githubAuthInProgress,
-      setGithubAuthInProgress: (p: Promise<GitHubPatClient> | null) => {
+      setGithubAuthInProgress: (p: Promise<GitHubPatClientInstance> | null) => {
         this.githubAuthInProgress = p;
       },
       authPromptCallback: this.authPromptCallback,

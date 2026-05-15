@@ -1,5 +1,12 @@
-export { runAndroidBridgeCli } from "./android/bridge.js";
-export { runIosBridgeCli } from "./ios/bridge.js";
+export async function runAndroidBridgeCli(): Promise<void> {
+	const { runAndroidBridgeCli } = await import("./android/bridge.js");
+	return runAndroidBridgeCli();
+}
+
+export async function runIosBridgeCli(): Promise<void> {
+	const { runIosBridgeCli } = await import("./ios/bridge.js");
+	return runIosBridgeCli();
+}
 export {
 	attachMobileDeviceBridgeToServer,
 	ensureMobileDeviceBridgeInferenceHandlers,
