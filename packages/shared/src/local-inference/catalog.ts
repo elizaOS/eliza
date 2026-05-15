@@ -57,15 +57,32 @@ export function isDefaultEligibleId(id: string): boolean {
  * override at runtime without changing the static map (useful for QA
  * and for installs that depend on a private HF mirror).
  *
- * Today's snapshot (2026-05-13) is empty: every published tier id in the
- * catalog is assumed to point at a real HF bundle. The maintainer should
- * flip a tier to `"pending"` here when they know the HF publish hasn't
- * landed yet (e.g. a tier whose `eliza-1.manifest.json` is missing or
- * whose `releaseState` is `"local-standin"` / `"skeleton"`).
+ * W3-12 audit (2026-05-14): the following tiers require publish attention:
+ *   - `eliza-1-27b-1m`: bundle/manifest not yet present on HF. Gated on
+ *     hardware (160 GB RAM requirement; multi-GPU cluster needed for both
+ *     training and serving). Next step: provision H200 cluster, run
+ *     stage_eliza1_bundle_assets.py --tier 27b-1m, push bundle.
+ *   - `eliza-1-0_8b`: published but vision mmproj missing from bundle.
+ *     `hasVision: true` in catalog but `vision/mmproj-0_8b.gguf` absent.
+ *     Next step: quantize mmproj from Qwen3.5-0.8B VL variant, push to
+ *     bundles/0_8b/vision/, update manifest.
+ *   - `eliza-1-2b`: published but vision mmproj missing from bundle.
+ *     Same fix path as 0_8b.
+ *   - Voice sub-models (wakeword, turn-detector, speaker-encoder, emotion):
+ *     not yet present in per-tier manifests. They are designed to live in
+ *     separate repos (elizaos/eliza-1-voice-*) per voice-models.ts; those
+ *     repos are not yet created. Next step: run publish pipeline per
+ *     models/voice/CHANGELOG.md entries once sub-model weights are finalized.
+ *   - Kokoro samantha voice preset: `af_samantha.bin` absent from all
+ *     bundles; I7 eval showed regression. Current bundles ship af_bella
+ *     and standard voices only.
  */
 export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
   Partial<Record<Eliza1TierId, "published" | "pending">>
-> = {};
+> = {
+  // 27b-1m bundle missing from HF — hardware-gated (160 GB RAM, H200 cluster).
+  "eliza-1-27b-1m": "pending",
+};
 
 export function eliza1TierPublishStatus(
   id: Eliza1TierId | string,
