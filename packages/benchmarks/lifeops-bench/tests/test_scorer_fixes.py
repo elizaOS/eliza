@@ -259,6 +259,129 @@ def test_kwargs_match_structural_aliases_are_equivalent() -> None:
     assert _kwargs_match(predicted, expected) is True
 
 
+def test_calendar_search_events_scores_like_bounded_availability_read() -> None:
+    """Eliza can implement availability as a bounded event search."""
+    expected = {
+        "subaction": "check_availability",
+        "startAt": "2026-05-14T09:00:00Z",
+        "endAt": "2026-05-14T10:00:00Z",
+    }
+    predicted = {
+        "action": "search_events",
+        "startAt": "2026-05-14T09:00:00Z",
+        "endAt": "2026-05-14T10:00:00Z",
+    }
+    assert (
+        compare_actions(
+            [Action(name="CALENDAR", kwargs=predicted)],
+            [Action(name="CALENDAR", kwargs=expected)],
+        )
+        == pytest.approx(1.0)
+    )
+
+
+def test_calendar_window_start_end_scores_like_availability_read() -> None:
+    """Eliza native path emits windowStart/windowEnd for bounded availability search."""
+    expected = {
+        "subaction": "check_availability",
+        "startAt": "2026-05-14T09:00:00Z",
+        "endAt": "2026-05-14T10:00:00Z",
+    }
+    predicted = {
+        "action": "search_events",
+        "query": "",
+        "title": "",
+        "windowStart": "2026-05-14T09:00:00Z",
+        "windowEnd": "2026-05-14T10:00:00Z",
+    }
+    assert (
+        compare_actions(
+            [Action(name="CALENDAR", kwargs=predicted)],
+            [Action(name="CALENDAR", kwargs=expected)],
+        )
+        == pytest.approx(1.0)
+    )
+
+
+def test_calendar_availability_noise_filters_still_score_like_availability_read() -> None:
+    """Native models sometimes fill title/query with generic availability text."""
+    expected = {
+        "subaction": "check_availability",
+        "startAt": "2026-05-14T09:00:00Z",
+        "endAt": "2026-05-14T10:00:00Z",
+    }
+    predicted = {
+        "action": "search_events",
+        "query": "9-10am UTC Thursday",
+        "title": "Availability check",
+        "details": {
+            "start": "2026-05-14T09:00:00Z",
+            "end": "2026-05-14T10:00:00Z",
+        },
+    }
+
+    assert (
+        compare_actions(
+            [Action(name="CALENDAR", kwargs=predicted)],
+            [Action(name="CALENDAR", kwargs=expected)],
+        )
+        == pytest.approx(1.0)
+    )
+
+
+def test_calendar_search_events_wrong_window_not_creditable_availability_read() -> None:
+    """The search_events carve-out is only for the same requested window."""
+    scenario = _scenario(
+        ground_truth_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "subaction": "check_availability",
+                    "startAt": "2026-05-14T09:00:00Z",
+                    "endAt": "2026-05-14T10:00:00Z",
+                },
+            )
+        ]
+    )
+    result = _result(
+        state_hash_match=True,
+        agent_actions=[
+            Action(
+                name="CALENDAR",
+                kwargs={
+                    "action": "search_events",
+                    "startAt": "2026-05-14T10:00:00Z",
+                    "endAt": "2026-05-14T11:00:00Z",
+                },
+            )
+        ],
+    )
+    assert score_scenario(result, scenario) == 0.0
+
+
+def test_calendar_filtered_search_not_creditable_availability_read() -> None:
+    """A title/query search is not the same as a free/busy check."""
+    expected = {
+        "subaction": "check_availability",
+        "startAt": "2026-05-14T09:00:00Z",
+        "endAt": "2026-05-14T10:00:00Z",
+    }
+    predicted = {
+        "subaction": "search_events",
+        "query": "pitch",
+        "startAt": "2026-05-14T09:00:00Z",
+        "endAt": "2026-05-14T10:00:00Z",
+    }
+
+    assert (
+        compare_actions(
+            [Action(name="CALENDAR", kwargs=predicted)],
+            [Action(name="CALENDAR", kwargs=expected)],
+        )
+        == pytest.approx(0.5)
+    )
+
+
 def test_kwargs_match_propose_times_window_can_be_same_day_superset() -> None:
     """A broader same-day search window still covers the requested slot window."""
     expected = {

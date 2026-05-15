@@ -28,7 +28,7 @@
  *     ↳ handler(runtime, message, …)          ← reads message.content.text
  */
 
-import { type Memory, parseJSONObjectFromText } from "@elizaos/core";
+import type { Memory } from "@elizaos/core";
 
 let currentLlmResponse = "";
 
@@ -36,15 +36,11 @@ export function setCurrentLlmResponse(text: string): void {
   currentLlmResponse = text;
 }
 
-export function getCurrentLlmResponse(): string {
-  return currentLlmResponse;
-}
-
 /**
  * Prefer the current message text; fall back to the module-level
  * autonomous-loop buffer if the message has no text. Handlers should
- * always call this instead of reading {@link getCurrentLlmResponse}
- * directly so the operator-triggered path works correctly.
+ * always call this instead of reading the buffer directly so the
+ * operator-triggered path works correctly.
  */
 export function resolveActionText(message: Memory | undefined | null): string {
   const text = message?.content?.text;
@@ -52,61 +48,4 @@ export function resolveActionText(message: Memory | undefined | null): string {
     return text;
   }
   return currentLlmResponse;
-}
-
-/**
- * Return true when the given message is plausibly dispatching the named action.
- * Used by Action `validate()` functions so elizaOS doesn't dispatch arbitrary
- * plugin actions on arbitrary messages.
- */
-export function hasActionRequest(
-  message: Memory | undefined | null,
-  actionName: string,
-): boolean {
-  const text = message?.content?.text;
-  if (typeof text !== "string" || text.length === 0) return false;
-  const parsed = parseJSONObjectFromText(text) as Record<
-    string,
-    unknown
-  > | null;
-  if (!parsed) return false;
-  const expected = normalizeActionName(actionName);
-  return extractActionNames(parsed).some(
-    (candidate) => normalizeActionName(candidate) === expected,
-  );
-}
-
-function extractActionNames(parsed: Record<string, unknown>): string[] {
-  const raw =
-    parsed.action ??
-    parsed.actionName ??
-    parsed.name ??
-    parsed.type ??
-    parsed.actions;
-  if (typeof raw === "string") {
-    return raw
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean);
-  }
-  if (Array.isArray(raw)) {
-    return raw.flatMap((entry) => {
-      if (typeof entry === "string") return [entry];
-      if (entry && typeof entry === "object") {
-        const record = entry as Record<string, unknown>;
-        const name =
-          record.name ?? record.action ?? record.actionName ?? record.type;
-        return typeof name === "string" ? [name] : [];
-      }
-      return [];
-    });
-  }
-  return [];
-}
-
-function normalizeActionName(value: string): string {
-  return value
-    .trim()
-    .replace(/[\s-]+/g, "_")
-    .toUpperCase();
 }

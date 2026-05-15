@@ -16,9 +16,11 @@ from typing import Final, Mapping, Sequence
 
 try:
     from scripts.manifest.eliza1_manifest import (
+        ELIZA_1_DFLASH_TIERS,
         ELIZA_1_HF_REPO,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
+        ELIZA_1_VISION_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
@@ -28,9 +30,11 @@ try:
     )
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import (
+        ELIZA_1_DFLASH_TIERS,
         ELIZA_1_HF_REPO,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
+        ELIZA_1_VISION_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
@@ -46,10 +50,15 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
     "27b-256k": "Q4_K_M",
-    "27b-1m": "Q4_K_M",
 }
 
-TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = ("Q4_K_M", "Q6_K", "Q8_0")
+TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = (
+    "Q3_K_M",
+    "Q4_K_M",
+    "Q5_K_M",
+    "Q6_K",
+    "Q8_0",
+)
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("32k",),
@@ -58,7 +67,6 @@ CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("64k", "128k"),
     "27b": ("128k",),
     "27b-256k": ("256k",),
-    "27b-1m": ("1m",),
 }
 
 ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -70,7 +78,7 @@ VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.1.2.ggml.bin",)
 VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
     "vad/silero-vad-int8.onnx",
 )
-VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
+VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_VISION_TIERS)
 
 COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     tier: (
@@ -78,7 +86,7 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "licenses/LICENSE.voice",
         "licenses/LICENSE.asr",
         "licenses/LICENSE.vad",
-        "licenses/LICENSE.dflash",
+        *(("licenses/LICENSE.dflash",) if tier in ELIZA_1_DFLASH_TIERS else ()),
         "licenses/LICENSE.eliza-1",
         *(("licenses/LICENSE.vision",) if tier in VISION_TIERS else ()),
     )
@@ -148,19 +156,13 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "linux-x64-rocm",
         "windows-x64-cuda",
     ),
-    "27b-1m": (
-        "linux-x64-cuda",
-        "linux-aarch64-cuda",
-    ),
 }
-
 
 @dataclass(frozen=True, slots=True)
 class PlatformTarget:
     id: str
     backend: str
     evidence_path: str
-
 
 @dataclass(frozen=True, slots=True)
 class TierGgufPlan:
@@ -174,12 +176,10 @@ class TierGgufPlan:
     optional_files: tuple[str, ...]
     required_platform_evidence: tuple[PlatformTarget, ...]
 
-
 def text_artifact_name(tier: str, ctx: str) -> str:
     if tier.endswith(f"-{ctx}"):
         return f"text/eliza-1-{tier}.gguf"
     return f"text/eliza-1-{tier}-{ctx}.gguf"
-
 
 def required_files_for_tier(tier: str) -> tuple[str, ...]:
     text_files = tuple(text_artifact_name(tier, ctx) for ctx in CONTEXTS_BY_TIER[tier])
@@ -191,7 +191,11 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
     dispatch_reports = tuple(
         f"evals/{backend}_dispatch.json" for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
     )
-    dflash_files = (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
+    dflash_files = (
+        (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
+        if tier in ELIZA_1_DFLASH_TIERS
+        else ()
+    )
     vision_files = (
         (f"vision/mmproj-{tier}.gguf",)
         if tier in VISION_TIERS
@@ -217,13 +221,11 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
         "quantization/polarquant_config.json",
     )
 
-
 def _target_backend(target: str) -> str:
     for backend in ("metal", "vulkan", "cuda", "rocm"):
         if target.endswith(f"-{backend}"):
             return backend
     return "cpu"
-
 
 def build_plan() -> dict[str, TierGgufPlan]:
     out: dict[str, TierGgufPlan] = {}
@@ -249,7 +251,6 @@ def build_plan() -> dict[str, TierGgufPlan]:
         )
     return out
 
-
 def missing_files(
     bundle_root: Path, plan: Mapping[str, TierGgufPlan]
 ) -> dict[str, list[str]]:
@@ -268,7 +269,6 @@ def missing_files(
         )
         missing[tier] = sorted(set(tier_missing))
     return missing
-
 
 # Release-state interpretation: `base-v1` (the upstream base models,
 # GGUF-converted via the elizaOS/llama.cpp fork and fully Eliza-optimized,
@@ -293,7 +293,6 @@ _RELEASE_FINAL_FLAGS_BASE_V1: Final[tuple[str, ...]] = tuple(
 _WEIGHT_PAYLOAD_DIRS: Final[frozenset[str]] = frozenset(
     {"text", "tts", "asr", "vad", "vision", "dflash", "embedding", "wakeword"}
 )
-
 
 def release_status_blockers(
     bundle_root: Path, plan: Mapping[str, TierGgufPlan]
@@ -446,10 +445,8 @@ def release_status_blockers(
         blockers[tier] = sorted(set(tier_blockers))
     return blockers
 
-
 def plan_to_json(plan: Mapping[str, TierGgufPlan]) -> dict[str, object]:
     return {tier: asdict(tier_plan) for tier, tier_plan in plan.items()}
-
 
 def render_readiness(
     plan: Mapping[str, TierGgufPlan],
@@ -476,7 +473,7 @@ def render_readiness(
         "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
         "Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`), "
         "and Qwen3.6 27B (`27b`, "
-        "`27b-256k`, `27b-1m`). ASR and embedding are real Qwen3 upstream "
+        "`27b-256k`). ASR and embedding are real Qwen3 upstream "
         "exceptions: use the published Qwen3-ASR "
         "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
         "repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, "
@@ -556,7 +553,6 @@ def render_readiness(
 
     return "\n".join(lines).rstrip() + "\n"
 
-
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--bundle-root", type=Path)
@@ -579,7 +575,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.readiness_md.write_text(render_readiness(plan, missing, blockers))
 
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

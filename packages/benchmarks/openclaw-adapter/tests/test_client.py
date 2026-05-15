@@ -147,6 +147,12 @@ def test_client_wait_until_ready_times_out(tmp_path: Path) -> None:
         c.wait_until_ready(timeout=0.05, poll=0.01)
 
 
+def test_client_wait_until_ready_allows_direct_openai_without_binary(tmp_path: Path) -> None:
+    c = OpenClawClient(binary_path=tmp_path / "missing", direct_openai_compatible=True)
+    c.wait_until_ready(timeout=0.05, poll=0.01)
+    assert c.is_ready() is True
+
+
 def test_client_reset_records_state(client: OpenClawClient) -> None:
     out = client.reset("task-1", "clawbench", extra="ignored")
     assert out == {"task_id": "task-1", "benchmark": "clawbench", "ready": True}

@@ -192,10 +192,6 @@ export const TIER_TO_DEFAULT_IMAGE_MODEL: Readonly<
 		modelId: "imagegen-z-image-turbo-q4_k_m",
 		file: "imagegen/z-image-turbo-Q4_K_M.gguf",
 	},
-	"eliza-1-27b-1m": {
-		modelId: "imagegen-z-image-turbo-q4_k_m",
-		file: "imagegen/z-image-turbo-Q4_K_M.gguf",
-	},
 };
 
 /**

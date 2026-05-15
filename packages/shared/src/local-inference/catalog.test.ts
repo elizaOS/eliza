@@ -12,7 +12,6 @@ const LARGE_TIERS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const;
 const OMNIVOICE_TIERS = [...SMALL_TIERS, ...LARGE_TIERS] as const;
 
@@ -76,6 +75,21 @@ describe("defaultVoiceQuantForTier", () => {
 });
 
 describe("Eliza-1 runtime quant metadata", () => {
+  it("publishes a complete text GGUF quant ladder for every chat tier", () => {
+    for (const id of ELIZA_1_TIER_IDS) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      expect(entry?.quantization?.defaultVariantId).toBe("q4_k_m");
+      expect(
+        entry?.quantization?.variants.map((variant) => variant.id),
+      ).toEqual(["q3_k_m", "q4_k_m", "q5_k_m", "q6_k", "q8_0"]);
+      expect(
+        entry?.quantization?.variants.every(
+          (variant) => variant.status === "published",
+        ),
+      ).toBe(true);
+    }
+  });
+
   it("uses QJL K-cache and TurboQuant V-cache for every chat tier", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
@@ -85,6 +99,7 @@ describe("Eliza-1 runtime quant metadata", () => {
         "qjl_full",
       );
       expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo3");
+      expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo4");
       expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
         "polarquant",
       );

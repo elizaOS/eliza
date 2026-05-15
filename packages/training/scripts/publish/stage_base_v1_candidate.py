@@ -40,7 +40,6 @@ from scripts.manifest import eliza1_platform_plan as PP  # noqa: E402
 from scripts.manifest import stage_eliza1_bundle_assets as A  # noqa: E402
 from scripts.manifest import stage_kokoro_assets as K  # noqa: E402
 
-
 REQUIRED_KERNELS_BY_TIER = {
     tier: list(M.REQUIRED_KERNELS_BY_TIER[tier])
     for tier in M.ELIZA_1_TIERS
@@ -52,7 +51,6 @@ RAM_BUDGET_MB = {
     "9b": (12000, 18000),
     "27b": (32000, 48000),
     "27b-256k": (96000, 128000),
-    "27b-1m": (160000, 220000),
 }
 # Per-tier upstream text base used by lineage and README/provenance prose.
 TEXT_BASE_BY_TIER = {
@@ -62,7 +60,6 @@ TEXT_BASE_BY_TIER = {
     "9b": "Qwen/Qwen3.5-9B",
     "27b": "Qwen/Qwen3.6-27B",
     "27b-256k": "Qwen/Qwen3.6-27B",
-    "27b-1m": "Qwen/Qwen3.6-27B",
 }
 TEXT_CONTEXT_BY_TIER = {
     tier: PP.CONTEXTS_BY_TIER[tier][0]
@@ -78,10 +75,8 @@ TEXT_CTX_BY_TIER = {
 ASSETS_REPO = "elizalabs/eliza-1-assets"
 ASSETS_TIER = "2b"
 
-
 def now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 def sha256_file(path: Path, chunk: int = 1 << 20) -> str:
     h = hashlib.sha256()
@@ -92,7 +87,6 @@ def sha256_file(path: Path, chunk: int = 1 << 20) -> str:
                 break
             h.update(b)
     return h.hexdigest()
-
 
 def git_short_sha() -> str:
     try:
@@ -106,14 +100,12 @@ def git_short_sha() -> str:
     except Exception:
         return "unknown"
 
-
 def download_asset(repo: str, remote_path: str, dest: Path) -> None:
     from huggingface_hub import hf_hub_download
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     src = hf_hub_download(repo, remote_path)
     shutil.copy2(src, dest)
-
 
 def voice_asset_source(rel_under_tts: str) -> tuple[str, str, Path]:
     dest = Path("tts") / rel_under_tts
@@ -127,7 +119,6 @@ def voice_asset_source(rel_under_tts: str) -> tuple[str, str, Path]:
         return A.VOICE_REPO, Path(rel_under_tts).name, dest
     raise ValueError(f"unsupported voice artifact for {rel_under_tts!r}")
 
-
 def voice_source_note(tier: str) -> str:
     backends = M.VOICE_BACKENDS_BY_TIER[tier]
     parts: list[str] = []
@@ -136,7 +127,6 @@ def voice_source_note(tier: str) -> str:
     if "omnivoice" in backends:
         parts.append(A.VOICE_REPO)
     return " + ".join(parts)
-
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
@@ -495,7 +485,6 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  drafter sha256={drafter_sha} (source {args.drafter_source})")
     return 0
 
-
 def _render_readme(
     tier: str,
     manifest: dict[str, Any],
@@ -580,7 +569,6 @@ release bar (every supported backend kernel-verified, every eval green) is met.
 
 See `eliza-1.manifest.json` for the full machine-readable contract.
 """
-
 
 if __name__ == "__main__":
     sys.exit(main())

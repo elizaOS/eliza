@@ -165,6 +165,71 @@ def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
     return h.hexdigest()
 
 
+def _read_checksum_manifest(bundle_dir: Path) -> tuple[dict[str, str], list[str]]:
+    checksum_path = bundle_dir / "checksums" / "SHA256SUMS"
+    if not checksum_path.is_file():
+        return {}, []
+    checksums: dict[str, str] = {}
+    errors: list[str] = []
+    for line_no, raw_line in enumerate(
+        checksum_path.read_text(encoding="utf-8").splitlines(),
+        start=1,
+    ):
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split(maxsplit=1)
+        if len(parts) != 2:
+            errors.append(f"checksums/SHA256SUMS:{line_no}: malformed line")
+            continue
+        sha, rel = parts
+        if len(sha) != 64 or any(c not in "0123456789abcdefABCDEF" for c in sha):
+            errors.append(f"checksums/SHA256SUMS:{line_no}: invalid sha256 {sha!r}")
+            continue
+        if rel.startswith("*"):
+            rel = rel[1:]
+        try:
+            _safe_bundle_child(bundle_dir, rel)
+        except ValueError as exc:
+            errors.append(f"checksums/SHA256SUMS:{line_no}: {exc}")
+            continue
+        checksums[rel] = sha.lower()
+    return checksums, errors
+
+
+def _checksum_manifest_errors(
+    bundle_dir: Path,
+    publishable_rels: Sequence[str],
+    *,
+    verify_hashes: bool,
+) -> list[str]:
+    checksum_path = bundle_dir / "checksums" / "SHA256SUMS"
+    if not checksum_path.is_file():
+        return []
+    checksums, errors = _read_checksum_manifest(bundle_dir)
+    for rel, expected_sha in sorted(checksums.items()):
+        try:
+            target = _safe_bundle_child(bundle_dir, rel)
+        except ValueError as exc:
+            errors.append(str(exc))
+            continue
+        if not target.is_file():
+            errors.append(f"checksums/SHA256SUMS references missing file: {rel}")
+            continue
+        if verify_hashes:
+            got_sha = _sha256_file(target)
+            if got_sha != expected_sha:
+                errors.append(
+                    "sha256 mismatch in checksums/SHA256SUMS for "
+                    f"{rel}: manifest={expected_sha} actual={got_sha}"
+                )
+    covered = set(checksums)
+    missing = sorted(set(publishable_rels) - covered - {"checksums/SHA256SUMS"})
+    for rel in missing:
+        errors.append(f"checksums/SHA256SUMS missing publishable file: {rel}")
+    return errors
+
+
 def _voice_policy_warnings(tier: str, manifest: dict[str, Any]) -> list[str]:
     voice_paths = {
         p.lower()
@@ -211,6 +276,7 @@ def _release_evidence_errors(bundle_dir: Path, tier: str) -> list[str]:
         for flag in REQUIRED_FINAL_FLAGS:
             if final.get(flag) is not True:
                 errors.append(f"evidence/release.json final.{flag} is not true")
+    errors.extend(_license_evidence_errors(bundle_dir, evidence))
 
     hf = evidence.get("hf")
     if not isinstance(hf, dict):
@@ -269,6 +335,73 @@ def _release_evidence_errors(bundle_dir: Path, tier: str) -> list[str]:
                 "evidence/release.json hf.status must be 'pending-upload', "
                 "'upload-ready', or 'uploaded' with uploadEvidence"
             )
+    return errors
+
+
+def _license_evidence_errors(bundle_dir: Path, evidence: dict[str, Any]) -> list[str]:
+    licenses_dir = bundle_dir / "licenses"
+    actual_license_files = {
+        path.relative_to(bundle_dir).as_posix()
+        for path in licenses_dir.glob("LICENSE.*")
+        if path.is_file()
+    }
+    if not actual_license_files:
+        return []
+
+    errors: list[str] = []
+    release_license_files = evidence.get("licenseFiles")
+    if not isinstance(release_license_files, list) or not all(
+        isinstance(path, str) for path in release_license_files
+    ):
+        errors.append(
+            "evidence/release.json licenseFiles must list every licenses/LICENSE.* file"
+        )
+    else:
+        declared = set(release_license_files)
+        missing = sorted(actual_license_files - declared)
+        extra = sorted(declared - actual_license_files)
+        if missing:
+            errors.append(
+                "evidence/release.json licenseFiles missing file(s): "
+                f"{missing}"
+            )
+        if extra:
+            errors.append(
+                "evidence/release.json licenseFiles references missing file(s): "
+                f"{extra}"
+            )
+
+    license_manifest_path = licenses_dir / "license-manifest.json"
+    if not license_manifest_path.is_file():
+        errors.append("licenses/license-manifest.json is missing")
+        return errors
+    try:
+        license_manifest = _load_json(license_manifest_path)
+    except Exception as exc:  # noqa: BLE001 - operator report should keep going
+        errors.append(f"licenses/license-manifest.json is not readable JSON: {exc}")
+        return errors
+
+    components = license_manifest.get("components")
+    if not isinstance(components, list):
+        errors.append("licenses/license-manifest.json components must be an array")
+        return errors
+    component_files = {
+        component.get("file")
+        for component in components
+        if isinstance(component, dict) and isinstance(component.get("file"), str)
+    }
+    missing_component_files = sorted(actual_license_files - component_files)
+    missing_actual_files = sorted(component_files - actual_license_files)
+    if missing_component_files:
+        errors.append(
+            "licenses/license-manifest.json components missing license file(s): "
+            f"{missing_component_files}"
+        )
+    if missing_actual_files:
+        errors.append(
+            "licenses/license-manifest.json components reference missing file(s): "
+            f"{missing_actual_files}"
+        )
     return errors
 
 
@@ -345,7 +478,16 @@ def plan_bundle(
             warnings.extend(voice_warnings)
         errors.extend(_release_evidence_errors(bundle_dir, tier))
 
-        for rel in _publishable_bundle_relpaths(bundle_dir, manifest):
+        publishable_rels = _publishable_bundle_relpaths(bundle_dir, manifest)
+        errors.extend(
+            _checksum_manifest_errors(
+                bundle_dir,
+                publishable_rels,
+                verify_hashes=verify_hashes,
+            )
+        )
+
+        for rel in publishable_rels:
             try:
                 target = _safe_bundle_child(bundle_dir, rel)
             except ValueError:

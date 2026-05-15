@@ -52,4 +52,4 @@ export SHELL_LOG_COMMANDS=true
 ## Related
 
 - [Agent Orchestrator Plugin](/plugin-registry/agent-orchestrator) — Task-agent orchestration via PTY
-- [Secrets (runtime)](/runtime/services#secrets-secrets-service) — Secure storage for sensitive configuration
+- [Secrets API](/rest/secrets) — Secure storage for sensitive configuration

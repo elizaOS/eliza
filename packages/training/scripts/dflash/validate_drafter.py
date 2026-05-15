@@ -35,9 +35,21 @@ import argparse
 import hashlib
 import json
 import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+_TRAINING_ROOT = Path(__file__).resolve().parents[2]
+if str(_TRAINING_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAINING_ROOT))
+
+from scripts.dflash.release_policy import (  # noqa: E402
+    ACCEPTANCE_GATE,
+    ACTIVE_TIERS,
+    disabled_policy_manifest,
+    is_dflash_disabled,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("validate_drafter")
@@ -62,18 +74,6 @@ REQUIRED_TOKENIZER_METADATA_KEYS: tuple[str, ...] = (
     "tokenizer.ggml.model",
     "tokenizer.ggml.tokens",
 )
-
-# Mirrored from distill_dflash_drafter.ACCEPTANCE_GATE so this script can run
-# standalone (no import of distill_dflash_drafter at validate time).
-ACCEPTANCE_GATE: dict[str, float] = {
-    "0_8b": 0.40,
-    "2b": 0.50,
-    "4b": 0.52,
-    "9b": 0.55,
-    "27b": 0.55,
-    "27b-256k": 0.55,
-    "27b-1m": 0.55,
-}
 
 
 def _sha256_file(path: Path) -> str:
@@ -367,6 +367,8 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
     This validates the report shape + exit-code wiring so CI can exercise the
     script on every commit even when no real drafter exists yet.
     """
+    if is_dflash_disabled(args.tier):
+        return _run_disabled_policy(args, synthetic=True)
     fake_target_sha = hashlib.sha256(f"synthetic-target-{args.tier}".encode()).hexdigest()
     report = {
         "schemaVersion": 1,
@@ -374,12 +376,12 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
         "tier": args.tier,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "synthetic": True,
-        "drafter": {"path": "<synthetic>", "sizeBytes": 0, "vocabSize": 151936},
-        "target": {"path": "<synthetic>", "sizeBytes": 0, "vocabSize": 151936},
+        "drafter": {"path": "<synthetic>", "sizeBytes": 0, "vocabSize": 248320},
+        "target": {"path": "<synthetic>", "sizeBytes": 0, "vocabSize": 248320},
         "checks": {
             "hashMatch": {"pass": True, "detail": f"synthetic ({fake_target_sha})"},
             "architectureLoadable": {"pass": True, "detail": "synthetic"},
-            "vocabMatch": {"pass": True, "detail": "synthetic (vocabSize=151936)"},
+            "vocabMatch": {"pass": True, "detail": "synthetic (vocabSize=248320)"},
             "tokenizerMetadataMatch": {
                 "pass": True,
                 "detail": "synthetic",
@@ -401,7 +403,58 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_disabled_policy(args: argparse.Namespace, *, synthetic: bool) -> int:
+    """Validate the explicit no-drafter release policy for a disabled tier."""
+    drafter_path = Path(args.drafter_gguf) if args.drafter_gguf else None
+    target_path = Path(args.target_gguf) if args.target_gguf else None
+    failures: list[str] = []
+    if drafter_path is not None and drafter_path.exists():
+        failures.append(
+            f"DFlash is disabled for tier {args.tier}; drafter GGUF must be absent: {drafter_path}"
+        )
+    target_sha = _sha256_file(target_path) if target_path and target_path.exists() else None
+    policy = disabled_policy_manifest(
+        tier=args.tier,
+        synthetic=synthetic,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        training_commit=None,
+    )
+    report = {
+        "schemaVersion": 1,
+        "kind": "dflash-drafter-validation",
+        "tier": args.tier,
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "synthetic": synthetic,
+        "policy": policy,
+        "drafter": {"path": str(drafter_path) if drafter_path else None},
+        "target": {
+            "path": str(target_path) if target_path else None,
+            "sha256": target_sha,
+        },
+        "checks": {
+            "dflashDisabled": {
+                "pass": True,
+                "detail": policy["reason"],
+            },
+            "noDrafterArtifact": {
+                "pass": not failures,
+                "detail": failures[0] if failures else "no drafter artifact present",
+            },
+            "failOpenPolicy": {
+                "pass": True,
+                "detail": "release may omit DFlash and run normal target decoding",
+            },
+        },
+        "pass": not failures,
+    }
+    out_path = Path(args.report_out) if args.report_out else None
+    _emit_report(report, out_path)
+    return 0 if not failures else 3
+
+
 def _run_real(args: argparse.Namespace) -> int:
+    if is_dflash_disabled(args.tier):
+        return _run_disabled_policy(args, synthetic=False)
     if not args.drafter_gguf or not args.target_gguf:
         log.error("--drafter-gguf and --target-gguf are required for a real run")
         return 2
@@ -510,7 +563,7 @@ def _run_real(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--tier", required=True, choices=sorted(ACCEPTANCE_GATE.keys()))
+    p.add_argument("--tier", required=True, choices=ACTIVE_TIERS)
     p.add_argument("--drafter-gguf", help="Path to the distilled drafter GGUF.")
     p.add_argument("--target-gguf", help="Path to the Eliza-1 text target GGUF.")
     p.add_argument(

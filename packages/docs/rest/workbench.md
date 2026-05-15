@@ -37,7 +37,7 @@ The workbench API manages the agent's task board and todo list. Tasks represent 
 
 ### GET /api/workbench/overview
 
-Returns a combined view of tasks, triggers, todos, autonomy state, life-ops data, and summary counts. This is the primary endpoint for the workbench dashboard. When the LifeOps service is available, the response includes a `lifeops` object with the full [LifeOps overview](/rest/lifeops#get-apilifeopsoverview).
+Returns a combined view of tasks, triggers, todos, autonomy state, life-ops data, and summary counts. This is the primary endpoint for the workbench dashboard. When the LifeOps service is available, the response includes a `lifeops` object with the full [LifeOps overview](/rest/lifeops#overview--app-state).
 
 **Response**
 

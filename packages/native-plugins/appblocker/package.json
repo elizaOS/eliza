@@ -27,8 +27,7 @@
     "android/build.gradle",
     "dist/",
     "ios/Sources/",
-    "*.podspec",
-    "dist"
+    "*.podspec"
   ],
   "scripts": {
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",

@@ -46,8 +46,7 @@ log = logging.getLogger("prepare_distill_dataset")
 # Mirrors distill_dflash_drafter.DEFAULT_STUDENT_BASE / DEFAULT_TARGET_MODEL —
 # the canonical Eliza-1 tier set lives in that script. Listed here so the prep
 # step refuses an unknown tier early.
-KNOWN_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
-
+KNOWN_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
 
 def _sha256_file(path: Path) -> str:
     h = hashlib.sha256()
@@ -56,12 +55,10 @@ def _sha256_file(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
-
 def _write_jsonl(records: list[dict[str, Any]], path: Path) -> None:
     with path.open("w") as fh:
         for rec in records:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-
 
 def _run_synthetic_smoke(args: argparse.Namespace) -> int:
     out_dir = Path(args.out_dir)
@@ -110,7 +107,6 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
     log.info("synthetic smoke wrote %s (%d records) and %s", out_path, n, manifest_path)
     return 0
 
-
 def _load_source_records(args: argparse.Namespace) -> list[dict[str, Any]]:
     """Load a conversational corpus into `messages`-shaped records.
 
@@ -152,7 +148,6 @@ def _load_source_records(args: argparse.Namespace) -> list[dict[str, Any]]:
         return records
     log.error("must pass either --source-jsonl or --hf-dataset")
     sys.exit(2)
-
 
 def _run_real(args: argparse.Namespace) -> int:
     if args.tier not in KNOWN_TIERS:
@@ -257,7 +252,6 @@ def _run_real(args: argparse.Namespace) -> int:
     log.info("wrote %s (%d records)", out_path, len(records))
     return 0
 
-
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -310,13 +304,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     return p
 
-
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.synthetic_smoke:
         return _run_synthetic_smoke(args)
     return _run_real(args)
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

@@ -7,6 +7,23 @@ from litellm import completion
 from typing import Optional, List, Dict, Any, Union
 
 
+_PROVIDER_ONLY_MESSAGE_FIELDS = {
+    "provider_specific_fields",
+    "reasoning_content",
+}
+
+
+def _portable_message(message: Dict[str, Any]) -> Dict[str, Any]:
+    portable = dict(message)
+    for field in _PROVIDER_ONLY_MESSAGE_FIELDS:
+        portable.pop(field, None)
+    return portable
+
+
+def _portable_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    return [_portable_message(message) for message in messages]
+
+
 class BaseUserSimulationEnv(abc.ABC):
     metadata = {}
 
@@ -45,10 +62,12 @@ class LLMUserSimulationEnv(BaseUserSimulationEnv):
 
     def generate_next_message(self, messages: List[Dict[str, Any]]) -> str:
         res = completion(
-            model=self.model, custom_llm_provider=self.provider, messages=messages
+            model=self.model,
+            custom_llm_provider=self.provider,
+            messages=_portable_messages(messages),
         )
         message = res.choices[0].message
-        self.messages.append(message.model_dump())
+        self.messages.append(_portable_message(message.model_dump()))
         self.total_cost = res._hidden_params["response_cost"]
         return message.content
 
@@ -116,10 +135,12 @@ User Response:
 
     def generate_next_message(self, messages: List[Dict[str, Any]]) -> str:
         res = completion(
-            model=self.model, custom_llm_provider=self.provider, messages=messages
+            model=self.model,
+            custom_llm_provider=self.provider,
+            messages=_portable_messages(messages),
         )
         message = res.choices[0].message
-        self.messages.append(message.model_dump())
+        self.messages.append(_portable_message(message.model_dump()))
         self.total_cost = res._hidden_params["response_cost"]
         return self.parse_response(message.content)
 
@@ -165,12 +186,14 @@ class VerifyUserSimulationEnv(LLMUserSimulationEnv):
         cur_message = None
         while attempts < self.max_attempts:
             res = completion(
-                model=self.model, custom_llm_provider=self.provider, messages=messages
+                model=self.model,
+                custom_llm_provider=self.provider,
+                messages=_portable_messages(messages),
             )
             cur_message = res.choices[0].message
             self.total_cost = res._hidden_params["response_cost"]
             if verify(self.model, self.provider, cur_message, messages):
-                self.messages.append(cur_message.model_dump())
+                self.messages.append(_portable_message(cur_message.model_dump()))
                 return cur_message.content
             attempts += 1
         assert cur_message is not None

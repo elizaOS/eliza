@@ -111,33 +111,23 @@
       "sourceRepo": "unsloth/Qwen3.5-27B-GGUF",
       "tier": "eliza-1-27b-256k",
       "tierSlug": "27b-256k"
-    },
-    {
-      "f16SizeBytes": 927607040,
-      "f16StagedPath": "mmproj-27b-F16.gguf",
-      "license": "apache-2.0",
-      "outputPath": "mmproj-27b-1m-Q8_0.gguf",
-      "outputSha256": "c0021f21c4b4bad62b8ed38bff78718a206e9404d747bc71cb5858f165056f29",
-      "outputSizeBytes": 625708160,
-      "quant": "Q8_0",
-      "quantOverrides": {
-        "v.blk.[0-9]+.ffn_down.weight": "f16",
-        "v.patch_embd.weight": "f16"
-      },
-      "releaseState": "weights-staged",
-      "sharedSourceWith27b": true,
-      "sourceFile": "mmproj-F16.gguf",
-      "sourceRepo": "unsloth/Qwen3.5-27B-GGUF",
-      "tier": "eliza-1-27b-1m",
-      "tierSlug": "27b-1m"
     }
   ],
   "generatedAt": "2026-05-14T10:23:58Z",
   "generator": "MMPROJ-PHASE-2 swarm; chain F16 -> llama-quantize",
   "projectorGroupings": {
-    "large": ["9b", "27b", "27b-256k", "27b-1m"],
-    "mid": ["2b", "4b"],
-    "small": ["0_8b"]
+    "large": [
+      "9b",
+      "27b",
+      "27b-256k"
+    ],
+    "mid": [
+      "2b",
+      "4b"
+    ],
+    "small": [
+      "0_8b"
+    ]
   },
   "quantizer": "plugins/plugin-local-inference/native/llama.cpp llama-quantize (fork)",
   "quantizerBinary": "/tmp/w4d-builds/linux-x64-cpu/bin/llama-quantize",

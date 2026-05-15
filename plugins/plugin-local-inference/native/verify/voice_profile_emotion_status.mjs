@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,6 +42,278 @@ function loadJson(path) {
   const full = rel(path);
   if (!existsSync(full)) return null;
   return JSON.parse(readFileSync(full, "utf8"));
+}
+
+function loadJsonFullPath(fullPath) {
+  if (!existsSync(fullPath)) return null;
+  return JSON.parse(readFileSync(fullPath, "utf8"));
+}
+
+function listFilesRecursive(root) {
+  const full = resolve(root);
+  if (!existsSync(full)) return [];
+  const out = [];
+  const stack = [full];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const fullEntry = resolve(current, entry.name);
+      if (entry.isDirectory()) stack.push(fullEntry);
+      else if (entry.isFile()) out.push(fullEntry);
+    }
+  }
+  return out;
+}
+
+function listJsonFiles(dir) {
+  return listFilesRecursive(rel(dir)).filter((entry) => entry.endsWith(".json"));
+}
+
+function pathFromRepo(fullPath) {
+  const normalized = resolve(fullPath);
+  if (normalized.startsWith(repoRoot)) {
+    return normalized.slice(repoRoot.length + 1);
+  }
+  const reportsRoot = resolve(pluginRoot, "native", "reports");
+  const verifyRoot = resolve(pluginRoot, "native", "verify");
+  if (normalized.startsWith(reportsRoot)) {
+    return `packages/inference/reports/${normalized.slice(reportsRoot.length + 1)}`;
+  }
+  if (normalized.startsWith(verifyRoot)) {
+    return `packages/inference/verify/${normalized.slice(verifyRoot.length + 1)}`;
+  }
+  return normalized;
+}
+
+function newestJsonReportWhere(dir, predicate) {
+  const candidates = [];
+  for (const full of listJsonFiles(dir)) {
+    let data = null;
+    try {
+      data = loadJsonFullPath(full);
+    } catch {
+      continue;
+    }
+    if (!data || !predicate(data, full)) continue;
+    let mtimeMs = 0;
+    try {
+      mtimeMs = statSync(full).mtimeMs;
+    } catch {
+      /* ignore */
+    }
+    candidates.push({ full, data, mtimeMs });
+  }
+  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+  const picked = candidates[0];
+  return picked ? { path: pathFromRepo(picked.full), data: picked.data } : null;
+}
+
+function tierMatches(data, tier) {
+  const haystack = [
+    data?.tier,
+    data?.bundle?.tier,
+    data?.bundleRoot,
+    data?.bundle?.dir,
+    data?.bundle,
+  ]
+    .filter(Boolean)
+    .map(String)
+    .join(" ");
+  return haystack.includes(tier) || haystack.includes(`eliza-1-${tier}.bundle`);
+}
+
+function pathFromBundle(fullPath, bundleDir) {
+  const root = resolve(bundleDir);
+  const normalized = resolve(fullPath);
+  return normalized.startsWith(`${root}/`)
+    ? normalized.slice(root.length + 1)
+    : normalized;
+}
+
+function manifestFilePaths(manifest) {
+  const out = [];
+  const files = manifest?.files;
+  if (!files || typeof files !== "object") return out;
+  for (const entries of Object.values(files)) {
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (typeof entry?.path === "string") out.push(entry.path);
+    }
+  }
+  return out;
+}
+
+function binaryHasSymbol(binaryPath, symbol) {
+  const full = resolve(binaryPath);
+  if (!existsSync(full)) return false;
+  const bytes = readFileSync(full);
+  return (
+    bytes.includes(Buffer.from(symbol, "utf8")) ||
+    bytes.includes(Buffer.from(`_${symbol}`, "utf8"))
+  );
+}
+
+function inspectRuntimeSymbols(runtimePath) {
+  const rows = [
+    ["streamingTts", "eliza_inference_tts_synthesize_stream", "streaming TTS"],
+    ["streamingAsr", "eliza_inference_asr_stream_open", "streaming ASR"],
+    ["nativeVad", "eliza_inference_vad_process", "native VAD"],
+    ["bargeInCancel", "eliza_inference_cancel_tts", "barge-in/cancel"],
+    [
+      "referenceEncode",
+      "eliza_inference_encode_reference",
+      "reference clone profile freezing",
+    ],
+    [
+      "referenceTokenFree",
+      "eliza_inference_free_tokens",
+      "reference clone profile freezing",
+    ],
+  ];
+  return {
+    runtimePath,
+    status: existsSync(resolve(runtimePath)) ? "inspected" : "missing_runtime",
+    symbols: rows.map(([key, symbol, requiredFor]) => ({
+      key,
+      symbol,
+      requiredFor,
+      status: binaryHasSymbol(runtimePath, symbol) ? "present" : "missing",
+    })),
+  };
+}
+
+function inspectNativeVoiceCapabilityReadiness({ bundleDir, runtimePath }) {
+  const bundleRoot = resolve(bundleDir);
+  const manifestPath = resolve(bundleRoot, "eliza-1.manifest.json");
+  const manifest = loadJsonFullPath(manifestPath);
+  const allPaths = Array.from(
+    new Set([
+      ...listFilesRecursive(bundleRoot).map((entry) =>
+        pathFromBundle(entry, bundleRoot),
+      ),
+      ...manifestFilePaths(manifest),
+    ]),
+  ).sort();
+  const find = (regex) => allPaths.filter((entry) => regex.test(entry));
+  const exact = (path) => allPaths.filter((entry) => entry === path);
+  const requirements = [
+    {
+      key: "ttsModel",
+      status: exact("tts/kokoro/model_q4.onnx").length > 0 ? "present" : "missing",
+      expected: "tts/kokoro/model_q4.onnx",
+      found: exact("tts/kokoro/model_q4.onnx"),
+      requiredFor: "local TTS",
+    },
+    {
+      key: "asrModel",
+      status: exact("asr/eliza-1-asr.gguf").length > 0 ? "present" : "missing",
+      expected: "asr/eliza-1-asr.gguf plus asr/eliza-1-asr-mmproj.gguf",
+      found: find(/^asr\/eliza-1-asr(?:-mmproj)?\.gguf$/),
+      requiredFor: "local ASR",
+    },
+    {
+      key: "sileroVad",
+      status:
+        find(/^vad\/silero-vad.*\.(onnx|bin)$/).length > 0
+          ? "present"
+          : "missing",
+      expected: "vad/silero-vad-int8.onnx or vad/silero-vad-v5.1.2.ggml.bin",
+      found: find(/^vad\/silero-vad.*\.(onnx|bin)$/),
+      requiredFor: "local VAD and barge-in gating",
+    },
+    {
+      key: "defaultVoicePreset",
+      status:
+        exact("cache/voice-preset-default.bin").length > 0
+          ? "present"
+          : "missing",
+      expected: "cache/voice-preset-default.bin",
+      found: exact("cache/voice-preset-default.bin"),
+      requiredFor: "default voice profile seed",
+      note:
+        "Presence proves only a seeded default preset exists; reference cloning still requires encode_reference/free_tokens and an ASR round trip.",
+    },
+    {
+      key: "nativeEmotionAcousticModel",
+      status:
+        find(/(^|\/)(wav2small.*msp.*dim.*\.onnx|.*emotion.*\.onnx)$/i)
+          .length > 0
+          ? "present"
+          : "missing",
+      expected:
+        "wav2small-msp-dim-int8 ONNX artifact, normally a manifest files.emotion entry such as voice/emotion/wav2small-msp-dim-int8.onnx",
+      found: find(/(^|\/)(wav2small.*msp.*dim.*\.onnx|.*emotion.*\.onnx)$/i),
+      requiredFor: "model-native acoustic emotion attribution",
+      blocker:
+        "No wav2small-msp-dim-int8 ONNX artifact or manifest files.emotion entry is present in the 0_8b bundle.",
+    },
+    {
+      key: "speakerEncoderModel",
+      status:
+        find(/(^|\/)(wespeaker.*resnet34.*\.onnx|.*speaker.*encoder.*\.onnx)$/i)
+          .length > 0
+          ? "present"
+          : "missing",
+      expected:
+        "wespeaker-resnet34-lm-int8 ONNX artifact for 256-dim speaker embeddings",
+      found: find(/(^|\/)(wespeaker.*resnet34.*\.onnx|.*speaker.*encoder.*\.onnx)$/i),
+      requiredFor: "sample-derived speaker embeddings and entity attribution from audio",
+      blocker:
+        "No WeSpeaker ResNet34-LM ONNX artifact is present in the 0_8b bundle.",
+    },
+    {
+      key: "pyannoteDiarizerModel",
+      status:
+        find(/(^|\/)(pyannote.*segmentation.*\.onnx|.*diar.*\.onnx)$/i)
+          .length > 0
+          ? "present"
+          : "missing",
+      expected:
+        "pyannote-segmentation-3.0-int8 ONNX artifact for local multi-speaker segmentation",
+      found: find(/(^|\/)(pyannote.*segmentation.*\.onnx|.*diar.*\.onnx)$/i),
+      requiredFor: "local diarization DER",
+      blocker:
+        "No pyannote-segmentation-3.0 ONNX artifact is present in the 0_8b bundle.",
+    },
+  ];
+  const runtimeSymbols = inspectRuntimeSymbols(runtimePath);
+  const missingNativeFeatureBlockers = requirements
+    .filter((row) => row.blocker && row.status !== "present")
+    .map((row) => ({
+      key: row.key,
+      requiredFor: row.requiredFor,
+      blocker: row.blocker,
+      expected: row.expected,
+    }));
+  if (
+    runtimeSymbols.symbols
+      .filter((row) => row.requiredFor === "reference clone profile freezing")
+      .some((row) => row.status !== "present")
+  ) {
+    missingNativeFeatureBlockers.push({
+      key: "referenceCloneEncodeAbi",
+      requiredFor: "reference clone profile freezing",
+      expected:
+        "libelizainference exports eliza_inference_encode_reference and eliza_inference_free_tokens",
+      blocker:
+        "The active libelizainference runtime does not export the optional reference-clone encode/free-token symbols.",
+    });
+  }
+  return {
+    bundleDir,
+    manifestPath: existsSync(manifestPath) ? manifestPath : null,
+    status:
+      missingNativeFeatureBlockers.length === 0
+        ? "native_voice_features_ready"
+        : "partial_runtime_ready_native_features_fail_closed",
+    requirements,
+    runtimeSymbols,
+    missingNativeFeatureBlockers,
+    relevantObservedFiles: allPaths.filter((entry) =>
+      /^(asr|tts|vad|cache)\//i.test(entry) ||
+      /emotion|speaker|wespeaker|pyannote|diar/i.test(entry),
+    ),
+  };
 }
 
 function sha256(path) {
@@ -283,9 +562,19 @@ function asrFromTtsSmokeSummary(path) {
     expected.length > 0 &&
     typeof transcript === "string" &&
     transcript.includes(expected);
+  const failReason = !wav
+    ? "ASR-from-TTS smoke has no readable WAV evidence"
+    : j.ok !== true
+      ? "ASR-from-TTS smoke report ok=false"
+      : typeof expected !== "string" || expected.length === 0
+        ? "ASR-from-TTS smoke has no expected transcript"
+        : typeof transcript !== "string" || transcript.length === 0
+          ? "ASR-from-TTS smoke has no transcript"
+          : "ASR transcript did not contain the expected phrase";
   return {
     status: lexicalPass && wav ? "pass" : "fail",
     path,
+    ok: j.ok === true,
     bundle: j.bundle ?? null,
     wav: j.wav ?? null,
     wavInfo: wav,
@@ -301,7 +590,7 @@ function asrFromTtsSmokeSummary(path) {
     reason:
       lexicalPass && wav
         ? "active bundle generated TTS audio round-tripped through local ASR"
-        : "ASR-from-TTS smoke missing audio or lexical validation",
+        : failReason,
   };
 }
 
@@ -353,6 +642,8 @@ function ttsSummary(path) {
     status: j.ok ? "pass" : "fail",
     path,
     text: j.text,
+    backend: j.backend,
+    voiceId: j.voiceId,
     speakerPresetId: j.speakerPresetId,
     streamSupported: j.streamSupported,
     maskgitSteps: j.maskgitSteps,
@@ -362,14 +653,19 @@ function ttsSummary(path) {
     audioSeconds: j.audioSeconds,
     synthMs: j.synthMs,
     rtf: j.rtf,
+    modelPath: j.modelPath,
     wavOut: j.wavOut,
-    wavSha256: j.wavOut ? sha256(j.wavOut) : null,
+    wavSha256: j.wavSha256 ?? (j.wavOut ? sha256(j.wavOut) : null),
   };
 }
 
 const activeTier = "0_8b";
 const activeBundleDir =
   "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle";
+const runtimePath =
+  "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib";
+const generatedDate = new Date().toISOString().slice(0, 10);
+const generatedDateCompact = generatedDate.replace(/-/g, "");
 const defaultTtsPath =
   "packages/inference/reports/local-e2e/2026-05-14/tts-stream-smoke-warmed-local-loop-0_8b-20260514.json";
 const defaultAsrPath =
@@ -407,11 +703,71 @@ const activeTierMatrix = [
   "9b",
   "27b",
   "27b-256k",
-  "27b-1m",
 ];
 
-const defaultRoundTripTts = ttsSummary(defaultTtsPath);
-const defaultRoundTripAsr = asrSummary(defaultAsrPath);
+const latestStreamingTts = newestJsonReportWhere(
+  "packages/inference/reports/local-e2e",
+  (data, full) =>
+    (full.includes("tts-stream") || full.includes("tts-kokoro")) &&
+    data?.ok === true &&
+    typeof data?.wavOut === "string" &&
+    tierMatches(data, activeTier),
+);
+const latestDefaultSmallestTts = newestJsonReportWhere(
+  "packages/inference/reports/local-e2e",
+  (data, full) =>
+    full.includes("tts-kokoro") &&
+    data?.ok === true &&
+    typeof data?.wavOut === "string" &&
+    tierMatches(data, activeTier),
+);
+const latestDefaultSmallestAsrLoopback = newestJsonReportWhere(
+  "packages/inference/reports/local-e2e",
+  (data, full) =>
+    full.includes("asr-tts-kokoro-loopback") &&
+    typeof data?.wav === "string" &&
+    tierMatches(data, activeTier),
+);
+const latestAsrLoopbackAttempt = newestJsonReportWhere(
+  "packages/inference/reports/local-e2e",
+  (data, full) =>
+    full.includes("asr") &&
+    typeof data?.wav === "string" &&
+    tierMatches(data, activeTier),
+);
+const latestAsrFromTts = newestJsonReportWhere(
+  "packages/inference/reports/local-e2e",
+  (data, full) =>
+    full.includes("asr") &&
+    data?.ok === true &&
+    typeof data?.wav === "string" &&
+    tierMatches(data, activeTier),
+);
+const latestVadQuality = newestJsonReportWhere(
+  "packages/inference/reports/vad",
+  (data) => tierMatches(data, activeTier),
+);
+const latestDiarizationAttribution = newestJsonReportWhere(
+  "packages/inference/verify/reports",
+  (data, full) =>
+    full.toLowerCase().includes("diarization") && tierMatches(data, activeTier),
+);
+const latestBargeInLatency = newestJsonReportWhere(
+  "packages/inference/reports/bargein",
+  (data, full) => full.toLowerCase().includes("bargein"),
+);
+const nativeVoiceCapabilityReadiness = inspectNativeVoiceCapabilityReadiness({
+  bundleDir: activeBundleDir,
+  runtimePath,
+});
+
+const defaultRoundTripTts = ttsSummary(
+  latestDefaultSmallestTts?.path ?? latestStreamingTts?.path ?? defaultTtsPath,
+);
+const defaultRoundTripAsr = latestDefaultSmallestAsrLoopback
+  ? asrFromTtsSmokeSummary(latestDefaultSmallestAsrLoopback.path)
+  : asrSummary(defaultAsrPath);
+const legacyDirectDefaultAsr = asrSummary(defaultAsrPath);
 const defaultStepSweep = stepSweepSummary(
   currentStepSweepPath,
   postTierStepSweepPath,
@@ -420,21 +776,27 @@ const currentActiveAsrFromTts = currentActiveAsrFromTtsPaths.map((path) =>
   asrFromTtsSmokeSummary(path),
 );
 const bestCurrentActiveAsrFromTts =
+  (latestAsrFromTts ? asrFromTtsSmokeSummary(latestAsrFromTts.path) : null) ??
   currentActiveAsrFromTts.find((row) => row.status === "pass") ??
   currentActiveAsrFromTts[0];
 const directDefaultEvidencePass =
   defaultRoundTripTts.status === "pass" && defaultRoundTripAsr.status === "pass";
+const defaultSmallestLoopbackAttempted =
+  defaultRoundTripTts.backend === "kokoro-onnx" &&
+  latestDefaultSmallestAsrLoopback !== null;
 const defaultStreamingEvidenceMode = directDefaultEvidencePass
-  ? "direct_streaming_tts_asr"
-  : bestCurrentActiveAsrFromTts?.status === "pass"
-    ? "active_asr_from_tts_smoke"
-    : defaultStepSweep.status === "pass"
-      ? "legacy_0_6b_step_sweep_fallback"
-      : "missing";
+  ? "default_kokoro_tts_asr"
+  : defaultSmallestLoopbackAttempted
+    ? "default_kokoro_tts_asr_loopback_failed"
+    : bestCurrentActiveAsrFromTts?.status === "pass"
+      ? "active_asr_from_tts_smoke_fallback"
+      : defaultStepSweep.status === "pass"
+        ? "legacy_0_6b_step_sweep_fallback"
+        : "missing";
 const defaultStreamingStatus = directDefaultEvidencePass
   ? "pass"
-  : bestCurrentActiveAsrFromTts?.status === "pass"
-    ? "pass_active_smoke"
+  : defaultSmallestLoopbackAttempted
+    ? "fail_default_kokoro_asr_loopback"
     : defaultStepSweep.status === "pass"
       ? "legacy_fallback_pass"
       : "fail";
@@ -472,14 +834,26 @@ const report = {
     dir: activeBundleDir,
   },
   activeTierMatrix,
-  runtime:
-    "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib",
+  runtime: runtimePath,
+  nativeVoiceCapabilityReadiness: {
+    ...nativeVoiceCapabilityReadiness,
+    conclusion:
+      "0_8b has real local TTS, ASR, VAD, streaming, and cancel surfaces. Native acoustic emotion, full DER diarization, and reference-clone profile freezing remain fail-closed because the exact model artifacts or native symbols listed here are missing.",
+  },
   defaultStreamingTtsRoundTrip: {
     status: defaultStreamingStatus,
     evidenceMode: defaultStreamingEvidenceMode,
-    productReady: defaultStreamingStatus === "pass" || defaultStreamingStatus === "pass_active_smoke",
+    productReady: defaultStreamingStatus === "pass",
     tts: defaultRoundTripTts,
     asr: defaultRoundTripAsr,
+    legacyDirectStreamingAsr: legacyDirectDefaultAsr,
+    latestAsrLoopbackAttempt: latestAsrLoopbackAttempt
+      ? asrFromTtsSmokeSummary(latestAsrLoopbackAttempt.path)
+      : null,
+    compatibleExistingTtsLoopback: bestCurrentActiveAsrFromTts,
+    compatibleExistingTtsLoopbackProductReady: false,
+    compatibleExistingTtsLoopbackReason:
+      "A passing ASR-from-TTS report proves the ASR path can preserve lexical content for some local generated audio, but it does not override a failed loopback on the current default-smallest Kokoro TTS output.",
     currentActiveAsrFromTts: bestCurrentActiveAsrFromTts,
     activeAsrFromTtsCandidates: currentActiveAsrFromTts,
     stepSweepFallback: defaultStepSweep,
@@ -490,6 +864,67 @@ const report = {
         "The historical eliza-local-voice-smoke_seed42 ASR report is empty/stale and must not be scored as WER=1.0 evidence for the active tier.",
     },
   },
+  vadQuality: latestVadQuality
+    ? {
+        status: latestVadQuality.data?.available ? "pass" : "missing",
+        source: latestVadQuality.path,
+        summary: latestVadQuality.data?.summary ?? null,
+        modelPath: latestVadQuality.data?.modelPath ?? null,
+        conclusion:
+          "VAD status is measured from the real Silero runtime against generated/synthetic speech fixtures; false-barge-in rate is measured, not inferred.",
+      }
+    : {
+        status: "missing",
+        source: null,
+        summary: null,
+        conclusion:
+          "No 0_8b VAD quality report was found; voice mode must not claim measured VAD quality until the harness runs.",
+      },
+  speakerAttributionAndDiarization: latestDiarizationAttribution
+    ? {
+        status:
+          latestDiarizationAttribution.data?.speakerAttribution?.accuracy === 1
+            ? "attribution_pass_diarization_der_missing"
+            : "needs_review",
+        source: latestDiarizationAttribution.path,
+        speakerAttribution:
+          latestDiarizationAttribution.data?.speakerAttribution ?? null,
+        vad: latestDiarizationAttribution.data?.vad?.summary ?? null,
+        diarization: latestDiarizationAttribution.data?.diarization ?? null,
+        nativeBlockers: nativeVoiceCapabilityReadiness.missingNativeFeatureBlockers.filter(
+          (row) =>
+            row.key === "speakerEncoderModel" ||
+            row.key === "pyannoteDiarizerModel",
+        ),
+        conclusion:
+          "Entity attribution is exercised with supplied segment embeddings against the generated WAV. Full local multi-speaker DER remains null until segmentation plus speaker embedding extraction are wired.",
+      }
+    : {
+        status: "missing",
+        source: null,
+        conclusion:
+          "No 0_8b generated-voice diarization/attribution report was found.",
+      },
+  bargeInInterruption: latestBargeInLatency
+    ? {
+        status: latestBargeInLatency.data?.available ? "measured" : "not_measured",
+        source: latestBargeInLatency.path,
+        summary: latestBargeInLatency.data?.summary ?? null,
+        reason: latestBargeInLatency.data?.reason ?? null,
+        backend: latestBargeInLatency.data?.backend ?? null,
+        nativeCancelSymbol:
+          nativeVoiceCapabilityReadiness.runtimeSymbols.symbols.find(
+            (row) => row.key === "bargeInCancel",
+          ) ?? null,
+        conclusion:
+          "Barge-in/interruption latency is only claimed when the harness measures a real assembled voice path; null latency values remain fail-closed.",
+      }
+    : {
+        status: "missing",
+        source: null,
+        conclusion:
+          "No barge-in latency harness report was found; do not claim measured interruption latency.",
+      },
   styleInstructionRoundTrips: {
     status:
       loadJson(styled6AsrPath)?.ok === true || loadJson(styled32AsrPath)?.ok === true
@@ -517,6 +952,9 @@ const report = {
     referenceSha256: sha256(referenceWav),
     nativeReferenceCloneRoundTrip: {
       status: nativeReferenceClonePass ? "pass" : "fail",
+      nativeBlockers: nativeVoiceCapabilityReadiness.missingNativeFeatureBlockers.filter(
+        (row) => row.key === "referenceCloneEncodeAbi",
+      ),
       outputWav: refCloneWavPath,
       outputWavInfo: wavSize(refCloneWavPath),
       outputSha256: sha256(refCloneWavPath),
@@ -532,6 +970,9 @@ const report = {
     asrNativeEmotion: {
       status: "not_implemented",
       modelNativeEmotionClaimed: false,
+      nativeBlockers: nativeVoiceCapabilityReadiness.missingNativeFeatureBlockers.filter(
+        (row) => row.key === "nativeEmotionAcousticModel",
+      ),
       requiredEvidence:
         "ASR output must carry a supported emotion label or V-A-D payload and set emotionLabelSupported=true before this can be reported as model-native emotion-aware ASR.",
     },
@@ -568,8 +1009,8 @@ const report = {
     "Do not ship style-conditioned or reference-clone voice profiles as recommended defaults until their ASR round trips pass the same WER gate as default streaming TTS. Expose native ref_audio/ref_text through libelizainference before productizing sample-derived profiles.",
 };
 
-const out =
-  "packages/inference/reports/local-e2e/2026-05-14/voice-profile-emotion-readiness-0_8b-20260514.json";
+const out = `packages/inference/reports/local-e2e/${generatedDate}/voice-profile-emotion-readiness-${activeTier}-${generatedDateCompact}.json`;
+mkdirSync(dirname(rel(out)), { recursive: true });
 writeFileSync(rel(out), `${JSON.stringify(report, null, 2)}\n`);
 console.log(
   JSON.stringify(
@@ -578,6 +1019,10 @@ console.log(
       out,
       defaultTtsStatus: report.defaultStreamingTtsRoundTrip.status,
       defaultTtsEvidenceMode: report.defaultStreamingTtsRoundTrip.evidenceMode,
+      nativeVoiceCapabilityReadiness:
+        report.nativeVoiceCapabilityReadiness.status,
+      missingNativeFeatureBlockers:
+        report.nativeVoiceCapabilityReadiness.missingNativeFeatureBlockers,
       referenceVoiceProfileStatus: report.referenceVoiceProfileProbe.status,
       emotionAwareAsrStatus: report.emotionAwareAsrAssessment.status,
       modelNativeEmotionClaimed:

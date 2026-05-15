@@ -40,17 +40,18 @@ Connectors are platform bridges that allow your agent to communicate across mess
 22. [Instagram](#instagram)
 23. [LINE](#line)
 24. [Zalo](#zalo)
-25. [Twilio](#twilio)
-26. [GitHub](#github)
-27. [Gmail Watch](#gmail-watch)
-28. [Nextcloud Talk](#nextcloud-talk)
-29. [Tlon](#tlon)
+25. [Zalo User](#zalo-user)
+26. [Twilio](#twilio)
+27. [GitHub](#github)
+28. [Gmail Watch](#gmail-watch)
+29. [Nextcloud Talk](#nextcloud-talk)
+30. [Tlon](#tlon)
 
 **Reference:**
 
-30. [Connector Lifecycle](#connector-lifecycle)
-31. [Multi-Account Support](#multi-account-support)
-32. [Session Management](#session-management)
+31. [Connector Lifecycle](#connector-lifecycle)
+32. [Multi-Account Support](#multi-account-support)
+33. [Session Management](#session-management)
 
 ---
 
@@ -771,6 +772,39 @@ This connector auto-enables when its configuration is present in `eliza.json`.
 
 ---
 
+## WeChat
+
+### Setup Requirements
+
+- WeChat account session credentials
+- Local or packaged environment that can run the WeChat bridge
+
+### Key Configuration
+
+```json
+{
+  "connectors": {
+    "wechat": {
+      "enabled": true,
+      "token": "placeholder"
+    }
+  }
+}
+```
+
+**Environment variables:** `WECHAT_TOKEN`, `WECHAT_ENABLED`, `WECHAT_WEBHOOK_PATH`, `WECHAT_DM_POLICY`, `WECHAT_GROUP_POLICY`, `WECHAT_ALLOWED_ROOMS`
+
+### Features
+
+- WeChat message monitoring and response
+- DM and group policy controls
+- Webhook path configuration
+- Auto-enable when a token or connector config is present
+
+See the [WeChat connector reference](/connectors/wechat) for package availability notes.
+
+---
+
 ## Matrix
 
 ### Setup Requirements
@@ -881,6 +915,39 @@ This connector auto-enables when its configuration is present in `eliza.json`.
 
 ---
 
+## Lens
+
+### Setup Requirements
+
+- Lens account credentials or wallet-based session
+- Lens API access for the environment where the agent runs
+
+### Key Configuration
+
+```json
+{
+  "connectors": {
+    "lens": {
+      "enabled": true,
+      "token": "YOUR_LENS_TOKEN"
+    }
+  }
+}
+```
+
+**Environment variables:** `LENS_TOKEN`, `LENS_API_KEY`, `LENS_ENABLED`, `LENS_PROFILE_ID`, `LENS_DRY_RUN`
+
+### Features
+
+- Lens social publishing and engagement workflows
+- Profile-scoped configuration
+- Dry-run support for testing
+- Auto-enable when Lens credentials are configured
+
+See the [Lens connector reference](/connectors/lens) for setup details.
+
+---
+
 ## LINE
 
 ### Setup Requirements
@@ -980,65 +1047,102 @@ This connector auto-enables when its configuration is present in `eliza.json`.
 
 ### Setup Requirements
 
-- Zalo personal account credentials (IMEI and session cookie)
+- Twilio account SID and auth token
+- SMS-capable phone number, Messaging Service SID, or Voice-enabled number
 
 ### Key Configuration
 
 ```json
 {
   "connectors": {
-    "zalouser": {
-      "enabled": true
+    "twilio": {
+      "enabled": true,
+      "accountSid": "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "authToken": "YOUR_AUTH_TOKEN",
+      "from": "+15551234567"
     }
   }
 }
 ```
 
-**Environment variables:** `ZALOUSER_IMEI`, `ZALOUSER_PROFILES`, `ZALOUSER_COOKIE_PATH`, `ZALOUSER_USER_AGENT`, `ZALOUSER_DEFAULT_PROFILE`
+**Environment variables:** `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER`, `TWILIO_MESSAGING_SERVICE_SID`, `TWILIO_WEBHOOK_PATH`, `TWILIO_ALLOWED_FROM`
 
 ### Features
 
-- Personal-account one-to-one messaging (unlike the Official Account variant)
-- DM and group policy controls (`ZALOUSER_DM_POLICY`, `ZALOUSER_GROUP_POLICY`)
-- Multi-profile support via `ZALOUSER_PROFILES`
-- Thread allowlisting via `ZALOUSER_ALLOWED_THREADS`
+- SMS send and receive workflows
+- Voice call support where configured
+- Webhook-based inbound message handling
+- Sender allowlists for production deployments
 
-**Note:** This connector is available from the plugin registry. Install it with `eliza plugins install @elizaos/plugin-zalouser`.
+**Note:** Twilio is a feature plugin (`@elizaos/plugin-twilio`) that provides SMS and voice capabilities. Install it with `eliza plugins install @elizaos/plugin-twilio`.
 
 ---
 
-## Zalo User
-
-A personal-account variant of the Zalo connector for one-to-one messaging outside of the Official Account system.
-
-> **Note:** Twilio is a **feature plugin** (`@elizaos/plugin-twilio`), not a connector-category plugin in the registry. It provides SMS and voice call capabilities.
+## GitHub
 
 ### Setup Requirements
 
-- Zalo account cookie file for authentication
+- GitHub personal access token or GitHub App credentials
+- Repository owner and repository name for default operations
 
 ### Key Configuration
 
 ```json
 {
   "connectors": {
-    "zalouser": {
-      "enabled": true
+    "github": {
+      "enabled": true,
+      "apiToken": "YOUR_GITHUB_TOKEN",
+      "owner": "elizaos",
+      "repo": "eliza"
     }
   }
 }
 ```
 
-**Config keys:** `ZALOUSER_COOKIE_PATH`, `ZALOUSER_IMEI`, `ZALOUSER_USER_AGENT`, `ZALOUSER_DM_POLICY`, `ZALOUSER_GROUP_POLICY`, `ZALOUSER_ALLOWED_THREADS`
+**Environment variables:** `GITHUB_API_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`, `GITHUB_BRANCH`, `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, `GITHUB_INSTALLATION_ID`
 
 ### Features
 
-- Personal account messaging (outside Official Account)
-- DM and group policy controls
-- Profile configuration
-- Thread allowlists
+- Repository file access and code search
+- Issue and pull request workflows
+- Branch and commit operations when token scopes allow writes
+- GitHub App authentication for team deployments
 
-**Note:** This connector is available from the plugin registry. Install it with `eliza plugins install @elizaos/plugin-zalouser`.
+See the [GitHub connector reference](/connectors/github) for token scope guidance.
+
+---
+
+## Gmail Watch
+
+### Setup Requirements
+
+- Gmail API access in a Google Cloud project
+- Pub/Sub topic configured for Gmail push notifications
+- Service account or OAuth credentials with Gmail access
+
+### Key Configuration
+
+```json
+{
+  "features": {
+    "gmailWatch": true
+  }
+}
+```
+
+Gmail Watch is a feature plugin and is enabled through `features.gmailWatch`, not `connectors`.
+
+**Environment variables:** Google credentials are provided through the Google connector/account setup used by your deployment.
+
+### Features
+
+- Gmail Pub/Sub watch subscription management
+- Auto-renewal of mailbox watches
+- Inbound email event handling
+- Label filtering for targeted monitoring
+
+See the [Gmail Watch reference](/connectors/gmail-watch) for setup details.
 
 ---
 

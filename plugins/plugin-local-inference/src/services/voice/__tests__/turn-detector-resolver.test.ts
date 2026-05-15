@@ -50,9 +50,7 @@ describe("turnDetectorRevisionForTier — tier ↔ revision mapping", () => {
 		["9b", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
 		["27b", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
 		["27b-256k", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
-		["27b-1m", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
 		["eliza-1-4b", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
-		["eliza-1-27b-1m", LIVEKIT_TURN_DETECTOR_INTL_REVISION],
 	])("%s → multilingual revision (%s)", (tier, expected) => {
 		expect(turnDetectorRevisionForTier(tier)).toBe(expected);
 	});

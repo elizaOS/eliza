@@ -91,7 +91,6 @@ VISION_TIERS: Final[set[str]] = {
     "9b",
     "27b",
     "27b-256k",
-    "27b-1m",
 }
 EMBEDDING_TIERS: Final[set[str]] = {"4b"}
 EMBEDDING_REPO: Final[str] = "Qwen/Qwen3-Embedding-0.6B-GGUF"
@@ -104,7 +103,6 @@ DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "9b": (10000, 14000),
     "27b": (24000, 32000),
     "27b-256k": (36000, 48000),
-    "27b-1m": (64000, 96000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = ("tts", "emotion-tags", "singing")
 CHECKSUM_PATH: Final[Path] = Path("checksums/SHA256SUMS")
@@ -124,7 +122,6 @@ POLAR_ARTIFACTS_NAME: Final[str] = "polarquant_artifacts.safetensors"
 
 _GGUF_DRAFTER_TARGET_CHECKPOINT_KEY: Final[str] = "dflash-draft.target_checkpoint_sha256"
 
-
 @dataclass(frozen=True, slots=True)
 class StagedFile:
     role: str
@@ -135,7 +132,6 @@ class StagedFile:
     method: str
     provenance: str
 
-
 def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:
@@ -143,14 +139,11 @@ def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
             h.update(block)
     return h.hexdigest()
 
-
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[4]
 
-
 def _now_iso() -> str:
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 def _git_short_sha() -> str:
     import subprocess
@@ -161,16 +154,13 @@ def _git_short_sha() -> str:
     )
     return proc.stdout.strip() if proc.returncode == 0 and proc.stdout.strip() else "unknown"
 
-
 def _json_write(path: Path, data: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n")
 
-
 def _text_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
-
 
 def _ensure_release_dirs(bundle_dir: Path, *, tier: str) -> None:
     for rel in REQUIRED_RELEASE_DIRS:
@@ -180,7 +170,6 @@ def _ensure_release_dirs(bundle_dir: Path, *, tier: str) -> None:
             continue
         (bundle_dir / rel).mkdir(parents=True, exist_ok=True)
 
-
 def _link_or_copy(source: Path, destination: Path) -> str:
     try:
         os.link(source, destination)
@@ -188,7 +177,6 @@ def _link_or_copy(source: Path, destination: Path) -> str:
     except OSError:
         shutil.copy2(source, destination)
         return "copy"
-
 
 def _stage_file(*, role: str, source: Path, destination: Path, provenance: str, force: bool) -> StagedFile:
     source = source.resolve()
@@ -212,7 +200,6 @@ def _stage_file(*, role: str, source: Path, destination: Path, provenance: str, 
         sha256=source_sha, sizeBytes=destination.stat().st_size, method=method, provenance=provenance,
     )
 
-
 def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
     try:
         from gguf import GGUFReader  # type: ignore
@@ -229,7 +216,6 @@ def _read_drafter_target_checkpoint_sha256(drafter_path: Path) -> str | None:
         return str(field.parts[field.data[0]].tobytes().decode("utf-8"))
     except Exception:
         return None
-
 
 def _publish_blocking_reasons(*, tier: str, text_substituted: bool, drafter_stamp_only: bool) -> list[str]:
     reasons: list[str] = []
@@ -250,7 +236,6 @@ def _publish_blocking_reasons(*, tier: str, text_substituted: bool, drafter_stam
         "release evidence is weights-staged, not an upload candidate; the publish orchestrator will not upload",
     ])
     return reasons
-
 
 def _write_licenses(bundle_dir: Path, *, tier: str, text_lineage_repo: str, force: bool) -> None:
     texts = {
@@ -295,7 +280,6 @@ def _write_licenses(bundle_dir: Path, *, tier: str, text_lineage_repo: str, forc
             continue
         _text_write(path, text)
 
-
 def _stage_recipe_sidecars(bundle_dir: Path, recipes_dir: Path, *, force: bool) -> list[StagedFile]:
     out: list[StagedFile] = []
     for sub, fname, rel in RECIPE_SIDECARS:
@@ -335,7 +319,6 @@ def _stage_recipe_sidecars(bundle_dir: Path, recipes_dir: Path, *, force: bool) 
         ))
     return out
 
-
 def _write_target_meta(*, bundle_dir: Path, tier: str, text_files: Sequence[StagedFile],
                        drafter_file: StagedFile, reasons: Sequence[str]) -> None:
     primary_text = text_files[0]
@@ -371,7 +354,6 @@ def _write_target_meta(*, bundle_dir: Path, tier: str, text_files: Sequence[Stag
         "kernelCaps": {"required": required_kernels, "optional": []},
         "publishBlockingReasons": list(reasons),
     })
-
 
 def _write_eval_files(*, bundle_dir: Path, tier: str, generated_at: str, reasons: Sequence[str],
                       has_asr: bool, has_vad: bool, has_embedding: bool) -> dict[str, Any]:
@@ -410,7 +392,6 @@ def _write_eval_files(*, bundle_dir: Path, tier: str, generated_at: str, reasons
     })
     return gate_report.to_dict()
 
-
 def _write_backend_reports(*, bundle_dir: Path, tier: str, generated_at: str, git_sha: str,
                            reasons: Sequence[str]) -> dict[str, KernelVerification]:
     out: dict[str, KernelVerification] = {}
@@ -435,7 +416,6 @@ def _write_backend_reports(*, bundle_dir: Path, tier: str, generated_at: str, gi
                                               report=f"not-applicable-for-{tier}")
     return out
 
-
 def _write_platform_evidence(*, bundle_dir: Path, generated_at: str, git_sha: str,
                              reasons: Sequence[str]) -> None:
     _json_write(bundle_dir / "evidence" / "platform" / "linux-x64-cpu.json", {
@@ -445,7 +425,6 @@ def _write_platform_evidence(*, bundle_dir: Path, generated_at: str, git_sha: st
         "reason": "no on-device verify-on-load pass has been run for these bytes",
         "publishBlockingReasons": list(reasons),
     })
-
 
 def _collect_files(bundle_dir: Path, *, tier: str) -> dict[str, list[FileEntry]]:
     def entries(subdir: str, *, text: bool = False) -> list[FileEntry]:
@@ -474,12 +453,10 @@ def _collect_files(bundle_dir: Path, *, tier: str) -> dict[str, list[FileEntry]]
         files["embedding"] = entries("embedding")
     return files
 
-
 _LINEAGE_SLOT_DIR: Final[Mapping[str, str]] = {
     "voice": "tts", "asr": "asr", "vad": "vad", "wakeword": "wakeword",
     "vision": "vision", "embedding": "embedding",
 }
-
 
 def _write_lineage(*, bundle_dir: Path, tier: str, text_repo: str, text_rev: str, text_note: str,
                    drafter_target_sha: str | None, drafter_stamp_only: bool,
@@ -522,7 +499,6 @@ def _write_lineage(*, bundle_dir: Path, tier: str, text_repo: str, text_rev: str
             out[slot] = LineageEntry(base=str(spec.get("base") or ""), license=str(spec.get("license") or ""))
     return out
 
-
 def _all_checksum_inputs(bundle_dir: Path) -> list[Path]:
     out: list[Path] = []
     for path in sorted(bundle_dir.rglob("*")):
@@ -536,14 +512,12 @@ def _all_checksum_inputs(bundle_dir: Path) -> list[Path]:
         out.append(path)
     return out
 
-
 def write_checksum_manifest(bundle_dir: Path) -> Path:
     checksum_path = bundle_dir / CHECKSUM_PATH
     checksum_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{sha256_file(p)}  {p.relative_to(bundle_dir)}" for p in _all_checksum_inputs(bundle_dir)]
     checksum_path.write_text("\n".join(lines) + "\n")
     return checksum_path
-
 
 def validate_checksum_manifest(bundle_dir: Path) -> tuple[str, ...]:
     checksum_path = bundle_dir / CHECKSUM_PATH
@@ -566,7 +540,6 @@ def validate_checksum_manifest(bundle_dir: Path) -> tuple[str, ...]:
         if recorded[rel] != sha256_file(bundle_dir / rel):
             errors.append(f"{CHECKSUM_PATH}: checksum mismatch for {rel}")
     return tuple(errors)
-
 
 def _write_release_evidence(*, bundle_dir: Path, tier: str, generated_at: str,
                             staged: Sequence[StagedFile], reasons: Sequence[str]) -> None:
@@ -612,7 +585,6 @@ def _write_release_evidence(*, bundle_dir: Path, tier: str, generated_at: str,
         "publishBlockingReasons": list(reasons),
     })
 
-
 def _render_readme(*, bundle_dir: Path, tier: str, reasons: Sequence[str], text_repo: str) -> None:
     lines = [
         f"# eliza-1-{tier}", "",
@@ -626,7 +598,6 @@ def _render_readme(*, bundle_dir: Path, tier: str, reasons: Sequence[str], text_
         "See `evidence/release.json` and `evals/local_staging_validation.json`.", "",
     ]
     _text_write(bundle_dir / "README.md", "\n".join(lines))
-
 
 def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
     tier = args.tier
@@ -794,7 +765,6 @@ def stage_real_bundle(args: argparse.Namespace) -> dict[str, Any]:
         "publishBlockingReasons": reasons,
     }
 
-
 def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--tier", required=True, choices=tuple(CONTEXTS_BY_TIER))
@@ -832,13 +802,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     ap.add_argument("--force", action="store_true")
     return ap.parse_args(argv)
 
-
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     report = stage_real_bundle(args)
     print(json.dumps(report, indent=2, sort_keys=True))
     return 1 if report["checksumValidation"]["errors"] else 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

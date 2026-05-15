@@ -28,7 +28,6 @@
     "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@noble/curves": "2.2.0",
-    "@simplewebauthn/browser": "^13.0.0",
     "@solana/web3.js": "1.98.4",
     "@stwd/sdk": "^0.8.1",
     "ethers": "^6.16.0",
@@ -55,6 +54,13 @@
     "dist"
   ],
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "dotenv": "^17.2.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   }
 }

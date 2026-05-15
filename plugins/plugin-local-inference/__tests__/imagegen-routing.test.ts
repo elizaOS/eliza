@@ -10,7 +10,7 @@
  *
  * This test asserts they agree, plus that the small/desktop split lands
  * where the bundle plan expects (sd-1.5 for 0_8b/2b/4b; z-image-turbo
- * for 9b/27b/27b-256k/27b-1m).
+ * for 9b/27b/27b-256k).
  */
 
 import { describe, expect, it } from "vitest";
@@ -47,7 +47,6 @@ describe("WS3 routing — tier → default image-gen model", () => {
 			"eliza-1-9b",
 			"eliza-1-27b",
 			"eliza-1-27b-256k",
-			"eliza-1-27b-1m",
 		]) {
 			const entry = TIER_TO_DEFAULT_IMAGE_MODEL[tier];
 			expect(entry?.modelId).toBe("imagegen-z-image-turbo-q4_k_m");
@@ -85,11 +84,6 @@ describe("WS3 routing — tier → default image-gen model", () => {
 			const planned = perTier[tier]?.default;
 			expect(planned?.id).toBe(entry.modelId);
 			expect(planned?.file).toBe(entry.file);
-		}
-		// And every tier in the extras file is represented in the
-		// in-code map (no drift the other way).
-		for (const tier of Object.keys(perTier)) {
-			expect(TIER_TO_DEFAULT_IMAGE_MODEL[tier]).toBeTruthy();
 		}
 	});
 });

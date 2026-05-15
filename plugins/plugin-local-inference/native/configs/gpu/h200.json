@@ -56,10 +56,6 @@
     "eliza-1-27b-256k": {
       "ctx_size": 262144,
       "max_parallel": 6
-    },
-    "eliza-1-27b-1m": {
-      "ctx_size": 1048576,
-      "max_parallel": 2
     }
   },
   "expected_metrics": {
@@ -71,7 +67,6 @@
   },
   "known_limits": [
     "FP4 not supported on sm_90 (Blackwell-only)",
-    "27B-1M @ parallel > 2 requires prefix sharing via radix cache",
     "PCIe spill path defeats the bandwidth advantage; keep KV in HBM"
   ],
   "_provenance": "extrapolated; numbers derived from VRAM + mem-bw math in SPECS.md"

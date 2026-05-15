@@ -28,7 +28,6 @@
     "android/src/main/",
     "android/build.gradle",
     "ios/Sources/",
-    "ios/Plugin.xcodeproj/",
     "*.podspec",
     "dist"
   ],

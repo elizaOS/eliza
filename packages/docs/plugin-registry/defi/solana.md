@@ -126,7 +126,7 @@ Agent reports mint address and transaction signature
 
 ## Security Considerations
 
-- The private key grants full control of the agent's Solana wallet. Store it securely using the built-in [**@elizaos/core** secrets runtime](/runtime/services#secrets-secrets-service).
+- The private key grants full control of the agent's Solana wallet. Store it securely using the built-in [secrets API](/rest/secrets).
 - Use a dedicated agent wallet with limited funds.
 - Test on Devnet before deploying to mainnet.
 
@@ -152,5 +152,5 @@ solana airdrop 2 YOUR_WALLET_ADDRESS --url devnet
 ## Related
 
 - [EVM Plugin](/plugin-registry/defi/evm) — Ethereum and EVM chain integration
-- [**@elizaos/core** secrets](/runtime/services#secrets-secrets-service) — Secure key storage
+- [Secrets API](/rest/secrets) — Secure key storage
 - [Wallet Guide](/guides/wallet) — Wallet setup and management

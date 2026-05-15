@@ -3,7 +3,7 @@
 Native host package for the local agent runtime. The iOS Swift implementation
 can run in two modes:
 
-- `engine: "auto"` / `engine: "bun"`: dynamically loads the full
+- `engine: "auto"` / `engine: "bun"`: uses the directly linked
   `ElizaBunEngine.framework` from `@elizaos/bun-ios-runtime` when the app was
   built with `ELIZA_IOS_FULL_BUN_ENGINE=1`. Store-distributed iOS local mode
   must use `engine: "bun"` and fail closed if the framework is missing.
@@ -15,8 +15,10 @@ can run in two modes:
 The full Bun engine artifact is produced outside this package by the
 `packages/bun-ios-runtime` build harness and an `elizaos/bun` fork.
 
-The Android implementation delegates lifecycle and RPC calls to the host app's
-`ElizaAgentService` over its loopback API.
+The Android implementation is invoked through Capacitor plugin IPC. The native
+side may delegate lifecycle and RPC calls to the host app's `ElizaAgentService`
+internals, but renderer code should treat the plugin as the transport boundary
+and avoid direct loopback fetch dependencies.
 
 ## Install
 
@@ -84,9 +86,10 @@ The full-engine ABI lives in
 implements the Swift `__ELIZA_BRIDGE__` v1 surface; breaking changes bump the
 version string emitted in `globalThis.__ELIZA_BRIDGE_VERSION__`.
 
-In full Bun mode, the Swift host loads `ElizaBunEngine.framework` with
-`dlopen`, starts `agent-bundle.js ios-bridge --stdio`, and forwards React
-requests through `ElizaBunRuntime.call({ method: "http_request", args })`.
+In full Bun mode, the Swift host calls the directly linked
+`ElizaBunEngine.framework`, starts `agent-bundle.js ios-bridge --stdio`, and
+forwards React requests through
+`ElizaBunRuntime.call({ method: "http_request", args })`.
 `packages/ui/src/api/ios-local-agent-transport.ts` uses that path first when
 the native plugin is available. The foreground JSContext ITTP kernel is retained
 only for development/sideload compatibility builds; iOS store builds fail closed
@@ -110,7 +113,8 @@ The plugin emits two Capacitor events:
 
 ## Limitations (v1)
 
-- Android requires the host app's `ElizaAgentService` loopback API.
+- Android requires the host app's `ElizaAgentService` backend, reached through
+  the Capacitor plugin bridge rather than direct renderer loopback fetches.
 - Full Bun is only used when `ElizaBunEngine.framework` is embedded. Outside
   iOS store local mode, `engine: "auto"` can fall back to the compatibility
   JSContext host for development/sideload builds.

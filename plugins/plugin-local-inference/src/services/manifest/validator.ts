@@ -174,6 +174,12 @@ const STRICT_RELEASE_STATES: ReadonlySet<string> = new Set([
 	"finetuned-v2",
 	"final",
 ]);
+const VISION_REQUIRED_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+]);
 
 function collectContractErrors(m: Eliza1Manifest): string[] {
 	const errors: string[] = [];
@@ -187,12 +193,17 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 	// Required-kernel coverage.
 	const declaredRequired = new Set<Eliza1Kernel>(m.kernels.required);
 	const tierRequired = REQUIRED_KERNELS_BY_TIER[m.tier];
+	const tierRequiresDflash = tierRequired.includes("dflash");
+	const dflashFiles = m.files.dflash ?? [];
 	for (const k of tierRequired) {
 		if (!declaredRequired.has(k)) {
 			errors.push(
 				`kernels.required: missing required kernel for tier ${m.tier}: ${k}`,
 			);
 		}
+	}
+	if (tierRequiresDflash && dflashFiles.length === 0) {
+		errors.push(`files.dflash: required for tier ${m.tier}`);
 	}
 
 	// Long-context tiers MUST require turbo3_tcq once any text variant has
@@ -295,6 +306,18 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		if (lineage && files.length === 0) {
 			errors.push(`files.${slot}: required when lineage.${slot} is present`);
 		}
+	}
+	if (
+		VISION_REQUIRED_TIERS.has(m.tier) &&
+		(m.files.vision ?? []).length === 0
+	) {
+		errors.push(`files.vision: required for tier ${m.tier}`);
+	}
+	if (dflashFiles.length > 0 && !m.lineage.drafter) {
+		errors.push("lineage.drafter: required when files.dflash is non-empty");
+	}
+	if (m.lineage.drafter && dflashFiles.length === 0) {
+		errors.push("files.dflash: required when lineage.drafter is present");
 	}
 
 	if ((m.files.asr ?? []).length > 0) {
@@ -405,8 +428,8 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 			const requiredSlots: Array<keyof typeof m.provenance.sourceModels> = [
 				"text",
 				"voice",
-				"drafter",
 			];
+			if ((m.files.dflash ?? []).length > 0) requiredSlots.push("drafter");
 			for (const slot of ["asr", "vad", "embedding", "vision"] as const) {
 				if ((m.files[slot] ?? []).length > 0) requiredSlots.push(slot);
 			}
@@ -423,8 +446,12 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 	// DFlash bench. Staging manifests may record missing or failing DFlash
 	// measurements, but a default bundle is not eligible unless speculative
 	// decoding was actually measured and passed.
+	const requiresDflashEval =
+		tierRequiresDflash ||
+		dflashFiles.length > 0 ||
+		declaredRequired.has("dflash");
 	if (!m.evals.dflash) {
-		if (m.defaultEligible) {
+		if (m.defaultEligible && requiresDflashEval) {
 			errors.push("evals.dflash: required when defaultEligible=true");
 		}
 	} else {
@@ -437,7 +464,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 				"evals.dflash: passed=true but acceptanceRate/speedup is null — a needs-hardware bench cannot pass",
 			);
 		}
-		if (m.defaultEligible) {
+		if (m.defaultEligible && requiresDflashEval) {
 			if (!m.evals.dflash.passed) {
 				errors.push("evals.dflash.passed: false for defaultEligible manifest");
 			}

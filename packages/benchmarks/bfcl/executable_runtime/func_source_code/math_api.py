@@ -2,7 +2,10 @@ import math
 from decimal import Decimal, InvalidOperation, getcontext
 from typing import Dict, List
 
-import mpmath
+try:
+    import mpmath
+except ImportError:  # pragma: no cover - exercised only without optional deps
+    mpmath = None
 
 
 class MathAPI:
@@ -24,10 +27,11 @@ class MathAPI:
             result (float): The logarithm of the number with respect to the given base.
         """
         try:
+            if mpmath is None:
+                return {"result": math.log(value) / math.log(base)}
+
             # Set precision for mpmath
             mpmath.mp.dps = precision
-
-            # Use mpmath for high-precision logarithmic calculations
             result = mpmath.log(value) / mpmath.log(base)
 
             return {"result": result}

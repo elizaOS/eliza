@@ -62,7 +62,6 @@ const ELIZA_1_LOAD_METADATA: Record<
 	"eliza-1-9b": { contextSize: 65536 },
 	"eliza-1-27b": { contextSize: 131072 },
 	"eliza-1-27b-256k": { contextSize: 262144 },
-	"eliza-1-27b-1m": { contextSize: 1048576 },
 };
 
 type GenerateTextHandler = (

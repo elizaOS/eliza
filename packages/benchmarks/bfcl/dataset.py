@@ -209,27 +209,25 @@ class BFCLDataset:
             tc.category = BFCLCategory.WEB_SEARCH_NO_SNIPPET
 
         synthesized_no_snippet: list[BFCLTestCase] = []
+        existing_ids = {tc.id for tc in self._test_cases}
         if want_no_snippet:
             from dataclasses import replace as _replace
             for tc in kept_base:
+                synth_id = f"{tc.id}_no_snippet"
+                suffix = 2
+                while synth_id in existing_ids:
+                    synth_id = f"{tc.id}_no_snippet_{suffix}"
+                    suffix += 1
+                existing_ids.add(synth_id)
+                if tc.id in self._ground_truth and synth_id not in self._ground_truth:
+                    self._ground_truth[synth_id] = self._ground_truth[tc.id]
                 synthesized_no_snippet.append(
                     _replace(
                         tc,
-                        id=tc.id.replace(
-                            "web_search", "web_search_no_snippet", 1
-                        ) if "web_search" in tc.id else f"{tc.id}_no_snippet",
+                        id=synth_id,
                         category=BFCLCategory.WEB_SEARCH_NO_SNIPPET,
                     )
                 )
-
-        if want_base:
-            for tc in kept_base:
-                if (
-                    "web_search" in tc.id
-                    and "web_search_base" not in tc.id
-                    and "no_snippet" not in tc.id
-                ):
-                    tc.id = tc.id.replace("web_search", "web_search_base", 1)
 
         if want_base:
             self._test_cases.extend(kept_base)
@@ -279,7 +277,14 @@ class BFCLDataset:
 
         for file_key, file_name, category in data_files_to_load:
             # Skip if category not in configured categories
-            if self.config.categories and category not in self.config.categories:
+            if (
+                self.config.categories
+                and category not in self.config.categories
+                and not (
+                    category == BFCLCategory.WEB_SEARCH_BASE
+                    and BFCLCategory.WEB_SEARCH_NO_SNIPPET in self.config.categories
+                )
+            ):
                 continue
 
             count = await self._load_from_cache_file(file_key, file_name, category)
@@ -449,6 +454,10 @@ class BFCLDataset:
             if (
                 self.config.categories
                 and category not in self.config.categories
+                and not (
+                    category == BFCLCategory.WEB_SEARCH_BASE
+                    and BFCLCategory.WEB_SEARCH_NO_SNIPPET in self.config.categories
+                )
             ):
                 continue
 

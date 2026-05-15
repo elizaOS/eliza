@@ -238,25 +238,15 @@ describe("assessRamFit", () => {
 
 describe("pickFittingContextVariant", () => {
 	it("picks the largest 27B context variant that fits the host", () => {
-		const m1 = findCatalogModel("eliza-1-27b-1m");
+		const m1 = findCatalogModel("eliza-1-27b-256k");
 		if (!m1) throw new Error("test setup");
 		// 40 GB host: 27b (32 GB floor) fits, 27b-256k (96 GB) does not,
-		// 27b-1m (200 GB) does not. Picking from 27b-1m falls back to 27b.
+		// so picking from 27b-256k falls back to 27b.
 		const picked = pickFittingContextVariant(m1, 40 * 1024, {
 			manifestLoader: noopLoader,
 			reserveMb: 1536,
 		});
 		expect(picked?.id).toBe("eliza-1-27b");
-	});
-
-	it("picks the 256k variant when there's enough RAM for it but not 1m", () => {
-		const m1 = findCatalogModel("eliza-1-27b-1m");
-		if (!m1) throw new Error("test setup");
-		const picked = pickFittingContextVariant(m1, 110 * 1024, {
-			manifestLoader: noopLoader,
-			reserveMb: 1536,
-		});
-		expect(picked?.id).toBe("eliza-1-27b-256k");
 	});
 
 	it("returns the model itself when it already fits", () => {

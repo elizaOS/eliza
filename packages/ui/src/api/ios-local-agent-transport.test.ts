@@ -269,6 +269,52 @@ describe("iOS local agent transport bridge", () => {
     expect(kernelMock.startIosLocalAgentKernel).not.toHaveBeenCalled();
   });
 
+  it("bridges direct iOS store-local fetches through full Bun IPC", async () => {
+    buildVariantState.isStore = true;
+    capacitorState.pluginAvailable = true;
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) =>
+        key === "eliza:mobile-runtime-mode" ? "local" : null,
+    });
+    vi.stubGlobal("window", {
+      __ELIZA_API_BASE__: "eliza-local-agent://ipc",
+      location: { href: "capacitor://localhost/" },
+      navigator: { userAgent: "vitest" },
+    });
+    const originalFetch = vi.fn(async () => {
+      throw new Error("direct fetch should not run");
+    });
+    vi.stubGlobal("fetch", originalFetch);
+    const start = vi.fn(async () => ({ ok: true }));
+    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
+    const call = vi.fn(async () => ({
+      result: {
+        status: 200,
+        statusText: "OK",
+        headers: { "content-type": "application/json" },
+        body: '{"runtime":"bun"}',
+      },
+    }));
+    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
+      ElizaBunRuntime: { start, getStatus, call },
+    }));
+
+    const { installIosLocalAgentFetchBridge } = await import(
+      "./ios-local-agent-transport"
+    );
+    installIosLocalAgentFetchBridge();
+
+    const response = await fetch("/api/health");
+
+    expect(originalFetch).not.toHaveBeenCalled();
+    expect(call).toHaveBeenCalledWith({
+      method: "http_request",
+      args: expect.objectContaining({ method: "GET", path: "/api/health" }),
+    });
+    expect(kernelMock.startIosLocalAgentKernel).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ runtime: "bun" });
+  });
+
   it("bridges direct relative fetch calls when iOS local mode owns the API base", async () => {
     const originalFetch = vi.fn(async () => {
       throw new Error("direct fetch should not run");

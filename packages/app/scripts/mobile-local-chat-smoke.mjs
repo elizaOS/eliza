@@ -439,11 +439,21 @@ function androidDeviceSerial(adb) {
     ["devices"],
     "No Android device or emulator is available.",
   );
-  const line = devices
+  const deviceLines = devices
     .split("\n")
     .slice(1)
     .map((entry) => entry.trim())
-    .find((entry) => entry.endsWith("\tdevice"));
+    .filter((entry) => entry.endsWith("\tdevice"));
+  const requestedSerial = process.env.ANDROID_SERIAL?.trim();
+  if (requestedSerial) {
+    const requestedLine = deviceLines.find((entry) =>
+      entry.startsWith(`${requestedSerial}\t`),
+    );
+    if (requestedLine) return requestedSerial;
+  }
+  const line =
+    deviceLines.find((entry) => entry.startsWith("emulator-")) ??
+    deviceLines[0];
   if (!line) return null;
   return line.split(/\s+/)[0];
 }

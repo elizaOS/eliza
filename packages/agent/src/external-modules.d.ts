@@ -574,6 +574,12 @@ declare module "isomorphic-git/http/node" {
   export default http;
 }
 
+declare module "isomorphic-git/http/web" {
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for optional dep
+  const http: any;
+  export default http;
+}
+
 declare module "@elizaos/plugin-discord" {
   import type { AgentRuntime } from "@elizaos/core";
 

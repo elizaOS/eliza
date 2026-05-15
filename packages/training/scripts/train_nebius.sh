@@ -484,7 +484,7 @@ fetch() {
 # Env knobs (defaults frugal — a small KD job, not a full pipeline):
 #   DFLASH_TIER              tier the drafter ships for. Active tiers (per
 #                            distill_dflash_drafter.py::ACTIVE_TIERS): 0_8b,
-#                            2b, 4b, 9b, 27b, 27b-256k, 27b-1m. Default: 2b.
+#                            2b, 4b, 9b, 27b, 27b-256k. Default: 2b.
 #   DFLASH_TARGET_CHECKPOINT remote path (relative to $REMOTE_TRAIN_DIR) to the
 #                            SFT'd target text HF checkpoint directory. The
 #                            distiller loads the target via
