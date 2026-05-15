@@ -231,10 +231,34 @@ function toBackendLoadOverrides(
 
 interface LlamaContextSequence {
 	dispose(): Promise<void>;
+	clearHistory?(): Promise<void>;
+	controlledEvaluate?(
+		input: Array<
+			| number
+			| [
+					token: number,
+					options: {
+						generateNext?: { probabilities?: boolean; confidence?: boolean };
+					},
+			  ]
+		>,
+		options?: { evaluationPriority?: number },
+	): Promise<
+		Array<
+			| {
+					next: {
+						token?: number | null;
+						confidence?: number;
+						probabilities?: Map<number, number>;
+					};
+			  }
+			| undefined
+		>
+	>;
 }
 
 interface LlamaContext {
-	getSequence(): LlamaContextSequence;
+	getSequence(options?: object): LlamaContextSequence;
 	dispose(): Promise<void>;
 }
 
