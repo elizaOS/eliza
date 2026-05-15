@@ -97,7 +97,7 @@ export async function extractKeywords(
   }
 
   // Validate structure
-  if (!result.keywords || !Array.isArray(result.keywords)) {
+  if (!result || typeof result !== 'object' || !Array.isArray(result.keywords)) {
     logger.error(
       {
         src: 'plugin:workflow:generation:keywords',

@@ -5,8 +5,8 @@
  * Connection ID format: blooio:{organizationId}
  */
 
-import { blooioAutomationService } from "../../blooio-automation";
 import { logger } from "../../../utils/logger";
+import { blooioAutomationService } from "../../blooio-automation";
 import { Errors } from "../errors";
 import { OAUTH_PROVIDERS } from "../provider-registry";
 import type { OAuthConnection, TokenResult } from "../types";

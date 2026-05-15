@@ -167,6 +167,7 @@ const IOS_BUN_ENGINE_FORBIDDEN_STRINGS = [
 export const IOS_AGENT_RUNTIME_ASSETS = [
   "agent-bundle.js",
   "pglite.wasm",
+  "initdb.wasm",
   "pglite.data",
   "vector.tar.gz",
   "fuzzystrmatch.tar.gz",
@@ -540,12 +541,28 @@ export function applyIosAppIdentity({
   if (fs.existsSync(projectPath)) {
     let project = fs.readFileSync(projectPath, "utf8");
     const original = project;
+    const extensionBundleSuffixes = [
+      "WebsiteBlockerContentExtension",
+      "DeviceActivityMonitorExtension",
+      "DeviceActivityReportExtension",
+    ];
+    for (const suffix of extensionBundleSuffixes) {
+      project = project.replace(
+        new RegExp(
+          `PRODUCT_BUNDLE_IDENTIFIER = [A-Za-z0-9_.-]+\\.${escapeRegExp(suffix)};`,
+          "g",
+        ),
+        `PRODUCT_BUNDLE_IDENTIFIER = ${appId}.${suffix};`,
+      );
+    }
+    const extensionSuffixAlternation = extensionBundleSuffixes
+      .map(escapeRegExp)
+      .join("|");
     project = project.replace(
-      /PRODUCT_BUNDLE_IDENTIFIER = [A-Za-z0-9_.-]+\.WebsiteBlockerContentExtension;/g,
-      `PRODUCT_BUNDLE_IDENTIFIER = ${appId}.WebsiteBlockerContentExtension;`,
-    );
-    project = project.replace(
-      /PRODUCT_BUNDLE_IDENTIFIER = (?![A-Za-z0-9_.-]+\.WebsiteBlockerContentExtension;)[A-Za-z0-9_.-]+;/g,
+      new RegExp(
+        `PRODUCT_BUNDLE_IDENTIFIER = (?![A-Za-z0-9_.-]+\\.(?:${extensionSuffixAlternation});)[A-Za-z0-9_.-]+;`,
+        "g",
+      ),
       `PRODUCT_BUNDLE_IDENTIFIER = ${appId};`,
     );
     const displayNameSetting = `ELIZA_DISPLAY_NAME = ${escapeXcodeBuildSetting(appName)};`;
@@ -603,7 +620,11 @@ export function applyIosAppIdentity({
     }
   }
 
-  const extensionId = `${appId}.WebsiteBlockerContentExtension`;
+  const extensionId = [
+    `${appId}.WebsiteBlockerContentExtension`,
+    `${appId}.DeviceActivityMonitorExtension`,
+    `${appId}.DeviceActivityReportExtension`,
+  ].join(",");
   const fastlaneReplacements = [
     [
       'ENV["APP_IDENTIFIER"] || "ai.elizaos.app"',
@@ -1078,8 +1099,9 @@ export function injectNativeLibLegacyPackaging(content) {
  *   2. ELIZA_DFLASH_ANDROID_LIBDIR env var
  *   3. ~/.eliza/local-inference/bin/dflash/android-arm64-{cpu,vulkan}/
  *
- * Skips with a clear log when no path is configured or the dir doesn't exist,
- * so a desktop dev still gets a working APK without local fork builds.
+ * Fails local builds when no path is configured or the dir doesn't exist. The
+ * Android Capacitor JNI wrapper links against these DFlash libraries and cannot
+ * honestly support Eliza-1/Qwen3.5 without them. Cloud builds skip the task.
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
@@ -1101,9 +1123,9 @@ export function injectCopyForkLlamaLibTask(content) {
     return ensureCopyForkLlamaLibCloudGuard(content);
   }
   const block =
-    `\n// Bundle the buun-llama-cpp fork's android-arm64 .so into the APK so\n` +
-    `// mobile gets DFlash + TurboQuant KV cache + QJL kernels. Stock\n` +
-    `// llama-cpp-capacitor's .so still ships when the fork lib dir is missing.\n` +
+    `\n// Bundle the DFlash Android ARM64 llama.cpp stack into the APK so\n` +
+    `// mobile gets Eliza-1/Qwen3.5 support. Local builds fail if these\n` +
+    `// libraries are absent; cloud builds skip this task.\n` +
     `def resolveForkLlamaLibDir = { ->\n` +
     `    def fromProp = project.findProperty('eliza.dflash.android.libdir')\n` +
     `    if (fromProp) return fromProp.toString()\n` +
@@ -1116,6 +1138,41 @@ export function injectCopyForkLlamaLibTask(content) {
     `    return candidates.find { new File(it).isDirectory() }\n` +
     `}\n` +
     `\n` +
+    `def resolveAndroidArm64Libomp = { ->\n` +
+    `    def localProperties = new Properties()\n` +
+    `    def localPropertiesFile = rootProject.file('local.properties')\n` +
+    `    if (localPropertiesFile.isFile()) {\n` +
+    `        localPropertiesFile.withInputStream { localProperties.load(it) }\n` +
+    `    }\n` +
+    `    def sdkPath = localProperties.getProperty('sdk.dir') ?:\n` +
+    `        System.getenv('ANDROID_HOME') ?:\n` +
+    `        System.getenv('ANDROID_SDK_ROOT') ?:\n` +
+    `        "\${System.getProperty('user.home')}/Library/Android/sdk"\n` +
+    `    def androidSdk = new File(sdkPath)\n` +
+    `    def ndkRoots = []\n` +
+    `    def declaredNdkVersion = android.ndkVersion?.toString()\n` +
+    `    if (declaredNdkVersion) ndkRoots << new File(androidSdk, "ndk/\${declaredNdkVersion}")\n` +
+    `    ndkRoots << new File(androidSdk, 'ndk/29.0.13113456')\n` +
+    `    def ndkParent = new File(androidSdk, 'ndk')\n` +
+    `    if (ndkParent.isDirectory()) {\n` +
+    `        (ndkParent.listFiles() ?: [] as File[]).each { ndkRoots << it }\n` +
+    `    }\n` +
+    `    for (def ndkDir : ndkRoots.unique { it.absolutePath }) {\n` +
+    `        def prebuiltDir = new File(ndkDir, 'toolchains/llvm/prebuilt')\n` +
+    `        if (!prebuiltDir.isDirectory()) continue\n` +
+    `        def hosts = prebuiltDir.listFiles() ?: [] as File[]\n` +
+    `        for (def hostDir : hosts) {\n` +
+    `            def clangDir = new File(hostDir, 'lib/clang')\n` +
+    `            def versions = clangDir.listFiles() ?: [] as File[]\n` +
+    `            for (def versionDir : versions) {\n` +
+    `                def libomp = new File(versionDir, 'lib/linux/aarch64/libomp.so')\n` +
+    `                if (libomp.isFile()) return libomp\n` +
+    `            }\n` +
+    `        }\n` +
+    `    }\n` +
+    `    return null\n` +
+    `}\n` +
+    `\n` +
     `task copyForkLlamaLib {\n` +
     `    doLast {\n` +
     `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
@@ -1124,13 +1181,11 @@ export function injectCopyForkLlamaLibTask(content) {
     `        }\n` +
     `        def libDir = resolveForkLlamaLibDir()\n` +
     `        if (!libDir) {\n` +
-    `            println "[copyForkLlamaLib] no fork lib dir configured (set -Peliza.dflash.android.libdir or build via packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan); APK ships stock llama-cpp-capacitor only"\n` +
-    `            return\n` +
+    `            throw new GradleException("[copyForkLlamaLib] no DFlash Android lib dir configured. Run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan or set -Peliza.dflash.android.libdir / ELIZA_DFLASH_ANDROID_LIBDIR.")\n` +
     `        }\n` +
     `        def srcDir = new File(libDir.toString())\n` +
     `        if (!srcDir.isDirectory()) {\n` +
-    `            println "[copyForkLlamaLib] fork lib dir \${libDir} does not exist; APK ships stock llama-cpp-capacitor only"\n` +
-    `            return\n` +
+    `            throw new GradleException("[copyForkLlamaLib] DFlash Android lib dir does not exist: \${libDir}")\n` +
     `        }\n` +
     `        def jniDir = file('src/main/jniLibs/arm64-v8a')\n` +
     `        jniDir.mkdirs()\n` +
@@ -1148,6 +1203,15 @@ export function injectCopyForkLlamaLibTask(content) {
     `                dst.bytes = src.bytes\n` +
     `                println "[copyForkLlamaLib] staged kernels.json as assets/llama-cpp-kernels.json"\n` +
     `            }\n` +
+    `        }\n` +
+    `        def libomp = resolveAndroidArm64Libomp()\n` +
+    `        if (libomp != null) {\n` +
+    `            def dst = new File(jniDir, 'libomp.so')\n` +
+    `            dst.bytes = libomp.bytes\n` +
+    `            copied++\n` +
+    `            println "[copyForkLlamaLib] staged Android OpenMP runtime from \${libomp}"\n` +
+    `        } else {\n` +
+    `            throw new GradleException("[copyForkLlamaLib] Android arm64 libomp.so not found in the configured NDK; DFlash CPU backend cannot load without it.")\n` +
     `        }\n` +
     `        println "[copyForkLlamaLib] copied \${copied} .so file(s) from \${libDir} to \${jniDir}"\n` +
     `    }\n` +
@@ -2608,9 +2672,52 @@ function isIosSimulatorBuildTarget(buildTarget) {
   );
 }
 
+function shouldEnforceIosBunEngineAppStoreRuntime(buildTarget) {
+  return (
+    !isIosSimulatorBuildTarget(buildTarget) ||
+    isTruthyEnv(process.env.ELIZA_BUN_IOS_STRICT_APP_STORE_RUNTIME) ||
+    isTruthyEnv(process.env.ELIZA_IOS_STRICT_APP_STORE_RUNTIME)
+  );
+}
+
+function ensureIosCapacitorPluginClass(pluginClass) {
+  const configPath = path.join(
+    appDir,
+    "ios",
+    "App",
+    "App",
+    "capacitor.config.json",
+  );
+  if (!fs.existsSync(configPath)) return;
+
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (error) {
+    throw new Error(
+      `[mobile-build] Failed to parse iOS capacitor.config.json: ${error.message}`,
+    );
+  }
+
+  const classList = Array.isArray(parsed.packageClassList)
+    ? parsed.packageClassList
+    : [];
+  if (classList.includes(pluginClass)) return;
+
+  parsed.packageClassList = [...classList, pluginClass];
+  fs.writeFileSync(configPath, `${JSON.stringify(parsed, null, "\t")}\n`);
+  console.log(`[mobile-build] Registered iOS Capacitor plugin ${pluginClass}.`);
+}
+
 export function prepareIosOverlay({ buildTarget = null } = {}) {
   const syncedFiles = syncPlatformTemplateFiles("ios");
   overlayIos();
+  if (
+    shouldIncludeIosFullBunEngine() ||
+    process.env.ELIZA_IOS_RUNTIME_MODE === "local"
+  ) {
+    ensureIosCapacitorPluginClass("ElizaBunRuntimePlugin");
+  }
   stripSpmIncompatiblePlugins();
   const includeLlama = shouldIncludeIosLlama();
   if (isIosSimulatorBuildTarget(buildTarget) || !includeLlama) {
@@ -3708,55 +3815,12 @@ function validateIosBunEngineSymbols(binary) {
       `[mobile-build] ${binary} is missing required full-Bun ABI symbols: ${missing.join(", ")}`,
     );
   }
-
-  const imports = runCaptureSync("nm", ["-u", binary], {
-    maxBuffer: 256 * 1024 * 1024,
-  });
-  if (imports.status !== 0) {
-    const reason =
-      imports.stderr?.trim() ||
-      imports.error?.message ||
-      `exit status ${String(imports.status)}`;
-    throw new Error(
-      `[mobile-build] failed to inspect imported symbols for ${binary}: ${reason}`,
-    );
-  }
-  const importOutput = `${imports.stdout}\n${imports.stderr}`;
-  const badImports = IOS_BUN_ENGINE_FORBIDDEN_IMPORTS.filter((symbol) =>
-    new RegExp(
-      `(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-    ).test(importOutput),
-  );
-  if (badImports.length > 0) {
-    throw new Error(
-      `[mobile-build] ${binary} imports App Store-sensitive runtime/code-loading symbols: ${badImports.join(", ")}`,
-    );
-  }
-
-  const strings = runCaptureSync("strings", [binary], {
-    maxBuffer: 256 * 1024 * 1024,
-  });
-  if (strings.status !== 0) {
-    const reason =
-      strings.stderr?.trim() ||
-      strings.error?.message ||
-      `exit status ${String(strings.status)}`;
-    throw new Error(
-      `[mobile-build] failed to inspect strings for ${binary}: ${reason}`,
-    );
-  }
-  const stringOutput = `${strings.stdout}\n${strings.stderr}`;
-  const badStrings = IOS_BUN_ENGINE_FORBIDDEN_STRINGS.filter((pattern) =>
-    pattern.test(stringOutput),
-  ).map((pattern) => pattern.source);
-  if (badStrings.length > 0) {
-    throw new Error(
-      `[mobile-build] ${binary} contains App Store-sensitive executable-memory markers: ${badStrings.join(", ")}`,
-    );
-  }
 }
 
-function validateIosBunEngineNoJitDynamicCode(binary) {
+function validateIosBunEngineNoJitDynamicCode(
+  binary,
+  { buildTarget = null } = {},
+) {
   const imports = runCaptureSync("nm", ["-u", binary], {
     maxBuffer: 256 * 1024 * 1024,
   });
@@ -3774,8 +3838,14 @@ function validateIosBunEngineNoJitDynamicCode(binary) {
     importedSymbols.includes(symbol),
   );
   if (forbiddenImports.length > 0) {
-    throw new Error(
-      `[mobile-build] ${binary} imports App-Store-unsafe dynamic-code/JIT symbol(s) for ${IOS_BUN_ENGINE_EXECUTION_PROFILE}: ${forbiddenImports.join(", ")}`,
+    const message = `[mobile-build] ${binary} imports App-Store-unsafe dynamic-code/JIT symbol(s) for ${IOS_BUN_ENGINE_EXECUTION_PROFILE}: ${forbiddenImports.join(
+      ", ",
+    )}`;
+    if (shouldEnforceIosBunEngineAppStoreRuntime(buildTarget)) {
+      throw new Error(message);
+    }
+    console.warn(
+      `${message}. Continuing for iOS Simulator; device/App Store full-Bun builds remain strict.`,
     );
   }
 
@@ -3796,8 +3866,14 @@ function validateIosBunEngineNoJitDynamicCode(binary) {
     pattern.test(binaryStrings),
   ).map((pattern) => String(pattern));
   if (forbiddenStrings.length > 0) {
-    throw new Error(
-      `[mobile-build] ${binary} contains App-Store-unsafe dynamic-code/JIT marker(s) for ${IOS_BUN_ENGINE_EXECUTION_PROFILE}: ${forbiddenStrings.join(", ")}`,
+    const message = `[mobile-build] ${binary} contains App-Store-unsafe dynamic-code/JIT marker(s) for ${IOS_BUN_ENGINE_EXECUTION_PROFILE}: ${forbiddenStrings.join(
+      ", ",
+    )}`;
+    if (shouldEnforceIosBunEngineAppStoreRuntime(buildTarget)) {
+      throw new Error(message);
+    }
+    console.warn(
+      `${message}. Continuing for iOS Simulator; device/App Store full-Bun builds remain strict.`,
     );
   }
 }
@@ -3839,7 +3915,7 @@ function validateIosFullBunEngineXcframework(
     );
   }
   validateIosBunEngineSymbols(binary);
-  validateIosBunEngineNoJitDynamicCode(binary);
+  validateIosBunEngineNoJitDynamicCode(binary, { buildTarget });
   console.log(
     `[mobile-build] iOS full Bun engine validated ${libraryIdentifier}: ${binary}`,
   );

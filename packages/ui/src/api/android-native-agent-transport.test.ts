@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  __resetAndroidNativeAgentTransportForTests,
   androidNativeAgentTransportForUrl,
   createAndroidNativeAgentTransport,
+  installAndroidNativeAgentFetchBridge,
 } from "./android-native-agent-transport";
 
 const { capacitorState, agentRequestMock, registerPluginMock } = vi.hoisted(
@@ -47,6 +49,8 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
   });
 
   afterEach(() => {
+    __resetAndroidNativeAgentTransportForTests();
+    globalThis.localStorage?.removeItem("eliza:mobile-runtime-mode");
     vi.unstubAllGlobals();
   });
 
@@ -85,11 +89,69 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
     await expect(response?.json()).resolves.toEqual({ ready: true });
   });
 
+  it("routes the IPC local-agent identity through the native Agent plugin", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const transport = createAndroidNativeAgentTransport({
+      request: agentRequestMock,
+    });
+
+    const response = await transport.request(
+      "eliza-local-agent://ipc/api/status?source=test",
+      { method: "GET" },
+      { timeoutMs: 12_345 },
+    );
+
+    expect(agentRequestMock).toHaveBeenCalledWith({
+      method: "GET",
+      path: "/api/status?source=test",
+      headers: {},
+      body: null,
+      timeoutMs: 12_345,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(response?.json()).resolves.toEqual({ ready: true });
+  });
+
   it("does not install the Android local-agent transport on iOS", async () => {
     capacitorState.platform = "ios";
 
     await expect(
       androidNativeAgentTransportForUrl("http://127.0.0.1:31337/api/status"),
     ).resolves.toBeNull();
+  });
+
+  it("bridges direct /api fetches through the native Agent plugin in Android local mode", async () => {
+    const fetchMock = vi.fn();
+    const storage = new Map<string, string>();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("localStorage", {
+      getItem: (key: string) => storage.get(key) ?? null,
+      removeItem: (key: string) => {
+        storage.delete(key);
+      },
+      setItem: (key: string, value: string) => {
+        storage.set(key, value);
+      },
+    });
+    globalThis.localStorage.setItem("eliza:mobile-runtime-mode", "local");
+
+    installAndroidNativeAgentFetchBridge();
+
+    const response = await fetch("/api/status?source=direct", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ping: true }),
+    });
+
+    expect(agentRequestMock).toHaveBeenCalledWith({
+      method: "POST",
+      path: "/api/status?source=direct",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ping: true }),
+      timeoutMs: undefined,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({ ready: true });
   });
 });

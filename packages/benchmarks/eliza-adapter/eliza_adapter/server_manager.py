@@ -58,13 +58,16 @@ def _find_free_port() -> int:
 def _server_command(server_script: Path) -> list[str]:
     """Return the benchmark server command.
 
-    Bun can execute the TypeScript server directly and avoids Node-version
-    package-export breakage from `node --import tsx` on newer Node runtimes.
-    Keep the Node/tsx path as a fallback for environments without Bun.
+    Match the app-core benchmark script (`node --import tsx`). Running this
+    server with Bun from the app-core package can apply runtime path aliases
+    from tsconfig and resolve React to @types/react, which makes Bun parse a
+    declaration file as JavaScript during startup.
     """
     forced = os.environ.get("ELIZA_BENCH_SERVER_CMD", "").strip()
     if forced:
         return [*shlex.split(forced), str(server_script)]
+    if shutil.which("node"):
+        return ["node", "--import", "tsx", str(server_script)]
     if shutil.which("bun"):
         return ["bun", "run", str(server_script)]
     return ["node", "--import", "tsx", str(server_script)]

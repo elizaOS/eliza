@@ -9,7 +9,7 @@ export interface StateDeviceSecurityProps {
 
 export function StateDeviceSecurity(
   props: StateDeviceSecurityProps,
-): JSX.Element {
+): React.JSX.Element {
   const { sandboxMode, onChoose, onContinue, onBack } = props;
   const selected = sandboxMode ?? "sandbox";
   return (

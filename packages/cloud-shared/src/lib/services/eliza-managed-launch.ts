@@ -2,6 +2,8 @@ import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes"
 import type { AgentSandbox } from "../../db/schemas/agent-sandboxes";
 import { cache } from "../cache/client";
 import { OPENROUTER_DEFAULT_TEXT_MODEL } from "../models";
+import { logger } from "../utils/logger";
+import { elizaSandboxService } from "./eliza-sandbox";
 import {
   type ManagedElizaEnvironmentResult,
   type PrepareManagedElizaSharedEnvironmentParams,
@@ -10,8 +12,6 @@ import {
   resolveElizaAppUrl,
   resolveManagedAllowedOrigins,
 } from "./managed-eliza-config";
-import { logger } from "../utils/logger";
-import { elizaSandboxService } from "./eliza-sandbox";
 
 const DEFAULT_SMALL_MODEL = OPENROUTER_DEFAULT_TEXT_MODEL;
 const DEFAULT_LARGE_MODEL = OPENROUTER_DEFAULT_TEXT_MODEL;

@@ -40,7 +40,6 @@ TurboQuant TBQ3_0 V is the ≤8k-context fallback.
 | eliza-1-9b        | shipped | buildable |
 | eliza-1-27b       | shipped | buildable |
 | eliza-1-27b-256k  | shipped | buildable |
-| eliza-1-27b-1m    | shipped | buildable |
 
 The full tier × quant-type matrix (rows = tier, columns = QJL-K +
 PolarQuant-V + TurboQuant-W variants) lives at

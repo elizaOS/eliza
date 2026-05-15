@@ -1,4 +1,4 @@
-import { resolveBrowserStewardApiUrl } from "@/lib/steward-url";
+import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
 
 const DEFAULT_STEWARD_TENANT_ID =
   process.env.NEXT_PUBLIC_STEWARD_TENANT_ID || "elizacloud";

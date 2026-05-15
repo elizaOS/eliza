@@ -210,7 +210,7 @@ test.describe("macOS desktop titlebar", () => {
     await expect(titlebar).toBeVisible();
     await expect.poll(() => getAppRegion(titlebar)).toBe("drag");
 
-    const appsButton = page.getByTestId("header-nav-button-apps");
+    const appsButton = page.getByRole("button", { name: "Views" });
     await expect(appsButton).toBeVisible();
     const titlebarBox = await titlebar.boundingBox();
     const chatBox = await page
@@ -239,7 +239,7 @@ test.describe("macOS desktop titlebar", () => {
     await attachVisibleScreenshot(page, testInfo, "mac-titlebar-no-banner");
     await expect.poll(() => getAppRegion(appsButton)).toBe("no-drag");
     await clickLocatorAtVerticalFraction(page, appsButton, 0.18);
-    await expect(page).toHaveURL(/\/apps$/);
+    await expect(page).toHaveURL(/\/views$/);
 
     await openAppPath(page, "/chat");
 

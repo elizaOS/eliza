@@ -12,13 +12,13 @@
 
 import { StewardClient } from "@stwd/sdk";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
+import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
+import { logger } from "../utils/logger";
 import {
   type ResolveStewardTenantCredentialsOptions,
   resolveDefaultStewardTenantId,
   resolveStewardTenantCredentials,
 } from "./steward-tenant-config";
-import { resolveServerStewardApiUrlFromEnv } from "../steward-url";
-import { logger } from "../utils/logger";
 
 // ---------------------------------------------------------------------------
 // Configuration

@@ -1,4 +1,7 @@
-import type { IdentityLinkRow, IdentityLinksRepository } from "../../db/repositories/identity-links";
+import type {
+  IdentityLinkRow,
+  IdentityLinksRepository,
+} from "../../db/repositories/identity-links";
 import type { IdentityLinkSource } from "../../db/schemas/identity-links";
 import { logger } from "../utils/logger";
 

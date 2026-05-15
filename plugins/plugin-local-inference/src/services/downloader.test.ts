@@ -19,12 +19,13 @@ function eliza1Manifest(overrides: {
 	>;
 	shaFor: (key: string) => string;
 }): string {
-	const textPath = "text/eliza-1-0_8b-32k.gguf";
+	const textPath = "text/eliza-1-2b-128k.gguf";
 	const voicePath = "tts/voice.gguf";
 	const asrPath = "asr/asr.gguf";
-	const drafterPath = "dflash/drafter-0_8b.gguf";
+	const drafterPath = "dflash/drafter-2b.gguf";
 	const cachePath = "cache/voice-preset-default.bin";
 	const vadPath = "vad/eliza-1-vad.onnx";
+	const visionPath = "vision/mmproj.gguf";
 	const verifiedBackends = overrides.verifiedBackends ?? {
 		metal: { status: "pass", atCommit: "t", report: "metal" },
 		vulkan: { status: "pass", atCommit: "t", report: "vulkan" },
@@ -33,8 +34,8 @@ function eliza1Manifest(overrides: {
 		cpu: { status: "pass", atCommit: "t", report: "cpu" },
 	};
 	return JSON.stringify({
-		id: "eliza-1-0_8b",
-		tier: "0_8b",
+		id: "eliza-1-2b",
+		tier: "2b",
 		version: "1.0.0",
 		publishedAt: "2026-05-11T00:00:00.000Z",
 		lineage: {
@@ -43,6 +44,7 @@ function eliza1Manifest(overrides: {
 			asr: { base: "eliza-1-asr", license: "test" },
 			vad: { base: "eliza-1-vad", license: "test" },
 			drafter: { base: "eliza-1-drafter", license: "test" },
+			vision: { base: "eliza-1-vision", license: "test" },
 		},
 		defaultEligible: true,
 		files: {
@@ -50,12 +52,12 @@ function eliza1Manifest(overrides: {
 				{
 					path: textPath,
 					sha256: overrides.shaFor("text"),
-					ctx: 32768,
+					ctx: 131072,
 				},
 			],
 			voice: [{ path: voicePath, sha256: overrides.shaFor("voice") }],
 			asr: [{ path: asrPath, sha256: overrides.shaFor("asr") }],
-			vision: [],
+			vision: [{ path: visionPath, sha256: overrides.shaFor("vision") }],
 			dflash: [
 				{
 					path: drafterPath,
@@ -71,7 +73,7 @@ function eliza1Manifest(overrides: {
 			vad: [{ path: vadPath, sha256: overrides.shaFor("vad") }],
 		},
 		kernels: {
-			required: ["turboquant_q4", "qjl", "polarquant", "dflash"],
+			required: ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 			optional: [],
 			verifiedBackends,
 		},
@@ -121,15 +123,15 @@ function bundleRemotePath(
 }
 
 function eliza1BundleRemotePath(rel: string): string {
-	const model = findCatalogModel("eliza-1-0_8b");
-	if (!model) throw new Error("missing 0_8b catalog model");
+	const model = findCatalogModel("eliza-1-2b");
+	if (!model) throw new Error("missing 2b catalog model");
 	return bundleRemotePath(model, rel);
 }
 
 function eliza1BundleManifestPath(): string {
-	const model = findCatalogModel("eliza-1-0_8b");
+	const model = findCatalogModel("eliza-1-2b");
 	if (!model?.bundleManifestFile) {
-		throw new Error("missing 0_8b bundle manifest path");
+		throw new Error("missing 2b bundle manifest path");
 	}
 	return bundleRemotePath(model, model.bundleManifestFile);
 }
@@ -244,7 +246,7 @@ describe("local inference downloader status", () => {
 	it("installs Eliza-1 manifest bundles with the hidden DFlash companion", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
-		const model = findCatalogModel("eliza-1-0_8b");
+		const model = findCatalogModel("eliza-1-2b");
 		expect(model).toBeDefined();
 		if (!model) throw new Error("missing test catalog model");
 		const manifestFile = model.bundleManifestFile;
@@ -256,36 +258,39 @@ describe("local inference downloader status", () => {
 		const vad = "VAD model";
 		const drafter = "GGUF drafter model";
 		const cache = "voice preset";
-		const textPath = "text/eliza-1-0_8b-32k.gguf";
+		const vision = "vision projector";
+		const textPath = "text/eliza-1-2b-128k.gguf";
 		const voicePath = "tts/voice.gguf";
 		const asrPath = "asr/asr.gguf";
 		const vadPath = "vad/eliza-1-vad.onnx";
-		const drafterPath = "dflash/drafter-0_8b.gguf";
+		const drafterPath = "dflash/drafter-2b.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
+		const visionPath = "vision/mmproj.gguf";
 		const manifest = JSON.stringify({
-			id: "eliza-1-0_8b",
-			tier: "0_8b",
+			id: "eliza-1-2b",
+			tier: "2b",
 			version: "1.0.0",
 			publishedAt: "2026-05-11T00:00:00.000Z",
 			lineage: {
 				text: { base: "eliza-1-text", license: "test" },
 				voice: { base: "eliza-1-voice", license: "test" },
-				asr: { base: "eliza-1-asr", license: "test" },
-				vad: { base: "eliza-1-vad", license: "test" },
-				drafter: { base: "eliza-1-drafter", license: "test" },
-			},
+					asr: { base: "eliza-1-asr", license: "test" },
+					vad: { base: "eliza-1-vad", license: "test" },
+					drafter: { base: "eliza-1-drafter", license: "test" },
+					vision: { base: "eliza-1-vision", license: "test" },
+				},
 			defaultEligible: true,
 			files: {
 				text: [
 					{
 						path: textPath,
 						sha256: sha256(text),
-						ctx: 32768,
+						ctx: 131072,
 					},
 				],
 				voice: [{ path: voicePath, sha256: sha256(voice) }],
 				asr: [{ path: asrPath, sha256: sha256(asr) }],
-				vision: [],
+					vision: [{ path: visionPath, sha256: sha256(vision) }],
 				dflash: [
 					{
 						path: drafterPath,
@@ -301,7 +306,7 @@ describe("local inference downloader status", () => {
 				vad: [{ path: vadPath, sha256: sha256(vad) }],
 			},
 			kernels: {
-				required: ["turboquant_q4", "qjl", "polarquant", "dflash"],
+				required: ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 				optional: [],
 				verifiedBackends: {
 					metal: {
@@ -348,11 +353,12 @@ describe("local inference downloader status", () => {
 				[bundleRemotePath(model, textPath), text],
 				[bundleRemotePath(model, voicePath), voice],
 				[bundleRemotePath(model, asrPath), asr],
-				[bundleRemotePath(model, vadPath), vad],
-				[bundleRemotePath(model, drafterPath), drafter],
-				[bundleRemotePath(model, cachePath), cache],
-			]),
-		);
+					[bundleRemotePath(model, vadPath), vad],
+					[bundleRemotePath(model, drafterPath), drafter],
+					[bundleRemotePath(model, cachePath), cache],
+					[bundleRemotePath(model, visionPath), vision],
+				]),
+			);
 
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
@@ -363,7 +369,7 @@ describe("local inference downloader status", () => {
 		const installed = await listInstalledModels();
 		const main = installed.find((entry) => entry.id === model.id);
 		const companion = installed.find(
-			(entry) => entry.id === "eliza-1-0_8b-drafter",
+			(entry) => entry.id === "eliza-1-2b-drafter",
 		);
 		expect(main).toBeDefined();
 		expect(companion).toBeDefined();
@@ -376,7 +382,7 @@ describe("local inference downloader status", () => {
 		expect(job.state).toBe("completed");
 		expect(main.path.endsWith(textPath)).toBe(true);
 		expect(bundleRoot).toBe(
-			path.join(root, "local-inference", "models", "eliza-1-0_8b.bundle"),
+			path.join(root, "local-inference", "models", "eliza-1-2b.bundle"),
 		);
 		expect(main.manifestPath).toBe(path.join(bundleRoot, manifestFile));
 		expect(main.bundleVersion).toBe("1.0.0");
@@ -395,13 +401,13 @@ describe("local inference downloader status", () => {
 	it("rejects a pinned bundle manifest sha before fetching weights", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
-		const model = findCatalogModel("eliza-1-0_8b");
+		const model = findCatalogModel("eliza-1-2b");
 		if (!model) throw new Error("missing test catalog model");
 
 		const fetchSpy = installManifestOnlyFetch("tampered manifest");
 		const pinnedModel = {
 			...model,
-			id: "eliza-1-0_8b-manifest-hash-test",
+			id: "eliza-1-2b-manifest-hash-test",
 			companionModelIds: [],
 			bundleManifestSha256: sha256("expected manifest"),
 		};
@@ -429,7 +435,7 @@ describe("local inference downloader status", () => {
 	it("restarts single-file partial downloads when a server ignores Range", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
-		const model = findCatalogModel("eliza-1-0_8b-drafter");
+		const model = findCatalogModel("eliza-1-2b-drafter");
 		expect(model).toBeDefined();
 		if (!model) throw new Error("missing test catalog model");
 
@@ -441,7 +447,7 @@ describe("local inference downloader status", () => {
 		const downloadsDir = path.join(root, "local-inference", "downloads");
 		fs.mkdirSync(downloadsDir, { recursive: true });
 		fs.writeFileSync(
-			path.join(downloadsDir, "eliza-1-0_8b-drafter.part"),
+			path.join(downloadsDir, "eliza-1-2b-drafter.part"),
 			"stale partial",
 		);
 
@@ -480,6 +486,7 @@ describe("local inference downloader status", () => {
 		const voicePath = "tts/voice.gguf";
 		const drafterPath = "dflash/drafter-27b-256k.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
+		const visionPath = "vision/mmproj.gguf";
 		const manifest = JSON.stringify({
 			id: "eliza-1-27b-256k",
 			tier: "27b-256k",
@@ -489,6 +496,7 @@ describe("local inference downloader status", () => {
 				text: { base: "eliza-1-text", license: "test" },
 				voice: { base: "eliza-1-voice", license: "test" },
 				drafter: { base: "eliza-1-drafter", license: "test" },
+				vision: { base: "eliza-1-vision", license: "test" },
 			},
 			defaultEligible: false,
 			files: {
@@ -501,7 +509,7 @@ describe("local inference downloader status", () => {
 				],
 				voice: [{ path: voicePath, sha256: sha256("v") }],
 				asr: [],
-				vision: [],
+				vision: [{ path: visionPath, sha256: sha256("vision") }],
 				dflash: [{ path: drafterPath, sha256: sha256("d") }],
 				cache: [{ path: cachePath, sha256: sha256("c") }],
 			},
@@ -563,7 +571,7 @@ describe("local inference downloader status", () => {
 	it("aborts before any weight byte when the RAM budget exceeds the device", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
-		const model = findCatalogModel("eliza-1-0_8b");
+		const model = findCatalogModel("eliza-1-2b");
 		if (!model) throw new Error("missing test catalog model");
 
 		const manifest = eliza1Manifest({
@@ -595,7 +603,7 @@ describe("local inference downloader status", () => {
 	it("runs the verify-on-device hook before the bundle fills a default slot", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
-		const model = findCatalogModel("eliza-1-0_8b");
+		const model = findCatalogModel("eliza-1-2b");
 		if (!model) throw new Error("missing test catalog model");
 
 		const bytes = {
@@ -605,6 +613,7 @@ describe("local inference downloader status", () => {
 			vad: "VAD onnx",
 			drafter: "GGUF drafter",
 			cache: "voice preset",
+			vision: "vision projector",
 		} as const;
 		const manifest = eliza1Manifest({
 			shaFor: (k) => sha256(bytes[k as keyof typeof bytes]),
@@ -612,12 +621,13 @@ describe("local inference downloader status", () => {
 		installFetchFixture(
 			new Map([
 				[eliza1BundleManifestPath(), manifest],
-				[eliza1BundleRemotePath("text/eliza-1-0_8b-32k.gguf"), bytes.text],
+				[eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"), bytes.text],
 				[eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
 				[eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
 				[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
-				[eliza1BundleRemotePath("dflash/drafter-0_8b.gguf"), bytes.drafter],
+				[eliza1BundleRemotePath("dflash/drafter-2b.gguf"), bytes.drafter],
 				[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
+				[eliza1BundleRemotePath("vision/mmproj.gguf"), bytes.vision],
 			]),
 		);
 
@@ -635,7 +645,7 @@ describe("local inference downloader status", () => {
 		expect(verifyCalls).toHaveLength(1);
 		expect(verifyCalls[0]?.modelId).toBe(model.id);
 		expect(
-			verifyCalls[0]?.textGgufPath.endsWith("text/eliza-1-0_8b-32k.gguf"),
+			verifyCalls[0]?.textGgufPath.endsWith("text/eliza-1-2b-128k.gguf"),
 		).toBe(true);
 		const installed = await listInstalledModels();
 		const main = installed.find((m) => m.id === model.id);
@@ -645,7 +655,7 @@ describe("local inference downloader status", () => {
 	it("fails the download (no install) when the verify-on-device hook rejects", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
-		const model = findCatalogModel("eliza-1-0_8b");
+		const model = findCatalogModel("eliza-1-2b");
 		if (!model) throw new Error("missing test catalog model");
 
 		const bytes = {
@@ -655,6 +665,7 @@ describe("local inference downloader status", () => {
 			vad: "VAD onnx",
 			drafter: "GGUF drafter",
 			cache: "voice preset",
+			vision: "vision projector",
 		} as const;
 		const manifest = eliza1Manifest({
 			shaFor: (k) => sha256(bytes[k as keyof typeof bytes]),
@@ -662,12 +673,13 @@ describe("local inference downloader status", () => {
 		installFetchFixture(
 			new Map([
 				[eliza1BundleManifestPath(), manifest],
-				[eliza1BundleRemotePath("text/eliza-1-0_8b-32k.gguf"), bytes.text],
+				[eliza1BundleRemotePath("text/eliza-1-2b-128k.gguf"), bytes.text],
 				[eliza1BundleRemotePath("tts/voice.gguf"), bytes.voice],
 				[eliza1BundleRemotePath("asr/asr.gguf"), bytes.asr],
 				[eliza1BundleRemotePath("vad/eliza-1-vad.onnx"), bytes.vad],
-				[eliza1BundleRemotePath("dflash/drafter-0_8b.gguf"), bytes.drafter],
+				[eliza1BundleRemotePath("dflash/drafter-2b.gguf"), bytes.drafter],
 				[eliza1BundleRemotePath("cache/voice-preset-default.bin"), bytes.cache],
+				[eliza1BundleRemotePath("vision/mmproj.gguf"), bytes.vision],
 			]),
 		);
 

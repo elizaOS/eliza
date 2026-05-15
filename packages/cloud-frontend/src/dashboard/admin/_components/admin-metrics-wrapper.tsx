@@ -2,6 +2,7 @@
 
 import { useSetPageHeader } from "@elizaos/ui";
 import { AdminMetricsClient } from "./admin-metrics-client";
+import { CloudObservabilityPanel } from "./cloud-observability-panel";
 
 export function AdminMetricsWrapper() {
   useSetPageHeader({
@@ -9,5 +10,10 @@ export function AdminMetricsWrapper() {
     description: "User engagement KPIs across all platforms",
   });
 
-  return <AdminMetricsClient />;
+  return (
+    <div className="space-y-6">
+      <CloudObservabilityPanel />
+      <AdminMetricsClient />
+    </div>
+  );
 }

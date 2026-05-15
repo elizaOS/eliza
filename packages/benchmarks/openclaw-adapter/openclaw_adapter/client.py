@@ -54,11 +54,6 @@ _ALLOWED_TOOL_CHOICES = {"auto", "required", "none"}
 
 
 _JSON_BLOB_RE = re.compile(r"\{.*\}", re.DOTALL)
-_TOOL_CALL_RE = re.compile(
-    r"<tool_call>\s*(\{.*?\})\s*</tool_call>",
-    re.DOTALL,
-)
-_TOOL_CALL_OPENER_RE = re.compile(r"<tool_call>\s*(\{)", re.DOTALL)
 
 
 @dataclass
@@ -219,6 +214,14 @@ def _is_gpt_oss_model(model: str) -> bool:
     return model.rsplit("/", 1)[-1].startswith("gpt-oss")
 
 
+def _usage_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    return None
+
+
 _TELEMETRY_TURN_COUNTER = 0
 _TELEMETRY_FALLBACK_PATH: str | None = None
 
@@ -253,10 +256,47 @@ def _resolve_telemetry_path() -> str | None:
 def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
     def pick(*keys: str) -> int | None:
         for key in keys:
-            value = usage.get(key)
-            if isinstance(value, (int, float)) and value:
-                return int(value)
+            value = _usage_int(usage.get(key))
+            if value is not None:
+                return value
         return None
+
+    def pick_from_details(detail_keys: Sequence[str], field_keys: Sequence[str]) -> int | None:
+        for detail_key in detail_keys:
+            detail = usage.get(detail_key)
+            if not isinstance(detail, Mapping):
+                continue
+            for field_key in field_keys:
+                value = _usage_int(detail.get(field_key))
+                if value is not None:
+                    return value
+        return None
+
+    cache_read_input_tokens = pick(
+        "cache_read_input_tokens",
+        "cachedTokens",
+        "cached_tokens",
+    )
+    if cache_read_input_tokens is None:
+        cache_read_input_tokens = pick_from_details(
+            ("prompt_tokens_details", "input_token_details"),
+            ("cached_tokens", "cachedTokens", "cache_read_input_tokens"),
+        )
+
+    cache_creation_input_tokens = pick(
+        "cache_creation_input_tokens",
+        "cacheCreationInputTokens",
+    )
+    if cache_creation_input_tokens is None:
+        cache_creation_input_tokens = pick_from_details(
+            ("prompt_tokens_details", "input_token_details"),
+            (
+                "cache_creation_input_tokens",
+                "cacheCreationInputTokens",
+                "cache_write_tokens",
+                "cacheWriteTokens",
+            ),
+        )
 
     return {
         "prompt_tokens": pick("prompt_tokens", "promptTokens", "input_tokens"),
@@ -264,12 +304,8 @@ def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
             "completion_tokens", "completionTokens", "output_tokens"
         ),
         "total_tokens": pick("total_tokens", "totalTokens"),
-        "cache_read_input_tokens": pick(
-            "cache_read_input_tokens", "cachedTokens", "cached_tokens"
-        ),
-        "cache_creation_input_tokens": pick(
-            "cache_creation_input_tokens", "cacheCreationInputTokens"
-        ),
+        "cache_read_input_tokens": cache_read_input_tokens,
+        "cache_creation_input_tokens": cache_creation_input_tokens,
     }
 
 
@@ -364,7 +400,6 @@ class OpenClawClient:
         reasoning_effort: str | None = None,
         max_tokens: int | None = None,
         direct_openai_compatible: bool = False,
-        allow_text_tool_calls: bool = False,
     ) -> None:
         self.repo_path = Path(repo_path) if repo_path else _default_repo_path()
         self.binary_path = Path(binary_path) if binary_path else _resolve_default_binary()
@@ -392,9 +427,6 @@ class OpenClawClient:
             else _env_optional_int("BENCHMARK_MAX_TOKENS", "MAX_TOKENS")
         )
         self.direct_openai_compatible = bool(direct_openai_compatible)
-        self.allow_text_tool_calls = bool(allow_text_tool_calls) or (
-            os.environ.get("OPENCLAW_ALLOW_TEXT_TOOL_CALLS", "").strip() == "1"
-        )
         self._task_id: str | None = None
         self._benchmark: str | None = None
 
@@ -560,17 +592,13 @@ class OpenClawClient:
             )
 
         payload = _extract_json_blob(result.stdout or "", result.stderr or "")
-        response = _response_from_payload(
-            payload,
-            allow_text_tool_calls=self.allow_text_tool_calls,
-        )
+        response = _response_from_payload(payload)
         _annotate_response(
             response,
             transport="openclaw_cli",
             path_label="openclaw-cli-one-shot",
             preserves_full_messages=False,
             passes_benchmark_tools=False,
-            counts_text_embedded_tool_calls=self.allow_text_tool_calls,
         )
         _write_telemetry(
             harness="openclaw",
@@ -603,21 +631,15 @@ class OpenClawClient:
                 api_key=self.api_key or _default_api_key(self.provider, self.api_key_env),
                 timeout_s=self.timeout_s,
             )
-            response = _response_from_openai_completion(
-                payload,
-                allow_text_tool_calls=self.allow_text_tool_calls,
-            )
+            response = _response_from_openai_completion(payload)
             _annotate_response(
                 response,
                 transport="direct_openai_compatible",
                 path_label="openclaw-direct-openai-compatible-provider",
                 preserves_full_messages=True,
                 passes_benchmark_tools=bool(
-                    context
-                    and isinstance(context.get("tools"), list)
-                    and context.get("tools")
+                    context and _openai_compatible_tools(context.get("tools"))
                 ),
-                counts_text_embedded_tool_calls=self.allow_text_tool_calls,
             )
         except Exception as exc:
             _write_telemetry(
@@ -727,8 +749,8 @@ class OpenClawClient:
             "messages": _direct_messages_from_context(text, ctx),
         }
         if ctx:
-            tools = ctx.get("tools")
-            if isinstance(tools, list) and tools:
+            tools = _openai_compatible_tools(ctx.get("tools"))
+            if tools:
                 body["tools"] = tools
                 tool_choice = ctx.get("tool_choice")
                 if isinstance(tool_choice, str) and tool_choice in _ALLOWED_TOOL_CHOICES:
@@ -919,11 +941,7 @@ def _extract_json_blob(stdout: str, stderr: str) -> dict[str, object]:
     return parsed
 
 
-def _response_from_payload(
-    payload: Mapping[str, object],
-    *,
-    allow_text_tool_calls: bool = False,
-) -> MessageResponse:
+def _response_from_payload(payload: Mapping[str, object]) -> MessageResponse:
     """Map a parsed OpenClaw payload to :class:`MessageResponse`.
 
     OpenClaw's JSON shape is not fully stable across releases — we look up the
@@ -941,11 +959,6 @@ def _response_from_payload(
         if isinstance(meta, Mapping):
             text = _first_str(meta, ("finalAssistantVisibleText", "finalAssistantRawText"))
     raw_tool_calls = _collect_tool_calls(payload)
-    if text and allow_text_tool_calls:
-        visible_text, embedded_tool_calls = parse_openclaw_tool_calls(text)
-        if embedded_tool_calls:
-            text = visible_text
-            raw_tool_calls.extend(embedded_tool_calls)
 
     actions: list[str] = []
     params: dict[str, object] = {}
@@ -990,16 +1003,11 @@ def _response_from_payload(
         path_label="openclaw-payload",
         preserves_full_messages=False,
         passes_benchmark_tools=False,
-        counts_text_embedded_tool_calls=allow_text_tool_calls,
     )
     return response
 
 
-def _response_from_openai_completion(
-    payload: Mapping[str, object],
-    *,
-    allow_text_tool_calls: bool = False,
-) -> MessageResponse:
+def _response_from_openai_completion(payload: Mapping[str, object]) -> MessageResponse:
     """Map an OpenAI-compatible chat completion to :class:`MessageResponse`."""
     choices = payload.get("choices")
     choice: object = (
@@ -1016,10 +1024,7 @@ def _response_from_openai_completion(
     usage = payload.get("usage")
     if isinstance(usage, Mapping):
         normalized["usage"] = dict(usage)
-    return _response_from_payload(
-        normalized,
-        allow_text_tool_calls=allow_text_tool_calls,
-    )
+    return _response_from_payload(normalized)
 
 
 def _annotate_response(
@@ -1029,7 +1034,6 @@ def _annotate_response(
     path_label: str,
     preserves_full_messages: bool,
     passes_benchmark_tools: bool,
-    counts_text_embedded_tool_calls: bool,
 ) -> None:
     """Attach adapter metadata used by harness conformance tests.
 
@@ -1048,7 +1052,6 @@ def _annotate_response(
         "native_openai_tool_calls": transport == "direct_openai_compatible",
         "preserves_full_messages": preserves_full_messages,
         "passes_benchmark_tools": passes_benchmark_tools,
-        "counts_text_embedded_tool_calls": counts_text_embedded_tool_calls,
     }
 
 
@@ -1108,48 +1111,35 @@ def _usage_from_meta(payload: Mapping[str, object]) -> dict[str, object]:
 
 
 def _normalize_usage(usage: Mapping[str, object]) -> dict[str, object]:
-    input_tokens = (
-        usage.get("prompt_tokens")
-        or usage.get("input_tokens")
-        or usage.get("input")
-        or usage.get("promptTokens")
-        or 0
-    )
-    output_tokens = (
-        usage.get("completion_tokens")
-        or usage.get("output_tokens")
-        or usage.get("output")
-        or usage.get("completionTokens")
-        or 0
-    )
-    total = usage.get("total_tokens") or usage.get("total") or usage.get("totalTokens") or 0
-    details = usage.get("prompt_tokens_details")
-    details_map = details if isinstance(details, Mapping) else {}
-    cache_read = (
-        usage.get("cache_read_input_tokens")
-        or usage.get("cached_tokens")
-        or usage.get("cacheRead")
-        or details_map.get("cached_tokens")
-        or details_map.get("cache_read_input_tokens")
-        or 0
-    )
-    cache_write = (
-        usage.get("cache_creation_input_tokens")
-        or usage.get("cache_write_tokens")
-        or usage.get("cacheWrite")
-        or details_map.get("cache_creation_input_tokens")
-        or details_map.get("cache_write_tokens")
-        or 0
-    )
-    if not any((input_tokens, output_tokens, total, cache_read, cache_write)):
+    tokens = _extract_usage_tokens(usage)
+    input_tokens = tokens["prompt_tokens"]
+    output_tokens = tokens["completion_tokens"]
+
+    def _pick(*keys: str) -> int | None:
+        for key in keys:
+            value = _usage_int(usage.get(key))
+            if value is not None:
+                return value
+        return None
+
+    total = tokens["total_tokens"]
+    if total is None:
+        total = _pick("total", "totalTokens")
+    cache_read = tokens["cache_read_input_tokens"]
+    cache_write = tokens["cache_creation_input_tokens"]
+
+    if not any(
+        value is not None
+        for value in (input_tokens, output_tokens, total, cache_read, cache_write)
+    ):
         return {}
     return {
-        "prompt_tokens": input_tokens,
-        "completion_tokens": output_tokens,
-        "total_tokens": total,
+        "prompt_tokens": input_tokens if input_tokens is not None else 0,
+        "completion_tokens": output_tokens if output_tokens is not None else 0,
+        "total_tokens": total if total is not None else 0,
         "prompt_tokens_details": {
-            "cached_tokens": cache_read,
-            "cache_write_tokens": cache_write,
+            "cached_tokens": cache_read if cache_read is not None else 0,
+            "cache_write_tokens": cache_write if cache_write is not None else 0,
         },
     }
 
@@ -1192,95 +1182,6 @@ def _normalize_tool_call(
         "name": name_obj,
         "arguments": args_obj if args_obj is not None else {},
     }
-
-
-def _brace_balanced_json_slice(text: str, start: int) -> str | None:
-    """Extract a top-level JSON object starting at ``text[start] == '{'``.
-
-    Walks forward respecting string boundaries and ``\\`` escapes inside
-    strings. Returns the substring ``text[start : end+1]`` once the brace
-    depth returns to zero, or ``None`` if the object never closes.
-    """
-    if start >= len(text) or text[start] != "{":
-        return None
-    depth = 0
-    in_string = False
-    escape = False
-    for i in range(start, len(text)):
-        ch = text[i]
-        if in_string:
-            if escape:
-                escape = False
-            elif ch == "\\":
-                escape = True
-            elif ch == '"':
-                in_string = False
-            continue
-        if ch == '"':
-            in_string = True
-        elif ch == "{":
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0:
-                return text[start : i + 1]
-    return None
-
-
-def _tool_call_dict_from_raw(
-    raw: str, index: int
-) -> dict[str, object] | None:
-    """Parse a JSON-encoded tool_call body into the normalized dict shape.
-
-    Returns ``None`` on JSON failure or when the payload lacks a string
-    ``tool``/``name`` field.
-    """
-    try:
-        data = json.loads(raw)
-    except json.JSONDecodeError:
-        logger.debug("dropping malformed OpenClaw tool_call payload: %r", raw)
-        return None
-    name = data.get("tool") or data.get("name")
-    if not isinstance(name, str) or not name:
-        return None
-    args = data.get("args", data.get("arguments", {}))
-    return {
-        "id": str(data.get("id") or f"call_openclaw_{index}"),
-        "name": name,
-        "arguments": args if args is not None else {},
-    }
-
-
-def parse_openclaw_tool_calls(text: str) -> tuple[str, list[dict[str, object]]]:
-    """Parse ``<tool_call>{...}</tool_call>`` blocks out of ``text``.
-
-    Two passes:
-
-    1. Well-formed blocks bounded by ``<tool_call>...</tool_call>``.
-    2. If pass 1 found nothing and the text contains an opener, run a
-       brace-balanced fallback over each ``<tool_call>{`` occurrence to
-       recover unclosed blocks (the model sometimes emits an opening tag
-       and a JSON body followed by trailing prose, never closing the tag).
-    """
-    if "<tool_call>" not in text:
-        return text, []
-    tool_calls: list[dict[str, object]] = []
-    for index, raw in enumerate(_TOOL_CALL_RE.findall(text)):
-        normalized = _tool_call_dict_from_raw(raw.strip(), index)
-        if normalized is not None:
-            tool_calls.append(normalized)
-
-    if not tool_calls:
-        for match in _TOOL_CALL_OPENER_RE.finditer(text):
-            json_start = match.start(1)
-            sliced = _brace_balanced_json_slice(text, json_start)
-            if sliced is None:
-                continue
-            normalized = _tool_call_dict_from_raw(sliced, len(tool_calls))
-            if normalized is not None:
-                tool_calls.append(normalized)
-
-    return text[: text.find("<tool_call>")].strip(), tool_calls
 
 
 def _coerce_native_tool_call(raw: object) -> dict[str, object] | None:
@@ -1399,6 +1300,26 @@ def _openai_tool_calls_from_raw(raw: object) -> list[dict[str, object]]:
     return calls
 
 
+def _openai_compatible_tools(raw_tools: object) -> list[object] | None:
+    """Return tools only when every item is an OpenAI tool object.
+
+    Some benchmark contexts use simple string tool names or local schemas. The
+    OpenAI-compatible APIs reject those as ``tools``; keep them out of the
+    request body so the run fails only on real model/runtime issues.
+    """
+    if not isinstance(raw_tools, list) or not raw_tools:
+        return None
+    for item in raw_tools:
+        if not isinstance(item, Mapping):
+            return None
+        function = item.get("function")
+        if item.get("type") != "function" or not isinstance(function, Mapping):
+            return None
+        if not isinstance(function.get("name"), str):
+            return None
+    return list(raw_tools)
+
+
 def _cli_prompt_text(text: str, context: Mapping[str, object] | None) -> str:
     """Flatten benchmark chat/tool context for the OpenClaw CLI message flag."""
     if not context:
@@ -1449,4 +1370,4 @@ def _default_repo_path() -> Path:
     return DEFAULT_REPO_PATH
 
 
-__all__ = ["MessageResponse", "OpenClawClient", "parse_openclaw_tool_calls"]
+__all__ = ["MessageResponse", "OpenClawClient"]

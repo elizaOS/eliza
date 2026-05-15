@@ -1,0 +1,1352 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 772361a..dca211f 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -5,6 +5,22 @@ ext {
+     androidxEspressoCoreVersion = project.hasProperty('androidxEspressoCoreVersion') ? rootProject.ext.androidxEspressoCoreVersion : '3.6.1'
+ }
+ 
++def resolveElizaRepoRoot = { ->
++    return rootProject.projectDir.toPath().resolve('../../..').normalize().toFile().absolutePath
++}
++
++def resolveElizaDflashAndroidLibDir = { ->
++    def fromProp = project.findProperty('eliza.dflash.android.libdir')
++    if (fromProp) return fromProp.toString()
++    def fromEnv = System.getenv('ELIZA_DFLASH_ANDROID_LIBDIR')
++    if (fromEnv) return fromEnv
++    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "${System.getProperty('user.home')}/.eliza"
++    def candidates = ['vulkan', 'cpu'].collect { backend ->
++        "${stateDir}/local-inference/bin/dflash/android-arm64-${backend}"
++    }
++    return candidates.find { new File(it).isDirectory() } ?: ''
++}
++
+ buildscript {
+     repositories {
+         google()
+@@ -18,7 +34,7 @@ buildscript {
+ apply plugin: 'com.android.library'
+ 
+ android {
+-    namespace "ai.annadata.plugin.capacitor"
++    namespace = "ai.annadata.plugin.capacitor"
+     compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
+     defaultConfig {
+         minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
+@@ -30,26 +46,33 @@ android {
+         ndk {
+             abiFilters 'arm64-v8a'
+         }
++
++        externalNativeBuild {
++            cmake {
++                arguments "-DELIZA_REPO_ROOT=${resolveElizaRepoRoot()}",
++                    "-DELIZA_DFLASH_ANDROID_LIBDIR=${resolveElizaDflashAndroidLibDir()}"
++            }
++        }
+     }
+     
+     externalNativeBuild {
+         cmake {
+             path "src/main/CMakeLists.txt"
+-            version "3.22.1"
++            version = "3.22.1"
+             // Explicitly set NDK version to avoid Windows dependencies
+-            ndkVersion "29.0.13113456"
++            ndkVersion = "29.0.13113456"
+         }
+     }
+     
+     buildTypes {
+         release {
+             minifyEnabled false
+-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
++            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+         }
+     }
+     
+     lintOptions {
+-        abortOnError false
++        abortOnError = false
+     }
+     
+     compileOptions {
+@@ -64,13 +87,6 @@ android {
+             }
+         }
+     }
+-    
+-    // Disable clean tasks that might cause issues
+-    tasks.whenTaskAdded { task ->
+-        if (task.name.contains('Clean') && task.name.contains('Debug')) {
+-            task.enabled = false
+-        }
+-    }
+ }
+ 
+ repositories {
+diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
+index f849d84..2c5a9dc 100644
+--- a/android/src/main/CMakeLists.txt
++++ b/android/src/main/CMakeLists.txt
+@@ -1,131 +1,88 @@
+-cmake_minimum_required(VERSION 3.10)
++cmake_minimum_required(VERSION 3.22)
+ 
+-project(llama-cpp)
++project(llama-cpp-capacitor-eliza-dflash)
+ 
+ set(CMAKE_CXX_STANDARD 17)
+-set(LLAMACPP_LIB_DIR ${CMAKE_SOURCE_DIR}/../../../cpp)
++set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ 
+-include_directories(
+-    ${LLAMACPP_LIB_DIR}
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu
+-    ${LLAMACPP_LIB_DIR}/tools/mtmd
+-)
++if(NOT DEFINED ELIZA_REPO_ROOT)
++    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza DFlash Android JNI bridge")
++endif()
+ 
+-set(
+-    SOURCE_FILES
+-    ${LLAMACPP_LIB_DIR}/ggml.c
+-    ${LLAMACPP_LIB_DIR}/ggml-alloc.c
+-    ${LLAMACPP_LIB_DIR}/ggml-backend.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-backend-reg.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/amx/amx.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/amx/mmq.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/ggml-cpu.c
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/ggml-cpu.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/quants.c
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/traits.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/repack.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/unary-ops.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/binary-ops.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/vec.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-cpu/ops.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-opt.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-threading.cpp
+-    ${LLAMACPP_LIB_DIR}/ggml-quants.c
+-    ${LLAMACPP_LIB_DIR}/gguf.cpp
+-    ${LLAMACPP_LIB_DIR}/log.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-impl.cpp
+-    ${LLAMACPP_LIB_DIR}/chat-parser.cpp
+-    ${LLAMACPP_LIB_DIR}/json-partial.cpp
+-    ${LLAMACPP_LIB_DIR}/regex-partial.cpp
+-    # Multimodal support
+-    ${LLAMACPP_LIB_DIR}/tools/mtmd/mtmd.cpp
+-    ${LLAMACPP_LIB_DIR}/tools/mtmd/mtmd-audio.cpp
+-    ${LLAMACPP_LIB_DIR}/tools/mtmd/clip.cpp
+-    ${LLAMACPP_LIB_DIR}/tools/mtmd/mtmd-helper.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-grammar.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-sampling.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-vocab.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-adapter.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-chat.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-context.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-arch.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-batch.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-cparams.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-hparams.cpp
+-    ${LLAMACPP_LIB_DIR}/llama.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-model.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-model-loader.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-model-saver.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-kv-cache.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-kv-cache-iswa.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-memory-hybrid.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-memory-recurrent.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-mmap.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-vocab.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-memory.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-io.cpp
+-    ${LLAMACPP_LIB_DIR}/llama-graph.cpp
+-    ${LLAMACPP_LIB_DIR}/sampling.cpp
+-    ${LLAMACPP_LIB_DIR}/unicode-data.cpp
+-    ${LLAMACPP_LIB_DIR}/unicode.cpp
+-    ${LLAMACPP_LIB_DIR}/common.cpp
+-    ${LLAMACPP_LIB_DIR}/chat.cpp
+-    ${LLAMACPP_LIB_DIR}/json-schema-to-grammar.cpp
+-    ${LLAMACPP_LIB_DIR}/nlohmann/json.hpp
+-    ${LLAMACPP_LIB_DIR}/nlohmann/json_fwd.hpp
+-    ${LLAMACPP_LIB_DIR}/minja/minja.hpp
+-    ${LLAMACPP_LIB_DIR}/minja/chat-template.hpp
+-    ${LLAMACPP_LIB_DIR}/anyascii.c
+-    ${LLAMACPP_LIB_DIR}/cap-llama.cpp
+-    ${LLAMACPP_LIB_DIR}/cap-completion.cpp
+-    ${LLAMACPP_LIB_DIR}/cap-tts.cpp
+-    ${CMAKE_SOURCE_DIR}/jni-utils.h
+-    ${CMAKE_SOURCE_DIR}/jni.cpp
+-)
++if(NOT DEFINED ELIZA_DFLASH_ANDROID_LIBDIR)
++    message(FATAL_ERROR "ELIZA_DFLASH_ANDROID_LIBDIR is required for the Eliza DFlash Android JNI bridge")
++endif()
++
++set(ELIZA_LLAMA_CPP_DIR "${ELIZA_REPO_ROOT}/plugins/plugin-local-inference/native/llama.cpp")
++set(ELIZA_DFLASH_LIBDIR "${ELIZA_DFLASH_ANDROID_LIBDIR}")
++
++foreach(required_lib libllama.so libggml.so libggml-base.so libggml-cpu.so libggml-vulkan.so)
++    if(NOT EXISTS "${ELIZA_DFLASH_LIBDIR}/${required_lib}")
++        message(FATAL_ERROR "Missing DFlash Android library: ${ELIZA_DFLASH_LIBDIR}/${required_lib}")
++    endif()
++endforeach()
++
++add_library(eliza_llama SHARED IMPORTED)
++set_target_properties(eliza_llama PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libllama.so")
++
++add_library(eliza_ggml SHARED IMPORTED)
++set_target_properties(eliza_ggml PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml.so")
++
++add_library(eliza_ggml_base SHARED IMPORTED)
++set_target_properties(eliza_ggml_base PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml-base.so")
++
++add_library(eliza_ggml_cpu SHARED IMPORTED)
++set_target_properties(eliza_ggml_cpu PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml-cpu.so")
++
++add_library(eliza_ggml_vulkan SHARED IMPORTED)
++set_target_properties(eliza_ggml_vulkan PROPERTIES IMPORTED_LOCATION "${ELIZA_DFLASH_LIBDIR}/libggml-vulkan.so")
+ 
+-# Find Android libraries
+ find_library(LOG_LIB log)
+ find_library(ANDROID_LIB android)
+ 
+-# ARM64 specific build function for real devices
+-function(build_library_arm64 target_name)
+-    add_library(
+-        ${target_name}
+-        SHARED
+-        ${SOURCE_FILES}
+-    )
+-
+-    # ARM64 specific compile options for real devices
+-    target_compile_options(${target_name} PRIVATE
+-        -march=armv8-a
+-        -mtune=cortex-a76
+-        -O3
+-        -DNDEBUG
+-        -DLM_GGML_USE_CPU
+-        -DLM_GGML_CPU_GENERIC
+-        -fno-finite-math-only
+-        -funroll-loops
+-    )
+-
+-    # Link with Android libraries
+-    target_link_libraries(${target_name} 
+-        ${LOG_LIB}
+-        ${ANDROID_LIB}
+-    )
+-    
+-    # Set output name and directory
+-    set_target_properties(${target_name} PROPERTIES
+-        OUTPUT_NAME "llama-cpp-arm64"
+-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/arm64-v8a"
+-    )
+-endfunction()
+-
+-# Build ARM64 library for real devices
+-build_library_arm64(llama-cpp-arm64)
+-
+-# Print build information
+-message(STATUS "Building llama-cpp for Android ARM64 (real devices)")
+-message(STATUS "Source directory: ${LLAMACPP_LIB_DIR}")
+-message(STATUS "Architecture: ARM64 (arm64-v8a)")
+-message(STATUS "Optimizations: ARMv8-A, Cortex-A76 tuning")
+-message(STATUS "Output directory: ${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/arm64-v8a")
++add_library(
++    llama-cpp-arm64
++    SHARED
++    ${CMAKE_SOURCE_DIR}/eliza-dflash-jni.cpp
++    ${ELIZA_LLAMA_CPP_DIR}/common/json-schema-to-grammar.cpp
++)
++
++target_include_directories(
++    llama-cpp-arm64
++    PRIVATE
++    ${ELIZA_LLAMA_CPP_DIR}/include
++    ${ELIZA_LLAMA_CPP_DIR}/ggml/include
++    ${ELIZA_LLAMA_CPP_DIR}/common
++    ${ELIZA_LLAMA_CPP_DIR}/vendor
++)
++
++target_compile_options(
++    llama-cpp-arm64
++    PRIVATE
++    -O3
++    -DNDEBUG
++    -fno-finite-math-only
++)
++
++target_link_libraries(
++    llama-cpp-arm64
++    PRIVATE
++    eliza_llama
++    eliza_ggml
++    eliza_ggml_cpu
++    eliza_ggml_vulkan
++    eliza_ggml_base
++    ${LOG_LIB}
++    ${ANDROID_LIB}
++)
++
++set_target_properties(
++    llama-cpp-arm64
++    PROPERTIES
++    OUTPUT_NAME "llama-cpp-arm64"
++    LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/arm64-v8a"
++)
++
++message(STATUS "Building Eliza DFlash JNI bridge for Android ARM64")
++message(STATUS "Eliza repo root: ${ELIZA_REPO_ROOT}")
++message(STATUS "DFlash lib dir: ${ELIZA_DFLASH_LIBDIR}")
+diff --git a/android/src/main/eliza-dflash-jni.cpp b/android/src/main/eliza-dflash-jni.cpp
+new file mode 100644
+index 0000000..14aaeb8
+--- /dev/null
++++ b/android/src/main/eliza-dflash-jni.cpp
+@@ -0,0 +1,999 @@
++#include <android/log.h>
++#include <jni.h>
++
++#include "json-schema-to-grammar.h"
++#include "llama.h"
++
++#include <nlohmann/json.hpp>
++
++#include <algorithm>
++#include <atomic>
++#include <chrono>
++#include <cmath>
++#include <cctype>
++#include <cstdint>
++#include <filesystem>
++#include <fstream>
++#include <limits>
++#include <map>
++#include <memory>
++#include <mutex>
++#include <sstream>
++#include <stdexcept>
++#include <string>
++#include <thread>
++#include <vector>
++
++#define LOG_TAG "ElizaDFlashJNI"
++#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
++#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
++#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
++
++using json = nlohmann::ordered_json;
++
++std::string string_join(const std::vector<std::string> & values, const std::string & separator) {
++    std::ostringstream joined;
++    for (size_t i = 0; i < values.size(); ++i) {
++        if (i > 0) joined << separator;
++        joined << values[i];
++    }
++    return joined.str();
++}
++
++std::vector<std::string> string_split(const std::string & str, const std::string & delimiter) {
++    std::vector<std::string> result;
++    if (delimiter.empty()) {
++        result.push_back(str);
++        return result;
++    }
++    size_t start = 0;
++    while (true) {
++        const size_t next = str.find(delimiter, start);
++        if (next == std::string::npos) {
++            result.push_back(str.substr(start));
++            return result;
++        }
++        result.push_back(str.substr(start, next - start));
++        start = next + delimiter.size();
++    }
++}
++
++std::string string_repeat(const std::string & str, size_t n) {
++    std::string result;
++    result.reserve(str.size() * n);
++    for (size_t i = 0; i < n; ++i) result += str;
++    return result;
++}
++
++namespace {
++
++struct NativeContext {
++    llama_model * model = nullptr;
++    llama_context * ctx = nullptr;
++    const llama_vocab * vocab = nullptr;
++    std::string model_path;
++    int32_t n_batch = 512;
++    int32_t n_past = 0;
++    bool embeddings = false;
++    std::atomic_bool interrupted{false};
++    std::mutex mutex;
++
++    ~NativeContext() {
++        if (ctx != nullptr) {
++            llama_free(ctx);
++            ctx = nullptr;
++        }
++        if (model != nullptr) {
++            llama_model_free(model);
++            model = nullptr;
++        }
++    }
++};
++
++std::mutex g_contexts_mutex;
++std::map<jlong, std::unique_ptr<NativeContext>> g_contexts;
++std::atomic<jlong> g_next_context_id{1};
++std::once_flag g_backend_once;
++std::atomic_bool g_native_log_enabled{false};
++
++void ensure_backend() {
++    std::call_once(g_backend_once, [] {
++        llama_backend_init();
++        LOGI("llama backend initialized");
++    });
++}
++
++void throw_java_exception(JNIEnv * env, const char * class_name, const std::string & message) {
++    jclass clazz = env->FindClass(class_name);
++    if (clazz != nullptr) {
++        env->ThrowNew(clazz, message.c_str());
++    }
++}
++
++std::string jstring_to_string(JNIEnv * env, jstring value) {
++    if (value == nullptr) return "";
++    const char * chars = env->GetStringUTFChars(value, nullptr);
++    if (chars == nullptr) return "";
++    std::string result(chars);
++    env->ReleaseStringUTFChars(value, chars);
++    return result;
++}
++
++jstring string_to_jstring(JNIEnv * env, const std::string & value) {
++    return env->NewStringUTF(value.c_str());
++}
++
++std::vector<std::string> jstring_array_to_vector(JNIEnv * env, jobjectArray array) {
++    std::vector<std::string> result;
++    if (array == nullptr) return result;
++    const jsize length = env->GetArrayLength(array);
++    result.reserve(static_cast<size_t>(length));
++    for (jsize i = 0; i < length; ++i) {
++        auto item = static_cast<jstring>(env->GetObjectArrayElement(array, i));
++        result.push_back(jstring_to_string(env, item));
++        env->DeleteLocalRef(item);
++    }
++    return result;
++}
++
++json jobject_to_json(JNIEnv * env, jobject object) {
++    if (object == nullptr) return json::object();
++    jclass clazz = env->GetObjectClass(object);
++    jmethodID to_string = env->GetMethodID(clazz, "toString", "()Ljava/lang/String;");
++    if (to_string == nullptr) {
++        if (env->ExceptionCheck()) env->ExceptionClear();
++        return json::object();
++    }
++    auto value = static_cast<jstring>(env->CallObjectMethod(object, to_string));
++    if (env->ExceptionCheck() || value == nullptr) {
++        if (env->ExceptionCheck()) env->ExceptionClear();
++        return json::object();
++    }
++    const std::string serialized = jstring_to_string(env, value);
++    env->DeleteLocalRef(value);
++    auto parsed = json::parse(serialized, nullptr, false);
++    return parsed.is_discarded() || !parsed.is_object() ? json::object() : parsed;
++}
++
++bool json_bool(const json & object, const char * key, bool fallback) {
++    auto it = object.find(key);
++    if (it == object.end() || it->is_null()) return fallback;
++    if (it->is_boolean()) return it->get<bool>();
++    if (it->is_number_integer()) return it->get<int>() != 0;
++    if (it->is_string()) {
++        const std::string value = it->get<std::string>();
++        return value == "1" || value == "true" || value == "TRUE" || value == "yes";
++    }
++    return fallback;
++}
++
++int32_t json_i32(const json & object, const char * key, int32_t fallback) {
++    auto it = object.find(key);
++    if (it == object.end() || it->is_null()) return fallback;
++    if (it->is_number_integer()) return it->get<int32_t>();
++    if (it->is_number_float()) return static_cast<int32_t>(it->get<double>());
++    if (it->is_string()) {
++        try {
++            return static_cast<int32_t>(std::stol(it->get<std::string>()));
++        } catch (...) {
++            return fallback;
++        }
++    }
++    return fallback;
++}
++
++float json_f32(const json & object, const char * key, float fallback) {
++    auto it = object.find(key);
++    if (it == object.end() || it->is_null()) return fallback;
++    if (it->is_number()) return it->get<float>();
++    if (it->is_string()) {
++        try {
++            return std::stof(it->get<std::string>());
++        } catch (...) {
++            return fallback;
++        }
++    }
++    return fallback;
++}
++
++std::string json_string(const json & object, const char * key, const std::string & fallback = "") {
++    auto it = object.find(key);
++    if (it == object.end() || it->is_null()) return fallback;
++    if (it->is_string()) return it->get<std::string>();
++    return fallback;
++}
++
++std::vector<std::string> json_string_array(const json & object, const char * key) {
++    std::vector<std::string> values;
++    auto it = object.find(key);
++    if (it == object.end()) return values;
++    if (it->is_string()) {
++        values.push_back(it->get<std::string>());
++        return values;
++    }
++    if (!it->is_array()) return values;
++    for (const auto & item : *it) {
++        if (item.is_string()) values.push_back(item.get<std::string>());
++    }
++    return values;
++}
++
++jobject new_boxed_int(JNIEnv * env, jint value) {
++    jclass clazz = env->FindClass("java/lang/Integer");
++    jmethodID ctor = env->GetMethodID(clazz, "<init>", "(I)V");
++    return env->NewObject(clazz, ctor, value);
++}
++
++jobject new_boxed_long(JNIEnv * env, jlong value) {
++    jclass clazz = env->FindClass("java/lang/Long");
++    jmethodID ctor = env->GetMethodID(clazz, "<init>", "(J)V");
++    return env->NewObject(clazz, ctor, value);
++}
++
++jobject new_boxed_double(JNIEnv * env, jdouble value) {
++    jclass clazz = env->FindClass("java/lang/Double");
++    jmethodID ctor = env->GetMethodID(clazz, "<init>", "(D)V");
++    return env->NewObject(clazz, ctor, value);
++}
++
++jobject new_boxed_bool(JNIEnv * env, bool value) {
++    jclass clazz = env->FindClass("java/lang/Boolean");
++    jmethodID ctor = env->GetMethodID(clazz, "<init>", "(Z)V");
++    return env->NewObject(clazz, ctor, value ? JNI_TRUE : JNI_FALSE);
++}
++
++jobject new_hash_map(JNIEnv * env) {
++    jclass clazz = env->FindClass("java/util/HashMap");
++    jmethodID ctor = env->GetMethodID(clazz, "<init>", "()V");
++    return env->NewObject(clazz, ctor);
++}
++
++jmethodID hash_map_put_method(JNIEnv * env, jobject map) {
++    jclass clazz = env->GetObjectClass(map);
++    return env->GetMethodID(clazz, "put", "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
++}
++
++void map_put(JNIEnv * env, jobject map, const char * key, jobject value) {
++    jmethodID put = hash_map_put_method(env, map);
++    jstring jkey = string_to_jstring(env, key);
++    env->CallObjectMethod(map, put, jkey, value);
++    env->DeleteLocalRef(jkey);
++}
++
++void map_put_string(JNIEnv * env, jobject map, const char * key, const std::string & value) {
++    jstring jvalue = string_to_jstring(env, value);
++    map_put(env, map, key, jvalue);
++    env->DeleteLocalRef(jvalue);
++}
++
++void map_put_int(JNIEnv * env, jobject map, const char * key, int value) {
++    jobject boxed = new_boxed_int(env, static_cast<jint>(value));
++    map_put(env, map, key, boxed);
++    env->DeleteLocalRef(boxed);
++}
++
++void map_put_long(JNIEnv * env, jobject map, const char * key, int64_t value) {
++    jobject boxed = new_boxed_long(env, static_cast<jlong>(value));
++    map_put(env, map, key, boxed);
++    env->DeleteLocalRef(boxed);
++}
++
++void map_put_double(JNIEnv * env, jobject map, const char * key, double value) {
++    jobject boxed = new_boxed_double(env, static_cast<jdouble>(value));
++    map_put(env, map, key, boxed);
++    env->DeleteLocalRef(boxed);
++}
++
++void map_put_bool(JNIEnv * env, jobject map, const char * key, bool value) {
++    jobject boxed = new_boxed_bool(env, value);
++    map_put(env, map, key, boxed);
++    env->DeleteLocalRef(boxed);
++}
++
++jobject new_array_list(JNIEnv * env) {
++    jclass clazz = env->FindClass("java/util/ArrayList");
++    jmethodID ctor = env->GetMethodID(clazz, "<init>", "()V");
++    return env->NewObject(clazz, ctor);
++}
++
++void array_list_add(JNIEnv * env, jobject list, jobject value) {
++    jclass clazz = env->GetObjectClass(list);
++    jmethodID add = env->GetMethodID(clazz, "add", "(Ljava/lang/Object;)Z");
++    env->CallBooleanMethod(list, add, value);
++}
++
++std::string basename(const std::string & path) {
++    const auto slash = path.find_last_of('/');
++    return slash == std::string::npos ? path : path.substr(slash + 1);
++}
++
++bool is_valid_gguf(const std::string & path) {
++    std::ifstream file(path, std::ios::binary);
++    if (!file.good()) return false;
++    char magic[4] = {};
++    file.read(magic, sizeof(magic));
++    return file.gcount() == 4 && magic[0] == 'G' && magic[1] == 'G' && magic[2] == 'U' && magic[3] == 'F';
++}
++
++std::string resolve_model_path(const std::string & requested, const std::vector<std::string> & search_paths) {
++    std::vector<std::string> candidates;
++    if (!requested.empty()) candidates.push_back(requested);
++    const std::string name = basename(requested);
++    for (const auto & dir : search_paths) {
++        if (dir.empty()) continue;
++        candidates.push_back(dir + "/" + name);
++    }
++    if (!name.empty()) {
++        candidates.push_back("/data/data/app.eliza/files/.eliza/local-inference/models/" + name);
++        candidates.push_back("/storage/emulated/0/Android/data/app.eliza/files/.eliza/local-inference/models/" + name);
++        candidates.push_back("/storage/emulated/0/Download/" + name);
++    }
++    for (const auto & candidate : candidates) {
++        if (candidate.empty()) continue;
++        if (std::filesystem::exists(candidate) && is_valid_gguf(candidate)) return candidate;
++    }
++    std::ostringstream message;
++    message << "GGUF model not found or invalid";
++    if (!requested.empty()) message << ": " << requested;
++    throw std::runtime_error(message.str());
++}
++
++ggml_type parse_ggml_type(const std::string & value, ggml_type fallback) {
++    std::string normalized = value;
++    std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char ch) {
++        return static_cast<char>(std::tolower(ch));
++    });
++    std::replace(normalized.begin(), normalized.end(), '-', '_');
++    if (normalized == "f32") return GGML_TYPE_F32;
++    if (normalized == "f16") return GGML_TYPE_F16;
++    if (normalized == "q4_0") return GGML_TYPE_Q4_0;
++    if (normalized == "q4_1") return GGML_TYPE_Q4_1;
++    if (normalized == "q8_0") return GGML_TYPE_Q8_0;
++    if (normalized == "q8_1") return GGML_TYPE_Q8_1;
++    if (normalized == "q4_k") return GGML_TYPE_Q4_K;
++    if (normalized == "q8_k") return GGML_TYPE_Q8_K;
++    if (normalized == "iq4_nl") return GGML_TYPE_IQ4_NL;
++    if (normalized == "iq4_xs") return GGML_TYPE_IQ4_XS;
++    if (normalized == "tbq3_0") return GGML_TYPE_TBQ3_0;
++    if (normalized == "tbq4_0") return GGML_TYPE_TBQ4_0;
++    if (normalized == "tbq3_tcq") return GGML_TYPE_TBQ3_TCQ;
++    if (normalized == "tbq3_k") return GGML_TYPE_TBQ3_K;
++    if (normalized == "tbq4_k") return GGML_TYPE_TBQ4_K;
++    if (normalized == "qjl1_256") return GGML_TYPE_QJL1_256;
++    if (normalized == "q4_polar" || normalized == "polar_q4") return GGML_TYPE_Q4_POLAR;
++    return fallback;
++}
++
++std::vector<llama_token> tokenize_text(const llama_vocab * vocab, const std::string & text, bool add_special) {
++    int32_t count = llama_tokenize(vocab, text.c_str(), static_cast<int32_t>(text.size()), nullptr, 0, add_special, true);
++    if (count == INT32_MIN) throw std::runtime_error("Tokenization overflow");
++    if (count < 0) count = -count;
++    std::vector<llama_token> tokens(static_cast<size_t>(std::max(count, 0)));
++    if (tokens.empty()) return tokens;
++    const int32_t written = llama_tokenize(vocab, text.c_str(), static_cast<int32_t>(text.size()), tokens.data(), count, add_special, true);
++    if (written < 0) throw std::runtime_error("Tokenization failed");
++    tokens.resize(static_cast<size_t>(written));
++    return tokens;
++}
++
++std::string token_to_piece(const llama_vocab * vocab, llama_token token, bool special = false) {
++    char stack_buffer[256];
++    int32_t written = llama_token_to_piece(vocab, token, stack_buffer, sizeof(stack_buffer), 0, special);
++    if (written >= 0 && written <= static_cast<int32_t>(sizeof(stack_buffer))) {
++        return std::string(stack_buffer, static_cast<size_t>(written));
++    }
++    if (written < 0) written = -written;
++    std::vector<char> buffer(static_cast<size_t>(written) + 8);
++    written = llama_token_to_piece(vocab, token, buffer.data(), static_cast<int32_t>(buffer.size()), 0, special);
++    if (written < 0) return "";
++    return std::string(buffer.data(), static_cast<size_t>(written));
++}
++
++std::string detokenize_tokens(const llama_vocab * vocab, const std::vector<llama_token> & tokens) {
++    if (tokens.empty()) return "";
++    int32_t size = static_cast<int32_t>(tokens.size() * 16 + 64);
++    std::vector<char> buffer(static_cast<size_t>(size));
++    int32_t written = llama_detokenize(vocab, tokens.data(), static_cast<int32_t>(tokens.size()), buffer.data(), size, false, true);
++    if (written < 0) {
++        size = -written + 8;
++        buffer.assign(static_cast<size_t>(size), '\0');
++        written = llama_detokenize(vocab, tokens.data(), static_cast<int32_t>(tokens.size()), buffer.data(), size, false, true);
++    }
++    if (written < 0) throw std::runtime_error("Detokenization failed");
++    return std::string(buffer.data(), static_cast<size_t>(written));
++}
++
++void decode_tokens(NativeContext & native, const std::vector<llama_token> & tokens, bool output_last) {
++    if (tokens.empty()) return;
++    const int32_t chunk_size = std::max<int32_t>(1, native.n_batch);
++    size_t offset = 0;
++    while (offset < tokens.size()) {
++        const int32_t count = static_cast<int32_t>(std::min<size_t>(tokens.size() - offset, static_cast<size_t>(chunk_size)));
++        llama_batch batch = llama_batch_init(count, 0, 1);
++        batch.n_tokens = count;
++        for (int32_t i = 0; i < count; ++i) {
++            const bool is_last = offset + static_cast<size_t>(i) + 1 == tokens.size();
++            batch.token[i] = tokens[offset + static_cast<size_t>(i)];
++            batch.pos[i] = native.n_past + i;
++            batch.n_seq_id[i] = 1;
++            batch.seq_id[i][0] = 0;
++            batch.logits[i] = output_last && is_last ? 1 : 0;
++        }
++        const int rc = llama_decode(native.ctx, batch);
++        llama_batch_free(batch);
++        if (rc != 0) {
++            throw std::runtime_error("llama_decode failed with code " + std::to_string(rc));
++        }
++        native.n_past += count;
++        offset += static_cast<size_t>(count);
++    }
++}
++
++llama_sampler * build_sampler(const NativeContext & native, const json & params) {
++    auto chain_params = llama_sampler_chain_default_params();
++    llama_sampler * sampler = llama_sampler_chain_init(chain_params);
++
++    std::string grammar = json_string(params, "grammar", "");
++    const std::string schema = json_string(params, "json_schema", "");
++    if (grammar.empty() && !schema.empty()) {
++        auto parsed = json::parse(schema, nullptr, false);
++        if (!parsed.is_discarded()) {
++            grammar = json_schema_to_grammar(parsed, true);
++        }
++    }
++    if (!grammar.empty()) {
++        llama_sampler_chain_add(sampler, llama_sampler_init_grammar(native.vocab, grammar.c_str(), "root"));
++    }
++
++    const int32_t repeat_last_n = json_i32(params, "penalty_last_n", json_i32(params, "repeat_last_n", 64));
++    const float repeat_penalty = json_f32(params, "penalty_repeat", json_f32(params, "repeat_penalty", 1.0f));
++    const float frequency_penalty = json_f32(params, "frequency_penalty", 0.0f);
++    const float presence_penalty = json_f32(params, "presence_penalty", 0.0f);
++    if (repeat_penalty != 1.0f || frequency_penalty != 0.0f || presence_penalty != 0.0f) {
++        llama_sampler_chain_add(sampler, llama_sampler_init_penalties(repeat_last_n, repeat_penalty, frequency_penalty, presence_penalty));
++    }
++
++    const int32_t top_k = json_i32(params, "top_k", 40);
++    const float top_p = json_f32(params, "top_p", 0.95f);
++    const float min_p = json_f32(params, "min_p", 0.0f);
++    if (top_k > 0) llama_sampler_chain_add(sampler, llama_sampler_init_top_k(top_k));
++    if (top_p > 0.0f && top_p < 1.0f) llama_sampler_chain_add(sampler, llama_sampler_init_top_p(top_p, 1));
++    if (min_p > 0.0f) llama_sampler_chain_add(sampler, llama_sampler_init_min_p(min_p, 1));
++
++    const float temp = json_f32(params, "temperature", json_f32(params, "temp", 0.7f));
++    if (temp <= 0.0f) {
++        llama_sampler_chain_add(sampler, llama_sampler_init_greedy());
++    } else {
++        llama_sampler_chain_add(sampler, llama_sampler_init_temp(temp));
++        llama_sampler_chain_add(sampler, llama_sampler_init_dist(static_cast<uint32_t>(json_i32(params, "seed", LLAMA_DEFAULT_SEED))));
++    }
++    return sampler;
++}
++
++jobject empty_string_array_map(JNIEnv * env) {
++    jobject map = new_hash_map(env);
++    jobject list = new_array_list(env);
++    map_put(env, map, "items", list);
++    env->DeleteLocalRef(list);
++    return map;
++}
++
++void add_timing_map(JNIEnv * env, jobject result, int prompt_tokens, int predicted_tokens, double prompt_ms, double predicted_ms) {
++    jobject timings = new_hash_map(env);
++    map_put_int(env, timings, "prompt_n", prompt_tokens);
++    map_put_double(env, timings, "prompt_ms", prompt_ms);
++    map_put_double(env, timings, "prompt_per_second", prompt_ms > 0.0 ? prompt_tokens * 1000.0 / prompt_ms : 0.0);
++    map_put_int(env, timings, "predicted_n", predicted_tokens);
++    map_put_double(env, timings, "predicted_ms", predicted_ms);
++    map_put_double(env, timings, "predicted_per_second", predicted_ms > 0.0 ? predicted_tokens * 1000.0 / predicted_ms : 0.0);
++    map_put(env, result, "timings", timings);
++    env->DeleteLocalRef(timings);
++}
++
++std::string model_meta_value(llama_model * model, const char * key) {
++    int32_t required = llama_model_meta_val_str(model, key, nullptr, 0);
++    if (required <= 0) return "";
++    std::vector<char> buffer(static_cast<size_t>(required) + 1);
++    int32_t written = llama_model_meta_val_str(model, key, buffer.data(), buffer.size());
++    if (written < 0) return "";
++    return std::string(buffer.data(), static_cast<size_t>(written));
++}
++
++} // namespace
++
++extern "C" {
++
++JNIEXPORT jlong JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_initContextNative(
++    JNIEnv * env,
++    jobject,
++    jstring model_path,
++    jobjectArray search_paths,
++    jobject params_object) {
++    try {
++        ensure_backend();
++        const json params = jobject_to_json(env, params_object);
++        std::string requested = json_string(params, "model", jstring_to_string(env, model_path));
++        std::string full_path = resolve_model_path(requested, jstring_array_to_vector(env, search_paths));
++
++        llama_model_params model_params = llama_model_default_params();
++        model_params.n_gpu_layers = json_i32(params, "n_gpu_layers", 0);
++        model_params.use_mmap = json_bool(params, "use_mmap", true);
++        model_params.use_mlock = json_bool(params, "use_mlock", false);
++        model_params.check_tensors = json_bool(params, "check_tensors", false);
++
++        llama_model * model = llama_model_load_from_file(full_path.c_str(), model_params);
++        if (model == nullptr) {
++            throw std::runtime_error("Failed to load model with DFlash llama.cpp: " + full_path);
++        }
++
++        llama_context_params context_params = llama_context_default_params();
++        context_params.n_ctx = static_cast<uint32_t>(std::max<int32_t>(1, json_i32(params, "n_ctx", 4096)));
++        context_params.n_batch = static_cast<uint32_t>(std::max<int32_t>(1, json_i32(params, "n_batch", 512)));
++        context_params.n_ubatch = static_cast<uint32_t>(std::max<int32_t>(1, json_i32(params, "n_ubatch", std::min<int32_t>(512, context_params.n_batch))));
++        context_params.n_seq_max = 1;
++        int32_t threads = json_i32(params, "n_threads", 0);
++        if (threads <= 0) {
++            threads = static_cast<int32_t>(std::max(1u, std::min(4u, std::thread::hardware_concurrency())));
++        }
++        context_params.n_threads = threads;
++        context_params.n_threads_batch = json_i32(params, "n_threads_batch", threads);
++        context_params.flash_attn_type = json_bool(params, "flash_attn", false)
++            ? LLAMA_FLASH_ATTN_TYPE_ENABLED
++            : LLAMA_FLASH_ATTN_TYPE_DISABLED;
++        context_params.type_k = parse_ggml_type(json_string(params, "cache_type_k", ""), context_params.type_k);
++        context_params.type_v = parse_ggml_type(json_string(params, "cache_type_v", ""), context_params.type_v);
++
++        const bool embedding_mode = json_bool(params, "embedding", false);
++        if (embedding_mode) {
++            context_params.embeddings = true;
++            context_params.pooling_type = LLAMA_POOLING_TYPE_MEAN;
++            context_params.attention_type = LLAMA_ATTENTION_TYPE_NON_CAUSAL;
++        }
++
++        llama_context * ctx = llama_init_from_model(model, context_params);
++        if (ctx == nullptr) {
++            llama_model_free(model);
++            throw std::runtime_error("Failed to initialize llama context for: " + full_path);
++        }
++
++        auto native = std::make_unique<NativeContext>();
++        native->model = model;
++        native->ctx = ctx;
++        native->vocab = llama_model_get_vocab(model);
++        native->model_path = full_path;
++        native->n_batch = static_cast<int32_t>(context_params.n_batch);
++        native->embeddings = embedding_mode;
++
++        const jlong id = g_next_context_id.fetch_add(1);
++        {
++            std::lock_guard<std::mutex> lock(g_contexts_mutex);
++            g_contexts[id] = std::move(native);
++        }
++
++        LOGI("Initialized DFlash context %lld for %s (ctx=%u, batch=%u, threads=%d, gpu_layers=%d)",
++             static_cast<long long>(id),
++             full_path.c_str(),
++             context_params.n_ctx,
++             context_params.n_batch,
++             threads,
++             model_params.n_gpu_layers);
++        return id;
++    } catch (const std::exception & e) {
++        LOGE("initContextNative failed: %s", e.what());
++        throw_java_exception(env, "java/lang/RuntimeException", e.what());
++        return -1;
++    }
++}
++
++JNIEXPORT void JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_releaseContextNative(JNIEnv * env, jobject, jlong context_id) {
++    try {
++        std::lock_guard<std::mutex> lock(g_contexts_mutex);
++        g_contexts.erase(context_id);
++        LOGI("Released DFlash context %lld", static_cast<long long>(context_id));
++    } catch (const std::exception & e) {
++        throw_java_exception(env, "java/lang/RuntimeException", e.what());
++    }
++}
++
++JNIEXPORT jobject JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_completionNative(
++    JNIEnv * env,
++    jobject,
++    jlong context_id,
++    jobject params_object) {
++    try {
++        NativeContext * native = nullptr;
++        {
++            std::lock_guard<std::mutex> lock(g_contexts_mutex);
++            auto it = g_contexts.find(context_id);
++            if (it == g_contexts.end()) throw std::runtime_error("Invalid context ID");
++            native = it->second.get();
++        }
++
++        std::lock_guard<std::mutex> context_lock(native->mutex);
++        native->interrupted.store(false);
++        native->n_past = 0;
++        llama_memory_clear(llama_get_memory(native->ctx), true);
++
++        const json params = jobject_to_json(env, params_object);
++        std::string prompt = json_string(params, "prompt", "");
++        int32_t n_predict = json_i32(params, "n_predict", json_i32(params, "max_tokens", 128));
++        n_predict = std::clamp<int32_t>(n_predict, 1, 4096);
++        std::vector<std::string> stops = json_string_array(params, "stop");
++        std::vector<std::string> stop_sequences = json_string_array(params, "stop_sequences");
++        stops.insert(stops.end(), stop_sequences.begin(), stop_sequences.end());
++
++        auto prompt_tokens = tokenize_text(native->vocab, prompt, true);
++        const uint32_t n_ctx = llama_n_ctx(native->ctx);
++        if (n_ctx > 8) {
++            const size_t context_slots = static_cast<size_t>(n_ctx);
++            const size_t requested_generation = static_cast<size_t>(std::max<int32_t>(1, n_predict));
++            const size_t generation_reserve = std::min<size_t>(
++                std::max<size_t>(8, std::min<size_t>(requested_generation, 256)),
++                std::max<size_t>(1, context_slots / 2));
++            const size_t prompt_budget = std::max<size_t>(2, context_slots - generation_reserve - 1);
++            if (prompt_tokens.size() > prompt_budget) {
++                const size_t keep_tail = prompt_budget - 1;
++                std::vector<llama_token> trimmed;
++                trimmed.reserve(prompt_budget);
++                trimmed.push_back(prompt_tokens.front());
++                trimmed.insert(trimmed.end(), prompt_tokens.end() - static_cast<std::ptrdiff_t>(keep_tail), prompt_tokens.end());
++                prompt_tokens.swap(trimmed);
++                LOGW(
++                    "Prompt exceeded context; kept BOS plus last %zu tokens and reserved %zu generation slots",
++                    keep_tail,
++                    generation_reserve);
++            }
++        }
++
++        const auto prompt_started = std::chrono::steady_clock::now();
++        decode_tokens(*native, prompt_tokens, true);
++        const auto prompt_finished = std::chrono::steady_clock::now();
++
++        llama_sampler * sampler = build_sampler(*native, params);
++        std::string generated;
++        int32_t predicted = 0;
++        bool stopped_eos = false;
++        bool stopped_limit = false;
++        bool stopped_word = false;
++
++        const auto predict_started = std::chrono::steady_clock::now();
++        while (predicted < n_predict && !native->interrupted.load()) {
++            if (n_ctx > 0 && native->n_past >= static_cast<int32_t>(n_ctx - 1)) {
++                stopped_limit = true;
++                break;
++            }
++            llama_token token = llama_sampler_sample(sampler, native->ctx, -1);
++            llama_sampler_accept(sampler, token);
++            if (llama_vocab_is_eog(native->vocab, token)) {
++                stopped_eos = true;
++                break;
++            }
++
++            std::string piece = token_to_piece(native->vocab, token, false);
++            generated += piece;
++            predicted += 1;
++
++            for (const auto & stop : stops) {
++                if (stop.empty()) continue;
++                const size_t found = generated.find(stop);
++                if (found != std::string::npos) {
++                    generated.erase(found);
++                    stopped_word = true;
++                    break;
++                }
++            }
++            if (stopped_word) break;
++
++            std::vector<llama_token> one{token};
++            decode_tokens(*native, one, true);
++        }
++        if (predicted >= n_predict) stopped_limit = true;
++        const auto predict_finished = std::chrono::steady_clock::now();
++        llama_sampler_free(sampler);
++
++        const double prompt_ms = std::chrono::duration<double, std::milli>(prompt_finished - prompt_started).count();
++        const double predicted_ms = std::chrono::duration<double, std::milli>(predict_finished - predict_started).count();
++
++        jobject result = new_hash_map(env);
++        map_put_string(env, result, "text", generated);
++        map_put_string(env, result, "content", generated);
++        map_put_string(env, result, "reasoning_content", "");
++        jobject tool_calls = new_array_list(env);
++        map_put(env, result, "tool_calls", tool_calls);
++        env->DeleteLocalRef(tool_calls);
++        map_put_int(env, result, "chat_format", 0);
++        map_put_int(env, result, "tokens_predicted", predicted);
++        map_put_int(env, result, "tokens_evaluated", static_cast<int>(prompt_tokens.size()));
++        map_put_bool(env, result, "truncated", false);
++        map_put_bool(env, result, "stopped_eos", stopped_eos);
++        map_put_bool(env, result, "stopped_limit", stopped_limit);
++        map_put_bool(env, result, "stopped_word", stopped_word);
++        map_put_string(env, result, "stopping_word", stopped_word && !stops.empty() ? stops.front() : "");
++        map_put_bool(env, result, "context_full", false);
++        map_put_bool(env, result, "interrupted", native->interrupted.load());
++        map_put_int(env, result, "tokens_cached", 0);
++        add_timing_map(env, result, static_cast<int>(prompt_tokens.size()), predicted, prompt_ms, predicted_ms);
++        LOGI("Generated %d token(s) for context %lld", predicted, static_cast<long long>(context_id));
++        return result;
++    } catch (const std::exception & e) {
++        LOGE("completionNative failed: %s", e.what());
++        throw_java_exception(env, "java/lang/RuntimeException", e.what());
++        return nullptr;
++    }
++}
++
++JNIEXPORT void JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_stopCompletionNative(JNIEnv * env, jobject, jlong context_id) {
++    try {
++        std::lock_guard<std::mutex> lock(g_contexts_mutex);
++        auto it = g_contexts.find(context_id);
++        if (it != g_contexts.end()) it->second->interrupted.store(true);
++    } catch (const std::exception & e) {
++        throw_java_exception(env, "java/lang/RuntimeException", e.what());
++    }
++}
++
++JNIEXPORT jstring JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_getFormattedChatNative(
++    JNIEnv * env,
++    jobject,
++    jlong context_id,
++    jstring messages,
++    jstring chat_template) {
++    try {
++        NativeContext * native = nullptr;
++        {
++            std::lock_guard<std::mutex> lock(g_contexts_mutex);
++            auto it = g_contexts.find(context_id);
++            if (it == g_contexts.end()) throw std::runtime_error("Invalid context ID");
++            native = it->second.get();
++        }
++
++        const std::string messages_json = jstring_to_string(env, messages);
++        std::string tmpl = jstring_to_string(env, chat_template);
++        if (tmpl.empty()) {
++            const char * model_template = llama_model_chat_template(native->model, nullptr);
++            if (model_template != nullptr) tmpl = model_template;
++        }
++
++        auto parsed = json::parse(messages_json, nullptr, false);
++        if (parsed.is_discarded() || !parsed.is_array()) {
++            return string_to_jstring(env, messages_json);
++        }
++
++        std::vector<std::string> roles;
++        std::vector<std::string> contents;
++        for (const auto & item : parsed) {
++            if (!item.is_object()) continue;
++            roles.push_back(json_string(item, "role", "user"));
++            contents.push_back(json_string(item, "content", ""));
++        }
++        std::vector<llama_chat_message> chat;
++        chat.reserve(roles.size());
++        for (size_t i = 0; i < roles.size(); ++i) {
++            chat.push_back({roles[i].c_str(), contents[i].c_str()});
++        }
++        int32_t needed = llama_chat_apply_template(tmpl.empty() ? nullptr : tmpl.c_str(), chat.data(), chat.size(), true, nullptr, 0);
++        if (needed < 0) {
++            needed = llama_chat_apply_template(nullptr, chat.data(), chat.size(), true, nullptr, 0);
++            tmpl.clear();
++        }
++        if (needed < 0) return string_to_jstring(env, messages_json);
++        std::vector<char> buffer(static_cast<size_t>(needed) + 8);
++        int32_t written = llama_chat_apply_template(tmpl.empty() ? nullptr : tmpl.c_str(), chat.data(), chat.size(), true, buffer.data(), static_cast<int32_t>(buffer.size()));
++        if (written < 0) return string_to_jstring(env, messages_json);
++        return string_to_jstring(env, std::string(buffer.data(), static_cast<size_t>(written)));
++    } catch (const std::exception & e) {
++        LOGE("getFormattedChatNative failed: %s", e.what());
++        throw_java_exception(env, "java/lang/RuntimeException", e.what());
++        return nullptr;
++    }
++}
++
++JNIEXPORT jboolean JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_toggleNativeLogNative(JNIEnv *, jobject, jboolean enabled) {
++    g_native_log_enabled.store(enabled == JNI_TRUE);
++    return JNI_TRUE;
++}
++
++JNIEXPORT jobject JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_modelInfoNative(JNIEnv * env, jobject, jstring model_path) {
++    try {
++        ensure_backend();
++        const std::string full_path = resolve_model_path(jstring_to_string(env, model_path), {});
++        llama_model_params params = llama_model_default_params();
++        params.n_gpu_layers = 0;
++        params.use_mmap = true;
++        params.no_alloc = true;
++        llama_model * model = llama_model_load_from_file(full_path.c_str(), params);
++        if (model == nullptr) throw std::runtime_error("Failed to read model metadata: " + full_path);
++
++        char desc[1024] = {};
++        llama_model_desc(model, desc, sizeof(desc));
++        jobject result = new_hash_map(env);
++        map_put_string(env, result, "path", full_path);
++        map_put_string(env, result, "desc", desc);
++        map_put_long(env, result, "size", static_cast<int64_t>(llama_model_size(model)));
++        map_put_long(env, result, "nParams", static_cast<int64_t>(llama_model_n_params(model)));
++        map_put_int(env, result, "nEmbd", llama_model_n_embd(model));
++        map_put_int(env, result, "nContextTrain", llama_model_n_ctx_train(model));
++        map_put_string(env, result, "architecture", model_meta_value(model, "general.architecture"));
++        map_put_string(env, result, "basename", model_meta_value(model, "general.basename"));
++        llama_model_free(model);
++        return result;
++    } catch (const std::exception & e) {
++        LOGE("modelInfoNative failed: %s", e.what());
++        throw_java_exception(env, "java/lang/RuntimeException", e.what());
++        return nullptr;
++    }
++}
++
++JNIEXPORT jstring JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_downloadModelNative(JNIEnv * env, jobject, jstring, jstring filename) {
++    return string_to_jstring(env, "/storage/emulated/0/Android/data/app.eliza/files/Models/" + jstring_to_string(env, filename));
++}
++
++JNIEXPORT jobject JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_getDownloadProgressNative(JNIEnv * env, jobject, jstring) {
++    jobject result = new_hash_map(env);
++    map_put_double(env, result, "progress", 0.0);
++    map_put_bool(env, result, "completed", false);
++    map_put_bool(env, result, "failed", false);
++    return result;
++}
++
++JNIEXPORT jboolean JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_cancelDownloadNative(JNIEnv *, jobject, jstring) {
++    return JNI_FALSE;
++}
++
++JNIEXPORT jobject JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_getAvailableModelsNative(JNIEnv * env, jobject) {
++    jobject list = new_array_list(env);
++    const std::vector<std::string> dirs = {
++        "/data/data/app.eliza/files/.eliza/local-inference/models",
++        "/storage/emulated/0/Android/data/app.eliza/files/.eliza/local-inference/models",
++        "/storage/emulated/0/Download",
++    };
++    for (const auto & dir : dirs) {
++        if (!std::filesystem::exists(dir)) continue;
++        for (const auto & entry : std::filesystem::directory_iterator(dir)) {
++            if (!entry.is_regular_file() || entry.path().extension() != ".gguf") continue;
++            jobject info = new_hash_map(env);
++            map_put_string(env, info, "name", entry.path().filename().string());
++            map_put_string(env, info, "path", entry.path().string());
++            map_put_long(env, info, "size", static_cast<int64_t>(entry.file_size()));
++            array_list_add(env, list, info);
++            env->DeleteLocalRef(info);
++        }
++    }
++    return list;
++}
++
++JNIEXPORT jobject JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_tokenizeNative(
++    JNIEnv * env,
++    jobject,
++    jlong context_id,
++    jstring text,
++    jobjectArray) {
++    try {
++        NativeContext * native = nullptr;
++        {
++            std::lock_guard<std::mutex> lock(g_contexts_mutex);
++            auto it = g_contexts.find(context_id);
++            if (it == g_contexts.end()) throw std::runtime_error("Invalid context ID");
++            native = it->second.get();
++        }
++        auto tokens = tokenize_text(native->vocab, jstring_to_string(env, text), true);
++        jobject result = new_hash_map(env);
++        jobject token_list = new_array_list(env);
++        for (llama_token token : tokens) {
++            jobject boxed = new_boxed_int(env, static_cast<jint>(token));
++            array_list_add(env, token_list, boxed);
++            env->DeleteLocalRef(boxed);
++        }
++        map_put(env, result, "tokens", token_list);
++        env->DeleteLocalRef(token_list);
++        map_put_bool(env, result, "has_images", false);
++        jobject empty_a = new_array_list(env);
++        jobject empty_b = new_array_list(env);
++        jobject empty_c = new_array_list(env);
++        map_put(env, result, "bitmap_hashes", empty_a);
++        map_put(env, result, "chunk_pos", empty_b);
++        map_put(env, result, "chunk_pos_images", empty_c);
++        env->DeleteLocalRef(empty_a);
++        env->DeleteLocalRef(empty_b);
++        env->DeleteLocalRef(empty_c);
++        return result;
++    } catch (const std::exception & e) {
++        throw_java_exception(env, "java/lang/RuntimeException", e.what());
++        return nullptr;
++    }
++}
++
++JNIEXPORT jstring JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_detokenizeNative(JNIEnv * env, jobject, jlong context_id, jintArray tokens_array) {
++    try {
++        NativeContext * native = nullptr;
++        {
++            std::lock_guard<std::mutex> lock(g_contexts_mutex);
++            auto it = g_contexts.find(context_id);
++            if (it == g_contexts.end()) throw std::runtime_error("Invalid context ID");
++            native = it->second.get();
++        }
++        jsize length = env->GetArrayLength(tokens_array);
++        jint * values = env->GetIntArrayElements(tokens_array, nullptr);
++        std::vector<llama_token> tokens;
++        tokens.reserve(static_cast<size_t>(length));
++        for (jsize i = 0; i < length; ++i) tokens.push_back(static_cast<llama_token>(values[i]));
++        env->ReleaseIntArrayElements(tokens_array, values, JNI_ABORT);
++        return string_to_jstring(env, detokenize_tokens(native->vocab, tokens));
++    } catch (const std::exception & e) {
++        throw_java_exception(env, "java/lang/RuntimeException", e.what());
++        return nullptr;
++    }
++}
++
++JNIEXPORT jobject JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_embeddingNative(
++    JNIEnv * env,
++    jobject,
++    jlong context_id,
++    jstring text,
++    jobject params_object) {
++    try {
++        NativeContext * native = nullptr;
++        {
++            std::lock_guard<std::mutex> lock(g_contexts_mutex);
++            auto it = g_contexts.find(context_id);
++            if (it == g_contexts.end()) throw std::runtime_error("Invalid context ID");
++            native = it->second.get();
++        }
++        std::lock_guard<std::mutex> context_lock(native->mutex);
++        native->n_past = 0;
++        native->interrupted.store(false);
++        llama_memory_clear(llama_get_memory(native->ctx), true);
++        llama_set_embeddings(native->ctx, true);
++        llama_set_causal_attn(native->ctx, false);
++
++        auto tokens = tokenize_text(native->vocab, jstring_to_string(env, text), true);
++        decode_tokens(*native, tokens, true);
++        llama_synchronize(native->ctx);
++
++        float * embedding = llama_get_embeddings_seq(native->ctx, 0);
++        if (embedding == nullptr) embedding = llama_get_embeddings_ith(native->ctx, -1);
++        if (embedding == nullptr) throw std::runtime_error("Embedding output unavailable; initialize the context with embedding=true");
++
++        const json params = jobject_to_json(env, params_object);
++        const int normalize = json_i32(params, "embd_normalize", 0);
++        const int n_embd = llama_model_n_embd(native->model);
++        std::vector<float> values(embedding, embedding + n_embd);
++        if (normalize != 0) {
++            double sum = 0.0;
++            for (float value : values) sum += static_cast<double>(value) * value;
++            const double norm = std::sqrt(sum);
++            if (norm > 0.0) {
++                for (float & value : values) value = static_cast<float>(value / norm);
++            }
++        }
++
++        jobject result = new_hash_map(env);
++        jobject list = new_array_list(env);
++        for (float value : values) {
++            jobject boxed = new_boxed_double(env, static_cast<double>(value));
++            array_list_add(env, list, boxed);
++            env->DeleteLocalRef(boxed);
++        }
++        map_put(env, result, "embedding", list);
++        env->DeleteLocalRef(list);
++        map_put_int(env, result, "tokens", static_cast<int>(tokens.size()));
++        return result;
++    } catch (const std::exception & e) {
++        LOGE("embeddingNative failed: %s", e.what());
++        throw_java_exception(env, "java/lang/RuntimeException", e.what());
++        return nullptr;
++    }
++}
++
++JNIEXPORT jstring JNICALL
++Java_ai_annadata_plugin_capacitor_LlamaCpp_convertJsonSchemaToGrammarNative(JNIEnv * env, jobject, jstring schema_json) {
++    try {
++        auto parsed = json::parse(jstring_to_string(env, schema_json), nullptr, false);
++        if (parsed.is_discarded()) throw std::runtime_error("Invalid JSON schema");
++        return string_to_jstring(env, json_schema_to_grammar(parsed, true));
++    } catch (const std::exception & e) {
++        throw_java_exception(env, "java/lang/RuntimeException", e.what());
++        return nullptr;
++    }
++}
++
++} // extern "C"
+diff --git a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
+index b037159..aa1672c 100644
+--- a/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
++++ b/android/src/main/java/ai/annadata/plugin/capacitor/LlamaCpp.java
+@@ -312,6 +312,24 @@ public class LlamaCpp {
+             }
+             
+             Log.i(TAG, "Loading native library for ABI: " + abi + " (library: " + libraryName + ")");
++            if ("arm64-v8a".equals(abi)) {
++                String[] dflashDependencies = new String[] {
++                    "omp",
++                    "ggml-base",
++                    "ggml-cpu",
++                    "ggml-vulkan",
++                    "ggml",
++                    "llama"
++                };
++                for (String dependency : dflashDependencies) {
++                    try {
++                        System.loadLibrary(dependency);
++                        Log.i(TAG, "Loaded DFlash dependency: " + dependency);
++                    } catch (UnsatisfiedLinkError dependencyError) {
++                        Log.w(TAG, "Could not preload DFlash dependency " + dependency + ": " + dependencyError.getMessage());
++                    }
++                }
++            }
+             System.loadLibrary(libraryName);
+             Log.i(TAG, "Successfully loaded llama-cpp native library: " + libraryName);
+         } catch (UnsatisfiedLinkError e) {

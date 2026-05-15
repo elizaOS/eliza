@@ -304,6 +304,48 @@ export default defineConfig(({ mode }) => {
           find: /^@elizaos\/cloud-shared\/(.*)$/,
           replacement: `${r("../cloud-shared/src")}/$1`,
         },
+        {
+          find: /^@\/lib\/hooks\/(.*)$/,
+          replacement: `${r("./src/hooks")}/$1`,
+        },
+        {
+          find: /^@\/lib\/providers\/(.*)$/,
+          replacement: `${r("./src/providers")}/$1`,
+        },
+        {
+          find: /^@\/lib\/stores\/(.*)$/,
+          replacement: `${r("./src/lib/stores")}/$1`,
+        },
+        {
+          find: /^@\/lib\/utils\/logger$/,
+          replacement: r("../cloud-shared/src/lib/utils/logger.ts"),
+        },
+        {
+          find: /^@\/lib\/config\/feature-flags$/,
+          replacement: r("../cloud-shared/src/lib/config/feature-flags.ts"),
+        },
+        {
+          find: /^@\/lib\/onboarding\/tours$/,
+          replacement: r("../cloud-shared/src/lib/onboarding/tours.ts"),
+        },
+        {
+          find: /^@\/lib\/utils\/copy-to-clipboard$/,
+          replacement: r("../cloud-shared/src/lib/utils/copy-to-clipboard.ts"),
+        },
+        {
+          find: /^@\/lib\/utils\/default-avatar$/,
+          replacement: r("../cloud-shared/src/lib/utils/default-avatar.ts"),
+        },
+        {
+          find: /^@\/lib\/utils\/referral-invite-url$/,
+          replacement: r(
+            "../cloud-shared/src/lib/utils/referral-invite-url.ts",
+          ),
+        },
+        {
+          find: /^@\/lib\/utils\/referral-me-fetch$/,
+          replacement: r("../cloud-shared/src/lib/utils/referral-me-fetch.ts"),
+        },
         // `@/lib/*`, `@/db/*`, `@/types/*`, `@/components/*` are handled by
         // the `eliza-cloud-frontend-alias-fallback` plugin above (local-first,
         // cloud-shared fallback).

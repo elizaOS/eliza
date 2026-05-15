@@ -386,7 +386,7 @@ function knownWhatsAppTargetToConnectorTarget(
   known: KnownWhatsAppTarget,
   score = 0.72
 ): MessageConnectorTarget {
-  const accountId = known.accountId;
+  const accountId = known.accountId ?? DEFAULT_ACCOUNT_ID;
   return {
     target: targetWithAccount(
       {
@@ -457,7 +457,7 @@ async function resolveWhatsAppSendTarget(
       service.getKnownTarget(normalized, targetAccountId) ??
       service.findKnownChatByParticipant(normalized, targetAccountId);
     if (known) {
-      return { accountId: known.accountId, chatId: known.chatId };
+      return { accountId: known.accountId ?? targetAccountId, chatId: known.chatId };
     }
     return isWhatsAppAddress(normalized)
       ? { accountId: targetAccountId, chatId: normalized }
@@ -467,7 +467,7 @@ async function resolveWhatsAppSendTarget(
     const normalized = normalizeWhatsAppConnectorTarget(target.entityId);
     const known = service.findKnownChatByParticipant(normalized, targetAccountId);
     if (known) {
-      return { accountId: known.accountId, chatId: known.chatId };
+      return { accountId: known.accountId ?? targetAccountId, chatId: known.chatId };
     }
     return isWhatsAppAddress(normalized)
       ? { accountId: targetAccountId, chatId: normalized }
@@ -481,7 +481,7 @@ async function resolveWhatsAppSendTarget(
         service.getKnownTarget(normalized, targetAccountId) ??
         service.findKnownChatByParticipant(normalized, targetAccountId);
       if (known) {
-        return { accountId: known.accountId, chatId: known.chatId };
+        return { accountId: known.accountId ?? targetAccountId, chatId: known.chatId };
       }
       return isWhatsAppAddress(normalized)
         ? { accountId: targetAccountId, chatId: normalized }

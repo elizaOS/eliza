@@ -108,9 +108,14 @@ export default defineConfig({
         find: /^@elizaos\/app-wallet$/,
         replacement: resolve(packageRoot, "test/stubs/elizaos-app-wallet.ts"),
       },
+      {
+        find: /^@elizaos\/plugin-wallet-ui$/,
+        replacement: resolve(monorepoRoot, "plugins/plugin-wallet-ui/src/index.ts"),
+      },
     ],
   },
   test: {
+    setupFiles: ["./vitest.setup.ts"],
     environment: "node",
     environmentOptions: {
       // jsdom 29 throws `SecurityError: localStorage is not available for

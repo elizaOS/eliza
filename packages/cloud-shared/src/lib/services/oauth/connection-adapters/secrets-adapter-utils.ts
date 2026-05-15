@@ -5,8 +5,8 @@
 import { and, eq, like } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../../../db/client";
 import { secrets } from "../../../../db/schemas/secrets";
-import { secretsService } from "../../secrets";
 import { logger } from "../../../utils/logger";
+import { secretsService } from "../../secrets";
 import { Errors } from "../errors";
 import type { OAuthConnection, OAuthConnectionSource } from "../types";
 

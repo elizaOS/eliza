@@ -241,14 +241,23 @@ def _cmd_export_viewer(args: argparse.Namespace) -> int:
     discovery = discover_adapters(workspace_root)
     _repair_current_compatibility_statuses(conn, discovery.adapters)
     _rebuild_latest_result_snapshots(conn, output_root, discovery.adapters)
-    out = _rebuild_viewer_json(workspace_root, conn)
+    out = _rebuild_viewer_json(
+        workspace_root,
+        conn,
+        benchmark_ids=set(discovery.adapters),
+    )
     conn.close()
     print(str(out))
     return 0
 
 
-def _rebuild_viewer_json(workspace_root: Path, conn) -> Path:
-    data = build_viewer_dataset(conn)
+def _rebuild_viewer_json(
+    workspace_root: Path,
+    conn,
+    *,
+    benchmark_ids: set[str] | None = None,
+) -> Path:
+    data = build_viewer_dataset(conn, benchmark_ids=benchmark_ids)
     out = workspace_root / "benchmarks" / "benchmark_results" / "viewer_data.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(data, indent=2, ensure_ascii=True), encoding="utf-8")
@@ -275,7 +284,11 @@ def _cmd_recover_stale(args: argparse.Namespace) -> int:
         workspace_root / "benchmarks" / "benchmark_results",
         discovery.adapters,
     )
-    viewer_snapshot = _rebuild_viewer_json(workspace_root, conn)
+    viewer_snapshot = _rebuild_viewer_json(
+        workspace_root,
+        conn,
+        benchmark_ids=set(discovery.adapters),
+    )
     conn.close()
 
     print(f"Recovered runs: {len(recovered)}")

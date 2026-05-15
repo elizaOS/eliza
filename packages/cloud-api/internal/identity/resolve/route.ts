@@ -1,10 +1,12 @@
 import { Hono } from "hono";
 import { z } from "zod";
-import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
+import { desc, eq } from "drizzle-orm";
+import { dbRead } from "@/db/helpers";
 import {
   type IdentityProvider,
   usersRepository,
 } from "@/db/repositories/users";
+import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../_auth";
@@ -90,22 +92,18 @@ app.post("/", async (c) => {
       );
     }
 
-    const [sandbox] =
-      await agentSandboxesRepository.listByOrganization(organizationId);
-    if (!sandbox) {
-      return jsonError(
-        c,
-        404,
-        "Provisioned agent not found",
-        "resource_not_found",
-      );
-    }
+    const [sandbox] = await dbRead
+      .select()
+      .from(agentSandboxes)
+      .where(eq(agentSandboxes.organization_id, organizationId))
+      .orderBy(desc(agentSandboxes.created_at))
+      .limit(1);
 
     return c.json({
       success: true,
       userId: user.id,
       organizationId,
-      agentId: sandbox.id,
+      agentId: sandbox?.id ?? null,
       data: {
         user: {
           id: user.id,
@@ -116,10 +114,12 @@ app.post("/", async (c) => {
           stewardUserId: user.steward_user_id,
           isActive: user.is_active,
         },
-        agent: {
-          id: sandbox.id,
-          status: sandbox.status,
-        },
+        agent: sandbox
+          ? {
+              id: sandbox.id,
+              status: sandbox.status,
+            }
+          : null,
         identity: identity
           ? {
               stewardUserId: identity.steward_user_id,

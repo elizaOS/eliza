@@ -116,3 +116,10 @@ try:
     __all__.append("build_mint_agent_fn")
 except Exception:  # noqa: BLE001
     pass
+
+try:
+    from hermes_adapter.woobench import build_hermes_woobench_agent_fn  # noqa: F401, E402
+
+    __all__.append("build_hermes_woobench_agent_fn")
+except Exception:  # noqa: BLE001
+    pass

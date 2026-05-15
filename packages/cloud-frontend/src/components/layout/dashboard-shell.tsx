@@ -2,6 +2,7 @@ import {
   DashboardLoadingState,
   PageHeaderProvider,
   ScrollArea,
+  TooltipProvider,
 } from "@elizaos/ui";
 import { Loader2 } from "lucide-react";
 import { Suspense, useCallback, useState } from "react";
@@ -52,11 +53,13 @@ export function DashboardShell({
   if (minimalOutletChrome) {
     return (
       <OnboardingProvider>
-        <PageHeaderProvider>
-          <Suspense fallback={<DashboardLoadingState />}>
-            <Outlet />
-          </Suspense>
-        </PageHeaderProvider>
+        <TooltipProvider>
+          <PageHeaderProvider>
+            <Suspense fallback={<DashboardLoadingState />}>
+              <Outlet />
+            </Suspense>
+          </PageHeaderProvider>
+        </TooltipProvider>
         <OnboardingOverlay />
       </OnboardingProvider>
     );
@@ -64,27 +67,29 @@ export function DashboardShell({
 
   return (
     <OnboardingProvider>
-      <PageHeaderProvider>
-        <div className="dashboard-theme flex h-dvh min-h-dvh w-full overflow-hidden bg-neutral-950">
-          <Sidebar isOpen={sidebarOpen} onToggle={handleToggleSidebar} />
+      <TooltipProvider>
+        <PageHeaderProvider>
+          <div className="dashboard-theme flex h-dvh min-h-dvh w-full overflow-hidden bg-neutral-950">
+            <Sidebar isOpen={sidebarOpen} onToggle={handleToggleSidebar} />
 
-          <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2 md:gap-3 md:p-3 md:pl-0">
-            <Header
-              onToggleSidebar={handleToggleSidebar}
-              isAnonymous={headerAnonymous}
-              authGraceActive={headerAuthGraceActive}
-            />
+            <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2 md:gap-3 md:p-3 md:pl-0">
+              <Header
+                onToggleSidebar={handleToggleSidebar}
+                isAnonymous={headerAnonymous}
+                authGraceActive={headerAuthGraceActive}
+              />
 
-            <ScrollArea className="min-w-0 flex-1 border border-white/10 bg-black/80">
-              <main className="min-w-0 p-3 md:p-6">
-                <Suspense fallback={<DashboardLoadingState />}>
-                  <Outlet />
-                </Suspense>
-              </main>
-            </ScrollArea>
+              <ScrollArea className="min-w-0 flex-1 border border-white/10 bg-black/80">
+                <main className="min-w-0 p-3 md:p-6">
+                  <Suspense fallback={<DashboardLoadingState />}>
+                    <Outlet />
+                  </Suspense>
+                </main>
+              </ScrollArea>
+            </div>
           </div>
-        </div>
-      </PageHeaderProvider>
+        </PageHeaderProvider>
+      </TooltipProvider>
       <OnboardingOverlay />
     </OnboardingProvider>
   );

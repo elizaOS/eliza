@@ -45,7 +45,9 @@ export function ProvisioningChatView({
   // Scroll to bottom whenever messages change. `messages` is a trigger dep.
   // biome-ignore lint/correctness/useExhaustiveDependencies: messages triggers scroll-to-bottom
   React.useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (typeof messagesEndRef.current?.scrollIntoView === "function") {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   // Trigger the handoff when the container becomes ready.

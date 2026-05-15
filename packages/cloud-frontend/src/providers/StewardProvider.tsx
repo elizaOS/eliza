@@ -1,9 +1,9 @@
 "use client";
 
+import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
 import { StewardAuth, StewardClient } from "@stwd/sdk";
 import { createContext, useEffect, useMemo, useRef } from "react";
-import { resolveBrowserStewardApiUrl } from "@/lib/steward-url";
 
 /**
  * Steward authentication provider for Eliza Cloud.

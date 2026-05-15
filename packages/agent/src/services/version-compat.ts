@@ -247,7 +247,8 @@ export function diagnoseNoAIProvider(
 
   if (
     process.env.ELIZA_LOCAL_LLAMA?.trim() === "1" ||
-    process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1" ||
+    process.env.ELIZA_ALLOW_NO_PROVIDER?.trim() === "1"
   ) {
     return null;
   }

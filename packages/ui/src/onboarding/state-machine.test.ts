@@ -11,34 +11,36 @@ function run(events: OnboardingEvent[]): OnboardingFlowState {
 }
 
 describe("onboarding/state-machine", () => {
-  it("cloud path: hello -> setup -> cloud-login -> cloud-chat -> home", () => {
+  it("cloud path starts provisioning immediately and finishes through the tutorial", () => {
     const finalState = run([
       { type: "BEGIN" },
       { type: "CHOOSE_RUNTIME", runtime: "cloud" },
       { type: "CONTINUE" },
       { type: "CONTINUE" },
       { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
     ]);
     expect(finalState.current).toBe("home");
     expect(finalState.runtime).toBe("cloud");
-    expect(finalState.history).toEqual([
-      "hello",
-      "setup",
-      "cloud-login",
-      "cloud-chat",
-    ]);
+    expect(finalState.cloudProvisioningStarted).toBe(true);
+    expect(finalState.history).toContain("cloud-chat");
+    expect(finalState.history).toContain("tutorial-permissions");
   });
 
-  it("local-only path lands on home through tutorial chain", () => {
-    const finalState = run([
+  it("local-only path downloads in the background during tutorial, then gates home until ready", () => {
+    const blocked = run([
       { type: "BEGIN" },
       { type: "CHOOSE_RUNTIME", runtime: "device" },
       { type: "CONTINUE" },
       { type: "CHOOSE_SANDBOX", mode: "sandbox" },
       { type: "CONTINUE" },
       { type: "CHOOSE_DEVICE_PATH", path: "local-only" },
-      { type: "CONTINUE" },
-      { type: "LOCAL_DOWNLOAD_READY" },
       { type: "CONTINUE" },
       { type: "CONTINUE" },
       { type: "SET_NAME", name: "Ada" },
@@ -50,9 +52,36 @@ describe("onboarding/state-machine", () => {
       { type: "CONTINUE" },
       { type: "CONTINUE" },
     ]);
+    expect(blocked.current).toBe("local-download");
+    expect(blocked.localDownloadStarted).toBe(true);
+    expect(blocked.localDownloadReady).toBeUndefined();
+
+    const finalState = run([
+      { type: "BEGIN" },
+      { type: "CHOOSE_RUNTIME", runtime: "device" },
+      { type: "CONTINUE" },
+      { type: "CHOOSE_SANDBOX", mode: "sandbox" },
+      { type: "CONTINUE" },
+      { type: "CHOOSE_DEVICE_PATH", path: "local-only" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "SET_NAME", name: "Ada" },
+      { type: "CONTINUE" },
+      { type: "SET_LOCATION", location: "Paris" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "CONTINUE" },
+      { type: "LOCAL_DOWNLOAD_READY" },
+      { type: "CONTINUE" },
+    ]);
     expect(finalState.current).toBe("home");
     expect(finalState.devicePath).toBe("local-only");
     expect(finalState.sandboxMode).toBe("sandbox");
+    expect(finalState.localDownloadStarted).toBe(true);
+    expect(finalState.localDownloadReady).toBe(true);
     expect(finalState.name).toBe("Ada");
     expect(finalState.location).toBe("Paris");
   });
@@ -141,12 +170,14 @@ describe("onboarding/state-machine", () => {
     expect(state.runtime).toBe("cloud");
   });
 
-  it("device-mode local-cloud routes to cloud-login", () => {
+  it("device-mode local-cloud skips cloud provisioning and local downloads", () => {
     const state = run([
       { type: "JUMP", to: "device-mode" },
       { type: "CHOOSE_DEVICE_PATH", path: "local-cloud" },
       { type: "CONTINUE" },
     ]);
-    expect(state.current).toBe("cloud-login");
+    expect(state.current).toBe("mic");
+    expect(state.localDownloadStarted).toBeUndefined();
+    expect(state.cloudProvisioningStarted).toBeUndefined();
   });
 });

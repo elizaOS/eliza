@@ -26,6 +26,11 @@ export interface OnboardingFlowState {
   runtime?: RuntimeChoice;
   sandboxMode?: SandboxMode;
   devicePath?: DevicePath;
+  cloudProvisioningStarted?: boolean;
+  cloudAgentReady?: boolean;
+  cloudConversationPushed?: boolean;
+  localDownloadStarted?: boolean;
+  localDownloadReady?: boolean;
   language: string;
   name?: string;
   location?: string;
@@ -41,7 +46,11 @@ export type OnboardingEvent =
   | { type: "BACK" }
   | { type: "SKIP" }
   | { type: "CONNECT_CLOUD" }
+  | { type: "START_CLOUD_PROVISIONING" }
+  | { type: "CLOUD_AGENT_READY" }
+  | { type: "CLOUD_CONVERSATION_PUSHED" }
   | { type: "PAIR_REMOTE" }
+  | { type: "START_LOCAL_DOWNLOAD" }
   | { type: "LOCAL_DOWNLOAD_READY" }
   | { type: "JUMP"; to: OnboardingStateId }
   | { type: "SET_LANGUAGE"; language: string }
@@ -92,22 +101,22 @@ function continueFrom(state: OnboardingFlowState): OnboardingFlowState {
     case "cloud-login":
       return pushHistory(state, "cloud-chat");
     case "cloud-chat":
-      return pushHistory(state, "home");
+      return pushHistory(state, "mic");
     case "remote-pair":
       return pushHistory(state, "mic");
     case "device-security":
       return pushHistory(state, "device-mode");
     case "device-mode": {
       if (state.devicePath === "local-cloud") {
-        return pushHistory(state, "cloud-login");
+        return pushHistory(state, "mic");
       }
       if (state.devicePath === "local-only") {
-        return pushHistory(state, "local-download");
+        return pushHistory(state, "mic");
       }
-      return pushHistory(state, "local-download");
+      return pushHistory(state, "mic");
     }
     case "local-download":
-      return pushHistory(state, "mic");
+      return state.localDownloadReady ? pushHistory(state, "home") : state;
     case "mic":
       return pushHistory(state, "profile-name");
     case "profile-name":
@@ -123,6 +132,11 @@ function continueFrom(state: OnboardingFlowState): OnboardingFlowState {
     case "tutorial-connectors":
       return pushHistory(state, "tutorial-permissions");
     case "tutorial-permissions":
+      if (state.runtime === "device" && state.devicePath === "local-only") {
+        return state.localDownloadReady
+          ? pushHistory(state, "home")
+          : pushHistory(state, "local-download");
+      }
       return pushHistory(state, "home");
     case "home":
       return state;
@@ -158,11 +172,23 @@ export function reduce(
     case "BEGIN":
       return pushHistory(state, "setup");
     case "CHOOSE_RUNTIME":
-      return { ...state, runtime: event.runtime };
+      return {
+        ...state,
+        runtime: event.runtime,
+        ...(event.runtime === "cloud"
+          ? { cloudProvisioningStarted: true }
+          : null),
+      };
     case "CHOOSE_SANDBOX":
       return { ...state, sandboxMode: event.mode };
     case "CHOOSE_DEVICE_PATH":
-      return { ...state, devicePath: event.path };
+      return {
+        ...state,
+        devicePath: event.path,
+        ...(event.path === "local-only"
+          ? { localDownloadStarted: true }
+          : null),
+      };
     case "CONTINUE":
       return continueFrom(state);
     case "BACK":
@@ -170,11 +196,22 @@ export function reduce(
     case "SKIP":
       return skipFrom(state);
     case "CONNECT_CLOUD":
-      return pushHistory({ ...state, runtime: "cloud" }, "cloud-chat");
+      return pushHistory(
+        { ...state, runtime: "cloud", cloudProvisioningStarted: true },
+        "cloud-chat",
+      );
+    case "START_CLOUD_PROVISIONING":
+      return { ...state, cloudProvisioningStarted: true };
+    case "CLOUD_AGENT_READY":
+      return { ...state, cloudAgentReady: true };
+    case "CLOUD_CONVERSATION_PUSHED":
+      return { ...state, cloudConversationPushed: true };
     case "PAIR_REMOTE":
       return pushHistory({ ...state, runtime: "remote" }, "mic");
+    case "START_LOCAL_DOWNLOAD":
+      return { ...state, localDownloadStarted: true };
     case "LOCAL_DOWNLOAD_READY":
-      return state;
+      return { ...state, localDownloadReady: true };
     case "JUMP":
       return pushHistory(state, event.to);
     case "SET_LANGUAGE":

@@ -341,7 +341,6 @@ export default function HomePage() {
               "Image generation not available. Skipping photo generation.",
             );
             setGeneratingPhoto(false);
-            setPhotoProgress("");
             return;
           }
 

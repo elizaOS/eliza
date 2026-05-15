@@ -4,7 +4,7 @@ export interface StateTutorialSubscriptionsProps {
 
 export function StateTutorialSubscriptions(
   props: StateTutorialSubscriptionsProps,
-): JSX.Element {
+): React.JSX.Element {
   const { onContinue } = props;
   return (
     <section

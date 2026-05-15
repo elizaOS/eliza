@@ -111,6 +111,9 @@ const info = targetInfo(argValue("--target", "simulator"));
 const verifyOnly = process.argv.includes("--verify-only");
 const packageOnly = process.argv.includes("--package-only");
 const rebuild = process.argv.includes("--rebuild");
+const strictAppStoreRuntime =
+  process.argv.includes("--strict-app-store-runtime") ||
+  process.env.ELIZA_BUN_IOS_STRICT_APP_STORE_RUNTIME === "1";
 const backend = (
   argValue("--backend", process.env.ELIZA_BUN_IOS_BUILD_BACKEND || "auto") ||
   "auto"
@@ -173,7 +176,11 @@ function resolveCmakeToolchain(info) {
   );
 }
 
-function validateEngineBinary(binary) {
+function shouldValidateAppStoreRuntime(targetInfo = info) {
+  return targetInfo.target === "device" || strictAppStoreRuntime;
+}
+
+function validateEngineBinary(binary, targetInfo = info) {
   const nm = runCapture("nm", ["-gU", binary]);
   const output = `${nm.stdout}\n${nm.stderr}`;
   const missing = requiredSymbols.filter((symbol) => !output.includes(symbol));
@@ -194,7 +201,11 @@ function validateEngineBinary(binary) {
         .join(", ")}${unexpected.length > 24 ? ", ..." : ""}`,
     );
   }
-  validateAppStoreRuntimeBinary(binary);
+  if (shouldValidateAppStoreRuntime(targetInfo)) {
+    validateAppStoreRuntimeBinary(binary);
+  } else {
+    warnAboutAppStoreRuntimeBinary(binary);
+  }
 }
 
 function validateEngineFrameworkMetadata(frameworkDir) {
@@ -271,6 +282,42 @@ function validateAppStoreRuntimeBinary(binary) {
   if (forbiddenStrings.length > 0) {
     fail(
       `${binary} contains App Store-sensitive executable-memory markers: ${forbiddenStrings.join(", ")}`,
+    );
+  }
+}
+
+function warnAboutAppStoreRuntimeBinary(binary) {
+  const imports = runMaybeCapture("nm", ["-u", binary]);
+  if (imports.status !== 0) {
+    console.warn(
+      `[bun-ios-runtime] Warning: failed to inspect imported symbols for simulator runtime ${binary}`,
+    );
+    return;
+  }
+  const importOutput = `${imports.stdout}\n${imports.stderr}`;
+  const forbiddenImports = forbiddenRuntimeImports.filter((symbol) =>
+    new RegExp(
+      `(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+    ).test(importOutput),
+  );
+  if (forbiddenImports.length > 0) {
+    console.warn(
+      `[bun-ios-runtime] Simulator slice imports device/App Store-sensitive symbols: ${forbiddenImports.join(
+        ", ",
+      )}. Device builds remain strict; pass --strict-app-store-runtime to fail simulator builds on this.`,
+    );
+  }
+
+  const strings = runMaybeCapture("strings", [binary]);
+  if (strings.status !== 0) return;
+  const forbiddenStrings = forbiddenRuntimeStringPatterns
+    .filter((pattern) => pattern.test(`${strings.stdout}\n${strings.stderr}`))
+    .map((pattern) => pattern.source);
+  if (forbiddenStrings.length > 0) {
+    console.warn(
+      `[bun-ios-runtime] Simulator slice contains device/App Store-sensitive executable-memory markers: ${forbiddenStrings.join(
+        ", ",
+      )}. Device builds remain strict.`,
     );
   }
 }
@@ -384,10 +431,10 @@ function findFrameworkBinaries(root) {
   return found;
 }
 
-function validateXcframework(root) {
+function validateXcframework(root, targetInfo = info) {
   const selected = resolveXcframeworkBinary(root, info);
   validateEngineFrameworkMetadata(selected.frameworkDir);
-  validateEngineBinary(selected.binary);
+  validateEngineBinary(selected.binary, targetInfo);
   const binaries = findFrameworkBinaries(root);
   if (binaries.length === 0) {
     fail(
@@ -396,7 +443,7 @@ function validateXcframework(root) {
   }
   for (const binary of binaries) {
     validateEngineFrameworkMetadata(path.dirname(binary));
-    validateEngineBinary(binary);
+    validateEngineBinary(binary, targetInfo);
     validateNoNestedExecutablePayloads(path.dirname(binary), binary);
   }
   console.log(

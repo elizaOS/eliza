@@ -403,7 +403,7 @@ describe("AcpService", () => {
     expect(result.response).toContain("[tool output: Read home usage]");
     expect(result.response).toContain("/home            387G");
     expect(result.response).not.toContain('"metadata"');
-    expect(taskCompletePayloads[0]?.response).toBe("done");
+    expect(taskCompletePayloads[0]?.response).toBe(result.response);
     expect(result.stopReason).toBe("end_turn");
     expect(events).toEqual(
       expect.arrayContaining([

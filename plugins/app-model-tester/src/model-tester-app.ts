@@ -1,5 +1,5 @@
-import type { OverlayApp } from "@elizaos/app-core";
-import { registerOverlayApp } from "@elizaos/app-core";
+import type { OverlayApp } from "@elizaos/ui/components/apps/overlay-app-api";
+import { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
 import { ModelTesterAppView } from "./ModelTesterAppView.js";
 
 export const MODEL_TESTER_APP_NAME = "@elizaos/app-model-tester";

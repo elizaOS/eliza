@@ -7,8 +7,8 @@
  *     as "localInferenceLoader",
  *   - null/warmup probes throw LOCAL_INFERENCE_UNAVAILABLE rather than
  *     synthesizing a fake vector (Commandment 8: don't hide broken pipelines),
- *   - missing backend service returns the explicit 1024-dim boot fallback
- *     vector so the agent can start before a bundle is activated,
+ *   - missing backend service throws so callers can fall through to another
+ *     real embedding provider instead of persisting fake zero vectors,
  *   - the same input always returns the exact array the loader returned
  *     (determinism is the *loader's* contract — the provider does not
  *     re-quantize or perturb).
@@ -170,13 +170,16 @@ describe("provider TEXT_EMBEDDING dispatch", () => {
 		});
 	});
 
-	it("returns the explicit boot fallback vector when no loader is registered", async () => {
+	it("rejects when no loader is registered instead of returning zero vectors", async () => {
 		const handlers = createLocalInferenceModelHandlers();
-		const result = await handlers[ModelType.TEXT_EMBEDDING]?.({} as never, {
-			text: "hi",
-		} as never);
-		expect(result).toHaveLength(1024);
-		expect((result as number[]).every((value) => value === 0)).toBe(true);
+		await expect(
+			handlers[ModelType.TEXT_EMBEDDING]?.({} as never, {
+				text: "hi",
+			} as never),
+		).rejects.toMatchObject({
+			code: "LOCAL_INFERENCE_UNAVAILABLE",
+			reason: "backend_unavailable",
+		});
 	});
 
 	it("emits capability_unavailable when the loader has no `embed`", async () => {

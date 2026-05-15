@@ -13,10 +13,7 @@
 import { GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { getRuntimeR2Bucket, runtimeR2BucketConfigured } from "../storage/r2-runtime-binding";
-import {
-  getObjectStorageClient,
-  objectStorageConfigured,
-} from "../storage/s3-compatible-client";
+import { getObjectStorageClient, objectStorageConfigured } from "../storage/s3-compatible-client";
 
 export interface TrajectoryInlinePayload {
   system_prompt: string | null;

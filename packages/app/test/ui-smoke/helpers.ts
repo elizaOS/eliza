@@ -63,6 +63,22 @@ type RenderTelemetryIssue = {
   severity?: string;
 };
 
+const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
+  ["Basics", "basics"],
+  ["Providers", "providers"],
+  ["Runtime", "runtime"],
+  ["Appearance", "appearance"],
+  ["Voice", "voice"],
+  ["Capabilities", "capabilities"],
+  ["Apps", "apps"],
+  ["Carrots", "carrots"],
+  ["Connectors", "connectors"],
+  ["App Permissions", "app-permissions"],
+  ["Wallet & RPC", "wallet-rpc"],
+  ["Permissions", "permissions"],
+  ["Advanced", "advanced"],
+]);
+
 const DEFAULT_APP_STORAGE: Record<string, string> = {
   "eliza:onboarding-complete": "1",
   "eliza:onboarding:step": "activate",
@@ -173,8 +189,43 @@ export async function openSettingsSection(
   page: Page,
   sectionName: string | RegExp,
 ): Promise<void> {
+  const settingsShell = page.getByTestId("settings-shell");
+  await expect(settingsShell).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
+
   const settingsNav = page.getByRole("navigation", { name: "Settings" });
-  await settingsNav.getByRole("button", { name: sectionName }).click();
+  const sectionButton = settingsNav.getByRole("button", { name: sectionName });
+  if (await locatorVisible(sectionButton, 1_000)) {
+    await sectionButton.click();
+    return;
+  }
+
+  const sectionId = settingsSectionIdFromLabel(sectionName);
+  if (sectionId) {
+    const section = page.locator(`#${sectionId}`);
+    await section.scrollIntoViewIfNeeded({ timeout: READY_CHECK_TIMEOUT_MS });
+    await expect(section).toBeVisible({ timeout: READY_CHECK_TIMEOUT_MS });
+    return;
+  }
+
+  const sectionHeading = settingsShell.getByText(sectionName).filter({
+    visible: true,
+  });
+  await sectionHeading
+    .first()
+    .scrollIntoViewIfNeeded({ timeout: READY_CHECK_TIMEOUT_MS });
+  await expect(sectionHeading.first()).toBeVisible({
+    timeout: READY_CHECK_TIMEOUT_MS,
+  });
+}
+
+function settingsSectionIdFromLabel(sectionName: string | RegExp): string | null {
+  if (typeof sectionName === "string") {
+    return SETTINGS_SECTION_IDS_BY_LABEL.get(sectionName) ?? null;
+  }
+  for (const [label, id] of SETTINGS_SECTION_IDS_BY_LABEL.entries()) {
+    if (sectionName.test(label)) return id;
+  }
+  return null;
 }
 
 async function locatorVisible(

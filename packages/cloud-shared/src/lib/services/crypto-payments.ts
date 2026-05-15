@@ -3,7 +3,10 @@ import { eq } from "drizzle-orm";
 import { validate as uuidValidate } from "uuid";
 import { z } from "zod";
 import { dbWrite } from "../../db/client";
-import { type CryptoPayment, cryptoPaymentsRepository } from "../../db/repositories/crypto-payments";
+import {
+  type CryptoPayment,
+  cryptoPaymentsRepository,
+} from "../../db/repositories/crypto-payments";
 import { organizationsRepository } from "../../db/repositories/organizations";
 import { cryptoPayments } from "../../db/schemas/crypto-payments";
 import { PAYMENT_EXPIRATION_SECONDS, validatePaymentAmount } from "../config/crypto";

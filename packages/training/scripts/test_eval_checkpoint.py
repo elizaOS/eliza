@@ -1,7 +1,7 @@
 """Tests for `scripts/eval_checkpoint.py` results-store integration.
 
 Exercises only the `record_to_results_store` write path — we don't
-spin up the full eliza_bench subprocess here. The shared W0-X5
+spin up the full native tool-call benchmark subprocess here. The shared W0-X5
 SQLite results store is exercised against a tmp-path SQLite file.
 """
 

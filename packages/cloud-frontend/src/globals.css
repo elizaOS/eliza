@@ -22,15 +22,12 @@
 @import "@rainbow-me/rainbowkit/styles.css";
 @import "./styles/solana-wallet-adapter.css";
 @import "@stwd/react/styles.css";
-/* Tailwind v4 auto-scans the project rooted at apps/frontend (where the
- * package.json lives), so it does not see classes used in repo-shared
- * packages by default. Explicitly include them. Paths are resolved
- * relative to this CSS file (apps/frontend/src/globals.css → up 3 dirs
- * gets us to cloud/, then into packages/*).
+/* Tailwind v4 auto-scans this package, so it does not see classes used in
+ * neighboring workspace packages by default. Paths are resolved relative to
+ * this CSS file (packages/cloud-frontend/src/globals.css).
  */
-@source "../../../packages/ui/src";
-@source "../../../packages/lib";
-@source "../../../packages/content";
+@source "../../ui/src";
+@source "../cloud-shared/src";
 @import "tw-animate-css";
 @plugin "@tailwindcss/typography";
 

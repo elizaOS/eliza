@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { createConnection } from "node:net";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { config } from "dotenv";
 
@@ -27,7 +28,15 @@ const defaultE2eEnv = {
 };
 
 function bunExecutable() {
-  return process.env.BUN || process.env.npm_execpath || process.execPath || "bun";
+  if (process.env.BUN && existsSync(process.env.BUN)) return process.env.BUN;
+  const homeBun = resolve(process.env.HOME || "", ".bun/bin/bun");
+  if (existsSync(homeBun)) return homeBun;
+  const pathBun = process.env.PATH?.split(":")
+    .map((entry) => resolve(entry, "bun"))
+    .find((candidate) => existsSync(candidate));
+  if (pathBun) return pathBun;
+  if (process.env.npm_execpath?.includes("bun")) return process.env.npm_execpath;
+  return "bun";
 }
 
 function parsePGliteDataDir(url) {
@@ -149,7 +158,7 @@ async function main() {
       testEnv.TEST_DATABASE_URL = configuredDbUrl;
     }
 
-    const migrateResult = spawnSync(bun, ["run", "db:migrate"], {
+    const migrateResult = spawnSync(bun, ["run", "db:cloud:migrate"], {
       stdio: ["ignore", "inherit", "inherit"],
       env: testEnv,
     });
@@ -157,7 +166,7 @@ async function main() {
       throw migrateResult.error;
     }
     if (migrateResult.status !== 0) {
-      throw new Error(`db:migrate exited with code ${migrateResult.status}`);
+      throw new Error(`db:cloud:migrate exited with code ${migrateResult.status}`);
     }
 
     const workerEnv = {
@@ -185,7 +194,7 @@ async function main() {
         [
           "run",
           "--cwd",
-          "apps/api",
+          "packages/cloud-api",
           "wrangler",
           "dev",
           "--ip",
@@ -210,7 +219,7 @@ async function main() {
       await waitForHealth(child);
     }
 
-    result = spawnSync(bun, ["run", "--cwd", "apps/api", "test:e2e"], {
+    result = spawnSync(bun, ["run", "--cwd", "packages/cloud-api", "test:e2e"], {
       stdio: "inherit",
       env: workerEnv,
     });

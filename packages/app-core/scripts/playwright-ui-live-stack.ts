@@ -10,8 +10,8 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { buildOnboardingRuntimeConfig } from "@elizaos/ui";
 import { WebSocket, WebSocketServer } from "ws";
+import { buildOnboardingRuntimeConfig } from "../src/onboarding/onboarding-config.ts";
 import { selectLiveProvider } from "../test/helpers/live-provider.ts";
 import { resolveMainAppDir } from "./lib/app-dir.mjs";
 import { viteRendererBuildNeeded } from "./lib/vite-renderer-dist-stale.mjs";
@@ -530,6 +530,7 @@ async function startStubStack(): Promise<StartedStack> {
       ...process.env,
       FORCE_COLOR: "0",
       ELIZA_UI_SMOKE_API_PORT: String(API_PORT),
+      ELIZA_UI_SMOKE_STUB_IGNORE_SIGTERM: "1",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

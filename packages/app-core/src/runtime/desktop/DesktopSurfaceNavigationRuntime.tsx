@@ -1,5 +1,5 @@
 import { subscribeDesktopBridgeEvent } from "@elizaos/ui/bridge/electrobun-rpc";
-import type { Tab } from "@elizaos/ui/navigation";
+import type { Tab } from "../../../../ui/src/navigation";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { useEffect } from "react";
 

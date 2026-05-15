@@ -29,6 +29,20 @@ function toHttpServerResponse(res: RouteResponse): http.ServerResponse {
 const modelTesterRoutes: Route[] = [
   {
     type: "GET",
+    path: "/model-tester",
+    rawPath: true,
+    handler: async (_req, res, runtime) => {
+      await handleModelTesterRoute(
+        toHttpIncomingMessage(_req),
+        toHttpServerResponse(res),
+        "/model-tester",
+        "GET",
+        runtime,
+      );
+    },
+  },
+  {
+    type: "GET",
     path: "/api/model-tester/status",
     rawPath: true,
     handler: async (_req, res, runtime) => {

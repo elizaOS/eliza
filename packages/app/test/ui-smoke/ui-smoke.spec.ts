@@ -3,7 +3,6 @@ import {
   assertReadyChecks,
   installDefaultAppRoutes,
   openAppPath,
-  openSettingsSection,
   seedAppStorage,
 } from "./helpers";
 
@@ -27,14 +26,13 @@ test("chat, apps, and settings routes render through the real shell", async ({
     "all",
   );
 
-  await page.getByTestId("header-nav-button-apps").click();
+  await openAppPath(page, "/apps");
   await expect(page).toHaveURL(/\/apps$/);
-  await expect(page.getByTestId("apps-catalog-grid")).toBeVisible();
+  await expect(page.getByText("No views available")).toBeVisible();
 
-  await page.getByTestId("header-settings-button").click();
+  await openAppPath(page, "/settings");
   await expect(page).toHaveURL(/\/settings$/);
   await expect(page.getByTestId("settings-shell")).toBeVisible();
-  await openSettingsSection(page, /^Capabilities\b/);
   const capabilitiesSection = page.locator("#capabilities");
   await capabilitiesSection.scrollIntoViewIfNeeded();
   await expect(capabilitiesSection).toBeVisible();

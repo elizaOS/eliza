@@ -2617,6 +2617,18 @@ export function appendOptimizationFlags(
 	return args;
 }
 
+export function applyUnsupportedKernelEnv(
+	env: NodeJS.ProcessEnv,
+	optimizations: Pick<LocalRuntimeOptimizations, "unsupportedKernels"> | null,
+): NodeJS.ProcessEnv {
+	const next = { ...env };
+	if (optimizations?.unsupportedKernels?.includes("openvino")) {
+		next.GGML_OPENVINO_DISABLE = "1";
+		next.GGML_OPENVINO_DEVICE = "NONE";
+	}
+	return next;
+}
+
 /**
  * Inject a `GpuProfile`'s tuned flags into an in-progress llama-server
  * command line. Pure addition — call this *after* `appendOptimizationFlags`

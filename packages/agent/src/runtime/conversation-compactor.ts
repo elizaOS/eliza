@@ -300,7 +300,9 @@ function mergeRequiredState(
     (p) => !requiredPending.has(p.trim()) && !isLowSignalStateItem(p),
   );
   const activeRequiredFacts = required.facts.filter(
-    (f) => !isForbiddenDuplicate(f, forbiddenBehaviors),
+    (f) =>
+      /^referenced rule:\s*/i.test(f) ||
+      !isForbiddenDuplicate(f, forbiddenBehaviors),
   );
   const activeRequiredDecisions = required.decisions.filter(
     (d) => !isForbiddenDuplicate(d, forbiddenBehaviors),
@@ -522,6 +524,16 @@ function extractRequiredStateFragments(
     const forbidden = cleanSentenceFragment(match[1]);
     if (!forbidden) continue;
     fragments.forbidden_behaviors.push(forbidden);
+  }
+
+  const onlyRule = /\bonly\s+one:\s*never\s+(.+?)(?:\.|!|\n|$)/iu.exec(
+    userText,
+  );
+  if (onlyRule) {
+    const referencedRule = cleanSentenceFragment(onlyRule[1]);
+    if (referencedRule) {
+      fragments.facts.push(`referenced rule: never ${referencedRule}`);
+    }
   }
 
   for (const match of userText.matchAll(

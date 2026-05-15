@@ -198,7 +198,7 @@ export class UsageRecordsRepository {
       totalInputTokens: stats?.totalInputTokens || 0,
       totalOutputTokens: stats?.totalOutputTokens || 0,
       totalCost: Number(stats?.totalCost || 0), // Convert NUMERIC to number
-      successRate: stats?.successRate || 1.0,
+      successRate: stats?.successRate ?? 1.0,
     };
   }
 

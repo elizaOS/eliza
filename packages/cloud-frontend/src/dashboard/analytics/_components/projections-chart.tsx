@@ -64,8 +64,8 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
 
   const chartData = useMemo(() => {
     return projections.map((point) => ({
-      date: format(point.timestamp, "MMM d"),
-      fullDate: format(point.timestamp, "MMM d, yyyy"),
+      date: format(new Date(point.timestamp), "MMM d"),
+      fullDate: format(new Date(point.timestamp), "MMM d, yyyy"),
       cost: point.totalCost,
       requests: point.totalRequests,
       isProjected: point.isProjected,

@@ -161,25 +161,24 @@ private func c_llama_sampler_free(_ smpl: LlamaSamplerPtr)
 // value. Six pointers + n_tokens; alignment is automatic.
 
 struct LlamaModelParamsBag {
-    // Storage sized to comfortably hold upstream `llama_model_params` (~96 B).
+    // Exact size of the pinned iOS `llama_model_params` (72 B). These structs
+    // are returned and passed by value, so "large enough" is not ABI-safe.
     // Never read from Swift directly — the shim is the only authorized writer.
-    private var storage: (UInt64, UInt64, UInt64, UInt64,
-                          UInt64, UInt64, UInt64, UInt64,
-                          UInt64, UInt64, UInt64, UInt64,
-                          UInt64, UInt64, UInt64, UInt64) =
-        (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    private var storage: (UInt64, UInt64, UInt64,
+                          UInt64, UInt64, UInt64,
+                          UInt64, UInt64, UInt64) =
+        (0, 0, 0, 0, 0, 0, 0, 0, 0)
 }
 
 struct LlamaContextParamsBag {
-    // Storage sized to comfortably hold upstream `llama_context_params` (~144 B).
+    // Exact size of the pinned iOS `llama_context_params` (136 B).
     private var storage: (UInt64, UInt64, UInt64, UInt64,
                           UInt64, UInt64, UInt64, UInt64,
                           UInt64, UInt64, UInt64, UInt64,
                           UInt64, UInt64, UInt64, UInt64,
-                          UInt64, UInt64, UInt64, UInt64,
-                          UInt64, UInt64, UInt64, UInt64) =
+                          UInt64) =
         (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+         0, 0, 0, 0, 0)
 }
 
 struct LlamaSamplerChainParams {
@@ -207,6 +206,9 @@ private func shim_context_params_set_n_ctx(_ params: UnsafeMutablePointer<LlamaC
 
 @_silgen_name("eliza_llama_context_params_set_n_threads")
 private func shim_context_params_set_n_threads(_ params: UnsafeMutablePointer<LlamaContextParamsBag>, _ n: Int32, _ n_batch: Int32)
+
+@_silgen_name("eliza_llama_context_params_set_batch_sizes")
+private func shim_context_params_set_batch_sizes(_ params: UnsafeMutablePointer<LlamaContextParamsBag>, _ nBatch: UInt32, _ nUbatch: UInt32)
 
 @_silgen_name("eliza_llama_batch_set_single")
 private func shim_batch_set_single(_ batch: UnsafeMutablePointer<LlamaBatch>, _ token: Int32, _ pos: Int32, _ logits_out: Bool)
@@ -343,6 +345,7 @@ private final class LlamaSession {
     let vocab: LlamaVocabPtr
     let workQueue: DispatchQueue
     let nCtx: UInt32
+    let nBatch: UInt32
     var cancelled: Bool = false
 
     // DFlash drafter state. Non-nil iff the user passed a `draftModelPath`
@@ -359,6 +362,7 @@ private final class LlamaSession {
         ctx: LlamaContextPtr,
         vocab: LlamaVocabPtr,
         nCtx: UInt32,
+        nBatch: UInt32,
         drafterModel: LlamaModelPtr? = nil,
         drafterCtx: LlamaContextPtr? = nil,
         draftMinDefault: Int32 = 1,
@@ -369,6 +373,7 @@ private final class LlamaSession {
         self.ctx = ctx
         self.vocab = vocab
         self.nCtx = nCtx
+        self.nBatch = nBatch
         self.drafterModel = drafterModel
         self.drafterCtx = drafterCtx
         self.draftMinDefault = draftMinDefault
@@ -506,6 +511,12 @@ public final class LlamaBridgeImpl {
         raw.advanced(by: 115).storeBytes(of: UInt8(enabled ? 1 : 0), as: UInt8.self) // op_offload
     }
 
+    private static func mobileBatchSizes(contextSize: UInt32) -> (logical: UInt32, physical: UInt32) {
+        let logical = max(UInt32(1), min(contextSize, UInt32(4096)))
+        let physicalLimit: UInt32 = Self.isRunningInSimulator ? 512 : 1024
+        return (logical, max(UInt32(1), min(logical, physicalLimit)))
+    }
+
     /// Synchronously loads a GGUF and returns either a context_id or an error.
     /// Heavy operation (file I/O + model mmap + Metal init); the caller should
     /// dispatch onto a background queue before invoking.
@@ -551,9 +562,11 @@ public final class LlamaBridgeImpl {
             return .failure("llama_model_load_from_file failed for \(path)")
         }
 
+        let batchSizes = Self.mobileBatchSizes(contextSize: contextSize)
         var ctxParams = c_llama_context_default_params()
         withUnsafeMutablePointer(to: &ctxParams) { ptr in
             shim_context_params_set_n_ctx(ptr, contextSize)
+            shim_context_params_set_batch_sizes(ptr, batchSizes.logical, batchSizes.physical)
             shim_context_params_set_n_threads(ptr, resolvedThreads, resolvedThreads)
             Self.setContextGpuOffload(ptr, enabled: canUseGPU)
             if let kCode = ggmlTypeFromString(cacheTypeK) {
@@ -589,9 +602,11 @@ public final class LlamaBridgeImpl {
                     c_llama_model_load_from_file(cpath, drafterModelParams)
                 }
                 if let dm = loadedDrafter {
+                    let draftBatchSizes = Self.mobileBatchSizes(contextSize: draftContextSize)
                     var drafterCtxParams = c_llama_context_default_params()
                     withUnsafeMutablePointer(to: &drafterCtxParams) { ptr in
                         shim_context_params_set_n_ctx(ptr, draftContextSize)
+                        shim_context_params_set_batch_sizes(ptr, draftBatchSizes.logical, draftBatchSizes.physical)
                         shim_context_params_set_n_threads(ptr, resolvedThreads, resolvedThreads)
                         Self.setContextGpuOffload(ptr, enabled: canUseGPU)
                         if let kCode = ggmlTypeFromString(cacheTypeK) {
@@ -625,6 +640,7 @@ public final class LlamaBridgeImpl {
             ctx: llamaCtx,
             vocab: vocab,
             nCtx: nCtxActual,
+            nBatch: batchSizes.logical,
             drafterModel: drafterModelPtr,
             drafterCtx: drafterCtxPtr,
             draftMinDefault: resolvedDraftMin,
@@ -690,20 +706,28 @@ public final class LlamaBridgeImpl {
             c_llama_memory_clear(memory, true)
         }
 
-        // 2. Prefill: enqueue all prompt tokens, then decode once.
-        let batch = c_llama_batch_init(max(Int32(promptTokens.count), 512), 0, 1)
+        // 2. Prefill the prompt in chunks that fit the context's logical
+        // batch size. llama.cpp aborts, rather than returning an error, when a
+        // single decode exceeds cparams.n_batch.
+        let prefillChunkSize = max(1, min(Int(session.nBatch), promptTokens.count))
+        let batch = c_llama_batch_init(Int32(prefillChunkSize), 0, 1)
         defer { c_llama_batch_free(batch) }
 
         var mutableBatch = batch
-        withUnsafeMutablePointer(to: &mutableBatch) { ptr in
-            shim_batch_reset(ptr)
-            for (i, tok) in promptTokens.enumerated() {
-                let isLast = i == promptTokens.count - 1
-                shim_batch_append(ptr, tok, Int32(i), isLast)
+        var prefilled = 0
+        while prefilled < promptTokens.count {
+            let chunkEnd = min(prefilled + prefillChunkSize, promptTokens.count)
+            withUnsafeMutablePointer(to: &mutableBatch) { ptr in
+                shim_batch_reset(ptr)
+                for i in prefilled..<chunkEnd {
+                    let isLast = i == promptTokens.count - 1
+                    shim_batch_append(ptr, promptTokens[i], Int32(i), isLast)
+                }
             }
-        }
-        if c_llama_decode(session.ctx, mutableBatch) != 0 {
-            return .failure("llama_decode (prompt) failed")
+            if c_llama_decode(session.ctx, mutableBatch) != 0 {
+                return .failure("llama_decode (prompt chunk \(prefilled)..<\(chunkEnd)) failed")
+            }
+            prefilled = chunkEnd
         }
 
         // 3. Sampler chain.

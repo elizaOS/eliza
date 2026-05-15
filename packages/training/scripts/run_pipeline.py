@@ -792,7 +792,7 @@ def main() -> int:
         if channel is None:
             text_quality_green = any(
                 g.get("name") in ("held_out_text_quality", "text_quality",
-                                  "eliza_bench", "held_out_quality")
+                                  "native_tool_call_bench", "held_out_quality")
                 and g.get("passed") is True
                 for g in (gate_blob.get("gates") or [])
             )

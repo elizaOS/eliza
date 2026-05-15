@@ -63,7 +63,7 @@ const cloudRoutingSourceRoot = path.join(
 );
 const cloudSdkSourceRoot = path.join(
   elizaWorkspaceRoot,
-  "cloud/packages/sdk/src",
+  "packages/cloud-sdk/src",
 );
 const packageManifest: RootPackageManifest = JSON.parse(
   fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"),

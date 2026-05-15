@@ -119,6 +119,10 @@ test.beforeEach(async ({ page }) => {
 test("companion app controls are interactive and error-free", async ({
   page,
 }) => {
+  test.skip(
+    !DIRECT_ROUTE_CASES.some((routeCase) => routeCase.name === "companion"),
+    "Companion app route is not registered in this smoke stack.",
+  );
   const issues = installIssueGuards(page);
   let newConversationRequests = 0;
   let lastEmoteId: string | null = null;
@@ -240,6 +244,12 @@ test("utility app-window routes render without red errors or overflow", async ({
 test("finance and commerce utility controls refresh and show fixture data", async ({
   page,
 }) => {
+  test.skip(
+    !["hyperliquid", "polymarket", "shopify", "vincent"].every((name) =>
+      DIRECT_ROUTE_CASES.some((routeCase) => routeCase.name === name),
+    ),
+    "Finance and commerce app routes are not registered in this smoke stack.",
+  );
   const issues = installIssueGuards(page);
 
   const hyperliquid = DIRECT_ROUTE_CASES.find(

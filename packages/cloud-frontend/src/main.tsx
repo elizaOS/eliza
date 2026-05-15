@@ -8,6 +8,7 @@ if (typeof globalThis !== "undefined" && !("Buffer" in globalThis)) {
   (globalThis as { Buffer?: typeof Buffer }).Buffer = Buffer;
 }
 
+import { RenderTelemetryProfiler } from "@elizaos/ui";
 import { QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
 import { createRoot, hydrateRoot } from "react-dom/client";
@@ -25,7 +26,9 @@ const tree = (
     <QueryClientProvider client={queryClient}>
       <HelmetProvider>
         <BrowserRouter>
-          <App />
+          <RenderTelemetryProfiler id="CloudFrontendRoot">
+            <App />
+          </RenderTelemetryProfiler>
         </BrowserRouter>
       </HelmetProvider>
     </QueryClientProvider>

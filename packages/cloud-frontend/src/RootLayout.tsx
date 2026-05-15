@@ -2,8 +2,8 @@ import { NavigationProgress, ThemeProvider } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
-import { CreditsProvider } from "@/lib/providers/CreditsProvider";
-import { StewardAuthProvider } from "@/lib/providers/StewardProvider";
+import { CreditsProvider } from "@/providers/CreditsProvider";
+import { StewardAuthProvider } from "@/providers/StewardProvider";
 
 const baseUrl =
   import.meta.env.VITE_APP_URL ||

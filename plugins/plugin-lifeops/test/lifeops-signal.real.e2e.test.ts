@@ -23,7 +23,7 @@ import {
 import { afterEach, beforeEach, describe, expect } from "vitest";
 import { itIf } from "../../../test/helpers/conditional-tests.ts";
 import { req } from "../../../test/helpers/http.ts";
-import { createRealTestRuntime } from "../../../test/helpers/real-runtime.ts";
+import { createRealTestRuntime } from "../../../packages/test/helpers/real-runtime.ts";
 import {
   createLifeOpsConnectorGrant,
   LifeOpsRepository,

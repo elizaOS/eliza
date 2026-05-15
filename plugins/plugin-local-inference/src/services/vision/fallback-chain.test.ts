@@ -30,7 +30,7 @@ describe("vision fallback chain", () => {
 			},
 		});
 
-		await expect(handler({} as never, "data:image/png;base64,a")).resolves.toBe(
+		await expect(handler({} as never, "data:image/png;base64,a")).resolves.toEqual(
 			localResult,
 		);
 		expect(cloudCalls).toBe(0);
@@ -45,7 +45,7 @@ describe("vision fallback chain", () => {
 			cloud: { handler: async () => cloudResult },
 		});
 
-		await expect(handler({} as never, "data:image/png;base64,a")).resolves.toBe(
+		await expect(handler({} as never, "data:image/png;base64,a")).resolves.toEqual(
 			cloudResult,
 		);
 	});
@@ -61,7 +61,7 @@ describe("vision fallback chain", () => {
 			},
 		);
 
-		await expect(handler({} as never, "data:image/png;base64,a")).resolves.toBe(
+		await expect(handler({} as never, "data:image/png;base64,a")).resolves.toEqual(
 			vastResult,
 		);
 	});

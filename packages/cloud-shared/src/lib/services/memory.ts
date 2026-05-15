@@ -14,8 +14,8 @@ import { AgentMode } from "../eliza/agent-mode-types";
 import { runtimeFactory } from "../eliza/runtime-factory";
 import { userContextService } from "../eliza/user-context";
 import { getLanguageModel } from "../providers/language-model";
-import { conversationsService } from "./conversations";
 import { logger } from "../utils/logger";
+import { conversationsService } from "./conversations";
 
 /**
  * Memory service for managing Eliza agent memories and conversation summaries.

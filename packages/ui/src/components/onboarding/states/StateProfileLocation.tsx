@@ -9,7 +9,7 @@ export interface StateProfileLocationProps {
 
 export function StateProfileLocation(
   props: StateProfileLocationProps,
-): JSX.Element {
+): React.JSX.Element {
   const { transcript, initialLocation, onContinue } = props;
   const [location, setLocation] = useState(initialLocation ?? "");
   return (

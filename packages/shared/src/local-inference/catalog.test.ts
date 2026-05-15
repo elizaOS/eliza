@@ -10,6 +10,14 @@ import {
 const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
 const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b", "eliza-1-27b-256k"] as const;
 const OMNIVOICE_TIERS = ELIZA_1_TIER_IDS;
+const EXPECTED_DISPLAY_NAMES: Record<string, string> = {
+  "eliza-1-0_8b": "eliza-1-0_8B",
+  "eliza-1-2b": "eliza-1-2B",
+  "eliza-1-4b": "eliza-1-4B",
+  "eliza-1-9b": "eliza-1-9B",
+  "eliza-1-27b": "eliza-1-27B",
+  "eliza-1-27b-256k": "eliza-1-27B-256k",
+};
 
 describe("voiceQuantLadderForTier", () => {
   it("covers every canonical tier id", () => {
@@ -68,6 +76,14 @@ describe("defaultVoiceQuantForTier", () => {
 });
 
 describe("Eliza-1 runtime quant metadata", () => {
+  it("keeps stable ids but exposes requested size-cased display names", () => {
+    for (const id of ELIZA_1_TIER_IDS) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      expect(entry?.displayName).toBe(EXPECTED_DISPLAY_NAMES[id]);
+      expect(entry?.ggufFile).toContain(id);
+    }
+  });
+
   it("ships every text tier at the 128k floor or native 256k tier", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);

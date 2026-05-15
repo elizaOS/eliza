@@ -50,6 +50,21 @@ def test_build_action_calling_agent_fn_returns_async_callable(client: OpenClawCl
     assert inspect.iscoroutinefunction(agent_fn)
 
 
+def test_action_calling_default_client_uses_native_direct_transport() -> None:
+    agent_fn = build_action_calling_agent_fn()
+    captured: dict[str, Any] = {}
+
+    def _fake_send(self: OpenClawClient, text: str, context: Any = None) -> MessageResponse:
+        captured["direct_openai_compatible"] = self.direct_openai_compatible
+        return MessageResponse(text="ok", thought=None, actions=[], params={})
+
+    with patch.object(OpenClawClient, "send_message", _fake_send):
+        result = _run(agent_fn("no tool needed", []))
+
+    assert captured["direct_openai_compatible"] is True
+    assert result["tool_calls"] == []
+
+
 def test_action_calling_agent_fn_forwards_prompt_and_tools(client: OpenClawClient) -> None:
     agent_fn = build_action_calling_agent_fn(client=client, model_name="m1")
     captured: dict[str, Any] = {}

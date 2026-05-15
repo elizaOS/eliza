@@ -1,8 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../../db/client";
 import { platformCredentials } from "../../../db/schemas/platform-credentials";
-import { creditsService } from "../credits";
-import { secretsService } from "../secrets";
 import type {
   AccountAnalytics,
   CreatePostInput,
@@ -19,6 +17,8 @@ import type {
 } from "../../types/social-media";
 import { extractErrorMessage } from "../../utils/error-handling";
 import { logger } from "../../utils/logger";
+import { creditsService } from "../credits";
+import { secretsService } from "../secrets";
 import { alertOnPostFailure } from "./alerts";
 import { blueskyProvider } from "./providers/bluesky";
 import { discordProvider } from "./providers/discord";

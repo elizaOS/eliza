@@ -127,7 +127,7 @@ function pickAsset(assets, matchers) {
   return null;
 }
 
-function serializeDownload(id, label, asset) {
+function serializeDownload(id, label, asset, release) {
   return {
     id,
     label,
@@ -135,6 +135,11 @@ function serializeDownload(id, label, asset) {
     url: asset.browser_download_url,
     sizeLabel: formatBytes(asset.size ?? 0),
     note: noteForAsset(asset.name),
+    releaseTagName: release?.tag_name ?? "unavailable",
+    releaseUrl: release?.html_url ?? RELEASES_PAGE_URL,
+    releasePublishedAtLabel: release?.published_at
+      ? publishedAtFormatter.format(new Date(release.published_at))
+      : "unavailable",
   };
 }
 
@@ -143,7 +148,7 @@ function pickAssetFromReleases(releases, matchers) {
     const assets = Array.isArray(release.assets) ? release.assets : [];
     const asset = pickAsset(assets, matchers);
     if (asset) {
-      return asset;
+      return { asset, release };
     }
   }
   return null;
@@ -172,7 +177,7 @@ function buildRelease(release, allReleases = []) {
     {
       id: "macos-arm64",
       label: "macOS (Apple Silicon)",
-      asset: pickAssetFromReleases(prioritizedReleases, [
+      pick: pickAssetFromReleases(prioritizedReleases, [
         (asset) =>
           /macos-arm64/i.test(asset.name) && /\.dmg$/i.test(asset.name),
         (asset) => /arm64/i.test(asset.name) && /\.dmg$/i.test(asset.name),
@@ -181,7 +186,7 @@ function buildRelease(release, allReleases = []) {
     {
       id: "macos-x64",
       label: "macOS (Intel)",
-      asset: pickAssetFromReleases(prioritizedReleases, [
+      pick: pickAssetFromReleases(prioritizedReleases, [
         (asset) => /macos-x64/i.test(asset.name) && /\.dmg$/i.test(asset.name),
         (asset) =>
           /mac/i.test(asset.name) &&
@@ -192,7 +197,7 @@ function buildRelease(release, allReleases = []) {
     {
       id: "windows-x64",
       label: "Windows",
-      asset: pickAssetFromReleases(prioritizedReleases, [
+      pick: pickAssetFromReleases(prioritizedReleases, [
         (asset) => /setup/i.test(asset.name) && /\.exe$/i.test(asset.name),
         (asset) => /win/i.test(asset.name) && /\.exe$/i.test(asset.name),
         (asset) => /win/i.test(asset.name) && /\.msix$/i.test(asset.name),
@@ -201,7 +206,7 @@ function buildRelease(release, allReleases = []) {
     {
       id: "linux-x64",
       label: "Linux",
-      asset: pickAssetFromReleases(prioritizedReleases, [
+      pick: pickAssetFromReleases(prioritizedReleases, [
         (asset) => /linux/i.test(asset.name) && /\.appimage$/i.test(asset.name),
         (asset) => /linux/i.test(asset.name) && /\.tar\.gz$/i.test(asset.name),
       ]),
@@ -209,14 +214,21 @@ function buildRelease(release, allReleases = []) {
     {
       id: "linux-deb",
       label: "Ubuntu / Debian",
-      asset: pickAssetFromReleases(prioritizedReleases, [
+      pick: pickAssetFromReleases(prioritizedReleases, [
         (asset) => /linux/i.test(asset.name) && /\.deb$/i.test(asset.name),
         (asset) => /\.deb$/i.test(asset.name),
       ]),
     },
   ]
-    .filter((entry) => entry.asset)
-    .map((entry) => serializeDownload(entry.id, entry.label, entry.asset));
+    .filter((entry) => entry.pick)
+    .map((entry) =>
+      serializeDownload(
+        entry.id,
+        entry.label,
+        entry.pick.asset,
+        entry.pick.release,
+      ),
+    );
 
   const checksumAsset =
     assets.find((asset) => asset.name === "SHA256SUMS.txt") ?? null;
@@ -238,7 +250,12 @@ function buildRelease(release, allReleases = []) {
   };
 }
 
-function buildPayload(release, allReleases = [], canaryRelease = null) {
+function buildPayload(
+  release,
+  allReleases = [],
+  canaryRelease = null,
+  stableRelease = release,
+) {
   const tagName = release?.tag_name ?? "unavailable";
   return {
     generatedAt: new Date().toISOString(),
@@ -261,7 +278,7 @@ function buildPayload(release, allReleases = [], canaryRelease = null) {
             }),
     },
     release: buildRelease(release, allReleases),
-    stableRelease: buildRelease(release, allReleases),
+    stableRelease: buildRelease(stableRelease, allReleases),
     canaryRelease: canaryRelease
       ? buildRelease(canaryRelease, allReleases)
       : null,
@@ -279,6 +296,9 @@ export type ReleaseDataDownload = {
   url: string;
   sizeLabel: string;
   note: string;
+  releaseTagName: string;
+  releaseUrl: string;
+  releasePublishedAtLabel: string;
 };
 
 export type ReleaseDataChecksum = {
@@ -369,7 +389,9 @@ async function main() {
     const canaryRelease = pickCanaryRelease(releases);
     // Use stable release as primary; fall back to any release if no stable exists
     const primaryRelease = stableRelease ?? pickRelease(releases);
-    await writePayload(buildPayload(primaryRelease, releases, canaryRelease));
+    await writePayload(
+      buildPayload(primaryRelease, releases, canaryRelease, stableRelease),
+    );
     const tag = primaryRelease?.tag_name ?? "no published release";
     const canaryTag = canaryRelease?.tag_name;
     console.log(

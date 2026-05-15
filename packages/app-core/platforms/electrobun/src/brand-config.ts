@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * Brand configuration for the elizaOS desktop shell.
@@ -75,11 +76,12 @@ function envFallback(...keys: string[]): string {
 
 function loadFileConfig(): Partial<DesktopBrandConfig> {
 	const envPath = envFallback("ELIZA_BRAND_CONFIG_PATH");
+	const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 	const candidatePaths = [
 		envPath,
 		path.resolve(process.cwd(), "brand-config.json"),
-		path.resolve(import.meta.dir, "..", "brand-config.json"),
-		path.resolve(import.meta.dir, "brand-config.json"),
+		path.resolve(moduleDir, "..", "brand-config.json"),
+		path.resolve(moduleDir, "brand-config.json"),
 	].filter(Boolean);
 
 	for (const candidate of candidatePaths) {

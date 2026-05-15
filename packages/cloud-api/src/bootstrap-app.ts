@@ -11,6 +11,7 @@ import { requestId } from "hono/request-id";
 import { runWithDbCacheAsync } from "@/db/client";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { corsMiddleware } from "@/lib/cors/cloud-api-hono-cors";
+import { observeCloudRequest } from "@/lib/observability/cloud-backend-observability";
 import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
@@ -38,6 +39,28 @@ export function createApp(): Hono<AppEnv> {
     c.set("requestId", c.get("requestId") ?? crypto.randomUUID());
     c.set("user", undefined);
     await next();
+  });
+  app.use("*", async (c, next) => {
+    const requestId = c.get("requestId") ?? crypto.randomUUID();
+    c.set("requestId", requestId);
+    return observeCloudRequest(
+      {
+        id: requestId,
+        method: c.req.method,
+        path: new URL(c.req.url).pathname,
+      },
+      async () => {
+        await next();
+        const user = c.get("user");
+        return {
+          result: undefined,
+          status: c.res.status,
+          userId: user?.id ?? null,
+          organizationId: user?.organization_id ?? null,
+          authMethod: c.get("authMethod") ?? null,
+        };
+      },
+    );
   });
   app.use("*", authMiddleware);
 

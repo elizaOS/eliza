@@ -5,8 +5,8 @@
  * Connection ID format: twilio:{organizationId}
  */
 
-import { twilioAutomationService } from "../../twilio-automation";
 import { logger } from "../../../utils/logger";
+import { twilioAutomationService } from "../../twilio-automation";
 import { Errors } from "../errors";
 import { OAUTH_PROVIDERS } from "../provider-registry";
 import type { OAuthConnection, TokenResult } from "../types";

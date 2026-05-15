@@ -194,7 +194,7 @@ function normalizeCapabilityName(value: string): string {
 
 function getRuntimeActionCapabilityNames(runtime: AgentRuntime): Set<string> {
   const names = new Set<string>();
-  for (const action of runtime.actions) {
+  for (const action of runtime.actions ?? []) {
     names.add(normalizeCapabilityName(action.name));
     for (const simile of action.similes ?? []) {
       names.add(normalizeCapabilityName(simile));
@@ -205,7 +205,7 @@ function getRuntimeActionCapabilityNames(runtime: AgentRuntime): Set<string> {
 
 function getRuntimePluginNames(runtime: AgentRuntime): Set<string> {
   return new Set(
-    runtime.plugins
+    (runtime.plugins ?? [])
       .map((plugin) => normalizeCapabilityName(plugin.name))
       .filter((name) => name.length > 0),
   );
@@ -261,7 +261,7 @@ async function buildAutomationNodeCatalog(
   const agentName = resolveAgentName(runtime, config);
   const adminEntityId = resolveAdminEntityId(config, agentName);
 
-  const runtimeActionNodes: AutomationNodeDescriptor[] = runtime.actions
+  const runtimeActionNodes: AutomationNodeDescriptor[] = (runtime.actions ?? [])
     .slice()
     .sort((left, right) => left.name.localeCompare(right.name))
     .map((action) => ({
@@ -281,7 +281,7 @@ async function buildAutomationNodeCatalog(
       availability: "enabled",
     }));
 
-  const runtimeProviderNodes: AutomationNodeDescriptor[] = runtime.providers
+  const runtimeProviderNodes: AutomationNodeDescriptor[] = (runtime.providers ?? [])
     .slice()
     .filter((provider) => !BLOCKED_AUTOMATION_PROVIDER_NODES.has(provider.name))
     .sort((left, right) => left.name.localeCompare(right.name))

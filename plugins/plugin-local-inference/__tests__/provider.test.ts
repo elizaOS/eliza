@@ -4,6 +4,7 @@ import {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
 	LOCAL_INFERENCE_MODEL_TYPES,
+	LOCAL_INFERENCE_PRIORITY,
 	LOCAL_INFERENCE_PROVIDER_ID,
 	localInferencePlugin,
 	LocalInferenceUnavailableError,
@@ -20,7 +21,7 @@ function runtimeWithService(service: Record<string, unknown>) {
 describe("local inference provider", () => {
 	it("exports one provider for text, embedding, TTS, and transcription", () => {
 		expect(localInferencePlugin.name).toBe(LOCAL_INFERENCE_PROVIDER_ID);
-		expect(localInferencePlugin.priority).toBe(0);
+		expect(localInferencePlugin.priority).toBe(LOCAL_INFERENCE_PRIORITY);
 		for (const modelType of LOCAL_INFERENCE_MODEL_TYPES) {
 			expect(localInferencePlugin.models?.[modelType]).toBeTypeOf("function");
 		}

@@ -5,7 +5,7 @@ export interface StateTutorialSettingsProps {
 
 export function StateTutorialSettings(
   props: StateTutorialSettingsProps,
-): JSX.Element {
+): React.JSX.Element {
   const { onHasSubscriptions, onContinue } = props;
   return (
     <section

@@ -2358,6 +2358,13 @@ async function shutdown() {
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
+    if (
+      signal === "SIGTERM" &&
+      process.env.ELIZA_UI_SMOKE_STUB_IGNORE_SIGTERM === "1"
+    ) {
+      console.warn("[playwright-ui-smoke-api-stub] ignoring SIGTERM");
+      return;
+    }
     void shutdown();
   });
 }

@@ -843,6 +843,66 @@ describe("LifeOpsBenchHandler", () => {
     expect(parsed.tool_calls[0].ok).toBe(false);
     expect(parsed.tool_calls[0].error).toMatch(/unsupported/);
   });
+
+  it("terminates repeated prompt after successful archive without invoking planner again", async () => {
+    const path = writeFixture();
+    let plannerCalls = 0;
+    const handler = new LifeOpsBenchHandler({
+      invokePlanner: async () => {
+        plannerCalls += 1;
+        return {
+          text: "Benchmark LifeOps action captured: ARCHIVE_THREAD",
+          toolCalls: [
+            {
+              id: "c1",
+              name: "ARCHIVE_THREAD",
+              arguments: { threadId: "t1" },
+            },
+          ],
+        };
+      },
+    });
+
+    {
+      const req = fakeReq("POST", {
+        task_id: "archive-complete",
+        world_snapshot_path: path,
+        now_iso: "2026-05-10T12:00:00Z",
+      });
+      const res = fakeRes();
+      await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/reset");
+      expect(res.getStatus()).toBe(200);
+    }
+
+    {
+      const req = fakeReq("POST", {
+        task_id: "archive-complete",
+        text: "archive thread t1",
+      });
+      const res = fakeRes();
+      await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/message");
+      expect(res.getStatus()).toBe(200);
+      const parsed = JSON.parse(res.getBody());
+      expect(parsed.tool_calls[0]).toMatchObject({
+        name: "ARCHIVE_THREAD",
+        ok: true,
+      });
+    }
+
+    {
+      const req = fakeReq("POST", {
+        task_id: "archive-complete",
+        text: "archive thread t1",
+      });
+      const res = fakeRes();
+      await handler.tryHandle(req, res, "/api/benchmark/lifeops_bench/message");
+      expect(res.getStatus()).toBe(200);
+      const parsed = JSON.parse(res.getBody());
+      expect(parsed.text).toBe("Archived t1.");
+      expect(parsed.tool_calls).toEqual([]);
+      expect(plannerCalls).toBe(1);
+    }
+  });
 });
 
 // --------------------------------------------------------------------------
@@ -881,6 +941,19 @@ describe("translateUmbrellaAction (P0-5)", () => {
     const translated = translateUmbrellaAction("CALENDAR", kwargs);
     expect(translated.name).toBe("CALENDAR");
     expect(translated.kwargs).toBe(kwargs);
+  });
+
+  it("maps ARCHIVE_THREAD to MESSAGE manage archive defaults", () => {
+    const translated = translateUmbrellaAction("ARCHIVE_THREAD", {
+      threadId: "thread_01464",
+    });
+    expect(translated.name).toBe("MESSAGE");
+    expect(translated.kwargs).toEqual({
+      threadId: "thread_01464",
+      source: "gmail",
+      operation: "manage",
+      manageOperation: "archive",
+    });
   });
 
   it("passes non-CALENDAR umbrellas through unchanged", () => {

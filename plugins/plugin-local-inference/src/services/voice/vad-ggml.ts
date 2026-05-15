@@ -128,11 +128,13 @@ export function resolveSileroVadGgmlLibrary(opts: {
 		"silero-vad-cpp",
 		"build",
 	);
-	for (const name of [
-		"libsilero_vad.so",
-		"libsilero_vad.dylib",
-		"silero_vad.dll",
-	]) {
+	const platformNames =
+		process.platform === "darwin"
+			? ["libsilero_vad.dylib", "libsilero_vad.so", "silero_vad.dll"]
+			: process.platform === "win32"
+				? ["silero_vad.dll", "libsilero_vad.dll"]
+				: ["libsilero_vad.so", "libsilero_vad.dylib", "silero_vad.dll"];
+	for (const name of platformNames) {
 		const candidate = path.join(buildDir, name);
 		if (existsSync(candidate)) return candidate;
 	}
@@ -222,7 +224,18 @@ export class SileroVadGgml implements VadLike {
 			);
 		}
 
-		const { lib, ffi } = await dlopenLibrary(libraryPath);
+		let opened: DlopenResult;
+		try {
+			opened = await dlopenLibrary(libraryPath);
+		} catch (e) {
+			throw new VadGgmlUnavailableError(
+				"library-load-failed",
+				`[vad-ggml] failed to load libsilero_vad at ${libraryPath}: ${
+					e instanceof Error ? e.message : String(e)
+				}`,
+			);
+		}
+		const { lib, ffi } = opened;
 
 		// `silero_vad_open` writes the new handle into `*out` (a u64
 		// pointer). We allocate an 8-byte BigUint64 view, hand its

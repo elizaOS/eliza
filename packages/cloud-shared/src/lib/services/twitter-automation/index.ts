@@ -7,9 +7,9 @@
  */
 
 import { type TOAuth2Scope, TwitterApi } from "twitter-api-v2";
+import { logger } from "../../utils/logger";
 import type { OAuthConnectionRole } from "../oauth/types";
 import { secretsService } from "../secrets";
-import { logger } from "../../utils/logger";
 import {
   getTwitterOAuth2ClientAuthMode,
   hasTwitterOAuth2ClientId,

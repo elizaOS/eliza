@@ -1,4 +1,5 @@
 {
+  "root": false,
   "extends": ["../../biome.json"],
   "linter": {
     "rules": {

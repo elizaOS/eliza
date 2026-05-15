@@ -2,8 +2,8 @@
  * User Context Service - system context for internal agent/runtime operations.
  */
 
-import type { ModelPreferences } from "./model-preferences";
 import type { AgentMode } from "./agent-mode-types";
+import type { ModelPreferences } from "./model-preferences";
 import type { PromptConfig } from "./prompt-presets";
 
 export interface OAuthConnection {

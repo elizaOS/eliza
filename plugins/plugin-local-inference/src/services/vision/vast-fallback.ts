@@ -22,6 +22,9 @@ export interface VisionVastFallbackOptions {
 		params: ImageDescriptionParams | string,
 		reason: VisionFallbackReason,
 	) => Promise<ImageDescriptionResult | string>;
+	apiKey?: string;
+	baseUrl?: string;
+	fetch?: typeof fetch;
 	log?: (message: string, detail?: Record<string, unknown>) => void;
 }
 
@@ -39,11 +42,21 @@ export function wrapImageDescriptionHandlerWithVastFallback(
 		log("[vision/vast-fallback] previous handler requested fallback", {
 			reason: outcome.reason,
 		});
-		if (!options.handler) return outcome;
+		const handler =
+			options.handler ??
+			(options.apiKey
+				? async (fallbackParams: ImageDescriptionParams | string) =>
+						describeWithHttpFallback(fallbackParams, {
+							apiKey: options.apiKey as string,
+							baseUrl: options.baseUrl ?? "https://api.vast.ai",
+							fetchImpl: options.fetch ?? fetch,
+						})
+				: null);
+		if (!handler) return outcome;
 
 		try {
 			return normalizeVisionDescription(
-				await options.handler(params, outcome.reason),
+				await handler(params, outcome.reason),
 			);
 		} catch (err) {
 			return {
@@ -53,4 +66,32 @@ export function wrapImageDescriptionHandlerWithVastFallback(
 			};
 		}
 	};
+}
+
+async function describeWithHttpFallback(
+	params: ImageDescriptionParams | string,
+	options: { apiKey: string; baseUrl: string; fetchImpl: typeof fetch },
+): Promise<ImageDescriptionResult> {
+	const body =
+		typeof params === "string"
+			? { image: { kind: "url", url: params } }
+			: {
+					image: { kind: "url", url: params.imageUrl },
+					...(params.prompt ? { prompt: params.prompt } : {}),
+				};
+	const response = await options.fetchImpl(
+		`${options.baseUrl.replace(/\/+$/, "")}/v1/vision/describe`,
+		{
+			method: "POST",
+			headers: {
+				authorization: `Bearer ${options.apiKey}`,
+				"content-type": "application/json",
+			},
+			body: JSON.stringify(body),
+		},
+	);
+	if (!response.ok) {
+		throw new Error(`vision fallback failed with ${response.status}`);
+	}
+	return (await response.json()) as ImageDescriptionResult;
 }

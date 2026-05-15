@@ -175,14 +175,16 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   await page.getByTestId("phone-dial-key-2").click();
   await page.getByTestId("phone-dial-key-3").click();
   await page.getByTestId("phone-dial-backspace").click();
-  await expect(page.getByLabel("Number being dialed")).toContainText("12");
+  await expect(
+    page.getByRole("status", { name: "phone.dialer.display" }),
+  ).toContainText("12");
   await page.getByRole("tab", { name: "Recent" }).click();
-  await expect(page.getByText("No recent calls.")).toBeVisible();
+  await expect(page.getByText("phone.recent.empty", { exact: true })).toBeVisible();
   const phoneContactsTab = page.getByRole("tab", { name: "Contacts" });
   if (await phoneContactsTab.isEnabled()) {
     await phoneContactsTab.click();
     await expect(
-      page.getByText("No contacts with phone numbers."),
+      page.getByText("phone.contacts.empty", { exact: true }),
     ).toBeVisible();
   } else {
     await expect(phoneContactsTab).toBeDisabled();
@@ -192,9 +194,9 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   await openAppWindow(page, byName.get("contacts")!);
   await page.getByTestId("contacts-search").fill("ada");
   await page.getByTestId("contacts-new").click();
-  await page.getByPlaceholder("Full name").fill("Ada Lovelace");
+  await page.getByPlaceholder("contacts.form.namePlaceholder").fill("Ada Lovelace");
   await page.getByPlaceholder("+1 555 123 4567").fill("+1 555 0100");
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("button", { name: "actions.cancel" }).click();
   await expect(page.getByTestId("contacts-shell")).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "contacts interactions");
 

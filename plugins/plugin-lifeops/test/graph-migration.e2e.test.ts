@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   createRealTestRuntime,
   type RealTestRuntimeResult,
-} from "../../../test/helpers/real-runtime";
+} from "../../../packages/test/helpers/real-runtime.ts";
 import { EntityStore } from "../src/lifeops/entities/store";
 import { SELF_ENTITY_ID } from "../src/lifeops/entities/types";
 import {

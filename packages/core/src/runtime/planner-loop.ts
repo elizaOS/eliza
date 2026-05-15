@@ -316,32 +316,36 @@ export async function runPlannerLoop(
 					plannerOutput.toolCalls,
 					plannerOutput.messageToUser,
 				);
-				trajectory.steps.push({
-					iteration,
-					thought: plannerOutput.thought,
-					terminalMessage: finalMessage,
-					terminalOnly: true,
-				});
-				const terminalEvaluator = terminalToolCallFinish(finalMessage);
-				trajectory.evaluatorOutputs.push(terminalEvaluator);
-				trajectory.context = appendEvaluationEvent({
-					context: trajectory.context,
-					iteration,
-					evaluator: terminalEvaluator,
-				});
-				const terminalEvalStartedAt = Date.now();
-				await recordGatedEvaluationStage({
-					recorder: params.recorder,
-					trajectoryId: params.trajectoryId,
-					parentStageId: params.parentStageId,
-					iteration,
-					startedAt: terminalEvalStartedAt,
-					endedAt: Date.now(),
-					output: terminalEvaluator,
-					reason: "terminal_tool_call",
-					logger: params.runtime.logger,
-				});
-				return {
+					trajectory.steps.push({
+						iteration,
+						thought: plannerOutput.thought,
+						terminalMessage: finalMessage,
+						terminalOnly: true,
+					});
+					const terminalEvaluator = terminalToolCallFinish(finalMessage);
+					const shouldRecordTerminalEvaluation =
+						trajectory.evaluatorOutputs.length > 0;
+					trajectory.evaluatorOutputs.push(terminalEvaluator);
+					trajectory.context = appendEvaluationEvent({
+						context: trajectory.context,
+						iteration,
+						evaluator: terminalEvaluator,
+					});
+					if (shouldRecordTerminalEvaluation) {
+						const terminalEvalStartedAt = Date.now();
+						await recordGatedEvaluationStage({
+							recorder: params.recorder,
+							trajectoryId: params.trajectoryId,
+							parentStageId: params.parentStageId,
+							iteration,
+							startedAt: terminalEvalStartedAt,
+							endedAt: Date.now(),
+							output: terminalEvaluator,
+							reason: "terminal_tool_call",
+							logger: params.runtime.logger,
+						});
+					}
+					return {
 					status: "finished",
 					trajectory,
 					evaluator: terminalEvaluator,

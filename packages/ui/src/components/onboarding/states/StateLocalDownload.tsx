@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AvatarHost } from "../../../avatar-runtime";
 
 export interface LocalDownloadProgress {
@@ -51,7 +51,7 @@ function useMockProgress(
 
 export function StateLocalDownload(
   props: StateLocalDownloadProps,
-): JSX.Element {
+): React.JSX.Element {
   const {
     transcript,
     progress: external,
@@ -63,6 +63,14 @@ export function StateLocalDownload(
   const mock = useMockProgress(useMock, onReady);
   const progress = external ?? mock;
   const percent = Math.round(progress.ratio * 100);
+  const notifiedExternalReady = useRef(false);
+
+  useEffect(() => {
+    if (external?.ready && !notifiedExternalReady.current) {
+      notifiedExternalReady.current = true;
+      onReady?.();
+    }
+  }, [external?.ready, onReady]);
 
   return (
     <section

@@ -15,7 +15,7 @@ import {
   resolveDetachedShellTarget,
   type WindowShellRoute,
 } from "@elizaos/ui/platform/window-shell";
-import { CodingAgentSettingsSection } from "@elizaos/ui/slots/task-coordinator-slots.js";
+import { CodingAgentSettingsSection } from "@elizaos/ui/slots/task-coordinator-slots";
 import { useApp } from "@elizaos/ui/state/useApp";
 import {
   type ComponentType,

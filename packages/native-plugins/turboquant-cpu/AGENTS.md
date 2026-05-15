@@ -55,7 +55,7 @@ The smoke test must print `[turboquant_smoke] PASS` and exit 0.
 
 This library is the user-space half of TBQ3/TBQ4 V-cache support.
 Every shipping Eliza-1 tier (`0_8b`, `2b`, `4b`, `9b`, `27b`,
-`27b-256k`, `27b-1m`) defaults to QJL K + Q4_POLAR V at >8k context
+`27b-256k`) defaults to QJL K + Q4_POLAR V at >8k context
 and falls back to QJL K + TBQ3_0 V at ≤8k context (see
 `packages/shared/src/local-inference/CONTEXT_SCALING.md` table 1 +
 `packages/shared/src/local-inference/catalog.ts::runtimeForTier`).
@@ -71,7 +71,6 @@ from this library yet:
 | eliza-1-9b   |          ✓ shipped | ✓ buildable via fused_turboquant_apply | required ≥65k |
 | eliza-1-27b  |          ✓ shipped | ✓ buildable | required ≥65k |
 | eliza-1-27b-256k | ✓ shipped | ✓ buildable | required (256k) |
-| eliza-1-27b-1m   | ✓ shipped | ✓ buildable | required (1m) |
 
 See `packages/training/reports/eliza1-quant-matrix-2026-05-14.md` for
 the full tier × quant-type matrix and per-cell evidence (shipped

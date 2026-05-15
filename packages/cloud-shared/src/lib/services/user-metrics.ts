@@ -30,7 +30,11 @@ import {
   sql,
 } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
-import { type DailyMetric, dailyMetrics, type MetricsPlatform } from "../../db/schemas/daily-metrics";
+import {
+  type DailyMetric,
+  dailyMetrics,
+  type MetricsPlatform,
+} from "../../db/schemas/daily-metrics";
 import { memoryTable, roomTable } from "../../db/schemas/eliza";
 import { platformCredentials } from "../../db/schemas/platform-credentials";
 import { type RetentionCohort, retentionCohorts } from "../../db/schemas/retention-cohorts";

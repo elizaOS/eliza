@@ -45,13 +45,19 @@ interface DrizzleMigration {
 }
 
 async function getJournalEntries(): Promise<Journal> {
-  const journalPath = path.join(process.cwd(), "packages/db/migrations/meta/_journal.json");
+  const journalPath = path.join(
+    process.cwd(),
+    "packages/cloud-shared/src/db/migrations/meta/_journal.json",
+  );
   const content = await readFile(journalPath, "utf-8");
   return JSON.parse(content) as Journal;
 }
 
 async function getMigrationFiles(): Promise<string[]> {
-  const migrationsDir = path.join(process.cwd(), "packages/db/migrations");
+  const migrationsDir = path.join(
+    process.cwd(),
+    "packages/cloud-shared/src/db/migrations",
+  );
   const files = await readdir(migrationsDir);
   return files
     .filter((f) => f.endsWith(".sql"))

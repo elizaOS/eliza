@@ -42,6 +42,9 @@ export interface VisionCloudFallbackOptions {
 		params: ImageDescriptionParams | string,
 		reason: VisionFallbackReason,
 	) => Promise<ImageDescriptionResult | string>;
+	token?: string;
+	baseUrl?: string;
+	fetch?: typeof fetch;
 	log?: (message: string, detail?: Record<string, unknown>) => void;
 }
 
@@ -164,12 +167,22 @@ export function wrapImageDescriptionHandlerWithCloudFallback(
 		log("[vision/cloud-fallback] local handler requested fallback", {
 			reason: localOutcome.reason,
 		});
-		if (!options.handler) return localOutcome;
+			const handler =
+				options.handler ??
+				(options.token
+					? async (fallbackParams: ImageDescriptionParams | string) =>
+							describeWithHttpFallback(fallbackParams, {
+								token: options.token as string,
+								baseUrl: options.baseUrl ?? "https://www.elizacloud.ai/api",
+								fetchImpl: options.fetch ?? fetch,
+							})
+					: null);
+			if (!handler) return localOutcome;
 
-		try {
-			return normalizeVisionDescription(
-				await options.handler(params, localOutcome.reason),
-			);
+			try {
+				return normalizeVisionDescription(
+					await handler(params, localOutcome.reason),
+				);
 		} catch (err) {
 			return {
 				kind: "fallback",
@@ -178,4 +191,32 @@ export function wrapImageDescriptionHandlerWithCloudFallback(
 			};
 		}
 	};
+}
+
+async function describeWithHttpFallback(
+	params: ImageDescriptionParams | string,
+	options: { token: string; baseUrl: string; fetchImpl: typeof fetch },
+): Promise<ImageDescriptionResult> {
+	const body =
+		typeof params === "string"
+			? { image: { kind: "url", url: params } }
+			: {
+					image: { kind: "url", url: params.imageUrl },
+					...(params.prompt ? { prompt: params.prompt } : {}),
+				};
+	const response = await options.fetchImpl(
+		`${options.baseUrl.replace(/\/+$/, "")}/v1/vision/describe`,
+		{
+			method: "POST",
+			headers: {
+				authorization: `Bearer ${options.token}`,
+				"content-type": "application/json",
+			},
+			body: JSON.stringify(body),
+		},
+	);
+	if (!response.ok) {
+		throw new Error(`vision fallback failed with ${response.status}`);
+	}
+	return (await response.json()) as ImageDescriptionResult;
 }

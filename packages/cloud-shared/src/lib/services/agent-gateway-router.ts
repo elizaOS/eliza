@@ -1,18 +1,15 @@
 import { createHash, randomUUID } from "crypto";
 import { type AgentSandbox, agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { usersRepository } from "../../db/repositories/users";
-import {
-  type AgentGatewayRelaySession,
-  agentGatewayRelayService,
-} from "./agent-gateway-relay";
+import { logger } from "../utils/logger";
+import { normalizePhoneNumber } from "../utils/phone-normalization";
+import { type AgentGatewayRelaySession, agentGatewayRelayService } from "./agent-gateway-relay";
 import {
   readManagedAgentDiscordBinding,
   readManagedAgentDiscordGateway,
 } from "./eliza-agent-config";
 import type { BridgeRequest, BridgeResponse } from "./eliza-sandbox";
 import { elizaSandboxService } from "./eliza-sandbox";
-import { logger } from "../utils/logger";
-import { normalizePhoneNumber } from "../utils/phone-normalization";
 
 export type AgentGatewayRouteReason =
   | "not_linked"

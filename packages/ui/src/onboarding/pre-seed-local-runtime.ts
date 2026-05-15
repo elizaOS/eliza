@@ -11,8 +11,8 @@
  * Stock-Android Capacitor APKs (installed from the Play Store onto a
  * non-branded handset) MUST NOT pre-seed: the user actively chooses
  * Cloud / Remote / Local from `RuntimeGate`, and there is no on-device
- * agent listening at 127.0.0.1:31337 unless the user explicitly picks
- * Local (which then goes through `ElizaAgentService.shouldAutoStart`).
+ * agent unless the user explicitly picks Local (which then goes through
+ * `ElizaAgentService.shouldAutoStart` and the native Agent bridge).
  * Pre-seeding on stock Android would skip the picker and dead-end the
  * boot in a "Failed to connect to /127.0.0.1:31337" loop.
  *
@@ -34,7 +34,7 @@
 
 import { isAospElizaUserAgent } from "../platform/aosp-user-agent";
 import {
-  ANDROID_LOCAL_AGENT_API_BASE,
+  ANDROID_LOCAL_AGENT_IPC_BASE,
   ANDROID_LOCAL_AGENT_LABEL,
   ANDROID_LOCAL_AGENT_SERVER_ID,
   persistMobileRuntimeModeForServerTarget,
@@ -72,7 +72,7 @@ function writeLocalAgentActiveServer(): void {
     id: ANDROID_LOCAL_AGENT_SERVER_ID,
     kind: "remote" as const,
     label: ANDROID_LOCAL_AGENT_LABEL,
-    apiBase: ANDROID_LOCAL_AGENT_API_BASE,
+    apiBase: ANDROID_LOCAL_AGENT_IPC_BASE,
   };
   try {
     window.localStorage.setItem(

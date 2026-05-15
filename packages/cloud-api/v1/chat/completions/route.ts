@@ -1160,7 +1160,7 @@ async function handleStreamingRequest(
         model,
       });
     },
-  });
+  } as Parameters<typeof streamText>[0]);
 
   // Convert to OpenAI-compatible SSE stream
   const encoder = new TextEncoder();
@@ -1403,7 +1403,7 @@ async function handleNonStreamingRequest(
         maxOutputTokens: effectiveMaxTokens,
       }),
       ...cotOptions,
-    });
+    } as Parameters<typeof generateText>[0]);
 
     // Bill using actual usage from SDK response
     const billingContext = {

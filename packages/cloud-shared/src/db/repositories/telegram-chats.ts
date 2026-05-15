@@ -1,10 +1,6 @@
 import { and, desc, eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../client";
-import {
-  type NewTelegramChat,
-  type TelegramChat,
-  telegramChats,
-} from "../schemas/telegram-chats";
+import { type NewTelegramChat, type TelegramChat, telegramChats } from "../schemas/telegram-chats";
 
 class TelegramChatsRepository {
   async findByOrganization(organizationId: string): Promise<TelegramChat[]> {

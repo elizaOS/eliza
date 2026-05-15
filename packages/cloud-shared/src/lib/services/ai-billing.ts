@@ -20,16 +20,12 @@ import {
   normalizeModelName,
   PLATFORM_MARKUP_MULTIPLIER,
 } from "../pricing";
-import {
-  type CreditReservation,
-  creditsService,
-  InsufficientCreditsError,
-} from "./credits";
+import { logger } from "../utils/logger";
+import type { PricingBillingSource } from "./ai-pricing-definitions";
+import { type CreditReservation, creditsService, InsufficientCreditsError } from "./credits";
 import { generationsService } from "./generations";
 import { redeemableEarningsService } from "./redeemable-earnings";
 import { usageService } from "./usage";
-import { logger } from "../utils/logger";
-import type { PricingBillingSource } from "./ai-pricing-definitions";
 
 // ============================================================================
 // Types

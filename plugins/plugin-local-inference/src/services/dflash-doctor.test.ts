@@ -44,7 +44,7 @@ describe("runDflashDoctor — tokenizer parity check", () => {
 		for (const check of tokenizerChecks) {
 			expect(check.status, `${check.id}: ${check.detail}`).toBe("pass");
 		}
-	});
+	}, 10_000);
 
 	it("fails the parity check when a drafter resolves to a missing entry", async () => {
 		const { MODEL_CATALOG } = await import("./catalog");

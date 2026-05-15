@@ -28,6 +28,7 @@
  */
 
 import { client } from "../api";
+import { fetchWithCsrf } from "../api/csrf-client";
 import { selectRecommendedModelForSlot } from "../services/local-inference/recommendation";
 import type {
   CatalogModel,
@@ -61,7 +62,7 @@ async function waitForLocalAgent(apiBase: string): Promise<boolean> {
   const url = `${apiBase.replace(/\/$/, "")}/api/health`;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(url, { method: "GET" });
+      const res = await fetchWithCsrf(url, { method: "GET" });
       if (res.ok) return true;
     } catch {
       // network not ready yet; fall through to sleep

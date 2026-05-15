@@ -5,11 +5,11 @@
  * when the runtime cache must rebuild (MCP, knowledge, web search changes, etc.).
  */
 
+import { invalidateRuntimeFromRegistry } from "../eliza/runtime-cache-registry";
+import { logger } from "../utils/logger";
 import { agentStateCache } from "./agent-state-cache";
 import { cache } from "./client";
 import { CacheKeys } from "./keys";
-import { invalidateRuntimeFromRegistry } from "../eliza/runtime-cache-registry";
-import { logger } from "../utils/logger";
 
 /** Invalidates character data and the cached runtime for the next request. */
 export async function invalidateCharacterCache(characterId: string): Promise<void> {
