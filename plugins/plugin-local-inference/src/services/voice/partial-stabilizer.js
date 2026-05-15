@@ -34,80 +34,80 @@ const DEFAULT_AGREEMENT_COUNT = 2;
  * shows agreement on the shared prefix "sa" and only "t" stays pending.
  */
 function commonPrefixLength(a, b) {
-    const n = Math.min(a.length, b.length);
-    let i = 0;
-    while (i < n && a.charCodeAt(i) === b.charCodeAt(i))
-        i++;
-    return i;
+	const n = Math.min(a.length, b.length);
+	let i = 0;
+	while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i++;
+	return i;
 }
 export class PartialStabilizer {
-    agreementCount;
-    /**
-     * The most recent partials, oldest first. We only need the last
-     * `agreementCount` entries — the agreed prefix is the intersection of
-     * all of them. Length 0 before any feed.
-     */
-    history = [];
-    /** The longest committed stable prefix so far. Monotonically grows. */
-    committed = "";
-    constructor(options = {}) {
-        const requested = options.agreementCount ?? DEFAULT_AGREEMENT_COUNT;
-        if (!Number.isFinite(requested) || requested < 1) {
-            throw new Error(`[partial-stabilizer] agreementCount must be a finite integer >= 1; got ${String(requested)}`);
-        }
-        this.agreementCount = Math.floor(requested);
-    }
-    /**
-     * Feed the latest streaming-ASR partial. Returns the stable / pending
-     * split. The stable prefix is monotonically non-decreasing across calls
-     * — once a span has been agreed `n` times it stays committed even if a
-     * later partial briefly disagrees (the ASR will catch up; rolling back
-     * would cause downstream stutter).
-     */
-    feed(partial) {
-        this.history.push(partial);
-        if (this.history.length > this.agreementCount) {
-            this.history.shift();
-        }
-        if (this.history.length < this.agreementCount) {
-            // Not enough partials yet to confirm anything new — only the
-            // already-committed prefix is stable.
-            return {
-                stable: this.committed,
-                pending: partial.startsWith(this.committed)
-                    ? partial.slice(this.committed.length)
-                    : partial,
-            };
-        }
-        // Intersect: agreed prefix = common prefix across the whole agreement
-        // window.
-        let agreed = this.history[0];
-        for (let i = 1; i < this.history.length; i++) {
-            const sharedLen = commonPrefixLength(agreed, this.history[i]);
-            if (sharedLen < agreed.length) {
-                agreed = agreed.slice(0, sharedLen);
-            }
-            if (agreed.length === 0)
-                break;
-        }
-        if (agreed.length > this.committed.length) {
-            this.committed = agreed;
-        }
-        return {
-            stable: this.committed,
-            pending: partial.startsWith(this.committed)
-                ? partial.slice(this.committed.length)
-                : partial,
-        };
-    }
-    /** The current committed stable prefix (read-only view). */
-    stable() {
-        return this.committed;
-    }
-    /** Clear all history. Call at utterance boundaries. */
-    reset() {
-        this.history = [];
-        this.committed = "";
-    }
+	agreementCount;
+	/**
+	 * The most recent partials, oldest first. We only need the last
+	 * `agreementCount` entries — the agreed prefix is the intersection of
+	 * all of them. Length 0 before any feed.
+	 */
+	history = [];
+	/** The longest committed stable prefix so far. Monotonically grows. */
+	committed = "";
+	constructor(options = {}) {
+		const requested = options.agreementCount ?? DEFAULT_AGREEMENT_COUNT;
+		if (!Number.isFinite(requested) || requested < 1) {
+			throw new Error(
+				`[partial-stabilizer] agreementCount must be a finite integer >= 1; got ${String(requested)}`,
+			);
+		}
+		this.agreementCount = Math.floor(requested);
+	}
+	/**
+	 * Feed the latest streaming-ASR partial. Returns the stable / pending
+	 * split. The stable prefix is monotonically non-decreasing across calls
+	 * — once a span has been agreed `n` times it stays committed even if a
+	 * later partial briefly disagrees (the ASR will catch up; rolling back
+	 * would cause downstream stutter).
+	 */
+	feed(partial) {
+		this.history.push(partial);
+		if (this.history.length > this.agreementCount) {
+			this.history.shift();
+		}
+		if (this.history.length < this.agreementCount) {
+			// Not enough partials yet to confirm anything new — only the
+			// already-committed prefix is stable.
+			return {
+				stable: this.committed,
+				pending: partial.startsWith(this.committed)
+					? partial.slice(this.committed.length)
+					: partial,
+			};
+		}
+		// Intersect: agreed prefix = common prefix across the whole agreement
+		// window.
+		let agreed = this.history[0];
+		for (let i = 1; i < this.history.length; i++) {
+			const sharedLen = commonPrefixLength(agreed, this.history[i]);
+			if (sharedLen < agreed.length) {
+				agreed = agreed.slice(0, sharedLen);
+			}
+			if (agreed.length === 0) break;
+		}
+		if (agreed.length > this.committed.length) {
+			this.committed = agreed;
+		}
+		return {
+			stable: this.committed,
+			pending: partial.startsWith(this.committed)
+				? partial.slice(this.committed.length)
+				: partial,
+		};
+	}
+	/** The current committed stable prefix (read-only view). */
+	stable() {
+		return this.committed;
+	}
+	/** Clear all history. Call at utterance boundaries. */
+	reset() {
+		this.history = [];
+		this.committed = "";
+	}
 }
 //# sourceMappingURL=partial-stabilizer.js.map

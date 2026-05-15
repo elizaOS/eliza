@@ -20,16 +20,16 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { localInferenceRoot } from "./paths";
 export const DEFAULT_CACHE_TTLS = {
-    short: 5 * 60 * 1000,
-    long: 60 * 60 * 1000,
-    extended: 24 * 60 * 60 * 1000,
+	short: 5 * 60 * 1000,
+	long: 60 * 60 * 1000,
+	extended: 24 * 60 * 60 * 1000,
 };
 /**
  * Root directory for all local llama-cache state. Anything inside is
  * Eliza-owned and safe to delete to reset the cache.
  */
 export function llamaCacheRoot() {
-    return path.join(localInferenceRoot(), "llama-cache");
+	return path.join(localInferenceRoot(), "llama-cache");
 }
 /**
  * Per-model-hash cache directory. Slot save files for one model never
@@ -37,10 +37,10 @@ export function llamaCacheRoot() {
  * wipe the cache.
  */
 export function cacheRoot(modelHash) {
-    if (!modelHash) {
-        throw new Error("[cache-bridge] cacheRoot requires a non-empty modelHash");
-    }
-    return path.join(llamaCacheRoot(), modelHash);
+	if (!modelHash) {
+		throw new Error("[cache-bridge] cacheRoot requires a non-empty modelHash");
+	}
+	return path.join(llamaCacheRoot(), modelHash);
 }
 /**
  * llama-server `--slot-save-path` argument: the directory llama-server
@@ -48,7 +48,7 @@ export function cacheRoot(modelHash) {
  * `cache_prompt: true`. One directory per model hash.
  */
 export function slotSavePath(modelHash) {
-    return cacheRoot(modelHash);
+	return cacheRoot(modelHash);
 }
 /**
  * Stable model-fingerprint hash. Combines the absolute paths of the
@@ -56,17 +56,17 @@ export function slotSavePath(modelHash) {
  * configurations don't share a slot directory.
  */
 export function buildModelHash(input) {
-    const hash = createHash("sha256");
-    hash.update(input.targetModelPath);
-    hash.update("");
-    hash.update(input.drafterModelPath ?? "");
-    hash.update("");
-    hash.update(input.cacheTypeK ?? "");
-    hash.update("");
-    hash.update(input.cacheTypeV ?? "");
-    hash.update("");
-    hash.update(input.extra ?? "");
-    return hash.digest("hex").slice(0, 16);
+	const hash = createHash("sha256");
+	hash.update(input.targetModelPath);
+	hash.update("");
+	hash.update(input.drafterModelPath ?? "");
+	hash.update("");
+	hash.update(input.cacheTypeK ?? "");
+	hash.update("");
+	hash.update(input.cacheTypeV ?? "");
+	hash.update("");
+	hash.update(input.extra ?? "");
+	return hash.digest("hex").slice(0, 16);
 }
 /**
  * Map a `promptCacheKey` to a llama-server slot id in [0, parallel).
@@ -84,18 +84,15 @@ export function buildModelHash(input) {
  * llama-server "any free slot" sentinel).
  */
 export function deriveSlotId(promptCacheKey, parallel) {
-    if (!Number.isFinite(parallel) || parallel <= 0)
-        return -1;
-    if (!promptCacheKey)
-        return -1;
-    const integerParallel = Math.max(1, Math.floor(parallel));
-    if (integerParallel === 1)
-        return 0;
-    const digest = createHash("sha256").update(promptCacheKey).digest();
-    // Read first 4 bytes as an unsigned big-endian int. Plenty of entropy
-    // for parallel ≤ 64.
-    const value = digest.readUInt32BE(0);
-    return value % integerParallel;
+	if (!Number.isFinite(parallel) || parallel <= 0) return -1;
+	if (!promptCacheKey) return -1;
+	const integerParallel = Math.max(1, Math.floor(parallel));
+	if (integerParallel === 1) return 0;
+	const digest = createHash("sha256").update(promptCacheKey).digest();
+	// Read first 4 bytes as an unsigned big-endian int. Plenty of entropy
+	// for parallel ≤ 64.
+	const value = digest.readUInt32BE(0);
+	return value % integerParallel;
 }
 /**
  * Convert the runtime-side `CacheTTL` enum + OpenAI extended retention
@@ -103,11 +100,9 @@ export function deriveSlotId(promptCacheKey, parallel) {
  * sweep uses when deciding whether a slot file is still live.
  */
 export function ttlMsForKey(ttl, ttls = DEFAULT_CACHE_TTLS) {
-    if (ttl === "long")
-        return ttls.long;
-    if (ttl === "extended")
-        return ttls.extended ?? ttls.long;
-    return ttls.short;
+	if (ttl === "long") return ttls.long;
+	if (ttl === "extended") return ttls.extended ?? ttls.long;
+	return ttls.short;
 }
 /**
  * Build the basename for a persisted slot/conversation `.bin` file with
@@ -119,7 +114,7 @@ export function ttlMsForKey(ttl, ttls = DEFAULT_CACHE_TTLS) {
  * for those files.
  */
 export function slotCacheFileName(base, ttl) {
-    return `${base}.${ttl}.bin`;
+	return `${base}.${ttl}.bin`;
 }
 /**
  * Parse the TTL class encoded into a slot `.bin` filename by
@@ -128,20 +123,21 @@ export function slotCacheFileName(base, ttl) {
  * (the prior global behaviour for persisted slot files).
  */
 export function parseSlotCacheTtlClass(fileName) {
-    // `<base>.<ttl>.bin` — the penultimate dot-component is the class.
-    const withoutBin = fileName.endsWith(".bin")
-        ? fileName.slice(0, -".bin".length)
-        : fileName;
-    const lastDot = withoutBin.lastIndexOf(".");
-    if (lastDot < 0)
-        return undefined;
-    const candidate = withoutBin.slice(lastDot + 1);
-    if (candidate === "short" ||
-        candidate === "long" ||
-        candidate === "extended") {
-        return candidate;
-    }
-    return undefined;
+	// `<base>.<ttl>.bin` — the penultimate dot-component is the class.
+	const withoutBin = fileName.endsWith(".bin")
+		? fileName.slice(0, -".bin".length)
+		: fileName;
+	const lastDot = withoutBin.lastIndexOf(".");
+	if (lastDot < 0) return undefined;
+	const candidate = withoutBin.slice(lastDot + 1);
+	if (
+		candidate === "short" ||
+		candidate === "long" ||
+		candidate === "extended"
+	) {
+		return candidate;
+	}
+	return undefined;
 }
 /**
  * Sweep the slot-save directory and delete files older than their
@@ -154,77 +150,72 @@ export function parseSlotCacheTtlClass(fileName) {
  * Returns the number of files deleted. Missing directories are not
  * errors — eviction on a clean install just no-ops.
  */
-export async function evictExpired(rootDir, ttls = DEFAULT_CACHE_TTLS, now = Date.now()) {
-    let entries;
-    try {
-        entries = await fs.readdir(rootDir);
-    }
-    catch (err) {
-        if (err.code === "ENOENT")
-            return 0;
-        throw err;
-    }
-    let deleted = 0;
-    for (const entry of entries) {
-        const full = path.join(rootDir, entry);
-        let stat;
-        try {
-            stat = await fs.stat(full);
-        }
-        catch {
-            continue;
-        }
-        if (!stat.isFile())
-            continue;
-        const ttlClass = parseSlotCacheTtlClass(entry) ?? "long";
-        const horizon = ttlMsForKey(ttlClass, ttls);
-        if (now - stat.mtimeMs > horizon) {
-            try {
-                await fs.unlink(full);
-                deleted += 1;
-            }
-            catch {
-                // Best-effort cleanup; another process may already have removed it.
-            }
-        }
-    }
-    return deleted;
+export async function evictExpired(
+	rootDir,
+	ttls = DEFAULT_CACHE_TTLS,
+	now = Date.now(),
+) {
+	let entries;
+	try {
+		entries = await fs.readdir(rootDir);
+	} catch (err) {
+		if (err.code === "ENOENT") return 0;
+		throw err;
+	}
+	let deleted = 0;
+	for (const entry of entries) {
+		const full = path.join(rootDir, entry);
+		let stat;
+		try {
+			stat = await fs.stat(full);
+		} catch {
+			continue;
+		}
+		if (!stat.isFile()) continue;
+		const ttlClass = parseSlotCacheTtlClass(entry) ?? "long";
+		const horizon = ttlMsForKey(ttlClass, ttls);
+		if (now - stat.mtimeMs > horizon) {
+			try {
+				await fs.unlink(full);
+				deleted += 1;
+			} catch {
+				// Best-effort cleanup; another process may already have removed it.
+			}
+		}
+	}
+	return deleted;
 }
 /**
  * Snapshot of the on-disk slot-save directory. Used by the public
  * `getLocalCacheStats()` debugging endpoint.
  */
 export async function readCacheStats(rootDir, now = Date.now()) {
-    let entries;
-    try {
-        entries = await fs.readdir(rootDir);
-    }
-    catch (err) {
-        if (err.code === "ENOENT")
-            return [];
-        throw err;
-    }
-    const out = [];
-    for (const entry of entries) {
-        const full = path.join(rootDir, entry);
-        let stat;
-        try {
-            stat = await fs.stat(full);
-        }
-        catch {
-            continue;
-        }
-        if (!stat.isFile())
-            continue;
-        out.push({
-            file: entry,
-            sizeBytes: stat.size,
-            mtimeMs: stat.mtimeMs,
-            ageMs: Math.max(0, now - stat.mtimeMs),
-        });
-    }
-    out.sort((left, right) => left.file.localeCompare(right.file));
-    return out;
+	let entries;
+	try {
+		entries = await fs.readdir(rootDir);
+	} catch (err) {
+		if (err.code === "ENOENT") return [];
+		throw err;
+	}
+	const out = [];
+	for (const entry of entries) {
+		const full = path.join(rootDir, entry);
+		let stat;
+		try {
+			stat = await fs.stat(full);
+		} catch {
+			continue;
+		}
+		if (!stat.isFile()) continue;
+		out.push({
+			file: entry,
+			sizeBytes: stat.size,
+			mtimeMs: stat.mtimeMs,
+			ageMs: Math.max(0, now - stat.mtimeMs),
+		});
+	}
+	out.sort((left, right) => left.file.localeCompare(right.file));
+	return out;
 }
 /**
  * Resolve `promptCacheKey` from a `providerOptions` payload as emitted
@@ -234,15 +225,12 @@ export async function readCacheStats(rootDir, now = Date.now()) {
  * "_default" session in that case.
  */
 export function extractPromptCacheKey(providerOptions) {
-    if (!providerOptions || typeof providerOptions !== "object")
-        return null;
-    const eliza = providerOptions.eliza;
-    if (!eliza || typeof eliza !== "object")
-        return null;
-    const raw = eliza.promptCacheKey;
-    if (typeof raw !== "string" || raw.length === 0)
-        return null;
-    return raw;
+	if (!providerOptions || typeof providerOptions !== "object") return null;
+	const eliza = providerOptions.eliza;
+	if (!eliza || typeof eliza !== "object") return null;
+	const raw = eliza.promptCacheKey;
+	if (typeof raw !== "string" || raw.length === 0) return null;
+	return raw;
 }
 /**
  * Resolve `prefixHash` from `providerOptions.eliza.prefixHash`. Mirrors
@@ -257,15 +245,12 @@ export function extractPromptCacheKey(providerOptions) {
  * slot regardless of how their tail content differs.
  */
 export function extractPrefixHash(providerOptions) {
-    if (!providerOptions || typeof providerOptions !== "object")
-        return null;
-    const eliza = providerOptions.eliza;
-    if (!eliza || typeof eliza !== "object")
-        return null;
-    const raw = eliza.prefixHash;
-    if (typeof raw !== "string" || raw.length === 0)
-        return null;
-    return raw;
+	if (!providerOptions || typeof providerOptions !== "object") return null;
+	const eliza = providerOptions.eliza;
+	if (!eliza || typeof eliza !== "object") return null;
+	const raw = eliza.prefixHash;
+	if (typeof raw !== "string" || raw.length === 0) return null;
+	return raw;
 }
 /**
  * Hash the longest stable prefix of `segments`. Stops at the first
@@ -279,20 +264,17 @@ export function extractPrefixHash(providerOptions) {
  * realistic concern for any plausible number of concurrent prefixes.
  */
 export function hashStablePrefix(segments) {
-    if (segments.length === 0)
-        return null;
-    const hash = createHash("sha256");
-    let consumed = 0;
-    for (const segment of segments) {
-        if (!segment.stable)
-            break;
-        hash.update(segment.content);
-        hash.update("");
-        consumed += 1;
-    }
-    if (consumed === 0)
-        return null;
-    return hash.digest("hex").slice(0, 16);
+	if (segments.length === 0) return null;
+	const hash = createHash("sha256");
+	let consumed = 0;
+	for (const segment of segments) {
+		if (!segment.stable) break;
+		hash.update(segment.content);
+		hash.update("");
+		consumed += 1;
+	}
+	if (consumed === 0) return null;
+	return hash.digest("hex").slice(0, 16);
 }
 /**
  * Extract the per-segment stable annotations from a `providerOptions`
@@ -304,25 +286,20 @@ export function hashStablePrefix(segments) {
  * to `extractPromptCacheKey` / `extractPrefixHash`.
  */
 export function extractAnnotatedSegments(providerOptions) {
-    if (!providerOptions || typeof providerOptions !== "object")
-        return null;
-    const eliza = providerOptions.eliza;
-    if (!eliza || typeof eliza !== "object")
-        return null;
-    const raw = eliza.promptSegments;
-    if (!Array.isArray(raw))
-        return null;
-    const out = [];
-    for (const entry of raw) {
-        if (!entry || typeof entry !== "object")
-            return null;
-        const content = entry.content;
-        const stable = entry.stable;
-        if (typeof content !== "string" || typeof stable !== "boolean")
-            return null;
-        out.push({ content, stable });
-    }
-    return out;
+	if (!providerOptions || typeof providerOptions !== "object") return null;
+	const eliza = providerOptions.eliza;
+	if (!eliza || typeof eliza !== "object") return null;
+	const raw = eliza.promptSegments;
+	if (!Array.isArray(raw)) return null;
+	const out = [];
+	for (const entry of raw) {
+		if (!entry || typeof entry !== "object") return null;
+		const content = entry.content;
+		const stable = entry.stable;
+		if (typeof content !== "string" || typeof stable !== "boolean") return null;
+		out.push({ content, stable });
+	}
+	return out;
 }
 /**
  * Resolve the conversation handle id from a `providerOptions` payload.
@@ -334,15 +311,12 @@ export function extractAnnotatedSegments(providerOptions) {
  * agentic loops.
  */
 export function extractConversationId(providerOptions) {
-    if (!providerOptions || typeof providerOptions !== "object")
-        return null;
-    const eliza = providerOptions.eliza;
-    if (!eliza || typeof eliza !== "object")
-        return null;
-    const raw = eliza.conversationId;
-    if (typeof raw !== "string" || raw.length === 0)
-        return null;
-    return raw;
+	if (!providerOptions || typeof providerOptions !== "object") return null;
+	const eliza = providerOptions.eliza;
+	if (!eliza || typeof eliza !== "object") return null;
+	const raw = eliza.conversationId;
+	if (typeof raw !== "string" || raw.length === 0) return null;
+	return raw;
 }
 /**
  * Resolve the stable per-call cache key for the local backends. Order of
@@ -355,18 +329,15 @@ export function extractConversationId(providerOptions) {
  * Returns null when none are available.
  */
 export function resolveLocalCacheKey(providerOptions) {
-    const conversationId = extractConversationId(providerOptions);
-    if (conversationId)
-        return `conv:${conversationId}`;
-    const segments = extractAnnotatedSegments(providerOptions);
-    if (segments) {
-        const hashed = hashStablePrefix(segments);
-        if (hashed)
-            return `seg:${hashed}`;
-    }
-    const prefixHash = extractPrefixHash(providerOptions);
-    if (prefixHash)
-        return `pfx:${prefixHash}`;
-    return extractPromptCacheKey(providerOptions);
+	const conversationId = extractConversationId(providerOptions);
+	if (conversationId) return `conv:${conversationId}`;
+	const segments = extractAnnotatedSegments(providerOptions);
+	if (segments) {
+		const hashed = hashStablePrefix(segments);
+		if (hashed) return `seg:${hashed}`;
+	}
+	const prefixHash = extractPrefixHash(providerOptions);
+	if (prefixHash) return `pfx:${prefixHash}`;
+	return extractPromptCacheKey(providerOptions);
 }
 //# sourceMappingURL=cache-bridge.js.map

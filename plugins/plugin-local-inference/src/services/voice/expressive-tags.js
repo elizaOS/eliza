@@ -39,13 +39,13 @@
 // ---------------------------------------------------------------------------
 /** Emotion tags that set the affect scope for the text that follows. */
 export const EXPRESSIVE_EMOTION_TAGS = [
-    "happy",
-    "sad",
-    "angry",
-    "nervous",
-    "calm",
-    "excited",
-    "whisper",
+	"happy",
+	"sad",
+	"angry",
+	"nervous",
+	"calm",
+	"excited",
+	"whisper",
 ];
 /**
  * The Stage-1 envelope `emotion` enum value set (decision #2 in
@@ -55,10 +55,7 @@ export const EXPRESSIVE_EMOTION_TAGS = [
  * it. `whisper` is included because it travels the same inline-tag channel even
  * though it is a delivery style rather than an affect.
  */
-export const EXPRESSIVE_EMOTION_ENUM = [
-    "none",
-    ...EXPRESSIVE_EMOTION_TAGS,
-];
+export const EXPRESSIVE_EMOTION_ENUM = ["none", ...EXPRESSIVE_EMOTION_TAGS];
 /** The singing tag — a style flag, not an affect; orthogonal to emotion. */
 export const EXPRESSIVE_SINGING_TAG = "singing";
 /**
@@ -72,20 +69,20 @@ export const EXPRESSIVE_NONVERBAL_TAGS = ["laughter", "sigh"];
  * the prompt clause and the `tagLeakage` check.
  */
 export const EXPRESSIVE_TAGS = [
-    ...EXPRESSIVE_EMOTION_TAGS,
-    EXPRESSIVE_SINGING_TAG,
-    ...EXPRESSIVE_NONVERBAL_TAGS,
+	...EXPRESSIVE_EMOTION_TAGS,
+	EXPRESSIVE_SINGING_TAG,
+	...EXPRESSIVE_NONVERBAL_TAGS,
 ];
 const EMOTION_SET = new Set(EXPRESSIVE_EMOTION_TAGS);
 const NONVERBAL_SET = new Set(EXPRESSIVE_NONVERBAL_TAGS);
 const ALL_TAG_SET = new Set(EXPRESSIVE_TAGS);
 /** `true` iff `tag` (without brackets, case-insensitive) is a legal expressive tag. */
 export function isExpressiveTag(tag) {
-    return ALL_TAG_SET.has(tag.trim().toLowerCase());
+	return ALL_TAG_SET.has(tag.trim().toLowerCase());
 }
 /** `true` iff `value` is a legal `emotion` enum value (incl. `"none"`). */
 export function isExpressiveEmotionEnum(value) {
-    return value === "none" || EMOTION_SET.has(value);
+	return value === "none" || EMOTION_SET.has(value);
 }
 // Match `[tag]` with optional surrounding whitespace inside the brackets.
 // Anchored to the bracket characters; the inner text is captured for lookup.
@@ -96,7 +93,7 @@ export function isExpressiveEmotionEnum(value) {
 // out independent instances.
 const TAG_RE_SOURCE = "\\[\\s*([a-zA-Z][a-zA-Z-]*)\\s*\\]";
 function tagRegex() {
-    return new RegExp(TAG_RE_SOURCE, "g");
+	return new RegExp(TAG_RE_SOURCE, "g");
 }
 /**
  * Parse a `replyText` into expressive segments. A scope-setting tag is an
@@ -109,125 +106,121 @@ function tagRegex() {
  * dropped (a leading `[happy][whisper]hi` → one segment, scope = whisper).
  */
 export function parseExpressiveTags(replyText) {
-    const text = typeof replyText === "string" ? replyText : "";
-    const segments = [];
-    const unknownTags = [];
-    let dominantEmotion = null;
-    let anySinging = false;
-    let hasTags = false;
-    // Walk the matches, accumulating the text between scope boundaries.
-    let cursor = 0;
-    let curEmotion = null;
-    let curSinging = false;
-    let curRawParts = [];
-    let curNonverbals = [];
-    const flush = () => {
-        const raw = curRawParts.join("");
-        // Fresh regex — must NOT touch `re`'s `lastIndex` (we're inside `re`'s loop).
-        const clean = raw.replace(tagRegex(), "").trim();
-        // A segment with no visible text and no non-verbals carries nothing.
-        if (clean.length === 0 && curNonverbals.length === 0)
-            return;
-        segments.push({
-            text: raw,
-            cleanText: clean,
-            emotion: curEmotion,
-            singing: curSinging,
-            nonverbals: [...curNonverbals],
-        });
-    };
-    const re = tagRegex();
-    let m;
-    // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop.
-    while ((m = re.exec(text)) !== null) {
-        // Zero-width matches can't happen (the pattern needs `[…]`), but guard
-        // anyway so a future pattern change can't wedge the loop.
-        if (m[0].length === 0) {
-            re.lastIndex += 1;
-            continue;
-        }
-        const before = text.slice(cursor, m.index);
-        cursor = m.index + m[0].length;
-        const inner = (m[1] ?? "").toLowerCase();
-        if (EMOTION_SET.has(inner) || inner === EXPRESSIVE_SINGING_TAG) {
-            // A scope-setting tag: append the lead-in text + this tag to the
-            // *current* segment's raw, then flush and start a new scope. (Keeping
-            // the tag in the raw text means the singing GGUF still sees it at the
-            // head of the next phrase.)
-            curRawParts.push(before);
-            flush();
-            curRawParts = [m[0]];
-            curNonverbals = [];
-            hasTags = true;
-            if (inner === EXPRESSIVE_SINGING_TAG) {
-                curSinging = true;
-                anySinging = true;
-            }
-            else {
-                curEmotion = inner;
-                if (dominantEmotion === null)
-                    dominantEmotion = curEmotion;
-            }
-        }
-        else if (NONVERBAL_SET.has(inner)) {
-            // A non-verbal: keep it in the raw text, record it, don't start a scope.
-            curRawParts.push(before, m[0]);
-            curNonverbals.push(inner);
-            hasTags = true;
-        }
-        else {
-            // Unknown bracket token — keep it verbatim (it's the model's text) and
-            // record it for the leakage check.
-            curRawParts.push(before, m[0]);
-            unknownTags.push(m[0]);
-        }
-    }
-    curRawParts.push(text.slice(cursor));
-    flush();
-    // If there were no tags at all, present the whole text as one neutral segment.
-    if (segments.length === 0) {
-        const clean = text.trim();
-        if (clean.length > 0) {
-            segments.push({
-                text,
-                cleanText: clean,
-                emotion: null,
-                singing: false,
-                nonverbals: [],
-            });
-        }
-    }
-    return {
-        cleanText: text.replace(tagRegex(), "").replace(/\s+/g, " ").trim(),
-        segments,
-        dominantEmotion,
-        anySinging,
-        hasTags,
-        unknownTags,
-    };
+	const text = typeof replyText === "string" ? replyText : "";
+	const segments = [];
+	const unknownTags = [];
+	let dominantEmotion = null;
+	let anySinging = false;
+	let hasTags = false;
+	// Walk the matches, accumulating the text between scope boundaries.
+	let cursor = 0;
+	let curEmotion = null;
+	let curSinging = false;
+	let curRawParts = [];
+	let curNonverbals = [];
+	const flush = () => {
+		const raw = curRawParts.join("");
+		// Fresh regex — must NOT touch `re`'s `lastIndex` (we're inside `re`'s loop).
+		const clean = raw.replace(tagRegex(), "").trim();
+		// A segment with no visible text and no non-verbals carries nothing.
+		if (clean.length === 0 && curNonverbals.length === 0) return;
+		segments.push({
+			text: raw,
+			cleanText: clean,
+			emotion: curEmotion,
+			singing: curSinging,
+			nonverbals: [...curNonverbals],
+		});
+	};
+	const re = tagRegex();
+	let m;
+	// biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop.
+	while ((m = re.exec(text)) !== null) {
+		// Zero-width matches can't happen (the pattern needs `[…]`), but guard
+		// anyway so a future pattern change can't wedge the loop.
+		if (m[0].length === 0) {
+			re.lastIndex += 1;
+			continue;
+		}
+		const before = text.slice(cursor, m.index);
+		cursor = m.index + m[0].length;
+		const inner = (m[1] ?? "").toLowerCase();
+		if (EMOTION_SET.has(inner) || inner === EXPRESSIVE_SINGING_TAG) {
+			// A scope-setting tag: append the lead-in text + this tag to the
+			// *current* segment's raw, then flush and start a new scope. (Keeping
+			// the tag in the raw text means the singing GGUF still sees it at the
+			// head of the next phrase.)
+			curRawParts.push(before);
+			flush();
+			curRawParts = [m[0]];
+			curNonverbals = [];
+			hasTags = true;
+			if (inner === EXPRESSIVE_SINGING_TAG) {
+				curSinging = true;
+				anySinging = true;
+			} else {
+				curEmotion = inner;
+				if (dominantEmotion === null) dominantEmotion = curEmotion;
+			}
+		} else if (NONVERBAL_SET.has(inner)) {
+			// A non-verbal: keep it in the raw text, record it, don't start a scope.
+			curRawParts.push(before, m[0]);
+			curNonverbals.push(inner);
+			hasTags = true;
+		} else {
+			// Unknown bracket token — keep it verbatim (it's the model's text) and
+			// record it for the leakage check.
+			curRawParts.push(before, m[0]);
+			unknownTags.push(m[0]);
+		}
+	}
+	curRawParts.push(text.slice(cursor));
+	flush();
+	// If there were no tags at all, present the whole text as one neutral segment.
+	if (segments.length === 0) {
+		const clean = text.trim();
+		if (clean.length > 0) {
+			segments.push({
+				text,
+				cleanText: clean,
+				emotion: null,
+				singing: false,
+				nonverbals: [],
+			});
+		}
+	}
+	return {
+		cleanText: text.replace(tagRegex(), "").replace(/\s+/g, " ").trim(),
+		segments,
+		dominantEmotion,
+		anySinging,
+		hasTags,
+		unknownTags,
+	};
 }
 /** Strip every recognized expressive tag (emotion / singing / non-verbal)
  *  from `text`. Used on a base-TTS path so a literal `[happy]` never reaches
  *  the audio. Unknown bracket tokens (`[grumpy]`) are left as-is — they are
  *  the model's text, not a tag we recognise. */
 export function stripExpressiveTags(text) {
-    return text
-        .replace(tagRegex(), (full, inner) => ALL_TAG_SET.has(String(inner).toLowerCase()) ? "" : full)
-        .replace(/[ \t]{2,}/g, " ")
-        .trim();
+	return text
+		.replace(tagRegex(), (full, inner) =>
+			ALL_TAG_SET.has(String(inner).toLowerCase()) ? "" : full,
+		)
+		.replace(/[ \t]{2,}/g, " ")
+		.trim();
 }
 /**
  * Map the dominant emotion (or `null`) to the Stage-1 envelope `emotion` enum
  * value (`null` → `"none"`). Inverse: `EXPRESSIVE_EMOTION_ENUM` minus `"none"`.
  */
 export function emotionToEnum(emotion) {
-    return emotion ?? "none";
+	return emotion ?? "none";
 }
 /** Map the Stage-1 envelope `emotion` enum value back to an emotion (or `null`). */
 export function enumToEmotion(value) {
-    if (!value || value === "none")
-        return null;
-    return EMOTION_SET.has(value) ? value : null;
+	if (!value || value === "none") return null;
+	return EMOTION_SET.has(value) ? value : null;
 }
 // ---------------------------------------------------------------------------
 // Optional ASR emotion metadata mapping
@@ -239,13 +232,13 @@ export function enumToEmotion(value) {
  * such a field; callers should record heuristic attribution separately.
  */
 export const QWEN3_ASR_EMOTION_LABELS = [
-    "surprise",
-    "calm",
-    "happiness",
-    "sadness",
-    "disgust",
-    "anger",
-    "fear",
+	"surprise",
+	"calm",
+	"happiness",
+	"sadness",
+	"disgust",
+	"anger",
+	"fear",
 ];
 /**
  * Explicit mapping from an ASR-perceived emotion label to the tag vocab the
@@ -255,43 +248,42 @@ export const QWEN3_ASR_EMOTION_LABELS = [
  * `null` (counted as "no agreement" rather than forced).
  */
 export const ASR_LABEL_TO_EMOTION_TAG = {
-    happiness: "happy",
-    sadness: "sad",
-    anger: "angry",
-    fear: "nervous",
-    calm: "calm",
-    surprise: "excited",
-    disgust: null,
+	happiness: "happy",
+	sadness: "sad",
+	anger: "angry",
+	fear: "nervous",
+	calm: "calm",
+	surprise: "excited",
+	disgust: null,
 };
 /** Normalize an arbitrary ASR-emitted emotion string (any casing, possibly an
  *  adjective form) to a `Qwen3AsrEmotionLabel` if it matches, else `null`. */
 export function normalizeAsrEmotionLabel(raw) {
-    if (!raw)
-        return null;
-    const v = raw.trim().toLowerCase();
-    // Direct hit.
-    if (QWEN3_ASR_EMOTION_LABELS.includes(v)) {
-        return v;
-    }
-    // Common adjective forms → noun labels.
-    const ADJ = {
-        happy: "happiness",
-        sad: "sadness",
-        angry: "anger",
-        fearful: "fear",
-        afraid: "fear",
-        scared: "fear",
-        surprised: "surprise",
-        disgusted: "disgust",
-    };
-    return ADJ[v] ?? null;
+	if (!raw) return null;
+	const v = raw.trim().toLowerCase();
+	// Direct hit.
+	if (QWEN3_ASR_EMOTION_LABELS.includes(v)) {
+		return v;
+	}
+	// Common adjective forms → noun labels.
+	const ADJ = {
+		happy: "happiness",
+		sad: "sadness",
+		angry: "anger",
+		fearful: "fear",
+		afraid: "fear",
+		scared: "fear",
+		surprised: "surprise",
+		disgusted: "disgust",
+	};
+	return ADJ[v] ?? null;
 }
 /** Map an ASR-perceived emotion (raw string) straight to the tag vocab, via
  *  `normalizeAsrEmotionLabel` + `ASR_LABEL_TO_EMOTION_TAG`. `null` when it
  *  doesn't map. */
 export function asrEmotionToTag(raw) {
-    const label = normalizeAsrEmotionLabel(raw);
-    return label ? ASR_LABEL_TO_EMOTION_TAG[label] : null;
+	const label = normalizeAsrEmotionLabel(raw);
+	return label ? ASR_LABEL_TO_EMOTION_TAG[label] : null;
 }
 // ---------------------------------------------------------------------------
 // The voice-output prompt clause
@@ -304,17 +296,19 @@ export function asrEmotionToTag(raw) {
  * controls whether `[singing]` is offered (gate on the `singing` capability).
  */
 export function expressiveTagPromptClause(opts = {}) {
-    const singing = opts.singingAllowed === true;
-    const vocab = [
-        ...EXPRESSIVE_EMOTION_TAGS.map((t) => `[${t}]`),
-        ...(singing ? [`[${EXPRESSIVE_SINGING_TAG}]`] : []),
-        ...EXPRESSIVE_NONVERBAL_TAGS.map((t) => `[${t}]`),
-    ].join(" ");
-    return ("When the turn is spoken aloud, you MAY annotate replyText with inline " +
-        `expressive tags from this exact set: ${vocab}. ` +
-        "A tag applies from where it appears to the next tag (or end of text); " +
-        "mid-sentence shifts are allowed. Use them sparingly and only when the " +
-        "affect is genuine. Do not use tags in text-only turns, and do not invent " +
-        "tags outside this set.");
+	const singing = opts.singingAllowed === true;
+	const vocab = [
+		...EXPRESSIVE_EMOTION_TAGS.map((t) => `[${t}]`),
+		...(singing ? [`[${EXPRESSIVE_SINGING_TAG}]`] : []),
+		...EXPRESSIVE_NONVERBAL_TAGS.map((t) => `[${t}]`),
+	].join(" ");
+	return (
+		"When the turn is spoken aloud, you MAY annotate replyText with inline " +
+		`expressive tags from this exact set: ${vocab}. ` +
+		"A tag applies from where it appears to the next tag (or end of text); " +
+		"mid-sentence shifts are allowed. Use them sparingly and only when the " +
+		"affect is genuine. Do not use tags in text-only turns, and do not invent " +
+		"tags outside this set."
+	);
 }
 //# sourceMappingURL=expressive-tags.js.map

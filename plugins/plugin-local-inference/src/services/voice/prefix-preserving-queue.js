@@ -43,80 +43,78 @@
  * Thread-safety: single-threaded JS — no locking needed.
  */
 export class PrefixPreservingQueue {
-    chunks = [];
-    /** Number of chunks currently in the queue. */
-    get size() {
-        return this.chunks.length;
-    }
-    /**
-     * Add a tagged audio chunk to the tail of the queue. Chunks MUST be
-     * enqueued in token-range order (ascending `tokenRange[0]`) — the queue
-     * does not sort. Violations produce unspecified rollback behaviour.
-     */
-    enqueue(chunk) {
-        this.chunks.push(chunk);
-    }
-    /**
-     * Partition the queue at `divergencePoint` (the last committed token
-     * index). Clears the queue and returns the three-way split.
-     *
-     * Decision per chunk:
-     *   chunk.tokenRange[1] <= divergencePoint  → retained (prefix)
-     *   chunk.tokenRange[0] >  divergencePoint  → dropped  (post-divergence)
-     *   otherwise (straddle)                    → retained (best-effort)
-     *
-     * After this call the queue is empty. Callers should replay `retained`
-     * into the audio sink.
-     */
-    rollbackAt(divergencePoint) {
-        const retained = [];
-        const dropped = [];
-        const straddled = [];
-        let retainedDurationMs = 0;
-        let droppedDurationMs = 0;
-        for (const chunk of this.chunks) {
-            const [start, end] = chunk.tokenRange;
-            if (end <= divergencePoint) {
-                // Fully before or at the divergence point — keep.
-                retained.push(chunk);
-                retainedDurationMs += chunk.durationMs;
-            }
-            else if (start > divergencePoint) {
-                // Fully after the divergence point — drop.
-                dropped.push(chunk);
-                droppedDurationMs += chunk.durationMs;
-            }
-            else {
-                // Straddles the divergence point — keep at phrase granularity.
-                retained.push(chunk);
-                straddled.push(chunk);
-                retainedDurationMs += chunk.durationMs;
-            }
-        }
-        this.chunks.length = 0;
-        return {
-            retained,
-            dropped,
-            straddled,
-            retainedDurationMs,
-            droppedDurationMs,
-        };
-    }
-    /**
-     * Drop all queued chunks without replaying any of them. Used by the
-     * hard-stop / full-cancel path as a fallback when the new utterance
-     * does not continue the topic.
-     */
-    clear() {
-        const all = this.chunks.splice(0);
-        return all;
-    }
-    /**
-     * Peek at the current queue without modifying it (snapshot for
-     * telemetry / tests).
-     */
-    snapshot() {
-        return this.chunks.slice();
-    }
+	chunks = [];
+	/** Number of chunks currently in the queue. */
+	get size() {
+		return this.chunks.length;
+	}
+	/**
+	 * Add a tagged audio chunk to the tail of the queue. Chunks MUST be
+	 * enqueued in token-range order (ascending `tokenRange[0]`) — the queue
+	 * does not sort. Violations produce unspecified rollback behaviour.
+	 */
+	enqueue(chunk) {
+		this.chunks.push(chunk);
+	}
+	/**
+	 * Partition the queue at `divergencePoint` (the last committed token
+	 * index). Clears the queue and returns the three-way split.
+	 *
+	 * Decision per chunk:
+	 *   chunk.tokenRange[1] <= divergencePoint  → retained (prefix)
+	 *   chunk.tokenRange[0] >  divergencePoint  → dropped  (post-divergence)
+	 *   otherwise (straddle)                    → retained (best-effort)
+	 *
+	 * After this call the queue is empty. Callers should replay `retained`
+	 * into the audio sink.
+	 */
+	rollbackAt(divergencePoint) {
+		const retained = [];
+		const dropped = [];
+		const straddled = [];
+		let retainedDurationMs = 0;
+		let droppedDurationMs = 0;
+		for (const chunk of this.chunks) {
+			const [start, end] = chunk.tokenRange;
+			if (end <= divergencePoint) {
+				// Fully before or at the divergence point — keep.
+				retained.push(chunk);
+				retainedDurationMs += chunk.durationMs;
+			} else if (start > divergencePoint) {
+				// Fully after the divergence point — drop.
+				dropped.push(chunk);
+				droppedDurationMs += chunk.durationMs;
+			} else {
+				// Straddles the divergence point — keep at phrase granularity.
+				retained.push(chunk);
+				straddled.push(chunk);
+				retainedDurationMs += chunk.durationMs;
+			}
+		}
+		this.chunks.length = 0;
+		return {
+			retained,
+			dropped,
+			straddled,
+			retainedDurationMs,
+			droppedDurationMs,
+		};
+	}
+	/**
+	 * Drop all queued chunks without replaying any of them. Used by the
+	 * hard-stop / full-cancel path as a fallback when the new utterance
+	 * does not continue the topic.
+	 */
+	clear() {
+		const all = this.chunks.splice(0);
+		return all;
+	}
+	/**
+	 * Peek at the current queue without modifying it (snapshot for
+	 * telemetry / tests).
+	 */
+	snapshot() {
+		return this.chunks.slice();
+	}
 }
 //# sourceMappingURL=prefix-preserving-queue.js.map

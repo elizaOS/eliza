@@ -36,392 +36,385 @@
  * No fallback sludge: `prewarm` failures surface via `onError`; a speculative
  * abort is a real `AbortSignal.abort()`, never a swallowed flag.
  */
-import { EOT_MID_CLAUSE_THRESHOLD, turnSignalFromProbability, } from "./eot-classifier";
+import {
+	EOT_MID_CLAUSE_THRESHOLD,
+	turnSignalFromProbability,
+} from "./eot-classifier";
 const DEFAULT_SPECULATE_PAUSE_MS = 300;
 export class VoiceTurnController {
-    deps;
-    events;
-    roomId;
-    speculatePauseMs;
-    bargeIn;
-    speculative = null;
-    /** A finalize() in progress (awaiting `transcriber.flush()` + generate). */
-    finalizing = null;
-    latestPartial = "";
-    latestTurnSignal = null;
-    turnSignalSequence = 0;
-    started = false;
-    vadUnsub = null;
-    transcriberUnsub = null;
-    bargeSignalUnsub = null;
-    activeFinalController = null;
-    /** True once `speech-end` ran and finalize is pending/done for this segment. */
-    segmentEnded = false;
-    latestUpdate = null;
-    constructor(deps, config, events = {}) {
-        this.deps = deps;
-        this.events = events;
-        this.roomId = config.roomId;
-        this.speculatePauseMs = Math.max(0, config.speculatePauseMs ?? DEFAULT_SPECULATE_PAUSE_MS);
-        this.bargeIn = deps.scheduler.bargeIn;
-    }
-    /** Subscribe to the VAD + transcriber streams and start turn-taking. Idempotent. */
-    start() {
-        if (this.started)
-            return;
-        this.started = true;
-        // Barge-in controller takes the VAD directly so it can pause/resume TTS
-        // while the agent is speaking; the scheduler already listens to its
-        // `onSignal` stream.
-        this.bargeIn.bindVad(this.deps.vad);
-        this.bargeSignalUnsub = this.bargeIn.onSignal((signal) => {
-            if (signal.type !== "hard-stop")
-                return;
-            this.abortSpeculative();
-            if (this.activeFinalController &&
-                !this.activeFinalController.signal.aborted) {
-                this.activeFinalController.abort();
-            }
-        });
-        this.vadUnsub = this.deps.vad.onVadEvent((e) => this.onVadEvent(e));
-        this.transcriberUnsub = this.deps.transcriber.on((e) => this.onTranscriberEvent(e));
-    }
-    /** Detach from the streams and abort any in-flight speculative generation. */
-    stop() {
-        if (!this.started)
-            return;
-        this.started = false;
-        this.vadUnsub?.();
-        this.vadUnsub = null;
-        this.transcriberUnsub?.();
-        this.transcriberUnsub = null;
-        this.bargeIn.unbindVad();
-        this.bargeSignalUnsub?.();
-        this.bargeSignalUnsub = null;
-        this.abortSpeculative();
-        if (this.activeFinalController &&
-            !this.activeFinalController.signal.aborted) {
-            this.activeFinalController.abort();
-        }
-        this.activeFinalController = null;
-    }
-    // --- VAD ---------------------------------------------------------------
-    onVadEvent(event) {
-        switch (event.type) {
-            case "speech-start": {
-                // New utterance onset. If we were mid-finalize from a previous
-                // segment, that segment got *more* speech — abort the speculative
-                // run for it (the finalize promise still resolves; its abort is
-                // honoured). Reset segment state + the barge-in episode so the next
-                // hard-stop gets a fresh `BargeInCancelToken`.
-                this.segmentEnded = false;
-                this.latestUpdate = null;
-                this.latestPartial = "";
-                this.abortSpeculative();
-                this.bargeIn.reset();
-                this.playFirstAudioFiller();
-                void this.firePrewarm();
-                break;
-            }
-            case "speech-active": {
-                // Speech is ongoing again — any speculative response we kicked on a
-                // pause is stale. Abort it.
-                if (this.speculative)
-                    this.abortSpeculative();
-                break;
-            }
-            case "speech-pause": {
-                if (event.pauseDurationMs >= this.speculatePauseMs &&
-                    !this.speculative &&
-                    !this.segmentEnded) {
-                    this.maybeStartSpeculative(this.latestPartial, this.latestUpdate);
-                }
-                break;
-            }
-            case "speech-end": {
-                this.segmentEnded = true;
-                this.beginFinalize();
-                break;
-            }
-            case "blip":
-                // Handled entirely by the barge-in controller (resume-tts when the
-                // agent is speaking; nothing otherwise). No turn-taking effect.
-                break;
-        }
-    }
-    onTranscriberEvent(event) {
-        switch (event.kind) {
-            case "partial":
-                this.latestPartial = event.update.partial;
-                this.latestUpdate = event.update;
-                this.queueTurnSignalRefresh(event.update.partial);
-                break;
-            case "final":
-                this.latestPartial = event.update.partial;
-                this.latestUpdate = event.update;
-                this.queueTurnSignalRefresh(event.update.partial);
-                break;
-            case "words":
-                // ASR confirmed real words during a barge-in window — promote a
-                // provisional `pause-tts` into a `hard-stop` (TTS cancelled + LLM
-                // aborted). A blip alone would never reach here.
-                this.bargeIn.onWordsDetected({
-                    wordCount: event.words.length,
-                    partialText: event.words.join(" "),
-                    timestampMs: Date.now(),
-                });
-                break;
-        }
-    }
-    // --- prewarm -----------------------------------------------------------
-    /**
-     * C2 — public idle prewarm entry point. Callers (e.g. the UI when a
-     * conversation opens) invoke this to materialize the KV cache for the
-     * response-handler stable prefix BEFORE the user starts speaking, so the
-     * first speech-start has nothing left to do. Fire-and-forget: the
-     * returned promise is `void` because we don't want callers blocking on
-     * prewarm; failures surface via `onError` exactly like the speech-start
-     * path. Idempotent — repeated calls just re-prewarm.
-     */
-    prewarmOnIdle() {
-        void this.firePrewarm();
-    }
-    async firePrewarm() {
-        if (!this.deps.prewarm)
-            return;
-        try {
-            await this.deps.prewarm(this.roomId);
-        }
-        catch (err) {
-            this.events.onError?.(toError(err));
-        }
-    }
-    playFirstAudioFiller() {
-        if (!this.deps.playFirstAudioFiller)
-            return;
-        try {
-            this.deps.playFirstAudioFiller();
-        }
-        catch (err) {
-            this.events.onError?.(toError(err));
-        }
-    }
-    // --- speculative generation -------------------------------------------
-    maybeStartSpeculative(transcript, update) {
-        const text = transcript.trim();
-        if (text.length === 0)
-            return;
-        if (!this.deps.turnDetector) {
-            this.startSpeculative(text, update, null);
-            return;
-        }
-        void this.startSpeculativeAfterTurnSignal(text, update);
-    }
-    async startSpeculativeAfterTurnSignal(text, update) {
-        const turnSignal = await this.ensureTurnSignal(text);
-        if (!this.started ||
-            this.segmentEnded ||
-            this.speculative ||
-            this.latestPartial.trim() !== text) {
-            return;
-        }
-        if (turnSignal && shouldSuppressAgentSpeech(turnSignal)) {
-            this.events.onTurnSuppressed?.(text, turnSignal);
-            return;
-        }
-        this.startSpeculative(text, update, turnSignal);
-    }
-    startSpeculative(text, update, turnSignal) {
-        const controller = new AbortController();
-        this.events.onSpeculativeStart?.(text);
-        const promise = this.runGenerate({
-            transcript: text,
-            ...voiceRequestMetadata(update),
-            final: false,
-            signal: controller.signal,
-            ...(turnSignal ? { turnSignal } : {}),
-        });
-        this.speculative = { transcript: text, controller, promise };
-    }
-    abortSpeculative() {
-        const spec = this.speculative;
-        if (!spec)
-            return;
-        this.speculative = null;
-        if (!spec.controller.signal.aborted)
-            spec.controller.abort();
-        this.events.onSpeculativeAbort?.();
-        // Drop the partial TTS the speculative run may have already streamed —
-        // it was generated against a stale partial transcript. This is NOT a
-        // user barge-in, so use the dedicated drop path (no `onCancel`).
-        this.deps.scheduler.cancelPendingTts();
-    }
-    // --- finalize ----------------------------------------------------------
-    beginFinalize() {
-        // Serialize finalize calls — `speech-end` should only fire once per
-        // segment, but be defensive against a VAD that repeats it.
-        if (this.finalizing)
-            return;
-        this.finalizing = this.finalize().finally(() => {
-            this.finalizing = null;
-        });
-    }
-    async finalize() {
-        let finalUpdate;
-        try {
-            finalUpdate = await this.deps.transcriber.flush();
-        }
-        catch (err) {
-            // Flush failure aborts any speculative run and bubbles up — no silent
-            // empty-transcript turn.
-            this.abortSpeculative();
-            this.events.onError?.(toError(err));
-            return;
-        }
-        const finalTranscript = finalUpdate.partial.trim();
-        // If a new `speech-start` arrived while we were flushing, that segment
-        // got more speech — drop this finalize.
-        if (!this.segmentEnded) {
-            this.abortSpeculative();
-            return;
-        }
-        const spec = this.speculative;
-        if (spec && spec.transcript === finalTranscript) {
-            // The speculative run is valid — promote it (its TTS has already been
-            // streaming).
-            this.speculative = null;
-            let outcome;
-            try {
-                outcome = await spec.promise;
-            }
-            catch (err) {
-                outcome = null;
-                this.events.onError?.(toError(err));
-            }
-            if (outcome) {
-                this.events.onSpeculativePromoted?.(outcome);
-                this.events.onTurnComplete?.(outcome);
-                return;
-            }
-            // Speculative aborted or failed after all — fall through to a fresh
-            // final run below.
-        }
-        else if (spec) {
-            // The partial we speculated off didn't survive — discard it (its TTS
-            // is stale).
-            this.abortSpeculative();
-        }
-        if (finalTranscript.length === 0) {
-            // Nothing was said (a blip the VAD let through). No turn.
-            return;
-        }
-        const finalTurnSignal = await this.ensureTurnSignal(finalTranscript);
-        if (finalTurnSignal && shouldSuppressAgentSpeech(finalTurnSignal)) {
-            this.abortSpeculative();
-            this.events.onTurnSuppressed?.(finalTranscript, finalTurnSignal);
-            return;
-        }
-        const controller = new AbortController();
-        this.activeFinalController = controller;
-        let outcome;
-        try {
-            outcome = await this.runGenerate({
-                transcript: finalTranscript,
-                ...voiceRequestMetadata(finalUpdate),
-                final: true,
-                signal: controller.signal,
-                ...(finalTurnSignal ? { turnSignal: finalTurnSignal } : {}),
-            });
-        }
-        catch (err) {
-            outcome = null;
-            this.events.onError?.(toError(err));
-        }
-        finally {
-            if (this.activeFinalController === controller) {
-                this.activeFinalController = null;
-            }
-        }
-        if (outcome)
-            this.events.onTurnComplete?.(outcome);
-    }
-    // --- generate adapter --------------------------------------------------
-    async runGenerate(request) {
-        try {
-            return await this.deps.generate(request);
-        }
-        catch (err) {
-            if (isAbortError(err) || request.signal.aborted)
-                return null;
-            this.events.onError?.(toError(err));
-            return null;
-        }
-    }
-    // --- semantic turn detector ------------------------------------------
-    queueTurnSignalRefresh(transcript) {
-        if (!this.deps.turnDetector || transcript.trim().length === 0)
-            return;
-        void this.computeTurnSignal(transcript);
-    }
-    async ensureTurnSignal(transcript) {
-        const text = transcript.trim();
-        if (!this.deps.turnDetector || text.length === 0)
-            return null;
-        const cached = this.latestTurnSignal;
-        if (cached && cached.transcript === text)
-            return cached.signal;
-        return this.computeTurnSignal(text);
-    }
-    async computeTurnSignal(transcript) {
-        const detector = this.deps.turnDetector;
-        if (!detector)
-            return null;
-        const text = transcript.trim();
-        if (text.length === 0)
-            return null;
-        const sequence = ++this.turnSignalSequence;
-        try {
-            const signal = detector.signal
-                ? await detector.signal(text)
-                : turnSignalFromProbability({
-                    probability: await detector.score(text),
-                    transcript: text,
-                    source: "custom",
-                    model: detector.constructor.name,
-                });
-            const current = this.latestTurnSignal;
-            if (!current || sequence >= current.sequence) {
-                this.latestTurnSignal = { transcript: text, signal, sequence };
-            }
-            return signal;
-        }
-        catch (err) {
-            this.events.onError?.(toError(err));
-            return null;
-        }
-    }
+	deps;
+	events;
+	roomId;
+	speculatePauseMs;
+	bargeIn;
+	speculative = null;
+	/** A finalize() in progress (awaiting `transcriber.flush()` + generate). */
+	finalizing = null;
+	latestPartial = "";
+	latestTurnSignal = null;
+	turnSignalSequence = 0;
+	started = false;
+	vadUnsub = null;
+	transcriberUnsub = null;
+	bargeSignalUnsub = null;
+	activeFinalController = null;
+	/** True once `speech-end` ran and finalize is pending/done for this segment. */
+	segmentEnded = false;
+	latestUpdate = null;
+	constructor(deps, config, events = {}) {
+		this.deps = deps;
+		this.events = events;
+		this.roomId = config.roomId;
+		this.speculatePauseMs = Math.max(
+			0,
+			config.speculatePauseMs ?? DEFAULT_SPECULATE_PAUSE_MS,
+		);
+		this.bargeIn = deps.scheduler.bargeIn;
+	}
+	/** Subscribe to the VAD + transcriber streams and start turn-taking. Idempotent. */
+	start() {
+		if (this.started) return;
+		this.started = true;
+		// Barge-in controller takes the VAD directly so it can pause/resume TTS
+		// while the agent is speaking; the scheduler already listens to its
+		// `onSignal` stream.
+		this.bargeIn.bindVad(this.deps.vad);
+		this.bargeSignalUnsub = this.bargeIn.onSignal((signal) => {
+			if (signal.type !== "hard-stop") return;
+			this.abortSpeculative();
+			if (
+				this.activeFinalController &&
+				!this.activeFinalController.signal.aborted
+			) {
+				this.activeFinalController.abort();
+			}
+		});
+		this.vadUnsub = this.deps.vad.onVadEvent((e) => this.onVadEvent(e));
+		this.transcriberUnsub = this.deps.transcriber.on((e) =>
+			this.onTranscriberEvent(e),
+		);
+	}
+	/** Detach from the streams and abort any in-flight speculative generation. */
+	stop() {
+		if (!this.started) return;
+		this.started = false;
+		this.vadUnsub?.();
+		this.vadUnsub = null;
+		this.transcriberUnsub?.();
+		this.transcriberUnsub = null;
+		this.bargeIn.unbindVad();
+		this.bargeSignalUnsub?.();
+		this.bargeSignalUnsub = null;
+		this.abortSpeculative();
+		if (
+			this.activeFinalController &&
+			!this.activeFinalController.signal.aborted
+		) {
+			this.activeFinalController.abort();
+		}
+		this.activeFinalController = null;
+	}
+	// --- VAD ---------------------------------------------------------------
+	onVadEvent(event) {
+		switch (event.type) {
+			case "speech-start": {
+				// New utterance onset. If we were mid-finalize from a previous
+				// segment, that segment got *more* speech — abort the speculative
+				// run for it (the finalize promise still resolves; its abort is
+				// honoured). Reset segment state + the barge-in episode so the next
+				// hard-stop gets a fresh `BargeInCancelToken`.
+				this.segmentEnded = false;
+				this.latestUpdate = null;
+				this.latestPartial = "";
+				this.abortSpeculative();
+				this.bargeIn.reset();
+				this.playFirstAudioFiller();
+				void this.firePrewarm();
+				break;
+			}
+			case "speech-active": {
+				// Speech is ongoing again — any speculative response we kicked on a
+				// pause is stale. Abort it.
+				if (this.speculative) this.abortSpeculative();
+				break;
+			}
+			case "speech-pause": {
+				if (
+					event.pauseDurationMs >= this.speculatePauseMs &&
+					!this.speculative &&
+					!this.segmentEnded
+				) {
+					this.maybeStartSpeculative(this.latestPartial, this.latestUpdate);
+				}
+				break;
+			}
+			case "speech-end": {
+				this.segmentEnded = true;
+				this.beginFinalize();
+				break;
+			}
+			case "blip":
+				// Handled entirely by the barge-in controller (resume-tts when the
+				// agent is speaking; nothing otherwise). No turn-taking effect.
+				break;
+		}
+	}
+	onTranscriberEvent(event) {
+		switch (event.kind) {
+			case "partial":
+				this.latestPartial = event.update.partial;
+				this.latestUpdate = event.update;
+				this.queueTurnSignalRefresh(event.update.partial);
+				break;
+			case "final":
+				this.latestPartial = event.update.partial;
+				this.latestUpdate = event.update;
+				this.queueTurnSignalRefresh(event.update.partial);
+				break;
+			case "words":
+				// ASR confirmed real words during a barge-in window — promote a
+				// provisional `pause-tts` into a `hard-stop` (TTS cancelled + LLM
+				// aborted). A blip alone would never reach here.
+				this.bargeIn.onWordsDetected({
+					wordCount: event.words.length,
+					partialText: event.words.join(" "),
+					timestampMs: Date.now(),
+				});
+				break;
+		}
+	}
+	// --- prewarm -----------------------------------------------------------
+	/**
+	 * C2 — public idle prewarm entry point. Callers (e.g. the UI when a
+	 * conversation opens) invoke this to materialize the KV cache for the
+	 * response-handler stable prefix BEFORE the user starts speaking, so the
+	 * first speech-start has nothing left to do. Fire-and-forget: the
+	 * returned promise is `void` because we don't want callers blocking on
+	 * prewarm; failures surface via `onError` exactly like the speech-start
+	 * path. Idempotent — repeated calls just re-prewarm.
+	 */
+	prewarmOnIdle() {
+		void this.firePrewarm();
+	}
+	async firePrewarm() {
+		if (!this.deps.prewarm) return;
+		try {
+			await this.deps.prewarm(this.roomId);
+		} catch (err) {
+			this.events.onError?.(toError(err));
+		}
+	}
+	playFirstAudioFiller() {
+		if (!this.deps.playFirstAudioFiller) return;
+		try {
+			this.deps.playFirstAudioFiller();
+		} catch (err) {
+			this.events.onError?.(toError(err));
+		}
+	}
+	// --- speculative generation -------------------------------------------
+	maybeStartSpeculative(transcript, update) {
+		const text = transcript.trim();
+		if (text.length === 0) return;
+		if (!this.deps.turnDetector) {
+			this.startSpeculative(text, update, null);
+			return;
+		}
+		void this.startSpeculativeAfterTurnSignal(text, update);
+	}
+	async startSpeculativeAfterTurnSignal(text, update) {
+		const turnSignal = await this.ensureTurnSignal(text);
+		if (
+			!this.started ||
+			this.segmentEnded ||
+			this.speculative ||
+			this.latestPartial.trim() !== text
+		) {
+			return;
+		}
+		if (turnSignal && shouldSuppressAgentSpeech(turnSignal)) {
+			this.events.onTurnSuppressed?.(text, turnSignal);
+			return;
+		}
+		this.startSpeculative(text, update, turnSignal);
+	}
+	startSpeculative(text, update, turnSignal) {
+		const controller = new AbortController();
+		this.events.onSpeculativeStart?.(text);
+		const promise = this.runGenerate({
+			transcript: text,
+			...voiceRequestMetadata(update),
+			final: false,
+			signal: controller.signal,
+			...(turnSignal ? { turnSignal } : {}),
+		});
+		this.speculative = { transcript: text, controller, promise };
+	}
+	abortSpeculative() {
+		const spec = this.speculative;
+		if (!spec) return;
+		this.speculative = null;
+		if (!spec.controller.signal.aborted) spec.controller.abort();
+		this.events.onSpeculativeAbort?.();
+		// Drop the partial TTS the speculative run may have already streamed —
+		// it was generated against a stale partial transcript. This is NOT a
+		// user barge-in, so use the dedicated drop path (no `onCancel`).
+		this.deps.scheduler.cancelPendingTts();
+	}
+	// --- finalize ----------------------------------------------------------
+	beginFinalize() {
+		// Serialize finalize calls — `speech-end` should only fire once per
+		// segment, but be defensive against a VAD that repeats it.
+		if (this.finalizing) return;
+		this.finalizing = this.finalize().finally(() => {
+			this.finalizing = null;
+		});
+	}
+	async finalize() {
+		let finalUpdate;
+		try {
+			finalUpdate = await this.deps.transcriber.flush();
+		} catch (err) {
+			// Flush failure aborts any speculative run and bubbles up — no silent
+			// empty-transcript turn.
+			this.abortSpeculative();
+			this.events.onError?.(toError(err));
+			return;
+		}
+		const finalTranscript = finalUpdate.partial.trim();
+		// If a new `speech-start` arrived while we were flushing, that segment
+		// got more speech — drop this finalize.
+		if (!this.segmentEnded) {
+			this.abortSpeculative();
+			return;
+		}
+		const spec = this.speculative;
+		if (spec && spec.transcript === finalTranscript) {
+			// The speculative run is valid — promote it (its TTS has already been
+			// streaming).
+			this.speculative = null;
+			let outcome;
+			try {
+				outcome = await spec.promise;
+			} catch (err) {
+				outcome = null;
+				this.events.onError?.(toError(err));
+			}
+			if (outcome) {
+				this.events.onSpeculativePromoted?.(outcome);
+				this.events.onTurnComplete?.(outcome);
+				return;
+			}
+			// Speculative aborted or failed after all — fall through to a fresh
+			// final run below.
+		} else if (spec) {
+			// The partial we speculated off didn't survive — discard it (its TTS
+			// is stale).
+			this.abortSpeculative();
+		}
+		if (finalTranscript.length === 0) {
+			// Nothing was said (a blip the VAD let through). No turn.
+			return;
+		}
+		const finalTurnSignal = await this.ensureTurnSignal(finalTranscript);
+		if (finalTurnSignal && shouldSuppressAgentSpeech(finalTurnSignal)) {
+			this.abortSpeculative();
+			this.events.onTurnSuppressed?.(finalTranscript, finalTurnSignal);
+			return;
+		}
+		const controller = new AbortController();
+		this.activeFinalController = controller;
+		let outcome;
+		try {
+			outcome = await this.runGenerate({
+				transcript: finalTranscript,
+				...voiceRequestMetadata(finalUpdate),
+				final: true,
+				signal: controller.signal,
+				...(finalTurnSignal ? { turnSignal: finalTurnSignal } : {}),
+			});
+		} catch (err) {
+			outcome = null;
+			this.events.onError?.(toError(err));
+		} finally {
+			if (this.activeFinalController === controller) {
+				this.activeFinalController = null;
+			}
+		}
+		if (outcome) this.events.onTurnComplete?.(outcome);
+	}
+	// --- generate adapter --------------------------------------------------
+	async runGenerate(request) {
+		try {
+			return await this.deps.generate(request);
+		} catch (err) {
+			if (isAbortError(err) || request.signal.aborted) return null;
+			this.events.onError?.(toError(err));
+			return null;
+		}
+	}
+	// --- semantic turn detector ------------------------------------------
+	queueTurnSignalRefresh(transcript) {
+		if (!this.deps.turnDetector || transcript.trim().length === 0) return;
+		void this.computeTurnSignal(transcript);
+	}
+	async ensureTurnSignal(transcript) {
+		const text = transcript.trim();
+		if (!this.deps.turnDetector || text.length === 0) return null;
+		const cached = this.latestTurnSignal;
+		if (cached && cached.transcript === text) return cached.signal;
+		return this.computeTurnSignal(text);
+	}
+	async computeTurnSignal(transcript) {
+		const detector = this.deps.turnDetector;
+		if (!detector) return null;
+		const text = transcript.trim();
+		if (text.length === 0) return null;
+		const sequence = ++this.turnSignalSequence;
+		try {
+			const signal = detector.signal
+				? await detector.signal(text)
+				: turnSignalFromProbability({
+						probability: await detector.score(text),
+						transcript: text,
+						source: "custom",
+						model: detector.constructor.name,
+					});
+			const current = this.latestTurnSignal;
+			if (!current || sequence >= current.sequence) {
+				this.latestTurnSignal = { transcript: text, signal, sequence };
+			}
+			return signal;
+		} catch (err) {
+			this.events.onError?.(toError(err));
+			return null;
+		}
+	}
 }
 function shouldSuppressAgentSpeech(signal) {
-    return (signal.agentShouldSpeak === false ||
-        signal.nextSpeaker === "user" ||
-        signal.endOfTurnProbability < EOT_MID_CLAUSE_THRESHOLD);
+	return (
+		signal.agentShouldSpeak === false ||
+		signal.nextSpeaker === "user" ||
+		signal.endOfTurnProbability < EOT_MID_CLAUSE_THRESHOLD
+	);
 }
 function isAbortError(err) {
-    return (err instanceof Error &&
-        (err.name === "AbortError" || err.message.toLowerCase().includes("abort")));
+	return (
+		err instanceof Error &&
+		(err.name === "AbortError" || err.message.toLowerCase().includes("abort"))
+	);
 }
 function toError(err) {
-    return err instanceof Error ? err : new Error(String(err));
+	return err instanceof Error ? err : new Error(String(err));
 }
 function voiceRequestMetadata(update) {
-    if (!update)
-        return {};
-    return {
-        ...(update.source ? { source: update.source } : {}),
-        ...(update.speaker ? { speaker: update.speaker } : {}),
-        ...(update.segments ? { segments: update.segments } : {}),
-        ...(update.turn ? { turn: update.turn } : {}),
-        ...(update.voiceEmotion ? { voiceEmotion: update.voiceEmotion } : {}),
-    };
+	if (!update) return {};
+	return {
+		...(update.source ? { source: update.source } : {}),
+		...(update.speaker ? { speaker: update.speaker } : {}),
+		...(update.segments ? { segments: update.segments } : {}),
+		...(update.turn ? { turn: update.turn } : {}),
+		...(update.voiceEmotion ? { voiceEmotion: update.voiceEmotion } : {}),
+	};
 }
 //# sourceMappingURL=turn-controller.js.map

@@ -34,17 +34,17 @@
  * usage accounting, not for global monitoring.
  */
 const METRIC_KEYS = {
-    "llamacpp:prompt_tokens_total": "promptTokensTotal",
-    "llamacpp:n_tokens_predicted_total": "predictedTokensTotal",
-    "llamacpp:n_prompt_tokens_processed_total": "promptTokensProcessedTotal",
-    "llamacpp:n_drafted_total": "draftedTotal",
-    "llamacpp:n_drafted": "draftedTotal",
-    "llamacpp:n_drafted_accepted_total": "acceptedTotal",
-    "llamacpp:n_drafted_accepted": "acceptedTotal",
-    "llamacpp:n_accepted_total": "acceptedTotal",
-    "llamacpp:n_accepted": "acceptedTotal",
-    "llamacpp:kv_cache_tokens": "kvCacheTokens",
-    "llamacpp:kv_cache_used_cells": "kvCacheUsedCells",
+	"llamacpp:prompt_tokens_total": "promptTokensTotal",
+	"llamacpp:n_tokens_predicted_total": "predictedTokensTotal",
+	"llamacpp:n_prompt_tokens_processed_total": "promptTokensProcessedTotal",
+	"llamacpp:n_drafted_total": "draftedTotal",
+	"llamacpp:n_drafted": "draftedTotal",
+	"llamacpp:n_drafted_accepted_total": "acceptedTotal",
+	"llamacpp:n_drafted_accepted": "acceptedTotal",
+	"llamacpp:n_accepted_total": "acceptedTotal",
+	"llamacpp:n_accepted": "acceptedTotal",
+	"llamacpp:kv_cache_tokens": "kvCacheTokens",
+	"llamacpp:kv_cache_used_cells": "kvCacheUsedCells",
 };
 /**
  * Parse a Prometheus exposition-format payload into a metric snapshot.
@@ -60,55 +60,53 @@ const METRIC_KEYS = {
  * canonical field, in which case the unlabelled total wins.
  */
 export function parsePrometheusMetrics(body, takenAtMs = Date.now()) {
-    const snapshot = {
-        takenAtMs,
-        scrapeOk: true,
-        hasGenerationCounters: false,
-        promptTokensTotal: 0,
-        predictedTokensTotal: 0,
-        promptTokensProcessedTotal: 0,
-        draftedTotal: 0,
-        acceptedTotal: 0,
-        kvCacheTokens: 0,
-        kvCacheUsedCells: 0,
-    };
-    const buckets = new Map();
-    let hasGenerationCounters = false;
-    for (const rawLine of body.split(/\r?\n/)) {
-        const line = rawLine.trim();
-        if (!line || line.startsWith("#"))
-            continue;
-        // Prometheus line format: `name{labels?} value [timestamp]`.
-        const match = line.match(/^([a-zA-Z_:][\w:]*)(\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/i);
-        if (!match)
-            continue;
-        const name = match[1];
-        const labels = match[2];
-        const value = Number(match[3]);
-        if (!Number.isFinite(value) || name === undefined)
-            continue;
-        const field = METRIC_KEYS[name];
-        if (!field)
-            continue;
-        if (field === "promptTokensTotal" ||
-            field === "predictedTokensTotal" ||
-            field === "promptTokensProcessedTotal" ||
-            field === "draftedTotal" ||
-            field === "acceptedTotal") {
-            hasGenerationCounters = true;
-        }
-        const bucket = buckets.get(field) ?? { unlabeled: null, labeledSum: 0 };
-        if (labels)
-            bucket.labeledSum += value;
-        else
-            bucket.unlabeled = value;
-        buckets.set(field, bucket);
-    }
-    for (const [field, bucket] of buckets) {
-        snapshot[field] = bucket.unlabeled ?? bucket.labeledSum;
-    }
-    snapshot.hasGenerationCounters = hasGenerationCounters;
-    return snapshot;
+	const snapshot = {
+		takenAtMs,
+		scrapeOk: true,
+		hasGenerationCounters: false,
+		promptTokensTotal: 0,
+		predictedTokensTotal: 0,
+		promptTokensProcessedTotal: 0,
+		draftedTotal: 0,
+		acceptedTotal: 0,
+		kvCacheTokens: 0,
+		kvCacheUsedCells: 0,
+	};
+	const buckets = new Map();
+	let hasGenerationCounters = false;
+	for (const rawLine of body.split(/\r?\n/)) {
+		const line = rawLine.trim();
+		if (!line || line.startsWith("#")) continue;
+		// Prometheus line format: `name{labels?} value [timestamp]`.
+		const match = line.match(
+			/^([a-zA-Z_:][\w:]*)(\{[^}]*\})?\s+([+-]?\d+(?:\.\d+)?(?:e[+-]?\d+)?)/i,
+		);
+		if (!match) continue;
+		const name = match[1];
+		const labels = match[2];
+		const value = Number(match[3]);
+		if (!Number.isFinite(value) || name === undefined) continue;
+		const field = METRIC_KEYS[name];
+		if (!field) continue;
+		if (
+			field === "promptTokensTotal" ||
+			field === "predictedTokensTotal" ||
+			field === "promptTokensProcessedTotal" ||
+			field === "draftedTotal" ||
+			field === "acceptedTotal"
+		) {
+			hasGenerationCounters = true;
+		}
+		const bucket = buckets.get(field) ?? { unlabeled: null, labeledSum: 0 };
+		if (labels) bucket.labeledSum += value;
+		else bucket.unlabeled = value;
+		buckets.set(field, bucket);
+	}
+	for (const [field, bucket] of buckets) {
+		snapshot[field] = bucket.unlabeled ?? bucket.labeledSum;
+	}
+	snapshot.hasGenerationCounters = hasGenerationCounters;
+	return snapshot;
 }
 /**
  * Compute the Anthropic-shape usage block for a single generation by
@@ -126,40 +124,49 @@ export function parsePrometheusMetrics(body, takenAtMs = Date.now()) {
  * window of the request."
  */
 export function diffSnapshots(before, after, responseUsage) {
-    const promptDelta = clampNonNegative(after.promptTokensTotal - before.promptTokensTotal);
-    const predictedDelta = clampNonNegative(after.predictedTokensTotal - before.predictedTokensTotal);
-    const processedDelta = clampNonNegative(after.promptTokensProcessedTotal - before.promptTokensProcessedTotal);
-    const draftedDelta = clampNonNegative(after.draftedTotal - before.draftedTotal);
-    const acceptedDelta = clampNonNegative(after.acceptedTotal - before.acceptedTotal);
-    const responsePrompt = responseUsage?.prompt_tokens ?? promptDelta;
-    const responseCompletion = responseUsage?.completion_tokens ?? predictedDelta;
-    const inputTokens = responsePrompt;
-    const outputTokens = responseCompletion;
-    // Tokens that had to be freshly prefilled this call. Bounded above by
-    // the per-call input count — a metric-delta wider than the call's own
-    // input is a sampling artifact.
-    const cacheCreation = Math.min(processedDelta, inputTokens);
-    const cacheRead = Math.max(0, inputTokens - cacheCreation);
-    const block = {
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cache_creation_input_tokens: cacheCreation,
-        cache_read_input_tokens: cacheRead,
-    };
-    if (inputTokens > 0) {
-        block.cache_hit_rate = cacheRead / inputTokens;
-    }
-    if (draftedDelta > 0) {
-        block.dflash_drafted_tokens = draftedDelta;
-        block.dflash_accepted_tokens = acceptedDelta;
-        block.dflash_acceptance_rate = acceptedDelta / draftedDelta;
-    }
-    return block;
+	const promptDelta = clampNonNegative(
+		after.promptTokensTotal - before.promptTokensTotal,
+	);
+	const predictedDelta = clampNonNegative(
+		after.predictedTokensTotal - before.predictedTokensTotal,
+	);
+	const processedDelta = clampNonNegative(
+		after.promptTokensProcessedTotal - before.promptTokensProcessedTotal,
+	);
+	const draftedDelta = clampNonNegative(
+		after.draftedTotal - before.draftedTotal,
+	);
+	const acceptedDelta = clampNonNegative(
+		after.acceptedTotal - before.acceptedTotal,
+	);
+	const responsePrompt = responseUsage?.prompt_tokens ?? promptDelta;
+	const responseCompletion = responseUsage?.completion_tokens ?? predictedDelta;
+	const inputTokens = responsePrompt;
+	const outputTokens = responseCompletion;
+	// Tokens that had to be freshly prefilled this call. Bounded above by
+	// the per-call input count — a metric-delta wider than the call's own
+	// input is a sampling artifact.
+	const cacheCreation = Math.min(processedDelta, inputTokens);
+	const cacheRead = Math.max(0, inputTokens - cacheCreation);
+	const block = {
+		input_tokens: inputTokens,
+		output_tokens: outputTokens,
+		cache_creation_input_tokens: cacheCreation,
+		cache_read_input_tokens: cacheRead,
+	};
+	if (inputTokens > 0) {
+		block.cache_hit_rate = cacheRead / inputTokens;
+	}
+	if (draftedDelta > 0) {
+		block.dflash_drafted_tokens = draftedDelta;
+		block.dflash_accepted_tokens = acceptedDelta;
+		block.dflash_acceptance_rate = acceptedDelta / draftedDelta;
+	}
+	return block;
 }
 function clampNonNegative(value) {
-    if (!Number.isFinite(value))
-        return 0;
-    return value < 0 ? 0 : value;
+	if (!Number.isFinite(value)) return 0;
+	return value < 0 ? 0 : value;
 }
 /**
  * GET `/metrics` from a running llama-server and parse it. Errors fall
@@ -168,34 +175,32 @@ function clampNonNegative(value) {
  * zeros are not evidence of absent DFlash/KV activity.
  */
 export async function fetchMetricsSnapshot(baseUrl, signal) {
-    const takenAtMs = Date.now();
-    const empty = {
-        takenAtMs,
-        scrapeOk: false,
-        hasGenerationCounters: false,
-        promptTokensTotal: 0,
-        predictedTokensTotal: 0,
-        promptTokensProcessedTotal: 0,
-        draftedTotal: 0,
-        acceptedTotal: 0,
-        kvCacheTokens: 0,
-        kvCacheUsedCells: 0,
-    };
-    try {
-        const res = await fetch(`${baseUrl.replace(/\/$/, "")}/metrics`, {
-            method: "GET",
-            signal,
-        });
-        if (!res.ok)
-            return empty;
-        const body = await res.text();
-        return parsePrometheusMetrics(body, takenAtMs);
-    }
-    catch {
-        // Best effort: a metrics scrape failure must not abort the response
-        // path. Returning an empty snapshot causes diffSnapshots to surface
-        // zero deltas; the caller still sees the response payload usage.
-        return empty;
-    }
+	const takenAtMs = Date.now();
+	const empty = {
+		takenAtMs,
+		scrapeOk: false,
+		hasGenerationCounters: false,
+		promptTokensTotal: 0,
+		predictedTokensTotal: 0,
+		promptTokensProcessedTotal: 0,
+		draftedTotal: 0,
+		acceptedTotal: 0,
+		kvCacheTokens: 0,
+		kvCacheUsedCells: 0,
+	};
+	try {
+		const res = await fetch(`${baseUrl.replace(/\/$/, "")}/metrics`, {
+			method: "GET",
+			signal,
+		});
+		if (!res.ok) return empty;
+		const body = await res.text();
+		return parsePrometheusMetrics(body, takenAtMs);
+	} catch {
+		// Best effort: a metrics scrape failure must not abort the response
+		// path. Returning an empty snapshot causes diffSnapshots to surface
+		// zero deltas; the caller still sees the response payload usage.
+		return empty;
+	}
 }
 //# sourceMappingURL=llama-server-metrics.js.map

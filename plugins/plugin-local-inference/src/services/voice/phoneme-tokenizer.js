@@ -27,28 +27,29 @@ let stubWarned = false;
  * tokenizer ships in Wave-7.
  */
 export class CharacterPhonemeStub {
-    name = "CharacterPhonemeStub";
-    isStub = true;
-    tokenize(text, sourceTokenIndex) {
-        if (!stubWarned) {
-            stubWarned = true;
-            // Loud, one-shot. Production must NOT see this warning.
-            // Emitted via console.warn per the task contract.
-            // eslint-disable-next-line no-console
-            console.warn("[CharacterPhonemeStub] Using placeholder phoneme tokenizer — chunk boundaries are character boundaries, not IPA phonemes. Replace with a real tokenizer (espeak-ng / phonemizer.js / ipa-translate-rs) before production. See inference/AGENTS.md §6.4.");
-        }
-        const out = [];
-        for (let i = 0; i < text.length; i++) {
-            const ch = text[i];
-            if (/\s/.test(ch))
-                continue;
-            out.push({ ipa: ch, sourceTokenIndex });
-        }
-        return out;
-    }
+	name = "CharacterPhonemeStub";
+	isStub = true;
+	tokenize(text, sourceTokenIndex) {
+		if (!stubWarned) {
+			stubWarned = true;
+			// Loud, one-shot. Production must NOT see this warning.
+			// Emitted via console.warn per the task contract.
+			// eslint-disable-next-line no-console
+			console.warn(
+				"[CharacterPhonemeStub] Using placeholder phoneme tokenizer — chunk boundaries are character boundaries, not IPA phonemes. Replace with a real tokenizer (espeak-ng / phonemizer.js / ipa-translate-rs) before production. See inference/AGENTS.md §6.4.",
+			);
+		}
+		const out = [];
+		for (let i = 0; i < text.length; i++) {
+			const ch = text[i];
+			if (/\s/.test(ch)) continue;
+			out.push({ ipa: ch, sourceTokenIndex });
+		}
+		return out;
+	}
 }
 /** Reset the one-shot warn latch — test-only. */
 export function _resetStubWarnLatchForTests() {
-    stubWarned = false;
+	stubWarned = false;
 }
 //# sourceMappingURL=phoneme-tokenizer.js.map

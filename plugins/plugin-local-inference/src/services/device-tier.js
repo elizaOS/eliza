@@ -27,12 +27,7 @@
  * 3–4 GB ceiling; Android foreground-service requirement).
  */
 /** Tier ordering (higher index = better device). */
-export const DEVICE_TIER_ORDER = [
-    "POOR",
-    "OKAY",
-    "GOOD",
-    "MAX",
-];
+export const DEVICE_TIER_ORDER = ["POOR", "OKAY", "GOOD", "MAX"];
 /**
  * Numeric thresholds. R9 §3.1 — keep in sync.
  *
@@ -43,25 +38,25 @@ export const DEVICE_TIER_ORDER = [
  *   - CPU-only:     `totalRamGb * 0.5`.
  */
 export const DEVICE_TIER_THRESHOLDS = {
-    MAX: {
-        effectiveModelMemoryGb: 24,
-        freeRamGbAtSession: 16,
-        dGpuMinVramGb: 16,
-        appleSiliconMinMemoryGb: 32,
-    },
-    GOOD: {
-        effectiveModelMemoryGb: 12,
-        freeRamGbAtSession: 8,
-        dGpuMinVramGb: 8,
-        appleSiliconMinMemoryGb: 16,
-        x86CpuOnlyMinTotalGb: 32,
-    },
-    OKAY: {
-        effectiveModelMemoryGb: 6,
-        freeRamGbAtSession: 3,
-        minTotalRamGb: 16,
-        mobileMinTotalRamGb: 12,
-    },
+	MAX: {
+		effectiveModelMemoryGb: 24,
+		freeRamGbAtSession: 16,
+		dGpuMinVramGb: 16,
+		appleSiliconMinMemoryGb: 32,
+	},
+	GOOD: {
+		effectiveModelMemoryGb: 12,
+		freeRamGbAtSession: 8,
+		dGpuMinVramGb: 8,
+		appleSiliconMinMemoryGb: 16,
+		x86CpuOnlyMinTotalGb: 32,
+	},
+	OKAY: {
+		effectiveModelMemoryGb: 6,
+		freeRamGbAtSession: 3,
+		minTotalRamGb: 16,
+		mobileMinTotalRamGb: 12,
+	},
 };
 const MB_PER_GB = 1024;
 /**
@@ -70,12 +65,11 @@ const MB_PER_GB = 1024;
  * Mirrors `recommendation.ts:effectiveMemoryGb`.
  */
 export function effectiveModelMemoryGb(probe) {
-    if (probe.appleSilicon)
-        return probe.totalRamGb;
-    if (probe.gpu) {
-        return Math.max(probe.gpu.totalVramGb, probe.totalRamGb * 0.5);
-    }
-    return probe.totalRamGb * 0.5;
+	if (probe.appleSilicon) return probe.totalRamGb;
+	if (probe.gpu) {
+		return Math.max(probe.gpu.totalVramGb, probe.totalRamGb * 0.5);
+	}
+	return probe.totalRamGb * 0.5;
 }
 /**
  * Treat the host as a mobile device. Mobile clamps to OKAY at best
@@ -83,7 +77,9 @@ export function effectiveModelMemoryGb(probe) {
  * long-running local inference.
  */
 function isMobile(probe) {
-    return (probe.mobile?.platform === "ios" || probe.mobile?.platform === "android");
+	return (
+		probe.mobile?.platform === "ios" || probe.mobile?.platform === "android"
+	);
 }
 /**
  * Compute the AVX2 baseline. The hardware probe has no direct AVX2 field
@@ -95,11 +91,9 @@ function isMobile(probe) {
  * when the probe is clearly under-equipped.
  */
 function hasAvx2Baseline(probe) {
-    if (probe.appleSilicon)
-        return true; // M-series Neon is the equivalent baseline.
-    if (probe.arch !== "x64" && probe.arch !== "arm64")
-        return false;
-    return probe.cpuCores >= 4;
+	if (probe.appleSilicon) return true; // M-series Neon is the equivalent baseline.
+	if (probe.arch !== "x64" && probe.arch !== "arm64") return false;
+	return probe.cpuCores >= 4;
 }
 /**
  * The free-RAM gate at session start. R9 §3.3: only a *secondary* gate that
@@ -107,11 +101,11 @@ function hasAvx2Baseline(probe) {
  * Never promotes.
  */
 function freeRamDemotion(probe) {
-    return probe.freeRamGb < probe.totalRamGb * 0.25;
+	return probe.freeRamGb < probe.totalRamGb * 0.25;
 }
 /** Apple-silicon 8 GB clamp. R9 §3.4: hard ceiling at OKAY. */
 function isAppleSilicon8gb(probe) {
-    return probe.appleSilicon && probe.totalRamGb <= 9; // 8 GB rounded.
+	return probe.appleSilicon && probe.totalRamGb <= 9; // 8 GB rounded.
 }
 /**
  * The single-pass classifier. Returns a complete assessment including the
@@ -121,161 +115,182 @@ function isAppleSilicon8gb(probe) {
  * The classifier is pure: same input → same output, no I/O, no clock.
  */
 export function classifyDeviceTier(probe) {
-    const reasons = [];
-    const effective = effectiveModelMemoryGb(probe);
-    const mobile = isMobile(probe);
-    const avx2 = hasAvx2Baseline(probe);
-    const vramGb = probe.gpu?.totalVramGb ?? null;
-    const cpuCores = probe.cpuCores;
-    const totalRamGb = probe.totalRamGb;
-    const freeRamGb = probe.freeRamGb;
-    let tier = classifyRawTier({
-        probe,
-        effective,
-        avx2,
-        mobile,
-        reasons,
-    });
-    // Apple Silicon 8 GB clamp — never higher than OKAY.
-    if (isAppleSilicon8gb(probe) && tierRank(tier) > tierRank("OKAY")) {
-        reasons.push("Apple Silicon 8 GB models clamp to OKAY");
-        tier = "OKAY";
-    }
-    // Mobile clamp — at best OKAY regardless of RAM (iOS jetsam, Android
-    // foreground-service cost). R9 §6.
-    if (mobile && tierRank(tier) > tierRank("OKAY")) {
-        reasons.push(probe.mobile?.platform === "ios"
-            ? "iOS clamps to OKAY (jetsam ~3-4 GB ceiling, background-audio only)"
-            : "Android clamps to OKAY (foreground-service required for continuous mic)");
-        tier = "OKAY";
-    }
-    // Free-RAM gate at session start — secondary demotion only.
-    if (freeRamDemotion(probe) && tierRank(tier) > tierRank("POOR")) {
-        reasons.push(`Low free RAM at session start: ${freeRamGb.toFixed(1)} GB free / ${totalRamGb.toFixed(1)} GB total — demoting one tier`);
-        tier = previousTier(tier);
-    }
-    const canRunLocalLm = tier !== "POOR";
-    const canRunLocalVoice = tier === "MAX" || tier === "GOOD";
-    let recommendedMode;
-    if (tier === "MAX" || tier === "GOOD")
-        recommendedMode = "local";
-    else if (tier === "OKAY")
-        recommendedMode = mobile ? "cloud-with-local-voice" : "local";
-    else
-        recommendedMode = "cloud-only";
-    if (mobile && tier !== "POOR") {
-        // On mobile we default to cloud TTS+ASR per R9 §6.3; only turn-detector
-        // + VAD + wake-word run locally by default.
-        recommendedMode = "cloud-with-local-voice";
-    }
-    const topRecommendation = topRecommendationFor(tier, mobile);
-    return {
-        tier,
-        reasons,
-        topRecommendation,
-        canRunLocalLm,
-        canRunLocalVoice,
-        recommendedMode,
-        numericContext: {
-            totalRamGb,
-            freeRamGb,
-            effectiveModelMemoryGb: effective,
-            vramGb,
-            cpuCores,
-            appleSilicon: probe.appleSilicon,
-            mobile,
-        },
-    };
+	const reasons = [];
+	const effective = effectiveModelMemoryGb(probe);
+	const mobile = isMobile(probe);
+	const avx2 = hasAvx2Baseline(probe);
+	const vramGb = probe.gpu?.totalVramGb ?? null;
+	const cpuCores = probe.cpuCores;
+	const totalRamGb = probe.totalRamGb;
+	const freeRamGb = probe.freeRamGb;
+	let tier = classifyRawTier({
+		probe,
+		effective,
+		avx2,
+		mobile,
+		reasons,
+	});
+	// Apple Silicon 8 GB clamp — never higher than OKAY.
+	if (isAppleSilicon8gb(probe) && tierRank(tier) > tierRank("OKAY")) {
+		reasons.push("Apple Silicon 8 GB models clamp to OKAY");
+		tier = "OKAY";
+	}
+	// Mobile clamp — at best OKAY regardless of RAM (iOS jetsam, Android
+	// foreground-service cost). R9 §6.
+	if (mobile && tierRank(tier) > tierRank("OKAY")) {
+		reasons.push(
+			probe.mobile?.platform === "ios"
+				? "iOS clamps to OKAY (jetsam ~3-4 GB ceiling, background-audio only)"
+				: "Android clamps to OKAY (foreground-service required for continuous mic)",
+		);
+		tier = "OKAY";
+	}
+	// Free-RAM gate at session start — secondary demotion only.
+	if (freeRamDemotion(probe) && tierRank(tier) > tierRank("POOR")) {
+		reasons.push(
+			`Low free RAM at session start: ${freeRamGb.toFixed(1)} GB free / ${totalRamGb.toFixed(1)} GB total — demoting one tier`,
+		);
+		tier = previousTier(tier);
+	}
+	const canRunLocalLm = tier !== "POOR";
+	const canRunLocalVoice = tier === "MAX" || tier === "GOOD";
+	let recommendedMode;
+	if (tier === "MAX" || tier === "GOOD") recommendedMode = "local";
+	else if (tier === "OKAY")
+		recommendedMode = mobile ? "cloud-with-local-voice" : "local";
+	else recommendedMode = "cloud-only";
+	if (mobile && tier !== "POOR") {
+		// On mobile we default to cloud TTS+ASR per R9 §6.3; only turn-detector
+		// + VAD + wake-word run locally by default.
+		recommendedMode = "cloud-with-local-voice";
+	}
+	const topRecommendation = topRecommendationFor(tier, mobile);
+	return {
+		tier,
+		reasons,
+		topRecommendation,
+		canRunLocalLm,
+		canRunLocalVoice,
+		recommendedMode,
+		numericContext: {
+			totalRamGb,
+			freeRamGb,
+			effectiveModelMemoryGb: effective,
+			vramGb,
+			cpuCores,
+			appleSilicon: probe.appleSilicon,
+			mobile,
+		},
+	};
 }
 function classifyRawTier(args) {
-    const { probe, effective, avx2, mobile, reasons } = args;
-    const vramGb = probe.gpu?.totalVramGb ?? 0;
-    const totalRamGb = probe.totalRamGb;
-    const freeRamGb = probe.freeRamGb;
-    const cpuCores = probe.cpuCores;
-    if (!avx2) {
-        reasons.push("No AVX2 baseline (or < 4 CPU cores)");
-        return "POOR";
-    }
-    const max = DEVICE_TIER_THRESHOLDS.MAX;
-    const good = DEVICE_TIER_THRESHOLDS.GOOD;
-    const okay = DEVICE_TIER_THRESHOLDS.OKAY;
-    // MAX gate.
-    const meetsMaxEffective = effective >= max.effectiveModelMemoryGb;
-    const meetsMaxFree = freeRamGb >= max.freeRamGbAtSession;
-    const meetsMaxGpu = vramGb >= max.dGpuMinVramGb;
-    const meetsMaxAppleSilicon = probe.appleSilicon && totalRamGb >= max.appleSiliconMinMemoryGb;
-    if (!mobile &&
-        meetsMaxEffective &&
-        meetsMaxFree &&
-        (meetsMaxGpu || meetsMaxAppleSilicon)) {
-        reasons.push(`${effective.toFixed(1)} GB effective model RAM, ${freeRamGb.toFixed(1)} GB free, ${meetsMaxAppleSilicon
-            ? `Apple Silicon ${totalRamGb.toFixed(0)} GB shared`
-            : `${vramGb} GB VRAM`}`);
-        return "MAX";
-    }
-    // GOOD gate.
-    const meetsGoodEffective = effective >= good.effectiveModelMemoryGb;
-    const meetsGoodFree = freeRamGb >= good.freeRamGbAtSession;
-    const meetsGoodGpu = vramGb >= good.dGpuMinVramGb;
-    const meetsGoodAppleSilicon = probe.appleSilicon && totalRamGb >= good.appleSiliconMinMemoryGb;
-    const meetsGoodCpu = !probe.gpu &&
-        !probe.appleSilicon &&
-        totalRamGb >= good.x86CpuOnlyMinTotalGb &&
-        cpuCores >= 4;
-    if (!mobile &&
-        meetsGoodEffective &&
-        meetsGoodFree &&
-        (meetsGoodGpu || meetsGoodAppleSilicon || meetsGoodCpu)) {
-        reasons.push(`${effective.toFixed(1)} GB effective model RAM, ${freeRamGb.toFixed(1)} GB free, ${meetsGoodAppleSilicon
-            ? `Apple Silicon ${totalRamGb.toFixed(0)} GB shared`
-            : meetsGoodGpu
-                ? `${vramGb} GB VRAM`
-                : `${totalRamGb.toFixed(0)} GB RAM, ${cpuCores} cores`}`);
-        return "GOOD";
-    }
-    // OKAY gate.
-    const meetsOkayEffective = effective >= okay.effectiveModelMemoryGb;
-    const meetsOkayFree = freeRamGb >= okay.freeRamGbAtSession;
-    const meetsOkayTotal = totalRamGb >= (mobile ? okay.mobileMinTotalRamGb : okay.minTotalRamGb);
-    if (meetsOkayEffective && meetsOkayFree && meetsOkayTotal) {
-        reasons.push(`${effective.toFixed(1)} GB effective model RAM, ${freeRamGb.toFixed(1)} GB free, ${totalRamGb.toFixed(1)} GB total`);
-        return "OKAY";
-    }
-    reasons.push(`Below OKAY thresholds — effective ${effective.toFixed(1)} GB / free ${freeRamGb.toFixed(1)} GB / total ${totalRamGb.toFixed(1)} GB`);
-    return "POOR";
+	const { probe, effective, avx2, mobile, reasons } = args;
+	const vramGb = probe.gpu?.totalVramGb ?? 0;
+	const totalRamGb = probe.totalRamGb;
+	const freeRamGb = probe.freeRamGb;
+	const cpuCores = probe.cpuCores;
+	if (!avx2) {
+		reasons.push("No AVX2 baseline (or < 4 CPU cores)");
+		return "POOR";
+	}
+	const max = DEVICE_TIER_THRESHOLDS.MAX;
+	const good = DEVICE_TIER_THRESHOLDS.GOOD;
+	const okay = DEVICE_TIER_THRESHOLDS.OKAY;
+	// MAX gate.
+	const meetsMaxEffective = effective >= max.effectiveModelMemoryGb;
+	const meetsMaxFree = freeRamGb >= max.freeRamGbAtSession;
+	const meetsMaxGpu = vramGb >= max.dGpuMinVramGb;
+	const meetsMaxAppleSilicon =
+		probe.appleSilicon && totalRamGb >= max.appleSiliconMinMemoryGb;
+	if (
+		!mobile &&
+		meetsMaxEffective &&
+		meetsMaxFree &&
+		(meetsMaxGpu || meetsMaxAppleSilicon)
+	) {
+		reasons.push(
+			`${effective.toFixed(1)} GB effective model RAM, ${freeRamGb.toFixed(1)} GB free, ${
+				meetsMaxAppleSilicon
+					? `Apple Silicon ${totalRamGb.toFixed(0)} GB shared`
+					: `${vramGb} GB VRAM`
+			}`,
+		);
+		return "MAX";
+	}
+	// GOOD gate.
+	const meetsGoodEffective = effective >= good.effectiveModelMemoryGb;
+	const meetsGoodFree = freeRamGb >= good.freeRamGbAtSession;
+	const meetsGoodGpu = vramGb >= good.dGpuMinVramGb;
+	const meetsGoodAppleSilicon =
+		probe.appleSilicon && totalRamGb >= good.appleSiliconMinMemoryGb;
+	const meetsGoodCpu =
+		!probe.gpu &&
+		!probe.appleSilicon &&
+		totalRamGb >= good.x86CpuOnlyMinTotalGb &&
+		cpuCores >= 4;
+	if (
+		!mobile &&
+		meetsGoodEffective &&
+		meetsGoodFree &&
+		(meetsGoodGpu || meetsGoodAppleSilicon || meetsGoodCpu)
+	) {
+		reasons.push(
+			`${effective.toFixed(1)} GB effective model RAM, ${freeRamGb.toFixed(1)} GB free, ${
+				meetsGoodAppleSilicon
+					? `Apple Silicon ${totalRamGb.toFixed(0)} GB shared`
+					: meetsGoodGpu
+						? `${vramGb} GB VRAM`
+						: `${totalRamGb.toFixed(0)} GB RAM, ${cpuCores} cores`
+			}`,
+		);
+		return "GOOD";
+	}
+	// OKAY gate.
+	const meetsOkayEffective = effective >= okay.effectiveModelMemoryGb;
+	const meetsOkayFree = freeRamGb >= okay.freeRamGbAtSession;
+	const meetsOkayTotal =
+		totalRamGb >= (mobile ? okay.mobileMinTotalRamGb : okay.minTotalRamGb);
+	if (meetsOkayEffective && meetsOkayFree && meetsOkayTotal) {
+		reasons.push(
+			`${effective.toFixed(1)} GB effective model RAM, ${freeRamGb.toFixed(1)} GB free, ${totalRamGb.toFixed(1)} GB total`,
+		);
+		return "OKAY";
+	}
+	reasons.push(
+		`Below OKAY thresholds — effective ${effective.toFixed(1)} GB / free ${freeRamGb.toFixed(1)} GB / total ${totalRamGb.toFixed(1)} GB`,
+	);
+	return "POOR";
 }
 function tierRank(tier) {
-    return DEVICE_TIER_ORDER.indexOf(tier);
+	return DEVICE_TIER_ORDER.indexOf(tier);
 }
 function previousTier(tier) {
-    const idx = tierRank(tier);
-    if (idx <= 0)
-        return "POOR";
-    return DEVICE_TIER_ORDER[idx - 1];
+	const idx = tierRank(tier);
+	if (idx <= 0) return "POOR";
+	return DEVICE_TIER_ORDER[idx - 1];
 }
 function topRecommendationFor(tier, mobile) {
-    if (mobile) {
-        switch (tier) {
-            case "MAX":
-            case "GOOD":
-                return "Run local voice; cloud LM optional for the largest tiers.";
-            case "OKAY":
-                return "Use cloud voice (cloud TTS + ASR). Local turn detection + VAD + wake-word stay on-device.";
-            case "POOR":
-                return "Use cloud mode. This device is below the local-voice budget.";
-        }
-    }
-    switch (tier) {
-        case "MAX":
-            return "Run everything locally with all models held in memory in parallel.";
-        case "GOOD":
-            return "Run everything locally; models stay loaded but run one at a time.";
-        case "OKAY":
-            return "Local voice works but models swap in/out between turns. Consider cloud voice for faster turnaround.";
-        case "POOR":
-            return "Use cloud mode. Local responses will be very slow on this device.";
-    }
+	if (mobile) {
+		switch (tier) {
+			case "MAX":
+			case "GOOD":
+				return "Run local voice; cloud LM optional for the largest tiers.";
+			case "OKAY":
+				return "Use cloud voice (cloud TTS + ASR). Local turn detection + VAD + wake-word stay on-device.";
+			case "POOR":
+				return "Use cloud mode. This device is below the local-voice budget.";
+		}
+	}
+	switch (tier) {
+		case "MAX":
+			return "Run everything locally with all models held in memory in parallel.";
+		case "GOOD":
+			return "Run everything locally; models stay loaded but run one at a time.";
+		case "OKAY":
+			return "Local voice works but models swap in/out between turns. Consider cloud voice for faster turnaround.";
+		case "POOR":
+			return "Use cloud mode. Local responses will be very slow on this device.";
+	}
 }
 /**
  * Warning-copy strings for each tier. The exact prose comes from R9 §7;
@@ -283,25 +298,25 @@ function topRecommendationFor(tier, mobile) {
  * sync with `packages/ui/src/i18n/voice-tier.json`.
  */
 export const TIER_WARNING_COPY = {
-    MAX: {
-        header: "Your device is in the MAX tier for on-device Eliza.",
-        body: "Your device can run every local model in parallel: text, voice, ASR, turn detection, speaker recognition, and emotion — all resident at the same time. Expected first-audio latency under 250 ms.",
-    },
-    GOOD: {
-        header: "Your device is in the GOOD tier for on-device Eliza.",
-        body: "Your device can keep every local model loaded but will run them one at a time. Text responses, voice synthesis, and ASR are all local; only one heavy model is active per turn. Expected first-audio latency 300–600 ms.",
-    },
-    OKAY: {
-        header: "Your device is in the OKAY tier for on-device Eliza.",
-        body: "Your device will load and unload local models as they're needed. Caching does not survive a model swap, so the first response after voice + image-gen at once will be slow. Expected first-audio latency 600–1500 ms. Consider cloud voice for faster turnaround.",
-    },
-    POOR: {
-        header: "This device is in the POOR tier for on-device Eliza.",
-        body: "This device is below the local-voice memory budget. Local responses will be very slow and may fail to load. We recommend Cloud mode — your turn-detection and VAD still run locally for privacy.",
-    },
+	MAX: {
+		header: "Your device is in the MAX tier for on-device Eliza.",
+		body: "Your device can run every local model in parallel: text, voice, ASR, turn detection, speaker recognition, and emotion — all resident at the same time. Expected first-audio latency under 250 ms.",
+	},
+	GOOD: {
+		header: "Your device is in the GOOD tier for on-device Eliza.",
+		body: "Your device can keep every local model loaded but will run them one at a time. Text responses, voice synthesis, and ASR are all local; only one heavy model is active per turn. Expected first-audio latency 300–600 ms.",
+	},
+	OKAY: {
+		header: "Your device is in the OKAY tier for on-device Eliza.",
+		body: "Your device will load and unload local models as they're needed. Caching does not survive a model swap, so the first response after voice + image-gen at once will be slow. Expected first-audio latency 600–1500 ms. Consider cloud voice for faster turnaround.",
+	},
+	POOR: {
+		header: "This device is in the POOR tier for on-device Eliza.",
+		body: "This device is below the local-voice memory budget. Local responses will be very slow and may fail to load. We recommend Cloud mode — your turn-detection and VAD still run locally for privacy.",
+	},
 };
 /** Convenience: total RAM in MB. */
 export function totalRamMb(probe) {
-    return Math.round(probe.totalRamGb * MB_PER_GB);
+	return Math.round(probe.totalRamGb * MB_PER_GB);
 }
 //# sourceMappingURL=device-tier.js.map

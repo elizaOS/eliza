@@ -46,26 +46,27 @@ import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 export function clampProbability(value) {
-    if (!Number.isFinite(value))
-        return 0.5;
-    return Math.max(0, Math.min(1, value));
+	if (!Number.isFinite(value)) return 0.5;
+	return Math.max(0, Math.min(1, value));
 }
 export function turnSignalFromProbability(args) {
-    const p = clampProbability(args.probability);
-    const nextSpeaker = p >= EOT_TENTATIVE_THRESHOLD
-        ? "agent"
-        : p < EOT_MID_CLAUSE_THRESHOLD
-            ? "user"
-            : "unknown";
-    return {
-        endOfTurnProbability: p,
-        nextSpeaker,
-        agentShouldSpeak: nextSpeaker === "agent" ? true : nextSpeaker === "user" ? false : null,
-        source: args.source,
-        ...(args.model ? { model: args.model } : {}),
-        transcript: args.transcript,
-        ...(args.latencyMs !== undefined ? { latencyMs: args.latencyMs } : {}),
-    };
+	const p = clampProbability(args.probability);
+	const nextSpeaker =
+		p >= EOT_TENTATIVE_THRESHOLD
+			? "agent"
+			: p < EOT_MID_CLAUSE_THRESHOLD
+				? "user"
+				: "unknown";
+	return {
+		endOfTurnProbability: p,
+		nextSpeaker,
+		agentShouldSpeak:
+			nextSpeaker === "agent" ? true : nextSpeaker === "user" ? false : null,
+		source: args.source,
+		...(args.model ? { model: args.model } : {}),
+		transcript: args.transcript,
+		...(args.latencyMs !== undefined ? { latencyMs: args.latencyMs } : {}),
+	};
 }
 // ---------------------------------------------------------------------------
 // Heuristic baseline
@@ -84,125 +85,121 @@ export function turnSignalFromProbability(args) {
  *   6       No signal                                     0.50
  */
 export class HeuristicEotClassifier {
-    /** Conjunctions that strongly suggest the user is mid-clause. */
-    static TRAILING_CONJUNCTIONS = new Set([
-        "and",
-        "but",
-        "or",
-        "nor",
-        "yet",
-        "so",
-        "because",
-        "although",
-        "though",
-        "while",
-        "whereas",
-        "if",
-        "unless",
-        "until",
-        "since",
-        "when",
-        "where",
-        "which",
-        "that",
-        "who",
-        "whom",
-        "whose",
-    ]);
-    /** Prepositions and articles that suggest an incomplete NP follows. */
-    static TRAILING_INCOMPLETE = new Set([
-        "a",
-        "an",
-        "the",
-        "to",
-        "of",
-        "in",
-        "on",
-        "at",
-        "by",
-        "for",
-        "with",
-        "from",
-        "into",
-        "about",
-        "through",
-        "between",
-        "against",
-        "during",
-        "before",
-        "after",
-        "without",
-        "under",
-        "over",
-        "above",
-        "below",
-        "around",
-        "beside",
-        "beyond",
-        "like",
-        "near",
-        "past",
-        "via",
-    ]);
-    /** Question-tag suffixes that end an utterance (case-insensitive). */
-    static QUESTION_TAGS = [
-        "right?",
-        "yeah?",
-        "ok?",
-        "okay?",
-        "right",
-        "yeah",
-        "correct?",
-        "correct",
-        "hm?",
-        "huh?",
-        "eh?",
-    ];
-    score(partialTranscript) {
-        const text = partialTranscript.trim();
-        if (text.length === 0)
-            return Promise.resolve(0.5);
-        // Rule 1 — sentence-final punctuation.
-        if (/[.!?]$/.test(text)) {
-            return Promise.resolve(0.95);
-        }
-        // Rule 2 — question-tag words at the end.
-        const lower = text.toLowerCase();
-        for (const tag of HeuristicEotClassifier.QUESTION_TAGS) {
-            if (lower.endsWith(tag))
-                return Promise.resolve(0.85);
-        }
-        // Split into words for word-level checks.
-        const words = text
-            .toLowerCase()
-            .replace(/[^a-z0-9'\s-]/gi, "")
-            .split(/\s+/)
-            .filter(Boolean);
-        if (words.length === 0)
-            return Promise.resolve(0.5);
-        const lastWord = words[words.length - 1].replace(/[',;:-]+$/, "");
-        // Rule 3 — short utterance (< 3 words) → likely complete.
-        if (words.length < 3)
-            return Promise.resolve(0.7);
-        // Rule 4 — trailing conjunction → mid-clause.
-        if (HeuristicEotClassifier.TRAILING_CONJUNCTIONS.has(lastWord)) {
-            return Promise.resolve(0.15);
-        }
-        // Rule 5 — trailing preposition or article → incomplete NP.
-        if (HeuristicEotClassifier.TRAILING_INCOMPLETE.has(lastWord)) {
-            return Promise.resolve(0.2);
-        }
-        // Rule 6 — no signal.
-        return Promise.resolve(0.5);
-    }
-    async signal(partialTranscript) {
-        return turnSignalFromProbability({
-            probability: await this.score(partialTranscript),
-            transcript: partialTranscript.trim(),
-            source: "heuristic",
-            model: "heuristic-v1",
-        });
-    }
+	/** Conjunctions that strongly suggest the user is mid-clause. */
+	static TRAILING_CONJUNCTIONS = new Set([
+		"and",
+		"but",
+		"or",
+		"nor",
+		"yet",
+		"so",
+		"because",
+		"although",
+		"though",
+		"while",
+		"whereas",
+		"if",
+		"unless",
+		"until",
+		"since",
+		"when",
+		"where",
+		"which",
+		"that",
+		"who",
+		"whom",
+		"whose",
+	]);
+	/** Prepositions and articles that suggest an incomplete NP follows. */
+	static TRAILING_INCOMPLETE = new Set([
+		"a",
+		"an",
+		"the",
+		"to",
+		"of",
+		"in",
+		"on",
+		"at",
+		"by",
+		"for",
+		"with",
+		"from",
+		"into",
+		"about",
+		"through",
+		"between",
+		"against",
+		"during",
+		"before",
+		"after",
+		"without",
+		"under",
+		"over",
+		"above",
+		"below",
+		"around",
+		"beside",
+		"beyond",
+		"like",
+		"near",
+		"past",
+		"via",
+	]);
+	/** Question-tag suffixes that end an utterance (case-insensitive). */
+	static QUESTION_TAGS = [
+		"right?",
+		"yeah?",
+		"ok?",
+		"okay?",
+		"right",
+		"yeah",
+		"correct?",
+		"correct",
+		"hm?",
+		"huh?",
+		"eh?",
+	];
+	score(partialTranscript) {
+		const text = partialTranscript.trim();
+		if (text.length === 0) return Promise.resolve(0.5);
+		// Rule 1 — sentence-final punctuation.
+		if (/[.!?]$/.test(text)) {
+			return Promise.resolve(0.95);
+		}
+		// Rule 2 — question-tag words at the end.
+		const lower = text.toLowerCase();
+		for (const tag of HeuristicEotClassifier.QUESTION_TAGS) {
+			if (lower.endsWith(tag)) return Promise.resolve(0.85);
+		}
+		// Split into words for word-level checks.
+		const words = text
+			.toLowerCase()
+			.replace(/[^a-z0-9'\s-]/gi, "")
+			.split(/\s+/)
+			.filter(Boolean);
+		if (words.length === 0) return Promise.resolve(0.5);
+		const lastWord = words[words.length - 1].replace(/[',;:-]+$/, "");
+		// Rule 3 — short utterance (< 3 words) → likely complete.
+		if (words.length < 3) return Promise.resolve(0.7);
+		// Rule 4 — trailing conjunction → mid-clause.
+		if (HeuristicEotClassifier.TRAILING_CONJUNCTIONS.has(lastWord)) {
+			return Promise.resolve(0.15);
+		}
+		// Rule 5 — trailing preposition or article → incomplete NP.
+		if (HeuristicEotClassifier.TRAILING_INCOMPLETE.has(lastWord)) {
+			return Promise.resolve(0.2);
+		}
+		// Rule 6 — no signal.
+		return Promise.resolve(0.5);
+	}
+	async signal(partialTranscript) {
+		return turnSignalFromProbability({
+			probability: await this.score(partialTranscript),
+			transcript: partialTranscript.trim(),
+			source: "heuristic",
+			model: "heuristic-v1",
+		});
+	}
 }
 /**
  * Tier-bundled upstream revisions for `livekit/turn-detector`. The upstream
@@ -233,13 +230,13 @@ export const LIVEKIT_TURN_DETECTOR_INTL_REVISION = "v0.4.1-intl";
  * staging step that pulls the matching ONNX for each tier.
  */
 export function turnDetectorRevisionForTier(tierId) {
-    const bare = tierId.startsWith("eliza-1-")
-        ? tierId.slice("eliza-1-".length)
-        : tierId;
-    if (bare === "0_8b" || bare === "2b") {
-        return LIVEKIT_TURN_DETECTOR_EN_REVISION;
-    }
-    return LIVEKIT_TURN_DETECTOR_INTL_REVISION;
+	const bare = tierId.startsWith("eliza-1-")
+		? tierId.slice("eliza-1-".length)
+		: tierId;
+	if (bare === "0_8b" || bare === "2b") {
+		return LIVEKIT_TURN_DETECTOR_EN_REVISION;
+	}
+	return LIVEKIT_TURN_DETECTOR_INTL_REVISION;
 }
 /**
  * Default ONNX filename inside the bundle's turn-detector dir. Upstream
@@ -255,7 +252,14 @@ export const DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX = "onnx/model_q8.onnx";
  * bundles use {@link DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX}.
  */
 export const LEGACY_LIVEKIT_TURN_DETECTOR_ONNX = "model_quantized.onnx";
-export const DEFAULT_LIVEKIT_TURN_DETECTOR_DIR = path.join(homedir(), ".eliza", "local-inference", "models", "turn-detector", "livekit-turn-detector");
+export const DEFAULT_LIVEKIT_TURN_DETECTOR_DIR = path.join(
+	homedir(),
+	".eliza",
+	"local-inference",
+	"models",
+	"turn-detector",
+	"livekit-turn-detector",
+);
 const LIVEKIT_IM_END_TOKEN = "<|im_end|>";
 /**
  * Local LiveKit text turn detector. This is the same inference contract as
@@ -263,95 +267,102 @@ const LIVEKIT_IM_END_TOKEN = "<|im_end|>";
  * ONNX graph returns logits instead of a pre-sigmoided scalar.
  */
 export class LiveKitTurnDetector {
-    modelDir;
-    onnxPath;
-    maxHistoryTokens;
-    intraOpNumThreads;
-    model;
-    revision;
-    ready = null;
-    constructor(opts = {}) {
-        this.modelDir = opts.modelDir ?? DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
-        this.onnxPath = path.join(this.modelDir, opts.onnxFilename ?? DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX);
-        this.maxHistoryTokens = opts.maxHistoryTokens ?? 128;
-        this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
-        this.revision = opts.revision;
-        this.model = opts.model ?? this.defaultModelLabel(opts.revision);
-    }
-    defaultModelLabel(revision) {
-        if (!revision)
-            return LIVEKIT_TURN_DETECTOR_HF_REPO;
-        return `${LIVEKIT_TURN_DETECTOR_HF_REPO}@${revision}`;
-    }
-    async score(partialTranscript) {
-        return (await this.signal(partialTranscript)).endOfTurnProbability;
-    }
-    async signal(partialTranscript) {
-        const started = performance.now();
-        const loaded = await this.load();
-        const transcript = normalizeTurnDetectorText(partialTranscript);
-        const text = formatLiveKitTurnDetectorPrompt(loaded.tokenizer, transcript);
-        const encoded = await loaded.tokenizer(text, {
-            add_special_tokens: false,
-            max_length: this.maxHistoryTokens,
-            truncation: true,
-        });
-        const { data, dims } = tokenIdsToBigInt64(encoded);
-        const feeds = {
-            input_ids: new loaded.ort.Tensor("int64", data, dims),
-        };
-        const outputs = await loaded.session.run(feeds);
-        const outputName = loaded.session.outputNames[0];
-        const tensor = (outputName ? outputs[outputName] : undefined) ??
-            Object.values(outputs)[0];
-        if (!tensor) {
-            throw new Error("[voice] LiveKit turn detector returned no outputs.");
-        }
-        const probability = probabilityFromOnnxOutput(tensor, loaded.imEndTokenId);
-        return turnSignalFromProbability({
-            probability,
-            transcript,
-            source: "livekit-turn-detector",
-            model: this.model,
-            latencyMs: performance.now() - started,
-        });
-    }
-    load() {
-        this.ready ??= this.loadInner();
-        return this.ready;
-    }
-    async loadInner() {
-        await Promise.all([
-            access(this.onnxPath),
-            access(path.join(this.modelDir, "tokenizer.json")),
-        ]);
-        const [{ AutoTokenizer }, ort] = await Promise.all([
-            import("@huggingface/transformers"),
-            import("onnxruntime-node"),
-        ]);
-        const tokenizer = (await AutoTokenizer.from_pretrained(this.modelDir, {
-            local_files_only: true,
-        }));
-        tokenizer.truncation_side = "left";
-        const imEnd = await tokenizer(LIVEKIT_IM_END_TOKEN, {
-            add_special_tokens: false,
-        });
-        const imEndIds = tokenIdsToBigInt64(imEnd).data;
-        const imEndTokenId = Number(imEndIds[0]);
-        if (!Number.isInteger(imEndTokenId)) {
-            throw new Error("[voice] LiveKit turn detector tokenizer did not expose <|im_end|>.");
-        }
-        const session = await ort.InferenceSession.create(this.onnxPath, {
-            executionProviders: ["cpu"],
-            graphOptimizationLevel: "all",
-            interOpNumThreads: 1,
-            intraOpNumThreads: this.intraOpNumThreads,
-        });
-        if (!session.inputNames.includes("input_ids")) {
-            throw new Error(`[voice] LiveKit turn detector graph is missing input_ids (inputs: ${session.inputNames.join(", ")}).`);
-        }
-        return { ort, session, tokenizer, imEndTokenId };
-    }
+	modelDir;
+	onnxPath;
+	maxHistoryTokens;
+	intraOpNumThreads;
+	model;
+	revision;
+	ready = null;
+	constructor(opts = {}) {
+		this.modelDir = opts.modelDir ?? DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
+		this.onnxPath = path.join(
+			this.modelDir,
+			opts.onnxFilename ?? DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
+		);
+		this.maxHistoryTokens = opts.maxHistoryTokens ?? 128;
+		this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
+		this.revision = opts.revision;
+		this.model = opts.model ?? this.defaultModelLabel(opts.revision);
+	}
+	defaultModelLabel(revision) {
+		if (!revision) return LIVEKIT_TURN_DETECTOR_HF_REPO;
+		return `${LIVEKIT_TURN_DETECTOR_HF_REPO}@${revision}`;
+	}
+	async score(partialTranscript) {
+		return (await this.signal(partialTranscript)).endOfTurnProbability;
+	}
+	async signal(partialTranscript) {
+		const started = performance.now();
+		const loaded = await this.load();
+		const transcript = normalizeTurnDetectorText(partialTranscript);
+		const text = formatLiveKitTurnDetectorPrompt(loaded.tokenizer, transcript);
+		const encoded = await loaded.tokenizer(text, {
+			add_special_tokens: false,
+			max_length: this.maxHistoryTokens,
+			truncation: true,
+		});
+		const { data, dims } = tokenIdsToBigInt64(encoded);
+		const feeds = {
+			input_ids: new loaded.ort.Tensor("int64", data, dims),
+		};
+		const outputs = await loaded.session.run(feeds);
+		const outputName = loaded.session.outputNames[0];
+		const tensor =
+			(outputName ? outputs[outputName] : undefined) ??
+			Object.values(outputs)[0];
+		if (!tensor) {
+			throw new Error("[voice] LiveKit turn detector returned no outputs.");
+		}
+		const probability = probabilityFromOnnxOutput(tensor, loaded.imEndTokenId);
+		return turnSignalFromProbability({
+			probability,
+			transcript,
+			source: "livekit-turn-detector",
+			model: this.model,
+			latencyMs: performance.now() - started,
+		});
+	}
+	load() {
+		this.ready ??= this.loadInner();
+		return this.ready;
+	}
+	async loadInner() {
+		await Promise.all([
+			access(this.onnxPath),
+			access(path.join(this.modelDir, "tokenizer.json")),
+		]);
+		const [{ AutoTokenizer }, ort] = await Promise.all([
+			import("@huggingface/transformers"),
+			import("onnxruntime-node"),
+		]);
+		const tokenizer = await AutoTokenizer.from_pretrained(this.modelDir, {
+			local_files_only: true,
+		});
+		tokenizer.truncation_side = "left";
+		const imEnd = await tokenizer(LIVEKIT_IM_END_TOKEN, {
+			add_special_tokens: false,
+		});
+		const imEndIds = tokenIdsToBigInt64(imEnd).data;
+		const imEndTokenId = Number(imEndIds[0]);
+		if (!Number.isInteger(imEndTokenId)) {
+			throw new Error(
+				"[voice] LiveKit turn detector tokenizer did not expose <|im_end|>.",
+			);
+		}
+		const session = await ort.InferenceSession.create(this.onnxPath, {
+			executionProviders: ["cpu"],
+			graphOptimizationLevel: "all",
+			interOpNumThreads: 1,
+			intraOpNumThreads: this.intraOpNumThreads,
+		});
+		if (!session.inputNames.includes("input_ids")) {
+			throw new Error(
+				`[voice] LiveKit turn detector graph is missing input_ids (inputs: ${session.inputNames.join(", ")}).`,
+			);
+		}
+		return { ort, session, tokenizer, imEndTokenId };
+	}
 }
 /**
  * Construct a `LiveKitTurnDetector` if the bundle has the model installed
@@ -366,120 +377,120 @@ export class LiveKitTurnDetector {
  * `tokenizer.json`. The caller falls back to {@link HeuristicEotClassifier}.
  */
 export async function createBundledLiveKitTurnDetector(opts = {}) {
-    const modelDir = opts.modelDir ??
-        process.env.ELIZA_TURN_DETECTOR_MODEL_DIR ??
-        DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
-    const explicit = opts.onnxFilename ?? process.env.ELIZA_TURN_DETECTOR_ONNX;
-    const candidates = explicit
-        ? [explicit]
-        : [DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX, LEGACY_LIVEKIT_TURN_DETECTOR_ONNX];
-    let resolvedFilename = null;
-    for (const candidate of candidates) {
-        try {
-            await access(path.join(modelDir, candidate));
-            resolvedFilename = candidate;
-            break;
-        }
-        catch {
-            // try next
-        }
-    }
-    if (resolvedFilename === null)
-        return null;
-    try {
-        await access(path.join(modelDir, "tokenizer.json"));
-    }
-    catch {
-        return null;
-    }
-    return new LiveKitTurnDetector({
-        ...opts,
-        modelDir,
-        onnxFilename: resolvedFilename,
-    });
+	const modelDir =
+		opts.modelDir ??
+		process.env.ELIZA_TURN_DETECTOR_MODEL_DIR ??
+		DEFAULT_LIVEKIT_TURN_DETECTOR_DIR;
+	const explicit = opts.onnxFilename ?? process.env.ELIZA_TURN_DETECTOR_ONNX;
+	const candidates = explicit
+		? [explicit]
+		: [DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX, LEGACY_LIVEKIT_TURN_DETECTOR_ONNX];
+	let resolvedFilename = null;
+	for (const candidate of candidates) {
+		try {
+			await access(path.join(modelDir, candidate));
+			resolvedFilename = candidate;
+			break;
+		} catch {
+			// try next
+		}
+	}
+	if (resolvedFilename === null) return null;
+	try {
+		await access(path.join(modelDir, "tokenizer.json"));
+	} catch {
+		return null;
+	}
+	return new LiveKitTurnDetector({
+		...opts,
+		modelDir,
+		onnxFilename: resolvedFilename,
+	});
 }
 function normalizeTurnDetectorText(text) {
-    return text
-        .normalize("NFKC")
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}'\-\s]/gu, " ")
-        .replace(/\s+/g, " ")
-        .trim();
+	return text
+		.normalize("NFKC")
+		.toLowerCase()
+		.replace(/[^\p{L}\p{N}'\-\s]/gu, " ")
+		.replace(/\s+/g, " ")
+		.trim();
 }
 function formatLiveKitTurnDetectorPrompt(tokenizer, transcript) {
-    const templated = tokenizer.apply_chat_template([{ role: "user", content: transcript }], {
-        add_generation_prompt: false,
-        tokenize: false,
-        add_special_tokens: false,
-    });
-    const ix = templated.lastIndexOf(LIVEKIT_IM_END_TOKEN);
-    return ix >= 0 ? templated.slice(0, ix) : templated;
+	const templated = tokenizer.apply_chat_template(
+		[{ role: "user", content: transcript }],
+		{
+			add_generation_prompt: false,
+			tokenize: false,
+			add_special_tokens: false,
+		},
+	);
+	const ix = templated.lastIndexOf(LIVEKIT_IM_END_TOKEN);
+	return ix >= 0 ? templated.slice(0, ix) : templated;
 }
 function tokenIdsToBigInt64(encoded) {
-    const ids = encoded.input_ids;
-    if (!ids)
-        throw new Error("[voice] tokenizer output missing input_ids.");
-    if (isTensorLike(ids) && ids.data) {
-        const dims = ids.dims ?? [1, ids.data.length];
-        return {
-            data: toBigInt64Array(ids.data),
-            dims,
-        };
-    }
-    if (Array.isArray(ids)) {
-        const flattened = ids.flat();
-        const nestedWidth = Array.isArray(ids[0])
-            ? ids[0].length
-            : ids.length;
-        return {
-            data: toBigInt64Array(flattened),
-            dims: Array.isArray(ids[0]) ? [ids.length, nestedWidth] : [1, ids.length],
-        };
-    }
-    throw new Error("[voice] unsupported tokenizer input_ids shape.");
+	const ids = encoded.input_ids;
+	if (!ids) throw new Error("[voice] tokenizer output missing input_ids.");
+	if (isTensorLike(ids) && ids.data) {
+		const dims = ids.dims ?? [1, ids.data.length];
+		return {
+			data: toBigInt64Array(ids.data),
+			dims,
+		};
+	}
+	if (Array.isArray(ids)) {
+		const flattened = ids.flat();
+		const nestedWidth = Array.isArray(ids[0]) ? ids[0].length : ids.length;
+		return {
+			data: toBigInt64Array(flattened),
+			dims: Array.isArray(ids[0]) ? [ids.length, nestedWidth] : [1, ids.length],
+		};
+	}
+	throw new Error("[voice] unsupported tokenizer input_ids shape.");
 }
 function isTensorLike(value) {
-    return typeof value === "object" && value !== null && "data" in value;
+	return typeof value === "object" && value !== null && "data" in value;
 }
 function toBigInt64Array(input) {
-    if (input instanceof BigInt64Array)
-        return input;
-    const out = new BigInt64Array(input.length);
-    for (let i = 0; i < input.length; i++) {
-        out[i] = BigInt(input[i]);
-    }
-    return out;
+	if (input instanceof BigInt64Array) return input;
+	const out = new BigInt64Array(input.length);
+	for (let i = 0; i < input.length; i++) {
+		out[i] = BigInt(input[i]);
+	}
+	return out;
 }
 function probabilityFromOnnxOutput(tensor, imEndTokenId) {
-    const data = tensor.data;
-    if (!(data instanceof Float32Array || data instanceof Float64Array)) {
-        throw new Error(`[voice] LiveKit turn detector output must be float logits/probabilities, got ${tensor.type}.`);
-    }
-    const dims = tensor.dims;
-    if (dims.length >= 3) {
-        const vocabSize = dims[dims.length - 1];
-        if (imEndTokenId < 0 || imEndTokenId >= vocabSize) {
-            throw new Error(`[voice] <|im_end|> token id ${imEndTokenId} outside detector vocab ${vocabSize}.`);
-        }
-        const sequenceLength = dims[dims.length - 2];
-        const offset = (sequenceLength - 1) * vocabSize;
-        return softmaxProbability(data, offset, vocabSize, imEndTokenId);
-    }
-    const last = data[data.length - 1];
-    return clampProbability(last);
+	const data = tensor.data;
+	if (!(data instanceof Float32Array || data instanceof Float64Array)) {
+		throw new Error(
+			`[voice] LiveKit turn detector output must be float logits/probabilities, got ${tensor.type}.`,
+		);
+	}
+	const dims = tensor.dims;
+	if (dims.length >= 3) {
+		const vocabSize = dims[dims.length - 1];
+		if (imEndTokenId < 0 || imEndTokenId >= vocabSize) {
+			throw new Error(
+				`[voice] <|im_end|> token id ${imEndTokenId} outside detector vocab ${vocabSize}.`,
+			);
+		}
+		const sequenceLength = dims[dims.length - 2];
+		const offset = (sequenceLength - 1) * vocabSize;
+		return softmaxProbability(data, offset, vocabSize, imEndTokenId);
+	}
+	const last = data[data.length - 1];
+	return clampProbability(last);
 }
 function softmaxProbability(logits, offset, length, tokenId) {
-    let max = -Infinity;
-    for (let i = 0; i < length; i++) {
-        const value = logits[offset + i];
-        if (value > max)
-            max = value;
-    }
-    let sum = 0;
-    for (let i = 0; i < length; i++) {
-        sum += Math.exp(logits[offset + i] - max);
-    }
-    return clampProbability(Math.exp(logits[offset + tokenId] - max) / sum);
+	let max = -Infinity;
+	for (let i = 0; i < length; i++) {
+		const value = logits[offset + i];
+		if (value > max) max = value;
+	}
+	let sum = 0;
+	for (let i = 0; i < length; i++) {
+		sum += Math.exp(logits[offset + i] - max);
+	}
+	return clampProbability(Math.exp(logits[offset + tokenId] - max) / sum);
 }
 // ---------------------------------------------------------------------------
 // Local Turnsense ONNX classifier (Apache-2.0 fallback)
@@ -501,7 +512,14 @@ function softmaxProbability(logits, offset, length, tokenId) {
  */
 export const TURNSENSE_HF_REPO = "latishab/turnsense";
 export const DEFAULT_TURNSENSE_ONNX = "model_quantized.onnx";
-export const DEFAULT_TURNSENSE_DIR = path.join(homedir(), ".eliza", "local-inference", "models", "turn-detector", "turnsense");
+export const DEFAULT_TURNSENSE_DIR = path.join(
+	homedir(),
+	".eliza",
+	"local-inference",
+	"models",
+	"turn-detector",
+	"turnsense",
+);
 /**
  * Turnsense binary EOU classifier. Returns the same `VoiceTurnSignal`
  * shape as `LiveKitTurnDetector`; the `source` field is
@@ -510,125 +528,136 @@ export const DEFAULT_TURNSENSE_DIR = path.join(homedir(), ".eliza", "local-infer
  * partial-transcript EOU).
  */
 export class TurnsenseEotClassifier {
-    modelDir;
-    onnxPath;
-    maxHistoryTokens;
-    intraOpNumThreads;
-    model;
-    ready = null;
-    constructor(opts = {}) {
-        this.modelDir = opts.modelDir ?? DEFAULT_TURNSENSE_DIR;
-        this.onnxPath = path.join(this.modelDir, opts.onnxFilename ?? DEFAULT_TURNSENSE_ONNX);
-        this.maxHistoryTokens = opts.maxHistoryTokens ?? 256;
-        this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
-        this.model = opts.model ?? TURNSENSE_HF_REPO;
-    }
-    async score(partialTranscript) {
-        return (await this.signal(partialTranscript)).endOfTurnProbability;
-    }
-    async signal(partialTranscript) {
-        const started = performance.now();
-        const loaded = await this.load();
-        const transcript = normalizeTurnDetectorText(partialTranscript);
-        const text = `<|user|> ${transcript}`;
-        const encoded = await loaded.tokenizer(text, {
-            add_special_tokens: false,
-            max_length: this.maxHistoryTokens,
-            truncation: true,
-        });
-        const { data, dims } = tokenIdsToBigInt64(encoded);
-        const feeds = {
-            input_ids: new loaded.ort.Tensor("int64", data, dims),
-        };
-        const outputs = await loaded.session.run(feeds);
-        const outputName = loaded.session.outputNames[0];
-        const tensor = (outputName ? outputs[outputName] : undefined) ??
-            Object.values(outputs)[0];
-        if (!tensor) {
-            throw new Error("[voice] Turnsense classifier returned no outputs.");
-        }
-        const probability = probabilityFromTurnsenseOutput(tensor);
-        return turnSignalFromProbability({
-            probability,
-            transcript,
-            source: "livekit-turn-detector",
-            model: this.model,
-            latencyMs: performance.now() - started,
-        });
-    }
-    load() {
-        this.ready ??= this.loadInner();
-        return this.ready;
-    }
-    async loadInner() {
-        await Promise.all([
-            access(this.onnxPath),
-            access(path.join(this.modelDir, "tokenizer.json")),
-        ]);
-        const [{ AutoTokenizer }, ort] = await Promise.all([
-            import("@huggingface/transformers"),
-            import("onnxruntime-node"),
-        ]);
-        const tokenizer = (await AutoTokenizer.from_pretrained(this.modelDir, {
-            local_files_only: true,
-        }));
-        tokenizer.truncation_side = "left";
-        const session = await ort.InferenceSession.create(this.onnxPath, {
-            executionProviders: ["cpu"],
-            graphOptimizationLevel: "all",
-            interOpNumThreads: 1,
-            intraOpNumThreads: this.intraOpNumThreads,
-        });
-        if (!session.inputNames.includes("input_ids")) {
-            throw new Error(`[voice] Turnsense graph is missing input_ids (inputs: ${session.inputNames.join(", ")}).`);
-        }
-        return { ort, session, tokenizer };
-    }
+	modelDir;
+	onnxPath;
+	maxHistoryTokens;
+	intraOpNumThreads;
+	model;
+	ready = null;
+	constructor(opts = {}) {
+		this.modelDir = opts.modelDir ?? DEFAULT_TURNSENSE_DIR;
+		this.onnxPath = path.join(
+			this.modelDir,
+			opts.onnxFilename ?? DEFAULT_TURNSENSE_ONNX,
+		);
+		this.maxHistoryTokens = opts.maxHistoryTokens ?? 256;
+		this.intraOpNumThreads = opts.intraOpNumThreads ?? 2;
+		this.model = opts.model ?? TURNSENSE_HF_REPO;
+	}
+	async score(partialTranscript) {
+		return (await this.signal(partialTranscript)).endOfTurnProbability;
+	}
+	async signal(partialTranscript) {
+		const started = performance.now();
+		const loaded = await this.load();
+		const transcript = normalizeTurnDetectorText(partialTranscript);
+		const text = `<|user|> ${transcript}`;
+		const encoded = await loaded.tokenizer(text, {
+			add_special_tokens: false,
+			max_length: this.maxHistoryTokens,
+			truncation: true,
+		});
+		const { data, dims } = tokenIdsToBigInt64(encoded);
+		const feeds = {
+			input_ids: new loaded.ort.Tensor("int64", data, dims),
+		};
+		const outputs = await loaded.session.run(feeds);
+		const outputName = loaded.session.outputNames[0];
+		const tensor =
+			(outputName ? outputs[outputName] : undefined) ??
+			Object.values(outputs)[0];
+		if (!tensor) {
+			throw new Error("[voice] Turnsense classifier returned no outputs.");
+		}
+		const probability = probabilityFromTurnsenseOutput(tensor);
+		return turnSignalFromProbability({
+			probability,
+			transcript,
+			source: "livekit-turn-detector",
+			model: this.model,
+			latencyMs: performance.now() - started,
+		});
+	}
+	load() {
+		this.ready ??= this.loadInner();
+		return this.ready;
+	}
+	async loadInner() {
+		await Promise.all([
+			access(this.onnxPath),
+			access(path.join(this.modelDir, "tokenizer.json")),
+		]);
+		const [{ AutoTokenizer }, ort] = await Promise.all([
+			import("@huggingface/transformers"),
+			import("onnxruntime-node"),
+		]);
+		const tokenizer = await AutoTokenizer.from_pretrained(this.modelDir, {
+			local_files_only: true,
+		});
+		tokenizer.truncation_side = "left";
+		const session = await ort.InferenceSession.create(this.onnxPath, {
+			executionProviders: ["cpu"],
+			graphOptimizationLevel: "all",
+			interOpNumThreads: 1,
+			intraOpNumThreads: this.intraOpNumThreads,
+		});
+		if (!session.inputNames.includes("input_ids")) {
+			throw new Error(
+				`[voice] Turnsense graph is missing input_ids (inputs: ${session.inputNames.join(", ")}).`,
+			);
+		}
+		return { ort, session, tokenizer };
+	}
 }
 /**
  * Try to construct a Turnsense classifier from a locally-staged ONNX
  * bundle. Returns `null` if the model dir / files are missing.
  */
 export async function createBundledTurnsenseEotClassifier(opts = {}) {
-    const modelDir = opts.modelDir ??
-        process.env.ELIZA_TURNSENSE_MODEL_DIR ??
-        DEFAULT_TURNSENSE_DIR;
-    const onnxFilename = opts.onnxFilename ??
-        process.env.ELIZA_TURNSENSE_ONNX ??
-        DEFAULT_TURNSENSE_ONNX;
-    try {
-        await Promise.all([
-            access(path.join(modelDir, onnxFilename)),
-            access(path.join(modelDir, "tokenizer.json")),
-        ]);
-    }
-    catch {
-        return null;
-    }
-    return new TurnsenseEotClassifier({
-        ...opts,
-        modelDir,
-        onnxFilename,
-    });
+	const modelDir =
+		opts.modelDir ??
+		process.env.ELIZA_TURNSENSE_MODEL_DIR ??
+		DEFAULT_TURNSENSE_DIR;
+	const onnxFilename =
+		opts.onnxFilename ??
+		process.env.ELIZA_TURNSENSE_ONNX ??
+		DEFAULT_TURNSENSE_ONNX;
+	try {
+		await Promise.all([
+			access(path.join(modelDir, onnxFilename)),
+			access(path.join(modelDir, "tokenizer.json")),
+		]);
+	} catch {
+		return null;
+	}
+	return new TurnsenseEotClassifier({
+		...opts,
+		modelDir,
+		onnxFilename,
+	});
 }
 function probabilityFromTurnsenseOutput(tensor) {
-    const data = tensor.data;
-    if (!(data instanceof Float32Array || data instanceof Float64Array)) {
-        throw new Error(`[voice] Turnsense output must be float logits/probabilities, got ${tensor.type}.`);
-    }
-    // Output is `[batch=1, num_classes=2]` with class index 1 = EOU.
-    // Some Turnsense exports emit a flat 2-element vector; handle both.
-    if (data.length < 2) {
-        throw new Error(`[voice] Turnsense output has unexpected length ${data.length}; expected ≥2.`);
-    }
-    const dims = tensor.dims;
-    const offset = dims.length >= 2 ? data.length - 2 : 0;
-    const logitNon = data[offset];
-    const logitEou = data[offset + 1];
-    const max = logitNon > logitEou ? logitNon : logitEou;
-    const expEou = Math.exp(logitEou - max);
-    const expNon = Math.exp(logitNon - max);
-    return clampProbability(expEou / (expEou + expNon));
+	const data = tensor.data;
+	if (!(data instanceof Float32Array || data instanceof Float64Array)) {
+		throw new Error(
+			`[voice] Turnsense output must be float logits/probabilities, got ${tensor.type}.`,
+		);
+	}
+	// Output is `[batch=1, num_classes=2]` with class index 1 = EOU.
+	// Some Turnsense exports emit a flat 2-element vector; handle both.
+	if (data.length < 2) {
+		throw new Error(
+			`[voice] Turnsense output has unexpected length ${data.length}; expected ≥2.`,
+		);
+	}
+	const dims = tensor.dims;
+	const offset = dims.length >= 2 ? data.length - 2 : 0;
+	const logitNon = data[offset];
+	const logitEou = data[offset + 1];
+	const max = logitNon > logitEou ? logitNon : logitEou;
+	const expEou = Math.exp(logitEou - max);
+	const expNon = Math.exp(logitNon - max);
+	return clampProbability(expEou / (expEou + expNon));
 }
 /**
  * Remote EOT classifier. POSTs `{ transcript: string }` to `endpoint`
@@ -639,51 +668,56 @@ function probabilityFromTurnsenseOutput(tensor) {
  * manufactured on network or parse errors.
  */
 export class RemoteEotClassifier {
-    endpoint;
-    timeoutMs;
-    model;
-    constructor(opts) {
-        this.endpoint = opts.endpoint;
-        this.timeoutMs = opts.timeoutMs ?? 200;
-        this.model = opts.model ?? "remote-eot";
-    }
-    async score(partialTranscript) {
-        return (await this.signal(partialTranscript)).endOfTurnProbability;
-    }
-    async signal(partialTranscript) {
-        const started = performance.now();
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), this.timeoutMs);
-        try {
-            const response = await fetch(this.endpoint, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ transcript: partialTranscript }),
-                signal: controller.signal,
-            });
-            if (!response.ok) {
-                throw new Error(`[voice] Remote EOT classifier failed: HTTP ${response.status} ${response.statusText}`);
-            }
-            const json = (await response.json());
-            if (typeof json === "object" &&
-                json !== null &&
-                "p_done" in json &&
-                typeof json.p_done === "number") {
-                const p = json.p_done;
-                return turnSignalFromProbability({
-                    probability: p,
-                    transcript: partialTranscript.trim(),
-                    source: "remote",
-                    model: this.model,
-                    latencyMs: performance.now() - started,
-                });
-            }
-            throw new Error("[voice] Remote EOT classifier response missing numeric p_done.");
-        }
-        finally {
-            clearTimeout(timer);
-        }
-    }
+	endpoint;
+	timeoutMs;
+	model;
+	constructor(opts) {
+		this.endpoint = opts.endpoint;
+		this.timeoutMs = opts.timeoutMs ?? 200;
+		this.model = opts.model ?? "remote-eot";
+	}
+	async score(partialTranscript) {
+		return (await this.signal(partialTranscript)).endOfTurnProbability;
+	}
+	async signal(partialTranscript) {
+		const started = performance.now();
+		const controller = new AbortController();
+		const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+		try {
+			const response = await fetch(this.endpoint, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ transcript: partialTranscript }),
+				signal: controller.signal,
+			});
+			if (!response.ok) {
+				throw new Error(
+					`[voice] Remote EOT classifier failed: HTTP ${response.status} ${response.statusText}`,
+				);
+			}
+			const json = await response.json();
+			if (
+				typeof json === "object" &&
+				json !== null &&
+				"p_done" in json &&
+				typeof json.p_done === "number"
+			) {
+				const p = json.p_done;
+				return turnSignalFromProbability({
+					probability: p,
+					transcript: partialTranscript.trim(),
+					source: "remote",
+					model: this.model,
+					latencyMs: performance.now() - started,
+				});
+			}
+			throw new Error(
+				"[voice] Remote EOT classifier response missing numeric p_done.",
+			);
+		} finally {
+			clearTimeout(timer);
+		}
+	}
 }
 // ---------------------------------------------------------------------------
 // Thresholds (shared constants so tests and state machine stay in sync)
