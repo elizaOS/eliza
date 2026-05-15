@@ -360,7 +360,6 @@ describe("fused-vs-two-process spawn selection", () => {
 		process.env.ELIZA_DFLASH_LLAMA_SERVER = explicit;
 		expect(resolveDflashBinary()).toBe(explicit);
 	});
-
 });
 
 describe("DflashLlamaServer runtime load config", () => {

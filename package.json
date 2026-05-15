@@ -3,6 +3,11 @@
   "version": "2.0.0-beta.0",
   "private": true,
   "type": "module",
+  "files": [
+    "dist",
+    "packages/app/dist",
+    "packages/app-core/scripts"
+  ],
   "elizaos": {
     "app": {
       "defaults": {},
@@ -140,7 +145,8 @@
     "test:cloud:full": "bun run --cwd cloud test:full",
     "test:ci": "TEST_LANE=pr node scripts/run-all-tests.mjs --only=test --no-cloud",
     "test:ci:live": "TEST_LANE=post-merge node scripts/run-all-tests.mjs --all --no-cloud",
-    "test:e2e": "TEST_LANE=pr node scripts/run-all-tests.mjs --only=e2e --no-cloud",
+    "test:e2e": "TEST_LANE=pr node scripts/run-all-tests.mjs --only=e2e --no-cloud --exclude eliza/plugins/plugin-steward-app/test/anvil-contracts.real.e2e.test.ts --exclude eliza/packages/app-core/test/app/memory-relationships.real.e2e.test.ts --exclude eliza/packages/app-core/test/app/onboarding-companion.live.e2e.test.ts --exclude eliza/packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
+    "test:e2e:heavy": "TEST_LANE=post-merge bunx vitest run --config test/vitest/real.config.ts --passWithNoTests eliza/plugins/plugin-steward-app/test/anvil-contracts.real.e2e.test.ts plugins/plugin-steward-app/test/anvil-contracts.real.e2e.test.ts eliza/packages/app-core/test/app/memory-relationships.real.e2e.test.ts packages/app-core/test/app/memory-relationships.real.e2e.test.ts eliza/packages/app-core/test/app/onboarding-companion.live.e2e.test.ts packages/app-core/test/app/onboarding-companion.live.e2e.test.ts eliza/packages/app-core/test/app/qa-checklist.real.e2e.test.ts packages/app-core/test/app/qa-checklist.real.e2e.test.ts",
     "test:e2e:live": "TEST_LANE=post-merge node scripts/run-all-tests.mjs --only=e2e --no-cloud",
     "test:lifeops": "node scripts/run-all-tests.mjs --filter=plugins/plugin-lifeops --only=e2e",
     "lifeops:verify-cerebras": "bun --bun plugins/plugin-lifeops/scripts/verify-cerebras-wiring.ts",
@@ -212,6 +218,9 @@
     "plugins/*",
     "cloud/packages/sdk"
   ],
+  "bundleDependencies": [
+    "@elizaos/plugin-agent-orchestrator"
+  ],
   "devDependencies": {
     "@biomejs/biome": "2.4.15",
     "ethers": "^6.16.0",
@@ -245,6 +254,7 @@
     "tsx": "^4.21.0",
     "turbo": "^2.7.4",
     "typescript": "^6.0.3",
+    "vite": "8.0.13",
     "vitest": "^4.0.17"
   },
   "resolutions": {
