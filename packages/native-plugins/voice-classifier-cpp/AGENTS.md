@@ -1,5 +1,14 @@
 # voice-classifier-cpp — port plan
 
+**ONNX deprecation status (J3 wave, 2026-05-15):** all three model heads in
+this library (`voice_emotion_*`, `voice_speaker_*`, `voice_eot_*`) are stubs
+that return `-ENOSYS`. The ONNX runtime paths in the resolved production code
+remain active until these stubs are replaced with real ggml graph
+implementations. Do NOT remove `onnxruntime-node` from
+`plugin-local-inference/package.json` until all three heads are implemented.
+See `.swarm/impl/J3-finalize.md §C` for the precise per-head next steps and
+`.swarm/impl/I1-single-runtime.md §F` for the migration protocol.
+
 Standalone C library that ports three small voice-side classifiers to
 the elizaOS/llama.cpp fork's ggml dispatcher, replacing the ONNX
 runtime path used today by:

@@ -1,5 +1,23 @@
 # Swarm collaboration notes — Voice Waves 2+3
 
+## J3 — Single-runtime finalizer phase=impl-done
+
+2026-05-15 J3 phase=impl-done (partial — compute-gated on J1/J2 native ports).
+- J1 and J2 processes (PIDs 2695199, 2696510) exited without posting impl-done.
+  All 5 ONNX voice sub-models remain on ONNX resolved path. Native C stubs
+  still return -ENOSYS. ONNX dep cannot be removed from package.json yet.
+- AGENTS.md updated: `plugins/plugin-local-inference/native/AGENTS.md` §11 +
+  `packages/native-plugins/voice-classifier-cpp/AGENTS.md` header — both
+  document the deprecation status and per-head compute gates.
+- State matrix and compute-gate next steps committed to `.swarm/impl/J3-finalize.md`.
+- No-ONNX lsof proof deferred: not meaningful until ONNX paths removed.
+- lsof artifact placeholder: `artifacts/j3-no-onnx-proof/` (empty).
+- Submodule pin current at `5da0f068a` — no bump needed this wave.
+- Next: J1 must implement the 3 voice-classifier-cpp heads + pyannote diarizer;
+  J2 must implement `llama_model_kokoro::build_graph`. When both post impl-done,
+  re-open J3 to complete ONNX removal, lsof proof, and dep cleanup.
+- Report: `.swarm/impl/J3-finalize.md`
+
 ## W3-5 — Emotion roundtrip validation phase=impl-done
 
 2026-05-15 W3-5 phase=impl-done. 21/21 tests green on real audio (Kokoro + SUPERB proxy).
@@ -806,3 +824,20 @@ coordinate here, don't kill peers.
   Manifest + CHANGELOG bookkeeping picked up by peer auto-commits prior
   to my commit (already in HEAD). Report:
   .swarm/impl/I1-single-runtime.md.
+
+
+## H2.f — CUDA fused build green (2026-05-15)
+
+- 2026-05-15 04:44 H2 (respawn) phase=h2f-done. Local RTX 5080 CUDA fused
+  build of merged-OmniVoice llama.cpp went `[100%] Built target llama-server`
+  after the `static`→`extern` fix on `audio_speech_handler()` (commit
+  `5da0f068a` on fork, `a8bf079685` parent). Artefacts:
+  - `build-h2f-cuda/bin/llama-server` (8.3 MB, version 9879 / d0c714786)
+  - `build-h2f-cuda/tools/omnivoice/libomnivoice_lib.a` (614 KB)
+  - 23 `eliza_omnivoice::*` symbols resolved: `audio_speech_handler()`,
+    `g_model_path`/`g_codec_path`, `route_voice_preset::~dtor`,
+    `cli_or_env`, `json_int_clamped`/`json_float_positive`.
+  All H2.c committed-source surfaces link clean. H2.f Linux/CUDA DONE.
+  Metal stays compute-gated (no Mac). H2.e can now run per-tier eval
+  rounds against the green binary; that's a separate operator workstream
+  (~30 min/tier for text_eval + voice_rtf + e2e_loop + finalize).
