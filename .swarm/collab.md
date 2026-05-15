@@ -721,3 +721,57 @@ coordinate here, don't kill peers.
   reports) that's not yet resolved. Drive each to DONE or
   `compute-gated: <reason>` with precise next-step.
 
+
+
+## H2 — Gauntlet cleanup re-spawn (2026-05-15)
+
+- 2026-05-15 04:25 H2 (respawn) phase=impl-done. PID written to .swarm/run/H2.pid.
+  Closed five of six sub-workstreams; H2.f in flight.
+  - **H2.a DONE.** Real Wav2Small cls7 ONNX wired into voice-emotion bench via
+    HF auto-download from elizaos/eliza-1-voice-emotion. Adapter auto-detects
+    head (vad/cls7) from output shape, matches the TS runtime contract.
+    test_emotion_real_classifier.py runs against held-out xbgoose/ravdess
+    clips: 4 tests pass (backend=wav2small-cls7 + aggregate ≥55% + 3 high-
+    accuracy classes ≥70% + discriminates ≥4 classes). Commit 47303ea360.
+  - **H2.b DONE.** Production stack (pyannote-segmentation-3.0-int8 +
+    wespeaker-resnet34-lm) wired into voice-speaker-validation behind
+    PRODUCTION_SPEAKER_STACK=1. Powerset decoder (7-class softmax) handles the
+    pyannote-3 output correctly. test_diarization_production.py: 7 tests pass
+    across all 5 W3-6 fixtures (>=GT speaker count, DER<=0.50, solo doesn't
+    over-split). Commit b119faddac.
+  - **H2.c DONE.** /v1/audio/speech preset-aware route moved from inline
+    server.cpp block (lines 15-491) into committed source at
+    tools/omnivoice/{include/server-mount.h, src/server-mount.cpp}. CMakeLists
+    adds the new TU to llama-server's PRIVATE sources. streaming-opts.h
+    prefix_slot is now a real PrefixSlotPool (thread-safe LRU, refcount,
+    invalidate). Submodule commit cd0108bbd. Parent commit 46a442ea68 collapses
+    the legacy graft path entirely: omnivoice-fuse/ directory is gone
+    (prepare.mjs + cmake-graft.mjs + kokoro-graft/ deleted; freeze-voice.mjs
+    moved to scripts/voice/; verify-symbols.mjs → build-helpers/; FFI stub
+    artefacts → ffi-stub/). OMNIVOICE_INSIDE_LLAMA_CPP=0 now no-ops.
+  - **H2.d DONE (already migrated).** Earlier F1/G5.d work already migrated
+    the session-level coordinator to read from EngineVoiceBridge. Only one
+    `new VoiceCancellationCoordinator` callsite exists in the codebase
+    (engine-bridge.ts:696 inside buildCancellationWiring). engine.ts
+    startVoiceSession uses bridge.bindBargeInControllerForRoom(roomId).
+    No further code change required.
+  - **H2.e compute-gated: H2.f fused build + GPU runtime required.** All 6
+    tier manifests (0_8b/2b/4b/9b/27b/27b-256k) on HF currently have every
+    eval (textEval / asrWer / vadLatency / voiceRtf / e2eLoop / thirtyTurn /
+    expressive) at `passed=false` with zero placeholder scores. Real evals
+    cannot run until the fused llama-server is built (H2.f in flight). Once
+    built, the precise sequence is in .swarm/impl/H2-cleanup.md §H2.e
+    "Precise next-step" (9 steps culminating in finalize_eliza1_evidence.py
+    deriving releaseState + publishEligible).
+  - **H2.f RUNNING (local CUDA) / Metal compute-gated.** Nebius
+    89.169.121.175 SSH key is gone (Permission denied (publickey)) — falling
+    back to local RTX 5080 Laptop GPU. CMake configure GREEN (CUDA 12.0,
+    ggml=cd0108bbd, compute_90 target). Build kicked off with
+    `cmake --build . --target llama-server -j8` against the merged tree
+    (LLAMA_BUILD_OMNIVOICE=ON, OMNIVOICE_SHARED=ON). Build PID
+    /tmp/h2f-build.pid, log /tmp/h2f-build.log. Currently at 45% (CUDA
+    fattn-vec template instances). Metal: hardware-blocked (no Mac).
+  - Verify GREEN: `bun x turbo run typecheck lint --filter
+    @elizaos/plugin-local-inference --filter @elizaos/shared` →
+    20/20 tasks success (1m32s).
+  - Impl report: .swarm/impl/H2-cleanup.md.
