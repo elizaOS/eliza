@@ -128,8 +128,7 @@ export class GatewayDiscovery extends EventEmitter {
 
 	private handleServiceFound(service: BonjourService): void {
 		const txt = service.txt ?? {};
-		const stableId =
-			txt.id;
+		const stableId = txt.id;
 		const tlsEnabled =
 			txt.protocol === "wss" || txt.tlsEnabled === "true" || txt.tls === "true";
 		const gatewayPort = this.parseNumber(txt.gatewayPort) ?? service.port;
