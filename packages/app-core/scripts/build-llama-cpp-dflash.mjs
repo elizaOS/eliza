@@ -139,20 +139,31 @@ const MIN_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
 // disable `--spec-type dflash` at load time.
 const SWA_SPEC_DECODE_FALLBACK_COMMIT =
   "2fdfa49b95f1e39f3c208a9d6d5bdfd7d1bf527d";
-const METAL_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "inference",
-  "verify",
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+
+function runtimeDispatchEvidencePath(filename) {
+  const candidates = [
+    // Older wrapper layouts stored runtime evidence under packages/inference.
+    path.resolve(__dirname, "..", "..", "inference", "verify", filename),
+    // Current local-inference source of truth lives with the native verifier.
+    path.join(
+      REPO_ROOT,
+      "plugins",
+      "plugin-local-inference",
+      "native",
+      "verify",
+      filename,
+    ),
+  ];
+  return (
+    candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0]
+  );
+}
+
+const METAL_RUNTIME_DISPATCH_EVIDENCE = runtimeDispatchEvidencePath(
   "metal-runtime-dispatch-evidence.json",
 );
-const VULKAN_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "inference",
-  "verify",
+const VULKAN_RUNTIME_DISPATCH_EVIDENCE = runtimeDispatchEvidencePath(
   "vulkan-runtime-dispatch-evidence.json",
 );
 
@@ -511,6 +522,17 @@ function findAndroidVulkanInclude(ndk) {
 function findGlslc(ndk) {
   const explicit = process.env.GLSLC?.trim();
   if (explicit && fs.existsSync(explicit)) return explicit;
+  // Prefer the host shaderc package when present. The NDK-bundled glslc is
+  // useful as a fallback for Android cross builds, but older NDK toolchains can
+  // reject desktop Vulkan feature probes and even fail optimizing generated
+  // shaders that the host shaderc handles correctly.
+  if (has("glslc")) {
+    const out = spawnSync("which", ["glslc"], {
+      encoding: "utf8",
+    }).stdout?.trim();
+    if (out) return out;
+    return "glslc";
+  }
   if (ndk) {
     const hostDirs = [
       "linux-x86_64",
@@ -522,12 +544,6 @@ function findGlslc(ndk) {
       const candidate = path.join(ndk, "shader-tools", host, "glslc");
       if (fs.existsSync(candidate)) return candidate;
     }
-  }
-  if (has("glslc")) {
-    const out = spawnSync("which", ["glslc"], {
-      encoding: "utf8",
-    }).stdout?.trim();
-    return out || "glslc";
   }
   return null;
 }
@@ -1177,6 +1193,59 @@ function fetchHeadersRepo({ name, repo, ref, sentinelRel }) {
   return includeDir;
 }
 
+function spirvHeadersCmakeDirForInclude(includeDir) {
+  const explicit = process.env.ELIZA_DFLASH_SPIRV_HEADERS_CMAKE_DIR?.trim();
+  if (
+    explicit &&
+    fs.existsSync(path.join(explicit, "SPIRV-HeadersConfig.cmake"))
+  ) {
+    return explicit;
+  }
+
+  const cacheRoot = path.dirname(includeDir);
+  const installRoot = path.join(cacheRoot, ".eliza-cmake-install");
+  const candidates = [
+    path.join(installRoot, "share", "cmake", "SPIRV-Headers"),
+    path.join(cacheRoot, "share", "cmake", "SPIRV-Headers"),
+    path.join(includeDir, "..", "share", "cmake", "SPIRV-Headers"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, "SPIRV-HeadersConfig.cmake"))) {
+      return candidate;
+    }
+  }
+
+  if (!fs.existsSync(path.join(cacheRoot, "CMakeLists.txt"))) {
+    throw new Error(
+      `SPIRV-Headers CMake package not found for ${includeDir}; set ELIZA_DFLASH_SPIRV_HEADERS_CMAKE_DIR to the directory containing SPIRV-HeadersConfig.cmake`,
+    );
+  }
+  if (!has("cmake")) {
+    throw new Error(
+      "Vulkan target requires SPIRV-HeadersConfig.cmake; install cmake or set ELIZA_DFLASH_SPIRV_HEADERS_CMAKE_DIR",
+    );
+  }
+
+  const buildDir = path.join(cacheRoot, ".eliza-cmake-build");
+  run("cmake", [
+    "-S",
+    cacheRoot,
+    "-B",
+    buildDir,
+    `-DCMAKE_INSTALL_PREFIX=${installRoot}`,
+    "-DSPIRV_HEADERS_ENABLE_TESTS=OFF",
+    "-DSPIRV_HEADERS_ENABLE_INSTALL=ON",
+  ]);
+  run("cmake", ["--install", buildDir]);
+  const cmakeDir = path.join(installRoot, "share", "cmake", "SPIRV-Headers");
+  if (!fs.existsSync(path.join(cmakeDir, "SPIRV-HeadersConfig.cmake"))) {
+    throw new Error(
+      `SPIRV-Headers install did not produce ${path.join(cmakeDir, "SPIRV-HeadersConfig.cmake")}`,
+    );
+  }
+  return cmakeDir;
+}
+
 function prepareVulkanHeaders() {
   let vulkanInclude;
   const explicitVulkan = process.env.ELIZA_DFLASH_VULKAN_HEADERS_DIR?.trim();
@@ -1208,7 +1277,11 @@ function prepareVulkanHeaders() {
       sentinelRel: path.join("spirv", "unified1", "spirv.hpp"),
     });
   }
-  return { vulkanInclude, spirvInclude };
+  return {
+    vulkanInclude,
+    spirvInclude,
+    spirvCmakeDir: spirvHeadersCmakeDirForInclude(spirvInclude),
+  };
 }
 
 // Resolve the system libvulkan.so.1 on Linux when libvulkan-dev isn't
@@ -1446,6 +1519,9 @@ function cmakeFlagsForTarget(target, ctx) {
         .map((p) => `-isystem ${p}`)
         .join(" ");
       if (isystem) flags.push(`-DCMAKE_CXX_FLAGS=${isystem}`);
+      if (ctx.vulkanHpp.spirvCmakeDir) {
+        flags.push(`-DSPIRV-Headers_DIR=${ctx.vulkanHpp.spirvCmakeDir}`);
+      }
       // CMake's FindVulkan also needs Vulkan_INCLUDE_DIR / Vulkan_LIBRARY
       // for its package check. On Linux without libvulkan-dev installed,
       // we still have:
@@ -3031,16 +3107,34 @@ function readVulkanRuntimeDispatchEvidence() {
   }
 }
 
+function vulkanEvidenceTargetCandidates(target) {
+  if (!target) return [];
+  return [...new Set([target, baseTargetTriple(target)])];
+}
+
 function vulkanEvidencePayloadForTarget(evidence, target) {
   const data = evidence?.data;
   if (!data || typeof data !== "object") return null;
-  if (target && data.targets && typeof data.targets === "object") {
-    const targetPayload = data.targets[target];
-    if (targetPayload && typeof targetPayload === "object") {
-      return targetPayload;
+  const targetCandidates = vulkanEvidenceTargetCandidates(target);
+  if (
+    targetCandidates.length > 0 &&
+    data.targets &&
+    typeof data.targets === "object"
+  ) {
+    for (const candidate of targetCandidates) {
+      const targetPayload = data.targets[candidate];
+      if (targetPayload && typeof targetPayload === "object") {
+        return targetPayload;
+      }
     }
   }
-  if (!target || !data.target || data.target === target) return data;
+  if (
+    targetCandidates.length === 0 ||
+    !data.target ||
+    targetCandidates.includes(data.target)
+  ) {
+    return data;
+  }
   return null;
 }
 
@@ -3245,9 +3339,12 @@ function vulkanRuntimeDispatchStatus(shippedKernels, target) {
     evidenceAvailableTargets: vulkanEvidenceAvailableTargets(evidence),
     evidenceError: evidence.error ?? null,
     smokeTargets: {
-      nativeLinux: "make -C packages/inference/verify vulkan-native-smoke",
-      androidDevice: "make -C packages/inference/verify android-vulkan-smoke",
-      builtForkGraph: "make -C packages/inference/verify vulkan-dispatch-smoke",
+      nativeLinux:
+        "make -C plugins/plugin-local-inference/native/verify vulkan-native-smoke",
+      androidDevice:
+        "make -C plugins/plugin-local-inference/native/verify android-vulkan-smoke",
+      builtForkGraph:
+        "make -C plugins/plugin-local-inference/native/verify vulkan-dispatch-smoke",
     },
     kernels: {
       turbo3: mk("turbo3", "eliza_turbo3"),
