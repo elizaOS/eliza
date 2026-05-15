@@ -38,6 +38,20 @@ export function createAppClawvillePlugin(): Plugin {
         detailPanelId: "clawville-control",
       },
     },
+    views: [
+      {
+        id: "clawville",
+        label: "ClawVille",
+        description: "ClawVille game operator surface — agent controls and session management",
+        icon: "Gamepad2",
+        path: "/clawville",
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "ClawvilleOperatorSurface",
+        tags: ["game", "clawville"],
+        visibleInManager: true,
+        desktopTabEnabled: true,
+      },
+    ],
   };
 }
 

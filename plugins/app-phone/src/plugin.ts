@@ -26,6 +26,20 @@ export const appPhonePlugin: Plugin = {
     "surface.",
   actions: [],
   providers: [phoneCallLogProvider],
+  views: [
+    {
+      id: "phone",
+      label: "Phone",
+      description: "Android dialer and recent-calls log",
+      icon: "Phone",
+      path: "/phone",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "PhoneAppView",
+      tags: ["phone", "calls", "android"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
   app: {
     navTabs: [
       {

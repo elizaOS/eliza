@@ -12,6 +12,20 @@ const rawRs2004scapePlugin: Plugin = {
   services: [RsSdkGameService as ServiceClass],
   actions: rsSdkActions,
   providers: rsSdkProviders,
+  views: [
+    {
+      id: "2004scape",
+      label: "2004scape",
+      description: "2004scape game operator surface — agent controls and session management",
+      icon: "Gamepad2",
+      path: "/2004scape",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "TwoThousandFourScapeOperatorSurface",
+      tags: ["game", "runescape", "2004scape"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
   async dispose(runtime: IAgentRuntime) {
     const svc = runtime.getService<RsSdkGameService>(RsSdkGameService.serviceType);
     await svc?.stop();

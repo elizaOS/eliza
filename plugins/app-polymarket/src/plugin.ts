@@ -92,6 +92,20 @@ export const polymarketPlugin: Plugin = {
   services: [PredictionMarketService],
   providers: [polymarketStatusProvider],
   routes: polymarketRoutes,
+  views: [
+    {
+      id: "polymarket",
+      label: "Polymarket",
+      description: "Polymarket prediction markets — market discovery, orderbook, and positions",
+      icon: "BarChart2",
+      path: "/polymarket",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "PolymarketAppView",
+      tags: ["prediction-markets", "polymarket", "trading"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
   async dispose(runtime: IAgentRuntime) {
     const svc = runtime.getService<PredictionMarketService>(PREDICTION_MARKET_SERVICE_TYPE);
     await svc?.stop();

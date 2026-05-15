@@ -112,6 +112,20 @@ export const hyperliquidPlugin: Plugin = {
   actions: hyperliquidActions,
   services: [PerpetualMarketService],
   routes: hyperliquidRoutes,
+  views: [
+    {
+      id: "hyperliquid",
+      label: "Hyperliquid",
+      description: "Hyperliquid perpetual markets — positions, trading status, and market data",
+      icon: "TrendingUp",
+      path: "/hyperliquid",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "HyperliquidAppView",
+      tags: ["trading", "perps", "hyperliquid", "crypto"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
   async dispose(runtime: IAgentRuntime) {
     const svc = runtime.getService<PerpetualMarketService>(PERPETUAL_MARKET_SERVICE_TYPE);
     await svc?.stop();
