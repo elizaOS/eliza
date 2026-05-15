@@ -1,18 +1,18 @@
-Start testing: May 15 05:13 PDT
+Start testing: May 15 05:35 PDT
 ----------------------------------------------------------
 1/5 Testing: voice_classifier_stub_smoke
 1/5 Test: voice_classifier_stub_smoke
 Command: "/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/voice_classifier_stub_smoke"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build
-"voice_classifier_stub_smoke" start time: May 15 05:13 PDT
+"voice_classifier_stub_smoke" start time: May 15 05:35 PDT
 Output:
 ----------------------------------------------------------
 [voice-classifier-smoke] failures=0 backend=ggml-cpu-shape
 <end of output>
-Test time =   0.00 sec
+Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"voice_classifier_stub_smoke" end time: May 15 05:13 PDT
+"voice_classifier_stub_smoke" end time: May 15 05:35 PDT
 "voice_classifier_stub_smoke" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -20,7 +20,7 @@ Test Passed.
 2/5 Test: voice_emotion_classes_test
 Command: "/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/voice_emotion_classes_test"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build
-"voice_emotion_classes_test" start time: May 15 05:13 PDT
+"voice_emotion_classes_test" start time: May 15 05:35 PDT
 Output:
 ----------------------------------------------------------
 [voice-emotion-classes] failures=0
@@ -28,7 +28,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"voice_emotion_classes_test" end time: May 15 05:13 PDT
+"voice_emotion_classes_test" end time: May 15 05:35 PDT
 "voice_emotion_classes_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -36,7 +36,7 @@ Test Passed.
 3/5 Test: voice_speaker_distance_test
 Command: "/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/voice_speaker_distance_test"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build
-"voice_speaker_distance_test" start time: May 15 05:13 PDT
+"voice_speaker_distance_test" start time: May 15 05:35 PDT
 Output:
 ----------------------------------------------------------
 [voice-speaker-distance] failures=0
@@ -44,7 +44,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"voice_speaker_distance_test" end time: May 15 05:13 PDT
+"voice_speaker_distance_test" end time: May 15 05:35 PDT
 "voice_speaker_distance_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -52,15 +52,15 @@ Test Passed.
 4/5 Test: voice_mel_features_test
 Command: "/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/voice_mel_features_test"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build
-"voice_mel_features_test" start time: May 15 05:13 PDT
+"voice_mel_features_test" start time: May 15 05:35 PDT
 Output:
 ----------------------------------------------------------
 [voice-mel-features] failures=0
 <end of output>
-Test time =   0.13 sec
+Test time =   0.09 sec
 ----------------------------------------------------------
 Test Passed.
-"voice_mel_features_test" end time: May 15 05:13 PDT
+"voice_mel_features_test" end time: May 15 05:35 PDT
 "voice_mel_features_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -68,7 +68,7 @@ Test Passed.
 5/5 Test: voice_gguf_loader_test
 Command: "/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/voice_gguf_loader_test"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build
-"voice_gguf_loader_test" start time: May 15 05:13 PDT
+"voice_gguf_loader_test" start time: May 15 05:35 PDT
 Output:
 ----------------------------------------------------------
 [voice-gguf-loader-test] failures=0
@@ -76,8 +76,8 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"voice_gguf_loader_test" end time: May 15 05:13 PDT
+"voice_gguf_loader_test" end time: May 15 05:35 PDT
 "voice_gguf_loader_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: May 15 05:13 PDT
+End testing: May 15 05:35 PDT

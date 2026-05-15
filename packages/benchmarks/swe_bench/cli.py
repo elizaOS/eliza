@@ -514,6 +514,10 @@ async def _run_opencode_patchfile_instance(
         )
         stdout = stdout_bytes.decode("utf-8", errors="replace")
         stderr = stderr_bytes.decode("utf-8", errors="replace")
+        try:
+            patch_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         worktree_patch = await manager.get_diff()
 
         if not worktree_patch:
@@ -948,7 +952,12 @@ def _build_report(
         1
         for r in results
         if r.patch_status
-        in (PatchStatus.APPLIED, PatchStatus.TESTS_PASSED, PatchStatus.TESTS_FAILED)
+        in (
+            PatchStatus.APPLIED,
+            PatchStatus.TESTS_PASSED,
+            PatchStatus.TESTS_FAILED,
+            PatchStatus.PASS,
+        )
     )
     avg_duration = sum(r.duration_seconds for r in results) / total if total else 0.0
     observed_tokens = [r.tokens_used for r in results if r.tokens_used is not None]

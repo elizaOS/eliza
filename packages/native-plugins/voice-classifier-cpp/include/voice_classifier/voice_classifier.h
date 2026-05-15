@@ -17,12 +17,13 @@
  *      upstreams: `livekit/turn-detector` audio variants or
  *      `pipecat-ai/turn`. Output is a single P(end_of_turn) ∈ [0, 1].
  *
- *   3. Speaker embedding encoder — emits a 192-dim ECAPA-TDNN /
- *      x-vector style speaker embedding suitable for cosine-distance
- *      matching. Suggested upstream: `speechbrain/spkrec-ecapa-voxceleb`
- *      (Apache-2.0). The output dim is fixed at 192 to match the ECAPA
- *      convention; conversion scripts that target a different
- *      embedding width must reproject before packing the GGUF.
+ *   3. Speaker embedding encoder — emits a 256-dim WeSpeaker
+ *      ResNet34-LM style speaker embedding suitable for cosine-distance
+ *      matching. The output dim is fixed at 256 (matches the upstream
+ *      `wenet-e2e/wespeaker` ResNet34-LM checkpoint trained on
+ *      VoxCeleb2-dev with the Large-Margin fine-tune). Conversion
+ *      scripts that target a different embedding width must reproject
+ *      before packing the GGUF.
  *
  * All three heads share:
  *
@@ -93,7 +94,7 @@ extern "C" {
 
 /* Output dimensions for the heads with a fixed-shape output. */
 #define VOICE_EMOTION_NUM_CLASSES 7
-#define VOICE_SPEAKER_EMBEDDING_DIM 192
+#define VOICE_SPEAKER_EMBEDDING_DIM 256
 
 /* ---------------- emotion classifier ---------------- */
 
@@ -202,7 +203,7 @@ typedef void *voice_speaker_handle;
 VOICE_CLASSIFIER_API int voice_speaker_open(const char *gguf, voice_speaker_handle *out);
 
 /*
- * Compute a 192-dim L2-normalized speaker embedding for a mono 16 kHz
+ * Compute a 256-dim L2-normalized speaker embedding for a mono 16 kHz
  * float-PCM window of length `n` and write it into `embedding`.
  *
  * Returns 0 on success.
