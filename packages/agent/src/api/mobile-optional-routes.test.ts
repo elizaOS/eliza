@@ -2,7 +2,12 @@ import type http from "node:http";
 import { Readable } from "node:stream";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const configMock = vi.hoisted(() => ({
+  loadElizaConfig: vi.fn(() => ({})),
+}));
+
 vi.mock("@elizaos/plugin-streaming", () => ({}));
+vi.mock("../config/config.ts", () => configMock);
 
 import { handleMobileOptionalRoutes } from "./mobile-optional-routes.ts";
 
@@ -62,6 +67,7 @@ describe("handleMobileOptionalRoutes", () => {
     } else {
       process.env.ELIZA_DEVICE_BRIDGE_ENABLED = oldBridgeEnv;
     }
+    configMock.loadElizaConfig.mockReturnValue({});
   });
 
   it("serves stream settings on mobile when the optional streaming plugin is stubbed", async () => {
@@ -105,6 +111,9 @@ describe("handleMobileOptionalRoutes", () => {
   it("does not force local runtime mode for device bridge cloud controllers", async () => {
     delete process.env.ELIZA_MOBILE_LOCAL_AGENT;
     process.env.ELIZA_DEVICE_BRIDGE_ENABLED = "1";
+    configMock.loadElizaConfig.mockReturnValue({
+      deploymentTarget: { runtime: "cloud" },
+    });
     const res = makeRes();
 
     const handled = await handleMobileOptionalRoutes(
@@ -116,9 +125,11 @@ describe("handleMobileOptionalRoutes", () => {
 
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({
-      mode: expect.stringMatching(/^(local|cloud|remote)$/),
-      deploymentRuntime: expect.stringMatching(/^(local|cloud|remote)$/),
+    expect(res.json()).toEqual({
+      mode: "cloud",
+      deploymentRuntime: "cloud",
+      isRemoteController: false,
+      remoteApiBaseConfigured: false,
     });
   });
 
