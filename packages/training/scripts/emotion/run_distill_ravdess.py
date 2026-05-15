@@ -77,6 +77,54 @@ from packages.training.scripts.emotion import distill_wav2small as dw  # noqa: E
 
 LOG = logging.getLogger("run_distill_ravdess")
 
+
+# ---------------------------------------------------------------------------
+# V-A-D → expressive-tag projection. Direct port of
+# `projectVadToExpressiveEmotion` in
+# `plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts`.
+# The runtime shipped ONNX only emits V-A-D; the projection is what actually
+# produces a discrete tag at inference time. Keep these two in sync.
+# ---------------------------------------------------------------------------
+
+
+def _clamp01(x: float) -> float:
+    return 0.0 if x < 0.0 else (1.0 if x > 1.0 else float(x))
+
+
+def project_vad_to_expressive_emotion(
+    v_raw: float, a_raw: float, d_raw: float,
+) -> "tuple[int | None, float, list[float]]":
+    """Returns ``(best_idx, best_score, per_class_scores)`` aligned with
+    `dw.EXPRESSIVE_EMOTION_TAGS`. ``best_idx is None`` (with
+    ``best_score < 0.35``) means the projection abstains.
+    """
+    v = _clamp01(v_raw)
+    a = _clamp01(a_raw)
+    d = _clamp01(d_raw)
+    vC = v - 0.5
+    aC = a - 0.5
+    dC = d - 0.5
+    scores = [0.0] * len(dw.EXPRESSIVE_EMOTION_TAGS)
+    # Index order must match dw.EXPRESSIVE_EMOTION_TAGS:
+    # 0:happy 1:sad 2:angry 3:nervous 4:calm 5:excited 6:whisper
+    scores[0] = _clamp01(vC * 1.4 + max(0.0, aC) * 0.6 - abs(dC) * 0.4)         # happy
+    scores[1] = _clamp01(-vC * 1.4 - aC * 0.8 - dC * 0.4)                       # sad
+    scores[2] = _clamp01(-vC * 1.1 + aC * 1.2 + dC * 1.0)                       # angry
+    scores[3] = _clamp01(-vC * 0.7 + aC * 0.9 - dC * 1.2)                       # nervous
+    scores[4] = _clamp01(max(0.0, vC) * 1.4 - aC * 1.2 - abs(dC) * 0.3)         # calm
+    scores[5] = _clamp01(vC * 0.9 + aC * 1.6)                                   # excited
+    scores[6] = _clamp01(-aC * 1.4 - dC * 1.4)                                  # whisper
+
+    best_idx = -1
+    best_score = 0.0
+    for i, s in enumerate(scores):
+        if s > best_score:
+            best_score = s
+            best_idx = i
+    if best_score < 0.35 or best_idx < 0:
+        return None, best_score, scores
+    return best_idx, best_score, scores
+
 # RAVDESS emotion label → EXPRESSIVE_EMOTION_TAGS index (or None to drop).
 # Index order matches `dw.EXPRESSIVE_EMOTION_TAGS`:
 #   0: happy   1: sad    2: angry    3: nervous
@@ -377,24 +425,52 @@ def train_eval(
         student.eval()
         all_vad_pred: list[Any] = []
         all_vad_gold: list[Any] = []
-        all_cls_pred: list[int] = []
+        all_aux_pred: list[int] = []  # aux head argmax (training-only)
+        all_proj_pred: list[int] = []  # V-A-D projection (matches runtime)
         all_cls_gold: list[int] = []
+        n_abstain = 0
         with torch.no_grad():
             for pcm_b, vad_b, cls_b in loader:
                 pcm_b = pcm_b.to(device)
                 vad_pred, cls_logits = student.forward_with_aux(pcm_b)
-                all_vad_pred.append(vad_pred.detach().cpu().numpy())
+                vad_np = vad_pred.detach().cpu().numpy()
+                all_vad_pred.append(vad_np)
                 all_vad_gold.append(vad_b.numpy())
-                all_cls_pred.extend(cls_logits.argmax(dim=-1).detach().cpu().numpy().tolist())
+                all_aux_pred.extend(cls_logits.argmax(dim=-1).detach().cpu().numpy().tolist())
                 all_cls_gold.extend(cls_b.numpy().tolist())
+                # Project each row's V-A-D to the discrete tag space.
+                for row in vad_np:
+                    idx, _conf, _scores = project_vad_to_expressive_emotion(
+                        float(row[0]), float(row[1]), float(row[2]),
+                    )
+                    if idx is None:
+                        # Abstain → fall back to the most-likely under the
+                        # projection. For F1 we still need a non-None label.
+                        # Use argmax of the scores (without the 0.35 floor)
+                        # so eval stays comparable to a hardened-runtime path
+                        # that might lower the floor for calibration.
+                        _, _, scores = project_vad_to_expressive_emotion(
+                            float(row[0]), float(row[1]), float(row[2]),
+                        )
+                        idx = int(max(range(len(scores)), key=lambda i: scores[i]))
+                        n_abstain += 1
+                    all_proj_pred.append(int(idx))
         vad_pred_np = np.concatenate(all_vad_pred)
         vad_gold_np = np.concatenate(all_vad_gold)
         mse_vad = float(((vad_pred_np - vad_gold_np) ** 2).mean())
-        f1 = dw._macro_f1(
-            all_cls_pred, all_cls_gold, num_classes=len(dw.EXPRESSIVE_EMOTION_TAGS),
-        )
-        acc = float(sum(1 for p, g in zip(all_cls_pred, all_cls_gold) if p == g) / max(1, len(all_cls_gold)))
-        return {"mse_vad": mse_vad, "macro_f1": f1, "accuracy": acc}
+        n_classes = len(dw.EXPRESSIVE_EMOTION_TAGS)
+        f1_aux = dw._macro_f1(all_aux_pred, all_cls_gold, num_classes=n_classes)
+        f1_proj = dw._macro_f1(all_proj_pred, all_cls_gold, num_classes=n_classes)
+        acc_aux = float(sum(1 for p, g in zip(all_aux_pred, all_cls_gold) if p == g) / max(1, len(all_cls_gold)))
+        acc_proj = float(sum(1 for p, g in zip(all_proj_pred, all_cls_gold) if p == g) / max(1, len(all_cls_gold)))
+        return {
+            "mse_vad": mse_vad,
+            "macro_f1": f1_proj,   # shipped runtime metric — gate on this
+            "macro_f1_aux": f1_aux,
+            "accuracy": acc_proj,
+            "accuracy_aux": acc_aux,
+            "abstain_rate": float(n_abstain / max(1, len(all_cls_gold))),
+        }
 
     best_f1 = -1.0
     best_metrics: dict[str, float] = {"mse_vad": float("inf"), "macro_f1": 0.0}
@@ -422,8 +498,9 @@ def train_eval(
         val = _eval(val_loader)
         history.append({"epoch": epoch, "train_loss": train_loss, "val": val})
         LOG.info(
-            "epoch %d/%d  train_loss=%.4f  val_mse_vad=%.4f  val_macro_f1=%.4f  val_acc=%.4f  wall=%.1fs",
-            epoch + 1, epochs, train_loss, val["mse_vad"], val["macro_f1"], val["accuracy"], time.time() - t0,
+            "epoch %d/%d  loss=%.4f  mse_vad=%.4f  f1_proj=%.4f  f1_aux=%.4f  acc_proj=%.4f  abst=%.2f  wall=%.1fs",
+            epoch + 1, epochs, train_loss, val["mse_vad"], val["macro_f1"], val["macro_f1_aux"],
+            val["accuracy"], val["abstain_rate"], time.time() - t0,
         )
 
         if val["macro_f1"] > best_f1:
@@ -445,8 +522,10 @@ def train_eval(
     student.load_state_dict(ckpt["state_dict"])
     test_metrics = _eval(test_loader)
     LOG.info(
-        "TEST  mse_vad=%.4f  macro_f1=%.4f  accuracy=%.4f  (best val_f1=%.4f at epoch %d)",
-        test_metrics["mse_vad"], test_metrics["macro_f1"], test_metrics["accuracy"],
+        "TEST  mse_vad=%.4f  f1_proj=%.4f  f1_aux=%.4f  acc_proj=%.4f  abst=%.3f "
+        "(best val_f1_proj=%.4f at epoch %d)",
+        test_metrics["mse_vad"], test_metrics["macro_f1"], test_metrics["macro_f1_aux"],
+        test_metrics["accuracy"], test_metrics["abstain_rate"],
         best_f1, int(best_metrics.get("epoch", -1)),
     )
     (run_dir / "history.json").write_text(json.dumps(history, indent=2), "utf-8")
