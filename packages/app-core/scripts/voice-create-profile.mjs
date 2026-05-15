@@ -12,15 +12,15 @@
  *
  * Usage:
  *   bun packages/app-core/scripts/voice-create-profile.mjs \
- *     --from packages/training/data/voice/sam/audio/ \
- *     --name sam \
- *     --display-name "Sam" \
+ *     --from packages/training/data/voice/same/audio/ \
+ *     --name same \
+ *     --display-name "Same" \
  *     --instruct "young adult female, warm, soft, neutral us-american"
  *
  * Flags:
  *   --from <dir>           Corpus directory (audio/*.wav + transcripts or
  *                          manifest.jsonl). Required.
- *   --name <id>            Profile id (path-safe, e.g. "sam"). Required.
+ *   --name <id>            Profile id (path-safe, e.g. "same"). Required.
  *   --display-name <str>   Human-readable display name.
  *   --instruct <str>       VoiceDesign instruct string.
  *   --bundle <dir>         Bundle root for preset output. Default: auto.
@@ -176,7 +176,7 @@ async function readCatalog(voiceModelsDir) {
   if (!existsSync(p)) {
     return {
       version: CATALOG_VERSION,
-      defaultProfileId: "sam",
+      defaultProfileId: "same",
       profiles: [],
     };
   }
@@ -189,7 +189,7 @@ async function readCatalog(voiceModelsDir) {
   } catch {
     return {
       version: CATALOG_VERSION,
-      defaultProfileId: "sam",
+      defaultProfileId: "same",
       profiles: [],
     };
   }
