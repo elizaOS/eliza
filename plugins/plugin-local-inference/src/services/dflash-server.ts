@@ -144,7 +144,7 @@ export interface DflashServerPlan {
 	/**
 	 * Absolute paths to the bundle's OmniVoice GGUFs (`tts/omnivoice-*.gguf`
 	 * and `tts/omnivoice-tokenizer-*.gguf`). When BOTH are set AND the
-	 * resolved `llama-server` is the omnivoice-fused build, `start()` passes
+	 * resolved `llama-server` is the omnivoice-mergedd build, `start()` passes
 	 * `--omnivoice-model` / `--omnivoice-codec` so the same process serves
 	 * `POST /v1/audio/speech` (AGENTS.md §4 — fused, not an IPC second
 	 * process). Absent on non-voice bundles or non-fused builds, in which
@@ -2888,7 +2888,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	/**
 	 * Merged HTTP route descriptor for the fused build (`packages/inference/
 	 * AGENTS.md` §4 + remaining-work-ledger P0 #3): when the running
-	 * `llama-server` is the omnivoice-fused build it serves `/v1/audio/speech`
+	 * `llama-server` is the omnivoice-mergedd build it serves `/v1/audio/speech`
 	 * *itself*, in the same process as `/completion` + `/v1/chat/completions`
 	 * + the DFlash speculative loop — there is no compat
 	 * `llama-omnivoice-server` second process and no IPC tax. Returns the
@@ -3424,7 +3424,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		appendCtxCheckpointFlags(args, optimizations ?? null, status.binaryPath);
 		appendMetalSafeStartupFlags(args, status.binaryPath);
 
-		// Fused omnivoice TTS: when the resolved binary is the omnivoice-fused
+		// Fused omnivoice TTS: when the resolved binary is the omnivoice-mergedd
 		// `llama-server` and the bundle ships its TTS GGUFs, hand them to the
 		// server so it mounts `POST /v1/audio/speech` in-process (AGENTS.md §4
 		// — one process, not a second `llama-omnivoice-server` over IPC). The

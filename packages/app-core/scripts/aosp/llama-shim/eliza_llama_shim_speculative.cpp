@@ -39,7 +39,7 @@
  *
  * BUILD: compiled with the NDK C++ toolchain into
  *   libeliza-llama-speculative-shim.so, linked against the per-ABI libllama.so
- *   that omnivoice-fuse / compile-libllama.mjs produces. See
+ *   that omnivoice-merged / compile-libllama.mjs produces. See
  *   packages/app-core/scripts/aosp/compile-shim.mjs (the speculative-shim
  *   target — symmetry with the existing seccomp shim + pointer-shim).
  *

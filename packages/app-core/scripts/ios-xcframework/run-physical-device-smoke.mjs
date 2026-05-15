@@ -1169,7 +1169,7 @@ function writeSmokeProject({
     }
   }
   fs.copyFileSync(
-    path.join(__dirname, "..", "omnivoice-fuse", "ffi.h"),
+    path.join(__dirname, "..", "ffi-stub", "ffi.h"),
     path.join(testDir, "ffi.h"),
   );
 

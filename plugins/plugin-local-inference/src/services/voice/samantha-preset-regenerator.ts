@@ -206,7 +206,7 @@ export async function regenerateSamanthaPresetFromBundle(
 			`[samantha-regen] OmniVoice FFI library not found under ${path.join(
 				opts.bundleRoot,
 				"lib",
-			)} (tried ${libraryFilenames().join(", ")}). Build via packages/app-core/scripts/build-llama-cpp-dflash.mjs (omnivoice-fuse target).`,
+			)} (tried ${libraryFilenames().join(", ")}). Build via packages/app-core/scripts/build-llama-cpp-dflash.mjs (omnivoice-merged target).`,
 		);
 	}
 
