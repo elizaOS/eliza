@@ -63,9 +63,9 @@ and personal use only**. Do not redistribute the raw audio. The preset
 published here as a derivative work with attribution; commercial use
 requires explicit rights clearance from the upstream rights holders.
 
-The OmniVoice base LM in
-[`elizaos/eliza-1-voice-omnivoice`](https://huggingface.co/elizaos/eliza-1-voice-omnivoice)
-is Apache-2.0; the research-only constraint here is on the **preset
+The OmniVoice base LM under
+[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1/tree/main/voice/omnivoice)
+`voice/omnivoice/` is Apache-2.0; the research-only constraint here is on the **preset
 binding**, not the upstream base.
 
 ## Runtime integration
