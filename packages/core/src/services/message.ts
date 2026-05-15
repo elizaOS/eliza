@@ -60,6 +60,7 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
+import { parseJsonObject } from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
@@ -2620,41 +2621,67 @@ function looksLikeMessageHandlerToolArguments(
 		args.facts !== undefined ||
 		args.relationships !== undefined ||
 		args.addressedTo !== undefined ||
-		args.emotion !== undefined
+		args.emotion !== undefined ||
+		args.processMessage !== undefined ||
+		args.plan !== undefined ||
+		args.extract !== undefined
 	);
 }
 
 function extractMessageHandlerRawParsed(
 	raw: string | GenerateTextResult,
 ): Record<string, unknown> | null {
-	if (typeof raw === "string") return null;
-	return extractHandleResponseToolArguments(raw);
+	const parsed =
+		typeof raw === "string"
+			? parseJsonObject<Record<string, unknown>>(raw)
+			: (extractHandleResponseToolArguments(raw) ??
+				parseJsonObject<Record<string, unknown>>(getV5ModelText(raw)));
+	return parsed && looksLikeMessageHandlerToolArguments(parsed) ? parsed : null;
 }
 
 function normalizeRawParsedForFieldRegistry(
 	raw: Record<string, unknown>,
 ): Record<string, unknown> {
 	const normalized = { ...raw };
+	const plan =
+		raw.plan && typeof raw.plan === "object" && !Array.isArray(raw.plan)
+			? (raw.plan as Record<string, unknown>)
+			: undefined;
+	const extract =
+		raw.extract &&
+		typeof raw.extract === "object" &&
+		!Array.isArray(raw.extract)
+			? (raw.extract as Record<string, unknown>)
+			: undefined;
 	if (normalized.shouldRespond === undefined) {
-		normalized.shouldRespond = "RESPOND";
+		normalized.shouldRespond =
+			raw.processMessage === "IGNORE" || raw.processMessage === "STOP"
+				? raw.processMessage
+				: "RESPOND";
 	}
 	if (normalized.replyText === undefined) {
-		normalized.replyText = "";
+		normalized.replyText = typeof plan?.reply === "string" ? plan.reply : "";
 	}
 	if (normalized.contexts === undefined) {
-		normalized.contexts = [];
+		normalized.contexts = Array.isArray(plan?.contexts) ? plan.contexts : [];
 	}
 	if (normalized.candidateActionNames === undefined) {
-		normalized.candidateActionNames = [];
+		normalized.candidateActionNames = Array.isArray(plan?.candidateActions)
+			? plan.candidateActions
+			: [];
 	}
 	if (normalized.facts === undefined) {
-		normalized.facts = [];
+		normalized.facts = Array.isArray(extract?.facts) ? extract.facts : [];
 	}
 	if (normalized.relationships === undefined) {
-		normalized.relationships = [];
+		normalized.relationships = Array.isArray(extract?.relationships)
+			? extract.relationships
+			: [];
 	}
 	if (normalized.addressedTo === undefined) {
-		normalized.addressedTo = [];
+		normalized.addressedTo = Array.isArray(extract?.addressedTo)
+			? extract.addressedTo
+			: [];
 	}
 	return normalized;
 }
@@ -2870,17 +2897,8 @@ function inferAckIntentCandidateActions(
 		if (shellAction) return [shellAction];
 	}
 	if (looksLikeWebSearchRequest(actionText)) {
-		const searchAction = findAvailableActionName(actions, [
-			"SEARCH",
-			"WEB_SEARCH",
-			"SEARCH_WEB",
-			"BRAVE_SEARCH",
-			"INTERNET_SEARCH",
-			"SEARCH_INTERNET",
-			"LOOKUP_WEB",
-			"GOOGLE",
-		]);
-		if (searchAction) return [searchAction];
+		const lookupAction = findWebLookupActionName(actions);
+		if (lookupAction) return [lookupAction];
 	}
 	if (looksLikeCodingDelegationRequest(actionText)) {
 		const codingAction = findAvailableActionName(actions, [
@@ -2912,17 +2930,8 @@ function inferDirectCurrentRequestCandidateActions(
 		if (shellAction) return [shellAction];
 	}
 	if (looksLikeWebSearchRequest(messageText)) {
-		const searchAction = findAvailableActionName(actions, [
-			"SEARCH",
-			"WEB_SEARCH",
-			"SEARCH_WEB",
-			"BRAVE_SEARCH",
-			"INTERNET_SEARCH",
-			"SEARCH_INTERNET",
-			"LOOKUP_WEB",
-			"GOOGLE",
-		]);
-		if (searchAction) return [searchAction];
+		const lookupAction = findWebLookupActionName(actions);
+		if (lookupAction) return [lookupAction];
 	}
 	if (looksLikeCodingDelegationRequest(messageText)) {
 		const codingAction = findAvailableActionName(actions, [
@@ -2935,6 +2944,32 @@ function inferDirectCurrentRequestCandidateActions(
 		if (codingAction) return [codingAction];
 	}
 	return [];
+}
+
+function findWebLookupActionName(
+	actions: ReadonlyArray<Pick<Action, "name">>,
+): string | undefined {
+	return (
+		findAvailableActionName(actions, [
+			"SEARCH",
+			"WEB_SEARCH",
+			"SEARCH_WEB",
+			"BRAVE_SEARCH",
+			"INTERNET_SEARCH",
+			"SEARCH_INTERNET",
+			"LOOKUP_WEB",
+			"GOOGLE",
+		]) ??
+		findAvailableActionName(actions, [
+			"SHELL",
+			"RUN_IN_TERMINAL",
+			"RUN_COMMAND",
+			"EXECUTE_COMMAND",
+			"TERMINAL",
+			"RUN_SHELL",
+			"EXEC",
+		])
+	);
 }
 
 function findAvailableActionName(
@@ -5470,7 +5505,7 @@ function looksLikeWebSearchRequest(text: string): boolean {
 			normalized,
 		);
 	const asksCurrentInfo =
-		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|up[- ]?to[- ]?date)\b/iu.test(
+		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|rn|atm|up[- ]?to[- ]?date)\b/iu.test(
 			normalized,
 		);
 	const mentionsMarketOrNews =
