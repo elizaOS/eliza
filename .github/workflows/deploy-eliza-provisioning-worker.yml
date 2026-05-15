@@ -84,6 +84,10 @@ jobs:
             export GIT_CONFIG_KEY_0=safe.directory
             export GIT_CONFIG_VALUE_0=/opt/eliza
 
+            # Prior deploys/builds can leave git object files owned by root on
+            # this persistent host. Repair the repository metadata ownership
+            # before fetching so deploy-user updates do not fail in unpack.
+            sudo chown -R "$(id -u):$(id -g)" .git || true
             rm -f .git/index.lock
 
             # Discard local drift, preserve env files.
