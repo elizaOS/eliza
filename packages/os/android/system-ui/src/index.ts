@@ -14,6 +14,27 @@ export type { MockSystemProviderProps } from "./providers/MockSystemProvider";
 export { AndroidSystemProvider } from "./providers/AndroidSystemProvider";
 export type { AndroidSystemProviderProps } from "./providers/AndroidSystemProvider";
 export { useSystemProvider, SystemProviderContext } from "./providers/context";
+export {
+  ANDROID_BRIDGE_CHANNELS,
+  getBridgeTransport,
+  createAndroidBridgeClient,
+} from "./bridge";
+export type {
+  BridgeTransport,
+  AndroidBridgeClient,
+  AndroidBridgeChannelMap,
+  AndroidBridgeStateChannel,
+  AndroidBridgeCommandChannel,
+  AndroidBridgeCommandPayloadMap,
+  AndroidBridgeCommandResponseMap,
+  AndroidBridgeStatePayloadMap,
+  AudioSetLevelPayload,
+  AudioSetMutedPayload,
+  ConnectivityState,
+  LockscreenState,
+  EmptyPayload,
+  CommandAck,
+} from "./bridge";
 export type {
   AudioState,
   BatteryState,
