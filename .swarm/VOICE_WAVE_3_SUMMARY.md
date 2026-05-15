@@ -103,7 +103,7 @@
 
 3. ~~**eliza-1-27b-1m**~~ — compute-gated: H200 cluster required (160 GB RAM). All code scaffolding present. See `.swarm/impl/F4-eliza1-27b-1m-training.md`.
 
-4. ~~**Vision mmproj gaps**~~ — compute-gated: `mmproj-F16.gguf` from `unsloth/Qwen3.5-{0.8B,2B}-GGUF` needs `llama-quantize` → Q4_K_M / Q8_0. Detailed plan at `mmproj-qwen35vl-plan.md`. See `.swarm/impl/F5-vision-mmproj.md`.
+4. ~~**Vision mmproj gaps**~~ — **CLOSED 2026-05-14 by F5** — `mmproj-0_8b.gguf` (Q4_K_M, 74.7 MB) and `mmproj-2b.gguf` (Q8_0, 361.5 MB) published to `elizaos/eliza-1:bundles/{0_8b,2b}/vision/`. Manifests updated with `files.vision` + `lineage.vision` entries (Apache-2.0, attributed to `unsloth/Qwen3.5-{0.8B,2B}-GGUF`). GGUF headers verified (`general.architecture=clip`, `general.type=mmproj`, all CLIP keys). Frozen-from-upstream (no fine-tune; per training contract §2, projector stays frozen until text backbone moves). See `.swarm/impl/F5-vision-mmproj.md`.
 
 5. ~~**W3-9 engine bridge adoption**: `VoiceCancellationCoordinator` contract + tests shipped but not yet hot-wired into `EngineVoiceBridge.start()` production path (requires runtime-ref refactor). Tracked in W3-9 contract doc.~~ **CLOSED 2026-05-15 by F1** — `EngineVoiceBridge.start()` now constructs the coordinator + policy when `runtime` is supplied, wires `ttsStop` to `triggerBargeIn()`, primes the policy power source via `resolvePowerSourceState()`, and exposes `bindBargeInControllerForRoom(roomId)`. `VoiceStateMachine.firePrefill` is gated by `OptimisticGenerationPolicy.shouldStartOptimisticLm(eotProb)`. See `.swarm/impl/F1-engine-bridge-wire.md`.
 
