@@ -16,7 +16,12 @@ import { Button } from "../../ui/button";
 import { Textarea } from "../../ui/textarea";
 import { ChatBubble } from "./chat-bubble";
 import { ChatMessageActions } from "./chat-message-actions";
-import { normalizeChatSourceKey, renderChatReactionEmoji } from "./chat-source";
+import {
+  ChatVoiceSpeakerBadge,
+  normalizeChatSourceKey,
+  renderChatReactionEmoji,
+  resolveChatVoiceSpeakerLabel,
+} from "./chat-source";
 import type {
   ChatMessageData,
   ChatMessageLabels,
@@ -51,6 +56,8 @@ function normalizeSenderHandle(handle?: string): string | null {
 function resolveSenderDisplayName(message: ChatMessageData): string | null {
   const from = typeof message.from === "string" ? message.from.trim() : "";
   if (from) return from;
+  const voiceLabel = resolveChatVoiceSpeakerLabel(message.voiceSpeaker);
+  if (voiceLabel) return voiceLabel;
   return normalizeSenderHandle(message.fromUserName);
 }
 
@@ -191,7 +198,8 @@ function arePropsEqual(
     a.replyToMessageId !== b.replyToMessageId ||
     a.replyToSenderName !== b.replyToSenderName ||
     a.replyToSenderUserName !== b.replyToSenderUserName ||
-    a.reactions !== b.reactions
+    a.reactions !== b.reactions ||
+    a.voiceSpeaker !== b.voiceSpeaker
   ) {
     return false;
   }
@@ -252,6 +260,17 @@ export const ChatMessage = memo(function ChatMessage({
     ? resolveSenderHandle(message, senderDisplayName)
     : null;
   const senderPrimaryLabel = senderDisplayName ?? senderHandle ?? "User";
+  const voiceSpeakerLabel = isUser
+    ? resolveChatVoiceSpeakerLabel(message.voiceSpeaker)
+    : null;
+  // Hide the inline mic pill when its label is already the displayed sender
+  // header — keeps the bubble compact for the common case of a single OWNER.
+  const showVoiceSpeakerBadge =
+    isUser &&
+    !isGrouped &&
+    Boolean(message.voiceSpeaker) &&
+    Boolean(voiceSpeakerLabel) &&
+    voiceSpeakerLabel !== senderDisplayName;
   const replyTargetId =
     typeof message.replyToMessageId === "string"
       ? message.replyToMessageId.trim()
@@ -459,11 +478,17 @@ export const ChatMessage = memo(function ChatMessage({
         {isUser && !isGrouped && !showSenderHeader ? (
           <div
             className={cn(
-              "text-xs font-semibold text-accent",
-              isRightAligned ? "text-right" : "text-left",
+              "flex items-center gap-1.5 text-xs font-semibold text-accent",
+              isRightAligned ? "justify-end" : "justify-start",
             )}
           >
-            You
+            <span>You</span>
+            {showVoiceSpeakerBadge ? (
+              <ChatVoiceSpeakerBadge
+                speaker={message.voiceSpeaker}
+                data-testid={`chat-message-voice-speaker-${message.id}`}
+              />
+            ) : null}
           </div>
         ) : null}
         {showSenderHeader ? (
@@ -479,8 +504,16 @@ export const ChatMessage = memo(function ChatMessage({
                 isRightAligned ? "text-right" : "text-left",
               )}
             >
-              <div className="truncate text-xs font-semibold text-txt-strong">
-                {senderPrimaryLabel}
+              <div className="flex items-center gap-1.5">
+                <div className="truncate text-xs font-semibold text-txt-strong">
+                  {senderPrimaryLabel}
+                </div>
+                {showVoiceSpeakerBadge ? (
+                  <ChatVoiceSpeakerBadge
+                    speaker={message.voiceSpeaker}
+                    data-testid={`chat-message-voice-speaker-${message.id}`}
+                  />
+                ) : null}
               </div>
               {senderHandle ? (
                 <div className="truncate text-xs-tight text-muted">

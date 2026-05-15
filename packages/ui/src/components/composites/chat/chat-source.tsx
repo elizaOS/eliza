@@ -1,7 +1,8 @@
-import { MessageSquareText } from "lucide-react";
+import { Crown, MessageSquareText, Mic } from "lucide-react";
 import type * as React from "react";
 
 import { cn } from "../../../lib/utils";
+import type { ChatVoiceSpeaker } from "./chat-types";
 
 type SourceIconProps = {
   className?: string;
@@ -106,6 +107,68 @@ export function ChatSourceIcon({
         : { "aria-label": meta.label, role: "img", title: meta.label })}
     >
       <Icon className={className} />
+    </span>
+  );
+}
+
+/**
+ * Picks the best display label for a voice speaker attribution. Returns
+ * `null` when the speaker block has no usable label (so callers can skip
+ * the badge entirely).
+ */
+export function resolveChatVoiceSpeakerLabel(
+  speaker: ChatVoiceSpeaker | null | undefined,
+): string | null {
+  if (!speaker) return null;
+  const name = typeof speaker.name === "string" ? speaker.name.trim() : "";
+  if (name) return name;
+  const userName =
+    typeof speaker.userName === "string" ? speaker.userName.trim() : "";
+  if (userName) return userName;
+  return null;
+}
+
+/**
+ * Compact attribution pill rendered next to a voice-captured user message.
+ * Shows the speaker name with a Mic glyph and, when the speaker is the
+ * OWNER, a Crown affordance matching the shared `OwnerBadge` styling.
+ *
+ * R10 §4.1 — surface "who spoke this turn" in the chat transcript so
+ * multi-speaker rooms stay legible without leaning on entity ids.
+ */
+export function ChatVoiceSpeakerBadge({
+  speaker,
+  className,
+  "data-testid": dataTestId,
+}: {
+  speaker: ChatVoiceSpeaker | null | undefined;
+  className?: string;
+  "data-testid"?: string;
+}) {
+  const label = resolveChatVoiceSpeakerLabel(speaker);
+  if (!speaker || !label) return null;
+  const isOwner = speaker.isOwner === true;
+  return (
+    <span
+      data-testid={dataTestId ?? "chat-voice-speaker"}
+      data-owner={isOwner ? "true" : undefined}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border border-border/30 bg-card/40 px-1.5 py-0.5 text-[10px] font-medium text-muted",
+        className,
+      )}
+      title={isOwner ? `${label} (OWNER)` : label}
+      role="img"
+      aria-label={isOwner ? `${label}, OWNER, spoken` : `${label}, spoken`}
+    >
+      <Mic className="h-2.5 w-2.5" aria-hidden />
+      <span className="text-txt">{label}</span>
+      {isOwner ? (
+        <Crown
+          className="h-2.5 w-2.5 text-accent"
+          aria-hidden
+          data-testid="chat-voice-speaker-owner-crown"
+        />
+      ) : null}
     </span>
   );
 }
