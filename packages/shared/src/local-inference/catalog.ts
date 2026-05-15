@@ -3,7 +3,7 @@
  *
  * Default local inference is restricted to the active Eliza-1 line: Qwen3.5
  * bases for 0.8B, 2B, 4B, and 9B, plus Qwen3.6 for the active 27B family
- * (including long-context variants at 256k and 1M). The 2026-05-12 mandate
+ * (including the explicit 256k long-context variant). The 2026-05-12 mandate
  * retired the legacy Qwen3 bases; see
  * packages/training/scripts/training/model_registry.py for the active
  * registry. External Hub search remains custom/opt-in and never enters
@@ -17,7 +17,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
