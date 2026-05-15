@@ -26,8 +26,8 @@ export const farcasterProfileProvider: Provider = {
       const service = runtime.getService(FARCASTER_SERVICE_NAME) as FarcasterService;
       const accountId = readFarcasterAccountId(message, state);
       const manager =
-        service?.getManagerForAccount?.(accountId, runtime.agentId) ??
-        service?.getManagerForAccount?.(undefined, runtime.agentId);
+        service.getManagerForAccount(accountId, runtime.agentId) ??
+        service.getManagerForAccount(undefined, runtime.agentId);
 
       if (!manager) {
         runtime.logger.debug("[FarcasterProfileProvider] No managers available");

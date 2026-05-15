@@ -182,7 +182,7 @@ export async function runCommandWithTimeout(
     }, timeoutMs);
 
     if (hasInput && child.stdin) {
-      child.stdin.write(input ?? "");
+      child.stdin.write(input);
       child.stdin.end();
     }
 

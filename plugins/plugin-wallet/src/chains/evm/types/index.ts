@@ -450,4 +450,3 @@ export interface KyberSwapRouteData {
   slippageBps: number;
   fromAddress: string;
 }
-

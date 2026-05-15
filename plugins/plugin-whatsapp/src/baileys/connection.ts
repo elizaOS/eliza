@@ -122,7 +122,7 @@ export class BaileysConnection extends EventEmitter {
       ws?: { close?: () => void };
     };
     socket.ev.removeAllListeners();
-    socket.ws?.close?.();
+    socket.ws.close();
     this.socket = undefined;
     this.connectionStatus = "close";
     this.emit("connection", "close");

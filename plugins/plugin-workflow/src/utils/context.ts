@@ -3,7 +3,7 @@ import type { IAgentRuntime, Memory, State, UUID } from '@elizaos/core';
 export function buildConversationContext(message: Memory, state: State | undefined): string {
   const raw = state?.values?.recentMessages;
   const recentMessages = typeof raw === 'string' ? raw : '';
-  const currentText = message.content?.text ?? '';
+  const currentText = message.content.text ?? '';
 
   if (!recentMessages) {
     return currentText;

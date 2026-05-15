@@ -23,7 +23,7 @@ class BrowserLocalStorage implements IStorage {
   constructor(private readonly key: string) {}
 
   async init(): Promise<void> {
-    const raw = globalThis.localStorage?.getItem(this.key);
+    const raw = globalThis.localStorage.getItem(this.key);
     if (raw) {
       const parsed = JSON.parse(raw) as Record<string, Record<string, unknown>>;
       for (const [collection, entries] of Object.entries(parsed)) {
@@ -56,7 +56,7 @@ class BrowserLocalStorage implements IStorage {
     for (const [collection, entries] of this.collections) {
       out[collection] = Object.fromEntries(entries);
     }
-    globalThis.localStorage?.setItem(this.key, JSON.stringify(out));
+    globalThis.localStorage.setItem(this.key, JSON.stringify(out));
   }
 
   async get<T>(collection: string, id: string): Promise<T | null> {

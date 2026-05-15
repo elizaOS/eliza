@@ -22,7 +22,7 @@ export const wikipediaProvider: Provider = {
   get: async (runtime: IAgentRuntime, message: Memory, state: State) => {
     logger.debug("[WIKIPEDIA_MUSIC Provider] Starting provider execution");
 
-    const messageText = message.content?.text || "";
+    const messageText = message.content.text || "";
     if (!messageText || messageText.trim().length === 0) {
       logger.debug("[WIKIPEDIA_MUSIC Provider] Empty message text");
       return { text: "", data: {}, values: {} };
@@ -182,7 +182,7 @@ function determineContext(
   _state: State,
   message: Memory,
 ): "dj_intro" | "music_selection" | "general_info" | "related_artists" {
-  const messageText = (message.content?.text || "").toLowerCase();
+  const messageText = (message.content.text || "").toLowerCase();
 
   if (
     messageText.includes("introduce") ||

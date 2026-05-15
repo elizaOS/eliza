@@ -208,7 +208,7 @@ async function handlePair(
           setupService.updateConfig((config) => {
             if (!config.connectors) config.connectors = {};
             const connectors = config.connectors as Record<string, Record<string, unknown>>;
-            const previousConfig = connectors.whatsapp ?? {};
+            const previousConfig = connectors.whatsapp;
             if (accountId === "default") {
               connectors.whatsapp = {
                 ...previousConfig,

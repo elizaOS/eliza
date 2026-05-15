@@ -120,11 +120,7 @@ export const worktreeAction: Action = {
       callback,
     );
     return (
-      result ??
-      failureToActionResult({
-        reason: "internal",
-        message: `WORKTREE action=${operation} returned no result`,
-      })
+      result
     );
   },
   examples: [

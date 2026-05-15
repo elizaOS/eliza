@@ -46,7 +46,7 @@ function phaseOf(call: UILlmCall): PhaseName | null {
 export function extractShouldRespondDecision(
   call: UILlmCall,
 ): { decision: string; reasoning?: string } | null {
-  const text = (call.response ?? "").trim();
+  const text = (call.response).trim();
   if (!text) return null;
   const m = text.match(/\{[\s\S]*\}/);
   if (m) {

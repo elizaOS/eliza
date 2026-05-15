@@ -458,7 +458,7 @@ export async function triggerTraining(
   const limit = options.trajectoryLimit ?? 500;
   const list = await trajectoryService.listTrajectories({ limit });
   const trajectories: ExportableTrajectory[] = [];
-  for (const item of list.trajectories ?? []) {
+  for (const item of list.trajectories) {
     const detail = await trajectoryService.getTrajectoryDetail(item.id);
     if (detail) trajectories.push(detail);
   }

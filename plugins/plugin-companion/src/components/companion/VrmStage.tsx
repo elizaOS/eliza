@@ -95,7 +95,7 @@ export const VrmStage = memo(function VrmStage({
     const resolvedPath = resolveAppAssetUrl(AVATAR_CHANGE_WAVE_EMOTE.path);
     void engine.playEmote(
       resolvedPath,
-      AVATAR_CHANGE_WAVE_EMOTE.duration ?? 3,
+      AVATAR_CHANGE_WAVE_EMOTE.duration,
       AVATAR_CHANGE_WAVE_EMOTE.loop === true,
     );
   }, []);
@@ -206,7 +206,7 @@ export const VrmStage = memo(function VrmStage({
       if (!engine) return;
       if (typeof engine.playEmote !== "function") return;
       const detail = (event as CustomEvent<AppEmoteEventDetail>).detail;
-      if (!detail?.path) return;
+      if (!detail.path) return;
       const resolvedPath = resolveAppAssetUrl(detail.path);
       const duration =
         typeof detail.duration === "number" && Number.isFinite(detail.duration)

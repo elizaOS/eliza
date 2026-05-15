@@ -74,7 +74,7 @@ export const getSkillDetailsAction = {
 						? opts.slug
 						: null;
 			const slug =
-				explicitSlug || extractSlugFromText(message.content?.text || "");
+				explicitSlug || extractSlugFromText(message.content.text || "");
 
 			if (!slug) {
 				return {

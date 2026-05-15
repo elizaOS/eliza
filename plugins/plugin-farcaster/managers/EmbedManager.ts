@@ -293,7 +293,7 @@ export class EmbedManager {
       return cached;
     }
 
-    const authorUsername = cast.author?.username || "unknown";
+    const authorUsername = cast.author.username || "unknown";
     const title = `Quoted cast from @${authorUsername}`;
     const description = cast.text || "";
 
@@ -307,7 +307,7 @@ export class EmbedManager {
       source: "Farcaster",
       metadata: {
         castHash: cast.hash,
-        authorFid: cast.author?.fid,
+        authorFid: cast.author.fid,
         authorUsername,
       },
     };

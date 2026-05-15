@@ -81,7 +81,7 @@ function getSolanaWalletAddresses(account: unknown): string[] {
   }
 
   for (const mw of accountData.metawallets) {
-    if (!mw?.keypairs) {
+    if (!mw.keypairs) {
       continue;
     }
 
@@ -366,11 +366,11 @@ async function getAvailableKaminoReserves(
 
       for (const reserve of topLendingReserves) {
         reservesInfo += `🔸 ${reserve.marketName || reserve.market || "Unknown"}\n`;
-        reservesInfo += `   Supply APY: ${reserve.supplyApy?.toFixed(2) || "N/A"}%\n`;
-        reservesInfo += `   Borrow APY: ${reserve.borrowApy?.toFixed(2) || "N/A"}%\n`;
-        reservesInfo += `   Total Supply: $${reserve.totalSupply?.toLocaleString() || "N/A"}\n`;
-        reservesInfo += `   Total Borrow: $${reserve.totalBorrow?.toLocaleString() || "N/A"}\n`;
-        reservesInfo += `   Utilization: ${(reserve.utilization * 100)?.toFixed(2) || "N/A"}%\n`;
+        reservesInfo += `   Supply APY: ${reserve.supplyApy.toFixed(2) || "N/A"}%\n`;
+        reservesInfo += `   Borrow APY: ${reserve.borrowApy.toFixed(2) || "N/A"}%\n`;
+        reservesInfo += `   Total Supply: $${reserve.totalSupply.toLocaleString() || "N/A"}\n`;
+        reservesInfo += `   Total Borrow: $${reserve.totalBorrow.toLocaleString() || "N/A"}\n`;
+        reservesInfo += `   Utilization: ${(reserve.utilization * 100).toFixed(2) || "N/A"}%\n`;
         reservesInfo += `   Market: ${reserve.marketName || "Unknown"}\n\n`;
       }
     }
@@ -406,8 +406,8 @@ async function getKaminoMarketOverview(
     }
 
     marketInfo += `📊 Total Markets: ${overview.totalMarkets}\n`;
-    marketInfo += `💰 Total TVL: $${overview.totalTvl?.toLocaleString() || "N/A"}\n`;
-    marketInfo += `💳 Total Borrowed: $${overview.totalBorrowed?.toLocaleString() || "N/A"}\n\n`;
+    marketInfo += `💰 Total TVL: $${overview.totalTvl.toLocaleString() || "N/A"}\n`;
+    marketInfo += `💳 Total Borrowed: $${overview.totalBorrowed.toLocaleString() || "N/A"}\n\n`;
 
     // Show top markets by TVL
     if (overview.markets && overview.markets.length > 0) {

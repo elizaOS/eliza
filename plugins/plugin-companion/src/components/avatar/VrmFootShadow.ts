@@ -49,8 +49,8 @@ export class VrmFootShadow {
   update(vrm: VRM): void {
     if (!this.mesh) return;
     vrm.scene.updateMatrixWorld(true);
-    const leftFoot = vrm.humanoid?.getNormalizedBoneNode("leftFoot");
-    const rightFoot = vrm.humanoid?.getNormalizedBoneNode("rightFoot");
+    const leftFoot = vrm.humanoid.getNormalizedBoneNode("leftFoot");
+    const rightFoot = vrm.humanoid.getNormalizedBoneNode("rightFoot");
 
     if (leftFoot && rightFoot) {
       leftFoot.getWorldPosition(this.tempLeft);

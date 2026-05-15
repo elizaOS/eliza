@@ -129,7 +129,7 @@ export class IMessageRpcClient {
       this.handleLine(trimmed);
     });
 
-    child.stderr?.on("data", (chunk) => {
+    child.stderr.on("data", (chunk) => {
       const lines = chunk.toString().split(/\r?\n/);
       for (const line of lines) {
         if (!line.trim()) {
@@ -167,7 +167,7 @@ export class IMessageRpcClient {
 
     this.reader?.close();
     this.reader = null;
-    this.child.stdin?.end();
+    this.child.stdin.end();
 
     const child = this.child;
     this.child = null;
@@ -434,7 +434,7 @@ export async function listChats(
     limit: params.limit ?? 20,
   });
 
-  const chats = Array.isArray(response?.chats) ? response.chats : [];
+  const chats = Array.isArray(response.chats) ? response.chats : [];
   return chats.map((chat) => {
     const participants = Array.isArray(chat.participants)
       ? chat.participants.filter(
@@ -490,7 +490,7 @@ export async function getMessages(
     end: params.end,
   });
 
-  const messages = Array.isArray(response?.messages) ? response.messages : [];
+  const messages = Array.isArray(response.messages) ? response.messages : [];
   return messages.map((message) => {
     const createdAt =
       typeof message.created_at === "string" ? Date.parse(message.created_at) : Number.NaN;
@@ -575,7 +575,7 @@ export async function sendIMessageRpc(
     chat_identifier: params.chatIdentifier,
     chat_guid: params.chatGuid,
   });
-  return { ok: result?.ok !== false };
+  return { ok: result.ok !== false };
 }
 
 /**

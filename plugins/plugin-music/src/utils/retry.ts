@@ -28,9 +28,9 @@ const DEFAULT_OPTIONS: Required<RetryOptions> = {
 
     // Retry on network errors, timeouts, and 5xx errors
     if (
-      error?.code === "ECONNRESET" ||
-      error?.code === "ETIMEDOUT" ||
-      error?.code === "ENOTFOUND"
+      error.code === "ECONNRESET" ||
+      error.code === "ETIMEDOUT" ||
+      error.code === "ENOTFOUND"
     ) {
       return true;
     }

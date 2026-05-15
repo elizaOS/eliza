@@ -117,7 +117,7 @@ function readSavedToken(
       Record<string, unknown>
     >;
     const tgConfig = connectors.telegram;
-    const persisted = tgConfig?.botToken;
+    const persisted = tgConfig.botToken;
     if (typeof persisted === "string" && persisted.length > 0) {
       return persisted;
     }

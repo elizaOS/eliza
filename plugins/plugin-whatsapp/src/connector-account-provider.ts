@@ -36,7 +36,7 @@ function purposeForAccount(_account: ResolvedWhatsAppAccount): string[] {
 }
 
 function accessGateForAccount(account: ResolvedWhatsAppAccount): string {
-  const dmPolicy = account.config?.dmPolicy;
+  const dmPolicy = account.config.dmPolicy;
   if (dmPolicy === "disabled") return "disabled";
   if (dmPolicy === "pairing") return "pairing";
   return "open";
@@ -65,8 +65,8 @@ function toConnectorAccount(account: ResolvedWhatsAppAccount): ConnectorAccount 
       tokenSource: account.tokenSource,
       phoneNumberId: account.phoneNumberId,
       businessAccountId: account.businessAccountId ?? null,
-      dmPolicy: account.config?.dmPolicy ?? "pairing",
-      groupPolicy: account.config?.groupPolicy ?? "allowlist",
+      dmPolicy: account.config.dmPolicy ?? "pairing",
+      groupPolicy: account.config.groupPolicy ?? "allowlist",
     },
   };
 }

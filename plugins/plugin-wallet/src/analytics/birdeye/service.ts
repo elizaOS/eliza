@@ -241,7 +241,7 @@ export class BirdeyeService extends Service {
     try {
       validatedChain = extractChain(undefined, chain);
     } catch (error) {
-      this.runtime.logger?.warn(
+      this.runtime.logger.warn(
         `getTrendingTokensForChain: ${error instanceof Error ? error.message : String(error)}`,
       );
       return { data: [], setAt: Date.now() };
@@ -249,7 +249,7 @@ export class BirdeyeService extends Service {
 
     // Don't allow 'evm' as a trending chain (it's just a placeholder)
     if (validatedChain === "evm") {
-      this.runtime.logger?.warn(
+      this.runtime.logger.warn(
         `getTrendingTokensForChain: 'evm' is not a specific chain. Use ethereum, arbitrum, polygon, etc.`,
       );
       return { data: [], setAt: Date.now() };
@@ -335,7 +335,7 @@ export class BirdeyeService extends Service {
 
     const byKey = new Map<string, IToken>();
     for (const t of fetched) {
-      const key = t.address?.toLowerCase?.() || `${t.chain}:${t.rank}`;
+      const key = t.address.toLowerCase() || `${t.chain}:${t.rank}`;
       if (!byKey.has(key)) {
         byKey.set(key, t);
       }
@@ -347,7 +347,7 @@ export class BirdeyeService extends Service {
     try {
       await this.runtime.setCache<CacheWrapper<IToken[]>>(cacheKey, output);
     } catch (e) {
-      this.runtime.logger?.warn(
+      this.runtime.logger.warn(
         `setCache failed for ${chain}: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
@@ -374,7 +374,7 @@ export class BirdeyeService extends Service {
 
       return out;
     } catch (error) {
-      this.runtime.logger?.error(
+      this.runtime.logger.error(
         `Failed to sync trending tokens: ${error instanceof Error ? error.message : String(error)}`,
       );
       throw error;
@@ -507,7 +507,7 @@ export class BirdeyeService extends Service {
       }
       return data;
     } catch (e) {
-      this.runtime.logger?.error(
+      this.runtime.logger.error(
         `birdeye:getTokenTradeData - ${e instanceof Error ? e.message : String(e)}`,
       );
       return false;
@@ -619,7 +619,7 @@ export class BirdeyeService extends Service {
 
         // Guard against undefined/null mpd or missing data
         if (!mpd?.data || !mpd.success) {
-          this.runtime.logger?.warn(
+          this.runtime.logger.warn(
             `birdeye:getTokensMarketData - batch failed (${batchAddresses.length} addresses), caching all as failed`,
           );
 
@@ -662,7 +662,7 @@ export class BirdeyeService extends Service {
               //volume24hUSD
             };
             tokenDb[ca] = marketSnapshot;
-            this.runtime.logger?.debug(
+            this.runtime.logger.debug(
               `birdeye:getTokensMarketData - caching token ${ca}`,
             );
             // Cache successful lookups with full TTL
@@ -672,7 +672,7 @@ export class BirdeyeService extends Service {
             );
           } else {
             // Token was in batch but has no valid data (or not in response)
-            this.runtime.logger?.warn(
+            this.runtime.logger.warn(
               `${ca} no valid data in response: ${JSON.stringify(t)}`,
             );
             // Cache failed lookups with shorter TTL to avoid re-fetching bad addresses
@@ -727,7 +727,7 @@ export class BirdeyeService extends Service {
       }
       return data;
     } catch (e) {
-      this.runtime.logger?.error(
+      this.runtime.logger.error(
         `birdeye:getTokenSecurityData - ${e instanceof Error ? e.message : String(e)}`,
       );
       return false;
@@ -770,7 +770,7 @@ export class BirdeyeService extends Service {
 
       return data;
     } catch (e) {
-      this.runtime.logger?.error(
+      this.runtime.logger.error(
         `birdeyeSvr:lookupToken - err: ${e instanceof Error ? e.message : String(e)}`,
       );
       throw e;
@@ -801,7 +801,7 @@ export class BirdeyeService extends Service {
 
       return keyedResults;
     } catch (e) {
-      this.runtime.logger?.error(
+      this.runtime.logger.error(
         `birdeyeSvr:lookupTokens - err: ${e instanceof Error ? e.message : String(e)}`,
       );
       throw e;
@@ -881,7 +881,7 @@ export class BirdeyeService extends Service {
     );
 
     const resp = (await res.json()) as WalletPortfolioResponse;
-    const data = resp?.data;
+    const data = resp.data;
     if (data) {
       this.setCacheTimed(key, data, tsInMs);
     }
@@ -912,7 +912,7 @@ export class BirdeyeService extends Service {
       birdeyeFetchOptions,
     );
     const resp = (await res.json()) as WalletTransactionHistoryResponse;
-    const data = resp?.data?.[chain] || [];
+    const data = resp.data[chain] || [];
     if (data) {
       this.setCacheTimed(key, data, tsInMs);
     }
@@ -990,7 +990,7 @@ export class BirdeyeService extends Service {
           !infoService ||
           typeof infoService.registerDataProvder !== "function"
         ) {
-          runtime.logger?.debug(
+          runtime.logger.debug(
             "INTEL_DATAPROVIDER service not available, skipping Birdeye data provider registration",
           );
           return;
@@ -1001,12 +1001,12 @@ export class BirdeyeService extends Service {
           trendingService: BIRDEYE_SERVICE_NAME,
           lookupService: BIRDEYE_SERVICE_NAME,
         });
-        runtime.logger?.log(
+        runtime.logger.log(
           "Birdeye data provider registered with INTEL_DATAPROVIDER",
         );
       })
       .catch((e) => {
-        runtime.logger?.debug(
+        runtime.logger.debug(
           `Birdeye service load failed; skipping data provider registration: ${e instanceof Error ? e.message : String(e)}`,
         );
       });
@@ -1025,7 +1025,7 @@ export class BirdeyeService extends Service {
   }
 
   async stop(): Promise<void> {
-    this.runtime.logger?.log("BirdEye service shutdown");
+    this.runtime.logger.log("BirdEye service shutdown");
   }
 
   async getCacheTimed<T>(key: string, options: GetCacheTimedOptions = {}) {

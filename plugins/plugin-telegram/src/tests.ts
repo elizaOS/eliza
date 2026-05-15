@@ -100,7 +100,7 @@ export class TelegramTestSuite implements TestSuite {
 
   async testCreatingTelegramBot(runtime: IAgentRuntime) {
     this.telegramClient = runtime.getService("telegram") as TelegramService;
-    if (!this.telegramClient?.messageManager) {
+    if (!this.telegramClient.messageManager) {
       throw new Error(
         "Telegram service or message manager not initialized - check TELEGRAM_BOT_TOKEN",
       );

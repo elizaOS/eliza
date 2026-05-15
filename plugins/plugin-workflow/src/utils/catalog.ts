@@ -64,7 +64,7 @@ export function searchNodes(keywords: string[], limit = 15): NodeSearchResult[] 
 
     const nodeName = node.name.toLowerCase();
     const nodeDisplayName = node.displayName.toLowerCase();
-    const nodeDescription = node.description?.toLowerCase() || '';
+    const nodeDescription = node.description.toLowerCase() || '';
     const nameTokens = tokenize(node.name);
     const displayTokens = tokenize(node.displayName);
 

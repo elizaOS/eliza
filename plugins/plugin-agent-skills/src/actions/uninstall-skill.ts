@@ -65,7 +65,7 @@ export const uninstallSkillAction = {
 			return { success: false, error: new Error(errorText) };
 		}
 
-		const text = message.content?.text || "";
+		const text = message.content.text || "";
 		const slug = extractSlugFromMessage(text);
 
 		if (!slug) {

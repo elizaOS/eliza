@@ -41,7 +41,7 @@ export const musicInfoProvider: Provider = {
       }
 
       // Extract potential music references from the message
-      const messageText = message.content?.text || "";
+      const messageText = message.content.text || "";
       if (!messageText || messageText.trim().length === 0) {
         logger.debug("[MUSIC_INFO Provider] Empty message text");
         return { text: "", data: {}, values: {} };

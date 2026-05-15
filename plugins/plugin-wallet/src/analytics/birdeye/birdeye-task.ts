@@ -180,7 +180,7 @@ export default class Birdeye {
 
       return true;
     } catch (error) {
-      this.runtime.logger?.error(
+      this.runtime.logger.error(
         `Failed to sync wallet: ${
           error instanceof Error ? error.message : String(error)
         }`,

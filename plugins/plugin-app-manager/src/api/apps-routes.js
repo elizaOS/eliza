@@ -530,7 +530,7 @@ export async function handleAppsRoutes(ctx) {
             const parsed = PutFavoriteAppRequestSchema.safeParse(rawBody);
             if (!parsed.success) {
                 const issue = parsed.error.issues[0];
-                const issuePath = issue?.path?.join(".");
+                const issuePath = issue?.path.join(".");
                 error(res, `Invalid request body at ${issuePath}: ${issue?.message}`, 400);
                 return true;
             }
@@ -556,7 +556,7 @@ export async function handleAppsRoutes(ctx) {
         const parsed = PostReplaceFavoritesRequestSchema.safeParse(rawBody);
         if (!parsed.success) {
             const issue = parsed.error.issues[0];
-            const issuePath = issue?.path?.join(".");
+            const issuePath = issue?.path.join(".");
             error(res, `Invalid request body at ${issuePath}: ${issue?.message}`, 400);
             return true;
         }
@@ -579,7 +579,7 @@ export async function handleAppsRoutes(ctx) {
         const parsed = PostOverlayPresenceRequestSchema.safeParse(rawBody);
         if (!parsed.success) {
             const issue = parsed.error.issues[0];
-            const issuePath = issue?.path?.join(".");
+            const issuePath = issue?.path.join(".");
             error(res, `Invalid request body at ${issuePath}: ${issue?.message}`, 400);
             return true;
         }
@@ -644,7 +644,7 @@ export async function handleAppsRoutes(ctx) {
                 : PostRunControlRequestSchema.safeParse(rawBody);
             if (!parsed.success) {
                 const issue = parsed.error.issues[0];
-                const issuePath = issue?.path?.join(".");
+                const issuePath = issue?.path.join(".");
                 error(res, `Invalid request body at ${issuePath}: ${issue?.message}`, 400);
                 return true;
             }
@@ -694,7 +694,7 @@ export async function handleAppsRoutes(ctx) {
             const parsed = PostLaunchAppRequestSchema.safeParse(rawBody);
             if (!parsed.success) {
                 const issue = parsed.error.issues[0];
-                const issuePath = issue?.path?.join(".");
+                const issuePath = issue?.path.join(".");
                 error(res, `Invalid request body at ${issuePath}: ${issue?.message}`, 400);
                 return true;
             }
@@ -715,7 +715,7 @@ export async function handleAppsRoutes(ctx) {
             const parsed = PostInstallAppRequestSchema.safeParse(rawBody);
             if (!parsed.success) {
                 const issue = parsed.error.issues[0];
-                const issuePath = issue?.path?.join(".");
+                const issuePath = issue?.path.join(".");
                 error(res, `Invalid request body at ${issuePath}: ${issue?.message}`, 400);
                 return true;
             }
@@ -774,7 +774,7 @@ export async function handleAppsRoutes(ctx) {
         const parsed = PostStopAppRequestSchema.safeParse(rawBody);
         if (!parsed.success) {
             const issue = parsed.error.issues[0];
-            const issuePath = issue?.path?.join(".");
+            const issuePath = issue?.path.join(".");
             error(res, `Invalid request body at ${issuePath}: ${issue?.message}`, 400);
             return true;
         }
@@ -857,7 +857,7 @@ export async function handleAppsRoutes(ctx) {
         const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);
         if (!parsed.success) {
             const issue = parsed.error.issues[0];
-            const issuePath = issue?.path?.join(".");
+            const issuePath = issue?.path.join(".");
             error(res, `Invalid request body at ${issuePath}: ${issue?.message}`, 400);
             return true;
         }
@@ -937,7 +937,7 @@ export async function handleAppsRoutes(ctx) {
         const parsed = PutAppPermissionsRequestSchema.safeParse(rawBody);
         if (!parsed.success) {
             const issue = parsed.error.issues[0];
-            const path = issue?.path?.join(".");
+            const path = issue?.path.join(".");
             error(res, `Invalid request body at ${path}: ${issue?.message}`, 400);
             return true;
         }
@@ -961,7 +961,7 @@ export async function handleAppsRoutes(ctx) {
         const parsed = PostLoadFromDirectoryRequestSchema.safeParse(rawBody);
         if (!parsed.success) {
             const issue = parsed.error.issues[0];
-            const path = issue?.path?.join(".");
+            const path = issue?.path.join(".");
             error(res, `Invalid request body at ${path}: ${issue?.message}`, 400);
             return true;
         }
@@ -1061,7 +1061,7 @@ export async function handleAppsRoutes(ctx) {
         const parsed = PostCreateAppRequestSchema.safeParse(rawBody);
         if (!parsed.success) {
             const issue = parsed.error.issues[0];
-            const issuePath = issue?.path?.join(".");
+            const issuePath = issue?.path.join(".");
             error(res, `Invalid request body at ${issuePath}: ${issue?.message}`, 400);
             return true;
         }
