@@ -311,6 +311,61 @@ def deterministic_split(
     return idx[:n_train], idx[n_train : n_train + n_val], idx[n_train + n_val :]
 
 
+# Per-class V-A-D centroids designed to maximally activate each class
+# under `projectVadToExpressiveEmotion` in the TS runtime. These are the
+# **regression targets** when training in `--target-mode centroids`. The
+# resulting student outputs V-A-D values that the runtime projection
+# table reliably maps to the right tag — which is the contract the
+# shipped ONNX must satisfy.
+#
+# Each centroid was verified against the projection table to project
+# uniquely to its own tag (see `_verify_centroids`).
+CENTROIDS_BY_TAG_IDX: "dict[int, tuple[float, float, float]]" = {
+    0: (1.00, 0.70, 0.50),  # happy
+    1: (0.00, 0.00, 0.50),  # sad
+    2: (0.00, 1.00, 1.00),  # angry
+    3: (0.00, 1.00, 0.00),  # nervous
+    4: (1.00, 0.00, 0.50),  # calm
+    5: (0.85, 1.00, 0.50),  # excited
+    6: (0.50, 0.00, 0.00),  # whisper
+}
+
+
+def calibrate_vad(
+    vad_rows: "list[list[float]]",
+) -> "tuple[list[list[float]], dict[str, float]]":
+    """Per-axis affine calibration of the teacher's V-A-D outputs.
+
+    The audeering teacher produces V-A-D in compressed ranges
+    (V≈0.20-0.50, A≈0.45-0.95, D≈0.45-0.95 on emotional speech). The
+    runtime projection table in `voice-emotion-classifier.ts` is
+    calibrated against V-A-D centred at 0.5 spanning ~[0, 1]. Without
+    calibration the student's V-A-D output will fail to trigger the
+    projection table's per-class thresholds, no matter how well it
+    reproduces the teacher.
+
+    We compute robust per-axis (p2.5, p97.5) bounds across the training
+    set and linearly re-map them to [0.05, 0.95]. The mapping is
+    monotonic and reversible — operators can revert if the projection
+    table is ever re-calibrated for the raw audeering range. Bounds
+    are written to provenance so callers can verify.
+    """
+    import numpy as np
+    arr = np.asarray(vad_rows, dtype="float32")  # [N, 3]
+    bounds = {}
+    out = np.zeros_like(arr)
+    for axis, name in enumerate(("valence", "arousal", "dominance")):
+        lo, hi = np.percentile(arr[:, axis], [2.5, 97.5])
+        # Map [lo, hi] → [0.05, 0.95] linearly; clamp tails.
+        if hi - lo < 1e-6:
+            scale = 1.0
+        else:
+            scale = (0.95 - 0.05) / (hi - lo)
+        out[:, axis] = np.clip(0.05 + (arr[:, axis] - lo) * scale, 0.0, 1.0)
+        bounds[name] = {"lo": float(lo), "hi": float(hi), "scale": float(scale)}
+    return out.tolist(), bounds
+
+
 def train_eval(
     clips: list[Clip],
     vad_rows: "list[list[float]]",
@@ -325,6 +380,7 @@ def train_eval(
     weight_decay: float,
     cls_loss_weight: float = 1.0,
     vad_loss_weight: float = 0.5,
+    calibrate: bool = True,
 ) -> dict[str, float]:
     """Joint V-A-D regression + 7-class classification training loop.
 
@@ -354,8 +410,35 @@ def train_eval(
     pcm_arr = np.zeros((n, win), dtype="float32")
     for i, clip in enumerate(clips):
         pcm_arr[i] = _pad_to_window(clip.pcm)
+
+    # In `centroids` mode we override the teacher's V-A-D with the per-class
+    # centroid so the student learns V-A-D values that the runtime projection
+    # table classifies correctly. The audeering teacher's V-A-D distribution
+    # is incompatible with the runtime projection's [0,1]-spanning assumption
+    # — using its raw values caps oracle macro-F1 at ~0.15 (see
+    # `.swarm/impl/G-emotion.md`).
+    if calibrate:
+        vad_for_train = [
+            list(CENTROIDS_BY_TAG_IDX[int(gold)]) for gold in gold_idxs
+        ]
+        calib_bounds = {
+            "mode": "centroids",
+            "centroids": {
+                dw.EXPRESSIVE_EMOTION_TAGS[i]: list(c)
+                for i, c in CENTROIDS_BY_TAG_IDX.items()
+            },
+        }
+        LOG.info("V-A-D target mode: per-class centroids (projection-aware)")
+        (run_dir / "calibration.json").parent.mkdir(parents=True, exist_ok=True)
+        (run_dir / "calibration.json").write_text(
+            json.dumps(calib_bounds, indent=2), encoding="utf-8",
+        )
+    else:
+        vad_for_train = vad_rows
+        calib_bounds = {"mode": "teacher_raw"}
+
     pcm_t = torch.from_numpy(pcm_arr)
-    vad_t = torch.from_numpy(np.asarray(vad_rows, dtype="float32"))
+    vad_t = torch.from_numpy(np.asarray(vad_for_train, dtype="float32"))
     cls_t = torch.from_numpy(np.asarray(gold_idxs, dtype="int64"))
 
     train_ids, val_ids, test_ids = deterministic_split(n)
