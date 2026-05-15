@@ -242,6 +242,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     // analysis must work here. The mmproj is ~361 MB Q8_0 (actual:
     // 361,518,784 bytes, published 2026-05-14); the arbiter owns the
     // swap with the text weights under pressure.
+    hasEmbedding: true,
     hasVision: true,
     // WS3: image-gen on the standard small-phone default uses SD 1.5
     // Q5_0 too; tier-up to Z-Image-Turbo at 9B.
@@ -532,9 +533,11 @@ function textQuantizationMatrix(args: {
   return {
     defaultVariantId: "q4_k_m",
     variants: [
+      mk("q3_k_m", "3-bit", 0.78, 0.8, "published"),
       mk("q4_k_m", "4-bit", 1, 1, "published"),
-      mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
-      mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
+      mk("q5_k_m", "5-bit", 1.24, 1.18, "published"),
+      mk("q6_k", "6-bit", 1.45, 1.35, "published"),
+      mk("q8_0", "8-bit", 1.95, 1.8, "published"),
     ],
   };
 }

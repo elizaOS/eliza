@@ -125,12 +125,12 @@ def test_eliza1_tier_ids_are_canonical():
         "9b",
         "27b",
         "27b-256k",
-        "27b-1m",
     )
     assert REQUIRED_KERNELS_BY_TIER["0_8b"] == (
         "turboquant_q4",
         "qjl",
         "polarquant",
+        "dflash",
     )
     assert REQUIRED_KERNELS_BY_TIER["2b"] == (
         "turboquant_q4",
@@ -148,9 +148,8 @@ def test_eliza1_tier_ids_are_canonical():
     assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
+    assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
     assert VOICE_BACKENDS_BY_TIER["27b-256k"] == ("omnivoice",)
-    assert VOICE_BACKENDS_BY_TIER["27b-1m"] == ("omnivoice",)
 
 
 def test_build_manifest_happy_path():
@@ -615,7 +614,7 @@ def _base_v1_provenance() -> dict:
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
-            "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
+            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
         },
     }
 
@@ -741,11 +740,11 @@ def test_voice_quant_ladder_mobile_tiers_are_kokoro_only():
 
 
 def test_voice_quant_ladder_large_tiers_have_full_kquant_ladder():
-    """Large tiers (9b / 27b / 27b-256k / 27b-1m) ship OmniVoice and must
+    """Large tiers (9b / 27b / 27b-256k) ship OmniVoice and must
     publish the full Q3..Q8 ladder so the downloader can pick the level
     matching the host's RAM/SoC class at install time."""
     expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0")
-    for tier in ("9b", "27b", "27b-256k", "27b-1m"):
+    for tier in ("9b", "27b", "27b-256k"):
         assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
         assert "omnivoice" in VOICE_BACKENDS_BY_TIER[tier]
 
