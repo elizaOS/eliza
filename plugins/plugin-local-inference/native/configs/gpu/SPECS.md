@@ -127,8 +127,6 @@ kernel on the Polar fork).
 
 **H200 (141 GiB)** — the marquee box.
 
-  free → 1 full + 0.84 partial → **2 parallel @ 1M** (the second slot
-  shares prefix-cache space via radix).
 - 27b-256k: 16 GiB per slot → **6 parallel**.
 - 27b: 2 GiB per slot @ 32k → **16 parallel** (capped).
 - 9b: ~0.45 GiB per slot @ 8k → **64 parallel**.

@@ -172,12 +172,8 @@ def attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
     completion = usage.get("completion_tokens")
     if not isinstance(prompt, (int, float)):
         prompt = usage.get("input_tokens")
-    if not isinstance(prompt, (int, float)):
-        prompt = usage.get("promptTokens")
     if not isinstance(completion, (int, float)):
         completion = usage.get("output_tokens")
-    if not isinstance(completion, (int, float)):
-        completion = usage.get("completionTokens")
     if isinstance(prompt, (int, float)):
         setattr(turn, "input_tokens", int(prompt))
     if isinstance(completion, (int, float)):
@@ -191,13 +187,7 @@ def attach_usage_cache_fields(turn: Any, usage: dict[str, Any]) -> None:
     )
     if cache_read_raw is None:
         cache_read_raw = usage.get("cache_read_input_tokens")
-    if cache_read_raw is None:
-        cache_read_raw = usage.get("cachedTokens")
-    if cache_read_raw is None:
-        cache_read_raw = usage.get("cached_tokens")
     cache_creation_raw = usage.get("cache_creation_input_tokens")
-    if cache_creation_raw is None:
-        cache_creation_raw = usage.get("cacheCreationInputTokens")
 
     cache_read_value: int | None = (
         int(cache_read_raw) if isinstance(cache_read_raw, (int, float)) else None

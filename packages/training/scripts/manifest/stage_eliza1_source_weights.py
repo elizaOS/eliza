@@ -41,9 +41,9 @@ try:
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import ELIZA_1_TIERS
 
-SOURCE_WEIGHT_TIERS: Final[tuple[str, ...]] = tuple(ELIZA_1_TIERS)
 HF_RETRY_ATTEMPTS: Final[int] = 4
 HF_RETRY_BASE_DELAY_SEC: Final[float] = 2.0
+
 
 def require_hf_hub(*, require_download: bool = False) -> tuple[Any, Any]:
     global HfApi, hf_hub_download
@@ -65,6 +65,7 @@ def require_hf_hub(*, require_download: bool = False) -> tuple[Any, Any]:
         )
     return HfApi, hf_hub_download
 
+
 @dataclass(frozen=True, slots=True)
 class SourceArtifact:
     kind: str
@@ -74,6 +75,7 @@ class SourceArtifact:
     license: str
     status: str
     notes: tuple[str, ...] = ()
+
 
 TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
     "0_8b": SourceArtifact(
@@ -150,10 +152,9 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "27b-256k": None,
 }
 
-# mmproj-F16 sources per tier. Every Qwen3.5 lower tier ships its own
-# `mmproj-F16.gguf` in the matching unsloth repo. The 27B projector comes
-# from the Qwen3.6 GGUF mirror and is shared verbatim across the 27b /
-# 27b-256k text-context variants
+# mmproj-F16 sources per tier. Every Qwen3.5 base (0.8B/2B/4B/9B/27B) ships
+# its own `mmproj-F16.gguf` in the matching unsloth repo. The 27B projector
+# is shared verbatim across the 27b / 27b-256k text-context variants
 # (per the catalog comment at packages/shared/src/local-inference/catalog.ts
 # and `plugins/plugin-local-inference/native/reports/porting/2026-05-14/mmproj-qwen35vl-plan.md`),
 # so the long-context tiers reuse the 27B source byte-for-byte.
@@ -162,7 +163,7 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
 # fork at `plugins/plugin-local-inference/native/llama.cpp/`):
 #   0_8b              -> Q4_K_M
 #   2b / 4b / 9b      -> Q8_0
-#   27b / 27b-256k -> Q8_0
+#   27b / 27b-256k    -> Q8_0
 # The full canonical chain and the architectural reasoning for why
 # TurboQuant / PolarQuant / QJL are NOT applied to mmproj projectors are
 # documented in the 2026-05-14 plan memo cited above and in
@@ -183,28 +184,13 @@ def _vision_source(tier: str, size: str) -> SourceArtifact:
     )
 
 
-def _qwen36_vision_source(tier: str) -> SourceArtifact:
-    return SourceArtifact(
-        kind="vision",
-        repo="unsloth/Qwen3.6-27B-GGUF",
-        filename="mmproj-F16.gguf",
-        destination=f"source/vision/qwen3.6-{tier}-mmproj-f16.gguf",
-        license="apache-2.0",
-        status="source-only",
-        notes=(
-            "Qwen3.6 27B projector shared across 27B context variants; "
-            "quantized to Q8_0 during Phase 2 staging.",
-        ),
-    )
-
-
 VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "0_8b": _vision_source("0_8b", "0.8B"),
     "2b": _vision_source("2b", "2B"),
     "4b": _vision_source("4b", "4B"),
     "9b": _vision_source("9b", "9B"),
-    "27b": _qwen36_vision_source("27b"),
-    "27b-256k": _qwen36_vision_source("27b-256k"),
+    "27b": _vision_source("27b", "27B"),
+    "27b-256k": _vision_source("27b-256k", "27B"),
 }
 
 # Per-tier mmproj quantization target. Authoritative source: the live
@@ -250,6 +236,7 @@ MMPROJ_QUANT_TENSOR_OVERRIDES: Final[dict[str, dict[str, str]]] = {
     },
 }
 
+
 def retry_hf(callable_, *args: Any, **kwargs: Any) -> Any:
     last_error: Exception | None = None
     for attempt in range(HF_RETRY_ATTEMPTS):
@@ -263,12 +250,14 @@ def retry_hf(callable_, *args: Any, **kwargs: Any) -> Any:
     assert last_error is not None
     raise last_error
 
+
 def sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:
         for block in iter(lambda: fh.read(chunk), b""):
             h.update(block)
     return h.hexdigest()
+
 
 def materialize(cached: Path, destination: Path, link_mode: str) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -283,6 +272,7 @@ def materialize(cached: Path, destination: Path, link_mode: str) -> None:
         except OSError:
             pass
     shutil.copy2(cached, destination)
+
 
 def stage_one(
     artifact: SourceArtifact,
@@ -319,6 +309,7 @@ def stage_one(
         "sha256": sha256_file(destination),
     }
 
+
 def write_source_license_notes(bundle_dir: Path, artifacts: Sequence[SourceArtifact], *, dry_run: bool) -> None:
     if dry_run:
         return
@@ -336,6 +327,7 @@ def write_source_license_notes(bundle_dir: Path, artifacts: Sequence[SourceArtif
         for item in items:
             lines.append(f"- {item.repo}/{item.filename} ({item.license}, {item.status})")
         (license_dir / f"LICENSE.source-{kind}").write_text("\n".join(lines) + "\n")
+
 
 def quantize_mmproj(
     *,
@@ -381,6 +373,7 @@ def quantize_mmproj(
         "tensorOverrides": tensor_overrides,
     }
 
+
 def resolve_quantizer_bin(arg_value: Path | None) -> Path:
     if arg_value is not None:
         return arg_value.resolve()
@@ -393,6 +386,7 @@ def resolve_quantizer_bin(arg_value: Path | None) -> Path:
         repo_root
         / "plugins/plugin-local-inference/native/llama.cpp/build/linux-x64-cuda/bin/llama-quantize"
     )
+
 
 def stage_sources(args: argparse.Namespace) -> dict[str, Any]:
     bundle_dir = args.bundle_dir.resolve()
@@ -471,9 +465,10 @@ def stage_sources(args: argparse.Namespace) -> dict[str, Any]:
         write_source_license_notes(bundle_dir, artifacts, dry_run=False)
     return report
 
+
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tier", required=True, choices=SOURCE_WEIGHT_TIERS)
+    ap.add_argument("--tier", required=True, choices=ELIZA_1_TIERS)
     ap.add_argument("--bundle-dir", required=True, type=Path)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument(
@@ -504,10 +499,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     )
     return ap.parse_args(argv)
 
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     print(json.dumps(stage_sources(args), indent=2, sort_keys=True))
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

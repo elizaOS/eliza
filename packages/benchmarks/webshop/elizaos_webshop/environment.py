@@ -19,6 +19,9 @@ import logging
 import os
 import subprocess
 import sys
+import importlib.util
+from importlib.machinery import ModuleSpec
+from html.parser import HTMLParser
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,9 +37,46 @@ logger = logging.getLogger(__name__)
 
 _BENCH_DIR = Path(__file__).resolve().parent.parent
 _UPSTREAM_DIR = _BENCH_DIR / "upstream"
-_SPACY_MODEL = "en_core_web_sm"
-_spacy_nlp_singleton: object | None = None
+_spacy_nlp_singleton: Any | None = None
 _spacy_load_attempted = False
+
+
+def _ensure_spacy_model_available(
+    *,
+    model: str = "en_core_web_sm",
+    _spacy_module: Any | None = None,
+    _subprocess_run: Any = subprocess.run,
+) -> Any:
+    """Load spaCy's model, optionally installing it for local smoke runs."""
+    global _spacy_nlp_singleton, _spacy_load_attempted
+    if _spacy_nlp_singleton is not None:
+        return _spacy_nlp_singleton
+
+    if _spacy_module is None:
+        import spacy as _spacy_module  # type: ignore[import-not-found]
+
+    try:
+        _spacy_nlp_singleton = _spacy_module.load(model)
+        _spacy_load_attempted = True
+        return _spacy_nlp_singleton
+    except OSError as exc:
+        _spacy_load_attempted = True
+        if os.environ.get("WEBSHOP_NO_AUTOFETCH"):
+            raise OSError(
+                f"spaCy model {model!r} is missing and WEBSHOP_NO_AUTOFETCH is set. "
+                f"Install it manually with: python -m spacy download {model}"
+            ) from exc
+
+        cmd = [sys.executable, "-m", "spacy", "download", model]
+        completed = _subprocess_run(cmd, check=False)
+        returncode = int(getattr(completed, "returncode", 0))
+        if returncode != 0:
+            raise OSError(
+                f"spaCy model {model!r} is missing and spacy download failed "
+                f"with exit code {returncode}: {' '.join(cmd)}"
+            ) from exc
+        _spacy_nlp_singleton = _spacy_module.load(model)
+        return _spacy_nlp_singleton
 
 
 def _ensure_upstream_on_path() -> None:
@@ -44,149 +84,265 @@ def _ensure_upstream_on_path() -> None:
     upstream_str = str(_UPSTREAM_DIR)
     if upstream_str not in sys.path:
         sys.path.insert(0, upstream_str)
+    _ensure_beautifulsoup_available()
+    _install_optional_dependency_stubs()
+    if "gym" not in sys.modules:
+        import types as _types
+
+        gym_stub = _types.ModuleType("gym")
+
+        class _Env:
+            pass
+
+        gym_stub.Env = _Env  # type: ignore[attr-defined]
+        gym_stub.spaces = _types.SimpleNamespace()  # type: ignore[attr-defined]
+        envs_mod = _types.ModuleType("gym.envs")
+        registration_mod = _types.ModuleType("gym.envs.registration")
+
+        def _register(**_kwargs: Any) -> None:
+            return None
+
+        registration_mod.register = _register  # type: ignore[attr-defined]
+        envs_mod.registration = registration_mod  # type: ignore[attr-defined]
+        sys.modules["gym"] = gym_stub
+        sys.modules["gym.envs"] = envs_mod
+        sys.modules["gym.envs.registration"] = registration_mod
 
 
-class _NounToken:
-    def __init__(self, text: str) -> None:
-        self.text = text
-        self.pos_ = "NOUN"
+def _ensure_beautifulsoup_available() -> None:
+    """Install BeautifulSoup lazily for hermetic WebShop smoke runs."""
+    if importlib.util.find_spec("bs4") is not None:
+        return
+    if os.environ.get("WEBSHOP_NO_AUTOFETCH"):
+        raise ModuleNotFoundError(
+            "WebShop requires beautifulsoup4. Install it with "
+            "`python -m pip install beautifulsoup4`, or unset WEBSHOP_NO_AUTOFETCH "
+            "to allow the benchmark to install this lightweight dependency."
+        )
+    cmd = [sys.executable, "-m", "pip", "install", "beautifulsoup4>=4.11.0"]
+    completed = subprocess.run(cmd, check=False)
+    if int(getattr(completed, "returncode", 1)) != 0:
+        _install_beautifulsoup_stub()
 
 
-class _SimpleNounNlp:
-    def __call__(self, text: str) -> list[_NounToken]:
-        return [_NounToken(token) for token in str(text).split()]
-
-
-def _nlp_tokens_have_pos(nlp: object) -> bool:
-    try:
-        tokens = list(nlp("webshop product"))  # type: ignore[misc]
-    except Exception:
-        return False
-    return bool(tokens) and all(hasattr(token, "pos_") for token in tokens)
-
-
-def _ensure_spacy_model_available(
-    *,
-    model: str = _SPACY_MODEL,
-    _spacy_module: object | None = None,
-    _subprocess_run: object | None = None,
-) -> object:
-    """Load the spaCy model WebShop needs, installing it once if missing.
-
-    This helper is intentionally explicit for tests and diagnostics. Runtime
-    imports still have a no-network fallback in
-    ``_install_optional_upstream_dependency_stubs`` so benchmark smoke runs do
-    not fail solely because a POS tagger is unavailable.
-    """
-    global _spacy_load_attempted, _spacy_nlp_singleton
-
-    if _spacy_nlp_singleton is not None:
-        return _spacy_nlp_singleton
-
-    validate_pos = _spacy_module is None
-    if _spacy_module is None:
-        import spacy as _spacy_module  # type: ignore[import-not-found,no-redef]
-    run = _subprocess_run or subprocess.run
-
-    def _load() -> object:
-        nlp = _spacy_module.load(model)  # type: ignore[attr-defined]
-        if validate_pos and not _nlp_tokens_have_pos(nlp):
-            raise OSError(
-                f"spaCy model {model!r} loaded but does not provide token.pos_; "
-                "WebShop reward scoring requires POS tags."
-            )
-        return nlp
-
-    _spacy_load_attempted = True
-    try:
-        _spacy_nlp_singleton = _load()
-        return _spacy_nlp_singleton
-    except OSError as exc:
-        if os.environ.get("WEBSHOP_NO_AUTOFETCH"):
-            raise OSError(
-                "spaCy model required for WebShop reward scoring is missing or "
-                "incomplete, and WEBSHOP_NO_AUTOFETCH is set. Install it with "
-                f"`python -m spacy download {model}`."
-            ) from exc
-
-        cmd = [sys.executable, "-m", "spacy", "download", model]
-        completed = run(cmd, check=False)  # type: ignore[misc]
-        return_code = int(getattr(completed, "returncode", 1))
-        if return_code != 0:
-            raise OSError(
-                f"`python -m spacy download {model}` failed with exit code "
-                f"{return_code}; WebShop reward scoring cannot use POS tags."
-            ) from exc
-
-        _spacy_nlp_singleton = _load()
-        return _spacy_nlp_singleton
-
-
-def _install_optional_upstream_dependency_stubs() -> None:
-    """Install tiny shims for heavyweight optional upstream dependencies."""
+def _install_beautifulsoup_stub() -> None:
+    """Install a small BeautifulSoup subset used by vendored WebShop."""
     import types as _types
 
-    try:
-        import spacy  # type: ignore[import-not-found]
-    except Exception:
+    if "bs4" in sys.modules:
+        return
+
+    class Comment(str):
+        pass
+
+    class _TextNode(str):
+        def __new__(cls, value: str, parent: "_Node") -> "_TextNode":
+            obj = str.__new__(cls, value)
+            obj.parent = parent  # type: ignore[attr-defined]
+            return obj
+
+    class _Node:
+        def __init__(
+            self,
+            name: str,
+            attrs: dict[str, Any] | None = None,
+            parent: "_Node | None" = None,
+        ) -> None:
+            self.name = name
+            self.attrs = attrs or {}
+            self.parent = parent
+            self.children: list[_Node | _TextNode] = []
+
+        def get(self, key: str, default: Any = None) -> Any:
+            value = self.attrs.get(key, default)
+            if key == "class" and isinstance(value, str):
+                return value.split()
+            return value
+
+        def __getitem__(self, key: str) -> Any:
+            return self.attrs[key]
+
+        @property
+        def text(self) -> str:
+            return self.get_text()
+
+        @property
+        def h4(self) -> "_Node":
+            found = self.find("h4")
+            if found is None:
+                raise AttributeError("h4")
+            return found
+
+        def get_text(self) -> str:
+            parts: list[str] = []
+            for child in self.children:
+                if isinstance(child, str):
+                    parts.append(str(child))
+                else:
+                    parts.append(child.get_text())
+            return "".join(parts)
+
+        def _iter_nodes(self) -> list["_Node"]:
+            nodes = [self]
+            for child in self.children:
+                if isinstance(child, _Node):
+                    nodes.extend(child._iter_nodes())
+            return nodes
+
+        def _iter_text(self) -> list[_TextNode]:
+            texts: list[_TextNode] = []
+            for child in self.children:
+                if isinstance(child, _TextNode):
+                    texts.append(child)
+                elif isinstance(child, _Node):
+                    texts.extend(child._iter_text())
+            return texts
+
+        def _matches(
+            self,
+            name: str | None = None,
+            *,
+            id: str | None = None,
+            class_: str | None = None,
+        ) -> bool:
+            if name is not None and self.name != name:
+                return False
+            if id is not None and self.attrs.get("id") != id:
+                return False
+            if class_ is not None:
+                classes = self.get("class", [])
+                if isinstance(classes, str):
+                    classes = classes.split()
+                if class_ not in classes:
+                    return False
+            return True
+
+        def find(
+            self,
+            name: str | None = None,
+            *,
+            id: str | None = None,
+            class_: str | None = None,
+        ) -> "_Node | None":
+            for node in self._iter_nodes():
+                if node is not self and node._matches(name, id=id, class_=class_):
+                    return node
+            return None
+
+        def find_all(
+            self,
+            name: str | None = None,
+            *,
+            class_: str | None = None,
+        ) -> list["_Node"]:
+            return [
+                node
+                for node in self._iter_nodes()
+                if node is not self and node._matches(name, class_=class_)
+            ]
+
+        def findAll(self, text: bool = False) -> list[Any]:  # noqa: N802 - bs4 API
+            if text:
+                return self._iter_text()
+            return self.find_all()
+
+        def select(self, selector: str) -> list["_Node"]:
+            if selector == 'input[type="radio"]':
+                return [
+                    node
+                    for node in self._iter_nodes()
+                    if node.name == "input" and node.attrs.get("type") == "radio"
+                ]
+            return []
+
+    class _SoupParser(HTMLParser):
+        def __init__(self) -> None:
+            super().__init__(convert_charrefs=True)
+            self.root = _Node("[document]")
+            self.stack = [self.root]
+
+        def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+            attr_dict = {k: (v if v is not None else "") for k, v in attrs}
+            node = _Node(tag, attr_dict, self.stack[-1])
+            self.stack[-1].children.append(node)
+            if tag not in {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}:
+                self.stack.append(node)
+
+        def handle_endtag(self, tag: str) -> None:
+            for i in range(len(self.stack) - 1, 0, -1):
+                if self.stack[i].name == tag:
+                    del self.stack[i:]
+                    break
+
+        def handle_data(self, data: str) -> None:
+            self.stack[-1].children.append(_TextNode(data, self.stack[-1]))
+
+        def handle_comment(self, data: str) -> None:
+            self.stack[-1].children.append(Comment(data))
+
+    class BeautifulSoup(_Node):
+        def __init__(self, html: str, _parser: str = "html.parser") -> None:
+            parser = _SoupParser()
+            parser.feed(html or "")
+            self.__dict__.update(parser.root.__dict__)
+
+    bs4_mod = _types.ModuleType("bs4")
+    element_mod = _types.ModuleType("bs4.element")
+    bs4_mod.__spec__ = ModuleSpec("bs4", loader=None)
+    element_mod.__spec__ = ModuleSpec("bs4.element", loader=None)
+    bs4_mod.BeautifulSoup = BeautifulSoup  # type: ignore[attr-defined]
+    element_mod.Comment = Comment  # type: ignore[attr-defined]
+    sys.modules["bs4"] = bs4_mod
+    sys.modules["bs4.element"] = element_mod
+
+
+def _install_optional_dependency_stubs() -> None:
+    """Install tiny stubs for heavy upstream imports used by reward helpers."""
+    import types as _types
+
+    if "thefuzz" not in sys.modules and importlib.util.find_spec("thefuzz") is None:
+        fuzz_mod = _types.ModuleType("thefuzz.fuzz")
+
+        def _ratio(a: object, b: object) -> int:
+            left = str(a).strip().lower()
+            right = str(b).strip().lower()
+            if not left and not right:
+                return 100
+            if left == right:
+                return 100
+            if left in right or right in left:
+                return 80
+            return 0
+
+        fuzz_mod.ratio = _ratio  # type: ignore[attr-defined]
+        fuzz_mod.partial_ratio = _ratio  # type: ignore[attr-defined]
+        pkg = _types.ModuleType("thefuzz")
+        pkg.fuzz = fuzz_mod  # type: ignore[attr-defined]
+        sys.modules["thefuzz"] = pkg
+        sys.modules["thefuzz.fuzz"] = fuzz_mod
+
+    if "spacy" not in sys.modules and importlib.util.find_spec("spacy") is None:
         spacy_stub = _types.ModuleType("spacy")
 
-        def _load(_model: str, *_args: object, **_kwargs: object) -> _SimpleNounNlp:
-            return _SimpleNounNlp()
+        class _Token:
+            def __init__(self, text: str) -> None:
+                self.text = text
+                self.lemma_ = text.lower()
+
+        class _Doc(list[_Token]):
+            @property
+            def text(self) -> str:
+                return " ".join(token.text for token in self)
+
+        class _NLP:
+            def __call__(self, text: str) -> _Doc:
+                return _Doc(_Token(part) for part in str(text).split())
+
+        def _load(_model: str) -> _NLP:
+            return _NLP()
 
         spacy_stub.load = _load  # type: ignore[attr-defined]
         sys.modules["spacy"] = spacy_stub
-    else:
-        if not getattr(spacy, "_elizaos_webshop_safe_load", False):
-            original_load = spacy.load
-
-            def _safe_load(model: str, *args: object, **kwargs: object) -> object:
-                try:
-                    nlp = original_load(model, *args, **kwargs)
-                    if _nlp_tokens_have_pos(nlp):
-                        return nlp
-                    logger.warning(
-                        "[WebShopEnvironment] spaCy model %s lacks token.pos_; "
-                        "using noun-only fallback tokenizer.",
-                        model,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "[WebShopEnvironment] spaCy model %s unavailable (%s); "
-                        "using noun-only fallback tokenizer.",
-                        model,
-                        exc,
-                    )
-                return _SimpleNounNlp()
-
-            spacy.load = _safe_load  # type: ignore[assignment]
-            spacy._elizaos_webshop_safe_load = True  # type: ignore[attr-defined]
-
-    try:
-        import thefuzz  # noqa: F401  # type: ignore[import-not-found]
-    except Exception:
-        import difflib as _difflib
-
-        package_stub = _types.ModuleType("thefuzz")
-        fuzz_stub = _types.ModuleType("thefuzz.fuzz")
-
-        def _ratio(a: object, b: object) -> int:
-            return int(
-                round(
-                    100
-                    * _difflib.SequenceMatcher(
-                        None,
-                        str(a),
-                        str(b),
-                    ).ratio()
-                )
-            )
-
-        fuzz_stub.ratio = _ratio  # type: ignore[attr-defined]
-        fuzz_stub.token_set_ratio = _ratio  # type: ignore[attr-defined]
-        package_stub.fuzz = fuzz_stub  # type: ignore[attr-defined]
-        sys.modules["thefuzz"] = package_stub
-        sys.modules["thefuzz.fuzz"] = fuzz_stub
 
 
 def _patch_search_engine_for_bm25_fallback() -> None:
@@ -200,7 +356,6 @@ def _patch_search_engine_for_bm25_fallback() -> None:
     string ``{"id": <asin>}``.
     """
     _ensure_upstream_on_path()
-    _install_optional_upstream_dependency_stubs()
 
     # Determine whether pyserini is usable BEFORE we import the upstream
     # engine module (which does `from pyserini.search.lucene import
@@ -238,26 +393,35 @@ def _patch_search_engine_for_bm25_fallback() -> None:
             sys.modules["pyserini.search.lucene"] = stub
             sys.modules["pyserini.search"].lucene = stub  # type: ignore[attr-defined]
 
-    try:
-        import rank_bm25  # noqa: F401  # type: ignore[import-not-found]
-    except Exception:
+    if "cleantext" not in sys.modules:
         import types as _types
 
-        stub = _types.ModuleType("rank_bm25")
+        cleantext_stub = _types.ModuleType("cleantext")
 
-        class _StubBM25Okapi:  # noqa: D401 - compatibility shim
+        def _clean(value: object, **_kwargs: Any) -> str:
+            return str(value)
+
+        cleantext_stub.clean = _clean  # type: ignore[attr-defined]
+        sys.modules["cleantext"] = cleantext_stub
+
+    if "rank_bm25" not in sys.modules:
+        import types as _types
+
+        rank_bm25_stub = _types.ModuleType("rank_bm25")
+
+        class _StubBM25Okapi:
             def __init__(self, corpus: list[list[str]]) -> None:
                 self._corpus = corpus
 
             def get_scores(self, query_tokens: list[str]) -> list[float]:
                 query_set = set(query_tokens)
                 return [
-                    float(sum(1 for token in doc if token in query_set))
-                    for doc in self._corpus
+                    float(len(query_set.intersection(tokens)))
+                    for tokens in self._corpus
                 ]
 
-        stub.BM25Okapi = _StubBM25Okapi  # type: ignore[attr-defined]
-        sys.modules["rank_bm25"] = stub
+        rank_bm25_stub.BM25Okapi = _StubBM25Okapi  # type: ignore[attr-defined]
+        sys.modules["rank_bm25"] = rank_bm25_stub
 
     from web_agent_site.engine import engine as _engine  # type: ignore[import-not-found]
 
@@ -269,11 +433,12 @@ def _patch_search_engine_for_bm25_fallback() -> None:
 
     try:
         from rank_bm25 import BM25Okapi  # type: ignore[import-not-found]
-    except Exception:
-        BM25Okapi = None  # type: ignore[assignment]
+    except Exception as exc:
         logger.warning(
-            "[WebShopEnvironment] rank_bm25 unavailable; using lexical search fallback."
+            "rank_bm25 is unavailable; using a simple token-overlap WebShop search fallback: %s",
+            exc,
         )
+        BM25Okapi = None  # type: ignore[assignment]
 
     import json as _json
 
@@ -297,16 +462,14 @@ def _patch_search_engine_for_bm25_fallback() -> None:
         def __init__(self, products: list[dict[str, Any]]) -> None:
             corpus = []
             self._ids: list[str] = []
-            self._tokens_by_id: dict[str, list[str]] = {}
             for p in products:
                 title = p.get("name", "") or p.get("Title", "") or ""
                 desc = p.get("full_description", "") or p.get("Description", "") or ""
                 cat = p.get("category", "") or ""
                 tokens = (title + " " + desc + " " + cat).lower().split()
                 corpus.append(tokens)
-                asin = p["asin"]
-                self._ids.append(asin)
-                self._tokens_by_id[asin] = tokens
+                self._ids.append(p["asin"])
+            self._corpus = corpus
             self._bm25 = BM25Okapi(corpus) if BM25Okapi is not None and corpus else None
             self._docs = {asin: _BM25Doc(_json.dumps({"id": asin})) for asin in self._ids}
 
@@ -314,14 +477,14 @@ def _patch_search_engine_for_bm25_fallback() -> None:
             if not self._ids:
                 return []
             query_tokens = query.lower().split()
-            if self._bm25 is not None:
-                scores = self._bm25.get_scores(query_tokens)
-            else:
+            if self._bm25 is None:
                 query_set = set(query_tokens)
                 scores = [
-                    sum(1 for token in self._tokens_by_id[asin] if token in query_set)
-                    for asin in self._ids
+                    float(len(query_set.intersection(tokens)))
+                    for tokens in self._corpus
                 ]
+            else:
+                scores = self._bm25.get_scores(query_tokens)
             ranked = sorted(
                 zip(self._ids, scores),
                 key=lambda t: t[1],

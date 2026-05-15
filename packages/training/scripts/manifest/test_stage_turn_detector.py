@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from scripts.manifest import stage_eliza1_bundle_assets as stage  # noqa: E402
 
+
 @pytest.fixture(autouse=True)
 def _patch_copy(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
     """Replace `copy_hf_file` with a recording stub."""
@@ -47,6 +48,7 @@ def _patch_copy(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
 
     monkeypatch.setattr(stage, "copy_hf_file", _fake_copy)
     return calls
+
 
 def test_stage_turn_detector_livekit_en_for_small_tiers(
     tmp_path: Path,
@@ -78,6 +80,7 @@ def test_stage_turn_detector_livekit_en_for_small_tiers(
     # All calls pinned to the EN revision.
     assert {c["revision"] for c in _patch_copy} == {"v1.2.2-en"}
 
+
 def test_stage_turn_detector_livekit_intl_for_desktop_tiers(
     tmp_path: Path,
     _patch_copy: list[dict[str, Any]],
@@ -95,6 +98,7 @@ def test_stage_turn_detector_livekit_intl_for_desktop_tiers(
         )
         assert report["revision"] == "v0.4.1-intl", tier
         assert {c["revision"] for c in _patch_copy} == {"v0.4.1-intl"}
+
 
 def test_stage_turn_detector_apache_fallback(
     tmp_path: Path,
@@ -124,6 +128,7 @@ def test_stage_turn_detector_apache_fallback(
         ]
     )
 
+
 def test_stage_turn_detector_rejects_unknown_license(tmp_path: Path) -> None:
     bundle_dir = tmp_path / "bundle"
     bundle_dir.mkdir()
@@ -136,6 +141,7 @@ def test_stage_turn_detector_rejects_unknown_license(tmp_path: Path) -> None:
             dry_run=True,
         )
 
+
 def test_slot_for_bundle_path_turn_onnx_only() -> None:
     # The slot resolver only counts the ONNX as a manifest-files entry —
     # tokenizer.json + languages.json ride along on disk as sidecars.
@@ -145,12 +151,14 @@ def test_slot_for_bundle_path_turn_onnx_only() -> None:
     assert stage._slot_for_bundle_path("turn/tokenizer.json") is None
     assert stage._slot_for_bundle_path("turn/languages.json") is None
 
+
 def test_cli_args_default_to_livekit_and_run_turn_detector() -> None:
     args = stage.parse_args(
         ["--tier", "4b", "--bundle-dir", "/tmp/whatever"],
     )
     assert args.turn_license == "livekit"
     assert args.skip_turn_detector is False
+
 
 def test_cli_args_allow_apache_override() -> None:
     args = stage.parse_args(
@@ -165,6 +173,7 @@ def test_cli_args_allow_apache_override() -> None:
     )
     assert args.turn_license == "apache"
 
+
 def test_cli_args_allow_skip_turn_detector() -> None:
     args = stage.parse_args(
         [
@@ -176,6 +185,7 @@ def test_cli_args_allow_skip_turn_detector() -> None:
         ],
     )
     assert args.skip_turn_detector is True
+
 
 def test_cli_rejects_unknown_license() -> None:
     with pytest.raises(SystemExit):

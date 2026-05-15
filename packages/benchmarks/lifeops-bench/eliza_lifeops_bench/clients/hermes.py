@@ -397,19 +397,13 @@ class HermesClient(BaseClient):
         cache_read_value: int | None = (
             int(cached_tokens_raw) if isinstance(cached_tokens_raw, (int, float)) else None
         )
-        cache_creation_raw = usage_raw.get("cache_creation_input_tokens")
-        cache_creation_value: int | None = (
-            int(cache_creation_raw)
-            if isinstance(cache_creation_raw, (int, float))
-            else None
-        )
         usage = Usage(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
             cached_tokens=cache_read_value if cache_read_value is not None else 0,
             cache_read_input_tokens=cache_read_value,
-            cache_creation_input_tokens=cache_creation_value,
+            cache_creation_input_tokens=None,
         )
         cost_usd = _compute_cost_usd(self.model_name, prompt_tokens, completion_tokens)
 

@@ -38,9 +38,9 @@
 | `bf_isabella` | British female, warm |
 | `bm_george` | British male, authoritative |
 | `bm_lewis` | British male, casual |
-| `af_samantha` | Samantha clone (best-available; see note below) |
+| `af_same` | Same clone (best-available; see note below) |
 
-> **Note on samantha:** The W3-11 fine-tune attempt for the samantha voice clone regressed on all quality metrics (WER +53%, SpkSim -0.21, UTMOS -34 vs baseline). The `af_samantha.bin` preset here is the best-available approximation pending corpus expansion (≥3h target). For production samantha TTS, the primary path is OmniVoice frozen-conditioning (`elizaos/eliza-1-voice-omnivoice`). See `.swarm/impl/W3-11-kokoro-post-mortem.md`.
+> **Note on same:** The W3-11 fine-tune attempt for the same voice clone regressed on all quality metrics (WER +53%, SpkSim -0.21, UTMOS -34 vs baseline). The `af_same.bin` preset here is the best-available approximation pending corpus expansion (≥3h target). For production same TTS, the primary path is OmniVoice frozen-conditioning (`elizaos/eliza-1-voice-omnivoice`). See `.swarm/impl/W3-11-kokoro-post-mortem.md`.
 
 ## Files
 
@@ -48,12 +48,12 @@
 |------|------|------|
 | `kokoro-v1.0-q4.onnx` | Base weights (Q4) | ~311 MB |
 | `voices/af_bella.bin` | Voice preset (bella) | ~512 KB |
-| `voices/af_samantha.bin` | Voice preset (samantha, best-available) | ~512 KB |
+| `voices/af_same.bin` | Voice preset (same, best-available) | ~512 KB |
 | `manifest.json` | Machine-readable metadata | — |
 
 ## Coordination Note
 
-This repo is coordinated with the F2 (kokoro samantha fine-tune) swarm agent. F2 publishes retrained weights here when quality gates pass. The current contents are the baseline release.
+This repo is coordinated with the F2 (kokoro sam fine-tune) swarm agent. F2 publishes retrained weights here when quality gates pass. The current contents are the baseline release.
 
 ## License
 

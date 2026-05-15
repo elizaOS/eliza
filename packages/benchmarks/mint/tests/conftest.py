@@ -3,6 +3,7 @@ Pytest configuration and fixtures for MINT benchmark tests.
 """
 
 import sys
+import json
 from pathlib import Path
 
 import pytest
@@ -68,3 +69,35 @@ def sample_config():
         use_sample_tasks=True,
         feedback_mode="templated",
     )
+
+
+@pytest.fixture
+def official_format_data_path(tmp_path: Path) -> Path:
+    """Tiny upstream-compatible processed/ tree for offline dataset tests."""
+    rows = {
+        "gsm8k": [
+            {
+                "id": 0,
+                "prompt": "What is 2 + 2? Solution output format: an integer.",
+                "reference": "4",
+            }
+        ],
+        "humaneval": [
+            {
+                "id": 0,
+                "prompt": "def add(a: int, b: int) -> int:\n",
+                "reference": "def check(candidate):\n    assert candidate(1, 2) == 3\n",
+            }
+        ],
+        "math": [
+            {"id": 0, "prompt": "Compute 6 * 7.", "reference": "42.0"}
+        ],
+    }
+    for subtask, entries in rows.items():
+        path = tmp_path / subtask / "test_prompts.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            "\n".join(json.dumps(row) for row in entries) + "\n",
+            encoding="utf-8",
+        )
+    return tmp_path

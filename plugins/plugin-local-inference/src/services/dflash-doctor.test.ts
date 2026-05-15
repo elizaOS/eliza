@@ -4,24 +4,6 @@ vi.mock("./registry", () => ({
 	listInstalledModels: vi.fn(async () => []),
 }));
 
-vi.mock("./dflash-server", () => ({
-	dflashLlamaServer: {
-		hasLoadedModel: vi.fn(() => false),
-		getMetrics: vi.fn(async () => null),
-	},
-	getDflashRuntimeStatus: vi.fn(() => ({
-		enabled: false,
-		required: false,
-		binaryPath: null,
-		reason: "mocked in dflash-doctor.test",
-		capabilities: null,
-	})),
-	validateDflashDrafterCompatibility: vi.fn(() => ({
-		compatible: true,
-		reason: "mocked in dflash-doctor.test",
-	})),
-}));
-
 afterEach(() => {
 	vi.restoreAllMocks();
 });
@@ -67,15 +49,9 @@ describe("runDflashDoctor — tokenizer parity check", () => {
 		}
 	});
 
-	it("requires DFlash companions on 4b and larger tiers and validates optional small-tier pairs when present", async () => {
+	it("every default-eligible Eliza-1 tier declares runtime.dflash", async () => {
 		const { ELIZA_1_RELEASE_TIER_IDS, MODEL_CATALOG, isDefaultEligibleId } =
 			await import("./catalog");
-		const requiredDflashIds = new Set([
-			"eliza-1-4b",
-			"eliza-1-9b",
-			"eliza-1-27b",
-			"eliza-1-27b-256k",
-		]);
 
 		for (const id of ELIZA_1_RELEASE_TIER_IDS) {
 			const model = MODEL_CATALOG.find((m) => m.id === id);
@@ -83,12 +59,10 @@ describe("runDflashDoctor — tokenizer parity check", () => {
 			expect(isDefaultEligibleId(id), `${id} should be default-eligible`).toBe(
 				true,
 			);
-			if (!model?.runtime?.dflash) {
-				expect(requiredDflashIds.has(id), `${id} may omit runtime.dflash`).toBe(
-					false,
-				);
-				continue;
-			}
+			expect(
+				model?.runtime?.dflash,
+				`${id} missing runtime.dflash`,
+			).toBeDefined();
 
 			const drafterId = model?.runtime?.dflash?.drafterModelId;
 			expect(drafterId).toBe(`${id}-drafter`);

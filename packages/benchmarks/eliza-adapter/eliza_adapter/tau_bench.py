@@ -143,96 +143,6 @@ def _normalize_tool_calls_for_history(
     return out
 
 
-def _compact_json_schema(schema: Any) -> Any:
-    """Keep enough schema shape for Eliza prompting without huge descriptions."""
-    if not isinstance(schema, dict):
-        return schema
-    out: dict[str, Any] = {}
-    schema_type = schema.get("type")
-    if schema_type is not None:
-        out["type"] = schema_type
-    enum = schema.get("enum")
-    if enum is not None:
-        out["enum"] = enum
-    required = schema.get("required")
-    if isinstance(required, list):
-        out["required"] = required
-    properties = schema.get("properties")
-    if isinstance(properties, dict):
-        compact_props: dict[str, Any] = {}
-        for name, prop in properties.items():
-            if isinstance(prop, dict):
-                compact_props[str(name)] = _compact_json_schema(prop)
-            else:
-                compact_props[str(name)] = prop
-        out["properties"] = compact_props
-    items = schema.get("items")
-    if isinstance(items, dict):
-        out["items"] = _compact_json_schema(items)
-    return out or {"type": "object"}
-
-
-def _compact_tools_for_eliza(tools_info: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Reduce TAU tool schemas before sending them through the generic Eliza server.
-
-    The Eliza benchmark server stores every composed request in session memory.
-    Sending full TAU history and full 50/115-tool JSON schemas every turn makes
-    later turns exceed Cerebras' context limit. The action capture path only
-    needs the tool name plus enough parameter shape for the model to form a
-    BENCHMARK_ACTION call; canonical execution still happens in Python.
-    """
-    compact: list[dict[str, Any]] = []
-    for tool in tools_info:
-        fn = tool.get("function") if isinstance(tool, dict) else None
-        fn_record = fn if isinstance(fn, dict) else {}
-        name = fn_record.get("name") or tool.get("name")
-        if not name:
-            continue
-        description = str(fn_record.get("description") or tool.get("description") or "")
-        parameters = fn_record.get("parameters") or tool.get("parameters") or {}
-        compact.append(
-            {
-                "type": "function",
-                "function": {
-                    "name": str(name),
-                    "description": description.replace("\n", " ")[:240],
-                    "parameters": _compact_json_schema(parameters),
-                },
-            }
-        )
-    return compact
-
-
-def _turn_text_for_eliza(messages: list[dict[str, Any]]) -> str:
-    """Render only the current TAU turn for Eliza's generic benchmark endpoint."""
-    if not messages:
-        return "Continue the tau-bench task."
-
-    last = messages[-1]
-    role = last.get("role")
-    if role == "tool":
-        name = str(last.get("name") or "tool")
-        content = str(last.get("content") or "")
-        return (
-            "Continue the same tau-bench customer-service task.\n"
-            f"The previous tool call `{name}` returned:\n{content}\n\n"
-            "Choose the next required tool call, or use REPLY only if the task is complete."
-        )
-    if role == "user":
-        content = str(last.get("content") or "")
-        system = ""
-        if len(messages) <= 2 and messages and messages[0].get("role") == "system":
-            system = f"Domain rules:\n{messages[0].get('content') or ''}\n\n"
-        return f"{system}Customer message:\n{content}"
-    if role == "assistant":
-        return (
-            "Continue the same tau-bench customer-service task after the assistant's "
-            "last response. Choose the next required tool call, or use REPLY only if "
-            "the task is complete."
-        )
-    return "Continue the tau-bench task."
-
-
 class ElizaTauAgent(BaseTauAgent):
     """Tau-bench agent that drives an upstream ``Env`` via the eliza bench server.
 
@@ -374,17 +284,22 @@ class ElizaTauAgent(BaseTauAgent):
         )
 
     def _one_turn(self, messages: list[dict[str, Any]], tools_info: list[dict[str, Any]]):
-        turn_text = _turn_text_for_eliza(messages)
+        last_user = ""
+        for m in reversed(messages):
+            if m.get("role") == "user":
+                last_user = str(m.get("content") or "")
+                break
         context: dict[str, object] = {
             "benchmark": "tau_bench",
             "task_id": self._session_id,
+            "messages": _scrub_history_for_cerebras(messages),
         }
         if tools_info:
-            context["tools"] = _compact_tools_for_eliza(tools_info)
+            context["tools"] = tools_info
             context["tool_choice"] = "auto"
         if self.temperature is not None:
             context["temperature"] = float(self.temperature)
-        return self.client.send_message(turn_text, context=context)
+        return self.client.send_message(last_user, context=context)
 
     @staticmethod
     def _response_to_assistant_message(response) -> dict[str, Any]:

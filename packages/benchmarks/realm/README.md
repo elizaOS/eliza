@@ -107,20 +107,35 @@ python -m benchmarks.realm.cli --provider mock --max-tasks 1
 
 # Tiny built-in P1 + P11 sample (no upstream needed)
 python -m benchmarks.realm.cli --provider mock --use-sample-tasks
+
+# Load every vendored instance instead of the default cap
+python -m benchmarks.realm.cli --provider mock --full-dataset
+
+# Export per-task trajectories alongside the benchmark report
+python -m benchmarks.realm.cli --provider mock --use-sample-tasks --export-trajectories
 ```
 
-## OR-Tools is required
+## OR-Tools dependency
 
-OR-Tools (`ortools >= 9.5, < 10.0`) is a **hard dependency** declared
-in `pyproject.toml`. Importing `benchmarks.realm.solvers` without it
-raises `ImportError`. Rationale: without CP-SAT the JSSP "oracle"
-collapses to a loose `max(job, machine)` lower bound, and without
-`RoutingModel` the DARP "oracle" is a greedy upper bound — both make
-`optimality_ratio` essentially meaningless.
+OR-Tools (`ortools >= 9.5, < 10.0`) is an optional runtime dependency.
+Importing `benchmarks.realm.solvers` does not require it. Solver calls
+that need CP-SAT or `RoutingModel` load it lazily.
 
 ```bash
-pip install elizaos-benchmarks-realm   # pulls in ortools automatically
+pip install "elizaos-benchmarks-realm[ortools]"
 ```
+
+For CLI runs, `--auto-install-ortools` installs OR-Tools into an
+isolated user-cache venv for the current Python version and adds that
+venv's site-packages to `sys.path` for the process. This does not modify
+the active environment. The same behavior can be enabled with
+`REALM_AUTO_INSTALL_ORTOOLS=1`; use `REALM_ORTOOLS_CACHE_DIR` to choose
+the cache directory.
+
+Without OR-Tools, P1 and P3/P4 use local fallback heuristics and log a
+warning. P11 uses an explicit upstream `upper_bound` when the instance
+provides one; otherwise the JSSP oracle raises a clear runtime error
+explaining how to install or enable OR-Tools.
 
 ### Solver budget
 
@@ -128,6 +143,13 @@ CP-SAT and `RoutingModel` run with a configurable wall-clock budget per
 instance via `--solver-timeout` (default 30s) or
 `REALMConfig(solver_timeout_s=...)`. Tests use 2–5s; full DMU/TA JSSP
 runs may want `--solver-timeout 120` for OPTIMAL on the largest.
+
+### Dataset size controls
+
+The loader caps upstream instances to 5 per problem by default so smoke
+runs stay cheap. Use `--max-instances-per-problem N` to load a larger
+per-problem pool, `--max-tasks N` to run at most `N` cases per problem,
+or `--full-dataset` to load all vendored instances before filtering.
 
 ## Tests
 

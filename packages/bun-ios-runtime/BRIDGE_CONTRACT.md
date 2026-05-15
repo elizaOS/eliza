@@ -22,10 +22,13 @@ Expected binary inside each slice:
 ElizaBunEngine.framework/ElizaBunEngine
 ```
 
-The app links the framework directly when `ELIZA_IOS_FULL_BUN_ENGINE=1` is set
-for the iOS pod install/build. The shipped app and the engine binary must not
-import arbitrary dynamic loader, process-spawn, JIT, or executable-memory
-permission APIs. App Store-compatible builds must declare:
+The app loads the framework with `dlopen` and resolves the symbols below with
+`dlsym`.
+
+This is the only dynamic loading allowed for the iOS full-Bun path: loading the
+signed `ElizaBunEngine.framework` already embedded in the app bundle. The engine
+binary itself must not import arbitrary dynamic loader, process-spawn, JIT, or
+executable-memory permission APIs. App Store-compatible builds must declare:
 
 ```text
 ElizaBunEngineNoJIT = true

@@ -234,7 +234,7 @@ export class LifeOpsBenchHandler {
     try {
       body = (await readJsonBody(req, this.maxBodyBytes)) as ResetBody;
     } catch (err) {
-      writeBodyReadError(res, err);
+      writeError(res, 400, errorMessage(err));
       return;
     }
 
@@ -288,7 +288,7 @@ export class LifeOpsBenchHandler {
     try {
       body = (await readJsonBody(req, this.maxBodyBytes)) as MessageBody;
     } catch (err) {
-      writeBodyReadError(res, err);
+      writeError(res, 400, errorMessage(err));
       return;
     }
 
@@ -401,7 +401,7 @@ export class LifeOpsBenchHandler {
     try {
       body = (await readJsonBody(req, this.maxBodyBytes)) as TeardownBody;
     } catch (err) {
-      writeBodyReadError(res, err);
+      writeError(res, 400, errorMessage(err));
       return;
     }
     const taskId = requireNonEmptyString(body, "task_id");
@@ -435,13 +435,6 @@ interface TeardownBody {
   task_id?: unknown;
 }
 
-class RequestBodyTooLargeError extends Error {
-  constructor(maxBytes: number) {
-    super(`Request body exceeded max size ${maxBytes} bytes`);
-    this.name = "RequestBodyTooLargeError";
-  }
-}
-
 function readJsonBody(
   req: http.IncomingMessage,
   maxBytes: number,
@@ -449,27 +442,16 @@ function readJsonBody(
   return new Promise((resolve, reject) => {
     let raw = "";
     let bytes = 0;
-    let settled = false;
-
-    const fail = (err: Error): void => {
-      if (settled) return;
-      settled = true;
-      reject(err);
-      req.resume();
-    };
-
     req.on("data", (chunk: Buffer) => {
-      if (settled) return;
       bytes += chunk.length;
       if (bytes > maxBytes) {
-        fail(new RequestBodyTooLargeError(maxBytes));
+        req.destroy();
+        reject(new Error(`Request body exceeded max size ${maxBytes} bytes`));
         return;
       }
       raw += chunk.toString("utf8");
     });
     req.on("end", () => {
-      if (settled) return;
-      settled = true;
       if (!raw.trim()) {
         resolve({});
         return;
@@ -480,12 +462,7 @@ function readJsonBody(
         reject(new Error(`Malformed JSON request body: ${errorMessage(err)}`));
       }
     });
-    req.on("aborted", () => {
-      fail(new Error("Request aborted before body completed"));
-    });
-    req.on("error", (err) => {
-      fail(err);
-    });
+    req.on("error", reject);
   });
 }
 
@@ -520,14 +497,6 @@ function writeError(
   message: string,
 ): void {
   writeJson(res, status, { error: message });
-}
-
-function writeBodyReadError(res: http.ServerResponse, err: unknown): void {
-  writeError(
-    res,
-    err instanceof RequestBodyTooLargeError ? 413 : 400,
-    errorMessage(err),
-  );
 }
 
 function errorMessage(err: unknown): string {

@@ -31,40 +31,6 @@ const agentPluginName = "Agent";
 
 let nativeTransportPromise: Promise<AgentRequestTransport | null> | null = null;
 
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function localUnavailableResponse(reason: string, message: string): Response {
-  return new Response(
-    JSON.stringify({
-      error: "local-unavailable",
-      code: "local-unavailable",
-      reason,
-      message,
-    }),
-    {
-      status: 503,
-      statusText: "Local Agent Unavailable",
-      headers: { "content-type": "application/json" },
-    },
-  );
-}
-
-function createAndroidLocalUnavailableTransport(
-  reason: string,
-  message: string,
-): AgentRequestTransport {
-  return {
-    async request(url, init) {
-      if (!isAndroidLocalAgentUrl(url)) {
-        return fetchAgentTransport.request(url, init);
-      }
-      return localUnavailableResponse(reason, message);
-    },
-  };
-}
-
 function toNativeAgentPlugin(
   plugin: NativeAgentPlugin | null | undefined,
 ): NativeAgentPlugin | null {
@@ -127,22 +93,13 @@ function methodAllowsBody(method: string): boolean {
   return normalized !== "GET" && normalized !== "HEAD";
 }
 
-async function bodyToString(
+function bodyToString(
   body: BodyInit | null | undefined,
-): Promise<string | null | undefined> {
+): string | null | undefined {
   if (body === null) return null;
   if (body === undefined) return undefined;
   if (typeof body === "string") return body;
   if (body instanceof URLSearchParams) return body.toString();
-  if (typeof Blob !== "undefined" && body instanceof Blob) {
-    return body.text();
-  }
-  if (body instanceof ArrayBuffer) {
-    return new TextDecoder().decode(body);
-  }
-  if (ArrayBuffer.isView(body)) {
-    return new TextDecoder().decode(body);
-  }
   return undefined;
 }
 
@@ -156,53 +113,28 @@ export function createAndroidNativeAgentTransport(
       }
       const request = agent.request;
       if (!request) {
-        return localUnavailableResponse(
-          "native-agent-request-unavailable",
-          "Android local-agent IPC requires the native Agent.request bridge.",
-        );
+        return fetchAgentTransport.request(url, init);
       }
 
       const parsed = new URL(url);
       const method = init.method ?? "GET";
       const rawBody = init.body;
-      const body = await bodyToString(init.body);
+      const body = bodyToString(init.body);
 
-      if (body === undefined && rawBody != null) {
-        return localUnavailableResponse(
-          "unsupported-request-body",
-          "Android local-agent IPC requires a string, URLSearchParams, Blob, ArrayBuffer, or typed-array request body.",
-        );
+      if (
+        (body === undefined && rawBody != null) ||
+        (!methodAllowsBody(method) && body != null)
+      ) {
+        return fetchAgentTransport.request(url, init);
       }
 
-      if (!methodAllowsBody(method) && body != null) {
-        return localUnavailableResponse(
-          "request-body-not-allowed",
-          "Android local-agent IPC cannot send a request body with GET or HEAD.",
-        );
-      }
-
-      let result: NativeAgentRequestResult;
-      try {
-        result = await request({
-          method,
-          path: `${parsed.pathname}${parsed.search}`,
-          headers: headersToRecord(init.headers),
-          body: methodAllowsBody(method) ? (body ?? null) : null,
-          timeoutMs: context?.timeoutMs,
-        });
-      } catch (error) {
-        return localUnavailableResponse(
-          "native-agent-request-failed",
-          `Android local-agent IPC request failed: ${errorMessage(error)}`,
-        );
-      }
-
-      if (typeof result.status !== "number") {
-        return localUnavailableResponse(
-          "native-agent-invalid-response",
-          "Android local-agent IPC returned an invalid HTTP response.",
-        );
-      }
+      const result = await request({
+        method,
+        path: `${parsed.pathname}${parsed.search}`,
+        headers: headersToRecord(init.headers),
+        body: methodAllowsBody(method) ? (body ?? null) : null,
+        timeoutMs: context?.timeoutMs,
+      });
 
       return new Response(result.body ?? "", {
         status: result.status,
@@ -226,20 +158,8 @@ export async function androidNativeAgentTransportForUrl(
   if (!isAndroidLocalAgentUrl(url) || !isNativeAndroid()) return null;
 
   nativeTransportPromise ??= resolveNativeAgentPlugin()
-    .then((agent) =>
-      agent
-        ? createAndroidNativeAgentTransport(agent)
-        : createAndroidLocalUnavailableTransport(
-            "native-agent-plugin-unavailable",
-            "Android local-agent IPC requires the native Agent Capacitor plugin.",
-          ),
-    )
-    .catch((error) =>
-      createAndroidLocalUnavailableTransport(
-        "native-agent-plugin-failed",
-        `Android local-agent IPC plugin resolution failed: ${errorMessage(error)}`,
-      ),
-    );
+    .then((agent) => (agent ? createAndroidNativeAgentTransport(agent) : null))
+    .catch(() => null);
 
   return nativeTransportPromise;
 }

@@ -41,6 +41,7 @@ import {
 	createLocalInferenceModelHandlers,
 	isLocalInferenceUnavailableError,
 } from "../src/provider";
+import { LocalInferenceService } from "../src/services/service";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -157,6 +158,14 @@ function makeArbiter(): { arbiter: MemoryArbiter } {
 // ---------------------------------------------------------------------------
 
 describe("WS3 image-gen — arbiter capability", () => {
+	it("LocalInferenceService registers the production image-gen capability", async () => {
+		const service = new LocalInferenceService();
+		const arbiter = service.getMemoryArbiter();
+		expect(arbiter.hasCapability("vision-describe")).toBe(true);
+		expect(arbiter.hasCapability("image-gen")).toBe(true);
+		await arbiter.shutdown();
+	});
+
 	it("registers and dispatches a generate through the arbiter", async () => {
 		const { arbiter } = makeArbiter();
 		const state: FakeBackendState = {

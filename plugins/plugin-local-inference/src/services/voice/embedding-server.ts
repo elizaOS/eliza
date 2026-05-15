@@ -10,6 +10,7 @@
  *     --pooling last` (the model is 0.8B; the OS shares the mmap pages
  *     with the chat server's already-mapped copy of the same file — no
  *     duplicate *bundle* weights, AGENTS.md §1).
+ *   - `4b`/`9b`/`27b`/`27b-256k` → the dedicated
  *     `embedding/eliza-1-embedding.gguf`.
  * In both cases the process is started **lazily, on the first `embed()`
  * call**, so a voice-off / RAG-off agent never pages the embedding

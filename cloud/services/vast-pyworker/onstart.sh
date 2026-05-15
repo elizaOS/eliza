@@ -63,7 +63,7 @@ PYWORKER_REF="${PYWORKER_REF:-develop}"
 # llama.cpp can resolve subpaths inside an HF repo, so the canonical default
 # is the canonical bundle repo elizaos/eliza-1 + bundles/<tier>/...
 MODEL_REPO="${MODEL_REPO:-elizaos/eliza-1}"
-MODEL_FILE="${MODEL_FILE:-bundles/27b/text/eliza-1-pro-27b-128k.gguf}"
+MODEL_FILE="${MODEL_FILE:-bundles/27b/text/eliza-1-27b-128k.gguf}"
 MODEL_ALIAS="${MODEL_ALIAS:-vast/eliza-1-27b}"
 LLAMA_CONTEXT="${LLAMA_CONTEXT:-32768}"
 LLAMA_PARALLEL="${LLAMA_PARALLEL:-2}"

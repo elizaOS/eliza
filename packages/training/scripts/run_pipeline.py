@@ -66,16 +66,6 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("pipeline")
 
-GGUF_KQUANT_LADDER: tuple[str, ...] = (
-    "gguf-q3_k_m",
-    "gguf-q4_k_m",
-    "gguf-q5_k_m",
-    "gguf-q6_k",
-)
-DEFAULT_QUANTIZERS = ",".join(
-    ("polarquant", "turboquant", "fused_turboquant", "qjl", *GGUF_KQUANT_LADDER)
-)
-
 
 def run(cmd: list[str], *, env: dict | None = None, cwd: Path | None = None) -> int:
     log.info("$ %s", " ".join(cmd))
@@ -357,16 +347,11 @@ def main() -> int:
              "pick the latest under the run's out_dir). Forwarded to train_local.py.",
     )
     ap.add_argument(
-        "--quantizers",
-        default=DEFAULT_QUANTIZERS,
+        "--quantizers", default="polarquant,turboquant,fused_turboquant,qjl",
         help="Comma-separated list of quantizers to apply post-training. "
              "Default = full stack: polarquant (4-bit weights) + "
              "turboquant/fused_turboquant V-cache sidecars + qjl "
-             "(1-bit K cache) + the checked-in GGUF K-quant ladder "
-             "(Q3_K_M/Q4_K_M/Q5_K_M/Q6_K). Q8_0 is tracked as a "
-             "source seed/extension point in "
-             "config/eliza1_gguf_pipeline_manifest.json until a checked-in "
-             "Q8_0 apply hook is present.",
+             "(1-bit K cache).",
     )
     mb = ap.add_mutually_exclusive_group()
     mb.add_argument("--eliza1-bundle", dest="eliza1_bundle", action="store_true",
@@ -824,7 +809,7 @@ def main() -> int:
         log.info("stage 7: publish channel=%s", channel)
         rc = run(cmd, cwd=ROOT)
         summary["stages"]["publish"] = {"exit": rc, "channel": channel}
-        repo_id = getattr(entry, "eliza_repo_id", None) or "elizaos/eliza-1"
+        repo_id = getattr(entry, "eliza_repo_id", None) or "elizalabs/eliza-1"
         if rc == 0:
             log.info("published: https://huggingface.co/%s (channel=%s)", repo_id, channel)
         else:

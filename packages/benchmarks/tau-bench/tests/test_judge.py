@@ -37,7 +37,7 @@ def test_llm_judge_parses_structured_response():
     fake.choices = [type("C", (), {"message": type("M", (), {"content": '{"per_output": {"foo": true, "bar": false}, "explanation": "ok"}'})()})]
 
     with patch.dict("os.environ", {"OPENAI_API_KEY": "sk-test"}), \
-         patch("litellm.completion", return_value=fake):
+         patch("elizaos_tau_bench.model_client.completion", return_value=fake):
         r = judge_outputs_satisfied(
             outputs=["foo", "bar"],
             agent_messages=["..."],

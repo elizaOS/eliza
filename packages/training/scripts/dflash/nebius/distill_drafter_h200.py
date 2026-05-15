@@ -98,12 +98,14 @@ CHECKPOINT_EVERY_STEPS: int = 500
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _DFLASH_DIR = _SCRIPT_DIR.parent
 
+
 def _sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:
         for chunk in iter(lambda: fh.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
 
 def _git_commit() -> str | None:
     try:
@@ -117,6 +119,7 @@ def _git_commit() -> str | None:
         return out.stdout.strip()
     except Exception:
         return None
+
 
 # --------------------------------------------------------------------------
 # Synthetic smoke: validates APOLLO + FlashAttn2 imports + pipeline wiring
@@ -200,6 +203,7 @@ def run_synthetic_smoke(args: argparse.Namespace) -> None:
         args.output_dir,
     )
 
+
 # --------------------------------------------------------------------------
 # Model loading
 # --------------------------------------------------------------------------
@@ -236,6 +240,7 @@ def load_drafter_model(args: argparse.Namespace) -> Any:
     model.train()
     return model, tok
 
+
 def load_target_model(args: argparse.Namespace) -> Any:
     """Load the target (teacher) model frozen for KD forward passes."""
     import torch  # noqa: PLC0415
@@ -253,6 +258,7 @@ def load_target_model(args: argparse.Namespace) -> Any:
     for p in model.parameters():
         p.requires_grad_(False)
     return model, tok
+
 
 def load_dataset(args: argparse.Namespace) -> list[str]:
     """Load the distillation JSONL corpus."""
@@ -280,6 +286,7 @@ def load_dataset(args: argparse.Namespace) -> list[str]:
         sys.exit(2)
     log.info("Loaded %d examples from %s", len(examples), dataset_path)
     return examples
+
 
 # --------------------------------------------------------------------------
 # Training loop
@@ -414,6 +421,7 @@ def train(
 
     return final_kl
 
+
 def validate_checkpoint(args: argparse.Namespace) -> None:
     """Gate the distilled drafter via validate_drafter.py."""
     validate_script = _DFLASH_DIR / "validate_drafter.py"
@@ -455,6 +463,7 @@ def validate_checkpoint(args: argparse.Namespace) -> None:
         )
         sys.exit(result.returncode)
     log.info("Gate check passed for tier=%s", args.target_tier)
+
 
 # --------------------------------------------------------------------------
 # Argument parsing
@@ -561,6 +570,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         args.drafter_size_b = DEFAULT_DRAFTER_SIZE_B.get(args.target_tier, 0.5)
 
     return args
+
 
 # --------------------------------------------------------------------------
 # Main
@@ -698,6 +708,7 @@ def main(argv: list[str] | None = None) -> None:
         "Next: GGUF conversion + eval harness acceptance measurement.",
         out_dir,
     )
+
 
 if __name__ == "__main__":
     main()

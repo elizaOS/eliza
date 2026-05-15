@@ -128,4 +128,4 @@ When loading wallet keys into the signing layer:
 
 - [Wallet & Crypto — Security model](/guides/wallet#security-model)
 - [Coding swarms](/guides/coding-swarms) — subprocess boundaries
-- [Secrets API](/rest/secrets) — per-agent config secrets (complementary)
+- [Secrets (runtime)](/runtime/services#secrets-secrets-service) — per-agent DB secrets (complementary)

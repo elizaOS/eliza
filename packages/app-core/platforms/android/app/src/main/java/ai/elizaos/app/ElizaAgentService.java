@@ -787,7 +787,6 @@ public class ElizaAgentService extends Service {
             agentEnv.put("BUN_PATH", bun.getAbsolutePath());
             agentEnv.put("AGENT_BUNDLE", AGENT_BUNDLE_NAME);
             agentEnv.put("AGENT_BUNDLE_PATH", bundle.getAbsolutePath());
-            agentEnv.put("AGENT_COMMAND", "android-bridge");
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
             agentEnv.put("PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
@@ -802,7 +801,6 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
-            agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
             agentEnv.put("ELIZA_DISABLE_DIRECT_RUN", "1");
             // Android loopback is shared across apps. Require the per-boot

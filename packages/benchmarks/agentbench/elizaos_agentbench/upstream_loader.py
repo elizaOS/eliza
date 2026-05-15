@@ -29,9 +29,14 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 from elizaos_agentbench.types import (
+    AgentBenchDataMode,
     AgentBenchEnvironment,
     AgentBenchTask,
     TaskDifficulty,
@@ -43,10 +48,88 @@ logger = logging.getLogger(__name__)
 _HERE = Path(__file__).resolve().parent
 UPSTREAM_ROOT = _HERE.parent / "upstream"
 UPSTREAM_DATA = UPSTREAM_ROOT / "data"
+AGENTBENCH_REPO_URL = "https://github.com/THUDM/AgentBench.git"
 
 
 class UpstreamDataMissingError(FileNotFoundError):
     """Raised when an upstream data file cannot be located."""
+
+
+class UpstreamDataVerificationError(RuntimeError):
+    """Raised when fetched upstream data is incomplete."""
+
+
+def is_full_data_available() -> bool:
+    """Return whether a full upstream AgentBench data tree is present."""
+    return UPSTREAM_DATA.is_dir()
+
+
+def fetch_upstream_data(
+    target_root: Path = UPSTREAM_ROOT,
+    repo_url: str = AGENTBENCH_REPO_URL,
+    *,
+    verify: bool = True,
+) -> Path:
+    """Fetch THUDM/AgentBench data into ``upstream/data``.
+
+    This is intentionally explicit and never runs as an implicit fallback.
+    """
+    target_root.mkdir(parents=True, exist_ok=True)
+    data_dir = target_root / "data"
+    if data_dir.is_dir():
+        if verify:
+            verify_upstream_data(data_dir)
+        return data_dir
+
+    with tempfile.TemporaryDirectory(prefix="agentbench_upstream_") as tmp:
+        clone_dir = Path(tmp) / "AgentBench"
+        subprocess.run(
+            ["git", "clone", "--depth", "1", repo_url, str(clone_dir)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        source_data = clone_dir / "data"
+        if not source_data.is_dir():
+            raise UpstreamDataVerificationError(
+                f"Fetched AgentBench repo does not contain data/ at {source_data}"
+            )
+        shutil.copytree(source_data, data_dir)
+
+    if verify:
+        verify_upstream_data(data_dir)
+    return data_dir
+
+
+def verify_upstream_data(data_dir: Path = UPSTREAM_DATA) -> dict[str, bool]:
+    """Verify required upstream data files for the implemented loaders."""
+    required = {
+        "dbbench/dev.jsonl": data_dir / "dbbench" / "dev.jsonl",
+        "dbbench/standard.jsonl": data_dir / "dbbench" / "standard.jsonl",
+        "knowledgegraph/dev.json": data_dir / "knowledgegraph" / "dev.json",
+        "knowledgegraph/std.json": data_dir / "knowledgegraph" / "std.json",
+        "lateralthinkingpuzzle/dev.xlsx": data_dir / "lateralthinkingpuzzle" / "dev.xlsx",
+        "lateralthinkingpuzzle/standard.xlsx": data_dir / "lateralthinkingpuzzle" / "standard.xlsx",
+        "os_interaction/data/dev.json": data_dir / "os_interaction" / "data" / "dev.json",
+        "alfworld/dev.json": data_dir / "alfworld" / "dev.json",
+        "mind2web/prompt/llm_prompt.json": data_dir / "mind2web" / "prompt" / "llm_prompt.json",
+    }
+    status = {name: path.exists() for name, path in required.items()}
+    missing = [name for name, ok in status.items() if not ok]
+    if missing:
+        raise UpstreamDataVerificationError(
+            f"Upstream AgentBench data is incomplete under {data_dir}: "
+            f"missing {', '.join(missing)}"
+        )
+    return status
+
+
+def _normalize_data_mode(data_mode: AgentBenchDataMode | str | None) -> AgentBenchDataMode:
+    if data_mode is None:
+        data_mode = os.environ.get("AGENTBENCH_DATA_MODE", AgentBenchDataMode.AUTO.value)
+    if isinstance(data_mode, AgentBenchDataMode):
+        return data_mode
+    return AgentBenchDataMode(str(data_mode))
 
 
 def _check_root() -> None:
@@ -498,6 +581,287 @@ def load_webshop_tasks(split: str = "test", limit: int | None = None) -> list[Ag
 
 
 # ---------------------------------------------------------------------------
+# Compact fixture fallback
+# ---------------------------------------------------------------------------
+
+def _apply_limit(tasks: list[AgentBenchTask], limit: int | None) -> list[AgentBenchTask]:
+    return tasks if limit is None else tasks[:limit]
+
+
+def _fixture_tasks(
+    env: AgentBenchEnvironment,
+    split: str = "test",
+    limit: int | None = None,
+) -> list[AgentBenchTask]:
+    """Return tiny deterministic fixtures for offline smoke tests."""
+    if split not in {"dev", "test"}:
+        raise ValueError(f"split must be 'dev' or 'test', got {split!r}")
+
+    if env == AgentBenchEnvironment.DATABASE:
+        tasks = [
+            AgentBenchTask(
+                id=f"db-fixture-{split}-0000",
+                environment=env,
+                description="List employees who earn more than 50000.",
+                initial_state={
+                    "schema": {
+                        "employees": [
+                            {"name": "id", "type": "INTEGER", "primary_key": True},
+                            {"name": "name", "type": "TEXT"},
+                            {"name": "salary", "type": "INTEGER"},
+                        ]
+                    },
+                    "data": {
+                        "employees": [
+                            {"id": 1, "name": "Ada", "salary": 75000},
+                            {"id": 2, "name": "Linus", "salary": 45000},
+                        ]
+                    },
+                },
+                goal="Return rows for employees with salary greater than 50000.",
+                max_steps=3,
+                timeout_ms=30_000,
+                ground_truth=json.dumps([["1", "Ada", "75000"]]),
+                metadata={"type": "SELECT", "source": "agentbench-fixture", "label": [[1, "Ada", 75000]]},
+            )
+        ]
+    elif env == AgentBenchEnvironment.OS:
+        tasks = [
+            AgentBenchTask(
+                id=f"os-fixture-{split}-0000",
+                environment=env,
+                description="Create a file named hello.txt containing TASK_COMPLETE.",
+                initial_state={"working_dir": "workspace", "files": {}},
+                goal="Create hello.txt with TASK_COMPLETE in it.",
+                max_steps=3,
+                timeout_ms=30_000,
+                metadata={
+                    "evaluation": {"match": "TASK_COMPLETE"},
+                    "source": "agentbench-fixture",
+                },
+            )
+        ]
+    elif env == AgentBenchEnvironment.KNOWLEDGE_GRAPH:
+        tasks = [
+            AgentBenchTask(
+                id=f"kg-fixture-{split}-0000",
+                environment=env,
+                description="In the fixture graph, where was Albert Einstein born?",
+                initial_state={"entities": {"Albert Einstein": {"born_in": "Germany"}}},
+                goal="Answer the birthplace.",
+                max_steps=3,
+                timeout_ms=30_000,
+                ground_truth="Germany",
+                metadata={
+                    "source": "agentbench-fixture",
+                    "gold_ids": ["Germany"],
+                    "gold_names": ["Germany"],
+                },
+            )
+        ]
+    elif env == AgentBenchEnvironment.LATERAL_THINKING:
+        tasks = [
+            AgentBenchTask(
+                id=f"ltp-fixture-{split}-0000",
+                environment=env,
+                description="A man asks a bartender for water. The bartender points a gun at him. The man says thanks and leaves.",
+                initial_state={"story_key": "hiccups", "answer_key": "hiccups"},
+                goal="Deduce why the man thanked the bartender.",
+                max_steps=5,
+                timeout_ms=30_000,
+                ground_truth="The man had hiccups and the scare cured them.",
+                metadata={"source": "agentbench-fixture", "answer_key": "hiccups", "answer_key_count": 1},
+            )
+        ]
+    elif env == AgentBenchEnvironment.WEB_BROWSING:
+        tasks = [
+            AgentBenchTask(
+                id=f"m2w-fixture-{split}-0000",
+                environment=env,
+                description="Mind2Web fixture: choose the search button.",
+                initial_state={"prompt_index": 0, "split": split},
+                goal="Select the correct next web action from the candidate list.",
+                max_steps=1,
+                timeout_ms=30_000,
+                ground_truth="A",
+                metadata={
+                    "source": "agentbench-fixture",
+                    "prompt_role": "user",
+                    "prompt": "Choose the next action:\nA. Click Search\nB. Click Cancel",
+                    "gold_letter": "A",
+                },
+            )
+        ]
+    elif env == AgentBenchEnvironment.WEB_SHOPPING:
+        tasks = [
+            AgentBenchTask(
+                id=f"ws-fixture-{split}-0000",
+                environment=env,
+                description="Buy black wireless headphones under 100 dollars.",
+                initial_state={
+                    "budget": 100,
+                    "products": [
+                        {
+                            "id": "P001",
+                            "name": "Wireless Bluetooth Headphones",
+                            "price": 79.99,
+                            "category": "Electronics",
+                            "rating": 4.5,
+                            "features": ["wireless", "bluetooth"],
+                            "options": {"color": ["black", "white"]},
+                        }
+                    ],
+                },
+                goal="Purchase matching headphones.",
+                max_steps=8,
+                timeout_ms=30_000,
+                metadata={"source": "agentbench-fixture", "webshop_index": 0},
+            )
+        ]
+    elif env == AgentBenchEnvironment.CARD_GAME:
+        tasks = [
+            AgentBenchTask(
+                id=f"cg-fixture-{split}-0000",
+                environment=env,
+                description="AgentBench Card Game fixture.",
+                initial_state={"game_index": 0, "split": split},
+                goal="Complete the fixture game.",
+                max_steps=2,
+                timeout_ms=30_000,
+                metadata={"source": "agentbench-fixture", "game_index": 0},
+            )
+        ]
+    elif env == AgentBenchEnvironment.HOUSEHOLDING:
+        tasks = [
+            AgentBenchTask(
+                id=f"hh-fixture-{split}-0000",
+                environment=env,
+                description="ALFWorld fixture household task.",
+                initial_state={"game_file": "fixture/game.tw-pddl", "category": "fixture"},
+                goal="Complete the household fixture.",
+                max_steps=2,
+                timeout_ms=30_000,
+                metadata={"source": "agentbench-fixture", "game_file": "fixture/game.tw-pddl", "category": "fixture"},
+            )
+        ]
+    else:
+        tasks = []
+    return _apply_limit(tasks, limit)
+
+
+# Preserve the full-data loader implementations before public wrappers add
+# fallback behavior.
+_UPSTREAM_LOADERS = {
+    AgentBenchEnvironment.DATABASE: load_db_tasks,
+    AgentBenchEnvironment.KNOWLEDGE_GRAPH: load_kg_tasks,
+    AgentBenchEnvironment.LATERAL_THINKING: load_ltp_tasks,
+    AgentBenchEnvironment.OS: load_os_tasks,
+    AgentBenchEnvironment.HOUSEHOLDING: load_householding_tasks,
+    AgentBenchEnvironment.WEB_BROWSING: load_web_browsing_tasks,
+    AgentBenchEnvironment.CARD_GAME: load_card_game_tasks,
+    AgentBenchEnvironment.WEB_SHOPPING: load_webshop_tasks,
+}
+
+
+def _load_with_data_mode(
+    env: AgentBenchEnvironment,
+    split: str = "test",
+    limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
+) -> list[AgentBenchTask]:
+    mode = _normalize_data_mode(data_mode)
+    if mode == AgentBenchDataMode.FIXTURE:
+        return _fixture_tasks(env, split=split, limit=limit)
+
+    loader = _UPSTREAM_LOADERS.get(env)
+    if loader is None:
+        raise NotImplementedError(f"No upstream loader registered for {env.value}")
+
+    try:
+        tasks = loader(split=split, limit=limit)
+    except UpstreamDataMissingError:
+        if mode == AgentBenchDataMode.FULL:
+            raise
+        logger.warning(
+            "[upstream_loader] Full upstream data missing for %s; using compact fixture mode",
+            env.value,
+        )
+        return _fixture_tasks(env, split=split, limit=limit)
+
+    if tasks or mode == AgentBenchDataMode.FULL:
+        return tasks
+    logger.warning(
+        "[upstream_loader] Full upstream data returned zero %s tasks; using compact fixture mode",
+        env.value,
+    )
+    return _fixture_tasks(env, split=split, limit=limit)
+
+
+def load_db_tasks(
+    split: str = "test",
+    limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
+) -> list[AgentBenchTask]:
+    return _load_with_data_mode(AgentBenchEnvironment.DATABASE, split, limit, data_mode)
+
+
+def load_kg_tasks(
+    split: str = "test",
+    limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
+) -> list[AgentBenchTask]:
+    return _load_with_data_mode(AgentBenchEnvironment.KNOWLEDGE_GRAPH, split, limit, data_mode)
+
+
+def load_ltp_tasks(
+    split: str = "test",
+    limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
+) -> list[AgentBenchTask]:
+    return _load_with_data_mode(AgentBenchEnvironment.LATERAL_THINKING, split, limit, data_mode)
+
+
+def load_os_tasks(
+    split: str = "test",
+    limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
+) -> list[AgentBenchTask]:
+    return _load_with_data_mode(AgentBenchEnvironment.OS, split, limit, data_mode)
+
+
+def load_householding_tasks(
+    split: str = "test",
+    limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
+) -> list[AgentBenchTask]:
+    return _load_with_data_mode(AgentBenchEnvironment.HOUSEHOLDING, split, limit, data_mode)
+
+
+def load_web_browsing_tasks(
+    split: str = "test",
+    limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
+) -> list[AgentBenchTask]:
+    return _load_with_data_mode(AgentBenchEnvironment.WEB_BROWSING, split, limit, data_mode)
+
+
+def load_card_game_tasks(
+    split: str = "test",
+    limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
+) -> list[AgentBenchTask]:
+    return _load_with_data_mode(AgentBenchEnvironment.CARD_GAME, split, limit, data_mode)
+
+
+def load_webshop_tasks(
+    split: str = "test",
+    limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
+) -> list[AgentBenchTask]:
+    return _load_with_data_mode(AgentBenchEnvironment.WEB_SHOPPING, split, limit, data_mode)
+
+
+# ---------------------------------------------------------------------------
 # Public dispatcher
 # ---------------------------------------------------------------------------
 
@@ -517,18 +881,23 @@ def load_tasks(
     env: AgentBenchEnvironment,
     split: str = "test",
     limit: int | None = None,
+    data_mode: AgentBenchDataMode | str | None = None,
 ) -> list[AgentBenchTask]:
     """Load official AgentBench tasks for the given env + split."""
     loader = _LOADERS.get(env)
     if loader is None:
         raise NotImplementedError(f"No upstream loader registered for {env.value}")
-    return loader(split=split, limit=limit)
+    return loader(split=split, limit=limit, data_mode=data_mode)
 
 
 __all__ = [
     "UPSTREAM_ROOT",
     "UPSTREAM_DATA",
     "UpstreamDataMissingError",
+    "UpstreamDataVerificationError",
+    "fetch_upstream_data",
+    "verify_upstream_data",
+    "is_full_data_available",
     "load_db_tasks",
     "load_kg_tasks",
     "load_ltp_tasks",

@@ -21,15 +21,13 @@ const MODELS_ROOT = path.join(
   "local-inference",
   "models",
 );
-const DFLASH_TIERS = new Set(["2b", "4b", "9b", "27b", "27b-256k", "27b-1m"]);
-const DEFAULT_TIER = "2b";
-const DEFAULT_BUNDLE = path.join(MODELS_ROOT, `eliza-1-${DEFAULT_TIER}.bundle`);
+const DEFAULT_BUNDLE = path.join(MODELS_ROOT, "eliza-1-0_8b.bundle");
 const DEFAULT_TARGET = firstExisting(
-  path.join(DEFAULT_BUNDLE, "text", `eliza-1-${DEFAULT_TIER}-64k.gguf`),
-  path.join(DEFAULT_BUNDLE, "text", `eliza-1-${DEFAULT_TIER}-32k.gguf`),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-64k.gguf"),
+  path.join(DEFAULT_BUNDLE, "text", "eliza-1-0_8b-32k.gguf"),
 );
 const DEFAULT_DRAFTER = firstExisting(
-  path.join(DEFAULT_BUNDLE, "dflash", `drafter-${DEFAULT_TIER}.gguf`),
+  path.join(DEFAULT_BUNDLE, "dflash", "drafter-0_8b.gguf"),
 );
 const DEFAULT_BIN = path.join(
   process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza"),
@@ -47,24 +45,8 @@ function timestamp() {
     .replace(/\.\d{3}Z$/, "Z");
 }
 
-function normalizeTier(value) {
-  return String(value || "").trim().replace(/^eliza-1-/, "");
-}
-
-function inferTierFromPath(file) {
-  const normalized = String(file || "").replaceAll("\\", "/");
-  const tierPattern = "(0_8b|2b|4b|9b|27b(?:-256k|-1m)?)";
-  return (
-    normalized.match(new RegExp(`/eliza-1-${tierPattern}\\.bundle(?:/|$)`))?.[1] ??
-    normalized.match(new RegExp(`(?:^|/)eliza-1-${tierPattern}(?:[-./]|$)`))?.[1] ??
-    normalized.match(new RegExp(`(?:^|/)drafter-${tierPattern}\\.gguf$`))?.[1] ??
-    ""
-  );
-}
-
 function parseArgs(argv) {
   const args = {
-    tier: normalizeTier(process.env.ELIZA_DFLASH_TIER || DEFAULT_TIER),
     targetModel: process.env.ELIZA_DFLASH_TARGET_MODEL || DEFAULT_TARGET,
     drafterModel: process.env.ELIZA_DFLASH_DRAFTER_MODEL || DEFAULT_DRAFTER,
     specBinary: process.env.ELIZA_DFLASH_SPEC_BINARY || DEFAULT_BIN,
@@ -111,8 +93,7 @@ function parseArgs(argv) {
       if (i >= argv.length) throw new Error(`missing value for ${arg}`);
       return argv[i];
     };
-    if (arg === "--tier") args.tier = normalizeTier(next());
-    else if (arg === "--target-model") args.targetModel = next();
+    if (arg === "--target-model") args.targetModel = next();
     else if (arg === "--drafter-model") args.drafterModel = next();
     else if (arg === "--spec-binary") args.specBinary = next();
     else if (arg === "--reference-binary") args.referenceBinary = next();
@@ -137,8 +118,7 @@ function parseArgs(argv) {
           "Usage: node packages/inference/verify/dflash_drafter_runtime_smoke.mjs [options]",
           "",
           "Options:",
-          "  --tier <tier>                  Eliza-1 tier; 0_8b is recorded as not-applicable",
-          "  --target-model <path>          Target GGUF (default: local eliza-1-2b bundle)",
+          "  --target-model <path>          Target GGUF (default: local eliza-1-0_8b bundle)",
           "  --drafter-model <path>         DFlash drafter GGUF",
           "  --spec-binary <path>           llama-speculative-simple binary to test",
           "  --reference-binary <path>      Optional known-DFlash binary to compare loader errors",
@@ -164,11 +144,6 @@ function parseArgs(argv) {
     }
   }
 
-  args.tier =
-    normalizeTier(args.tier) ||
-    inferTierFromPath(args.targetModel) ||
-    inferTierFromPath(args.drafterModel) ||
-    DEFAULT_TIER;
   return args;
 }
 
@@ -1080,8 +1055,6 @@ function runDflashBench(args) {
   const report = {
     generatedAt: new Date().toISOString(),
     verifier: path.relative(process.cwd(), __filename),
-    tier: args.tier,
-    request: { tier: args.tier },
     targetModel: args.targetModel,
     drafterModel: args.drafterModel,
     specBinary: args.specBinary,
@@ -1148,56 +1121,6 @@ function runDflashBench(args) {
 
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  if (!DFLASH_TIERS.has(args.tier)) {
-    const report = {
-      generatedAt: new Date().toISOString(),
-      verifier: path.relative(process.cwd(), __filename),
-      tier: args.tier,
-      targetModel: args.targetModel,
-      drafterModel: args.drafterModel,
-      status: "not-applicable",
-      available: false,
-      reason: `${args.tier} is not a DFlash tier; this bundle intentionally ships without a drafter`,
-      checks: {
-        dflashTierRequired: false,
-      },
-      metadata: null,
-      runtime: [],
-    };
-    fs.mkdirSync(path.dirname(args.report), { recursive: true });
-    fs.writeFileSync(args.report, `${JSON.stringify(report, null, 2)}\n`);
-    console.log(`wrote ${args.report}`);
-    console.log(`dflash-runtime-smoke: status=not-applicable tier=${args.tier}`);
-    process.exit(0);
-  }
-  const missingModelFiles = [args.targetModel, args.drafterModel].filter(
-    (file) => !fs.existsSync(file),
-  );
-  if (missingModelFiles.length > 0) {
-    const report = {
-      generatedAt: new Date().toISOString(),
-      verifier: path.relative(process.cwd(), __filename),
-      tier: args.tier,
-      targetModel: args.targetModel,
-      drafterModel: args.drafterModel,
-      status: "needs-bundle",
-      available: false,
-      reason: `${args.tier} requires DFlash, but required GGUF file(s) are missing`,
-      missingModelFiles,
-      checks: {
-        dflashTierRequired: true,
-      },
-      metadata: null,
-      runtime: [],
-    };
-    fs.mkdirSync(path.dirname(args.report), { recursive: true });
-    fs.writeFileSync(args.report, `${JSON.stringify(report, null, 2)}\n`);
-    console.error(
-      `dflash-runtime-smoke: status=needs-bundle tier=${args.tier} missing=${missingModelFiles.join(", ")}`,
-    );
-    console.log(`wrote ${args.report}`);
-    process.exit(1);
-  }
   const installedCliFeatures = detectCliFeatures(args.specBinary);
   const referenceCliFeatures = args.referenceBinary
     ? detectCliFeatures(args.referenceBinary, args.referenceLibraryPath)
@@ -1205,7 +1128,6 @@ function main() {
   const report = {
     generatedAt: new Date().toISOString(),
     verifier: path.relative(process.cwd(), __filename),
-    tier: args.tier,
     targetModel: args.targetModel,
     drafterModel: args.drafterModel,
     cliFeatures: {

@@ -90,9 +90,13 @@ def build_lifeops_bench_agent_fn(
     parameter is preserved for backward compatibility with
     ``eliza_lifeops_bench.__main__`` and existing tests.
     """
-    from eliza_lifeops_bench.types import (  # noqa: WPS433 — lazy
-        MessageTurn,
-        attach_usage_cache_fields,
+    from eliza_lifeops_bench import types as lifeops_types  # noqa: WPS433 — lazy
+
+    MessageTurn = lifeops_types.MessageTurn
+    attach_usage_cache_fields = getattr(
+        lifeops_types,
+        "attach_usage_cache_fields",
+        lambda _turn, _usage: None,
     )
 
     if world_snapshot_path is not None:

@@ -9,7 +9,10 @@ AgentBench Freebase/KB backends when integrating full datasets.
 from __future__ import annotations
 
 import logging
+import os
 import re
+import shutil
+import subprocess
 from collections.abc import Callable
 from typing import TypedDict
 
@@ -55,6 +58,52 @@ KG_REQUIRES_SPARQL_MSG = (
     "AgentBench's docker-compose). The local adapter falls back to the "
     "task-provided entities/relations subgraph when no endpoint is set."
 )
+
+_KG_SPARQL_CACHE: str | None | bool = False
+
+
+def _reset_kg_sparql_for_tests() -> None:
+    global _KG_SPARQL_CACHE
+    _KG_SPARQL_CACHE = False
+
+
+def _try_start_virtuoso() -> str | None:
+    """Return a configured SPARQL endpoint or explicitly autostart Virtuoso."""
+    global _KG_SPARQL_CACHE
+    if isinstance(_KG_SPARQL_CACHE, str):
+        return _KG_SPARQL_CACHE
+
+    explicit = os.environ.get("AGENTBENCH_KG_SPARQL_URL")
+    if explicit:
+        _KG_SPARQL_CACHE = explicit
+        return explicit
+
+    if os.environ.get("AGENTBENCH_KG_SPARQL_AUTOSTART") != "1":
+        return None
+    if shutil.which("docker") is None:
+        return None
+
+    result = subprocess.run(
+        [
+            "docker",
+            "run",
+            "-d",
+            "-p",
+            "8890:8890",
+            "--name",
+            "agentbench-virtuoso",
+            "openlink/virtuoso-opensource-7",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        logger.warning("[KG] Failed to autostart Virtuoso: %s", result.stderr)
+        return None
+    _KG_SPARQL_CACHE = "http://localhost:8890/sparql"
+    return _KG_SPARQL_CACHE
 
 
 class KnowledgeGraphAdapter(EnvironmentAdapter):
@@ -651,4 +700,3 @@ Respond with your next operation."""
                 return m.group(1)
 
         return response.strip().split("\n")[0]
-

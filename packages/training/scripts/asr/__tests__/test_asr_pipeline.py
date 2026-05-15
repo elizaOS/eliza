@@ -35,7 +35,7 @@ def test_finetune_synthetic_smoke_writes_manifest(tmp_path: Path) -> None:
             "--run-dir",
             str(run_dir),
             "--config",
-            str(ASR_DIR / "configs" / "asr_samantha.yaml"),
+            str(ASR_DIR / "configs" / "asr_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -58,7 +58,7 @@ def test_finetune_synthetic_smoke_writes_eval(tmp_path: Path) -> None:
             "--run-dir",
             str(run_dir),
             "--config",
-            str(ASR_DIR / "configs" / "asr_samantha.yaml"),
+            str(ASR_DIR / "configs" / "asr_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -87,7 +87,7 @@ def test_finetune_synthetic_smoke_writes_artifact_receipt(tmp_path: Path, monkey
             "--run-dir",
             str(run_dir),
             "--config",
-            str(ASR_DIR / "configs" / "asr_samantha.yaml"),
+            str(ASR_DIR / "configs" / "asr_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -109,7 +109,7 @@ def test_eval_synthetic_smoke_writes_eval_json(tmp_path: Path) -> None:
             "--run-dir",
             str(run_dir),
             "--config",
-            str(ASR_DIR / "configs" / "asr_samantha.yaml"),
+            str(ASR_DIR / "configs" / "asr_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -134,11 +134,11 @@ def test_config_defaults() -> None:
     assert cfg["mel_bins"] == 80
 
 
-def test_config_samantha_yaml() -> None:
-    """Load asr_samantha.yaml — overrides should be applied."""
-    cfg = finetune_asr._load_config(str(ASR_DIR / "configs" / "asr_samantha.yaml"))
-    assert cfg["voice_name"] == "samantha"
-    assert cfg["learning_rate"] < 2e-5, "samantha config should lower LR vs base"
+def test_config_sam_yaml() -> None:
+    """Load asr_same.yaml — overrides should be applied."""
+    cfg = finetune_asr._load_config(str(ASR_DIR / "configs" / "asr_same.yaml"))
+    assert cfg["voice_name"] == "same"
+    assert cfg["learning_rate"] < 2e-5, "same config should lower LR vs base"
 
 
 def test_gate_pass() -> None:

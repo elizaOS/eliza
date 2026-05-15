@@ -61,10 +61,6 @@ export const MOTION_EVENT_ACTION_DOWN = 0 as const;
 export const MOTION_EVENT_ACTION_UP = 1 as const;
 export const MOTION_EVENT_ACTION_MOVE = 2 as const;
 
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value);
-}
-
 /**
  * Translate a cascade-resolved `ProposedAction` into one or more
  * `injectMotionEvent` calls. Returns the same `ActionResult` envelope the
@@ -123,8 +119,7 @@ export class AospInputActor {
       action.kind === "double_click" ||
       action.kind === "right_click"
     ) {
-      const { x, y } = action;
-      if (!isFiniteNumber(x) || !isFiniteNumber(y)) {
+      if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) {
         return invalidArgs(
           action,
           "click action requires finite (x, y) coords",
@@ -133,7 +128,7 @@ export class AospInputActor {
       const times = action.kind === "double_click" ? 2 : 1;
       try {
         for (let i = 0; i < times; i += 1) {
-          await this.tap(bridge, x, y);
+          await this.tap(bridge, action.x!, action.y!);
         }
       } catch (err) {
         return driverError(err);
@@ -141,12 +136,11 @@ export class AospInputActor {
       return { success: true, issued: action };
     }
     if (action.kind === "scroll") {
-      const { x, y, dx, dy } = action;
       if (
-        !isFiniteNumber(x) ||
-        !isFiniteNumber(y) ||
-        !isFiniteNumber(dx) ||
-        !isFiniteNumber(dy)
+        !Number.isFinite(action.x) ||
+        !Number.isFinite(action.y) ||
+        typeof action.dx !== "number" ||
+        typeof action.dy !== "number"
       ) {
         return invalidArgs(
           action,
@@ -158,10 +152,10 @@ export class AospInputActor {
         // "content scrolls down", which is a physical swipe UPWARD.
         await this.swipe(
           bridge,
-          x,
-          y,
-          x - dx * 200,
-          y - dy * 200,
+          action.x!,
+          action.y!,
+          action.x! - action.dx * 200,
+          action.y! - action.dy * 200,
           DEFAULT_SWIPE_DURATION_MS,
         );
       } catch (err) {
@@ -170,22 +164,21 @@ export class AospInputActor {
       return { success: true, issued: action };
     }
     if (action.kind === "drag") {
-      const { startX, startY, x, y } = action;
       if (
-        !isFiniteNumber(startX) ||
-        !isFiniteNumber(startY) ||
-        !isFiniteNumber(x) ||
-        !isFiniteNumber(y)
+        !Number.isFinite(action.startX) ||
+        !Number.isFinite(action.startY) ||
+        !Number.isFinite(action.x) ||
+        !Number.isFinite(action.y)
       ) {
         return invalidArgs(action, "drag requires startX/startY and x/y");
       }
       try {
         await this.swipe(
           bridge,
-          startX,
-          startY,
-          x,
-          y,
+          action.startX!,
+          action.startY!,
+          action.x!,
+          action.y!,
           DEFAULT_SWIPE_DURATION_MS,
         );
       } catch (err) {

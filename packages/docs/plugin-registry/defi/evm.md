@@ -101,7 +101,7 @@ After the plugin is loaded, the agent can execute on-chain operations through na
 
 ## Security Considerations
 
-- The private key grants full control of the agent's wallet. Store it securely using the built-in [secrets API](/rest/secrets).
+- The private key grants full control of the agent's wallet. Store it securely using the built-in [**@elizaos/core** secrets runtime](/runtime/services#secrets-secrets-service).
 - Consider using a dedicated agent wallet with limited funds rather than a primary wallet.
 - The plugin does not impose spending limits — any action the LLM selects will execute. Configure the character carefully.
 - Use testnets (Base Sepolia, Arbitrum Sepolia) for development.
@@ -122,5 +122,5 @@ After the plugin is loaded, the agent can execute on-chain operations through na
 ## Related
 
 - [Solana Plugin](/plugin-registry/defi/solana) — Solana chain integration
-- [Secrets API](/rest/secrets) — Secure key storage
+- [**@elizaos/core** secrets](/runtime/services#secrets-secrets-service) — Secure key storage
 - [Wallet Guide](/guides/wallet) — Wallet setup and management

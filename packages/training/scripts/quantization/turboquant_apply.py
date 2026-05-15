@@ -47,6 +47,7 @@ logging.basicConfig(
 )
 log = logging.getLogger("turboquant_apply")
 
+
 def calibrate_skip_layers(
     model: nn.Module,
     tokenizer: PreTrainedTokenizerBase,
@@ -69,6 +70,7 @@ def calibrate_skip_layers(
         skip |= s
     return sorted(skip)
 
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     add_quantization_cli_args(ap)
@@ -88,6 +90,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help=(
             "Long-context path: record turbo3_tcq as the K-cache type in the "
+            "sidecar (use for the largest variant of a tier, e.g. 27b-256k)."
         ),
     )
     ap.add_argument(
@@ -95,7 +98,8 @@ def main(argv: list[str] | None = None) -> int:
         type=int,
         default=None,
         help=(
-            "Trained/served context length for this variant (e.g. 1048576 "
+            "Trained/served context length for this variant (e.g. 262144 "
+            "for 27b-256k). Recorded in the sidecar. Implies --trellis when "
             ">= 65536."
         ),
     )
@@ -163,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
     sidecar_path = write_sidecar(out_dir, "turboquant.json", sidecar_payload)
     log.info("wrote %s", sidecar_path)
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

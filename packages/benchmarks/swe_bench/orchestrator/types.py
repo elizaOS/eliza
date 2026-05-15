@@ -14,6 +14,7 @@ class ProviderType(str, Enum):
     ELIZA_CODE = "eliza-code"
     CLAUDE_CODE = "claude-code"
     CODEX = "codex"
+    OPENCODE = "opencode"
 
 
 class TaskStatus(str, Enum):
@@ -34,7 +35,7 @@ class OrchestratedBenchmarkConfig:
     variant: SWEBenchVariant = SWEBenchVariant.LITE
     workspace_dir: str = "./swe-bench-workspace"
     output_dir: str = "./benchmark_results/swe-bench"
-    providers: list[ProviderType] = field(default_factory=lambda: [ProviderType.SWE_AGENT])
+    providers: list[ProviderType] = field(default_factory=lambda: [ProviderType.OPENCODE])
     allow_task_description_fallback: bool = False
     extra: dict[str, Any] = field(default_factory=dict)
 

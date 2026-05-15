@@ -1,15 +1,15 @@
 {
-  "f1_samantha_solo": {
-    "path": "f1_samantha_solo.wav",
+  "f1_sam_solo": {
+    "path": "f1_sam_solo.wav",
     "speakers": 1,
     "ground_truth": [
       {
-        "speaker": "samantha",
+        "speaker": "sam",
         "start_ms": 0,
         "end_ms": 10000
       }
     ],
-    "description": "Single-speaker control: Samantha TTS corpus (10s)"
+    "description": "Single-speaker control: Sam TTS corpus (10s)"
   },
   "f2_two_speaker": {
     "path": "f2_two_speaker.wav",
@@ -41,7 +41,7 @@
         "end_ms": 19275
       }
     ],
-    "description": "Two-speaker: Speaker A (samantha) vs Speaker B (pitch-6 + dark-EQ)"
+    "description": "Two-speaker: Speaker A (sam) vs Speaker B (pitch-6 + dark-EQ)"
   },
   "f3_three_speaker": {
     "path": "f3_three_speaker.wav",
@@ -78,7 +78,7 @@
         "end_ms": 21541
       }
     ],
-    "description": "Three-speaker: A (samantha), B (pitch-6+dark), C (pitch+5+bright)"
+    "description": "Three-speaker: A (sam), B (pitch-6+dark), C (pitch+5+bright)"
   },
   "f4_long_dialogue": {
     "path": "f4_long_dialogue.wav",

@@ -315,4 +315,4 @@ The autonomous loop runs continuously when enabled. Monitor CPU and memory usage
 
 ## The Autonomous Panel
 
-The dashboard UI includes an `AutonomousPanel` component that provides real-time visibility into autonomous operations. See the [Dashboard guide](/apps/dashboard#dashboard-layout) for full details on the panel's placement and responsive behavior.
+The dashboard UI includes an `AutonomousPanel` component that provides real-time visibility into autonomous operations. See the [Dashboard guide](/apps/dashboard#autonomous-panel) for full details on the panel's layout, event color coding, and responsive sizing.

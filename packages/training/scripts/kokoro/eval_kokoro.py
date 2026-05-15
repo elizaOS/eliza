@@ -18,7 +18,7 @@ module is one of the consumers of that doc.
    punctuation), Levenshtein WER against the reference.
 
 3. **Speaker similarity** ∈ [-1, 1], gate ≥ 0.65 (relaxed 0.55 for
-   small corpora — see `kokoro_samantha.yaml`). ECAPA-TDNN cosine
+   small corpora — see `kokoro_same.yaml`). ECAPA-TDNN cosine
    between synth + reference, both resampled to 16 kHz (the rate
    speechbrain/spkrec-ecapa-voxceleb was trained on).
 
@@ -217,9 +217,18 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
         raise RuntimeError("Kokoro pipeline produced no audio")
 
     # Whisper round-trip WER.
+    import os  # noqa: PLC0415
     import whisper  # type: ignore  # noqa: PLC0415
 
-    asr = whisper.load_model("large-v3" if device == "cuda" else "small")
+    # ELIZA_KOKORO_EVAL_WHISPER overrides the default model when VRAM is
+    # tight (e.g. RTX 5080 Laptop 16 GB with another GPU consumer running).
+    # Default: large-v3 on CUDA (~6 GB), small on CPU.
+    whisper_model = os.environ.get(
+        "ELIZA_KOKORO_EVAL_WHISPER",
+        "large-v3" if device == "cuda" else "small",
+    )
+    log.info("loading whisper model %s", whisper_model)
+    asr = whisper.load_model(whisper_model)
 
     # ECAPA-TDNN speaker similarity.
     from speechbrain.inference.speaker import EncoderClassifier  # type: ignore  # noqa: PLC0415

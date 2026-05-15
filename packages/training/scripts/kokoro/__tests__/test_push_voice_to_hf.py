@@ -20,7 +20,7 @@ import push_voice_to_hf  # type: ignore  # noqa: E402
 def _materialize_release(
     tmp_path: Path,
     *,
-    voice_name: str = "af_samantha",
+    voice_name: str = "af_same",
     gate_passed: bool = True,
     comparison: dict | None = None,
 ) -> Path:
@@ -37,9 +37,9 @@ def _materialize_release(
                 "schemaVersion": 1,
                 "kind": "elz1-voice-preset",
                 "voiceId": voice_name,
-                "displayName": "Samantha (Test)",
+                "displayName": "Sam (Test)",
                 "lang": "a",
-                "tags": ["female", "samantha", "research-only"],
+                "tags": ["female", "same", "research-only"],
                 "dim": 256,
                 "buckets": 510,
                 "engine": {"kind": "kokoro", "baseModel": "hexgrad/Kokoro-82M"},
@@ -88,7 +88,7 @@ def test_dry_run_writes_receipt_and_passes_gate(tmp_path: Path) -> None:
             "--release-dir",
             str(release),
             "--hf-repo",
-            "elizalabs/eliza-1-voice-kokoro-samantha-v01",
+            "elizalabs/eliza-1-voice-kokoro-same-v01",
             "--dry-run",
             "--receipt",
             str(receipt),
@@ -98,8 +98,8 @@ def test_dry_run_writes_receipt_and_passes_gate(tmp_path: Path) -> None:
     body = json.loads(receipt.read_text())
     assert body["kind"] == "kokoro-voice-hf-push-plan"
     assert body["dryRun"] is True
-    assert body["private"] is True  # default per the samantha license decision
-    assert body["hfRepo"] == "elizalabs/eliza-1-voice-kokoro-samantha-v01"
+    assert body["private"] is True  # default per the same license decision
+    assert body["hfRepo"] == "elizalabs/eliza-1-voice-kokoro-same-v01"
     remotes = {entry["remote"] for entry in body["files"]}
     # README is rendered + included alongside the five required artifacts.
     assert remotes == {"README.md", "voice.bin", "kokoro.onnx", "voice-preset.json", "manifest-fragment.json", "eval.json"}
@@ -113,7 +113,7 @@ def test_failed_gate_blocks_publish(tmp_path: Path) -> None:
                 "--release-dir",
                 str(release),
                 "--hf-repo",
-                "elizalabs/eliza-1-voice-kokoro-samantha-v01",
+                "elizalabs/eliza-1-voice-kokoro-same-v01",
                 "--dry-run",
             ]
         )
@@ -127,7 +127,7 @@ def test_allow_gate_fail_with_justification(tmp_path: Path) -> None:
             "--release-dir",
             str(release),
             "--hf-repo",
-            "elizalabs/eliza-1-voice-kokoro-samantha-v01",
+            "elizalabs/eliza-1-voice-kokoro-same-v01",
             "--dry-run",
             "--allow-gate-fail",
             "tracked under issue #1234",
@@ -162,7 +162,7 @@ def test_comparison_not_beat_blocks_publish(tmp_path: Path) -> None:
                 "--release-dir",
                 str(release),
                 "--hf-repo",
-                "elizalabs/eliza-1-voice-kokoro-samantha-v01",
+                "elizalabs/eliza-1-voice-kokoro-same-v01",
                 "--dry-run",
             ]
         )
@@ -176,7 +176,7 @@ def test_public_flag_flips_private(tmp_path: Path) -> None:
             "--release-dir",
             str(release),
             "--hf-repo",
-            "elizalabs/eliza-1-voice-kokoro-samantha-v01",
+            "elizalabs/eliza-1-voice-kokoro-same-v01",
             "--dry-run",
             "--public",
             "--receipt",
@@ -197,7 +197,7 @@ def test_missing_artifact_fails_loud(tmp_path: Path) -> None:
                 "--release-dir",
                 str(release),
                 "--hf-repo",
-                "elizalabs/eliza-1-voice-kokoro-samantha-v01",
+                "elizalabs/eliza-1-voice-kokoro-same-v01",
                 "--dry-run",
             ]
         )

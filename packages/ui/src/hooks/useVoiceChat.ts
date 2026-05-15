@@ -1407,7 +1407,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
                 } else {
                   return (
                     nameLower.includes("female") ||
-                    nameLower.includes("samantha") ||
+                    nameLower.includes("sam") ||
                     nameLower.includes("victoria") ||
                     nameLower.includes("zira") ||
                     nameLower.includes("karen")

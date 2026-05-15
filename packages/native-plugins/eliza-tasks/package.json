@@ -24,9 +24,12 @@
   },
   "unpkg": "dist/plugin.js",
   "files": [
+    "android/src/main/",
+    "android/build.gradle",
     "dist/",
     "ios/Sources/",
-    "*.podspec"
+    "*.podspec",
+    "dist"
   ],
   "author": "elizaOS",
   "license": "MIT",

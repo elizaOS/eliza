@@ -5,6 +5,6 @@
  * host's `app.config.ts` (see `lib/load-variant-config.mjs`); this
  * file just makes the TypeScript definition available next to the
  * scripts so editors / external tooling don't have to walk back to
- * `@elizaos/ui` to find it.
+ * `@elizaos/ui/config/app-config` to find it.
  */
-export type { AospVariantConfig } from "@elizaos/ui";
+export type { AospVariantConfig } from "@elizaos/ui/config/app-config";

@@ -29,12 +29,9 @@ type AppCoreRuntimeModule = {
 async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   // String-literal dynamic import — see comment in
   // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue
-  // that requires Bun.build to statically follow this specifier. Imports
-  // the narrow `/agent-bridge` subpath (not the full barrel) so the
-  // static `.d.ts` graph stays acyclic — see
-  // `packages/app-core/src/agent-bridge.ts`.
+  // that requires Bun.build to statically follow this specifier.
   return import(
-    /* webpackIgnore: true */ "@elizaos/app-core/agent-bridge"
+    /* webpackIgnore: true */ "@elizaos/app-core"
   ) as Promise<AppCoreRuntimeModule>;
 }
 

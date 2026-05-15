@@ -131,26 +131,44 @@ def main() -> int:
     parser.add_argument("--type", choices=["research", "coding"], default=None)
     parser.add_argument("--task", default=None)
     parser.add_argument("--timeout-ms", type=int, default=120000)
+    parser.add_argument("--mock", action="store_true", help="Return deterministic smoke responses without starting a harness")
     args = parser.parse_args()
 
     tasks = _load_tasks(Path(args.tasks_dir), args.type, args.task)
     if not tasks:
         raise SystemExit("no app-eval tasks matched filters")
 
+    if args.mock:
+        started = datetime.now(timezone.utc)
+        results = [
+            {
+                "id": str(task.get("id") or "unknown"),
+                "type": str(task.get("type") or "research"),
+                "response": "mock app-eval response",
+                "actions_taken": [],
+                "duration_ms": 0,
+                "success": True,
+                "score": 10.0,
+                "error": None,
+            }
+            for task in tasks
+        ]
+        completed = datetime.now(timezone.utc)
     # Always start our own bench server so we control the bearer token. Reusing
     # a stray server from a prior benchmark leaves the client without auth and
     # every request fails with HTTP 401.
-    manager = ElizaServerManager()
-    manager.start()
-    client = manager.client
-    try:
+    else:
+        manager = ElizaServerManager()
+        manager.start()
+        client = manager.client
+        try:
 
-        started = datetime.now(timezone.utc)
-        results = [_run_task(client, task, args.timeout_ms) for task in tasks]
-        completed = datetime.now(timezone.utc)
-    finally:
-        if manager is not None:
-            manager.stop()
+            started = datetime.now(timezone.utc)
+            results = [_run_task(client, task, args.timeout_ms) for task in tasks]
+            completed = datetime.now(timezone.utc)
+        finally:
+            if manager is not None:
+                manager.stop()
 
     passed = sum(1 for result in results if result["success"])
     timed_out = sum(1 for result in results if "timeout" in str(result.get("error") or "").lower())

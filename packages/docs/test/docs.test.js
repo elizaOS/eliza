@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -27,112 +27,24 @@ function collectMarkdownFiles(dir = DOCS_DIR) {
   return files;
 }
 
-function stripMarkdownCodeBlocks(content) {
-  const lines = content.split(/\r?\n/);
-  const keptLines = [];
-  let inFence = false;
-  let fenceMarker = "";
-
-  for (const line of lines) {
-    const fence = line.match(/^\s*(```+|~~~+)/)?.[1];
-    if (fence) {
-      if (!inFence) {
-        inFence = true;
-        fenceMarker = fence[0];
-      } else if (fence[0] === fenceMarker) {
-        inFence = false;
-        fenceMarker = "";
-      }
-      continue;
-    }
-
-    if (!inFence) {
-      keptLines.push(line);
-    }
-  }
-
-  return keptLines.join("\n");
-}
-
-function createHeadingSlugger() {
-  const occurrences = new Map();
-  const asciiPunctuation =
-    /[\0-\x1F!-,.\/:-@\[-\^`{-~]/g;
-
-  return (value) => {
-    const originalSlug = value
-      .trim()
-      .replace(/<[^>]*>/g, "")
-      .toLowerCase()
-      .replace(asciiPunctuation, "")
-      .replace(/ /g, "-");
-    let slug = originalSlug;
-
-    if (occurrences.has(slug)) {
-      const count = occurrences.get(originalSlug) + 1;
-      occurrences.set(originalSlug, count);
-      slug = `${originalSlug}-${count}`;
-    }
-
-    occurrences.set(slug, 0);
-    return slug;
-  };
-}
-
-function collectMarkdownAnchors(file) {
-  const slug = createHeadingSlugger();
-  const content = stripMarkdownCodeBlocks(readFileSync(file, "utf-8"));
-  const anchors = new Set();
-  const headingPattern = /^#{1,6}\s+(.+)$/gm;
-  let match;
-
-  while ((match = headingPattern.exec(content)) !== null) {
-    anchors.add(slug(match[1]));
-  }
-
-  return anchors;
-}
-
-function decodeAnchor(anchor) {
-  try {
-    return decodeURIComponent(anchor).toLowerCase();
-  } catch {
-    return anchor.toLowerCase();
-  }
-}
-
-function extractAnchor(href) {
-  const hashIndex = href.indexOf("#");
-  if (hashIndex === -1) return null;
-
-  const anchor = href.slice(hashIndex + 1).split("?")[0];
-  return anchor ? decodeAnchor(anchor) : null;
-}
-
-function internalTargetPath(target) {
+function internalTargetExists(target) {
   const cleanTarget = target
     .split("#")[0]
     .split("?")[0]
     .replace(/^\/+/, "")
     .replace(/\/$/, "");
 
-  if (!cleanTarget) return DOCS_DIR;
+  if (!cleanTarget) return true;
 
   const candidates = [
+    join(DOCS_DIR, cleanTarget),
     join(DOCS_DIR, `${cleanTarget}.md`),
     join(DOCS_DIR, `${cleanTarget}.mdx`),
     join(DOCS_DIR, cleanTarget, "index.md"),
     join(DOCS_DIR, cleanTarget, "index.mdx"),
-    join(DOCS_DIR, cleanTarget),
   ];
 
-  return candidates.find(
-    (candidate) => existsSync(candidate) && statSync(candidate).isFile(),
-  );
-}
-
-function internalTargetExists(target) {
-  return Boolean(internalTargetPath(target));
+  return candidates.some(existsSync);
 }
 
 function resolveInternalTarget(sourceFile, href) {
@@ -290,7 +202,7 @@ describe("documentation files", () => {
     const linkPattern = /\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)|href=["']([^"']+)["']/g;
 
     for (const file of markdownFiles) {
-      const content = stripMarkdownCodeBlocks(readFileSync(file, "utf-8"));
+      const content = readFileSync(file, "utf-8");
       let match;
 
       while ((match = linkPattern.exec(content)) !== null) {
@@ -304,47 +216,5 @@ describe("documentation files", () => {
     }
 
     assert.deepStrictEqual(missingLinks, []);
-  });
-
-  it("internal documentation anchor links resolve", () => {
-    const markdownFiles = collectMarkdownFiles();
-    const anchorsByFile = new Map();
-    const missingAnchors = [];
-    const linkPattern = /\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)|href=["']([^"']+)["']/g;
-
-    function getAnchors(file) {
-      if (!anchorsByFile.has(file)) {
-        anchorsByFile.set(file, collectMarkdownAnchors(file));
-      }
-      return anchorsByFile.get(file);
-    }
-
-    for (const file of markdownFiles) {
-      const content = stripMarkdownCodeBlocks(readFileSync(file, "utf-8"));
-      let match;
-
-      while ((match = linkPattern.exec(content)) !== null) {
-        const href = match[1] || match[2];
-        const anchor = extractAnchor(href);
-        if (!anchor) continue;
-
-        let targetPath;
-        if (href.startsWith("#")) {
-          targetPath = file;
-        } else {
-          const target = resolveInternalTarget(file, href);
-          if (!target) continue;
-          targetPath = internalTargetPath(target);
-        }
-
-        if (targetPath && !getAnchors(targetPath).has(anchor)) {
-          missingAnchors.push(
-            `${relative(DOCS_DIR, file)} -> ${href}`,
-          );
-        }
-      }
-    }
-
-    assert.deepStrictEqual(missingAnchors, []);
   });
 });

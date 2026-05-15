@@ -77,9 +77,30 @@ function isMissingTtsProviderError(error: unknown): boolean {
 	);
 }
 
+interface LocalInferenceTtsRequest {
+	text: string;
+	voice?: string;
+	model?: string;
+	modelId?: string;
+	speed?: number;
+	sampleRate?: number;
+	format?: string;
+	signal?: AbortSignal;
+}
+
+function optionalString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function optionalPositiveNumber(value: unknown): number | undefined {
+	return typeof value === "number" && Number.isFinite(value) && value > 0
+		? value
+		: undefined;
+}
+
 async function useLocalInferenceTts(
 	runtime: AgentRuntime,
-	text: string,
+	request: LocalInferenceTtsRequest,
 	signal?: AbortSignal,
 ): Promise<Uint8Array> {
 	let lastError: unknown;
@@ -88,7 +109,7 @@ async function useLocalInferenceTts(
 			return normalizeAudioBytes(
 				await runtime.useModel(
 					ModelType.TEXT_TO_SPEECH,
-					{ text, ...(signal ? { signal } : {}) },
+					{ ...request, ...(signal ? { signal } : {}) },
 					provider,
 				),
 			);
@@ -131,6 +152,31 @@ export async function handleLocalInferenceTtsRoute(
 		return true;
 	}
 
+	const ttsRequest: LocalInferenceTtsRequest = {
+		text,
+		...(optionalString(body.voice)
+			? { voice: optionalString(body.voice) }
+			: {}),
+		...(optionalString(body.voiceId)
+			? { voice: optionalString(body.voiceId) }
+			: {}),
+		...(optionalString(body.model)
+			? { model: optionalString(body.model) }
+			: {}),
+		...(optionalString(body.modelId)
+			? { modelId: optionalString(body.modelId) }
+			: {}),
+		...(optionalPositiveNumber(body.speed)
+			? { speed: optionalPositiveNumber(body.speed) }
+			: {}),
+		...(optionalPositiveNumber(body.sampleRate)
+			? { sampleRate: optionalPositiveNumber(body.sampleRate) }
+			: {}),
+		...(optionalString(body.format)
+			? { format: optionalString(body.format) }
+			: {}),
+	};
+
 	const runtime = state.current;
 	if (!runtime) {
 		sendJson(res, 503, {
@@ -153,7 +199,7 @@ export async function handleLocalInferenceTtsRoute(
 	try {
 		const bytes = await useLocalInferenceTts(
 			runtime,
-			text,
+			ttsRequest,
 			abortController.signal,
 		);
 		if (bytes.length === 0) {

@@ -78,6 +78,7 @@ class BenchmarkAdapter:
     env_builder: EnvBuilder | None = None
     historical_result_locator: HistoricalLocator | None = None
     capability_notes: str = ""
+    result_patterns: tuple[str, ...] = ()
     # Harnesses (agents) that can execute this benchmark. Defaults to
     # eliza-only for back-compat. The runner marks a (benchmark, harness)
     # pair as ``incompatible`` instead of running when the harness is not

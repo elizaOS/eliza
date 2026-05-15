@@ -18,8 +18,28 @@ from pathlib import Path
 # Add parent directory to path for imports
 BENCHMARK_DIR = Path(__file__).resolve().parent
 BENCHMARKS_DIR = BENCHMARK_DIR.parent
-sys.path.insert(0, str(BENCHMARK_DIR))
-sys.path.insert(0, str(BENCHMARKS_DIR / "eliza-adapter"))
+ADAPTER_DIRS = (
+    BENCHMARKS_DIR / "eliza-adapter",
+    BENCHMARKS_DIR / "hermes-adapter",
+    BENCHMARKS_DIR / "openclaw-adapter",
+)
+
+
+def _prepend_import_path(path: Path) -> None:
+    resolved = str(path.resolve())
+    existing = {str(Path(item).resolve()) for item in sys.path if item}
+    if resolved not in existing:
+        sys.path.insert(0, resolved)
+
+
+def _ensure_context_bench_import_paths() -> None:
+    _prepend_import_path(BENCHMARK_DIR)
+    for adapter_dir in ADAPTER_DIRS:
+        if adapter_dir.is_dir():
+            _prepend_import_path(adapter_dir)
+
+
+_ensure_context_bench_import_paths()
 
 from elizaos_context_bench import (
     ContextBenchConfig,

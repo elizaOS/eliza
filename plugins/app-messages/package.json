@@ -33,9 +33,11 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/capacitor-messages": "workspace:*",
     "@elizaos/capacitor-system": "workspace:*",
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },

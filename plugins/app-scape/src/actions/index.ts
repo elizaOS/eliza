@@ -11,4 +11,6 @@ import type { Action } from "@elizaos/core";
 
 import { scapeAction } from "./scape.js";
 
+export { scapeAction } from "./scape.js";
+
 export const scapeActions: Action[] = [scapeAction];

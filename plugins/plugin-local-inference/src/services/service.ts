@@ -7,6 +7,8 @@
  * stream across the process.
  */
 
+import { existsSync } from "node:fs";
+import { join as pathJoin } from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import {
 	ActiveModelCoordinator,
@@ -21,6 +23,19 @@ import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
 import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
+import {
+	createImageGenCapabilityRegistration,
+	type ImageGenBackend,
+	type ImageGenLoadArgs,
+	loadAospImageGenBackend,
+	loadCoreMlImageGenBackend,
+	loadMfluxImageGenBackend,
+	loadSdCppImageGenBackend,
+	loadTensorRtImageGenBackend,
+	resolveDefaultImageGenModel,
+	selectImageGenBackends,
+} from "./imagegen";
+import { isImageGenUnavailable } from "./imagegen/errors";
 import {
 	MemoryArbiter,
 	setMemoryArbiter,
@@ -91,6 +106,7 @@ export class LocalInferenceService {
 	private mobilePressureBridge: ReturnType<
 		typeof capacitorPressureSource
 	> | null = null;
+	private imageGenCapabilityRegistered = false;
 
 	getCatalog() {
 		return MODEL_CATALOG.filter((model) => !model.hiddenFromCatalog);
@@ -360,6 +376,7 @@ export class LocalInferenceService {
 		const existing = tryGetMemoryArbiter();
 		if (existing) {
 			this.memoryArbiter = existing;
+			this.registerImageGenCapability(existing);
 			return existing;
 		}
 		this.mobilePressureBridge = capacitorPressureSource();
@@ -425,7 +442,121 @@ export class LocalInferenceService {
 				},
 			}),
 		);
+		this.registerImageGenCapability(arbiter);
 		return arbiter;
+	}
+
+	private registerImageGenCapability(arbiter: MemoryArbiter): void {
+		if (
+			this.imageGenCapabilityRegistered ||
+			arbiter.hasCapability("image-gen")
+		) {
+			this.imageGenCapabilityRegistered = true;
+			return;
+		}
+		arbiter.registerCapability(
+			createImageGenCapabilityRegistration({
+				estimatedMb: 1100,
+				loader: async (modelKey) => this.loadImageGenBackend(modelKey),
+			}),
+		);
+		this.imageGenCapabilityRegistered = true;
+	}
+
+	private async loadImageGenBackend(
+		modelKey: string,
+	): Promise<ImageGenBackend> {
+		const loadArgs = await this.resolveImageGenLoadArgs(modelKey);
+		const profile = {
+			platform: process.platform,
+			arch: process.arch,
+			gpu: undefined,
+			isIos: process.env.ELIZA_PLATFORM === "ios",
+			isAndroid:
+				process.env.ELIZA_PLATFORM === "android" ||
+				process.env.ELIZA_LOCAL_LLAMA === "1",
+		} as const;
+		const errors: string[] = [];
+		for (const choice of selectImageGenBackends(profile)) {
+			const args = { ...loadArgs, accelerator: choice.accelerator };
+			try {
+				switch (choice.backendId) {
+					case "aosp":
+						return await loadAospImageGenBackend({
+							loadArgs: args,
+							modelKey: loadArgs.modelKey,
+						});
+					case "coreml":
+						return await loadCoreMlImageGenBackend({
+							loadArgs: args,
+							modelKey: loadArgs.modelKey,
+						});
+					case "mflux":
+						return await loadMfluxImageGenBackend({
+							loadArgs: args,
+							modelKey: loadArgs.modelKey,
+						});
+					case "tensorrt":
+						return await loadTensorRtImageGenBackend({
+							loadArgs: args,
+							modelKey: loadArgs.modelKey,
+						});
+					case "sd-cpp":
+						return await loadSdCppImageGenBackend({
+							loadArgs: args,
+							modelKey: loadArgs.modelKey,
+						});
+				}
+			} catch (err) {
+				if (!isImageGenUnavailable(err)) throw err;
+				errors.push(err.message);
+			}
+		}
+		throw new Error(
+			`[imagegen] no backend available for ${loadArgs.modelKey}: ${errors.join("; ")}`,
+		);
+	}
+
+	private async resolveImageGenLoadArgs(
+		modelKey: string,
+	): Promise<ImageGenLoadArgs & { modelKey: string }> {
+		const resolved = resolveDefaultImageGenModel(modelKey);
+		if (!resolved) {
+			throw new Error(
+				`[imagegen] unknown image generation model key: ${modelKey}`,
+			);
+		}
+		const activeId = this.activeModel.snapshot().modelId;
+		const installed = await this.getInstalled();
+		const active = activeId
+			? installed.find((model) => model.id === activeId)
+			: undefined;
+		const owner =
+			active?.bundleRoot &&
+			this.imageGenFileExists(active.bundleRoot, resolved.file)
+				? active
+				: installed.find(
+						(model) =>
+							Boolean(model.bundleRoot) &&
+							this.imageGenFileExists(
+								model.bundleRoot as string,
+								resolved.file,
+							),
+					);
+		if (!owner?.bundleRoot) {
+			throw new Error(
+				`[imagegen] ${resolved.modelId} is not installed. Expected ${resolved.file} under the active Eliza-1 bundle root.`,
+			);
+		}
+		return {
+			modelKey: resolved.modelId,
+			modelPath: pathJoin(owner.bundleRoot, resolved.file),
+			accelerator: "auto",
+		};
+	}
+
+	private imageGenFileExists(bundleRoot: string, file: string): boolean {
+		return existsSync(pathJoin(bundleRoot, file));
 	}
 
 	/**

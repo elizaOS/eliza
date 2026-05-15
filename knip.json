@@ -212,9 +212,6 @@
     "packages/native-plugins/gateway": {
       "ignoreBinaries": ["pod"]
     },
-    "packages/native-plugins/websiteblocker": {
-      "ignoreBinaries": ["gradle"]
-    },
     "packages/native-plugins/activity-tracker": {
       "ignoreBinaries": ["swiftc"]
     },
@@ -313,22 +310,6 @@
       "entry": ["api/**/*.ts", "test-client.ts", "vercel.json"],
       "project": ["api/**/*.ts", "test-client.ts"],
       "ignore": ["dist/**", ".vercel/**"]
-    },
-    "packages/homepage": {
-      "entry": [
-        "src/main.tsx",
-        "src/vite-env.d.ts",
-        "src/types/**/*.d.ts",
-        "vite.config.ts"
-      ],
-      "project": ["src/**/*.{ts,tsx,d.ts}", "vite.config.ts"],
-      "ignore": ["dist/**", ".turbo/**"],
-      "ignoreDependencies": [
-        "@fontsource-variable/geist",
-        "@fontsource-variable/geist-mono",
-        "tailwindcss",
-        "tw-animate-css"
-      ]
     },
     "packages/examples/aws": {
       "entry": [
@@ -434,16 +415,6 @@
         "src/**/*.d.ts",
         "src/**/*.d.ts.map"
       ]
-    },
-    "packages/os": {
-      "entry": ["package.json"],
-      "project": [],
-      "ignore": ["android/**", "linux/**"]
-    },
-    "packages/os/linux/agent": {
-      "entry": ["src/main.ts", "tests/**/*.ts"],
-      "project": ["src/**/*.ts", "tests/**/*.ts"],
-      "ignore": ["bun.lock"]
     },
     "plugins/plugin-tailscale": {
       "entry": ["src/index.ts"],

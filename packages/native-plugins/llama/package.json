@@ -25,7 +25,8 @@
   },
   "files": [
     "dist/",
-    "README.md"
+    "README.md",
+    "dist"
   ],
   "author": "elizaOS",
   "license": "MIT",

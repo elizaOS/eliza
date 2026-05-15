@@ -16,13 +16,6 @@ export * from "./api/training-benchmarks";
 export * from "./api/workbench-compat-routes";
 export * from "./diagnostics/integration-observability";
 export * from "./permissions/types";
-// === Phase 3D: barrel-promoted from ./platform/native-library-policy ===
-// Pure node:fs/path utility (no agent deps); safe to expose on the main barrel.
-// `./platform/native-plugin-entrypoints` and `./platform/empty-node-module`
-// remain subpath-only exports (see package.json) — they're build-target
-// scaffolding (bundler aliases, electron native loaders) and don't belong on
-// the runtime barrel.
-export * from "./platform/native-library-policy";
 // `./platform/empty-node-module` is intentionally NOT re-exported here.
 // It exists as a tsconfig-paths target for browser builds — re-exporting it
 // would shadow the real api/server, runtime/eliza, etc. exports above with

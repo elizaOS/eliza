@@ -77,6 +77,54 @@ from packages.training.scripts.emotion import distill_wav2small as dw  # noqa: E
 
 LOG = logging.getLogger("run_distill_ravdess")
 
+
+# ---------------------------------------------------------------------------
+# V-A-D → expressive-tag projection. Direct port of
+# `projectVadToExpressiveEmotion` in
+# `plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts`.
+# The runtime shipped ONNX only emits V-A-D; the projection is what actually
+# produces a discrete tag at inference time. Keep these two in sync.
+# ---------------------------------------------------------------------------
+
+
+def _clamp01(x: float) -> float:
+    return 0.0 if x < 0.0 else (1.0 if x > 1.0 else float(x))
+
+
+def project_vad_to_expressive_emotion(
+    v_raw: float, a_raw: float, d_raw: float,
+) -> "tuple[int | None, float, list[float]]":
+    """Returns ``(best_idx, best_score, per_class_scores)`` aligned with
+    `dw.EXPRESSIVE_EMOTION_TAGS`. ``best_idx is None`` (with
+    ``best_score < 0.35``) means the projection abstains.
+    """
+    v = _clamp01(v_raw)
+    a = _clamp01(a_raw)
+    d = _clamp01(d_raw)
+    vC = v - 0.5
+    aC = a - 0.5
+    dC = d - 0.5
+    scores = [0.0] * len(dw.EXPRESSIVE_EMOTION_TAGS)
+    # Index order must match dw.EXPRESSIVE_EMOTION_TAGS:
+    # 0:happy 1:sad 2:angry 3:nervous 4:calm 5:excited 6:whisper
+    scores[0] = _clamp01(vC * 1.4 + max(0.0, aC) * 0.6 - abs(dC) * 0.4)         # happy
+    scores[1] = _clamp01(-vC * 1.4 - aC * 0.8 - dC * 0.4)                       # sad
+    scores[2] = _clamp01(-vC * 1.1 + aC * 1.2 + dC * 1.0)                       # angry
+    scores[3] = _clamp01(-vC * 0.7 + aC * 0.9 - dC * 1.2)                       # nervous
+    scores[4] = _clamp01(max(0.0, vC) * 1.4 - aC * 1.2 - abs(dC) * 0.3)         # calm
+    scores[5] = _clamp01(vC * 0.9 + aC * 1.6)                                   # excited
+    scores[6] = _clamp01(-aC * 1.4 - dC * 1.4)                                  # whisper
+
+    best_idx = -1
+    best_score = 0.0
+    for i, s in enumerate(scores):
+        if s > best_score:
+            best_score = s
+            best_idx = i
+    if best_score < 0.35 or best_idx < 0:
+        return None, best_score, scores
+    return best_idx, best_score, scores
+
 # RAVDESS emotion label → EXPRESSIVE_EMOTION_TAGS index (or None to drop).
 # Index order matches `dw.EXPRESSIVE_EMOTION_TAGS`:
 #   0: happy   1: sad    2: angry    3: nervous
@@ -275,6 +323,8 @@ def train_eval(
     device: str,
     lr: float,
     weight_decay: float,
+    cls_loss_weight: float = 1.0,
+    vad_loss_weight: float = 0.5,
 ) -> dict[str, float]:
     """Joint V-A-D regression + 7-class classification training loop.
 
@@ -321,9 +371,34 @@ def train_eval(
     test_loader = DataLoader(test_ds, batch_size=batch_size)
 
     student = student.to(device)
-    w_vad, w_cls = dw._projection_loss_weights()
+    w_vad, w_cls = float(vad_loss_weight), float(cls_loss_weight)
+    LOG.info("loss weights: vad=%.3f cls=%.3f", w_vad, w_cls)
+
+    # Class-balanced CE weights against the training-set class distribution.
+    # The mapping collapses RAVDESS neutral+calm → expressive `calm`, so the
+    # raw distribution is heavily biased; class weighting keeps the head from
+    # collapsing to the majority class.
+    import collections as _co
+    class_counts = _co.Counter(gold_idxs[i] for i in train_ids)
+    n_classes = len(dw.EXPRESSIVE_EMOTION_TAGS)
+    class_weights = np.zeros(n_classes, dtype="float32")
+    total = sum(class_counts.values())
+    for c in range(n_classes):
+        cnt = class_counts.get(c, 0)
+        # Inverse-frequency weights (smoothed). Unrepresented classes get 0
+        # so they don't dominate when their support is empty.
+        class_weights[c] = (total / max(1, cnt)) / n_classes if cnt > 0 else 0.0
+    LOG.info(
+        "class counts (train): %s",
+        {dw.EXPRESSIVE_EMOTION_TAGS[c]: int(class_counts.get(c, 0)) for c in range(n_classes)},
+    )
+    LOG.info(
+        "class weights: %s",
+        {dw.EXPRESSIVE_EMOTION_TAGS[c]: round(float(class_weights[c]), 3) for c in range(n_classes)},
+    )
+
     mse = nn.MSELoss()
-    ce = nn.CrossEntropyLoss()
+    ce = nn.CrossEntropyLoss(weight=torch.tensor(class_weights, device=device))
     try:
         optimizer = build_apollo_mini_optimizer(student, lr=lr, weight_decay=weight_decay)
         LOG.info("optimizer: APOLLO-Mini (rank-1 tensor-wise)")
@@ -331,28 +406,71 @@ def train_eval(
         optimizer = build_apollo_optimizer(student, lr=lr, weight_decay=weight_decay, rank=8)
         LOG.info("optimizer: APOLLO (rank-8 fallback)")
 
+    # Cosine schedule with linear warmup over 5% of total steps.
+    steps_per_epoch = max(1, len(train_loader))
+    total_steps = steps_per_epoch * epochs
+    warmup_steps = max(1, int(0.05 * total_steps))
+
+    def _lr_at(step: int) -> float:
+        if step < warmup_steps:
+            return step / warmup_steps
+        progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
+        import math
+        return 0.5 * (1 + math.cos(math.pi * min(1.0, progress)))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=_lr_at)
+    LOG.info("schedule: cosine + %d-step warmup over %d total steps", warmup_steps, total_steps)
+
     def _eval(loader: DataLoader) -> dict[str, float]:
         student.eval()
         all_vad_pred: list[Any] = []
         all_vad_gold: list[Any] = []
-        all_cls_pred: list[int] = []
+        all_aux_pred: list[int] = []  # aux head argmax (training-only)
+        all_proj_pred: list[int] = []  # V-A-D projection (matches runtime)
         all_cls_gold: list[int] = []
+        n_abstain = 0
         with torch.no_grad():
             for pcm_b, vad_b, cls_b in loader:
                 pcm_b = pcm_b.to(device)
                 vad_pred, cls_logits = student.forward_with_aux(pcm_b)
-                all_vad_pred.append(vad_pred.detach().cpu().numpy())
+                vad_np = vad_pred.detach().cpu().numpy()
+                all_vad_pred.append(vad_np)
                 all_vad_gold.append(vad_b.numpy())
-                all_cls_pred.extend(cls_logits.argmax(dim=-1).detach().cpu().numpy().tolist())
+                all_aux_pred.extend(cls_logits.argmax(dim=-1).detach().cpu().numpy().tolist())
                 all_cls_gold.extend(cls_b.numpy().tolist())
+                # Project each row's V-A-D to the discrete tag space.
+                for row in vad_np:
+                    idx, _conf, _scores = project_vad_to_expressive_emotion(
+                        float(row[0]), float(row[1]), float(row[2]),
+                    )
+                    if idx is None:
+                        # Abstain → fall back to the most-likely under the
+                        # projection. For F1 we still need a non-None label.
+                        # Use argmax of the scores (without the 0.35 floor)
+                        # so eval stays comparable to a hardened-runtime path
+                        # that might lower the floor for calibration.
+                        _, _, scores = project_vad_to_expressive_emotion(
+                            float(row[0]), float(row[1]), float(row[2]),
+                        )
+                        idx = int(max(range(len(scores)), key=lambda i: scores[i]))
+                        n_abstain += 1
+                    all_proj_pred.append(int(idx))
         vad_pred_np = np.concatenate(all_vad_pred)
         vad_gold_np = np.concatenate(all_vad_gold)
         mse_vad = float(((vad_pred_np - vad_gold_np) ** 2).mean())
-        f1 = dw._macro_f1(
-            all_cls_pred, all_cls_gold, num_classes=len(dw.EXPRESSIVE_EMOTION_TAGS),
-        )
-        acc = float(sum(1 for p, g in zip(all_cls_pred, all_cls_gold) if p == g) / max(1, len(all_cls_gold)))
-        return {"mse_vad": mse_vad, "macro_f1": f1, "accuracy": acc}
+        n_classes = len(dw.EXPRESSIVE_EMOTION_TAGS)
+        f1_aux = dw._macro_f1(all_aux_pred, all_cls_gold, num_classes=n_classes)
+        f1_proj = dw._macro_f1(all_proj_pred, all_cls_gold, num_classes=n_classes)
+        acc_aux = float(sum(1 for p, g in zip(all_aux_pred, all_cls_gold) if p == g) / max(1, len(all_cls_gold)))
+        acc_proj = float(sum(1 for p, g in zip(all_proj_pred, all_cls_gold) if p == g) / max(1, len(all_cls_gold)))
+        return {
+            "mse_vad": mse_vad,
+            "macro_f1": f1_proj,   # shipped runtime metric — gate on this
+            "macro_f1_aux": f1_aux,
+            "accuracy": acc_proj,
+            "accuracy_aux": acc_aux,
+            "abstain_rate": float(n_abstain / max(1, len(all_cls_gold))),
+        }
 
     best_f1 = -1.0
     best_metrics: dict[str, float] = {"mse_vad": float("inf"), "macro_f1": 0.0}
@@ -372,6 +490,7 @@ def train_eval(
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
+            scheduler.step()
             train_loss += float(loss.item())
             n_batches += 1
         train_loss /= max(1, n_batches)
@@ -379,8 +498,9 @@ def train_eval(
         val = _eval(val_loader)
         history.append({"epoch": epoch, "train_loss": train_loss, "val": val})
         LOG.info(
-            "epoch %d/%d  train_loss=%.4f  val_mse_vad=%.4f  val_macro_f1=%.4f  val_acc=%.4f  wall=%.1fs",
-            epoch + 1, epochs, train_loss, val["mse_vad"], val["macro_f1"], val["accuracy"], time.time() - t0,
+            "epoch %d/%d  loss=%.4f  mse_vad=%.4f  f1_proj=%.4f  f1_aux=%.4f  acc_proj=%.4f  abst=%.2f  wall=%.1fs",
+            epoch + 1, epochs, train_loss, val["mse_vad"], val["macro_f1"], val["macro_f1_aux"],
+            val["accuracy"], val["abstain_rate"], time.time() - t0,
         )
 
         if val["macro_f1"] > best_f1:
@@ -402,8 +522,10 @@ def train_eval(
     student.load_state_dict(ckpt["state_dict"])
     test_metrics = _eval(test_loader)
     LOG.info(
-        "TEST  mse_vad=%.4f  macro_f1=%.4f  accuracy=%.4f  (best val_f1=%.4f at epoch %d)",
-        test_metrics["mse_vad"], test_metrics["macro_f1"], test_metrics["accuracy"],
+        "TEST  mse_vad=%.4f  f1_proj=%.4f  f1_aux=%.4f  acc_proj=%.4f  abst=%.3f "
+        "(best val_f1_proj=%.4f at epoch %d)",
+        test_metrics["mse_vad"], test_metrics["macro_f1"], test_metrics["macro_f1_aux"],
+        test_metrics["accuracy"], test_metrics["abstain_rate"],
         best_f1, int(best_metrics.get("epoch", -1)),
     )
     (run_dir / "history.json").write_text(json.dumps(history, indent=2), "utf-8")
@@ -430,6 +552,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=0.01)
+    parser.add_argument(
+        "--cls-loss-weight", type=float, default=1.0,
+        help="Override aux 7-class CE weight (default 0.5 in distill script).",
+    )
+    parser.add_argument(
+        "--vad-loss-weight", type=float, default=0.5,
+        help="Override V-A-D MSE weight.",
+    )
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument(
         "--eval-gate-macro-f1", type=float, default=0.35,
@@ -493,6 +623,8 @@ def main(argv: list[str] | None = None) -> int:
             device=args.device,
             lr=args.lr,
             weight_decay=args.weight_decay,
+            cls_loss_weight=args.cls_loss_weight,
+            vad_loss_weight=args.vad_loss_weight,
         )
 
     LOG.info("phase 4: eval gate (macro_f1 >= %.2f)", args.eval_gate_macro_f1)

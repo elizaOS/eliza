@@ -3,7 +3,7 @@
  *
  * Default local inference is restricted to the active Eliza-1 line: Qwen3.5
  * bases for 0.8B, 2B, 4B, and 9B, plus Qwen3.6 for the active 27B family
- * (including the native long-context variant at 256k). The 2026-05-12 mandate
+ * (including long-context variants at 256k and 1M). The 2026-05-12 mandate
  * retired the legacy Qwen3 bases; see
  * packages/training/scripts/training/model_registry.py for the active
  * registry. External Hub search remains custom/opt-in and never enters
@@ -32,30 +32,6 @@ export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 
 export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
-
-export const ELIZA_1_VISION_TIER_IDS = [
-  "eliza-1-4b",
-  "eliza-1-9b",
-  "eliza-1-27b",
-  "eliza-1-27b-256k",
-] as const satisfies ReadonlyArray<Eliza1TierId>;
-
-const ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
-  ELIZA_1_VISION_TIER_IDS,
-);
-
-export const ELIZA_1_DFLASH_TIER_IDS = [
-  "eliza-1-0_8b",
-  "eliza-1-2b",
-  "eliza-1-4b",
-  "eliza-1-9b",
-  "eliza-1-27b",
-  "eliza-1-27b-256k",
-] as const satisfies ReadonlyArray<Eliza1TierId>;
-
-const ELIZA_1_DFLASH_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
-  ELIZA_1_DFLASH_TIER_IDS,
-);
 
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
@@ -92,7 +68,7 @@ export function isDefaultEligibleId(id: string): boolean {
  *     separate repos (elizaos/eliza-1-voice-*) per voice-models.ts; those
  *     repos are not yet created. Next step: run publish pipeline per
  *     models/voice/CHANGELOG.md entries once sub-model weights are finalized.
- *   - Kokoro sam voice preset: `af_sam.bin` absent from all
+ *   - Kokoro same voice preset: `af_same.bin` absent from all
  *     bundles; I7 eval showed regression. Current bundles ship af_bella
  *     and standard voices only.
  */
@@ -147,10 +123,9 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Those bundles optimize
- *     for install size, TTFA, and phone thermals.
- *   - 9B → Kokoro first with OmniVoice bundled for higher quality on hosts
- *     with enough memory.
+ *   - Small tiers (0_8b / 2b / 4b / 9b) → OmniVoice first with Kokoro
+ *     fallback. The fused expressive TTS path stays default, while Kokoro
+ *     remains available for low-latency/thermal fallback on constrained hosts.
  *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
@@ -159,20 +134,20 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
-  "eliza-1-2b": ["kokoro"],
-  "eliza-1-4b": ["kokoro"],
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
+  "eliza-1-4b": ["omnivoice", "kokoro"],
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
 };
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
+  "dflash",
   "turbo3",
   "turbo4",
   "qjl_full",
   "polarquant",
-  "dflash",
 ];
 
 interface TierSpec {
@@ -215,8 +190,12 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.5B",
     drafterSizeGb: 0.4,
     drafterMinRamGb: 2,
-    // Vision is excluded until a tier-compatible image mmproj exists and
-    // passes the image-content smoke. The bundled ASR mmproj is audio-only.
+    // WS2: vision is enabled on the smallest viable tier. The Q4_K_M
+    // mmproj for 0.8B is ~220 MB (see ELIZA_1_BUNDLE_EXTRAS.json), which
+    // fits even on 2 GB-floor devices when the text model is resident.
+    // Camera + screen analysis remain practical on low-tier phones at this
+    // size — the projector cache short-circuits the per-frame cost.
+    hasVision: true,
     // WS3: image-gen via sd-cpp + SD 1.5 Q5_0 (~1.0 GB). Co-evicts
     // with vision on the WS1 `vision` resident-role slot; only one of
     // (VL describe, diffusion generate) is held at a time.
@@ -234,9 +213,12 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.8B",
     drafterSizeGb: 0.5,
     drafterMinRamGb: 4,
-    hasEmbedding: true,
-    // Vision is excluded until a tier-compatible image mmproj exists and
-    // passes the image-content smoke. The bundled ASR mmproj is audio-only.
+    // WS2: vision enabled — the 2B tier is the standard "small-phone"
+    // default for first-run users, so camera-to-reaction and screen
+    // analysis must work here. The mmproj is ~361 MB Q8_0 (actual:
+    // 361,518,784 bytes, published 2026-05-14); the arbiter owns the
+    // swap with the text weights under pressure.
+    hasVision: true,
     // WS3: image-gen on the standard small-phone default uses SD 1.5
     // Q5_0 too; tier-up to Z-Image-Turbo at 9B.
     hasImageGen: true,
@@ -316,14 +298,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
   },
 };
 
-function tierSpec(id: Eliza1TierId): TierSpec {
-  const spec = TIER_SPECS[id];
-  if (!spec) {
-    throw new Error(`Eliza-1 catalog tier is missing TIER_SPECS entry: ${id}`);
-  }
-  return spec;
-}
-
 function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
   return `${id}-drafter`;
 }
@@ -399,16 +373,18 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
  * from this list. The ladder is monotonically decreasing in bits-per-weight
  * (smallest first): {@link OmniVoiceQuantLevel}.
  *
- * Small Kokoro-only tiers publish an empty OmniVoice ladder. 9B and
- * 27B-class tiers ship the full Q3..Q8 ladder so a `--memory-budget okay`
- * host can step down to Q3_K_M and a `--memory-budget good` host can take Q6_K.
+ * Every active tier publishes an OmniVoice ladder. Small tiers keep the
+ * ladder narrow so the installer can stay inside mobile RAM budgets while
+ * still defaulting to the fused OmniVoice path. 9B and 27B-class tiers ship
+ * the full Q3..Q8 ladder so a `--memory-budget okay` host can step down to
+ * Q3_K_M and a `--memory-budget good` host can take Q6_K.
  */
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": [],
-  "eliza-1-2b": [],
-  "eliza-1-4b": [],
+  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
@@ -435,20 +411,14 @@ function primaryVoiceFileForTier(id: Eliza1TierId): string {
 }
 
 function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
-  const spec = tierSpec(id);
+  const spec = TIER_SPECS[id];
   const components: SourceComponentMap = {
     text: bundleComponent(id, spec.textFile),
     voice: bundleComponent(id, primaryVoiceFileForTier(id)),
     asr: bundleComponent(id, "asr/eliza-1-asr.gguf"),
     vad: bundleComponent(id, "vad/silero-vad-v5.1.2.ggml.bin"),
+    drafter: bundleComponent(id, `dflash/drafter-${tierSlug(id)}.gguf`),
   };
-
-  if (ELIZA_1_DFLASH_TIER_ID_SET.has(id)) {
-    components.drafter = bundleComponent(
-      id,
-      `dflash/drafter-${tierSlug(id)}.gguf`,
-    );
-  }
 
   if (spec.hasEmbedding) {
     components.embedding = bundleComponent(
@@ -456,7 +426,7 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       "embedding/eliza-1-embedding.gguf",
     );
   }
-  if (ELIZA_1_VISION_TIER_ID_SET.has(id)) {
+  if (spec.hasVision) {
     components.vision = bundleComponent(
       id,
       `vision/mmproj-${tierSlug(id)}.gguf`,
@@ -470,12 +440,11 @@ function runtimeForTier(
   id: Eliza1TierId,
   contextLength: number,
 ): CatalogModel["runtime"] {
-  const hasDflash = ELIZA_1_DFLASH_TIER_ID_SET.has(id);
   const requiresKernel: LocalRuntimeKernel[] =
     contextLength >= 65536
       ? [...BASE_REQUIRED_KERNELS, "turbo3_tcq"]
-      : [...BASE_REQUIRED_KERNELS];
-  const runtime: NonNullable<CatalogModel["runtime"]> = {
+      : BASE_REQUIRED_KERNELS;
+  return {
     preferredBackend: "llama-server",
     optimizations: {
       parallel: 4,
@@ -489,9 +458,7 @@ function runtimeForTier(
       typeV: "tbq3_0",
       requiresFork: "buun-llama-cpp",
     },
-  };
-  if (hasDflash) {
-    runtime.dflash = {
+    dflash: {
       drafterModelId: drafterId(id),
       specType: "dflash",
       contextSize: contextLength,
@@ -500,19 +467,16 @@ function runtimeForTier(
       draftMax: contextLength >= 65536 ? 6 : 4,
       gpuLayers: "auto",
       draftGpuLayers: "auto",
-      disableThinking: false,
-    };
-  }
-  return runtime;
+      disableThinking: true,
+    },
+  };
 }
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
-  q3_k_m: "Q3_K_M",
   q4_0: "Q4_0",
-  q4_k_m: "Q4_K_M",
-  q5_k_m: "Q5_K_M",
-  q6_k: "Q6_K",
-  q8_0: "Q8_0",
+  q4_k_m: "q4_k_m",
+  q6_k: "q6_k",
+  q8_0: "q8_0",
 };
 
 function textQuantizationMatrix(args: {
@@ -542,11 +506,9 @@ function textQuantizationMatrix(args: {
   return {
     defaultVariantId: "q4_k_m",
     variants: [
-      mk("q3_k_m", "3-bit", 0.78, 0.85, "published"),
       mk("q4_k_m", "4-bit", 1, 1, "published"),
-      mk("q5_k_m", "5-bit", 1.2, 1.15, "published"),
-      mk("q6_k", "6-bit", 1.45, 1.35, "published"),
-      mk("q8_0", "8-bit", 1.95, 1.8, "published"),
+      mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
+      mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
     ],
   };
 }
@@ -569,7 +531,7 @@ function blurbForTier(id: Eliza1TierId): string {
 }
 
 function chatTier(id: Eliza1TierId): CatalogModel {
-  const spec = tierSpec(id);
+  const spec = TIER_SPECS[id];
   return {
     id,
     displayName: id,
@@ -586,9 +548,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     bucket: spec.bucket,
     contextLength: spec.contextLength,
     tokenizerFamily: "qwen35",
-    companionModelIds: ELIZA_1_DFLASH_TIER_ID_SET.has(id)
-      ? [drafterId(id)]
-      : [],
+    companionModelIds: [drafterId(id)],
     sourceModel: sourceModelForTier(id),
     voiceBackends: ELIZA_1_VOICE_BACKENDS[id],
     runtime: runtimeForTier(id, spec.contextLength),
@@ -604,7 +564,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
 }
 
 function drafterCompanion(id: Eliza1TierId): CatalogModel {
-  const spec = tierSpec(id);
+  const spec = TIER_SPECS[id];
   return {
     id: drafterId(id),
     displayName: `${id} drafter`,
@@ -625,11 +585,10 @@ function drafterCompanion(id: Eliza1TierId): CatalogModel {
   };
 }
 
-export const MODEL_CATALOG: CatalogModel[] = ELIZA_1_TIER_IDS.flatMap((id) =>
-  ELIZA_1_DFLASH_TIER_ID_SET.has(id)
-    ? [chatTier(id), drafterCompanion(id)]
-    : [chatTier(id)],
-);
+export const MODEL_CATALOG: CatalogModel[] = ELIZA_1_TIER_IDS.flatMap((id) => [
+  chatTier(id),
+  drafterCompanion(id),
+]);
 
 export function findCatalogModel(id: string): CatalogModel | undefined {
   return MODEL_CATALOG.find((m) => m.id === id);

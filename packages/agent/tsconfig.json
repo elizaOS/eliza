@@ -44,7 +44,6 @@
       "@elizaos/plugin-form": ["../../plugins/plugin-form/src/index.ts"],
       "@elizaos/app-wifi": ["../../plugins/app-wifi/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
-      "@elizaos/app-core/agent-bridge": ["../app-core/src/agent-bridge.ts"],
       "@elizaos/app-steward": ["../../plugins/app-steward/src/index.ts"],
       "@elizaos/app-shopify": ["../../plugins/app-shopify/src/index.ts"],
       "@elizaos/app-vincent": ["../../plugins/app-vincent/src/index.ts"],

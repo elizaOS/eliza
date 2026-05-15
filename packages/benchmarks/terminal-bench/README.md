@@ -61,6 +61,22 @@ terminal-bench
 # Force the legacy one-shot exec_run path (no tmux).
 terminal-bench --task-ids hello-world --one-shot
 
+# Eliza bridge task-agent selection defaults to opencode. If
+# ANTHROPIC_API_KEY/CLAUDE_API_KEY is present it resolves to claude; if
+# CODEX_API_KEY/OPENAI_API_KEY is present it resolves to codex. Override it:
+terminal-bench --task-ids hello-world --task-agent opencode
+
+# Cerebras via the eliza bridge, preserving the configured model name.
+terminal-bench --model-provider cerebras --model gpt-oss-120b
+
+# Cerebras gpt-oss-120b through the hermes harness.
+terminal-bench --agent-harness hermes --model-provider cerebras --model gpt-oss-120b --task-ids hello-world
+
+# Local baselines for harness sanity checks.
+terminal-bench --use-sample-tasks --local-sandbox --agent-harness always-right
+terminal-bench --use-sample-tasks --local-sandbox --agent-harness always-wrong
+terminal-bench --use-sample-tasks --local-sandbox --agent-harness random --baseline-random-seed 1
+
 # Fail-loud check: missing corpus raises rather than running SAMPLE_TASKS.
 terminal-bench --data-path /no/such/path  # -> TerminalBenchDatasetMissingError
 ```
@@ -158,12 +174,20 @@ asyncio.run(main())
 
 ### Bridge integration
 
-All runs are routed through the elizaOS TypeScript benchmark bridge
-(`packages/app-core/src/benchmark/server.ts`). The CLI spawns the bridge
-automatically when `ELIZA_BENCH_URL` is unset, and `TerminalBenchRunner`
-delegates per-task decision-making to `ElizaBridgeTerminalAgent` (in
-`eliza_adapter.terminal_bench`). The Python `AgentRuntime` path has
-been removed.
+By default runs are routed through the elizaOS TypeScript benchmark
+bridge (`packages/app-core/src/benchmark/server.ts`). The CLI spawns the
+bridge automatically when `ELIZA_BENCH_URL` is unset, and
+`TerminalBenchRunner` delegates per-task decision-making to
+`ElizaBridgeTerminalAgent` (in `eliza_adapter.terminal_bench`). The
+Python `AgentRuntime` path has been removed.
+
+Alternative harnesses are selected with `--agent-harness`. `hermes`
+constructs `hermes_adapter.client.HermesClient` from the configured
+provider/model, so `--model-provider cerebras --model gpt-oss-120b`
+uses the Cerebras OpenAI-compatible endpoint without printing or
+embedding an API key. `openclaw` follows the same provider/model
+resolution. The local baselines are `always-right`, `always-wrong`, and
+`random`.
 
 ## Configuration Options
 
@@ -176,6 +200,8 @@ been removed.
 | `timeout_per_task_seconds` | `300` | Task timeout |
 | `model_name` | `gpt-4` | LLM model to use |
 | `temperature` | `0.0` | Generation temperature |
+| `agent_harness` | `eliza` | Decision harness: `eliza`, `hermes`, `openclaw`, `always-right`, `always-wrong`, `random` |
+| `task_agent` | `opencode` | Eliza bridge task agent; auto-resolves to `claude`/`codex` when corresponding key env vars are present |
 | `docker_image` | `ubuntu:22.04` | Default Docker image |
 | `memory_limit` | `2g` | Container memory limit |
 | `verbose` | `False` | Enable verbose logging |

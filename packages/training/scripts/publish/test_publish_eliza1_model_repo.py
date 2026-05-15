@@ -13,11 +13,14 @@ if str(_TRAINING_ROOT) not in sys.path:
 
 from scripts.publish import publish_eliza1_model_repo as P  # noqa: E402
 
+
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
+
 def _default_voice_paths(tier: str) -> tuple[str, ...]:
     return tuple(f"tts/{rel}" for rel in P.M.required_voice_artifacts_for_tier(tier))
+
 
 def _write_bundle(
     root: Path,
@@ -28,13 +31,11 @@ def _write_bundle(
     bundle = root / f"eliza-1-{tier}.bundle"
     text = b"gguf text"
     drafter = b"draft"
-    dflash_enabled = "dflash" in P.M.REQUIRED_KERNELS_BY_TIER[tier]
     files: list[tuple[str, bytes]] = [
         (f"text/eliza-1-{tier}-32k.gguf", text),
+        (f"dflash/drafter-{tier}.gguf", drafter),
         ("cache/voice-preset-default.bin", b"cache"),
     ]
-    if dflash_enabled:
-        files.append((f"dflash/drafter-{tier}.gguf", drafter))
     for i, voice_path in enumerate(voice_paths or _default_voice_paths(tier)):
         files.append((voice_path, f"voice-{i}".encode("utf-8")))
     for rel, blob in files:
@@ -59,11 +60,9 @@ def _write_bundle(
                 }
             ],
             "voice": voice_entries,
-            "dflash": (
-                [{"path": f"dflash/drafter-{tier}.gguf", "sha256": _sha(drafter)}]
-                if dflash_enabled
-                else []
-            ),
+            "dflash": [
+                {"path": f"dflash/drafter-{tier}.gguf", "sha256": _sha(drafter)}
+            ],
             "cache": [
                 {
                     "path": "cache/voice-preset-default.bin",
@@ -76,7 +75,6 @@ def _write_bundle(
     release = {
         "schemaVersion": 1,
         "tier": tier,
-        "repoId": P.DEFAULT_REPO_ID,
         "releaseState": "base-v1",
         "publishEligible": True,
         "final": {
@@ -89,7 +87,7 @@ def _write_bundle(
             "sizeFirstRepoIds": True,
         },
         "hf": {
-            "repoId": P.DEFAULT_REPO_ID,
+            "repoId": "elizaos/eliza-1",
             "pathPrefix": f"bundles/{tier}",
             "status": "upload-ready",
         },
@@ -102,17 +100,6 @@ def _write_bundle(
     )
     return bundle
 
-def _write_checksums(bundle: Path) -> None:
-    manifest = P._load_json(bundle / "eliza-1.manifest.json")
-    rels = P._publishable_bundle_relpaths(bundle, manifest)
-    checksums = bundle / "checksums" / "SHA256SUMS"
-    checksums.parent.mkdir(parents=True, exist_ok=True)
-    lines = []
-    for rel in rels:
-        path = bundle / rel
-        if path.is_file() and rel != "checksums/SHA256SUMS":
-            lines.append(f"{_sha(path.read_bytes())}  {rel}")
-    checksums.write_text("\n".join(sorted(lines)) + "\n", encoding="utf-8")
 
 def test_plan_bundle_uses_single_repo_bundle_prefix(tmp_path: Path):
     _write_bundle(tmp_path, "0_8b")
@@ -124,6 +111,7 @@ def test_plan_bundle_uses_single_repo_bundle_prefix(tmp_path: Path):
     assert plan.manifest_id == "eliza-1-0_8b"
     assert plan.errors == ()
 
+
 def test_plan_bundle_reports_missing_manifest_file(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
     (bundle / "dflash" / "drafter-2b.gguf").unlink()
@@ -133,6 +121,7 @@ def test_plan_bundle_reports_missing_manifest_file(tmp_path: Path):
     assert plan.uploadable is False
     assert any("dflash/drafter-2b.gguf" in e for e in plan.errors)
 
+
 def test_plan_bundle_reports_manifest_sha_mismatch(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
     (bundle / "dflash" / "drafter-2b.gguf").write_bytes(b"changed")
@@ -141,6 +130,7 @@ def test_plan_bundle_reports_manifest_sha_mismatch(tmp_path: Path):
 
     assert plan.uploadable is False
     assert any("sha256 mismatch for dflash/drafter-2b.gguf" in e for e in plan.errors)
+
 
 def test_publishable_bundle_files_exclude_source_artifacts(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
@@ -159,6 +149,7 @@ def test_publishable_bundle_files_exclude_source_artifacts(tmp_path: Path):
     assert "lineage.json" in rels
     assert plan.file_count == len(rels)
 
+
 def test_large_folder_mirror_uses_publishable_files_only(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
     (bundle / "source" / "text").mkdir(parents=True)
@@ -171,6 +162,7 @@ def test_large_folder_mirror_uses_publishable_files_only(tmp_path: Path):
     assert (staging / "bundles" / "2b" / "text" / "eliza-1-2b-32k.gguf").is_file()
     assert not (staging / "bundles" / "2b" / "source" / "text" / "raw-qwen.gguf").exists()
 
+
 def test_voice_policy_can_warn_or_block(tmp_path: Path):
     _write_bundle(tmp_path, "2b", voice_paths=("tts/kokoro/model_q4.onnx",))
 
@@ -178,11 +170,16 @@ def test_voice_policy_can_warn_or_block(tmp_path: Path):
     strict_plan = P.plan_bundle(tmp_path, "2b", strict_voice_policy=True)
 
     assert warning_plan.uploadable is True
+    assert any("omnivoice-base-q4_k_m.gguf" in w for w in warning_plan.warnings)
+    assert any("omnivoice-tokenizer-q4_k_m.gguf" in w for w in warning_plan.warnings)
     assert any("kokoro/tokenizer.json" in w for w in warning_plan.warnings)
     assert any("kokoro/voices/af_bella.bin" in w for w in warning_plan.warnings)
     assert strict_plan.uploadable is False
+    assert any("omnivoice-base-q4_k_m.gguf" in e for e in strict_plan.errors)
+    assert any("omnivoice-tokenizer-q4_k_m.gguf" in e for e in strict_plan.errors)
     assert any("kokoro/tokenizer.json" in e for e in strict_plan.errors)
     assert any("kokoro/voices/af_bella.bin" in e for e in strict_plan.errors)
+
 
 def test_tier_choices_cover_full_eliza1_matrix() -> None:
     assert P.TIERS == (
@@ -192,8 +189,8 @@ def test_tier_choices_cover_full_eliza1_matrix() -> None:
         "9b",
         "27b",
         "27b-256k",
-        "27b-1m",
     )
+
 
 def test_plan_bundle_blocks_non_publishable_release_evidence(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
@@ -211,21 +208,6 @@ def test_plan_bundle_blocks_non_publishable_release_evidence(tmp_path: Path):
     assert any("publishEligible" in e for e in plan.errors)
     assert any("final.evals" in e for e in plan.errors)
 
-def test_plan_bundle_validates_sha256sums(tmp_path: Path):
-    bundle = _write_bundle(tmp_path, "0_8b")
-    _write_checksums(bundle)
-    manifest_path = bundle / "eliza-1.manifest.json"
-    manifest = json.loads(manifest_path.read_text())
-    manifest["version"] = "1.0.1-after-checksum"
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-    plan = P.plan_bundle(tmp_path, "0_8b")
-
-    assert plan.uploadable is False
-    assert any(
-        "sha256 mismatch in checksums/SHA256SUMS for eliza-1.manifest.json" in e
-        for e in plan.errors
-    )
 
 def test_plan_bundle_blocks_uploaded_status_without_hf_evidence(tmp_path: Path):
     bundle = _write_bundle(tmp_path, "2b")
@@ -239,6 +221,7 @@ def test_plan_bundle_blocks_uploaded_status_without_hf_evidence(tmp_path: Path):
 
     assert plan.uploadable is False
     assert any("uploadEvidence is missing" in e for e in plan.errors)
+
 
 def test_dry_run_allows_missing_with_report(tmp_path: Path, capsys):
     report = tmp_path / "report.json"

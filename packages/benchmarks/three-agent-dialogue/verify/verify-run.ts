@@ -91,7 +91,7 @@ export function verifyRun(runDir: string): RunVerificationReport {
  * Assert that a run report passes all required checks.
  * Throws with a descriptive message if any check fails.
  */
-function _assertRunPasses(report: RunVerificationReport): void {
+export function assertRunPasses(report: RunVerificationReport): void {
   const checks: Array<{ label: string; pass: boolean }> = [
     { label: "verification.pass", pass: report.verification.pass },
     { label: "mix.wav exists", pass: report.mixWavExists },

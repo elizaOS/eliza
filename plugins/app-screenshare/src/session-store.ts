@@ -9,7 +9,7 @@ import type { AppSessionState } from "@elizaos/shared";
 export const SCREENSHARE_APP_NAME = "@elizaos/app-screenshare";
 export const SCREENSHARE_DISPLAY_NAME = "Screen Share";
 
-type ScreenshareSessionStatus = "active" | "stopped";
+export type ScreenshareSessionStatus = "active" | "stopped";
 
 export interface ScreenshareSession {
   id: string;

@@ -20,8 +20,6 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
-
 # Add the package to path
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -39,16 +37,18 @@ except ImportError:
 from elizaos_vending_bench import (
     LEADERBOARD_SCORES,
     CoherenceEvaluator,
+    MockLLMProvider,
     VendingAgent,
     VendingBenchConfig,
     VendingBenchRunner,
     VendingEnvironment,
 )
-from elizaos_vending_bench._testing import MockLLMProvider
 
 
 class TestResults:
     """Tracks test results."""
+
+    __test__ = False
 
     def __init__(self):
         self.passed = 0
@@ -76,9 +76,17 @@ class TestResults:
         return self.failed == 0
 
 
-@pytest.fixture
-def results() -> TestResults:
-    return TestResults()
+try:
+    import pytest
+except ImportError:  # pragma: no cover - pytest is only needed for test collection.
+    pytest = None
+
+
+if pytest is not None:
+
+    @pytest.fixture
+    def results() -> TestResults:
+        return TestResults()
 
 
 async def test_environment(results: TestResults):

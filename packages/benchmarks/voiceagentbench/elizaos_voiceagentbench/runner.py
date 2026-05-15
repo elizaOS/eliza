@@ -84,18 +84,6 @@ def _stub_tool_response(call: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _call_signature(call: dict[str, Any]) -> str:
-    """Stable signature used to suppress repeated identical tool calls."""
-    return json.dumps(
-        {
-            "name": call.get("name") or "",
-            "arguments": call.get("arguments") or {},
-        },
-        sort_keys=True,
-        default=str,
-    )
-
-
 async def run_task(
     task: VoiceTask,
     *,
@@ -113,7 +101,6 @@ async def run_task(
     final_text = ""
     start = time.monotonic()
     error: str | None = None
-    seen_call_signatures: set[str] = set()
 
     try:
         for query in task.queries:
@@ -133,18 +120,8 @@ async def run_task(
                 history.append(assistant)
                 calls = _extract_tool_calls(assistant)
                 if calls:
-                    new_calls = [
-                        call
-                        for call in calls
-                        if _call_signature(call) not in seen_call_signatures
-                    ]
-                    if not new_calls:
-                        final_text = assistant.content or ""
-                        agent_messages.append(final_text)
-                        break
-                    all_tool_calls.extend(new_calls)
-                    for call in new_calls:
-                        seen_call_signatures.add(_call_signature(call))
+                    all_tool_calls.extend(calls)
+                    for call in calls:
                         result = _stub_tool_response(call)
                         history.append(
                             MessageTurn(
@@ -155,6 +132,10 @@ async def run_task(
                             )
                         )
                     dispatches += 1
+                    if assistant.content:
+                        final_text = assistant.content
+                        agent_messages.append(final_text)
+                        break
                     continue
                 final_text = assistant.content or ""
                 agent_messages.append(final_text)

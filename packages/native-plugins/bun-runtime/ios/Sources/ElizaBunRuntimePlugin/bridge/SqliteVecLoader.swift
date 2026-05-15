@@ -14,9 +14,9 @@ import SQLite3
 /// Vector queries against tables that need the extension will fail with
 /// SQLite's standard "no such module: vec0" error.
 ///
-/// Availability is detected through weak imported C symbols in
-/// `SqliteVecWeakSymbols.m`, which keeps App Store builds free of dynamic
-/// loader imports while still allowing consumers to omit sqlite-vec.
+/// We detect availability at runtime via `dlsym(RTLD_DEFAULT, ...)` so the
+/// loader compiles cleanly even when the .a is absent. This avoids forcing
+/// every consumer of the bun-runtime pod to ship sqlite-vec.
 public final class SqliteVecLoader {
     public static let shared = SqliteVecLoader()
 
@@ -24,27 +24,47 @@ public final class SqliteVecLoader {
     /// not statically linked.
     public private(set) var versionString: String?
 
-    private let available: Bool
+    private typealias VecInitFn = @convention(c) (
+        OpaquePointer?,                                  // db
+        UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>?, // pzErrMsg
+        UnsafePointer<sqlite3_api_routines>?            // pApi
+    ) -> Int32
+
+    private typealias VecVersionFn = @convention(c) () -> UnsafePointer<Int8>?
+
+    private let initFn: VecInitFn?
+    private let versionFn: VecVersionFn?
 
     private init() {
-        self.available = eliza_sqlite_vec_available() == 1
-        if self.available, let cstr = eliza_sqlite_vec_version() {
-            self.versionString = String(cString: cstr)
+        let handle: UnsafeMutableRawPointer? = nil  // RTLD_DEFAULT
+        if let sym = dlsym(handle, "sqlite3_vec_init") {
+            self.initFn = unsafeBitCast(sym, to: VecInitFn.self)
+        } else {
+            self.initFn = nil
+        }
+        if let sym = dlsym(handle, "sqlite3_vec_version") {
+            let fn = unsafeBitCast(sym, to: VecVersionFn.self)
+            self.versionFn = fn
+            if let cstr = fn() {
+                self.versionString = String(cString: cstr)
+            }
+        } else {
+            self.versionFn = nil
         }
     }
 
     /// Returns true iff the static lib is linked. Useful for logging and
     /// for the `sqlite_version` host function.
-    public var isAvailable: Bool { available }
+    public var isAvailable: Bool { initFn != nil }
 
     /// Calls `sqlite3_vec_init` on the given DB handle. No-op when the
     /// extension isn't linked. Errors during init are surfaced through
     /// stderr-only logging because we don't have a way to fail the open
     /// — the rest of the DB still works without vec0.
     public func register(on db: OpaquePointer) {
-        guard isAvailable else { return }
+        guard let initFn = self.initFn else { return }
         var errPtr: UnsafeMutablePointer<Int8>? = nil
-        let rc = eliza_sqlite_vec_register(db, &errPtr)
+        let rc = initFn(db, &errPtr, nil)
         if rc != SQLITE_OK {
             let msg = errPtr != nil ? String(cString: errPtr!) : "sqlite3_vec_init rc=\(rc)"
             if let p = errPtr { sqlite3_free(p) }
@@ -55,15 +75,3 @@ public final class SqliteVecLoader {
         }
     }
 }
-
-@_silgen_name("eliza_sqlite_vec_available")
-private func eliza_sqlite_vec_available() -> Int32
-
-@_silgen_name("eliza_sqlite_vec_version")
-private func eliza_sqlite_vec_version() -> UnsafePointer<Int8>?
-
-@_silgen_name("eliza_sqlite_vec_register")
-private func eliza_sqlite_vec_register(
-    _ db: OpaquePointer?,
-    _ errPtr: UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>?
-) -> Int32

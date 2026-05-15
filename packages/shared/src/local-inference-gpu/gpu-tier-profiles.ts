@@ -162,7 +162,7 @@ const H200: GpuProfile = {
   recommended_tiers: {
     primary: "eliza-1-27b-256k",
     secondary: "eliza-1-27b",
-    heavy: "eliza-1-27b",
+    heavy: "eliza-1-9b",
   },
   llama_cpp_flags: {
     n_gpu_layers: 99,
@@ -176,9 +176,9 @@ const H200: GpuProfile = {
     drafter_tier: "eliza-1-4b",
     speculative_window: 10,
   },
-  ctx_size_tokens: 1048576,
+  ctx_size_tokens: 262144,
   notes:
-    "141 GB HBM3e. SXM5 form factor. Best fit is the native native 27B 256k bundle in the single-GPU profile. DFlash uses the 4B drafter for high throughput.",
+    "141 GB HBM3e. SXM5 form factor. Best fit is the 27B 256k bundle (262k natural context). DFlash uses the 4B drafter for high throughput.",
 };
 
 // ---------------------------------------------------------------------------

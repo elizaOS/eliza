@@ -56,11 +56,6 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
-    "./agent-bridge": {
-      "types": "./dist/agent-bridge.d.ts",
-      "import": "./dist/agent-bridge.js",
-      "default": "./dist/agent-bridge.js"
-    },
     "./platform/native-plugin-entrypoints": {
       "types": "./dist/platform/native-plugin-entrypoints.d.ts",
       "import": "./dist/platform/native-plugin-entrypoints.js",

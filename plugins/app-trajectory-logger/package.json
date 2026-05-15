@@ -28,6 +28,8 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
+    "@elizaos/app-core": "workspace:*",
+    "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },
@@ -51,8 +53,6 @@
     "assets"
   ],
   "devDependencies": {
-    "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
-    "vitest": "^4.0.17"
+    "tsup": "^8.5.1"
   }
 }

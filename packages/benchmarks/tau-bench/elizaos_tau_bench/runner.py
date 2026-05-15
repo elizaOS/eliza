@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -224,12 +225,11 @@ class TauBenchRunner:
     # --- Public API ------------------------------------------------------
 
     def run(self) -> BenchmarkReport:
+        previous_data_mode = os.environ.get("TAU_BENCH_DATA_MODE")
         if self.config.use_sample_tasks:
-            task_iter = iter_sample_tasks(
-                self.config.domains,
-                self.config.task_split,
-                max_per_domain=self.config.max_tasks_per_domain,
-            )
+            os.environ["TAU_BENCH_DATA_MODE"] = "smoke"
+        if self.config.use_sample_tasks:
+            task_iter = iter_sample_tasks(self.config.domains, self.config.task_split)
         else:
             task_iter = iter_tasks(
                 domains=self.config.domains,
@@ -239,64 +239,70 @@ class TauBenchRunner:
                 end_index=self.config.end_index,
                 max_per_domain=self.config.max_tasks_per_domain,
             )
-        task_list = list(task_iter)
-        if not task_list:
-            raise ValueError("No tasks selected — check --domains / --task-ids / --split")
+        try:
+            task_list = list(task_iter)
+            if not task_list:
+                raise ValueError("No tasks selected — check --domains / --task-ids / --split")
 
-        agent = self._make_agent()
+            agent = self._make_agent()
 
-        results: list[TaskRunResult] = []
-        domain_results: dict[str, list[TaskRunResult]] = {}
-        start_ts = time.time()
-        total = len(task_list) * self.config.num_trials
-        logger.info(
-            "Running tau-bench: %d tasks × %d trials = %d rollouts",
-            len(task_list),
-            self.config.num_trials,
-            total,
-        )
+            results: list[TaskRunResult] = []
+            domain_results: dict[str, list[TaskRunResult]] = {}
+            start_ts = time.time()
+            total = len(task_list) * self.config.num_trials
+            logger.info(
+                "Running tau-bench: %d tasks × %d trials = %d rollouts",
+                len(task_list),
+                self.config.num_trials,
+                total,
+            )
 
-        done = 0
-        for domain, task_index, task in task_list:
-            for trial in range(self.config.num_trials):
-                r = self._run_trial(domain, task_index, task, trial, agent)
-                results.append(r)
-                domain_results.setdefault(domain, []).append(r)
-                done += 1
-                logger.info(
-                    "[%d/%d] %s#%d trial=%d reward=%.2f success=%s",
-                    done,
-                    total,
-                    domain,
-                    task_index,
-                    trial,
-                    r.reward,
-                    r.success,
-                )
+            done = 0
+            for domain, task_index, task in task_list:
+                for trial in range(self.config.num_trials):
+                    r = self._run_trial(domain, task_index, task, trial, agent)
+                    results.append(r)
+                    domain_results.setdefault(domain, []).append(r)
+                    done += 1
+                    logger.info(
+                        "[%d/%d] %s#%d trial=%d reward=%.2f success=%s",
+                        done,
+                        total,
+                        domain,
+                        task_index,
+                        trial,
+                        r.reward,
+                        r.success,
+                    )
 
-        # Pass^k aggregation
-        pass_k: dict[int, PassKResult] = {}
-        for k in self.config.pass_k_values:
-            pk, num_tasks = calculate_pass_hat_k(results, k)
-            pass_k[k] = PassKResult(k=k, num_tasks=num_tasks, pass_hat_k=pk)
+            # Pass^k aggregation
+            pass_k: dict[int, PassKResult] = {}
+            for k in self.config.pass_k_values:
+                pk, num_tasks = calculate_pass_hat_k(results, k)
+                pass_k[k] = PassKResult(k=k, num_tasks=num_tasks, pass_hat_k=pk)
 
-        avg_reward = sum(r.reward for r in results) / len(results) if results else 0.0
+            avg_reward = sum(r.reward for r in results) / len(results) if results else 0.0
 
-        report = BenchmarkReport(
-            config=self.config,
-            results=results,
-            pass_k=pass_k,
-            avg_reward=avg_reward,
-            num_tasks=len(task_list),
-            num_trials_per_task=self.config.num_trials,
-            domain_results=domain_results,
-        )
+            report = BenchmarkReport(
+                config=self.config,
+                results=results,
+                pass_k=pass_k,
+                avg_reward=avg_reward,
+                num_tasks=len(task_list),
+                num_trials_per_task=self.config.num_trials,
+                domain_results=domain_results,
+            )
 
-        # Persist
-        self._save_report(report)
-        elapsed = time.time() - start_ts
-        logger.info("Done in %.1fs. Avg reward=%.3f", elapsed, avg_reward)
-        return report
+            # Persist
+            self._save_report(report)
+            elapsed = time.time() - start_ts
+            logger.info("Done in %.1fs. Avg reward=%.3f", elapsed, avg_reward)
+            return report
+        finally:
+            if previous_data_mode is None:
+                os.environ.pop("TAU_BENCH_DATA_MODE", None)
+            else:
+                os.environ["TAU_BENCH_DATA_MODE"] = previous_data_mode
 
     def _save_report(self, report: BenchmarkReport) -> None:
         out_dir = Path(self.config.output_dir)

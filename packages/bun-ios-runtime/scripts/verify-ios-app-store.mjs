@@ -105,61 +105,6 @@ function parsePlist(file) {
   }
 }
 
-function xcframeworkLibrarySlice(entry) {
-  if (!entry || entry.SupportedPlatform !== "ios") return null;
-  return entry.SupportedPlatformVariant === "simulator"
-    ? "simulator"
-    : "device";
-}
-
-function describeXcframeworkLibrariesFromInfo(info) {
-  const libraries = Array.isArray(info.AvailableLibraries)
-    ? info.AvailableLibraries
-    : [];
-  return libraries
-    .map(
-      (entry) =>
-        `${entry?.SupportedPlatform ?? "unknown"}${
-          entry?.SupportedPlatformVariant
-            ? `-${entry.SupportedPlatformVariant}`
-            : ""
-        }/${entry?.LibraryIdentifier ?? "missing-id"}`,
-    )
-    .join(", ");
-}
-
-function missingRequiredSlicesFromInfo(info, requiredSlices) {
-  const required = Array.from(new Set(requiredSlices)).filter(Boolean);
-  if (required.length === 0) return [];
-  const libraries = Array.isArray(info.AvailableLibraries)
-    ? info.AvailableLibraries
-    : [];
-  const available = new Set(
-    libraries.map((entry) => xcframeworkLibrarySlice(entry)).filter(Boolean),
-  );
-  return required.filter((slice) => !available.has(slice));
-}
-
-function parseRequiredSlices(raw) {
-  if (!raw) return [];
-  const out = [];
-  for (const part of String(raw).split(",")) {
-    const value = part.trim().toLowerCase();
-    if (!value) continue;
-    if (value === "all") {
-      out.push("device", "simulator");
-      continue;
-    }
-    if (value !== "device" && value !== "simulator") {
-      fail(
-        `invalid --require-slices value ${value}; expected device, simulator, or all`,
-      );
-    }
-    out.push(value);
-  }
-  return Array.from(new Set(out));
-}
-
 function frameworkBinary(frameworkDir) {
   return path.join(frameworkDir, frameworkName);
 }
@@ -170,13 +115,23 @@ function selectXcframeworkLibraries(root, { target = "device" } = {}) {
     ? info.AvailableLibraries
     : [];
   const selected = libraries.filter((entry) => {
-    const slice = xcframeworkLibrarySlice(entry);
-    if (!slice) return false;
+    if (!entry || entry.SupportedPlatform !== "ios") return false;
+    const variant = entry.SupportedPlatformVariant;
     if (target === "all") return true;
-    return slice === target;
+    if (target === "simulator") return variant === "simulator";
+    return !variant;
   });
   if (selected.length === 0) {
-    const available = describeXcframeworkLibrariesFromInfo(info);
+    const available = libraries
+      .map(
+        (entry) =>
+          `${entry?.SupportedPlatform ?? "unknown"}${
+            entry?.SupportedPlatformVariant
+              ? `-${entry.SupportedPlatformVariant}`
+              : ""
+          }/${entry?.LibraryIdentifier ?? "missing-id"}`,
+      )
+      .join(", ");
     fail(
       `${root} does not contain an iOS ${target} ElizaBunEngine library. Available: ${
         available || "none"
@@ -190,22 +145,9 @@ function selectXcframeworkLibraries(root, { target = "device" } = {}) {
         : `${frameworkName}.framework`;
     return {
       id: entry.LibraryIdentifier,
-      slice: xcframeworkLibrarySlice(entry),
       frameworkDir: path.join(root, entry.LibraryIdentifier, rel),
     };
   });
-}
-
-function validateRequiredXcframeworkSlices(root, requiredSlices) {
-  const info = parsePlist(path.join(root, "Info.plist"));
-  const missing = missingRequiredSlicesFromInfo(info, requiredSlices);
-  if (missing.length === 0) return;
-  const available = describeXcframeworkLibrariesFromInfo(info);
-  fail(
-    `${root} is missing required ElizaBunEngine XCFramework slice(s): ${missing.join(
-      ", ",
-    )}. Available: ${available || "none"}`,
-  );
 }
 
 function validateFrameworkMetadata(frameworkDir) {
@@ -450,24 +392,9 @@ function validateAppNetworkPolicy(appPath) {
   );
 }
 
-function validateXcframework(root, { target = "device", requiredSlices = [] } = {}) {
+function validateXcframework(root, { target = "device" } = {}) {
   if (!fs.existsSync(root)) fail(`${root} does not exist`);
-  validateRequiredXcframeworkSlices(root, requiredSlices);
-  const selectedLibraries = selectXcframeworkLibraries(root, { target });
-  const requiredLibraries =
-    requiredSlices.length > 0
-      ? selectXcframeworkLibraries(root, { target: "all" }).filter((library) =>
-          requiredSlices.includes(library.slice),
-        )
-      : [];
-  const libraries = [
-    ...new Map(
-      [...selectedLibraries, ...requiredLibraries].map((library) => [
-        library.frameworkDir,
-        library,
-      ]),
-    ).values(),
-  ];
+  const libraries = selectXcframeworkLibraries(root, { target });
   if (libraries.length === 0) fail(`${root} has no AvailableLibraries`);
   for (const library of libraries) {
     validateFramework(library.frameworkDir);
@@ -543,14 +470,11 @@ function main() {
     "--xcframework",
     process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK || defaultXcframework,
   );
-  const requiredSlices = parseRequiredSlices(
-    argValue("--require-slices", process.env.ELIZA_IOS_REQUIRE_XCFRAMEWORK_SLICES || ""),
-  );
 
   if (app) {
     validateApp(path.resolve(app));
   } else {
-    validateXcframework(path.resolve(xcframework), { target, requiredSlices });
+    validateXcframework(path.resolve(xcframework), { target });
   }
 }
 
@@ -562,16 +486,9 @@ if (
 }
 
 export {
-  describeXcframeworkLibrariesFromInfo,
   findUnsafeNetworkPolicyFindings,
   isPrivateOrLoopbackPolicyHost,
   isUnsafeAllowNavigationEntry,
   isUnsafeNetworkUrlLiteral,
-  missingRequiredSlicesFromInfo,
-  parseRequiredSlices,
   validateAppNetworkPolicy,
-  validateFramework,
-  validateUnsafeRuntimeBinary,
-  validateXcframework,
-  xcframeworkLibrarySlice,
 };

@@ -21,6 +21,7 @@ from .db import (
 )
 from .random_baseline_runner import CALIBRATION_HARNESSES, SYNTHETIC_HARNESSES
 from .runner import _rebuild_latest_result_snapshots, _repair_current_compatibility_statuses, run_benchmarks
+from .matrix_validation import build_cross_matrix_report, report_to_json, report_to_markdown
 from .types import RunRequest
 from .viewer_server import serve_viewer
 from .viewer_data import build_viewer_dataset
@@ -37,6 +38,38 @@ def _parse_json_arg(raw: str | None) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError("--extra must be a JSON object")
     return value
+
+
+def _profile_path(workspace_root: Path, raw: str) -> Path:
+    value = raw.strip()
+    candidate = Path(value)
+    if candidate.exists():
+        return candidate
+    profiles_root = workspace_root / "benchmarks" / "orchestrator" / "profiles"
+    name = value if value.endswith(".json") else f"{value}.json"
+    return profiles_root / name
+
+
+def _apply_model_profile(args: argparse.Namespace, workspace_root: Path) -> None:
+    raw = getattr(args, "model_profile", None)
+    if not raw:
+        return
+    path = _profile_path(workspace_root, str(raw))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("--model-profile must point to a JSON object")
+    provider = data.get("provider")
+    model = data.get("model")
+    if isinstance(provider, str) and provider.strip():
+        args.provider = provider.strip()
+    if isinstance(model, str) and model.strip():
+        args.model = model.strip()
+    extra = data.get("extra")
+    if isinstance(extra, dict):
+        current = _parse_json_arg(args.extra)
+        merged = dict(extra)
+        merged.update(current)
+        args.extra = json.dumps(merged, ensure_ascii=True)
 
 
 def _build_request(args: argparse.Namespace, adapters: dict[str, Any]) -> RunRequest:
@@ -82,8 +115,25 @@ def _cmd_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_validate_matrix(args: argparse.Namespace) -> int:
+    workspace_root = _workspace_root_from_here()
+    _apply_model_profile(args, workspace_root)
+    report = build_cross_matrix_report(
+        workspace_root.parent,
+        provider=args.provider,
+        model=args.model,
+        extra_config=_parse_json_arg(args.extra),
+    )
+    if args.format == "json":
+        print(report_to_json(report))
+    else:
+        print(report_to_markdown(report))
+    return 1 if report.error_count else 0
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     workspace_root = _workspace_root_from_here()
+    _apply_model_profile(args, workspace_root)
     discovery = discover_adapters(workspace_root)
     request = _build_request(args, discovery.adapters)
     harnesses = _selected_harnesses(args)
@@ -639,6 +689,21 @@ def build_parser() -> argparse.ArgumentParser:
     p_list = sub.add_parser("list-benchmarks", help="Show integrated benchmark adapters and coverage")
     p_list.set_defaults(func=_cmd_list)
 
+    p_matrix = sub.add_parser(
+        "validate-matrix",
+        help="Dry-run validate adapter/harness command, env, locator, and trajectory contracts",
+    )
+    p_matrix.add_argument("--provider", default="cerebras", help="Model provider")
+    p_matrix.add_argument("--model", default="gpt-oss-120b", help="Model name")
+    p_matrix.add_argument(
+        "--model-profile",
+        default=None,
+        help="Model profile JSON path or name under benchmarks/orchestrator/profiles",
+    )
+    p_matrix.add_argument("--extra", default=None, help="JSON object merged into every dry-run request")
+    p_matrix.add_argument("--format", choices=("markdown", "json"), default="markdown")
+    p_matrix.set_defaults(func=_cmd_validate_matrix)
+
     p_run = sub.add_parser("run", help="Run one or more benchmarks idempotently")
     p_run.add_argument("--all", action="store_true", help="Run all integrated benchmarks")
     p_run.add_argument(
@@ -671,6 +736,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_run.add_argument("--provider", default="cerebras", help="Model provider")
     p_run.add_argument("--model", default="gpt-oss-120b", help="Model name")
+    p_run.add_argument(
+        "--model-profile",
+        default=None,
+        help=(
+            "Model profile JSON path or name under benchmarks/orchestrator/profiles. "
+            "Profile provider/model override --provider/--model; CLI --extra overrides profile extra."
+        ),
+    )
     p_run.add_argument("--extra", default=None, help="JSON object with benchmark-specific options")
     p_run.add_argument("--resume", action="store_true", help="Alias for idempotent run behavior")
     p_run.add_argument("--rerun-failed", action="store_true", help="Only re-run failed signatures")

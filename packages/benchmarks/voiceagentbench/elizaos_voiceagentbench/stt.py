@@ -73,22 +73,15 @@ class GroqWhisperSTT:
         return text
 
 
-class FixtureSTT:
-    """Deterministic fixture backend that returns the task transcript.
-
-    This is only for local smoke tests and fixture-only CI. Real benchmark
-    runs should use Groq Whisper or a direct-audio adapter so transcript
-    leakage is not silently mixed into reported scores.
-    """
+class FixtureTranscriptSTT:
+    """No-cost STT backend for annotated fixture records."""
 
     def transcribe(self, query: AudioQuery) -> str:
-        if not query.transcript.strip():
-            raise RuntimeError("FixtureSTT requires a non-empty transcript.")
         return query.transcript
 
 
-def build_stt(*, fixture: bool = False) -> STTBackend:
-    """Build the configured STT backend."""
-    if fixture:
-        return FixtureSTT()
+def build_stt(*, mock: bool = False) -> STTBackend:
+    """Build the real STT backend."""
+    if mock:
+        return FixtureTranscriptSTT()
     return GroqWhisperSTT()

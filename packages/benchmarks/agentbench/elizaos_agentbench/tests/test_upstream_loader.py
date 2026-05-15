@@ -31,11 +31,11 @@ def _assert_valid_tasks(tasks: list[AgentBenchTask], env: E, expected_min: int =
 class TestDatabaseLoader:
     def test_dev_split(self) -> None:
         tasks = L.load_db_tasks(split="dev", limit=5)
-        _assert_valid_tasks(tasks, E.DATABASE, expected_min=5)
+        _assert_valid_tasks(tasks, E.DATABASE, expected_min=5 if L.is_full_data_available() else 1)
 
     def test_test_split_truncated(self) -> None:
         tasks = L.load_db_tasks(split="test", limit=3)
-        _assert_valid_tasks(tasks, E.DATABASE, expected_min=3)
+        _assert_valid_tasks(tasks, E.DATABASE, expected_min=3 if L.is_full_data_available() else 1)
         # Each db task carries the upstream "label" + type for scoring.
         for t in tasks:
             assert "type" in t.metadata
@@ -45,7 +45,7 @@ class TestDatabaseLoader:
 class TestKnowledgeGraphLoader:
     def test_dev_split(self) -> None:
         tasks = L.load_kg_tasks(split="dev", limit=5)
-        _assert_valid_tasks(tasks, E.KNOWLEDGE_GRAPH, expected_min=5)
+        _assert_valid_tasks(tasks, E.KNOWLEDGE_GRAPH, expected_min=5 if L.is_full_data_available() else 1)
         # gold_ids / gold_names are needed for upstream's set-equality scoring.
         for t in tasks:
             assert "gold_ids" in t.metadata
@@ -55,7 +55,7 @@ class TestKnowledgeGraphLoader:
 class TestOSLoader:
     def test_dev_split(self) -> None:
         tasks = L.load_os_tasks(split="dev", limit=3)
-        _assert_valid_tasks(tasks, E.OS, expected_min=3)
+        _assert_valid_tasks(tasks, E.OS, expected_min=3 if L.is_full_data_available() else 1)
         # Each task carries the upstream evaluation block (match / check).
         for t in tasks:
             assert "evaluation" in t.metadata
@@ -64,7 +64,7 @@ class TestOSLoader:
 class TestLTPLoader:
     def test_dev_split(self) -> None:
         tasks = L.load_ltp_tasks(split="dev", limit=3)
-        _assert_valid_tasks(tasks, E.LATERAL_THINKING, expected_min=3)
+        _assert_valid_tasks(tasks, E.LATERAL_THINKING, expected_min=3 if L.is_full_data_available() else 1)
         for t in tasks:
             assert t.ground_truth  # upstream "answer" / 汤底
 
@@ -107,3 +107,14 @@ class TestDispatcher:
     def test_invalid_split_raises(self) -> None:
         with pytest.raises(ValueError):
             L.load_db_tasks(split="train")
+
+    def test_fixture_mode_is_explicit_and_compact(self) -> None:
+        tasks = L.load_tasks(E.DATABASE, split="dev", limit=5, data_mode="fixture")
+        _assert_valid_tasks(tasks, E.DATABASE, expected_min=1)
+        assert len(tasks) == 1
+        assert tasks[0].metadata["source"] == "agentbench-fixture"
+
+    def test_full_mode_requires_upstream_data_when_missing(self, monkeypatch) -> None:
+        monkeypatch.setattr(L, "UPSTREAM_DATA", L.UPSTREAM_ROOT / "definitely-missing-data")
+        with pytest.raises(L.UpstreamDataMissingError):
+            L.load_tasks(E.DATABASE, split="dev", limit=1, data_mode="full")

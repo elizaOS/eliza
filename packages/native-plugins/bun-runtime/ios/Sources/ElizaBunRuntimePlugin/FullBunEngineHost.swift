@@ -22,10 +22,9 @@ private let fullBunHostCallCallback: @convention(c) (
 /// Host for the real Bun iOS engine framework.
 ///
 /// Full-engine/App Store builds link `ElizaBunEngine.xcframework` directly so
-/// the shipped app does not import dynamic loader APIs. Builds that do not set
-/// `ELIZA_IOS_FULL_BUN_ENGINE=1` report this host as unavailable; `engine:
-/// "bun"` then fails closed, and `engine: "auto"` may use the DEBUG-only
-/// JSContext compatibility path.
+/// the shipped app does not import dynamic loader APIs. Compatibility builds
+/// keep the optional loader path so the JSContext bridge can still run in DEBUG
+/// development builds without embedding the full engine framework.
 ///
 /// IPC security model (full-Bun path):
 /// - Transport: NDJSON over anonymous stdio pipes. No TCP port is opened by the
@@ -78,6 +77,9 @@ final class FullBunEngineHost {
     private typealias FreeFn = @convention(c) (UnsafeMutableRawPointer?) -> Void
 
     private var loaded = false
+#if !ELIZA_IOS_FULL_BUN_ENGINE
+    private var handle: UnsafeMutableRawPointer?
+#endif
     private var abiVersionFn: AbiVersionFn?
     private var lastErrorFn: LastErrorFn?
     private var setHostCallbackFn: SetHostCallbackFn?
@@ -232,7 +234,46 @@ final class FullBunEngineHost {
             freeFn: loadedFreeFn
         )
 #else
-        throw makeError("ElizaBunEngine is not linked; rebuild with ELIZA_IOS_FULL_BUN_ENGINE=1")
+        let binaryPath = try locateFrameworkBinary()
+        guard let openedHandle = dlopen(binaryPath, RTLD_NOW | RTLD_LOCAL) else {
+            throw makeError(String(cString: dlerror()))
+        }
+        do {
+            let loadedAbiVersionFn: AbiVersionFn = try symbol(
+                "eliza_bun_engine_abi_version",
+                in: openedHandle
+            )
+            let loadedLastErrorFn: LastErrorFn = try symbol(
+                "eliza_bun_engine_last_error",
+                in: openedHandle
+            )
+            let loadedSetHostCallbackFn: SetHostCallbackFn = try symbol(
+                "eliza_bun_engine_set_host_callback",
+                in: openedHandle
+            )
+            let loadedStartFn: StartFn = try symbol("eliza_bun_engine_start", in: openedHandle)
+            let loadedStopFn: StopFn = try symbol("eliza_bun_engine_stop", in: openedHandle)
+            let loadedIsRunningFn: IsRunningFn = try symbol(
+                "eliza_bun_engine_is_running",
+                in: openedHandle
+            )
+            let loadedCallFn: CallFn = try symbol("eliza_bun_engine_call", in: openedHandle)
+            let loadedFreeFn: FreeFn = try symbol("eliza_bun_engine_free", in: openedHandle)
+            try installLoadedEngineSymbols(
+                abiVersionFn: loadedAbiVersionFn,
+                lastErrorFn: loadedLastErrorFn,
+                setHostCallbackFn: loadedSetHostCallbackFn,
+                startFn: loadedStartFn,
+                stopFn: loadedStopFn,
+                isRunningFn: loadedIsRunningFn,
+                callFn: loadedCallFn,
+                freeFn: loadedFreeFn
+            )
+            self.handle = openedHandle
+        } catch {
+            _ = dlclose(openedHandle)
+            throw error
+        }
 #endif
     }
 
@@ -270,6 +311,32 @@ final class FullBunEngineHost {
         self.freeFn = loadedFreeFn
         self.loaded = true
     }
+
+#if !ELIZA_IOS_FULL_BUN_ENGINE
+    private func locateFrameworkBinary() throws -> String {
+        let relative = "ElizaBunEngine.framework/ElizaBunEngine"
+        let candidates = [
+            Bundle.main.privateFrameworksURL?.appendingPathComponent(relative).path,
+            Bundle.main.bundleURL.appendingPathComponent("Frameworks").appendingPathComponent(relative).path,
+            Bundle.main.url(
+                forResource: "ElizaBunEngine",
+                withExtension: nil,
+                subdirectory: "Frameworks/ElizaBunEngine.framework"
+            )?.path,
+        ].compactMap { $0 }
+        for candidate in candidates where FileManager.default.fileExists(atPath: candidate) {
+            return candidate
+        }
+        throw makeError("ElizaBunEngine.framework is not embedded in the app bundle")
+    }
+
+    private func symbol<T>(_ name: String, in handle: UnsafeMutableRawPointer) throws -> T {
+        guard let pointer = dlsym(handle, name) else {
+            throw makeError("ElizaBunEngine missing symbol \(name)")
+        }
+        return unsafeBitCast(pointer, to: T.self)
+    }
+#endif
 
     private func encodeJSON(_ value: Any) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: value)

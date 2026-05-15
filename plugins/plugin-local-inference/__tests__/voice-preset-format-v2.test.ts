@@ -58,9 +58,9 @@ describe("voice-preset-format v2", () => {
 		const refText = "Yeah, I've been trying to figure out how to talk to you.";
 		const instruct = "young adult female, warm, soft, neutral us-american";
 		const metadata = {
-			voiceId: "samantha",
+			voiceId: "sam",
 			generator: "freeze-voice.mjs",
-			referenceClipIds: ["samantha_001", "samantha_003"],
+			referenceClipIds: ["same_001", "same_003"],
 			referenceSeconds: 13.48,
 		};
 		const bytes = writeVoicePresetFileV2({
@@ -79,7 +79,7 @@ describe("voice-preset-format v2", () => {
 		}
 		expect(parsed.refText).toBe(refText);
 		expect(parsed.instruct).toBe(instruct);
-		expect(parsed.metadata.voiceId).toBe("samantha");
+		expect(parsed.metadata.voiceId).toBe("sam");
 		expect(parsed.metadata.referenceSeconds).toBe(13.48);
 	});
 

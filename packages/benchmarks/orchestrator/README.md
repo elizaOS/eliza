@@ -92,6 +92,24 @@ Profile included in repo:
   matrix profile for `swe_bench_orchestrated`, `gaia_orchestrated`, and
   `orchestrator_lifecycle`.
 
+Model profiles included in repo:
+
+- `benchmarks/orchestrator/profiles/cerebras-gpt-oss-120b.json`
+- `benchmarks/orchestrator/profiles/gpt-5.5.json`
+- `benchmarks/orchestrator/profiles/claude-sonnet.json`
+- `benchmarks/orchestrator/profiles/claude-opus.json`
+
+Use them with `--model-profile`; benchmark `--extra` can still be combined
+and overrides any profile `extra` keys:
+
+```bash
+/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
+  --benchmarks bfcl \
+  --agent eliza \
+  --model-profile cerebras-gpt-oss-120b \
+  --extra '{"per_benchmark":{"bfcl":{"sample":10}}}'
+```
+
 ## Orchestrated Subagent Tracks
 
 New orchestrator-centric benchmark IDs:

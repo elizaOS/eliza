@@ -253,60 +253,23 @@ def _resolve_telemetry_path() -> str | None:
 def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
     def pick(*keys: str) -> int | None:
         for key in keys:
-            value = _usage_int(usage.get(key))
-            if value is not None:
-                return value
+            value = usage.get(key)
+            if isinstance(value, (int, float)) and value:
+                return int(value)
         return None
-
-    def pick_from_details(detail_keys: Sequence[str], field_keys: Sequence[str]) -> int | None:
-        for detail_key in detail_keys:
-            detail = usage.get(detail_key)
-            if not isinstance(detail, Mapping):
-                continue
-            for field_key in field_keys:
-                value = _usage_int(detail.get(field_key))
-                if value is not None:
-                    return value
-        return None
-
-    cache_read_input_tokens = pick(
-        "cache_read_input_tokens",
-        "cachedTokens",
-        "cached_tokens",
-        "cacheRead",
-    )
-    if cache_read_input_tokens is None:
-        cache_read_input_tokens = pick_from_details(
-            ("prompt_tokens_details", "input_token_details"),
-            ("cached_tokens", "cachedTokens", "cache_read_input_tokens"),
-        )
-
-    cache_creation_input_tokens = pick(
-        "cache_creation_input_tokens",
-        "cacheCreationInputTokens",
-        "cache_write_tokens",
-        "cacheWriteTokens",
-        "cacheWrite",
-    )
-    if cache_creation_input_tokens is None:
-        cache_creation_input_tokens = pick_from_details(
-            ("prompt_tokens_details", "input_token_details"),
-            (
-                "cache_creation_input_tokens",
-                "cacheCreationInputTokens",
-                "cache_write_tokens",
-                "cacheWriteTokens",
-            ),
-        )
 
     return {
-        "prompt_tokens": pick("prompt_tokens", "promptTokens", "input_tokens", "input"),
+        "prompt_tokens": pick("prompt_tokens", "promptTokens", "input_tokens"),
         "completion_tokens": pick(
-            "completion_tokens", "completionTokens", "output_tokens", "output"
+            "completion_tokens", "completionTokens", "output_tokens"
         ),
-        "total_tokens": pick("total_tokens", "totalTokens", "total"),
-        "cache_read_input_tokens": cache_read_input_tokens,
-        "cache_creation_input_tokens": cache_creation_input_tokens,
+        "total_tokens": pick("total_tokens", "totalTokens"),
+        "cache_read_input_tokens": pick(
+            "cache_read_input_tokens", "cachedTokens", "cached_tokens"
+        ),
+        "cache_creation_input_tokens": pick(
+            "cache_creation_input_tokens", "cacheCreationInputTokens"
+        ),
     }
 
 
@@ -330,11 +293,11 @@ def _write_telemetry(
     if response is not None:
         usage_raw = response.params.get("usage")
         if isinstance(usage_raw, Mapping):
-            usage = _normalize_usage(usage_raw)
+            usage = dict(usage_raw)
         else:
             meta_raw = response.params.get("_meta")
             if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
-                usage = _normalize_usage(meta_raw["usage"])  # type: ignore[index]
+                usage = dict(meta_raw["usage"])  # type: ignore[index]
     prompt = _prompt_text(text, context)
     global _TELEMETRY_TURN_COUNTER
     turn_index = _TELEMETRY_TURN_COUNTER
@@ -476,14 +439,10 @@ class OpenClawClient:
 
     def is_ready(self) -> bool:
         """Cheap synchronous readiness check."""
-        if self.direct_openai_compatible:
-            return True
         return self.health().get("status") == "ready"
 
     def wait_until_ready(self, timeout: float = 60.0, poll: float = 1.0) -> None:
         """Block until the binary becomes available or *timeout* elapses."""
-        if self.direct_openai_compatible:
-            return
         deadline = time.monotonic() + float(timeout)
         last_err: object = f"binary missing at {self.binary_path}"
         while time.monotonic() < deadline:
@@ -1137,83 +1096,51 @@ def _usage_from_meta(payload: Mapping[str, object]) -> dict[str, object]:
     return {}
 
 
-def _usage_int(value: object) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return int(value)
-    return None
-
-
 def _normalize_usage(usage: Mapping[str, object]) -> dict[str, object]:
-    def pick(*keys: str) -> int | None:
-        for key in keys:
-            value = _usage_int(usage.get(key))
-            if value is not None:
-                return value
-        return None
-
-    input_tokens = pick("prompt_tokens", "input_tokens", "input", "promptTokens")
-    output_tokens = pick(
-        "completion_tokens",
-        "output_tokens",
-        "output",
-        "completionTokens",
+    input_tokens = (
+        usage.get("prompt_tokens")
+        or usage.get("input_tokens")
+        or usage.get("input")
+        or usage.get("promptTokens")
+        or 0
     )
-    total = pick("total_tokens", "total", "totalTokens")
+    output_tokens = (
+        usage.get("completion_tokens")
+        or usage.get("output_tokens")
+        or usage.get("output")
+        or usage.get("completionTokens")
+        or 0
+    )
+    total = usage.get("total_tokens") or usage.get("total") or usage.get("totalTokens") or 0
     details = usage.get("prompt_tokens_details")
     details_map = details if isinstance(details, Mapping) else {}
-    cache_read = pick(
-        "cache_read_input_tokens",
-        "cached_tokens",
-        "cachedTokens",
-        "cacheRead",
+    cache_read = (
+        usage.get("cache_read_input_tokens")
+        or usage.get("cached_tokens")
+        or usage.get("cacheRead")
+        or details_map.get("cached_tokens")
+        or details_map.get("cache_read_input_tokens")
+        or 0
     )
-    if cache_read is None:
-        cache_read = _usage_int(details_map.get("cached_tokens"))
-    if cache_read is None:
-        cache_read = _usage_int(details_map.get("cachedTokens"))
-    if cache_read is None:
-        cache_read = _usage_int(details_map.get("cache_read_input_tokens"))
-    cache_write = pick(
-        "cache_creation_input_tokens",
-        "cacheCreationInputTokens",
-        "cache_write_tokens",
-        "cacheWriteTokens",
-        "cacheWrite",
+    cache_write = (
+        usage.get("cache_creation_input_tokens")
+        or usage.get("cache_write_tokens")
+        or usage.get("cacheWrite")
+        or details_map.get("cache_creation_input_tokens")
+        or details_map.get("cache_write_tokens")
+        or 0
     )
-    if cache_write is None:
-        cache_write = _usage_int(details_map.get("cache_creation_input_tokens"))
-    if cache_write is None:
-        cache_write = _usage_int(details_map.get("cacheCreationInputTokens"))
-    if cache_write is None:
-        cache_write = _usage_int(details_map.get("cache_write_tokens"))
-    if cache_write is None:
-        cache_write = _usage_int(details_map.get("cacheWriteTokens"))
-    if cache_write is None:
-        cache_write = _usage_int(details_map.get("cacheWrite"))
-    if total is None and input_tokens is not None and output_tokens is not None:
-        total = input_tokens + output_tokens
-    if not any(
-        value is not None
-        for value in (input_tokens, output_tokens, total, cache_read, cache_write)
-    ):
+    if not any((input_tokens, output_tokens, total, cache_read, cache_write)):
         return {}
-    prompt_details: dict[str, object] = {}
-    if cache_read is not None:
-        prompt_details["cached_tokens"] = cache_read
-    if cache_write is not None:
-        prompt_details["cache_write_tokens"] = cache_write
-    normalized: dict[str, object] = {}
-    if input_tokens is not None:
-        normalized["prompt_tokens"] = input_tokens
-    if output_tokens is not None:
-        normalized["completion_tokens"] = output_tokens
-    if total is not None:
-        normalized["total_tokens"] = total
-    if prompt_details:
-        normalized["prompt_tokens_details"] = prompt_details
-    return normalized
+    return {
+        "prompt_tokens": input_tokens,
+        "completion_tokens": output_tokens,
+        "total_tokens": total,
+        "prompt_tokens_details": {
+            "cached_tokens": cache_read,
+            "cache_write_tokens": cache_write,
+        },
+    }
 
 
 def _collect_tool_calls(payload: Mapping[str, object]) -> list[dict[str, object]]:

@@ -12,7 +12,7 @@ const PRIMARY_INVENTORY_CHAIN_KEYS = [
   "solana",
 ] as const satisfies readonly PrimaryInventoryChainKey[];
 
-const DEFAULT_INVENTORY_CHAIN_FILTERS: InventoryChainFilters = {
+export const DEFAULT_INVENTORY_CHAIN_FILTERS: InventoryChainFilters = {
   ethereum: true,
   base: true,
   bsc: true,
@@ -52,11 +52,19 @@ export function computeSingleChainFocus(
   return enabled.length === 1 ? enabled[0] : null;
 }
 
-function normalizeInventoryChainFilters(
+export function normalizeInventoryChainFilters(
   filters: InventoryChainFilterState,
 ): InventoryChainFilters {
   return {
     ...DEFAULT_INVENTORY_CHAIN_FILTERS,
     ...filters,
   };
+}
+
+export function toggleInventoryChainFilter(
+  filters: InventoryChainFilterState,
+  key: PrimaryInventoryChainKey,
+): InventoryChainFilters {
+  const normalizedFilters = normalizeInventoryChainFilters(filters);
+  return { ...normalizedFilters, [key]: !normalizedFilters[key] };
 }
