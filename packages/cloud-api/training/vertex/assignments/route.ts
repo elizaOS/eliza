@@ -20,13 +20,17 @@ function parseScope(value: unknown): "global" | "organization" | "user" {
 }
 
 function parseSlot(value: unknown): VertexTuningSlot | undefined {
-  return typeof value === "string" ? VERTEX_TUNING_SLOTS.find((slot) => slot === value) : undefined;
+  return typeof value === "string"
+    ? VERTEX_TUNING_SLOTS.find((slot) => slot === value)
+    : undefined;
 }
 
 async function ensureGlobalAccess(request: Request): Promise<void> {
   const admin = await requireAdmin(request);
   if (admin.role !== "super_admin") {
-    throw new Error("Global tuned-model assignments require super-admin access.");
+    throw new Error(
+      "Global tuned-model assignments require super-admin access.",
+    );
   }
 }
 
@@ -59,7 +63,10 @@ async function __hono_GET(request: Request) {
   } catch (error) {
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "Failed to list tuned-model assignments",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to list tuned-model assignments",
       },
       { status: 500 },
     );
@@ -69,7 +76,10 @@ async function __hono_GET(request: Request) {
 async function __hono_POST(request: Request) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
-    const body = ((await request.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+    const body = ((await request.json().catch(() => ({}))) ?? {}) as Record<
+      string,
+      unknown
+    >;
     const scope = parseScope(body.scope);
 
     if (scope === "global") {
@@ -77,7 +87,8 @@ async function __hono_POST(request: Request) {
     }
 
     const slot = parseSlot(body.slot);
-    const tunedModelId = typeof body.tunedModelId === "string" ? body.tunedModelId : undefined;
+    const tunedModelId =
+      typeof body.tunedModelId === "string" ? body.tunedModelId : undefined;
 
     if (typeof body.slot === "string" && !slot) {
       return Response.json({ error: "Invalid slot." }, { status: 400 });
@@ -100,7 +111,9 @@ async function __hono_POST(request: Request) {
       userId: scope === "user" ? user.id : undefined,
       assignedByUserId: user.id,
       metadata:
-        body.metadata && typeof body.metadata === "object" && !Array.isArray(body.metadata)
+        body.metadata &&
+        typeof body.metadata === "object" &&
+        !Array.isArray(body.metadata)
           ? (body.metadata as Record<string, unknown>)
           : undefined,
     });
@@ -108,7 +121,9 @@ async function __hono_POST(request: Request) {
     return Response.json({ assignment }, { status: 201 });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to activate tuned-model assignment";
+      error instanceof Error
+        ? error.message
+        : "Failed to activate tuned-model assignment";
     return Response.json(
       {
         error: message,
@@ -121,7 +136,10 @@ async function __hono_POST(request: Request) {
 async function __hono_DELETE(request: Request) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
-    const body = ((await request.json().catch(() => ({}))) ?? {}) as Record<string, unknown>;
+    const body = ((await request.json().catch(() => ({}))) ?? {}) as Record<
+      string,
+      unknown
+    >;
     const scope = parseScope(body.scope);
 
     if (scope === "global") {
@@ -142,17 +160,20 @@ async function __hono_DELETE(request: Request) {
       );
     }
 
-    const deactivatedCount = await vertexModelRegistryService.deactivateAssignment({
-      scope,
-      slot,
-      organizationId: scope === "global" ? undefined : user.organization_id,
-      userId: scope === "user" ? user.id : undefined,
-    });
+    const deactivatedCount =
+      await vertexModelRegistryService.deactivateAssignment({
+        scope,
+        slot,
+        organizationId: scope === "global" ? undefined : user.organization_id,
+        userId: scope === "user" ? user.id : undefined,
+      });
 
     return Response.json({ deactivatedCount });
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Failed to deactivate tuned-model assignment";
+      error instanceof Error
+        ? error.message
+        : "Failed to deactivate tuned-model assignment";
     return Response.json(
       {
         error: message,

@@ -46,15 +46,23 @@ async function __hono_POST(request: Request) {
 
   const provided = request.headers.get("x-bootstrap-secret");
   if (!provided || !timingSafeEquals(provided, expected)) {
-    logger.warn("[admin/docker-nodes/bootstrap-callback] rejected: bad or missing secret");
-    return Response.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    logger.warn(
+      "[admin/docker-nodes/bootstrap-callback] rejected: bad or missing secret",
+    );
+    return Response.json(
+      { success: false, error: "Unauthorized" },
+      { status: 401 },
+    );
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return Response.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+    return Response.json(
+      { success: false, error: "Invalid JSON body" },
+      { status: 400 },
+    );
   }
 
   const parsed = callbackSchema.safeParse(body);
@@ -69,7 +77,8 @@ async function __hono_POST(request: Request) {
     );
   }
 
-  const { nodeId, hostname, capacity, sshPort, sshUser, hostKeyFingerprint } = parsed.data;
+  const { nodeId, hostname, capacity, sshPort, sshUser, hostKeyFingerprint } =
+    parsed.data;
 
   try {
     const existing = await dockerNodesRepository.findByNodeId(nodeId);
@@ -79,17 +88,21 @@ async function __hono_POST(request: Request) {
         ssh_port: sshPort,
         ssh_user: sshUser,
         capacity,
-        host_key_fingerprint: hostKeyFingerprint ?? existing.host_key_fingerprint,
+        host_key_fingerprint:
+          hostKeyFingerprint ?? existing.host_key_fingerprint,
         status: "unknown",
         metadata: {
           ...((existing.metadata as Record<string, unknown>) ?? {}),
           lastBootstrapAt: new Date().toISOString(),
         },
       });
-      logger.info("[admin/docker-nodes/bootstrap-callback] re-bootstrapped existing node", {
-        nodeId,
-        hostname,
-      });
+      logger.info(
+        "[admin/docker-nodes/bootstrap-callback] re-bootstrapped existing node",
+        {
+          nodeId,
+          hostname,
+        },
+      );
       return Response.json({
         success: true,
         data: { nodeId, hostname, action: "updated", node: updated },
@@ -127,7 +140,10 @@ async function __hono_POST(request: Request) {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Bootstrap registration failed",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Bootstrap registration failed",
       },
       { status: 500 },
     );

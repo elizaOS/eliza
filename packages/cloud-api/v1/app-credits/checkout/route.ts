@@ -35,7 +35,11 @@ app.post("/", async (c) => {
     const validation = CheckoutSchema.safeParse(body);
     if (!validation.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: validation.error.format() },
+        {
+          success: false,
+          error: "Invalid request",
+          details: validation.error.format(),
+        },
         400,
       );
     }
@@ -67,7 +71,8 @@ app.post("/", async (c) => {
         "cancel_url",
       );
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Invalid redirect URL";
+      const message =
+        err instanceof Error ? err.message : "Invalid redirect URL";
       return c.json({ success: false, error: message }, 400);
     }
 

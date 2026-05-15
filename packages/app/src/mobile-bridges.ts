@@ -16,10 +16,7 @@ import {
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
 } from "@elizaos/ui";
-import {
-  apiBaseToDeviceBridgeUrl,
-  type IosRuntimeConfig,
-} from "./ios-runtime";
+import { apiBaseToDeviceBridgeUrl, type IosRuntimeConfig } from "./ios-runtime";
 import type { UrlTrustPolicy } from "./url-trust-policy";
 
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
@@ -178,11 +175,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
           (ctx.isAndroid && runtimeConfig.mode === "local"
             ? await readAndroidLocalAgentToken()
             : undefined);
-        if (
-          ctx.isAndroid &&
-          runtimeConfig.mode === "local" &&
-          !pairingToken
-        ) {
+        if (ctx.isAndroid && runtimeConfig.mode === "local" && !pairingToken) {
           window.setTimeout(
             () => void initializeDeviceBridge(),
             BACKGROUND_RUNNER_CONFIG_RETRY_MS,
@@ -231,9 +224,7 @@ export function createMobileBridges(ctx: MobileBridgeContext) {
       return;
     }
     if (!ctx.trustPolicy.isTrustedNativeWebSocketUrl(relayUrl)) {
-      console.warn(
-        `${ctx.logPrefix} Rejected unsafe mobile tunnel relay URL`,
-      );
+      console.warn(`${ctx.logPrefix} Rejected unsafe mobile tunnel relay URL`);
       return;
     }
 

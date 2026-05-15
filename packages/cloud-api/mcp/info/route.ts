@@ -15,19 +15,31 @@ const tools = [
     description: "Check your credit balance and recent transactions",
     category: "billing",
   },
-  { name: "get_recent_usage", description: "Get recent API usage statistics", category: "billing" },
+  {
+    name: "get_recent_usage",
+    description: "Get recent API usage statistics",
+    category: "billing",
+  },
   {
     name: "list_credit_transactions",
     description: "List credit transaction history",
     category: "billing",
   },
-  { name: "generate_text", description: "Generate text using AI models", category: "generation" },
+  {
+    name: "generate_text",
+    description: "Generate text using AI models",
+    category: "generation",
+  },
   {
     name: "generate_image",
     description: "Generate images using AI models",
     category: "generation",
   },
-  { name: "generate_embeddings", description: "Generate text embeddings", category: "generation" },
+  {
+    name: "generate_embeddings",
+    description: "Generate text embeddings",
+    category: "generation",
+  },
   {
     name: "search_web",
     description: "Search the web with hosted Google-grounded Gemini search",
@@ -35,7 +47,8 @@ const tools = [
   },
   {
     name: "extract_page",
-    description: "Extract page content through the hosted Firecrawl extract API",
+    description:
+      "Extract page content through the hosted Firecrawl extract API",
     category: "tools",
   },
   {
@@ -43,9 +56,21 @@ const tools = [
     description: "Create, inspect, and control hosted browser sessions",
     category: "tools",
   },
-  { name: "save_memory", description: "Save a memory for later retrieval", category: "memory" },
-  { name: "retrieve_memories", description: "Retrieve relevant memories", category: "memory" },
-  { name: "delete_memory", description: "Delete a specific memory", category: "memory" },
+  {
+    name: "save_memory",
+    description: "Save a memory for later retrieval",
+    category: "memory",
+  },
+  {
+    name: "retrieve_memories",
+    description: "Retrieve relevant memories",
+    category: "memory",
+  },
+  {
+    name: "delete_memory",
+    description: "Delete a specific memory",
+    category: "memory",
+  },
   {
     name: "create_conversation",
     description: "Create a new conversation",
@@ -61,18 +86,46 @@ const tools = [
     description: "Search through conversations",
     category: "conversations",
   },
-  { name: "list_agents", description: "List available agents", category: "agents" },
-  { name: "chat_with_agent", description: "Chat with a specific agent", category: "agents" },
-  { name: "create_agent", description: "Create a new agent", category: "agents" },
-  { name: "list_containers", description: "List deployed containers", category: "containers" },
+  {
+    name: "list_agents",
+    description: "List available agents",
+    category: "agents",
+  },
+  {
+    name: "chat_with_agent",
+    description: "Chat with a specific agent",
+    category: "agents",
+  },
+  {
+    name: "create_agent",
+    description: "Create a new agent",
+    category: "agents",
+  },
+  {
+    name: "list_containers",
+    description: "List deployed containers",
+    category: "containers",
+  },
   {
     name: "get_container_health",
     description: "Check container health status",
     category: "containers",
   },
-  { name: "list_models", description: "List available AI models", category: "models" },
-  { name: "text_to_speech", description: "Convert text to speech audio", category: "audio" },
-  { name: "list_voices", description: "List available voices for TTS", category: "audio" },
+  {
+    name: "list_models",
+    description: "List available AI models",
+    category: "models",
+  },
+  {
+    name: "text_to_speech",
+    description: "Convert text to speech audio",
+    category: "audio",
+  },
+  {
+    name: "list_voices",
+    description: "List available voices for TTS",
+    category: "audio",
+  },
 ] as const;
 
 const categories = [...new Set(tools.map((tool) => tool.category))];
@@ -107,7 +160,8 @@ app.get("/", (c) =>
     authentication: {
       type: "Bearer",
       header: "Authorization",
-      description: "Requires API key in Authorization header: Bearer YOUR_API_KEY",
+      description:
+        "Requires API key in Authorization header: Bearer YOUR_API_KEY",
     },
     status: "live",
   }),

@@ -58,7 +58,7 @@ export function BillingPageClient({ currentCredits }: BillingPageClientProps) {
   const handleAddFunds = async () => {
     const amount = parseFloat(purchaseAmount);
 
-    if (isNaN(amount) || amount < AMOUNT_LIMITS.MIN) {
+    if (Number.isNaN(amount) || amount < AMOUNT_LIMITS.MIN) {
       toast.error(`Minimum amount is $${AMOUNT_LIMITS.MIN}`);
       return;
     }

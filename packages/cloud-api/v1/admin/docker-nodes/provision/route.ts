@@ -51,14 +51,20 @@ const provisionSchema = z.object({
 async function __hono_POST(request: Request) {
   const { role } = await requireAdmin(request);
   if (role !== "super_admin") {
-    return Response.json({ success: false, error: "Super admin access required" }, { status: 403 });
+    return Response.json(
+      { success: false, error: "Super admin access required" },
+      { status: 403 },
+    );
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return Response.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+    return Response.json(
+      { success: false, error: "Invalid JSON body" },
+      { status: 400 },
+    );
   }
 
   const parsed = provisionSchema.safeParse(body);
@@ -129,7 +135,8 @@ async function __hono_POST(request: Request) {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to provision node",
+        error:
+          error instanceof Error ? error.message : "Failed to provision node",
       },
       { status: 500 },
     );

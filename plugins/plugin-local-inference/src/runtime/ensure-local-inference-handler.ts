@@ -1,3 +1,5 @@
+/// <reference path="./capacitor-llama.d.ts" />
+
 /**
  * Registers the standalone llama.cpp engine as the runtime handler for
  * `ModelType.TEXT_SMALL` and `ModelType.TEXT_LARGE`.
@@ -54,7 +56,6 @@ import { handlerRegistry } from "../services/handler-registry";
 import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { listInstalledModels } from "../services/registry";
 import { installRouterHandler } from "../services/router-handler";
-import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 import {
 	type ElizaHarnessSchema,
 	elizaHarnessSchemaFromSkeleton,

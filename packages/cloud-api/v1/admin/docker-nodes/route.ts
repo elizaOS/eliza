@@ -25,7 +25,10 @@ app.get("/", async (c) => {
   try {
     const { role } = await requireAdmin(c);
     if (role !== "super_admin") {
-      return c.json({ success: false, error: "Super admin access required" }, 403);
+      return c.json(
+        { success: false, error: "Super admin access required" },
+        403,
+      );
     }
 
     const nodes = await dockerNodesRepository.findAll();
@@ -103,7 +106,10 @@ app.post("/", async (c) => {
   try {
     const { role } = await requireAdmin(c);
     if (role !== "super_admin") {
-      return c.json({ success: false, error: "Super admin access required" }, 403);
+      return c.json(
+        { success: false, error: "Super admin access required" },
+        403,
+      );
     }
 
     let body: unknown;
@@ -125,11 +131,15 @@ app.post("/", async (c) => {
       );
     }
 
-    const { nodeId, hostname, sshPort, capacity, sshUser, hostKeyFingerprint } = parsed.data;
+    const { nodeId, hostname, sshPort, capacity, sshUser, hostKeyFingerprint } =
+      parsed.data;
 
     const existing = await dockerNodesRepository.findByNodeId(nodeId);
     if (existing) {
-      return c.json({ success: false, error: `Node with id '${nodeId}' already exists` }, 409);
+      return c.json(
+        { success: false, error: `Node with id '${nodeId}' already exists` },
+        409,
+      );
     }
 
     const node = await dockerNodesRepository.create({

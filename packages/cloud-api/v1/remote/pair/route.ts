@@ -60,11 +60,15 @@ app.post("/", async (c) => {
     }
 
     const requesterIdentity =
-      typeof body.requesterIdentity === "string" && body.requesterIdentity.trim().length > 0
+      typeof body.requesterIdentity === "string" &&
+      body.requesterIdentity.trim().length > 0
         ? body.requesterIdentity.trim()
         : user.id;
 
-    const sandbox = await agentSandboxesRepository.findByIdAndOrg(agentId, user.organization_id);
+    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
+      agentId,
+      user.organization_id,
+    );
     if (!sandbox) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
@@ -82,7 +86,10 @@ app.post("/", async (c) => {
       pairing_token_hash: tokenHash,
     });
 
-    c.header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    c.header(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate",
+    );
     c.header("Pragma", "no-cache");
     c.header("Expires", "0");
     return c.json({

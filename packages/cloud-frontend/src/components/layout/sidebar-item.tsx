@@ -31,8 +31,8 @@ export function SidebarNavigationItem({
     item.href === "/dashboard" || item.href === "/dashboard/admin"
       ? pathname === item.href
       : pathname === item.href ||
-        (pathname?.startsWith(item.href + "/") &&
-          !pathname?.startsWith(item.href + "/create"));
+        (pathname?.startsWith(`${item.href}/`) &&
+          !pathname?.startsWith(`${item.href}/create`));
   const Icon = item.icon;
 
   // Check if this item is coming soon (disabled)

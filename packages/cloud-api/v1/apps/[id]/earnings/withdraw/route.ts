@@ -2,9 +2,15 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getErrorStatusCode, nextJsonFromCaughtError } from "@/lib/api/errors";
-import { nextStyleParams, type RouteContext } from "@/lib/api/hono-next-style-params";
+import {
+  nextStyleParams,
+  type RouteContext,
+} from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appEarningsService } from "@/lib/services/app-earnings";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
@@ -20,7 +26,10 @@ const WithdrawRequestSchema = z.object({
   amount: z
     .number()
     .positive("Amount must be positive")
-    .max(MAXIMUM_WITHDRAWAL, `Maximum withdrawal is $${MAXIMUM_WITHDRAWAL.toLocaleString()}`),
+    .max(
+      MAXIMUM_WITHDRAWAL,
+      `Maximum withdrawal is $${MAXIMUM_WITHDRAWAL.toLocaleString()}`,
+    ),
   idempotency_key: z
     .string()
     .min(16, "Idempotency key must be at least 16 characters")
@@ -44,10 +53,16 @@ const WithdrawRequestSchema = z.object({
  *
  * @returns Success status, transaction ID, and new balance
  */
-async function handlePOST(request: Request, context: RouteContext<{ id: string }>) {
+async function handlePOST(
+  request: Request,
+  context: RouteContext<{ id: string }>,
+) {
   try {
     if (!context?.params) {
-      return Response.json({ success: false, error: "Missing route parameters" }, { status: 400 });
+      return Response.json(
+        { success: false, error: "Missing route parameters" },
+        { status: 400 },
+      );
     }
 
     const { user } = await requireAuthOrApiKeyWithOrg(request);
@@ -56,11 +71,17 @@ async function handlePOST(request: Request, context: RouteContext<{ id: string }
     const app = await appsService.getById(id);
 
     if (!app) {
-      return Response.json({ success: false, error: "App not found" }, { status: 404 });
+      return Response.json(
+        { success: false, error: "App not found" },
+        { status: 404 },
+      );
     }
 
     if (app.organization_id !== user.organization_id) {
-      return Response.json({ success: false, error: "Access denied" }, { status: 403 });
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
     }
 
     // CRITICAL: Only the app creator can withdraw earnings
@@ -109,7 +130,8 @@ async function handlePOST(request: Request, context: RouteContext<{ id: string }
 
     // Get earnings summary to read the actual payout threshold from database
     const earningsSummary = await appEarningsService.getEarningsSummary(id);
-    const minimumPayout = earningsSummary?.payoutThreshold ?? DEFAULT_MINIMUM_PAYOUT;
+    const minimumPayout =
+      earningsSummary?.payoutThreshold ?? DEFAULT_MINIMUM_PAYOUT;
 
     // Early validation: fail fast if amount below minimum (using database value)
     if (amount < minimumPayout) {
@@ -122,7 +144,11 @@ async function handlePOST(request: Request, context: RouteContext<{ id: string }
       );
     }
 
-    const result = await appEarningsService.requestWithdrawal(id, amount, idempotency_key);
+    const result = await appEarningsService.requestWithdrawal(
+      id,
+      amount,
+      idempotency_key,
+    );
 
     if (!result.success) {
       logger.warn("[Withdrawal] Request failed", {
@@ -132,7 +158,10 @@ async function handlePOST(request: Request, context: RouteContext<{ id: string }
         error: result.message,
       });
 
-      return Response.json({ success: false, error: result.message }, { status: 400 });
+      return Response.json(
+        { success: false, error: result.message },
+        { status: 400 },
+      );
     }
 
     logger.info("[Withdrawal] Request successful", {

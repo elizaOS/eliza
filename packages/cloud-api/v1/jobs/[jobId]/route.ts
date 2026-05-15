@@ -33,7 +33,10 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Job ID is required" }, 400);
     }
 
-    const job = await provisioningJobService.getJobForOrg(jobId, organizationId);
+    const job = await provisioningJobService.getJobForOrg(
+      jobId,
+      organizationId,
+    );
 
     if (!job) {
       return c.json({ success: false, error: "Job not found" }, 404);

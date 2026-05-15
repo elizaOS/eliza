@@ -10,7 +10,10 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { failureResponse, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  failureResponse,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { provisioningAgentChat } from "@/lib/services/provisioning-agent-chat";
 import { logger } from "@/lib/utils/logger";
@@ -33,7 +36,9 @@ app.post("/", async (c) => {
 
     const parsed = chatBodySchema.safeParse(body);
     if (!parsed.success) {
-      throw ValidationError("Invalid request data", { issues: parsed.error.issues });
+      throw ValidationError("Invalid request data", {
+        issues: parsed.error.issues,
+      });
     }
 
     const result = await provisioningAgentChat(

@@ -30,7 +30,10 @@ app.post("/", async (c) => {
       try {
         body = JSON.parse(text);
       } catch {
-        return c.json({ success: false, error: "Request body must be valid JSON" }, 400);
+        return c.json(
+          { success: false, error: "Request body must be valid JSON" },
+          400,
+        );
       }
     }
 

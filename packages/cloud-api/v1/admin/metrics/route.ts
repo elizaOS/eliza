@@ -10,7 +10,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { userMetricsService } from "@/lib/services/user-metrics";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -29,7 +32,10 @@ app.get("/", async (c) => {
   try {
     const auth = await requireAdmin(c);
     if (auth.role !== "super_admin") {
-      return c.json({ error: "Only super_admin can access engagement metrics" }, 403);
+      return c.json(
+        { error: "Only super_admin can access engagement metrics" },
+        403,
+      );
     }
 
     const view = c.req.query("view") || "overview";
@@ -48,7 +54,9 @@ app.get("/", async (c) => {
         return c.json(await userMetricsService.getDailyMetrics(startDate, now));
 
       case "retention":
-        return c.json(await userMetricsService.getRetentionCohorts(startDate, now));
+        return c.json(
+          await userMetricsService.getRetentionCohorts(startDate, now),
+        );
 
       case "active": {
         const activeRangeMap: Record<string, "day" | "7d" | "30d"> = {

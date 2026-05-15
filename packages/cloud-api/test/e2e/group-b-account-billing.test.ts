@@ -65,7 +65,9 @@ function shouldRunSession(): boolean {
   return shouldRunAuthed() && sessionCookie !== null;
 }
 
-async function signedWalletHeaders(path: string): Promise<Record<string, string>> {
+async function signedWalletHeaders(
+  path: string,
+): Promise<Record<string, string>> {
   const timestamp = Date.now();
   const message = `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: POST\nPath: ${path}`;
   const signature = await TEST_WALLET_ACCOUNT.signMessage({ message });
@@ -139,7 +141,11 @@ describe("GET /api/v1/api-keys/explorer", () => {
 
   test("validation: rejects POST (only GET is mounted)", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/v1/api-keys/explorer", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/v1/api-keys/explorer",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect([404, 405]).toContain(res.status);
   });
 });
@@ -149,7 +155,9 @@ describe("GET /api/v1/api-keys/explorer", () => {
 describe("POST /api/v1/api-keys/:id/regenerate", () => {
   test("auth gate: 401 without credentials", async () => {
     if (!serverReachable) return;
-    const res = await api.post("/api/v1/api-keys/00000000-0000-0000-0000-000000000000/regenerate");
+    const res = await api.post(
+      "/api/v1/api-keys/00000000-0000-0000-0000-000000000000/regenerate",
+    );
     expect(res.status).toBe(401);
   });
 
@@ -168,7 +176,10 @@ describe("POST /api/v1/api-keys/:id/regenerate", () => {
       { headers: { Cookie: sessionCookie } },
     );
     expect([200, 201]).toContain(createRes.status);
-    const created = (await createRes.json()) as { apiKey?: { id?: string }; plainKey?: string };
+    const created = (await createRes.json()) as {
+      apiKey?: { id?: string };
+      plainKey?: string;
+    };
     expect(created.apiKey?.id).toBeTruthy();
     if (created.apiKey?.id) createdApiKeyIds.push(created.apiKey.id);
 
@@ -209,13 +220,19 @@ describe("/api/v1/user/avatar", () => {
 
   test("validation: JSON body returns 400 (multipart required)", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/v1/user/avatar", { dummy: 1 }, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/v1/user/avatar",
+      { dummy: 1 },
+      { headers: bearerHeaders() },
+    );
     expect(res.status).toBe(400);
   });
 
   test("validation: GET returns 405", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/v1/user/avatar", { headers: bearerHeaders() });
+    const res = await api.get("/api/v1/user/avatar", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).toBe(405);
   });
 });
@@ -268,10 +285,15 @@ describe("GET /api/v1/user/wallets", () => {
 
   test("happy path: returns a wallets array for the authed org", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/v1/user/wallets", { headers: bearerHeaders() });
+    const res = await api.get("/api/v1/user/wallets", {
+      headers: bearerHeaders(),
+    });
     expect([200, 403]).toContain(res.status);
     if (res.status === 200) {
-      const body = (await res.json()) as { success?: boolean; data?: unknown[] };
+      const body = (await res.json()) as {
+        success?: boolean;
+        data?: unknown[];
+      };
       expect(body.success).toBe(true);
       expect(Array.isArray(body.data)).toBe(true);
     }
@@ -279,7 +301,11 @@ describe("GET /api/v1/user/wallets", () => {
 
   test("validation: POST is not mounted on this collection (only GET)", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/v1/user/wallets", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/v1/user/wallets",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect([404, 405]).toContain(res.status);
   });
 });
@@ -341,7 +367,9 @@ describe("POST /api/v1/user/wallets/rpc", () => {
 
   test("validation: 400 on missing required fields", async () => {
     if (!serverReachable) return;
-    const res = await api.post("/api/v1/user/wallets/rpc", { clientAddress: "0xabc" });
+    const res = await api.post("/api/v1/user/wallets/rpc", {
+      clientAddress: "0xabc",
+    });
     expect(res.status).toBe(400);
     const body = (await res.json()) as { success?: boolean; error?: string };
     expect(body.success).toBe(false);
@@ -384,7 +412,11 @@ for (const amount of [10, 50, 100] as const) {
         { headers: bearerHeaders() },
       );
       expect([402, 503]).toContain(res.status);
-      const body = (await res.json()) as { error?: string; accepts?: unknown[]; code?: string };
+      const body = (await res.json()) as {
+        error?: string;
+        accepts?: unknown[];
+        code?: string;
+      };
       if (res.status === 402) {
         expect(body.error).toBe("payment_required");
         expect(Array.isArray(body.accepts)).toBe(true);
@@ -408,23 +440,35 @@ describe("GET /api/v1/pricing/summary", () => {
     if (!serverReachable) return;
     const res = await api.get("/api/v1/pricing/summary");
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { asOf?: string; pricing?: Record<string, unknown> };
+    const body = (await res.json()) as {
+      asOf?: string;
+      pricing?: Record<string, unknown>;
+    };
     expect(typeof body.asOf).toBe("string");
     expect(typeof body.pricing).toBe("object");
   });
 
   test("happy path: returns pricing snapshot with asOf timestamp", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/v1/pricing/summary", { headers: bearerHeaders() });
+    const res = await api.get("/api/v1/pricing/summary", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { asOf?: string; pricing?: Record<string, unknown> };
+    const body = (await res.json()) as {
+      asOf?: string;
+      pricing?: Record<string, unknown>;
+    };
     expect(typeof body.asOf).toBe("string");
     expect(typeof body.pricing).toBe("object");
   });
 
   test("validation: POST is not mounted", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/v1/pricing/summary", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/v1/pricing/summary",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect([404, 405]).toContain(res.status);
   });
 });
@@ -440,7 +484,9 @@ describe("GET /api/quotas/usage", () => {
 
   test("happy path: returns quota usage data for the authed org", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/quotas/usage", { headers: bearerHeaders() });
+    const res = await api.get("/api/quotas/usage", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { success?: boolean; data?: unknown };
     expect(body.success).toBe(true);
@@ -449,7 +495,11 @@ describe("GET /api/quotas/usage", () => {
 
   test("validation: POST is not mounted", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/quotas/usage", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/quotas/usage",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect([404, 405]).toContain(res.status);
   });
 });
@@ -465,7 +515,9 @@ describe("GET /api/stats/account", () => {
 
   test("happy path: returns the account-stats payload", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/stats/account", { headers: bearerHeaders() });
+    const res = await api.get("/api/stats/account", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       success?: boolean;
@@ -481,7 +533,11 @@ describe("GET /api/stats/account", () => {
 
   test("validation: POST is not mounted", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/stats/account", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/stats/account",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect([404, 405]).toContain(res.status);
   });
 });
@@ -518,7 +574,9 @@ describe("GET /api/stripe/credit-packs", () => {
 describe("POST /api/stripe/create-checkout-session", () => {
   test("auth gate: 401 without credentials", async () => {
     if (!serverReachable) return;
-    const res = await api.post("/api/stripe/create-checkout-session", { amount: 5 });
+    const res = await api.post("/api/stripe/create-checkout-session", {
+      amount: 5,
+    });
     expect(res.status).toBe(401);
   });
 
@@ -573,7 +631,11 @@ describe("POST /api/signup-code/redeem", () => {
       { headers: { Cookie: sessionCookie } },
     );
     expect([200, 400, 409]).toContain(res.status);
-    const body = (await res.json()) as { success?: boolean; error?: string; bonus?: number };
+    const body = (await res.json()) as {
+      success?: boolean;
+      error?: string;
+      bonus?: number;
+    };
     if (res.status === 200) {
       expect(body.success).toBe(true);
       expect(typeof body.bonus).toBe("number");

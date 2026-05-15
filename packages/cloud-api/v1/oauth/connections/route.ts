@@ -5,10 +5,17 @@
  */
 
 import { Hono } from "hono";
-import { failureResponse, ApiError as WorkerApiError } from "@/lib/api/cloud-worker-errors";
+import {
+  failureResponse,
+  ApiError as WorkerApiError,
+} from "@/lib/api/cloud-worker-errors";
 import { ApiError } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { internalErrorResponse, OAuthError, oauthService } from "@/lib/services/oauth";
+import {
+  internalErrorResponse,
+  OAuthError,
+  oauthService,
+} from "@/lib/services/oauth";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -18,7 +25,9 @@ app.get("/", async (c) => {
   const platform = c.req.query("platform") || undefined;
   const rawConnectionRole = c.req.query("connectionRole");
   const connectionRole =
-    rawConnectionRole === "owner" || rawConnectionRole === "agent" ? rawConnectionRole : undefined;
+    rawConnectionRole === "owner" || rawConnectionRole === "agent"
+      ? rawConnectionRole
+      : undefined;
   let organizationId: string | undefined;
 
   if (rawConnectionRole && !connectionRole) {
@@ -73,7 +82,10 @@ app.get("/", async (c) => {
       return c.json(error.toResponse(), error.httpStatus as 400);
     }
 
-    return c.json(internalErrorResponse("Failed to list OAuth connections"), 500);
+    return c.json(
+      internalErrorResponse("Failed to list OAuth connections"),
+      500,
+    );
   }
 });
 

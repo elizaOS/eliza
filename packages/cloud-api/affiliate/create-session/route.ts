@@ -28,9 +28,16 @@ app.post("/", async (c) => {
     const validationResult = CreateSessionSchema.safeParse(body);
 
     if (!validationResult.success) {
-      logger.warn("[Create Session] Invalid request body:", validationResult.error.format());
+      logger.warn(
+        "[Create Session] Invalid request body:",
+        validationResult.error.format(),
+      );
       return c.json(
-        { success: false, error: "Invalid request body", details: validationResult.error.format() },
+        {
+          success: false,
+          error: "Invalid request body",
+          details: validationResult.error.format(),
+        },
         400,
       );
     }
@@ -51,7 +58,8 @@ app.post("/", async (c) => {
 
     const realIp = c.req.header("x-real-ip")?.trim();
     const forwardedFor = c.req.header("x-forwarded-for");
-    const ipAddress = realIp || forwardedFor?.split(",")[0]?.trim() || undefined;
+    const ipAddress =
+      realIp || forwardedFor?.split(",")[0]?.trim() || undefined;
     const userAgent = c.req.header("user-agent") || undefined;
 
     const { newUser, newSession } = await createAnonymousUserAndSession({
@@ -72,10 +80,13 @@ app.post("/", async (c) => {
       expires: expiresAt,
     });
 
-    logger.info(`[Create Session] Created anonymous session for character ${characterId}`, {
-      userId: newUser.id,
-      source,
-    });
+    logger.info(
+      `[Create Session] Created anonymous session for character ${characterId}`,
+      {
+        userId: newUser.id,
+        source,
+      },
+    );
 
     return c.json({
       success: true,

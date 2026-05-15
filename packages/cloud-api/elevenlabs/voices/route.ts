@@ -20,13 +20,17 @@ app.get("/", async (c) => {
     const elevenlabs = getElevenLabsService();
     const allVoices = await elevenlabs.getVoices();
     const publicVoices = allVoices.filter(
-      (voice) => voice.category === "premade" || voice.category === "professional",
+      (voice) =>
+        voice.category === "premade" || voice.category === "professional",
     );
 
     return c.json({ voices: publicVoices });
   } catch (error) {
     logger.error("[Voices API] Error:", error);
-    if (error instanceof Error && error.message.includes("ELEVENLABS_API_KEY")) {
+    if (
+      error instanceof Error &&
+      error.message.includes("ELEVENLABS_API_KEY")
+    ) {
       return c.json({ error: "Service not configured" }, 500);
     }
     return failureResponse(c, error);

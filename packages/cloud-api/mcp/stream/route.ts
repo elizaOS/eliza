@@ -10,12 +10,20 @@ const app = new Hono<AppEnv>();
 
 app.get(
   "/",
-  () => new Response(body, { status: 410, headers: { "Content-Type": "application/json" } }),
+  () =>
+    new Response(body, {
+      status: 410,
+      headers: { "Content-Type": "application/json" },
+    }),
 );
 
 app.post(
   "/",
-  () => new Response(body, { status: 410, headers: { "Content-Type": "application/json" } }),
+  () =>
+    new Response(body, {
+      status: 410,
+      headers: { "Content-Type": "application/json" },
+    }),
 );
 
 export default app;

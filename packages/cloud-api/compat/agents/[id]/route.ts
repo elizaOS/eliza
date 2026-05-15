@@ -25,12 +25,18 @@ import { handleCompatError } from "../../_lib/error-handler";
 
 const CORS_METHODS = "GET, DELETE, OPTIONS";
 
-async function __hono_GET(request: Request, { params }: RouteContext<{ id: string }>) {
+async function __hono_GET(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+) {
   try {
     const { user } = await requireCompatAuth(request);
     const { id: agentId } = await params;
 
-    const agent = await elizaSandboxService.getAgent(agentId, user.organization_id);
+    const agent = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
     if (!agent) {
       return withCompatCors(
         Response.json(errorEnvelope("Agent not found"), {
@@ -41,7 +47,9 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ id: strin
     }
 
     // Resolve wallet info for Docker-backed agents
-    let walletInfo: { address: string | null; provider: "steward" | null } | undefined;
+    let walletInfo:
+      | { address: string | null; provider: "steward" | null }
+      | undefined;
     if (agent.node_id) {
       try {
         const stewardAgent = await getStewardAgent(agentId, {
@@ -58,7 +66,10 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ id: strin
       }
     }
 
-    return withCompatCors(Response.json(envelope(toCompatAgent(agent, walletInfo))), CORS_METHODS);
+    return withCompatCors(
+      Response.json(envelope(toCompatAgent(agent, walletInfo))),
+      CORS_METHODS,
+    );
   } catch (err) {
     return handleCompatError(err, CORS_METHODS);
   }
@@ -70,7 +81,10 @@ const CONTROL_PLANE_URL_KEYS = [
   "HETZNER_CONTAINER_CONTROL_PLANE_URL",
 ] as const;
 
-function readControlPlaneEnv(c: AppContext, keys: readonly string[]): string | null {
+function readControlPlaneEnv(
+  c: AppContext,
+  keys: readonly string[],
+): string | null {
   for (const key of keys) {
     const value = c.env[key];
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -91,8 +105,11 @@ async function deleteDockerBackedAgentViaControlPlane(
 
   const headers = new Headers(c.req.raw.headers);
   headers.delete("host");
-  const internalToken = readControlPlaneEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
-  if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  const internalToken = readControlPlaneEnv(c, [
+    "CONTAINER_CONTROL_PLANE_TOKEN",
+  ]);
+  if (internalToken)
+    headers.set("x-container-control-plane-token", internalToken);
   const databaseUrl = readControlPlaneEnv(c, ["DATABASE_URL"]);
   if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
   headers.set("x-eliza-user-id", user.id);
@@ -103,7 +120,9 @@ async function deleteDockerBackedAgentViaControlPlane(
     method: "DELETE",
     redirect: "manual",
   });
-  const body = await upstream.json().catch(() => errorEnvelope("Agent delete failed"));
+  const body = await upstream
+    .json()
+    .catch(() => errorEnvelope("Agent delete failed"));
   return withCompatCors(
     Response.json(body, {
       status: upstream.status,
@@ -113,12 +132,18 @@ async function deleteDockerBackedAgentViaControlPlane(
   );
 }
 
-async function __hono_DELETE(c: AppContext, { params }: RouteContext<{ id: string }>) {
+async function __hono_DELETE(
+  c: AppContext,
+  { params }: RouteContext<{ id: string }>,
+) {
   try {
     const { user } = await requireCompatAuth(c.req.raw);
     const { id: agentId } = await params;
 
-    const existing = await elizaSandboxService.getAgent(agentId, user.organization_id);
+    const existing = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
     if (!existing) {
       return withCompatCors(
         Response.json(errorEnvelope("Agent not found"), { status: 404 }),
@@ -127,11 +152,18 @@ async function __hono_DELETE(c: AppContext, { params }: RouteContext<{ id: strin
     }
 
     if (existing.node_id && existing.sandbox_id) {
-      const forwarded = await deleteDockerBackedAgentViaControlPlane(c, user, agentId);
+      const forwarded = await deleteDockerBackedAgentViaControlPlane(
+        c,
+        user,
+        agentId,
+      );
       if (forwarded) return forwarded;
     }
 
-    const deleted = await elizaSandboxService.deleteAgent(agentId, user.organization_id);
+    const deleted = await elizaSandboxService.deleteAgent(
+      agentId,
+      user.organization_id,
+    );
     if (!deleted.success) {
       const status =
         deleted.error === "Agent not found"
@@ -139,11 +171,17 @@ async function __hono_DELETE(c: AppContext, { params }: RouteContext<{ id: strin
           : deleted.error === "Agent provisioning is in progress"
             ? 409
             : 500;
-      return withCompatCors(Response.json(errorEnvelope(deleted.error), { status }), CORS_METHODS);
+      return withCompatCors(
+        Response.json(errorEnvelope(deleted.error), { status }),
+        CORS_METHODS,
+      );
     }
 
     const characterId = deleted.deletedSandbox.character_id;
-    const sandboxConfig = deleted.deletedSandbox.agent_config as Record<string, unknown> | null;
+    const sandboxConfig = deleted.deletedSandbox.agent_config as Record<
+      string,
+      unknown
+    > | null;
     const reusesExistingCharacter = reusesExistingElizaCharacter(sandboxConfig);
 
     // Clean up the linked character row so the token_address unique constraint
@@ -156,11 +194,14 @@ async function __hono_DELETE(c: AppContext, { params }: RouteContext<{ id: strin
           characterId,
         });
       } catch (charErr) {
-        logger.warn("[compat] Failed to clean up linked character after agent delete", {
-          agentId,
-          characterId,
-          error: charErr instanceof Error ? charErr.message : String(charErr),
-        });
+        logger.warn(
+          "[compat] Failed to clean up linked character after agent delete",
+          {
+            agentId,
+            characterId,
+            error: charErr instanceof Error ? charErr.message : String(charErr),
+          },
+        );
       }
     }
 
@@ -180,7 +221,9 @@ async function __hono_DELETE(c: AppContext, { params }: RouteContext<{ id: strin
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCompatCorsOptions(CORS_METHODS));
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
   __hono_DELETE(c, { params: Promise.resolve({ id: c.req.param("id")! }) }),

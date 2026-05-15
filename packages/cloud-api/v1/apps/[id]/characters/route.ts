@@ -19,7 +19,10 @@ const LinkCharactersBody = z.object({
  * @param params - Route parameters containing the app ID.
  * @returns List of linked characters.
  */
-async function __hono_GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     // Allow both authenticated users and API key access
     let organizationId: string;
@@ -42,7 +45,10 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
         organizationId = user.organization_id;
       }
     } catch {
-      return Response.json({ success: false, error: "Authentication required" }, { status: 401 });
+      return Response.json(
+        { success: false, error: "Authentication required" },
+        { status: 401 },
+      );
     }
 
     const { id } = await params;
@@ -50,12 +56,18 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     const app = await appsService.getById(id);
 
     if (!app) {
-      return Response.json({ success: false, error: "App not found" }, { status: 404 });
+      return Response.json(
+        { success: false, error: "App not found" },
+        { status: 404 },
+      );
     }
 
     // Verify ownership (unless accessed via the app's own API key)
     if (app.organization_id !== organizationId) {
-      return Response.json({ success: false, error: "Access denied" }, { status: 403 });
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
     }
 
     // Get the linked character IDs
@@ -102,7 +114,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to get characters",
+        error:
+          error instanceof Error ? error.message : "Failed to get characters",
       },
       { status: 500 },
     );
@@ -118,7 +131,10 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
  * @param params - Route parameters containing the app ID.
  * @returns Updated list of linked characters.
  */
-async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
@@ -126,11 +142,17 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
     const existingApp = await appsService.getById(id);
 
     if (!existingApp) {
-      return Response.json({ success: false, error: "App not found" }, { status: 404 });
+      return Response.json(
+        { success: false, error: "App not found" },
+        { status: 404 },
+      );
     }
 
     if (existingApp.organization_id !== user.organization_id) {
-      return Response.json({ success: false, error: "Access denied" }, { status: 403 });
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
     }
 
     const rawBody = await request.json();
@@ -191,7 +213,10 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to update characters",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update characters",
       },
       { status: 500 },
     );
@@ -200,9 +225,13 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.put("/", async (c) =>
-  __hono_PUT(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_PUT(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

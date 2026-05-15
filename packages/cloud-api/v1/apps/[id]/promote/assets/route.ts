@@ -18,14 +18,19 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const GenerateAssetsSchema = z.object({
-  sizes: z.array(z.enum(Object.keys(AD_SIZES) as [AdSize, ...AdSize[]])).optional(),
+  sizes: z
+    .array(z.enum(Object.keys(AD_SIZES) as [AdSize, ...AdSize[]]))
+    .optional(),
   includeCopy: z.boolean().optional(),
   includeAdBanners: z.boolean().optional(),
   targetAudience: z.string().max(500).optional(),
   customPrompt: z.string().max(1000).optional(),
 });
 
-async function __hono_POST(request: Request, { params }: RouteContext<{ id: string }>) {
+async function __hono_POST(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+) {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
@@ -48,7 +53,8 @@ async function __hono_POST(request: Request, { params }: RouteContext<{ id: stri
   const imageCount = 1; // Social cards always generated (includeSocialCards: true)
   const bannerCount = parsed.data.includeAdBanners ? 1 : 0;
   const totalImageCost = (imageCount + bannerCount) * PROMO_IMAGE_COST;
-  const copyCost = parsed.data.includeCopy !== false ? AD_COPY_GENERATION_COST : 0;
+  const copyCost =
+    parsed.data.includeCopy !== false ? AD_COPY_GENERATION_COST : 0;
   const totalCost = totalImageCost + copyCost;
 
   const deduction = await creditsService.deductCredits({
@@ -59,7 +65,10 @@ async function __hono_POST(request: Request, { params }: RouteContext<{ id: stri
   });
 
   if (!deduction.success) {
-    return Response.json({ error: "Insufficient credits", required: totalCost }, { status: 402 });
+    return Response.json(
+      { error: "Insufficient credits", required: totalCost },
+      { status: 402 },
+    );
   }
 
   logger.info("[Promote Assets API] Generating assets", {
@@ -140,7 +149,10 @@ async function __hono_POST(request: Request, { params }: RouteContext<{ id: stri
   }
 }
 
-async function __hono_GET(request: Request, { params }: RouteContext<{ id: string }>) {
+async function __hono_GET(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+) {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
@@ -184,9 +196,13 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ id: strin
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

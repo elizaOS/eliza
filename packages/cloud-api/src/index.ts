@@ -42,7 +42,11 @@ const scheduled = makeCronHandler(async (request, env, ctx) =>
 );
 
 export default {
-  fetch: async (request: Request, env: AppEnv["Bindings"], ctx: ExecutionContext) => {
+  fetch: async (
+    request: Request,
+    env: AppEnv["Bindings"],
+    ctx: ExecutionContext,
+  ) => {
     if (new URL(request.url).pathname === "/api/health") {
       return healthResponse(env);
     }

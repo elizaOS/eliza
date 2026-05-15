@@ -27,14 +27,19 @@ app.get("/", async (c) => {
   const oauth2Error = c.req.query("error");
 
   const baseUrl =
-    c.env?.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+    c.env?.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "https://www.elizacloud.ai";
   const defaultRedirectPath = "/dashboard/settings?tab=connections";
   const allowedAbsoluteOrigins = [
     ...getDefaultPlatformRedirectOrigins(),
     ...LOOPBACK_REDIRECT_ORIGINS,
   ];
 
-  function buildRedirectUrl(redirectUrl: string | undefined, params: Record<string, string>): URL {
+  function buildRedirectUrl(
+    redirectUrl: string | undefined,
+    params: Record<string, string>,
+  ): URL {
     const { target, rejected } = resolveOAuthSuccessRedirectUrl({
       value: redirectUrl,
       baseUrl,
@@ -42,9 +47,12 @@ app.get("/", async (c) => {
       allowedAbsoluteOrigins,
     });
     if (rejected) {
-      logger.error("[Twitter Callback] SECURITY: Invalid redirect URL attempted", {
-        redirectUrl,
-      });
+      logger.error(
+        "[Twitter Callback] SECURITY: Invalid redirect URL attempted",
+        {
+          redirectUrl,
+        },
+      );
     }
 
     Object.entries(params).forEach(([key, value]) => {
@@ -103,7 +111,8 @@ app.get("/", async (c) => {
     };
 
     try {
-      const parsed = typeof stateData === "string" ? JSON.parse(stateData) : stateData;
+      const parsed =
+        typeof stateData === "string" ? JSON.parse(stateData) : stateData;
       if (
         !parsed ||
         typeof parsed !== "object" ||
@@ -189,7 +198,9 @@ app.get("/", async (c) => {
     }
     if (tokens.identityLookupError) {
       successParams.twitter_warning = "identity_lookup_failed";
-      successParams.twitter_warning_detail = redirectErrorDetail(tokens.identityLookupError);
+      successParams.twitter_warning_detail = redirectErrorDetail(
+        tokens.identityLookupError,
+      );
     }
     return redirectTo(buildRedirectUrl(state.redirectUrl, successParams));
   }
@@ -222,7 +233,8 @@ app.get("/", async (c) => {
   };
 
   try {
-    const parsed = typeof stateData === "string" ? JSON.parse(stateData) : stateData;
+    const parsed =
+      typeof stateData === "string" ? JSON.parse(stateData) : stateData;
 
     if (
       !parsed ||

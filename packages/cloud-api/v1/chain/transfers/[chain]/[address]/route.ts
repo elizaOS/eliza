@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { executeWithBody } from "@/lib/services/proxy/engine";
 import { isValidAddress } from "@/lib/services/proxy/services/address-validation";
-import { chainDataConfig, chainDataHandler } from "@/lib/services/proxy/services/chain-data";
+import {
+  chainDataConfig,
+  chainDataHandler,
+} from "@/lib/services/proxy/services/chain-data";
 import { ALCHEMY_SLUGS } from "@/lib/services/proxy/services/rpc";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -45,7 +48,13 @@ app.get("/", async (c) => {
 
   if (direction !== "in" && direction !== "out") {
     return applyCorsHeaders(
-      c.json({ error: "Invalid direction", details: "Use direction=in or direction=out" }, 400),
+      c.json(
+        {
+          error: "Invalid direction",
+          details: "Use direction=in or direction=out",
+        },
+        400,
+      ),
       CORS_METHODS,
     );
   }
@@ -54,7 +63,8 @@ app.get("/", async (c) => {
     await executeWithBody(chainDataConfig, chainDataHandler, c.req.raw, {
       method: "getAssetTransfers",
       chain,
-      params: direction === "in" ? { toAddress: address } : { fromAddress: address },
+      params:
+        direction === "in" ? { toAddress: address } : { fromAddress: address },
     }),
     CORS_METHODS,
   );

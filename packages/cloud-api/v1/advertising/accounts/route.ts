@@ -6,7 +6,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { type AdPlatform, advertisingService } from "@/lib/services/advertising";
+import {
+  type AdPlatform,
+  advertisingService,
+} from "@/lib/services/advertising";
 import { ConnectAccountSchema } from "@/lib/services/advertising/schemas";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -48,7 +51,10 @@ app.post("/", async (c) => {
     const parsed = ConnectAccountSchema.safeParse(body);
 
     if (!parsed.success) {
-      return c.json({ error: "Invalid request", details: parsed.error.flatten() }, 400);
+      return c.json(
+        { error: "Invalid request", details: parsed.error.flatten() },
+        400,
+      );
     }
 
     const account = await advertisingService.connectAccount({

@@ -64,7 +64,10 @@ const DEFAULT_OUTPUT_FORMAT = "mp3_44100_128";
  * for the v1 cache we pin a static revision per voice/format and let a future
  * voice-settings change bump it manually.
  */
-function resolveElevenLabsVoiceRevision(voiceId: string, modelId: string): string {
+function resolveElevenLabsVoiceRevision(
+  voiceId: string,
+  modelId: string,
+): string {
   return `elevenlabs:${voiceId}:${modelId}:${DEFAULT_OUTPUT_FORMAT}`;
 }
 
@@ -126,7 +129,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       metadata: { type: "tts", model: modelId || "eleven_flash_v2_5", voiceId },
     });
 
-    logger.info(`[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`);
+    logger.info(
+      `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
+    );
 
     let userVoiceId: string | null = null;
     let voiceName: string | null = null;
@@ -167,7 +172,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const resolvedVoiceId = voiceId || "EXAVITQu4vr4xnSDxMaL";
     const resolvedModelId = modelId || "eleven_flash_v2_5";
     const snipResult = firstSentenceSnip(text);
-    const cacheBypass = shouldBypassCloudFirstLineCache({ modelId: resolvedModelId });
+    const cacheBypass = shouldBypassCloudFirstLineCache({
+      modelId: resolvedModelId,
+    });
     const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
     const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
       outputFormat: DEFAULT_OUTPUT_FORMAT,
@@ -186,7 +193,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
           algoVersion: FIRST_SENTENCE_SNIP_VERSION,
           provider: "elevenlabs",
           voiceId: resolvedVoiceId,
-          voiceRevision: resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId),
+          voiceRevision: resolveElevenLabsVoiceRevision(
+            resolvedVoiceId,
+            resolvedModelId,
+          ),
           sampleRate: 44100,
           codec: "mp3",
           voiceSettingsFingerprint,
@@ -218,7 +228,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       characterCount: text.length,
     });
     const estimatedCost = isCustomVoice
-      ? Math.round(ttsCost.totalCost * CUSTOM_VOICE_TTS_MARKUP * 1_000_000) / 1_000_000
+      ? Math.round(ttsCost.totalCost * CUSTOM_VOICE_TTS_MARKUP * 1_000_000) /
+        1_000_000
       : ttsCost.totalCost;
 
     try {
@@ -266,10 +277,14 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       {
         totalCost: estimatedCost,
         baseTotalCost: isCustomVoice
-          ? Math.round(ttsCost.baseTotalCost * CUSTOM_VOICE_TTS_MARKUP * 1_000_000) / 1_000_000
+          ? Math.round(
+              ttsCost.baseTotalCost * CUSTOM_VOICE_TTS_MARKUP * 1_000_000,
+            ) / 1_000_000
           : ttsCost.baseTotalCost,
         platformMarkup: isCustomVoice
-          ? Math.round(ttsCost.platformMarkup * CUSTOM_VOICE_TTS_MARKUP * 1_000_000) / 1_000_000
+          ? Math.round(
+              ttsCost.platformMarkup * CUSTOM_VOICE_TTS_MARKUP * 1_000_000,
+            ) / 1_000_000
           : ttsCost.platformMarkup,
       },
       reservation,
@@ -326,7 +341,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
             algoVersion: FIRST_SENTENCE_SNIP_VERSION,
             provider: "elevenlabs",
             voiceId: resolvedVoiceId,
-            voiceRevision: resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId),
+            voiceRevision: resolveElevenLabsVoiceRevision(
+              resolvedVoiceId,
+              resolvedModelId,
+            ),
             sampleRate: 44100,
             codec: "mp3" as const,
             voiceSettingsFingerprint,
@@ -440,7 +458,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     }
 
     if (errorMessage.includes("elevenlabs_api_key")) {
-      return Response.json({ error: "Service not configured" }, { status: 500 });
+      return Response.json(
+        { error: "Service not configured" },
+        { status: 500 },
+      );
     }
 
     return Response.json(

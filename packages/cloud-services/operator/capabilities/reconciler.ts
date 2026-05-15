@@ -1,7 +1,12 @@
 import { K8s, Log } from "pepr";
 import { applyResources } from "./controller/generators";
 import { Server } from "./crd/generated/server-v1alpha1";
-import { cleanupServer, removeAgentServer, setAgentServer, setServerState } from "./redis";
+import {
+  cleanupServer,
+  removeAgentServer,
+  setAgentServer,
+  setServerState,
+} from "./redis";
 
 export async function reconciler(instance: Server) {
   const name = instance.metadata?.name;
@@ -41,7 +46,9 @@ export async function reconciler(instance: Server) {
     }
 
     const previousAgentIds = getPreviousAgentIds(instance);
-    const removedAgents = previousAgentIds.filter((id) => !currentAgentIds.includes(id));
+    const removedAgents = previousAgentIds.filter(
+      (id) => !currentAgentIds.includes(id),
+    );
     for (const agentId of removedAgents) {
       await removeAgentServer(agentId);
       Log.info(`Server ${name}: removed agent mapping ${agentId}`);
@@ -86,14 +93,16 @@ export async function finalizer(instance: Server) {
 
   Log.info(`Finalizing Server ${name}: cleaning up Redis`);
 
-  const agentIds = instance.spec?.agents?.map((a) => a.agentId.toLowerCase()) ?? [];
+  const agentIds =
+    instance.spec?.agents?.map((a) => a.agentId.toLowerCase()) ?? [];
   await cleanupServer(name, agentIds);
 
   Log.info(`Server ${name}: Redis cleanup complete`);
 }
 
 function getPreviousAgentIds(instance: Server): string[] {
-  const annotation = instance.metadata?.annotations?.["eliza.ai/previous-agents"];
+  const annotation =
+    instance.metadata?.annotations?.["eliza.ai/previous-agents"];
   if (!annotation) return [];
   try {
     return JSON.parse(annotation);
@@ -103,20 +112,32 @@ function getPreviousAgentIds(instance: Server): string[] {
 }
 
 async function updateStatus(instance: Server, status: Server["status"]) {
+  const name = instance.metadata?.name;
+  const namespace = instance.metadata?.namespace ?? "eliza-agents";
+
+  if (!name) {
+    Log.warn("Server CR missing metadata.name, skipping status update");
+    return;
+  }
+
   try {
     await K8s(Server).PatchStatus({
       metadata: {
-        name: instance.metadata!.name!,
-        namespace: instance.metadata!.namespace ?? "eliza-agents",
+        name,
+        namespace,
       },
       status,
     });
   } catch (err) {
-    Log.error(err, `Failed to update status for ${instance.metadata?.name}`);
+    Log.error(err, `Failed to update status for ${name}`);
   }
 }
 
-export async function patchServerStatus(name: string, ns: string, status: Server["status"]) {
+export async function patchServerStatus(
+  name: string,
+  ns: string,
+  status: Server["status"],
+) {
   try {
     await K8s(Server).PatchStatus({
       metadata: { name, namespace: ns },

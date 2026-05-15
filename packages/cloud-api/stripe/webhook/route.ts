@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import type Stripe from "stripe";
 import type { StripeEventMessage } from "@/api-queue/types";
 import { webhookEventsRepository } from "@/db/repositories/webhook-events";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { enqueue } from "@/lib/queue/redis-queue";
 import { isStripeConfigured, requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
@@ -47,7 +50,9 @@ async function hashPayload(body: string): Promise<string> {
 
 function getClientIp(c: AppContext): string {
   return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || c.req.header("x-real-ip") || "unknown"
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip") ||
+    "unknown"
   );
 }
 
@@ -96,7 +101,11 @@ async function handleStripeWebhook(c: AppContext): Promise<Response> {
   try {
     // constructEventAsync uses WebCrypto and works on Workers; the sync
     // variant calls into node:crypto which is not available here.
-    event = await stripe.webhooks.constructEventAsync(body, signature, webhookSecret);
+    event = await stripe.webhooks.constructEventAsync(
+      body,
+      signature,
+      webhookSecret,
+    );
   } catch {
     logger.error("[Stripe Webhook] Signature verification failed");
     return c.json({ error: "Webhook signature verification failed" }, 400);
@@ -115,7 +124,9 @@ async function handleStripeWebhook(c: AppContext): Promise<Response> {
   });
 
   if (!insertResult.created) {
-    logger.debug(`[Stripe Webhook] Duplicate event ${event.id} — skipping enqueue`);
+    logger.debug(
+      `[Stripe Webhook] Duplicate event ${event.id} — skipping enqueue`,
+    );
     return c.json({ received: true, duplicate: true }, 200);
   }
 
@@ -134,5 +145,7 @@ async function handleStripeWebhook(c: AppContext): Promise<Response> {
 }
 
 const app = new Hono<AppEnv>();
-app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) => handleStripeWebhook(c));
+app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
+  handleStripeWebhook(c),
+);
 export default app;

@@ -37,7 +37,8 @@ const VoiceUpdateBody = z.object({
   isActive: z.boolean().optional(),
 });
 
-const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const uuidRegex =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isValidVoiceId(voiceId: string) {
   return uuidRegex.test(voiceId);
@@ -47,14 +48,18 @@ function createInvalidVoiceIdResponse() {
   return Response.json(
     {
       error: "Invalid voice ID format",
-      message: "Please use the internal voice ID (UUID format) from the 'List Voices' endpoint.",
+      message:
+        "Please use the internal voice ID (UUID format) from the 'List Voices' endpoint.",
       hint: "Call GET /api/v1/voice/list to get your voice IDs",
     },
     { status: 400 },
   );
 }
 
-function getInvalidVoiceIdResponseIfNeeded(voiceId: string, logMessage: string) {
+function getInvalidVoiceIdResponseIfNeeded(
+  voiceId: string,
+  logMessage: string,
+) {
   if (isValidVoiceId(voiceId)) {
     return null;
   }
@@ -66,7 +71,8 @@ function getInvalidVoiceIdResponseIfNeeded(voiceId: string, logMessage: string) 
 function isInvalidVoiceIdError(error: unknown) {
   return (
     error instanceof Error &&
-    (error.message.includes("invalid input syntax for type uuid") || error.message.includes("uuid"))
+    (error.message.includes("invalid input syntax for type uuid") ||
+      error.message.includes("uuid"))
   );
 }
 
@@ -79,7 +85,10 @@ function isInvalidVoiceIdError(error: unknown) {
  * @param context - Route context containing the voice ID parameter.
  * @returns Voice details including provider voice ID and metadata.
  */
-async function __hono_GET(request: Request, context: { params: Promise<{ id: string }> }) {
+async function __hono_GET(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const params = await context.params;
@@ -95,7 +104,10 @@ async function __hono_GET(request: Request, context: { params: Promise<{ id: str
       return invalidVoiceIdResponse;
     }
 
-    const voice = await voiceCloningService.getVoiceById(voiceId, user.organization_id);
+    const voice = await voiceCloningService.getVoiceById(
+      voiceId,
+      user.organization_id,
+    );
 
     if (!voice) {
       return Response.json(
@@ -132,7 +144,10 @@ async function __hono_GET(request: Request, context: { params: Promise<{ id: str
  * @param context - Route context containing the voice ID parameter.
  * @returns Success confirmation.
  */
-async function __hono_DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
+async function __hono_DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const params = await context.params;
@@ -193,7 +208,10 @@ async function __hono_DELETE(request: Request, context: { params: Promise<{ id: 
  * @param context - Route context containing the voice ID parameter.
  * @returns Updated voice details.
  */
-async function __hono_PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+async function __hono_PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const params = await context.params;
@@ -219,12 +237,16 @@ async function __hono_PATCH(request: Request, context: { params: Promise<{ id: s
     }
     const { name, description, settings, isActive } = parsed.data;
 
-    const updatedVoice = await voiceCloningService.updateVoice(voiceId, user.organization_id, {
-      name,
-      description,
-      settings,
-      isActive,
-    });
+    const updatedVoice = await voiceCloningService.updateVoice(
+      voiceId,
+      user.organization_id,
+      {
+        name,
+        description,
+        settings,
+        isActive,
+      },
+    );
 
     return Response.json({
       success: true,
@@ -249,12 +271,18 @@ async function __hono_PATCH(request: Request, context: { params: Promise<{ id: s
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.patch("/", async (c) =>
-  __hono_PATCH(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_PATCH(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

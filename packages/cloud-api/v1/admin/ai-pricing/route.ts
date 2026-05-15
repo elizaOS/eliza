@@ -60,14 +60,19 @@ const OverrideSchema = z.object({
   ]),
   unitPrice: z.number().positive(),
   dimensions: z
-    .record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]))
+    .record(
+      z.string(),
+      z.union([z.string(), z.number(), z.boolean(), z.null()]),
+    )
     .optional(),
   reason: z.string().min(1),
 });
 
 const RefreshSchema = z.object({
   sources: z
-    .array(z.enum(["gateway", "openrouter", "fal", "elevenlabs", "suno", "vast"]))
+    .array(
+      z.enum(["gateway", "openrouter", "fal", "elevenlabs", "suno", "vast"]),
+    )
     .optional(),
 });
 

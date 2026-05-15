@@ -6,7 +6,10 @@
  */
 
 import { Hono } from "hono";
-import { failureResponse, ApiError as WorkerApiError } from "@/lib/api/cloud-worker-errors";
+import {
+  failureResponse,
+  ApiError as WorkerApiError,
+} from "@/lib/api/cloud-worker-errors";
 import { ApiError } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { blooioAutomationService } from "@/lib/services/blooio-automation";
@@ -36,7 +39,9 @@ async function getGoogleStatus(
     return {
       id: "google",
       name: "Google",
-      connected: connections.some((connection) => connection.status === "active"),
+      connected: connections.some(
+        (connection) => connection.status === "active",
+      ),
     };
   } catch (error) {
     return {
@@ -48,9 +53,12 @@ async function getGoogleStatus(
   }
 }
 
-async function getTwilioStatus(organizationId: string): Promise<LegacyServiceStatus> {
+async function getTwilioStatus(
+  organizationId: string,
+): Promise<LegacyServiceStatus> {
   try {
-    const status = await twilioAutomationService.getConnectionStatus(organizationId);
+    const status =
+      await twilioAutomationService.getConnectionStatus(organizationId);
 
     return {
       id: "twilio",
@@ -67,9 +75,12 @@ async function getTwilioStatus(organizationId: string): Promise<LegacyServiceSta
   }
 }
 
-async function getBlooioStatus(organizationId: string): Promise<LegacyServiceStatus> {
+async function getBlooioStatus(
+  organizationId: string,
+): Promise<LegacyServiceStatus> {
   try {
-    const status = await blooioAutomationService.getConnectionStatus(organizationId);
+    const status =
+      await blooioAutomationService.getConnectionStatus(organizationId);
 
     return {
       id: "blooio",

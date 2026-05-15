@@ -50,15 +50,21 @@ type WebhookConfig = {
 const app = new Hono<AppEnv>();
 
 async function resolveOrganizationId(agentId: string): Promise<string | null> {
-  const sandboxOrganizationId = await agentSandboxesRepository.findOrganizationIdById(agentId);
+  const sandboxOrganizationId =
+    await agentSandboxesRepository.findOrganizationIdById(agentId);
   if (sandboxOrganizationId) {
     return sandboxOrganizationId;
   }
 
-  return (await userCharactersRepository.findOrganizationIdById(agentId)) ?? null;
+  return (
+    (await userCharactersRepository.findOrganizationIdById(agentId)) ?? null
+  );
 }
 
-async function getSecret(organizationId: string, name: string): Promise<string | undefined> {
+async function getSecret(
+  organizationId: string,
+  name: string,
+): Promise<string | undefined> {
   return (await secretsService.get(organizationId, name)) ?? undefined;
 }
 
@@ -95,17 +101,29 @@ async function buildWebhookConfig(
       return { agentId, accountSid, authToken, phoneNumber };
     }
     case "whatsapp": {
-      const [accessToken, phoneNumberId, appSecret, verifyToken, businessPhone] = await Promise.all(
-        [
-          getSecret(organizationId, WHATSAPP_ACCESS_TOKEN),
-          getSecret(organizationId, WHATSAPP_PHONE_NUMBER_ID),
-          getSecret(organizationId, WHATSAPP_APP_SECRET),
-          getSecret(organizationId, WHATSAPP_VERIFY_TOKEN),
-          getSecret(organizationId, WHATSAPP_BUSINESS_PHONE),
-        ],
-      );
-      if (!accessToken || !phoneNumberId || !appSecret || !verifyToken) return null;
-      return { agentId, accessToken, phoneNumberId, appSecret, verifyToken, businessPhone };
+      const [
+        accessToken,
+        phoneNumberId,
+        appSecret,
+        verifyToken,
+        businessPhone,
+      ] = await Promise.all([
+        getSecret(organizationId, WHATSAPP_ACCESS_TOKEN),
+        getSecret(organizationId, WHATSAPP_PHONE_NUMBER_ID),
+        getSecret(organizationId, WHATSAPP_APP_SECRET),
+        getSecret(organizationId, WHATSAPP_VERIFY_TOKEN),
+        getSecret(organizationId, WHATSAPP_BUSINESS_PHONE),
+      ]);
+      if (!accessToken || !phoneNumberId || !appSecret || !verifyToken)
+        return null;
+      return {
+        agentId,
+        accessToken,
+        phoneNumberId,
+        appSecret,
+        verifyToken,
+        businessPhone,
+      };
     }
   }
 }
@@ -125,7 +143,11 @@ app.get("/", async (c) => {
       return c.json({ error: "agent_not_found" }, 404);
     }
 
-    const config = await buildWebhookConfig(organizationId, query.agentId, query.platform);
+    const config = await buildWebhookConfig(
+      organizationId,
+      query.agentId,
+      query.platform,
+    );
     if (!config) {
       return c.json({ error: "webhook_config_not_found" }, 404);
     }

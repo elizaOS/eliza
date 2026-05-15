@@ -16,11 +16,21 @@ import { ServiceKeyAuthError } from "@/lib/auth/service-key";
 import { applyCorsHeaders } from "@/lib/services/proxy/cors";
 import { logger } from "@/lib/utils/logger";
 
-function compatErrorResponse(message: string, status: number, methods: string): Response {
-  return applyCorsHeaders(Response.json(errorEnvelope(message), { status }), methods);
+function compatErrorResponse(
+  message: string,
+  status: number,
+  methods: string,
+): Response {
+  return applyCorsHeaders(
+    Response.json(errorEnvelope(message), { status }),
+    methods,
+  );
 }
 
-export function handleCompatError(err: unknown, methods = "GET, POST, DELETE, OPTIONS"): Response {
+export function handleCompatError(
+  err: unknown,
+  methods = "GET, POST, DELETE, OPTIONS",
+): Response {
   // 1. Typed API errors — use their built-in status / message.
   if (err instanceof ApiError) {
     return compatErrorResponse(err.message, err.status, methods);

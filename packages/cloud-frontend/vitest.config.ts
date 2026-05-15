@@ -113,20 +113,20 @@ export default defineConfig({
         find: /^@elizaos\/ui\/layout$/,
         replacement: r("../ui/src/cloud-ui/components/layout/index.ts"),
       },
-      { find: /^@elizaos\/ui\/(.*)$/, replacement: r("../ui/src") + "/$1" },
+      { find: /^@elizaos\/ui\/(.*)$/, replacement: `${r("../ui/src")}/$1` },
       {
         find: /^@elizaos\/cloud-shared$/,
         replacement: r("../cloud-shared/src/index.ts"),
       },
       {
         find: /^@elizaos\/cloud-shared\/(.*)$/,
-        replacement: r("../cloud-shared/src") + "/$1",
+        replacement: `${r("../cloud-shared/src")}/$1`,
       },
       {
         find: /^@\/packages(\/.*)?$/,
-        replacement: r("../cloud-shared/src") + "$1",
+        replacement: `${r("../cloud-shared/src")}$1`,
       },
-      { find: /^@\/(.*)$/, replacement: r("./src") + "/$1" },
+      { find: /^@\/(.*)$/, replacement: `${r("./src")}/$1` },
     ],
   },
 });

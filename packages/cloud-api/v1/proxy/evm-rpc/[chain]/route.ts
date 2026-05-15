@@ -20,7 +20,10 @@ import {
 import type { ProxyRequestBody } from "@/lib/services/proxy/types";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const LEGACY_CHAIN_ALIASES: Record<string, { chain: string; network?: "mainnet" | "testnet" }> = {
+const LEGACY_CHAIN_ALIASES: Record<
+  string,
+  { chain: string; network?: "mainnet" | "testnet" }
+> = {
   mainnet: { chain: "ethereum", network: "mainnet" },
   sepolia: { chain: "ethereum", network: "testnet" },
   polygon: { chain: "polygon", network: "mainnet" },
@@ -61,7 +64,11 @@ app.post("/", async (c) => {
   // Support auth via query param for clients that cannot set custom headers.
   const headers = new Headers(c.req.raw.headers);
   const queryApiKey = c.req.query("api_key");
-  if (queryApiKey && !c.req.header("authorization") && !c.req.header("X-API-Key")) {
+  if (
+    queryApiKey &&
+    !c.req.header("authorization") &&
+    !c.req.header("X-API-Key")
+  ) {
     headers.set("authorization", `Bearer ${queryApiKey}`);
   }
 

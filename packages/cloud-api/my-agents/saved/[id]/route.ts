@@ -24,9 +24,15 @@ app.get("/", async (c) => {
       agentId,
     });
 
-    const result = await charactersService.getSavedAgentDetails(user.id, agentId);
+    const result = await charactersService.getSavedAgentDetails(
+      user.id,
+      agentId,
+    );
     if (!result) {
-      return c.json({ success: false, error: "Agent not found or not accessible" }, 404);
+      return c.json(
+        { success: false, error: "Agent not found or not accessible" },
+        404,
+      );
     }
 
     return c.json({
@@ -67,7 +73,10 @@ app.delete("/", async (c) => {
 
     return c.json({
       success: true,
-      data: { message: "Saved agent removed successfully", deleted: result.deleted },
+      data: {
+        message: "Saved agent removed successfully",
+        deleted: result.deleted,
+      },
     });
   } catch (error) {
     logger.error("[Saved Agents API] Error removing saved agent:", error);

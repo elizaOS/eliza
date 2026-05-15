@@ -22,7 +22,10 @@ import {
   getDefaultVideoBillingDimensions,
 } from "@/lib/services/ai-pricing";
 import { getSupportedVideoModelDefinition } from "@/lib/services/ai-pricing-definitions";
-import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
+import {
+  creditsService,
+  InsufficientCreditsError,
+} from "@/lib/services/credits";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -133,14 +136,18 @@ async function priceFalMutation(c: Parameters<typeof falHandler>[0]): Promise<{
     defaults.durationSeconds;
   const dimensions = {
     ...defaults.dimensions,
-    ...(readString(body, ["resolution"]) ? { resolution: readString(body, ["resolution"]) } : {}),
+    ...(readString(body, ["resolution"])
+      ? { resolution: readString(body, ["resolution"]) }
+      : {}),
     ...(readBoolean(body, ["audio", "generate_audio"]) !== undefined
       ? { audio: readBoolean(body, ["audio", "generate_audio"]) }
       : {}),
     ...(readBoolean(body, ["voiceControl", "voice_control"]) !== undefined
       ? { voiceControl: readBoolean(body, ["voiceControl", "voice_control"]) }
       : {}),
-    ...(defaults.dimensions.durationSeconds !== undefined ? { durationSeconds } : {}),
+    ...(defaults.dimensions.durationSeconds !== undefined
+      ? { durationSeconds }
+      : {}),
   };
 
   const cost = await calculateVideoGenerationCostFromCatalog({
@@ -155,8 +162,10 @@ async function priceFalMutation(c: Parameters<typeof falHandler>[0]): Promise<{
 
 const handle = async (c: Parameters<typeof falHandler>[0]) => {
   const isMutation = c.req.method === "POST" || c.req.method === "PUT";
-  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null = null;
-  let pricedMutation: Awaited<ReturnType<typeof priceFalMutation>> | null = null;
+  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
+    null;
+  let pricedMutation: Awaited<ReturnType<typeof priceFalMutation>> | null =
+    null;
   let user: Awaited<ReturnType<typeof requireUserOrApiKeyWithOrg>>;
 
   try {
@@ -188,7 +197,10 @@ const handle = async (c: Parameters<typeof falHandler>[0]) => {
       if (error instanceof Error && error.message === "missing_target") {
         return c.json({ error: "Invalid request" }, 400);
       }
-      if (error instanceof Error && error.message.startsWith("Unpriced fal endpoint")) {
+      if (
+        error instanceof Error &&
+        error.message.startsWith("Unpriced fal endpoint")
+      ) {
         return c.json({ error: error.message }, 400);
       }
 

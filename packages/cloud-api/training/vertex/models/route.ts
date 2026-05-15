@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { vertexModelRegistryService } from "@/lib/services/vertex-model-registry";
-import type { VertexTuningScope, VertexTuningSlot } from "@/lib/services/vertex-tuning";
+import type {
+  VertexTuningScope,
+  VertexTuningSlot,
+} from "@/lib/services/vertex-tuning";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const VERTEX_TUNING_SLOTS = [
@@ -14,11 +17,15 @@ const VERTEX_TUNING_SLOTS = [
 ] as const satisfies readonly VertexTuningSlot[];
 
 function parseScope(value: unknown): VertexTuningScope | undefined {
-  return value === "global" || value === "organization" || value === "user" ? value : undefined;
+  return value === "global" || value === "organization" || value === "user"
+    ? value
+    : undefined;
 }
 
 function parseSlot(value: unknown): VertexTuningSlot | undefined {
-  return typeof value === "string" ? VERTEX_TUNING_SLOTS.find((slot) => slot === value) : undefined;
+  return typeof value === "string"
+    ? VERTEX_TUNING_SLOTS.find((slot) => slot === value)
+    : undefined;
 }
 
 async function __hono_GET(request: Request) {
@@ -69,7 +76,10 @@ async function __hono_GET(request: Request) {
   } catch (error) {
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "Failed to list tuned models",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to list tuned models",
       },
       { status: 500 },
     );

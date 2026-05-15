@@ -86,6 +86,22 @@ const agentEnv = {
   ),
   ELIZA_CLOUD_URL: urls.cloudWeb,
   ELIZA_WALLET_OS_STORE: envDefault("ELIZA_WALLET_OS_STORE", "1"),
+  ELIZA_DEVICE_BRIDGE_ENABLED: envDefault("ELIZA_DEVICE_BRIDGE_ENABLED", "1"),
+  ELIZA_DISABLE_LOCAL_EMBEDDINGS: envDefault(
+    "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
+    "true",
+  ),
+  ELIZA_SKIP_PLUGINS: [
+    process.env.ELIZA_SKIP_PLUGINS,
+    "@elizaos/plugin-companion",
+    "@elizaos/plugin-lifeops",
+  ]
+    .filter(Boolean)
+    .join(","),
+  PGLITE_DATA_DIR: envDefault(
+    "DEV_ALL_AGENT_PGLITE_DATA_DIR",
+    `${repoRoot}/.eliza/agent-pglite`,
+  ),
   EVM_PRIVATE_KEY: "",
   SOLANA_PRIVATE_KEY: "",
 };

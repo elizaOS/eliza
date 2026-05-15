@@ -1,6 +1,12 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
-import { api, bearerHeaders, getBaseUrl, isServerReachable, url } from "./_helpers/api";
+import {
+  api,
+  bearerHeaders,
+  getBaseUrl,
+  isServerReachable,
+  url,
+} from "./_helpers/api";
 
 let serverReachable = false;
 let hasTestApiKey = false;
@@ -18,7 +24,9 @@ beforeAll(async () => {
     );
   }
   if (!hasTestApiKey) {
-    console.warn("[group-j-documents] TEST_API_KEY is not set; auth-gated tests will skip.");
+    console.warn(
+      "[group-j-documents] TEST_API_KEY is not set; auth-gated tests will skip.",
+    );
   }
 });
 
@@ -55,9 +63,13 @@ describe("Group J - /api/v1/documents", () => {
     const documentId = created.document?.id;
     expect(documentId).toBeTruthy();
 
-    const list = await api.get("/api/v1/documents", { headers: bearerHeaders() });
+    const list = await api.get("/api/v1/documents", {
+      headers: bearerHeaders(),
+    });
     expect(list.status).toBe(200);
-    const listed = (await list.json()) as { documents?: Array<{ id?: string }> };
+    const listed = (await list.json()) as {
+      documents?: Array<{ id?: string }>;
+    };
     expect(listed.documents?.some((doc) => doc.id === documentId)).toBe(true);
 
     const query = await api.post(
@@ -84,7 +96,9 @@ describe("Group J - /api/v1/documents", () => {
     const form = new FormData();
     form.append(
       "files",
-      new File([`file body ${marker}`], `${marker}.txt`, { type: "text/plain" }),
+      new File([`file body ${marker}`], `${marker}.txt`, {
+        type: "text/plain",
+      }),
     );
 
     const res = await fetch(url("/api/v1/documents/upload-file"), {
@@ -102,14 +116,19 @@ describe("Group J - /api/v1/documents", () => {
     expect(body.documents?.[0]?.id).toBeTruthy();
 
     if (body.documents?.[0]?.id) {
-      await api.delete(`/api/v1/documents/${body.documents[0].id}`, { headers: bearerHeaders() });
+      await api.delete(`/api/v1/documents/${body.documents[0].id}`, {
+        headers: bearerHeaders(),
+      });
     }
   });
 
   test("pre-upload route is live and supports cleanup when object storage is configured", async () => {
     if (!shouldRunAuthed()) return;
     const form = new FormData();
-    form.append("files", new File(["pending file"], "pending.txt", { type: "text/plain" }));
+    form.append(
+      "files",
+      new File(["pending file"], "pending.txt", { type: "text/plain" }),
+    );
 
     const res = await fetch(url("/api/v1/documents/pre-upload"), {
       method: "POST",
@@ -121,7 +140,9 @@ describe("Group J - /api/v1/documents", () => {
     expect([200, 503]).toContain(res.status);
 
     if (res.status === 200) {
-      const body = (await res.json()) as { files?: Array<{ blobUrl?: string }> };
+      const body = (await res.json()) as {
+        files?: Array<{ blobUrl?: string }>;
+      };
       const blobUrl = body.files?.[0]?.blobUrl;
       expect(blobUrl).toBeTruthy();
       const deleted = await api.delete("/api/v1/documents/pre-upload", {
@@ -134,7 +155,11 @@ describe("Group J - /api/v1/documents", () => {
 
   test("submit route validates required character and file payload", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/v1/documents/submit", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/v1/documents/submit",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect(res.status).toBe(400);
   });
 });

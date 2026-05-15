@@ -24,7 +24,9 @@ export interface CompatAuthResult {
 /**
  * Authenticate a compat route request.
  */
-export async function requireCompatAuth(request: Request): Promise<CompatAuthResult> {
+export async function requireCompatAuth(
+  request: Request,
+): Promise<CompatAuthResult> {
   // 1. X-Service-Key (eliza-cloud S2S)
   const serviceKeyHeader = request.headers.get("X-Service-Key");
   if (serviceKeyHeader !== null) {

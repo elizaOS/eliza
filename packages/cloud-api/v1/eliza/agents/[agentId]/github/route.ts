@@ -7,7 +7,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "GET, DELETE, OPTIONS";
 
-async function __hono_GET(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
@@ -19,12 +22,18 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ agen
 
     if (!status) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Agent not found" }, { status: 404 }),
+        Response.json(
+          { success: false, error: "Agent not found" },
+          { status: 404 },
+        ),
         CORS_METHODS,
       );
     }
 
-    return applyCorsHeaders(Response.json({ success: true, data: status }), CORS_METHODS);
+    return applyCorsHeaders(
+      Response.json({ success: true, data: status }),
+      CORS_METHODS,
+    );
   } catch (error) {
     return applyCorsHeaders(errorToResponse(error), CORS_METHODS);
   }
@@ -61,9 +70,13 @@ async function __hono_DELETE(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;

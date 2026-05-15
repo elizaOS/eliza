@@ -16,7 +16,10 @@ app.get("/", async (c) => {
   try {
     requireCronSecret(c);
     await cliAuthSessionsService.cleanupExpiredSessions();
-    return c.json({ success: true, message: "Expired CLI auth sessions cleaned up successfully" });
+    return c.json({
+      success: true,
+      message: "Expired CLI auth sessions cleaned up successfully",
+    });
   } catch (error) {
     logger.error("Error cleaning up CLI auth sessions:", error);
     return failureResponse(c, error);

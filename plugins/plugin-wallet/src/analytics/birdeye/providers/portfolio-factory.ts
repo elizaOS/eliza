@@ -203,9 +203,7 @@ export function createBirdeyePortfolioProvider(
           runtime.getSetting("BIRDEYE_WALLET_ADDR"),
         );
         if (!walletAddr) {
-          runtime.logger.error(
-            "BIRDEYE_WALLET_ADDR setting is not configured",
-          );
+          runtime.logger.error("BIRDEYE_WALLET_ADDR setting is not configured");
           return {
             values: {},
             text: statusJson(

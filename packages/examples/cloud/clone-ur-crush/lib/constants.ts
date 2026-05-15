@@ -3,7 +3,8 @@ export const APP_CONFIG = {
   description: "Create your AI girlfriend and exchange texts",
   url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3012",
   maxUnauthenticatedMessages: 5, // 5 messages back and forth = 10 total
-  elizaCloudUrl: process.env.NEXT_PUBLIC_ELIZA_CLOUD_URL || "http://localhost:3000",
+  elizaCloudUrl:
+    process.env.NEXT_PUBLIC_ELIZA_CLOUD_URL || "http://localhost:3000",
   affiliateApiKey: process.env.NEXT_PUBLIC_AFFILIATE_API_KEY || "",
 };
 

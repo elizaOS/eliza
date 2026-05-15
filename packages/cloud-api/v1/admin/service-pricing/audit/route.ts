@@ -23,13 +23,21 @@ app.get("/", async (c) => {
 
     const rawLimit = c.req.query("limit");
     const parsedLimit = rawLimit ? parseInt(rawLimit, 10) : 50;
-    const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 500) : 50;
+    const limit =
+      Number.isFinite(parsedLimit) && parsedLimit > 0
+        ? Math.min(parsedLimit, 500)
+        : 50;
 
     const rawOffset = c.req.query("offset");
     const parsedOffset = rawOffset ? parseInt(rawOffset, 10) : 0;
-    const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+    const offset =
+      Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
 
-    const history = await servicePricingRepository.listAuditHistory(serviceId, limit, offset);
+    const history = await servicePricingRepository.listAuditHistory(
+      serviceId,
+      limit,
+      offset,
+    );
 
     return c.json({
       service_id: serviceId,

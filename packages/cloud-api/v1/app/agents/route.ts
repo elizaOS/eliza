@@ -12,7 +12,10 @@ import { organizations } from "@/db/schemas/organizations";
 import { userCharacters } from "@/db/schemas/user-characters";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { charactersService } from "@/lib/services/characters/characters";
 import { isUniqueConstraintError } from "@/lib/utils/db-errors";
 import { logger } from "@/lib/utils/logger";
@@ -44,7 +47,10 @@ const AGENT_LIMITS = {
   ENTERPRISE: 500,
 } as const;
 
-function getMaxAgentsForOrg(creditBalance: number, orgSettings?: Record<string, unknown>): number {
+function getMaxAgentsForOrg(
+  creditBalance: number,
+  orgSettings?: Record<string, unknown>,
+): number {
   const customLimit = orgSettings?.max_agents as number | undefined;
   if (customLimit && customLimit > 0) return customLimit;
 
@@ -87,7 +93,8 @@ app.post("/", async (c) => {
       );
     }
 
-    const { name, bio, tokenChain, tokenName, tokenTicker } = validationResult.data;
+    const { name, bio, tokenChain, tokenName, tokenTicker } =
+      validationResult.data;
     const tokenAddress = validationResult.data.tokenAddress
       ? normalizeTokenAddress(validationResult.data.tokenAddress, tokenChain)
       : undefined;
@@ -128,7 +135,8 @@ app.post("/", async (c) => {
           details: {
             current: count,
             max: maxAgents,
-            upgrade_hint: "Add credits to your account to increase your agent limit.",
+            upgrade_hint:
+              "Add credits to your account to increase your agent limit.",
           },
         },
         403,
@@ -136,7 +144,10 @@ app.post("/", async (c) => {
     }
 
     if (tokenAddress) {
-      const existing = await userCharactersRepository.findByTokenAddress(tokenAddress, tokenChain);
+      const existing = await userCharactersRepository.findByTokenAddress(
+        tokenAddress,
+        tokenChain,
+      );
       if (existing) {
         return c.json(
           {

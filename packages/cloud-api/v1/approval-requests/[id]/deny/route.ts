@@ -12,7 +12,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { approvalRequestsRepository } from "@/db/repositories/approval-requests";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { approvalCallbackBus } from "@/lib/services/approval-callback-bus";
 import {
   type ApprovalRequestsService,
@@ -27,7 +30,9 @@ const DenySchema = z.object({
 
 let singleton: ApprovalRequestsService | null = null;
 function getApprovalRequestsService(): ApprovalRequestsService {
-  singleton ??= createApprovalRequestsService({ repository: approvalRequestsRepository });
+  singleton ??= createApprovalRequestsService({
+    repository: approvalRequestsRepository,
+  });
   return singleton;
 }
 
@@ -39,14 +44,21 @@ app.post("/", async (c) => {
   try {
     const id = c.req.param("id");
     if (!id) {
-      return c.json({ success: false, error: "Missing approval request id" }, 400);
+      return c.json(
+        { success: false, error: "Missing approval request id" },
+        400,
+      );
     }
 
     const body = await c.req.json().catch(() => ({}));
     const parsed = DenySchema.safeParse(body ?? {});
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }
@@ -63,7 +75,9 @@ app.post("/", async (c) => {
 
     return c.json({ success: true, approvalRequest });
   } catch (error) {
-    logger.error("[ApprovalRequests API] Failed to deny approval request", { error });
+    logger.error("[ApprovalRequests API] Failed to deny approval request", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });

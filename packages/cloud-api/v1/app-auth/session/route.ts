@@ -19,7 +19,10 @@ import {
   failureResponse,
 } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
-import { consumeAppAuthCode, looksLikeAppAuthCode } from "@/lib/services/app-auth-codes";
+import {
+  consumeAppAuthCode,
+  looksLikeAppAuthCode,
+} from "@/lib/services/app-auth-codes";
 import { usersService } from "@/lib/services/users";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -36,7 +39,9 @@ function readRequestedAppId(c: Context): string | null {
   return c.req.header("X-App-Id") || c.req.header("x-app-id") || null;
 }
 
-async function readAppInfo(appId: string | null): Promise<{ id: string; name: string } | null> {
+async function readAppInfo(
+  appId: string | null,
+): Promise<{ id: string; name: string } | null> {
   if (!appId) return null;
   const [row] = await dbRead
     .select({ id: apps.id, name: apps.name })
@@ -59,7 +64,10 @@ async function buildSessionResponse(
 
   const appInfo = await readAppInfo(input.appId ?? null);
 
-  logger.info("App auth session verified", { userId: input.userId, appId: input.appId });
+  logger.info("App auth session verified", {
+    userId: input.userId,
+    appId: input.appId,
+  });
 
   return c.json({
     success: true,
@@ -79,11 +87,14 @@ app.get("/", async (c) => {
     const bearer = readBearer(c);
     if (looksLikeAppAuthCode(bearer)) {
       const codeRecord = await consumeAppAuthCode(bearer);
-      if (!codeRecord) throw AuthenticationError("Invalid or expired authorization code");
+      if (!codeRecord)
+        throw AuthenticationError("Invalid or expired authorization code");
 
       const requestedAppId = readRequestedAppId(c);
       if (requestedAppId && requestedAppId !== codeRecord.appId) {
-        throw ForbiddenError("Authorization code was issued for a different app");
+        throw ForbiddenError(
+          "Authorization code was issued for a different app",
+        );
       }
 
       return await buildSessionResponse(c, {

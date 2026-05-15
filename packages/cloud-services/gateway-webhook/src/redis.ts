@@ -30,7 +30,11 @@ class NativeRedisAdapter implements GatewayRedis {
     }
   }
 
-  async set(key: string, value: string, options: SetOptions = {}): Promise<unknown> {
+  async set(
+    key: string,
+    value: string,
+    options: SetOptions = {},
+  ): Promise<unknown> {
     if (options.ex && options.nx) {
       return this.client.set(key, value, "EX", options.ex, "NX");
     }
@@ -74,7 +78,9 @@ export function createRedis(): GatewayRedis {
     return new NativeRedisAdapter(new IORedis(process.env.REDIS_URL));
   }
 
-  logger.warn("Redis is not configured; set REDIS_URL or KV_REST_API_URL/KV_REST_API_TOKEN");
+  logger.warn(
+    "Redis is not configured; set REDIS_URL or KV_REST_API_URL/KV_REST_API_TOKEN",
+  );
   return new UpstashRedis({
     url: process.env.KV_REST_API_URL!,
     token: process.env.KV_REST_API_TOKEN!,

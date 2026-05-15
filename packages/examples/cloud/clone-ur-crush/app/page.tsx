@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ROUTES } from "@/lib/constants";
 import { getRandomName } from "@/lib/random-names";
-import { CharacterFormData } from "@/types";
+import type { CharacterFormData } from "@/types";
 
 const STORAGE_KEY = "cyc_form_draft";
 
@@ -43,7 +43,8 @@ export default function HomePage() {
         const parsed = JSON.parse(savedData);
         if (parsed.formData) setFormData(parsed.formData);
         if (parsed.photoPreview) setPhotoPreview(parsed.photoPreview);
-        if (parsed.physicalAppearance) setPhysicalAppearance(parsed.physicalAppearance);
+        if (parsed.physicalAppearance)
+          setPhysicalAppearance(parsed.physicalAppearance);
         if (parsed.gender) setGender(parsed.gender);
       }
     } catch (error) {
@@ -217,7 +218,12 @@ export default function HomePage() {
     };
 
     autoGenerate();
-  }, [shouldAutoGeneratePhoto, formData.description, generatingField, generatingPhoto]);
+  }, [
+    shouldAutoGeneratePhoto,
+    formData.description,
+    generatingField,
+    generatingPhoto,
+  ]);
 
   const handleGeneratePhotoWithAppearance = async (appearance: string) => {
     if (!appearance.trim()) {
@@ -295,7 +301,10 @@ export default function HomePage() {
                   img.onload = () => {
                     console.log("Final image loaded:", data.imageUrl);
                     setPhotoPreview(data.imageUrl);
-                    setFormData((prev) => ({ ...prev, photoUrl: data.imageUrl }));
+                    setFormData((prev) => ({
+                      ...prev,
+                      photoUrl: data.imageUrl,
+                    }));
                   };
                   img.onerror = () => {
                     console.error("Failed to load final image:", data.imageUrl);
@@ -320,10 +329,17 @@ export default function HomePage() {
       } else {
         // Handle JSON response (OpenAI fallback)
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+          const errorData = await response
+            .json()
+            .catch(() => ({ error: "Unknown error" }));
 
-          if (response.status === 400 && errorData.error?.includes("not available")) {
-            console.log("Image generation not available. Skipping photo generation.");
+          if (
+            response.status === 400 &&
+            errorData.error?.includes("not available")
+          ) {
+            console.log(
+              "Image generation not available. Skipping photo generation.",
+            );
             setGeneratingPhoto(false);
             setPhotoProgress("");
             return;
@@ -344,7 +360,9 @@ export default function HomePage() {
       }
     } catch (error) {
       console.error("Error generating photo:", error);
-      alert("Failed to generate photo. Please try again or upload a photo instead.");
+      alert(
+        "Failed to generate photo. Please try again or upload a photo instead.",
+      );
     } finally {
       setGeneratingPhoto(false);
     }
@@ -363,8 +381,10 @@ export default function HomePage() {
 
       // Add speech examples
       if (formData.sayHello) submitData.append("sayHello", formData.sayHello);
-      if (formData.sayGoodbye) submitData.append("sayGoodbye", formData.sayGoodbye);
-      if (formData.sayHowAreYou) submitData.append("sayHowAreYou", formData.sayHowAreYou);
+      if (formData.sayGoodbye)
+        submitData.append("sayGoodbye", formData.sayGoodbye);
+      if (formData.sayHowAreYou)
+        submitData.append("sayHowAreYou", formData.sayHowAreYou);
       if (formData.sayGood) submitData.append("sayGood", formData.sayGood);
       if (formData.sayBad) submitData.append("sayBad", formData.sayBad);
 
@@ -402,7 +422,10 @@ export default function HomePage() {
       // Store session data and character for Cloud API
       localStorage.setItem("cyc_session_id", result.data.sessionId);
       localStorage.setItem("cyc_character_id", result.data.characterId);
-      localStorage.setItem("cyc_character_data", JSON.stringify(characterDataWithPhoto));
+      localStorage.setItem(
+        "cyc_character_data",
+        JSON.stringify(characterDataWithPhoto),
+      );
 
       // Keep the form draft so users can go back and create another character
 
@@ -469,7 +492,8 @@ export default function HomePage() {
                     htmlFor="name"
                     className="block text-sm sm:text-base font-medium text-gray-700 mb-2"
                   >
-                    What&apos;s her name? <span className="text-red-500">*</span>
+                    What&apos;s her name?{" "}
+                    <span className="text-red-500">*</span>
                   </label>
 
                   <div className="flex gap-2">
@@ -479,7 +503,9 @@ export default function HomePage() {
                         id="name"
                         required
                         value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        onChange={(e) =>
+                          setFormData({ ...formData, name: e.target.value })
+                        }
                         className="w-full px-4 py-3 sm:py-3.5 pr-12 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-gray-900 bg-white text-base"
                         placeholder="e.g., Ashley"
                       />
@@ -516,7 +542,9 @@ export default function HomePage() {
                       {generatingField === "description" ? (
                         <>
                           <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                          <span className="hidden sm:inline">Generating...</span>
+                          <span className="hidden sm:inline">
+                            Generating...
+                          </span>
                         </>
                       ) : (
                         <>
@@ -530,7 +558,9 @@ export default function HomePage() {
                     id="description"
                     required
                     value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
                     rows={4}
                     className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent transition-all resize-none text-gray-900 bg-white text-base"
                     placeholder="e.g., She's playful and fun, with a great sense of humor..."
@@ -546,7 +576,8 @@ export default function HomePage() {
                     className="block text-sm sm:text-base font-medium text-gray-700 mb-2 flex items-center justify-between gap-2"
                   >
                     <span>
-                      How did you two meet? <span className="text-red-500">*</span>
+                      How did you two meet?{" "}
+                      <span className="text-red-500">*</span>
                     </span>
                     <button
                       type="button"
@@ -558,7 +589,9 @@ export default function HomePage() {
                       {generatingField === "howYouMet" ? (
                         <>
                           <div className="w-3 h-3 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                          <span className="hidden sm:inline">Generating...</span>
+                          <span className="hidden sm:inline">
+                            Generating...
+                          </span>
                         </>
                       ) : (
                         <>
@@ -572,7 +605,9 @@ export default function HomePage() {
                     id="howYouMet"
                     required
                     value={formData.howYouMet}
-                    onChange={(e) => setFormData({ ...formData, howYouMet: e.target.value })}
+                    onChange={(e) =>
+                      setFormData({ ...formData, howYouMet: e.target.value })
+                    }
                     rows={3}
                     className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent transition-all resize-none text-gray-900 bg-white text-base"
                     placeholder="e.g., We met at a coffee shop downtown..."
@@ -583,9 +618,9 @@ export default function HomePage() {
               {/* Step 4: Photo */}
               {currentStep === 4 && (
                 <div>
-                  <label className="block text-sm sm:text-base font-medium text-gray-700 mb-3">
+                  <p className="block text-sm sm:text-base font-medium text-gray-700 mb-3">
                     Generate her photo
-                  </label>
+                  </p>
 
                   {/* Photo Widget Box - Generation Only */}
                   <div className="border-2 border-gray-200 rounded-xl p-4 sm:p-6 bg-gradient-to-br from-gray-50 to-white">
@@ -610,25 +645,32 @@ export default function HomePage() {
                                   console.log("Regenerate button clicked");
                                   handleGeneratePhoto();
                                 }}
-                                disabled={generatingPhoto || generatingField === "description"}
+                                disabled={
+                                  generatingPhoto ||
+                                  generatingField === "description"
+                                }
                                 className="absolute bottom-2 right-2 w-12 h-12 bg-white rounded-full shadow-lg flex items-center justify-center hover:bg-gray-50 transition-all border-2 border-gray-200 touch-manipulation disabled:opacity-50 disabled:cursor-not-allowed z-10"
                                 title="Regenerate photo"
                               >
                                 <RefreshCw className="w-5 h-5 text-accent" />
                               </button>
                             </>
-                          ) : generatingPhoto || generatingField === "description" ? (
+                          ) : generatingPhoto ||
+                            generatingField === "description" ? (
                             <div className="w-48 h-48 rounded-full bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center shadow-lg">
                               <div className="w-16 h-16 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
                             </div>
                           ) : (
-                            <div
+                            <button
+                              type="button"
                               className="w-48 h-48 rounded-full bg-gradient-to-br from-gray-200 to-gray-300 flex flex-col items-center justify-center shadow-lg cursor-pointer hover:from-gray-300 hover:to-gray-400 transition-all"
                               onClick={() => {
                                 if (formData.description.trim()) {
                                   setShouldAutoGeneratePhoto(true);
                                 } else {
-                                  alert("Please fill in the description first!");
+                                  alert(
+                                    "Please fill in the description first!",
+                                  );
                                 }
                               }}
                             >
@@ -639,7 +681,7 @@ export default function HomePage() {
                               <p className="text-sm text-gray-600 px-6 text-center font-medium">
                                 Click to generate
                               </p>
-                            </div>
+                            </button>
                           )}
                         </div>
                       </div>
@@ -651,9 +693,9 @@ export default function HomePage() {
               {/* Step 5: How She Talks */}
               {currentStep === 5 && (
                 <div>
-                  <label className="block text-sm sm:text-base font-medium text-gray-700 mb-3">
+                  <p className="block text-sm sm:text-base font-medium text-gray-700 mb-3">
                     How does she talk?
-                  </label>
+                  </p>
                   <div className="border-2 border-gray-200 rounded-xl p-4 sm:p-6 bg-gradient-to-br from-gray-50 to-white space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                       <div>
@@ -679,7 +721,12 @@ export default function HomePage() {
                           type="text"
                           id="sayHello"
                           value={formData.sayHello}
-                          onChange={(e) => setFormData({ ...formData, sayHello: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              sayHello: e.target.value,
+                            })
+                          }
                           className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-gray-900 bg-white text-sm sm:text-base"
                           placeholder="e.g., &quot;Hey babe!&quot;"
                         />
@@ -708,7 +755,12 @@ export default function HomePage() {
                           type="text"
                           id="sayGoodbye"
                           value={formData.sayGoodbye}
-                          onChange={(e) => setFormData({ ...formData, sayGoodbye: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              sayGoodbye: e.target.value,
+                            })
+                          }
                           className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-gray-900 bg-white text-sm sm:text-base"
                           placeholder="e.g., &quot;Talk soon babe!&quot;"
                         />
@@ -738,7 +790,10 @@ export default function HomePage() {
                           id="sayHowAreYou"
                           value={formData.sayHowAreYou}
                           onChange={(e) =>
-                            setFormData({ ...formData, sayHowAreYou: e.target.value })
+                            setFormData({
+                              ...formData,
+                              sayHowAreYou: e.target.value,
+                            })
                           }
                           className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-gray-900 bg-white text-sm sm:text-base"
                           placeholder="e.g., &quot;How was your day?&quot;"
@@ -768,7 +823,12 @@ export default function HomePage() {
                           type="text"
                           id="sayGood"
                           value={formData.sayGood}
-                          onChange={(e) => setFormData({ ...formData, sayGood: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              sayGood: e.target.value,
+                            })
+                          }
                           className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-gray-900 bg-white text-sm sm:text-base"
                           placeholder="e.g., &quot;That's awesome!&quot;"
                         />
@@ -797,7 +857,9 @@ export default function HomePage() {
                           type="text"
                           id="sayBad"
                           value={formData.sayBad}
-                          onChange={(e) => setFormData({ ...formData, sayBad: e.target.value })}
+                          onChange={(e) =>
+                            setFormData({ ...formData, sayBad: e.target.value })
+                          }
                           className="w-full px-3 py-2.5 rounded-lg border border-gray-300 focus:ring-2 focus:ring-primary focus:border-transparent transition-all text-gray-900 bg-white text-sm sm:text-base"
                           placeholder="e.g., &quot;Aw babe... I&apos;m here for you&quot;"
                         />

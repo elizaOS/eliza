@@ -5,7 +5,10 @@
  */
 
 import { Hono } from "hono";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { x402FacilitatorService } from "@/lib/services/x402-facilitator";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -28,7 +31,8 @@ app.post("/", async (c) => {
     return c.json(
       {
         isValid: false,
-        invalidReason: "missing_fields: paymentPayload and paymentRequirements are required",
+        invalidReason:
+          "missing_fields: paymentPayload and paymentRequirements are required",
       },
       400,
     );
@@ -37,14 +41,19 @@ app.post("/", async (c) => {
   try {
     const result = await x402FacilitatorService.verify(
       paymentPayload as Parameters<typeof x402FacilitatorService.verify>[0],
-      paymentRequirements as Parameters<typeof x402FacilitatorService.verify>[1],
+      paymentRequirements as Parameters<
+        typeof x402FacilitatorService.verify
+      >[1],
     );
 
     return c.json(result, result.isValid ? 200 : 400);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.error(`[x402-verify] Verification error: ${msg}`);
-    return c.json({ isValid: false, invalidReason: `internal_error: ${msg}` }, 500);
+    return c.json(
+      { isValid: false, invalidReason: `internal_error: ${msg}` },
+      500,
+    );
   }
 });
 

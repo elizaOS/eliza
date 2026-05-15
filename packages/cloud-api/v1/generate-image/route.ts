@@ -3,7 +3,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { mergeGoogleImageModalitiesWithAnthropicCot } from "@/lib/providers/anthropic-thinking";
 import {
   getAiProviderConfigurationError,
@@ -16,7 +19,10 @@ import {
   SUPPORTED_IMAGE_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
-import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
+import {
+  creditsService,
+  InsufficientCreditsError,
+} from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
@@ -74,7 +80,9 @@ function extensionForMimeType(mimeType: string): string {
   return "png";
 }
 
-function imageDimensions(request: ImageRequest): Record<string, string | number> {
+function imageDimensions(
+  request: ImageRequest,
+): Record<string, string | number> {
   const dimensions: Record<string, string | number> = {};
   if (request.width && request.height) {
     dimensions.size = `${request.width}x${request.height}`;
@@ -90,7 +98,8 @@ function imageDimensions(request: ImageRequest): Record<string, string | number>
 function buildImagePrompt(request: ImageRequest): string {
   const parts = [request.prompt];
   if (request.aspectRatio) parts.push(`Aspect ratio: ${request.aspectRatio}.`);
-  if (request.width && request.height) parts.push(`Canvas: ${request.width}x${request.height}.`);
+  if (request.width && request.height)
+    parts.push(`Canvas: ${request.width}x${request.height}.`);
   if (request.stylePreset && request.stylePreset !== "none") {
     parts.push(`Style: ${request.stylePreset}.`);
   }
@@ -145,23 +154,40 @@ async function generateOneImage(request: ImageRequest): Promise<{
 }
 
 app.post("/", async (c) => {
-  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null = null;
+  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
+    null;
 
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     if (!c.env.BLOB) {
-      return jsonError(c, 503, "R2 storage is not configured", "internal_error");
+      return jsonError(
+        c,
+        503,
+        "R2 storage is not configured",
+        "internal_error",
+      );
     }
 
     const request = imageRequestSchema.parse(await c.req.json());
     const definition = getSupportedImageModelDefinition(request.model);
     if (!definition) {
-      return jsonError(c, 400, `Unsupported image model: ${request.model}`, "validation_error", {
-        supportedModels: SUPPORTED_IMAGE_MODEL_IDS,
-      });
+      return jsonError(
+        c,
+        400,
+        `Unsupported image model: ${request.model}`,
+        "validation_error",
+        {
+          supportedModels: SUPPORTED_IMAGE_MODEL_IDS,
+        },
+      );
     }
     if (!hasLanguageModelProviderConfigured(request.model)) {
-      return jsonError(c, 503, getAiProviderConfigurationError(), "internal_error");
+      return jsonError(
+        c,
+        503,
+        getAiProviderConfigurationError(),
+        "internal_error",
+      );
     }
 
     await contentSafetyService.assertSafeForPublicUse({
@@ -195,7 +221,11 @@ app.post("/", async (c) => {
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return c.json(
-          { success: false, error: "Insufficient credits", required: error.required },
+          {
+            success: false,
+            error: "Insufficient credits",
+            required: error.required,
+          },
           402,
         );
       }
@@ -229,10 +259,16 @@ app.post("/", async (c) => {
         });
       } catch (error) {
         await c.env.BLOB.delete(storedKey).catch((deleteError) => {
-          logger.error("[GenerateImage] Failed to delete blocked image output", {
-            key: storedKey,
-            error: deleteError instanceof Error ? deleteError.message : String(deleteError),
-          });
+          logger.error(
+            "[GenerateImage] Failed to delete blocked image output",
+            {
+              key: storedKey,
+              error:
+                deleteError instanceof Error
+                  ? deleteError.message
+                  : String(deleteError),
+            },
+          );
         });
         throw error;
       }
@@ -258,7 +294,11 @@ app.post("/", async (c) => {
           model: request.model,
           provider: definition.provider,
           prompt: request.prompt,
-          result: { text: image.text, r2Key: image.key, billingSource: definition.billingSource },
+          result: {
+            text: image.text,
+            r2Key: image.key,
+            billingSource: definition.billingSource,
+          },
           status: "completed",
           storage_url: image.url,
           thumbnail_url: image.url,
@@ -293,7 +333,10 @@ app.post("/", async (c) => {
     if (reservation) {
       await reservation.reconcile(0).catch((reconcileError) => {
         logger.error("[GenerateImage] Failed to refund reservation", {
-          error: reconcileError instanceof Error ? reconcileError.message : String(reconcileError),
+          error:
+            reconcileError instanceof Error
+              ? reconcileError.message
+              : String(reconcileError),
         });
       });
     }
@@ -301,6 +344,8 @@ app.post("/", async (c) => {
   }
 });
 
-app.all("*", (c) => c.json({ success: false, error: "Method not allowed" }, 405));
+app.all("*", (c) =>
+  c.json({ success: false, error: "Method not allowed" }, 405),
+);
 
 export default app;

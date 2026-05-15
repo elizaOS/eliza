@@ -8,10 +8,16 @@
  * depend on Drizzle table shapes.
  */
 import { Hono } from "hono";
-import { type DashboardAgent, dashboardRepository } from "@/db/repositories/dashboard";
+import {
+  type DashboardAgent,
+  dashboardRepository,
+} from "@/db/repositories/dashboard";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 interface DashboardResponse {

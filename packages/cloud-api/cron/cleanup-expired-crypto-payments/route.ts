@@ -30,9 +30,12 @@ function appChargeFailureCallback(payment: {
       ? (payment.metadata as Record<string, unknown>)
       : {};
   const kind = metadata.kind ?? metadata.type;
-  const appId = typeof metadata.app_id === "string" ? metadata.app_id : undefined;
+  const appId =
+    typeof metadata.app_id === "string" ? metadata.app_id : undefined;
   const chargeRequestId =
-    typeof metadata.charge_request_id === "string" ? metadata.charge_request_id : undefined;
+    typeof metadata.charge_request_id === "string"
+      ? metadata.charge_request_id
+      : undefined;
 
   if (kind !== "app_credit_purchase" || !appId || !chargeRequestId) {
     return null;
@@ -60,9 +63,14 @@ app.get("/", async (c) => {
   try {
     requireCronSecret(c);
 
-    const expiredPayments = await cryptoPaymentsService.listExpiredPendingPayments();
+    const expiredPayments =
+      await cryptoPaymentsService.listExpiredPendingPayments();
     if (expiredPayments.length === 0) {
-      return c.json({ success: true, processed: 0, message: "No expired payments to process" });
+      return c.json({
+        success: true,
+        processed: 0,
+        message: "No expired payments to process",
+      });
     }
 
     let markedExpired = 0;
@@ -77,10 +85,13 @@ app.get("/", async (c) => {
         markedExpired++;
       } catch (error) {
         errors++;
-        logger.error("[Crypto Payments Cleanup] Failed to mark payment as expired", {
-          paymentId: payment.id,
-          error,
-        });
+        logger.error(
+          "[Crypto Payments Cleanup] Failed to mark payment as expired",
+          {
+            paymentId: payment.id,
+            error,
+          },
+        );
       }
     }
 

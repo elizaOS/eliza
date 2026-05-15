@@ -419,7 +419,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async createComponents(components: Component[]): Promise<UUID[]> {
     const ids: UUID[] = [];
     for (const component of components) {
-      const id = (component.id) as UUID;
+      const id = component.id as UUID;
       await this.storage.set(COLLECTIONS.COMPONENTS, id, { ...component, id });
       ids.push(id);
     }
@@ -463,8 +463,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         (c) =>
           c.entityId === component.entityId &&
           c.type === component.type &&
-          (c.worldId) === (component.worldId) &&
-          (c.sourceEntityId) === (component.sourceEntityId)
+          c.worldId === component.worldId &&
+          c.sourceEntityId === component.sourceEntityId
       );
 
       const existing = naturalKey[0];
@@ -475,7 +475,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
           id: existing.id,
         });
       } else {
-        const id = (component.id) as UUID;
+        const id = component.id as UUID;
         await this.storage.set(COLLECTIONS.COMPONENTS, id, {
           ...component,
           id,
@@ -518,8 +518,8 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
         (c) =>
           c.entityId === key.entityId &&
           c.type === key.type &&
-          (c.worldId) === (key.worldId ?? null) &&
-          (c.sourceEntityId) === (key.sourceEntityId ?? null)
+          c.worldId === (key.worldId ?? null) &&
+          c.sourceEntityId === (key.sourceEntityId ?? null)
       );
       result.push(matches[0] ?? null);
     }
@@ -893,7 +893,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async createWorlds(worlds: World[]): Promise<UUID[]> {
     const ids: UUID[] = [];
     for (const world of worlds) {
-      const id = (world.id) as UUID;
+      const id = world.id as UUID;
       await this.storage.set(COLLECTIONS.WORLDS, id, { ...world, id });
       ids.push(id);
     }
@@ -920,7 +920,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async upsertWorlds(worlds: World[]): Promise<void> {
     for (const world of worlds) {
-      const id = (world.id) as UUID;
+      const id = world.id as UUID;
       const existing = await this.storage.get<World>(COLLECTIONS.WORLDS, id);
       await this.storage.set(COLLECTIONS.WORLDS, id, {
         ...(existing ?? {}),
@@ -976,7 +976,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async createRooms(rooms: Room[]): Promise<UUID[]> {
     const ids: UUID[] = [];
     for (const room of rooms) {
-      const id = (room.id) as UUID;
+      const id = room.id as UUID;
       await this.storage.set(COLLECTIONS.ROOMS, id, { ...room, id });
       ids.push(id);
     }
@@ -985,7 +985,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
 
   async upsertRooms(rooms: Room[]): Promise<void> {
     for (const room of rooms) {
-      const id = (room.id) as UUID;
+      const id = room.id as UUID;
       const existing = await this.storage.get<Room>(COLLECTIONS.ROOMS, id);
       await this.storage.set(COLLECTIONS.ROOMS, id, {
         ...(existing ?? {}),
@@ -1470,7 +1470,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async createPairingRequests(requests: PairingRequest[]): Promise<UUID[]> {
     const ids: UUID[] = [];
     for (const request of requests) {
-      const id = (request.id) as UUID;
+      const id = request.id as UUID;
       await this.storage.set(COLLECTIONS.PAIRING_REQUESTS, id, {
         ...request,
         id,
@@ -1504,7 +1504,7 @@ export class InMemoryDatabaseAdapter extends DatabaseAdapter<IStorage> {
   async createPairingAllowlistEntries(entries: PairingAllowlistEntry[]): Promise<UUID[]> {
     const ids: UUID[] = [];
     for (const entry of entries) {
-      const id = (entry.id) as UUID;
+      const id = entry.id as UUID;
       await this.storage.set(COLLECTIONS.PAIRING_ALLOWLIST, id, {
         ...entry,
         id,

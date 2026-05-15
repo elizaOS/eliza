@@ -26,7 +26,10 @@ const PatchRecordSchema = z
     proxied: z.boolean().optional(),
     priority: z.number().int().min(0).max(65535).optional(),
   })
-  .refine((v) => Object.keys(v).length > 0, "patch must include at least one field");
+  .refine(
+    (v) => Object.keys(v).length > 0,
+    "patch must include at least one field",
+  );
 
 const app = new Hono<AppEnv>();
 
@@ -44,13 +47,16 @@ async function loadCloudflareManagedDomain(c: AppContext) {
     return { error: "App not found", status: 404 as const };
   }
 
-  const md = await managedDomainsService.getDomainByName(decodeURIComponent(domainParam));
+  const md = await managedDomainsService.getDomainByName(
+    decodeURIComponent(domainParam),
+  );
   if (!md || md.organizationId !== user.organization_id || md.appId !== appId) {
     return { error: "Domain not attached to this app", status: 404 as const };
   }
   if (md.registrar !== "cloudflare" || !md.cloudflareZoneId) {
     return {
-      error: "DNS records on external domains must be edited at your existing DNS provider",
+      error:
+        "DNS records on external domains must be edited at your existing DNS provider",
       status: 409 as const,
     };
   }
@@ -60,7 +66,8 @@ async function loadCloudflareManagedDomain(c: AppContext) {
 app.get("/", async (c) => {
   try {
     const ctx = await loadCloudflareManagedDomain(c);
-    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
+    if ("error" in ctx)
+      return c.json({ success: false, error: ctx.error }, ctx.status);
 
     const rec = await cloudflareDnsService.getRecord(
       ctx.domain.cloudflareZoneId as string,
@@ -68,7 +75,9 @@ app.get("/", async (c) => {
     );
     return c.json({ success: true, record: rec });
   } catch (error) {
-    logger.error("[Domains DNS GET one] failed", { error: extractErrorMessage(error) });
+    logger.error("[Domains DNS GET one] failed", {
+      error: extractErrorMessage(error),
+    });
     return failureResponse(c, error);
   }
 });
@@ -76,12 +85,16 @@ app.get("/", async (c) => {
 app.patch("/", async (c) => {
   try {
     const ctx = await loadCloudflareManagedDomain(c);
-    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
+    if ("error" in ctx)
+      return c.json({ success: false, error: ctx.error }, ctx.status);
 
     const parsed = PatchRecordSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "invalid input" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "invalid input",
+        },
         400,
       );
     }
@@ -98,7 +111,9 @@ app.patch("/", async (c) => {
     });
     return c.json({ success: true, record: updated });
   } catch (error) {
-    logger.error("[Domains DNS PATCH] failed", { error: extractErrorMessage(error) });
+    logger.error("[Domains DNS PATCH] failed", {
+      error: extractErrorMessage(error),
+    });
     return failureResponse(c, error);
   }
 });
@@ -106,9 +121,13 @@ app.patch("/", async (c) => {
 app.delete("/", async (c) => {
   try {
     const ctx = await loadCloudflareManagedDomain(c);
-    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
+    if ("error" in ctx)
+      return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    await cloudflareDnsService.deleteRecord(ctx.domain.cloudflareZoneId as string, ctx.recordId);
+    await cloudflareDnsService.deleteRecord(
+      ctx.domain.cloudflareZoneId as string,
+      ctx.recordId,
+    );
     logger.info("[Domains DNS DELETE] removed", {
       appId: ctx.appId,
       domain: ctx.domain.domain,
@@ -116,7 +135,9 @@ app.delete("/", async (c) => {
     });
     return c.json({ success: true, recordId: ctx.recordId });
   } catch (error) {
-    logger.error("[Domains DNS DELETE] failed", { error: extractErrorMessage(error) });
+    logger.error("[Domains DNS DELETE] failed", {
+      error: extractErrorMessage(error),
+    });
     return failureResponse(c, error);
   }
 });

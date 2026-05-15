@@ -48,7 +48,9 @@ describe("Eliza App Bot Leader Election Constants", () => {
   test("check interval allows multiple renewals before TTL expires", () => {
     // Should be able to renew at least 2-3 times before TTL expires
     const ttlMs = ELIZA_APP_LEADER_TTL_SECONDS * 1000;
-    const renewalsBeforeExpiry = Math.floor(ttlMs / ELIZA_APP_LEADER_CHECK_INTERVAL_MS);
+    const renewalsBeforeExpiry = Math.floor(
+      ttlMs / ELIZA_APP_LEADER_CHECK_INTERVAL_MS,
+    );
     expect(renewalsBeforeExpiry).toBeGreaterThanOrEqual(3);
   });
 });
@@ -60,7 +62,11 @@ describe("Leader Election Logic", () => {
 
     interface MockRedis {
       data: Map<string, { value: string; expiresAt: number }>;
-      set(key: string, value: string, options: { ex: number; nx: boolean }): RedisSetResult;
+      set(
+        key: string,
+        value: string,
+        options: { ex: number; nx: boolean },
+      ): RedisSetResult;
       get(key: string): string | null;
       expire(key: string, seconds: number): boolean;
       del(key: string): boolean;
@@ -71,7 +77,11 @@ describe("Leader Election Logic", () => {
 
       return {
         data,
-        set(key: string, value: string, options: { ex: number; nx: boolean }): RedisSetResult {
+        set(
+          key: string,
+          value: string,
+          options: { ex: number; nx: boolean },
+        ): RedisSetResult {
           const now = Date.now();
           const existing = data.get(key);
 
@@ -155,7 +165,10 @@ describe("Leader Election Logic", () => {
       });
 
       // Renew
-      const renewed = redis.expire(ELIZA_APP_LEADER_KEY, ELIZA_APP_LEADER_TTL_SECONDS);
+      const renewed = redis.expire(
+        ELIZA_APP_LEADER_KEY,
+        ELIZA_APP_LEADER_TTL_SECONDS,
+      );
       expect(renewed).toBe(true);
     });
 
@@ -241,7 +254,8 @@ describe("Leader Election Logic", () => {
       // - Lock just renewed (TTL full)
       // - Next check by other pod at max interval
       const maxFailoverMs =
-        ELIZA_APP_LEADER_TTL_SECONDS * 1000 + ELIZA_APP_LEADER_CHECK_INTERVAL_MS;
+        ELIZA_APP_LEADER_TTL_SECONDS * 1000 +
+        ELIZA_APP_LEADER_CHECK_INTERVAL_MS;
       expect(maxFailoverMs).toBe(13000); // 10s TTL + 3s check = 13s max
     });
 
@@ -254,7 +268,8 @@ describe("Leader Election Logic", () => {
     test("average failover time estimation", () => {
       // On average: half of TTL remaining + half of check interval
       const avgFailoverMs =
-        (ELIZA_APP_LEADER_TTL_SECONDS * 1000) / 2 + ELIZA_APP_LEADER_CHECK_INTERVAL_MS / 2;
+        (ELIZA_APP_LEADER_TTL_SECONDS * 1000) / 2 +
+        ELIZA_APP_LEADER_CHECK_INTERVAL_MS / 2;
       expect(avgFailoverMs).toBe(6500); // 5s + 1.5s = 6.5s average
     });
   });
@@ -276,7 +291,8 @@ describe("Leader Election with Discord Intents", () => {
   });
 
   test("combined intents for Eliza App bot", () => {
-    const combinedIntents = REQUIRED_INTENTS.DirectMessages | REQUIRED_INTENTS.MessageContent;
+    const combinedIntents =
+      REQUIRED_INTENTS.DirectMessages | REQUIRED_INTENTS.MessageContent;
     expect(combinedIntents).toBe(36864); // 4096 + 32768
   });
 });
@@ -301,7 +317,10 @@ describe("Discord Partials for DM Support", () => {
   });
 
   test("both Channel and Message partials should be configured", () => {
-    const requiredPartials = [REQUIRED_PARTIALS.Channel, REQUIRED_PARTIALS.Message];
+    const requiredPartials = [
+      REQUIRED_PARTIALS.Channel,
+      REQUIRED_PARTIALS.Message,
+    ];
     expect(requiredPartials).toContain(0); // Channel
     expect(requiredPartials).toContain(2); // Message
     expect(requiredPartials.length).toBe(2);
@@ -309,7 +328,9 @@ describe("Discord Partials for DM Support", () => {
 });
 
 describe("Environment Variable Configuration", () => {
-  const hasElizaAppBotConfig = (env: Record<string, string | undefined>): boolean => {
+  const hasElizaAppBotConfig = (
+    env: Record<string, string | undefined>,
+  ): boolean => {
     return !!env.ELIZA_APP_DISCORD_BOT_TOKEN;
   };
 
@@ -317,14 +338,20 @@ describe("Environment Variable Configuration", () => {
     return !!(env.KV_REST_API_URL && env.KV_REST_API_TOKEN);
   };
 
-  const canEnableLeaderElection = (env: Record<string, string | undefined>): boolean => {
+  const canEnableLeaderElection = (
+    env: Record<string, string | undefined>,
+  ): boolean => {
     return hasElizaAppBotConfig(env) && hasRedisConfig(env);
   };
 
   test("detects Eliza App bot configuration", () => {
-    expect(hasElizaAppBotConfig({ ELIZA_APP_DISCORD_BOT_TOKEN: "token" })).toBe(true);
+    expect(hasElizaAppBotConfig({ ELIZA_APP_DISCORD_BOT_TOKEN: "token" })).toBe(
+      true,
+    );
     expect(hasElizaAppBotConfig({})).toBe(false);
-    expect(hasElizaAppBotConfig({ ELIZA_APP_DISCORD_BOT_TOKEN: "" })).toBe(false);
+    expect(hasElizaAppBotConfig({ ELIZA_APP_DISCORD_BOT_TOKEN: "" })).toBe(
+      false,
+    );
   });
 
   test("detects Redis configuration", () => {
@@ -553,12 +580,22 @@ describe("Webhook Forwarding", () => {
   });
 
   test("guild_id is always null for DM forwarding", () => {
-    const payload = createForwardPayload("123", "456", { id: "789", username: "user" }, "test");
+    const payload = createForwardPayload(
+      "123",
+      "456",
+      { id: "789", username: "user" },
+      "test",
+    );
     expect(payload.data.guild_id).toBeNull();
   });
 
   test("bot flag is always false for forwarded messages", () => {
-    const payload = createForwardPayload("123", "456", { id: "789", username: "user" }, "test");
+    const payload = createForwardPayload(
+      "123",
+      "456",
+      { id: "789", username: "user" },
+      "test",
+    );
     expect(payload.data.author.bot).toBe(false);
   });
 });

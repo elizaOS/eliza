@@ -25,7 +25,10 @@ const DomainSchema = z.object({
     .string()
     .min(4)
     .max(253)
-    .regex(/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i, "Invalid domain format")
+    .regex(
+      /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i,
+      "Invalid domain format",
+    )
     .transform((d) => d.toLowerCase().trim()),
 });
 
@@ -45,9 +48,13 @@ async function loadOwnedApp(c: AppContext) {
 app.get("/", async (c) => {
   try {
     const ctx = await loadOwnedApp(c);
-    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
+    if ("error" in ctx)
+      return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    const domains = await managedDomainsService.listForApp(ctx.user.organization_id, ctx.appId);
+    const domains = await managedDomainsService.listForApp(
+      ctx.user.organization_id,
+      ctx.appId,
+    );
     return c.json({
       success: true,
       domains: domains.map((d) => ({
@@ -59,7 +66,10 @@ app.get("/", async (c) => {
         sslStatus: d.sslStatus,
         expiresAt: d.expiresAt,
         cloudflareZoneId: d.cloudflareZoneId,
-        verificationToken: d.registrar === "external" && !d.verified ? d.verificationToken : null,
+        verificationToken:
+          d.registrar === "external" && !d.verified
+            ? d.verificationToken
+            : null,
       })),
     });
   } catch (error) {
@@ -70,12 +80,16 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const ctx = await loadOwnedApp(c);
-    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
+    if ("error" in ctx)
+      return c.json({ success: false, error: ctx.error }, ctx.status);
 
     const parsed = DomainSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "invalid input" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "invalid input",
+        },
         400,
       );
     }
@@ -120,8 +134,15 @@ app.post("/", async (c) => {
       domain,
       verificationToken,
     });
-    await managedDomainsService.assignToResource(row.id, { type: "app", id: ctx.appId });
-    await appDomainsCompat.setCustomDomain({ appId: ctx.appId, domain, verified: false });
+    await managedDomainsService.assignToResource(row.id, {
+      type: "app",
+      id: ctx.appId,
+    });
+    await appDomainsCompat.setCustomDomain({
+      appId: ctx.appId,
+      domain,
+      verified: false,
+    });
 
     return c.json(
       {
@@ -144,26 +165,40 @@ app.post("/", async (c) => {
 app.delete("/", async (c) => {
   try {
     const ctx = await loadOwnedApp(c);
-    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
+    if ("error" in ctx)
+      return c.json({ success: false, error: ctx.error }, ctx.status);
 
     const parsed = DomainSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "invalid input" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "invalid input",
+        },
         400,
       );
     }
     const { domain } = parsed.data;
 
     const md = await managedDomainsService.getDomainByName(domain);
-    if (!md || md.organizationId !== ctx.user.organization_id || md.appId !== ctx.appId) {
-      return c.json({ success: false, error: "Domain not attached to this app" }, 404);
+    if (
+      !md ||
+      md.organizationId !== ctx.user.organization_id ||
+      md.appId !== ctx.appId
+    ) {
+      return c.json(
+        { success: false, error: "Domain not attached to this app" },
+        404,
+      );
     }
 
     await managedDomainsService.unassignFromResource(md.id);
     try {
       const remainingDomains = (
-        await managedDomainsService.listForApp(ctx.user.organization_id, ctx.appId)
+        await managedDomainsService.listForApp(
+          ctx.user.organization_id,
+          ctx.appId,
+        )
       ).filter((candidate) => candidate.id !== md.id);
       const primaryDomain = remainingDomains.find(
         (candidate) => candidate.verified && candidate.status === "active",
@@ -179,11 +214,14 @@ app.delete("/", async (c) => {
       }
     } catch (error) {
       await appDomainsCompat.clearCustomDomain(ctx.appId);
-      logger.warn("[Domains DELETE] detached domain but failed to refresh compatibility domain", {
-        appId: ctx.appId,
-        domain,
-        error: extractErrorMessage(error),
-      });
+      logger.warn(
+        "[Domains DELETE] detached domain but failed to refresh compatibility domain",
+        {
+          appId: ctx.appId,
+          domain,
+          error: extractErrorMessage(error),
+        },
+      );
     }
     logger.info("[Domains DELETE] detached domain", {
       appId: ctx.appId,
@@ -199,7 +237,9 @@ app.delete("/", async (c) => {
           : "Detached from app. External registration unchanged.",
     });
   } catch (error) {
-    logger.error("[Domains DELETE] failed", { error: extractErrorMessage(error) });
+    logger.error("[Domains DELETE] failed", {
+      error: extractErrorMessage(error),
+    });
     return failureResponse(c, error);
   }
 });

@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
@@ -56,9 +56,15 @@ const WhatsAppWebhookPayloadSchema = z.object({
 export const whatsappAdapter: PlatformAdapter = {
   platform: "whatsapp",
 
-  async verifyWebhook(request: Request, rawBody: string, config: WebhookConfig): Promise<boolean> {
+  async verifyWebhook(
+    request: Request,
+    rawBody: string,
+    config: WebhookConfig,
+  ): Promise<boolean> {
     if (!config.appSecret) {
-      logger.warn("WhatsApp app secret not configured — signature verification skipped");
+      logger.warn(
+        "WhatsApp app secret not configured — signature verification skipped",
+      );
       return false;
     }
 
@@ -137,7 +143,11 @@ export const whatsappAdapter: PlatformAdapter = {
     return null;
   },
 
-  async sendReply(config: WebhookConfig, event: ChatEvent, text: string): Promise<void> {
+  async sendReply(
+    config: WebhookConfig,
+    event: ChatEvent,
+    text: string,
+  ): Promise<void> {
     if (!config.accessToken || !config.phoneNumberId) {
       throw new Error("Missing WhatsApp credentials for reply");
     }
@@ -164,7 +174,10 @@ export const whatsappAdapter: PlatformAdapter = {
     }
   },
 
-  async sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void> {
+  async sendTypingIndicator(
+    config: WebhookConfig,
+    event: ChatEvent,
+  ): Promise<void> {
     if (!config.accessToken || !config.phoneNumberId) return;
     try {
       const url = `${WHATSAPP_API_BASE}/${config.phoneNumberId}/messages`;

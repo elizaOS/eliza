@@ -1,8 +1,10 @@
 import { boolean, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 const id = () => text("id").primaryKey();
-const created = () => timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
-const updated = () => timestamp("updated_at", { withTimezone: true }).defaultNow().notNull();
+const created = () =>
+  timestamp("created_at", { withTimezone: true }).defaultNow().notNull();
+const updated = () =>
+  timestamp("updated_at", { withTimezone: true }).defaultNow().notNull();
 const meta = () => jsonb("metadata").$type<Record<string, unknown>>();
 
 const agents = pgTable("agents", {

@@ -16,12 +16,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_ROOT = resolve(__dirname, "..");
 const CLOUD_ROOT = resolve(API_ROOT, "..", "..");
 const ROUTER = join(API_ROOT, "src", "_router.generated.ts");
-const E2E_ROOTS = [join(CLOUD_ROOT, "packages", "tests", "e2e"), join(API_ROOT, "test", "e2e")];
+const E2E_ROOTS = [
+  join(CLOUD_ROOT, "packages", "tests", "e2e"),
+  join(API_ROOT, "test", "e2e"),
+];
 const OUTPUT = join(__dirname, "COVERAGE.md");
 
 const routerSrc = readFileSync(ROUTER, "utf8");
 const routes = [];
-for (const m of routerSrc.matchAll(/app\.route\(\s*"([^"]+)"/g)) routes.push(m[1]);
+for (const m of routerSrc.matchAll(/app\.route\(\s*"([^"]+)"/g))
+  routes.push(m[1]);
 
 function walk(dir) {
   const out = [];
@@ -35,7 +39,10 @@ function walk(dir) {
 }
 
 const testFiles = E2E_ROOTS.flatMap(walk);
-const tests = testFiles.map((p) => ({ path: p, text: readFileSync(p, "utf8") }));
+const tests = testFiles.map((p) => ({
+  path: p,
+  text: readFileSync(p, "utf8"),
+}));
 
 function honoToRegex(route) {
   const source = route
@@ -66,7 +73,9 @@ function staticPrefix(route) {
 }
 
 function localPath(p) {
-  return p.split("/apps/api/test/e2e/")[1] ?? p.split("/packages/tests/e2e/")[1] ?? p;
+  return (
+    p.split("/apps/api/test/e2e/")[1] ?? p.split("/packages/tests/e2e/")[1] ?? p
+  );
 }
 
 const covered = [];
@@ -121,7 +130,9 @@ for (const route of routes) {
 const lines = [];
 lines.push("# Hono Worker Route Coverage Audit");
 lines.push("");
-lines.push("Auto-generated. Re-run with `node apps/api/test/_audit-coverage.mjs`.");
+lines.push(
+  "Auto-generated. Re-run with `node apps/api/test/_audit-coverage.mjs`.",
+);
 lines.push("");
 lines.push(`- Mounted routes: **${routes.length}**`);
 lines.push(

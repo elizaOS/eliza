@@ -18,7 +18,10 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id")!;
-    const creative = await advertisingService.getCreative(id, user.organization_id);
+    const creative = await advertisingService.getCreative(
+      id,
+      user.organization_id,
+    );
 
     return c.json({
       id: creative.id,
@@ -49,18 +52,25 @@ app.patch("/", async (c) => {
     const parsed = UpdateCreativeSchema.safeParse(await c.req.json());
 
     if (!parsed.success) {
-      return c.json({ error: "Invalid request", details: parsed.error.flatten() }, 400);
+      return c.json(
+        { error: "Invalid request", details: parsed.error.flatten() },
+        400,
+      );
     }
 
-    const creative = await advertisingService.updateCreative(id, user.organization_id, {
-      name: parsed.data.name,
-      headline: parsed.data.headline,
-      primaryText: parsed.data.primaryText,
-      description: parsed.data.description,
-      callToAction: parsed.data.callToAction,
-      destinationUrl: parsed.data.destinationUrl,
-      media: parsed.data.media,
-    });
+    const creative = await advertisingService.updateCreative(
+      id,
+      user.organization_id,
+      {
+        name: parsed.data.name,
+        headline: parsed.data.headline,
+        primaryText: parsed.data.primaryText,
+        description: parsed.data.description,
+        callToAction: parsed.data.callToAction,
+        destinationUrl: parsed.data.destinationUrl,
+        media: parsed.data.media,
+      },
+    );
 
     logger.info("[Advertising API] Creative updated", { creativeId: id });
 

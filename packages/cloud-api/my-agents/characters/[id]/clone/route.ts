@@ -69,11 +69,15 @@ app.post("/", async (c) => {
 
     return c.json({
       success: true,
-      data: { character: clonedCharacter, message: "Character cloned successfully" },
+      data: {
+        character: clonedCharacter,
+        message: "Character cloned successfully",
+      },
     });
   } catch (error) {
     logger.error("[My Agents API] Error cloning character:", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to clone character";
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to clone character";
     const isValidationError =
       errorMessage.includes("username") || errorMessage.includes("Username");
     const status: 400 | 404 | 500 = isValidationError

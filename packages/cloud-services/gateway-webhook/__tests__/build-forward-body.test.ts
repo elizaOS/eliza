@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { buildForwardBody, type ForwardMessageOptions } from "../src/server-router";
+import {
+  buildForwardBody,
+  type ForwardMessageOptions,
+} from "../src/server-router";
 
 describe("buildForwardBody", () => {
   test("returns only userId and text when options are omitted", () => {

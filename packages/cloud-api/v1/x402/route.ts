@@ -26,7 +26,10 @@ app.get("/", async (c) => {
 
   const supported = x402FacilitatorService.getSupported();
 
-  c.header("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=7200");
+  c.header(
+    "Cache-Control",
+    "public, s-maxage=3600, stale-while-revalidate=7200",
+  );
   return c.json({
     success: true,
     ...supported,

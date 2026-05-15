@@ -80,7 +80,10 @@ function buildHtml(platform: string): string {
 </html>`;
 }
 
-function buildElizaAppHtml(provider: string, connectionId: string | null): string {
+function buildElizaAppHtml(
+  provider: string,
+  connectionId: string | null,
+): string {
   const providerLabel = PROVIDER_LABELS[provider] ?? "Your account";
   const payload = JSON.stringify({
     type: "eliza-app-oauth-complete",
@@ -196,7 +199,9 @@ app.get("/", (c) => {
     return c.redirect(new URL("/dashboard/chat", c.req.url).toString());
   }
 
-  return c.body(buildHtml(platform), 200, { "Content-Type": "text/html; charset=utf-8" });
+  return c.body(buildHtml(platform), 200, {
+    "Content-Type": "text/html; charset=utf-8",
+  });
 });
 
 export default app;

@@ -4,7 +4,10 @@
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { payoutStatusService } from "@/lib/services/payout-status";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -12,13 +15,14 @@ const app = new Hono<AppEnv>();
 
 app.options(
   "/",
-  (c) =>
+  (_c) =>
     new Response(null, {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key, X-App-Id",
+        "Access-Control-Allow-Headers":
+          "Content-Type, Authorization, X-API-Key, X-App-Id",
       },
     }),
 );
@@ -39,7 +43,8 @@ app.get("/", async (c) => {
 
     const canRedeem = availableNetworks.length > 0;
     const evmNetwork = status.networks.find(
-      (n) => n.network === "base" || n.network === "bnb" || n.network === "ethereum",
+      (n) =>
+        n.network === "base" || n.network === "bnb" || n.network === "ethereum",
     );
     const solanaNetwork = status.networks.find((n) => n.network === "solana");
 

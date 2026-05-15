@@ -30,7 +30,9 @@ process.env.PLAYWRIGHT_TEST_AUTH_SECRET ??= "playwright-local-auth-secret";
 process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE ??= "1";
 
 if (process.env.SKIP_DB_DEPENDENT === "1") {
-  throw new Error("Worker e2e requires a bootstrapped test database; unset SKIP_DB_DEPENDENT.");
+  throw new Error(
+    "Worker e2e requires a bootstrapped test database; unset SKIP_DB_DEPENDENT.",
+  );
 }
 
 await ensureLocalTestAuth();

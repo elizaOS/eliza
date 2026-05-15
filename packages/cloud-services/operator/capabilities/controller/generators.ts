@@ -1,6 +1,6 @@
 import { GenericKind, RegisterKind } from "kubernetes-fluent-client";
 import { K8s, kind } from "pepr";
-import { Server } from "../crd/generated/server-v1alpha1";
+import type { Server } from "../crd/generated/server-v1alpha1";
 
 const MANAGED_BY = "server-operator";
 
@@ -13,13 +13,34 @@ RegisterKind(ScaledObject, {
   plural: "scaledobjects",
 });
 
+function serverMetadata(server: Server) {
+  const name = server.metadata?.name;
+  const uid = server.metadata?.uid;
+
+  if (!name) {
+    throw new Error("Server metadata.name is required");
+  }
+
+  if (!uid) {
+    throw new Error(`Server ${name} metadata.uid is required`);
+  }
+
+  return {
+    name,
+    uid,
+    namespace: server.metadata?.namespace ?? "eliza-agents",
+  };
+}
+
 function ownerRef(server: Server) {
+  const { name, uid } = serverMetadata(server);
+
   return [
     {
       apiVersion: "eliza.ai/v1alpha1",
       kind: "Server",
-      name: server.metadata!.name!,
-      uid: server.metadata!.uid!,
+      name,
+      uid,
       controller: true,
       blockOwnerDeletion: true,
     },
@@ -27,9 +48,11 @@ function ownerRef(server: Server) {
 }
 
 function labels(server: Server) {
+  const { name } = serverMetadata(server);
+
   const l: Record<string, string> = {
     "eliza.ai/managed-by": MANAGED_BY,
-    "eliza.ai/server": server.metadata!.name!,
+    "eliza.ai/server": name,
     "eliza.ai/tier": server.spec.tier,
   };
   if (server.spec.project) {
@@ -57,8 +80,7 @@ function getRedisAddress(): string {
 }
 
 export function generateDeployment(server: Server) {
-  const name = server.metadata!.name!;
-  const ns = server.metadata!.namespace ?? "eliza-agents";
+  const { name, namespace: ns } = serverMetadata(server);
 
   return {
     apiVersion: "apps/v1",
@@ -145,8 +167,7 @@ export function generateDeployment(server: Server) {
 }
 
 export function generateService(server: Server) {
-  const name = server.metadata!.name!;
-  const ns = server.metadata!.namespace ?? "eliza-agents";
+  const { name, namespace: ns } = serverMetadata(server);
 
   return {
     apiVersion: "v1",
@@ -166,8 +187,7 @@ export function generateService(server: Server) {
 }
 
 export function generateScaledObject(server: Server) {
-  const name = server.metadata!.name!;
-  const ns = server.metadata!.namespace ?? "eliza-agents";
+  const { name, namespace: ns } = serverMetadata(server);
 
   return {
     apiVersion: "keda.sh/v1alpha1",

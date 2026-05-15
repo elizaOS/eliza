@@ -11,7 +11,10 @@ function envString(c: AppContext | undefined, key: string): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-async function resolveAgentServerUrl(c: AppContext, agentId: string): Promise<string | null> {
+async function resolveAgentServerUrl(
+  c: AppContext,
+  agentId: string,
+): Promise<string | null> {
   const redis = buildRedisClient(c.env);
   if (!redis) return null;
 
@@ -19,7 +22,9 @@ async function resolveAgentServerUrl(c: AppContext, agentId: string): Promise<st
   if (!serverName) return null;
 
   const serverUrl = await redis.get<string>(`server:${serverName}:url`);
-  return typeof serverUrl === "string" && serverUrl.trim() ? serverUrl.trim() : null;
+  return typeof serverUrl === "string" && serverUrl.trim()
+    ? serverUrl.trim()
+    : null;
 }
 
 function buildTargetUrl(
@@ -67,14 +72,24 @@ async function forwardWorkflowToAgentServer(params: {
 
   const method = params.request.method.toUpperCase();
   const body =
-    method === "GET" || method === "HEAD" ? undefined : await params.request.arrayBuffer();
-  return fetch(buildTargetUrl(serverUrl, params.request.url, params.agentId, params.suffix), {
-    method,
-    headers,
-    body,
-    redirect: "manual",
-    signal: AbortSignal.timeout(120_000),
-  });
+    method === "GET" || method === "HEAD"
+      ? undefined
+      : await params.request.arrayBuffer();
+  return fetch(
+    buildTargetUrl(
+      serverUrl,
+      params.request.url,
+      params.agentId,
+      params.suffix,
+    ),
+    {
+      method,
+      headers,
+      body,
+      redirect: "manual",
+      signal: AbortSignal.timeout(120_000),
+    },
+  );
 }
 
 export async function handleWorkflowProxyRequest(

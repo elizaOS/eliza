@@ -27,7 +27,12 @@ const TUNNEL_BILLING_UNIT = "tunnel_auth_key";
 const authKeyRequestSchema = z
   .object({
     tags: z.array(z.string().min(1)).max(10).optional(),
-    expirySeconds: z.number().int().min(MIN_EXPIRY_SECONDS).max(MAX_EXPIRY_SECONDS).optional(),
+    expirySeconds: z
+      .number()
+      .int()
+      .min(MIN_EXPIRY_SECONDS)
+      .max(MAX_EXPIRY_SECONDS)
+      .optional(),
   })
   .default({});
 
@@ -40,19 +45,29 @@ app.post("/", async (c) => {
     const parsed = authKeyRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       return c.json(
-        { error: "Invalid tunnel auth-key request", details: parsed.error.issues },
+        {
+          error: "Invalid tunnel auth-key request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }
 
-    const headscaleApiUrl = readEnv(c.env.HEADSCALE_API_URL) ?? readEnv(c.env.HEADSCALE_PUBLIC_URL);
-    const headscalePublicUrl = readEnv(c.env.HEADSCALE_PUBLIC_URL) ?? headscaleApiUrl;
+    const headscaleApiUrl =
+      readEnv(c.env.HEADSCALE_API_URL) ?? readEnv(c.env.HEADSCALE_PUBLIC_URL);
+    const headscalePublicUrl =
+      readEnv(c.env.HEADSCALE_PUBLIC_URL) ?? headscaleApiUrl;
     const headscaleApiKey = readEnv(c.env.HEADSCALE_API_KEY);
     const headscaleUser = readEnv(c.env.HEADSCALE_USER) ?? "tunnel";
     const tunnelProxyHost = readEnv(c.env.TUNNEL_PROXY_HOST);
-    const tailnetDomain = readEnv(c.env.TUNNEL_TAILNET_DOMAIN) ?? "tunnel.eliza.local";
-    const hostnameSigningSecret = readTrimmedEnv(c.env.TUNNEL_HOSTNAME_SIGNING_SECRET);
-    const allowUnsignedHostnames = readBoolean(c.env.TUNNEL_ALLOW_UNSIGNED_HOSTNAMES);
+    const tailnetDomain =
+      readEnv(c.env.TUNNEL_TAILNET_DOMAIN) ?? "tunnel.eliza.local";
+    const hostnameSigningSecret = readTrimmedEnv(
+      c.env.TUNNEL_HOSTNAME_SIGNING_SECRET,
+    );
+    const allowUnsignedHostnames = readBoolean(
+      c.env.TUNNEL_ALLOW_UNSIGNED_HOSTNAMES,
+    );
     const tunnelAuthKeyCostUsd = readUsdAmount(
       c.env.TUNNEL_AUTH_KEY_COST_USD,
       DEFAULT_TUNNEL_AUTH_KEY_COST_USD,
@@ -70,7 +85,8 @@ app.post("/", async (c) => {
     if (tunnelProxyHost && !hostnameSigningSecret && !allowUnsignedHostnames) {
       return c.json(
         {
-          error: "Tunnel hostname signing is not configured. Set TUNNEL_HOSTNAME_SIGNING_SECRET.",
+          error:
+            "Tunnel hostname signing is not configured. Set TUNNEL_HOSTNAME_SIGNING_SECRET.",
         },
         503,
       );
@@ -141,7 +157,11 @@ app.post("/", async (c) => {
       });
     } catch (error) {
       if (charged) {
-        await refundTunnelCharge(user.organization_id, tunnelAuthKeyCostUsd, billingMetadata);
+        await refundTunnelCharge(
+          user.organization_id,
+          tunnelAuthKeyCostUsd,
+          billingMetadata,
+        );
       }
       throw error;
     }
@@ -194,8 +214,13 @@ function readUsdAmount(value: unknown, fallback: number): number {
   if (typeof value !== "string" && typeof value !== "number") {
     return fallback;
   }
-  const parsed = typeof value === "number" ? value : Number.parseFloat(value.trim());
-  if (!Number.isFinite(parsed) || parsed < 0 || parsed > MAX_TUNNEL_AUTH_KEY_COST_USD) {
+  const parsed =
+    typeof value === "number" ? value : Number.parseFloat(value.trim());
+  if (
+    !Number.isFinite(parsed) ||
+    parsed < 0 ||
+    parsed > MAX_TUNNEL_AUTH_KEY_COST_USD
+  ) {
     return fallback;
   }
   return Math.round(parsed * 1_000_000) / 1_000_000;
@@ -236,12 +261,18 @@ async function refundTunnelCharge(
     logger.error("[TunnelAuthKey] Failed to refund provisioning charge", {
       organizationId,
       amount,
-      error: refundError instanceof Error ? refundError.message : String(refundError),
+      error:
+        refundError instanceof Error
+          ? refundError.message
+          : String(refundError),
     });
   }
 }
 
-async function tunnelHostnameSignature(hostname: string, secret: string): Promise<string> {
+async function tunnelHostnameSignature(
+  hostname: string,
+  secret: string,
+): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -249,12 +280,18 @@ async function tunnelHostnameSignature(hostname: string, secret: string): Promis
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(hostname));
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(hostname),
+  );
   return bytesToHex(new Uint8Array(signature)).slice(0, 16);
 }
 
 function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(
+    "",
+  );
 }
 
 export default app;

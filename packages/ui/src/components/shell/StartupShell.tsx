@@ -29,10 +29,20 @@ import {
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";
 import { BootstrapStep } from "../onboarding/BootstrapStep";
+import { OnboardingRoot } from "../onboarding/states";
 import { VoicePrefixGate } from "../onboarding/VoicePrefixGate";
 import { PairingView } from "./PairingView";
 import { RuntimeGate } from "./RuntimeGate";
 import { StartupFailureView } from "./StartupFailureView";
+
+const NEW_ONBOARDING_ENABLED = (() => {
+  const meta = (import.meta as { env?: Record<string, string | undefined> })
+    .env;
+  return (
+    meta?.VITE_ELIZA_NEW_ONBOARDING === "1" ||
+    meta?.ELIZA_NEW_ONBOARDING === "1"
+  );
+})();
 
 const FONT = "'Courier New', 'Courier', 'Monaco', monospace";
 
@@ -293,13 +303,13 @@ export function StartupShell() {
     if (!voicePrefixDone) {
       return <VoicePrefixGate onDone={handleVoicePrefixDone} />;
     }
-    return <RuntimeGate />;
+    return NEW_ONBOARDING_ENABLED ? <OnboardingRoot /> : <RuntimeGate />;
   }
 
   // Ready — let the app through
   if (phase === "ready") {
     if (!onboardingComplete) {
-      return <RuntimeGate />;
+      return NEW_ONBOARDING_ENABLED ? <OnboardingRoot /> : <RuntimeGate />;
     }
     return null;
   }

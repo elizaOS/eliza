@@ -41,7 +41,11 @@ app.post("/", async (c) => {
     );
   } catch (error) {
     logger.error("Error creating CLI auth session:", error);
-    return c.json({ error: "Failed to create authentication session" }, 500, corsHeaders);
+    return c.json(
+      { error: "Failed to create authentication session" },
+      500,
+      corsHeaders,
+    );
   }
 });
 

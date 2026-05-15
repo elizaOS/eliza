@@ -105,7 +105,10 @@ async function __hono_GET(request: Request) {
       return Response.json({ error: getSafeErrorMessage(error) }, { status });
     }
 
-    return Response.json({ error: "Failed to fetch voices. Please try again." }, { status: 500 });
+    return Response.json(
+      { error: "Failed to fetch voices. Please try again." },
+      { status: 500 },
+    );
   }
 }
 

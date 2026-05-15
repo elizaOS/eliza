@@ -13,7 +13,10 @@ const app = new Hono<AppEnv>();
 // empty. Use `app.all("*")` which matches any inner path including "".
 app.all("*", (c) => {
   const url = new URL(c.req.url);
-  url.pathname = url.pathname.replace("/api/v1/proxy/birdeye", "/api/v1/apis/birdeye");
+  url.pathname = url.pathname.replace(
+    "/api/v1/proxy/birdeye",
+    "/api/v1/apis/birdeye",
+  );
   return c.redirect(url.toString(), 308);
 });
 

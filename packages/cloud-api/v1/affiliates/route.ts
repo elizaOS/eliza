@@ -10,7 +10,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { affiliatesService } from "@/lib/services/affiliates";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -40,10 +43,16 @@ app.post("/", async (c) => {
     const body = await c.req.json();
     const validation = MarkupSchema.safeParse(body);
     if (!validation.success) {
-      return c.json({ error: "Invalid markup. Must be a number between 0 and 1000%." }, 400);
+      return c.json(
+        { error: "Invalid markup. Must be a number between 0 and 1000%." },
+        400,
+      );
     }
     const { markupPercent } = validation.data;
-    const code = await affiliatesService.getOrCreateAffiliateCode(user.id, markupPercent);
+    const code = await affiliatesService.getOrCreateAffiliateCode(
+      user.id,
+      markupPercent,
+    );
     return c.json({ code });
   } catch (error) {
     logger.error("[Affiliates API] POST error:", error);
@@ -57,15 +66,24 @@ app.put("/", async (c) => {
     const body = await c.req.json();
     const validation = MarkupSchema.safeParse(body);
     if (!validation.success) {
-      return c.json({ error: "Invalid markup. Must be a number between 0 and 1000%." }, 400);
+      return c.json(
+        { error: "Invalid markup. Must be a number between 0 and 1000%." },
+        400,
+      );
     }
     const { markupPercent } = validation.data;
     try {
       const code = await affiliatesService.updateMarkup(user.id, markupPercent);
       return c.json({ code });
     } catch (err) {
-      if (err instanceof Error && err.message.includes("Affiliate code not found")) {
-        return c.json({ error: "No affiliate code. Create one with POST first." }, 404);
+      if (
+        err instanceof Error &&
+        err.message.includes("Affiliate code not found")
+      ) {
+        return c.json(
+          { error: "No affiliate code. Create one with POST first." },
+          404,
+        );
       }
       throw err;
     }

@@ -48,7 +48,10 @@ async function __hono_GET(
       appId,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    return Response.json({ error: "Failed to get automation status" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to get automation status" },
+      { status: 500 },
+    );
   }
 }
 
@@ -136,7 +139,10 @@ async function __hono_POST(
       appId,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    return Response.json({ error: "Failed to enable automation" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to enable automation" },
+      { status: 500 },
+    );
   }
 }
 
@@ -148,7 +154,10 @@ async function __hono_DELETE(
   const { id: appId } = await params;
 
   try {
-    await discordAppAutomationService.disableAutomation(user.organization_id, appId);
+    await discordAppAutomationService.disableAutomation(
+      user.organization_id,
+      appId,
+    );
 
     logger.info("[Discord Automation] Automation disabled", {
       appId,
@@ -164,18 +173,27 @@ async function __hono_DELETE(
       appId,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    return Response.json({ error: "Failed to disable automation" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to disable automation" },
+      { status: 500 },
+    );
   }
 }
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

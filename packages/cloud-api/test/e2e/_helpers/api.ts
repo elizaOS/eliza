@@ -75,7 +75,9 @@ export function memberBearerHeaders(): Record<string, string> {
 export function getAffiliateApiKey(): string {
   // Fall back to the regular bootstrapped key when the preload didn't seed a
   // separate affiliate user — the affiliate group reuses the same auth path.
-  const key = process.env.TEST_AFFILIATE_API_KEY?.trim() ?? process.env.TEST_API_KEY?.trim();
+  const key =
+    process.env.TEST_AFFILIATE_API_KEY?.trim() ??
+    process.env.TEST_API_KEY?.trim();
   if (!key) {
     throw new Error(
       "TEST_AFFILIATE_API_KEY (or TEST_API_KEY) is not set. Run with the e2e preload " +
@@ -112,15 +114,21 @@ export interface FetchOptions {
   body?: unknown;
 }
 
-async function request(method: string, path: string, opts: FetchOptions = {}): Promise<Response> {
+async function request(
+  method: string,
+  path: string,
+  opts: FetchOptions = {},
+): Promise<Response> {
   const init: RequestInit = {
     method,
     signal: timeoutSignal(),
     headers: opts.headers ?? {},
   };
   if (opts.body !== undefined) {
-    (init.headers as Record<string, string>)["Content-Type"] ??= "application/json";
-    init.body = typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
+    (init.headers as Record<string, string>)["Content-Type"] ??=
+      "application/json";
+    init.body =
+      typeof opts.body === "string" ? opts.body : JSON.stringify(opts.body);
   }
   return fetch(url(path), init);
 }
@@ -153,7 +161,9 @@ export async function isServerReachable(): Promise<boolean> {
   } catch (error) {
     if (process.env.REQUIRE_E2E_SERVER !== "0") {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`Worker e2e target is not reachable at ${getBaseUrl()}: ${message}`);
+      throw new Error(
+        `Worker e2e target is not reachable at ${getBaseUrl()}: ${message}`,
+      );
     }
     return false;
   }
@@ -172,7 +182,9 @@ export async function exchangeApiKeyForSession(): Promise<string> {
   });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`POST /api/test/auth/session failed: ${res.status} ${body.slice(0, 200)}`);
+    throw new Error(
+      `POST /api/test/auth/session failed: ${res.status} ${body.slice(0, 200)}`,
+    );
   }
   const json = (await res.json()) as { token?: string; cookieName?: string };
   if (!json.token) {

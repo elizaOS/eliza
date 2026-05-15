@@ -8,8 +8,6 @@
  * `shared → ui → shared` cycle would close if we moved the contract too.
  */
 
-export * from "./apply-theme.js";
-export { ELIZA_DEFAULT_THEME } from "./presets.js";
 export type {
   ThemeColorSet,
   ThemeDefinition,
@@ -23,3 +21,5 @@ export {
   THEME_FONT_LINK_ID,
   validateThemeDefinition,
 } from "@elizaos/shared";
+export * from "./apply-theme.js";
+export { ELIZA_DEFAULT_THEME } from "./presets.js";

@@ -41,7 +41,10 @@ async function __hono_GET(request: Request) {
 
     logger.info(`[Voice Jobs API] Fetching jobs for user ${user.id}`);
 
-    const allJobs = await voiceCloningService.getUserJobs(user.organization_id, user.id);
+    const allJobs = await voiceCloningService.getUserJobs(
+      user.organization_id,
+      user.id,
+    );
 
     const activeJobs = allJobs.filter(
       (job) => job.status === "processing" || job.status === "pending",

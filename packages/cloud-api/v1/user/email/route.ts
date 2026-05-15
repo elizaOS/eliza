@@ -12,7 +12,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { usersService } from "@/lib/services/users";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -33,7 +36,8 @@ app.patch("/", async (c) => {
       return c.json(
         {
           success: false,
-          error: "Email already set. Please contact support to change your email.",
+          error:
+            "Email already set. Please contact support to change your email.",
         },
         400,
       );
@@ -43,7 +47,10 @@ app.patch("/", async (c) => {
     const parsed = updateEmailSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "Invalid email address" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "Invalid email address",
+        },
         400,
       );
     }
@@ -53,7 +60,10 @@ app.patch("/", async (c) => {
     const existingUser = await usersService.getByEmail(lower);
     if (existingUser && existingUser.id !== authed.id) {
       return c.json(
-        { success: false, error: "This email is already in use by another account." },
+        {
+          success: false,
+          error: "This email is already in use by another account.",
+        },
         409,
       );
     }

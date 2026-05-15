@@ -14,7 +14,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * @param context - Route context containing the voice ID parameter.
  * @returns Voice verification status including readiness, TTS capability, and fine-tuning information.
  */
-async function __hono_GET(request: Request, context: { params: Promise<{ id: string }> }) {
+async function __hono_GET(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const params = await context.params;
@@ -23,7 +26,10 @@ async function __hono_GET(request: Request, context: { params: Promise<{ id: str
     logger.info(`[Voice Verify API] Verifying voice ${voiceId}`);
 
     // Get voice from database
-    const voice = await voiceCloningService.getVoiceById(voiceId, user.organization_id!);
+    const voice = await voiceCloningService.getVoiceById(
+      voiceId,
+      user.organization_id!,
+    );
 
     if (!voice) {
       return Response.json({ error: "Voice not found" }, { status: 404 });
@@ -33,7 +39,9 @@ async function __hono_GET(request: Request, context: { params: Promise<{ id: str
     const elevenlabs = getElevenLabsService();
 
     try {
-      const elevenLabsVoice = await elevenlabs.getVoiceById(voice.elevenlabsVoiceId);
+      const elevenLabsVoice = await elevenlabs.getVoiceById(
+        voice.elevenlabsVoiceId,
+      );
 
       // For professional voices, check fine-tuning status
       const isProfessional = voice.cloneType === "professional";
@@ -45,17 +53,20 @@ async function __hono_GET(request: Request, context: { params: Promise<{ id: str
       // Try a test TTS call to verify it actually works
       let canGenerateTTS = false;
       try {
-        await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voice.elevenlabsVoiceId}`, {
-          method: "POST",
-          headers: {
-            "xi-api-key": process.env.ELEVENLABS_API_KEY!,
-            "Content-Type": "application/json",
+        await fetch(
+          `https://api.elevenlabs.io/v1/text-to-speech/${voice.elevenlabsVoiceId}`,
+          {
+            method: "POST",
+            headers: {
+              "xi-api-key": process.env.ELEVENLABS_API_KEY!,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              text: "Test",
+              model_id: "eleven_multilingual_v2",
+            }),
           },
-          body: JSON.stringify({
-            text: "Test",
-            model_id: "eleven_multilingual_v2",
-          }),
-        });
+        );
         canGenerateTTS = true;
       } catch {
         canGenerateTTS = false;
@@ -101,12 +112,17 @@ async function __hono_GET(request: Request, context: { params: Promise<{ id: str
   } catch (error) {
     logger.error("[Voice Verify API] Error:", error);
 
-    return Response.json({ error: "Failed to verify voice status" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to verify voice status" },
+      { status: 500 },
+    );
   }
 }
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

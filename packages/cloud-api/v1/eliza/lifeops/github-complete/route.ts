@@ -16,7 +16,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-async function __hono_GET(request: Request, env?: Pick<AppEnv["Bindings"], "NEXT_PUBLIC_APP_URL">) {
+async function __hono_GET(
+  request: Request,
+  env?: Pick<AppEnv["Bindings"], "NEXT_PUBLIC_APP_URL">,
+) {
   const searchParams = new URL(request.url).searchParams;
   const baseUrl = env?.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
   const githubConnected = searchParams.get("github_connected");
@@ -50,7 +53,9 @@ async function __hono_GET(request: Request, env?: Pick<AppEnv["Bindings"], "NEXT
         returnUrl,
       });
     }
-    return Response.redirect(`${dashboardUrl}&github_error=${encodeURIComponent(githubError)}`);
+    return Response.redirect(
+      `${dashboardUrl}&github_error=${encodeURIComponent(githubError)}`,
+    );
   }
 
   if (githubConnected !== "true" || !connectionId) {
@@ -73,12 +78,17 @@ async function __hono_GET(request: Request, env?: Pick<AppEnv["Bindings"], "NEXT
         returnUrl,
       });
     }
-    return Response.redirect(`${dashboardUrl}&github_error=${encodeURIComponent(message)}`);
+    return Response.redirect(
+      `${dashboardUrl}&github_error=${encodeURIComponent(message)}`,
+    );
   }
 
   if (postMessage || returnUrl) {
     return createLifeOpsGithubReturnResponse({
-      title: target === "agent" ? "Agent GitHub connected" : "LifeOps GitHub connected",
+      title:
+        target === "agent"
+          ? "Agent GitHub connected"
+          : "LifeOps GitHub connected",
       message:
         target === "agent"
           ? "GitHub is connected and ready to link to this agent."

@@ -5,7 +5,10 @@ import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 // redirect-validation not needed — GitHub uses generic OAuth callback which
 // restricts to ALLOWED_REDIRECT_PATHS; we always redirect to a cloud path.
-import { getProvider, isProviderConfigured } from "@/lib/services/oauth/provider-registry";
+import {
+  getProvider,
+  isProviderConfigured,
+} from "@/lib/services/oauth/provider-registry";
 import { initiateOAuth2 } from "@/lib/services/oauth/providers";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -50,7 +53,10 @@ function resolveManagedReturnUrl(
   return `/api/v1/eliza/github-oauth-complete?${params.toString()}`;
 }
 
-async function __hono_POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_POST(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
@@ -58,15 +64,24 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
     const provider = getProvider("github");
     if (!provider || !isProviderConfigured(provider)) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "GitHub OAuth is not configured" }, { status: 503 }),
+        Response.json(
+          { success: false, error: "GitHub OAuth is not configured" },
+          { status: 503 },
+        ),
         CORS_METHODS,
       );
     }
 
-    const sandbox = await elizaSandboxService.getAgent(agentId, user.organization_id);
+    const sandbox = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
     if (!sandbox) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Agent not found" }, { status: 404 }),
+        Response.json(
+          { success: false, error: "Agent not found" },
+          { status: 404 },
+        ),
         CORS_METHODS,
       );
     }
@@ -88,10 +103,15 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
     }
 
     const scopes = parsed.data.scopes || provider.defaultScopes || [];
-    const redirectUrl = resolveManagedReturnUrl(agentId, user.organization_id, user.id, {
-      postMessage: parsed.data.postMessage,
-      returnUrl: parsed.data.returnUrl,
-    });
+    const redirectUrl = resolveManagedReturnUrl(
+      agentId,
+      user.organization_id,
+      user.id,
+      {
+        postMessage: parsed.data.postMessage,
+        returnUrl: parsed.data.returnUrl,
+      },
+    );
 
     const result = await initiateOAuth2(provider, {
       organizationId: user.organization_id,
@@ -118,6 +138,8 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;

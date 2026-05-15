@@ -122,7 +122,11 @@ function generateTestData(days: number) {
     // Weight towards inference_markup (most common)
     const typeRoll = Math.random();
     const type =
-      typeRoll < 0.6 ? "inference_markup" : typeRoll < 0.9 ? "purchase_share" : "withdrawal";
+      typeRoll < 0.6
+        ? "inference_markup"
+        : typeRoll < 0.9
+          ? "purchase_share"
+          : "withdrawal";
 
     let amount: number;
     let description: string;
@@ -170,29 +174,41 @@ function generateTestData(days: number) {
  * @param params - Route parameters containing the app ID.
  * @returns Earnings summary, breakdown by period, chart data, recent transactions, and monetization settings.
  */
-async function __hono_GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
     const daysParam = new URL(request.url).searchParams.get("days");
-    const days = daysParam ? Math.min(Math.max(parseInt(daysParam, 10), 1), 90) : 30;
+    const days = daysParam
+      ? Math.min(Math.max(parseInt(daysParam, 10), 1), 90)
+      : 30;
 
     // Check for testData flag - ONLY allowed in development mode
     // Double-check with ENVIRONMENT to prevent misconfigured deployments
     const testDataParam = new URL(request.url).searchParams.get("testData");
     const isDevelopment =
-      process.env.NODE_ENV === "development" && process.env.ENVIRONMENT !== "production";
+      process.env.NODE_ENV === "development" &&
+      process.env.ENVIRONMENT !== "production";
     const useTestData = isDevelopment && testDataParam === "true";
 
     const app = await appsService.getById(id);
 
     if (!app) {
-      return Response.json({ success: false, error: "App not found" }, { status: 404 });
+      return Response.json(
+        { success: false, error: "App not found" },
+        { status: 404 },
+      );
     }
 
     if (app.organization_id !== user.organization_id) {
-      return Response.json({ success: false, error: "Access denied" }, { status: 403 });
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
     }
 
     // Return test data if requested (for UI verification)
@@ -216,7 +232,10 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
 
     const summary = await appEarningsService.getEarningsSummary(id);
     const breakdown = await appEarningsService.getEarningsBreakdown(id);
-    const recentTransactions = await appEarningsService.getTransactionHistory(id, { limit: 10 });
+    const recentTransactions = await appEarningsService.getTransactionHistory(
+      id,
+      { limit: 10 },
+    );
     const chartData = await appEarningsService.getDailyEarningsChart(id, days);
 
     return Response.json({
@@ -236,7 +255,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to get app earnings",
+        error:
+          error instanceof Error ? error.message : "Failed to get app earnings",
       },
       { status: 500 },
     );
@@ -245,6 +265,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

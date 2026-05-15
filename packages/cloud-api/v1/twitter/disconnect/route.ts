@@ -10,9 +10,14 @@ const app = new Hono<AppEnv>();
 app.delete("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const role = c.req.query("connectionRole") === "agent" ? "agent" : ("owner" as const);
+    const role =
+      c.req.query("connectionRole") === "agent" ? "agent" : ("owner" as const);
 
-    await twitterAutomationService.removeCredentials(user.organization_id, user.id, role);
+    await twitterAutomationService.removeCredentials(
+      user.organization_id,
+      user.id,
+      role,
+    );
 
     await invalidateOAuthState(user.organization_id, "twitter", user.id);
 

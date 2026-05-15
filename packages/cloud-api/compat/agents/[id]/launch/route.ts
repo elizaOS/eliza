@@ -22,7 +22,10 @@ import { handleCompatError } from "../../../_lib/error-handler";
 
 const CORS_METHODS = "POST, OPTIONS";
 
-async function __hono_POST(request: Request, { params }: RouteContext<{ id: string }>) {
+async function __hono_POST(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+) {
   try {
     const { user } = await requireCompatAuth(request);
     const { id: agentId } = await params;
@@ -63,6 +66,8 @@ async function __hono_POST(request: Request, { params }: RouteContext<{ id: stri
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCompatCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

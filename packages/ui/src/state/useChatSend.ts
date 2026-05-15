@@ -1394,7 +1394,6 @@ export function useChatSend(deps: UseChatSendDeps) {
     activeConversationId,
     interruptActiveChatPipeline,
     loadConversations,
-    resolveConversationRoomId,
     setActionNotice,
     activeConversationIdRef,
     setActiveConversationId,

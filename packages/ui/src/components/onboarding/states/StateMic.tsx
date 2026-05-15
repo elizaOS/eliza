@@ -130,7 +130,7 @@ export function StateMic(props: StateMicProps): JSX.Element {
             aria-label="Microphone"
             onClick={requestPermission}
           >
-            <svg viewBox="0 0 24 24">
+            <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24">
               <path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" />
               <path d="M5 11a7 7 0 0 0 14 0" />
               <path d="M12 18v3" />
@@ -146,11 +146,7 @@ export function StateMic(props: StateMicProps): JSX.Element {
           </button>
         </div>
         <div className="eliza-ob-skip-row">
-          <button
-            type="button"
-            className="eliza-ob-skip-link"
-            onClick={onSkip}
-          >
+          <button type="button" className="eliza-ob-skip-link" onClick={onSkip}>
             skip voice input
           </button>
         </div>

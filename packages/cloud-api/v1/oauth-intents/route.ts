@@ -13,13 +13,29 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getOAuthIntentsService } from "@/lib/services/oauth-intents-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const ProviderSchema = z.enum(["google", "discord", "linkedin", "linear", "shopify", "calendly"]);
-const StatusSchema = z.enum(["pending", "bound", "denied", "expired", "canceled"]);
+const ProviderSchema = z.enum([
+  "google",
+  "discord",
+  "linkedin",
+  "linear",
+  "shopify",
+  "calendly",
+]);
+const StatusSchema = z.enum([
+  "pending",
+  "bound",
+  "denied",
+  "expired",
+  "canceled",
+]);
 
 const CreateOAuthIntentSchema = z.object({
   provider: ProviderSchema,
@@ -59,7 +75,11 @@ app.post("/", async (c) => {
     const parsed = CreateOAuthIntentSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }
@@ -98,7 +118,14 @@ app.get("/", async (c) => {
       offset: c.req.query("offset"),
     });
     if (!parsed.success) {
-      return c.json({ success: false, error: "Invalid query", details: parsed.error.issues }, 400);
+      return c.json(
+        {
+          success: false,
+          error: "Invalid query",
+          details: parsed.error.issues,
+        },
+        400,
+      );
     }
 
     const service = getOAuthIntentsService(c.env);

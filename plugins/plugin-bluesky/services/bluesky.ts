@@ -11,7 +11,6 @@ import { BlueSkyClient } from "../client";
 import { BlueSkyAgentManager } from "../managers/agent";
 import { BLUESKY_SERVICE_NAME } from "../types";
 import {
-	DEFAULT_BLUESKY_ACCOUNT_ID,
 	hasBlueSkyEnabled,
 	listBlueSkyAccountIds,
 	normalizeBlueSkyAccountId,

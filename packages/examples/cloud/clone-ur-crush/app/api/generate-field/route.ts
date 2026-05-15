@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { getAIProvider } from "@/lib/ai-provider";
 
 export async function POST(req: NextRequest) {
@@ -6,7 +6,10 @@ export async function POST(req: NextRequest) {
     const { fieldName, currentValue, context } = await req.json();
 
     if (!fieldName) {
-      return NextResponse.json({ success: false, error: "Field name required" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "Field name required" },
+        { status: 400 },
+      );
     }
 
     const provider = getAIProvider();
@@ -84,15 +87,22 @@ function buildPromptForField(
 
   // Get gender pronoun
   const gender = context.gender || "nonbinary";
-  const pronouns = gender === "male" ? "he/him" : gender === "female" ? "she/her" : "they/them";
+  const pronouns =
+    gender === "male"
+      ? "he/him"
+      : gender === "female"
+        ? "she/her"
+        : "they/them";
   const genderNote = `Gender: ${gender} (${pronouns})`;
 
   // Build context summary
   let contextSummary = "";
   if (context.name) contextSummary += `Name: ${context.name}\n`;
   contextSummary += `${genderNote}\n`;
-  if (context.description) contextSummary += `Description: ${context.description}\n`;
-  if (context.howYouMet) contextSummary += `How you met: ${context.howYouMet}\n`;
+  if (context.description)
+    contextSummary += `Description: ${context.description}\n`;
+  if (context.howYouMet)
+    contextSummary += `How you met: ${context.howYouMet}\n`;
 
   switch (fieldName) {
     case "description":
@@ -112,7 +122,9 @@ Just return the description, no quotes or explanations.`;
     case "howYouMet":
       if (hasCurrentValue) {
         return `Complete or enhance this story of how the user met ${context.name || "them"} (${pronouns}):\n"${currentValue}"\n${
-          context.name ? `${context.name}'s name: ${context.name} (${pronouns})\n` : ""
+          context.name
+            ? `${context.name}'s name: ${context.name} (${pronouns})\n`
+            : ""
         }${context.description ? `About ${context.name || "them"}: ${context.description}\n` : ""}
 
 CRITICAL: This story is about how THE USER met ${context.name || "this person"}. Write from the user's perspective about meeting ${context.name || "them"}. Do not introduce other characters. Just return the enhanced text, no quotes or explanations.`;
@@ -131,35 +143,45 @@ Just return the story, no quotes or explanations.`;
       return `How would ${context.name || "someone"}${
         context.description ? ` (${context.description.slice(0, 50)}...)` : ""
       } say "hello" casually to a friend?${
-        hasCurrentValue ? `\nCurrent: "${currentValue}"\nImprove or complete it.` : ""
+        hasCurrentValue
+          ? `\nCurrent: "${currentValue}"\nImprove or complete it.`
+          : ""
       } Just return the greeting, nothing else.`;
 
     case "sayGoodbye":
       return `How would ${context.name || "someone"}${
         context.description ? ` (${context.description.slice(0, 50)}...)` : ""
       } say "goodbye" casually to a friend?${
-        hasCurrentValue ? `\nCurrent: "${currentValue}"\nImprove or complete it.` : ""
+        hasCurrentValue
+          ? `\nCurrent: "${currentValue}"\nImprove or complete it.`
+          : ""
       } Just return the goodbye phrase, nothing else.`;
 
     case "sayHowAreYou":
       return `How would ${context.name || "someone"}${
         context.description ? ` (${context.description.slice(0, 50)}...)` : ""
       } ask "how are you?" casually?${
-        hasCurrentValue ? `\nCurrent: "${currentValue}"\nImprove or complete it.` : ""
+        hasCurrentValue
+          ? `\nCurrent: "${currentValue}"\nImprove or complete it.`
+          : ""
       } Just return the question, nothing else.`;
 
     case "sayGood":
       return `What would ${context.name || "someone"}${
         context.description ? ` (${context.description.slice(0, 50)}...)` : ""
       } say when hearing good news?${
-        hasCurrentValue ? `\nCurrent: "${currentValue}"\nImprove or complete it.` : ""
+        hasCurrentValue
+          ? `\nCurrent: "${currentValue}"\nImprove or complete it.`
+          : ""
       } Just return the response, nothing else.`;
 
     case "sayBad":
       return `What would ${context.name || "someone"}${
         context.description ? ` (${context.description.slice(0, 50)}...)` : ""
       } say when hearing bad news or something unfortunate?${
-        hasCurrentValue ? `\nCurrent: "${currentValue}"\nImprove or complete it.` : ""
+        hasCurrentValue
+          ? `\nCurrent: "${currentValue}"\nImprove or complete it.`
+          : ""
       } Just return the response, nothing else.`;
 
     case "physicalAppearance":

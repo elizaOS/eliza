@@ -42,7 +42,8 @@ interface CompatAuthResult {
 
 async function requireCompatAuth(c: AppContext): Promise<CompatAuthResult> {
   // 1. X-Service-Key (eliza-cloud S2S)
-  const serviceKeyHeader = c.req.header("X-Service-Key") || c.req.header("x-service-key");
+  const serviceKeyHeader =
+    c.req.header("X-Service-Key") || c.req.header("x-service-key");
   if (serviceKeyHeader) {
     const identity = await validateServiceKey(c);
     if (!identity) {
@@ -118,22 +119,31 @@ app.post("/", async (c) => {
 
     // Strip reserved __agent* keys from user-supplied agentConfig to prevent
     // callers from spoofing internal lifecycle flags.
-    const sanitizedConfig = stripReservedElizaConfigKeys(parsed.data.agentConfig);
+    const sanitizedConfig = stripReservedElizaConfigKeys(
+      parsed.data.agentConfig,
+    );
     const autoProvision =
-      (c.env as { WAIFU_AUTO_PROVISION?: string }).WAIFU_AUTO_PROVISION === "true";
+      (c.env as { WAIFU_AUTO_PROVISION?: string }).WAIFU_AUTO_PROVISION ===
+      "true";
 
     if (autoProvision) {
       const workerHealth = await checkProvisioningWorkerHealth();
       if (!workerHealth.ok) {
-        logger.warn("[compat] Agent creation blocked: provisioning worker unavailable", {
-          orgId: user.organization_id,
-          code: workerHealth.code,
-        });
-        return c.json(provisioningWorkerFailureBody(workerHealth), workerHealth.status);
+        logger.warn(
+          "[compat] Agent creation blocked: provisioning worker unavailable",
+          {
+            orgId: user.organization_id,
+            code: workerHealth.code,
+          },
+        );
+        return c.json(
+          provisioningWorkerFailureBody(workerHealth),
+          workerHealth.status,
+        );
       }
     }
 
-    let agent = await elizaSandboxService.createAgent({
+    const agent = await elizaSandboxService.createAgent({
       organizationId: user.organization_id,
       userId: user.id,
       agentName: parsed.data.agentName,
@@ -166,7 +176,8 @@ app.post("/", async (c) => {
           {
             success: false,
             code: "PROVISIONING_ENQUEUE_FAILED",
-            error: "Agent was created, but provisioning could not be started. Retry provisioning.",
+            error:
+              "Agent was created, but provisioning could not be started. Retry provisioning.",
             retryable: true,
             data: toCompatCreateResult(agent),
           },

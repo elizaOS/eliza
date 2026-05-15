@@ -31,7 +31,9 @@ app.get("/", async (c) => {
       });
     }
 
-    const status = await discordAutomationService.getConnectionStatus(user.organization_id);
+    const status = await discordAutomationService.getConnectionStatus(
+      user.organization_id,
+    );
 
     return c.json({
       // configured = can users add bot to new servers (OAuth flow)

@@ -71,7 +71,10 @@ const updateMcpSchema = z.object({
  * GET /api/v1/mcps/[mcpId]
  * Get MCP details
  */
-async function __hono_GET(request: Request, ctx: { params: Promise<{ mcpId: string }> }) {
+async function __hono_GET(
+  request: Request,
+  ctx: { params: Promise<{ mcpId: string }> },
+) {
   const authResult = await requireAuthOrApiKeyWithOrg(request);
   const { mcpId } = await ctx.params;
 
@@ -82,7 +85,10 @@ async function __hono_GET(request: Request, ctx: { params: Promise<{ mcpId: stri
   }
 
   // Check access - owner can see all, others can only see public
-  if (mcp.organization_id !== authResult.user.organization_id && !mcp.is_public) {
+  if (
+    mcp.organization_id !== authResult.user.organization_id &&
+    !mcp.is_public
+  ) {
     return Response.json({ error: "MCP not found" }, { status: 404 });
   }
 
@@ -93,7 +99,8 @@ async function __hono_GET(request: Request, ctx: { params: Promise<{ mcpId: stri
   }
 
   // Get endpoint URL
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+  const baseUrl =
+    process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
   const endpointUrl = userMcpsService.getEndpointUrl(mcp, baseUrl);
 
   return Response.json({
@@ -110,7 +117,10 @@ async function __hono_GET(request: Request, ctx: { params: Promise<{ mcpId: stri
  * PUT /api/v1/mcps/[mcpId]
  * Update MCP
  */
-async function __hono_PUT(request: Request, ctx: { params: Promise<{ mcpId: string }> }) {
+async function __hono_PUT(
+  request: Request,
+  ctx: { params: Promise<{ mcpId: string }> },
+) {
   const authResult = await requireAuthOrApiKeyWithOrg(request);
   const { mcpId } = await ctx.params;
 
@@ -130,7 +140,11 @@ async function __hono_PUT(request: Request, ctx: { params: Promise<{ mcpId: stri
     );
   }
 
-  const mcp = await userMcpsService.update(mcpId, authResult.user.organization_id, validation.data);
+  const mcp = await userMcpsService.update(
+    mcpId,
+    authResult.user.organization_id,
+    validation.data,
+  );
 
   logger.info("[API] Updated user MCP", {
     id: mcpId,
@@ -144,7 +158,10 @@ async function __hono_PUT(request: Request, ctx: { params: Promise<{ mcpId: stri
  * DELETE /api/v1/mcps/[mcpId]
  * Delete MCP
  */
-async function __hono_DELETE(request: Request, ctx: { params: Promise<{ mcpId: string }> }) {
+async function __hono_DELETE(
+  request: Request,
+  ctx: { params: Promise<{ mcpId: string }> },
+) {
   const authResult = await requireAuthOrApiKeyWithOrg(request);
   const { mcpId } = await ctx.params;
 
@@ -167,7 +184,8 @@ async function __hono_OPTIONS() {
     headers: {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key, X-App-Id",
+      "Access-Control-Allow-Headers":
+        "Content-Type, Authorization, X-API-Key, X-App-Id",
     },
   });
 }
@@ -175,12 +193,18 @@ async function __hono_OPTIONS() {
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", async () => __hono_OPTIONS());
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ mcpId: c.req.param("mcpId")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ mcpId: c.req.param("mcpId")! }),
+  }),
 );
 __hono_app.put("/", async (c) =>
-  __hono_PUT(c.req.raw, { params: Promise.resolve({ mcpId: c.req.param("mcpId")! }) }),
+  __hono_PUT(c.req.raw, {
+    params: Promise.resolve({ mcpId: c.req.param("mcpId")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ mcpId: c.req.param("mcpId")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ mcpId: c.req.param("mcpId")! }),
+  }),
 );
 export default __hono_app;

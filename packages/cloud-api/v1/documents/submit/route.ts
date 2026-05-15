@@ -2,7 +2,10 @@ import { Hono } from "hono";
 
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   createDocumentRecord,
@@ -24,10 +27,15 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     if (!c.env.BLOB) {
-      return c.json({ success: false, error: "Object storage is not configured" }, 503);
+      return c.json(
+        { success: false, error: "Object storage is not configured" },
+        503,
+      );
     }
 
-    const body = (await c.req.json().catch(() => null)) as SubmitDocumentsBody | null;
+    const body = (await c.req
+      .json()
+      .catch(() => null)) as SubmitDocumentsBody | null;
     if (!body?.characterId) {
       return c.json({ success: false, error: "characterId is required" }, 400);
     }
@@ -41,14 +49,22 @@ app.post("/", async (c) => {
     const results = [];
     for (const file of body.files) {
       const key = r2KeyFromBlobUrl(file.blobUrl);
-      if (!key || !key.startsWith(`documents-pre-upload/${user.id}/`)) {
-        results.push({ blobUrl: file.blobUrl, status: "error", error: "Invalid blobUrl" });
+      if (!key?.startsWith(`documents-pre-upload/${user.id}/`)) {
+        results.push({
+          blobUrl: file.blobUrl,
+          status: "error",
+          error: "Invalid blobUrl",
+        });
         continue;
       }
 
       const object = await c.env.BLOB.get(key);
       if (!object) {
-        results.push({ blobUrl: file.blobUrl, status: "error", error: "File not found" });
+        results.push({
+          blobUrl: file.blobUrl,
+          status: "error",
+          error: "File not found",
+        });
         continue;
       }
 
@@ -62,7 +78,9 @@ app.post("/", async (c) => {
       results.push({ blobUrl: file.blobUrl, status: "success", document });
     }
 
-    const successCount = results.filter((result) => result.status === "success").length;
+    const successCount = results.filter(
+      (result) => result.status === "success",
+    ).length;
     const failedCount = results.length - successCount;
 
     return c.json({

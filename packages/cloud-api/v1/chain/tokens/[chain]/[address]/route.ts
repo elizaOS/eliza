@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { executeWithBody } from "@/lib/services/proxy/engine";
 import { isValidAddress } from "@/lib/services/proxy/services/address-validation";
-import { chainDataConfig, chainDataHandler } from "@/lib/services/proxy/services/chain-data";
+import {
+  chainDataConfig,
+  chainDataHandler,
+} from "@/lib/services/proxy/services/chain-data";
 import { ALCHEMY_SLUGS } from "@/lib/services/proxy/services/rpc";
 import type { AppEnv } from "@/types/cloud-worker-env";
 

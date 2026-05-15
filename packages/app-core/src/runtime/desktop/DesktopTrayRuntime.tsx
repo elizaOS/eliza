@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import {
   getElectrobunRendererRpc,
   invokeDesktopBridgeRequest,
@@ -9,6 +8,7 @@ import { TRAY_ACTION_EVENT } from "@elizaos/ui/events";
 import { useApp } from "@elizaos/ui/state/useApp";
 import type { DesktopClickAuditItem } from "@elizaos/ui/utils/desktop-workspace";
 import { openDesktopSettingsWindow } from "@elizaos/ui/utils/desktop-workspace";
+import { useEffect } from "react";
 
 interface DesktopTrayMenuItem {
   id: string;

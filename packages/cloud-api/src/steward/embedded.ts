@@ -3,7 +3,8 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 function stripStewardPrefix(pathname: string): string {
   if (pathname === "/steward") return "/";
-  if (pathname.startsWith("/steward/")) return pathname.slice("/steward".length);
+  if (pathname.startsWith("/steward/"))
+    return pathname.slice("/steward".length);
   return pathname;
 }
 
@@ -33,14 +34,21 @@ function isAuthProvidersPath(pathname: string): boolean {
   return stripStewardPrefix(pathname).replace(/\/+$/, "") === "/auth/providers";
 }
 
-function resolveStewardUpstream(env: AppEnv["Bindings"], requestUrl: URL): string | null {
+function resolveStewardUpstream(
+  env: AppEnv["Bindings"],
+  requestUrl: URL,
+): string | null {
   const candidates = [env.STEWARD_API_URL, env.NEXT_PUBLIC_STEWARD_API_URL];
   for (const candidate of candidates) {
-    if (typeof candidate !== "string" || candidate.trim().length === 0) continue;
+    if (typeof candidate !== "string" || candidate.trim().length === 0)
+      continue;
     try {
       const url = new URL(candidate.trim());
       if (url.protocol !== "https:" && url.protocol !== "http:") continue;
-      if (url.origin === requestUrl.origin && url.pathname.replace(/\/+$/, "") === "/steward") {
+      if (
+        url.origin === requestUrl.origin &&
+        url.pathname.replace(/\/+$/, "") === "/steward"
+      ) {
         continue;
       }
       return trimTrailingSlash(url.toString());
@@ -69,8 +77,14 @@ function hasOAuthCreds(
   provider: "google" | "discord" | "github",
 ): boolean {
   const id = env[`${provider.toUpperCase()}_CLIENT_ID` as keyof typeof env];
-  const secret = env[`${provider.toUpperCase()}_CLIENT_SECRET` as keyof typeof env];
-  return typeof id === "string" && id.length > 0 && typeof secret === "string" && secret.length > 0;
+  const secret =
+    env[`${provider.toUpperCase()}_CLIENT_SECRET` as keyof typeof env];
+  return (
+    typeof id === "string" &&
+    id.length > 0 &&
+    typeof secret === "string" &&
+    secret.length > 0
+  );
 }
 
 /**
@@ -127,7 +141,8 @@ export const embeddedStewardHandler: MiddlewareHandler<AppEnv> = async (c) => {
       {
         success: false,
         error: "steward_upstream_not_configured",
-        message: "Set STEWARD_API_URL or NEXT_PUBLIC_STEWARD_API_URL to an external Steward API.",
+        message:
+          "Set STEWARD_API_URL or NEXT_PUBLIC_STEWARD_API_URL to an external Steward API.",
       },
       503,
     );

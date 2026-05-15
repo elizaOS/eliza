@@ -15,10 +15,10 @@ import ts from "typescript";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..");
+const REPO_ROOT = path.resolve(__dirname, "../..");
 
 const DEFAULT_ROOTS = ["packages", "plugins"];
-const DEFAULT_ALLOWLIST = "scripts/duplicate-component-audit.allowlist.json";
+const DEFAULT_ALLOWLIST = "packages/scripts/duplicate-component-audit.allowlist.json";
 const MAX_SCAN_FILE_BYTES = 1_000_000;
 
 const SOURCE_EXTENSIONS = new Set([

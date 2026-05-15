@@ -17,7 +17,9 @@ interface TwilioSmsBillingBreakdown extends MarkupBreakdown {
 
 function assertValidCost(cost: number, fieldName: string): void {
   if (!Number.isFinite(cost)) {
-    throw new RangeError(`${fieldName} must be a finite number, received ${cost}`);
+    throw new RangeError(
+      `${fieldName} must be a finite number, received ${cost}`,
+    );
   }
   if (cost < 0) {
     throw new RangeError(`${fieldName} must be non-negative, received ${cost}`);
@@ -26,14 +28,21 @@ function assertValidCost(cost: number, fieldName: string): void {
 
 function assertValidRate(markupRate: number): void {
   if (!Number.isFinite(markupRate)) {
-    throw new RangeError(`markupRate must be a finite number, received ${markupRate}`);
+    throw new RangeError(
+      `markupRate must be a finite number, received ${markupRate}`,
+    );
   }
   if (markupRate < 0) {
-    throw new RangeError(`markupRate must be non-negative, received ${markupRate}`);
+    throw new RangeError(
+      `markupRate must be non-negative, received ${markupRate}`,
+    );
   }
 }
 
-function roundUsd(value: number, precision: number = DEFAULT_USD_ROUNDING_PRECISION): number {
+function roundUsd(
+  value: number,
+  precision: number = DEFAULT_USD_ROUNDING_PRECISION,
+): number {
   if (!Number.isFinite(value)) {
     throw new RangeError(`value must be a finite number, received ${value}`);
   }
@@ -41,7 +50,10 @@ function roundUsd(value: number, precision: number = DEFAULT_USD_ROUNDING_PRECIS
   return Math.round(value * factor) / factor;
 }
 
-function applyMarkup(cost: number, markupRate: number = DEFAULT_MARKUP_RATE): MarkupBreakdown {
+function applyMarkup(
+  cost: number,
+  markupRate: number = DEFAULT_MARKUP_RATE,
+): MarkupBreakdown {
   assertValidCost(cost, "cost");
   assertValidRate(markupRate);
 
@@ -67,7 +79,11 @@ export function resolveTwilioSmsCostPerSegment(
 ): number {
   assertValidCost(fallbackCostPerSegment, "fallbackCostPerSegment");
 
-  if (rawCostPerSegment === null || rawCostPerSegment === undefined || rawCostPerSegment === "") {
+  if (
+    rawCostPerSegment === null ||
+    rawCostPerSegment === undefined ||
+    rawCostPerSegment === ""
+  ) {
     return fallbackCostPerSegment;
   }
 

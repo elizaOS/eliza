@@ -4,7 +4,7 @@
  * Initiates the OAuth2 flow to add the bot to a Discord server.
  */
 
-import { randomBytes } from "crypto";
+import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";

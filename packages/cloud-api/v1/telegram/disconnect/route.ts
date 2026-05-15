@@ -18,7 +18,10 @@ app.delete("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    await telegramAutomationService.removeCredentials(user.organization_id, user.id);
+    await telegramAutomationService.removeCredentials(
+      user.organization_id,
+      user.id,
+    );
 
     await invalidateOAuthState(user.organization_id, "telegram", user.id);
 

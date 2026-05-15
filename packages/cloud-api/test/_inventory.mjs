@@ -32,7 +32,9 @@ const OUTPUT = join(__dirname, "INVENTORY.md");
 
 const STUB_RE = /not_yet_migrated|Not implemented on Workers/;
 const routerSrc = readFileSync(ROUTER, "utf8");
-const generatedRoutes = [...routerSrc.matchAll(/app\.route\(\s*"([^"]+)"/g)].map((m) => m[1]);
+const generatedRoutes = [
+  ...routerSrc.matchAll(/app\.route\(\s*"([^"]+)"/g),
+].map((m) => m[1]);
 const { files, entries } = await collectRouteEntries(API_ROOT);
 const expectedMountedRoutes = entries.map((entry) => entry.path);
 
@@ -58,7 +60,8 @@ const inventory = files.map((p) => {
 const dirHasHono = new Map();
 for (const f of inventory) {
   const dir = dirname(f.path);
-  if (f.kind === "hono-real" || f.kind === "hono-stub") dirHasHono.set(dir, true);
+  if (f.kind === "hono-real" || f.kind === "hono-stub")
+    dirHasHono.set(dir, true);
 }
 for (const f of inventory) {
   if (f.kind === "next") {
@@ -86,7 +89,9 @@ for (const f of inventory.sort((a, b) => a.rel.localeCompare(b.rel))) {
 
 const generatedSet = new Set(generatedRoutes);
 const expectedSet = new Set(expectedMountedRoutes);
-const missingFromGenerated = expectedMountedRoutes.filter((path) => !generatedSet.has(path));
+const missingFromGenerated = expectedMountedRoutes.filter(
+  (path) => !generatedSet.has(path),
+);
 const staleGenerated = generatedRoutes.filter((path) => !expectedSet.has(path));
 const orderMatches =
   generatedRoutes.length === expectedMountedRoutes.length &&
@@ -99,8 +104,12 @@ lines.push("Auto-generated. Re-run with `node apps/api/test/_inventory.mjs`.");
 lines.push("");
 lines.push(`Total \`route.ts\` / \`route.tsx\` files: **${inventory.length}**`);
 lines.push(`Generated mounted routes: **${generatedRoutes.length}**`);
-lines.push(`Expected mounted routes from current generator: **${expectedMountedRoutes.length}**`);
-lines.push(`Generated order matches generator: **${orderMatches ? "yes" : "no"}**`);
+lines.push(
+  `Expected mounted routes from current generator: **${expectedMountedRoutes.length}**`,
+);
+lines.push(
+  `Generated order matches generator: **${orderMatches ? "yes" : "no"}**`,
+);
 lines.push("");
 lines.push("| Bucket | Count | Meaning |");
 lines.push("| --- | ---: | --- |");
@@ -119,10 +128,18 @@ lines.push(
 lines.push("");
 lines.push("## Generated router parity");
 lines.push("");
-if (missingFromGenerated.length === 0 && staleGenerated.length === 0 && orderMatches) {
-  lines.push("Generated router is in sync with the current generator and route tree.");
+if (
+  missingFromGenerated.length === 0 &&
+  staleGenerated.length === 0 &&
+  orderMatches
+) {
+  lines.push(
+    "Generated router is in sync with the current generator and route tree.",
+  );
 } else {
-  lines.push("Generated router is stale. Re-run `node apps/api/src/_generate-router.mjs`.");
+  lines.push(
+    "Generated router is stale. Re-run `node apps/api/src/_generate-router.mjs`.",
+  );
 }
 lines.push("");
 lines.push(`### Missing from generated (${missingFromGenerated.length})`);

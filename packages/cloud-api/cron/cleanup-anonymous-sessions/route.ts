@@ -31,9 +31,17 @@ app.get("/", async (c) => {
       .select({ id: users.id })
       .from(users)
       .innerJoin(userIdentities, eq(users.id, userIdentities.user_id))
-      .where(and(eq(userIdentities.is_anonymous, true), lt(userIdentities.expires_at!, now)));
+      .where(
+        and(
+          eq(userIdentities.is_anonymous, true),
+          lt(userIdentities.expires_at!, now),
+        ),
+      );
 
-    logger.info("cleanup-cron", `Found ${expiredUsers.length} expired anonymous users`);
+    logger.info(
+      "cleanup-cron",
+      `Found ${expiredUsers.length} expired anonymous users`,
+    );
 
     if (expiredUsers.length > 0) {
       const userIds = expiredUsers.map((u) => u.id);
@@ -72,7 +80,12 @@ app.get("/", async (c) => {
       })
       .from(users)
       .leftJoin(anonymousSessions, eq(anonymousSessions.user_id, users.id))
-      .where(and(eq(userIdentities.is_anonymous, true), lt(users.created_at, sevenDaysAgo)));
+      .where(
+        and(
+          eq(userIdentities.is_anonymous, true),
+          lt(users.created_at, sevenDaysAgo),
+        ),
+      );
 
     let deletedInactiveUsers = 0;
     for (const record of inactiveUsersWithSessions) {
@@ -82,7 +95,10 @@ app.get("/", async (c) => {
       }
     }
 
-    logger.info("cleanup-cron", `Deleted ${deletedInactiveUsers} inactive anonymous users`);
+    logger.info(
+      "cleanup-cron",
+      `Deleted ${deletedInactiveUsers} inactive anonymous users`,
+    );
 
     return c.json({
       success: true,

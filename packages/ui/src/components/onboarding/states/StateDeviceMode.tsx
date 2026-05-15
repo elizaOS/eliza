@@ -17,7 +17,7 @@ export function StateDeviceMode(props: StateDeviceModeProps): JSX.Element {
     >
       <h1>Local Runtime</h1>
       <p>You can run entirely locally or use Eliza Cloud.</p>
-      <div className="eliza-ob-choice-list" role="list">
+      <div className="eliza-ob-choice-list">
         <button
           type="button"
           className={`eliza-ob-choice${selected === "local-cloud" ? " selected" : ""}`}

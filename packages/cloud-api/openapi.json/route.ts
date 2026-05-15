@@ -42,14 +42,17 @@ function tagForPath(routePath: string): string {
 
 function getOpenApiServerUrl(env: { NEXT_PUBLIC_APP_URL?: string }): string {
   const configuredUrl = env.NEXT_PUBLIC_APP_URL;
-  return configuredUrl && /^https:\/\/www\.(dev\.)?elizacloud\.ai$/.test(configuredUrl)
+  return configuredUrl &&
+    /^https:\/\/www\.(dev\.)?elizacloud\.ai$/.test(configuredUrl)
     ? configuredUrl
     : "https://www.elizacloud.ai";
 }
 
 const app = new Hono<AppEnv>();
 
-function createOpenApiResponse(env: { NEXT_PUBLIC_APP_URL?: string }): Response {
+function createOpenApiResponse(env: {
+  NEXT_PUBLIC_APP_URL?: string;
+}): Response {
   const baseUrl = getOpenApiServerUrl(env);
 
   const discoveredPaths: Record<string, OpenApiPathItem> = {};
@@ -63,7 +66,9 @@ function createOpenApiResponse(env: { NEXT_PUBLIC_APP_URL?: string }): Response 
       summary: endpoint.name ?? `${endpoint.method} ${endpoint.path}`,
       description: endpoint.description,
       tags: endpoint.category ? [endpoint.category] : [tag],
-      security: endpoint.requiresAuth ? [{ bearerAuth: [] }, { apiKeyAuth: [] }] : [],
+      security: endpoint.requiresAuth
+        ? [{ bearerAuth: [] }, { apiKeyAuth: [] }]
+        : [],
       responses:
         endpoint.responses.length > 0
           ? Object.fromEntries(
@@ -113,7 +118,11 @@ function createOpenApiResponse(env: { NEXT_PUBLIC_APP_URL?: string }): Response 
     paths: { ...discoveredPaths },
     components: {
       securitySchemes: {
-        bearerAuth: { type: "http", scheme: "bearer", description: "Steward session token" },
+        bearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          description: "Steward session token",
+        },
         apiKeyAuth: {
           type: "apiKey",
           in: "header",

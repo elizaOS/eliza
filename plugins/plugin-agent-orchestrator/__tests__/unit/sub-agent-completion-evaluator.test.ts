@@ -278,7 +278,8 @@ describe("subAgentCompletionResponseEvaluator", () => {
       reply:
         "Built data/apps/random-tweet/index.html.\nPublic URL https://example.test/apps/random-tweet/",
       debug: [
-        "verified sub-agent completion has no concrete follow-up action; using direct reply",      ],
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
     });
   });
 

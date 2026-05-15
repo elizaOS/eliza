@@ -45,7 +45,9 @@ app.get("/", (c) => {
     };
 
     const evmConfigured = Boolean(
-      env.EVM_PAYOUT_PRIVATE_KEY || env.EVM_PRIVATE_KEY || env.EVM_PAYOUT_WALLET_ADDRESS,
+      env.EVM_PAYOUT_PRIVATE_KEY ||
+        env.EVM_PRIVATE_KEY ||
+        env.EVM_PAYOUT_WALLET_ADDRESS,
     );
     const solanaConfigured = Boolean(env.SOLANA_PAYOUT_PRIVATE_KEY);
     const payouts: PayoutCheckResult = {
@@ -64,7 +66,10 @@ app.get("/", (c) => {
         : "CRON_SECRET not set — scheduled jobs (container-billing, release-pending-earnings, process-redemptions) cannot authenticate",
     };
 
-    const allOk = steward.configured && (evmConfigured || solanaConfigured) && crons.configured;
+    const allOk =
+      steward.configured &&
+      (evmConfigured || solanaConfigured) &&
+      crons.configured;
 
     return c.json(
       {

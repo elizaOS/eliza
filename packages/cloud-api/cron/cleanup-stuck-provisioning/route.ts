@@ -42,9 +42,16 @@ interface CleanupResult {
   stuckSinceMinutes: number;
 }
 
-async function handleCleanupStuckProvisioning(request: Request, env?: AppEnv["Bindings"]) {
+async function handleCleanupStuckProvisioning(
+  request: Request,
+  env?: AppEnv["Bindings"],
+) {
   try {
-    const authError = verifyCronSecret(request, "[Cleanup Stuck Provisioning]", env);
+    const authError = verifyCronSecret(
+      request,
+      "[Cleanup Stuck Provisioning]",
+      env,
+    );
     if (authError) return authError;
 
     logger.info("[Cleanup Stuck Provisioning] Starting scan");
@@ -71,7 +78,9 @@ async function handleCleanupStuckProvisioning(request: Request, env?: AppEnv["Bi
      * replica and is subject to the write path's connection pool.
      */
     const stuckAgents =
-      await agentSandboxesRepository.markStuckProvisioningWithoutActiveJobAsError(cutoff);
+      await agentSandboxesRepository.markStuckProvisioningWithoutActiveJobAsError(
+        cutoff,
+      );
 
     const results: CleanupResult[] = stuckAgents.map((row) => ({
       agentId: row.agentId,

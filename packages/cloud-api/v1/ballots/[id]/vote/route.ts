@@ -12,7 +12,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { secretBallotsRepository } from "@/db/repositories/secret-ballots";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { createSecretBallotsService } from "@/lib/services/secret-ballots";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -35,12 +38,18 @@ app.post("/", async (c) => {
     const parsed = VoteSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }
 
-    const service = createSecretBallotsService({ repository: secretBallotsRepository });
+    const service = createSecretBallotsService({
+      repository: secretBallotsRepository,
+    });
     const result = await service.submitVote({
       ballotId: id,
       scopedToken: parsed.data.scopedToken,
@@ -52,7 +61,11 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: result.reason }, status);
     }
 
-    return c.json({ success: true, outcome: result.outcome, ballotStatus: result.ballotStatus });
+    return c.json({
+      success: true,
+      outcome: result.outcome,
+      ballotStatus: result.ballotStatus,
+    });
   } catch (error) {
     logger.error("[SecretBallots API] Failed to submit ballot vote", { error });
     return failureResponse(c, error);

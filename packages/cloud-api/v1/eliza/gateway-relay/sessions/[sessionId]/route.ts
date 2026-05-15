@@ -20,7 +20,10 @@ app.delete("/", async (c) => {
     const session = await agentGatewayRelayService.getSession(sessionId);
 
     if (session) {
-      if (session.organizationId !== user.organization_id || session.userId !== user.id) {
+      if (
+        session.organizationId !== user.organization_id ||
+        session.userId !== user.id
+      ) {
         return c.json({ success: false, error: "Forbidden" }, 403);
       }
       await agentGatewayRelayService.disconnectSession(sessionId);

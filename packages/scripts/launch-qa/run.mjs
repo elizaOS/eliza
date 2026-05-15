@@ -133,7 +133,7 @@ const TASKS = [
     id: "cloud-typecheck",
     tier: 1,
     command: "bun",
-    args: ["run", "--cwd", "cloud", "typecheck"],
+    args: ["run", "typecheck:cloud"],
     description: "Cloud package split typecheck",
   },
   {
@@ -146,13 +146,12 @@ const TASKS = [
   {
     id: "cloud-api-key-redaction",
     tier: 1,
-    cwd: "cloud",
     command: "bun",
     args: [
       "test",
       "--preload",
-      "./packages/tests/e2e/preload.ts",
-      "packages/tests/e2e/v1/api-keys.test.ts",
+      "packages/cloud-api/test/e2e/preload.ts",
+      "packages/cloud-api/test/e2e/agent-token-flow.test.ts",
       "--timeout",
       "120000",
     ],
@@ -161,13 +160,10 @@ const TASKS = [
   {
     id: "cloud-api-key-client",
     tier: 0,
-    cwd: "cloud",
     command: "bun",
     args: [
       "test",
-      "--preload",
-      "./packages/tests/load-env.ts",
-      "packages/lib/client/api-keys.test.ts",
+      "packages/cloud-shared/src/lib/client/api-keys.test.ts",
     ],
     env: {
       SKIP_DB_DEPENDENT: "1",

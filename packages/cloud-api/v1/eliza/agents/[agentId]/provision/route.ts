@@ -38,7 +38,10 @@ function sanitizeProvisionFailureMessage(
   return "Provisioning failed";
 }
 
-function sanitizeEnqueueFailureMessage(error: string, status: 404 | 409 | 500): string {
+function sanitizeEnqueueFailureMessage(
+  error: string,
+  status: 404 | 409 | 500,
+): string {
   if (status !== 500) {
     return error;
   }
@@ -79,7 +82,8 @@ async function __hono_POST(
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
-    const syncRequested = new URL(request.url).searchParams.get("sync") === "true";
+    const syncRequested =
+      new URL(request.url).searchParams.get("sync") === "true";
     const sync =
       syncRequested &&
       (process.env.NODE_ENV !== "production" ||
@@ -92,15 +96,25 @@ async function __hono_POST(
     });
 
     // Fast path: check if already running (no job needed)
-    const existing = await elizaSandboxService.getAgentForWrite(agentId, user.organization_id!);
+    const existing = await elizaSandboxService.getAgentForWrite(
+      agentId,
+      user.organization_id!,
+    );
     if (!existing) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Agent not found" }, { status: 404 }),
+        Response.json(
+          { success: false, error: "Agent not found" },
+          { status: 404 },
+        ),
         CORS_METHODS,
       );
     }
 
-    if (existing.status === "running" && existing.bridge_url && existing.health_url) {
+    if (
+      existing.status === "running" &&
+      existing.bridge_url &&
+      existing.health_url
+    ) {
       return applyCorsHeaders(
         Response.json({
           success: true,
@@ -150,7 +164,9 @@ async function __hono_POST(
           organizationId: user.organization_id!,
           image: containersEnv.defaultAgentImage(),
           agentName: existing.agent_name ?? agentId,
-          agentConfig: (existing.agent_config as Record<string, unknown> | undefined) ?? undefined,
+          agentConfig:
+            (existing.agent_config as Record<string, unknown> | undefined) ??
+            undefined,
           characterId: existing.character_id,
           expectedUpdatedAt: existing.updated_at,
         });
@@ -187,11 +203,17 @@ async function __hono_POST(
 
     // ── Sync fallback (legacy) ────────────────────────────────────────
     if (sync) {
-      const result = await elizaSandboxService.provision(agentId, user.organization_id!);
+      const result = await elizaSandboxService.provision(
+        agentId,
+        user.organization_id!,
+      );
 
       if (!result.success) {
         const status = getProvisionFailureStatus(result.error);
-        const clientError = sanitizeProvisionFailureMessage(result.error, status);
+        const clientError = sanitizeProvisionFailureMessage(
+          result.error,
+          status,
+        );
 
         if (status === 500) {
           logger.error("[agent-api] Sync provision failed", {
@@ -224,11 +246,14 @@ async function __hono_POST(
 
     const workerHealth = await checkProvisioningWorkerHealth();
     if (!workerHealth.ok) {
-      logger.warn("[agent-api] Provision blocked: provisioning worker unavailable", {
-        agentId,
-        orgId: user.organization_id,
-        code: workerHealth.code,
-      });
+      logger.warn(
+        "[agent-api] Provision blocked: provisioning worker unavailable",
+        {
+          agentId,
+          orgId: user.organization_id,
+          code: workerHealth.code,
+        },
+      );
       return applyCorsHeaders(
         Response.json(provisioningWorkerFailureBody(workerHealth), {
           status: workerHealth.status,
@@ -247,7 +272,8 @@ async function __hono_POST(
           Response.json(
             {
               success: false,
-              error: error instanceof Error ? error.message : "Invalid webhook URL",
+              error:
+                error instanceof Error ? error.message : "Invalid webhook URL",
             },
             { status: 400 },
           ),
@@ -289,7 +315,10 @@ async function __hono_POST(
         Response.json(
           {
             success: false,
-            code: status === 500 ? "provision_enqueue_failed" : "provision_enqueue_rejected",
+            code:
+              status === 500
+                ? "provision_enqueue_failed"
+                : "provision_enqueue_rejected",
             error: sanitizeEnqueueFailureMessage(message, status),
             ...(failureId ? { failureId } : {}),
             retryable: status === 500 || status === 409,
@@ -306,7 +335,8 @@ async function __hono_POST(
     // for the next cron tick. Fire-and-forget; the cron is the safety net.
     if (created) {
       const triggerEnv = ctx?.env;
-      const triggerPromise = provisioningJobService.triggerImmediate(triggerEnv);
+      const triggerPromise =
+        provisioningJobService.triggerImmediate(triggerEnv);
       let executionCtx: AppContext["executionCtx"] | undefined;
       try {
         executionCtx = ctx?.executionCtx;
@@ -353,6 +383,10 @@ async function __hono_POST(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }, c),
+  __hono_POST(
+    c.req.raw,
+    { params: Promise.resolve({ agentId: c.req.param("agentId")! }) },
+    c,
+  ),
 );
 export default __hono_app;

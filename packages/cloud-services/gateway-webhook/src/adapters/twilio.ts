@@ -1,6 +1,9 @@
-import crypto from "crypto";
+import crypto from "node:crypto";
 import { z } from "zod";
-import { calculateTwilioSmsBilling, resolveTwilioSmsCostPerSegment } from "../billing";
+import {
+  calculateTwilioSmsBilling,
+  resolveTwilioSmsCostPerSegment,
+} from "../billing";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
@@ -11,9 +14,12 @@ function resolveSmsCostPerSegment(): number {
   if (raw) {
     const parsed = Number.parseFloat(raw);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      logger.warn("Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; falling back to default", {
-        raw,
-      });
+      logger.warn(
+        "Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; falling back to default",
+        {
+          raw,
+        },
+      );
     }
   }
   return resolveTwilioSmsCostPerSegment(raw);
@@ -85,8 +91,14 @@ async function verifySignature(
       false,
       ["sign"],
     );
-    const signatureBuffer = await crypto.subtle.sign("HMAC", key, encoder.encode(data));
-    const computedSignature = btoa(String.fromCharCode(...new Uint8Array(signatureBuffer)));
+    const signatureBuffer = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(data),
+    );
+    const computedSignature = btoa(
+      String.fromCharCode(...new Uint8Array(signatureBuffer)),
+    );
 
     const maxLen = Math.max(computedSignature.length, signature.length);
     const computedBuf = Buffer.alloc(maxLen);
@@ -109,9 +121,15 @@ async function verifySignature(
 export const twilioAdapter: PlatformAdapter = {
   platform: "twilio",
 
-  async verifyWebhook(request: Request, rawBody: string, config: WebhookConfig): Promise<boolean> {
+  async verifyWebhook(
+    request: Request,
+    rawBody: string,
+    config: WebhookConfig,
+  ): Promise<boolean> {
     if (!config.authToken) {
-      logger.warn("Twilio auth token not configured — signature verification skipped");
+      logger.warn(
+        "Twilio auth token not configured — signature verification skipped",
+      );
       return false;
     }
 
@@ -168,19 +186,28 @@ export const twilioAdapter: PlatformAdapter = {
       messageId: event.MessageSid,
       chatId: event.From,
       senderId: event.From,
-      text: mediaUrls.length > 0 && !text ? `[media: ${mediaUrls.join(", ")}]` : text,
+      text:
+        mediaUrls.length > 0 && !text
+          ? `[media: ${mediaUrls.join(", ")}]`
+          : text,
       mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
       rawPayload: params,
     };
   },
 
-  async sendReply(config: WebhookConfig, event: ChatEvent, text: string): Promise<void> {
+  async sendReply(
+    config: WebhookConfig,
+    event: ChatEvent,
+    text: string,
+  ): Promise<void> {
     if (!config.accountSid || !config.authToken || !config.phoneNumber) {
       throw new Error("Missing Twilio credentials for reply");
     }
 
     const url = `${TWILIO_API_BASE}/Accounts/${config.accountSid}/Messages.json`;
-    const auth = Buffer.from(`${config.accountSid}:${config.authToken}`).toString("base64");
+    const auth = Buffer.from(
+      `${config.accountSid}:${config.authToken}`,
+    ).toString("base64");
 
     const body = new URLSearchParams({
       To: event.senderId,
@@ -205,7 +232,10 @@ export const twilioAdapter: PlatformAdapter = {
     // Record the passthrough cost with the platform markup so downstream
     // billing persisters can read a single structured line and insert the
     // usage record. This is the integration point T9d unblocks.
-    const breakdown = calculateTwilioSmsBilling(text, resolveSmsCostPerSegment());
+    const breakdown = calculateTwilioSmsBilling(
+      text,
+      resolveSmsCostPerSegment(),
+    );
     logger.info("[TwilioAdapter] Outbound SMS cost recorded", {
       platform: "twilio",
       messageId: event.messageId,

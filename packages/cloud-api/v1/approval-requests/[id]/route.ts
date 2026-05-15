@@ -12,7 +12,10 @@ import { Hono } from "hono";
 import { approvalRequestsRepository } from "@/db/repositories/approval-requests";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   type ApprovalRequestsService,
   createApprovalRequestsService,
@@ -23,7 +26,9 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 let singleton: ApprovalRequestsService | null = null;
 function getApprovalRequestsService(): ApprovalRequestsService {
-  singleton ??= createApprovalRequestsService({ repository: approvalRequestsRepository });
+  singleton ??= createApprovalRequestsService({
+    repository: approvalRequestsRepository,
+  });
   return singleton;
 }
 
@@ -35,7 +40,10 @@ app.get("/", async (c) => {
   try {
     const id = c.req.param("id");
     if (!id) {
-      return c.json({ success: false, error: "Missing approval request id" }, 400);
+      return c.json(
+        { success: false, error: "Missing approval request id" },
+        400,
+      );
     }
 
     const isPublic = c.req.query("public") === "1";
@@ -44,20 +52,31 @@ app.get("/", async (c) => {
     if (isPublic) {
       const row = await service.getPublic(id);
       if (!row) {
-        return c.json({ success: false, error: "Approval request not found" }, 404);
+        return c.json(
+          { success: false, error: "Approval request not found" },
+          404,
+        );
       }
-      return c.json({ success: true, approvalRequest: redactApprovalRequestForPublic(row) });
+      return c.json({
+        success: true,
+        approvalRequest: redactApprovalRequestForPublic(row),
+      });
     }
 
     const user = await requireUserOrApiKeyWithOrg(c);
     const row = await service.get(id, user.organization_id);
     if (!row) {
-      return c.json({ success: false, error: "Approval request not found" }, 404);
+      return c.json(
+        { success: false, error: "Approval request not found" },
+        404,
+      );
     }
 
     return c.json({ success: true, approvalRequest: row });
   } catch (error) {
-    logger.error("[ApprovalRequests API] Failed to get approval request", { error });
+    logger.error("[ApprovalRequests API] Failed to get approval request", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });

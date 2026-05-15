@@ -25,7 +25,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 async function __hono_GET(request: Request) {
   const { role } = await requireAdmin(request);
   if (role !== "super_admin") {
-    return Response.json({ success: false, error: "Super admin access required" }, { status: 403 });
+    return Response.json(
+      { success: false, error: "Super admin access required" },
+      { status: 403 },
+    );
   }
 
   try {
@@ -35,7 +38,9 @@ async function __hono_GET(request: Request) {
     const image = containersEnv.defaultAgentImage();
 
     const counts = await agentSandboxesRepository.countAllPoolEntries();
-    const onCurrentImage = await agentSandboxesRepository.countUnclaimedPool({ image });
+    const onCurrentImage = await agentSandboxesRepository.countUnclaimedPool({
+      image,
+    });
     const buckets = await agentSandboxesRepository.countUserProvisionsByHour(
       DEFAULT_WARM_POOL_POLICY.forecastWindowHours,
     );
@@ -80,7 +85,10 @@ async function __hono_GET(request: Request) {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to read warm pool state",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to read warm pool state",
       },
       { status: 500 },
     );

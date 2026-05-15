@@ -20,7 +20,10 @@ const CORS_METHODS = "POST, OPTIONS";
  * or POST /api/v1/eliza/agents/[agentId]/provision, which will restore from
  * the latest backup automatically. The agent may resume on a different node.
  */
-async function __hono_POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_POST(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
@@ -30,10 +33,16 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
       orgId: user.organization_id,
     });
 
-    const agent = await elizaSandboxService.getAgentForWrite(agentId, user.organization_id);
+    const agent = await elizaSandboxService.getAgentForWrite(
+      agentId,
+      user.organization_id,
+    );
     if (!agent) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Agent not found" }, { status: 404 }),
+        Response.json(
+          { success: false, error: "Agent not found" },
+          { status: 404 },
+        ),
         CORS_METHODS,
       );
     }
@@ -53,7 +62,10 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
       );
     }
 
-    const result = await elizaSandboxService.shutdown(agentId, user.organization_id);
+    const result = await elizaSandboxService.shutdown(
+      agentId,
+      user.organization_id,
+    );
 
     if (!result.success) {
       const status =
@@ -63,7 +75,10 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
             ? 409
             : 500;
       return applyCorsHeaders(
-        Response.json({ success: false, error: result.error ?? "Suspend failed" }, { status }),
+        Response.json(
+          { success: false, error: result.error ?? "Suspend failed" },
+          { status },
+        ),
         CORS_METHODS,
       );
     }
@@ -79,7 +94,8 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
         data: {
           agentId,
           action: "suspend",
-          message: "Agent suspended with snapshot. Use resume or provision to restart.",
+          message:
+            "Agent suspended with snapshot. Use resume or provision to restart.",
           previousStatus: agent.status,
         },
       }),
@@ -93,6 +109,8 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;

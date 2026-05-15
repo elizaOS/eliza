@@ -138,7 +138,7 @@ async function handleCreate(
     }
     const deployed = await service.deployWorkflow(draft, resolveAgentId(runtime));
     if (!deployed.id) {
-      const missing = (deployed.missingCredentials).map((c) => c.credType).join(', ');
+      const missing = deployed.missingCredentials.map((c) => c.credType).join(', ');
       const text = missing
         ? `Workflow generated but missing credentials: ${missing}.`
         : 'Workflow generation produced no deployable result.';

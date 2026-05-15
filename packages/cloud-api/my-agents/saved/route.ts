@@ -18,7 +18,9 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    logger.debug("[Saved Agents API] Fetching saved agents for user:", { userId: user.id });
+    logger.debug("[Saved Agents API] Fetching saved agents for user:", {
+      userId: user.id,
+    });
 
     const savedAgents = await charactersService.getSavedAgentsForUser(user.id);
 

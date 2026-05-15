@@ -14,7 +14,10 @@ const CORS_METHODS = "GET, OPTIONS";
  * stored in the cloud. The token can then be used for GitHub API calls
  * and as a git credential for push/clone operations.
  */
-async function __hono_GET(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
@@ -55,6 +58,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ agen
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;

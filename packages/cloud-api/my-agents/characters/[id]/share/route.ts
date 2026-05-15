@@ -37,7 +37,9 @@ app.get("/", async (c) => {
       success: true,
       data: {
         isPublic: character.is_public,
-        shareUrl: character.is_public ? `${baseUrl}/chat/${character.id}` : null,
+        shareUrl: character.is_public
+          ? `${baseUrl}/chat/${character.id}`
+          : null,
         shareInfo: character.is_public
           ? {
               chatUrl: `${baseUrl}/chat/${character.id}`,
@@ -61,14 +63,21 @@ app.put("/", async (c) => {
 
     const character = await charactersService.getByIdForUser(id, user.id);
     if (!character) {
-      return c.json({ success: false, error: "Character not found or access denied" }, 404);
+      return c.json(
+        { success: false, error: "Character not found or access denied" },
+        404,
+      );
     }
 
     const body = await c.req.json();
     const validation = ShareSchema.safeParse(body);
     if (!validation.success) {
       return c.json(
-        { success: false, error: "Invalid request body", details: validation.error.issues },
+        {
+          success: false,
+          error: "Invalid request body",
+          details: validation.error.issues,
+        },
         400,
       );
     }
@@ -84,7 +93,10 @@ app.put("/", async (c) => {
 
     const updated = await charactersService.update(id, { is_public: isPublic });
     if (!updated) {
-      return c.json({ success: false, error: "Failed to update character" }, 500);
+      return c.json(
+        { success: false, error: "Failed to update character" },
+        500,
+      );
     }
 
     await Promise.all([
@@ -116,7 +128,10 @@ app.put("/", async (c) => {
     return c.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to update share status",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update share status",
       },
       500,
     );

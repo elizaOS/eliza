@@ -14,9 +14,17 @@ export interface ChatEvent {
 
 export interface PlatformAdapter {
   platform: Platform;
-  verifyWebhook(request: Request, rawBody: string, config: WebhookConfig): Promise<boolean>;
+  verifyWebhook(
+    request: Request,
+    rawBody: string,
+    config: WebhookConfig,
+  ): Promise<boolean>;
   extractEvent(rawBody: string): Promise<ChatEvent | null>;
-  sendReply(config: WebhookConfig, event: ChatEvent, text: string): Promise<void>;
+  sendReply(
+    config: WebhookConfig,
+    event: ChatEvent,
+    text: string,
+  ): Promise<void>;
   sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void>;
 }
 

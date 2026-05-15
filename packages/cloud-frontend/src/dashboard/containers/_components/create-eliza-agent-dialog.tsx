@@ -103,7 +103,6 @@ function StepIndicator({ state }: { state: StepState }) {
           <X className="h-3 w-3" />
         </div>
       );
-    case "pending":
     default:
       return (
         <div className={`${base} bg-white/[0.03] border border-white/10`}>

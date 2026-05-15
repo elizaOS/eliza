@@ -43,7 +43,7 @@ import { join, relative, resolve } from "node:path";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-const ROOT = resolve(import.meta.dirname, "..");
+const ROOT = resolve(import.meta.dirname, "../..");
 const CHECK_MODE = process.argv.includes("--check");
 const RESTORE_MODE = process.argv.includes("--restore");
 const QUIET = process.argv.includes("--quiet");

@@ -36,9 +36,13 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const role = c.req.query("connectionRole") === "owner" ? "owner" : ("agent" as const);
+    const role =
+      c.req.query("connectionRole") === "owner" ? "owner" : ("agent" as const);
 
-    const creds = await twitterAutomationService.getCredentialsForAgent(user.organization_id, role);
+    const creds = await twitterAutomationService.getCredentialsForAgent(
+      user.organization_id,
+      role,
+    );
 
     if (!creds) {
       return c.json(
@@ -67,7 +71,9 @@ app.get("/", async (c) => {
       return c.json({
         auth_mode: "oauth2" as const,
         access_token: creds.TWITTER_OAUTH_ACCESS_TOKEN,
-        ...(creds.TWITTER_OAUTH_SCOPE ? { scopes: creds.TWITTER_OAUTH_SCOPE } : {}),
+        ...(creds.TWITTER_OAUTH_SCOPE
+          ? { scopes: creds.TWITTER_OAUTH_SCOPE }
+          : {}),
         ...(creds.TWITTER_USER_ID ? { user_id: creds.TWITTER_USER_ID } : {}),
       });
     }

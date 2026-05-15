@@ -41,7 +41,7 @@
  *   <androidAssetsDir>/x86_64/libllama.so      (cuttlefish + emulators)
  *
  * Idempotent: cached clone + cached build dirs skip rework. Bumping
- * the pinned tag in LLAMA_CPP_TAG / LLAMA_CPP_COMMIT busts the cache.
+ * LLAMA_CPP_REF busts the cache.
  *
  * Failure mode:
  *   If zig is missing, this script exits with code 1 and prints the
@@ -60,9 +60,8 @@ import { loadBrandFromArgv } from "./brand-config.mjs";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
 
-export const LLAMA_CPP_TAG = "b3490";
-export const LLAMA_CPP_COMMIT = "6e2b6000e5fe808954a7dcef8225b5b7f2c1b9e9";
-export const LLAMA_CPP_REMOTE = "https://github.com/ggml-org/llama.cpp.git";
+export const LLAMA_CPP_REF = "main";
+export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
 
 export const ABI_TARGETS = [
@@ -101,7 +100,7 @@ function defaultCacheDir(brand) {
     os.homedir(),
     ".cache",
     cacheName,
-    `llama-cpp-${LLAMA_CPP_TAG}`,
+    `llama-cpp-${LLAMA_CPP_REF}`,
   );
 }
 
@@ -159,8 +158,8 @@ export function parseSubArgs(argv, brand) {
           "[--assets-dir <PATH>] [--cache-dir <PATH>] [--src-dir <PATH>] " +
           "[--abi <arm64-v8a|x86_64>] [--jobs <N>] [--skip-if-present]\n" +
           "  --src-dir <PATH>  Use an existing llama.cpp / buun-llama-cpp checkout instead\n" +
-          "                    of cloning. The directory's HEAD is used as-is; the pinned\n" +
-          "                    LLAMA_CPP_TAG/COMMIT in this script is ignored.",
+          "                    of cloning. The directory's HEAD is used as-is; LLAMA_CPP_REF\n" +
+          "                    in this script is ignored.",
       );
       process.exit(0);
     } else {
@@ -249,8 +248,10 @@ export function ensureLlamaCppCheckout({
   spawn = run,
 }) {
   fs.mkdirSync(cacheDir, { recursive: true });
-  const sentinel = path.join(cacheDir, `.checked-out.${LLAMA_CPP_COMMIT}`);
+  const sentinel = path.join(cacheDir, `.checked-out.${LLAMA_CPP_REF}`);
+  const refIsMutable = LLAMA_CPP_REF === "main";
   if (
+    !refIsMutable &&
     fs.existsSync(sentinel) &&
     fs.existsSync(path.join(cacheDir, "CMakeLists.txt"))
   ) {
@@ -258,9 +259,7 @@ export function ensureLlamaCppCheckout({
     return cacheDir;
   }
   if (!fs.existsSync(path.join(cacheDir, ".git"))) {
-    log(
-      `[compile-libllama] Cloning llama.cpp ${LLAMA_CPP_TAG} into ${cacheDir}`,
-    );
+    log(`[compile-libllama] Cloning llama.cpp ${LLAMA_CPP_REF} into ${cacheDir}`);
     fs.rmSync(cacheDir, { recursive: true, force: true });
     fs.mkdirSync(cacheDir, { recursive: true });
     spawn(
@@ -270,7 +269,7 @@ export function ensureLlamaCppCheckout({
         "--depth",
         "1",
         "--branch",
-        LLAMA_CPP_TAG,
+        LLAMA_CPP_REF,
         LLAMA_CPP_REMOTE,
         cacheDir,
       ],
@@ -278,12 +277,12 @@ export function ensureLlamaCppCheckout({
     );
   } else {
     log(`[compile-libllama] Refreshing llama.cpp checkout in ${cacheDir}`);
-    spawn("git", ["fetch", "--depth", "1", "origin", `tag`, LLAMA_CPP_TAG], {
+    spawn("git", ["fetch", "--depth", "1", "origin", LLAMA_CPP_REF], {
       cwd: cacheDir,
     });
   }
-  spawn("git", ["checkout", "--detach", LLAMA_CPP_COMMIT], { cwd: cacheDir });
-  fs.writeFileSync(sentinel, `${LLAMA_CPP_COMMIT}\n`, "utf8");
+  spawn("git", ["checkout", "--detach", "FETCH_HEAD"], { cwd: cacheDir });
+  fs.writeFileSync(sentinel, `${LLAMA_CPP_REF}\n`, "utf8");
   return cacheDir;
 }
 
@@ -446,7 +445,7 @@ export async function main(argv = process.argv.slice(2)) {
     } catch {}
     console.log(
       `[compile-libllama] Using --src-dir ${srcDir} (HEAD: ${headRef}); ` +
-        `pinned tag ${LLAMA_CPP_TAG} ignored.`,
+        `LLAMA_CPP_REF ignored.`,
     );
     srcDescription = `external src-dir ${srcDir}`;
   } else {
@@ -455,7 +454,7 @@ export async function main(argv = process.argv.slice(2)) {
       log: console.log,
       spawn: run,
     });
-    srcDescription = `llama.cpp ${LLAMA_CPP_TAG} / ${LLAMA_CPP_COMMIT.slice(0, 12)}`;
+    srcDescription = `llama.cpp ${LLAMA_CPP_REF}`;
   }
 
   for (const abi of args.abis) {

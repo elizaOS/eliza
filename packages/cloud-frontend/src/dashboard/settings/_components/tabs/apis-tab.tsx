@@ -393,7 +393,7 @@ export function ApisTab({ user }: ApisTabProps) {
 
                 {/* Desktop Table Layout */}
                 <div className="hidden md:block w-full space-y-3">
-                  {apiKeys.map((apiKey, index) => (
+                  {apiKeys.map((apiKey, _index) => (
                     <div
                       key={apiKey.id}
                       className="backdrop-blur-sm bg-[rgba(10,10,10,0.75)] border border-brand-surface hover:bg-[rgba(10,10,10,0.85)] transition-colors"

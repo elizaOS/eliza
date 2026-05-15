@@ -1,6 +1,9 @@
 import type { Context } from "hono";
 import { jsonError } from "@/lib/api/cloud-worker-errors";
-import { extractBearerToken, verifyInternalToken } from "@/lib/auth/jwt-internal";
+import {
+  extractBearerToken,
+  verifyInternalToken,
+} from "@/lib/auth/jwt-internal";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 export interface InternalServiceAuth {

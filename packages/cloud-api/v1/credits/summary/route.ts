@@ -11,7 +11,10 @@ import { apps } from "@/db/schemas/apps";
 import { userCharacters } from "@/db/schemas/user-characters";
 import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { agentBudgetService } from "@/lib/services/agent-budgets";
 import { creditsService } from "@/lib/services/credits";
 import { organizationsService } from "@/lib/services/organizations";
@@ -40,7 +43,9 @@ app.get("/", async (c) => {
       orderBy: desc(userCharacters.updated_at),
       limit: SUMMARY_RECENT_LIMIT,
     });
-    const agentBudgets = await agentBudgetService.getOrgBudgets(user.organization_id);
+    const agentBudgets = await agentBudgetService.getOrgBudgets(
+      user.organization_id,
+    );
     const appCountRows = await dbRead
       .select({ value: count() })
       .from(apps)
@@ -51,10 +56,11 @@ app.get("/", async (c) => {
       limit: SUMMARY_RECENT_LIMIT,
     });
     const earnings = await redeemableEarningsService.getBalance(user.id);
-    const recentTransactions = await creditsService.listTransactionsByOrganization(
-      user.organization_id,
-      10,
-    );
+    const recentTransactions =
+      await creditsService.listTransactionsByOrganization(
+        user.organization_id,
+        10,
+      );
 
     const agentTotal = agentCountRows[0]?.value ?? 0;
     const appTotal = appCountRows[0]?.value ?? 0;
@@ -67,8 +73,12 @@ app.get("/", async (c) => {
         name: org.name,
         creditBalance: Number(org.credit_balance),
         autoTopUpEnabled: org.auto_top_up_enabled,
-        autoTopUpThreshold: org.auto_top_up_threshold ? Number(org.auto_top_up_threshold) : null,
-        autoTopUpAmount: org.auto_top_up_amount ? Number(org.auto_top_up_amount) : null,
+        autoTopUpThreshold: org.auto_top_up_threshold
+          ? Number(org.auto_top_up_threshold)
+          : null,
+        autoTopUpAmount: org.auto_top_up_amount
+          ? Number(org.auto_top_up_amount)
+          : null,
         hasPaymentMethod: !!org.stripe_default_payment_method,
       },
       agents: recentAgents.map((agent) => {
@@ -76,7 +86,9 @@ app.get("/", async (c) => {
         const allocated = budget ? Number(budget.allocated_budget) : 0;
         const spent = budget ? Number(budget.spent_budget) : 0;
         const available = allocated - spent;
-        const dailyLimit = budget?.daily_limit ? Number(budget.daily_limit) : null;
+        const dailyLimit = budget?.daily_limit
+          ? Number(budget.daily_limit)
+          : null;
         const dailySpent = budget ? Number(budget.daily_spent) : 0;
         return {
           id: agent.id,
@@ -100,10 +112,17 @@ app.get("/", async (c) => {
         total: agentTotal,
         withBudget: agentBudgets.length,
         paused: agentBudgets.filter((b) => b.is_paused).length,
-        totalAllocated: agentBudgets.reduce((sum, b) => sum + Number(b.allocated_budget), 0),
-        totalSpent: agentBudgets.reduce((sum, b) => sum + Number(b.spent_budget), 0),
+        totalAllocated: agentBudgets.reduce(
+          (sum, b) => sum + Number(b.allocated_budget),
+          0,
+        ),
+        totalSpent: agentBudgets.reduce(
+          (sum, b) => sum + Number(b.spent_budget),
+          0,
+        ),
         totalAvailable: agentBudgets.reduce(
-          (sum, b) => sum + (Number(b.allocated_budget) - Number(b.spent_budget)),
+          (sum, b) =>
+            sum + (Number(b.allocated_budget) - Number(b.spent_budget)),
           0,
         ),
       },

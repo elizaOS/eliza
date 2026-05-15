@@ -28,19 +28,28 @@ app.post("/", async (c) => {
       body = disconnectSchema.parse(rawBody);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return c.json({ error: "Validation failed", details: error.flatten() }, 400);
+        return c.json(
+          { error: "Validation failed", details: error.flatten() },
+          400,
+        );
       }
       return c.json({ error: "Invalid request body" }, 400);
     }
 
     if (body.guildId) {
       // Disconnect specific guild
-      const guild = await discordAutomationService.getGuild(user.organization_id, body.guildId);
+      const guild = await discordAutomationService.getGuild(
+        user.organization_id,
+        body.guildId,
+      );
       if (!guild) {
         return c.json({ error: "Guild not found" }, 404);
       }
 
-      const result = await discordAutomationService.disconnect(user.organization_id, body.guildId);
+      const result = await discordAutomationService.disconnect(
+        user.organization_id,
+        body.guildId,
+      );
 
       if (!result.success) {
         return c.json({ error: result.error }, 500);

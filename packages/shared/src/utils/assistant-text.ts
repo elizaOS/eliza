@@ -211,7 +211,7 @@ function isResponseHandlerPayload(
  */
 export function extractAssistantReplyText(input: string): string | null {
   const trimmed = input.trim();
-  if (!trimmed || !trimmed.includes("replyText")) return null;
+  if (!trimmed.includes("replyText")) return null;
 
   const candidates = [trimmed];
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {

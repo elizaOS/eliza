@@ -16,7 +16,7 @@ function getAuthToken(headers: HeaderMap): string | null {
   }
 
   const authorization = headers.authorization ?? headers.Authorization;
-  if (authorization && authorization.toLowerCase().startsWith("bearer ")) {
+  if (authorization?.toLowerCase().startsWith("bearer ")) {
     return authorization.slice(7).trim();
   }
 
@@ -57,7 +57,10 @@ type WorkflowDefinitionPayload = {
 type WorkflowServiceLike = {
   listWorkflows: (userId?: string) => Promise<unknown[]>;
   getWorkflow: (workflowId: string) => Promise<unknown>;
-  deployWorkflow: (workflow: WorkflowDefinitionPayload, userId: string) => Promise<unknown>;
+  deployWorkflow: (
+    workflow: WorkflowDefinitionPayload,
+    userId: string,
+  ) => Promise<unknown>;
   generateWorkflowDraft: (
     prompt: string,
     opts?: { userId?: string },
@@ -99,7 +102,8 @@ function readWorkflowBody(
   if (!workflow) return null;
   return {
     workflow,
-    activate: typeof record.activate === "boolean" ? record.activate : undefined,
+    activate:
+      typeof record.activate === "boolean" ? record.activate : undefined,
   };
 }
 
@@ -110,9 +114,11 @@ async function withWorkflowService<T>(
   fn: (service: WorkflowServiceLike) => Promise<T>,
 ): Promise<T | { error: string }> {
   try {
-    // biome-ignore lint/correctness/useHookAtTopLevel: AgentManager.useRuntime is a server runtime helper, not a React hook.
     return await manager.useRuntime(agentId, async (runtime) => {
-      const service = runtime.getService?.("workflow") as WorkflowServiceLike | null | undefined;
+      const service = runtime.getService?.("workflow") as
+        | WorkflowServiceLike
+        | null
+        | undefined;
       if (!service) {
         set.status = 503;
         return { error: "workflow service unavailable" };
@@ -121,7 +127,10 @@ async function withWorkflowService<T>(
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
-    set.status = message === "Agent not found" || message === "Agent not running" ? 404 : 500;
+    set.status =
+      message === "Agent not found" || message === "Agent not running"
+        ? 404
+        : 500;
     return { error: message };
   }
 }
@@ -154,7 +163,11 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
     })
 
     .get("/status", ({ headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
+      const denial = requireInternalAuth(
+        headers as HeaderMap,
+        set,
+        sharedSecret,
+      );
       if (denial) {
         return denial;
       }
@@ -162,7 +175,11 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
     })
 
     .post("/agents", async ({ body, headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
+      const denial = requireInternalAuth(
+        headers as HeaderMap,
+        set,
+        sharedSecret,
+      );
       if (denial) {
         return denial;
       }
@@ -186,7 +203,11 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
     })
 
     .post("/agents/:id/stop", async ({ params, headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
+      const denial = requireInternalAuth(
+        headers as HeaderMap,
+        set,
+        sharedSecret,
+      );
       if (denial) {
         return denial;
       }
@@ -201,7 +222,11 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
     })
 
     .delete("/agents/:id", async ({ params, headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
+      const denial = requireInternalAuth(
+        headers as HeaderMap,
+        set,
+        sharedSecret,
+      );
       if (denial) {
         return denial;
       }
@@ -216,7 +241,11 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
     })
 
     .post("/agents/:id/message", async ({ params, body, headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
+      const denial = requireInternalAuth(
+        headers as HeaderMap,
+        set,
+        sharedSecret,
+      );
       if (denial) {
         return denial;
       }
@@ -228,8 +257,10 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         return { error: "userId and text are required" };
       }
 
-      const platformName = typeof raw.platformName === "string" ? raw.platformName : undefined;
-      const senderName = typeof raw.senderName === "string" ? raw.senderName : undefined;
+      const platformName =
+        typeof raw.platformName === "string" ? raw.platformName : undefined;
+      const senderName =
+        typeof raw.senderName === "string" ? raw.senderName : undefined;
       const chatId = typeof raw.chatId === "string" ? raw.chatId : undefined;
 
       // Keeps metadata undefined (not {}) when no fields present,
@@ -244,17 +275,29 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
           : undefined;
 
       try {
-        const response = await manager.handleMessage(params.id, userId, text, metadata);
+        const response = await manager.handleMessage(
+          params.id,
+          userId,
+          text,
+          metadata,
+        );
         return { response };
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
-        set.status = message === "Agent not found" || message === "Agent not running" ? 404 : 500;
+        set.status =
+          message === "Agent not found" || message === "Agent not running"
+            ? 404
+            : 500;
         return { error: message };
       }
     })
 
     .post("/agents/:id/event", async ({ params, body, headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
+      const denial = requireInternalAuth(
+        headers as HeaderMap,
+        set,
+        sharedSecret,
+      );
       if (denial) {
         return denial;
       }
@@ -299,10 +342,13 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
     })
 
     .get("/agents/:id/workflows/status", async ({ params, headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
+      const denial = requireInternalAuth(
+        headers as HeaderMap,
+        set,
+        sharedSecret,
+      );
       if (denial) return denial;
 
-      // biome-ignore lint/correctness/useHookAtTopLevel: AgentManager.useRuntime is a server runtime helper, not a React hook.
       return await manager
         .useRuntime(params.id, async (runtime) => {
           const service = runtime.getService?.("workflow");
@@ -319,7 +365,10 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         })
         .catch((err: unknown) => {
           const message = err instanceof Error ? err.message : String(err);
-          set.status = message === "Agent not found" || message === "Agent not running" ? 404 : 500;
+          set.status =
+            message === "Agent not found" || message === "Agent not running"
+              ? 404
+              : 500;
           return { error: message };
         });
     })
@@ -329,9 +378,14 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
       const denial = requireInternalAuth(headerMap, set, sharedSecret);
       if (denial) return denial;
 
-      return await withWorkflowService(manager, params.id, set, async (service) => ({
-        workflows: await service.listWorkflows(readUserId(headerMap)),
-      }));
+      return await withWorkflowService(
+        manager,
+        params.id,
+        set,
+        async (service) => ({
+          workflows: await service.listWorkflows(readUserId(headerMap)),
+        }),
+      );
     })
 
     .post("/agents/:id/workflows", async ({ params, body, headers, set }) => {
@@ -345,121 +399,223 @@ export function createRoutes(manager: AgentManager, sharedSecret: string) {
         return { error: "workflow payload required" };
       }
 
-      return await withWorkflowService(manager, params.id, set, async (service) => {
-        const deployed = await service.deployWorkflow(
-          payload.workflow,
-          readUserId(headerMap, body),
-        );
-        const deployedRecord = isRecord(deployed) ? deployed : {};
-        const deployedId = typeof deployedRecord.id === "string" ? deployedRecord.id : undefined;
-        if (payload.activate === false && deployedId && deployedRecord.active === true) {
-          await service.deactivateWorkflow(deployedId);
-        }
-        return deployedId ? await service.getWorkflow(deployedId) : deployed;
-      });
-    })
-
-    .post("/agents/:id/workflows/generate", async ({ params, body, headers, set }) => {
-      const headerMap = headers as HeaderMap;
-      const denial = requireInternalAuth(headerMap, set, sharedSecret);
-      if (denial) return denial;
-      if (!isRecord(body)) {
-        set.status = 400;
-        return { error: "request body required" };
-      }
-
-      const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
-      if (!prompt) {
-        set.status = 400;
-        return { error: "prompt required" };
-      }
-
-      return await withWorkflowService(manager, params.id, set, async (service) => {
-        const userId = readUserId(headerMap, body);
-        const draft = await service.generateWorkflowDraft(prompt, { userId });
-        if (typeof body.name === "string" && body.name.trim()) {
-          draft.name = body.name.trim();
-        }
-        if (typeof body.workflowId === "string" && body.workflowId.trim()) {
-          draft.id = body.workflowId.trim();
-        }
-
-        const clarifications = Array.isArray(draft._meta?.requiresClarification)
-          ? draft._meta.requiresClarification
-          : [];
-        if (clarifications.length > 0) {
-          return { status: "needs_clarification", draft, clarifications, catalog: [] };
-        }
-
-        const deployed = await service.deployWorkflow(draft, userId);
-        const deployedRecord = isRecord(deployed) ? deployed : {};
-        const deployedId = typeof deployedRecord.id === "string" ? deployedRecord.id : undefined;
-        return deployedId ? await service.getWorkflow(deployedId) : deployed;
-      });
-    })
-
-    .get("/agents/:id/workflows/:workflowId", async ({ params, headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
-      if (denial) return denial;
-      return await withWorkflowService(manager, params.id, set, async (service) =>
-        service.getWorkflow(params.workflowId),
+      return await withWorkflowService(
+        manager,
+        params.id,
+        set,
+        async (service) => {
+          const deployed = await service.deployWorkflow(
+            payload.workflow,
+            readUserId(headerMap, body),
+          );
+          const deployedRecord = isRecord(deployed) ? deployed : {};
+          const deployedId =
+            typeof deployedRecord.id === "string"
+              ? deployedRecord.id
+              : undefined;
+          if (
+            payload.activate === false &&
+            deployedId &&
+            deployedRecord.active === true
+          ) {
+            await service.deactivateWorkflow(deployedId);
+          }
+          return deployedId ? await service.getWorkflow(deployedId) : deployed;
+        },
       );
     })
 
-    .put("/agents/:id/workflows/:workflowId", async ({ params, body, headers, set }) => {
-      const headerMap = headers as HeaderMap;
-      const denial = requireInternalAuth(headerMap, set, sharedSecret);
-      if (denial) return denial;
-
-      const payload = readWorkflowBody(body);
-      if (!payload) {
-        set.status = 400;
-        return { error: "workflow payload required" };
-      }
-
-      return await withWorkflowService(manager, params.id, set, async (service) => {
-        const deployed = await service.deployWorkflow(
-          { ...payload.workflow, id: params.workflowId },
-          readUserId(headerMap, body),
-        );
-        const deployedRecord = isRecord(deployed) ? deployed : {};
-        const deployedId = typeof deployedRecord.id === "string" ? deployedRecord.id : undefined;
-        if (payload.activate === false && deployedId && deployedRecord.active === true) {
-          await service.deactivateWorkflow(deployedId);
+    .post(
+      "/agents/:id/workflows/generate",
+      async ({ params, body, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+        if (!isRecord(body)) {
+          set.status = 400;
+          return { error: "request body required" };
         }
-        return deployedId ? await service.getWorkflow(deployedId) : deployed;
-      });
-    })
 
-    .delete("/agents/:id/workflows/:workflowId", async ({ params, headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
-      if (denial) return denial;
-      return await withWorkflowService(manager, params.id, set, async (service) => {
-        await service.deleteWorkflow(params.workflowId);
-        return { ok: true };
-      });
-    })
+        const prompt =
+          typeof body.prompt === "string" ? body.prompt.trim() : "";
+        if (!prompt) {
+          set.status = 400;
+          return { error: "prompt required" };
+        }
 
-    .post("/agents/:id/workflows/:workflowId/activate", async ({ params, headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
-      if (denial) return denial;
-      return await withWorkflowService(manager, params.id, set, async (service) => {
-        await service.activateWorkflow(params.workflowId);
-        return await service.getWorkflow(params.workflowId);
-      });
-    })
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            const userId = readUserId(headerMap, body);
+            const draft = await service.generateWorkflowDraft(prompt, {
+              userId,
+            });
+            if (typeof body.name === "string" && body.name.trim()) {
+              draft.name = body.name.trim();
+            }
+            if (typeof body.workflowId === "string" && body.workflowId.trim()) {
+              draft.id = body.workflowId.trim();
+            }
 
-    .post("/agents/:id/workflows/:workflowId/deactivate", async ({ params, headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
-      if (denial) return denial;
-      return await withWorkflowService(manager, params.id, set, async (service) => {
-        await service.deactivateWorkflow(params.workflowId);
-        return await service.getWorkflow(params.workflowId);
-      });
-    })
+            const clarifications = Array.isArray(
+              draft._meta?.requiresClarification,
+            )
+              ? draft._meta.requiresClarification
+              : [];
+            if (clarifications.length > 0) {
+              return {
+                status: "needs_clarification",
+                draft,
+                clarifications,
+                catalog: [],
+              };
+            }
+
+            const deployed = await service.deployWorkflow(draft, userId);
+            const deployedRecord = isRecord(deployed) ? deployed : {};
+            const deployedId =
+              typeof deployedRecord.id === "string"
+                ? deployedRecord.id
+                : undefined;
+            return deployedId
+              ? await service.getWorkflow(deployedId)
+              : deployed;
+          },
+        );
+      },
+    )
+
+    .get(
+      "/agents/:id/workflows/:workflowId",
+      async ({ params, headers, set }) => {
+        const denial = requireInternalAuth(
+          headers as HeaderMap,
+          set,
+          sharedSecret,
+        );
+        if (denial) return denial;
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => service.getWorkflow(params.workflowId),
+        );
+      },
+    )
+
+    .put(
+      "/agents/:id/workflows/:workflowId",
+      async ({ params, body, headers, set }) => {
+        const headerMap = headers as HeaderMap;
+        const denial = requireInternalAuth(headerMap, set, sharedSecret);
+        if (denial) return denial;
+
+        const payload = readWorkflowBody(body);
+        if (!payload) {
+          set.status = 400;
+          return { error: "workflow payload required" };
+        }
+
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            const deployed = await service.deployWorkflow(
+              { ...payload.workflow, id: params.workflowId },
+              readUserId(headerMap, body),
+            );
+            const deployedRecord = isRecord(deployed) ? deployed : {};
+            const deployedId =
+              typeof deployedRecord.id === "string"
+                ? deployedRecord.id
+                : undefined;
+            if (
+              payload.activate === false &&
+              deployedId &&
+              deployedRecord.active === true
+            ) {
+              await service.deactivateWorkflow(deployedId);
+            }
+            return deployedId
+              ? await service.getWorkflow(deployedId)
+              : deployed;
+          },
+        );
+      },
+    )
+
+    .delete(
+      "/agents/:id/workflows/:workflowId",
+      async ({ params, headers, set }) => {
+        const denial = requireInternalAuth(
+          headers as HeaderMap,
+          set,
+          sharedSecret,
+        );
+        if (denial) return denial;
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            await service.deleteWorkflow(params.workflowId);
+            return { ok: true };
+          },
+        );
+      },
+    )
+
+    .post(
+      "/agents/:id/workflows/:workflowId/activate",
+      async ({ params, headers, set }) => {
+        const denial = requireInternalAuth(
+          headers as HeaderMap,
+          set,
+          sharedSecret,
+        );
+        if (denial) return denial;
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            await service.activateWorkflow(params.workflowId);
+            return await service.getWorkflow(params.workflowId);
+          },
+        );
+      },
+    )
+
+    .post(
+      "/agents/:id/workflows/:workflowId/deactivate",
+      async ({ params, headers, set }) => {
+        const denial = requireInternalAuth(
+          headers as HeaderMap,
+          set,
+          sharedSecret,
+        );
+        if (denial) return denial;
+        return await withWorkflowService(
+          manager,
+          params.id,
+          set,
+          async (service) => {
+            await service.deactivateWorkflow(params.workflowId);
+            return await service.getWorkflow(params.workflowId);
+          },
+        );
+      },
+    )
 
     .post("/drain", async ({ headers, set }) => {
-      const denial = requireInternalAuth(headers as HeaderMap, set, sharedSecret);
+      const denial = requireInternalAuth(
+        headers as HeaderMap,
+        set,
+        sharedSecret,
+      );
       if (denial) {
         return denial;
       }

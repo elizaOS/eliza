@@ -29,7 +29,10 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "App not found" }, 404);
     }
 
-    const domains = await managedDomainsService.listForApp(user.organization_id, appId);
+    const domains = await managedDomainsService.listForApp(
+      user.organization_id,
+      appId,
+    );
 
     const results = await Promise.all(
       domains.map(async (md) => {
@@ -42,7 +45,9 @@ app.post("/", async (c) => {
           };
         }
         try {
-          const live = await cloudflareRegistrarService.getRegistrationStatus(md.domain);
+          const live = await cloudflareRegistrarService.getRegistrationStatus(
+            md.domain,
+          );
           const persisted = await managedDomainsService.syncStatus({
             domainId: md.id,
             status: live.status === "active" ? "active" : md.status,
@@ -78,7 +83,11 @@ app.post("/", async (c) => {
       }),
     );
 
-    return c.json({ success: true, domains: results, syncedAt: new Date().toISOString() });
+    return c.json({
+      success: true,
+      domains: results,
+      syncedAt: new Date().toISOString(),
+    });
   } catch (error) {
     return failureResponse(c, error);
   }

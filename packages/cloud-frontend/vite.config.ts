@@ -292,7 +292,7 @@ export default defineConfig(({ mode }) => {
             "../ui/src/cloud-ui/components/docs/mdx-components.tsx",
           ),
         },
-        { find: /^@elizaos\/ui\/(.*)$/, replacement: r("../ui/src") + "/$1" },
+        { find: /^@elizaos\/ui\/(.*)$/, replacement: `${r("../ui/src")}/$1` },
         // Cloud-shared (consolidation of former @elizaos/billing, cloud-db,
         // cloud-lib, cloud-types, cloud-routing packages). Subpath exports
         // mirror packages/cloud-shared/package.json.
@@ -302,16 +302,16 @@ export default defineConfig(({ mode }) => {
         },
         {
           find: /^@elizaos\/cloud-shared\/(.*)$/,
-          replacement: r("../cloud-shared/src") + "/$1",
+          replacement: `${r("../cloud-shared/src")}/$1`,
         },
         // `@/lib/*`, `@/db/*`, `@/types/*`, `@/components/*` are handled by
         // the `eliza-cloud-frontend-alias-fallback` plugin above (local-first,
         // cloud-shared fallback).
         {
           find: /^@\/packages(\/.*)?$/,
-          replacement: r("../cloud-shared/src") + "$1",
+          replacement: `${r("../cloud-shared/src")}$1`,
         },
-        { find: /^@\/(.*)$/, replacement: r("./src") + "/$1" },
+        { find: /^@\/(.*)$/, replacement: `${r("./src")}/$1` },
       ],
     },
     server: {

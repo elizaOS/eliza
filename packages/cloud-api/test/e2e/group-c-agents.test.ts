@@ -27,7 +27,13 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { Client } from "pg";
 
-import { api, bearerHeaders, getApiKey, getBaseUrl, isServerReachable } from "./_helpers/api";
+import {
+  api,
+  bearerHeaders,
+  getApiKey,
+  getBaseUrl,
+  isServerReachable,
+} from "./_helpers/api";
 
 const UNOWNED_AGENT_ID = "00000000-0000-4000-8000-000000000000";
 
@@ -49,7 +55,9 @@ async function seedOwnedCharacter(input: {
 }): Promise<void> {
   const databaseUrl = process.env.TEST_DATABASE_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) {
-    throw new Error("TEST_DATABASE_URL or DATABASE_URL must be set by the e2e harness");
+    throw new Error(
+      "TEST_DATABASE_URL or DATABASE_URL must be set by the e2e harness",
+    );
   }
 
   const client = new Client({ connectionString: databaseUrl });
@@ -286,9 +294,12 @@ describe("/api/v1/agents/:agentId/logs", () => {
 
   test("GET with bogus service key returns 401/403", async () => {
     if (!serverReachable) return;
-    const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/logs?tail=10`, {
-      headers: { "X-Service-Key": "not-a-real-service-key" },
-    });
+    const res = await api.get(
+      `/api/v1/agents/${UNOWNED_AGENT_ID}/logs?tail=10`,
+      {
+        headers: { "X-Service-Key": "not-a-real-service-key" },
+      },
+    );
     expect([401, 403]).toContain(res.status);
   });
 });
@@ -299,15 +310,20 @@ describe("/api/v1/agents/:agentId/logs", () => {
 describe("/api/v1/agents/:agentId/monetization", () => {
   test("GET without auth returns 401", async () => {
     if (!serverReachable) return;
-    const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/monetization`);
+    const res = await api.get(
+      `/api/v1/agents/${UNOWNED_AGENT_ID}/monetization`,
+    );
     expect([401, 403]).toContain(res.status);
   });
 
   test("GET with valid auth on unowned agent returns 404", async () => {
     if (!shouldRun()) return;
-    const res = await api.get(`/api/v1/agents/${UNOWNED_AGENT_ID}/monetization`, {
-      headers: bearerHeaders(),
-    });
+    const res = await api.get(
+      `/api/v1/agents/${UNOWNED_AGENT_ID}/monetization`,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect([401, 403, 404]).toContain(res.status);
   });
 
@@ -364,17 +380,25 @@ describe("/api/v1/agents/:agentId/restart", () => {
 
   test("POST with user Bearer (not service key) still rejected", async () => {
     if (!shouldRun()) return;
-    const res = await api.post(`/api/v1/agents/${UNOWNED_AGENT_ID}/restart`, undefined, {
-      headers: bearerHeaders(),
-    });
+    const res = await api.post(
+      `/api/v1/agents/${UNOWNED_AGENT_ID}/restart`,
+      undefined,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect([401, 403, 404]).toContain(res.status);
   });
 
   test("POST with bogus service key still 401/403", async () => {
     if (!serverReachable) return;
-    const res = await api.post(`/api/v1/agents/${UNOWNED_AGENT_ID}/restart`, undefined, {
-      headers: { "X-Service-Key": "not-a-real-service-key" },
-    });
+    const res = await api.post(
+      `/api/v1/agents/${UNOWNED_AGENT_ID}/restart`,
+      undefined,
+      {
+        headers: { "X-Service-Key": "not-a-real-service-key" },
+      },
+    );
     expect([401, 403]).toContain(res.status);
   });
 });
@@ -391,17 +415,25 @@ describe("/api/v1/agents/:agentId/resume", () => {
 
   test("POST with user Bearer (not service key) still rejected", async () => {
     if (!shouldRun()) return;
-    const res = await api.post(`/api/v1/agents/${UNOWNED_AGENT_ID}/resume`, undefined, {
-      headers: bearerHeaders(),
-    });
+    const res = await api.post(
+      `/api/v1/agents/${UNOWNED_AGENT_ID}/resume`,
+      undefined,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect([401, 403, 404]).toContain(res.status);
   });
 
   test("POST with bogus service key still 401/403", async () => {
     if (!serverReachable) return;
-    const res = await api.post(`/api/v1/agents/${UNOWNED_AGENT_ID}/resume`, undefined, {
-      headers: { "X-Service-Key": "not-a-real-service-key" },
-    });
+    const res = await api.post(
+      `/api/v1/agents/${UNOWNED_AGENT_ID}/resume`,
+      undefined,
+      {
+        headers: { "X-Service-Key": "not-a-real-service-key" },
+      },
+    );
     expect([401, 403]).toContain(res.status);
   });
 });
@@ -612,9 +644,12 @@ describe("/api/my-agents/characters/:id", () => {
 
   test("DELETE on unowned id returns 404", async () => {
     if (!shouldRun()) return;
-    const res = await api.delete(`/api/my-agents/characters/${UNOWNED_AGENT_ID}`, {
-      headers: bearerHeaders(),
-    });
+    const res = await api.delete(
+      `/api/my-agents/characters/${UNOWNED_AGENT_ID}`,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect([401, 403, 404]).toContain(res.status);
   });
 });
@@ -625,7 +660,9 @@ describe("/api/my-agents/characters/:id", () => {
 describe("/api/my-agents/characters/:id/clone", () => {
   test("POST without auth returns 401", async () => {
     if (!serverReachable) return;
-    const res = await api.post(`/api/my-agents/characters/${UNOWNED_AGENT_ID}/clone`);
+    const res = await api.post(
+      `/api/my-agents/characters/${UNOWNED_AGENT_ID}/clone`,
+    );
     expect([401, 403]).toContain(res.status);
   });
 
@@ -656,15 +693,20 @@ describe("/api/my-agents/characters/:id/clone", () => {
 describe("/api/my-agents/characters/:id/share", () => {
   test("GET without auth returns 401", async () => {
     if (!serverReachable) return;
-    const res = await api.get(`/api/my-agents/characters/${UNOWNED_AGENT_ID}/share`);
+    const res = await api.get(
+      `/api/my-agents/characters/${UNOWNED_AGENT_ID}/share`,
+    );
     expect([401, 403]).toContain(res.status);
   });
 
   test("GET with valid auth on unowned id returns 404", async () => {
     if (!shouldRun()) return;
-    const res = await api.get(`/api/my-agents/characters/${UNOWNED_AGENT_ID}/share`, {
-      headers: bearerHeaders(),
-    });
+    const res = await api.get(
+      `/api/my-agents/characters/${UNOWNED_AGENT_ID}/share`,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect([401, 403, 404]).toContain(res.status);
   });
 
@@ -685,15 +727,20 @@ describe("/api/my-agents/characters/:id/share", () => {
 describe("/api/my-agents/characters/:id/stats", () => {
   test("GET without auth returns 401", async () => {
     if (!serverReachable) return;
-    const res = await api.get(`/api/my-agents/characters/${UNOWNED_AGENT_ID}/stats`);
+    const res = await api.get(
+      `/api/my-agents/characters/${UNOWNED_AGENT_ID}/stats`,
+    );
     expect([401, 403]).toContain(res.status);
   });
 
   test("GET with valid auth on unowned id returns 404", async () => {
     if (!shouldRun()) return;
-    const res = await api.get(`/api/my-agents/characters/${UNOWNED_AGENT_ID}/stats`, {
-      headers: bearerHeaders(),
-    });
+    const res = await api.get(
+      `/api/my-agents/characters/${UNOWNED_AGENT_ID}/stats`,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect([401, 403, 404]).toContain(res.status);
   });
 
@@ -702,7 +749,9 @@ describe("/api/my-agents/characters/:id/stats", () => {
     const userId = process.env.TEST_USER_ID;
     const organizationId = process.env.TEST_ORGANIZATION_ID;
     if (!userId || !organizationId) {
-      throw new Error("TEST_USER_ID and TEST_ORGANIZATION_ID must be set by e2e preload");
+      throw new Error(
+        "TEST_USER_ID and TEST_ORGANIZATION_ID must be set by e2e preload",
+      );
     }
     const createdId = crypto.randomUUID();
     const name = `E2E Stats ${crypto.randomUUID()}`;
@@ -714,9 +763,12 @@ describe("/api/my-agents/characters/:id/stats", () => {
     });
     createdCharacterIds.push(createdId);
 
-    const statsRes = await api.get(`/api/my-agents/characters/${createdId}/stats`, {
-      headers: bearerHeaders(),
-    });
+    const statsRes = await api.get(
+      `/api/my-agents/characters/${createdId}/stats`,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect(statsRes.status).toBe(200);
     const statsBody = (await statsRes.json()) as {
       success?: boolean;
@@ -757,7 +809,9 @@ describe("/api/my-agents/characters/:id/stats", () => {
 describe("/api/my-agents/characters/:id/track-interaction", () => {
   test("POST without auth returns 401 (auth gate before 410)", async () => {
     if (!serverReachable) return;
-    const res = await api.post(`/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-interaction`);
+    const res = await api.post(
+      `/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-interaction`,
+    );
     expect([401, 403, 410, 500]).toContain(res.status);
   });
 
@@ -793,7 +847,9 @@ describe("/api/my-agents/characters/:id/track-interaction", () => {
 describe("/api/my-agents/characters/:id/track-view", () => {
   test("POST without auth returns 401 (global auth middleware) or 410", async () => {
     if (!serverReachable) return;
-    const res = await api.post(`/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-view`);
+    const res = await api.post(
+      `/api/my-agents/characters/${UNOWNED_AGENT_ID}/track-view`,
+    );
     expect([401, 403, 410]).toContain(res.status);
   });
 
@@ -910,9 +966,13 @@ describe("/api/my-agents/claim-affiliate-characters", () => {
 
   test("POST with non-JSON body is tolerated (route catches JSON parse errors)", async () => {
     if (!shouldRun()) return;
-    const res = await api.post("/api/my-agents/claim-affiliate-characters", "not-json-at-all", {
-      headers: { ...bearerHeaders(), "Content-Type": "text/plain" },
-    });
+    const res = await api.post(
+      "/api/my-agents/claim-affiliate-characters",
+      "not-json-at-all",
+      {
+        headers: { ...bearerHeaders(), "Content-Type": "text/plain" },
+      },
+    );
     expect([200, 400, 401, 403, 500]).toContain(res.status);
   });
 });
@@ -948,7 +1008,9 @@ describe("/api/characters/:characterId/mcps", () => {
     const userId = process.env.TEST_USER_ID;
     const organizationId = process.env.TEST_ORGANIZATION_ID;
     if (!userId || !organizationId) {
-      throw new Error("TEST_USER_ID and TEST_ORGANIZATION_ID must be set by e2e preload");
+      throw new Error(
+        "TEST_USER_ID and TEST_ORGANIZATION_ID must be set by e2e preload",
+      );
     }
     const createdId = crypto.randomUUID();
     await seedOwnedCharacter({

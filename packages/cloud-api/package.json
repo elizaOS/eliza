@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit",
     "test:audit": "node test/_audit-coverage.mjs",
     "test:e2e": "node test/e2e/run-e2e-batches.mjs",
-    "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload ../test/cloud/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
+    "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload test/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
   },
   "dependencies": {
     "@ai-sdk/gateway": "^3.0.37",

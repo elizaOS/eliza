@@ -643,9 +643,7 @@ export class IMessageService extends Service implements IIMessageService {
                   },
                   IMESSAGE_LOCAL_ACCOUNT_ID
                 ),
-                label:
-                  contacts.get(normalizeContactHandle(handle))?.name ??
-                  message.handle,
+                label: contacts.get(normalizeContactHandle(handle))?.name ?? message.handle,
                 kind: message.chatId.includes(";+;") ? "group" : contactKind(handle),
                 score: 0.68,
                 metadata: {

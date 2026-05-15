@@ -38,14 +38,24 @@ app.post("/", async (c) => {
     const parsed = StatusSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "invalid input" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "invalid input",
+        },
         400,
       );
     }
 
     const md = await managedDomainsService.getDomainByName(parsed.data.domain);
-    if (!md || md.organizationId !== user.organization_id || md.appId !== appId) {
-      return c.json({ success: false, error: "Domain not attached to this app" }, 404);
+    if (
+      !md ||
+      md.organizationId !== user.organization_id ||
+      md.appId !== appId
+    ) {
+      return c.json(
+        { success: false, error: "Domain not attached to this app" },
+        404,
+      );
     }
 
     let live: {

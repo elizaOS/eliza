@@ -44,14 +44,24 @@ app.post("/", async (c) => {
     const parsed = VerifySchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "invalid input" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "invalid input",
+        },
         400,
       );
     }
 
     const md = await managedDomainsService.getDomainByName(parsed.data.domain);
-    if (!md || md.organizationId !== user.organization_id || md.appId !== appId) {
-      return c.json({ success: false, error: "Domain not attached to this app" }, 404);
+    if (
+      !md ||
+      md.organizationId !== user.organization_id ||
+      md.appId !== appId
+    ) {
+      return c.json(
+        { success: false, error: "Domain not attached to this app" },
+        404,
+      );
     }
 
     if (md.registrar === "cloudflare") {
@@ -66,7 +76,10 @@ app.post("/", async (c) => {
 
     if (!md.verificationToken) {
       return c.json(
-        { success: false, error: "verification token missing — re-attach the domain" },
+        {
+          success: false,
+          error: "verification token missing — re-attach the domain",
+        },
         500,
       );
     }
@@ -94,12 +107,16 @@ app.post("/", async (c) => {
       });
     }
 
-    const found = records.flat().some((value) => value === md.verificationToken);
+    const found = records
+      .flat()
+      .some((value) => value === md.verificationToken);
     const updated = await managedDomainsService.syncStatus({
       domainId: md.id,
       verified: found,
       status: found ? "active" : md.status,
-      healthCheckError: found ? null : `TXT record at ${recordName} did not match expected token`,
+      healthCheckError: found
+        ? null
+        : `TXT record at ${recordName} did not match expected token`,
     });
 
     return c.json({

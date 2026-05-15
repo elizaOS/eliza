@@ -36,7 +36,10 @@ export async function* walk(dir) {
         continue;
       }
       yield* walk(full);
-    } else if (entry.isFile() && (entry.name === "route.ts" || entry.name === "route.tsx")) {
+    } else if (
+      entry.isFile() &&
+      (entry.name === "route.ts" || entry.name === "route.tsx")
+    ) {
       yield full;
     }
   }
@@ -95,7 +98,8 @@ export function importPath(filePath) {
 // Match `from "hono"` / `from 'hono'` as an actual ES import token, not a
 // substring inside a comment or string. Anchored at start-of-line (allowing
 // leading whitespace) so a sentence in a JSDoc block does not trigger.
-export const HONO_IMPORT_RE = /^\s*(?:import|export)\b[^;]*\bfrom\s*['"]hono['"]/m;
+export const HONO_IMPORT_RE =
+  /^\s*(?:import|export)\b[^;]*\bfrom\s*['"]hono['"]/m;
 export const HONO_APP_FACTORY_RE =
   /^\s*import\b[^;]*\bcreateMcpsTransportApp\b[^;]*\bfrom\s*['"]@\/api-app\/lib\/mcp\/mcps-transport-gateway['"]/m;
 
@@ -147,7 +151,9 @@ export async function collectRouteEntries(apiRoot = API_ROOT) {
     const paths = fileToHttpPaths(f, apiRoot);
     for (const path of paths) {
       if (seen.has(path)) {
-        console.warn(`[codegen] duplicate route path ${path} from ${f} and ${seen.get(path)}`);
+        console.warn(
+          `[codegen] duplicate route path ${path} from ${f} and ${seen.get(path)}`,
+        );
       }
       seen.set(path, f);
     }

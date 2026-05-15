@@ -16,7 +16,11 @@ function shouldLog(level: LogLevel): boolean {
   return LOG_LEVELS[level] >= LOG_LEVELS[LOG_LEVEL];
 }
 
-function formatMessage(level: LogLevel, message: string, meta?: Record<string, unknown>): string {
+function formatMessage(
+  level: LogLevel,
+  message: string,
+  meta?: Record<string, unknown>,
+): string {
   const timestamp = new Date().toISOString();
   const base = { timestamp, level, message, ...meta };
   return JSON.stringify(base);
@@ -33,6 +37,7 @@ export const logger = {
     if (shouldLog("warn")) console.warn(formatMessage("warn", message, meta));
   },
   error(message: string, meta?: Record<string, unknown>) {
-    if (shouldLog("error")) console.error(formatMessage("error", message, meta));
+    if (shouldLog("error"))
+      console.error(formatMessage("error", message, meta));
   },
 };

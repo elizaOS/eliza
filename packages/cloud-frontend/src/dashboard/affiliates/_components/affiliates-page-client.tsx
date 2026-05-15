@@ -121,7 +121,7 @@ export function AffiliatesPageClient() {
 
   const handleSaveMarkup = async () => {
     const numericValue = parseFloat(markupPercent);
-    if (isNaN(numericValue) || numericValue < 0 || numericValue > 1000) {
+    if (Number.isNaN(numericValue) || numericValue < 0 || numericValue > 1000) {
       toast.error("Invalid markup. Must be between 0 and 1000%.");
       return;
     }

@@ -11,12 +11,18 @@ const CORS_METHODS = "GET, OPTIONS";
  * GET /api/v1/eliza/agents/[agentId]/backups
  * List state backups for an Agent cloud agent.
  */
-async function __hono_GET(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
 
-    const backups = await elizaSandboxService.listBackups(agentId, user.organization_id);
+    const backups = await elizaSandboxService.listBackups(
+      agentId,
+      user.organization_id,
+    );
 
     return applyCorsHeaders(
       Response.json({
@@ -38,6 +44,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ agen
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;

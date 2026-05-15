@@ -116,7 +116,12 @@ export function ComposerBar(props: ComposerBarProps): JSX.Element {
         data-eliza-composer-attach=""
         style={iconButtonStyle()}
       >
-        <svg viewBox="0 0 24 24" style={iconSvgStyle()}>
+        <svg
+          aria-hidden="true"
+          focusable="false"
+          viewBox="0 0 24 24"
+          style={iconSvgStyle()}
+        >
           <path d="M12 5v14M5 12h14" />
         </svg>
       </button>
@@ -176,11 +181,21 @@ export function ComposerBar(props: ComposerBarProps): JSX.Element {
         style={iconButtonStyle()}
       >
         {mode === "dictate" ? (
-          <svg viewBox="0 0 24 24" style={iconSvgStyle()}>
+          <svg
+            aria-hidden="true"
+            focusable="false"
+            viewBox="0 0 24 24"
+            style={iconSvgStyle()}
+          >
             <path d="M6 6l12 12M6 18l12-12" />
           </svg>
         ) : (
-          <svg viewBox="0 0 24 24" style={iconSvgStyle()}>
+          <svg
+            aria-hidden="true"
+            focusable="false"
+            viewBox="0 0 24 24"
+            style={iconSvgStyle()}
+          >
             <path d="M12 4a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V7a3 3 0 0 0-3-3Z" />
             <path d="M5 11a7 7 0 0 0 14 0" />
             <path d="M12 18v3" />
@@ -205,20 +220,40 @@ export function ComposerBar(props: ComposerBarProps): JSX.Element {
         style={iconButtonStyle(true)}
       >
         {rightKind === "send" ? (
-          <svg viewBox="0 0 24 24" style={iconSvgStyle(true)}>
+          <svg
+            aria-hidden="true"
+            focusable="false"
+            viewBox="0 0 24 24"
+            style={iconSvgStyle(true)}
+          >
             <path d="M5 12h14" />
             <path d="M13 6l6 6-6 6" />
           </svg>
         ) : rightKind === "check" ? (
-          <svg viewBox="0 0 24 24" style={iconSvgStyle(true)}>
+          <svg
+            aria-hidden="true"
+            focusable="false"
+            viewBox="0 0 24 24"
+            style={iconSvgStyle(true)}
+          >
             <path d="M5 12l5 5L20 7" />
           </svg>
         ) : voiceActive ? (
-          <svg viewBox="0 0 24 24" style={iconSvgStyle(true)}>
+          <svg
+            aria-hidden="true"
+            focusable="false"
+            viewBox="0 0 24 24"
+            style={iconSvgStyle(true)}
+          >
             <rect x="6" y="6" width="12" height="12" rx="2" />
           </svg>
         ) : (
-          <svg viewBox="0 0 24 24" style={iconSvgStyle(true)}>
+          <svg
+            aria-hidden="true"
+            focusable="false"
+            viewBox="0 0 24 24"
+            style={iconSvgStyle(true)}
+          >
             <path d="M4 12h.01" />
             <path d="M7 10v4" />
             <path d="M10 7.5v9" />

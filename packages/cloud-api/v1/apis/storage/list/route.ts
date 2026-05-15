@@ -43,7 +43,10 @@ app.get("/", async (c) => {
     const adapter = getR2StorageAdapter(c.env);
     if (!adapter) {
       return c.json(
-        { error: "Attachment storage proxy not available — server misconfigured" },
+        {
+          error:
+            "Attachment storage proxy not available — server misconfigured",
+        },
         503,
       );
     }
@@ -53,7 +56,10 @@ app.get("/", async (c) => {
       recursive: c.req.query("recursive") ?? "true",
     });
     if (!parsed.success) {
-      return c.json({ error: "Invalid list query", details: parsed.error.issues }, 400);
+      return c.json(
+        { error: "Invalid list query", details: parsed.error.issues },
+        400,
+      );
     }
     const { prefix, recursive } = parsed.data;
 
@@ -93,7 +99,9 @@ app.get("/", async (c) => {
     const items = await Promise.all(
       truncated.map(async (fullKey) => {
         const stat = await adapter.stat(fullKey);
-        const userKey = fullKey.startsWith(orgPrefix) ? fullKey.slice(orgPrefix.length) : fullKey;
+        const userKey = fullKey.startsWith(orgPrefix)
+          ? fullKey.slice(orgPrefix.length)
+          : fullKey;
         return {
           key: userKey,
           size: stat.size,

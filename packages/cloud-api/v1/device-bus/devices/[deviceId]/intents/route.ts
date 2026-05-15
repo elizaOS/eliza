@@ -39,16 +39,26 @@ async function __hono_GET(
 
   const url = new URL(request.url);
   const sinceParam = url.searchParams.get("since");
-  const since = sinceParam ? new Date(sinceParam) : new Date(Date.now() - DEFAULT_LOOKBACK_MS);
+  const since = sinceParam
+    ? new Date(sinceParam)
+    : new Date(Date.now() - DEFAULT_LOOKBACK_MS);
 
   if (Number.isNaN(since.getTime())) {
-    return Response.json({ error: "Invalid 'since' parameter" }, { status: 400 });
+    return Response.json(
+      { error: "Invalid 'since' parameter" },
+      { status: 400 },
+    );
   }
 
   const rows = await dbRead
     .select()
     .from(deviceIntents)
-    .where(and(eq(deviceIntents.user_id, user.id), gt(deviceIntents.created_at, since)))
+    .where(
+      and(
+        eq(deviceIntents.user_id, user.id),
+        gt(deviceIntents.created_at, since),
+      ),
+    )
     .orderBy(deviceIntents.created_at);
 
   // Update presence heartbeat for this device.
@@ -60,7 +70,9 @@ async function __hono_GET(
   // Record that this device has observed these intents (non-atomic; good
   // enough for poll — proper dedup/ack is a follow-up with WebSocket).
   for (const row of rows) {
-    const delivered = Array.isArray(row.delivered_to) ? [...row.delivered_to] : [];
+    const delivered = Array.isArray(row.delivered_to)
+      ? [...row.delivered_to]
+      : [];
     if (!delivered.includes(deviceId)) {
       delivered.push(deviceId);
       await dbWrite
@@ -84,6 +96,8 @@ async function __hono_GET(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ deviceId: c.req.param("deviceId")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ deviceId: c.req.param("deviceId")! }),
+  }),
 );
 export default __hono_app;

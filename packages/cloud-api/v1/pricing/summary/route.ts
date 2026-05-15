@@ -4,7 +4,10 @@
  */
 
 import { Hono } from "hono";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   IMAGE_GENERATION_COST,
   STT_COST_PER_MINUTE,
@@ -21,7 +24,10 @@ const app = new Hono<AppEnv>();
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
 
 app.get("/", (c) => {
-  c.header("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=7200");
+  c.header(
+    "Cache-Control",
+    "public, s-maxage=3600, stale-while-revalidate=7200",
+  );
   return c.json({
     asOf: new Date().toISOString(),
     pricing: {
@@ -42,7 +48,8 @@ app.get("/", (c) => {
       "chat-completions": {
         unit: "1k tokens",
         isVariable: true,
-        description: "Model-specific token pricing is resolved by the AI pricing catalog",
+        description:
+          "Model-specific token pricing is resolved by the AI pricing catalog",
       },
       "voice-tts": {
         unit: "1k chars",

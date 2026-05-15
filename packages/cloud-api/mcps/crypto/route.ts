@@ -26,13 +26,15 @@ app.get("/", (c) =>
       },
       {
         name: "get_market_data",
-        description: "Get comprehensive market data including price, volume, supply, ATH/ATL",
+        description:
+          "Get comprehensive market data including price, volume, supply, ATH/ATL",
         price: "Free",
         example: { coin: "ethereum" },
       },
       {
         name: "list_trending",
-        description: "Get list of trending cryptocurrencies by search popularity",
+        description:
+          "Get list of trending cryptocurrencies by search popularity",
         price: "Free",
         example: {},
       },

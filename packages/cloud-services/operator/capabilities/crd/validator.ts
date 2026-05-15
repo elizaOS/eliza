@@ -1,5 +1,5 @@
-import { PeprValidateRequest } from "pepr";
-import { Server } from "./generated/server-v1alpha1";
+import type { PeprValidateRequest } from "pepr";
+import type { Server } from "./generated/server-v1alpha1";
 
 export async function validator(req: PeprValidateRequest<Server>) {
   const spec = req.Raw.spec;
@@ -15,7 +15,9 @@ export async function validator(req: PeprValidateRequest<Server>) {
   const agents = spec.agents ?? [];
 
   if (agents.length > spec.capacity) {
-    return req.Deny(`agents count (${agents.length}) exceeds capacity (${spec.capacity})`);
+    return req.Deny(
+      `agents count (${agents.length}) exceeds capacity (${spec.capacity})`,
+    );
   }
 
   if (agents.length > 0) {

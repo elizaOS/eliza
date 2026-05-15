@@ -12,7 +12,10 @@ import { z } from "zod";
 import { approvalRequestsRepository } from "@/db/repositories/approval-requests";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { approvalCallbackBus } from "@/lib/services/approval-callback-bus";
 import {
   type ApprovalRequestsService,
@@ -27,7 +30,9 @@ const CancelSchema = z.object({
 
 let singleton: ApprovalRequestsService | null = null;
 function getApprovalRequestsService(): ApprovalRequestsService {
-  singleton ??= createApprovalRequestsService({ repository: approvalRequestsRepository });
+  singleton ??= createApprovalRequestsService({
+    repository: approvalRequestsRepository,
+  });
   return singleton;
 }
 
@@ -40,20 +45,31 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id");
     if (!id) {
-      return c.json({ success: false, error: "Missing approval request id" }, 400);
+      return c.json(
+        { success: false, error: "Missing approval request id" },
+        400,
+      );
     }
 
     const body = await c.req.json().catch(() => ({}));
     const parsed = CancelSchema.safeParse(body ?? {});
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }
 
     const service = getApprovalRequestsService();
-    const approvalRequest = await service.cancel(id, user.organization_id, parsed.data.reason);
+    const approvalRequest = await service.cancel(
+      id,
+      user.organization_id,
+      parsed.data.reason,
+    );
 
     await approvalCallbackBus.publish({
       name: "ApprovalCanceled",
@@ -64,7 +80,9 @@ app.post("/", async (c) => {
 
     return c.json({ success: true, approvalRequest });
   } catch (error) {
-    logger.error("[ApprovalRequests API] Failed to cancel approval request", { error });
+    logger.error("[ApprovalRequests API] Failed to cancel approval request", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });

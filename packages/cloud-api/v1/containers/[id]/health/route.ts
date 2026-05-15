@@ -21,7 +21,10 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Container id required" }, 400);
     }
 
-    const container = await containersRepository.findById(containerId, user.organization_id);
+    const container = await containersRepository.findById(
+      containerId,
+      user.organization_id,
+    );
     if (!container) {
       return c.json({ success: false, error: "Container not found" }, 404);
     }
@@ -31,7 +34,8 @@ app.get("/", async (c) => {
       return c.json(
         {
           success: false,
-          error: "Unable to perform health check - container may not have a URL",
+          error:
+            "Unable to perform health check - container may not have a URL",
         },
         400,
       );

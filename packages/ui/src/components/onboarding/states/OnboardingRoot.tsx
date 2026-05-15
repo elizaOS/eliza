@@ -208,9 +208,7 @@ function renderState(
       );
     case "tutorial-views":
       return (
-        <StateTutorialViews
-          onContinue={() => dispatch({ type: "CONTINUE" })}
-        />
+        <StateTutorialViews onContinue={() => dispatch({ type: "CONTINUE" })} />
       );
     case "tutorial-connectors":
       return (

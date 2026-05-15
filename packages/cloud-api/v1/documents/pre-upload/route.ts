@@ -2,7 +2,10 @@ import { Hono } from "hono";
 
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   publicBlobUrl,
@@ -23,13 +26,22 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     if (!c.env.BLOB) {
-      return c.json({ success: false, error: "Object storage is not configured" }, 503);
+      return c.json(
+        { success: false, error: "Object storage is not configured" },
+        503,
+      );
     }
 
     const form = await c.req.formData().catch(() => null);
-    if (!form) return c.json({ success: false, error: "multipart/form-data is required" }, 400);
+    if (!form)
+      return c.json(
+        { success: false, error: "multipart/form-data is required" },
+        400,
+      );
 
-    const files = form.getAll("files").filter((value): value is File => value instanceof File);
+    const files = form
+      .getAll("files")
+      .filter((value): value is File => value instanceof File);
     const invalid = validateDocumentFiles(files);
     if (invalid) return invalid;
 
@@ -70,12 +82,18 @@ app.delete("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     if (!c.env.BLOB) {
-      return c.json({ success: false, error: "Object storage is not configured" }, 503);
+      return c.json(
+        { success: false, error: "Object storage is not configured" },
+        503,
+      );
     }
 
-    const body = (await c.req.json().catch(() => null)) as DeletePreUploadBody | null;
+    const body = (await c.req
+      .json()
+      .catch(() => null)) as DeletePreUploadBody | null;
     const key = body?.blobUrl ? r2KeyFromBlobUrl(body.blobUrl) : null;
-    if (!key) return c.json({ success: false, error: "blobUrl is required" }, 400);
+    if (!key)
+      return c.json({ success: false, error: "blobUrl is required" }, 400);
     if (!key.startsWith(`documents-pre-upload/${user.id}/`)) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }

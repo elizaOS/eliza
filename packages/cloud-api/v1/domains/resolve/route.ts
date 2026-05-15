@@ -33,8 +33,7 @@ app.get("/", async (c) => {
   const domain = parsed.data.domain;
   const managedDomain = await managedDomainsService.getDomainByName(domain);
   if (
-    !managedDomain ||
-    !managedDomain.appId ||
+    !managedDomain?.appId ||
     !managedDomain.verified ||
     managedDomain.status !== "active"
   ) {
@@ -42,7 +41,7 @@ app.get("/", async (c) => {
   }
 
   const appRow = await appsService.getById(managedDomain.appId);
-  if (!appRow || !appRow.is_active || !appRow.is_approved) {
+  if (!appRow?.is_active || !appRow.is_approved) {
     return c.json({ success: false, error: "Mapped app is not active" }, 404);
   }
 

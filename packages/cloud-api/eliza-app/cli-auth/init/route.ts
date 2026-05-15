@@ -18,7 +18,11 @@ app.post("/", async (c) => {
 
     const [session] = await db
       .insert(cliAuthSessions)
-      .values({ session_id: sessionId, status: "pending", expires_at: expiresAt })
+      .values({
+        session_id: sessionId,
+        status: "pending",
+        expires_at: expiresAt,
+      })
       .returning();
 
     return c.json({
@@ -28,7 +32,10 @@ app.post("/", async (c) => {
     });
   } catch (error) {
     console.error("[CLI Auth Init] Error:", error);
-    return c.json({ success: false, error: "Failed to initialize session" }, 500);
+    return c.json(
+      { success: false, error: "Failed to initialize session" },
+      500,
+    );
   }
 });
 

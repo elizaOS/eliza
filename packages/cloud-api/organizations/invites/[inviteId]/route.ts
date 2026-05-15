@@ -5,7 +5,10 @@
 
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { invitesService } from "@/lib/services/invites";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -19,7 +22,10 @@ app.delete("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     if (user.role !== "owner" && user.role !== "admin") {
       return c.json(
-        { success: false, error: "Only owners and admins can revoke invitations" },
+        {
+          success: false,
+          error: "Only owners and admins can revoke invitations",
+        },
         403,
       );
     }
@@ -30,10 +36,14 @@ app.delete("/", async (c) => {
     }
 
     await invitesService.revokeInvite(inviteId, user.organization_id);
-    return c.json({ success: true, message: "Invitation revoked successfully" });
+    return c.json({
+      success: true,
+      message: "Invitation revoked successfully",
+    });
   } catch (error) {
     logger.error("Error revoking invite:", error);
-    const message = error instanceof Error ? error.message : "Failed to revoke invitation";
+    const message =
+      error instanceof Error ? error.message : "Failed to revoke invitation";
     const status = message.includes("not found")
       ? 404
       : message.includes("does not belong")

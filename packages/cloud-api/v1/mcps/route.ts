@@ -66,7 +66,9 @@ const createMcpSchema = z.object({
 const listMcpsSchema = z.object({
   category: z.string().max(30).optional(),
   search: z.string().max(100).optional(),
-  status: z.enum(["draft", "pending_review", "live", "suspended", "deprecated"]).optional(),
+  status: z
+    .enum(["draft", "pending_review", "live", "suspended", "deprecated"])
+    .optional(),
   scope: z.enum(["own", "public", "all"]).optional().default("own"),
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
@@ -97,17 +99,28 @@ app.post("/", async (c) => {
     const data = validation.data;
 
     if (data.endpointType === "container" && !data.containerId) {
-      return c.json({ error: "containerId is required for container MCPs" }, 400);
+      return c.json(
+        { error: "containerId is required for container MCPs" },
+        400,
+      );
     }
     if (data.endpointType === "external" && !data.externalEndpoint) {
-      return c.json({ error: "externalEndpoint is required for external MCPs" }, 400);
+      return c.json(
+        { error: "externalEndpoint is required for external MCPs" },
+        400,
+      );
     }
     if (data.endpointType === "external" && data.externalEndpoint) {
       try {
         await assertSafeOutboundUrl(data.externalEndpoint);
       } catch (error) {
         return c.json(
-          { error: error instanceof Error ? error.message : "Unsafe external endpoint" },
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : "Unsafe external endpoint",
+          },
           400,
         );
       }
@@ -156,7 +169,12 @@ app.get("/", async (c) => {
     let mcps;
 
     if (scope === "public") {
-      mcps = await userMcpsService.listPublic({ category, search, limit, offset });
+      mcps = await userMcpsService.listPublic({
+        category,
+        search,
+        limit,
+        offset,
+      });
     } else if (scope === "own") {
       mcps = await userMcpsService.listByOrganization(user.organization_id, {
         status,

@@ -16,7 +16,10 @@ import {
   type OxaPayWebhookPayload,
   validateWebhookTimestamp,
 } from "@/lib/config/crypto";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { cryptoPaymentsService } from "@/lib/services/crypto-payments";
 import { isOxaPayConfigured } from "@/lib/services/oxapay";
 import { logger, redact } from "@/lib/utils/logger";
@@ -24,7 +27,9 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 function getClientIp(c: AppContext): string {
   return (
-    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() || c.req.header("x-real-ip") || "unknown"
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip") ||
+    "unknown"
   );
 }
 
@@ -77,14 +82,20 @@ async function verifyOxaPaySignature(
   ip: string,
 ): Promise<boolean> {
   if (!signature) {
-    logger.warn("[Crypto Webhook] No HMAC signature header provided", { ip: redact.ip(ip) });
+    logger.warn("[Crypto Webhook] No HMAC signature header provided", {
+      ip: redact.ip(ip),
+    });
     return false;
   }
   const expected = await hmacHex("SHA-512", secret, payload);
   return constantTimeEqualHex(signature, expected);
 }
 
-function generateWebhookEventId(trackId: string, status: string, payloadHash: string): string {
+function generateWebhookEventId(
+  trackId: string,
+  status: string,
+  payloadHash: string,
+): string {
   return `oxapay_${trackId}_${status}_${payloadHash}`;
 }
 
@@ -104,7 +115,9 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 
   try {
     if (!isOxaPayConfigured()) {
-      logger.warn("[Crypto Webhook] Service not configured", { ip: redact.ip(ip) });
+      logger.warn("[Crypto Webhook] Service not configured", {
+        ip: redact.ip(ip),
+      });
       return c.json({ error: "Service unavailable" }, 503);
     }
 
@@ -122,14 +135,27 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
     const timestampHeader =
       c.req.header("x-webhook-timestamp") || c.req.header("timestamp") || null;
 
-    const payloadHash = (await hmacHex("SHA-256", auditHashKey, rawBody)).slice(0, 16);
+    const payloadHash = (await hmacHex("SHA-256", auditHashKey, rawBody)).slice(
+      0,
+      16,
+    );
 
-    if (!(await verifyOxaPaySignature(auditHashKey, rawBody, signature ?? null, ip))) {
-      logger.error("[Crypto Webhook] Signature verification failed - potential security threat", {
-        ip: redact.ip(ip),
-        payloadHash,
-        hasSignature: !!signature,
-      });
+    if (
+      !(await verifyOxaPaySignature(
+        auditHashKey,
+        rawBody,
+        signature ?? null,
+        ip,
+      ))
+    ) {
+      logger.error(
+        "[Crypto Webhook] Signature verification failed - potential security threat",
+        {
+          ip: redact.ip(ip),
+          payloadHash,
+          hasSignature: !!signature,
+        },
+      );
       return c.json({ error: "Unauthorized" }, 401);
     }
 
@@ -156,16 +182,25 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       return c.json({ error: "Missing required fields" }, 400);
     }
 
-    const webhookTimestampMs = extractWebhookTimestamp(timestampHeader, payload);
+    const webhookTimestampMs = extractWebhookTimestamp(
+      timestampHeader,
+      payload,
+    );
     const timestampValidation = validateWebhookTimestamp(webhookTimestampMs);
     if (!timestampValidation.isValid) {
-      logger.warn("[Crypto Webhook] Timestamp validation failed - potential replay attack", {
-        ip: redact.ip(ip),
-        payloadHash,
-        trackId: redact.trackId(normalizedPayload.trackId),
-        error: timestampValidation.error,
-      });
-      return c.json({ error: `Webhook rejected: ${timestampValidation.error}` }, 400);
+      logger.warn(
+        "[Crypto Webhook] Timestamp validation failed - potential replay attack",
+        {
+          ip: redact.ip(ip),
+          payloadHash,
+          trackId: redact.trackId(normalizedPayload.trackId),
+          error: timestampValidation.error,
+        },
+      );
+      return c.json(
+        { error: `Webhook rejected: ${timestampValidation.error}` },
+        400,
+      );
     }
 
     const eventId = generateWebhookEventId(
@@ -232,6 +267,8 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   }
 });
 
-app.get("/", (c) => c.json({ status: "ok", message: "OxaPay webhook endpoint" }));
+app.get("/", (c) =>
+  c.json({ status: "ok", message: "OxaPay webhook endpoint" }),
+);
 
 export default app;

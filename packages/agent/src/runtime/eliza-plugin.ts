@@ -7,6 +7,7 @@
  */
 
 import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
+import type { CommandDefinition } from "@elizaos/plugin-commands";
 import {
   AgentEventService,
   logger,

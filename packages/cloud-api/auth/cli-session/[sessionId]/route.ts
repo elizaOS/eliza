@@ -29,11 +29,16 @@ app.get("/", async (c) => {
 
     const session = await cliAuthSessionsService.getActiveSession(sessionId);
     if (!session) {
-      return c.json({ error: "Session not found or expired" }, 404, corsHeaders);
+      return c.json(
+        { error: "Session not found or expired" },
+        404,
+        corsHeaders,
+      );
     }
 
     if (session.status === "authenticated") {
-      const apiKeyData = await cliAuthSessionsService.getAndClearApiKey(sessionId);
+      const apiKeyData =
+        await cliAuthSessionsService.getAndClearApiKey(sessionId);
       if (!apiKeyData) {
         return c.json(
           { status: "authenticated", message: "API key already retrieved" },

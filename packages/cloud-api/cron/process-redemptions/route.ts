@@ -19,7 +19,9 @@ app.post("/", async (c) => {
 
     logger.info("[Redemption Cron] Starting redemption processing");
 
-    const evmConfigured = !!(c.env.EVM_PAYOUT_PRIVATE_KEY || c.env.EVM_PRIVATE_KEY);
+    const evmConfigured = !!(
+      c.env.EVM_PAYOUT_PRIVATE_KEY || c.env.EVM_PRIVATE_KEY
+    );
     const solanaConfigured = !!c.env.SOLANA_PAYOUT_PRIVATE_KEY;
 
     if (!evmConfigured && !solanaConfigured) {
@@ -44,7 +46,9 @@ app.post("/", async (c) => {
       solanaConfigured,
       balances: {
         evm: balances.evm.configured ? balances.evm.balances : "not configured",
-        solana: balances.solana.configured ? balances.solana.balance : "not configured",
+        solana: balances.solana.configured
+          ? balances.solana.balance
+          : "not configured",
       },
     });
   } catch (error) {
@@ -53,7 +57,9 @@ app.post("/", async (c) => {
 });
 
 app.get("/", (c) => {
-  const evmConfigured = !!(c.env.EVM_PAYOUT_PRIVATE_KEY || c.env.EVM_PRIVATE_KEY);
+  const evmConfigured = !!(
+    c.env.EVM_PAYOUT_PRIVATE_KEY || c.env.EVM_PRIVATE_KEY
+  );
   const solanaConfigured = !!c.env.SOLANA_PAYOUT_PRIVATE_KEY;
   return c.json({
     healthy: true,

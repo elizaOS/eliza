@@ -36,12 +36,17 @@ app.post("/*", async (c) => {
       return c.json({ error: "Unauthorized" }, 401);
     }
 
-    const body = (await c.req.json()) as { pod_name?: string; service?: string };
-    const subject = typeof body.pod_name === "string" ? body.pod_name.trim() : "";
+    const body = (await c.req.json()) as {
+      pod_name?: string;
+      service?: string;
+    };
+    const subject =
+      typeof body.pod_name === "string" ? body.pod_name.trim() : "";
     if (!subject) {
       return c.json({ error: "pod_name required" }, 400);
     }
-    const service = typeof body.service === "string" ? body.service.trim() : undefined;
+    const service =
+      typeof body.service === "string" ? body.service.trim() : undefined;
 
     const token = await signInternalToken({ subject, service });
     return c.json(token);

@@ -15,6 +15,12 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 app.all("/*", (c) =>
-  c.json({ error: "not_yet_migrated", reason: "elizaOS runtime is not Workers-compatible" }, 501),
+  c.json(
+    {
+      error: "not_yet_migrated",
+      reason: "elizaOS runtime is not Workers-compatible",
+    },
+    501,
+  ),
 );
 export default app;

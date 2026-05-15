@@ -18,7 +18,10 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id")!;
 
-    const creatives = await advertisingService.listCreatives(id, user.organization_id);
+    const creatives = await advertisingService.listCreatives(
+      id,
+      user.organization_id,
+    );
 
     return c.json({
       creatives: creatives.map((cv) => ({
@@ -50,24 +53,30 @@ app.post("/", async (c) => {
     const parsed = CreateCreativeSchema.safeParse(body);
 
     if (!parsed.success) {
-      return c.json({ error: "Invalid request", details: parsed.error.flatten() }, 400);
+      return c.json(
+        { error: "Invalid request", details: parsed.error.flatten() },
+        400,
+      );
     }
 
-    const creative = await advertisingService.createCreative(user.organization_id, {
-      campaignId: id,
-      name: parsed.data.name,
-      type: parsed.data.type,
-      headline: parsed.data.headline,
-      primaryText: parsed.data.primaryText,
-      description: parsed.data.description,
-      callToAction: parsed.data.callToAction,
-      destinationUrl: parsed.data.destinationUrl,
-      media: parsed.data.media,
-      pageId: parsed.data.pageId,
-      instagramActorId: parsed.data.instagramActorId,
-      tiktokIdentityId: parsed.data.tiktokIdentityId,
-      tiktokIdentityType: parsed.data.tiktokIdentityType,
-    });
+    const creative = await advertisingService.createCreative(
+      user.organization_id,
+      {
+        campaignId: id,
+        name: parsed.data.name,
+        type: parsed.data.type,
+        headline: parsed.data.headline,
+        primaryText: parsed.data.primaryText,
+        description: parsed.data.description,
+        callToAction: parsed.data.callToAction,
+        destinationUrl: parsed.data.destinationUrl,
+        media: parsed.data.media,
+        pageId: parsed.data.pageId,
+        instagramActorId: parsed.data.instagramActorId,
+        tiktokIdentityId: parsed.data.tiktokIdentityId,
+        tiktokIdentityType: parsed.data.tiktokIdentityType,
+      },
+    );
 
     logger.info("[Advertising API] Creative created", {
       creativeId: creative.id,

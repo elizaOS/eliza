@@ -72,7 +72,11 @@ type StewardWalletClient = {
     txId: string,
     opts?: { comment?: string; approvedBy?: string },
   ): Promise<JsonObject>;
-  denyTransaction(txId: string, reason: string, deniedBy?: string): Promise<JsonObject>;
+  denyTransaction(
+    txId: string,
+    reason: string,
+    deniedBy?: string,
+  ): Promise<JsonObject>;
 };
 
 type StewardClient = StewardWalletClient;
@@ -145,7 +149,9 @@ function isJsonObject(value: unknown): value is JsonObject {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
-function assertStewardWalletClient(value: unknown): asserts value is StewardClient {
+function assertStewardWalletClient(
+  value: unknown,
+): asserts value is StewardClient {
   if (!value || typeof value !== "object") {
     throw new Error("Steward client is unavailable");
   }
@@ -161,7 +167,9 @@ function assertStewardWalletClient(value: unknown): asserts value is StewardClie
     "approveTransaction",
     "denyTransaction",
   ] as const;
-  const missingMethod = requiredMethods.find((method) => typeof client[method] !== "function");
+  const missingMethod = requiredMethods.find(
+    (method) => typeof client[method] !== "function",
+  );
   if (missingMethod) {
     throw new Error(`Steward client is missing ${missingMethod}`);
   }
@@ -206,8 +214,10 @@ async function getAgentAddresses(client: StewardClient, agentId: string) {
   try {
     const result = await client.getAddresses(agentId);
     return {
-      evmAddress: result.addresses.find((a) => a.chainFamily === "evm")?.address ?? "",
-      solanaAddress: result.addresses.find((a) => a.chainFamily === "solana")?.address ?? "",
+      evmAddress:
+        result.addresses.find((a) => a.chainFamily === "evm")?.address ?? "",
+      solanaAddress:
+        result.addresses.find((a) => a.chainFamily === "solana")?.address ?? "",
     };
   } catch {
     const agent = await client.getAgent(agentId);
@@ -227,22 +237,33 @@ async function handleDirectWalletRequest(
   const { agentId, path } = await params;
 
   if (path.length !== 1 || path[0].includes("..")) {
-    return json({ success: false, error: "Invalid wallet path" }, { status: 400 });
+    return json(
+      { success: false, error: "Invalid wallet path" },
+      { status: 400 },
+    );
   }
 
   const walletPath = path[0];
   if (!SUPPORTED_WALLET_PATHS.has(walletPath)) {
-    return json({ success: false, error: "Invalid wallet endpoint" }, { status: 400 });
+    return json(
+      { success: false, error: "Invalid wallet endpoint" },
+      { status: 400 },
+    );
   }
 
-  const agent = await elizaSandboxService.getAgent(agentId, user.organization_id);
+  const agent = await elizaSandboxService.getAgent(
+    agentId,
+    user.organization_id,
+  );
   if (!agent) {
     return json({ success: false, error: "Agent not found" }, { status: 404 });
   }
 
   let client: StewardClient;
   try {
-    const stewardClient = await createStewardClient({ organizationId: user.organization_id });
+    const stewardClient = await createStewardClient({
+      organizationId: user.organization_id,
+    });
     assertStewardWalletClient(stewardClient);
     client = stewardClient;
   } catch (error) {
@@ -285,9 +306,19 @@ async function handleDirectWalletRequest(
   if (method === "GET" && walletPath === "steward-status") {
     try {
       await client.getAgent(agentId);
-      return json({ configured: true, connected: true, agentId, version: "cloud-worker" });
+      return json({
+        configured: true,
+        connected: true,
+        agentId,
+        version: "cloud-worker",
+      });
     } catch {
-      return json({ configured: true, connected: false, agentId, version: "cloud-worker" });
+      return json({
+        configured: true,
+        connected: false,
+        agentId,
+        version: "cloud-worker",
+      });
     }
   }
 
@@ -305,7 +336,10 @@ async function handleDirectWalletRequest(
     for (const policy of policies) {
       const normalizedPolicy = normalizePolicy(policy);
       if (!normalizedPolicy) {
-        return json({ error: "policies contains an invalid policy" }, { status: 400 });
+        return json(
+          { error: "policies contains an invalid policy" },
+          { status: 400 },
+        );
       }
       normalizedPolicies.push(normalizedPolicy);
     }
@@ -317,7 +351,13 @@ async function handleDirectWalletRequest(
     const url = new URL(c.req.url);
     const status = url.searchParams.get("status") || "";
     const limit = boundedIntParam(url.searchParams, "limit", 50, 1, 100);
-    const offset = boundedIntParam(url.searchParams, "offset", 0, 0, Number.MAX_SAFE_INTEGER);
+    const offset = boundedIntParam(
+      url.searchParams,
+      "offset",
+      0,
+      0,
+      Number.MAX_SAFE_INTEGER,
+    );
     const dashboard = await client.getAgentDashboard(agentId);
     const records = (dashboard.recentTransactions ?? [])
       .filter((tx) => !status || tx.status === status)
@@ -339,10 +379,16 @@ async function handleDirectWalletRequest(
   if (method === "GET" && walletPath === "steward-pending-approvals") {
     const url = new URL(c.req.url);
     const limit = boundedIntParam(url.searchParams, "limit", 50, 1, 100);
-    const offset = boundedIntParam(url.searchParams, "offset", 0, 0, Number.MAX_SAFE_INTEGER);
-    const approvals = (await client.listApprovals({ status: "pending", limit, offset })).filter(
-      (entry) => entry.agentId === agentId,
+    const offset = boundedIntParam(
+      url.searchParams,
+      "offset",
+      0,
+      0,
+      Number.MAX_SAFE_INTEGER,
     );
+    const approvals = (
+      await client.listApprovals({ status: "pending", limit, offset })
+    ).filter((entry) => entry.agentId === agentId);
     return json({ approvals, total: approvals.length, offset, limit });
   }
 
@@ -356,7 +402,10 @@ async function handleDirectWalletRequest(
   if (method === "POST" && walletPath === "steward-deny-tx") {
     const body = await readJsonBody(c);
     const txId = typeof body?.txId === "string" ? body.txId : "";
-    const reason = typeof body?.reason === "string" ? body.reason : "Denied from Eliza Cloud";
+    const reason =
+      typeof body?.reason === "string"
+        ? body.reason
+        : "Denied from Eliza Cloud";
     if (!txId) return json({ error: "txId is required" }, { status: 400 });
     return json(await client.denyTransaction(txId, reason, user.id));
   }
@@ -372,21 +421,33 @@ const honoRouter = new Hono<AppEnv>();
 honoRouter.options("/", () => __next_OPTIONS());
 honoRouter.get("/", async (c) => {
   try {
-    return await handleDirectWalletRequest(c, nextStyleParams(c, ROUTE_PARAM_SPEC).params, "GET");
+    return await handleDirectWalletRequest(
+      c,
+      nextStyleParams(c, ROUTE_PARAM_SPEC).params,
+      "GET",
+    );
   } catch (error) {
     return failureResponse(c, error);
   }
 });
 honoRouter.post("/", async (c) => {
   try {
-    return await handleDirectWalletRequest(c, nextStyleParams(c, ROUTE_PARAM_SPEC).params, "POST");
+    return await handleDirectWalletRequest(
+      c,
+      nextStyleParams(c, ROUTE_PARAM_SPEC).params,
+      "POST",
+    );
   } catch (error) {
     return failureResponse(c, error);
   }
 });
 honoRouter.put("/", async (c) => {
   try {
-    return await handleDirectWalletRequest(c, nextStyleParams(c, ROUTE_PARAM_SPEC).params, "PUT");
+    return await handleDirectWalletRequest(
+      c,
+      nextStyleParams(c, ROUTE_PARAM_SPEC).params,
+      "PUT",
+    );
   } catch (error) {
     return failureResponse(c, error);
   }

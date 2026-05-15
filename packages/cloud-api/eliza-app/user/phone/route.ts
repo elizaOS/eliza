@@ -13,10 +13,19 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { elizaAppSessionService, elizaAppUserService } from "@/lib/services/eliza-app";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  elizaAppSessionService,
+  elizaAppUserService,
+} from "@/lib/services/eliza-app";
 import { logger } from "@/lib/utils/logger";
-import { isValidE164, normalizePhoneNumber } from "@/lib/utils/phone-normalization";
+import {
+  isValidE164,
+  normalizePhoneNumber,
+} from "@/lib/utils/phone-normalization";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
@@ -30,7 +39,8 @@ const phoneNumberSchema = z
     if (!isValidE164(normalized)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Invalid phone number format. Please use international format (e.g., +1234567890)",
+        message:
+          "Invalid phone number format. Please use international format (e.g., +1234567890)",
       });
       return z.NEVER;
     }
@@ -137,7 +147,10 @@ async function handleLinkPhone(request: Request): Promise<Response> {
   }
 
   // Link the phone number
-  const result = await elizaAppUserService.linkPhoneToUser(session.userId, phoneNumber);
+  const result = await elizaAppUserService.linkPhoneToUser(
+    session.userId,
+    phoneNumber,
+  );
 
   if (!result.success) {
     logger.warn("[ElizaApp LinkPhone] Phone linking failed", {

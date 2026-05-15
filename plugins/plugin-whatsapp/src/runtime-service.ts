@@ -1203,8 +1203,7 @@ export class WhatsAppConnectorService extends Service {
           accountId
         );
         const externalResponseId =
-          response.messages[0]?.id ??
-          `${params.externalMessageId}:response:${index}:${Date.now()}`;
+          response.messages[0]?.id ?? `${params.externalMessageId}:response:${index}:${Date.now()}`;
 
         responseMemories.push({
           id: toMemoryId(

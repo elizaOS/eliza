@@ -27,7 +27,10 @@ app.get("/", async (c) => {
       return c.json({ error: "service_id query parameter is required" }, 400);
     }
 
-    const pricing = await servicePricingRepository.listByService(serviceId, false);
+    const pricing = await servicePricingRepository.listByService(
+      serviceId,
+      false,
+    );
     return c.json({
       service_id: serviceId,
       pricing: pricing.map((p) => ({
@@ -54,7 +57,10 @@ const UpsertSchema = z.object({
   reason: z.string(),
   description: z.string().optional(),
   metadata: z
-    .record(z.string().max(100), z.union([z.string().max(1000), z.number(), z.boolean(), z.null()]))
+    .record(
+      z.string().max(100),
+      z.union([z.string().max(1000), z.number(), z.boolean(), z.null()]),
+    )
     .refine((val) => Object.keys(val).length <= 20, {
       message: "Metadata cannot have more than 20 keys",
     })
@@ -72,10 +78,14 @@ app.put("/", async (c) => {
 
     const parsed = UpsertSchema.safeParse(rawBody);
     if (!parsed.success) {
-      return c.json({ error: "Invalid request", details: parsed.error.flatten() }, 400);
+      return c.json(
+        { error: "Invalid request", details: parsed.error.flatten() },
+        400,
+      );
     }
 
-    const { service_id, method, cost, reason, description, metadata } = parsed.data;
+    const { service_id, method, cost, reason, description, metadata } =
+      parsed.data;
     let cacheInvalidated = false;
 
     await invalidateServicePricingCache(service_id);
@@ -97,7 +107,8 @@ app.put("/", async (c) => {
       logger.error("[Admin] CRITICAL: Post-update cache invalidation failed", {
         service_id,
         method,
-        retryError: retryError instanceof Error ? retryError.message : "Unknown",
+        retryError:
+          retryError instanceof Error ? retryError.message : "Unknown",
       });
     }
 

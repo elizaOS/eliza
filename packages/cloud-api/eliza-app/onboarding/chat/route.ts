@@ -8,7 +8,10 @@
 
 import { type Context, Hono } from "hono";
 import { z } from "zod";
-import { failureResponse, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  failureResponse,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
 import { elizaAppSessionService } from "@/lib/services/eliza-app";
 import {
   type OnboardingPlatform,
@@ -21,7 +24,14 @@ import { requireInternalAuth } from "../../../internal/_auth";
 
 const app = new Hono<AppEnv>();
 
-const platformSchema = z.enum(["web", "telegram", "discord", "whatsapp", "twilio", "blooio"]);
+const platformSchema = z.enum([
+  "web",
+  "telegram",
+  "discord",
+  "whatsapp",
+  "twilio",
+  "blooio",
+]);
 
 const chatSchema = z.object({
   sessionId: z.string().trim().min(8).max(180).optional(),
@@ -66,7 +76,9 @@ app.post("/", async (c) => {
     });
     const parsed = chatSchema.safeParse(body);
     if (!parsed.success) {
-      throw ValidationError("Invalid request data", { issues: parsed.error.issues });
+      throw ValidationError("Invalid request data", {
+        issues: parsed.error.issues,
+      });
     }
 
     const caller = await resolveCaller(c);

@@ -56,7 +56,9 @@ async function getOrgUserEmail(organizationId: string): Promise<string | null> {
 
 async function getOrgBalance(organizationId: string): Promise<number | null> {
   try {
-    return await agentBillingRepository.getOrganizationCreditBalance(organizationId);
+    return await agentBillingRepository.getOrganizationCreditBalance(
+      organizationId,
+    );
   } catch (error) {
     logger.warn("[Agent Billing] Failed to refresh org balance", {
       organizationId,
@@ -91,7 +93,10 @@ async function processSandboxBilling(
   const now = new Date();
 
   async function queueShutdownWarning(): Promise<BillingResult> {
-    if (sandbox.billing_status === "shutdown_pending" || sandbox.shutdown_warning_sent_at) {
+    if (
+      sandbox.billing_status === "shutdown_pending" ||
+      sandbox.shutdown_warning_sent_at
+    ) {
       return {
         sandboxId,
         agentName,
@@ -124,9 +129,14 @@ async function processSandboxBilling(
       now.getTime() + AGENT_PRICING.GRACE_PERIOD_HOURS * 60 * 60 * 1000,
     );
 
-    await agentBillingRepository.scheduleShutdownWarning(sandboxId, now, shutdownTime);
+    await agentBillingRepository.scheduleShutdownWarning(
+      sandboxId,
+      now,
+      shutdownTime,
+    );
 
-    const recipientEmail = org.billing_email || (await getOrgUserEmail(organizationId));
+    const recipientEmail =
+      org.billing_email || (await getOrgUserEmail(organizationId));
     if (recipientEmail) {
       // Reuse the container shutdown warning email template — content is generic enough
       await emailService.sendContainerShutdownWarningEmail({
@@ -152,7 +162,9 @@ async function processSandboxBilling(
         dashboardUrl: `${appUrl}/dashboard/agents`,
       });
 
-      logger.info(`[Agent Billing] Sent shutdown warning for ${agentName} to ${recipientEmail}`);
+      logger.info(
+        `[Agent Billing] Sent shutdown warning for ${agentName} to ${recipientEmail}`,
+      );
     }
 
     return {
@@ -178,9 +190,14 @@ async function processSandboxBilling(
     sandbox.scheduled_shutdown_at &&
     new Date(sandbox.scheduled_shutdown_at) <= now
   ) {
-    logger.info(`[Agent Billing] Shutting down agent ${agentName} due to insufficient credits`);
+    logger.info(
+      `[Agent Billing] Shutting down agent ${agentName} due to insufficient credits`,
+    );
 
-    await agentBillingRepository.suspendSandboxForInsufficientCredits(sandboxId, now);
+    await agentBillingRepository.suspendSandboxForInsufficientCredits(
+      sandboxId,
+      now,
+    );
 
     return { sandboxId, agentName, organizationId, action: "shutdown" };
   }
@@ -223,11 +240,14 @@ async function processSandboxBilling(
     return queueShutdownWarning();
   }
 
-  logger.info(`[Agent Billing] Billed ${agentName}: $${hourlyCost.toFixed(4)}`, {
-    sandboxId,
-    newBalance: billingResult.newBalance,
-    transactionId: billingResult.transactionId,
-  });
+  logger.info(
+    `[Agent Billing] Billed ${agentName}: $${hourlyCost.toFixed(4)}`,
+    {
+      sandboxId,
+      newBalance: billingResult.newBalance,
+      transactionId: billingResult.transactionId,
+    },
+  );
 
   return {
     sandboxId,
