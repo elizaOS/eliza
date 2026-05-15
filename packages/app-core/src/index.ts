@@ -44,21 +44,7 @@ export * from "./services/account-pool";
 export * from "./services/auth-store";
 export * from "./services/github-credentials";
 export * from "./services/inference-abort";
-// Phase 4F: plugin-installer forwarder moved to @elizaos/plugin-registry.
-// Re-export here so existing `import { installPlugin } from "@elizaos/app-core"`
-// consumers (e.g. app-core's own plugins-cli) keep resolving.
-export {
-  installAndRestart,
-  installPlugin,
-  type InstallPhase,
-  type InstallProgress,
-  type InstallResult,
-  listInstalledPlugins,
-  type ProgressCallback,
-  uninstallAndRestart,
-  uninstallPlugin,
-  type UninstallResult,
-} from "@elizaos/plugin-registry";
+export * from "./services/plugin-installer";
 export * from "./services/steward-credentials";
 export * from "./services/steward-sidecar/helpers";
 // Explicit .ts extension on steward-sidecar.ts disambiguates from the

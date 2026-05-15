@@ -98,7 +98,6 @@
         "@elizaos/app-wifi": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
-        "@elizaos/plugin-agent-skills": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-aosp-local-inference": "workspace:*",
         "@elizaos/plugin-background-runner": "workspace:*",
@@ -120,7 +119,6 @@
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/plugin-streaming": "workspace:*",
         "@elizaos/plugin-video": "workspace:*",
-        "@elizaos/plugin-wallet": "workspace:*",
         "@elizaos/plugin-whatsapp": "workspace:*",
         "@elizaos/plugin-workflow": "workspace:*",
         "@elizaos/plugin-x402": "workspace:*",
@@ -2293,21 +2291,6 @@
         "puppeteer-core",
       ],
     },
-    "plugins/plugin-app-manager": {
-      "name": "@elizaos/plugin-app-manager",
-      "version": "2.0.0-beta.2",
-      "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-      },
-      "devDependencies": {
-        "bun-types": "^1.3.12",
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vitest": "^4.0.17",
-      },
-    },
     "plugins/plugin-background-runner": {
       "name": "@elizaos/plugin-background-runner",
       "version": "2.0.0-beta.2",
@@ -2418,7 +2401,6 @@
       "name": "@elizaos/plugin-capacitor-bridge",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
         "ws": "^8.18.0",
       },
@@ -2430,7 +2412,6 @@
         "typescript": "^6.0.3",
       },
       "peerDependencies": {
-        "@elizaos/agent": "workspace:*",
         "@elizaos/core": "workspace:*",
       },
     },
@@ -3163,22 +3144,6 @@
         "vitest": "^4.0.0",
       },
     },
-    "plugins/plugin-registry": {
-      "name": "@elizaos/plugin-registry",
-      "version": "2.0.0-beta.2",
-      "dependencies": {
-        "@elizaos/agent": "workspace:*",
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/vault": "workspace:*",
-      },
-      "devDependencies": {
-        "bun-types": "^1.3.12",
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-      },
-    },
     "plugins/plugin-rlm": {
       "name": "@elizaos/plugin-rlm",
       "version": "2.0.0-beta.2",
@@ -3534,7 +3499,6 @@
       "dependencies": {
         "@coral-xyz/anchor": "^0.32.1",
         "@elizaos/cloud-routing": "workspace:*",
-        "@elizaos/shared": "workspace:*",
         "@lifi/sdk": "^3.7.9",
         "@meteora-ag/dlmm": "^1.9.7",
         "@raydium-io/raydium-sdk": "^1.3.1-beta.58",
@@ -3544,7 +3508,6 @@
         "@steerprotocol/sdk": "^3.0.7",
         "bignumber.js": "^11.0.0",
         "bs58": "^6.0.0",
-        "ethers": "^6.16.0",
         "tweetnacl": "^1.0.3",
         "uuid": "^11.1.0",
         "viem": "^2.48.8",
@@ -4273,8 +4236,6 @@
 
     "@elizaos/plugin-app-control": ["@elizaos/plugin-app-control@workspace:plugins/plugin-app-control"],
 
-    "@elizaos/plugin-app-manager": ["@elizaos/plugin-app-manager@workspace:plugins/plugin-app-manager"],
-
     "@elizaos/plugin-background-runner": ["@elizaos/plugin-background-runner@workspace:plugins/plugin-background-runner"],
 
     "@elizaos/plugin-benchmarks": ["@elizaos/plugin-benchmarks@workspace:plugins/plugin-benchmarks"],
@@ -4378,8 +4339,6 @@
     "@elizaos/plugin-openrouter": ["@elizaos/plugin-openrouter@workspace:plugins/plugin-openrouter"],
 
     "@elizaos/plugin-pdf": ["@elizaos/plugin-pdf@workspace:plugins/plugin-pdf"],
-
-    "@elizaos/plugin-registry": ["@elizaos/plugin-registry@workspace:plugins/plugin-registry"],
 
     "@elizaos/plugin-rlm": ["@elizaos/plugin-rlm@workspace:plugins/plugin-rlm"],
 
