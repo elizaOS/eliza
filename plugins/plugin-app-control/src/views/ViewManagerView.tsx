@@ -137,7 +137,7 @@ export function ViewManagerView() {
 			const res = await fetch("/api/views");
 			if (!res.ok) throw new Error(`HTTP ${res.status}`);
 			const data = (await res.json()) as { views: ViewEntry[] };
-			setViews(data.views ?? []);
+			setViews(data.views);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to load views");
 		} finally {

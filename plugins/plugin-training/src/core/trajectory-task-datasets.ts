@@ -321,7 +321,7 @@ function buildExampleForTask(
   task: TrajectoryTrainingTask,
 ): ElizaNativeTrainingExample | null {
   const response = call.response?.trim();
-  const trajectoryId = String(trajectory.trajectoryId ?? "");
+  const trajectoryId = String(trajectory.trajectoryId);
   const callId =
     typeof call.callId === "string" && call.callId.trim().length > 0
       ? call.callId
@@ -351,7 +351,7 @@ function buildExampleForTask(
       source_dataset: `eliza_native/${task}`,
       trajectory_id: trajectoryId,
       call_id: callId,
-      agent_id: String(trajectory.agentId ?? "unknown"),
+      agent_id: String(trajectory.agentId),
       trajectory_source:
         typeof trajectory.metadata?.source === "string"
           ? trajectory.metadata.source
@@ -396,7 +396,7 @@ function isNativeRowUsableForTask(
     return false;
   }
   if (task === "should_respond" || task === "context_routing") {
-    return normalizeMessageHandlerJson(row.response.text ?? "") !== null;
+    return normalizeMessageHandlerJson(row.response.text) !== null;
   }
   return true;
 }
@@ -440,7 +440,7 @@ function collectTrajectoryExamplesByTask(
     for (const row of nativeRows) {
       llmCallCount += 1;
       const task =
-        normalizeTrainingTask(row.metadata?.task_type) ??
+        normalizeTrainingTask(row.metadata.task_type) ??
         normalizeTrainingTask(row.purpose) ??
         normalizeTrainingTask(row.stepType) ??
         normalizeTrainingTask(row.actionType);

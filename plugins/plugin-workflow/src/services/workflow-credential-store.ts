@@ -30,7 +30,7 @@ export class WorkflowCredentialStore extends Service implements WorkflowCredenti
   private readonly connectorDisconnectedHandler = async (
     payload: ConnectorDisconnectedPayload
   ): Promise<void> => {
-    if (!payload?.userId || !Array.isArray(payload.credTypes)) {
+    if (!payload.userId || !Array.isArray(payload.credTypes)) {
       return;
     }
     if (payload.credTypes.length === 0) {

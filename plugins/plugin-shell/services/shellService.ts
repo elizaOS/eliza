@@ -450,10 +450,10 @@ export class ShellService extends Service {
     }
 
     const warnings: string[] = [];
-    const maxOutput = this.shellConfig.maxOutputChars ?? DEFAULT_MAX_OUTPUT;
-    const pendingMaxOutput = this.shellConfig.pendingMaxOutputChars ?? DEFAULT_PENDING_MAX_OUTPUT;
-    const defaultBackgroundMs = this.shellConfig.defaultBackgroundMs ?? DEFAULT_BACKGROUND_MS;
-    const allowBackground = this.shellConfig.allowBackground ?? true;
+    const maxOutput = this.shellConfig.maxOutputChars;
+    const pendingMaxOutput = this.shellConfig.pendingMaxOutputChars;
+    const defaultBackgroundMs = this.shellConfig.defaultBackgroundMs;
+    const allowBackground = this.shellConfig.allowBackground;
 
     // Resolve background/yield settings
     const backgroundRequested = options.background === true;
@@ -1578,7 +1578,7 @@ export class ShellService extends Service {
         }
         settle({
           status: "completed",
-          exitCode: code ?? 0,
+          exitCode: code,
           exitSignal: exitSignal ?? null,
           durationMs,
           aggregated,
@@ -1590,7 +1590,7 @@ export class ShellService extends Service {
         pty.onExit((event) => {
           const rawSignal = event.signal ?? null;
           const normalizedSignal = rawSignal === 0 ? null : rawSignal;
-          handleExit(event.exitCode ?? null, normalizedSignal);
+          handleExit(event.exitCode, normalizedSignal);
         });
       } else if (child) {
         child.once("close", (code, exitSignal) => {

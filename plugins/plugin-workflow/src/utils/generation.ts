@@ -97,7 +97,7 @@ export async function extractKeywords(
   }
 
   // Validate structure
-  if (!result?.keywords || !Array.isArray(result.keywords)) {
+  if (!result.keywords || !Array.isArray(result.keywords)) {
     logger.error(
       {
         src: 'plugin:workflow:generation:keywords',
@@ -233,7 +233,7 @@ ${userMessage}`,
   }
 
   const validIntents = ['confirm', 'cancel', 'modify', 'new'] as const;
-  if (!result?.intent || !validIntents.includes(result.intent as (typeof validIntents)[number])) {
+  if (!result.intent || !validIntents.includes(result.intent as (typeof validIntents)[number])) {
     logger.warn(
       { src: 'plugin:workflow:generation:intent' },
       `Invalid intent from LLM: ${JSON.stringify(result)}, re-showing preview`

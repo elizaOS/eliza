@@ -71,7 +71,7 @@ export const commandRegistryProvider: Provider = {
 		// Scope to the correct runtime's command store
 		useRuntime(runtime.agentId);
 
-		const text = message.content?.text ?? "";
+		const text = message.content.text ?? "";
 		const isCommand = hasCommand(text);
 		const commands = getEnabledCommands();
 
@@ -164,7 +164,7 @@ export const commandsPlugin: Plugin = {
 	// Self-declared auto-enable: activate when features.commands is enabled.
 	autoEnable: {
 		shouldEnable: (_env, config) => {
-			const f = (config?.features as Record<string, unknown> | undefined)
+			const f = (config.features as Record<string, unknown> | undefined)
 				?.commands;
 			return (
 				f === true ||
@@ -213,9 +213,9 @@ export const commandsPlugin: Plugin = {
 								`Expected key 'think', got '${detection.command?.key}'`,
 							);
 						}
-						if (detection.command?.args[0] !== "high") {
+						if (detection.command.args[0] !== "high") {
 							throw new Error(
-								`Expected arg 'high', got '${detection.command?.args[0]}'`,
+								`Expected arg 'high', got '${detection.command.args[0]}'`,
 							);
 						}
 						logger.success("Command argument parsing works correctly");

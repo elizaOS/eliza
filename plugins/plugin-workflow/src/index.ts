@@ -72,7 +72,7 @@ export const workflowPlugin: Plugin = {
   init: async (_config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {
     // Check for pre-configured credentials (optional)
     // Note: runtime.getSetting() only returns primitives — nested objects must be read directly
-    const workflowSettings = runtime.character?.settings?.workflows as
+    const workflowSettings = runtime.character.settings?.workflows as
       | { credentials?: Record<string, string> }
       | undefined;
     if (workflowSettings?.credentials) {

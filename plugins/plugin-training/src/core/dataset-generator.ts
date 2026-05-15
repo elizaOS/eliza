@@ -1240,7 +1240,7 @@ export async function exportTrajectoriesAsTraining(
         if (!response) {
           skippedNonNativeRows += 1;
           console.warn(
-            `[dataset-generator] skipped non-native should_respond row from trajectory ${trajectory.trajectoryId} call ${call.callId ?? "unknown"}; expected native messageHandler JSON`,
+            `[dataset-generator] skipped non-native should_respond row from trajectory ${trajectory.trajectoryId} call ${call.callId}; expected native messageHandler JSON`,
           );
           continue;
         }

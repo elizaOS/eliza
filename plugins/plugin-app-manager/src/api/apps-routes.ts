@@ -860,7 +860,7 @@ export async function handleAppsRoutes(
       const parsed = PutFavoriteAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
-        const issuePath = issue?.path?.join(".");
+        const issuePath = issue?.path.join(".");
         error(
           res,
           `Invalid request body at ${issuePath}: ${issue?.message}`,
@@ -890,7 +890,7 @@ export async function handleAppsRoutes(
     const parsed = PostReplaceFavoritesRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".");
+      const issuePath = issue?.path.join(".");
       error(
         res,
         `Invalid request body at ${issuePath}: ${issue?.message}`,
@@ -918,7 +918,7 @@ export async function handleAppsRoutes(
     const parsed = PostOverlayPresenceRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".");
+      const issuePath = issue?.path.join(".");
       error(
         res,
         `Invalid request body at ${issuePath}: ${issue?.message}`,
@@ -1006,7 +1006,7 @@ export async function handleAppsRoutes(
           : PostRunControlRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
-        const issuePath = issue?.path?.join(".");
+        const issuePath = issue?.path.join(".");
         error(
           res,
           `Invalid request body at ${issuePath}: ${issue?.message}`,
@@ -1069,7 +1069,7 @@ export async function handleAppsRoutes(
       const parsed = PostLaunchAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
-        const issuePath = issue?.path?.join(".");
+        const issuePath = issue?.path.join(".");
         error(
           res,
           `Invalid request body at ${issuePath}: ${issue?.message}`,
@@ -1098,7 +1098,7 @@ export async function handleAppsRoutes(
       const parsed = PostInstallAppRequestSchema.safeParse(rawBody);
       if (!parsed.success) {
         const issue = parsed.error.issues[0];
-        const issuePath = issue?.path?.join(".");
+        const issuePath = issue?.path.join(".");
         error(
           res,
           `Invalid request body at ${issuePath}: ${issue?.message}`,
@@ -1164,7 +1164,7 @@ export async function handleAppsRoutes(
     const parsed = PostStopAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".");
+      const issuePath = issue?.path.join(".");
       error(
         res,
         `Invalid request body at ${issuePath}: ${issue?.message}`,
@@ -1279,7 +1279,7 @@ export async function handleAppsRoutes(
     const parsed = PostRelaunchAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".");
+      const issuePath = issue?.path.join(".");
       error(
         res,
         `Invalid request body at ${issuePath}: ${issue?.message}`,
@@ -1415,7 +1415,7 @@ export async function handleAppsRoutes(
     const parsed = PutAppPermissionsRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const path = issue?.path?.join(".");
+      const path = issue?.path.join(".");
       error(
         res,
         `Invalid request body at ${path}: ${issue?.message}`,
@@ -1447,7 +1447,7 @@ export async function handleAppsRoutes(
     const parsed = PostLoadFromDirectoryRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const path = issue?.path?.join(".");
+      const path = issue?.path.join(".");
       error(
         res,
         `Invalid request body at ${path}: ${issue?.message}`,
@@ -1583,7 +1583,7 @@ export async function handleAppsRoutes(
     const parsed = PostCreateAppRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
-      const issuePath = issue?.path?.join(".");
+      const issuePath = issue?.path.join(".");
       error(
         res,
         `Invalid request body at ${issuePath}: ${issue?.message}`,

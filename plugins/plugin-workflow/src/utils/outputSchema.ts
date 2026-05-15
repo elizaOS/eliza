@@ -93,7 +93,7 @@ export function loadTriggerOutputSchema(
     return null;
   }
   const entry = TRIGGER_SCHEMAS[nodeType];
-  if (!entry?.outputSchema?.properties || Object.keys(entry.outputSchema.properties).length === 0) {
+  if (!entry?.outputSchema.properties || Object.keys(entry.outputSchema.properties).length === 0) {
     return null;
   }
   return {

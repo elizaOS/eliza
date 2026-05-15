@@ -61,7 +61,7 @@ if (typeof sweepTimer === "object" && "unref" in sweepTimer) {
  * IPs to bypass rate limits and nonce IP binding.
  */
 function getClientIp(req: http.IncomingMessage): string | null {
-  return req.socket?.remoteAddress ?? null;
+  return req.socket.remoteAddress ?? null;
 }
 
 function getUserAgent(req: http.IncomingMessage): string {

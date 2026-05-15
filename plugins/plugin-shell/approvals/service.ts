@@ -157,7 +157,7 @@ export class ExecApprovalService extends Service {
    * Load/reload configuration
    */
   loadConfig(agentId?: string): ExecApprovalsResolved {
-    this.approvalConfig = resolveApprovals(agentId ?? this.runtime?.agentId);
+    this.approvalConfig = resolveApprovals(agentId ?? this.runtime.agentId);
     return this.approvalConfig;
   }
 
@@ -166,7 +166,7 @@ export class ExecApprovalService extends Service {
    */
   getConfig(): ExecApprovalsResolved {
     if (!this.approvalConfig) {
-      this.approvalConfig = resolveApprovals(this.runtime?.agentId);
+      this.approvalConfig = resolveApprovals(this.runtime.agentId);
     }
     return this.approvalConfig;
   }
@@ -258,7 +258,7 @@ export class ExecApprovalService extends Service {
         const approvals = loadApprovals();
         const recorded = recordAllowlistUse(
           approvals,
-          params.agentId ?? this.runtime?.agentId,
+          params.agentId ?? this.runtime.agentId,
           match,
           params.command,
           analysis.segments[0]?.resolution?.resolvedPath
@@ -320,7 +320,7 @@ export class ExecApprovalService extends Service {
       cwd: params.cwd,
       security,
       ask,
-      agentId: params.agentId ?? this.runtime?.agentId,
+      agentId: params.agentId ?? this.runtime.agentId,
       resolvedPath: analysis.segments[0]?.resolution?.resolvedPath,
       roomId: params.roomId,
       timeoutMs: EXEC_APPROVAL_DEFAULTS.timeoutMs,
@@ -339,7 +339,7 @@ export class ExecApprovalService extends Service {
    * Request approval for a command
    */
   async requestApproval(request: ExecApprovalRequest): Promise<ExecApprovalResult> {
-    const approvalService = this.runtime?.getService("approval") as ApprovalService | null;
+    const approvalService = this.runtime.getService("approval") as ApprovalService | null;
 
     if (!approvalService) {
       logger.warn(
@@ -411,7 +411,7 @@ export class ExecApprovalService extends Service {
       onTimeout?: () => Promise<void>;
     }
   ): Promise<UUID> {
-    const approvalService = this.runtime?.getService("approval") as ApprovalService | null;
+    const approvalService = this.runtime.getService("approval") as ApprovalService | null;
 
     if (!approvalService) {
       logger.warn({ src: "service:exec_approval" }, "ApprovalService not available");
@@ -482,7 +482,7 @@ export class ExecApprovalService extends Service {
    */
   async addToAllowlist(pattern: string, agentId?: string): Promise<boolean> {
     const approvals = loadApprovals();
-    const added = addAllowlistEntry(approvals, agentId ?? this.runtime?.agentId, pattern);
+    const added = addAllowlistEntry(approvals, agentId ?? this.runtime.agentId, pattern);
     if (added) {
       // Reload config to pick up the new entry
       this.approvalConfig = null;
@@ -494,7 +494,7 @@ export class ExecApprovalService extends Service {
    * Cancel a pending approval
    */
   async cancelApproval(taskId: UUID): Promise<void> {
-    const approvalService = this.runtime?.getService("approval") as ApprovalService | null;
+    const approvalService = this.runtime.getService("approval") as ApprovalService | null;
 
     if (approvalService) {
       await approvalService.cancelApproval(taskId);

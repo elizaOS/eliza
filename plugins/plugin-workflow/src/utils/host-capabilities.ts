@@ -31,7 +31,7 @@ export function detectHostCapabilities(): HostCapabilities {
   // Cloudflare Workers — runtime exposes navigator.userAgent === 'Cloudflare-Workers'.
   if (
     typeof navigator !== 'undefined' &&
-    typeof navigator?.userAgent === 'string' &&
+    typeof navigator.userAgent === 'string' &&
     navigator.userAgent.includes('Cloudflare-Workers')
   ) {
     return {

@@ -52,7 +52,7 @@ export function GlobalEmoteOverlay() {
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<AppEmoteEventDetail>).detail;
-      if (!detail?.emoteId) return;
+      if (!detail.emoteId) return;
       if (detail.showOverlay === false) return;
       if (hideTimerRef.current != null) {
         window.clearTimeout(hideTimerRef.current);

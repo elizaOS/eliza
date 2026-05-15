@@ -187,7 +187,7 @@ async function handleSave(
     tracks,
   };
   const saved = await musicLibrary.savePlaylist(userId, playlist);
-  const isDM = room?.type === ChannelType.DM;
+  const isDM = room.type === ChannelType.DM;
 
   let responseText = `Saved playlist "${saved.name}" with ${saved.tracks.length} track${saved.tracks.length !== 1 ? "s" : ""}.`;
   if (!isDM) {
@@ -284,7 +284,7 @@ async function handleLoad(
     });
   }
 
-  const isDM = room?.type === ChannelType.DM;
+  const isDM = room.type === ChannelType.DM;
   const addedCount = selected.tracks.length;
   let responseText = `Loaded playlist "${selected.name}" and added ${addedCount} track${addedCount !== 1 ? "s" : ""} to the queue.`;
   if (!isDM) {
@@ -586,7 +586,7 @@ export async function validatePlaylistOp(
   options?: Record<string, unknown>,
 ): Promise<boolean> {
   const merged = mergedOptions(options);
-  return Boolean(readPlaylistOp(merged, message.content?.text ?? ""));
+  return Boolean(readPlaylistOp(merged, message.content.text ?? ""));
 }
 
 export async function handlePlaylistOp(
@@ -598,7 +598,7 @@ export async function handlePlaylistOp(
 ): Promise<ActionResult | undefined> {
   if (!callback) return { success: false, error: "Missing callback" };
   const merged = mergedOptions(options);
-  const op = readPlaylistOp(merged, message.content?.text ?? "");
+  const op = readPlaylistOp(merged, message.content.text ?? "");
   if (!op) {
     const text =
       "Could not determine playlist op. Use subaction=save, load, delete, or add.";

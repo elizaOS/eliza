@@ -42,7 +42,7 @@ export const workflowStatusProvider: Provider = {
       for (const workflow of workflows.slice(0, 10)) {
         const statusEmoji = workflow.active ? '✅' : '⏸️';
         status += `${statusEmoji} ${workflow.name} (ID: ${workflow.id})\n`;
-        status += `   Nodes: ${workflow.nodes?.length || 0}\n`;
+        status += `   Nodes: ${workflow.nodes.length || 0}\n`;
 
         // Try to get last execution (if possible)
         try {

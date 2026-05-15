@@ -44,10 +44,10 @@ export function runCapture(
     });
     let stdout = "";
     let stderr = "";
-    child.stdout?.on("data", (chunk: Buffer) => {
+    child.stdout.on("data", (chunk: Buffer) => {
       stdout += chunk.toString("utf8");
     });
-    child.stderr?.on("data", (chunk: Buffer) => {
+    child.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString("utf8");
     });
     child.on("error", (err) => {
@@ -91,8 +91,8 @@ export function runDetachedToLog(
     const onChunk = (chunk: Buffer) => {
       void appendJobLog(jobId, chunk.toString("utf8")).catch(() => {});
     };
-    child.stdout?.on("data", onChunk);
-    child.stderr?.on("data", onChunk);
+    child.stdout.on("data", onChunk);
+    child.stderr.on("data", onChunk);
     child.on("error", (err) => {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         rejectProc(

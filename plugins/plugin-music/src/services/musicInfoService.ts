@@ -452,7 +452,7 @@ export class MusicInfoHelper {
         artist: videoInfo.video_details.channel?.name || "Unknown Artist",
         duration: videoInfo.video_details.durationInSec || undefined,
         url: url,
-        thumbnail: videoInfo.video_details.thumbnails?.[0]?.url || undefined,
+        thumbnail: videoInfo.video_details.thumbnails[0]?.url || undefined,
         description: videoInfo.video_details.description || undefined,
       };
 

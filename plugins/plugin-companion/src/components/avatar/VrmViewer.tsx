@@ -93,7 +93,7 @@ async function captureVrmPreviews(options?: {
   const registry = window.__ELIZA_VRM_ENGINES__ ?? [];
   const registryEntry =
     registry.find((e) => e.role === "world-stage") ?? registry[0] ?? null;
-  const engine = registryEntry?.engine ?? null;
+  const engine = registryEntry?.engine;
   if (!engine) {
     console.error(
       "[captureVrmPreviews] No active VRM engine found. Navigate to the character view first.",
@@ -267,7 +267,7 @@ export function VrmViewer(props: VrmViewerProps) {
 
   const syncDebugRegistry = useEffectEvent(() => {
     const meta = import.meta as ImportMeta & { env?: { DEV?: boolean } };
-    if (!meta.env?.DEV) return;
+    if (!meta.env.DEV) return;
     if (typeof window === "undefined") return;
     const engine = engineRef.current;
     const registry = window.__ELIZA_VRM_ENGINES__ ?? [];
@@ -384,8 +384,8 @@ export function VrmViewer(props: VrmViewerProps) {
     const handleVoiceEvent = (event: Event) => {
       const detail = (event as CustomEvent<ChatAvatarVoiceEventDetail>).detail;
       if (detail) {
-        mouthOpenRef.current = detail.mouthOpen ?? 0;
-        isSpeakingRef.current = detail.isSpeaking ?? false;
+        mouthOpenRef.current = detail.mouthOpen;
+        isSpeakingRef.current = detail.isSpeaking;
       }
     };
     window.addEventListener(CHAT_AVATAR_VOICE_EVENT, handleVoiceEvent);

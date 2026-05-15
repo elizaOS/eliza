@@ -129,7 +129,7 @@ export function normalizeAccountId(accountId?: string | null): string {
  * Gets the multi-account configuration from runtime settings
  */
 export function getMultiAccountConfig(runtime: IAgentRuntime): WhatsAppMultiAccountConfig {
-  const characterWhatsApp = runtime.character?.settings?.whatsapp as
+  const characterWhatsApp = runtime.character.settings?.whatsapp as
     | WhatsAppMultiAccountConfig
     | undefined;
 

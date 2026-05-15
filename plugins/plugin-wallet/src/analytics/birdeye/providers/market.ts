@@ -112,7 +112,7 @@ export const marketProvider: Provider = {
         !birdeyeService ||
         typeof birdeyeService.getTokensMarketData !== "function"
       ) {
-        runtime.logger?.error(
+        runtime.logger.error(
           "Birdeye service is unavailable or does not have getTokensMarketData method",
         );
         return {
@@ -183,7 +183,7 @@ export const marketProvider: Provider = {
       const boundedRows = rows.slice(0, MARKET_ROW_LIMIT);
       const data = {
         tokens: Object.fromEntries(
-          Object.entries(result ?? {}).slice(0, MARKET_ROW_LIMIT),
+          Object.entries(result).slice(0, MARKET_ROW_LIMIT),
         ),
       };
 
@@ -210,7 +210,7 @@ export const marketProvider: Provider = {
         text,
       };
     } catch (err) {
-      runtime.logger?.error(
+      runtime.logger.error(
         `Error fetching Birdeye market data: ${err instanceof Error ? err.message : String(err)}`,
       );
       return {

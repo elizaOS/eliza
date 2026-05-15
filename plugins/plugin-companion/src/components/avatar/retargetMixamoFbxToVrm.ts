@@ -16,7 +16,7 @@ function normalizeMixamoRigName(name: string): string {
 }
 
 function isVrm0(vrm: VRM): boolean {
-  const mv = String(vrm.meta?.metaVersion ?? "");
+  const mv = String(vrm.meta?.metaVersion);
   return mv.startsWith("0");
 }
 
@@ -65,7 +65,7 @@ export function retargetMixamoFbxToVrm(
   );
   const motionHipsHeight = Math.abs(motionHipsNode?.position.y ?? 0);
   const vrmHipsHeight = Math.abs(
-    vrm.humanoid?.normalizedRestPose.hips?.position?.[1] ?? 0,
+    vrm.humanoid.normalizedRestPose.hips?.position?.[1] ?? 0,
   );
   const hipsPositionScale =
     motionHipsHeight > 1e-6 && vrmHipsHeight > 1e-6
@@ -86,7 +86,7 @@ export function retargetMixamoFbxToVrm(
       continue;
     }
 
-    const vrmNode = vrm.humanoid?.getNormalizedBoneNode(
+    const vrmNode = vrm.humanoid.getNormalizedBoneNode(
       vrmBoneName as VRMHumanBoneName,
     );
     if (!vrmNode) continue;
@@ -136,7 +136,7 @@ export function retargetMixamoFbxToVrm(
     ) {
       const isHips =
         vrmNode ===
-        vrm.humanoid?.getNormalizedBoneNode("hips" as VRMHumanBoneName);
+        vrm.humanoid.getNormalizedBoneNode("hips" as VRMHumanBoneName);
 
       if (!isHips) continue;
 
@@ -155,7 +155,7 @@ export function retargetMixamoFbxToVrm(
 
   const hasHipsTrack = tracks.some((track) =>
     track.name.startsWith(
-      `${vrm.humanoid?.getNormalizedBoneNode("hips" as VRMHumanBoneName)?.name ?? "__missing__"}.`,
+      `${vrm.humanoid.getNormalizedBoneNode("hips" as VRMHumanBoneName)?.name ?? "__missing__"}.`,
     ),
   );
   if (!hasHipsTrack) {

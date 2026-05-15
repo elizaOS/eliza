@@ -583,7 +583,7 @@ export async function bootstrapOptimizationFromAccumulatedTrajectories(
   if (fired.length > 0) {
     const message = `Bootstrapping prompt optimization from accumulated trajectories (${fired.join(", ")}). Track progress in Settings → Auto-Training.`;
     options.notifier?.notify(message);
-    runtime.logger?.info(`[TrainingTriggerService] ${message}`);
+    runtime.logger.info(`[TrainingTriggerService] ${message}`);
   }
   return fired;
 }

@@ -99,7 +99,7 @@ async function ensureAnalyticsEntity(
     const created = await runtime.createEntity({
       id: entityId,
       names: [
-        room?.name
+        room.name
           ? `DJ Analytics (${room.name})`
           : `DJ Analytics (${roomId.slice(0, 8)})`,
       ],
@@ -107,8 +107,8 @@ async function ensureAnalyticsEntity(
         dj: {
           type: "analytics",
           roomId,
-          roomName: room?.name,
-          serverId: room?.serverId,
+          roomName: room.name,
+          serverId: room.serverId,
         },
       },
       agentId: runtime.agentId,

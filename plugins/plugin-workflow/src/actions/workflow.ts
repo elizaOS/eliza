@@ -97,7 +97,7 @@ function getWorkflowService(runtime: IAgentRuntime): WorkflowService | null {
 }
 
 function resolveAgentId(runtime: IAgentRuntime): string {
-  return runtime.agentId ?? runtime.character?.id ?? '00000000-0000-0000-0000-000000000000';
+  return runtime.agentId;
 }
 
 function summarizeWorkflow(
@@ -109,7 +109,7 @@ function summarizeWorkflow(
 } {
   return {
     id: String((workflow as { id?: string }).id ?? ''),
-    name: String(workflow.name ?? ''),
+    name: String(workflow.name),
     active: Boolean((workflow as { active?: boolean }).active),
   };
 }
@@ -131,14 +131,14 @@ async function handleCreate(
   }
   try {
     const draft = await service.generateWorkflowDraft(seedPrompt, {
-      userId: String(message.entityId ?? resolveAgentId(runtime)),
+      userId: String(message.entityId),
     });
     if (name) {
       draft.name = name;
     }
     const deployed = await service.deployWorkflow(draft, resolveAgentId(runtime));
     if (!deployed.id) {
-      const missing = (deployed.missingCredentials ?? []).map((c) => c.credType).join(', ');
+      const missing = (deployed.missingCredentials).map((c) => c.credType).join(', ');
       const text = missing
         ? `Workflow generated but missing credentials: ${missing}.`
         : 'Workflow generation produced no deployable result.';
@@ -297,7 +297,7 @@ async function handleExecutions(
   const limit = readNumber(params.limit) ?? 10;
   try {
     const response = await service.listExecutions({ workflowId, limit });
-    const executions = response.data ?? [];
+    const executions = response.data;
     const text =
       executions.length === 0
         ? `No executions found for workflow ${workflowId}.`

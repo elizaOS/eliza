@@ -257,9 +257,9 @@ export function loadApprovals(): ExecApprovalsFile {
       return normalizeApprovals({ version: 1, agents: {} });
     }
 
-    if (parsed?.version !== 1) {
+    if (parsed.version !== 1) {
       logger.warn(
-        { src: "exec-approval", version: parsed?.version, filePath },
+        { src: "exec-approval", version: parsed.version, filePath },
         "Approval config has unexpected version, using defaults"
       );
       return normalizeApprovals({ version: 1, agents: {} });
@@ -467,7 +467,7 @@ export function matchAllowlist(
   const resolvedPath = resolution.resolvedPath;
 
   for (const entry of entries) {
-    const pattern = entry.pattern?.trim();
+    const pattern = entry.pattern.trim();
     if (!pattern) continue;
 
     const hasPath = pattern.includes("/") || pattern.includes("\\") || pattern.includes("~");

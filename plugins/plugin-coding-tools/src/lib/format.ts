@@ -97,7 +97,7 @@ export function readPositiveIntSetting(
   key: string,
   fallback: number,
 ): number {
-  const v = runtime.getSetting?.(key);
+  const v = runtime.getSetting(key);
   if (typeof v === "number" && Number.isFinite(v) && v > 0)
     return Math.floor(v);
   if (typeof v === "string") {

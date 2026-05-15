@@ -27,6 +27,8 @@ import {
   DEFAULT_SLIPPAGE_PERCENT,
   GAS_BUFFER_MULTIPLIER,
   GAS_PRICE_MULTIPLIER,
+  KYBERSWAP_CHAIN_MAP,
+  KYBERSWAP_NATIVE_SENTINEL,
   NATIVE_TOKEN_ADDRESS,
   TX_CONFIRMATION_TIMEOUT_MS,
 } from "../constants";
@@ -37,6 +39,8 @@ import {
   BebopRouteSchema,
   EVMError,
   EVMErrorCode,
+  type KyberSwapRouteData,
+  type KyberSwapRouteSummary,
   parseSwapParams,
   type SupportedChain,
   type SwapParams,
@@ -173,6 +177,9 @@ export class SwapAction {
             case "bebop":
               result = await this.executeBebopQuote(quote, resolvedParams);
               break;
+            case "kyberswap":
+              result = await this.executeKyberSwapQuote(quote, resolvedParams);
+              break;
           }
 
           if (result) {
@@ -242,6 +249,7 @@ export class SwapAction {
     const quotesPromises: Promise<SwapQuote | undefined>[] = [
       this.getLifiQuote(fromAddress, params, fromTokenDecimals, slippage),
       this.getBebopQuote(fromAddress, params, fromTokenDecimals),
+      this.getKyberSwapQuote(fromAddress, params, fromTokenDecimals, slippage),
     ];
 
     const quotesResults = await Promise.all(quotesPromises);
@@ -384,6 +392,68 @@ export class SwapAction {
     }
   }
 
+  private async getKyberSwapQuote(
+    fromAddress: Address,
+    params: SwapParams,
+    fromTokenDecimals: number,
+    slippage: number
+  ): Promise<SwapQuote | undefined> {
+    try {
+      const chainSlug = KYBERSWAP_CHAIN_MAP[params.chain];
+      if (!chainSlug) return undefined;
+
+      const fromToken =
+        params.fromToken === NATIVE_TOKEN_ADDRESS ? KYBERSWAP_NATIVE_SENTINEL : params.fromToken;
+      const toToken =
+        params.toToken === NATIVE_TOKEN_ADDRESS ? KYBERSWAP_NATIVE_SENTINEL : params.toToken;
+      const amountIn = parseUnits(params.amount, fromTokenDecimals).toString();
+
+      const url = new URL(`https://aggregator-api.kyberswap.com/${chainSlug}/api/v1/routes`);
+      url.searchParams.set("tokenIn", fromToken);
+      url.searchParams.set("tokenOut", toToken);
+      url.searchParams.set("amountIn", amountIn);
+      url.searchParams.set("gasInclude", "true");
+      url.searchParams.set("source", "elizaos");
+
+      const res = await fetch(url.toString(), {
+        headers: { "X-Client-Id": "elizaos", Accept: "application/json" },
+      });
+
+      if (!res.ok) throw new Error(`KyberSwap API error: ${res.status}`);
+
+      const data = await res.json();
+      const routeSummary = data?.data?.routeSummary as KyberSwapRouteSummary | undefined;
+      if (!routeSummary?.amountOut) throw new Error("No route found from KyberSwap");
+
+      const slippageBps = Math.round(slippage * 10000);
+      // KyberSwap's quote endpoint returns the expected gross output; the
+      // guaranteed minimum is computed client-side by applying the slippage
+      // tolerance (same math the build endpoint uses internally).
+      const minOut = (BigInt(routeSummary.amountOut) * BigInt(10000 - slippageBps)) / 10000n;
+
+      return {
+        aggregator: "kyberswap",
+        minOutputAmount: minOut.toString(),
+        swapData: {
+          routeSummary,
+          routerAddress: data.data.routerAddress,
+          chainSlug,
+          fromToken,
+          toToken,
+          amountIn,
+          slippageBps,
+          fromAddress,
+        } satisfies KyberSwapRouteData,
+      };
+    } catch (error) {
+      logger.error(
+        "Error in getKyberSwapQuote:",
+        error instanceof Error ? error.message : String(error)
+      );
+      return undefined;
+    }
+  }
+
   private async executeLifiQuote(quote: SwapQuote): Promise<Transaction | undefined> {
     const route = quote.swapData as Route;
     const step = route.steps[0];
@@ -519,6 +589,89 @@ export class SwapAction {
       value: BigInt(bebopRoute.value),
       data: bebopRoute.data as Hex,
       chainId: chainConfig.id,
+    };
+  }
+
+  private async executeKyberSwapQuote(
+    quote: SwapQuote,
+    params: SwapParams
+  ): Promise<Transaction | undefined> {
+    const ks = quote.swapData as KyberSwapRouteData;
+    const walletClient = this.walletProvider.getWalletClient(params.chain);
+    const publicClient = this.walletProvider.getPublicClient(params.chain);
+
+    const account = walletClient.account;
+    if (!account) {
+      throw new EVMError(EVMErrorCode.WALLET_NOT_INITIALIZED, "Wallet account is not available");
+    }
+
+    const buildRes = await fetch(
+      `https://aggregator-api.kyberswap.com/${ks.chainSlug}/api/v1/route/build`,
+      {
+        method: "POST",
+        headers: {
+          "X-Client-Id": "elizaos",
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          routeSummary: ks.routeSummary,
+          sender: account.address,
+          recipient: account.address,
+          slippageTolerance: ks.slippageBps,
+          deadline: Math.floor(Date.now() / 1000) + 1200,
+          enableGasEstimation: true,
+          source: "elizaos",
+        }),
+      }
+    );
+
+    if (!buildRes.ok) {
+      throw new Error(`KyberSwap build failed: ${buildRes.status} ${buildRes.statusText}`);
+    }
+
+    const buildData = await buildRes.json();
+    const tx = buildData?.data;
+    if (!tx?.routerAddress || !tx?.data) {
+      throw new Error("Invalid transaction data from KyberSwap build");
+    }
+
+    if (ks.fromToken.toLowerCase() !== KYBERSWAP_NATIVE_SENTINEL.toLowerCase()) {
+      await this.handleTokenApproval(
+        publicClient,
+        walletClient,
+        ks.fromToken as Address,
+        tx.routerAddress as Address,
+        BigInt(ks.amountIn)
+      );
+    }
+
+    const hash = await walletClient.sendTransaction(
+      buildSendTxParams({
+        account,
+        to: tx.routerAddress as Address,
+        value: BigInt(tx.transactionValue ?? "0"),
+        data: tx.data as Hex,
+        chain: walletClient.chain,
+      })
+    );
+
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash,
+      timeout: TX_CONFIRMATION_TIMEOUT_MS,
+    });
+
+    if (receipt.status === "reverted") {
+      throw new EVMError(EVMErrorCode.CONTRACT_REVERT, `KyberSwap swap reverted. Hash: ${hash}`);
+    }
+
+    return {
+      hash,
+      from: account.address,
+      to: tx.routerAddress as Address,
+      value: BigInt(tx.transactionValue ?? "0"),
+      data: tx.data as Hex,
+      chainId: this.walletProvider.getChainConfigs(params.chain).id,
     };
   }
 

@@ -419,8 +419,8 @@ export async function getActivityHistory(
           : undefined;
       allEntries.push({
         type,
-        blockNumber: log.blockNumber ?? 0n,
-        transactionHash: log.transactionHash ?? ("0x" as Hash),
+        blockNumber: log.blockNumber,
+        transactionHash: log.transactionHash,
         args: rawArgs ?? {},
       });
     }

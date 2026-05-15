@@ -268,7 +268,7 @@ export class SmartMusicFetchService extends Service {
     query: string,
   ): Promise<{ found: boolean; url?: string; tracks?: MusicLibraryTrack[] }> {
     try {
-      const musicLibrary = this.runtime?.getService(
+      const musicLibrary = this.runtime.getService(
         "musicLibrary",
       ) as SmartFetchMusicLibraryService | null;
       if (!musicLibrary?.searchTracks) {
@@ -299,7 +299,7 @@ export class SmartMusicFetchService extends Service {
   ): Promise<{ success: boolean; url?: string; title?: string }> {
     try {
       // Try YouTube search service
-      const musicLibrary = this.runtime?.getService(
+      const musicLibrary = this.runtime.getService(
         "musicLibrary",
       ) as SmartFetchMusicLibraryService | null;
       if (!musicLibrary?.searchYouTube) {
@@ -330,7 +330,7 @@ export class SmartMusicFetchService extends Service {
     preferredQuality: string,
   ): Promise<TorrentSearchResult[]> {
     try {
-      const torrentSearch = this.runtime?.getService("torrent-search");
+      const torrentSearch = this.runtime.getService("torrent-search");
       if (!isTorrentSearchService(torrentSearch)) {
         logger.warn("Torrent search service not available");
         return [];
@@ -446,7 +446,7 @@ export class SmartMusicFetchService extends Service {
     requestedBy?: UUID,
   ): Promise<{ success: boolean; files?: string[]; error?: string }> {
     try {
-      const torrentService = this.runtime?.getService("torrent");
+      const torrentService = this.runtime.getService("torrent");
       if (!isTorrentService(torrentService)) {
         return { success: false, error: "Torrent service not available" };
       }

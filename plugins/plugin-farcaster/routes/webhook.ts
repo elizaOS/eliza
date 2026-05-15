@@ -65,7 +65,7 @@ export const farcasterWebhookRoutes: Route[] = [
         const webhookData = req.body;
         const eventType = webhookData.type;
 
-        const farcasterService = runtime?.getService?.(FARCASTER_SERVICE_NAME) as
+        const farcasterService = runtime.getService(FARCASTER_SERVICE_NAME) as
           | FarcasterWebhookService
           | undefined;
         const accountId = readFarcasterAccountId(webhookData);

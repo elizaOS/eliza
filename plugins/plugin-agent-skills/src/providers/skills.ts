@@ -154,7 +154,7 @@ export const skillInstructionsProvider: Provider = {
 			if (skills.length === 0) return { text: "" };
 
 		// Build context from message and recent history
-		const messageText = (message.content?.text || "").toLowerCase();
+		const messageText = (message.content.text || "").toLowerCase();
 		const recentContext = getRecentContext(state);
 		const fullContext = `${messageText} ${recentContext}`.toLowerCase();
 
@@ -248,7 +248,7 @@ export const catalogAwarenessProvider: Provider = {
 			);
 			if (!service) return { text: "" };
 
-		const text = (message.content?.text || "").toLowerCase();
+		const text = (message.content.text || "").toLowerCase();
 		const capabilityKeywords = [
 			"what can you",
 			"what skills",

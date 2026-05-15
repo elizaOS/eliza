@@ -108,7 +108,7 @@ export class WhatsAppClient extends EventEmitter implements IWhatsAppClient {
       const response = await this.post<WhatsAppMessageResponse>(endpoint, payload);
       return {
         success: true,
-        messageId: response.data.messages?.[0]?.id,
+        messageId: response.data.messages[0]?.id,
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);

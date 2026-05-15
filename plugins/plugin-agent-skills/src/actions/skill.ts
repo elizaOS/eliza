@@ -122,7 +122,7 @@ function selectRoute(
 		const route = ROUTES.find((candidate) => candidate.op === requested);
 		if (route) return route;
 	}
-	const text = typeof message.content?.text === "string" ? message.content.text : "";
+	const text = typeof message.content.text === "string" ? message.content.text : "";
 	return ROUTES.find((route) => route.match.test(text)) ?? null;
 }
 
@@ -171,7 +171,7 @@ export const skillAction: Action = {
 		if (!route) {
 			const ops = ALL_OPS.join(", ");
 			const text = `SKILL could not determine the operation. Specify one of: ${ops}.`;
-			await callback?.({ text, source: message.content?.source });
+			await callback?.({ text, source: message.content.source });
 			return {
 				success: false,
 				text,

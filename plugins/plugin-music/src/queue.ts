@@ -793,7 +793,7 @@ export class MusicQueue extends EventEmitter {
         }
 
         // Wait for track to finish
-        if (this.currentPlaybackHandle?.finished) {
+        if (this.currentPlaybackHandle.finished) {
           await this.currentPlaybackHandle.finished;
         }
 

@@ -162,7 +162,7 @@ function applyAuthenticationBackfill(
   }
 
   const requiredAuth = authOpts[0];
-  const params = (node.parameters ?? {}) as Record<string, unknown>;
+  const params = (node.parameters) as Record<string, unknown>;
   if (typeof params.authentication === 'string' && params.authentication.length > 0) {
     return; // LLM already set it
   }
@@ -180,7 +180,7 @@ function applyAuthenticationBackfill(
 /** Build name → node map for upstream-graph walk. */
 function buildUpstreamMap(workflow: WorkflowDefinition): Map<string, string[]> {
   const upstream = new Map<string, string[]>();
-  for (const fromName of Object.keys(workflow.connections ?? {})) {
+  for (const fromName of Object.keys(workflow.connections)) {
     const outputs = workflow.connections[fromName];
     for (const outputType of Object.keys(outputs)) {
       const branches = outputs[outputType];
@@ -213,8 +213,8 @@ function knownOutputFieldsForNode(node: WorkflowNode): string[] | null {
 
   // 2. Static output-schema catalog (Gmail non-simple, Slack, Discord etc.)
   if (
-    typeof node.parameters?.resource === 'string' &&
-    typeof node.parameters?.operation === 'string'
+    typeof node.parameters.resource === 'string' &&
+    typeof node.parameters.operation === 'string'
   ) {
     const schema = loadOutputSchema(node.type, node.parameters.resource, node.parameters.operation);
     if (schema) {
@@ -399,7 +399,7 @@ function applyAggregationSourceFieldFix(
     } // unknowable schema → skip
 
     for (const entry of values) {
-      if (typeof entry?.field !== 'string' || entry.field.length === 0) {
+      if (typeof entry.field !== 'string' || entry.field.length === 0) {
         continue;
       }
       if (fields.includes(entry.field)) {
@@ -441,11 +441,11 @@ function applyRequiredParameterPreflight(
     if (!def) {
       continue;
     }
-    for (const prop of def.properties ?? []) {
+    for (const prop of def.properties) {
       if (!prop.required) {
         continue;
       }
-      const params = (node.parameters ?? {}) as Record<string, unknown>;
+      const params = (node.parameters) as Record<string, unknown>;
       if (params[prop.name] === undefined || params[prop.name] === '') {
         clarifications.push(
           `${node.name} (${node.type}) is missing required parameter "${prop.name}" ${CATALOG_CLARIFICATION_SUFFIX}`
@@ -488,7 +488,7 @@ function deduplicateNodeNames(workflow: WorkflowDefinition, repairs: Repair[]): 
       // Update connections referencing the old name? The original was first
       // — connections pointing at oldName still resolve to the original.
       // Rewrite outgoing connections key on duplicate node.
-      if (workflow.connections?.[oldName]) {
+      if (workflow.connections[oldName]) {
         // Outgoing connections for the duplicate: move under new name only
         // when the original doesn't already own them. Heuristic: if both
         // the dup and original happen to share outgoing edges, leave as-is
@@ -552,7 +552,7 @@ export function validateAndRepair(
   const repairs: Repair[] = [];
   const errors: ValidationError[] = [];
 
-  if (!workflow?.nodes || !Array.isArray(workflow.nodes)) {
+  if (!workflow.nodes || !Array.isArray(workflow.nodes)) {
     return { workflow, repairs, errors };
   }
 

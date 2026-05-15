@@ -752,7 +752,7 @@ function makeJobId(): string {
 function makeShortId(): string {
   // 12 base36 chars from crypto-quality randomness.
   const buf = new Uint8Array(8);
-  if (typeof globalThis.crypto?.getRandomValues === "function") {
+  if (typeof globalThis.crypto.getRandomValues === "function") {
     globalThis.crypto.getRandomValues(buf);
   } else {
     for (let i = 0; i < buf.length; i += 1)

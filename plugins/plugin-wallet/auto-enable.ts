@@ -60,7 +60,7 @@ export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
 
   if (env.ELIZA_AGENT_WALLET_AUTO_ENABLE === "0") return false;
 
-  const entries = (config?.plugins as Record<string, unknown> | undefined)
+  const entries = (config.plugins as Record<string, unknown> | undefined)
     ?.entries as Record<string, { enabled?: boolean } | undefined> | undefined;
   if (entries) {
     for (const id of ["wallet", "agent-wallet", "evm", "solana"] as const) {

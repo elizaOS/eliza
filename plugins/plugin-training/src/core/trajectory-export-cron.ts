@@ -118,7 +118,7 @@ export async function runNightlyTrajectoryExport(
   const limit = options.trajectoryLimit ?? DEFAULT_TRAJECTORY_LIMIT;
   const list = await trajectoryService.listTrajectories({ limit });
   const trajectories: ExportableTrajectory[] = [];
-  for (const item of list.trajectories ?? []) {
+  for (const item of list.trajectories) {
     const detail = await trajectoryService.getTrajectoryDetail(item.id);
     if (detail) trajectories.push(detail);
   }

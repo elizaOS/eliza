@@ -90,7 +90,7 @@ function authorize(
 
 function chainFromId(chainId: number): Chain {
   const all = Object.values(viemChains) as Chain[];
-  const hit = all.find((c) => typeof c?.id === "number" && c.id === chainId);
+  const hit = all.find((c) => typeof c.id === "number" && c.id === chainId);
   if (!hit) {
     throw new Error(`unsupported EVM chainId: ${chainId}`);
   }
@@ -103,7 +103,7 @@ function rpcUrlForChain(runtime: IAgentRuntime, chain: Chain): string {
     process.env[`EVM_RPC_URL_${chain.id}`] ??
     null;
   if (explicit && explicit.length > 0) return explicit;
-  const def = chain.rpcUrls?.default?.http?.[0];
+  const def = chain.rpcUrls.default.http[0];
   if (def) return def;
   throw new Error(`no RPC URL configured for chain ${chain.id} (${chain.name})`);
 }
