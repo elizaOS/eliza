@@ -152,6 +152,8 @@ export interface DflashServerPlan {
 	 */
 	ttsModelPath?: string;
 	ttsCodecPath?: string;
+	/** Absolute path to a multimodal projector GGUF passed to llama-server as --mmproj. */
+	mmprojPath?: string;
 }
 
 export type DflashKvOffloadMode = "cpu" | "gpu" | "split";
@@ -3070,6 +3072,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				params: catalog?.params,
 				ttsModelPath: ttsAssets?.modelPath,
 				ttsCodecPath: ttsAssets?.codecPath,
+				mmprojPath: overrides?.mmprojPath,
 			},
 			optimizations,
 		);
@@ -3136,6 +3139,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			this.child &&
 			this.loadedPlan?.targetModelPath === effectivePlan.targetModelPath &&
 			this.loadedPlan.drafterModelPath === effectivePlan.drafterModelPath &&
+			this.loadedPlan.mmprojPath === effectivePlan.mmprojPath &&
 			(this.loadedPlan.disableDrafter ?? false) ===
 				(effectivePlan.disableDrafter ?? false) &&
 			this.loadedPlan.parallelOverride === effectivePlan.parallelOverride
@@ -3178,7 +3182,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			drafterModelPath,
 			cacheTypeK: cacheTypeK ?? null,
 			cacheTypeV: cacheTypeV ?? null,
-			extra: `ctx=${effectivePlan.contextSize};parallel=${parallel};kv=${kvOffload ?? "default"};drafter=${drafterEnabled ? "on" : "off"}`,
+			extra: `ctx=${effectivePlan.contextSize};parallel=${parallel};kv=${kvOffload ?? "default"};drafter=${drafterEnabled ? "on" : "off"};mmproj=${effectivePlan.mmprojPath ?? "none"}`,
 		});
 		const slotDir = slotSavePath(modelHash);
 		// llama-server's slot API treats `filename` as a basename relative to
@@ -3277,6 +3281,9 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 
 		appendKvOffloadFlags(args, kvOffload);
 		appendOptimizationFlags(args, optimizations ?? null);
+		if (effectivePlan.mmprojPath && !process.env.ELIZA_LOCAL_MMPROJ?.trim()) {
+			args.push("--mmproj", effectivePlan.mmprojPath);
+		}
 		// CPU-offloaded KV spill for context > 64k. Forces `--no-kv-offload`
 		// (cold pages live in host RAM) + a `--cache-ram` hint sized to the
 		// resident pages — appended after the optimization flags so the spill
