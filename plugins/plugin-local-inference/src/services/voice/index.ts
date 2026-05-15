@@ -5,6 +5,11 @@ export {
 	type CancelSignal,
 } from "./barge-in";
 export {
+	type CoordinatorRuntime,
+	VoiceCancellationCoordinator,
+	type VoiceCancellationCoordinatorOptions,
+} from "./cancellation-coordinator";
+export {
 	type CheckpointHandle,
 	CheckpointHandleInvalidError,
 	CheckpointManager,

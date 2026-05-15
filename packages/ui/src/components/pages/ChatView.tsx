@@ -45,11 +45,7 @@ import {
   mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
-import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
-import {
-  ContinuousChatToggle,
-  ContinuousChatToggle,
-} from "../composites/chat/ContinuousChatToggle";
+import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import { ChatComposer } from "../composites/chat/chat-composer";
 import { ChatComposerShell } from "../composites/chat/chat-composer-shell";
@@ -309,15 +305,11 @@ export function ChatView({
   const {
     beginVoiceCapture,
     endVoiceCapture,
-    continuous,
-    continuousMode,
-    setContinuousMode,
     handleEditMessage,
     handleSpeakMessage,
     stopSpeaking,
     voice,
     voiceLatency,
-    voiceSpeaker,
   } = useChatVoiceController({
     agentVoiceMuted,
     chatFirstTokenReceived,
