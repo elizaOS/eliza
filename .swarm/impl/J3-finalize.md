@@ -38,17 +38,18 @@ This document records:
 | pyannote-3 diarizer | `speaker/diarizer.ts` → `onnxruntime-node` | ONNX (active) | No ggml scaffold exists yet | J1: new `voice_diarizer_*.c` TU; SincNet+Transformer |
 | LiveKit turn-detector (text-side ONNX) | `eot-classifier.ts::LiveKitTurnDetector` → `onnxruntime-node` | ONNX (last-resort fallback only) | `Eliza1EotClassifier` preferred (fork text model); `LiveKitGgmlTurnDetector` (J1.d) preferred over ONNX when GGUF on disk | Remove once GGUF is verified on all bundles |
 | LiveKit turn-detector (GGUF — J1.d) | `eot-classifier-ggml.ts::LiveKitGgmlTurnDetector` → `node-llama-cpp` (fork) | **DONE** (J1.d, already committed) | GGUF must be staged on disk | Shipped; wired in engine.ts chain |
-| Kokoro TTS | `kokoro/kokoro-runtime.ts` → `onnxruntime-node` | ONNX (active) | `LLM_ARCH_KOKORO` enum + stub loader in fork (W3-1); StyleTTS-2 graph NOT implemented | J2: `llama_model_kokoro::build_graph` + decoder dispatch in `llama-server` |
+| Kokoro TTS (ONNX) | `kokoro/kokoro-runtime.ts` → `onnxruntime-node` | ONNX (active — pending GGUF on disk) | J2 C++ port committed (97b258922 in fork); GGUF conversion + HF publish + TS wiring pending | K2 wave: `convert_kokoro_to_gguf.py` + Q4_K_M GGUF on HF + update voice-models.ts + wire TS GGUF path |
+| Kokoro TTS (fork — J2) | fork `tools/kokoro/` + `LLAMA_BUILD_KOKORO=ON` | **PARTIAL** (J2, fork commit 97b258922) | C++ graph functional (StyleTTS-2+iSTFT); ASCII-only phonemes; GGUF conversion not yet done; TS runtime not switched | GGUF needed before TS can switch; quality: below ONNX parity (phoneme coverage) |
 | OmniVoice TTS | fork FFI `libelizainference` | **DONE** (W3-3) | — | Shipped |
 | Silero VAD | fork FFI `eliza_inference_vad_*` | **DONE** (I1 audit) | — | Shipped |
 | hey-eliza wakeword | fork FFI `eliza_inference_wakeword_*` | **DONE** (I1 audit) | — | Shipped |
 | ASR (Qwen3-ASR) | fork FFI `eliza_pick_asr_files()` | **DONE** (T-asr) | — | Shipped; Qwen3-ASR via fused `libelizainference` |
 | DFlash speculative decoding | fork `llama-server` (`--spec-type dflash`) | **DONE** | — | Shipped |
 
-**Summary:** 6 of 11 paths on the fork (including J1.d GGUF turn-detector). 4 ONNX
-paths remain active (Wav2Small, WeSpeaker, pyannote-3, Kokoro). 1 ONNX path is
-last-resort fallback (LiveKit turn-detector ONNX — overridden by Eliza1Eot when text
-model loaded, and by GgmlTurnDetector when GGUF is staged on disk).
+**Summary:** 7 of 12 paths on fork (J1.d GGUF turn-detector + J2 Kokoro C++ port). ONNX
+remains the active resolved path for: Wav2Small, WeSpeaker, pyannote-3 (C stubs -ENOSYS),
+Kokoro (C++ done but no GGUF on HF + TS not switched). 1 ONNX path is last-resort fallback
+(LiveKit turn-detector ONNX — chain: Eliza1Eot → GgmlTurnDetector → ONNX → Heuristic).
 
 ---
 

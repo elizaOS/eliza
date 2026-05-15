@@ -467,6 +467,12 @@ struct silero_vad_session {
 
     /* Per-session LSTM state. */
     silero_vad_state_t state;
+
+    /* Per-session 64-sample context — the last `VAD_CONTEXT_SAMPLES`
+     * of the previous window. Prepended to each new window before
+     * STFT; cleared by `silero_vad_reset_state`. Mirrors the upstream
+     * `OnnxWrapper._context` buffer (`silero_vad/utils_vad.py`). */
+    float context[VAD_CONTEXT_SAMPLES];
 };
 
 static void session_free(struct silero_vad_session *s) {
@@ -585,17 +591,34 @@ static void lstm_step_ref(
     }
 }
 
-/* Reflection-pad a 1-D float buffer by `pad` on each side.
- * Reflection here is "Pytorch's reflect" — the boundary sample is
- * NOT repeated. For input [a, b, c, d] and pad=2 the result is
- * [c, b, a, b, c, d, c, b]. */
-static void reflect_pad_1d(const float *src, int n_in, int pad, float *dst) {
-    /* Left pad: src[pad], src[pad-1], ..., src[1] */
-    for (int i = 0; i < pad; ++i) dst[i] = src[pad - i];
-    /* Body */
-    memcpy(dst + pad, src, (size_t)n_in * sizeof(float));
-    /* Right pad: src[n_in-2], src[n_in-3], ..., src[n_in-1-pad] */
-    for (int i = 0; i < pad; ++i) dst[pad + n_in + i] = src[n_in - 2 - i];
+/* Build the model's 640-sample input from:
+ *   - `ctx`     : the last 64 samples of the previous window
+ *                 (zeros at session boundaries).
+ *   - `window`  : the current 512 samples.
+ *   - reflect-pad-right(64) on the combined (ctx + window) buffer.
+ *
+ * Layout matches what upstream's `OnnxWrapper.__call__` constructs
+ * via `torch.cat([context, x], dim=1)` followed by the model's
+ * internal `Pad(mode="reflect", pads=[0, 64])`. The PyTorch /
+ * ONNX "reflect" convention does NOT repeat the boundary sample:
+ * for input `[..., a, b, c]` and right-pad 2 the appended values
+ * are `[b, a]`. */
+static void build_padded_input(
+    const float *ctx,           /* len VAD_CONTEXT_SAMPLES (64) */
+    const float *window,        /* len SILERO_VAD_WINDOW_SAMPLES_16K (512) */
+    float *dst                  /* len VAD_INPUT_PADDED_LEN (640) */
+) {
+    /* Prepend context. */
+    memcpy(dst, ctx, sizeof(float) * VAD_CONTEXT_SAMPLES);
+    /* Append window. */
+    memcpy(dst + VAD_CONTEXT_SAMPLES, window,
+           sizeof(float) * SILERO_VAD_WINDOW_SAMPLES_16K);
+    /* Right-pad with reflection of the last 64 source samples
+     * (mirror without repeating the boundary). */
+    const int unpadded_n = VAD_CONTEXT_SAMPLES + SILERO_VAD_WINDOW_SAMPLES_16K;
+    for (int i = 0; i < 64; ++i) {
+        dst[unpadded_n + i] = dst[unpadded_n - 2 - i];
+    }
 }
 
 /* ── Forward pass ─────────────────────────────────────────────────── */
@@ -606,11 +629,17 @@ static int forward_window(
     float *speech_prob_out) {
     int rc = 0;
 
-    /* 1. Reflection-pad 512 → 576. */
-    const int padded_n = SILERO_VAD_WINDOW_SAMPLES_16K + 2 * VAD_STFT_PAD;
+    /* 1. Build the 640-sample STFT input: context (64) + window (512) +
+     *    reflect-right (64). The context carries the last 64 samples
+     *    of the previous call (or zeros on a fresh session / post-reset). */
+    const int padded_n = VAD_INPUT_PADDED_LEN;
     float *padded = (float *)malloc(sizeof(float) * (size_t)padded_n);
     if (padded == NULL) { rc = -ENOMEM; goto done; }
-    reflect_pad_1d(pcm, SILERO_VAD_WINDOW_SAMPLES_16K, VAD_STFT_PAD, padded);
+    build_padded_input(s->context, pcm, padded);
+    /* Promote: this call's last 64 samples become next call's context. */
+    memcpy(s->context,
+           pcm + SILERO_VAD_WINDOW_SAMPLES_16K - VAD_CONTEXT_SAMPLES,
+           sizeof(float) * VAD_CONTEXT_SAMPLES);
 
     /* 2. STFT Conv: 1→258, k=256, stride=128. Input shape (1, 640).
      *    Output shape (258, 4). */
@@ -814,6 +843,7 @@ int silero_vad_open(const char *gguf_path, silero_vad_handle *out) {
     }
 
     silero_vad_state_reset(&s->state);
+    memset(s->context, 0, sizeof(s->context));
 
     vad_gguf_close(g);  /* weights are copied out as fp32; we no longer need the mmap. */
 
@@ -824,6 +854,7 @@ int silero_vad_open(const char *gguf_path, silero_vad_handle *out) {
 int silero_vad_reset_state(silero_vad_handle h) {
     if (h == NULL) return -EINVAL;
     silero_vad_state_reset(&h->state);
+    memset(h->context, 0, sizeof(h->context));
     return 0;
 }
 

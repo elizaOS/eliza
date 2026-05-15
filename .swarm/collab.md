@@ -2,21 +2,22 @@
 
 ## J3 — Single-runtime finalizer phase=impl-done
 
-2026-05-15 J3 phase=impl-done (partial — compute-gated on remaining ONNX ports).
-- J1.d (GGUF turn-detector) already committed at HEAD: `eot-classifier-ggml.ts`
-  implements `LiveKitGgmlTurnDetector` via `node-llama-cpp` (fork). `engine.ts`
-  wires it into the EOT chain ahead of legacy ONNX. Production chain:
-  Eliza1Eot → GgmlTurnDetector → LiveKitTurnDetector (ONNX, last resort) → Heuristic.
-- 4 ONNX-active paths remain: Wav2Small, WeSpeaker, pyannote-3 (voice-classifier-cpp
-  stubs return -ENOSYS), Kokoro (LLM_ARCH_KOKORO stub, StyleTTS-2 graph not implemented).
-- AGENTS.md updated: `plugins/plugin-local-inference/native/AGENTS.md` §11 +
+2026-05-15 J3 phase=impl-done (partial — 3 ONNX paths remain compute-gated; Kokoro C++ done).
+- J1.d (GGUF turn-detector): `eot-classifier-ggml.ts` LiveKitGgmlTurnDetector committed.
+  Production EOT chain: Eliza1Eot → GgmlTurnDetector → ONNX (last resort) → Heuristic.
+- J2 (Kokoro C++ port): committed to fork at `97b258922`; submodule bumped.
+  tools/kokoro/ subtree: 974 lines (kokoro.cpp + istft + phonemes + server-mount).
+  LLAMA_BUILD_KOKORO=ON builds kokoro_lib + /v1/audio/speech handler. Default OFF.
+  GGUF conversion + HF publish + TS runtime wiring pending (K2 wave).
+- 3 ONNX-active paths remain: Wav2Small, WeSpeaker, pyannote-3 (C stubs -ENOSYS).
+- Kokoro ONNX remains active (C++ done; no GGUF on HF; TS not switched yet).
+- AGENTS.md: `plugins/plugin-local-inference/native/AGENTS.md` §11 +
   `packages/native-plugins/voice-classifier-cpp/AGENTS.md` header.
-- State matrix committed to `.swarm/impl/J3-finalize.md`.
-- No-ONNX lsof proof deferred: 4 ONNX-active models still load libonnxruntime.so.
-- Submodule pin current at `5da0f068a` — no bump needed this wave.
-- Next: J1 must port Wav2Small + WeSpeaker + pyannote voice-classifier-cpp heads;
-  J2 must implement `llama_model_kokoro::build_graph`. When both post impl-done,
-  re-open J3 to complete ONNX removal from package.json, lsof proof, dep cleanup.
+- Submodule pin bumped to `97b258922` (Kokoro C++ port commit).
+- No-ONNX lsof proof deferred: Wav2Small+WeSpeaker+pyannote+Kokoro still ONNX-active.
+- Next wave (K2): (a) produce convert_kokoro_to_gguf.py + Q4_K_M on HF + TS GGUF wiring;
+  (b) J1 ports: Wav2Small+WeSpeaker ggml graph + pyannote diarizer.
+  When all done: remove onnxruntime-node from package.json, lsof proof, dep cleanup.
 - Report: `.swarm/impl/J3-finalize.md`
 
 ## W3-5 — Emotion roundtrip validation phase=impl-done
