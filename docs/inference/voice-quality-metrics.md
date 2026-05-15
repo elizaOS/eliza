@@ -50,7 +50,7 @@ artifacts.
 
 **Gate.** `utmos_min ≥ 3.8` for production publishes
 (`packages/training/scripts/kokoro/configs/base.yaml:61` and the
-samantha config at line 51). The same threshold is reused across all
+sam config at line 51). The same threshold is reused across all
 Kokoro voice variants.
 
 **Model dependency.** Two paths are tried in order:
@@ -127,8 +127,8 @@ Different speakers: typically below 0.3.
 
 **Gate.** `speaker_similarity_min ≥ 0.65` for production publishes
 (`packages/training/scripts/kokoro/configs/base.yaml:63`). Small-corpus
-voice clones (the samantha config) relax this to `0.55`
-(`packages/training/scripts/kokoro/configs/kokoro_samantha.yaml:53`)
+voice clones (the sam config) relax this to `0.55`
+(`packages/training/scripts/kokoro/configs/kokoro_sam.yaml:53`)
 because the held-out val set is only ~5 clips and ECAPA cosine
 variance is high at that sample size — see I7-kokoro §3.
 

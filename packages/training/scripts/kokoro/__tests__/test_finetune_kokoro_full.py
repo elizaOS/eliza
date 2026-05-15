@@ -9,7 +9,7 @@ Three test suites:
 2. Eval gate decision logic — _decide_continue + _update_top_k. Mocks the
    eval-history input and asserts pass/fail aligns with the spec thresholds.
 
-3. CLI surface — argparse + config loading via load_config('kokoro_samantha_full.yaml').
+3. CLI surface — argparse + config loading via load_config('kokoro_sam_full.yaml').
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ def test_synthetic_smoke_writes_manifest_and_checkpoints(tmp_path: Path) -> None
             "--run-dir",
             str(run_dir),
             "--config",
-            "kokoro_samantha_full.yaml",
+            "kokoro_sam_full.yaml",
             "--synthetic-smoke",
         ]
     )
@@ -51,9 +51,9 @@ def test_synthetic_smoke_writes_manifest_and_checkpoints(tmp_path: Path) -> None
     assert manifest["synthetic"] is True
     assert manifest["mode"] == "full"
     assert manifest["baseModel"] == "hexgrad/Kokoro-82M"
-    assert manifest["voiceName"] == "af_samantha"
+    assert manifest["voiceName"] == "af_sam"
 
-    # Hyperparameter block reflects the N2 defaults from kokoro_samantha_full.yaml.
+    # Hyperparameter block reflects the N2 defaults from kokoro_sam_full.yaml.
     hp = manifest["hyperparameters"]
     assert hp["optimizer"] in ("apollo", "apollo_mini")
     assert hp["learningRate"] == pytest.approx(5e-5)
@@ -89,7 +89,7 @@ def test_synthetic_smoke_creates_processed_lists_when_missing(tmp_path: Path) ->
             "--run-dir",
             str(run_dir),
             "--config",
-            "kokoro_samantha_full.yaml",
+            "kokoro_sam_full.yaml",
             "--synthetic-smoke",
         ]
     )
@@ -217,11 +217,11 @@ class TestUpdateTopK:
 # ---------------------------------------------------------------------------
 
 
-def test_cli_default_config_is_samantha_full() -> None:
+def test_cli_default_config_is_sam_full() -> None:
     parser = finetune_kokoro_full.build_parser()
     # parse a minimal argv that doesn't error.
     ns = parser.parse_args(["--run-dir", "/tmp/x"])
-    assert ns.config == "kokoro_samantha_full.yaml"
+    assert ns.config == "kokoro_sam_full.yaml"
     assert ns.init_from_voice == "af_bella"
     assert ns.synthetic_smoke is False
 
@@ -230,7 +230,7 @@ def test_config_has_full_mode_and_correct_thresholds() -> None:
     """The shipped config must declare mode=full + relaxed SpkSim gate."""
     from _config import load_config  # type: ignore  # noqa: PLC0415
 
-    cfg = load_config("kokoro_samantha_full.yaml")
+    cfg = load_config("kokoro_sam_full.yaml")
     assert cfg["mode"] == "full"
     assert cfg["max_steps"] == 1500
     assert cfg["learning_rate"] == pytest.approx(5e-5)
@@ -254,7 +254,7 @@ def test_manifest_kind_matches_lora_path(tmp_path: Path) -> None:
     (package_voice_for_release.py, push_voice_to_hf.py) don't have to branch."""
     run_dir = tmp_path / "shape"
     rc = finetune_kokoro_full.main(
-        ["--run-dir", str(run_dir), "--config", "kokoro_samantha_full.yaml", "--synthetic-smoke"]
+        ["--run-dir", str(run_dir), "--config", "kokoro_sam_full.yaml", "--synthetic-smoke"]
     )
     assert rc == 0
     manifest = json.loads((run_dir / "checkpoints" / "train_manifest.json").read_text())

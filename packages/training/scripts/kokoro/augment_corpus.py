@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Acoustic augmentation of the samantha corpus.
+"""Acoustic augmentation of the sam corpus.
 
 Expands 3.5 min → ~15-20 min via:
   - Time-stretch ×0.9 and ×1.1 (2× clips, same content, different speed)
@@ -247,8 +247,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--corpus-dir",
         type=Path,
-        default=Path("packages/training/data/voice/samantha"),
-        help="Path to samantha corpus dir with manifest.jsonl + audio/.",
+        default=Path("packages/training/data/voice/sam"),
+        help="Path to sam corpus dir with manifest.jsonl + audio/.",
     )
     p.add_argument(
         "--out-dir",

@@ -38,14 +38,14 @@ the optimizer a sane prior and converges faster.
 
 Usage:
 
-    # Voice-clone path (mel-fit) — what Voice Wave 2 / I7 uses for samantha:
+    # Voice-clone path (mel-fit) — what Voice Wave 2 / I7 uses for sam:
     python3 scripts/kokoro/extract_voice_embedding.py \\
-        --clips-dir packages/training/data/voice/samantha/audio \\
-        --transcripts-dir /tmp/ai_voices/samantha \\
+        --clips-dir packages/training/data/voice/sam/audio \\
+        --transcripts-dir /tmp/ai_voices/sam \\
         --base-model hexgrad/Kokoro-82M \\
         --init-from-voice af_bella \\
         --steps 200 \\
-        --out /tmp/af_samantha.bin
+        --out /tmp/af_sam.bin
 
     # CI smoke (no torch, no model): emits a zero-vector voice.bin so the
     # downstream tools can validate format without a GPU.

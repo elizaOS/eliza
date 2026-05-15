@@ -18,7 +18,7 @@ module is one of the consumers of that doc.
    punctuation), Levenshtein WER against the reference.
 
 3. **Speaker similarity** ∈ [-1, 1], gate ≥ 0.65 (relaxed 0.55 for
-   small corpora — see `kokoro_samantha.yaml`). ECAPA-TDNN cosine
+   small corpora — see `kokoro_sam.yaml`). ECAPA-TDNN cosine
    between synth + reference, both resampled to 16 kHz (the rate
    speechbrain/spkrec-ecapa-voxceleb was trained on).
 

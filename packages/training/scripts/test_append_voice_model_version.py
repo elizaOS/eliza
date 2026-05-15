@@ -28,7 +28,7 @@ VOICE_MODELS_TS_TEMPLATE = dedent(
         id: "kokoro",
         version: "0.1.0",
         publishedToHfAt: "2026-05-14T00:00:00Z",
-        hfRepo: "elizaOS/eliza-1-voice-kokoro-samantha",
+        hfRepo: "elizaOS/eliza-1-voice-kokoro-sam",
         hfRevision: "main",
         ggufAssets: [],
         evalDeltas: { netImprovement: true },
@@ -90,7 +90,7 @@ def test_invalid_semver_rejected(tmp_path: Path) -> None:
     res = _run(
         "--id", "kokoro",
         "--version", "bogus",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-samantha",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
         "--hf-revision", "main",
         "--min-bundle", "0.0.0",
         "--changelog-entry", "hi",
@@ -104,7 +104,7 @@ def test_bad_asset_rejected(tmp_path: Path) -> None:
     res = _run(
         "--id", "kokoro",
         "--version", "0.2.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-samantha",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
         "--hf-revision", "main",
         "--asset", "kokoro.onnx:not-a-sha:1024:onnx-fp16",
         "--min-bundle", "0.0.0",
@@ -120,7 +120,7 @@ def test_writes_new_version_block(tmp_path: Path) -> None:
         "--id", "kokoro",
         "--version", "0.2.0",
         "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-samantha",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
         "--hf-revision", "abc123def456abc123def456abc123def456abcd",
         "--asset",
         "kokoro.onnx:"
@@ -130,7 +130,7 @@ def test_writes_new_version_block(tmp_path: Path) -> None:
         "--net-improvement", "true",
         "--rtf-delta", "-0.05",
         "--mos-delta", "0.12",
-        "--changelog-entry", "samantha clone v2 (lower RTF, higher MOS).",
+        "--changelog-entry", "sam clone v2 (lower RTF, higher MOS).",
         "--voice-models-ts", str(ts_path),
     )
     assert res.returncode == 0, res.stderr
@@ -155,7 +155,7 @@ def test_idempotent_rerun(tmp_path: Path) -> None:
         "--id", "kokoro",
         "--version", "0.2.0",
         "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-samantha",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
         "--hf-revision", "main",
         "--asset",
         "kokoro.onnx:"
@@ -163,7 +163,7 @@ def test_idempotent_rerun(tmp_path: Path) -> None:
         + ":2048:onnx-fp16",
         "--min-bundle", "0.1.0",
         "--net-improvement", "true",
-        "--changelog-entry", "samantha v2.",
+        "--changelog-entry", "sam v2.",
         "--voice-models-ts", str(ts_path),
     ]
     res1 = _run(*common)
@@ -184,7 +184,7 @@ def test_append_changelog_inserts_h3(tmp_path: Path) -> None:
         "--id", "kokoro",
         "--version", "0.2.0",
         "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-samantha",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
         "--hf-revision", "abc",
         "--asset",
         "kokoro.onnx:"
@@ -192,7 +192,7 @@ def test_append_changelog_inserts_h3(tmp_path: Path) -> None:
         + ":1024:onnx-fp16",
         "--min-bundle", "0.1.0",
         "--net-improvement", "true",
-        "--changelog-entry", "samantha v2 with lower RTF.",
+        "--changelog-entry", "sam v2 with lower RTF.",
         "--voice-models-ts", str(ts_path),
         "--changelog-md", str(md_path),
         "--append-changelog",
@@ -200,7 +200,7 @@ def test_append_changelog_inserts_h3(tmp_path: Path) -> None:
     assert res.returncode == 0, res.stderr
     md_contents = md_path.read_text(encoding="utf-8")
     assert "### 0.2.0 — " in md_contents
-    assert "samantha v2 with lower RTF." in md_contents
+    assert "sam v2 with lower RTF." in md_contents
     # H2 ordering preserved.
     assert md_contents.index("## kokoro") < md_contents.index("### 0.2.0")
     # Reverse chrono: new H3 above the old one.
@@ -215,7 +215,7 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
         "--id", "kokoro",
         "--version", "0.2.0",
         "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-samantha",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
         "--hf-revision", "main",
         "--asset",
         "kokoro.onnx:"
@@ -223,7 +223,7 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
         + ":1024:onnx-fp16",
         "--min-bundle", "0.1.0",
         "--net-improvement", "true",
-        "--changelog-entry", "samantha v2.",
+        "--changelog-entry", "sam v2.",
         "--voice-models-ts", str(ts_path),
         "--changelog-md", str(md_path),
         "--append-changelog",
@@ -240,10 +240,10 @@ def test_successor_requires_net_improvement(tmp_path: Path) -> None:
         "--id", "kokoro",
         "--version", "0.2.0",
         "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-samantha",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
         "--hf-revision", "main",
         "--min-bundle", "0.1.0",
-        "--changelog-entry", "samantha v2.",
+        "--changelog-entry", "sam v2.",
         "--voice-models-ts", str(ts_path),
     )
     assert res.returncode == 2

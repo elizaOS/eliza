@@ -1,25 +1,25 @@
-# OmniVoice fine-tune (Path B) on the `samantha` voice.
+# OmniVoice fine-tune (Path B) on the `sam` voice.
 #
 # Status (Wave 3, W3-11):
-#   Path A (preset-based freeze, I6) is SHIPPED and is the default samantha path.
+#   Path A (preset-based freeze, I6) is SHIPPED and is the default sam path.
 #   Path B (LM weight fine-tune) requires GGUF→HF conversion tooling not yet
 #   available. This config documents the target hyperparameters for when
 #   that tooling ships.
 #
-# The shipped samantha OmniVoice path is the ELZ2 v2 preset from I6:
+# The shipped sam OmniVoice path is the ELZ2 v2 preset from I6:
 #   packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs
-#   --voice samantha --corpus packages/training/data/voice/samantha/
+#   --voice sam --corpus packages/training/data/voice/sam/
 #
 # See .swarm/impl/W3-11-finetune.md §2 for the Path B gap analysis.
 
 extends: base.yaml
 
-voice_name: samantha
-voice_display_name: Samantha OmniVoice (AI Voices, US English)
+voice_name: sam
+voice_display_name: Sam OmniVoice (AI Voices, US English)
 
 # Data paths (override via CLI for portability).
-dataset_path: packages/training/data/voice/samantha
-run_dir: /tmp/omnivoice-runs/samantha
+dataset_path: packages/training/data/voice/sam
+run_dir: /tmp/omnivoice-runs/sam
 
 # Corpus-tuned: 58 clips / 3.5 min.
 max_steps: 500             # cap tight; scale up if Path B tooling lands

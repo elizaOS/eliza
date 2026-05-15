@@ -1,8 +1,8 @@
-"""Tests for the samantha voice corpus manifest builder.
+"""Tests for the sam voice corpus manifest builder.
 
 These tests avoid all heavy deps (ffmpeg, openai-whisper, librosa) and
-materialize a synthetic samantha-shaped corpus on disk via the stdlib
-`wave` module. They exercise `build_samantha_manifest.main` end-to-end
+materialize a synthetic sam-shaped corpus on disk via the stdlib
+`wave` module. They exercise `bsm.main` end-to-end
 with `--no-retranscribe --no-normalize --dry-run`, which is the same
 code path CI takes.
 """
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.voice import build_samantha_manifest as bsm
+from scripts.voice import build_sam_manifest as bsm
 
 
 def _silence_wav(path: Path, duration_s: float = 2.0, sample_rate: int = 44100) -> None:
@@ -29,27 +29,27 @@ def _silence_wav(path: Path, duration_s: float = 2.0, sample_rate: int = 44100) 
         wf.writeframes(b"\x00\x00" * n_frames)
 
 
-def _materialize_samantha(
+def _materialize_sam(
     root: Path,
     *,
     count: int = bsm.EXPECTED_CLIP_COUNT,
     hallucinated_002: bool = True,
 ) -> Path:
-    """Build a fake samantha/ dir + a parent git repo so commit-sha resolves."""
+    """Build a fake sam/ dir + a parent git repo so commit-sha resolves."""
     root.mkdir(parents=True, exist_ok=True)
-    samantha = root / "samantha"
-    samantha.mkdir(parents=True, exist_ok=True)
+    sam = root / "sam"
+    sam.mkdir(parents=True, exist_ok=True)
     # Materialize `count` clip pairs. ~3.5 s each → ~58*3.5 = 203 s,
     # inside the [180, 240] s acceptance window.
     for i in range(1, count + 1):
         stem = f"samantha_{i:03d}"
-        _silence_wav(samantha / f"{stem}.wav", duration_s=3.5)
+        _silence_wav(sam / f"{stem}.wav", duration_s=3.5)
         # Make samantha_002 the canonical "641." Whisper-base hallucination.
         if i == 2 and hallucinated_002:
             text = bsm.HALLUCINATED_TRANSCRIPT
         else:
             text = f"transcript for {stem}."
-        (samantha / f"{stem}.txt").write_text(text, encoding="utf-8")
+        (sam / f"{stem}.txt").write_text(text, encoding="utf-8")
     # Wrap in a git repo so _git_commit_sha can resolve.
     subprocess.run(
         ["git", "init", "-q", "-b", "main", str(root)],
@@ -68,11 +68,11 @@ def _materialize_samantha(
         ["git", "-C", str(root), "commit", "-q", "-m", "test fixture"],
         check=True,
     )
-    return samantha
+    return sam
 
 
 def test_collect_clips_validates_count_and_shape(tmp_path: Path) -> None:
-    src = _materialize_samantha(tmp_path / "ai_voices")
+    src = _materialize_sam(tmp_path / "ai_voices")
     clips = bsm.collect_clips(src)
     assert len(clips) == bsm.EXPECTED_CLIP_COUNT
     for c in clips:
@@ -82,13 +82,13 @@ def test_collect_clips_validates_count_and_shape(tmp_path: Path) -> None:
 
 
 def test_collect_clips_rejects_wrong_count(tmp_path: Path) -> None:
-    src = _materialize_samantha(tmp_path / "ai_voices", count=10)
+    src = _materialize_sam(tmp_path / "ai_voices", count=10)
     with pytest.raises(ValueError, match="expected 58 wavs"):
         bsm.collect_clips(src)
 
 
 def test_dry_run_emits_manifest_and_excludes_hallucination(tmp_path: Path) -> None:
-    src = _materialize_samantha(tmp_path / "ai_voices")
+    src = _materialize_sam(tmp_path / "ai_voices")
     dst = tmp_path / "landing"
     rc = bsm.main(
         [
@@ -130,7 +130,7 @@ def test_dry_run_emits_manifest_and_excludes_hallucination(tmp_path: Path) -> No
     for r in records:
         missing = required_fields - r.keys()
         assert not missing, f"manifest record missing fields: {missing}"
-        assert r["subset"] == "samantha"
+        assert r["subset"] == "sam"
         assert r["source"].startswith("github.com/lalalune/ai_voices@")
 
     # samantha_002 must be excluded because the upstream transcript is the
@@ -147,7 +147,7 @@ def test_dry_run_emits_manifest_and_excludes_hallucination(tmp_path: Path) -> No
     # source.json schema.
     source = json.loads(source_path.read_text())
     assert source["url"] == bsm.UPSTREAM_URL
-    assert source["subset"] == "samantha"
+    assert source["subset"] == "sam"
     assert source["clipCount"] == bsm.EXPECTED_CLIP_COUNT
     assert "samantha_002" in source["excludedIds"]
     assert source["normalizedSampleRate"] == bsm.NORMALIZED_SAMPLE_RATE
@@ -159,7 +159,7 @@ def test_dry_run_emits_manifest_and_excludes_hallucination(tmp_path: Path) -> No
 
 def test_no_hallucination_then_no_exclusion(tmp_path: Path) -> None:
     """When upstream transcripts are clean, no clip is excluded."""
-    src = _materialize_samantha(tmp_path / "ai_voices", hallucinated_002=False)
+    src = _materialize_sam(tmp_path / "ai_voices", hallucinated_002=False)
     dst = tmp_path / "landing"
     rc = bsm.main(
         [
@@ -194,7 +194,7 @@ def test_gitignore_carve_out_tracks_manifest_but_ignores_audio(tmp_path: Path) -
         / "training"
         / "data"
         / "voice"
-        / "samantha"
+        / "sam"
     )
     # Tracked artifacts must NOT be ignored. `git check-ignore --no-index`
     # exits 1 when the path is NOT ignored.

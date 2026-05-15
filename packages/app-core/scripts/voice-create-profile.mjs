@@ -12,15 +12,15 @@
  *
  * Usage:
  *   bun packages/app-core/scripts/voice-create-profile.mjs \
- *     --from packages/training/data/voice/samantha/audio/ \
- *     --name samantha \
- *     --display-name "Samantha" \
+ *     --from packages/training/data/voice/sam/audio/ \
+ *     --name sam \
+ *     --display-name "Sam" \
  *     --instruct "young adult female, warm, soft, neutral us-american"
  *
  * Flags:
  *   --from <dir>           Corpus directory (audio/*.wav + transcripts or
  *                          manifest.jsonl). Required.
- *   --name <id>            Profile id (path-safe, e.g. "samantha"). Required.
+ *   --name <id>            Profile id (path-safe, e.g. "sam"). Required.
  *   --display-name <str>   Human-readable display name.
  *   --instruct <str>       VoiceDesign instruct string.
  *   --bundle <dir>         Bundle root for preset output. Default: auto.
@@ -176,7 +176,7 @@ async function readCatalog(voiceModelsDir) {
   if (!existsSync(p)) {
     return {
       version: CATALOG_VERSION,
-      defaultProfileId: "samantha",
+      defaultProfileId: "sam",
       profiles: [],
     };
   }
@@ -184,12 +184,12 @@ async function readCatalog(voiceModelsDir) {
     const raw = await fsp.readFile(p, "utf8");
     const parsed = JSON.parse(raw);
     if (!parsed.profiles) parsed.profiles = [];
-    if (!parsed.defaultProfileId) parsed.defaultProfileId = "samantha";
+    if (!parsed.defaultProfileId) parsed.defaultProfileId = "sam";
     return parsed;
   } catch {
     return {
       version: CATALOG_VERSION,
-      defaultProfileId: "samantha",
+      defaultProfileId: "sam",
       profiles: [],
     };
   }

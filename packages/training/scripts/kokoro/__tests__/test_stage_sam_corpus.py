@@ -1,7 +1,7 @@
-"""Drive `stage_samantha_corpus.py` against a synthetic 3-clip fixture.
+"""Drive `stage_sam_corpus.py` against a synthetic 3-clip fixture.
 
 The real upstream corpus is 58 clips of human speech we do not redistribute,
-so this test materializes a synthetic samantha-like corpus on disk and runs
+so this test materializes a synthetic sam-like corpus on disk and runs
 the adapter end-to-end.
 """
 
@@ -12,7 +12,7 @@ import json
 import wave
 from pathlib import Path
 
-import stage_samantha_corpus  # type: ignore  # noqa: E402
+import stage_sam_corpus  # type: ignore  # noqa: E402
 
 
 def _write_silent_wav(path: Path, *, sample_rate: int = 44100, duration_s: float = 0.5) -> None:
@@ -26,8 +26,8 @@ def _write_silent_wav(path: Path, *, sample_rate: int = 44100, duration_s: float
 
 
 def _make_upstream(tmp_path: Path) -> Path:
-    """Materialize a /tmp/ai_voices/samantha-like fixture under tmp_path."""
-    src = tmp_path / "upstream-samantha"
+    """Materialize a /tmp/ai_voices/sam-like fixture under tmp_path."""
+    src = tmp_path / "upstream-sam"
     src.mkdir(parents=True, exist_ok=True)
     transcripts = {
         "samantha_001": "Yeah, I have been trying to figure out how to talk to you.",
@@ -42,7 +42,7 @@ def _make_upstream(tmp_path: Path) -> Path:
 
 def test_synthetic_smoke_writes_full_schema(tmp_path: Path) -> None:
     out = tmp_path / "out"
-    rc = stage_samantha_corpus.main(["--synthetic-smoke", "--out", str(out)])
+    rc = stage_sam_corpus.main(["--synthetic-smoke", "--out", str(out)])
     assert rc == 0
 
     metadata = out / "metadata.csv"
@@ -62,7 +62,7 @@ def test_synthetic_smoke_writes_full_schema(tmp_path: Path) -> None:
 
     # source.json schema.
     src_data = json.loads(source.read_text())
-    assert src_data["kind"] == "samantha-corpus-source"
+    assert src_data["kind"] == "sam-corpus-source"
     assert src_data["schemaVersion"] == 1
     assert src_data["clipCount"] == 3
     assert src_data["synthetic"] is True
@@ -76,7 +76,7 @@ def test_synthetic_smoke_writes_full_schema(tmp_path: Path) -> None:
 def test_real_path_handles_suspicious_transcript(tmp_path: Path) -> None:
     src = _make_upstream(tmp_path)
     out = tmp_path / "out"
-    rc = stage_samantha_corpus.main(
+    rc = stage_sam_corpus.main(
         [
             "--source",
             str(src),
@@ -129,7 +129,7 @@ def test_rejects_pipe_in_transcript(tmp_path: Path) -> None:
     (src / "samantha_001.txt").write_text("hello | world\n", encoding="utf-8")
 
     try:
-        rc = stage_samantha_corpus.main(
+        rc = stage_sam_corpus.main(
             ["--source", str(src), "--out", str(tmp_path / "out")]
         )
     except ValueError as exc:

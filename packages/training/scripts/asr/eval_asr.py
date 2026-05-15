@@ -22,16 +22,16 @@ Usage
 
     # Smoke (CI):
     python3 eval_asr.py \\
-        --run-dir /tmp/asr-runs/samantha \\
-        --config asr_samantha.yaml \\
+        --run-dir /tmp/asr-runs/sam \\
+        --config asr_sam.yaml \\
         --synthetic-smoke
 
     # Real eval:
     python3 eval_asr.py \\
-        --run-dir /tmp/asr-runs/samantha \\
-        --checkpoint /tmp/asr-runs/samantha/checkpoints/best.pt \\
-        --data-dir packages/training/data/voice/samantha \\
-        --config asr_samantha.yaml \\
+        --run-dir /tmp/asr-runs/sam \\
+        --checkpoint /tmp/asr-runs/sam/checkpoints/best.pt \\
+        --data-dir packages/training/data/voice/sam \\
+        --config asr_sam.yaml \\
         --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json
 """
 

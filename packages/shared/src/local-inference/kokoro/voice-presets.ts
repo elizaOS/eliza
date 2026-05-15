@@ -98,18 +98,18 @@ export const KOKORO_VOICE_PACKS: ReadonlyArray<KokoroVoicePack> = [
     dim: 256,
     tags: ["male", "british"],
   },
-  // Eliza-1 fine-tuned voice — samantha (research-only, derivative of *Her* 2013).
-  // Voice pack lives at `elizaos/eliza-1-voice-kokoro-samantha-v01` on HF
+  // Eliza-1 fine-tuned voice — sam (research-only, derivative of *Her* 2013).
+  // Voice pack lives at `elizaos/eliza-1-voice-kokoro-sam-v01` on HF
   // (first push is private; do not promote to default without a public-release sign-off).
-  // Source corpus: `lalalune/ai_voices/samantha` (58 clips, 3.51 min, research-only).
+  // Source corpus: `lalalune/ai_voices/sam` (58 clips, 3.51 min, research-only).
   // Voice id obeys the Kokoro `<lang><sex>_<name>` convention (US English, female).
   {
-    id: "af_samantha",
-    displayName: "Samantha (Eliza-1, US English)",
+    id: "af_sam",
+    displayName: "Sam (Eliza-1, US English)",
     lang: "a",
-    file: "af_samantha.bin",
+    file: "af_sam.bin",
     dim: 256,
-    tags: ["female", "samantha", "eliza-1-voice", "research-only"],
+    tags: ["female", "sam", "eliza-1-voice", "research-only"],
   },
 ];
 

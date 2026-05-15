@@ -15,7 +15,7 @@ the scaffold, eval script, manifest entry, and CI smoke tests land here.
 | `finetune_asr.py` | End-to-end fine-tune pipeline (real + synthetic-smoke). |
 | `eval_asr.py` | WER + RTF evaluation + baseline comparison + HF-push gating. |
 | `configs/base.yaml` | Base hyperparameter config for all ASR fine-tunes. |
-| `configs/asr_samantha.yaml` | Samantha-corpus-specific overrides. |
+| `configs/asr_sam.yaml` | Sam-corpus-specific overrides. |
 | `__tests__/test_asr_pipeline.py` | CI tests (synthetic-smoke + config + gate logic). |
 
 ---
@@ -26,32 +26,32 @@ the scaffold, eval script, manifest entry, and CI smoke tests land here.
 # CI smoke (no GPU):
 python3 packages/training/scripts/asr/finetune_asr.py \
     --run-dir /tmp/asr-runs/smoke \
-    --config packages/training/scripts/asr/configs/asr_samantha.yaml \
+    --config packages/training/scripts/asr/configs/asr_sam.yaml \
     --synthetic-smoke
 
 # Real training (RTX 5080 / H200):
 python3 packages/training/scripts/asr/finetune_asr.py \
-    --run-dir /tmp/asr-runs/samantha \
-    --config packages/training/scripts/asr/configs/asr_samantha.yaml \
-    --data-dir packages/training/data/voice/samantha \
+    --run-dir /tmp/asr-runs/sam \
+    --config packages/training/scripts/asr/configs/asr_sam.yaml \
+    --data-dir packages/training/data/voice/sam \
     --real-train
 
 # Eval (real checkpoint):
 python3 packages/training/scripts/asr/eval_asr.py \
-    --run-dir /tmp/asr-runs/samantha \
-    --checkpoint /tmp/asr-runs/samantha/checkpoints/best.pt \
-    --data-dir packages/training/data/voice/samantha \
-    --config packages/training/scripts/asr/configs/asr_samantha.yaml \
+    --run-dir /tmp/asr-runs/sam \
+    --checkpoint /tmp/asr-runs/sam/checkpoints/best.pt \
+    --data-dir packages/training/data/voice/sam \
+    --config packages/training/scripts/asr/configs/asr_sam.yaml \
     --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json
 
 # HF push (gated on beats-baseline + operator sign-off):
 python3 packages/training/scripts/asr/finetune_asr.py \
-    --run-dir /tmp/asr-runs/samantha \
-    --config packages/training/scripts/asr/configs/asr_samantha.yaml \
-    --data-dir packages/training/data/voice/samantha \
+    --run-dir /tmp/asr-runs/sam \
+    --config packages/training/scripts/asr/configs/asr_sam.yaml \
+    --data-dir packages/training/data/voice/sam \
     --real-train \
     --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json \
-    --hf-repo elizaos/eliza-1-asr-samantha-v01 \
+    --hf-repo elizaos/eliza-1-asr-sam-v01 \
     --hf-push-if beats-baseline \
     --operator-sign-off
 ```
@@ -81,7 +81,7 @@ both the text body and the audio mmproj sidecar.
 | WER | ≤ 15% | jiwer WER vs gold transcripts on val clips. |
 | RTF | ≥ 2.0× | Inference must be ≥ 2× faster than realtime. |
 
-Samantha-specific config relaxes WER to ≤ 20% (5-clip val set is noisy).
+Sam-specific config relaxes WER to ≤ 20% (5-clip val set is noisy).
 
 Conditional HF push requires:
 1. `gateResult.passed == True`

@@ -146,7 +146,7 @@ export const QUESTIONS: readonly OnboardingQuestion[] = [
  * a contextual first-thing-to-do drawn from `workFocus`. No bullet lists,
  * no menu of commands. Eliza just continues the conversation.
  *
- * Mirrors the Her film's hand-off: after Samantha's setup, she says
+ * Mirrors the Her film's hand-off: after Sam's setup, she says
  * something specific to Theodore — references his answers, suggests one
  * gentle next step. Multi-step setup happens later, conversationally.
  */
