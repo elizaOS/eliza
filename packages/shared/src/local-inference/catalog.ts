@@ -474,6 +474,14 @@ function runtimeForTier(
       parallel: 4,
       flashAttention: true,
       requiresKernel,
+      // OpenVINO is the right backend for ASR/Whisper on Intel hosts but
+      // never for autoregressive text — DFlash/W4-B above is. A binary that
+      // advertises OpenVINO alongside the full DFlash kernel set stays
+      // eligible because `requiresKernel` is the primary anchor; OpenVINO-
+      // only Intel builds drop out via the same anchor. The dispatcher
+      // sets `GGML_OPENVINO_DISABLE=1` on the spawn env so the GGML
+      // OpenVINO backend stays out of layer placement at runtime.
+      unsupportedKernels: ["openvino"],
       ctxCheckpoints: 4,
       ctxCheckpointInterval: 4096,
     },

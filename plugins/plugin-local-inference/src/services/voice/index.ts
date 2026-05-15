@@ -76,6 +76,9 @@ export {
 	EOT_MID_CLAUSE_THRESHOLD,
 	EOT_TENTATIVE_SILENCE_MS,
 	EOT_TENTATIVE_THRESHOLD,
+	Eliza1EotClassifier,
+	type Eliza1EotScoreResult,
+	type Eliza1EotScorerOptions,
 	type EotClassifier,
 	HeuristicEotClassifier,
 	LEGACY_LIVEKIT_TURN_DETECTOR_ONNX,
@@ -94,6 +97,15 @@ export {
 	type VoiceNextSpeaker,
 	type VoiceTurnSignal,
 } from "./eot-classifier";
+export {
+	Eliza1EotScorer,
+	formatEotPrompt as formatEliza1EotPrompt,
+} from "./eliza1-eot-scorer";
+export type {
+	LlamaContextLike as Eliza1EotLlamaContext,
+	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
+	LlamaModelLike as Eliza1EotLlamaModel,
+} from "./eliza1-eot-scorer";
 export { VoiceStartupError } from "./errors";
 export * from "./ffi-bindings";
 export {
