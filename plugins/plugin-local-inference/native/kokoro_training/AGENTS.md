@@ -42,8 +42,8 @@ verbatim from `https://github.com/jonirajala/kokoro_training` at commit
   doesn't expose the training entry points (see
   `.swarm/impl/I7-kokoro.md` for the long-form analysis).
 - A practical English phoneme processor + LJSpeech dataset adapter +
-  MFA TextGrid loader. We use these to stage the `samantha` corpus
-  (`packages/training/data/voice/samantha/`) for full-fine-tune.
+  MFA TextGrid loader. We use these to stage the `sam` corpus
+  (`packages/training/data/voice/sam/`) for full-fine-tune.
 - An adaptive memory manager that auto-detects MPS / CUDA / CPU and
   reports peak/allocated. Useful for our tier-detection story.
 - A checkpoint manager that supports resume-from-latest, which our

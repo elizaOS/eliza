@@ -205,7 +205,7 @@ HTTP gateway would not match a real consumer path.
 ## Presence-active interaction scenario mocks
 
 `fixtures/lifeops-presence-active.ts` is the executable catalog for the seven assistant
-interaction moves from the Samantha/Theodore setup and email scene: intake
+interaction moves from the Sam/Theodore setup and email scene: intake
 affect, assistant identity, permissioned context scan, bulk email curation,
 contact resolution, document review, and proactive multi-hop follow-up.
 

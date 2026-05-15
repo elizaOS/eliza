@@ -76,12 +76,12 @@ const VOICE_MODELS = [
   {
     id: "kokoro",
     repo: "elizaos/eliza-1-voice-kokoro",
-    description: "Kokoro-82M base + samantha preset (F2 coordination)",
+    description: "Kokoro-82M base + sam preset (F2 coordination)",
   },
   {
     id: "omnivoice",
     repo: "elizaos/eliza-1-voice-omnivoice",
-    description: "OmniVoice frozen conditioning + samantha ELZ2 v2 preset",
+    description: "OmniVoice frozen conditioning + sam ELZ2 v2 preset",
   },
   {
     id: "embedding",
