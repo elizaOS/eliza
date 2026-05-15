@@ -22,9 +22,9 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "bun run check:android-manifest && tsup src/index.ts --format esm --dts --clean --external @elizaos/agent --external @elizaos/core",
+		"build": "bun run check:android-manifest && tsup src/index.ts --format esm --dts --clean",
 		"check:android-manifest": "node scripts/check-android-manifest.mjs",
-		"dev": "tsup src/index.ts --format esm --dts --watch --external @elizaos/agent --external @elizaos/core",
+		"dev": "tsup src/index.ts --format esm --dts --watch",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",
@@ -33,12 +33,10 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@elizaos/agent": "workspace:*",
 		"@elizaos/core": "workspace:*",
 		"ws": "^8.18.0"
 	},
 	"peerDependencies": {
-		"@elizaos/agent": "workspace:*",
 		"@elizaos/core": "workspace:*"
 	},
 	"devDependencies": {
