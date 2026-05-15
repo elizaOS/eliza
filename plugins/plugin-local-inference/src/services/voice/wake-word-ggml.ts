@@ -171,7 +171,7 @@ function loadLibrary(libraryPath: string): BoundLibrary {
 	const T = bunFfi.FFIType;
 	const lib = bunFfi.dlopen(libraryPath, {
 		wakeword_open: {
-			args: [T.cstring, T.cstring, T.cstring, T.ptr],
+			args: [T.ptr, T.ptr, T.ptr, T.ptr],
 			returns: T.i32,
 		},
 		wakeword_close: {
@@ -228,11 +228,18 @@ export class OpenWakeWordGgmlModel implements WakeWordModel {
 	}): Promise<OpenWakeWordGgmlModel> {
 		const lib = loadLibrary(args.libraryPath);
 		const out = new BigInt64Array(1);
+		/* Each path string needs a NUL terminator; we encode through
+		 * Uint8Array and pass an explicit pointer because bun:ffi does
+		 * not auto-convert Buffer -> cstring on every binding shape. */
+		const enc = new TextEncoder();
+		const melBuf = enc.encode(`${args.paths.melspec}\0`);
+		const embBuf = enc.encode(`${args.paths.embedding}\0`);
+		const clsBuf = enc.encode(`${args.paths.classifier}\0`);
 		const rc = lib.bindings.wakeword_open(
-			Buffer.from(`${args.paths.melspec}\0`, "utf8"),
-			Buffer.from(`${args.paths.embedding}\0`, "utf8"),
-			Buffer.from(`${args.paths.classifier}\0`, "utf8"),
-			out,
+			lib.ptr(melBuf),
+			lib.ptr(embBuf),
+			lib.ptr(clsBuf),
+			lib.ptr(out),
 		);
 		if (rc !== 0) {
 			lib.close();
