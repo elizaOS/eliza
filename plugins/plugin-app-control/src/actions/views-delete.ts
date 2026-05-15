@@ -22,8 +22,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
-import { resolveServerOnlyPort } from "@elizaos/core";
+import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { isProtected, resolveProtectedApps } from "../protected-apps.js";
 import type { ViewSummary } from "./views-client.js";
@@ -63,7 +62,10 @@ interface DeleteConfirmMetadata {
 function resolveTargetView(
 	target: string,
 	views: readonly ViewSummary[],
-): { kind: "match"; view: ViewSummary } | { kind: "ambiguous"; candidates: ViewSummary[] } | { kind: "none" } {
+):
+	| { kind: "match"; view: ViewSummary }
+	| { kind: "ambiguous"; candidates: ViewSummary[] }
+	| { kind: "none" } {
 	const q = target.toLowerCase();
 
 	const byId = views.find((v) => v.id.toLowerCase() === q);
@@ -139,7 +141,10 @@ async function checkProtection(
 ): Promise<string | null> {
 	// Fast path: hardcoded core set.
 	for (const name of CORE_PROTECTED_PLUGIN_NAMES) {
-		if (pluginName === name || pluginName.replace(/^@[^/]+\//, "") === name.replace(/^@[^/]+\//, "")) {
+		if (
+			pluginName === name ||
+			pluginName.replace(/^@[^/]+\//, "") === name.replace(/^@[^/]+\//, "")
+		) {
 			return name;
 		}
 	}
@@ -173,8 +178,14 @@ async function findConfirmTask(
 		.sort((a, b) => {
 			const aMeta = a.metadata as Record<string, unknown> | undefined;
 			const bMeta = b.metadata as Record<string, unknown> | undefined;
-			const aAt = typeof aMeta?.confirmedAt === "string" ? 0 : Date.parse(String(aMeta?.roomId ?? "")) || 0;
-			const bAt = typeof bMeta?.confirmedAt === "string" ? 0 : Date.parse(String(bMeta?.roomId ?? "")) || 0;
+			const aAt =
+				typeof aMeta?.confirmedAt === "string"
+					? 0
+					: Date.parse(String(aMeta?.roomId ?? "")) || 0;
+			const bAt =
+				typeof bMeta?.confirmedAt === "string"
+					? 0
+					: Date.parse(String(bMeta?.roomId ?? "")) || 0;
 			return bAt - aAt;
 		});
 
@@ -217,7 +228,10 @@ async function persistConfirmTask(
 	});
 }
 
-async function deleteConfirmTask(runtime: IAgentRuntime, taskId: string): Promise<void> {
+async function deleteConfirmTask(
+	runtime: IAgentRuntime,
+	taskId: string,
+): Promise<void> {
 	await runtime
 		.deleteTask(taskId as `${string}-${string}-${string}-${string}-${string}`)
 		.catch((err) => {
@@ -231,7 +245,9 @@ async function deleteConfirmTask(runtime: IAgentRuntime, taskId: string): Promis
 // Plugin unload
 // ---------------------------------------------------------------------------
 
-async function unloadPlugin(pluginName: string): Promise<{ ok: boolean; message: string }> {
+async function unloadPlugin(
+	pluginName: string,
+): Promise<{ ok: boolean; message: string }> {
 	const port = resolveServerOnlyPort(process.env);
 	const base = `http://127.0.0.1:${port}`;
 
@@ -247,19 +263,31 @@ async function unloadPlugin(pluginName: string): Promise<{ ok: boolean; message:
 		});
 
 		if (resp.ok) {
-			const body = (await resp.json().catch(() => ({}))) as Record<string, unknown>;
-			const msg = typeof body.message === "string" ? body.message : `Plugin ${pluginName} unloaded.`;
+			const body = (await resp.json().catch(() => ({}))) as Record<
+				string,
+				unknown
+			>;
+			const msg =
+				typeof body.message === "string"
+					? body.message
+					: `Plugin ${pluginName} unloaded.`;
 			return { ok: true, message: msg };
 		}
 
 		// 404 means the plugin isn't tracked as an installed app — may just be a
 		// runtime-loaded plugin. Treat as a soft success.
 		if (resp.status === 404) {
-			return { ok: true, message: `Plugin ${pluginName} was not tracked as an installed app; no uninstall performed.` };
+			return {
+				ok: true,
+				message: `Plugin ${pluginName} was not tracked as an installed app; no uninstall performed.`,
+			};
 		}
 
 		const errBody = await resp.text().catch(() => "");
-		return { ok: false, message: `Unload failed (HTTP ${resp.status}): ${errBody}` };
+		return {
+			ok: false,
+			message: `Unload failed (HTTP ${resp.status}): ${errBody}`,
+		};
 	} catch (err) {
 		return {
 			ok: false,
@@ -295,7 +323,8 @@ export async function runViewsDelete({
 	callback,
 	repoRoot,
 }: ViewsDeleteInput): Promise<ActionResult> {
-	const roomId = typeof message.roomId === "string" ? message.roomId : runtime.agentId;
+	const roomId =
+		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 	const userText = (message.content?.text ?? "").trim();
 
 	// Follow-up turn: user replied "yes" / "no" to a pending confirmation.
@@ -318,8 +347,16 @@ export async function runViewsDelete({
 			return {
 				success: unload.ok,
 				text,
-				values: { mode: "delete", viewId: metadata.viewId, pluginName: metadata.pluginName },
-				data: { viewId: metadata.viewId, pluginName: metadata.pluginName, unloadResult: unload },
+				values: {
+					mode: "delete",
+					viewId: metadata.viewId,
+					pluginName: metadata.pluginName,
+				},
+				data: {
+					viewId: metadata.viewId,
+					pluginName: metadata.pluginName,
+					unloadResult: unload,
+				},
 			};
 		}
 
@@ -327,7 +364,11 @@ export async function runViewsDelete({
 			await deleteConfirmTask(runtime, existingConfirm.taskId);
 			const text = "Canceled. No views were deleted.";
 			await callback?.({ text });
-			return { success: true, text, values: { mode: "delete", subMode: "cancel" } };
+			return {
+				success: true,
+				text,
+				values: { mode: "delete", subMode: "cancel" },
+			};
 		}
 
 		// Unrecognised reply — re-prompt.
@@ -339,7 +380,9 @@ export async function runViewsDelete({
 	// First turn: resolve the view the user wants to delete.
 	const targetStr =
 		readStringOption(options, "confirm") === "true"
-			? readStringOption(options, "view") ?? readStringOption(options, "viewId") ?? userText
+			? (readStringOption(options, "view") ??
+				readStringOption(options, "viewId") ??
+				userText)
 			: extractDeleteTarget(message, options);
 
 	if (!targetStr) {
@@ -358,10 +401,16 @@ export async function runViewsDelete({
 	}
 
 	if (resolution.kind === "ambiguous") {
-		const list = resolution.candidates.map((v) => `- ${v.label} (${v.id})`).join("\n");
+		const list = resolution.candidates
+			.map((v) => `- ${v.label} (${v.id})`)
+			.join("\n");
 		const text = `"${targetStr}" matches multiple views:\n${list}\nWhich one did you want to delete?`;
 		await callback?.({ text });
-		return { success: false, text, data: { candidates: resolution.candidates } };
+		return {
+			success: false,
+			text,
+			data: { candidates: resolution.candidates },
+		};
 	}
 
 	const view = resolution.view;
@@ -389,7 +438,11 @@ export async function runViewsDelete({
 			success: unload.ok,
 			text,
 			values: { mode: "delete", viewId: view.id, pluginName: view.pluginName },
-			data: { viewId: view.id, pluginName: view.pluginName, unloadResult: unload },
+			data: {
+				viewId: view.id,
+				pluginName: view.pluginName,
+				unloadResult: unload,
+			},
 		};
 	}
 
@@ -410,7 +463,12 @@ export async function runViewsDelete({
 	return {
 		success: true,
 		text,
-		values: { mode: "delete", subMode: "confirm", viewId: view.id, pluginName: view.pluginName },
+		values: {
+			mode: "delete",
+			subMode: "confirm",
+			viewId: view.id,
+			pluginName: view.pluginName,
+		},
 		data: { view },
 	};
 }

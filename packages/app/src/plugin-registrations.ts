@@ -5,8 +5,14 @@ type SideEffectAppModuleLoader = {
 
 export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
   [
-    { key: "@elizaos/plugin-babylon", load: () => import("@elizaos/plugin-babylon") },
-    { key: "@elizaos/plugin-scape", load: () => import("@elizaos/plugin-scape") },
+    {
+      key: "@elizaos/plugin-babylon",
+      load: () => import("@elizaos/plugin-babylon"),
+    },
+    {
+      key: "@elizaos/plugin-scape",
+      load: () => import("@elizaos/plugin-scape"),
+    },
     {
       key: "@elizaos/plugin-hyperscape",
       load: () => import("@elizaos/plugin-hyperscape"),
@@ -27,7 +33,10 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       key: "@elizaos/plugin-trajectory-logger",
       load: () => import("@elizaos/plugin-trajectory-logger"),
     },
-    { key: "@elizaos/plugin-shopify-ui", load: () => import("@elizaos/plugin-shopify-ui") },
+    {
+      key: "@elizaos/plugin-shopify-ui",
+      load: () => import("@elizaos/plugin-shopify-ui"),
+    },
     {
       key: "@elizaos/plugin-hyperliquid-app",
       load: () => import("@elizaos/plugin-hyperliquid-app"),
@@ -36,7 +45,10 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       key: "@elizaos/plugin-polymarket-app",
       load: () => import("@elizaos/plugin-polymarket-app"),
     },
-    { key: "@elizaos/plugin-wallet-ui", load: () => import("@elizaos/plugin-wallet-ui") },
+    {
+      key: "@elizaos/plugin-wallet-ui",
+      load: () => import("@elizaos/plugin-wallet-ui"),
+    },
     {
       key: "@elizaos/plugin-contacts/register",
       load: () => import("@elizaos/plugin-contacts/register"),

@@ -469,19 +469,23 @@ function normalizeAccount(
 	accountId?: string,
 ): ConnectorAccount {
 	const now = nowMs();
-	const full = input as ConnectorAccount;
-	const id = full.id.trim();
+	const full = input as Partial<ConnectorAccount>;
+	const id = (full.id ?? accountId ?? "").trim();
 	if (!id) {
 		throw new Error("Connector account requires an id");
 	}
+	const normalizedProvider = normalizeProvider(full.provider ?? provider);
+	if (!normalizedProvider) {
+		throw new Error("Connector account requires a provider");
+	}
 	return {
 		id,
-		provider: normalizeProvider(full.provider),
+		provider: normalizedProvider,
 		label: typeof full.label === "string" ? full.label : undefined,
 		role: normalizeConnectorAccountRole(full.role),
 		purpose: normalizeStringArray(full.purpose),
-		accessGate: full.accessGate,
-		status: full.status,
+		accessGate: (full.accessGate ?? "open") as ConnectorAccountAccessGate,
+		status: (full.status ?? "connected") as ConnectorAccountStatus,
 		externalId:
 			typeof full.externalId === "string" && full.externalId
 				? full.externalId

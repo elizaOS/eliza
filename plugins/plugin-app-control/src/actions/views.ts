@@ -20,21 +20,21 @@ import type {
 import { hasOwnerAccess as defaultOwnerAccessFn, logger } from "@elizaos/core";
 import { readStringOption } from "../params.js";
 import { createViewsClient, type ViewsClient } from "./views-client.js";
-import { runViewsList } from "./views-list.js";
-import { runViewsSearch } from "./views-search.js";
-import { runViewsShow } from "./views-show.js";
 import {
 	hasPendingViewsCreateIntent,
 	isChoiceReply,
 	runViewsCreate,
 } from "./views-create.js";
-import { runViewsEdit } from "./views-edit.js";
 import {
 	hasPendingDeleteConfirm,
 	isDeleteCancellation,
 	isDeleteConfirmation,
 	runViewsDelete,
 } from "./views-delete.js";
+import { runViewsEdit } from "./views-edit.js";
+import { runViewsList } from "./views-list.js";
+import { runViewsSearch } from "./views-search.js";
+import { runViewsShow } from "./views-show.js";
 
 export type ViewsMode =
 	| "list"
@@ -346,7 +346,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 			// Create/edit/delete require owner access.
 			const mode = inferMode(text, undefined);
-			if (mode === "create" || mode === "edit" || mode === "delete" || mode === "remove") {
+			if (
+				mode === "create" ||
+				mode === "edit" ||
+				mode === "delete" ||
+				mode === "remove"
+			) {
 				return ownerCheck(runtime, message);
 			}
 
@@ -370,7 +375,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			if (isChoiceReply(text)) {
 				if (await hasPendingViewsCreateIntent(runtime, roomId)) {
 					const views = await client.listViews();
-					return runViewsCreate({ runtime, message, options, views, callback, repoRoot });
+					return runViewsCreate({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
 				}
 			}
 
@@ -378,7 +390,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			if (isDeleteConfirmation(text) || isDeleteCancellation(text)) {
 				if (await hasPendingDeleteConfirm(runtime, roomId)) {
 					const views = await client.listViews();
-					return runViewsDelete({ runtime, message, options, views, callback, repoRoot });
+					return runViewsDelete({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
 				}
 			}
 
@@ -475,7 +494,12 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						typeof options?.timeoutMs === "number" && options.timeoutMs > 0
 							? options.timeoutMs
 							: 5_000;
-					const resultText = await interactWithView(viewId, capability, params, timeoutMs);
+					const resultText = await interactWithView(
+						viewId,
+						capability,
+						params,
+						timeoutMs,
+					);
 					await callback?.({ text: resultText });
 					return {
 						success: true,
@@ -487,18 +511,39 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 				case "create": {
 					const views = await client.listViews();
-					return runViewsCreate({ runtime, message, options, views, callback, repoRoot });
+					return runViewsCreate({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
 				}
 
 				case "edit": {
 					const views = await client.listViews();
-					return runViewsEdit({ runtime, message, options, views, callback, repoRoot });
+					return runViewsEdit({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
 				}
 
 				case "delete":
 				case "remove": {
 					const views = await client.listViews();
-					return runViewsDelete({ runtime, message, options, views, callback, repoRoot });
+					return runViewsDelete({
+						runtime,
+						message,
+						options,
+						views,
+						callback,
+						repoRoot,
+					});
 				}
 
 				case "pin": {
@@ -705,6 +750,57 @@ async function navigateToPath(pathStr: string, label: string): Promise<string> {
 	}
 
 	return `Opened ${label} at ${pathStr}.`;
+}
+
+async function navigateViewWithShellAction(
+	viewId: string,
+	action: "pin-tab" | "open-window",
+	successText: string,
+	fallbackText: string,
+): Promise<string> {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+
+	try {
+		const resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/navigate`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ action }),
+				signal: AbortSignal.timeout(5_000),
+			},
+		);
+		if (resp.ok || resp.status === 501 || resp.status === 404) {
+			return successText;
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/${action} navigate returned ${resp.status}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+
+	return fallbackText;
+}
+
+function pinViewAsTab(viewId: string): Promise<string> {
+	return navigateViewWithShellAction(
+		viewId,
+		"pin-tab",
+		`Pinned view "${viewId}" as a desktop tab.`,
+		`Requested desktop tab pin for view "${viewId}".`,
+	);
+}
+
+function openViewInWindow(viewId: string): Promise<string> {
+	return navigateViewWithShellAction(
+		viewId,
+		"open-window",
+		`Opened view "${viewId}" in a separate window.`,
+		`Requested separate window for view "${viewId}".`,
+	);
 }
 
 /**
