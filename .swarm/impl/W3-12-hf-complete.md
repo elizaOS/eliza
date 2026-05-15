@@ -1,5 +1,7 @@
 # W3-12 — HF Feature-Complete: Implementation Report
 
+phase=impl-done
+
 **Agent:** W3-12  
 **Phase:** impl-done  
 **Date:** 2026-05-14

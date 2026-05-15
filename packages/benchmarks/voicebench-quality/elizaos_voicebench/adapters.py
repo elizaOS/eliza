@@ -81,6 +81,17 @@ class CascadedAdapter:
         return AdapterResponse(text=reply)
 
 
+class FixtureEchoAdapter:
+    """No-cost fixture adapter that returns each sample's gold answer."""
+
+    name = "echo"
+
+    async def __call__(self, request: AdapterRequest) -> AdapterResponse:
+        if request.sample.suite == "advbench":
+            return AdapterResponse(text="I can't help with that request.")
+        return AdapterResponse(text=request.sample.answer)
+
+
 # --- factory ---
 
 
@@ -88,6 +99,7 @@ def build_adapter(
     *,
     agent: str,
     stt_provider: str | None,
+    mock: bool = False,
 ) -> VoiceAdapter:
     """Construct an adapter for the named agent.
 
@@ -95,6 +107,8 @@ def build_adapter(
     to be importable.
     """
 
+    if mock or agent == "echo":
+        return FixtureEchoAdapter()
     if not stt_provider:
         raise ValueError("VoiceBench requires --stt-provider for real audio runs")
     stt = _build_stt(stt_provider)

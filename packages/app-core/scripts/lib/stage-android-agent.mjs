@@ -124,7 +124,6 @@ const LAUNCH_SCRIPT = `#!/system/bin/sh
 #   LD_PATH            Absolute musl-loader path; defaults RUNTIME_DIR/LD_NAME.
 #   AGENT_BUNDLE       Bundle filename; defaults agent-bundle.js.
 #   AGENT_BUNDLE_PATH  Absolute bundle path; defaults AGENT_ROOT/AGENT_BUNDLE.
-#   AGENT_COMMAND      Optional agent CLI command, e.g. android-bridge.
 #   LOG_FILE           Defaults to agent.log in AGENT_ROOT.
 
 DEVICE_DIR=\${DEVICE_DIR:-/data/local/tmp}
@@ -133,7 +132,6 @@ AGENT_ROOT=\${AGENT_ROOT:-\${DEVICE_DIR}}
 LD_NAME=\${LD_NAME:-ld-musl-x86_64.so.1}
 PORT=\${PORT:-31337}
 AGENT_BUNDLE=\${AGENT_BUNDLE:-agent-bundle.js}
-AGENT_COMMAND=\${AGENT_COMMAND:-}
 BUN_PATH=\${BUN_PATH:-\${RUNTIME_DIR}/bun}
 LD_PATH=\${LD_PATH:-\${RUNTIME_DIR}/\${LD_NAME}}
 AGENT_BUNDLE_PATH=\${AGENT_BUNDLE_PATH:-\${AGENT_ROOT}/\${AGENT_BUNDLE}}
@@ -146,7 +144,7 @@ pkill -f "\${AGENT_BUNDLE_PATH}" 2>/dev/null
 sleep 1
 
 (
-  setsid sh -c "exec </dev/null >\\"$LOG_FILE\\" 2>&1; cd \\"$AGENT_ROOT\\" || exit 1; LD_LIBRARY_PATH=\\"$RUNTIME_LD_LIBRARY_PATH\\" PORT=\\"$PORT\\" exec \\"$LD_PATH\\" \\"$BUN_PATH\\" \\"$AGENT_BUNDLE_PATH\\"\${AGENT_COMMAND:+ \\"$AGENT_COMMAND\\"}" &
+  setsid sh -c "exec </dev/null >\\"$LOG_FILE\\" 2>&1; cd \\"$AGENT_ROOT\\" || exit 1; LD_LIBRARY_PATH=\\"$RUNTIME_LD_LIBRARY_PATH\\" PORT=\\"$PORT\\" exec \\"$LD_PATH\\" \\"$BUN_PATH\\" \\"$AGENT_BUNDLE_PATH\\"" &
 ) &
 disown 2>/dev/null || true
 exit 0

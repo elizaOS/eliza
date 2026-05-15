@@ -48,7 +48,7 @@ export {
   loadStewardCredentials,
   type PersistedStewardCredentials,
   saveStewardCredentials,
-} from "@elizaos/app-core";
+} from "./services/steward-credentials";
 export * from "./services/steward-evm-account";
 export * from "./services/steward-evm-bridge";
 export * from "./services/steward-wallet";

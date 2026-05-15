@@ -19,6 +19,20 @@ from elizaos_terminal_bench.types import (
 )
 
 
+def resolve_task_agent(explicit: Optional[str] = None) -> str:
+    """Resolve the bridge-side task agent without reading or logging key values."""
+    if explicit:
+        return explicit
+    configured = os.environ.get("BENCHMARK_TASK_AGENT", "").strip().lower()
+    if configured:
+        return configured
+    if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("CLAUDE_API_KEY"):
+        return "claude"
+    if os.environ.get("CODEX_API_KEY") or os.environ.get("OPENAI_API_KEY"):
+        return "codex"
+    return "opencode"
+
+
 def setup_logging(verbose: bool = False, debug: bool = False) -> None:
     """Configure logging."""
     level = logging.DEBUG if debug else (logging.INFO if verbose else logging.WARNING)
@@ -159,7 +173,17 @@ For more information, visit: https://tbench.ai
     parser.add_argument(
         "--model-provider",
         type=str,
-        choices=["openai", "groq", "openrouter", "anthropic", "google", "ollama", "eliza", "mock"],
+        choices=[
+            "openai",
+            "groq",
+            "openrouter",
+            "anthropic",
+            "google",
+            "ollama",
+            "cerebras",
+            "eliza",
+            "mock",
+        ],
         default=None,
         help=(
             "Optional provider hint. 'eliza' routes through the elizaOS "
@@ -176,14 +200,31 @@ For more information, visit: https://tbench.ai
     parser.add_argument(
         "--agent-harness",
         type=str,
-        choices=["eliza", "hermes", "openclaw"],
+        choices=["eliza", "hermes", "openclaw", "always-right", "always-wrong", "random"],
         default="eliza",
         help=(
             "Select the agent harness for per-turn decision-making. "
             "'eliza' (default) routes through the elizaOS TS benchmark bridge. "
             "'hermes' uses hermes_adapter.terminal_bench.HermesTerminalAgent. "
-            "'openclaw' uses openclaw_adapter.terminal_bench.OpenClawTerminalAgent."
+            "'openclaw' uses openclaw_adapter.terminal_bench.OpenClawTerminalAgent. "
+            "Baseline harnesses run locally: always-right, always-wrong, random."
         ),
+    )
+    parser.add_argument(
+        "--task-agent",
+        type=str,
+        choices=["opencode", "codex", "claude"],
+        default=None,
+        help=(
+            "Task agent requested from the elizaOS TS bridge. Defaults to "
+            "opencode unless Claude or Codex API-key env vars imply those agents."
+        ),
+    )
+    parser.add_argument(
+        "--baseline-random-seed",
+        type=int,
+        default=0,
+        help="Seed for --agent-harness random baseline (default: 0)",
     )
 
     # Output options
@@ -283,7 +324,7 @@ async def run_cli(args: argparse.Namespace) -> int:
     """Run the CLI with parsed arguments. All runs go through the elizaOS TS bridge."""
     setup_logging(verbose=args.verbose, debug=args.debug)
     model_name = args.model
-    if args.model_provider and args.model_provider != "eliza" and "/" not in model_name:
+    if args.model_provider and args.model_provider not in {"eliza", "cerebras"} and "/" not in model_name:
         model_name = f"{args.model_provider}/{model_name}"
     if args.model_provider and args.model_provider != "eliza":
         os.environ["BENCHMARK_MODEL_PROVIDER"] = args.model_provider
@@ -293,16 +334,21 @@ async def run_cli(args: argparse.Namespace) -> int:
             os.environ.get("ELIZA_PROVIDER") or ("cerebras" if os.environ.get("CEREBRAS_API_KEY") else "openai"),
         )
     os.environ["BENCHMARK_MODEL_NAME"] = model_name
+    task_agent = resolve_task_agent(getattr(args, "task_agent", None))
+    os.environ["BENCHMARK_TASK_AGENT"] = task_agent
     os.environ.setdefault("OPENAI_LARGE_MODEL", model_name)
     os.environ.setdefault("OPENAI_SMALL_MODEL", model_name)
     os.environ.setdefault("GROQ_LARGE_MODEL", model_name)
     os.environ.setdefault("GROQ_SMALL_MODEL", model_name)
+    os.environ.setdefault("CEREBRAS_MODEL", model_name)
+    os.environ.setdefault("CEREBRAS_LARGE_MODEL", model_name)
+    os.environ.setdefault("CEREBRAS_SMALL_MODEL", model_name)
 
     # Spin up the elizaOS TS benchmark bridge server only when the selected
     # agent harness actually needs it. ``hermes`` and ``openclaw`` run their
     # own loops (subprocess / in-process) and do not require the TS bridge.
     server_mgr = None
-    harness = (args.agent_harness or "eliza").lower()
+    harness = (getattr(args, "agent_harness", None) or "eliza").lower()
     if (
         not args.dry_run
         and harness == "eliza"
@@ -316,12 +362,12 @@ async def run_cli(args: argparse.Namespace) -> int:
         os.environ["ELIZA_BENCH_URL"] = f"http://localhost:{server_mgr.port}"
 
     # Resolve execution backend from flags.
-    if args.mock:
+    if getattr(args, "mock", False):
         os.environ["TERMINAL_BENCH_ALLOW_MOCK"] = "1"
         backend = "mock"
     elif args.local_sandbox:
         backend = "local"
-    elif args.one_shot:
+    elif getattr(args, "one_shot", False):
         backend = "one_shot"
     else:
         backend = "tmux"
@@ -339,6 +385,7 @@ async def run_cli(args: argparse.Namespace) -> int:
         max_iterations=args.max_iterations,
         timeout_per_task_seconds=args.timeout,
         model_name=model_name,
+        model_provider=args.model_provider,
         temperature=args.temperature,
         generate_markdown=not args.no_markdown,
         save_sessions=not args.no_sessions,
@@ -349,6 +396,8 @@ async def run_cli(args: argparse.Namespace) -> int:
         local_sandbox=args.local_sandbox,
         execution_backend=backend,
         agent_harness=harness,
+        task_agent=task_agent,
+        baseline_random_seed=getattr(args, "baseline_random_seed", 0),
     )
 
     # Create runner
@@ -357,7 +406,7 @@ async def run_cli(args: argparse.Namespace) -> int:
     try:
         # Setup. Fail loud if neither --use-sample-tasks nor a corpus is
         # available — never silently fall back to SAMPLE_TASKS.
-        await runner.setup(use_sample_tasks=bool(args.use_sample_tasks))
+        await runner.setup(use_sample_tasks=bool(getattr(args, "use_sample_tasks", False)))
 
         # Run single task or full benchmark
         if args.single:

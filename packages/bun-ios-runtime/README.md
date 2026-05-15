@@ -60,11 +60,10 @@ The exported Eliza ABI is documented in `BRIDGE_CONTRACT.md`:
 - `eliza_bun_engine_call`
 - `eliza_bun_engine_free`
 
-The Capacitor runtime links this framework directly when
-`ELIZA_IOS_FULL_BUN_ENGINE=1` is set. Compatibility builds do not link or
-require the full engine. When the full-engine flag is set, `start()` defaults to
-`engine: "auto"` and will boot the full engine. Passing `engine: "bun"` requires
-the framework and returns an error if it is missing.
+The Capacitor runtime loads this framework dynamically, so compatibility builds
+do not link or require the full engine. When the framework exists, `start()`
+defaults to `engine: "auto"` and will boot the full engine. Passing
+`engine: "bun"` requires the framework and returns an error if it is missing.
 
 ## App Store execution profile
 
@@ -171,8 +170,8 @@ Implemented in this repo:
   native IPC.
 - React/UI transport that uses the full Bun bridge when the Capacitor plugin is
   present, otherwise falls back to the JSContext ITTP compatibility kernel.
-- Direct-linked runtime ABI that can boot a full Bun engine when the framework
-  is present and `ELIZA_IOS_FULL_BUN_ENGINE=1` was set for the iOS build.
+- Runtime dynamic-loader ABI that can boot a full Bun engine when the framework
+  is present.
 - Strict probes that prove current upstream Bun has no `bun-ios-*` compile
   target.
 

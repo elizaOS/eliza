@@ -123,7 +123,7 @@ docker push ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash
 VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-27b \
 VAST_IMAGE=ghcr.io/YOUR_ORG/buun-llama-cpp:cuda-dflash \
 MODEL_REPO=elizaos/eliza-1 \
-MODEL_FILE=bundles/27b/text/eliza-1-pro-27b-128k.gguf \
+MODEL_FILE=bundles/27b/text/eliza-1-27b-128k.gguf \
 MODEL_ALIAS=vast/eliza-1-27b \
 DFLASH_DRAFTER_REPO=spiritbuun/Eliza-1-27B-DFlash-GGUF \
 DFLASH_DRAFTER_FILE=dflash-draft-3.6-q8_0.gguf \

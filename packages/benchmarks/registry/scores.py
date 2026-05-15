@@ -244,14 +244,9 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
         )
     else:
         pass_k = root.get("pass_k")
-        overall_raw: JSONValue | None = None
-        if isinstance(pass_k, dict):
-            pass_1 = pass_k.get("1") or pass_k.get(1)
-            if isinstance(pass_1, dict):
-                overall_raw = pass_1.get("pass_hat_k")
-        if overall_raw is None:
-            overall_raw = root.get("avg_reward")
-        overall = expect_float(overall_raw, ctx="tau_bench:pass_k.1.pass_hat_k")
+        pass_k_dict = expect_dict(pass_k, ctx="tau_bench:pass_k") if isinstance(pass_k, dict) else {}
+        raw = pass_k_dict.get("1", pass_k_dict.get("pass@1", root.get("avg_reward")))
+        overall = expect_float(raw, ctx="tau_bench:pass@1")
     return ScoreExtraction(
         score=overall,
         unit="ratio",
@@ -260,9 +255,7 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
             "overall_success_rate": overall,
             "overall_tool_accuracy": root.get("overall_tool_accuracy") or 0,
             "overall_policy_compliance": root.get("overall_policy_compliance") or 0,
-            "avg_reward": root.get("avg_reward") or overall,
-            "num_tasks": root.get("num_tasks") or 0,
-            "num_trials_per_task": root.get("num_trials_per_task") or 0,
+            "avg_reward": root.get("avg_reward") or 0,
         },
     )
 
@@ -302,31 +295,15 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
 
     run_count = len([item for item in results if isinstance(item, dict)])
     avg_revenue = (total_revenue / run_count) if run_count else to_float(metrics.get("avg_revenue"))
-    avg_incremental_revenue = to_float(metrics.get("avg_incremental_revenue"))
-    if avg_incremental_revenue == 0.0:
-        avg_incremental_revenue = to_float(metrics.get("incremental_revenue"))
-    if avg_incremental_revenue == 0.0 and run_count:
-        total_incremental = 0.0
-        for item in results:
-            if not isinstance(item, dict):
-                continue
-            total_incremental += to_float(
-                item.get("incremental_revenue")
-                if item.get("incremental_revenue") is not None
-                else item.get("incremental_revenue_vs_noop")
-            )
-        avg_incremental_revenue = total_incremental / run_count
     avg_profit = (total_profit / run_count) if run_count else to_float(metrics.get("avg_profit"))
     max_net_worth = to_float(metrics.get("max_net_worth"))
     return ScoreExtraction(
-        score=avg_incremental_revenue,
-        unit="usd_incremental_revenue_per_run",
+        score=avg_revenue,
+        unit="usd_revenue_per_run",
         higher_is_better=True,
         metrics={
-            "primary_score_note": "Average incremental revenue per run; starter-inventory baseline revenue and net worth are tracked as secondary metrics so no-op/no-spend policies do not win smoke runs.",
-            "avg_incremental_revenue": avg_incremental_revenue,
+            "primary_score_note": "Average revenue per run; net worth is tracked as a secondary metric so no-op/no-spend policies do not win smoke runs.",
             "avg_revenue": avg_revenue,
-            "avg_starter_baseline_revenue": metrics.get("avg_starter_baseline_revenue") or 0,
             "total_revenue": total_revenue,
             "avg_profit": avg_profit,
             "max_net_worth": max_net_worth,
@@ -771,21 +748,17 @@ def _score_from_trust_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from WebShop benchmark results."""
     root = expect_dict(data, ctx="webshop:root")
-    average_reward = expect_float(
-        get_required(root, "average_reward", ctx="webshop:root"),
-        ctx="webshop:average_reward",
-    )
     success_rate = expect_float(
         get_required(root, "success_rate", ctx="webshop:root"),
         ctx="webshop:success_rate",
     )
     return ScoreExtraction(
-        score=average_reward,
+        score=success_rate,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "success_rate": success_rate,
-            "average_reward": average_reward,
+            "average_reward": root.get("average_reward") or 0,
             "average_turns": root.get("average_turns") or 0,
             "average_steps": root.get("average_steps") or 0,
             "average_duration_ms": root.get("average_duration_ms") or 0,

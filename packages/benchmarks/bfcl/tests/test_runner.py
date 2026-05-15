@@ -86,6 +86,33 @@ class TestBFCLRunner:
         assert runner.agent.__class__.__name__ == "HermesBFCLAgent"
         assert runner._provider == "hermes"
 
+    def test_runner_respects_openclaw_harness_env_for_orchestrator(
+        self,
+        config: BFCLConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Orchestrator labels OpenClaw rows through env even when provider is eliza."""
+        monkeypatch.setenv("BENCHMARK_HARNESS", "openclaw")
+
+        runner = BFCLRunner(config, provider="eliza", model="gpt-oss-120b")
+
+        assert runner.agent.__class__.__name__ == "OpenClawBFCLAgent"
+        assert runner._provider == "openclaw"
+
+    def test_runner_respects_eliza_harness_env_for_orchestrator(
+        self,
+        config: BFCLConfig,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Native eliza harness selection should be explicit in result metadata."""
+        monkeypatch.setenv("BENCHMARK_HARNESS", "eliza")
+        monkeypatch.setenv("ELIZA_BENCH_URL", "http://127.0.0.1:65535")
+
+        runner = BFCLRunner(config, provider=None, model="gpt-oss-120b")
+
+        assert runner.agent.__class__.__name__ == "ElizaBFCLAgent"
+        assert runner._provider == "eliza"
+
     @pytest.mark.asyncio
     async def test_mock_agent_returns_expected(self, config: BFCLConfig) -> None:
         """Test mock agent returns expected calls."""

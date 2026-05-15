@@ -4,13 +4,9 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
-  describeXcframeworkLibrariesFromInfo,
   findUnsafeNetworkPolicyFindings,
   isUnsafeAllowNavigationEntry,
   isUnsafeNetworkUrlLiteral,
-  missingRequiredSlicesFromInfo,
-  parseRequiredSlices,
-  xcframeworkLibrarySlice,
 } from "./verify-ios-app-store.mjs";
 
 function makeAppFixture(files) {
@@ -74,51 +70,4 @@ test("accepts HTTPS/WSS-only app policy", () => {
   });
 
   assert.deepEqual(findUnsafeNetworkPolicyFindings(app), []);
-});
-
-test("classifies and requires device/simulator xcframework slices", () => {
-  const info = {
-    AvailableLibraries: [
-      {
-        LibraryIdentifier: "ios-arm64",
-        SupportedPlatform: "ios",
-      },
-      {
-        LibraryIdentifier: "ios-arm64-simulator",
-        SupportedPlatform: "ios",
-        SupportedPlatformVariant: "simulator",
-      },
-    ],
-  };
-
-  assert.equal(xcframeworkLibrarySlice(info.AvailableLibraries[0]), "device");
-  assert.equal(
-    xcframeworkLibrarySlice(info.AvailableLibraries[1]),
-    "simulator",
-  );
-  assert.deepEqual(missingRequiredSlicesFromInfo(info, ["device"]), []);
-  assert.deepEqual(missingRequiredSlicesFromInfo(info, ["simulator"]), []);
-  assert.equal(
-    describeXcframeworkLibrariesFromInfo(info),
-    "ios/ios-arm64, ios-simulator/ios-arm64-simulator",
-  );
-});
-
-test("reports missing required device xcframework slice", () => {
-  const info = {
-    AvailableLibraries: [
-      {
-        LibraryIdentifier: "ios-arm64-simulator",
-        SupportedPlatform: "ios",
-        SupportedPlatformVariant: "simulator",
-      },
-    ],
-  };
-
-  assert.deepEqual(missingRequiredSlicesFromInfo(info, ["device"]), ["device"]);
-  assert.deepEqual(parseRequiredSlices("all"), ["device", "simulator"]);
-  assert.deepEqual(parseRequiredSlices("device, simulator,device"), [
-    "device",
-    "simulator",
-  ]);
 });

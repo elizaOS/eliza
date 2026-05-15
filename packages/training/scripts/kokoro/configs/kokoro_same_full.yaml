@@ -1,10 +1,10 @@
-# Kokoro full fine-tune on the `sam` voice from lalalune/ai_voices.
+# Kokoro full fine-tune on the `same` voice from lalalune/ai_voices.
 #
 # Driven by finetune_kokoro_full.py — unlocks every parameter (BERT, BERT
 # encoder, prosody predictor, text encoder, iSTFTNet decoder) and trains
 # end-to-end with mel-spectrogram L1 + per-parameter anchor regularization.
 #
-# WARNING: the sam corpus is 58 clips / 3.5 minutes. Real-world full FT
+# WARNING: the same corpus is 58 clips / 3.5 minutes. Real-world full FT
 # of Kokoro-82M expects 1-3 hours minimum to converge (R7 §1). Running on
 # 3.5 min stresses the model toward catastrophic forgetting; the anchor
 # weight + small LR + tight step cap below are tuned to keep the run
@@ -18,22 +18,22 @@ extends: base.yaml
 
 # Identity. Matches the Kokoro `<lang><sex>_<name>` convention enforced by
 # plugins/plugin-local-inference/src/services/voice/kokoro/__tests__/voices.test.ts.
-voice_name: af_sam
-voice_display_name: Sam (AI Voices, US English) — Full FT
+voice_name: af_same
+voice_display_name: Same (AI Voices, US English) — Full FT
 voice_lang: a
 voice_tags:
   - female
-  - sam
+  - same
   - eliza-1-voice
   - ai-voices-derived
   - research-only
   - full-finetune
 
 # Inputs. Reviewer-facing — finetune_kokoro_full.py reads --run-dir from CLI.
-dataset_path: packages/training/data/voice/sam
-run_dir: /tmp/kokoro-runs/sam-full
+dataset_path: packages/training/data/voice/same
+run_dir: /tmp/kokoro-runs/same-full
 
-# Full FT hyperparameters tuned for the 3.5-min sam corpus.
+# Full FT hyperparameters tuned for the 3.5-min same corpus.
 mode: full
 learning_rate: 5.0e-5         # smaller than LoRA default 1e-4 — small corpus needs gentle steps.
 max_steps: 1500               # per user spec — cap total updates.

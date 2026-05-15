@@ -1,25 +1,25 @@
 #!/usr/bin/env python3
-"""G3 Kokoro sam full-FT pipeline orchestrator.
+"""G3 Kokoro same full-FT pipeline orchestrator.
 
-Implements F2's structural next-step: OmniVoice sam frozen preset as the
-distillation teacher (NOT af_bella). In practice, the "OmniVoice sam teacher"
-is the Kokoro KPipeline conditioned on the sam mel-fit ref_s, which produces
-sam-characteristic audio rather than af_bella-characteristic audio.
+Implements F2's structural next-step: OmniVoice same frozen preset as the
+distillation teacher (NOT af_bella). In practice, the "OmniVoice same teacher"
+is the Kokoro KPipeline conditioned on the same mel-fit ref_s, which produces
+same-characteristic audio rather than af_bella-characteristic audio.
 
 Pipeline:
-  1. Synthesize ~60 min via Kokoro + sam ref_s teacher → sam-distill/
-  2. Merge with augmented real sam corpus (≥80% distilled, ≤20% real)
+  1. Synthesize ~60 min via Kokoro + same ref_s teacher → same-distill/
+  2. Merge with augmented real same corpus (≥80% distilled, ≤20% real)
   3. Train full-FT for 8000 steps (APOLLO, RTX 5080)
   4. Eval vs baseline
-  5. If beatsBaseline → push to HF elizaos/eliza-1-voice-kokoro-sam-v01
+  5. If beatsBaseline → push to HF elizaos/eliza-1-voice-kokoro-same-v01
 
 Usage::
 
     python3 run_g3_pipeline.py \\
-        --sam-voice-bin /tmp/kokoro-f2/melfit-5/af_samantha.bin \\
+        --same-voice-bin /tmp/kokoro-f2/melfit-5/af_same.bin \\
         --augmented-corpus-dir /tmp/kokoro-f2/augmented \\
         --out-dir /tmp/kokoro-g3 \\
-        --baseline-eval artifacts/voice-fine-tune/kokoro-sam-f2/20260515T020000Z/eval-baseline-af_bella.json
+        --baseline-eval artifacts/voice-fine-tune/kokoro-same-f2/20260515T020000Z/eval-baseline-af_bella.json
 
     # Dry run (skip actual training):
     python3 run_g3_pipeline.py --dry-run [...]
@@ -44,10 +44,10 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 KOKORO_SCRIPTS = Path(__file__).resolve().parent
 
 # G3 target mix ratios (per brief)
-DISTILLED_RATIO_TARGET = 0.80   # ≥80% OmniVoice-sam-distilled
+DISTILLED_RATIO_TARGET = 0.80   # ≥80% OmniVoice-same-distilled
 REAL_RATIO_MAX = 0.20           # ≤20% augmented real
 
-HF_REPO = "elizaos/eliza-1-voice-kokoro-sam-v01"
+HF_REPO = "elizaos/eliza-1-voice-kokoro-same-v01"
 
 
 def run(cmd: list[str], *, env: dict | None = None, check: bool = True) -> subprocess.CompletedProcess:
@@ -167,10 +167,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
     out_dir = Path(args.out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    # Step 1: Synthesize distillation corpus with sam ref_s teacher
-    distill_dir = out_dir / "sam-distill"
+    # Step 1: Synthesize distillation corpus with same ref_s teacher
+    distill_dir = out_dir / "same-distill"
     if not distill_dir.exists() or not (distill_dir / "synthesis_summary.json").exists():
-        log.info("=== STEP 1: Synthesize sam-distill corpus (%.0f min) ===", args.target_min)
+        log.info("=== STEP 1: Synthesize same-distill corpus (%.0f min) ===", args.target_min)
         if args.dry_run:
             log.info("[dry-run] skipping synthesis")
             distill_dir.mkdir(parents=True, exist_ok=True)
@@ -186,14 +186,14 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 "--target-min", str(args.target_min),
                 "--seed", "1337",
             ]
-            if args.sam_voice_bin and Path(args.sam_voice_bin).exists():
-                cmd.extend(["--voice-bin", str(args.sam_voice_bin)])
-                log.info("teacher: sam ref_s from %s", args.sam_voice_bin)
+            if args.same_voice_bin and Path(args.same_voice_bin).exists():
+                cmd.extend(["--voice-bin", str(args.same_voice_bin)])
+                log.info("teacher: same ref_s from %s", args.same_voice_bin)
             else:
-                log.warning("sam-voice-bin not found; falling back to stock af_sam voice")
+                log.warning("same-voice-bin not found; falling back to stock af_same voice")
             run(cmd)
     else:
-        log.info("sam-distill already exists, skipping synthesis")
+        log.info("same-distill already exists, skipping synthesis")
 
     # Step 2: Merge with augmented real corpus at ≥80% distilled ratio
     merged_dir = out_dir / "merged"
@@ -244,7 +244,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 sys.executable,
                 str(KOKORO_SCRIPTS / "finetune_kokoro_full.py"),
                 "--run-dir", str(run_dir),
-                "--config", "kokoro_sam_g3.yaml",
+                "--config", "kokoro_same_g3.yaml",
                 "--init-from-voice", args.init_from_voice,
                 "--skip-inline-eval",  # speed up; do full eval in step 4
             ]
@@ -274,7 +274,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             sys.executable,
             str(KOKORO_SCRIPTS / "eval_kokoro.py"),
             "--run-dir", str(run_dir),
-            "--config", "kokoro_sam_g3.yaml",
+            "--config", "kokoro_same_g3.yaml",
             "--voice-bin", str(best_bin),
             "--eval-out", str(eval_out),
             "--allow-gate-fail",
@@ -304,7 +304,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             sys.executable,
             str(KOKORO_SCRIPTS / "eval_kokoro.py"),
             "--run-dir", str(run_dir),
-            "--config", "kokoro_sam_g3.yaml",
+            "--config", "kokoro_same_g3.yaml",
             "--voice-bin", str(best_bin),
             "--eval-out", str(eval_out),
             "--allow-gate-fail",
@@ -341,14 +341,14 @@ def run_pipeline(args: argparse.Namespace) -> int:
             staging_dir.mkdir(exist_ok=True)
             import shutil  # noqa: PLC0415
 
-            shutil.copy2(best_bin, staging_dir / "af_sam.bin")
+            shutil.copy2(best_bin, staging_dir / "af_same.bin")
             if eval_out.exists():
                 shutil.copy2(eval_out, staging_dir / "eval.json")
             # Write model card
             (staging_dir / "README.md").write_text(
-                "# elizaos/eliza-1-voice-kokoro-sam-v01\n\n"
-                "Kokoro-82M fine-tuned on the `sam` voice (AI Voices / Her-derived).\n"
-                "G3 training: OmniVoice sam teacher distillation (60 min) + augmented real (≤20%).\n"
+                "# elizaos/eliza-1-voice-kokoro-same-v01\n\n"
+                "Kokoro-82M fine-tuned on the `same` voice (AI Voices / Her-derived).\n"
+                "G3 training: OmniVoice same teacher distillation (60 min) + augmented real (≤20%).\n"
                 f"Generated: {datetime.now(timezone.utc).isoformat()}\n"
             )
             run([
@@ -370,16 +370,16 @@ def run_pipeline(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument(
-        "--sam-voice-bin",
+        "--same-voice-bin",
         type=Path,
         default=None,
-        help="Path to best sam mel-fit ref_s .bin (teacher). F2 melfit-5 recommended.",
+        help="Path to best same mel-fit ref_s .bin (teacher). F2 melfit-5 recommended.",
     )
     p.add_argument(
         "--augmented-corpus-dir",
         type=Path,
         default=None,
-        help="Path to F2 augmented real sam corpus (with train_list.txt + wavs_norm/).",
+        help="Path to F2 augmented real same corpus (with train_list.txt + wavs_norm/).",
     )
     p.add_argument(
         "--out-dir",
@@ -407,7 +407,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--baseline-eval",
         type=Path,
-        default=Path("artifacts/voice-fine-tune/kokoro-sam-f2/20260515T020000Z/eval-baseline-af_bella.json"),
+        default=Path("artifacts/voice-fine-tune/kokoro-same-f2/20260515T020000Z/eval-baseline-af_bella.json"),
     )
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--force-retrain", action="store_true")

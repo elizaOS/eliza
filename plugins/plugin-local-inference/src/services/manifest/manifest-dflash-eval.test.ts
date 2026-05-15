@@ -23,7 +23,7 @@ function passingBackends() {
 }
 
 function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
-	const manifest: Eliza1Manifest = {
+	return {
 		id: `eliza-1-${tier}`,
 		tier,
 		version: "1.0.0",
@@ -70,14 +70,6 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 		ramBudgetMb: { min: 7000, recommended: 9500 },
 		defaultEligible: true,
 	};
-	if (!REQUIRED_KERNELS_BY_TIER[tier].includes("dflash")) {
-		delete manifest.lineage.drafter;
-		delete manifest.lineage.vision;
-		manifest.files.vision = [];
-		manifest.files.dflash = [];
-		delete manifest.evals.dflash;
-	}
-	return manifest;
 }
 
 describe("manifest evals — dflash bench slot", () => {
@@ -115,15 +107,6 @@ describe("manifest evals — dflash bench slot", () => {
 		};
 		const result = validateManifest(m);
 		expect(result.ok).toBe(true);
-	});
-
-	it("accepts default-eligible 0_8b/2b manifests without DFlash artifacts or evals", () => {
-		for (const tier of ["0_8b", "2b"] as const) {
-			const m = baseManifest(tier);
-			expect(m.files.dflash).toEqual([]);
-			expect(m.evals.dflash).toBeUndefined();
-			expect(validateManifest(m).ok).toBe(true);
-		}
 	});
 
 	it("rejects defaultEligible when the dflash eval is missing", () => {

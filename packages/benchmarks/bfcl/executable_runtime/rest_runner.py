@@ -25,7 +25,7 @@ Apache-2.0 attribution preserved for compatibility with upstream semantics.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-import time
+from time import perf_counter
 from typing import Any, Optional
 
 
@@ -180,7 +180,7 @@ class RESTRunner:
 
         client = self._ensure_client()
 
-        started_at = time.perf_counter()
+        started = perf_counter()
         try:
             response = client.request(
                 spec.method,
@@ -197,18 +197,12 @@ class RESTRunner:
             # caller can fail the test (not skip it — a network error on
             # an opt-in run is a real signal).
             raise RESTExecutionError(f"REST request failed: {exc}") from exc
+        elapsed_seconds = perf_counter() - started
 
         if response.status_code == 429:
             raise RESTRateLimited(
                 f"Rate-limited (HTTP 429) by {spec.url}"
             )
-
-        elapsed_seconds = time.perf_counter() - started_at
-        try:
-            elapsed_seconds = response.elapsed.total_seconds()
-        except RuntimeError:
-            # httpx.MockTransport responses do not always have elapsed set.
-            pass
 
         try:
             json_body = response.json()

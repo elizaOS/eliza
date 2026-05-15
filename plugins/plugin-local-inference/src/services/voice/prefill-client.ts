@@ -27,6 +27,7 @@
  *     3. Returns `{ handle, eotProb }`.
  */
 
+import { logger } from "@elizaos/core";
 import type {
 	CheckpointHandle,
 	CheckpointManagerLike,
@@ -259,8 +260,9 @@ async function runPrefillCompletion(
 			// Non-200 — prefill attempt failed, but we continue (phase 3 still runs).
 			// In the real `/v1/prefill` path the server would surface a clear error;
 			// for the stub we tolerate it.
-			console.warn(
-				`[prefill-client] /completion returned HTTP ${resp.status} — continuing without prefill warm`,
+			logger.warn(
+				{ status: resp.status },
+				"[prefill-client] /completion returned non-200 — continuing without prefill warm",
 			);
 		}
 	} catch (err) {
@@ -269,8 +271,9 @@ async function runPrefillCompletion(
 			err instanceof Error && err.name === "AbortError"
 				? "timeout"
 				: String(err);
-		console.warn(
-			`[prefill-client] /completion prefill failed (${reason}) — continuing without prefill warm`,
+		logger.warn(
+			{ reason },
+			"[prefill-client] /completion prefill failed — continuing without prefill warm",
 		);
 	} finally {
 		clearTimeout(timer);

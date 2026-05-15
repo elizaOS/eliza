@@ -93,5 +93,21 @@ class CerebrasJudge:
         return (clamped - 1) / 4.0, rationale
 
 
-def build_judge(*, model: str | None) -> Judge:
+class FixtureJudge:
+    """Deterministic judge for fixture runs."""
+
+    model = "fixture"
+
+    async def score(
+        self, *, prompt: str, reference: str, candidate: str
+    ) -> tuple[float, str]:
+        del prompt
+        expected = " ".join(reference.lower().split())
+        actual = " ".join(candidate.lower().split())
+        return (1.0 if expected and expected == actual else 0.0, "fixture exact match")
+
+
+def build_judge(*, model: str | None, mock: bool = False) -> Judge:
+    if mock:
+        return FixtureJudge()
     return CerebrasJudge(model=model)

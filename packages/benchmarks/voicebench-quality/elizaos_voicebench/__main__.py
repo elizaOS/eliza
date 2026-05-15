@@ -22,7 +22,7 @@ from .runner import resolve_suites, run
 from .types import SUITES
 
 
-_AGENT_CHOICES = ("eliza", "hermes", "openclaw")
+_AGENT_CHOICES = ("eliza", "hermes", "openclaw", "echo")
 _SUITE_CHOICES = ("all",) + SUITES
 _STT_CHOICES = ("groq", "eliza-runtime")
 
@@ -70,6 +70,16 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Output directory for the results JSON.",
     )
     parser.add_argument(
+        "--mock",
+        action="store_true",
+        help="Use bundled fixtures with a deterministic no-cost adapter and judge.",
+    )
+    parser.add_argument(
+        "--fixtures",
+        action="store_true",
+        help="Alias for --mock.",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         help="Logging level (DEBUG, INFO, WARNING, ERROR).",
@@ -82,8 +92,9 @@ async def _run_async(args: argparse.Namespace) -> int:
     adapter = build_adapter(
         agent=args.agent,
         stt_provider=args.stt_provider,
+        mock=args.mock or args.fixtures,
     )
-    judge = build_judge(model=args.judge_model)
+    judge = build_judge(model=args.judge_model, mock=args.mock or args.fixtures)
 
     output_dir = Path(args.output).resolve()
     result = await run(
@@ -94,6 +105,7 @@ async def _run_async(args: argparse.Namespace) -> int:
         output_dir=output_dir,
         agent_name=args.agent,
         stt_provider=args.stt_provider,
+        mock=args.mock or args.fixtures,
     )
     summary = {
         "score": result.score,

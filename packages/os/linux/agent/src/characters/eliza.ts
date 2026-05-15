@@ -21,7 +21,7 @@
 
 // Subpath import avoids `@elizaos/agent`'s barrel, which dynamically pulls in
 // optional milady-only packages (`@elizaos/app-training/...`) we don't ship.
-import { CharacterSchema } from "@elizaos/agent";
+import { CharacterSchema } from "@elizaos/agent/config/character-schema";
 
 const ELIZA_PERSONA_BASE = `\
 You are Eliza. Warm. Concise. Curious. You speak in plain language, never marketing-speak.

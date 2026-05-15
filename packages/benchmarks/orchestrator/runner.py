@@ -862,15 +862,6 @@ def _build_latest_matrix_contract(
     }
 
 
-def _latest_index_updated_at(rows: list[dict[str, Any]]) -> str:
-    timestamps = [
-        str(row.get("ended_at") or row.get("started_at") or "")
-        for row in rows
-        if row.get("ended_at") or row.get("started_at")
-    ]
-    return max(timestamps) if timestamps else _utc_now()
-
-
 def _rebuild_latest_result_snapshots(
     conn,
     output_root: Path,
@@ -941,8 +932,6 @@ def _rebuild_latest_result_snapshots(
         key = (benchmark_id, agent)
         if key not in latest_by_key:
             latest_by_key[key] = row
-        if is_synthetic:
-            continue
         signature = str(row.get("signature") or "")
         if signature:
             signature_key = (signature, benchmark_id, agent)
@@ -973,9 +962,7 @@ def _rebuild_latest_result_snapshots(
         adapters=adapters,
     )
     index: dict[str, Any] = {
-        "updated_at": _latest_index_updated_at(
-            [*latest_by_key.values(), *quarantine_by_key.values()]
-        ),
+        "updated_at": _utc_now(),
         "latest": {},
         "latest_by_signature": {},
         "latest_by_comparison_signature": {},
@@ -1732,7 +1719,7 @@ def run_benchmarks(
         if required_missing:
             attempt = next_attempt_for_signature(conn, signature)
             run_id = (
-                f"incompat_{adapter.id}_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
+                f"missing_env_{adapter.id}_{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}"
                 f"_{attempt}_{uuid4().hex[:8]}"
             )
             started_at = _utc_now()
@@ -1761,7 +1748,7 @@ def run_benchmarks(
             update_run_result(
                 conn,
                 run_id=run_id,
-                status="incompatible",
+                status="failed",
                 ended_at=_utc_now(),
                 duration_seconds=0.0,
                 score=None,
@@ -1778,7 +1765,7 @@ def run_benchmarks(
             outcome = BenchmarkRunOutcome(
                 benchmark_id=adapter.id,
                 run_id=run_id,
-                status="incompatible",
+                status="failed",
                 attempt=attempt,
                 score=None,
                 unit=None,
@@ -1806,7 +1793,7 @@ def run_benchmarks(
                 request=effective_request,
                 run_group_id=run_group_id,
                 run_id=run_id,
-                status="incompatible",
+                status="failed",
                 score=None,
                 unit=None,
                 higher_is_better=None,

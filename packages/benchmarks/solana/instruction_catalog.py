@@ -38,6 +38,10 @@ class ProgramInfo:
         return {ix.discriminator for ix in self.instructions}
 
     @property
+    def instructions_by_discriminator(self) -> dict[int, InstructionInfo]:
+        return {ix.discriminator: ix for ix in self.instructions}
+
+    @property
     def total_unique(self) -> int:
         return len(self.unique_discriminators)
 

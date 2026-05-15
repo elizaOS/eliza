@@ -23,15 +23,20 @@ classifiers = [
 
 dependencies = [
     "eliza-adapter",
+    "hermes-adapter",
+    "openclaw-adapter",
     "pydantic>=2.0.0",
     "httpx>=0.25.0",
     "docker>=7.0.0",
     "aiofiles>=23.0.0",
     "pexpect>=4.8.0",
+    "PyYAML>=6.0.0",
 ]
 
 [tool.uv.sources]
 eliza-adapter = { path = "../eliza-adapter", editable = true }
+hermes-adapter = { path = "../hermes-adapter", editable = true }
+openclaw-adapter = { path = "../openclaw-adapter", editable = true }
 
 [project.optional-dependencies]
 dev = [

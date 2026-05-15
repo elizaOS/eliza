@@ -192,3 +192,90 @@ function mapLine(line: VisionOcrLine): OcrLine {
 export function _resetOcrProvidersForTests(): void {
   REGISTRY.clear();
 }
+
+// ── Coord-aware OCR provider slot ────────────────────────────────────────────
+
+/**
+ * Hierarchical (block / line / word) OCR with absolute source-display
+ * coordinates and a coarse 3x3 semantic position label per element. This is
+ * a *separate* slot from `OcrProvider` above — that one is line-only and
+ * shaped around Apple Vision's API, while this one carries the structure
+ * that plugin-computeruse needs to compute action targets without re-running
+ * detection.
+ *
+ * The provider implementation lives in `@elizaos/plugin-vision`'s
+ * `ocr-with-coords.ts`. plugin-computeruse intentionally does not take a
+ * runtime dep on plugin-vision (computeruse is the higher-level seam), so
+ * the runtime registers a provider here at boot.
+ *
+ * Phase 2 target: replace the transitional RapidOCR-backed adapter with the
+ * native doctr-cpp provider once `packages/native-plugins/doctr-cpp/` ships.
+ */
+export interface CoordOcrSemantic {
+  readonly position:
+    | "upper-left"
+    | "upper-center"
+    | "upper-right"
+    | "middle-left"
+    | "center"
+    | "middle-right"
+    | "lower-left"
+    | "lower-center"
+    | "lower-right";
+}
+
+export interface CoordOcrWord {
+  readonly text: string;
+  readonly bbox: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly semantic_position: CoordOcrSemantic["position"];
+}
+
+export interface CoordOcrBlock {
+  readonly text: string;
+  readonly bbox: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  };
+  readonly words: ReadonlyArray<CoordOcrWord>;
+  readonly semantic_position: CoordOcrSemantic["position"];
+}
+
+export interface CoordOcrResult {
+  readonly blocks: ReadonlyArray<CoordOcrBlock>;
+}
+
+export interface CoordOcrInput {
+  readonly displayId: string;
+  readonly sourceX: number;
+  readonly sourceY: number;
+  readonly pngBytes: Uint8Array;
+}
+
+export interface CoordOcrProvider {
+  readonly name: string;
+  describe(input: CoordOcrInput): Promise<CoordOcrResult>;
+}
+
+let registeredCoordOcrProvider: CoordOcrProvider | null = null;
+
+/**
+ * Register the hierarchical / coord-aware OCR provider. Idempotent — last
+ * call wins so a hot-reload of the bridge swaps cleanly. Pass `null` to
+ * unregister.
+ */
+export function registerCoordOcrProvider(
+  provider: CoordOcrProvider | null,
+): void {
+  registeredCoordOcrProvider = provider;
+}
+
+export function getCoordOcrProvider(): CoordOcrProvider | null {
+  return registeredCoordOcrProvider;
+}

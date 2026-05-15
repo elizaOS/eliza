@@ -53,6 +53,7 @@ class TestConfigValidation:
         assert config.allow_ground_truth_mock is False
         assert config.use_mock_executor is False
         assert config.use_sample_tasks is False
+        assert config.auto_fetch_upstream is True
 
     def test_config_subtasks_accepts_none(self) -> None:
         config = MINTConfig(subtasks=None)

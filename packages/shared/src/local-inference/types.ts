@@ -306,17 +306,11 @@ export type TokenizerFamily =
 
 export type CatalogHub = "huggingface" | "modelscope";
 
-export type CatalogQuantizationId =
-  | "q3_k_m"
-  | "q4_0"
-  | "q4_k_m"
-  | "q5_k_m"
-  | "q6_k"
-  | "q8_0";
+export type CatalogQuantizationId = "q4_0" | "q4_k_m" | "q6_k" | "q8_0";
 
 export interface CatalogQuantizationVariant {
   id: CatalogQuantizationId;
-  label: "3-bit" | "4-bit" | "5-bit" | "6-bit" | "8-bit";
+  label: "4-bit" | "6-bit" | "8-bit";
   ggufFile: string;
   sizeGb: number;
   minRamGb: number;

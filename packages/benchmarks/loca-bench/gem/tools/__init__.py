@@ -20,8 +20,21 @@ from gem.tools.python_executor_tool import PythonExecutorTool
 from gem.tools.search_tool import SearchTool
 from gem.tools.overlong_output_tool import OverlongOutputTool
 from gem.tools.claim_done_tool import ClaimDoneTool
-from gem.tools.mcp_tool import MCPTool
 from gem.tools.tool_env_wrapper import ToolEnvWrapper, ToolEnvWrapperClaimDone
+
+try:
+    from gem.tools.mcp_tool import MCPTool
+except ModuleNotFoundError as exc:
+    if exc.name != "fastmcp":
+        raise
+    _fastmcp_import_error = exc
+
+    class MCPTool:  # type: ignore[no-redef]
+        def __init__(self, *args, **kwargs):
+            raise ModuleNotFoundError(
+                "fastmcp is required to use gem.tools.MCPTool"
+            ) from _fastmcp_import_error
+
 
 __all__ = [
     "BaseTool",

@@ -90,8 +90,8 @@ LEGACY_MOVES=(
 )
 
 # --- canonical per-tier bundle repos to create (elizaos/eliza-1-<tier>) --------
-# These match `packages/training/scripts/publish/orchestrator.py` (tier matrix in
-# no-op if the repo already exists.
+# These match the active bundle matrix under `elizaos/eliza-1`. `repo create`
+# is a no-op if the repo already exists.
 TIER_REPOS=(
   "eliza-1-0_8b"
   "eliza-1-2b"

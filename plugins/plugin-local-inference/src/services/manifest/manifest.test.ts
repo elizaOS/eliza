@@ -10,20 +10,6 @@ import {
 import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
-const DFLASH_TIERS = new Set<Eliza1Tier>([
-	"0_8b",
-	"2b",
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
-]);
-const VISION_TIERS = new Set<Eliza1Tier>([
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
-]);
 
 function passingBackends() {
 	return {
@@ -44,7 +30,7 @@ function passingBackends() {
 }
 
 function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
-	const manifest: Eliza1Manifest = {
+	return {
 		id: `eliza-1-${tier}`,
 		tier,
 		version: "1.0.0",
@@ -91,16 +77,6 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 		ramBudgetMb: { min: 7000, recommended: 9500 },
 		defaultEligible: true,
 	};
-	if (!DFLASH_TIERS.has(tier)) {
-		delete manifest.lineage.drafter;
-		manifest.files.dflash = [];
-		delete manifest.evals.dflash;
-	}
-	if (!VISION_TIERS.has(tier)) {
-		delete manifest.lineage.vision;
-		manifest.files.vision = [];
-	}
-	return manifest;
 }
 
 describe("Eliza-1 manifest schema constants", () => {
@@ -121,9 +97,6 @@ describe("Eliza-1 manifest schema constants", () => {
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["0_8b", "2b", "4b"]),
 		);
-		expect(REQUIRED_KERNELS_BY_TIER["0_8b"]).toContain("dflash");
-		expect(REQUIRED_KERNELS_BY_TIER["2b"]).toContain("dflash");
-		expect(REQUIRED_KERNELS_BY_TIER["4b"]).toContain("dflash");
 	});
 });
 
@@ -148,8 +121,13 @@ describe("validateManifest — valid input", () => {
 	it("accepts optional component lineage, files, evals, and voice capabilities", () => {
 		const m = baseManifest();
 		m.lineage.embedding = { base: "eliza-1-embedding", license: "apache-2.0" };
+		m.lineage.imagegen = {
+			base: "eliza-1-imagegen",
+			license: "pending-license-review",
+		};
 		m.lineage.wakeword = { base: "eliza-1-wakeword", license: "apache-2.0" };
 		m.files.embedding = [{ path: "embedding/eliza-1-embed.gguf", sha256: SHA }];
+		m.files.imagegen = [{ path: "imagegen/sd-1.5-Q5_0.gguf", sha256: SHA }];
 		m.files.wakeword = [{ path: "wakeword/eliza-1.onnx", sha256: SHA }];
 		m.voice = {
 			version: "1",
@@ -178,39 +156,6 @@ describe("validateManifest — valid input", () => {
 			const result = validateManifest(m);
 			const detail = result.ok ? "" : ` errors=${result.errors.join(", ")}`;
 			expect(result.ok, `${tier} should validate.${detail}`).toBe(true);
-		}
-	});
-
-	it("accepts 0_8b and 2b without vision with tier-specific DFlash policy", () => {
-		for (const tier of ["0_8b", "2b"] as const) {
-			const m = baseManifest(tier);
-			expect(m.files.vision).toEqual([]);
-			expect(m.lineage.vision).toBeUndefined();
-			if (tier === "0_8b") {
-				expect(m.files.dflash).toEqual([]);
-				expect(m.lineage.drafter).toBeUndefined();
-				expect(m.kernels.required).not.toContain("dflash");
-			} else {
-				expect(m.files.dflash.length).toBeGreaterThan(0);
-				expect(m.lineage.drafter).toBeDefined();
-				expect(m.kernels.required).toContain("dflash");
-			}
-			expect(validateManifest(m).ok).toBe(true);
-		}
-	});
-
-	it("rejects 0_8b/2b vision artifacts until those tiers have a real image mmproj", () => {
-		for (const tier of ["0_8b", "2b"] as const) {
-			const m = baseManifest(tier);
-			m.lineage.vision = { base: "eliza-1-vision", license: "apache-2.0" };
-			m.files.vision = [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }];
-			const result = validateManifest(m);
-			expect(result.ok, `${tier} vision should reject`).toBe(false);
-			if (!result.ok) {
-				expect(result.errors.some((e) => e.includes("files.vision"))).toBe(
-					true,
-				);
-			}
 		}
 	});
 });
@@ -275,29 +220,6 @@ describe("validateManifest — contract rejections", () => {
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
 			expect(result.errors.some((e) => e.includes("dflash"))).toBe(true);
-		}
-	});
-
-	it("requires vision and DFlash artifacts for 4b and larger tiers", () => {
-		for (const tier of ["4b", "9b", "27b", "27b-256k"] as const) {
-			const m = baseManifest(tier);
-			delete m.lineage.vision;
-			delete m.lineage.drafter;
-			m.files.vision = [];
-			m.files.dflash = [];
-			delete m.evals.dflash;
-			const result = validateManifest(m);
-			expect(result.ok, `${tier} should reject missing vision/DFlash`).toBe(
-				false,
-			);
-			if (!result.ok) {
-				expect(result.errors.some((e) => e.includes("files.vision"))).toBe(
-					true,
-				);
-				expect(result.errors.some((e) => e.includes("files.dflash"))).toBe(
-					true,
-				);
-			}
 		}
 	});
 

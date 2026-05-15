@@ -57,21 +57,9 @@ interface InvokeActionParams {
 	options?: Record<string, unknown>;
 }
 
-interface WorkerActionMessage {
-	id: string;
-	content: unknown;
-}
-
-type WorkerActionHandler = (
-	runtime: unknown,
-	message: WorkerActionMessage,
-	state: undefined,
-	options: Record<string, unknown>,
-) => unknown | Promise<unknown>;
-
 interface LoadedAction {
 	name: string;
-	handler: WorkerActionHandler;
+	handler: (...args: any[]) => unknown | Promise<unknown>;
 }
 
 if (isMainThread) {

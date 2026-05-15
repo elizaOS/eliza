@@ -1,7 +1,7 @@
 """Drive `stage_same_corpus.py` against a synthetic 3-clip fixture.
 
 The real upstream corpus is 58 clips of human speech we do not redistribute,
-so this test materializes a synthetic sam-like corpus on disk and runs
+so this test materializes a synthetic same-like corpus on disk and runs
 the adapter end-to-end.
 """
 
@@ -26,8 +26,8 @@ def _write_silent_wav(path: Path, *, sample_rate: int = 44100, duration_s: float
 
 
 def _make_upstream(tmp_path: Path) -> Path:
-    """Materialize a /tmp/ai_voices/sam-like fixture under tmp_path."""
-    src = tmp_path / "upstream-sam"
+    """Materialize a /tmp/ai_voices/same-like fixture under tmp_path."""
+    src = tmp_path / "upstream-samanthae"
     src.mkdir(parents=True, exist_ok=True)
     transcripts = {
         "samantha_001": "Yeah, I have been trying to figure out how to talk to you.",
@@ -62,7 +62,7 @@ def test_synthetic_smoke_writes_full_schema(tmp_path: Path) -> None:
 
     # source.json schema.
     src_data = json.loads(source.read_text())
-    assert src_data["kind"] == "sam-corpus-source"
+    assert src_data["kind"] == "same-corpus-source"
     assert src_data["schemaVersion"] == 1
     assert src_data["clipCount"] == 3
     assert src_data["synthetic"] is True

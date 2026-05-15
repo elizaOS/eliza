@@ -20,7 +20,7 @@ import {
 	type ResponseSkeleton,
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
-import { resolveKokoroEngineConfig } from "@elizaos/shared";
+import { resolveKokoroEngineConfig } from "@elizaos/shared/local-inference";
 import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
 	GenerateArgs as BackendGenerateArgs,
@@ -56,10 +56,7 @@ import {
 } from "./session-pool";
 import { resolveGuidedDecodeForParams } from "./structured-output";
 import type { InstalledModel } from "./types";
-import {
-	type CoordinatorRuntime,
-	VoiceCancellationCoordinator,
-} from "./voice/cancellation-coordinator";
+import type { CoordinatorRuntime } from "./voice/cancellation-coordinator";
 import {
 	buildLocalEmbeddingRoute,
 	EMBEDDING_FULL_DIM,
@@ -1534,12 +1531,14 @@ export class LocalInferenceEngine {
 		};
 		/**
 		 * Runtime reference for cancellation coordination (W3-9 F1).
-		 * When provided, a `VoiceCancellationCoordinator` is constructed and
-		 * wired into:
-		 *   - `BargeInController` → coordinator.bargeIn (hard-stop ASR words)
-		 *   - `EngineVoiceBridge.triggerBargeIn` → coordinator ttsStop
-		 *   - `runtime.turnControllers.abortTurn` (planner-loop / action abort)
-		 * When absent the session runs with the pre-W3-9 VAD-only barge-in path.
+		 *
+		 * @deprecated G5.d: pass `runtime` to `startVoice()` (the
+		 * `EngineVoiceBridgeOptions`) instead. The bridge is the canonical
+		 * owner of `VoiceCancellationCoordinator` + `OptimisticGenerationPolicy`,
+		 * and `startVoiceSession()` now delegates to the bridge's coordinator.
+		 * When this field is supplied here without a matching bridge-level
+		 * runtime, `startVoiceSession()` logs once and ignores it — the
+		 * canonical wiring lives on the bridge.
 		 */
 		runtime?: CoordinatorRuntime;
 	}): Promise<import("./voice/turn-controller").VoiceTurnController> {
@@ -1632,20 +1631,22 @@ export class LocalInferenceEngine {
 			}
 		}
 
-		// F1 (Wave 3 follow-up): construct VoiceCancellationCoordinator when a
-		// runtime reference is provided. This wires the three abort paths (voice
-		// barge-in → runtime turn abort, runtime abort → voice token, slot cancel)
-		// into one canonical VoiceCancellationToken per turn.
-		// OptimisticGenerationPolicy is available (imported) for callers that
-		// integrate VoiceTurnController speculate-on-EOT with power-source gating;
-		// it is not wired here because VoiceTurnController.speculatePauseMs is the
-		// current gate — a future change can pass the policy through VoiceTurnControllerConfig.
-		let cancellationCoordinator: VoiceCancellationCoordinator | null = null;
-		if (opts.runtime) {
-			cancellationCoordinator = new VoiceCancellationCoordinator({
-				runtime: opts.runtime,
-				ttsStop: () => bridge.triggerBargeIn(),
-			});
+		// G5.d (Gauntlet cleanup): delegate to the bridge's canonical
+		// VoiceCancellationCoordinator. The bridge is the single owner — it
+		// constructs the coordinator + policy at `EngineVoiceBridge.start()`
+		// when `runtime` is passed in `EngineVoiceBridgeOptions` (see
+		// `engine-bridge.ts buildCancellationWiring`). Earlier C0-F wiring
+		// built a separate coordinator here; that path is removed.
+		//
+		// Back-compat: when callers still pass `opts.runtime` to
+		// `startVoiceSession()` but did not pass `runtime` to `startVoice()`,
+		// the bridge has no coordinator. We log once and proceed — the
+		// caller-supplied runtime is ignored because the bridge owns the
+		// FFI context that the coordinator targets.
+		if (opts.runtime && !bridge.cancellationCoordinatorOrNull()) {
+			console.warn(
+				"[voice] startVoiceSession({ runtime }) supplied but the bridge has no canonical cancellation coordinator — pass `runtime` to startVoice() instead. Ignoring the session-level runtime.",
+			);
 		}
 
 		const controller = new VoiceTurnController(
@@ -1671,15 +1672,11 @@ export class LocalInferenceEngine {
 			opts.events ?? {},
 		);
 
-		// Bind the BargeInController into the cancellation coordinator so
-		// ASR-confirmed hard-stop words trip the canonical voice token.
-		let unsubCoordinator: (() => void) | null = null;
-		if (cancellationCoordinator) {
-			unsubCoordinator = cancellationCoordinator.bindBargeInController(
-				opts.roomId,
-				bridge.scheduler.bargeIn,
-			);
-		}
+		// Bind the bridge's BargeInController into the bridge's canonical
+		// coordinator (G5.d). No-op when the bridge was constructed without a
+		// runtime — returns a no-op unsubscribe so the teardown path stays
+		// branchless.
+		const unsubCoordinator = bridge.bindBargeInControllerForRoom(opts.roomId);
 
 		// Mic → ring buffer (the buffer the ASR / instrumentation can read from)
 		// + per-frame fan-out to the VAD and the streaming transcriber.
@@ -1764,9 +1761,11 @@ export class LocalInferenceEngine {
 			void micSource.stop();
 			transcriber.dispose();
 			wakeWord?.reset();
-			// F1: dispose the cancellation coordinator (cancels all armed tokens).
-			unsubCoordinator?.();
-			cancellationCoordinator?.dispose();
+			// G5.d: tear down only the per-room barge-in binding. The bridge
+			// owns the coordinator lifecycle and disposes it in
+			// `EngineVoiceBridge.dispose()` — we must not dispose it here or
+			// we would cancel armed tokens for other concurrent rooms.
+			unsubCoordinator();
 		};
 		return controller;
 	}
@@ -1924,7 +1923,8 @@ export class LocalInferenceEngine {
 	/**
 	 * Build the local-embedding route for an activated Eliza-1 bundle.
 	 * On `0_8b` / `2b` the embedding model is the text backbone with
-	 * `--pooling last` (no separate GGUF); on `4b`/`9b`/`27b`/`27b-256k`/
+	 * `--pooling last` (no separate GGUF); on `4b`/`9b`/`27b`/`27b-256k`
+	 * a dedicated 1024-dim Matryoshka `embedding/` region is used.
 	 * See AGENTS.md §1. Throws `VoiceStartupError` when a larger tier is
 	 * missing its dedicated region — no fallback to pooled text (which would
 	 * regress the dimension contract).

@@ -50,6 +50,18 @@ async def test_limit_is_per_problem() -> None:
 
 
 @pytest.mark.asyncio
+async def test_full_dataset_loader_allows_uncapped_instances() -> None:
+    if not UPSTREAM.exists():
+        pytest.skip("upstream datasets not vendored")
+    ds = REALMDataset(data_path=UPSTREAM, max_instances_per_problem=None)
+    await ds.load()
+    counts: dict[RealmProblem, int] = {}
+    for t in ds.tasks:
+        counts[t.problem] = counts.get(t.problem, 0) + 1
+    assert any(n > 5 for n in counts.values())
+
+
+@pytest.mark.asyncio
 async def test_back_compat_category_attr_exists() -> None:
     """``REALMTask.category`` is preserved as an alias for ``problem``."""
     ds = REALMDataset(use_sample_tasks=True)

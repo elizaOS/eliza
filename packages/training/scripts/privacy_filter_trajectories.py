@@ -320,7 +320,7 @@ def default_patterns(*, redact_env_secrets: bool = False) -> list[PatternSpec]:
         PatternSpec(
             "contact",
             "known-pii-name",
-            re.compile(r"\b(?:Jill|Marco|Sarah|Suran|Samantha)\b"),
+            re.compile(r"\b(?:Jill|Marco|Sarah|Suran|Sam)\b"),
             "<REDACTED:known-name>",
         ),
     ]

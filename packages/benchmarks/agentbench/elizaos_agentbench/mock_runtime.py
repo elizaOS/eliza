@@ -11,8 +11,8 @@ It should never be used for publishing benchmark scores.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 from elizaos_agentbench.types import GenerateTextResult
 
@@ -61,6 +61,10 @@ class SmartMockRuntime:
         # Lateral thinking puzzles
         if "lateral thinking puzzle" in pl and "scenario" in pl:
             return MockGenerateTextResult(text=self._handle_lateral(pl))
+
+        # Mind2Web fixture / prompt-choice tasks
+        if "reply with only the letter" in pl or "choose the next action" in pl:
+            return MockGenerateTextResult(text="A")
 
         return MockGenerateTextResult(text="think")
 
@@ -151,4 +155,3 @@ class SmartMockRuntime:
             return "think"
 
         return "think"
-

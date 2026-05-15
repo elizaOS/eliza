@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it } from 'vitest';
 import { tunnelAction } from '../../actions/tunnel';
 import { tunnelStateProvider } from '../../providers/tunnel-state';
 import { LocalTunnelService } from '../../services/LocalTunnelService';

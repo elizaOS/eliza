@@ -16,20 +16,17 @@
 # check but does not push.
 #
 # Layout: each tier is published from its own bundle directory. Pass the
-# parent directory via --bundles-root; per-tier dirs may be either
-# <root>/<tier>/ or <root>/eliza-1-<tier>.bundle/. Per-tier directory
-# layout is the §2 bundle (text/, tts/, asr/, vision/, dflash/, cache/,
-# evals/, licenses/).
+# parent directory via --bundles-root; per-tier dirs are
+# <root>/<tier>/. Per-tier directory layout is the §2 bundle (text/,
+# tts/, asr/, vision/, dflash/, cache/, evals/, licenses/).
 #
 # Metal verification is hardware-only. To publish a tier that includes
 # the Metal backend (0_8b, 2b, 4b, 9b, 27b, 27b-256k) you
 # must record a metal_verify.json on a verified host (run
 # packages/inference/verify/metal_verify there) and pass it via
 # --metal-verification-<tier> PATH OR by placing it at
-# <bundles-root>/<tier>/evals/metal_verify.json or
-# <bundles-root>/eliza-1-<tier>.bundle/evals/metal_verify.json (the
-# orchestrator picks up that path automatically when passed via
-# --metal-verification).
+# <bundles-root>/<tier>/evals/metal_verify.json (the orchestrator picks
+# up that path automatically when passed via --metal-verification).
 #
 # Usage:
 #   scripts/publish_all_eliza1.sh --bundles-root ./bundles
@@ -48,6 +45,8 @@ readonly TRAINING_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 cd "${TRAINING_ROOT}"
 
+readonly TIERS=("0_8b" "2b" "4b" "9b" "27b" "27b-256k")
+
 DRY_RUN=0
 PUBLIC=0
 FILTER_TIER=""
@@ -58,8 +57,6 @@ METAL_PATH_4B=""
 METAL_PATH_9B=""
 METAL_PATH_27B=""
 METAL_PATH_27B_256K=""
-
-readonly TIERS=("0_8b" "2b" "4b" "9b" "27b" "27b-256k")
 
 usage() {
   sed -n '2,40{s/^# //;s/^#//;p;}' "${SCRIPT_PATH}"
@@ -99,27 +96,12 @@ elif [[ -x "/opt/homebrew/bin/uv" ]]; then
   UV_BIN="/opt/homebrew/bin/uv"
 fi
 
-PYTHON_BIN=""
-if command -v python3 >/dev/null 2>&1; then
-  PYTHON_BIN="$(command -v python3)"
-elif command -v python >/dev/null 2>&1; then
-  PYTHON_BIN="$(command -v python)"
-fi
-
-if [[ -n "${PYTHON_BIN}" ]] && "${PYTHON_BIN}" - <<'PY' >/dev/null 2>&1
-import huggingface_hub
-import jinja2
-import yaml
-PY
-then
-  RUNNER=("${PYTHON_BIN}" -m scripts.publish.orchestrator)
-elif [[ -n "${UV_BIN}" && -f "${TRAINING_ROOT}/pyproject.toml" ]]; then
+if [[ -n "${UV_BIN}" && -f "${TRAINING_ROOT}/pyproject.toml" ]]; then
   RUNNER=("${UV_BIN}" run --with pyyaml --with huggingface_hub --with jinja2 python -m scripts.publish.orchestrator)
-elif [[ -n "${PYTHON_BIN}" ]]; then
-  RUNNER=("${PYTHON_BIN}" -m scripts.publish.orchestrator)
+elif command -v python3 >/dev/null 2>&1; then
+  RUNNER=(python3 -m scripts.publish.orchestrator)
 else
-  echo "python3 or python is required" >&2
-  exit 2
+  RUNNER=(python -m scripts.publish.orchestrator)
 fi
 
 declare -i N_TOTAL=0 N_OK=0 N_FAILED=0
@@ -140,17 +122,12 @@ metal_path_for_tier() {
 publish_one() {
   local tier="$1"
   local bundle_dir="${BUNDLES_ROOT}/${tier}"
-  local named_bundle_dir="${BUNDLES_ROOT}/eliza-1-${tier}.bundle"
   local metal_path
 
   N_TOTAL+=1
 
-  if [[ ! -d "${bundle_dir}" && -d "${named_bundle_dir}" ]]; then
-    bundle_dir="${named_bundle_dir}"
-  fi
-
   if [[ ! -d "${bundle_dir}" ]]; then
-    echo "[fail] ${tier}: bundle directory missing (${bundle_dir} or ${named_bundle_dir})"
+    echo "[fail] ${tier}: bundle directory missing (${bundle_dir})"
     RESULTS+=("FAIL  ${tier}  (no bundle dir)")
     N_FAILED+=1
     return 1

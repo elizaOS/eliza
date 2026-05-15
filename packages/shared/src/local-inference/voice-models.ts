@@ -59,6 +59,21 @@ export interface VoiceModelGgufAsset {
   readonly quant: VoiceModelQuant;
 }
 
+export type VoiceModelMissingAssetReason =
+  | "missing-from-local-staging"
+  | "missing-from-hf-repo";
+
+export interface VoiceModelMissingAsset {
+  /** Expected filename inside `hfRepo` at `hfRevision`. */
+  readonly filename: string;
+  /** Expected quantization label. */
+  readonly quant: VoiceModelQuant;
+  /** Approximate planned bytes from the staging manifest; not a verified size. */
+  readonly expectedSizeBytes?: number;
+  /** Why no sha256/sizeBytes are recorded in `ggufAssets`. */
+  readonly reason: VoiceModelMissingAssetReason;
+}
+
 /**
  * Per-metric improvement vs the parent version. Sign conventions:
  *
@@ -109,6 +124,8 @@ export interface VoiceModelVersion {
   readonly hfRevision: string;
   /** Per-asset SHA256 + size + quant. */
   readonly ggufAssets: ReadonlyArray<VoiceModelGgufAsset>;
+  /** Expected assets that were not available for sha256/size verification. */
+  readonly missingAssets?: ReadonlyArray<VoiceModelMissingAsset>;
   /** Eval gates vs parentVersion (or baseline for initial releases). */
   readonly evalDeltas: VoiceModelEvalDeltas;
   /** First line of the matching H3 in `models/voice/CHANGELOG.md`. */
@@ -129,12 +146,63 @@ export interface VoiceModelVersion {
  */
 export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   {
+    id: "omnivoice",
+    version: "0.2.0",
+    parentVersion: "0.1.0",
+    publishedToHfAt: "2026-05-15T04:50:24Z",
+    hfRepo: "elizaos/eliza-1-voice-omnivoice",
+    hfRevision: "aa1bdb6731d7c4227e4fcc0da8cb87ea69c2ad28",
+    ggufAssets: [
+      {
+        filename: "omnivoice-base-q4_k_m.gguf",
+        sha256:
+          "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6",
+        sizeBytes: 407_485_216,
+        quant: "q4_k_m",
+      },
+      {
+        filename: "omnivoice-tokenizer-q4_k_m.gguf",
+        sha256:
+          "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d",
+        sizeBytes: 252_474_112,
+        quant: "q4_k_m",
+      },
+      {
+        filename: "omnivoice-base-q8_0.gguf",
+        sha256:
+          "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
+        sizeBytes: 656_395_008,
+        quant: "q8_0",
+      },
+    ],
+    missingAssets: [
+      {
+        filename: "presets/voice-preset-same.bin",
+        quant: "fp16",
+        expectedSizeBytes: 8_192,
+        reason: "missing-from-local-staging",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry:
+      "OmniVoice ELZ2 v2 frozen-conditioning preset for the 'same' voice (Her-derivative)",
+    minBundleVersion: "0.0.0",
+  },
+  {
     id: "speaker-encoder",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-speaker",
-    hfRevision: "main",
-    ggufAssets: [],
+    hfRevision: "f6a2c964e0f36091e995e69b506bd36e1e645289",
+    ggufAssets: [
+      {
+        filename: "wespeaker-resnet34-lm.onnx",
+        sha256:
+          "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
+        sizeBytes: 26_530_309,
+        quant: "onnx-fp16",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — WeSpeaker ResNet34-LM 256-dim int8.",
     minBundleVersion: "0.0.0",
@@ -144,8 +212,23 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-diarizer",
-    hfRevision: "main",
-    ggufAssets: [],
+    hfRevision: "d3c4974d391d45ac9261221a96f2eeb4750aa2cf",
+    ggufAssets: [
+      {
+        filename: "pyannote-segmentation-3.0-int8.onnx",
+        sha256:
+          "465d0975bf70fbf14fb77c0589a5d346a9c07c2170345f529cf774678446db76",
+        sizeBytes: 1_542_304,
+        quant: "onnx-int8",
+      },
+      {
+        filename: "pyannote-segmentation-3.0-fp32.onnx",
+        sha256:
+          "057ee564753071c0b09b5b611648b50ac188d50846bff5f01e9f7bbf1591ea25",
+        sizeBytes: 5_986_908,
+        quant: "onnx-fp16",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — Pyannote-segmentation-3.0 ONNX int8.",
     minBundleVersion: "0.0.0",
@@ -155,8 +238,30 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-turn",
-    hfRevision: "main",
-    ggufAssets: [],
+    hfRevision: "6fb5a2ef8942c857904d78ca10ab91a22dba1e06",
+    ggufAssets: [
+      {
+        filename: "turn-detector-en-int8.onnx",
+        sha256:
+          "fdd695a99bda01155fb0b5ce71d34cb9fd3902c62496db7a6c2c7bdeac310ac7",
+        sizeBytes: 65_712_276,
+        quant: "onnx-int8",
+      },
+      {
+        filename: "turn-detector-intl-int8.onnx",
+        sha256:
+          "bd2c30776882138a1d95a07faddc13756fe1a35bef6323505f1124fca349bc9c",
+        sizeBytes: 396_316_457,
+        quant: "onnx-int8",
+      },
+      {
+        filename: "turnsense-fallback-int8.onnx",
+        sha256:
+          "a423adf55f5f33cf4ee9e3fe73ec133d0106affae3aa14693417b4a1c79e2df8",
+        sizeBytes: 176_072_860,
+        quant: "onnx-int8",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — LiveKit turn-detector (135M + intl).",
     minBundleVersion: "0.0.0",
@@ -166,8 +271,22 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-emotion",
-    hfRevision: "main",
+    hfRevision: "edfeb4e5704c8ca13eccf01cc78324d9422824d0",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "wav2small-msp-dim-int8.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 122_880,
+        reason: "missing-from-local-staging",
+      },
+      {
+        filename: "wav2small-msp-dim-fp32.onnx",
+        quant: "onnx-fp16",
+        expectedSizeBytes: 491_520,
+        reason: "missing-from-local-staging",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — Wav2Small acoustic V-A-D classifier.",
     minBundleVersion: "0.0.0",
@@ -177,11 +296,33 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-kokoro",
-    hfRevision: "main",
-    ggufAssets: [],
+    hfRevision: "04d3d497fec65a8d31f1d48d4fd69e971ea83a9b",
+    ggufAssets: [
+      {
+        filename: "kokoro-v1.0-q4.onnx",
+        sha256:
+          "04cf570cf9c4153694f76347ed4b9a48c1b59ff1de0999e6605d123966b197c7",
+        sizeBytes: 305_215_966,
+        quant: "onnx-int8",
+      },
+      {
+        filename: "voices/af_bella.bin",
+        sha256:
+          "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b",
+        sizeBytes: 522_240,
+        quant: "fp16",
+      },
+    ],
+    missingAssets: [
+      {
+        filename: "voices/af_same.bin",
+        quant: "fp16",
+        expectedSizeBytes: 524_288,
+        reason: "missing-from-local-staging",
+      },
+    ],
     evalDeltas: { netImprovement: true },
-    changelogEntry:
-      "Initial release — kokoro 82M voice-embedding samantha clone.",
+    changelogEntry: "Initial release — kokoro 82M voice-embedding same clone.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -189,10 +330,36 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-omnivoice",
-    hfRevision: "main",
+    hfRevision: "cc5e5d856fc5f05c1a01b787d3e8602d2f05ba9c",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "omnivoice-base-q4_k_m.gguf",
+        quant: "q4_k_m",
+        expectedSizeBytes: 388_000_000,
+        reason: "missing-from-local-staging",
+      },
+      {
+        filename: "omnivoice-tokenizer-q4_k_m.gguf",
+        quant: "q4_k_m",
+        expectedSizeBytes: 51_200_000,
+        reason: "missing-from-local-staging",
+      },
+      {
+        filename: "omnivoice-base-q8_0.gguf",
+        quant: "q8_0",
+        expectedSizeBytes: 620_000_000,
+        reason: "missing-from-local-staging",
+      },
+      {
+        filename: "presets/voice-preset-same.bin",
+        quant: "fp16",
+        expectedSizeBytes: 8_192,
+        reason: "missing-from-local-staging",
+      },
+    ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — OmniVoice frozen-conditioning samantha.",
+    changelogEntry: "Initial release — OmniVoice frozen-conditioning sam.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -200,8 +367,23 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-vad",
-    hfRevision: "main",
-    ggufAssets: [],
+    hfRevision: "9d8f7eefc72fda18b9d8ae6e8d4cc413a939a7a7",
+    ggufAssets: [
+      {
+        filename: "silero-vad-int8.onnx",
+        sha256:
+          "90b026c95f054d59d7bf79387b0ed93c8950f35a4d8b741cd78d4bb23a7d2776",
+        sizeBytes: 639_383,
+        quant: "onnx-int8",
+      },
+      {
+        filename: "silero-vad-v5.1.2.ggml.bin",
+        sha256:
+          "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+        sizeBytes: 885_098,
+        quant: "onnx-fp16",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — Silero VAD v5.1.2.",
     minBundleVersion: "0.0.0",
@@ -211,8 +393,16 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-wakeword",
-    hfRevision: "main",
+    hfRevision: "d6fe9bfb2b9dac99e7f7c79cfdc60025bfaab721",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "hey-eliza-int8.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 1_048_576,
+        reason: "missing-from-local-staging",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — hey-eliza wake-word head.",
     minBundleVersion: "0.0.0",
@@ -222,8 +412,16 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-embedding",
-    hfRevision: "main",
-    ggufAssets: [],
+    hfRevision: "acddce031d74deebe1027382feb143df7dd1500e",
+    ggufAssets: [
+      {
+        filename: "eliza-1-embedding-q8_0.gguf",
+        sha256:
+          "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+        sizeBytes: 639_150_592,
+        quant: "q8_0",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — Eliza-1 BPE-vocab embedding tier.",
     minBundleVersion: "0.0.0",
@@ -233,10 +431,25 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-asr",
-    hfRevision: "main",
-    ggufAssets: [],
+    hfRevision: "c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f",
+    ggufAssets: [
+      {
+        filename: "eliza-1-asr-q8_0.gguf",
+        sha256:
+          "58e22d0532d4eacaf034cfac17a6fed159f37c41390c710186783be439d1fc57",
+        sizeBytes: 2_165_034_944,
+        quant: "q8_0",
+      },
+      {
+        filename: "eliza-1-asr-mmproj.gguf",
+        sha256:
+          "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+        sizeBytes: 355_709_344,
+        quant: "q8_0",
+      },
+    ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — Qwen3-ASR streaming transcriber Q4_K_M.",
+    changelogEntry: "Initial release — Qwen3-ASR streaming transcriber Q8_0.",
     minBundleVersion: "0.0.0",
   },
 ];

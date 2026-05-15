@@ -2,15 +2,13 @@ import { findCatalogModel, GPU_PROFILES } from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 
 describe("catalog gpuProfile wiring", () => {
-	it("eliza-1-27b-256k maps to the H200-capable profile and demands the full native kernel set", () => {
+	it("eliza-1-27b-256k demands the long-context kernel set (turbo3_tcq)", () => {
 		const bundle = findCatalogModel("eliza-1-27b-256k");
 		expect(bundle).toBeDefined();
 		if (!bundle) return;
-		expect(bundle.gpuProfile).toBe("rtx-5090");
 		expect(bundle.contextLength).toBe(262144);
 		const required = bundle.runtime?.optimizations?.requiresKernel ?? [];
-		// Every kernel needed for native long-context quantized KV: dflash, turbo3/4,
-		// qjl_full, polarquant, and turbo3_tcq (the >64k context guard).
+		// Every kernel needed for 256k-context quantized KV.
 		for (const k of [
 			"dflash",
 			"turbo3",

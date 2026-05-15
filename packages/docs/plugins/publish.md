@@ -222,7 +222,7 @@ Include in your PR:
 3. At least one passing test suite
 4. README with setup instructions and required environment variables
 
-Community plugins are reviewed for security, functionality, and documentation quality before listing. See [Registry Documentation](./registry#third-party-registration) for details.
+Community plugins are reviewed for security, functionality, and documentation quality before listing. See [Registry Documentation](./registry#submitting-a-plugin-to-the-registry) for details.
 
 ## Related
 

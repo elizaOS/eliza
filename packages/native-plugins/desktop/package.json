@@ -23,7 +23,8 @@
   },
   "unpkg": "dist/plugin.js",
   "files": [
-    "dist/"
+    "dist/",
+    "dist"
   ],
   "author": "elizaOS",
   "license": "MIT",

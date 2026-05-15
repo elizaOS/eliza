@@ -1,7 +1,7 @@
 # eliza-1 — Training Pipeline
 
 Fine-tunes the **eliza-1** model series (`eliza-1-0_8b`, `eliza-1-2b`,
-`eliza-1-4b`, `eliza-1-9b`, `eliza-1-27b`) on Eliza-native Vercel AI SDK trajectory rows: the exact
+`eliza-1-4b`) on Eliza-native Vercel AI SDK trajectory rows: the exact
 request sent to the model plus the exact normalized response returned by the
 model, including native tool calls.
 
@@ -25,11 +25,9 @@ arXiv:2412.05270), not LoRA.
 
 | registry key | eliza release | base               | tier        | default training target             | optimizer    |
 |--------------|---------------|--------------------|-------------|-------------------------------------|--------------|
-| qwen3.5-0.8b | eliza-1-0_8b  | Qwen/Qwen3.5-0.8B-Base | local       | 16 GB consumer GPU                  | apollo_mini  |
-| qwen3.5-2b   | eliza-1-2b    | Qwen/Qwen3.5-2B-Base   | local       | 16 GB consumer GPU                  | apollo_mini  |
-| qwen3.5-4b   | eliza-1-4b    | Qwen/Qwen3.5-4B-Base   | local       | 24 GB consumer/workstation GPU      | apollo_mini  |
-| qwen3.5-9b   | eliza-1-9b    | Qwen/Qwen3.5-9B-Base   | workstation | 80 GB-class GPU / FSDP              | apollo       |
-| qwen3.6-27b  | eliza-1-27b   | Qwen/Qwen3.6-27B       | cloud       | 2x H200/B200-class GPU / FSDP       | apollo_mini  |
+| qwen3.5-0.8b | eliza-1-0_8b  | Qwen/Qwen3.5-0.8B  | local       | 16 GB consumer GPU                  | apollo_mini  |
+| qwen3.5-2b   | eliza-1-2b    | Qwen/Qwen3.5-2B    | local       | 16 GB consumer GPU                  | apollo_mini  |
+| qwen3.5-4b   | eliza-1-4b    | Qwen/Qwen3.5-4B    | local       | 24 GB consumer/workstation GPU      | apollo_mini  |
 
 After training, two **post-training quantization** passes run:
 **PolarQuant** (4-bit weights via Hadamard rotation, arXiv:2603.29078) and
@@ -37,17 +35,9 @@ After training, two **post-training quantization** passes run:
 compression is rounded out by **QJL** (1-bit JL-projected K cache,
 arXiv:2406.03482).
 
-The GGUF source and quantization plan is pinned in
-`config/eliza1_gguf_pipeline_manifest.json` and validated by
-`scripts/quantization/validate_eliza1_gguf_plan.py`. It records the current
-Qwen policy: use Qwen3.6 for the official 27B release family, keep
-0_8b/2b/4b/9b on Qwen3.5 because no official lower-tier Qwen3.6 repos exist,
-and treat `27b-1m` as a source-staging extension point until the runtime
-catalog/publish manifest opts into it.
-
 A unified pipeline runner (`scripts/run_pipeline.py`) chains:
 
-  base bench → APOLLO SFT → fine-tuned bench → PolarQuant + TurboQuant + QJL + GGUF K-quants → quantized bench
+  base bench → APOLLO SFT → fine-tuned bench → PolarQuant + TurboQuant + QJL → quantized bench
 
 Per-task benchmarks live in `scripts/benchmark/native_tool_call_bench.py` and
 score native tool-call structure, tool names, argument keys, and JSON routing

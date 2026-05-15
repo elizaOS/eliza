@@ -92,12 +92,7 @@ async function getPool(): Promise<PoolFacade> {
     cachedPoolPromise = (async () => {
       // String-literal dynamic import — see comment in
       // ../runtime/eliza.ts#importAppCoreRuntime for the AOSP bundle issue.
-      // Imports the narrow `/agent-bridge` subpath (not the full barrel) so
-      // the static `.d.ts` graph stays acyclic — see
-      // `packages/app-core/src/agent-bridge.ts`.
-      const mod = (await import(
-        /* @vite-ignore */ "@elizaos/app-core/agent-bridge"
-      )) as {
+      const mod = (await import(/* @vite-ignore */ "@elizaos/app-core")) as {
         getDefaultAccountPool: () => PoolFacade;
       };
       return mod.getDefaultAccountPool();

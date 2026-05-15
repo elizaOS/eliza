@@ -30,12 +30,13 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import type { VoiceCancellationReason } from "@elizaos/shared";
 import {
 	type KokoroEngineDiscoveryResult,
 	KokoroOnnxRuntime,
 	KokoroTtsBackend,
-	type VoiceCancellationReason,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference";
 import { localInferenceRoot } from "../paths";
 import {
 	type CoordinatorRuntime,
@@ -130,7 +131,7 @@ const STUB_PCM_STREAM_CHUNKS = 4;
  * treated `null` as "auto-voice mode" and ignored any preset file under
  * `cache/voice-preset-default.bin`. That was the right behaviour when the
  * default preset was a 256-fp32-zero placeholder; it's wrong now that the
- * default preset can be a real (v2) OmniVoice samantha freeze. With ABI v4
+ * default preset can be a real (v2) OmniVoice sam freeze. With ABI v4
  * the FFI bridge looks up `<bundle>/cache/voice-preset-<id>.bin` when the
  * id is supplied and applies the `(instruct, ref_audio_tokens, ref_text)`
  * triple to `ov_tts_params` — so we must always pass the id.
@@ -1539,9 +1540,12 @@ export class EngineVoiceBridge {
 				.then(onAttribution)
 				.catch((err: unknown) => {
 					// Attribution failures must not crash the turn. Log and continue.
-					console.warn(
-						`[voice-bridge] speaker attribution failed for turn ${turnId}:`,
-						err instanceof Error ? err.message : String(err),
+					logger.warn(
+						{
+							turnId,
+							error: err instanceof Error ? err.message : String(err),
+						},
+						"[voice-bridge] speaker attribution failed",
 					);
 				});
 		}

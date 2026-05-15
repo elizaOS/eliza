@@ -216,11 +216,6 @@ const PY_SCRIPTS = [
   "packages/training/scripts/quantization/fused_turboquant_apply.py",
   "packages/training/scripts/quantization/qjl_apply.py",
   "packages/training/scripts/quantization/polarquant_apply.py",
-  "packages/training/scripts/quantization/gguf-q3_k_m_apply.py",
-  "packages/training/scripts/quantization/gguf-q4_k_m_apply.py",
-  "packages/training/scripts/quantization/gguf-q5_k_m_apply.py",
-  "packages/training/scripts/quantization/gguf-q6_k_apply.py",
-  "packages/training/scripts/quantization/gguf-q8_0_apply.py",
   "packages/training/scripts/quantization/gguf_eliza1_apply.py",
   "packages/training/scripts/manifest/stage_local_eliza1_bundle.py",
   "packages/training/scripts/manifest/stage_eliza1_bundle_assets.py",
@@ -263,22 +258,6 @@ step("polarquant_apply --dry-run", PYTHON, [
   "cpu",
   "--dry-run",
 ]);
-for (const script of [
-  "gguf-q3_k_m_apply.py",
-  "gguf-q4_k_m_apply.py",
-  "gguf-q5_k_m_apply.py",
-  "gguf-q6_k_apply.py",
-  "gguf-q8_0_apply.py",
-]) {
-  step(`${script} --dry-run`, PYTHON, [
-    `packages/training/scripts/quantization/${script}`,
-    "--model",
-    "Qwen/Qwen3.5-0.8B",
-    "--output",
-    `${process.env.TMPDIR || "/tmp"}/eliza1-prep-${script}`,
-    "--dry-run",
-  ]);
-}
 
 // --- 6. DFlash distill synthetic smoke (no torch / GPU) ------------------------
 step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", PYTHON, [
@@ -381,6 +360,7 @@ const ok = results.filter((r) => r.status === "ok");
 const REMAINING_HW = [
   [
     "Fork build per backend + metal/vulkan/cuda/rocm verify + platform-dispatch smokes",
+    "the target backend's hardware (Metal Mac, CUDA NVIDIA, Vulkan Linux/Android, ROCm AMD)",
     "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>; make -C plugins/plugin-local-inference/native/verify {metal,vulkan,cuda,rocm}_verify; verify/{cuda,rocm,gh200}_runner.sh / windows_runner.ps1",
   ],
   [

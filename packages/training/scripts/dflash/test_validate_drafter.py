@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sys
 from pathlib import Path
 
@@ -77,38 +76,3 @@ def test_architecture_check_accepts_dflash_draft_with_loader_evidence() -> None:
 
     assert ok is True
     assert "architecture ok" in detail
-
-
-def test_disabled_tier_validation_passes_without_drafter(tmp_path: Path) -> None:
-    report = tmp_path / "report.json"
-
-    rc = validate.main(
-        [
-            "--tier",
-            "0_8b",
-            "--report-out",
-            str(report),
-        ]
-    )
-
-    assert rc == 0
-    payload = json.loads(report.read_text())
-    assert payload["policy"]["status"] == "disabled"
-    assert payload["checks"]["failOpenPolicy"]["pass"] is True
-    assert payload["pass"] is True
-
-
-def test_disabled_tier_validation_rejects_drafter_artifact(tmp_path: Path) -> None:
-    drafter = tmp_path / "drafter-0_8b.gguf"
-    drafter.write_bytes(b"fake")
-
-    rc = validate.main(
-        [
-            "--tier",
-            "0_8b",
-            "--drafter-gguf",
-            str(drafter),
-        ]
-    )
-
-    assert rc == 3

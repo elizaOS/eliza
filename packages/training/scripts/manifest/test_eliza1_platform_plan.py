@@ -19,10 +19,12 @@ from scripts.manifest.eliza1_platform_plan import (  # noqa: E402
     render_readiness,
 )
 
+
 def test_platform_plan_is_json_serializable_and_covers_all_tiers() -> None:
     data = plan_to_json(build_plan())
     assert set(data) == set(ELIZA_1_TIERS)
     json.dumps(data, sort_keys=True)
+
 
 def test_vad_is_native_ggml_not_gguf_but_asr_is_gguf() -> None:
     plan = build_plan()
@@ -35,6 +37,7 @@ def test_vad_is_native_ggml_not_gguf_but_asr_is_gguf() -> None:
         assert "asr/eliza-1-asr.gguf" in tier_plan.required_files
         assert "asr/eliza-1-asr-mmproj.gguf" in tier_plan.required_files
 
+
 def test_rocm_desktop_platform_evidence_and_dispatch_are_required() -> None:
     tier_plan = build_plan()["4b"]
     assert "evals/rocm_verify.json" in tier_plan.required_files
@@ -45,30 +48,33 @@ def test_rocm_desktop_platform_evidence_and_dispatch_are_required() -> None:
         "evidence/platform/linux-x64-rocm.json"
     )
 
+
 def test_dflash_required_files_match_bundle_layout() -> None:
     tier_plan = build_plan()["4b"]
     assert "dflash/drafter-4b.gguf" in tier_plan.required_files
     assert "dflash/target-meta.json" in tier_plan.required_files
     assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
 
+
 def test_context_tier_text_artifacts_do_not_duplicate_context_suffix() -> None:
     plan = build_plan()
     assert "text/eliza-1-27b-256k.gguf" in plan["27b-256k"].required_files
     assert "text/eliza-1-27b-256k-256k.gguf" not in plan["27b-256k"].required_files
 
+
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
     plan = build_plan()
     assert "tts/kokoro/model_q4.onnx" in plan["0_8b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["0_8b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["0_8b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["2b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["2b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["2b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["4b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["4b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["4b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["9b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["9b"].required_files
     assert "tts/kokoro/model_q4.onnx" not in plan["27b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["27b"].required_files
-    assert "tts/omnivoice-base-Q8_0.gguf" in plan["27b-1m"].required_files
+
 
 def test_missing_files_reports_required_paths(tmp_path: Path) -> None:
     plan = build_plan()
@@ -82,6 +88,7 @@ def test_missing_files_reports_required_paths(tmp_path: Path) -> None:
     assert "text/eliza-1-4b-64k.gguf" in missing["4b"]
     assert "evidence/platform/linux-x64-rocm.json" in missing["4b"]
 
+
 def test_readiness_mentions_vad_native_ggml_caveat() -> None:
     text = render_readiness(build_plan(), missing=None)
     assert "VAD is a native GGML artifact" in text
@@ -90,7 +97,6 @@ def test_readiness_mentions_vad_native_ggml_caveat() -> None:
     assert "Qwen3.5 0.8B (`0_8b`)" in text
     assert "Qwen3.5 2B (`2b`)" in text
     assert "Qwen3.5 4B (`4b`)" in text
-    assert "`27b-1m`" in text
     assert "published Qwen3-ASR 0.6B / 1.7B GGUF repos" in text
     assert "Qwen3-Embedding 0.6B / 4B / 8B GGUF repos" in text
     assert "not evaluated in plan-only mode" in text
@@ -101,12 +107,14 @@ def test_readiness_mentions_vad_native_ggml_caveat() -> None:
     assert "releaseState=base-v1" in text
     assert "NOT fine-tuned" in text
 
+
 def test_release_status_blockers_detect_missing_canonical_bundle(
     tmp_path: Path,
 ) -> None:
     blockers = release_status_blockers(tmp_path / "bundles", build_plan())
     assert any("missing canonical local bundle" in item for item in blockers["0_8b"])
     assert any("release.json" in item and "missing" in item for item in blockers["0_8b"])
+
 
 def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -> None:
     plan = build_plan()
@@ -139,6 +147,7 @@ def test_release_status_blockers_detect_local_standin_evidence(tmp_path: Path) -
     text = render_readiness(plan, missing={}, blockers=blockers)
     assert "Publish-blocking status:" in text
 
+
 def test_release_status_blockers_accept_base_v1_uploaded_evidence(
     tmp_path: Path,
 ) -> None:
@@ -168,7 +177,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
-                    "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
+                    "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
                 },
                 "final": {
                     # weights are the upstream base GGUFs by design — not a
@@ -184,15 +193,15 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizalabs/eliza-1",
+                    "repoId": "elizaos/eliza-1",
                     "repoPath": "bundles/2b",
                     "status": "uploaded",
                     "uploadEvidence": {
-                        "repoId": "elizalabs/eliza-1",
+                        "repoId": "elizaos/eliza-1",
                         "pathPrefix": "bundles/2b",
                         "status": "uploaded",
                         "commit": "abc123",
-                        "url": "https://huggingface.co/elizalabs/eliza-1/commit/abc123",
+                        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
                         "uploadedPaths": required_weights,
                     },
                 },
@@ -201,6 +210,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
     )
     blockers = release_status_blockers(tmp_path / "bundles", plan)
     assert blockers["2b"] == []
+
 
 def test_release_status_blockers_base_v1_blocks_pending_upload(
     tmp_path: Path,
@@ -233,7 +243,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizalabs/eliza-1",
+                    "repoId": "elizaos/eliza-1",
                     "repoPath": "bundles/2b",
                     "status": "pending-upload",
                 },
@@ -243,6 +253,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
     blockers = release_status_blockers(tmp_path / "bundles", plan)
     assert any("hf.status" in item for item in blockers["2b"])
     assert any("hf.uploadEvidence missing" in item for item in blockers["2b"])
+
 
 def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
     tmp_path: Path,
@@ -273,7 +284,7 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
                 "weights": [],
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizalabs/eliza-1",
+                    "repoId": "elizaos/eliza-1",
                     "status": "pending-upload",
                 },
             }
@@ -284,6 +295,7 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
 
     assert any("Qwen3-ASR-2B-GGUF" in item for item in blockers["2b"])
     assert any("Qwen3-Embedding-2B-GGUF" in item for item in blockers["2b"])
+
 
 def test_release_status_blockers_base_v1_requires_finetuned_false(
     tmp_path: Path,

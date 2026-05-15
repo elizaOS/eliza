@@ -736,8 +736,10 @@ def is_synthetic_harness(harness: str) -> bool:
 
 def synthetic_score_for_harness(harness: str) -> float:
     harness = harness.strip().lower()
-    if harness in {"random_v1", "wrong_v1"}:
+    if harness == "wrong_v1":
         return 0.0
+    if harness == "random_v1":
+        return 0.5
     if harness == "perfect_v1":
         return 1.0
     if harness == "half_v1":

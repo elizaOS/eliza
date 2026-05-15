@@ -213,8 +213,7 @@ const RTX_5090: GpuProfile = {
 /**
  * H200 — Hopper, 141 GiB HBM3e, 4.8 TB/s.
  *
- * Best current release fit: Eliza-1 27B-256k. H200 still runs the full kernel
- * verification recipe before defaulting to the maximum-context native bundle.
+ * Best current release fit: Eliza-1 27B-256k (262k natural context).
  */
 const H200: GpuProfile = {
   id: "h200",

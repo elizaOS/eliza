@@ -65,17 +65,6 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from scripts.dflash.release_policy import (  # noqa: E402
-    ACCEPTANCE_GATE,
-    ACTIVE_TIERS,
-    DEFAULT_STUDENT_BASE,
-    DEFAULT_TARGET_MODEL,
-    disabled_policy_manifest,
-    is_dflash_disabled,
-)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -87,6 +76,46 @@ log = logging.getLogger("distill_dflash_drafter")
 # sync with `_GGUF_DRAFTER_TARGET_CHECKPOINT_KEY` in
 # scripts/manifest/stage_local_eliza1_bundle.py and the doctor's reader.
 GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
+
+ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
+
+# Recommended student base per active tier. Every active Eliza-1 tier is on the
+# Qwen3.5 tokenizer family; keep this base aligned with model_registry.py.
+DEFAULT_STUDENT_BASE: dict[str, str] = {
+    "0_8b": "Qwen/Qwen3.5-0.8B-Base",
+    "2b": "Qwen/Qwen3.5-0.8B-Base",
+    "4b": "Qwen/Qwen3.5-0.8B-Base",
+    "9b": "Qwen/Qwen3.5-0.8B-Base",
+    "27b": "Qwen/Qwen3.5-0.8B-Base",
+    "27b-256k": "Qwen/Qwen3.5-0.8B-Base",
+}
+
+# Canonical Eliza-1 text targets that each drafter is allowed to pair with.
+# Local training usually passes a checkpoint directory, but release evidence
+# should still record the canonical target model id so later bundle validation
+# can distinguish "trained against a small-tier-ish directory" from "trained
+# against the exact Eliza-1 target".
+DEFAULT_TARGET_MODEL: dict[str, str] = {
+    "0_8b": "elizaos/eliza-1/bundles/0_8b",
+    "2b": "elizaos/eliza-1/bundles/2b",
+    "4b": "elizaos/eliza-1/bundles/4b",
+    "9b": "elizaos/eliza-1/bundles/9b",
+    "27b": "elizaos/eliza-1/bundles/27b",
+    "27b-256k": "elizaos/eliza-1/bundles/27b-256k",
+}
+
+# Acceptance-rate gate per tier — the drafter is publish-blocking below this.
+# These are the *baseline* targets; the eval harness records the measured
+# acceptance window into `dflash/target-meta.json`. Tighten only with a
+# rebaseline (see training/AGENTS.md §8).
+ACCEPTANCE_GATE: dict[str, float] = {
+    "0_8b": 0.40,
+    "2b": 0.48,
+    "4b": 0.52,
+    "9b": 0.52,
+    "27b": 0.52,
+    "27b-256k": 0.52,
+}
 
 
 def _sha256_file(path: Path) -> str:
@@ -186,13 +215,6 @@ def _tokenizer_parity_report(target_tokenizer: Any, student_tokenizer: Any) -> d
 
 
 def _resolve_student_base(args: argparse.Namespace) -> str | None:
-    if is_dflash_disabled(args.tier):
-        if args.student_base:
-            log.error(
-                "tier %s has DFlash disabled; do not configure a student base",
-                args.tier,
-            )
-        return None
     expected = DEFAULT_STUDENT_BASE.get(args.tier)
     student_base = args.student_base or expected
     if not student_base:
@@ -383,25 +405,6 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
         "synthetic smoke validated CLI/control-flow for tier=%s; no artifacts written to %s",
         args.tier,
         args.out_dir,
-    )
-    return 0
-
-
-def _write_disabled_policy(args: argparse.Namespace, *, synthetic: bool) -> int:
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    manifest = disabled_policy_manifest(
-        tier=args.tier,
-        synthetic=synthetic,
-        generated_at=datetime.now(timezone.utc).isoformat(),
-        training_commit=_git_commit(),
-    )
-    manifest_path = out_dir / f"dflash-disabled-{args.tier}.release-policy.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n")
-    log.info(
-        "DFlash is disabled for tier=%s; wrote fail-open no-drafter policy %s",
-        args.tier,
-        manifest_path,
     )
     return 0
 
@@ -887,18 +890,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    if is_dflash_disabled(args.tier):
-        if args.stamp_only:
-            log.error("tier %s has DFlash disabled; no drafter GGUF may be stamped", args.tier)
-            return 2
-        if args.drafter_gguf:
-            log.error(
-                "tier %s has DFlash disabled; refusing to accept drafter %s",
-                args.tier,
-                args.drafter_gguf,
-            )
-            return 3
-        return _write_disabled_policy(args, synthetic=args.synthetic_smoke)
     if args.stamp_only:
         return _run_stamp_only(args)
     if args.verify_tokenizers_only:

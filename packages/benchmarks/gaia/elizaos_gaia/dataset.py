@@ -227,6 +227,29 @@ class GAIADataset:
                 "level": "3",
                 "final_answer": "1024",
             },
+            {
+                "task_id": "S2-FILE-001",
+                "question": "Use the attached note to identify the project code, then report it exactly.",
+                "level": "2",
+                "final_answer": "ORION-17",
+                "file_name": "sample_fact_sheet.txt",
+                "Annotator Metadata": {
+                    "Steps": ["Open the file", "Extract the project code"],
+                    "Tools": ["file read"],
+                    "Number of steps": 2,
+                },
+            },
+            {
+                "task_id": "S3-WEB-001",
+                "question": "Search the web for the GAIA benchmark paper, then provide the conference venue acronym where it appeared.",
+                "level": "3",
+                "final_answer": "ICLR",
+                "Annotator Metadata": {
+                    "Steps": ["Search for the GAIA benchmark paper", "Verify the publication venue"],
+                    "Tools": ["web search", "browser"],
+                    "Number of steps": 2,
+                },
+            },
         ]
 
         return [self._parse_question(item) for item in sample]

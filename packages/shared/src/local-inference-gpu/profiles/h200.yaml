@@ -89,18 +89,6 @@ bundle_recommendations:
     estimated_decode_tps: 130
     estimated_prefill_tps: 7200
     notes: "Long-context Qwen3.5 27B tier for single H200."
-  eliza-1-27b-1m:
-    n_gpu_layers: -1
-    ctx_size: 1048576
-    parallel: 4
-    batch_size: 8192
-    ubatch_size: 2048
-    kv_cache_k: qjl1_256
-    kv_cache_v: q4_polar
-    flash_attention: true
-    estimated_decode_tps: 120
-    estimated_prefill_tps: 5400
-    notes: "Maximum single-GPU Qwen3.5 27B context tier."
 dflash:
   enabled: true
   draft_min: 8
@@ -123,5 +111,5 @@ verify_recipe:
     - polarquant
     - dflash
   unavailable_kernels: []
-  smoke_bundle: eliza-1-27b-1m
+  smoke_bundle: eliza-1-27b-256k
   tolerance_pct: 10

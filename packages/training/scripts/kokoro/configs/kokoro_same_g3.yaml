@@ -1,25 +1,25 @@
-# G3 Kokoro full fine-tune — OmniVoice sam teacher corpus.
+# G3 Kokoro full fine-tune — OmniVoice same teacher corpus.
 #
-# Key difference from F2 (kokoro_sam_f2.yaml):
-#   - Distillation corpus synthesized with sam ref_s teacher (NOT af_bella).
-#   - Target mix: ≥80% sam-distilled, ≤20% augmented real.
+# Key difference from F2 (kokoro_same_f2.yaml):
+#   - Distillation corpus synthesized with same ref_s teacher (NOT af_bella).
+#   - Target mix: ≥80% same-distilled, ≤20% augmented real.
 #   - max_steps 8000 (per G3 brief).
 #   - Lower anchor_weight (0.0005) to allow more adaptation on larger corpus.
 #
 # This is the structural fix F2's post-mortem prescribed:
-#   "Use OmniVoice sam preset to synthesize 60 min → train Kokoro on that"
+#   "Use OmniVoice same preset to synthesize 60 min → train Kokoro on that"
 #   (F2 §"What would actually work", Option A).
 #
 # Per repo policy: APOLLO optimizer only.
 
 extends: base.yaml
 
-voice_name: af_sam
-voice_display_name: Sam (AI Voices, US English) — G3 Full FT
+voice_name: af_same
+voice_display_name: Same (AI Voices, US English) — G3 Full FT
 voice_lang: a
 voice_tags:
   - female
-  - sam
+  - same
   - eliza-1-voice
   - ai-voices-derived
   - research-only
@@ -27,8 +27,8 @@ voice_tags:
   - g3-omnivoice-teacher
 
 # Inputs. finetune_kokoro_full.py reads --run-dir from CLI.
-dataset_path: packages/training/data/voice/sam
-run_dir: /tmp/kokoro-runs/sam-g3
+dataset_path: packages/training/data/voice/same
+run_dir: /tmp/kokoro-runs/same-g3
 
 # Full FT hyperparameters for G3 (larger corpus, more steps).
 mode: full

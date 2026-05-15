@@ -33,14 +33,9 @@ import {
 	KokoroTtsBackend,
 } from "@elizaos/shared/local-inference";
 import { localInferenceRoot } from "../paths";
-import { VoiceCancellationCoordinator } from "./cancellation-coordinator";
 import { VoiceStartupError } from "./errors";
 import { loadElizaInferenceFfi } from "./ffi-bindings";
 import { VoiceLifecycle, VoiceLifecycleError } from "./lifecycle";
-import {
-	OptimisticGenerationPolicy,
-	resolvePowerSourceState,
-} from "./optimistic-policy";
 import {
 	DEFAULT_PHRASE_CACHE_SEED,
 	FIRST_AUDIO_FILLERS,
@@ -54,7 +49,6 @@ import {
 } from "./pipeline-impls";
 import { VoiceScheduler } from "./scheduler";
 import { SharedResourceRegistry } from "./shared-resources";
-import { VoiceAttributionPipeline } from "./speaker/attribution-pipeline";
 import {
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
@@ -85,7 +79,7 @@ const STUB_PCM_STREAM_CHUNKS = 4;
  * treated `null` as "auto-voice mode" and ignored any preset file under
  * `cache/voice-preset-default.bin`. That was the right behaviour when the
  * default preset was a 256-fp32-zero placeholder; it's wrong now that the
- * default preset can be a real (v2) OmniVoice samantha freeze. With ABI v4
+ * default preset can be a real (v2) OmniVoice sam freeze. With ABI v4
  * the FFI bridge looks up `<bundle>/cache/voice-preset-<id>.bin` when the
  * id is supplied and applies the `(instruct, ref_audio_tokens, ref_text)`
  * triple to `ov_tts_params` — so we must always pass the id.
@@ -375,30 +369,6 @@ export class FfiOmniVoiceBackend {
 		});
 	}
 }
-function buildCancellationWiring(opts) {
-	if (!opts.runtime) return null;
-	let ttsStopHandler = null;
-	const coordinator = new VoiceCancellationCoordinator({
-		runtime: opts.runtime,
-		...(opts.slotAbort ? { slotAbort: opts.slotAbort } : {}),
-		ttsStop: () => {
-			if (ttsStopHandler) {
-				ttsStopHandler();
-			}
-		},
-	});
-	const policy = new OptimisticGenerationPolicy(
-		opts.optimisticPolicyOptions ?? {},
-	);
-	policy.setPowerSource(resolvePowerSourceState());
-	return {
-		coordinator,
-		policy,
-		bindTtsStop(stop) {
-			ttsStopHandler = stop;
-		},
-	};
-}
 /**
  * Wires the voice scaffold (`VoiceScheduler` + helpers) onto the engine.
  * One bridge per active voice session — created in
@@ -421,10 +391,6 @@ export class EngineVoiceBridge {
 	phraseCache;
 	/** In-flight fused turn (`runVoiceTurn`), if any — cancelled on barge-in. */
 	activePipeline = null;
-	attributionPipeline;
-	cancellationCoordinator;
-	optimisticGenerationPolicy;
-	bargeInBindings = new Map();
 	constructor(
 		scheduler,
 		backend,
@@ -434,9 +400,6 @@ export class EngineVoiceBridge {
 		ffiContextRef,
 		asrAvailable,
 		phraseCache,
-		attributionPipeline = null,
-		cancellationCoordinator = null,
-		optimisticGenerationPolicy = null,
 	) {
 		this.scheduler = scheduler;
 		this.backend = backend;
@@ -446,9 +409,6 @@ export class EngineVoiceBridge {
 		this.ffiContextRef = ffiContextRef;
 		this.asrAvailable = asrAvailable;
 		this.phraseCache = phraseCache;
-		this.attributionPipeline = attributionPipeline;
-		this.cancellationCoordinator = cancellationCoordinator;
-		this.optimisticGenerationPolicy = optimisticGenerationPolicy;
 	}
 	get ffiCtx() {
 		return this.ffiContextRef?.current ?? null;
@@ -459,21 +419,6 @@ export class EngineVoiceBridge {
 	 * resources, then `dispose()` to close the FFI handle.
 	 */
 	dispose() {
-		for (const unsub of Array.from(this.bargeInBindings.values())) {
-			try {
-				unsub();
-			} catch {
-				// Best-effort teardown.
-			}
-		}
-		this.bargeInBindings.clear();
-		if (this.cancellationCoordinator) {
-			try {
-				this.cancellationCoordinator.dispose();
-			} catch {
-				// Coordinator dispose must not block FFI teardown.
-			}
-		}
 		if (this.ffi) {
 			const ctx = this.ffiContextRef?.current ?? null;
 			if (ctx !== null) {
@@ -615,41 +560,7 @@ export class EngineVoiceBridge {
 			opts.lifecycleLoaders ??
 			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef);
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
-		let attributionPipeline = null;
-		if (opts.profileStore) {
-			const bundleRootForEncoder = opts.bundleRoot;
-			let resolvedEncoder = null;
-			let encoderLoadError = null;
-			const lazyEncoder = {
-				modelId: "wespeaker/resnet34-lm-int8",
-				embeddingDim: 256,
-				sampleRate: 16_000,
-				async encode(pcm) {
-					if (encoderLoadError) throw encoderLoadError;
-					if (!resolvedEncoder) {
-						const { WespeakerEncoder } = await import("./speaker/encoder");
-						const modelPath = `${bundleRootForEncoder}/speaker/encoder.onnx`;
-						try {
-							resolvedEncoder = await WespeakerEncoder.load(modelPath);
-						} catch (err) {
-							encoderLoadError =
-								err instanceof Error ? err : new Error(String(err));
-							throw encoderLoadError;
-						}
-					}
-					return resolvedEncoder.encode(pcm);
-				},
-				async dispose() {
-					await resolvedEncoder?.dispose();
-				},
-			};
-			attributionPipeline = new VoiceAttributionPipeline({
-				encoder: lazyEncoder,
-				profileStore: opts.profileStore,
-			});
-		}
-		const wiring = buildCancellationWiring(opts);
-		const bridge = new EngineVoiceBridge(
+		return new EngineVoiceBridge(
 			scheduler,
 			backend,
 			opts.bundleRoot,
@@ -658,12 +569,7 @@ export class EngineVoiceBridge {
 			ffiContextRef,
 			asrAvailable,
 			phraseCache,
-			attributionPipeline,
-			wiring?.coordinator ?? null,
-			wiring?.policy ?? null,
 		);
-		if (wiring) wiring.bindTtsStop(() => bridge.triggerBargeIn());
-		return bridge;
 	}
 	/**
 	 * Kokoro-only path. Skips bundle-root / speaker-preset / FFI checks
@@ -733,8 +639,7 @@ export class EngineVoiceBridge {
 		const registry = opts.sharedResources ?? new SharedResourceRegistry();
 		const loaders = opts.lifecycleLoaders ?? kokoroOnlyLifecycleLoaders();
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
-		const wiring = buildCancellationWiring(opts);
-		const bridge = new EngineVoiceBridge(
+		return new EngineVoiceBridge(
 			scheduler,
 			backend,
 			workDir,
@@ -743,12 +648,7 @@ export class EngineVoiceBridge {
 			null, // no FFI context on Kokoro-only
 			false, // ASR is not served from this path
 			phraseCache,
-			null, // no profile store on Kokoro-only
-			wiring?.coordinator ?? null,
-			wiring?.policy ?? null,
 		);
-		if (wiring) wiring.bindTtsStop(() => bridge.triggerBargeIn());
-		return bridge;
 	}
 	/**
 	 * True when this bridge runs against a TTS backend that produces real
@@ -816,30 +716,6 @@ export class EngineVoiceBridge {
 		// sooner.
 		this.activePipeline?.cancel();
 		this.scheduler.bargeIn.onMicActive();
-	}
-	cancellationCoordinatorOrNull() {
-		return this.cancellationCoordinator;
-	}
-	optimisticPolicyOrNull() {
-		return this.optimisticGenerationPolicy;
-	}
-	bindBargeInControllerForRoom(roomId) {
-		if (!this.cancellationCoordinator) {
-			return () => undefined;
-		}
-		const existing = this.bargeInBindings.get(roomId);
-		if (existing) existing();
-		const unsub = this.cancellationCoordinator.bindBargeInController(
-			roomId,
-			this.scheduler.bargeIn,
-		);
-		this.bargeInBindings.set(roomId, unsub);
-		return () => {
-			unsub();
-			if (this.bargeInBindings.get(roomId) === unsub) {
-				this.bargeInBindings.delete(roomId);
-			}
-		};
 	}
 	/**
 	 * Drain pending phrase data and wait for in-flight TTS to settle.
@@ -1061,23 +937,6 @@ export class EngineVoiceBridge {
 	 */
 	async runVoiceTurn(audio, textRunner, config, events) {
 		this.assertVoiceOn("run a voice turn");
-		if (this.attributionPipeline && events?.onAttribution) {
-			const onAttribution = events.onAttribution;
-			const attribution = this.attributionPipeline;
-			const turnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-			void attribution
-				.attribute({
-					turnId,
-					pcm: audio.pcm,
-				})
-				.then(onAttribution)
-				.catch((err) => {
-					console.warn(
-						`[voice-bridge] speaker attribution failed for turn ${turnId}:`,
-						err instanceof Error ? err.message : String(err),
-					);
-				});
-		}
 		const pipeline = this.buildPipeline(textRunner, config, events);
 		this.activePipeline = pipeline;
 		try {

@@ -6,12 +6,18 @@
  * using native platform tools.
  *
  * macOS  — System Accessibility API via osascript / swift
- * Linux  — AT-SPI via python3-atspi or qdbus
+ * Linux  — AT-SPI via python3-atspi (X11 + GNOME-Wayland). Wayland-only
+ *          environments without AT-SPI fall back to a structured snapshot
+ *          built from `listWindows()` + `listProcesses()` and tagged with
+ *          `source: "compositor-fallback"`.
  * Windows — UIAutomation via PowerShell
  */
 
 import { execSync } from "node:child_process";
 import { commandExists, currentPlatform } from "./helpers.js";
+import { listProcesses, type ProcessInfo } from "./process-list.js";
+import { listWindows } from "./windows-list.js";
+import type { WindowInfo } from "../types.js";
 
 export interface A11yNode {
   role: string;
@@ -20,6 +26,25 @@ export interface A11yNode {
   value?: string;
   bounds?: { x: number; y: number; width: number; height: number };
   children?: A11yNode[];
+}
+
+/**
+ * Structured snapshot returned by the Wayland compositor fallback. Callers
+ * inspect `source` to discriminate AT-SPI quality from the cheaper
+ * window-list join used when AT-SPI is unavailable.
+ */
+export interface WaylandA11ySnapshot {
+  source: "compositor-fallback";
+  role: "desktop";
+  name: string;
+  focusedWindow: { app: string; title: string; id: string } | null;
+  focusedApp: { pid: number; name: string } | null;
+  children: Array<{
+    role: "window";
+    name: string;
+    app: string;
+    id: string;
+  }>;
 }
 
 /**

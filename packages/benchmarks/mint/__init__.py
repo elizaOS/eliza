@@ -5,7 +5,8 @@ Faithfully implements the multi-turn evaluation protocol from
 Wang et al., ICLR 2024 (arXiv:2309.10691):
 
     - 8 subtasks (humaneval, mbpp, math, gsm8k, hotpotqa, mmlu, theoremqa,
-      alfworld) loaded from upstream's sampled JSON files.
+      alfworld) loaded from upstream's sampled JSON files, lazy-fetched into
+      a local cache when needed.
     - Multi-turn interaction (assistant -> tool -> feedback -> retry).
     - Turn-k success rate as the headline metric.
     - Optional GPT-4 language feedback using the upstream prompt template.

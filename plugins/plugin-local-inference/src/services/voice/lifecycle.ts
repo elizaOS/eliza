@@ -220,13 +220,17 @@ export class VoiceLifecycle {
 		//
 		// `evictPages()` on production handles wires through to the
 		// `libelizainference` FFI (`ffi.mmapEvict(ctx, "tts" | "asr")`,
-		// declared in `scripts/omnivoice-fuse/ffi.h`). The fused build
-		// implements that as `madvise(MADV_DONTNEED)` on POSIX or
-		// `VirtualUnlock + OfferVirtualMemory` on Windows. The stub
-		// library returns ELIZA_ERR_NOT_IMPLEMENTED, which the binding
-		// raises as `VoiceLifecycleError({code:"kernel-missing"})` — this
-		// method captures it and re-classifies as `disarm-failed` after
-		// release runs (so registry refs don't leak on a bad eviction).
+		// declared in `tools/omnivoice/include/eliza-inference-ffi.h`).
+		// The fused build implements it by tearing down the OmniVoice /
+		// ASR model context (`ov_free` + `eliza_free_asr`), which lets
+		// the llama.cpp / OmniVoice destructors run their own
+		// platform-appropriate unmap (`munmap` on POSIX, `UnmapViewOfFile`
+		// on Windows). The TS layer is platform-agnostic — all
+		// platform-specific eviction lives in the C ABI. The stub library
+		// returns ELIZA_ERR_NOT_IMPLEMENTED, which the binding raises as
+		// `VoiceLifecycleError({code:"kernel-missing"})` — this method
+		// captures it and re-classifies as `disarm-failed` after release
+		// runs (so registry refs don't leak on a bad eviction).
 		const evictResults = await Promise.allSettled([
 			resources.tts.evictPages(),
 			resources.asr.evictPages(),

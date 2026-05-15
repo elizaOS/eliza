@@ -43,6 +43,31 @@ logger = logging.getLogger(__name__)
 
 _CODE_PATTERN = re.compile(r"```(?:javascript|js|typescript|ts)(.*?)```", re.DOTALL)
 _MAX_COMPILE_RETRIES = 4
+_SOLANA_SYSTEM_PROMPT = (
+    "You are writing Solana benchmark transaction builders. "
+    "Return only TypeScript code blocks that export async function "
+    "executeSkill(blockhash: string): Promise<string>. Build exactly one unsigned "
+    "transaction, set recentBlockhash and feePayer, serialize with "
+    "requireAllSignatures:false and verifySignatures:false, and avoid prose."
+)
+_SOLANA_TOOL_SCHEMA = {
+    "type": "function",
+    "function": {
+        "name": "submit_solana_skill",
+        "description": "Return one TypeScript executeSkill implementation for the Solana benchmark.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "description": "Complete TypeScript source exporting executeSkill.",
+                }
+            },
+            "required": ["code"],
+            "additionalProperties": False,
+        },
+    },
+}
 
 
 def _extract_skill_code(response_text: str) -> str | None:
@@ -77,9 +102,16 @@ class ElizaBridgeSolanaExplorer:
         environment_config: str | None = None,
         code_file: str | None = None,
         client: ElizaClient | None = None,
+        harness: str | None = None,
     ) -> None:
         GYM_ENV_DIR, _, ExplorationStrategy, _ = _solana_imports()
 
+        self.harness = (
+            harness
+            or os.environ.get("BENCHMARK_HARNESS")
+            or os.environ.get("ELIZA_BENCH_HARNESS")
+            or "eliza"
+        ).strip().lower()
         self.model_name = model_name
         self.max_messages = max_messages
         self.run_index = run_index
@@ -115,7 +147,13 @@ class ElizaBridgeSolanaExplorer:
             "instructions_by_program": {},
             "phase_transitions": [],
             "errors": [],
-            "transport": "eliza-bridge",
+            "harness": self.harness,
+            "transport": (
+                "eliza-bridge"
+                if self.harness == "eliza"
+                else f"eliza-client-delegate:{self.harness}"
+            ),
+            "trajectory_path": None,
         }
 
     @property
@@ -149,8 +187,12 @@ class ElizaBridgeSolanaExplorer:
             context={
                 "benchmark": "solana",
                 "task_id": self.run_id,
+                "session_id": self.run_id,
                 "model_name": self.model_name,
                 "phase": "llm_exploration",
+                "system_prompt": _SOLANA_SYSTEM_PROMPT,
+                "tools": [_SOLANA_TOOL_SCHEMA],
+                "tool_choice": "auto",
             },
         )
         return response.text or ""
@@ -186,13 +228,11 @@ class ElizaBridgeSolanaExplorer:
         agent_pubkey = str(env.agent_keypair.pubkey())
 
         prompt = (
-            "Discover new Solana program instructions.\n\n"
             f"Agent pubkey: {agent_pubkey}\n"
             "Connection: http://localhost:8899\n\n"
             f"{prompt_context}\n\n"
-            "Write a COMPLETE ```typescript block with:\n"
-            "  export async function executeSkill(blockhash: string): Promise<string>\n"
-            "Return base64 serialized transaction. Respond with ONLY the code block."
+            "Write a compact COMPLETE ```typescript block. Use @solana/web3.js "
+            "and @solana/spl-token if needed. Respond with ONLY the code block."
         )
 
         logger.info("[eliza-solana] LLM generate via bridge (model=%s)...", self.model_name)
@@ -210,7 +250,10 @@ class ElizaBridgeSolanaExplorer:
                         "Respond with ONLY a ```typescript block containing executeSkill."
                     )
                     continue
-                return 0, False, {"error": "no_code_blocks_after_retries"}
+                return 0, False, {
+                    "error": "no_code_blocks_after_retries",
+                    "generated_response": response_text,
+                }
 
             blockhash = str((await env.client.get_latest_blockhash()).value.blockhash)
             bun_result = run_typescript_skill(
@@ -241,16 +284,21 @@ class ElizaBridgeSolanaExplorer:
                 logger.warning(
                     "[eliza-solana] exhausted %d compile retries", _MAX_COMPILE_RETRIES
                 )
-                return 0, False, {"error": f"compile_failed: {error_context[:300]}"}
+                return 0, False, {
+                    "error": f"compile_failed: {error_context[:300]}",
+                    "generated_response": response_text,
+                }
 
         if not tx_data:
-            return 0, False, {"error": "no_valid_code"}
+            return 0, False, {"error": "no_valid_code", "generated_response": response_text}
 
         # Fix base64 padding if needed
         padded = tx_data + "=" * (-len(tx_data) % 4)
         tx = SoldersTransaction.from_bytes(base64.b64decode(padded))
         signed = env._partial_sign_transaction(bytes(tx), [env.agent_keypair])
         _, reward, _, _, info = await env.step(signed)
+        if isinstance(info, dict):
+            info.setdefault("generated_response", response_text)
         logger.info(
             "[eliza-solana] LLM step: reward=%d total=%d (attempt %d)",
             reward,
@@ -261,6 +309,11 @@ class ElizaBridgeSolanaExplorer:
 
     async def run(self, env: "SurfpoolEnv") -> dict:
         self._ensure_ready()
+        GYM_ENV_DIR, *_ = _solana_imports()
+        from benchmarks.solana.trajectory import append_trajectory_event, make_trajectory_event
+
+        trajectory_path = GYM_ENV_DIR / "metrics" / f"{self.run_id}_trajectory.jsonl"
+        self.metrics["trajectory_path"] = str(trajectory_path)
         logger.info(
             "[eliza-solana] explorer model=%s max=%d id=%s",
             self.model_name,
@@ -285,14 +338,18 @@ class ElizaBridgeSolanaExplorer:
             )
 
             reward, success, info = 0, False, {}
+            prompt_snapshot = None
+            response_snapshot = None
             if action["type"] == "deterministic":
                 reward, success, info = await self._execute_deterministic(
                     env, action["code"], action["template_name"]
                 )
             elif action["type"] == "llm_assisted":
+                prompt_snapshot = action["prompt_context"]
                 reward, success, info = await self._execute_llm_step(
                     env, action["prompt_context"]
                 )
+                response_snapshot = str(info.get("generated_response", "")) if info else None
 
             self.strategy.record_result(
                 action.get("template_name", "unknown"), reward, success, info
@@ -338,6 +395,23 @@ class ElizaBridgeSolanaExplorer:
                         "error": str(info.get("error", "unknown"))[:500],
                     }
                 )
+            append_trajectory_event(
+                trajectory_path,
+                make_trajectory_event(
+                    run_id=self.run_id,
+                    step=step_idx + 1,
+                    phase=action["type"],
+                    template=action.get("template_name", "llm"),
+                    reward=reward,
+                    total_reward=env.total_reward,
+                    success=success,
+                    harness=self.harness,
+                    prompt=prompt_snapshot,
+                    response=response_snapshot,
+                    error=str(info.get("error", "")) if info else None,
+                    info=info,
+                ),
+            )
 
             self._save_checkpoint()
 

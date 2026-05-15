@@ -67,7 +67,7 @@ def _select_model_size(cfg: dict[str, Any]) -> str:
     The vendor exposes `small | medium | default | large`. We expose
     `model_size` directly in the YAML for full-finetune configs; default
     to `medium` (25M, recommended for LJSpeech-class corpora — the
-    samantha corpus at ~50 clips is much smaller, so a 6M / `small`
+    sam corpus at ~50 clips is much smaller, so a 6M / `small`
     model is the safer pick. The cfg explicitly opting in to `medium`
     or higher overrides).
     """

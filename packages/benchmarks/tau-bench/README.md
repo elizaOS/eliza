@@ -57,9 +57,12 @@ cd packages/benchmarks/tau-bench
 pip install -e ".[dev]"
 ```
 
-Dependencies: `litellm`, `openai`, `pydantic`, `pytest`, `pytest-asyncio`.
-Both the user simulator and the agent talk to LLMs through litellm, so any
-provider litellm supports works.
+Core dependencies: `httpx`, `pydantic`, `pytest`, `pytest-asyncio`.
+`litellm` is optional (`pip install -e ".[litellm,dev]"`). When it is not
+installed, the built-in agent, user simulator, and judge can call an
+OpenAI-compatible chat-completions endpoint by setting
+`TAU_BENCH_OPENAI_BASE_URL` or `OPENAI_BASE_URL` (for example a local
+llama.cpp server at `http://127.0.0.1:8080/v1`).
 
 ## Required environment variables
 
@@ -69,10 +72,20 @@ provider litellm supports works.
 | User simulator   | `OPENAI_API_KEY`                     | `gpt-4o`      |
 | LLM judge        | `OPENAI_API_KEY`                     | `gpt-4o-mini` |
 
-Override providers with `--agent-provider`, `--user-provider`, `--judge-provider`
-(`openai` / `anthropic` / `google` / `groq` / `openrouter` / ..., anything litellm
-supports). The runner checks each provider's API key up front and refuses to
-start unless every required one is present (or you pass `--mock`).
+Override providers with `--agent-provider`, `--user-provider`, `--judge-provider`.
+With LiteLLM installed, any LiteLLM provider works. Without LiteLLM, use
+`openai-compatible`, `local`, or `llama.cpp` with an OpenAI-compatible base URL.
+The runner checks each provider's API key up front and refuses to start unless
+every required one is present (or you pass `--mock`).
+
+## Upstream data assets
+
+The repository ships only compact smoke fixtures for the sample task IDs. Full
+retail and airline JSON data is fetched lazily from `sierra-research/tau-bench`
+into `~/.cache/elizaos_tau_bench/upstream/<ref>/...` when an official benchmark
+run first needs it. Set `TAU_BENCH_DATA_DIR` to use a pre-populated local copy,
+`TAU_BENCH_DATA_MODE=smoke` for fixture-only sample runs, or
+`TAU_BENCH_DISABLE_DATA_DOWNLOAD=1` to require local files and fail if missing.
 
 ## Quick start
 
@@ -169,9 +182,10 @@ everything in a stable JSON shape that's also written to
 pytest packages/benchmarks/tau-bench/
 ```
 
-Tests cover dataset loading, pass^k math, judge behaviour, and an end-to-end
-smoke that runs one retail task with a stubbed litellm -- verifying the
-multi-turn user-simulator loop runs and at least one tool call lands.
+Tests cover dataset loading, pass^k math, judge behaviour, completion adapter
+fallbacks, output JSON contracts, and an end-to-end smoke that runs one retail
+task with a stubbed completion adapter -- verifying the multi-turn
+user-simulator loop runs and at least one tool call lands.
 
 ## License
 

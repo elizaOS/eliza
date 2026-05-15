@@ -1,13 +1,13 @@
-# Sam corpus — F2 augmented + distilled
+# Same corpus — F2 augmented + distilled
 
-Updated by F2 (Kokoro sam fine-tune retry agent) on 2026-05-15.
+Updated by F2 (Kokoro same fine-tune retry agent) on 2026-05-15.
 
 ## Original corpus
 
 | Property | Value |
 |----------|-------|
-| Source | `lalalune/ai_voices` (sam subset) |
-| Clips | 57 (58 raw, 1 excluded: samantha_002 hallucination) |
+| Source | `lalalune/ai_voices` (upstream `samantha` subset, landed locally as `same`) |
+| Clips | 57 (58 raw, 1 excluded: same_002 hallucination) |
 | Duration | ~3.5 min (210 s) |
 | Format | 44.1 kHz mono PCM16 (normalized to 24 kHz, -23 LUFS) |
 | License | Research-only — derivative of *Her* (2013, Warner Bros) |
@@ -37,7 +37,7 @@ Generated at `/tmp/kokoro-f2/corpus-augmented/` by `augment_corpus.py`.
 
 Generated at `/tmp/kokoro-f2/corpus-distilled/` by `synthesize_distillation_corpus.py`.
 
-**Method:** Kokoro-82M TTS with `af_bella` voice (sam's closest available stock voice) synthesizing 80 diverse conversational English sentences covering:
+**Method:** Kokoro-82M TTS with `af_bella` voice (same's closest available stock voice) synthesizing 80 diverse conversational English sentences covering:
 - Short conversational utterances (5-10 words)
 - Medium introspective statements (10-18 words)
 - Longer reflective paragraphs (18-30 words)
@@ -61,7 +61,7 @@ Merged at `/tmp/kokoro-f2/corpus-merged/` by `merge_corpus.py`.
 | Train lines | 678 |
 | Val lines | 45 |
 | Estimated total duration | ~48 min |
-| Sources | augmented (real sam) + distilled (af_bella synthesis) |
+| Sources | augmented (real same) + distilled (af_bella synthesis) |
 
 ## Training experiments
 
@@ -74,7 +74,7 @@ Merged at `/tmp/kokoro-f2/corpus-merged/` by `merge_corpus.py`.
 | mel-fit 5 | anchor=0.0 lr=0.002 steps=2000 init=bella | Done | 2.004 | 0.678 | 0.159 | false |
 | full-FT | lr=3e-5 5k steps augmented corpus | Running | — | — | — | — |
 
-## Baseline (af_bella on sam val prompts)
+## Baseline (af_bella on same val prompts)
 
 | Metric | Value |
 |--------|-------|
@@ -83,12 +83,12 @@ Merged at `/tmp/kokoro-f2/corpus-merged/` by `merge_corpus.py`.
 | SpkSim | 0.034 |
 | RTF | 91.4× |
 
-Note: af_bella SpkSim of 0.034 reflects that af_bella and sam are different speakers.
+Note: af_bella SpkSim of 0.034 reflects that af_bella and same are different speakers.
 Any fine-tune that moves SpkSim > 0.034 + 0.05 = 0.084 AND improves UTMOS + WER beats baseline.
 
 ## Key finding (F2)
 
-The mel-fit objective consistently achieves SpkSim 0.11-0.16 (vs baseline 0.034) — the voice IS moving toward sam. However UTMOS collapses to 2.0 and WER to ~1.0. This confirms the Q1 re-eval diagnosis: mel-fit moves the speaker centroid but destroys audio quality because ref_s timbre and prosody halves were jointly learned by the StyleTTS-2 trainer; gradient descent on ref_s alone in an inference-only package cannot maintain their joint coherence.
+The mel-fit objective consistently achieves SpkSim 0.11-0.16 (vs baseline 0.034) — the voice IS moving toward same. However UTMOS collapses to 2.0 and WER to ~1.0. This confirms the Q1 re-eval diagnosis: mel-fit moves the speaker centroid but destroys audio quality because ref_s timbre and prosody halves were jointly learned by the StyleTTS-2 trainer; gradient descent on ref_s alone in an inference-only package cannot maintain their joint coherence.
 
 The full-FT on the augmented+distilled corpus is the structural fix — it trains all model weights jointly against the mel-reconstruction objective on a much larger corpus.
 

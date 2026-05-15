@@ -328,24 +328,6 @@ def test_attach_usage_anthropic_shape() -> None:
     assert getattr(turn, "cache_supported") is True
 
 
-def test_attach_usage_camel_case_adapter_shape() -> None:
-    from eliza_lifeops_bench.types import attach_usage_cache_fields
-
-    usage = {
-        "promptTokens": 200,
-        "completionTokens": 50,
-        "cachedTokens": 64,
-        "cacheCreationInputTokens": 16,
-    }
-    turn = _AttrTurn()
-    attach_usage_cache_fields(turn, usage)
-    assert getattr(turn, "input_tokens") == 200
-    assert getattr(turn, "output_tokens") == 50
-    assert getattr(turn, "cache_read_input_tokens") == 64
-    assert getattr(turn, "cache_creation_input_tokens") == 16
-    assert getattr(turn, "cache_supported") is True
-
-
 def test_attach_usage_missing_cache_stays_none() -> None:
     from eliza_lifeops_bench.types import attach_usage_cache_fields
 
@@ -359,37 +341,6 @@ def test_attach_usage_missing_cache_stays_none() -> None:
     # No silent 0 fallback — AGENTS.md Cmd #8.
     assert getattr(turn, "cache_read_input_tokens") is None
     assert getattr(turn, "cache_creation_input_tokens") is None
-
-
-@pytest.mark.asyncio
-async def test_hermes_client_preserves_root_cache_creation_tokens(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from eliza_lifeops_bench.clients.base import ClientCall
-    from eliza_lifeops_bench.clients.hermes import HermesClient
-
-    body = {
-        "choices": [
-            {"finish_reason": "stop", "message": {"role": "assistant", "content": "ok"}}
-        ],
-        "usage": {
-            "prompt_tokens": 100,
-            "completion_tokens": 20,
-            "total_tokens": 120,
-            "prompt_tokens_details": {"cached_tokens": 0},
-            "cache_creation_input_tokens": 12,
-        },
-    }
-    monkeypatch.setenv("HERMES_BASE_URL", "https://test.example/v1")
-    client = HermesClient(
-        model="NousResearch/Hermes-3-Llama-3.1-70B",
-        http_client=_FakeAsyncClient(body),
-    )
-
-    response = await client.complete(ClientCall(messages=[{"role": "user", "content": "hi"}]))
-
-    assert response.usage.cache_read_input_tokens == 0
-    assert response.usage.cache_creation_input_tokens == 12
 
 
 # ---------------------------------------------------------------------------

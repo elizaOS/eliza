@@ -35,12 +35,86 @@
  * (`runtime.ts:4659` drains `textStream` and invokes the param's chunk
  * callback). We deliberately do **not** also call `params.onStreamChunk`
  * directly inside the handler — that would double-deliver each chunk.
+ *
+ * Thinking tags are filtered before chunks enter `textStream`; the final
+ * `text` promise still runs the caller's `postProcess` hook for parity with
+ * the non-streaming path.
  */
 
 import type { TextStreamResult, TokenUsage } from "@elizaos/core";
 import type { LlamaChatSession } from "node-llama-cpp";
 
 type LlamaPromptOptions = Parameters<LlamaChatSession["prompt"]>[1];
+
+function indexOfIgnoreCase(haystack: string, needle: string): number {
+	return haystack.toLowerCase().indexOf(needle.toLowerCase());
+}
+
+function createThinkTagStreamFilter(): {
+	push(chunk: string): string[];
+	flush(): string[];
+} {
+	let buffer = "";
+	let inThink = false;
+	const openMarker = "<think";
+	const closeMarker = "</think>";
+	const safeOpenTail = openMarker.length - 1;
+	const safeCloseTail = closeMarker.length - 1;
+
+	const drain = (final: boolean): string[] => {
+		const out: string[] = [];
+		for (;;) {
+			if (inThink) {
+				const closeAt = indexOfIgnoreCase(buffer, closeMarker);
+				if (closeAt === -1) {
+					buffer = final ? "" : buffer.slice(-safeCloseTail);
+					return out;
+				}
+				buffer = buffer.slice(closeAt + closeMarker.length);
+				inThink = false;
+				continue;
+			}
+
+			const openAt = indexOfIgnoreCase(buffer, openMarker);
+			if (openAt === -1) {
+				const emitLength = final
+					? buffer.length
+					: Math.max(0, buffer.length - safeOpenTail);
+				if (emitLength > 0) {
+					out.push(buffer.slice(0, emitLength));
+					buffer = buffer.slice(emitLength);
+				}
+				return out;
+			}
+
+			if (openAt > 0) {
+				out.push(buffer.slice(0, openAt));
+				buffer = buffer.slice(openAt);
+			}
+
+			const tagEnd = buffer.indexOf(">");
+			if (tagEnd === -1) {
+				if (final) {
+					buffer = "";
+					return out;
+				}
+				return out;
+			}
+			buffer = buffer.slice(tagEnd + 1);
+			inThink = true;
+		}
+	};
+
+	return {
+		push(chunk: string): string[] {
+			buffer += chunk;
+			return drain(false);
+		},
+		flush(): string[] {
+			return drain(true);
+		},
+	};
+}
 
 export interface StreamLlamaPromptArgs {
 	session: LlamaChatSession;
@@ -80,6 +154,7 @@ export function streamLlamaPrompt(
 	args: StreamLlamaPromptArgs,
 ): TextStreamResult {
 	const queue: string[] = [];
+	const streamFilter = createThinkTagStreamFilter();
 	let pendingResolve: ((value: IteratorResult<string>) => void) | null = null;
 	let promptError: unknown = null;
 	let promptDone = false;
@@ -117,13 +192,23 @@ export function streamLlamaPrompt(
 				...args.options,
 				onTextChunk: (chunk: string) => {
 					rawAccumulated += chunk;
-					// Tests pre-attach an onChunk to assert per-token delivery without
-					// having to drain the async iterable manually.
-					args.onChunk?.(chunk);
-					queue.push(chunk);
+					const visibleChunks = streamFilter.push(chunk);
+					for (const visibleChunk of visibleChunks) {
+						if (!visibleChunk) continue;
+						// Tests pre-attach an onChunk to assert per-token delivery without
+						// having to drain the async iterable manually.
+						args.onChunk?.(visibleChunk);
+						queue.push(visibleChunk);
+					}
 					drain();
 				},
 			} as never);
+			const tailChunks = streamFilter.flush();
+			for (const visibleChunk of tailChunks) {
+				if (!visibleChunk) continue;
+				args.onChunk?.(visibleChunk);
+				queue.push(visibleChunk);
+			}
 			return result;
 		} catch (err) {
 			// Capture the error BEFORE the `finally` flips `promptDone` so the

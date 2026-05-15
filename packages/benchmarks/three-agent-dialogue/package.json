@@ -9,14 +9,13 @@
   "scripts": {
     "bench": "bun run runner/run-dialogue.ts",
     "bench:smoke": "THREE_AGENT_SMOKE=1 bun run runner/run-dialogue.ts",
-    "test": "bun x vitest run --config vitest.config.ts",
-    "test:watch": "bun x vitest --config vitest.config.ts",
+    "test": "bun x vitest run",
+    "test:watch": "bun x vitest",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-groq": "workspace:*"
+    "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

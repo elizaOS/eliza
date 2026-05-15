@@ -45,10 +45,7 @@ const unsupportedImageDescription = (
 	modelType: string,
 ): ImageDescriptionResult => {
 	warnUnsupported(modelType);
-	return {
-		title: "Unsupported",
-		description: unsupportedMessage,
-	};
+	throw new Error(`[plugin-${pluginName}] ${modelType}: ${unsupportedMessage}`);
 };
 
 export const localAiPlugin: Plugin = {
@@ -85,15 +82,21 @@ export const localAiPlugin: Plugin = {
 			_params: TextEmbeddingParams | string | null,
 		): Promise<number[]> => {
 			warnUnsupported(ModelType.TEXT_EMBEDDING);
-			return new Array(1024).fill(0);
+			throw new Error(
+				`[plugin-${pluginName}] ${ModelType.TEXT_EMBEDDING}: ${unsupportedMessage}`,
+			);
 		},
 		[ModelType.TEXT_TOKENIZER_ENCODE]: async (): Promise<number[]> => {
 			warnUnsupported(ModelType.TEXT_TOKENIZER_ENCODE);
-			return [];
+			throw new Error(
+				`[plugin-${pluginName}] ${ModelType.TEXT_TOKENIZER_ENCODE}: ${unsupportedMessage}`,
+			);
 		},
 		[ModelType.TEXT_TOKENIZER_DECODE]: async (): Promise<string> => {
 			warnUnsupported(ModelType.TEXT_TOKENIZER_DECODE);
-			return "";
+			throw new Error(
+				`[plugin-${pluginName}] ${ModelType.TEXT_TOKENIZER_DECODE}: ${unsupportedMessage}`,
+			);
 		},
 		[ModelType.IMAGE_DESCRIPTION]: async (
 			_runtime: IAgentRuntime,
@@ -104,11 +107,15 @@ export const localAiPlugin: Plugin = {
 			unsupportedText(ModelType.TRANSCRIPTION),
 		[ModelType.TEXT_TO_SPEECH]: async (): Promise<Uint8Array> => {
 			warnUnsupported(ModelType.TEXT_TO_SPEECH);
-			return new Uint8Array();
+			throw new Error(
+				`[plugin-${pluginName}] ${ModelType.TEXT_TO_SPEECH}: ${unsupportedMessage}`,
+			);
 		},
 		[ModelType.IMAGE]: async (): Promise<ImageGenerationResult[]> => {
 			warnUnsupported(ModelType.IMAGE);
-			return [];
+			throw new Error(
+				`[plugin-${pluginName}] ${ModelType.IMAGE}: ${unsupportedMessage}`,
+			);
 		},
 	},
 };

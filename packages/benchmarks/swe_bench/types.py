@@ -186,6 +186,10 @@ class SWEBenchConfig:
     # "hermes" (HermesClient, in-process Cerebras chat), or "openclaw"
     # (OpenClawClient, direct OpenAI-compat or CLI).
     harness: str = "eliza"
+    # Offline calibration baseline. "always-right" emits the dataset gold
+    # patch, "always-wrong" emits no patch, and "random" picks either
+    # deterministically per instance.
+    baseline: str | None = None
 
     def __post_init__(self) -> None:
         """Validate config fields."""
@@ -200,6 +204,11 @@ class SWEBenchConfig:
         if self.harness not in {"eliza", "hermes", "openclaw"}:
             raise ValueError(
                 f"harness must be one of eliza/hermes/openclaw, got {self.harness!r}"
+            )
+        if self.baseline not in {None, "always-right", "always-wrong", "random"}:
+            raise ValueError(
+                "baseline must be one of always-right/always-wrong/random or None, "
+                f"got {self.baseline!r}"
             )
 
 

@@ -353,18 +353,6 @@ void eliza_llama_context_params_set_n_threads(
     params->n_threads_batch = n_batch;
 }
 
-void eliza_llama_context_params_set_type_k(
-    struct llama_context_params * params,
-    int32_t type) {
-    if (params != NULL) params->type_k = type;
-}
-
-void eliza_llama_context_params_set_type_v(
-    struct llama_context_params * params,
-    int32_t type) {
-    if (params != NULL) params->type_v = type;
-}
-
 void eliza_llama_batch_set_single(
     struct llama_batch * batch,
     llama_token token,
@@ -400,39 +388,4 @@ void eliza_llama_log_silence(void) {
 
 bool eliza_llama_has_metal(void) {
     return llama_supports_gpu_offload();
-}
-
-bool eliza_llama_speculative_supported(void) {
-    return false;
-}
-
-int32_t eliza_llama_speculative_draft_gen(
-    void * target_ctx,
-    void * drafter_ctx,
-    const int32_t * past_tokens,
-    int32_t n_past,
-    int32_t draft_min,
-    int32_t draft_max,
-    int32_t * out_drafted,
-    int32_t out_capacity) {
-    (void) target_ctx;
-    (void) drafter_ctx;
-    (void) past_tokens;
-    (void) n_past;
-    (void) draft_min;
-    (void) draft_max;
-    (void) out_capacity;
-    if (out_drafted != NULL) *out_drafted = 0;
-    return 0;
-}
-
-void * eliza_llama_sampler_init_token_tree(
-    int32_t n_vocab,
-    const uint8_t * trie_bytes,
-    size_t trie_size) {
-    (void) n_vocab;
-    (void) trie_bytes;
-    (void) trie_size;
-    set_last_error("iOS token-tree sampler is not wired in this static slice");
-    return NULL;
 }

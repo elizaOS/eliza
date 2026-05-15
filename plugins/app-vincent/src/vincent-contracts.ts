@@ -45,7 +45,7 @@ export interface VincentStrategyUpdateResponse {
   strategy: VincentStrategy | null;
 }
 
-interface VincentTradingProfileTokenBreakdownItem {
+export interface VincentTradingProfileTokenBreakdownItem {
   symbol: string;
   pnl: string;
   swaps: number;

@@ -21,6 +21,13 @@ Examples:
     python run_benchmark.py --no-docker
 """
 
+import os as _os
+import sys as _sys
+
+_script_dir = _os.path.dirname(_os.path.abspath(__file__))
+if _sys.path and _sys.path[0] == _script_dir:
+    _sys.path.pop(0)
+
 import argparse
 import asyncio
 import logging
@@ -81,6 +88,23 @@ def parse_args() -> argparse.Namespace:
         "--use-sample-tasks",
         action="store_true",
         help="Use the tiny hand-written smoke set instead of upstream data",
+    )
+    parser.add_argument(
+        "--data-path",
+        type=str,
+        default="",
+        help="Directory laid out like upstream data/processed; skips cache lookup",
+    )
+    parser.add_argument(
+        "--cache-dir",
+        type=str,
+        default="",
+        help="Cache directory for lazy-fetched upstream data (default: MINT_DATA_CACHE or ~/.cache/elizaos/mint)",
+    )
+    parser.add_argument(
+        "--no-auto-fetch",
+        action="store_true",
+        help="Do not fetch missing upstream JSON files; fail with cache/path guidance instead",
     )
     parser.add_argument(
         "--mock",
@@ -154,11 +178,20 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=["mock", "eliza", "openai", "groq", "openrouter", "cerebras"],
+        choices=[
+            "mock",
+            "eliza",
+            "hermes",
+            "openclaw",
+            "openai",
+            "groq",
+            "openrouter",
+            "cerebras",
+        ],
         default="mock",
         help=(
-            "Agent provider to use: local mock, eliza TS benchmark bridge, "
-            "or direct OpenAI-compatible provider (default: mock)"
+            "Agent provider/harness to use: local mock, eliza/hermes/openclaw "
+            "benchmark bridge, or direct OpenAI-compatible provider (default: mock)"
         ),
     )
     parser.add_argument(
@@ -208,6 +241,8 @@ def create_config(args: argparse.Namespace) -> MINTConfig:
     feedback_mode = "llm" if (args.feedback == "llm" or args.llm_feedback) else "templated"
 
     return MINTConfig(
+        data_path=args.data_path,
+        cache_dir=args.cache_dir,
         output_dir=args.output_dir,
         max_tasks_per_subtask=args.max_tasks,
         timeout_per_task_ms=args.timeout * 1000,
@@ -223,6 +258,7 @@ def create_config(args: argparse.Namespace) -> MINTConfig:
         feedback_mode=feedback_mode,
         use_mock_executor=bool(args.mock),
         use_sample_tasks=bool(args.use_sample_tasks),
+        auto_fetch_upstream=not bool(args.no_auto_fetch),
         allow_ground_truth_mock=False,
     )
 
@@ -394,7 +430,7 @@ async def run_benchmark(
             trajectory_dataset=trajectory_dataset,
         )
 
-        if runtime_provider == "eliza":
+        if runtime_provider in {"eliza", "hermes", "openclaw"}:
             # The bridge agent forwards every multi-turn LLM call to the TS bench
             # server; MINTRunner reuses runner.executor and runner.feedback_generator.
             from eliza_adapter.mint import ElizaMINTAgent
@@ -427,11 +463,9 @@ async def run_benchmark(
             os.environ["CEREBRAS_SMALL_MODEL"] = model_name
             os.environ["CEREBRAS_MODEL"] = model_name
 
-            harness = (
-                os.environ.get("ELIZA_BENCH_HARNESS")
-                or os.environ.get("BENCHMARK_HARNESS")
-                or "eliza"
-            ).strip().lower()
+            os.environ["BENCHMARK_HARNESS"] = runtime_provider
+            os.environ["ELIZA_BENCH_HARNESS"] = runtime_provider
+            harness = runtime_provider
             if harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL"):
                 bridge_manager = ElizaServerManager()
                 bridge_manager.start()
@@ -446,7 +480,8 @@ async def run_benchmark(
                 temperature=config.temperature,
             )
             logging.getLogger(__name__).info(
-                "[mint] using ElizaMINTAgent (eliza TS benchmark bridge)"
+                "[mint] using ElizaMINTAgent through %s benchmark harness",
+                harness,
             )
         elif direct_runtime is not None:
             logging.getLogger(__name__).info(
@@ -536,6 +571,7 @@ def main() -> int:
     print(f"  Docker: {config.use_docker}")
     print(f"  Mock executor: {config.use_mock_executor}")
     print(f"  Sample tasks: {config.use_sample_tasks}")
+    print(f"  Auto-fetch upstream data: {config.auto_fetch_upstream}")
     print()
 
     return asyncio.run(

@@ -183,7 +183,7 @@ describe("buildSeedingOfferMessage", () => {
 
   it("never embeds an absolute path or PII name", () => {
     const message = buildSeedingOfferMessage();
-    expect(message).not.toMatch(/\b(Jill|Marco|Sarah|Suran|Samantha)\b/);
+    expect(message).not.toMatch(/\b(Jill|Marco|Sarah|Suran|Sam)\b/);
     expect(message).not.toMatch(/(?:^|\s)\//);
     expect(message).not.toMatch(/^~\//);
   });

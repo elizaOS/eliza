@@ -70,7 +70,7 @@ Estimated wall times and cost per tier (1 GPU unless noted):
 | 27b | 72 h (2 GPU) | ~$576 |
 | 27b-256k | 72 h (2 GPU) | ~$576 |
 
-Total for all 7 tiers: budget **~$1,950** (single-pass, no retries).
+Total for all 6 tiers: budget **~$1,375** (single-pass, no retries).
 
 ## Quickstart
 

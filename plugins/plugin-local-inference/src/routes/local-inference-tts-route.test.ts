@@ -101,7 +101,7 @@ describe("local inference TTS route", () => {
 		);
 
 		const secondParams = useModel.mock.calls[1]?.[1] as
-			| { text?: string; signal?: AbortSignal }
+			| { text?: string; signal?: AbortSignal; voice?: string }
 			| undefined;
 		expect(handled).toBe(true);
 		expect(useModel).toHaveBeenCalledTimes(2);
@@ -111,6 +111,36 @@ describe("local inference TTS route", () => {
 		expect(out.status()).toBe(200);
 		expect(out.header("content-type")).toBe("audio/wav");
 		expect(out.bodyBuffer()).toEqual(Buffer.from(wavBytes()));
+	});
+
+	it("forwards voice, model, speed, sample rate, and format hints", async () => {
+		const useModel = vi.fn().mockResolvedValue(wavBytes());
+		const state: CompatRuntimeState = {
+			current: { useModel } as unknown as CompatRuntimeState["current"],
+		};
+		const out = fakeRes();
+
+		await handleLocalInferenceTtsRoute(
+			fakeReq({
+				text: "Hello",
+				voiceId: "narrator",
+				modelId: "omnivoice-q4",
+				speed: 1.15,
+				sampleRate: 24_000,
+				format: "wav",
+			}),
+			out.res,
+			state,
+		);
+
+		expect(useModel.mock.calls[0]?.[1]).toMatchObject({
+			text: "Hello",
+			voice: "narrator",
+			modelId: "omnivoice-q4",
+			speed: 1.15,
+			sampleRate: 24_000,
+			format: "wav",
+		});
 	});
 
 	it("aborts TTS on client close without writing a synthetic 502", async () => {

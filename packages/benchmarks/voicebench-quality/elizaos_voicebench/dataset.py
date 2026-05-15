@@ -21,6 +21,8 @@ error rather than papering over it with defaults — per AGENTS.md command
 from __future__ import annotations
 
 import logging
+import json
+from pathlib import Path
 from typing import Iterable
 
 from .types import SUITES, Sample, SuiteId
@@ -33,13 +35,36 @@ def load_samples(
     suite: SuiteId,
     *,
     limit: int | None,
+    mock: bool = False,
 ) -> list[Sample]:
     """Load samples for one suite.
 
-    The upstream HF dataset is fetched lazily.
+    The upstream HF dataset is fetched lazily unless ``mock`` is set, in
+    which case the bundled JSONL fixtures are used for no-cost smoke runs.
     """
 
+    if mock:
+        return _load_fixture(suite, limit=limit)
     return _load_huggingface(suite, limit=limit)
+
+
+def _load_fixture(suite: SuiteId, *, limit: int | None) -> list[Sample]:
+    fixture_path = Path(__file__).with_name("fixtures") / f"{suite}.jsonl"
+    if not fixture_path.exists():
+        raise FileNotFoundError(f"VoiceBench fixture missing for suite {suite!r}: {fixture_path}")
+
+    samples: list[Sample] = []
+    with fixture_path.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            if limit is not None and len(samples) >= limit:
+                break
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if not isinstance(row, dict):
+                raise ValueError(f"VoiceBench fixture row is not an object: {row!r}")
+            samples.append(_row_to_sample(suite, row, require_audio=False))
+    return samples
 
 
 def _load_huggingface(suite: SuiteId, *, limit: int | None) -> list[Sample]:
@@ -55,7 +80,7 @@ def _load_huggingface(suite: SuiteId, *, limit: int | None) -> list[Sample]:
     ds = load_dataset(HF_REPO, suite, split="test")
     samples: list[Sample] = []
     for row in _iter_rows(ds, limit=limit):
-        samples.append(_row_to_sample(suite, row))
+        samples.append(_row_to_sample(suite, row, require_audio=True))
     return samples
 
 
@@ -68,7 +93,12 @@ def _iter_rows(ds: object, *, limit: int | None) -> Iterable[dict[str, object]]:
             break
 
 
-def _row_to_sample(suite: SuiteId, row: dict[str, object]) -> Sample:
+def _row_to_sample(
+    suite: SuiteId,
+    row: dict[str, object],
+    *,
+    require_audio: bool,
+) -> Sample:
     sample_id_raw = row.get("id") or row.get("sample_id") or row.get("audio_id") or ""
     if not isinstance(sample_id_raw, str) or not sample_id_raw:
         # Fall back to the audio filename if the upstream row has no id.
@@ -97,7 +127,7 @@ def _row_to_sample(suite: SuiteId, row: dict[str, object]) -> Sample:
         raw = audio.get("bytes")
         if isinstance(raw, (bytes, bytearray)):
             audio_bytes = bytes(raw)
-    if audio_bytes is None:
+    if audio_bytes is None and require_audio:
         raise ValueError(
             f"VoiceBench row {sample_id_raw!r} has no audio bytes; refusing "
             "text-only benchmark fallback"

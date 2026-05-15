@@ -1,4 +1,4 @@
-import { gatePluginSessionForHostedApp } from "@elizaos/agent";
+import { gatePluginSessionForHostedApp } from "@elizaos/agent/services/app-session-gate";
 import type { Plugin, ServiceClass } from "@elizaos/core";
 import { rsSdkActions } from "./actions/index.js";
 import { rsSdkProviders } from "./providers/index.js";

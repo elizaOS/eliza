@@ -535,17 +535,7 @@ _ACTION_NAME_ALIASES: dict[str, str] = {
     # Retired action names → canonical replacements.
     "DEVICE_INTENT": "BLOCK",
     "LIFEOPS": "LIFE",
-    "SCHEDULED_TASKS": "SCHEDULED_TASK",
-    "SCHEDULED_TASKS_ACKNOWLEDGE": "SCHEDULED_TASK_ACKNOWLEDGE",
-    "SCHEDULED_TASKS_CANCEL": "SCHEDULED_TASK_CANCEL",
-    "SCHEDULED_TASKS_COMPLETE": "SCHEDULED_TASK_COMPLETE",
     "SCHEDULED_TASKS_CREATE": "SCHEDULED_TASK_CREATE",
-    "SCHEDULED_TASKS_DISMISS": "SCHEDULED_TASK_DISMISS",
-    "SCHEDULED_TASKS_GET": "SCHEDULED_TASK_GET",
-    "SCHEDULED_TASKS_HISTORY": "SCHEDULED_TASK_HISTORY",
-    "SCHEDULED_TASKS_LIST": "SCHEDULED_TASK_LIST",
-    "SCHEDULED_TASKS_REOPEN": "SCHEDULED_TASK_REOPEN",
-    "SCHEDULED_TASKS_SKIP": "SCHEDULED_TASK_SKIP",
     "SCHEDULED_TASKS_SNOOZE": "SCHEDULED_TASK_SNOOZE",
     "SCHEDULED_TASKS_UPDATE": "SCHEDULED_TASK_UPDATE",
 }
@@ -653,19 +643,6 @@ def _canonicalize_action(action: Action) -> Action:
             new_kwargs = dict(action.kwargs)
             new_kwargs["operation"] = "manage"
             return Action(name=name, kwargs=new_kwargs)
-    if name == "SCHEDULED_TASK" and "subaction" not in action.kwargs:
-        raw_op = action.kwargs.get("action") or action.kwargs.get("operation")
-        if isinstance(raw_op, str):
-            candidate = {
-                "ack": "acknowledge",
-                "create_task": "create",
-                "list_tasks": "list",
-            }.get(raw_op, raw_op)
-            _, subactions = _UMBRELLA_SUBACTIONS[name]
-            if candidate in subactions:
-                new_kwargs = dict(action.kwargs)
-                new_kwargs["subaction"] = candidate
-                return Action(name=name, kwargs=new_kwargs)
 
     # Owner-surface aliases: `OWNER_<AREA>_<SUB>` → `<UMBRELLA>(subaction=<sub>)`.
     # Check before the generic umbrella loop so e.g. `OWNER_HEALTH_TODAY` is
@@ -927,21 +904,12 @@ def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
     """
     predicted = _canonicalize_kwargs(predicted)
     expected = _canonicalize_kwargs(expected)
-    calendar_availability_equivalent = _calendar_availability_read_equivalent(
-        predicted,
-        expected,
-    )
     for key, exp_value in expected.items():
         if key in _SOFT_KWARGS:
-            continue
-        if calendar_availability_equivalent and key in {"subaction", "start", "end"}:
             continue
         if key not in predicted:
             return False
         pred_value = predicted[key]
-        # Availability can be answered by either the dedicated
-        # check_availability read or an equivalent bounded event search. Both
-        # are hash-inert reads, so require the requested window to match.
         # passengers: accept integer count ↔ array-of-objects as equivalent
         # when the count matches. Agents often emit a bare integer while GT
         # scenarios use [{type:"adult"}, ...] or [{name:…, seat_class:…}, …].
@@ -956,90 +924,6 @@ def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
         if not _values_equivalent(pred_value, exp_value):
             return False
     return True
-
-
-def _calendar_availability_read_equivalent(
-    predicted: dict[str, Any],
-    expected: dict[str, Any],
-) -> bool:
-    """Treat bounded search_events as equivalent to check_availability."""
-    pred_subaction = predicted.get("subaction")
-    exp_subaction = expected.get("subaction")
-    if {pred_subaction, exp_subaction} != {"search_events", "check_availability"}:
-        return False
-    if _has_calendar_search_filter(predicted) or _has_calendar_search_filter(expected):
-        return False
-    pred_start = predicted.get("start") or predicted.get("window_start")
-    pred_end = predicted.get("end") or predicted.get("window_end")
-    exp_start = expected.get("start") or expected.get("window_start")
-    exp_end = expected.get("end") or expected.get("window_end")
-    return _values_equivalent(pred_start, exp_start) and (
-        _values_equivalent(pred_end, exp_end)
-    )
-
-
-def _has_calendar_search_filter(kwargs: dict[str, Any]) -> bool:
-    for key in ("query", "queries", "title", "event_name"):
-        value = kwargs.get(key)
-        if value is None:
-            continue
-        if (
-            isinstance(value, str)
-            and value.strip()
-            and not _is_availability_noise_filter(value)
-        ):
-            return True
-        if isinstance(value, list) and any(
-            str(item).strip() and not _is_availability_noise_filter(str(item))
-            for item in value
-        ):
-            return True
-    return False
-
-
-def _is_availability_noise_filter(value: str) -> bool:
-    normalized = _normalize_string(value)
-    if not normalized:
-        return True
-    tokens = re.findall(r"[a-z0-9]+", normalized)
-    if not tokens:
-        return True
-    allowed = {
-        "availability",
-        "available",
-        "busy",
-        "calendar",
-        "check",
-        "event",
-        "events",
-        "free",
-        "from",
-        "slot",
-        "time",
-        "to",
-        "utc",
-        "z",
-        "am",
-        "pm",
-        "monday",
-        "tuesday",
-        "wednesday",
-        "thursday",
-        "friday",
-        "saturday",
-        "sunday",
-        "mon",
-        "tue",
-        "wed",
-        "thu",
-        "fri",
-        "sat",
-        "sun",
-    }
-    return all(
-        re.fullmatch(r"\d+(?:am|pm)?", token) or token in allowed
-        for token in tokens
-    )
 
 
 def _action_is_hash_inert(action: Action) -> bool:

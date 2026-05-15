@@ -94,6 +94,33 @@ def test_simple_multiple_smoke_full_score(fixture_dir: Path) -> None:
     assert all(r.status == TestStatus.PASSED for r in results.results)
 
 
+def test_runner_exports_compact_trajectory_fixture(fixture_dir: Path, tmp_path: Path) -> None:
+    """Every harness gets a compact JSONL trajectory fixture from the runner."""
+    output_dir = tmp_path / "out"
+    config = BFCLConfig(
+        data_path=str(fixture_dir),
+        output_dir=str(output_dir),
+        use_huggingface=False,
+        categories=[BFCLCategory.SIMPLE],
+        generate_report=False,
+        save_raw_responses=True,
+        save_detailed_logs=True,
+    )
+    runner = BFCLRunner(config, use_mock_agent=True)
+    asyncio.run(runner.run())
+
+    files = list((output_dir / "trajectories").glob("bfcl_compact_*.jsonl"))
+    assert len(files) == 1
+    record = json.loads(files[0].read_text(encoding="utf-8").splitlines()[0])
+    assert record["schema"] == "eliza_bfcl_trajectory_v1"
+    assert record["benchmark"] == "bfcl"
+    assert record["harness"] == "python"
+    assert record["test_case_id"] == "simple_smoke_0"
+    assert record["function_names"] == ["get_weather"]
+    assert "functions" not in record
+    assert record["predicted_calls"] == record["expected_calls"]
+
+
 def test_sample_selection_is_deterministic(tmp_path: Path) -> None:
     """Sample ids must be stable across harnesses and category order."""
     simple_rows = []

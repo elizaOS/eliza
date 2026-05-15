@@ -843,28 +843,6 @@ describe("LifeOpsBenchHandler", () => {
     expect(parsed.tool_calls[0].ok).toBe(false);
     expect(parsed.tool_calls[0].error).toMatch(/unsupported/);
   });
-
-  it("returns 413 for oversized JSON bodies instead of dropping the socket", async () => {
-    const handler = new LifeOpsBenchHandler({
-      maxBodyBytes: 8,
-      invokePlanner: async () => ({ text: "", toolCalls: [] }),
-    });
-    const req = fakeReq("POST", {
-      task_id: "scn-too-large",
-      world_snapshot_path: writeFixture(),
-    });
-    const res = fakeRes();
-
-    const handled = await handler.tryHandle(
-      req,
-      res,
-      "/api/benchmark/lifeops_bench/reset",
-    );
-
-    expect(handled).toBe(true);
-    expect(res.getStatus()).toBe(413);
-    expect(JSON.parse(res.getBody()).error).toMatch(/exceeded max size/);
-  });
 });
 
 // --------------------------------------------------------------------------

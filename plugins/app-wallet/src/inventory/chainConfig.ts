@@ -17,7 +17,7 @@ export type ChainKey =
   | "optimism"
   | "polygon";
 
-interface Stablecoin {
+export interface Stablecoin {
   symbol: string;
   address: string;
 }

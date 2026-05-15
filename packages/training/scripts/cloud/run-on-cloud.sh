@@ -83,6 +83,7 @@ done
 [[ -n "$TASK" ]]     || die "--task {kernel-verify,bench,train} is required"
 case "$PROVIDER" in vast|nebius) ;; *) die "unknown provider '$PROVIDER'" ;; esac
 case "$TASK" in build|kernel-verify|bench|train) ;; *) die "unknown task '$TASK'" ;; esac
+case "$TIER" in 0_8b|2b|4b|9b|27b|27b-256k) ;; *) die "unknown tier '$TIER'" ;; esac
 
 # --------------------------------------------------------------------------
 # GPU friendly name → vastai search clause + train_vast token.
@@ -120,6 +121,7 @@ tier_to_registry_key() {
     2b)   echo qwen3.5-2b ;;
     4b)   echo qwen3.5-4b ;;
     9b)   echo qwen3.5-9b ;;
+    27b|27b-256k) echo qwen3.6-27b ;;
   esac
 }
 

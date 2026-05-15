@@ -310,6 +310,7 @@ export interface PlatformCapabilities {
   browser: { available: boolean; tool: string };
   terminal: { available: boolean; tool: string };
   fileSystem: { available: boolean; tool: string };
+  clipboard: { available: boolean; tool: string };
 }
 
 export interface ActionHistoryEntry {
@@ -360,6 +361,44 @@ export interface ComputerUseConfig {
   approvalMode: ApprovalMode;
   /** Launch puppeteer-core in headless mode (default: false) */
   browserHeadless?: boolean;
+  /** Execution mode: 'yolo' runs CUA ops on the host, 'sandbox' delegates to a VM/container backend. */
+  mode: ComputerUseMode;
+  /** Sandbox configuration; only consulted when `mode === 'sandbox'`. */
+  sandbox?: SandboxConfig;
+}
+
+// ── Mode + Sandbox ────────────────────────────────────────────────────────
+
+/**
+ * Top-level execution mode. Picked exactly once at plugin init by reading
+ * `ELIZA_COMPUTERUSE_MODE`. There is no per-call override.
+ *
+ * - `yolo`    — operate the host machine (existing behaviour).
+ * - `sandbox` — operate an isolated VM/container; the host is never touched.
+ */
+export type ComputerUseMode = "yolo" | "sandbox";
+
+/** Pluggable sandbox backend identifier. */
+export type SandboxBackendName = "docker" | "qemu";
+
+export interface SandboxConfig {
+  backend: SandboxBackendName;
+  /**
+   * Container/VM image identifier. Operator must pull or build this image
+   * themselves; the plugin does not ship one. Default: `cua/linux:latest`.
+   */
+  image: string;
+  /** Optional overrides forwarded to the backend (env, mounts, args). */
+  options?: SandboxBackendOptions;
+}
+
+export interface SandboxBackendOptions {
+  /** Extra environment variables exposed inside the sandbox. */
+  env?: Record<string, string>;
+  /** Host:container path mount pairs (Docker only). */
+  mounts?: Array<{ host: string; container: string; readOnly?: boolean }>;
+  /** Resource limits passed through to the backend. */
+  resources?: { cpus?: number; memoryMb?: number };
 }
 
 // ── Browser Models ────────────────────────────────────────────────────────

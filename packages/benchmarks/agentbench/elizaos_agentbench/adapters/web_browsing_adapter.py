@@ -89,7 +89,7 @@ class WebBrowsingAdapter(EnvironmentAdapter):
             except Exception as e:
                 logger.warning(f"[Mind2Web] Failed to load prompt fixture: {e}")
         else:
-            logger.warning(f"[Mind2Web] Prompt fixture missing: {prompt_file}")
+            logger.info(f"[Mind2Web] Prompt fixture missing: {prompt_file}")
         self._initialized = True
 
     async def reset(self, task: AgentBenchTask) -> ObservationType:
@@ -102,8 +102,10 @@ class WebBrowsingAdapter(EnvironmentAdapter):
             self._last_prompt = pair["user"]
             self._gold_letter = self._extract_gold_letter(pair["assistant"])
         else:
-            self._last_prompt = task.description
-            self._gold_letter = ""
+            prompt = task.metadata.get("prompt") if isinstance(task.metadata, dict) else None
+            gold = task.metadata.get("gold_letter") if isinstance(task.metadata, dict) else None
+            self._last_prompt = prompt if isinstance(prompt, str) and prompt else task.description
+            self._gold_letter = gold if isinstance(gold, str) else ""
         self._submitted_letter = ""
         return {
             "prompt": self._last_prompt,

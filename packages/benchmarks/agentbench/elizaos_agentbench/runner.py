@@ -8,6 +8,8 @@ agent execution is injected by ``eliza_adapter.agentbench.ElizaAgentHarness``
 through ``runtime._app_harness``.
 """
 
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -16,24 +18,7 @@ import tracemalloc
 from datetime import datetime
 from pathlib import Path
 
-from elizaos_agentbench.types import (
-    AgentBenchConfig,
-    AgentBenchEnvironment,
-    AgentBenchReport,
-    AgentBenchResult,
-    AgentBenchTask,
-    AgentRuntimeProtocol,
-    BaselineComparisonType,
-    BenchmarkSplit,
-    EnvironmentConfig,
-    EnvironmentReport,
-    GPT4_BASELINE_SCORES,
-    GPT35_BASELINE_SCORES,
-    CLAUDE_BASELINE_SCORES,
-    JSONValue,
-    OverallMetricsType,
-    SummaryType,
-)
+from elizaos_agentbench import upstream_loader
 from elizaos_agentbench.adapters.base import EnvironmentAdapter
 from elizaos_agentbench.adapters.card_game_adapter import CardGameAdapter
 from elizaos_agentbench.adapters.db_adapter import DatabaseEnvironmentAdapter
@@ -43,7 +28,25 @@ from elizaos_agentbench.adapters.lateral_thinking_adapter import LateralThinking
 from elizaos_agentbench.adapters.os_adapter import OSEnvironmentAdapter
 from elizaos_agentbench.adapters.web_browsing_adapter import WebBrowsingAdapter
 from elizaos_agentbench.adapters.webshop_adapter import WebShopEnvironmentAdapter
-from elizaos_agentbench import upstream_loader
+from elizaos_agentbench.types import (
+    CLAUDE_BASELINE_SCORES,
+    GPT4_BASELINE_SCORES,
+    GPT35_BASELINE_SCORES,
+    AgentBenchConfig,
+    AgentBenchDataMode,
+    AgentBenchEnvironment,
+    AgentBenchReport,
+    AgentBenchResult,
+    AgentBenchTask,
+    AgentRuntimeProtocol,
+    BaselineComparisonType,
+    BenchmarkSplit,
+    EnvironmentConfig,
+    EnvironmentReport,
+    JSONValue,
+    OverallMetricsType,
+    SummaryType,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +128,7 @@ class AgentBenchRunner:
         self._adapters: dict[AgentBenchEnvironment, EnvironmentAdapter] = {}
         self._start_time = 0.0
         self._results: list[AgentBenchResult] = []
-        self._harness: "ElizaAgentHarness | None" = None
+        self._harness: object | None = None
 
         # Allow external harness injection (used by the Eliza TS bridge).
         external_harness = getattr(runtime, "_app_harness", None) if runtime is not None else None
@@ -250,16 +253,33 @@ class AgentBenchRunner:
         env_cfg = self.config.get_env_config(env)
         limit = env_cfg.max_tasks
         try:
-            return upstream_loader.load_tasks(env, split=split, limit=limit)
+            tasks = upstream_loader.load_tasks(
+                env,
+                split=split,
+                limit=limit,
+                data_mode=self.config.data_mode,
+            )
         except upstream_loader.UpstreamDataMissingError as e:
-            logger.warning(f"[AgentBenchRunner] {env.value}: upstream data missing ({e})")
-            return []
+            raise RuntimeError(f"{env.value}: upstream data missing ({e})") from e
         except NotImplementedError as e:
             logger.warning(f"[AgentBenchRunner] {env.value}: {e}")
-            return []
+            tasks = []
         except Exception as e:
-            logger.error(f"[AgentBenchRunner] {env.value}: failed to load tasks: {e}")
-            return []
+            raise RuntimeError(f"{env.value}: failed to load tasks: {e}") from e
+
+        if not tasks and not (self.config.allow_empty_tasks or self.config.dry_run):
+            mode = (
+                self.config.data_mode.value
+                if isinstance(self.config.data_mode, AgentBenchDataMode)
+                else str(self.config.data_mode)
+            )
+            raise RuntimeError(
+                f"{env.value}: loaded zero AgentBench tasks "
+                f"(split={split!r}, data_mode={mode!r}). "
+                "Use data_mode='fixture' for compact smoke tests, fetch full upstream data "
+                "for benchmark runs, or set allow_empty_tasks/dry_run explicitly."
+            )
+        return tasks
 
     def _generate_report(self) -> AgentBenchReport:
         """Generate comprehensive benchmark report."""

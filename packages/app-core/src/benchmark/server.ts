@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
+import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent";
 import {
   AgentRuntime,
   type Content,
@@ -34,7 +35,6 @@ import {
   benchmarkTurnMetadata,
   capturedActionsToToolCalls,
   capturedActionToParams,
-  chooseLifeOpsNativeToolChoice,
   coerceActions,
   coerceParams,
   composeBenchmarkPrompt,
@@ -44,11 +44,8 @@ import {
   extractRecord,
   extractTaskId,
   formatUnknownError,
-  isBenchmarkServerEntrypoint,
   normalizeBenchmarkContext,
   normalizeBenchmarkModelUsage,
-  normalizeLifeOpsNativeMessages,
-  normalizeLifeOpsNativePlannerResult,
   resolveHost,
   resolvePort,
   sessionKey,
@@ -102,10 +99,6 @@ function isBfclBenchmarkName(benchmark: string): boolean {
   return benchmark.trim().toLowerCase() === "bfcl";
 }
 
-function isWebshopBenchmarkName(benchmark: string): boolean {
-  return benchmark.trim().toLowerCase() === "webshop";
-}
-
 function normalizeBfclNativeMessages(
   text: string,
   context: Record<string, unknown>,
@@ -126,61 +119,6 @@ function normalizeBfclNativeMessages(
     {
       role: "user",
       content: question,
-    },
-  ];
-}
-
-function normalizeWebshopNativeMessages(
-  text: string,
-  context: Record<string, unknown>,
-): Array<Record<string, unknown>> {
-  const actionSpace = Array.isArray(context.actionSpace)
-    ? context.actionSpace.filter(
-        (entry): entry is string => typeof entry === "string",
-      )
-    : [];
-  return [
-    {
-      role: "system",
-      content:
-        "You are running WebShop through the Eliza benchmark server. " +
-        "Choose exactly one next store action and call BENCHMARK_ACTION with " +
-        'a JSON argument object containing {"command":"..."}. Do not reply in prose. ' +
-        "Use search[query] on the search page, click[PRODUCT_ID] on result pages, " +
-        "select_option[option_name, value] on product pages, and buy only when the selected item satisfies the user's goal.",
-    },
-    {
-      role: "user",
-      content:
-        text +
-        (actionSpace.length
-          ? `\n\nAvailable WebShop actions:\n${actionSpace.map((a) => `- ${a}`).join("\n")}`
-          : ""),
-    },
-  ];
-}
-
-function webshopBenchmarkTools(): Array<Record<string, unknown>> {
-  return [
-    {
-      type: "function",
-      function: {
-        name: "BENCHMARK_ACTION",
-        description:
-          "Execute one WebShop environment action. The command must be a single WebShop action string.",
-        parameters: {
-          type: "object",
-          properties: {
-            command: {
-              type: "string",
-              description:
-                "One action string such as search[wireless headphones], click[B000123], select_option[color, black], back, or buy.",
-            },
-          },
-          required: ["command"],
-          additionalProperties: false,
-        },
-      },
     },
   ];
 }
@@ -394,31 +332,6 @@ function bfclBenchmarkActionFromToolCalls(
   };
 }
 
-function webshopBenchmarkActionFromToolCalls(
-  toolCalls: Array<{
-    function: { name: string; arguments: string };
-  }>,
-): Record<string, unknown> | null {
-  const first = toolCalls[0];
-  if (!first) return null;
-  let args: unknown = {};
-  try {
-    args = JSON.parse(first.function.arguments || "{}");
-  } catch {
-    args = { command: first.function.arguments };
-  }
-  if (!args || typeof args !== "object" || Array.isArray(args)) return null;
-  const record = args as Record<string, unknown>;
-  const command =
-    typeof record.command === "string"
-      ? record.command
-      : typeof record.action === "string"
-        ? record.action
-        : "";
-  if (!command.trim()) return null;
-  return { command: command.trim() };
-}
-
 // ---------------------------------------------------------------------------
 // Security: authentication + CORS
 // ---------------------------------------------------------------------------
@@ -429,15 +342,6 @@ const MAX_BODY_BYTES =
   Number.isFinite(configuredMaxBodyBytes) && configuredMaxBodyBytes > 0
     ? Math.floor(configuredMaxBodyBytes)
     : DEFAULT_MAX_BODY_BYTES;
-
-function writeRequestTooLarge(res: http.ServerResponse): void {
-  res.writeHead(413, { "Content-Type": "application/json" });
-  res.end(
-    JSON.stringify({
-      error: `Request body exceeded max size ${MAX_BODY_BYTES} bytes`,
-    }),
-  );
-}
 
 /** Allowed CORS origins — only localhost variants. */
 const LOCALHOST_ORIGINS = new Set(["http://localhost", "https://localhost"]);
@@ -717,26 +621,6 @@ export async function startBenchmarkServer() {
   const plugins: Plugin[] = [];
   const loadedPlugins: string[] = [];
   const failedPlugins: string[] = [];
-  type CreateElizaPluginFn = (config?: {
-    workspaceDir?: string;
-    agentId?: string;
-  }) => unknown;
-  const [corePluginsModule, elizaPluginModule] = await Promise.all([
-    import(
-      new URL("../../../agent/src/runtime/core-plugins.ts", import.meta.url)
-        .href
-    ),
-    import(
-      new URL("../../../agent/src/runtime/eliza-plugin.ts", import.meta.url)
-        .href
-    ),
-  ]);
-  const CORE_PLUGINS = (
-    corePluginsModule as { CORE_PLUGINS: readonly string[] }
-  ).CORE_PLUGINS;
-  const createElizaPlugin = (
-    elizaPluginModule as { createElizaPlugin: CreateElizaPluginFn }
-  ).createElizaPlugin;
 
   // Plugins to skip in benchmark context — these require external auth or
   // interfere with benchmark operation
@@ -1438,35 +1322,6 @@ export async function startBenchmarkServer() {
       // the structured context.
       const composedPrompt = userText.trim();
 
-      if (Array.isArray(toolManifest) && toolManifest.length > 0) {
-        const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-        activeUsageBuffer = turnUsageBuffer;
-        let nativeResult: unknown;
-        try {
-          nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-            messages: normalizeLifeOpsNativeMessages(
-              composedPrompt,
-              benchmarkContext,
-              previousTurns,
-            ),
-            tools: toolManifest,
-            toolChoice: chooseLifeOpsNativeToolChoice(
-              previousTurns,
-              composedPrompt,
-            ),
-            maxTokens: 2048,
-            temperature: 0,
-          });
-        } finally {
-          activeUsageBuffer = null;
-        }
-
-        return normalizeLifeOpsNativePlannerResult(
-          nativeResult,
-          turnUsageBuffer,
-        );
-      }
-
       const incomingMessage: Memory = {
         id: stringToUuid(`lifeops-msg:${Date.now()}:${Math.random()}`),
         content: {
@@ -1647,39 +1502,22 @@ export async function startBenchmarkServer() {
       if (!checkBenchAuth(req, res)) return;
       let body = "";
       let bodyBytes = 0;
-      let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
-        if (bodyTooLarge) return;
         bodyBytes += chunk.length;
         if (bodyBytes > MAX_BODY_BYTES) {
-          bodyTooLarge = true;
-          writeRequestTooLarge(res);
-          req.resume();
+          req.destroy();
           return;
         }
         body += chunk;
       });
       req.on("end", async () => {
-        if (bodyTooLarge) return;
         try {
-          let parsed: {
-            task_id?: unknown;
-            benchmark?: unknown;
-          };
-          try {
-            parsed = body.trim()
-              ? (JSON.parse(body) as {
-                  task_id?: unknown;
-                  benchmark?: unknown;
-                })
-              : {};
-          } catch {
-            res.writeHead(400, { "Content-Type": "application/json" });
-            res.end(
-              JSON.stringify({ error: "Malformed JSON in request body" }),
-            );
-            return;
-          }
+          const parsed = body.trim()
+            ? (JSON.parse(body) as {
+                task_id?: unknown;
+                benchmark?: unknown;
+              })
+            : {};
           const taskId =
             typeof parsed.task_id === "string" &&
             parsed.task_id.trim().length > 0
@@ -1836,20 +1674,15 @@ export async function startBenchmarkServer() {
       if (!checkBenchAuth(req, res)) return;
       let body = "";
       let bodyBytes = 0;
-      let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
-        if (bodyTooLarge) return;
         bodyBytes += chunk.length;
         if (bodyBytes > MAX_BODY_BYTES) {
-          bodyTooLarge = true;
-          writeRequestTooLarge(res);
-          req.resume();
+          req.destroy();
           return;
         }
         body += chunk;
       });
       req.on("end", async () => {
-        if (bodyTooLarge) return;
         try {
           let parsed: {
             text?: unknown;
@@ -2091,110 +1924,6 @@ export async function startBenchmarkServer() {
             return;
           }
 
-          if (
-            isWebshopBenchmarkName(session.benchmark) &&
-            Array.isArray(benchmarkContext.actionSpace) &&
-            benchmarkContext.actionSpace.length > 0
-          ) {
-            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
-            activeUsageBuffer = turnUsageBuffer;
-            let nativeResult: unknown;
-            try {
-              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                messages: normalizeWebshopNativeMessages(
-                  text,
-                  benchmarkContext,
-                ),
-                tools: webshopBenchmarkTools(),
-                toolChoice: "required",
-                maxTokens:
-                  typeof benchmarkContext.max_tokens === "number"
-                    ? benchmarkContext.max_tokens
-                    : 512,
-                temperature:
-                  typeof benchmarkContext.temperature === "number"
-                    ? benchmarkContext.temperature
-                    : 0,
-              });
-            } finally {
-              activeUsageBuffer = null;
-            }
-            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
-            const nativeRecord =
-              nativeResult && typeof nativeResult === "object"
-                ? (nativeResult as Record<string, unknown>)
-                : {};
-            const toolCalls = normalizeLocaNativeToolCalls(
-              nativeRecord.toolCalls,
-            );
-            const responseText =
-              typeof nativeRecord.text === "string"
-                ? nativeRecord.text
-                : typeof nativeResult === "string"
-                  ? nativeResult
-                  : "";
-            const params: Record<string, unknown> = {};
-            const benchmarkAction =
-              webshopBenchmarkActionFromToolCalls(toolCalls);
-            if (benchmarkAction) {
-              params.BENCHMARK_ACTION = benchmarkAction;
-              params.tool_calls = toolCalls;
-            }
-            const actions =
-              benchmarkAction !== null
-                ? ["BENCHMARK_ACTION"]
-                : responseText.trim()
-                  ? ["REPLY"]
-                  : [];
-            const finishedAt = Date.now();
-
-            trajectory.push({
-              step: trajectory.length + 1,
-              startedAt,
-              finishedAt,
-              inputText: text,
-              promptText: composedPrompt,
-              context,
-              thought: null,
-              responseText,
-              actions,
-              params,
-              usage: turnUsage,
-            });
-            trajectoriesBySession.set(key, trajectory);
-            const metadata = benchmarkTurnMetadata({
-              session,
-              step: trajectory.length,
-              context: benchmarkContext,
-            });
-
-            res.writeHead(200, { "Content-Type": "application/json" });
-            res.end(
-              JSON.stringify({
-                text: responseText,
-                thought: null,
-                actions,
-                params,
-                captured_actions: benchmarkAction
-                  ? [
-                      {
-                        command: benchmarkAction.command,
-                        params: benchmarkAction,
-                      },
-                    ]
-                  : [],
-                tool_calls: toolCalls,
-                usage: turnUsage,
-                metadata,
-                benchmark: session.benchmark,
-                task_id: session.taskId,
-                room_id: session.roomId,
-                trajectory_step: trajectory.length,
-              }),
-            );
-            return;
-          }
-
           const incomingMessage: Memory = {
             id: stringToUuid(`benchmark-msg:${Date.now()}:${Math.random()}`),
             content: {
@@ -2370,9 +2099,7 @@ export async function startBenchmarkServer() {
   });
 }
 
-if (isBenchmarkServerEntrypoint(process.argv[1], import.meta.url)) {
-  startBenchmarkServer().catch((err) => {
-    elizaLogger.error("[bench] Failed to start benchmark server", { err });
-    process.exit(1);
-  });
-}
+startBenchmarkServer().catch((err) => {
+  elizaLogger.error("[bench] Failed to start benchmark server", { err });
+  process.exit(1);
+});

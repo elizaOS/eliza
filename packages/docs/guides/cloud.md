@@ -15,7 +15,7 @@ Eliza Cloud provides remote agent hosting and provisioning. The Eliza cloud inte
 5. [Cloud Proxy](#cloud-proxy)
 6. [Backup Scheduler](#backup-scheduler)
 7. [Connection Monitor](#connection-monitor)
-8. [Granular Cloud Service Routing](#granular-cloud-service-routing)
+8. [Granular Cloud Service Toggles](#granular-cloud-service-toggles)
 9. [Cloud Status and Credits](#cloud-status-and-credits)
 10. [Credits and Billing](#credits-and-billing)
 11. [API Endpoints](#api-endpoints)

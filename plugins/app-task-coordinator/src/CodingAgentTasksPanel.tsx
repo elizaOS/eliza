@@ -2,13 +2,15 @@ import {
   Badge,
   Button,
   client,
-  type CodingAgentSession,
-  type CodingAgentTaskThread,
-  type CodingAgentTaskThreadDetail,
   EmptyWidgetState,
   useApp,
   WidgetSection,
 } from "@elizaos/ui";
+import type {
+  CodingAgentSession,
+  CodingAgentTaskThread,
+  CodingAgentTaskThreadDetail,
+} from "@elizaos/ui/api/client-types-cloud";
 import { Activity, SquareArrowOutUpRight } from "lucide-react";
 import {
   type ReactNode,

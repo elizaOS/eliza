@@ -85,5 +85,10 @@ describe("WS3 routing — tier → default image-gen model", () => {
 			expect(planned?.id).toBe(entry.modelId);
 			expect(planned?.file).toBe(entry.file);
 		}
+		// And every tier in the extras file is represented in the
+		// in-code map (no drift the other way).
+		for (const tier of Object.keys(perTier)) {
+			expect(TIER_TO_DEFAULT_IMAGE_MODEL[tier]).toBeTruthy();
+		}
 	});
 });

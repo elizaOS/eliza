@@ -9,22 +9,25 @@ Usage:
     python run_benchmark.py --runtime bridge --trajectories
 """
 
-import asyncio
 import argparse
-import sys
+import asyncio
 import os
+import sys
 from pathlib import Path
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from elizaos_agentbench import (
-    AgentBenchRunner,
     AgentBenchConfig,
+    AgentBenchDataMode,
     AgentBenchEnvironment,
+    AgentBenchRunner,
     BenchmarkSplit,
+    upstream_loader,
 )
 from elizaos_agentbench.mock_runtime import SmartMockRuntime
+from elizaos_agentbench.trajectory_integration import export_trajectories_from_results
 
 
 def _load_dotenv() -> None:
@@ -71,9 +74,12 @@ async def main() -> int:
     )
     parser.add_argument(
         "--runtime",
-        choices=["mock", "bridge", "elizaos"],
+        choices=["mock", "bridge", "elizaos", "eliza", "hermes", "openclaw"],
         default="mock",
-        help="Runtime backend: mock for offline smoke tests, bridge/elizaos for the Eliza TS benchmark bridge",
+        help=(
+            "Runtime backend: mock for offline smoke tests, bridge/eliza/elizaos "
+            "for Eliza TS, or hermes/openclaw for adapter clients"
+        ),
     )
     parser.add_argument(
         "--elizaos",
@@ -92,6 +98,32 @@ async def main() -> int:
         choices=["dev", "test"],
         default="test",
         help="Upstream AgentBench data split (dev = small validation, test = leaderboard)",
+    )
+    parser.add_argument(
+        "--data-mode",
+        choices=["auto", "fixture", "full"],
+        default="auto",
+        help="Task data mode: auto uses full data when present and compact fixtures otherwise",
+    )
+    parser.add_argument(
+        "--fetch-data",
+        action="store_true",
+        help="Fetch full upstream AgentBench data before running",
+    )
+    parser.add_argument(
+        "--verify-data",
+        action="store_true",
+        help="Verify full upstream AgentBench data before running",
+    )
+    parser.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="Allow enabled environments to load zero tasks",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Allow empty task sets for setup checks",
     )
     parser.add_argument(
         "--output",
@@ -125,6 +157,11 @@ async def main() -> int:
     print("AgentBench Evaluation")
     print("=" * 60)
 
+    if args.fetch_data:
+        upstream_loader.fetch_upstream_data(verify=True)
+    elif args.verify_data:
+        upstream_loader.verify_upstream_data()
+
     # Create configuration
     config = AgentBenchConfig(
         output_dir=args.output,
@@ -133,6 +170,9 @@ async def main() -> int:
         enable_memory_tracking=True,
         use_docker=False,  # Use local execution for safety
         split=BenchmarkSplit(args.split),
+        data_mode=AgentBenchDataMode(args.data_mode),
+        allow_empty_tasks=args.allow_empty,
+        dry_run=args.dry_run,
     )
 
     # Map environment names
@@ -184,16 +224,43 @@ async def main() -> int:
     print("=" * 60)
     eliza_server = None
     runtime = SmartMockRuntime()
-    if args.runtime != "mock":
+    runtime_name = str(args.runtime).strip().lower()
+    if runtime_name == "eliza":
+        runtime_name = "bridge"
+    if runtime_name in {"bridge", "elizaos"}:
         from eliza_adapter import ElizaServerManager
         from eliza_adapter.agentbench import ElizaAgentHarness
 
         _load_dotenv()
+        os.environ["BENCHMARK_HARNESS"] = "eliza"
+        os.environ["ELIZA_BENCH_HARNESS"] = "eliza"
         eliza_server = ElizaServerManager()
         eliza_server.start()
         eliza_harness = ElizaAgentHarness(eliza_server.client)
         runtime._app_harness = eliza_harness  # type: ignore[attr-defined]
         print("Eliza benchmark server connected")
+    elif runtime_name in {"hermes", "openclaw"}:
+        from elizaos_agentbench.agent_fn_harness import AgentFnHarness
+
+        _load_dotenv()
+        os.environ["BENCHMARK_HARNESS"] = runtime_name
+        os.environ["ELIZA_BENCH_HARNESS"] = runtime_name
+        model_name = (
+            os.environ.get("BENCHMARK_MODEL_NAME")
+            or os.environ.get("MODEL_NAME")
+            or os.environ.get("CEREBRAS_MODEL")
+            or "gpt-oss-120b"
+        )
+        if runtime_name == "hermes":
+            from hermes_adapter.agentbench import build_agentbench_agent_fn
+        else:
+            from openclaw_adapter.agentbench import build_agentbench_agent_fn
+
+        runtime._app_harness = AgentFnHarness(  # type: ignore[attr-defined]
+            build_agentbench_agent_fn(model_name=model_name),
+            harness=runtime_name,
+        )
+        print(f"{runtime_name} AgentBench adapter connected")
 
     # Show enabled environments
     enabled = config.get_enabled_environments()
@@ -213,14 +280,14 @@ async def main() -> int:
     print("BENCHMARK RESULTS")
     print("=" * 60)
 
-    print(f"\n📊 Overall Performance:")
+    print("\n📊 Overall Performance:")
     print(f"   Success Rate: {report.overall_success_rate * 100:.1f}%")
     print(f"   Total Tasks:  {report.total_tasks}")
     print(f"   Passed:       {report.passed_tasks}")
     print(f"   Failed:       {report.failed_tasks}")
     print(f"   Avg Duration: {report.average_duration_ms:.0f}ms")
 
-    print(f"\n📋 Per-Environment Breakdown:")
+    print("\n📋 Per-Environment Breakdown:")
     for env, env_report in report.environment_reports.items():
         icon = "✅" if env_report.success_rate >= 0.5 else "⚠️" if env_report.success_rate >= 0.3 else "❌"
         print(f"\n   {icon} {env.value.upper()}")
@@ -231,7 +298,7 @@ async def main() -> int:
 
     # Comparison with baselines
     if config.enable_baseline_comparison:
-        print(f"\n📈 Comparison with GPT-4 Baseline:")
+        print("\n📈 Comparison with GPT-4 Baseline:")
         gpt4_comp = report.comparison_to_baseline.get("gpt4_comparison", {})
         for env_name, data in gpt4_comp.items():
             our_score = data.get("our_score", 0) * 100
@@ -241,13 +308,13 @@ async def main() -> int:
             print(f"   {env_name}: {our_score:.1f}% vs {gpt4_score:.1f}% ({icon}{abs(diff):.1f}%)")
 
     # Key findings
-    print(f"\n💡 Key Findings:")
+    print("\n💡 Key Findings:")
     for finding in report.summary.get("key_findings", []):
         print(f"   • {finding}")
 
     # Recommendations
     if report.summary.get("recommendations"):
-        print(f"\n🎯 Recommendations:")
+        print("\n🎯 Recommendations:")
         for rec in report.summary.get("recommendations", []):
             print(f"   • {rec}")
 
@@ -257,10 +324,8 @@ async def main() -> int:
     print("   - agentbench-detailed.json")
 
     if args.trajectories:
-        if args.runtime != "mock":
-            print("\nTrajectory export is handled by the TypeScript bridge; no local Python export is available.")
-        else:
-            print("\nTrajectory export skipped in mock mode.")
+        export_path = export_trajectories_from_results(args.output, args.trajectory_format)
+        print(f"\nTrajectory export saved to: {export_path}")
 
     print("\n" + "=" * 60)
 

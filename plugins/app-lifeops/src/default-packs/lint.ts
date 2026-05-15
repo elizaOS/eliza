@@ -8,7 +8,7 @@
  * Rule kinds (all enforced by the same `lintPromptText` entry point):
  *
  *   - `pii_name`            known proper nouns from `HARDCODING_AUDIT.md` §3
- *                           (`Jill`, `Marco`, `Sarah`, `Suran`, `Samantha`).
+ *                           (`Jill`, `Marco`, `Sarah`, `Suran`, `Sam`).
  *   - `email_pii`           concrete email addresses (`name@host.tld`).
  *   - `phone_pii`           formatted phone numbers (`+1 555-555-5555`,
  *                           `(415) 555-5555`, etc.).
@@ -55,7 +55,7 @@ export interface PromptLintFinding {
  * Known PII names from `HARDCODING_AUDIT.md` §3 + GAP §8.9. Word-boundary
  * matched, case-sensitive (proper nouns).
  */
-const PII_NAMES = ["Jill", "Marco", "Sarah", "Suran", "Samantha"] as const;
+const PII_NAMES = ["Jill", "Marco", "Sarah", "Suran", "Sam"] as const;
 
 const PII_REGEX = new RegExp(`\\b(${PII_NAMES.join("|")})\\b`, "g");
 

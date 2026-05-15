@@ -93,22 +93,22 @@ describe("iOS local agent transport bridge", () => {
       "./ios-local-agent-transport"
     );
 
-    for (const url of [
+    const transport = await iosInProcessAgentTransportForUrl(
       "http://127.0.0.1:31337/api/health",
-      "http://[::1]:31337/api/health",
-    ]) {
-      const transport = await iosInProcessAgentTransportForUrl(url);
-      expect(transport).toBeTruthy();
+    );
+    expect(transport).toBeTruthy();
 
-      const response = await transport?.request(url, { method: "GET" });
+    const response = await transport?.request(
+      "http://127.0.0.1:31337/api/health",
+      { method: "GET" },
+    );
 
-      await expect(response?.json()).resolves.toMatchObject({
-        localAgent: {
-          mode: "ios-local",
-          transport: "ittp",
-        },
-      });
-    }
+    await expect(response?.json()).resolves.toMatchObject({
+      localAgent: {
+        mode: "ios-local",
+        transport: "ittp",
+      },
+    });
   });
 
   it("routes iOS IPC local-agent URLs through the same in-process transport", async () => {
@@ -157,25 +157,12 @@ describe("iOS local agent transport bridge", () => {
     } = await import("./ios-local-agent-transport");
     installIosLocalAgentFetchBridge();
 
-    const response = await fetch("http://127.0.0.1:31337/api/health");
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "local-unavailable",
-      reason: "ios-store-loopback-blocked",
-    });
-
-    const transport = await iosInProcessAgentTransportForUrl(
-      "http://127.0.0.1:31337/api/health",
+    await expect(fetch("http://127.0.0.1:31337/api/health")).rejects.toThrow(
+      "must use eliza-local-agent://ipc",
     );
-    const transportResponse = await transport?.request(
-      "http://127.0.0.1:31337/api/health",
-      { method: "GET" },
-    );
-    expect(transportResponse?.status).toBe(503);
-    await expect(transportResponse?.json()).resolves.toMatchObject({
-      code: "local-unavailable",
-      reason: "ios-store-loopback-blocked",
-    });
+    await expect(
+      iosInProcessAgentTransportForUrl("http://127.0.0.1:31337/api/health"),
+    ).resolves.toBeNull();
     expect(originalFetch).not.toHaveBeenCalled();
   });
 
@@ -196,12 +183,9 @@ describe("iOS local agent transport bridge", () => {
     );
     installIosLocalAgentFetchBridge();
 
-    const response = await fetch("http://10.0.0.5:31337/api/health");
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "local-unavailable",
-      reason: "ios-cleartext-private-network-blocked",
-    });
+    await expect(fetch("http://10.0.0.5:31337/api/health")).rejects.toThrow(
+      "store/cloud builds block cleartext",
+    );
     expect(originalFetch).not.toHaveBeenCalled();
   });
 
@@ -225,12 +209,9 @@ describe("iOS local agent transport bridge", () => {
     );
     installIosLocalAgentFetchBridge();
 
-    const response = await fetch("http://192.168.1.10/api/health");
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "local-unavailable",
-      reason: "ios-cleartext-private-network-blocked",
-    });
+    await expect(fetch("http://192.168.1.10/api/health")).rejects.toThrow(
+      "store/cloud builds block cleartext",
+    );
     expect(originalFetch).not.toHaveBeenCalled();
   });
 
@@ -241,15 +222,9 @@ describe("iOS local agent transport bridge", () => {
       "./ios-local-agent-transport"
     );
 
-    const response = await handleIosLocalAgentNativeRequest({
-      path: "/api/health",
-    });
-
-    expect(response.status).toBe(503);
-    expect(JSON.parse(response.body)).toMatchObject({
-      code: "local-unavailable",
-      reason: "ios-ittp-disabled",
-    });
+    await expect(
+      handleIosLocalAgentNativeRequest({ path: "/api/health" }),
+    ).rejects.toThrow("ITTP compatibility transport is disabled");
     expect(kernelMock.startIosLocalAgentKernel).not.toHaveBeenCalled();
   });
 
@@ -292,52 +267,6 @@ describe("iOS local agent transport bridge", () => {
       args: expect.objectContaining({ path: "/api/health" }),
     });
     expect(kernelMock.startIosLocalAgentKernel).not.toHaveBeenCalled();
-  });
-
-  it("bridges direct iOS store-local fetches through full Bun IPC", async () => {
-    buildVariantState.isStore = true;
-    capacitorState.pluginAvailable = true;
-    vi.stubGlobal("localStorage", {
-      getItem: (key: string) =>
-        key === "eliza:mobile-runtime-mode" ? "local" : null,
-    });
-    vi.stubGlobal("window", {
-      __ELIZA_API_BASE__: "eliza-local-agent://ipc",
-      location: { href: "capacitor://localhost/" },
-      navigator: { userAgent: "vitest" },
-    });
-    const originalFetch = vi.fn(async () => {
-      throw new Error("direct fetch should not run");
-    });
-    vi.stubGlobal("fetch", originalFetch);
-    const start = vi.fn(async () => ({ ok: true }));
-    const getStatus = vi.fn(async () => ({ ready: true, engine: "bun" }));
-    const call = vi.fn(async () => ({
-      result: {
-        status: 200,
-        statusText: "OK",
-        headers: { "content-type": "application/json" },
-        body: '{"runtime":"bun"}',
-      },
-    }));
-    vi.doMock("@elizaos/capacitor-bun-runtime", () => ({
-      ElizaBunRuntime: { start, getStatus, call },
-    }));
-
-    const { installIosLocalAgentFetchBridge } = await import(
-      "./ios-local-agent-transport"
-    );
-    installIosLocalAgentFetchBridge();
-
-    const response = await fetch("/api/health");
-
-    expect(originalFetch).not.toHaveBeenCalled();
-    expect(call).toHaveBeenCalledWith({
-      method: "http_request",
-      args: expect.objectContaining({ method: "GET", path: "/api/health" }),
-    });
-    expect(kernelMock.startIosLocalAgentKernel).not.toHaveBeenCalled();
-    await expect(response.json()).resolves.toEqual({ runtime: "bun" });
   });
 
   it("bridges direct relative fetch calls when iOS local mode owns the API base", async () => {

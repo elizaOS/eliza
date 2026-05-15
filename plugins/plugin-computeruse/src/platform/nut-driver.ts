@@ -16,9 +16,6 @@ import { readFileSync, unlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-// Runtime loading stays guarded through createRequire; this keeps the
-// package dependency visible to static dependency analysis.
-import type {} from "@nut-tree-fork/nut-js";
 import type { ScreenRegion } from "../types.js";
 import { canonicalKeyName, validateInt, validateText } from "./helpers.js";
 

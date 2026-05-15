@@ -37,6 +37,7 @@ readonly TRAINING_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # `packages/shared/src/local-inference/catalog.ts` and with the manifest
 # module at `packages/training/scripts/manifest/eliza1_manifest.py:38-46`.
 # R7 §"side bugs" flagged the prior `4b` omission as a publish-blocking bug.
+readonly VALID_TIERS=("0_8b" "2b" "4b" "9b" "27b" "27b-256k")
 
 RELEASE_DIR=""
 BUNDLES_ROOT=""
@@ -145,9 +146,9 @@ if [ -x "$APPEND_HELPER" ] || command -v python3 >/dev/null; then
   VOICE_BIN_SHA=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m.get('blob',{}).get('sha256',''))" "$RELEASE_DIR/voice-preset.json")
   VOICE_BIN_SIZE=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m.get('blob',{}).get('sizeBytes','0'))" "$RELEASE_DIR/voice-preset.json")
   VOICE_BIN_FILE=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m.get('blob',{}).get('filename','voice.bin'))" "$RELEASE_DIR/voice-preset.json")
-  HF_REPO=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m['voice'].get('hfRepo','elizaOS/eliza-1-voice-kokoro-samantha'))" "$RELEASE_DIR/manifest-fragment.json")
+  HF_REPO=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m['voice'].get('hfRepo','elizaOS/eliza-1-voice-kokoro-same'))" "$RELEASE_DIR/manifest-fragment.json")
   HF_REV=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m['voice'].get('hfRevision','main'))" "$RELEASE_DIR/manifest-fragment.json")
-  CHANGELOG_ENTRY=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m['voice'].get('changelogEntry', f\"Kokoro samantha clone v{m['voice'].get('version','?')}.\"))" "$RELEASE_DIR/manifest-fragment.json")
+  CHANGELOG_ENTRY=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m['voice'].get('changelogEntry', f\"Kokoro sam clone v{m['voice'].get('version','?')}.\"))" "$RELEASE_DIR/manifest-fragment.json")
 
   EXTRA_FLAGS=()
   if [ -n "$PARENT_VERSION" ]; then

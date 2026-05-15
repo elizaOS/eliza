@@ -82,6 +82,26 @@ describe("VOICE_MODEL_VERSIONS bookkeeping", () => {
       expect(Number.isFinite(Date.parse(v.publishedToHfAt))).toBe(true);
     }
   });
+
+  it("does not ship placeholder asset hashes", () => {
+    const sha = /^[0-9a-f]{64}$/;
+    for (const v of VOICE_MODEL_VERSIONS) {
+      for (const asset of v.ggufAssets) {
+        expect(asset.sha256, `${v.id}@${v.version}:${asset.filename}`).toMatch(
+          sha,
+        );
+        expect(
+          asset.sha256,
+          `${v.id}@${v.version}:${asset.filename}`,
+        ).not.toContain("TBD");
+        expect(asset.sizeBytes).toBeGreaterThan(0);
+      }
+      for (const asset of v.missingAssets ?? []) {
+        expect(asset.filename.length).toBeGreaterThan(0);
+        expect(asset.reason).toMatch(/^missing-from-/);
+      }
+    }
+  });
 });
 
 describe("versionsFor / latestVoiceModelVersion / findVoiceModelVersion", () => {

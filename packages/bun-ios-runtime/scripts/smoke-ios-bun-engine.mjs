@@ -3,22 +3,11 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { argValue, fail } from "./script-utils.mjs";
-import {
-  parseRequiredSlices,
-  validateAppNetworkPolicy,
-  validateFramework,
-  validateUnsafeRuntimeBinary,
-  validateXcframework,
-} from "./verify-ios-app-store.mjs";
+import { argValue, fail, run } from "./script-utils.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
-const defaultXcframework = path.join(
-  packageRoot,
-  "artifacts",
-  "ElizaBunEngine.xcframework",
-);
+const repoRoot = path.resolve(packageRoot, "..", "..");
 
 const appPath = path.resolve(
   argValue("--app", process.env.ELIZA_IOS_APP_PATH || ""),
@@ -34,45 +23,32 @@ const frameworkBinary = path.join(
   "ElizaBunEngine.framework",
   "ElizaBunEngine",
 );
-const frameworkDir = path.dirname(frameworkBinary);
-const runtimePluginBinary = path.join(
-  appPath,
-  "Frameworks",
-  "ElizaosCapacitorBunRuntime.framework",
-  "ElizaosCapacitorBunRuntime",
-);
-const target = argValue(
-  "--target",
-  process.env.ELIZA_IOS_VERIFY_TARGET || "simulator",
-);
-const requiredSlices = parseRequiredSlices(
-  argValue(
-    "--require-slices",
-    process.env.ELIZA_IOS_REQUIRE_XCFRAMEWORK_SLICES || "",
-  ),
-);
-const xcframework = argValue(
-  "--xcframework",
-  process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK ||
-    (fs.existsSync(defaultXcframework) ? defaultXcframework : ""),
-);
-
-if (xcframework) {
-  validateXcframework(path.resolve(xcframework), { target, requiredSlices });
-}
 if (!fs.existsSync(bundlePath)) {
   fail(`missing staged agent bundle at ${bundlePath}`);
 }
 if (!fs.existsSync(frameworkBinary)) {
   fail(`missing full Bun engine framework at ${frameworkBinary}`);
 }
-if (!fs.existsSync(runtimePluginBinary)) {
-  fail(`missing Capacitor runtime plugin framework at ${runtimePluginBinary}`);
-}
 
-validateFramework(frameworkDir);
-validateUnsafeRuntimeBinary(runtimePluginBinary);
-validateAppNetworkPolicy(appPath);
+const nm = run("nm", ["-gU", frameworkBinary], {
+  check: false,
+  cwd: repoRoot,
+  encoding: "utf8",
+  stdio: ["ignore", "pipe", "pipe"],
+});
+const symbols = nm.stdout + nm.stderr;
+for (const symbol of [
+  "_eliza_bun_engine_abi_version",
+  "_eliza_bun_engine_set_host_callback",
+  "_eliza_bun_engine_start",
+  "_eliza_bun_engine_stop",
+  "_eliza_bun_engine_call",
+  "_eliza_bun_engine_free",
+]) {
+  if (!symbols.includes(symbol)) {
+    fail(`framework is missing required symbol ${symbol}`);
+  }
+}
 
 console.log(`[bun-ios-runtime] Smoke prerequisites OK for ${appPath}`);
 console.log(

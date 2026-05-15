@@ -192,6 +192,7 @@ export class ComputerUseService extends Service {
     maxRecentActions: MAX_RECENT_ACTIONS,
     approvalMode: "full_control",
     browserHeadless: false,
+    mode: "yolo",
   };
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
@@ -1034,6 +1035,20 @@ export class ComputerUseService extends Service {
     return this.capabilities;
   }
 
+  getConfig(): ComputerUseConfig {
+    return {
+      ...this.cuConfig,
+      sandbox: this.cuConfig.sandbox
+        ? {
+            ...this.cuConfig.sandbox,
+            options: this.cuConfig.sandbox.options
+              ? { ...this.cuConfig.sandbox.options }
+              : undefined,
+          }
+        : undefined,
+    };
+  }
+
   getRecentActions(): ActionHistoryEntry[] {
     return [...this.recentActions];
   }
@@ -1696,7 +1711,7 @@ export class ComputerUseService extends Service {
       } catch {
         // ignore runtime setting lookup failures
       }
-      return undefined;
+      return process.env[key] ?? process.env[`ELIZA_${key}`];
     };
 
     const screenshotAfter = getSetting("COMPUTER_USE_SCREENSHOT_AFTER_ACTION");
@@ -1724,6 +1739,33 @@ export class ComputerUseService extends Service {
       this.cuConfig.browserHeadless =
         browserHeadless === "true" || browserHeadless === "1";
     }
+
+    const mode =
+      getSetting("COMPUTERUSE_MODE") ?? getSetting("COMPUTER_USE_MODE");
+    this.cuConfig.mode = mode === "sandbox" ? "sandbox" : "yolo";
+    if (this.cuConfig.mode === "sandbox") {
+      const backend =
+        getSetting("COMPUTERUSE_SANDBOX_BACKEND") ??
+        getSetting("COMPUTER_USE_SANDBOX_BACKEND");
+      const image =
+        getSetting("COMPUTERUSE_SANDBOX_IMAGE") ??
+        getSetting("COMPUTER_USE_SANDBOX_IMAGE");
+      if (
+        (backend === "docker" || backend === "qemu") &&
+        image &&
+        image.trim().length > 0
+      ) {
+        this.cuConfig.sandbox = {
+          backend,
+          image: image.trim(),
+        };
+      } else {
+        this.cuConfig.sandbox = undefined;
+      }
+    } else {
+      this.cuConfig.sandbox = undefined;
+    }
+
     setBrowserRuntimeOptions({
       headless: this.cuConfig.browserHeadless ?? false,
     });

@@ -5,27 +5,6 @@ shrink the fine-tuned Qwen Eliza checkpoints before they leave the
 training rig. Each method is a self-contained CLI; they are independent
 and can be combined or compared on the same fine-tuned checkpoint.
 
-## Eliza-1 GGUF Plan
-
-The checked-in release/source plan lives at
-`config/eliza1_gguf_pipeline_manifest.json` and is validated by:
-
-```bash
-uv run python scripts/quantization/validate_eliza1_gguf_plan.py
-uv run python scripts/quantization/validate_eliza1_gguf_plan.py --check-hf
-```
-
-The offline check verifies tier coverage, the Qwen3.6-where-available policy,
-and the local apply-script paths. The `--check-hf` preflight also calls the
-Hugging Face model API and confirms the referenced source repos and GGUF seed
-filenames still resolve.
-
-The default `scripts/run_pipeline.py --quantizers` now includes the checked-in
-GGUF K-quant ladder (`gguf-q3_k_m`, `gguf-q4_k_m`, `gguf-q5_k_m`,
-`gguf-q6_k`) after PolarQuant/QJL/TurboQuant sidecar generation. Q8_0 is
-tracked as the source GGUF seed and extension point in the manifest; do not add
-it to the default runner until a checked-in `gguf-q8_0_apply.py` hook exists.
-
 ## PolarQuant
 
 Reference: Caio Vicentino, *PolarQuant: Optimal Gaussian Weight

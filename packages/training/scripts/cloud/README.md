@@ -78,6 +78,7 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 | `--provider` | `vast` \| `nebius` | (required) |
 | `--task` | `build` \| `kernel-verify` \| `bench` \| `train` | (required) |
 | `--gpu` | `h100` `h200` `a100` `a100-80` `rtx4090` `rtx5090` `l40s` `b200` `blackwell6000` | `h100` |
+| `--tier` | `0_8b` `2b` `9b` `27b` `27b-256k`  | `0_8b` |
 | `--ssh-pubkey` | path | `~/.ssh/id_ed25519.pub` |
 | `--smoke-model` | path to a GGUF | none (parity-only) |
 | `--yes-i-will-pay` | (gate) — required for any real provisioning | off |

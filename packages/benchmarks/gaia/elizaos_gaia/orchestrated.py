@@ -1,9 +1,9 @@
-"""Orchestrated GAIA runner.
+"""Orchestrated GAIA matrix runner.
 
 This entry point keeps the underlying GAIA task execution on the elizaOS
-TypeScript benchmark bridge. It does not implement native Hermes/OpenClaw
-agent routing; those labels are rejected so benchmark rows cannot be published
-under a harness that was not actually exercised.
+TypeScript benchmark bridge, but wraps it in the same provider-matrix shape as
+the orchestrator benchmark tracks. Provider labels represent control-plane
+providers; the bridge owns the actual model runtime.
 """
 
 from __future__ import annotations
@@ -14,24 +14,22 @@ import json
 import os
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
 
+from elizaos_gaia.harness import (
+    harness_env_updates,
+    normalize_harness_label,
+    resolve_harness,
+)
 from elizaos_gaia.runner import run_quick_test
+from elizaos_gaia.trajectory import write_trajectory_artifacts
 from elizaos_gaia.types import GAIAConfig
 
 _RESEARCH_CAPABILITIES = {
     "research.web_search",
     "research.web_browse",
     "research.docs_lookup",
-}
-_HARNESS_ALIASES = {
-    "eliza": "eliza",
-    "elizaos": "eliza",
-    "hermes": "hermes",
-    "hermes-agent": "hermes",
-    "openclaw": "openclaw",
-    "open-claw": "openclaw",
-    "open_claw": "openclaw",
 }
 _LEGACY_PROVIDER_DEFAULTS = ("claude-code", "swe-agent", "codex")
 _OPENAI_COMPATIBLE_API_BASE = "https://api.cerebras.ai/v1"
@@ -41,6 +39,8 @@ DEFAULT_PROVIDER_CAPABILITIES: dict[str, set[str]] = {
     "codex": set(_RESEARCH_CAPABILITIES),
     "swe-agent": set(_RESEARCH_CAPABILITIES),
     "eliza": set(_RESEARCH_CAPABILITIES),
+    "hermes": set(_RESEARCH_CAPABILITIES),
+    "openclaw": set(_RESEARCH_CAPABILITIES),
 }
 
 
@@ -51,7 +51,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--dataset", choices=["sample", "gaia", "jsonl"], default="sample")
     parser.add_argument("--dataset-path", default=None)
     parser.add_argument("--max-questions", type=int, default=1)
-    parser.add_argument("--providers", nargs="+", default=["eliza"])
+    parser.add_argument("--providers", nargs="+", default=["eliza", "hermes", "openclaw"])
     parser.add_argument("--execution-mode", default="orchestrated")
     parser.add_argument("--matrix", action="store_true")
     parser.add_argument("--strict-capabilities", action="store_true")
@@ -85,12 +85,7 @@ def _parse_required_capabilities(values: list[str]) -> list[str]:
 
 
 def _normalize_harness_label(value: str | None) -> str | None:
-    if not value:
-        return None
-    key = value.strip().lower()
-    if not key:
-        return None
-    return _HARNESS_ALIASES.get(key)
+    return normalize_harness_label(value)
 
 
 def _current_harness() -> str | None:
@@ -104,29 +99,15 @@ def _current_harness() -> str | None:
 def _effective_provider_labels(providers: list[str]) -> list[str]:
     requested = [provider.strip() for provider in providers if provider.strip()]
     if not requested:
-        inherited_harness = _current_harness() or "eliza"
-        if inherited_harness in {"hermes", "openclaw"}:
-            raise ValueError(
-                f"GAIA orchestrated does not implement native {inherited_harness} harness routing"
-            )
-        return [inherited_harness]
+        return [_current_harness() or "eliza"]
 
     inherited_harness = _current_harness()
     if inherited_harness and tuple(requested) == _LEGACY_PROVIDER_DEFAULTS:
-        if inherited_harness in {"hermes", "openclaw"}:
-            raise ValueError(
-                f"GAIA orchestrated does not implement native {inherited_harness} harness routing"
-            )
         return [inherited_harness]
 
     effective: list[str] = []
     for provider in requested:
-        normalized = _normalize_harness_label(provider)
-        if normalized in {"hermes", "openclaw"}:
-            raise ValueError(
-                f"GAIA orchestrated does not implement native {normalized} harness routing"
-            )
-        effective.append(normalized or provider)
+        effective.append(_normalize_harness_label(provider) or provider)
     return effective
 
 
@@ -166,9 +147,6 @@ def _model_env_updates(
     model_api_base: str | None,
 ) -> dict[str, str]:
     updates = {
-        "BENCHMARK_HARNESS": harness,
-        "ELIZA_BENCH_HARNESS": harness,
-        "BENCHMARK_AGENT": harness,
         "BENCHMARK_TELEMETRY_JSONL": str(telemetry_path),
         "BENCHMARK_MODEL_PROVIDER": model_provider,
         "ELIZA_PROVIDER": model_provider,
@@ -185,6 +163,7 @@ def _model_env_updates(
         "CEREBRAS_LARGE_MODEL": model_name,
         "CEREBRAS_SMALL_MODEL": model_name,
     }
+    updates.update(harness_env_updates(resolve_harness(explicit=harness)))
     if model_api_base:
         updates["OPENAI_BASE_URL"] = model_api_base
         updates["OPENAI_API_BASE"] = model_api_base
@@ -333,8 +312,6 @@ def _needs_eliza_server(provider_labels: list[str]) -> bool:
 
 async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[str, object]:
     harness = _provider_harness(provider_label)
-    if harness in {"hermes", "openclaw"}:
-        raise ValueError(f"GAIA orchestrated does not implement native {harness} harness routing")
     provider_output = Path(args.output) / provider_label
     provider_output.mkdir(parents=True, exist_ok=True)
     telemetry_path = provider_output / "telemetry.jsonl"
@@ -348,6 +325,7 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
         max_questions=args.max_questions,
         model_name=args.model,
         provider=_model_provider_for_config(harness),
+        harness=harness,
         api_base=_model_api_base_for_config(harness),
         temperature=args.temperature,
         compare_leaderboard=False,
@@ -372,6 +350,13 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
             hf_token=os.environ.get("HF_TOKEN"),
         )
     telemetry_summary = _read_telemetry_summary(telemetry_path)
+    trajectory_paths = write_trajectory_artifacts(
+        results,
+        provider_output,
+        timestamp=datetime.now().strftime("%Y%m%d_%H%M%S"),
+        run_kind="gaia_orchestrated",
+        latest=True,
+    )
     metrics = results.metrics
     validation_error = _run_validation_error(results, telemetry_summary)
     payload: dict[str, object] = {
@@ -383,6 +368,7 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
             "benchmark_harness": harness,
             "model_provider": model_provider,
             "model_api_base": model_api_base,
+            "harness_backend": resolve_harness(explicit=harness).backend,
         },
         "metrics": {
             "overall_accuracy": metrics.overall_accuracy,
@@ -397,6 +383,7 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
             ),
         },
         "telemetry": telemetry_summary,
+        "trajectory_artifacts": trajectory_paths,
         "validation": {
             "ok": validation_error is None,
             "failure": validation_error,

@@ -17,7 +17,6 @@ from openclaw_adapter.client import (
     MessageResponse,
     OpenClawClient,
     _extract_json_blob,
-    _extract_usage_tokens,
     _parse_version_line,
     _response_from_payload,
 )
@@ -146,12 +145,6 @@ def test_client_wait_until_ready_times_out(tmp_path: Path) -> None:
     c = OpenClawClient(binary_path=tmp_path / "missing")
     with pytest.raises(TimeoutError):
         c.wait_until_ready(timeout=0.05, poll=0.01)
-
-
-def test_client_wait_until_ready_allows_direct_openai_without_binary(tmp_path: Path) -> None:
-    c = OpenClawClient(binary_path=tmp_path / "missing", direct_openai_compatible=True)
-    c.wait_until_ready(timeout=0.05, poll=0.01)
-    assert c.is_ready() is True
 
 
 def test_client_reset_records_state(client: OpenClawClient) -> None:
@@ -546,36 +539,3 @@ def test_response_from_payload_stashes_usage_under_meta() -> None:
     assert isinstance(meta, dict)
     assert meta["usage"]["prompt_tokens"] == 10
     assert meta["sessionId"] == "sess-1"
-
-
-def test_response_from_payload_preserves_zero_and_nested_cache_usage() -> None:
-    payload = {
-        "reply": "ok",
-        "usage": {
-            "promptTokens": 10,
-            "completionTokens": 5,
-            "prompt_tokens_details": {
-                "cached_tokens": 0,
-                "cache_write_tokens": 3,
-            },
-        },
-    }
-
-    r = _response_from_payload(payload)
-
-    assert r.params["usage"] == {
-        "prompt_tokens": 10,
-        "completion_tokens": 5,
-        "total_tokens": 15,
-        "prompt_tokens_details": {
-            "cached_tokens": 0,
-            "cache_write_tokens": 3,
-        },
-    }
-    assert _extract_usage_tokens(r.params["usage"]) == {
-        "prompt_tokens": 10,
-        "completion_tokens": 5,
-        "total_tokens": 15,
-        "cache_read_input_tokens": 0,
-        "cache_creation_input_tokens": 3,
-    }

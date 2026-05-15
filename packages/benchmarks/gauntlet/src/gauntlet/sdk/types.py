@@ -4,7 +4,21 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
 
-from solders.pubkey import Pubkey
+try:
+    from solders.pubkey import Pubkey
+except ModuleNotFoundError:
+    class Pubkey:
+        """Small fallback for mock Gauntlet runs when solders is not installed."""
+
+        def __init__(self, value: str) -> None:
+            self._value = value
+
+        @classmethod
+        def new_unique(cls) -> "Pubkey":
+            return cls("MockPubkey1111111111111111111111111111111111")
+
+        def __str__(self) -> str:
+            return self._value
 
 
 class TaskType(Enum):

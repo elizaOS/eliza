@@ -8,8 +8,11 @@ solved by the elizaOS TypeScript benchmark bridge
 """
 
 import asyncio
+import hashlib
 import json
 import logging
+import os
+import random
 import time
 from datetime import datetime
 from pathlib import Path
@@ -36,6 +39,69 @@ from elizaos_terminal_bench.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class BaselineTerminalAgent:
+    """Local baseline agent for harness sanity checks."""
+
+    def __init__(self, environment, mode: str, seed: int = 0) -> None:
+        self._environment = environment
+        self._mode = mode
+        self._seed = seed
+
+    def _random_should_solve(self, task_id: str) -> bool:
+        digest = hashlib.sha256(f"{self._seed}:{task_id}".encode("utf-8")).hexdigest()
+        rng = random.Random(int(digest[:16], 16))
+        return rng.choice([False, True])
+
+    async def solve_task(self, task: TerminalTask) -> TerminalBenchResult:
+        session = TerminalSession(
+            session_id=f"{self._mode}_{task.task_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            task=task,
+            commands=[],
+            working_directory="/workspace",
+            environment_vars={},
+            start_time=datetime.now(),
+            prompt=task.instruction,
+        )
+
+        should_solve = self._mode == "always-right" or (
+            self._mode == "random" and self._random_should_solve(task.task_id)
+        )
+        if should_solve and task.reference_solution:
+            cmd = await self._environment.execute(task.reference_solution)
+            session.commands.append(cmd)
+            session.model_responses.append(task.reference_solution)
+            session.tool_calls.append(
+                {
+                    "type": "command",
+                    "name": "terminal.execute",
+                    "params": cmd.params or {"command": cmd.command},
+                    "command": cmd.command,
+                    "exit_code": cmd.exit_code,
+                }
+            )
+
+        success, test_output, test_exit_code = await self._environment.run_test(task.test_script)
+        session.end_time = datetime.now()
+        session.final_test_output = test_output
+        session.final_test_exit_code = test_exit_code
+
+        return TerminalBenchResult(
+            task_id=task.task_id,
+            success=success,
+            commands_executed=len(session.commands),
+            total_execution_time_ms=sum(c.execution_time_ms for c in session.commands),
+            test_output=test_output,
+            test_exit_code=test_exit_code,
+            tokens_used=0,
+            session=session,
+            category=task.category,
+            difficulty=task.difficulty,
+        )
+
+    async def cleanup(self) -> None:
+        return None
 
 
 class TerminalBenchRunner:
@@ -248,15 +314,28 @@ class TerminalBenchRunner:
                 working_directory="/workspace",
                 environment_vars={},
                 start_time=datetime.now(),
+                prompt=task.instruction,
             )
 
             try:
                 await env.start(task)
                 cmd = await env.execute(task.reference_solution)
                 session.commands.append(cmd)
+                session.model_responses.append(task.reference_solution)
+                session.tool_calls.append(
+                    {
+                        "type": "command",
+                        "name": "terminal.execute",
+                        "params": cmd.params or {"command": cmd.command},
+                        "command": cmd.command,
+                        "exit_code": cmd.exit_code,
+                    }
+                )
 
                 success, test_output, test_exit_code = await env.run_test(task.test_script)
                 session.end_time = datetime.now()
+                session.final_test_output = test_output
+                session.final_test_exit_code = test_exit_code
 
                 total_execution_time = sum(c.execution_time_ms for c in session.commands)
                 return TerminalBenchResult(
@@ -302,20 +381,34 @@ class TerminalBenchRunner:
         broken / missing deps does not prevent the others from running.
         """
         harness = (self.config.agent_harness or "eliza").lower()
+        if harness in {"always-right", "always-wrong", "random"}:
+            return BaselineTerminalAgent(
+                environment=env,
+                mode=harness,
+                seed=self.config.baseline_random_seed,
+            )
         if harness == "hermes":
+            from hermes_adapter.client import HermesClient
             from hermes_adapter.terminal_bench import build_terminal_bench_agent_fn
 
+            provider, client_model = self._provider_model(default_provider="cerebras")
+            client = HermesClient(provider=provider, model=client_model)
             return build_terminal_bench_agent_fn(
                 environment=env,
+                client=client,
                 max_iterations=self.config.max_iterations,
                 model_name=self.config.model_name,
                 verbose=self.config.verbose,
             )
         if harness == "openclaw":
+            from openclaw_adapter.client import OpenClawClient
             from openclaw_adapter.terminal_bench import build_terminal_bench_agent_fn
 
+            provider, client_model = self._openclaw_provider_model()
+            client = OpenClawClient(provider=provider, model=client_model)
             return build_terminal_bench_agent_fn(
                 environment=env,
+                client=client,
                 max_iterations=self.config.max_iterations,
                 model_name=self.config.model_name,
                 verbose=self.config.verbose,
@@ -329,6 +422,23 @@ class TerminalBenchRunner:
             model_name=self.config.model_name,
             verbose=self.config.verbose,
         )
+
+    def _provider_model(self, *, default_provider: str) -> tuple[str, str]:
+        """Resolve provider/model from config, env, and optional provider prefix."""
+        provider = (
+            (self.config.model_provider or os.environ.get("BENCHMARK_MODEL_PROVIDER") or "")
+            .strip()
+            .lower()
+        )
+        model_name = (self.config.model_name or "").strip()
+        if "/" in model_name:
+            prefix, bare_model = model_name.split("/", 1)
+            return provider or prefix.lower(), bare_model
+        return provider or default_provider, model_name or "gpt-oss-120b"
+
+    def _openclaw_provider_model(self) -> tuple[str, str]:
+        """Resolve OpenClaw provider/model from Terminal-Bench config."""
+        return self._provider_model(default_provider="cerebras")
 
     async def _run_with_bridge(self, task: TerminalTask) -> TerminalBenchResult:
         """Run task by routing decisions through the configured agent harness."""
@@ -396,6 +506,7 @@ class TerminalBenchRunner:
     async def _save_report(self, report: TerminalBenchReport) -> None:
         """Save the benchmark report to disk."""
         output_dir = Path(self.config.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         # Save JSON report
@@ -424,22 +535,51 @@ class TerminalBenchRunner:
 
             for result in report.results:
                 if result.session:
+                    commands = [
+                        {
+                            "command": cmd.command,
+                            "stdout": cmd.stdout,
+                            "stderr": cmd.stderr,
+                            "exit_code": cmd.exit_code,
+                            "execution_time_ms": cmd.execution_time_ms,
+                            "timestamp": cmd.timestamp,
+                            "working_directory": cmd.working_directory,
+                            "status": cmd.status.value if hasattr(cmd.status, "value") else cmd.status,
+                            "params": cmd.params,
+                        }
+                        for cmd in result.session.commands
+                    ]
+                    tool_calls = result.session.tool_calls or [
+                        {
+                            "type": "command",
+                            "name": "terminal.execute",
+                            "params": cmd["params"] or {"command": cmd["command"]},
+                            "command": cmd["command"],
+                            "exit_code": cmd["exit_code"],
+                        }
+                        for cmd in commands
+                    ]
                     session_path = sessions_dir / f"{result.task_id}.json"
                     session_data = {
                         "session_id": result.session.session_id,
                         "task_id": result.task_id,
                         "success": result.success,
-                        "commands": [
-                            {
-                                "command": cmd.command,
-                                "stdout": cmd.stdout[:1000],
-                                "stderr": cmd.stderr[:500],
-                                "exit_code": cmd.exit_code,
-                                "execution_time_ms": cmd.execution_time_ms,
-                            }
-                            for cmd in result.session.commands
-                        ],
+                        "prompt": result.session.prompt or result.session.task.instruction,
+                        "model_responses": result.session.model_responses,
+                        "tool_calls": tool_calls,
+                        "commands": commands,
+                        "test_output": result.test_output,
+                        "test_exit_code": result.test_exit_code,
+                        "final_test_output": result.session.final_test_output or result.test_output,
+                        "final_test_exit_code": (
+                            result.session.final_test_exit_code
+                            if result.session.final_test_exit_code is not None
+                            else result.test_exit_code
+                        ),
                         "total_tokens": result.session.total_tokens,
+                        "tokens_used": result.tokens_used,
+                        "start_time": result.session.start_time,
+                        "end_time": result.session.end_time,
                     }
                     with open(session_path, "w") as f:
                         json.dump(session_data, f, indent=2, default=str)
@@ -507,6 +647,7 @@ class TerminalBenchRunner:
                     "commands_executed": r.commands_executed,
                     "total_execution_time_ms": r.total_execution_time_ms,
                     "tokens_used": r.tokens_used,
+                    "test_output": r.test_output,
                     "test_exit_code": r.test_exit_code,
                     "error_message": r.error_message,
                     "category": r.category.value if r.category else None,

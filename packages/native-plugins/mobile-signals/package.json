@@ -27,9 +27,11 @@
     "android/src/main/",
     "android/build.gradle",
     "dist/",
+    "docs/",
     "ios/Sources/",
     "scripts/validate-ios-screen-time.mjs",
-    "*.podspec"
+    "*.podspec",
+    "dist"
   ],
   "author": "elizaOS",
   "license": "MIT",

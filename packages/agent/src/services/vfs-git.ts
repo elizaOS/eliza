@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import type { PostWorkbenchVfsGitRequest } from "@elizaos/shared";
 import git, {
@@ -7,14 +8,11 @@ import git, {
   type ReadCommitResult,
   type StatusRow,
 } from "isomorphic-git";
-import nodeHttp from "isomorphic-git/http/node";
-import webHttp from "isomorphic-git/http/web";
 import type { VirtualFilesystemService } from "./virtual-filesystem.ts";
 
-const mobilePlatform =
-  process.env.ELIZA_MOBILE_PLATFORM ?? process.env.ELIZA_PLATFORM;
+const require = createRequire(import.meta.url);
 const http =
-  mobilePlatform === "android" || mobilePlatform === "ios" ? webHttp : nodeHttp;
+  require("isomorphic-git/http/node") as typeof import("isomorphic-git/http/node");
 
 export interface VfsGitStatusEntry {
   filepath: string;

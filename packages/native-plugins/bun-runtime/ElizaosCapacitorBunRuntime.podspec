@@ -17,12 +17,7 @@ Pod::Spec.new do |s|
   s.homepage = 'https://github.com/elizaOS'
   s.authors = { 'elizaOS' => 'shaw@elizalabs.ai' }
   s.source = { :git => 'https://github.com/elizaOS/eliza.git', :tag => s.version.to_s }
-  s.source_files = [
-    'ios/Sources/**/*.swift',
-    'ios/Sources/**/*.m',
-    'ios/Sources/**/*.mm',
-    'ios/Sources/**/*.h'
-  ]
+  s.source_files = 'ios/Sources/**/*.{swift,m,mm,h}'
   s.ios.deployment_target = '15.0'
   s.dependency 'Capacitor'
   s.dependency 'LlamaCppCapacitor' if include_llama

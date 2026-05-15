@@ -383,3 +383,83 @@ def test_parse_jsonl_skips_unknown_event_kinds(tmp_path: Path) -> None:
     turns, compacts, probes, summary = parse_jsonl(p)
     assert turns == [] and compacts == [] and probes == []
     assert summary is None
+
+
+def test_dry_run_stdout_jsonl_is_materialized_for_aggregation(tmp_path: Path) -> None:
+    """The TS dry-run path prints JSONL instead of writing --output."""
+    fake_bun = tmp_path / "fake-bun.py"
+    fake_bun.write_text(
+        "\n".join(
+            [
+                "#!/usr/bin/env python3",
+                "import json",
+                "events = [",
+                "  {",
+                "    'event': 'turn', 'turn': 1, 'role': 'user',",
+                "    'contentLen': 10, 'tokens': 3,",
+                "  },",
+                "  {",
+                "    'event': 'probe', 'atTurn': 1, 'factId': 'fact_1',",
+                "    'plantedTurn': 1, 'kind': 'code', 'expected': 'X',",
+                "    'actual': 'X', 'correct': True, 'judgeReasoning': 'ok',",
+                "    'phase': 'final',",
+                "  },",
+                "  {",
+                "    'event': 'summary', 'strategy': 'none',",
+                "    'overallAccuracy': 1.0, 'totalCompactions': 0,",
+                "    'totalTokensSaved': 0, 'totalProbes': 1,",
+                "    'totalCorrect': 1, 'seed': 7, 'turns': 1,",
+                "    'compactEvery': 10, 'plantFacts': 1,",
+                "  },",
+                "]",
+                "for event in events:",
+                "    print(json.dumps(event))",
+                "print('[harness] strategy=none accuracy=100.0%')",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    fake_bun.chmod(0o755)
+
+    suite = DriftBenchmarkSuite(
+        bun_bin=str(fake_bun),
+        repo_root=tmp_path,
+        harness_script=tmp_path / "drift-harness.ts",
+    )
+    result = suite.run_drift_eval(
+        ["none"],
+        turns=1,
+        compact_every=10,
+        plant_facts=1,
+        seed=7,
+        output_dir=tmp_path / "out",
+        dry_run=True,
+    )
+
+    jsonl_path = tmp_path / "out" / "drift-none-7.jsonl"
+    assert jsonl_path.exists()
+    assert result.runs[0].overall_accuracy == pytest.approx(1.0)
+    assert result.raw_event_counts == {
+        "turn": 1,
+        "compact": 0,
+        "probe": 1,
+        "summary": 1,
+    }
+
+
+def test_dry_run_stdout_extractor_ignores_status_lines() -> None:
+    """Human status lines in dry-run stdout are not JSONL events."""
+    text = "\n".join(
+        [
+            '{"event":"turn","turn":1,"role":"user","contentLen":1,"tokens":1}',
+            "[harness] strategy=none accuracy=100.0%",
+            '{"event":"summary","strategy":"none","overallAccuracy":0,"totalCompactions":0,"totalTokensSaved":0,"totalProbes":0,"totalCorrect":0,"seed":1,"turns":1,"compactEvery":10,"plantFacts":0}',
+        ]
+    )
+
+    extracted = DriftBenchmarkSuite._jsonl_from_stdout(text)
+    lines = extracted.strip().splitlines()
+    assert len(lines) == 2
+    assert json.loads(lines[0])["event"] == "turn"
+    assert json.loads(lines[1])["event"] == "summary"
