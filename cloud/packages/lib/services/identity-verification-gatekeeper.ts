@@ -134,9 +134,10 @@ function base64ToBytes(input: string): Uint8Array {
 }
 
 function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength);
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  const copy = new Uint8Array(buffer);
   copy.set(bytes);
-  return copy.buffer;
+  return buffer;
 }
 
 function deriveSignerIdentityId(payload: ApprovalChallengePayload): string | null {
