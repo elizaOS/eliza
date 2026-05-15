@@ -214,14 +214,18 @@ describe("elizaHarnessSchemaFromSkeleton", () => {
 });
 
 describe("resolveGuidedDecodeForParams", () => {
-	it("returns the grammar + prefill plan + leading-run prefill for an elizaSchema", () => {
+	it("returns the tail grammar + prefill plan + leading-run prefill for an elizaSchema", () => {
 		const schema = elizaHarnessSchemaFromSkeleton({
 			skeleton: envelopeSkeleton,
 		});
 		const out = resolveGuidedDecodeForParams({ elizaSchema: schema });
-		expect(out.grammar?.lazy).toBe(true);
+		expect(out.grammar?.lazy).toBe(false);
 		expect(out.prefillPlan).not.toBeNull();
 		expect(out.prefill).toBe('{\n  "shouldRespond": "');
+		expect(out.grammar?.source.split("\n")[0]).toContain("enum0");
+		expect(out.grammar?.source.split("\n")[0]).not.toContain(
+			'"{\\n  \\"shouldRespond\\": \\""',
+		);
 	});
 
 	it("prefers the schema's pre-built grammar over compiling the skeleton", () => {
@@ -232,6 +236,29 @@ describe("resolveGuidedDecodeForParams", () => {
 		const out = resolveGuidedDecodeForParams({ elizaSchema: schema });
 		expect(out.grammar?.source).toBe('root ::= "hi"');
 		expect(out.grammar?.lazy).toBe(false);
+	});
+
+	it("uses a tail grammar when guided decode seeds the leading literal prefill", () => {
+		const fullGrammar = compileSkeletonToGbnf(envelopeSkeleton);
+		expect(fullGrammar).not.toBeNull();
+		if (!fullGrammar) return;
+		const schema = elizaHarnessSchemaFromSkeleton({
+			skeleton: envelopeSkeleton,
+			grammar: fullGrammar.source,
+		});
+
+		const out = resolveGuidedDecodeForParams({ elizaSchema: schema });
+
+		expect(out.prefill).toBe('{\n  "shouldRespond": "');
+		expect(out.grammar?.lazy).toBe(false);
+		const root = out.grammar?.source.split("\n")[0];
+		expect(root).toMatch(/^root ::= enum\d+ /);
+		expect(root).not.toContain('"{\\n  \\"shouldRespond\\": \\""');
+		expect(root).toContain('\\"contexts\\":');
+		expect(root).toContain('\\"replyText\\":');
+		expect(out.grammar?.source).toContain('\\"RESPOND\\"');
+		expect(out.grammar?.source).toContain('\\"IGNORE\\"');
+		expect(out.grammar?.source).toContain('\\"STOP\\"');
 	});
 
 	it("an explicit prefill on the params wins over the plan's leading run", () => {
