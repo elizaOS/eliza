@@ -1,7 +1,7 @@
 import type { ImageDescriptionResult } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { withVisionFallbackChain } from "./index";
 import type { LocalImageDescriptionHandler } from "./cloud-fallback";
+import { withVisionFallbackChain } from "./index";
 
 const localResult: ImageDescriptionResult = {
 	title: "Local",
@@ -79,8 +79,8 @@ describe("vision fallback chain", () => {
 			},
 		);
 
-		await expect(handler({} as never, "data:image/png;base64,a")).rejects.toThrow(
-			"all IMAGE_DESCRIPTION providers exhausted",
-		);
+		await expect(
+			handler({} as never, "data:image/png;base64,a"),
+		).rejects.toThrow("all IMAGE_DESCRIPTION providers exhausted");
 	});
 });

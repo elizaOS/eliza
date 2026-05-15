@@ -16,18 +16,21 @@ Inputs
 - ``--output``: GGUF output path.
 
 Architecture (v5, 16 kHz branch, all extracted from the ONNX as
-``Constant`` nodes inside the ``If(sr==16000)`` else-branch):
+``Constant`` nodes inside the ``If(sr==16000)`` then-branch — the
+v5 ONNX bundles BOTH sample-rate variants and the top-level `If`
+selects between them; the **then** branch is 16 kHz and the **else**
+branch is 8 kHz):
 
   STFT front-end
-    stft.forward_basis_buffer        (130, 1, 128)  fp32
-      → Conv1D(in=1, out=130, k=128, stride=64) of reflection-padded
-        input (pad=32 each side; 512 → 576 → 8 frames). The first 65
+    stft.forward_basis_buffer        (258, 1, 256)  fp32
+      → Conv1D(in=1, out=258, k=256, stride=128) of reflection-padded
+        input (pad=64 each side; 512 → 640 → 4 frames). The first 129
         output channels are the "real" part of a fixed STFT basis;
-        channels 65..130 are the "imag" part. Magnitude is
-        sqrt(real^2 + imag^2) → (1, 65, 8).
+        channels 129..258 are the "imag" part. Magnitude is
+        sqrt(real^2 + imag^2) → (1, 129, 4).
 
   Encoder (4 stacked Conv1D + ReLU)
-    encoder.0.reparam_conv.weight    (128, 65, 3)
+    encoder.0.reparam_conv.weight    (128, 129, 3)
     encoder.0.reparam_conv.bias      (128)         stride=1, pad=1
     encoder.1.reparam_conv.weight    (64, 128, 3)
     encoder.1.reparam_conv.bias      (64)          stride=2, pad=1
@@ -35,14 +38,14 @@ Architecture (v5, 16 kHz branch, all extracted from the ONNX as
     encoder.2.reparam_conv.bias      (64)          stride=2, pad=1
     encoder.3.reparam_conv.weight    (128, 64, 3)
     encoder.3.reparam_conv.bias      (128)         stride=1, pad=1
-      Final encoder activation: (1, 128, 2).
+      Final encoder activation: (1, 128, 1).
 
   Decoder LSTM (single layer, 128 → 128)
     decoder.rnn.weight_ih            (512, 128)    rows in i,f,g,o order
     decoder.rnn.weight_hh            (512, 128)    rows in i,f,g,o order
     decoder.rnn.bias_ih              (512)
     decoder.rnn.bias_hh              (512)
-      Two timesteps per window (T=2 from the encoder); the LSTM hidden
+      One timestep per window (T=1 from the encoder); the LSTM hidden
       state carries from window N to window N+1 (managed by the runtime
       via ``silero_vad_state.h``).
 
@@ -93,11 +96,11 @@ STATE_HIDDEN_DIM = 128
 STATE_CELL_DIM = 128
 
 # STFT geometry (extracted from the ONNX `stft.forward_basis_buffer`
-# shape and the Conv attributes inside the 16k branch).
-STFT_FILTER_LENGTH = 128
-STFT_HOP = 64
-STFT_PAD = 32  # reflection padding applied to each side of the 512-sample window
-ENCODER_T = 2  # encoder output timesteps per window (after stride 2,2)
+# shape and the Conv attributes inside the 16k then-branch).
+STFT_FILTER_LENGTH = 256
+STFT_HOP = 128
+STFT_PAD = 64  # reflection padding applied to each side of the 512-sample window
+ENCODER_T = 1  # encoder output timesteps per window (after stride 2,2 over 4 STFT frames)
 LSTM_INPUT_DIM = 128
 
 # Pinned upstream commit. The runtime reads this key from the GGUF and
@@ -136,8 +139,8 @@ _TENSOR_RENAMES: Dict[str, str] = {
 
 # Reference shapes (fp32). Used to refuse silent upstream renames.
 _EXPECTED_SHAPES: Dict[str, tuple] = {
-    "vad.stft.basis":          (130, 1, 128),
-    "vad.encoder.0.weight":    (128, 65, 3),
+    "vad.stft.basis":          (258, 1, 256),
+    "vad.encoder.0.weight":    (128, 129, 3),
     "vad.encoder.0.bias":      (128,),
     "vad.encoder.1.weight":    (64, 128, 3),
     "vad.encoder.1.bias":      (64,),
@@ -159,13 +162,14 @@ def discover_tensors(weights_path: Path) -> Dict[str, np.ndarray]:
     ``{canonical_name: np.ndarray}`` map.
 
     The v5 ONNX model wraps both sample-rate variants in a top-level
-    `If(sr==8000)` node; weights are stored as `Constant` nodes inside
-    each branch. We only target the **16 kHz branch** (the
-    `else_branch` of the top-level `If`). All upstream constant names
-    inside that branch carry the prefix
-    `If_0_else_branch__Inline_0__` — we strip it, then map through
-    `_TENSOR_RENAMES`, then sanity-check shapes against
-    `_EXPECTED_SHAPES`.
+    `If(Equal(sr, 16000))` node; weights are stored as `Constant`
+    nodes inside each branch. We only target the **16 kHz branch**
+    (the `then_branch` of the top-level `If`; the `else_branch` is
+    the 8 kHz model and is intentionally ignored — the C runtime is
+    dimensioned for 16 kHz only). All upstream constant names inside
+    the then-branch carry the prefix `If_0_then_branch__Inline_0__`
+    — we strip it, then map through `_TENSOR_RENAMES`, then
+    sanity-check shapes against `_EXPECTED_SHAPES`.
 
     The TorchScript JIT path is intentionally not supported. The ONNX
     model is the canonical artifact; everything we need is in there,
@@ -182,23 +186,25 @@ def discover_tensors(weights_path: Path) -> Dict[str, np.ndarray]:
 
     model = onnx.load(str(weights_path))
 
-    # Locate the top-level `If` and grab its `else_branch` (sr==16000).
-    else_branch = None
+    # Locate the top-level `If(Equal(sr, 16000))` and grab its
+    # `then_branch` — that is the 16 kHz model. The else_branch is the
+    # 8 kHz model (different STFT geometry) and is ignored.
+    then_branch = None
     for node in model.graph.node:
         if node.op_type != "If":
             continue
         for attr in node.attribute:
-            if attr.name == "else_branch":
-                else_branch = attr.g
+            if attr.name == "then_branch":
+                then_branch = attr.g
                 break
-        if else_branch is not None:
+        if then_branch is not None:
             break
-    if else_branch is None:
-        raise ValueError("v5 ONNX model has no top-level If/else_branch — wrong file?")
+    if then_branch is None:
+        raise ValueError("v5 ONNX model has no top-level If/then_branch — wrong file?")
 
-    prefix = "If_0_else_branch__Inline_0__"
+    prefix = "If_0_then_branch__Inline_0__"
     out: Dict[str, np.ndarray] = {}
-    for node in else_branch.node:
+    for node in then_branch.node:
         if node.op_type != "Constant":
             continue
         if not node.output:

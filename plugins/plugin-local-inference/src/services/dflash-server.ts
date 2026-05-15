@@ -1318,7 +1318,9 @@ function parseRuntimeGpuLayers(value: string | undefined): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-function resolveRuntimeGpuLayersFromArgs(args: readonly string[]): number | null {
+function resolveRuntimeGpuLayersFromArgs(
+	args: readonly string[],
+): number | null {
 	let resolved: number | null = null;
 	for (let i = 0; i < args.length; i += 1) {
 		const arg = args[i];
@@ -2127,8 +2129,9 @@ export function resolveDflashGenerateRequestTimeoutMs(args?: {
 	}
 
 	const explicit =
-		parsePositiveTimeoutMs(process.env.ELIZA_LOCAL_INFERENCE_REQUEST_TIMEOUT_MS) ??
-		parsePositiveTimeoutMs(process.env.ELIZA_DFLASH_GENERATE_TIMEOUT_MS);
+		parsePositiveTimeoutMs(
+			process.env.ELIZA_LOCAL_INFERENCE_REQUEST_TIMEOUT_MS,
+		) ?? parsePositiveTimeoutMs(process.env.ELIZA_DFLASH_GENERATE_TIMEOUT_MS);
 	if (explicit !== null) return explicit;
 
 	const chatTimeout = parsePositiveTimeoutMs(
@@ -4088,12 +4091,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				dflashArgs.onVerifierEvent ||
 				dflashArgs.onDflashEvent,
 		);
-			const prefill =
-				typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
-					? dflashArgs.prefill
-					: "";
-			const requestTimeoutMs = resolveDflashGenerateRequestTimeoutMs(args);
-			const payload = buildChatCompletionBody(dflashArgs, slotId, streaming);
+		const prefill =
+			typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
+				? dflashArgs.prefill
+				: "";
+		const requestTimeoutMs = resolveDflashGenerateRequestTimeoutMs(args);
+		const payload = buildChatCompletionBody(dflashArgs, slotId, streaming);
 		attachDflashSpeculativeRequestFields(payload, this.loadedPlan);
 		if (readBool("ELIZA_DFLASH_DEBUG_REQUEST")) {
 			console.error(
@@ -4171,10 +4174,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 					method: "POST",
 					headers: { "content-type": "application/json" },
 					body: JSON.stringify(payload),
-					},
-					requestTimeoutMs,
-					{
-						onTextChunk: args.onTextChunk,
+				},
+				requestTimeoutMs,
+				{
+					onTextChunk: args.onTextChunk,
 					onVerifierEvent: dflashArgs.onVerifierEvent,
 					onDflashEvent,
 					suppressSynthesizedVerifierEvent: nativeEventsActive,
@@ -4218,14 +4221,14 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		} else {
 			json = (await fetchJson(
 				`${baseUrl}/v1/chat/completions`,
-					{
-						method: "POST",
-						headers: { "content-type": "application/json" },
-						body: JSON.stringify(payload),
-					},
-					requestTimeoutMs,
-					args.signal,
-				)) as Record<string, unknown>;
+				{
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify(payload),
+				},
+				requestTimeoutMs,
+				args.signal,
+			)) as Record<string, unknown>;
 			text = prefill + extractCompletionText(json);
 			if (dflashArgs.responseSkeleton) {
 				text = repairStructuredOutput(text, {

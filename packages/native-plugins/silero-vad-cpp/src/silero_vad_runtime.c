@@ -54,12 +54,12 @@
 
 /* ── Geometry constants (must match the converter) ─────────────────── */
 
-#define VAD_STFT_FILTER_LENGTH 128
-#define VAD_STFT_HOP            64
-#define VAD_STFT_PAD            32
-#define VAD_STFT_BINS           65   /* (filter_length / 2) + 1 */
-#define VAD_STFT_FRAMES          8   /* (512 + 2*32 - 128)/64 + 1 */
-#define VAD_ENCODER_T            2   /* after stride 1, 2, 2, 1 */
+#define VAD_STFT_FILTER_LENGTH 256
+#define VAD_STFT_HOP           128
+#define VAD_STFT_PAD            64
+#define VAD_STFT_BINS          129   /* (filter_length / 2) + 1 */
+#define VAD_STFT_FRAMES          4   /* (512 + 2*64 - 256)/128 + 1 */
+#define VAD_ENCODER_T            1   /* after stride 1, 2, 2, 1 over 4 STFT frames */
 #define VAD_LSTM_INPUT_DIM     128
 #define VAD_HIDDEN_DIM         SILERO_VAD_STATE_HIDDEN_DIM
 #define VAD_CELL_DIM           SILERO_VAD_STATE_CELL_DIM
@@ -402,7 +402,12 @@ static float fp16_to_fp32(uint16_t h) {
 
 /* Load tensor `name`, expecting fp16, into a freshly-allocated fp32
  * buffer. Returns the buffer (caller frees) or NULL on missing/wrong-
- * shape. `dims_expected` are checked exactly. */
+ * shape. `dims_expected` are checked in **PyTorch / numpy order**:
+ * GGUF stores dimensions with the fastest-changing axis first
+ * (the gg/ml convention), so a PyTorch `(C_out, C_in, K)` tensor
+ * appears in the GGUF tensor record as `[K, C_in, C_out]`. We
+ * reverse the GGUF dims here to keep callers working in the natural
+ * numpy order. */
 static float *vad_load_fp16_to_fp32(
     const vad_gguf *g, const char *name,
     const int64_t *dims_expected, int ndim_expected,
@@ -413,7 +418,10 @@ static float *vad_load_fp16_to_fp32(
     if (t->dtype != GGML_TYPE_F16) { *err = -EINVAL; return NULL; }
     if (t->ndim != ndim_expected) { *err = -EINVAL; return NULL; }
     for (int d = 0; d < ndim_expected; ++d) {
-        if (t->dims[d] != dims_expected[d]) { *err = -EINVAL; return NULL; }
+        /* GGUF dim[d] corresponds to PyTorch dim[ndim-1-d]. */
+        if (t->dims[ndim_expected - 1 - d] != dims_expected[d]) {
+            *err = -EINVAL; return NULL;
+        }
     }
     uint64_t n_elem = 1;
     for (int d = 0; d < t->ndim; ++d) n_elem *= (uint64_t)t->dims[d];
@@ -595,24 +603,25 @@ static int forward_window(
     if (padded == NULL) { rc = -ENOMEM; goto done; }
     reflect_pad_1d(pcm, SILERO_VAD_WINDOW_SAMPLES_16K, VAD_STFT_PAD, padded);
 
-    /* 2. STFT Conv: 1→130, k=128, stride=64. Input shape (1, 576).
-     *    Output shape (130, 8). */
-    const int stft_T_out = VAD_STFT_FRAMES;  /* 8 */
-    float *stft = (float *)malloc(sizeof(float) * 130 * (size_t)stft_T_out);
+    /* 2. STFT Conv: 1→258, k=256, stride=128. Input shape (1, 640).
+     *    Output shape (258, 4). */
+    const int stft_C_out = 2 * VAD_STFT_BINS;  /* 258 = 129 real + 129 imag */
+    const int stft_T_out = VAD_STFT_FRAMES;    /* 4 */
+    float *stft = (float *)malloc(sizeof(float) * (size_t)stft_C_out * (size_t)stft_T_out);
     if (stft == NULL) { rc = -ENOMEM; goto done; }
     conv1d_ref(padded, /*cin*/ 1, padded_n,
-               s->stft_basis, /*cout*/ 130, /*k*/ VAD_STFT_FILTER_LENGTH,
+               s->stft_basis, /*cout*/ stft_C_out, /*k*/ VAD_STFT_FILTER_LENGTH,
                /*b*/ NULL,
                /*stride*/ VAD_STFT_HOP, /*pad*/ 0,
                stft);
 
-    /* 3. Magnitude: (65, 8) = sqrt((real[0..65])^2 + (imag[65..130])^2). */
+    /* 3. Magnitude: (129, 4) = sqrt((real[0..129])^2 + (imag[129..258])^2). */
     float *mag = (float *)malloc(sizeof(float) * VAD_STFT_BINS * (size_t)stft_T_out);
     if (mag == NULL) { rc = -ENOMEM; goto done; }
     for (int b = 0; b < VAD_STFT_BINS; ++b) {
         for (int t = 0; t < stft_T_out; ++t) {
             const float re = stft[(size_t)b * stft_T_out + t];
-            const float im = stft[(size_t)(b + 65) * stft_T_out + t];
+            const float im = stft[(size_t)(b + VAD_STFT_BINS) * stft_T_out + t];
             mag[(size_t)b * stft_T_out + t] = sqrtf(re * re + im * im);
         }
     }
@@ -737,9 +746,9 @@ int silero_vad_open(const char *gguf_path, silero_vad_handle *out) {
     struct silero_vad_session *s = (struct silero_vad_session *)calloc(1, sizeof(*s));
     if (s == NULL) { vad_gguf_close(g); return -ENOMEM; }
 
-    /* STFT basis: (130, 1, 128) */
+    /* STFT basis: (258, 1, 256) */
     {
-        const int64_t shape[3] = { 130, 1, VAD_STFT_FILTER_LENGTH };
+        const int64_t shape[3] = { 2 * VAD_STFT_BINS, 1, VAD_STFT_FILTER_LENGTH };
         s->stft_basis = vad_load_fp16_to_fp32(g, "vad.stft.basis", shape, 3, NULL, &err);
         if (s->stft_basis == NULL) { session_free(s); vad_gguf_close(g); return err; }
     }
@@ -749,7 +758,7 @@ int silero_vad_open(const char *gguf_path, silero_vad_handle *out) {
         const char *w; const char *b;
         int cout; int cin; int stride;
     } enc_specs[4] = {
-        { "vad.encoder.0.weight", "vad.encoder.0.bias", 128,  65, 1 },
+        { "vad.encoder.0.weight", "vad.encoder.0.bias", 128, 129, 1 },
         { "vad.encoder.1.weight", "vad.encoder.1.bias",  64, 128, 2 },
         { "vad.encoder.2.weight", "vad.encoder.2.bias",  64,  64, 2 },
         { "vad.encoder.3.weight", "vad.encoder.3.bias", 128,  64, 1 },

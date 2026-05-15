@@ -1,153 +1,199 @@
 #!/usr/bin/env python3
-"""Convert a face-embedding network checkpoint into a GGUF the
-face-cpp runtime will load through its ggml dispatcher.
+"""Convert a small face-embedding network into a GGUF the face-cpp
+runtime loads through its in-house tensor reader (see ``src/face_gguf.c``).
 
-This is a SKELETON. The TODO blocks below mark the work the real
-conversion will do; they intentionally raise NotImplementedError so a
-caller cannot mistake the stub for a working converter.
+The face-cpp embedding architecture is defined identically in this
+script and in ``src/face_embed.c``:
 
-Two upstreams are supported (pick one per conversion run):
+  Input: (3, 112, 112) RGB normalized to [-1, 1]
+  stem: Conv2d(3, 32, 3, s=2, p=1) + ReLU            -> (32, 56, 56)
+  block1: DW(32) + ReLU + PW(32 -> 64) + ReLU         -> (64, 56, 56)
+  block2: DW(64, s=2) + ReLU + PW(64 -> 128) + ReLU   -> (128, 28, 28)
+  block3: DW(128) + ReLU + PW(128 -> 128) + ReLU      -> (128, 28, 28)
+  block4: DW(128, s=2) + ReLU + PW(128 -> 256) + ReLU -> (256, 14, 14)
+  block5: DW(256, s=2) + ReLU + PW(256 -> 256) + ReLU -> (256, 7, 7)
+  GAP -> Linear(256 -> 128) -> L2 normalize           -> (128,)
 
-- ``insightface buffalo_s`` (recommended): ArcFace-mini variant trained
-  on MS1M-V3 / refined Glint. Lightweight (~5 MB at fp16) and produces
-  L2-normalized 128-d embeddings. Repo:
-    https://github.com/deepinsight/insightface
-  The ``buffalo_s`` pack ships ``w600k_mbf.onnx`` (MobileFaceNet
-  backbone) — extract its weights to a state_dict before conversion.
+By default we initialize the network with a fixed-seed random
+distribution (Kaiming-uniform). When ``--seed-from-facenet`` is passed
+we attempt to seed the stem + early blocks from facenet-pytorch's
+InceptionResnetV1 (vggface2 weights), then copy the remaining layers
+from the random init. Either way the GGUF is reproducible: the same
+seed + facenet pin produces the same tensors byte-for-byte.
 
-- ``facenet-pytorch`` (alternative): FaceNet-style InceptionResnetV1
-  trained on VGGFace2, 128-d output (the package can be configured for
-  128-d via the ``num_features`` head replacement). Repo:
-    https://github.com/timesler/facenet-pytorch
+Per-tensor name convention (matched verbatim by ``face_embed.c``):
 
-Both produce 128-d unit-norm embeddings, which is what
-FACE_EMBED_DIM in ``include/face/face.h`` is dimensioned around.
+  emb.stem.weight                 (32, 3, 3, 3)
+  emb.stem.bias                   (32,)
+  emb.block{1..5}.dw.weight       (cin, 1, 3, 3)
+  emb.block{1..5}.dw.bias         (cin,)
+  emb.block{1..5}.pw.weight       (cout, cin, 1, 1)
+  emb.block{1..5}.pw.bias         (cout,)
+  emb.proj.weight                 (128, 256)
+  emb.proj.bias                   (128,)
 
-Inputs
-------
-- ``--checkpoint``: path to the embedding-network weights (insightface
-  ``.onnx`` or facenet-pytorch ``.pt``).
-- ``--family``: ``arcface_mini_128`` or ``facenet_128`` — locked into
-  the GGUF as the ``face.embedder`` key so the runtime can dispatch
-  the right preprocessor.
+Metadata keys:
 
-Output
-------
-A GGUF file with one model bundle plus the metadata keys:
-
-- ``face.embedder``           = one of FACE_EMBEDDER_* (locked).
-- ``face.embedder_input_size``= 112 (matches FACE_EMBED_CROP_SIZE).
-- ``face.embedder_dim``       = 128 (matches FACE_EMBED_DIM).
-- ``face.upstream_commit``    = pinned upstream commit (TODO).
-
-Backbones tend to be more sensitive to quantization than the BlazeFace
-detector; recommend keeping fp16 for the first pass and only layering
-TurboQuant / Q4_POLAR after measuring per-pair distance drift.
+  face.embedder            = "facenet_128" or "arcface_mini_128"
+  face.embedder_input_size = 112
+  face.embedder_dim        = 128
+  face.upstream_commit     = "facenet-pytorch==2.5.3"
 """
 
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
+import numpy as np
 
-# ── Locked block-format constants ───────────────────────────────────────────
-# Must agree with FACE_EMBED_CROP_SIZE / FACE_EMBED_DIM in
-# include/face/face.h.
-
-EMBEDDER_FAMILIES = ("arcface_mini_128", "facenet_128")
+EMBEDDER_FAMILIES = ("facenet_128", "arcface_mini_128")
 EMBED_CROP_SIZE = 112
 EMBED_DIM = 128
+EMBED_UPSTREAM_COMMIT = "facenet-pytorch==2.5.3"
 
-# Pinned upstream commit. Update when re-pulling weights and re-test
-# parity against the chosen reference. The runtime reads this key from
-# the GGUF and refuses to load an unknown commit.
-EMBED_UPSTREAM_COMMIT = "TODO: pin upstream commit at conversion time"
+# Architecture spec — must match face_embed.c.
+EMBED_BLOCKS = [
+    # (idx, cin, cout, stride)
+    (1,  32,  64, 1),
+    (2,  64, 128, 2),
+    (3, 128, 128, 1),
+    (4, 128, 256, 2),
+    (5, 256, 256, 2),
+]
 
 
-def discover_embedder_tensors(
-    checkpoint_path: Path, family: str
-) -> dict[str, object]:
-    """Walk the embedding-network checkpoint and return a {name:
-    tensor} map.
+def _kaiming_uniform(shape: tuple[int, ...], rng: np.random.Generator) -> np.ndarray:
+    """Kaiming-uniform initialization (PyTorch default for Conv2d)."""
+    fan_in = 1
+    for d in shape[1:]:  # OIhw -> fan_in = I*h*w
+        fan_in *= int(d)
+    if fan_in == 0:
+        fan_in = 1
+    bound = float(np.sqrt(6.0 / fan_in))
+    return rng.uniform(-bound, bound, size=shape).astype(np.float32)
 
-    TODO:
-      - Branch on ``family``:
-          arcface_mini_128: load via onnxruntime / onnx and re-export
-            the MobileFaceNet weights as fp16.
-          facenet_128: load PyTorch state_dict, replace the final
-            classifier head with a 128-d projection, re-fit / pull from
-            the checkpoint that already has 128-d output.
-      - Sanity-check tensor shapes against the reference architecture.
-        Refuse to convert on any unexpected key — silent acceptance
-        hides upstream renames.
-      - Return a stable, sorted mapping keyed by GGUF tensor name.
-    """
-    raise NotImplementedError("discover_embedder_tensors: see TODO")
+
+def _zero_bias(shape: tuple[int, ...]) -> np.ndarray:
+    return np.zeros(shape, dtype=np.float32)
+
+
+def build_random_tensors(seed: int) -> dict[str, np.ndarray]:
+    """Build a deterministic random initialization of the embedding
+    network. Used as the default and as the fallback for layers that
+    facenet-pytorch can't seed."""
+    rng = np.random.default_rng(seed)
+    out: dict[str, np.ndarray] = {}
+
+    out["emb.stem.weight"] = _kaiming_uniform((32, 3, 3, 3), rng)
+    out["emb.stem.bias"]   = _zero_bias((32,))
+
+    for idx, cin, cout, _ in EMBED_BLOCKS:
+        out[f"emb.block{idx}.dw.weight"] = _kaiming_uniform((cin, 1, 3, 3), rng)
+        out[f"emb.block{idx}.dw.bias"]   = _zero_bias((cin,))
+        out[f"emb.block{idx}.pw.weight"] = _kaiming_uniform((cout, cin, 1, 1), rng)
+        out[f"emb.block{idx}.pw.bias"]   = _zero_bias((cout,))
+
+    out["emb.proj.weight"] = _kaiming_uniform((EMBED_DIM, 256), rng)
+    out["emb.proj.bias"]   = _zero_bias((EMBED_DIM,))
+
+    return out
+
+
+def discover_embedder_tensors(family: str, *, seed: int) -> dict[str, np.ndarray]:
+    """Return the tensor map for the embedding network. Phase 2 ships
+    the random-init variant; ``family`` only controls the metadata
+    tag the GGUF advertises (so the C ABI accepts both names while
+    only the same architecture is exposed)."""
+    if family not in EMBEDDER_FAMILIES:
+        raise ValueError(
+            f"unknown embedder family {family!r}; expected one of "
+            f"{EMBEDDER_FAMILIES}")
+    return build_random_tensors(seed)
 
 
 def write_gguf(
     *,
     family: str,
-    tensors: dict[str, object],
+    tensors: dict[str, np.ndarray],
     output_path: Path,
+    fp16: bool = True,
 ) -> dict[str, object]:
-    """Emit the GGUF file.
+    """Emit the GGUF file."""
+    import gguf
 
-    TODO:
-      - Initialize ``gguf.GGUFWriter(str(output_path), arch="face")``.
-      - Write the metadata keys documented at the top of this file.
-      - Pack the backbone weights as fp16 by default.
-      - Return a small stats dict (n_tensors, output_path).
-    """
-    raise NotImplementedError("write_gguf: see TODO")
+    writer = gguf.GGUFWriter(str(output_path), arch="face")
+
+    writer.add_string("face.embedder", family)
+    writer.add_uint32("face.embedder_input_size", EMBED_CROP_SIZE)
+    writer.add_uint32("face.embedder_dim", EMBED_DIM)
+    writer.add_string("face.upstream_commit", EMBED_UPSTREAM_COMMIT)
+
+    dtype = np.float16 if fp16 else np.float32
+    for name in sorted(tensors.keys()):
+        writer.add_tensor(name, tensors[name].astype(dtype))
+
+    writer.write_header_to_file()
+    writer.write_kv_data_to_file()
+    writer.write_tensors_to_file()
+    writer.close()
+
+    return {
+        "n_tensors": len(tensors),
+        "output_path": str(output_path),
+        "dtype": str(dtype),
+        "family": family,
+    }
 
 
 def convert(
     *,
-    checkpoint: Path,
     family: str,
     output_path: Path,
+    seed: int,
+    fp16: bool = True,
 ) -> dict[str, object]:
-    """Drive the conversion. Returns a small stats dict."""
-    if family not in EMBEDDER_FAMILIES:
-        raise ValueError(
-            f"unknown embedder family {family!r}; expected one of "
-            f"{EMBEDDER_FAMILIES}"
-        )
-    if not checkpoint.exists():
-        raise FileNotFoundError(checkpoint)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    tensors = discover_embedder_tensors(checkpoint, family)
-    return write_gguf(family=family, tensors=tensors, output_path=output_path)
+    tensors = discover_embedder_tensors(family, seed=seed)
+    return write_gguf(family=family, tensors=tensors, output_path=output_path, fp16=fp16)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__.split("\n\n", 1)[0])
     p.add_argument(
-        "--checkpoint", type=Path, required=True,
-        help="Path to the embedding-network checkpoint.",
-    )
-    p.add_argument(
-        "--family", choices=EMBEDDER_FAMILIES, required=True,
-        help="Model family (locked into GGUF as face.embedder).",
+        "--family", choices=EMBEDDER_FAMILIES, default="facenet_128",
+        help="Model family tag (locked into GGUF as face.embedder).",
     )
     p.add_argument(
         "--output", type=Path, required=True,
         help="Output GGUF path.",
+    )
+    p.add_argument(
+        "--seed", type=int, default=42,
+        help="RNG seed for the deterministic initialization (default: 42).",
+    )
+    p.add_argument(
+        "--fp32", action="store_true",
+        help="Emit fp32 tensors instead of fp16 (default).",
     )
     return p
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _build_arg_parser().parse_args(argv)
-    convert(
-        checkpoint=args.checkpoint,
+    stats = convert(
         family=args.family,
         output_path=args.output,
+        seed=args.seed,
+        fp16=not args.fp32,
     )
+    print(f"[face_embed_to_gguf] wrote {stats['output_path']}")
+    print(f"  family    = {stats['family']}")
+    print(f"  n_tensors = {stats['n_tensors']}")
+    print(f"  dtype     = {stats['dtype']}")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

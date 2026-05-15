@@ -9,28 +9,45 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-include_directories(include)
+include_directories(include src)
 
-# Stub-plus-helpers build. The model entries (face_detect_open / _embed_open /
-# inference) are ENOSYS today; the model-independent helpers (anchor table +
-# decode, 5-point alignment + bilinear sampler, cosine/L2 distance) are real
-# and tested. The real ggml-backed model TUs replace face_stub.c without
-# changing the ABI; see AGENTS.md for the port plan.
+# Phase 2: real BlazeFace + face-embed forward graphs (pure-C scalar
+# reference today; the elizaOS/llama.cpp ggml dispatch is a Phase 3
+# swap behind the same C ABI). The model entries (face_detect_open /
+# face_embed_open / forward + post-process) live in face_model.c. The
+# model-independent helpers (anchors, alignment, distance) keep their
+# Phase 1 implementations.
 set(FACE_SRCS
-    src/face_stub.c
+    src/face_model.c
+    src/face_blazeface.c
+    src/face_embed.c
+    src/face_kernels.c
+    src/face_image.c
+    src/face_gguf.c
+    src/face_nms.c
     src/face_anchor_decode.c
     src/face_align.c
     src/face_distance.c
 )
 
+# Build a static library AND a shared library so the TS bindings in
+# plugins/plugin-vision can `dlopen` the .so / .dylib at runtime.
 add_library(face STATIC ${FACE_SRCS})
 target_include_directories(face PUBLIC include)
 target_compile_options(face PRIVATE -O3 -Wall -Wextra -Wno-unused-parameter)
 
-# libm needed for sigmoidf/expf/sqrtf/floorf in the real helper TUs.
+add_library(face_shared SHARED ${FACE_SRCS})
+target_include_directories(face_shared PUBLIC include)
+set_target_properties(face_shared PROPERTIES
+    OUTPUT_NAME face
+    POSITION_INDEPENDENT_CODE ON)
+target_compile_options(face_shared PRIVATE -O3 -Wall -Wextra -Wno-unused-parameter)
+
+# libm needed for sigmoidf/expf/sqrtf/floorf in the helpers.
 find_library(M_LIB m)
 if(M_LIB)
     target_link_libraries(face PUBLIC ${M_LIB})
+    target_link_libraries(face_shared PUBLIC ${M_LIB})
 endif()
 
 enable_testing()
@@ -54,3 +71,15 @@ add_executable(face_distance_test test/face_distance_test.c)
 target_link_libraries(face_distance_test PRIVATE face)
 target_compile_options(face_distance_test PRIVATE -O2 -Wall -Wextra)
 add_test(NAME face_distance_test COMMAND face_distance_test)
+
+add_executable(face_runtime_test test/face_runtime_test.c)
+target_link_libraries(face_runtime_test PRIVATE face)
+target_include_directories(face_runtime_test PRIVATE test src)
+target_compile_options(face_runtime_test PRIVATE -O2 -Wall -Wextra -Wno-unused-parameter)
+add_test(NAME face_runtime_test COMMAND face_runtime_test)
+
+add_executable(face_embed_runtime_test test/face_embed_runtime_test.c)
+target_link_libraries(face_embed_runtime_test PRIVATE face)
+target_include_directories(face_embed_runtime_test PRIVATE test src)
+target_compile_options(face_embed_runtime_test PRIVATE -O2 -Wall -Wextra -Wno-unused-parameter)
+add_test(NAME face_embed_runtime_test COMMAND face_embed_runtime_test)

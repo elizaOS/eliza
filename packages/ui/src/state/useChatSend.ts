@@ -1072,7 +1072,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
 
         // Eagerly rename "New Chat" using a snippet of the first message
-        const activeConv = conversationsRef.current.find((c) => c.id === convId);
+        const activeConv = conversationsRef.current.find(
+          (c) => c.id === convId,
+        );
         convRoomId = await resolveConversationRoomId(convId, convRoomId);
         if (
           activeConv &&
@@ -1392,7 +1394,6 @@ export function useChatSend(deps: UseChatSendDeps) {
     activeConversationId,
     interruptActiveChatPipeline,
     loadConversations,
-    resolveConversationRoomId,
     setActionNotice,
     activeConversationIdRef,
     setActiveConversationId,

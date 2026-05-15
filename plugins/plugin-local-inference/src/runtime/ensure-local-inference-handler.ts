@@ -54,13 +54,13 @@ import { handlerRegistry } from "../services/handler-registry";
 import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { listInstalledModels } from "../services/registry";
 import { installRouterHandler } from "../services/router-handler";
-import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 import {
 	type ElizaHarnessSchema,
 	elizaHarnessSchemaFromSkeleton,
 } from "../services/structured-output";
 import type { AgentModelSlot } from "../services/types";
 import { decodeMonoPcm16Wav, type TranscriptionAudio } from "../services/voice";
+import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 
 type GenerateTextHandler = (
 	runtime: IAgentRuntime,

@@ -161,37 +161,37 @@ describe("ensureLocalInferenceHandler", () => {
 		await ensureLocalInferenceHandler(runtime);
 
 		expect(registrations).toEqual(
-				expect.arrayContaining([
-					expect.objectContaining({
-						modelType: ModelType.TEXT_SMALL,
-						provider: "eliza-local-inference",
-						priority: 0,
-					}),
-					expect.objectContaining({
-						modelType: ModelType.TEXT_LARGE,
-						provider: "eliza-local-inference",
-						priority: 0,
-					}),
-					expect.objectContaining({
-						modelType: ModelType.RESPONSE_HANDLER,
-						provider: "eliza-local-inference",
-						priority: 0,
-					}),
-					expect.objectContaining({
-						modelType: ModelType.ACTION_PLANNER,
-						provider: "eliza-local-inference",
-						priority: 0,
-					}),
-					expect.objectContaining({
-						modelType: ModelType.TEXT_COMPLETION,
-						provider: "eliza-local-inference",
-						priority: 0,
-					}),
-					expect.objectContaining({
-						modelType: ModelType.TEXT_EMBEDDING,
-						provider: "eliza-local-inference",
-						priority: 0,
-					}),
+			expect.arrayContaining([
+				expect.objectContaining({
+					modelType: ModelType.TEXT_SMALL,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
+				expect.objectContaining({
+					modelType: ModelType.TEXT_LARGE,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
+				expect.objectContaining({
+					modelType: ModelType.RESPONSE_HANDLER,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
+				expect.objectContaining({
+					modelType: ModelType.ACTION_PLANNER,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
+				expect.objectContaining({
+					modelType: ModelType.TEXT_COMPLETION,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
+				expect.objectContaining({
+					modelType: ModelType.TEXT_EMBEDDING,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
 				expect.objectContaining({
 					modelType: ModelType.TEXT_TO_SPEECH,
 					provider: "eliza-local-inference",
@@ -221,19 +221,19 @@ describe("ensureLocalInferenceHandler", () => {
 			registrations.some(
 				(entry) => entry.modelType === ModelType.TEXT_EMBEDDING,
 			),
-			).toBe(false);
-			expect(registrations).toEqual(
-				expect.arrayContaining([
-					expect.objectContaining({ modelType: ModelType.TEXT_SMALL }),
-					expect.objectContaining({ modelType: ModelType.TEXT_LARGE }),
-					expect.objectContaining({ modelType: ModelType.RESPONSE_HANDLER }),
-					expect.objectContaining({ modelType: ModelType.ACTION_PLANNER }),
-					expect.objectContaining({ modelType: ModelType.TEXT_COMPLETION }),
-					expect.objectContaining({ modelType: ModelType.TEXT_TO_SPEECH }),
-					expect.objectContaining({ modelType: ModelType.TRANSCRIPTION }),
-				]),
-			);
-		});
+		).toBe(false);
+		expect(registrations).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ modelType: ModelType.TEXT_SMALL }),
+				expect.objectContaining({ modelType: ModelType.TEXT_LARGE }),
+				expect.objectContaining({ modelType: ModelType.RESPONSE_HANDLER }),
+				expect.objectContaining({ modelType: ModelType.ACTION_PLANNER }),
+				expect.objectContaining({ modelType: ModelType.TEXT_COMPLETION }),
+				expect.objectContaining({ modelType: ModelType.TEXT_TO_SPEECH }),
+				expect.objectContaining({ modelType: ModelType.TRANSCRIPTION }),
+			]),
+		);
+	});
 
 	it("skips handler registration outside local modes", async () => {
 		modeState.mode = "cloud";

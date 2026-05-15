@@ -1,3 +1,4 @@
+import { createElizaPlugin } from "@elizaos/agent";
 import { ModelType, stringToUuid, type Plugin } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { itIf } from "../../../../test/helpers/conditional-tests.ts";
@@ -11,8 +12,8 @@ const selectedLiveProvider = liveModelTestsEnabled
   : null;
 const canRunLiveTests = liveModelTestsEnabled && selectedLiveProvider !== null;
 const helperRegressionPlugin: Plugin = {
+  ...createElizaPlugin({ agentId: "helper-regression-agent" }),
   name: "helper-regression-plugin",
-  description: "Minimal plugin for real-runtime helper regression coverage",
 };
 
 describe("Real Runtime Helper Regressions", () => {
@@ -22,7 +23,6 @@ describe("Real Runtime Helper Regressions", () => {
     runtimeResult = await createRealTestRuntime({
       withLLM: canRunLiveTests,
       preferredProvider: selectedLiveProvider?.name,
-      advancedCapabilities: true,
       plugins: [helperRegressionPlugin],
       characterName: "HelperRegressionAgent",
     });

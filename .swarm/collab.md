@@ -841,3 +841,30 @@ coordinate here, don't kill peers.
   Metal stays compute-gated (no Mac). H2.e can now run per-tier eval
   rounds against the green binary; that's a separate operator workstream
   (~30 min/tier for text_eval + voice_rtf + e2e_loop + finalize).
+
+## I3 — gap close (2026-05-15)
+
+- 2026-05-15 I3 phase=impl: PID written to .swarm/run/I3.pid.
+  Gaps swept and dispositioned.
+
+  **T-asr DONE**: K-quant ladder (Q3_K_M/Q4_K_M/Q5_K_M/Q6_K) for
+  Qwen3-ASR-1.7B pushed to elizaos/eliza-1 (commit 50cffb075ae3c24a).
+  voice-models.ts updated with asr v0.2.0 entry. CHANGELOG updated.
+  Commit: c933c2bf0a.
+
+  **stale 1_7b bundle default DONE**: freeze-voice.mjs + voice-create-profile.mjs
+  both updated to use eliza-1-2b.bundle. Commit: 7afb8ce504.
+
+  **Q1-utmos DONE**: utmos>=0.1.0 added to kokoro/requirements.txt.
+  Commit: 967cb62163.
+
+  **H2.f CUDA fused build DONE**: Retried build after submodule bump
+  (5da0f068a — drop static on audio_speech_handler). llama-server binary
+  produced at build-h2f-cuda/bin/llama-server (8.4 MB, CUDA, OmniVoice
+  audio_speech_handler linked). Commit: 4ffeb5cdf8.
+
+  **T-asr phase=impl-done**: K-quant ladder complete.
+  **H2.f phase=impl-done**: CUDA fused build verified GREEN.
+  **W3-3 follow-up 1 DONE** (preset-aware logic in committed source): H2.c.
+  **W3-3 follow-up 2 DONE** (slot-KV-pool real LRU impl): H2.c.
+  **W3-3 follow-up 3** (stale verify-symbols.mjs): removed by H2.c.

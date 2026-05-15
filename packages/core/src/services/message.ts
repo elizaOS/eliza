@@ -2147,8 +2147,9 @@ async function createV5MessageContextObject(args: {
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
-	const excludeRecentMessagesProviderText =
-		hasStructuredRecentMessages(args.state);
+	const excludeRecentMessagesProviderText = hasStructuredRecentMessages(
+		args.state,
+	);
 	const renderExclusions = args.extraProviderExclusions?.length
 		? [...MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
 		: MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
