@@ -165,20 +165,27 @@ function canFit(
  * filtering would hide every kernel-required model and the dispatcher's
  * load-time check will surface the real error if/when the user tries to
  * activate it.
+ *
+ * `unsupportedKernels` is a soft signal layered on top: when the binary
+ * has no satisfied `requiresKernel` anchor and exposes only an unsupported
+ * backend (OpenVINO-only Intel build for an Eliza-1 text tier), drop the
+ * tier so the recommender doesn't suggest a path that has no kernel route.
+ * A binary that already satisfies `requiresKernel` stays eligible even
+ * when it also advertises an unsupported backend (e.g. DFlash + OpenVINO
+ * co-compiled — the dispatcher is responsible for steering the spawn off
+ * OpenVINO at runtime).
  */
 function kernelRequirementsSatisfied(
   model: CatalogModel,
   binaryKernels: Partial<Record<string, boolean>> | null,
 ): boolean {
-  const unsupported = model.runtime?.optimizations?.unsupportedKernels ?? [];
-  if (unsupported.includes("openvino") && binaryKernels?.openvino === true) {
-    return false;
-  }
-
   const required = model.runtime?.optimizations?.requiresKernel ?? [];
-  if (required.length === 0) return true;
   if (!binaryKernels) return true;
-  return required.every((k) => binaryKernels[k] === true);
+  if (required.length > 0) {
+    return required.every((k) => binaryKernels[k] === true);
+  }
+  const unsupported = model.runtime?.optimizations?.unsupportedKernels ?? [];
+  return !unsupported.some((k) => binaryKernels[k] === true);
 }
 
 function modelsFromLadder(
