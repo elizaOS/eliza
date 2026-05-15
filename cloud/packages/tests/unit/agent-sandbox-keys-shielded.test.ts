@@ -106,3 +106,21 @@ describe("Agent sandbox keys excluded from dashboard listing", () => {
     expect(visible).toEqual([]);
   });
 });
+
+describe("POST /api-keys — reserved prefix guard", () => {
+  test("isAgentSandboxKey rejects a name that starts with the reserved prefix", () => {
+    expect(ApiKeysService.isAgentSandboxKey({ name: "agent-sandbox:user-crafted" })).toBe(true);
+  });
+
+  test("isAgentSandboxKey accepts names that do not use the reserved prefix", () => {
+    for (const name of ["my-key", "prod-api-key", "agent-sandbox-lookalike", ""]) {
+      expect(ApiKeysService.isAgentSandboxKey({ name })).toBe(false);
+    }
+  });
+
+  test("AGENT_KEY_NAME_PREFIX constant matches the guard logic", () => {
+    const prefix = ApiKeysService.AGENT_KEY_NAME_PREFIX;
+    expect(ApiKeysService.isAgentSandboxKey({ name: `${prefix}anything` })).toBe(true);
+    expect(ApiKeysService.isAgentSandboxKey({ name: `x${prefix}anything` })).toBe(false);
+  });
+});

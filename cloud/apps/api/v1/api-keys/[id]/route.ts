@@ -72,6 +72,13 @@ app.patch("/", async (c) => {
       expires_at,
     } = updateApiKeySchema.parse(body);
 
+    if (name !== undefined && ApiKeysService.isAgentSandboxKey({ name })) {
+      return c.json(
+        { error: "Name prefix 'agent-sandbox:' is reserved for provisioner-managed keys." },
+        400,
+      );
+    }
+
     const updatedKey = await apiKeysService.update(id, {
       ...(name !== undefined && { name }),
       ...(description !== undefined && { description }),

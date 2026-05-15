@@ -65,6 +65,13 @@ app.post("/", async (c) => {
     const { name, description, permissions, rate_limit, expires_at } =
       createApiKeySchema.parse(body);
 
+    if (ApiKeysService.isAgentSandboxKey({ name })) {
+      return c.json(
+        { error: "Name prefix 'agent-sandbox:' is reserved for provisioner-managed keys." },
+        400,
+      );
+    }
+
     const { apiKey, plainKey } = await apiKeysService.create({
       name,
       description,
