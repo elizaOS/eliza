@@ -1,9 +1,33 @@
-# Swarm collaboration notes — Voice Wave 2 (resumed)
+# Swarm collaboration notes — Voice Waves 2+3
 
 > Note: the original collab.md was removed by `a320fa29c5 chore: second-pass
 > orphaned markdown removal`. This file is recreated locally so re-spawned
 > agents can coordinate. It is intentionally **untracked** — write to it and
 > read from it, but don't commit it (swarm files were scrubbed for a reason).
+
+## Wave 3 entry point (read first)
+
+- **Brief:** `.swarm/VOICE_WAVE_3.md` (canonical scope doc).
+- **Wave 2 brief:** `.swarm/VOICE_WAVE_2.md` (foundations — most done).
+- **Wave 3 hard rules** (= Wave 2 rules — restated below for new agents):
+  - No worktrees. Stay on `develop`. Commit dirty code as you go.
+  - No `git stash`. Commit WIP as `wip(W3-N): …`.
+  - No branch switching unless explicitly told.
+  - Don't kill other agents' processes. Write your PID to
+    `.swarm/run/W3-N.pid` on start; read peers' PIDs before sending any
+    signal.
+  - **Coordinate** through this file. Read on every wake. If something
+    keeps getting deleted or rewritten, leave a note.
+  - **Don't stop until done.** No "good enough", no "leaving for
+    follow-up". Out-of-scope-but-required CI / workflow fixes are in
+    scope.
+  - **Push proactively** when work is meaningful.
+- **Wave 3 agent naming convention:** `W3-1` .. `W3-13` and `C0-W3`.
+  Each writes `.swarm/impl/W3-N-<slug>.md`. Each landing-done commit
+  posts a `phase=impl-done` line here.
+- **Coordination quirk to remember (from Wave 2):** `git pull
+  --no-rebase` against `origin/develop` because concurrent peers do
+  `git add -A` commits to develop.
 
 ## Active agents
 
@@ -184,3 +208,25 @@
 - 2026-05-14 02:33 I7-kokoro phase=impl-done: re-dispatch complete. Voice-clone path landed (mel-fit ref_s optimization, anchor reg, OOM-resilient, against real kokoro 0.9.4 API since style_encoder doesn't exist on PyPI). af_samantha.bin produced + verified loadable via KPipeline + tested synthesis. Full eval ran end-to-end: baseline af_bella passes WER+RTF (0.065/97.3); candidate af_samantha REGRESSES on every quality metric (utmos -7.91 vs 26.4, wer 0.599 vs 0.065, spkSim 0.257 vs 0.462 — speaker similarity moved AWAY from target). beatsBaseline=False. Dry-run HF push to elizaos/eliza-1-voice-kokoro-samantha-v01 private=True verified end-to-end; real push BLOCKED on (a) eval regression, (b) Her-derivative owner sign-off. LoRA path gated on integrating non-pip-installable jonirajala/kokoro_training fork — documented. Kokoro emotion-knob gap documented (no inference-time emotion arg; handoff to I3). Tests: 29/29 pytest green; bun typecheck plugin-local-inference green. eval_kokoro.py fix landed (51b4b5d682) for baseline-voice resolution + .bin path support. 4 commits on develop. Output report .swarm/impl/I7-kokoro.md.
 
 - 2026-05-14 12:00 N2-kokoro-finetune phase=impl: spawned after polling for N1 vendor work (no N1 commits found). Discovery: jonirajala/kokoro_training is NOT a fine-tune fork for hexgrad/Kokoro-82M — it's a from-scratch 22M-param simplified encoder-decoder (not StyleTTS-2 + iSTFTNet). Vendoring it wouldn't enable forward_train on the real Kokoro. Pivoting to direct full-FT implementation: write our own forward_train against the real KModel by extending I7's _forward_with_grad pattern from extract_voice_embedding.py (which already bypasses @torch.no_grad) to all model parameters. New file packages/training/scripts/kokoro/finetune_kokoro_full.py + tests. Will commit + push every meaningful step as wip(N2-kokoro-finetune): … Output: .swarm/impl/N2-kokoro-finetune.md.
+
+---
+
+## C0-W3 — Voice Wave 3 coordinator (active)
+
+### Standing C0-W3 decisions (read each wake)
+
+- **Canonical HF repo slug = `elizaos/eliza-1`.**
+- **Canonical Eliza-1 tier set** = `ELIZA_1_TIER_IDS` at
+  `packages/shared/src/local-inference/catalog.ts` (`0_8b 2b 4b 9b 27b
+  27b-256k 27b-1m`).
+- **llama.cpp fork pin** lives in the submodule HEAD; resolve from
+  `git -C plugins/plugin-local-inference/native/llama.cpp describe
+  --always`. W3-3 may bump it.
+- **Auto-fix lint** via `bunx @biomejs/biome check --write[--unsafe]`
+  authorized; commit as `fix(verify): biome auto-fix <files>`.
+
+### Wave 3 cycle log (newest at top)
+
+
+- 2026-05-14 W3-3-omnivoice-merge phase=impl-start: starting OmniVoice → llama.cpp literal merge per VOICE_WAVE_3.md §4 W3-3. State map at start: (a) `tools/omnivoice/` tree in submodule has patches 0001-0003 applied (vendored sources, LLAMA_BUILD_OMNIVOICE option, backend-share patch) — this is the canonical merged path; (b) `omnivoice/` tree in submodule is the legacy graft (ELIZA_FUSE_OMNIVOICE, generated at build time by prepare.mjs); (c) `tools/server/server.cpp` already has the /v1/audio/speech route wired under #ifdef ELIZA_FUSE_OMNIVOICE; (d) `build-llama-cpp-dflash.mjs` still drives the legacy graft path. Plan: (1) rename the server `#ifdef` to `LLAMA_BUILD_OMNIVOICE` (canonical define), (2) add libelizainference shared lib + ov_encode_reference + FFI bridge to `tools/omnivoice/`, (3) add streaming optimizations to merged sources, (4) update build script to drive `LLAMA_BUILD_OMNIVOICE=ON` + drop the legacy graft step, (5) delete `omnivoice/` legacy tree from fork, (6) tag v1.0.1-eliza, bump submodule pin, (7) introduce OMNIVOICE_INSIDE_LLAMA_CPP=1 as canonical env. Will commit liberally as `wip(W3-3): …` and `feat(W3-3): …`. Won't clobber W3-1 (Kokoro K-quant arch in same fork) — coordinate before touching ggml backend dirs.
+

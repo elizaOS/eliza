@@ -18,3 +18,11 @@ export {
 	setVoiceOnboardingProfileStore,
 	setVoiceOnboardingSettingsWriter,
 } from "./voice-onboarding-routes.js";
+export {
+	handleVoiceProfileRoutes,
+	resolveDefaultProfileId,
+	registerProfileInCatalog,
+	type VoiceProfileCatalog,
+	type VoiceProfileCatalogEntry,
+	type VoiceProfileRouteOptions,
+} from "../services/voice/voice-profile-routes.js";

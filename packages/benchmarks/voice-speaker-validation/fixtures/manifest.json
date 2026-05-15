@@ -1,0 +1,150 @@
+{
+  "f1_samantha_solo": {
+    "path": "f1_samantha_solo.wav",
+    "speakers": 1,
+    "ground_truth": [
+      {
+        "speaker": "samantha",
+        "start_ms": 0,
+        "end_ms": 10000
+      }
+    ],
+    "description": "Single-speaker control: Samantha corpus only"
+  },
+  "f2_two_speaker": {
+    "path": "f2_two_speaker.wav",
+    "speakers": 2,
+    "ground_truth": [
+      {
+        "speaker": "speaker_a",
+        "start_ms": 0,
+        "end_ms": 2791
+      },
+      {
+        "speaker": "speaker_b",
+        "start_ms": 3091,
+        "end_ms": 5591
+      },
+      {
+        "speaker": "speaker_a",
+        "start_ms": 5891,
+        "end_ms": 7266
+      },
+      {
+        "speaker": "speaker_b",
+        "start_ms": 7566,
+        "end_ms": 10066
+      },
+      {
+        "speaker": "speaker_a",
+        "start_ms": 10366,
+        "end_ms": 15575
+      }
+    ],
+    "description": "Two-speaker alternating: Speaker A (samantha) vs Speaker B (pitch-down)"
+  },
+  "f3_three_speaker": {
+    "path": "f3_three_speaker.wav",
+    "speakers": 3,
+    "ground_truth": [
+      {
+        "speaker": "speaker_a",
+        "start_ms": 0,
+        "end_ms": 2791
+      },
+      {
+        "speaker": "speaker_b",
+        "start_ms": 3091,
+        "end_ms": 6091
+      },
+      {
+        "speaker": "speaker_c",
+        "start_ms": 6391,
+        "end_ms": 8391
+      },
+      {
+        "speaker": "speaker_a",
+        "start_ms": 8691,
+        "end_ms": 12691
+      },
+      {
+        "speaker": "speaker_b",
+        "start_ms": 12991,
+        "end_ms": 15491
+      },
+      {
+        "speaker": "speaker_c",
+        "start_ms": 15791,
+        "end_ms": 18291
+      }
+    ],
+    "description": "Three-speaker conversation: Speaker A, B (pitch-down), C (bright)"
+  },
+  "f4_long_dialogue": {
+    "path": "f4_long_dialogue.wav",
+    "speakers": 2,
+    "ground_truth": [
+      {
+        "speaker": "speaker_a",
+        "start_ms": 0,
+        "end_ms": 2791
+      },
+      {
+        "speaker": "speaker_b",
+        "start_ms": 3091,
+        "end_ms": 5591
+      },
+      {
+        "speaker": "speaker_a",
+        "start_ms": 5891,
+        "end_ms": 7266
+      },
+      {
+        "speaker": "speaker_b",
+        "start_ms": 7566,
+        "end_ms": 10066
+      },
+      {
+        "speaker": "speaker_a",
+        "start_ms": 10366,
+        "end_ms": 16366
+      },
+      {
+        "speaker": "speaker_b",
+        "start_ms": 16666,
+        "end_ms": 19666
+      },
+      {
+        "speaker": "speaker_a",
+        "start_ms": 19966,
+        "end_ms": 25175
+      }
+    ],
+    "description": "Long two-speaker dialogue with repeat appearances \u2014 tests stable re-identification"
+  },
+  "f5_jill_scenario": {
+    "path": "f5_jill_scenario.wav",
+    "speakers": 2,
+    "ground_truth": [
+      {
+        "speaker": "owner",
+        "start_ms": 0,
+        "end_ms": 2791
+      },
+      {
+        "speaker": "jill",
+        "start_ms": 3091,
+        "end_ms": 5891
+      }
+    ],
+    "scenario": "jill",
+    "owner_utterance": "this is Jill, Jill is my wife",
+    "jill_utterance": "hey there, I'm Jill",
+    "expected_entities": 2,
+    "expected_relationship": {
+      "type": "partner_of",
+      "label": "wife"
+    },
+    "description": "Jill scenario: owner introduces Jill, then Jill self-identifies \u2014 asserts 2 distinct entities + relationship edge"
+  }
+}

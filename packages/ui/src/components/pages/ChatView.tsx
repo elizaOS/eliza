@@ -9,6 +9,12 @@ import {
   useRef,
   useState,
 } from "react";
+import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
+import {
+  loadContinuousChatMode,
+  saveContinuousChatMode,
+} from "../../state/persistence";
+import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { type CodingAgentSession, client } from "../../api/client";
 import type {
   ConversationMessage,
@@ -192,6 +198,15 @@ export function ChatView({
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const [imageDragOver, setImageDragOver] = useState(false);
+  const [continuousChatMode, setContinuousChatMode] =
+    useState<VoiceContinuousMode>(loadContinuousChatMode);
+  const handleContinuousChatModeChange = useCallback(
+    (next: VoiceContinuousMode) => {
+      setContinuousChatMode(next);
+      saveContinuousChatMode(next);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (isGameModal || typeof window === "undefined") return;
@@ -693,7 +708,21 @@ export function ChatView({
       variant="default"
       className={defaultComposerShellClassName}
       style={defaultComposerShellStyle}
-      before={<CodingAgentControlChip />}
+      before={
+        <>
+          <CodingAgentControlChip />
+          {voice.supported ? (
+            <div className="flex justify-end px-1 pb-0.5">
+              <ContinuousChatToggle
+                compact
+                value={continuousChatMode}
+                onChange={handleContinuousChatModeChange}
+                data-testid="chat-view-continuous-chat-toggle"
+              />
+            </div>
+          ) : null}
+        </>
+      }
     >
       <ChatComposer
         variant="default"

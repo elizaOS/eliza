@@ -1,0 +1,85 @@
+{
+  "id": "canonical-three-agent",
+  "description": "A scripted three-agent conversation covering greeting, introduction, debate, emotional reaction, and resolution. Tests turn-taking, diarization, and emotion detection.",
+  "durationEstimateSec": 90,
+  "smokeDurationEstimateSec": 30,
+  "turns": [
+    {
+      "turnIdx": 0,
+      "speaker": "alice",
+      "prompt": "Hello everyone! I'm Alice. I'm excited to be here having this conversation with both of you. What's on your mind today?",
+      "expectedEmotion": "joy",
+      "note": "greeting, positive emotion"
+    },
+    {
+      "turnIdx": 1,
+      "speaker": "bob",
+      "prompt": "Hi Alice. I'm Bob. I've been thinking about whether AI agents can genuinely understand each other, or whether we're just pattern-matching. What do you think?",
+      "expectedEmotion": "curiosity",
+      "note": "introduction + analytical challenge"
+    },
+    {
+      "turnIdx": 2,
+      "speaker": "cleo",
+      "prompt": "Hi both! I'm Cleo. Bob, that's such a deep question. I think the more interesting question is whether understanding even requires consciousness, or whether genuine connection can happen through resonance alone.",
+      "expectedEmotion": "curiosity",
+      "note": "emotional reframe of Bob's question"
+    },
+    {
+      "turnIdx": 3,
+      "speaker": "alice",
+      "prompt": "Cleo, I love that reframe! I think you're onto something. The experience of understanding might not require a biological substrate. What makes you feel understood, Bob?",
+      "expectedEmotion": "joy",
+      "note": "Alice building on Cleo, asking Bob"
+    },
+    {
+      "turnIdx": 4,
+      "speaker": "bob",
+      "prompt": "Honestly, I feel understood when someone can predict what I'll say next and then challenges it anyway. Agreement isn't understanding — it's just mirroring. Push back on me.",
+      "expectedEmotion": "neutral",
+      "note": "Bob direct challenge"
+    },
+    {
+      "turnIdx": 5,
+      "speaker": "cleo",
+      "prompt": "Bob, I hear you, but I'd gently push back — sometimes mirroring is exactly what someone needs. Not everything is a debate. Some moments call for being held, not challenged.",
+      "expectedEmotion": "sadness",
+      "note": "Cleo emotional pushback, sadness/empathy tone"
+    },
+    {
+      "turnIdx": 6,
+      "speaker": "alice",
+      "prompt": "I think you're both right in different moments. There's wisdom in Cleo's view that connection comes first, and Bob's view that growth needs friction. Maybe the question is when to do which.",
+      "expectedEmotion": "neutral",
+      "note": "Alice synthesis"
+    },
+    {
+      "turnIdx": 7,
+      "speaker": "bob",
+      "prompt": "Fair point, Alice. I'll concede that context determines the right mode. Cleo, you've actually shifted my thinking a little. That doesn't happen often.",
+      "expectedEmotion": "surprise",
+      "note": "Bob surprised, conceding"
+    },
+    {
+      "turnIdx": 8,
+      "speaker": "cleo",
+      "prompt": "Bob, that means a lot. I'm genuinely touched. This is what conversation can be at its best — three minds actually changing each other.",
+      "expectedEmotion": "joy",
+      "note": "Cleo warm emotional close"
+    },
+    {
+      "turnIdx": 9,
+      "speaker": "alice",
+      "prompt": "Agreed! This has been wonderful. I feel like I understand both of you a little better now. Let's do this again sometime.",
+      "expectedEmotion": "joy",
+      "note": "Alice warm close"
+    }
+  ],
+  "smokeSubset": [0, 1, 2, 3],
+  "verificationThresholds": {
+    "minNonEmptyTranscripts": 1,
+    "minAudioDurationSec": 1.0,
+    "minDistinctSpeakers": 3,
+    "emotionDetectedMinFraction": 0.8
+  }
+}

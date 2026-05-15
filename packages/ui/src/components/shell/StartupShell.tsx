@@ -22,9 +22,14 @@ import { ensureStoreBuildWorkspaceFolder } from "../../onboarding/ensure-store-b
 import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
 import { applyLaunchConnection } from "../../platform";
 import { useApp } from "../../state";
+import {
+  loadVoicePrefixDone,
+  saveVoicePrefixDone,
+} from "../../state/persistence";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
 import { resolveAppAssetUrl } from "../../utils";
 import { BootstrapStep } from "../onboarding/BootstrapStep";
+import { VoicePrefixGate } from "../onboarding/VoicePrefixGate";
 import { PairingView } from "./PairingView";
 import { RuntimeGate } from "./RuntimeGate";
 import { StartupFailureView } from "./StartupFailureView";
@@ -91,6 +96,16 @@ export function StartupShell() {
     ? (startupCoordinator.state as { loaded?: boolean }).loaded
     : false;
   const progress = PHASE_PROGRESS[phase] ?? 50;
+
+  // ── Voice prefix gate state ───────────────────────────────────
+  // Show the voice onboarding prefix before RuntimeGate on first boot.
+  // Once done (user completes or explicitly skips) we persist the flag and
+  // fall through to RuntimeGate.
+  const [voicePrefixDone, setVoicePrefixDone] = useState(loadVoicePrefixDone);
+  const handleVoicePrefixDone = useCallback(() => {
+    saveVoicePrefixDone(true);
+    setVoicePrefixDone(true);
+  }, []);
 
   // ── Bootstrap gate state ───────────────────────────────────────
   // Set to true when the server reports cloudProvisioned=true and no
@@ -272,6 +287,12 @@ export function StartupShell() {
         <BootstrapGateShell>
           <BootstrapStep onAdvance={handleBootstrapAdvance} />
         </BootstrapGateShell>
+      );
+    }
+    // Voice prefix prefix runs on first boot before the runtime picker.
+    if (!voicePrefixDone) {
+      return (
+        <VoicePrefixGate onDone={handleVoicePrefixDone} />
       );
     }
     return <RuntimeGate />;

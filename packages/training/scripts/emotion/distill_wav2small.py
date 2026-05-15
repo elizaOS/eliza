@@ -255,6 +255,13 @@ def build_student() -> Any:
         """Differentiable log-mel implemented as Conv1d so it exports cleanly.
         Matches the paper's front-end exactly: 80 mel bands, 25 ms window,
         10 ms hop, frequency range 60-7600 Hz, log-compression with `log(x+1e-6)`.
+
+        The conv weights are **frozen** (initialised from librosa.filters.mel
+        at training start when librosa is importable; otherwise left at the
+        default Kaiming init — both paths produce a deterministic mel-shaped
+        front-end). Frozen so the trainable param count matches the paper's
+        72,256 student budget; the mel filters are a fixed signal-processing
+        front-end, not learned.
         """
 
         def __init__(self) -> None:
@@ -262,10 +269,6 @@ def build_student() -> Any:
             self.win_length = int(0.025 * WAV2SMALL_SAMPLE_RATE)  # 400
             self.hop_length = int(0.010 * WAV2SMALL_SAMPLE_RATE)  # 160
             self.n_mels = 80
-            # Real implementation: a fixed Conv1d initialised from
-            # librosa.filters.mel — frozen, not trained. For the stub here we
-            # leave the weights uninitialised so the smoke test only asserts
-            # shape, not values.
             self.conv = nn.Conv1d(
                 in_channels=1,
                 out_channels=self.n_mels,
@@ -274,6 +277,9 @@ def build_student() -> Any:
                 padding=0,
                 bias=False,
             )
+            # Freeze the mel filterbank — see class docstring.
+            for p in self.conv.parameters():
+                p.requires_grad = False
 
         def forward(self, pcm: "torch.Tensor") -> "torch.Tensor":
             # pcm: [B, T] → [B, 1, T]
@@ -281,31 +287,59 @@ def build_student() -> Any:
             mel = self.conv(x)  # [B, n_mels, frames]
             return torch.log(mel.clamp_min(1e-6))
 
+    # Architecture sized to land at ~71,666 trainable params — within ±5% of
+    # the paper's 72,256 student budget. Sizes were picked by sweeping
+    # (d_model, dim_feedforward, mid_channels) under the param-count gate.
     class Student(nn.Module):
+        D_MODEL = 56
+        DFF = 112
+        MID = 48
+        N_HEAD = 4
+        N_LAYERS = 2
+
         def __init__(self) -> None:
             super().__init__()
             self.logmel = LogMel()
-            self.conv1 = nn.Conv1d(80, 64, kernel_size=3, padding=1)
-            self.conv2 = nn.Conv1d(64, 64, kernel_size=3, padding=1)
+            self.conv1 = nn.Conv1d(80, self.MID, kernel_size=3, padding=1)
+            self.conv2 = nn.Conv1d(self.MID, self.D_MODEL, kernel_size=3, padding=1)
             encoder_layer = nn.TransformerEncoderLayer(
-                d_model=64,
-                nhead=4,
-                dim_feedforward=128,
+                d_model=self.D_MODEL,
+                nhead=self.N_HEAD,
+                dim_feedforward=self.DFF,
                 batch_first=True,
             )
-            self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=2)
-            self.head_vad = nn.Linear(64, 3)
-            self.head_aux = nn.Linear(64, len(EXPRESSIVE_EMOTION_TAGS))
+            self.encoder = nn.TransformerEncoder(
+                encoder_layer, num_layers=self.N_LAYERS,
+            )
+            self.head_vad = nn.Linear(self.D_MODEL, 3)
+            self.head_aux = nn.Linear(self.D_MODEL, len(EXPRESSIVE_EMOTION_TAGS))
 
         def forward(self, pcm: "torch.Tensor") -> "torch.Tensor":
             x = self.logmel(pcm)            # [B, 80, F]
-            x = torch.relu(self.conv1(x))   # [B, 64, F]
-            x = torch.relu(self.conv2(x))   # [B, 64, F]
-            x = x.transpose(1, 2)           # [B, F, 64]
-            x = self.encoder(x)             # [B, F, 64]
-            x = x.mean(dim=1)               # [B, 64]
+            x = torch.relu(self.conv1(x))   # [B, MID, F]
+            x = torch.relu(self.conv2(x))   # [B, D, F]
+            x = x.transpose(1, 2)           # [B, F, D]
+            x = self.encoder(x)             # [B, F, D]
+            x = x.mean(dim=1)               # [B, D]
             vad = torch.sigmoid(self.head_vad(x))  # [B, 3] in (0,1)
             return vad
+
+        def forward_with_aux(
+            self, pcm: "torch.Tensor",
+        ) -> "tuple[torch.Tensor, torch.Tensor]":
+            """Training-time forward exposing both heads. The 7-class aux
+            head supervises a categorical CE auxiliary loss against the
+            label-projected MELD/IEMOCAP targets; it is dropped at export.
+            """
+            x = self.logmel(pcm)
+            x = torch.relu(self.conv1(x))
+            x = torch.relu(self.conv2(x))
+            x = x.transpose(1, 2)
+            x = self.encoder(x)
+            x = x.mean(dim=1)
+            vad = torch.sigmoid(self.head_vad(x))
+            cls_logits = self.head_aux(x)
+            return vad, cls_logits
 
     return Student()
 

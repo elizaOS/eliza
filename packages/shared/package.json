@@ -78,11 +78,6 @@
       "default": "./dist/runtime-env.js",
       "types": "./dist/runtime-env.d.ts"
     },
-    "./local-inference": {
-      "import": "./dist/local-inference/index.js",
-      "default": "./dist/local-inference/index.js",
-      "types": "./dist/local-inference/index.d.ts"
-    },
     "./*.css": "./dist/*.css",
     "./*": {
       "import": "./dist/*.js",

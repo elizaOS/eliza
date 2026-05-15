@@ -54,7 +54,12 @@ import type {
 } from "../memory-arbiter";
 import { AsrBackendUnavailableError } from "./errors";
 import { hashAsrInput } from "./hash";
-import type { AsrBackend, AsrBackendLoader, AsrRequest, AsrResult } from "./types";
+import type {
+	AsrBackend,
+	AsrBackendLoader,
+	AsrRequest,
+	AsrResult,
+} from "./types";
 
 /**
  * Minimal cache shape the registration accepts. Lets tests inject a fake
@@ -63,9 +68,7 @@ import type { AsrBackend, AsrBackendLoader, AsrRequest, AsrResult } from "./type
  * / `setCachedAsrTranscript`).
  */
 export interface AsrTranscriptCacheLike {
-	getCachedAsrTranscript(
-		hash: string,
-	): { text: string; live?: boolean } | null;
+	getCachedAsrTranscript(hash: string): { text: string; live?: boolean } | null;
 	setCachedAsrTranscript(
 		hash: string,
 		entry: { text: string },

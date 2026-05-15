@@ -106,7 +106,13 @@ def _build_text_adapter(agent: str) -> TextFn:
     if agent == "eliza":
         from eliza_adapter.client import ElizaClient  # noqa: WPS433
 
-        client = ElizaClient()
+        client = ElizaClient(
+            base_url=(
+                __import__("os").environ.get("ELIZA_API_BASE")
+                or __import__("os").environ.get("ELIZA_BENCH_URL")
+                or "http://localhost:31337"
+            )
+        )
         client.wait_until_ready(timeout=120)
 
         async def _call(prompt: str) -> str:
@@ -141,15 +147,48 @@ def _build_text_adapter(agent: str) -> TextFn:
 
 
 def _build_stt(provider: str) -> SttFn:
-    if provider != "groq":
-        raise ValueError(
-            f"unsupported STT provider {provider!r}; only 'groq' is wired today"
-        )
-    from .clients.groq_stt import GroqWhisperClient
+    if provider == "groq":
+        from .clients.groq_stt import GroqWhisperClient  # noqa: WPS433
 
-    client = GroqWhisperClient()
+        client = GroqWhisperClient()
 
-    async def _transcribe(audio: bytes) -> str:
-        return await client.transcribe(audio)
+        async def _transcribe_groq(audio: bytes) -> str:
+            return await client.transcribe(audio)
 
-    return _transcribe
+        return _transcribe_groq
+
+    if provider == "eliza-runtime":
+        # POST audio bytes to the local Eliza runtime's STT endpoint.
+        # The runtime must expose a compatible /v1/audio/transcriptions route
+        # (wired by plugin-groq, plugin-local-inference, or any other STT plugin).
+        import os
+
+        import httpx
+
+        base_url = (
+            os.environ.get("ELIZA_API_BASE")
+            or os.environ.get("ELIZA_BENCH_URL")
+            or "http://localhost:31337"
+        ).rstrip("/")
+        stt_url = f"{base_url}/v1/audio/transcriptions"
+
+        async def _transcribe_eliza(audio: bytes) -> str:
+            async with httpx.AsyncClient(timeout=60.0) as http:
+                resp = await http.post(
+                    stt_url,
+                    files={"file": ("sample.wav", audio, "audio/wav")},
+                    data={"model": "whisper-large-v3-turbo", "response_format": "json"},
+                )
+            resp.raise_for_status()
+            payload = resp.json()
+            text = payload.get("text") if isinstance(payload, dict) else None
+            if not isinstance(text, str):
+                raise RuntimeError(f"Eliza STT returned no text: {payload!r}")
+            return text
+
+        return _transcribe_eliza
+
+    raise ValueError(
+        f"unsupported STT provider {provider!r}; "
+        "supported: 'groq' (Groq Whisper API) or 'eliza-runtime' (local Eliza /v1/audio/transcriptions)"
+    )

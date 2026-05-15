@@ -5,6 +5,7 @@ import type {
   ReactNode,
   PointerEvent as ReactPointerEvent,
 } from "react";
+import { OwnerBadge } from "../composites/OwnerBadge";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import { MOBILE_RUNTIME_MODE_CHANGED_EVENT } from "../../events";
@@ -120,6 +121,7 @@ export function Header({
     elizaCloudCreditsError,
     elizaCloudCreditsLow,
     loadDropStatus,
+    ownerName,
     plugins,
     setState,
     setTab,
@@ -533,6 +535,15 @@ export function Header({
       data-no-camera-drag="true"
     >
       {pageRightExtras}
+      {ownerName ? (
+        <OwnerBadge
+          isOwner
+          variant="inline"
+          size="sm"
+          tooltip={`OWNER: ${ownerName}`}
+          data-testid="header-owner-badge"
+        />
+      ) : null}
       {desktopTaskToggle}
       {showCloudStatus ? (
         <CloudStatusBadge

@@ -656,7 +656,7 @@ function tryGetImageGenArbiter(
  * `requestTextToSpeech` or `requestSpeak` is sufficient — they both
  * route through the same `"speak"` queue.
  */
-function tryGetTtsArbiter(
+function _tryGetTtsArbiter(
 	service: LocalInferenceRuntimeService | null,
 ): ArbiterLike | null {
 	if (!service?.getMemoryArbiter) return null;
@@ -674,7 +674,7 @@ function tryGetTtsArbiter(
 	return null;
 }
 
-function tryGetTranscribeArbiter(
+function _tryGetTranscribeArbiter(
 	service: LocalInferenceRuntimeService | null,
 ): ArbiterLike | null {
 	if (!service?.getMemoryArbiter) return null;

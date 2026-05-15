@@ -43,7 +43,6 @@
     "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
     "test": "vitest run --config ./vitest.config.ts",
     "prepublishOnly": "bun run build",
-    "test": "vitest run --config vitest.config.ts",
     "watch": "tsc --watch"
   },
   "devDependencies": {

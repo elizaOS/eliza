@@ -848,7 +848,9 @@ export class MemoryArbiter {
 	private static readonly ASR_TRANSCRIPT_CACHE_MAX = 256;
 	private static readonly ASR_TRANSCRIPT_DEFAULT_TTL_MS = 60 * 60 * 1000;
 
-	getCachedAsrTranscript(hash: string): { text: string; live?: boolean } | null {
+	getCachedAsrTranscript(
+		hash: string,
+	): { text: string; live?: boolean } | null {
 		const entry = this.asrTranscriptCache.get(hash);
 		if (!entry) return null;
 		if (entry.expiresAt <= this.now()) {
@@ -871,7 +873,9 @@ export class MemoryArbiter {
 			text: entry.text,
 			expiresAt: this.now() + ttl,
 		});
-		while (this.asrTranscriptCache.size > MemoryArbiter.ASR_TRANSCRIPT_CACHE_MAX) {
+		while (
+			this.asrTranscriptCache.size > MemoryArbiter.ASR_TRANSCRIPT_CACHE_MAX
+		) {
 			const oldest = this.asrTranscriptCache.keys().next().value;
 			if (oldest === undefined) break;
 			this.asrTranscriptCache.delete(oldest);
