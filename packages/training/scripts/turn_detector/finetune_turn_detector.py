@@ -413,19 +413,69 @@ LIVEKIT_INTL_LOCALES: Final[tuple[str, ...]] = (
 )
 
 
+_CJK_RANGES: Final[tuple[tuple[int, int], ...]] = (
+    (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+    (0x3040, 0x30FF),   # Hiragana + Katakana
+    (0x3400, 0x4DBF),   # CJK Unified Ideographs Extension A
+    (0xAC00, 0xD7AF),   # Hangul Syllables
+    (0xF900, 0xFAFF),   # CJK Compatibility Ideographs
+    (0xFF00, 0xFFEF),   # Halfwidth and Fullwidth Forms
+)
+
+
+def _is_cjk_char(ch: str) -> bool:
+    if not ch:
+        return False
+    cp = ord(ch[0])
+    for lo, hi in _CJK_RANGES:
+        if lo <= cp <= hi:
+            return True
+    return False
+
+
+def _utterance_unit_count(text: str) -> int:
+    """Token-count proxy that works for space-segmented and CJK scripts.
+
+    For space-segmented languages this is ``len(text.split())``. For CJK
+    scripts (Chinese, Japanese, Korean) where words aren't space-separated,
+    we count visible CJK characters. The two are combined for mixed text
+    (Japanese with occasional katakana / ASCII words).
+    """
+    words = [w for w in text.split() if w]
+    cjk_chars = sum(1 for ch in text if _is_cjk_char(ch))
+    return len(words) + cjk_chars
+
+
+def _cjk_prefix_cut(text: str, rng: Any) -> str:
+    """Truncate a CJK utterance at a random character offset.
+
+    Strips any trailing punctuation. Returns ``""`` if the result is
+    shorter than 2 characters.
+    """
+    import re
+
+    # Strip trailing terminal punctuation (ASCII + fullwidth) before
+    # picking the cut so the prefix doesn't carry an EOU-shaped tail.
+    stripped = re.sub(r"[\.\?\!,;:…。！？，；：、]+\s*$", "", text)
+    if len(stripped) < 2:
+        return ""
+    cut = rng.randint(1, max(1, len(stripped) - 1))
+    return stripped[:cut]
+
+
 def _split_into_utterances(text: str, max_words: int = 40) -> list[str]:
     """Split a free-form message into approximately one-sentence utterances.
 
-    Splits on terminal punctuation (`. ! ? 。 ！ ？`) while keeping multi-byte
-    boundaries safe. The result is short enough to look like an ASR
-    transcript turn rather than a multi-paragraph email.
+    Splits on terminal punctuation (`. ! ? 。 ！ ？`) and newlines.
+    For long sentences in space-segmented scripts we chunk further to
+    keep each utterance roughly ASR-turn-sized. CJK scripts get one
+    utterance per sentence (chunked by character count, not word count).
     """
     import re
 
     # Replace CJK terminal punctuation with their ASCII equivalents so the
     # downstream prefix-stripping logic works on Japanese/Chinese too.
     normalized = text.replace("。", ". ").replace("！", "! ").replace("？", "? ")
-    # Newlines are strong turn boundaries.
     parts = re.split(r"(?<=[.!?])\s+|\n+", normalized)
     out: list[str] = []
     for part in parts:
@@ -433,17 +483,29 @@ def _split_into_utterances(text: str, max_words: int = 40) -> list[str]:
         if not sent:
             continue
         words = sent.split()
-        if not words:
-            continue
-        # Hard cap on word count so a single bullet point doesn't become
-        # one giant utterance.
-        if len(words) > max_words:
-            for i in range(0, len(words), max_words):
-                chunk = " ".join(words[i:i + max_words])
-                if chunk:
-                    out.append(chunk)
+        cjk_count = sum(1 for ch in sent if _is_cjk_char(ch))
+        is_cjk = cjk_count > len(words)
+        if is_cjk:
+            # Chunk CJK by character count; ~80 chars ≈ ~25 English words
+            # of equivalent information density.
+            char_cap = max_words * 2
+            if len(sent) > char_cap:
+                for i in range(0, len(sent), char_cap):
+                    chunk = sent[i:i + char_cap].strip()
+                    if chunk:
+                        out.append(chunk)
+            else:
+                out.append(sent)
         else:
-            out.append(sent)
+            if not words:
+                continue
+            if len(words) > max_words:
+                for i in range(0, len(words), max_words):
+                    chunk = " ".join(words[i:i + max_words])
+                    if chunk:
+                        out.append(chunk)
+            else:
+                out.append(sent)
     return out
 
 
@@ -506,6 +568,11 @@ def build_multilingual_eou_corpus(
     ds = load_dataset(OASST1_HF_REPO, split="train")
     lang_counts: dict[str, int] = {}
     written = 0
+
+    def _emit(records: list[dict[str, Any]]) -> None:
+        for rec in records:
+            fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+
     with out_path.open("w", encoding="utf-8") as fh:
         for row in ds:
             role = row.get("role")
@@ -524,44 +591,42 @@ def build_multilingual_eou_corpus(
             for turn_idx, utterance in enumerate(_split_into_utterances(text)):
                 if lang_counts.get(lang, 0) >= per_lang_cap:
                     break
-                tokens = utterance.split()
-                if len(tokens) < min_words:
+                if _utterance_unit_count(utterance) < min_words:
                     continue
+                cjk_count = sum(1 for ch in utterance if _is_cjk_char(ch))
+                is_cjk = cjk_count > len([w for w in utterance.split() if w])
                 # Positive.
-                fh.write(
-                    json.dumps(
-                        {
-                            "utterance": utterance,
-                            "eou_label": 1,
-                            "dialogue_id": f"oasst1-{message_id}",
-                            "turn_idx": turn_idx,
-                            "lang": lang,
-                        },
-                        ensure_ascii=False,
-                    )
-                    + "\n"
-                )
-                # Negative: prefix with terminal punctuation stripped.
-                stripped_tokens = _strip_trailing_punct(utterance).split()
-                if len(stripped_tokens) < 2:
-                    lang_counts[lang] = lang_counts.get(lang, 0) + 1
-                    written += 1
-                    continue
-                cut = rng.randint(1, max(1, len(stripped_tokens) - 1))
-                prefix = " ".join(stripped_tokens[:cut])
-                fh.write(
-                    json.dumps(
-                        {
-                            "utterance": prefix,
-                            "eou_label": 0,
-                            "dialogue_id": f"oasst1-{message_id}",
-                            "turn_idx": turn_idx,
-                            "lang": lang,
-                        },
-                        ensure_ascii=False,
-                    )
-                    + "\n"
-                )
+                pos = {
+                    "utterance": utterance,
+                    "eou_label": 1,
+                    "dialogue_id": f"oasst1-{message_id}",
+                    "turn_idx": turn_idx,
+                    "lang": lang,
+                }
+                if is_cjk:
+                    prefix = _cjk_prefix_cut(utterance, rng)
+                    if not prefix:
+                        _emit([pos])
+                        lang_counts[lang] = lang_counts.get(lang, 0) + 1
+                        written += 1
+                        continue
+                else:
+                    stripped_tokens = _strip_trailing_punct(utterance).split()
+                    if len(stripped_tokens) < 2:
+                        _emit([pos])
+                        lang_counts[lang] = lang_counts.get(lang, 0) + 1
+                        written += 1
+                        continue
+                    cut = rng.randint(1, max(1, len(stripped_tokens) - 1))
+                    prefix = " ".join(stripped_tokens[:cut])
+                neg = {
+                    "utterance": prefix,
+                    "eou_label": 0,
+                    "dialogue_id": f"oasst1-{message_id}",
+                    "turn_idx": turn_idx,
+                    "lang": lang,
+                }
+                _emit([pos, neg])
                 lang_counts[lang] = lang_counts.get(lang, 0) + 1
                 written += 1
     # Drop a sidecar with the per-language counts for the model card.
