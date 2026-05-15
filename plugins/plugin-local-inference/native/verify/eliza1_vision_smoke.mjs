@@ -19,7 +19,7 @@ const VISION_TIERS = new Set([
   "9b",
   "27b",
   "27b-256k",
-  "27b-1m",
+  "27b-256k",
 ]);
 const TEXT_VOICE_ONLY_TIERS = new Set(["0_6b", "1_7b"]);
 

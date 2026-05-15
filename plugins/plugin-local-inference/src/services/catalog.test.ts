@@ -198,14 +198,16 @@ describe("local inference catalog", () => {
 			const model = findCatalogModel(id);
 			expect(model?.quantization?.defaultVariantId).toBe("q4_k_m");
 			expect(model?.quantization?.variants.map((v) => v.id)).toEqual([
+				"q3_k_m",
 				"q4_k_m",
+				"q5_k_m",
 				"q6_k",
 				"q8_0",
 			]);
 		}
 
-		// Small/mid tiers: OmniVoice first (fused expressive path), Kokoro as
-		// low-latency/thermal fallback. Large tiers: OmniVoice only.
+		// Phone-class tiers are Kokoro-only; 9B keeps OmniVoice plus Kokoro;
+		// large tiers are OmniVoice-only.
 		// See catalog.ts ELIZA_1_VOICE_BACKENDS for the policy rationale.
 		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual([
 			"omnivoice",

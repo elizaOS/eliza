@@ -3,7 +3,7 @@
  *
  * Default local inference is restricted to the active Eliza-1 line: Qwen3.5
  * bases for 0.8B, 2B, 4B, and 9B, plus Qwen3.6 for the active 27B family
- * (including long-context variants at 256k and 1M). The 2026-05-12 mandate
+ * (including the 256k long-context variant). The 2026-05-12 mandate
  * retired the legacy Qwen3 bases; see
  * packages/training/scripts/training/model_registry.py for the active
  * registry. External Hub search remains custom/opt-in and never enters
@@ -32,6 +32,30 @@ export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 
 export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
+
+export const ELIZA_1_VISION_TIER_IDS = [
+  "eliza-1-4b",
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+const _ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+  ELIZA_1_VISION_TIER_IDS,
+);
+
+export const ELIZA_1_DFLASH_TIER_IDS = [
+  "eliza-1-0_8b",
+  "eliza-1-2b",
+  "eliza-1-4b",
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+const _ELIZA_1_DFLASH_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+  ELIZA_1_DFLASH_TIER_IDS,
+);
 
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
@@ -123,9 +147,9 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b / 9b) → OmniVoice first with Kokoro
- *     fallback. The fused expressive TTS path stays default, while Kokoro
- *     remains available for low-latency/thermal fallback on constrained hosts.
+ *   - Small tiers (0_8b / 2b / 4b) → OmniVoice first with Kokoro bundled as
+ *     the low-latency fallback.
+ *   - 9B → OmniVoice first with Kokoro bundled for hosts with enough memory.
  *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
@@ -528,6 +552,8 @@ function blurbForTier(id: Eliza1TierId): string {
     case "eliza-1-27b-256k":
       return "eliza-1-27b-256k - high-quality local tier with a 256k context window.";
   }
+  const exhaustive: never = id;
+  return exhaustive;
 }
 
 function chatTier(id: Eliza1TierId): CatalogModel {
