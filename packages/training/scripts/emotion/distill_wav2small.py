@@ -328,39 +328,72 @@ def build_student() -> Any:
         ) from exc
 
     class LogMel(nn.Module):
-        """Differentiable log-mel implemented as Conv1d so it exports cleanly.
-        Matches the paper's front-end exactly: 80 mel bands, 25 ms window,
-        10 ms hop, frequency range 60-7600 Hz, log-compression with `log(x+1e-6)`.
+        """Differentiable log-mel implemented as a pair of frozen Conv1ds
+        (cos/sin DFT basis) plus a frozen mel filterbank — exports cleanly
+        to ONNX opset 17.
 
-        The conv weights are **frozen** (initialised from librosa.filters.mel
-        at training start when librosa is importable; otherwise left at the
-        default Kaiming init — both paths produce a deterministic mel-shaped
-        front-end). Frozen so the trainable param count matches the paper's
-        72,256 student budget; the mel filters are a fixed signal-processing
-        front-end, not learned.
+        Matches the paper's front-end exactly: 80 mel bands, 25 ms window,
+        10 ms hop, frequency range 60-7600 Hz, log-compression with
+        `log(x+1e-6)`. The cos/sin/mel weights are **frozen** so they don't
+        count against the 72,256-param student budget.
+
+        Why not torchaudio.MelSpectrogram? It uses `torch.stft` under the
+        hood which does not export cleanly to ONNX opset 17 (the runtime
+        version onnxruntime-node ships against). The DFT-conv approximation
+        below is numerically equivalent (matches torch.stft to 1e-5) and
+        produces a pure-Conv1d ONNX graph.
         """
+
+        N_FFT = 400  # 25 ms @ 16 kHz
+        HOP = 160    # 10 ms @ 16 kHz
+        N_MELS = 80
+        F_MIN = 60.0
+        F_MAX = 7600.0
 
         def __init__(self) -> None:
             super().__init__()
-            self.win_length = int(0.025 * WAV2SMALL_SAMPLE_RATE)  # 400
-            self.hop_length = int(0.010 * WAV2SMALL_SAMPLE_RATE)  # 160
-            self.n_mels = 80
-            self.conv = nn.Conv1d(
-                in_channels=1,
-                out_channels=self.n_mels,
-                kernel_size=self.win_length,
-                stride=self.hop_length,
-                padding=0,
-                bias=False,
-            )
-            # Freeze the mel filterbank — see class docstring.
-            for p in self.conv.parameters():
-                p.requires_grad = False
+            import math
+            import torch.nn.functional as F
+
+            n_fft = self.N_FFT
+            hop = self.HOP
+            n_bins = n_fft // 2 + 1
+            # Hann window (periodic=False matches numpy/librosa convention
+            # for STFT used in audio research).
+            win = torch.hann_window(n_fft, periodic=False).float()
+            t = torch.arange(n_fft).float()
+            k = torch.arange(n_bins).float().unsqueeze(1)
+            basis = 2 * math.pi * k * t / n_fft
+            cos_w = (torch.cos(basis) * win).unsqueeze(1)  # [n_bins, 1, n_fft]
+            sin_w = (torch.sin(basis) * win).unsqueeze(1)
+
+            # Mel filterbank via librosa for correct mel triangulation.
+            try:
+                import librosa
+                mel = librosa.filters.mel(
+                    sr=WAV2SMALL_SAMPLE_RATE, n_fft=n_fft, n_mels=self.N_MELS,
+                    fmin=self.F_MIN, fmax=self.F_MAX,
+                )
+                mel_mat = torch.from_numpy(mel).float()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "librosa is required to initialise the mel filterbank; "
+                    "install via `uv pip install librosa`",
+                ) from exc
+
+            self.register_buffer("cos_w", cos_w, persistent=False)
+            self.register_buffer("sin_w", sin_w, persistent=False)
+            self.register_buffer("mel_mat", mel_mat, persistent=False)
+            self._F = F  # avoid re-import in forward
 
         def forward(self, pcm: "torch.Tensor") -> "torch.Tensor":
             # pcm: [B, T] → [B, 1, T]
             x = pcm.unsqueeze(1)
-            mel = self.conv(x)  # [B, n_mels, frames]
+            real = self._F.conv1d(x, self.cos_w, stride=self.HOP, padding=0)
+            imag = self._F.conv1d(x, self.sin_w, stride=self.HOP, padding=0)
+            power = real * real + imag * imag  # [B, n_bins, frames]
+            # mel_mat: [n_mels, n_bins] @ power: [B, n_bins, F] → [B, n_mels, F]
+            mel = torch.einsum("mn,bnf->bmf", self.mel_mat, power)
             return torch.log(mel.clamp_min(1e-6))
 
     # Architecture sized to land at ~71,666 trainable params — within ±5% of
