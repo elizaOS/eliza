@@ -185,6 +185,24 @@ describe("ResponseHandlerFieldRegistry", () => {
 			expect((schema.required ?? []).sort()).toEqual(["alpha", "beta"]);
 		});
 
+		it("can compose a selected field subset without replacing the cached full schema", () => {
+			const reg = new ResponseHandlerFieldRegistry();
+			reg.register(makeEvaluator({ name: "alpha" }));
+			reg.register(makeEvaluator({ name: "beta" }));
+			reg.register(makeEvaluator({ name: "gamma" }));
+
+			const fullBefore = reg.composeSchemaSignature();
+			const selected = reg.composeSchema({
+				includeFieldNames: new Set(["gamma", "alpha"]),
+			});
+			expect(Object.keys(selected.properties ?? {})).toEqual([
+				"alpha",
+				"gamma",
+			]);
+			expect(selected.required).toEqual(["alpha", "gamma"]);
+			expect(reg.composeSchemaSignature()).toBe(fullBefore);
+		});
+
 		it("sets additionalProperties to false", () => {
 			const reg = new ResponseHandlerFieldRegistry();
 			reg.register(makeEvaluator({ name: "alpha" }));
@@ -274,6 +292,19 @@ describe("ResponseHandlerFieldRegistry", () => {
 			);
 			const result = await reg.composePromptSlices(ctx);
 			expect(result.skippedFieldNames).toEqual(["asyncOff"]);
+		});
+
+		it("renders only a selected field subset", async () => {
+			const reg = new ResponseHandlerFieldRegistry();
+			reg.register(makeEvaluator({ name: "alpha", description: "alpha-desc" }));
+			reg.register(makeEvaluator({ name: "beta", description: "beta-desc" }));
+
+			const result = await reg.composePromptSlices(ctx, {
+				includeFieldNames: ["beta"],
+			});
+			expect(result.activeFieldNames).toEqual(["beta"]);
+			expect(result.rendered).toContain("beta-desc");
+			expect(result.rendered).not.toContain("alpha-desc");
 		});
 	});
 

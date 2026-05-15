@@ -102,20 +102,28 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(grammar).toContain("contextsarray ::=");
 	});
 
-	it("keeps the canonical envelope on direct channels", () => {
+	it("drops turn-taking and sidecar fields on direct channels", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
 			{ actions: [] },
 			{ contexts: ["general"], channelType: "DM" },
 		);
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
-			true,
+			false,
 		);
+		expect(responseSkeleton.spans.some((s) => s.key === "facts")).toBe(false);
+		expect(responseSkeleton.spans.some((s) => s.key === "relationships")).toBe(
+			false,
+		);
+		expect(responseSkeleton.spans.some((s) => s.key === "addressedTo")).toBe(
+			false,
+		);
+		expect(responseSkeleton.spans.some((s) => s.key === "emotion")).toBe(false);
 		expect(responseSkeleton.spans[0]).toEqual({
 			kind: "literal",
-			value: '{"shouldRespond":',
+			value: '{"contexts":',
 		});
-		expect(grammar).toContain(
+		expect(grammar).not.toContain(
 			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
 		);
 	});
@@ -227,6 +235,26 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		// A different context set yields a different result.
 		const c = buildResponseGrammar({ actions: [] }, { contexts: ["z"] });
 		expect(c).not.toBe(a);
+	});
+
+	it("keeps direct-channel cache entries distinct from full voice envelopes", () => {
+		clearResponseGrammarCache();
+		const direct = buildResponseGrammar(
+			{ actions: [] },
+			{ contexts: ["general"], channelType: "DM" },
+		);
+		const voice = buildResponseGrammar(
+			{ actions: [] },
+			{ contexts: ["general"], channelType: "VOICE_DM" },
+		);
+		expect(direct).not.toBe(voice);
+		expect(direct.responseSkeleton.id).not.toBe(voice.responseSkeleton.id);
+		expect(
+			direct.responseSkeleton.spans.some((s) => s.key === "shouldRespond"),
+		).toBe(false);
+		expect(
+			voice.responseSkeleton.spans.some((s) => s.key === "shouldRespond"),
+		).toBe(true);
 	});
 });
 

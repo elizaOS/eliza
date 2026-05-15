@@ -95,10 +95,12 @@ import {
 } from "../runtime/response-handler-evaluators";
 import type {
 	ResponseHandlerFieldContext,
+	ResponseHandlerFieldEvaluator,
 	ResponseHandlerFieldRunResult,
 	ResponseHandlerResult,
 	ResponseHandlerSenderRole,
 } from "../runtime/response-handler-field-evaluator";
+import type { ResponseHandlerFieldSelectionOptions } from "../runtime/response-handler-field-registry";
 import { actionHasSubActions, runSubPlanner } from "../runtime/sub-planner";
 import { buildCanonicalSystemPrompt } from "../runtime/system-prompt";
 import {
@@ -214,6 +216,27 @@ import {
 const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
+const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 384;
+const DEFAULT_STAGE1_MAX_TOKENS = 1024;
+const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
+	"shouldRespond",
+	"facts",
+	"relationships",
+	"addressedTo",
+	"emotion",
+]);
+
+function buildDirectChannelResponseFieldSelection(
+	fields: ReadonlyArray<Pick<ResponseHandlerFieldEvaluator, "name">>,
+): ResponseHandlerFieldSelectionOptions {
+	const includeFieldNames = new Set<string>();
+	for (const field of fields) {
+		if (!DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS.has(field.name)) {
+			includeFieldNames.add(field.name);
+		}
+	}
+	return { includeFieldNames };
+}
 
 function mergeAbortSignals(
 	signals: Array<AbortSignal | undefined>,
@@ -3776,12 +3799,24 @@ export async function runV5MessageRuntimeStage1(args: {
 			senderRole: senderRole as ResponseHandlerSenderRole,
 			turnSignal: stage1TurnSignal,
 		};
+		const responseHandlerFields =
+			args.runtime.responseHandlerFieldRegistry.list();
+		const responseHandlerFieldSelection = directMessageChannel
+			? buildDirectChannelResponseFieldSelection(responseHandlerFields)
+			: undefined;
+		const selectedResponseHandlerFields =
+			args.runtime.responseHandlerFieldRegistry.list(
+				responseHandlerFieldSelection,
+			);
 		const responseHandlerFieldPrompt =
 			await args.runtime.responseHandlerFieldRegistry.composePromptSlices(
 				responseHandlerFieldContext,
+				responseHandlerFieldSelection,
 			);
 		const responseHandlerSchema =
-			args.runtime.responseHandlerFieldRegistry.composeSchema();
+			args.runtime.responseHandlerFieldRegistry.composeSchema(
+				responseHandlerFieldSelection,
+			);
 		const messageHandlerInput = renderMessageHandlerModelInput(
 			args.runtime,
 			context,
@@ -3865,10 +3900,11 @@ export async function runV5MessageRuntimeStage1(args: {
 		const responseGrammar = buildResponseGrammar(
 			{
 				actions: args.runtime.actions ?? [],
-				responseHandlerFields:
-					args.runtime.responseHandlerFieldRegistry?.list() ?? [],
+				responseHandlerFields: selectedResponseHandlerFields,
 				responseHandlerFieldSignature:
-					args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(),
+					args.runtime.responseHandlerFieldRegistry?.composeSchemaSignature(
+						responseHandlerFieldSelection,
+					),
 			},
 			{
 				contexts: availableContexts.map((definition) => String(definition.id)),
@@ -3893,7 +3929,9 @@ export async function runV5MessageRuntimeStage1(args: {
 			promptSegments: messageHandlerInput.promptSegments,
 			tools: messageHandlerTools,
 			toolChoice: "required" as const,
-			maxTokens: 1024,
+			maxTokens: directMessageChannel
+				? DIRECT_CHANNEL_STAGE1_MAX_TOKENS
+				: DEFAULT_STAGE1_MAX_TOKENS,
 			// Streamed structured generation: the local engine (W4) streams the
 			// HANDLE_RESPONSE envelope and parses it incrementally so `shouldRespond`
 			// / `contexts` route the moment they are known and `replyText` flows to
