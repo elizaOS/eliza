@@ -1,4 +1,4 @@
-# omnivoice-fuse: source-level fusion of omnivoice.cpp into elizaOS/llama.cpp
+# omnivoice-merged: source-level fusion of omnivoice.cpp into elizaOS/llama.cpp
 
 This directory contains the helpers + patch material that the build script
 `packages/app-core/scripts/build-llama-cpp-dflash.mjs` invokes when one of
@@ -59,7 +59,7 @@ fused checkout we:
    - emits a fused shared library target (`libelizainference`) so
      mobile/desktop bridges can dlopen one .so/.dylib and resolve both
      symbol families.
-6. (When required) apply patches from `omnivoice-fuse/patches/` to
+6. (When required) apply patches from `omnivoice-merged/patches/` to
    reconcile any compile-time API drift between omnivoice's expected
    ggml surface (the ServeurpersoCom fork) and the eliza ggml. Each
    patch is documented at the top with the symbol/struct it touches and
@@ -112,7 +112,7 @@ address space — same problem, masked.
      that touch the ggml graph builders — those must stay compatible
      with the ggml exposed by elizaOS/llama.cpp at the build pin.
    - new files added under `src/` or `tools/` — extend
-     `CMAKE_GRAFT_SOURCES` in `omnivoice-fuse/cmake-graft.mjs`.
+     `CMAKE_GRAFT_SOURCES` in `omnivoice-merged/cmake-graft.mjs`.
 3. Bring up the new omnivoice ggml pin and `git diff` against the
    current ServeurpersoCom ggml pin:
    ```sh
@@ -152,7 +152,7 @@ fallback" path.
 - omnivoice's `src/`, `tools/`, or required headers are missing.
 - the GGML reconciliation removal of omnivoice's `ggml/` submodule
   fails (e.g. it's a real directory we couldn't strip).
-- patches under `omnivoice-fuse/patches/` fail to apply.
+- patches under `omnivoice-merged/patches/` fail to apply.
 - the fused CMake configure or build step fails.
 - the resulting fused server binary or shared library cannot link
   *both* `llama_*` and `omnivoice_*` symbols (verified post-link with
@@ -304,7 +304,7 @@ silent downgrade or hang.
 Example 9B latency probe:
 
 ```bash
-bun packages/app-core/scripts/omnivoice-fuse/tts-stream-ffi-smoke.ts \
+bun packages/app-core/scripts/omnivoice-merged/tts-stream-ffi-smoke.ts \
   --bundle ~/.eliza/local-inference/models/eliza-1-9b.bundle \
   --cancel-mode none \
   --maskgit-steps 8 \
@@ -349,7 +349,7 @@ startup precondition is a structured throw.
 ## Building the stub for tests
 
 ```sh
-make -C packages/app-core/scripts/omnivoice-fuse
+make -C packages/app-core/scripts/omnivoice-merged
 # → libelizainference_stub.dylib (macOS) or .so (linux)
 
 # Symbol verification:
@@ -358,7 +358,7 @@ nm -gU libelizainference_stub.dylib | grep eliza_inference_
 # Fail-closed real-library smoke. This intentionally renames the stub
 # as libelizainference and verifies the real fused-symbol checker
 # rejects it with an OMNIVOICE_FUSE_VERIFY.json failure report:
-make -C packages/app-core/scripts/omnivoice-fuse verify-stub-rejected
+make -C packages/app-core/scripts/omnivoice-merged verify-stub-rejected
 
 # JS-side coverage (requires Bun on PATH for the integration scenarios):
 cd packages/app-core
@@ -377,7 +377,7 @@ After `build-llama-cpp-dflash.mjs --target <fused-target>` installs
 `libelizainference`, the build runs the same verifier as this CLI:
 
 ```sh
-node packages/app-core/scripts/omnivoice-fuse/verify-symbols.mjs \
+node packages/app-core/scripts/omnivoice-merged/verify-symbols.mjs \
   --out-dir <installed-bin-dir> \
   --target darwin-arm64-metal-fused
 ```

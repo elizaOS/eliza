@@ -12,7 +12,7 @@
  * 2. Integration tests spawn a `bun` subprocess that imports
  *    `ffi-bindings.ts` and exercises every entry point against the
  *    stub `libelizainference_stub.{dylib,so}` produced by
- *    `scripts/omnivoice-fuse/Makefile`. This validates that:
+ *    `scripts/ffi-stub/Makefile`. This validates that:
  *      - `dlopen` succeeds against a real shared library,
  *      - the `create`/`destroy` round-trip works,
  *      - methods that need the fused build (e.g. `ttsSynthesize`)
@@ -53,7 +53,7 @@ import { VoiceLifecycleError } from "./lifecycle";
 
 /**
  * The complete ABI v3 C symbol set declared in
- * `scripts/omnivoice-fuse/ffi.h` — kept here as the JS-side source of
+ * `scripts/ffi-stub/ffi.h` — kept here as the JS-side source of
  * truth for both the fake-FFI surface check and the stub `nm` audit.
  * Mirrors `REQUIRED_ELIZA_INFERENCE_SYMBOLS` in `verify-symbols.mjs`.
  */
@@ -111,19 +111,23 @@ const ELIZA_FFI_METHODS = [
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// __dirname = packages/app-core/src/services/local-inference/voice
-// FUSE_DIR  = packages/app-core/scripts/omnivoice-fuse
-const FUSE_DIR = path.resolve(
+// __dirname = plugins/plugin-local-inference/src/services/voice
+// FFI_STUB_DIR  = packages/app-core/scripts/ffi-stub
+// (H2.c collapsed omnivoice-fuse/ — the FFI stub artifacts moved to ffi-stub/.)
+const FFI_STUB_DIR = path.resolve(
 	__dirname,
 	"..",
 	"..",
 	"..",
 	"..",
+	"..",
+	"packages",
+	"app-core",
 	"scripts",
-	"omnivoice-fuse",
+	"ffi-stub",
 );
 const STUB_DYLIB = path.join(
-	FUSE_DIR,
+	FFI_STUB_DIR,
 	process.platform === "darwin"
 		? "libelizainference_stub.dylib"
 		: "libelizainference_stub.so",
@@ -272,14 +276,14 @@ describe("ffi-bindings — ABI v3-compatible surface (fake FFI)", () => {
 	});
 });
 
-describe("omnivoice-fuse stub library — ABI v3 symbol audit", () => {
+describe("ffi-stub stub library — ABI v3 symbol audit", () => {
 	// The committed macOS .dylib / built-on-Linux .so must export the full
 	// ABI v3 symbol set declared in ffi.h — same set verify-symbols.mjs
 	// requires of the real fused libelizainference. Skipped when the
-	// platform artifact isn't present (run `make -C scripts/omnivoice-fuse`).
+	// platform artifact isn't present (run `make -C scripts/ffi-stub`).
 	const haveDylib = existsSync(STUB_DYLIB);
 	if (!haveDylib) {
-		it.skip(`stub library missing at ${STUB_DYLIB} — run 'make -C scripts/omnivoice-fuse' first`, () => {});
+		it.skip(`stub library missing at ${STUB_DYLIB} — run 'make -C scripts/ffi-stub' first`, () => {});
 		return;
 	}
 	it("exports every eliza_inference_* ABI v3 symbol", () => {
@@ -306,7 +310,7 @@ describe("ffi-bindings — integration via bun subprocess against stub dylib", (
 		return;
 	}
 	if (!haveDylib) {
-		it.skip(`stub dylib missing at ${STUB_DYLIB} — run 'make -C scripts/omnivoice-fuse' first`, () => {});
+		it.skip(`stub dylib missing at ${STUB_DYLIB} — run 'make -C scripts/ffi-stub' first`, () => {});
 		return;
 	}
 

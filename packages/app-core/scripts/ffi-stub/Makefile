@@ -48,7 +48,7 @@ verify: $(DEFAULT_TARGET)
 verify-stub-rejected: $(DEFAULT_TARGET)
 	@tmp=$$(mktemp -d); \
 	cp $(DEFAULT_TARGET) $$tmp/$(REAL_LIB_NAME); \
-	if node verify-symbols.mjs --out-dir $$tmp --target $(VERIFY_TARGET) --json >$$tmp/stdout 2>$$tmp/stderr; then \
+	if node ../build-helpers/verify-fused-symbols.mjs --out-dir $$tmp --target $(VERIFY_TARGET) --json >$$tmp/stdout 2>$$tmp/stderr; then \
 		echo "[verify] FAILED: real verifier accepted the stub as $(REAL_LIB_NAME)"; \
 		cat $$tmp/stdout; \
 		rm -rf $$tmp; \

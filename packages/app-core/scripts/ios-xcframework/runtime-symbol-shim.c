@@ -20,7 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "../omnivoice-fuse/ffi.h"
+#include "../ffi-stub/ffi.h"
 
 #define ELIZA_INFERENCE_ABI_VERSION_STRING "1"
 

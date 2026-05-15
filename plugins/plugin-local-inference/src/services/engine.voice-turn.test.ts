@@ -215,7 +215,7 @@ describe("merged HTTP route descriptor", () => {
 	it("audioSpeechRoute() is null when no fused server is running", () => {
 		// No llama-server loaded in unit tests — the route is null (TTS goes
 		// through the FFI path instead). The fused-server case is only
-		// reachable with a real omnivoice-fused binary on disk.
+		// reachable with a real omnivoice-mergedd binary on disk.
 		expect(dflashLlamaServer.audioSpeechRoute()).toBeNull();
 	});
 });
