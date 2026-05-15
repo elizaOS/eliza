@@ -79,13 +79,13 @@ describe("local inference catalog", () => {
   });
 
   it("sets contextLength on every Eliza-1 tier per the tier matrix", () => {
-    // Compact mobile tiers ship with a 32k context window; larger tiers
-    // expose longer windows through their bundle manifests.
+    // All standard Eliza-1 tiers ship with a 128k window; the long-context
+    // 27b-256k variant doubles that.
     const expected: Record<string, number> = {
-      "eliza-1-0_8b": 32768,
-      "eliza-1-2b": 32768,
-      "eliza-1-4b": 65536,
-      "eliza-1-9b": 65536,
+      "eliza-1-0_8b": 131072,
+      "eliza-1-2b": 131072,
+      "eliza-1-4b": 131072,
+      "eliza-1-9b": 131072,
       "eliza-1-27b": 131072,
       "eliza-1-27b-256k": 262144,
     };

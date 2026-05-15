@@ -1,5 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// `import.meta.dir` is a Bun extension and is undefined under
+// Node-hosted runners (vitest, etc.); derive the directory from
+// `import.meta.url` so the resolution works in both runtimes.
+const HERE_DIR: string = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Brand configuration for the elizaOS desktop shell.
@@ -78,8 +84,8 @@ function loadFileConfig(): Partial<DesktopBrandConfig> {
 	const candidatePaths = [
 		envPath,
 		path.resolve(process.cwd(), "brand-config.json"),
-		path.resolve(import.meta.dir, "..", "brand-config.json"),
-		path.resolve(import.meta.dir, "brand-config.json"),
+		path.resolve(HERE_DIR, "..", "brand-config.json"),
+		path.resolve(HERE_DIR, "brand-config.json"),
 	].filter(Boolean);
 
 	for (const candidate of candidatePaths) {

@@ -125,7 +125,7 @@ describe("local inference downloader status", () => {
     const drafter = "GGUF drafter model";
     const cache = "voice preset";
     const vad = "VAD runtime data";
-    const textPath = "text/eliza-1-2b-32k.gguf";
+    const textPath = "text/eliza-1-2b-128k.gguf";
     const voicePath = "tts/voice.gguf";
     const asrPath = "asr/eliza-1-asr.gguf";
     const drafterPath = "dflash/drafter-2b.gguf";
@@ -140,7 +140,7 @@ describe("local inference downloader status", () => {
           {
             path: textPath,
             sha256: sha256(text),
-            ctx: 32768,
+            ctx: 131072,
           },
         ],
         voice: [{ path: voicePath, sha256: sha256(voice) }],
