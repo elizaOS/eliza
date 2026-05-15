@@ -27,7 +27,7 @@ export default defineConfig({
     setupFiles: [path.join(here, "test/setup.ts")],
     include: [
       "src/**/*.test.{ts,tsx}",
-      "scripts/**/*.test.{ts,tsx}",
+      "scripts/**/*.test.{ts,tsx,mjs}",
       "test/**/*.test.{ts,tsx}",
     ],
     exclude: unitExcludes,

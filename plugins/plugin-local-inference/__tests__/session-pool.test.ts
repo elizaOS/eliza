@@ -12,7 +12,7 @@ import {
 	DEFAULT_SESSION_KEY,
 	resolveDefaultPoolSize,
 	SessionPool,
-} from "../session-pool";
+} from "../src/services/session-pool";
 
 interface FakeSession {
 	id: string;

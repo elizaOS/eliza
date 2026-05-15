@@ -576,6 +576,18 @@ interface ArbiterLike {
 		modelKey: string;
 		payload: Req;
 	}) => Promise<Res>;
+	requestTranscribe?: <Req, Res>(req: {
+		modelKey: string;
+		payload: Req;
+	}) => Promise<Res>;
+	requestTextToSpeech?: <Req, Res>(req: {
+		modelKey: string;
+		payload: Req;
+	}) => Promise<Res>;
+	requestSpeak?: <Req, Res>(req: {
+		modelKey: string;
+		payload: Req;
+	}) => Promise<Res>;
 }
 
 function tryGetArbiter(
@@ -606,6 +618,47 @@ function tryGetImageGenArbiter(
 		typeof cand.hasCapability === "function" &&
 		typeof cand.requestImageGen === "function" &&
 		cand.hasCapability("image-gen")
+	) {
+		return cand;
+	}
+	return null;
+}
+
+/**
+ * Return the arbiter if it has the WS5 `"speak"` capability registered.
+ * Mirrors `tryGetArbiter` / `tryGetImageGenArbiter`. Either of
+ * `requestTextToSpeech` or `requestSpeak` is sufficient — they both
+ * route through the same `"speak"` queue.
+ */
+function tryGetTtsArbiter(
+	service: LocalInferenceRuntimeService | null,
+): ArbiterLike | null {
+	if (!service?.getMemoryArbiter) return null;
+	const arbiter = service.getMemoryArbiter();
+	if (!arbiter || typeof arbiter !== "object") return null;
+	const cand = arbiter as ArbiterLike;
+	if (
+		typeof cand.hasCapability === "function" &&
+		(typeof cand.requestTextToSpeech === "function" ||
+			typeof cand.requestSpeak === "function") &&
+		cand.hasCapability("speak")
+	) {
+		return cand;
+	}
+	return null;
+}
+
+function tryGetTranscribeArbiter(
+	service: LocalInferenceRuntimeService | null,
+): ArbiterLike | null {
+	if (!service?.getMemoryArbiter) return null;
+	const arbiter = service.getMemoryArbiter();
+	if (!arbiter || typeof arbiter !== "object") return null;
+	const cand = arbiter as ArbiterLike;
+	if (
+		typeof cand.hasCapability === "function" &&
+		typeof cand.requestTranscribe === "function" &&
+		cand.hasCapability("transcribe")
 	) {
 		return cand;
 	}

@@ -52,6 +52,39 @@
  * Until the shim ships the symbols above, `loadAospImageGenBackend`
  * throws a structured `ImageGenBackendUnavailableError` so the selector
  * can fall back to a desktop-bridge or surface "unavailable" to the UI.
+ *
+ * Publishing pipeline (Android APK + AOSP system app):
+ *
+ *   Build (libstable-diffusion-jni.so per ABI):
+ *     # cd plugins/plugin-aosp-local-inference/native
+ *     # NDK r26+ required for Vulkan compute compatibility on Snapdragon 8 Gen 3.
+ *     cmake -B build-arm64-v8a -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
+ *       -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 \
+ *       -DSD_VULKAN=ON -DBUILD_SHARED_LIBS=ON
+ *     cmake --build build-arm64-v8a -j
+ *     # Repeat for x86_64 (Cuttlefish / emulator) — see eliza/plugins/
+ *     # plugin-local-inference/native/llama.cpp patches for the JNI x86_64
+ *     # ABI surface we already maintain for text/vision.
+ *   Sign:
+ *     # AAB / APK signature; libstable-diffusion-jni.so is signed transitively
+ *     # via the app's keystore. v2 signature with the Eliza Labs production key.
+ *     bundletool build-bundle --modules=... --output=app.aab
+ *     jarsigner -keystore eliza-prod.jks -signedjar app-signed.aab app.aab eliza-key
+ *   Notarize:
+ *     N/A on Android. Google Play handles validation; AOSP system-app
+ *     installs trust the app's own keystore.
+ *   Drop:
+ *     play.google.com (split APK by ABI; sd-cpp lib lives in the
+ *     `imagegen` dynamic feature module — only downloaded after the user
+ *     opts in to image-gen).
+ *     For sideload / Cuttlefish / dev builds:
+ *     releases.elizaos.ai/aosp-imagegen/<version>/libstable-diffusion-jni-<abi>.so
+ *
+ * Why a dynamic feature module:
+ *   The Z-Image-Turbo GGUF is ~3.4 GB; bundling that into the base APK
+ *   would push the install above the Play Store's 200 MB hard cap and
+ *   trigger an automatic split. Dynamic delivery + first-launch download
+ *   keeps the base install lean and lets the user opt in.
  */
 
 import { ImageGenBackendUnavailableError } from "./errors";

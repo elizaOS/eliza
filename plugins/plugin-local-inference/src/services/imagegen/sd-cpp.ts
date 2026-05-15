@@ -38,6 +38,35 @@
  *   The contract here is binary surface only. CUDA / Vulkan smoke tests
  *   run on real hardware as part of the WS5 e2e gate; documented at the
  *   bottom of `__tests__/imagegen-handler.test.ts`.
+ *
+ * Publishing pipeline (per platform):
+ *
+ *   Linux x86_64 (CUDA):
+ *     git clone https://github.com/leejet/stable-diffusion.cpp && cd stable-diffusion.cpp \
+ *       && cmake -B build -DSD_CUDA=ON -DCMAKE_BUILD_TYPE=Release \
+ *       && cmake --build build --config Release -j
+ *     Strip + tar; sign: not required (Linux). Drop into
+ *     releases.elizaos.ai/sd-cpp/<version>/linux-x86_64-cuda/sd.tar.zst.
+ *   Linux x86_64 (Vulkan):
+ *     cmake -B build -DSD_VULKAN=ON -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+ *   Linux x86_64 (CPU):
+ *     cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j
+ *   Windows x86_64 (CUDA):
+ *     Same cmake invocation under MSVC 2022; produces sd.exe. Sign with the
+ *     Eliza Labs EV cert (signtool sign /tr ...); submit to Microsoft
+ *     SmartScreen if a new cert. Drop into releases.elizaos.ai/sd-cpp/
+ *     <version>/windows-x86_64-cuda/sd.exe.
+ *   Windows x86_64 (Vulkan, CPU): mirror the CUDA build with the matching
+ *     cmake -DSD_VULKAN=ON / -DCMAKE_BUILD_TYPE=Release flags.
+ *   Android (arm64-v8a JNI): cross-compile through the NDK against the
+ *     same upstream; not consumed directly here — `plugin-aosp-local-inference`
+ *     wraps it as `libstable-diffusion-jni.so` and the AOSP backend (see
+ *     `aosp-stub.ts`) calls into it via the eliza-llama-shim FFI surface.
+ *   macOS (Metal): cmake -B build -DSD_METAL=ON; codesign with the Eliza
+ *     Labs Developer ID Application cert and notarize via `xcrun notarytool
+ *     submit ...`; staple. Drop into releases.elizaos.ai/sd-cpp/<version>/
+ *     darwin-{arm64,x86_64}/sd. macOS Apple Silicon prefers `mflux` over
+ *     sd-cpp (see `mflux.ts`), but sd-cpp Metal is the fallback.
  */
 
 import { spawn } from "node:child_process";

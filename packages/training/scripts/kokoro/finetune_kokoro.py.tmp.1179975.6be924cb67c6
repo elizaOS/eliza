@@ -522,6 +522,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--run-dir", type=Path, required=True, help="Output dir from prep_ljspeech.py.")
     p.add_argument("--config", type=str, default="kokoro_lora_ljspeech.yaml")
+    p.add_argument(
+        "--mode",
+        type=str,
+        default=None,
+        choices=("full-finetune", "lora-experimental"),
+        help=(
+            "Training path. `full-finetune` (default, publish) drives the "
+            "vendored kokoro_training trainer via milady_adapter; "
+            "`lora-experimental` attaches PEFT LoRA to the installed "
+            "kokoro PyPI KModel (gated on forward_train, see "
+            ".swarm/impl/I7-kokoro.md). Falls back to cfg['mode'] when unset; "
+            "if cfg is also unset, defaults to full-finetune."
+        ),
+    )
     p.add_argument("--resume", type=Path, default=None, help="Checkpoint to resume from.")
     p.add_argument("--epochs", type=int, default=None, help="Override max_steps via N epochs.")
     p.add_argument("--no-tensorboard", action="store_true")
@@ -533,6 +547,110 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+_LEGACY_MODE_MAP = {
+    "lora": "lora-experimental",
+    "full": "full-finetune",
+    "full-finetune": "full-finetune",
+    "lora-experimental": "lora-experimental",
+}
+
+
+def _resolve_mode(args: argparse.Namespace, cfg: dict[str, Any]) -> str:
+    """Resolve the effective training mode from CLI + cfg.
+
+    Precedence: --mode (CLI) > cfg["mode"] > "full-finetune" (default).
+    Accepts the legacy `lora` / `full` cfg values and maps them onto the
+    new identifiers without forcing a mass rename of every YAML.
+    """
+    raw = args.mode if args.mode else cfg.get("mode", "full-finetune")
+    if raw not in _LEGACY_MODE_MAP:
+        raise SystemExit(
+            f"unknown mode: {raw!r}; expected one of: full-finetune, lora-experimental "
+            "(legacy aliases: lora, full)",
+        )
+    return _LEGACY_MODE_MAP[raw]
+
+
+def _run_full_finetune_via_adapter(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
+    """Drive the vendored kokoro_training trainer via milady_adapter.
+
+    The adapter lives at
+    plugins/plugin-local-inference/native/kokoro_training/milady_adapter/.
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    adapter_root = (
+        repo_root
+        / "plugins"
+        / "plugin-local-inference"
+        / "native"
+        / "kokoro_training"
+    )
+    if not adapter_root.exists():
+        raise SystemExit(
+            f"milady_adapter root not found at {adapter_root}; "
+            "the vendored kokoro_training trainer is missing. "
+            "Did the workspace lose plugins/plugin-local-inference/native/kokoro_training/?",
+        )
+    if str(adapter_root) not in sys.path:
+        sys.path.insert(0, str(adapter_root))
+    # The adapter also needs `training.optimizer` from our training tree
+    # on sys.path so APOLLO resolves.
+    training_scripts = repo_root / "packages" / "training" / "scripts"
+    if str(training_scripts) not in sys.path:
+        sys.path.insert(0, str(training_scripts))
+
+    from milady_adapter import run_full_finetune  # type: ignore  # noqa: PLC0415
+
+    run_dir = Path(args.run_dir).resolve()
+    processed = run_dir / "processed"
+    dataset_size_hint = 0
+    train_list_path = processed / "train_list.txt"
+    if train_list_path.exists():
+        dataset_size_hint = sum(
+            1 for line in train_list_path.read_text(encoding="utf-8").splitlines() if line.strip()
+        )
+
+    # The vendor consumes an LJSpeech-format dataset directly. Honor
+    # cfg["dataset_path"] if present, else fall back to the prep run dir.
+    corpus_dir = cfg.get("dataset_path") or str(run_dir)
+
+    rc = run_full_finetune(
+        cfg,
+        corpus_dir=str(corpus_dir),
+        output_dir=str(run_dir),
+        dataset_size_hint=dataset_size_hint,
+    )
+
+    # Emit the elizaOS train_manifest.json alongside the vendor's
+    # checkpoint outputs. The vendor writes its own internal manifest
+    # but we layer our schema on top.
+    ckpt_dir = run_dir / "checkpoints"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    stats = TrainStats(
+        step=int(cfg.get("max_steps", 0)),
+        epoch=int(cfg.get("max_steps", 0)),
+        train_loss=0.0,
+        val_loss=0.0,
+        best_val_loss=0.0,
+        best_step=int(cfg.get("max_steps", 0)),
+    )
+    manifest = _build_manifest(
+        args=args,
+        cfg=cfg,
+        train_list=[],
+        val_list=[],
+        stats=stats,
+        prep_manifest_sha256=None,
+        synthetic=False,
+        checkpoint_paths=[],
+    )
+    manifest["adapter"] = "milady_adapter"
+    manifest["mode"] = "full-finetune"
+    (ckpt_dir / "train_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    log.info("full-finetune complete; manifest at %s", ckpt_dir / "train_manifest.json")
+    return rc
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     cfg = load_config(args.config)
@@ -542,8 +660,16 @@ def main(argv: list[str] | None = None) -> int:
     # Seed.
     random.seed(cfg.get("seed", 1337))
     os.environ.setdefault("PYTHONHASHSEED", str(cfg.get("seed", 1337)))
+
+    # Resolve the effective mode and reflect it in cfg so the manifest
+    # builder records the right value.
+    mode = _resolve_mode(args, cfg)
+    cfg["mode"] = mode
+
     if args.synthetic_smoke:
         return _run_synthetic_smoke(args, cfg)
+    if mode == "full-finetune":
+        return _run_full_finetune_via_adapter(args, cfg)
     return _real_train(args, cfg)
 
 

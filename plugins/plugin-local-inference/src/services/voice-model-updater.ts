@@ -629,9 +629,15 @@ export class VoiceModelUpdater {
 		signal: AbortSignal | undefined,
 	): Promise<ReadonlyArray<VoiceModelStatus>> {
 		const ctl = new AbortController();
-		const detach = signal
-			? signal.addEventListener("abort", () => ctl.abort(), { once: true })
-			: null;
+		// Use a single named handler so the removeEventListener call below
+		// actually removes the listener it registered. `addEventListener`
+		// returns void; the previous `detach = signal?.addEventListener(...)`
+		// pattern leaked listeners + the captured `ctl` controller when the
+		// caller's signal never fired.
+		const abortHandler = () => ctl.abort();
+		if (signal) {
+			signal.addEventListener("abort", abortHandler, { once: true });
+		}
 		try {
 			const fetched = await fetchVoiceModelCatalog(
 				this.sources,
@@ -669,8 +675,9 @@ export class VoiceModelUpdater {
 			out.sort((a, b) => a.id.localeCompare(b.id));
 			return out;
 		} finally {
-			if (detach && signal)
-				signal.removeEventListener("abort", () => ctl.abort());
+			if (signal) {
+				signal.removeEventListener("abort", abortHandler);
+			}
 		}
 	}
 
