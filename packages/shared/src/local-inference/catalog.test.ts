@@ -9,7 +9,7 @@ import {
 
 const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
 const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b", "eliza-1-27b-256k"] as const;
-const OMNIVOICE_TIERS = LARGE_TIERS;
+const OMNIVOICE_TIERS = [...SMALL_TIERS, ...LARGE_TIERS] as const;
 
 describe("voiceQuantLadderForTier", () => {
   it("covers every canonical tier id", () => {
@@ -21,13 +21,14 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("returns an empty OmniVoice ladder for Kokoro-only small tiers", () => {
+  it("returns the mobile OmniVoice ladder for small tiers", () => {
+    const expected: OmniVoiceQuantLevel[] = ["Q3_K_M", "Q4_K_M", "Q5_K_M"];
     for (const id of SMALL_TIERS) {
-      expect(voiceQuantLadderForTier(id)).toEqual([]);
+      expect(voiceQuantLadderForTier(id)).toEqual(expected);
     }
   });
 
-  it("returns the full Q3..Q8 ladder for OmniVoice tiers", () => {
+  it("returns the full Q3..Q8 ladder for large OmniVoice tiers", () => {
     const expected: OmniVoiceQuantLevel[] = [
       "Q3_K_M",
       "Q4_K_M",

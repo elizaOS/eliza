@@ -316,6 +316,7 @@ def _install_optional_dependency_stubs() -> None:
 
         fuzz_mod.ratio = _ratio  # type: ignore[attr-defined]
         fuzz_mod.partial_ratio = _ratio  # type: ignore[attr-defined]
+        fuzz_mod.token_set_ratio = _ratio  # type: ignore[attr-defined]
         pkg = _types.ModuleType("thefuzz")
         pkg.fuzz = fuzz_mod  # type: ignore[attr-defined]
         sys.modules["thefuzz"] = pkg

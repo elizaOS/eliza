@@ -175,6 +175,23 @@ const STRICT_RELEASE_STATES: ReadonlySet<string> = new Set([
 	"final",
 ]);
 
+const _DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+	"2b",
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+	"27b-1m",
+]);
+
+const _VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+	"27b-1m",
+]);
+
 function collectContractErrors(m: Eliza1Manifest): string[] {
 	const errors: string[] = [];
 
@@ -206,6 +223,37 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 				"kernels.required: text variant with ctx > 64k requires turbo3_tcq",
 			);
 		}
+	}
+
+	const dflashEnabled = DFLASH_TIERS.has(m.tier);
+	const visionEnabled = VISION_TIERS.has(m.tier);
+	if (dflashEnabled) {
+		if (m.files.dflash.length === 0) {
+			errors.push(`files.dflash: required for DFlash-enabled tier ${m.tier}`);
+		}
+	} else {
+		if (m.files.dflash.length > 0) {
+			errors.push(
+				`files.dflash: unsupported for DFlash-disabled tier ${m.tier}`,
+			);
+		}
+		if (declaredRequired.has("dflash")) {
+			errors.push(
+				`kernels.required: dflash is unsupported for DFlash-disabled tier ${m.tier}`,
+			);
+		}
+		if (m.lineage.drafter) {
+			errors.push(
+				`lineage.drafter: unsupported for DFlash-disabled tier ${m.tier}`,
+			);
+		}
+	}
+	if (visionEnabled) {
+		if (m.files.vision.length === 0) {
+			errors.push(`files.vision: required for vision-enabled tier ${m.tier}`);
+		}
+	} else if (m.files.vision.length > 0) {
+		errors.push(`files.vision: unsupported for text/voice-only tier ${m.tier}`);
 	}
 
 	// Backend kernel-verify coverage. A production release must verify every
