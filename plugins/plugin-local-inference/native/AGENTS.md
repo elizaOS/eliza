@@ -91,11 +91,27 @@ Backbones (do not change without explicit human approval):
 
   **Canonical voice engine: fused `libelizainference`.** The strategic
   on-device voice engine is the fused-FFI `libelizainference` library
-  built by `packages/app-core/scripts/omnivoice-fuse/`, which grafts the
-  omnivoice.cpp sources into the elizaOS/llama.cpp fork at fuse time
-  and exposes them through the ABI v3 `eliza_inference_*` surface
-  (`ffi.h`). This is what `services/voice/` calls; this is what the
-  manifest's `voice` and `asr` entries are activated through.
+  built directly from the merged llama.cpp fork tree at
+  `plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/`.
+  This is what `services/voice/` calls; this is what the manifest's
+  `voice` and `asr` entries are activated through.
+
+  **W3-3 (OmniVoice → llama.cpp literal merge, v1.0.1-eliza, 2026-05-14):**
+  the OmniVoice sources, FFI bridge, and streaming optimizations now
+  live INSIDE the fork at `tools/omnivoice/`. The pre-merge graft path
+  (clone `elizaOS/omnivoice.cpp` at build time, copy sources into
+  `omnivoice/` at fork root, append `ELIZA-OMNIVOICE-FUSION-GRAFT-V1`
+  CMake block via `packages/app-core/scripts/omnivoice-fuse/` —
+  driven by `ELIZA_FUSE_OMNIVOICE=ON`) is **deprecated** and stays for
+  ONE release as a runway. Setting `OMNIVOICE_INSIDE_LLAMA_CPP=0`
+  (build-script env) opts back into the legacy graft. The default is
+  the merged path (`OMNIVOICE_INSIDE_LLAMA_CPP=1`). The build flag is
+  now `-DLLAMA_BUILD_OMNIVOICE=ON -DOMNIVOICE_SHARED=ON`;
+  `ELIZA_FUSE_OMNIVOICE=ON` is a back-compat alias that emits a
+  deprecation warning and redirects.
+
+  After the v1.0.2-eliza release, `OMNIVOICE_INSIDE_LLAMA_CPP=0` is
+  removed and `packages/app-core/scripts/omnivoice-fuse/` is deleted.
 
   The standalone `plugins/plugin-omnivoice/` plugin (separate ABI v2
   `ov_*` symbols, separate `libomnivoice.{so,dylib,dll}`, separate
