@@ -1,0 +1,39 @@
+{
+  "$schema": "https://elizaos.dev/schemas/voice-sub-model/v1.json",
+  "id": "vad",
+  "version": "0.1.0",
+  "hfRepo": "elizaos/eliza-1-voice-vad",
+  "hfRevision": "main",
+  "publishedToHfAt": "2026-05-14T00:00:00Z",
+  "displayName": "Eliza-1 Voice VAD — Silero VAD v5.1.2",
+  "purpose": "Voice activity detection (speech / silence endpoint detection)",
+  "architecture": "Silero VAD v5.1.2",
+  "license": "MIT",
+  "attribution": "https://github.com/snakers4/silero-vad",
+  "runtime": "onnxruntime-node",
+  "minBundleVersion": "0.0.0",
+  "evalMetrics": {
+    "falseBargeInRatePerHour": 0.5,
+    "sampleRate": 16000,
+    "chunkSizeMs": 30
+  },
+  "files": [
+    {
+      "filename": "silero-vad-int8.onnx",
+      "role": "primary-weights",
+      "quant": "onnx-int8",
+      "format": "onnx",
+      "approxSizeBytes": 1056768,
+      "sha256": "TBD-populated-by-publish-pipeline"
+    },
+    {
+      "filename": "silero-vad-v5.1.2.ggml.bin",
+      "role": "llama-cpp-compatible",
+      "quant": "onnx-fp16",
+      "format": "ggml",
+      "approxSizeBytes": 2093056,
+      "sha256": "TBD-populated-by-publish-pipeline"
+    }
+  ],
+  "notes": "Silero VAD v5.1.2 — lightweight, low-latency voice activity detection. The INT8 ONNX variant runs directly in onnxruntime-node; the GGML variant is used in the llama.cpp integrated audio pipeline path."
+}

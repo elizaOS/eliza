@@ -204,6 +204,7 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     total_audio_s = 0.0
     total_wall_s = 0.0
 
+    import numpy as np  # noqa: PLC0415
 
     for rec in val_records:
         try:

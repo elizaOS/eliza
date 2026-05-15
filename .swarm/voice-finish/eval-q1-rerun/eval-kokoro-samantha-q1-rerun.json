@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "kind": "kokoro-eval-report",
+  "generatedAt": "2026-05-15T01:57:12.944221+00:00",
+  "synthetic": false,
+  "device": "cuda",
+  "metrics": {
+    "utmos": 2.0311057567596436,
+    "wer": 1.0519385026737968,
+    "speaker_similarity": 0.19873179793357848,
+    "rtf": 124.29084448419806
+  },
+  "gates": {
+    "utmos_min": 3.8,
+    "wer_max": 0.08,
+    "speaker_similarity_min": 0.55,
+    "rtf_min": 5.0
+  },
+  "gateResult": {
+    "perMetric": {
+      "utmos": false,
+      "wer": false,
+      "speaker_similarity": false,
+      "rtf": true
+    },
+    "passed": false
+  },
+  "voiceName": "af_samantha",
+  "nEvalClips": 5,
+  "comparison": {
+    "baselinePath": "/tmp/kokoro-q1-rerun/eval-baseline-af_bella.json",
+    "baselineVoiceName": "af_samantha",
+    "baselineMetrics": {
+      "utmos": 4.464180850982666,
+      "wer": 0.00909090909090909,
+      "speaker_similarity": -0.07225392572581768,
+      "rtf": 100.39645004046348
+    },
+    "utmosDelta": -2.433075094223023,
+    "werDelta": 1.0428475935828878,
+    "speakerSimDelta": 0.27098572365939616,
+    "rtfDelta": 23.894394443734583,
+    "speakerSimBeatThreshold": 0.05,
+    "beatsBaseline": false
+  }
+}

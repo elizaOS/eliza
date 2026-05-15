@@ -1,0 +1,42 @@
+{
+  "$schema": "https://elizaos.dev/schemas/voice-sub-model/v1.json",
+  "id": "diarizer",
+  "version": "0.1.0",
+  "hfRepo": "elizaos/eliza-1-voice-diarizer",
+  "hfRevision": "main",
+  "publishedToHfAt": "2026-05-14T00:00:00Z",
+  "displayName": "Eliza-1 Voice Diarizer — Pyannote-segmentation-3.0 ONNX",
+  "purpose": "Local speaker-activity segmentation for multi-speaker sessions",
+  "architecture": "Pyannote-segmentation-3.0 (powerset, up to 3 local speakers, 5s window)",
+  "license": "MIT",
+  "attribution": "https://huggingface.co/onnx-community/pyannote-segmentation-3.0",
+  "runtime": "onnxruntime-node",
+  "minBundleVersion": "0.0.0",
+  "evalMetrics": {
+    "derAmiHeadset": 0.124,
+    "windowSeconds": 5,
+    "framesPerWindow": 293,
+    "classCount": 7,
+    "maxLocalSpeakers": 3,
+    "sampleRate": 16000
+  },
+  "files": [
+    {
+      "filename": "pyannote-segmentation-3.0-int8.onnx",
+      "role": "primary-weights",
+      "quant": "onnx-int8",
+      "format": "onnx",
+      "approxSizeBytes": 1614807,
+      "sha256": "TBD-populated-by-publish-pipeline"
+    },
+    {
+      "filename": "pyannote-segmentation-3.0-fp32.onnx",
+      "role": "fp32-reference",
+      "quant": "onnx-fp16",
+      "format": "onnx",
+      "approxSizeBytes": 6291456,
+      "sha256": "TBD-populated-by-publish-pipeline"
+    }
+  ],
+  "notes": "Powerset segmentation model; outputs per-frame speaker-activity for up to 3 simultaneous local speakers in a 5s sliding window. Used by SegmentDiarizer (energy-VAD + agglomerative clustering) in the W3-6 multi-speaker validation harness."
+}

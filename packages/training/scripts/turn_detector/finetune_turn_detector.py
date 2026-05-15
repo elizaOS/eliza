@@ -431,6 +431,7 @@ def train_step(
     accepted at the run-driver level; this function trusts the caller to
     have done the right thing.
     """
+    import torch
 
     input_ids, labels = batch
     input_ids = input_ids.to(next(model.parameters()).device)
