@@ -25,6 +25,71 @@
  *  default policy (a desktop without battery telemetry). */
 export type PowerSourceState = "plugged-in" | "battery" | "unknown";
 
+/**
+ * Resolve the current power-source state.
+ *
+ * Production callers (engine bridge) prime the optimistic policy with this
+ * once at session start. There is no canonical power-source accessor in
+ * `device-tier.ts` (the hardware probe records RAM / GPU / cores but no
+ * battery telemetry), so this resolver consults two cheap signals:
+ *
+ *   1. `ELIZA_VOICE_POWER_SOURCE` env var (`"plugged-in" | "battery" |
+ *      "unknown"`). Wins outright when set — operators / Settings can pin
+ *      the policy without restarting the engine.
+ *   2. Linux `/sys/class/power_supply` AC online status when available
+ *      synchronously. Returns `"plugged-in"` when any AC adapter reports
+ *      `online`, `"battery"` when only batteries are present and none
+ *      report online, `"unknown"` otherwise.
+ *
+ * macOS / Windows / mobile go through `"unknown"` here — the desktop probe
+ * surfaces those via the Electrobun side and Settings overrides it through
+ * (1). The default heuristic (`unknown → enabled`) treats those as
+ * plugged-in for the optimistic gate, which is the right default for
+ * desktop / dev (battery-aware mobile builds set the override explicitly).
+ */
+export function resolvePowerSourceState(): PowerSourceState {
+	const fromEnv = process.env.ELIZA_VOICE_POWER_SOURCE?.trim().toLowerCase();
+	if (
+		fromEnv === "plugged-in" ||
+		fromEnv === "battery" ||
+		fromEnv === "unknown"
+	) {
+		return fromEnv;
+	}
+	if (process.platform === "linux") {
+		try {
+			// Lazy require so this module stays free of node-fs imports for
+			// non-linux platforms / browser bundlers.
+			// eslint-disable-next-line @typescript-eslint/no-require-imports
+			const fs = require("node:fs") as typeof import("node:fs");
+			const base = "/sys/class/power_supply";
+			if (!fs.existsSync(base)) return "unknown";
+			const entries = fs.readdirSync(base);
+			let sawBattery = false;
+			for (const entry of entries) {
+				const typePath = `${base}/${entry}/type`;
+				if (!fs.existsSync(typePath)) continue;
+				const type = fs.readFileSync(typePath, "utf8").trim();
+				if (type === "Mains") {
+					const onlinePath = `${base}/${entry}/online`;
+					if (
+						fs.existsSync(onlinePath) &&
+						fs.readFileSync(onlinePath, "utf8").trim() === "1"
+					) {
+						return "plugged-in";
+					}
+				} else if (type === "Battery") {
+					sawBattery = true;
+				}
+			}
+			return sawBattery ? "battery" : "unknown";
+		} catch {
+			return "unknown";
+		}
+	}
+	return "unknown";
+}
+
 export interface OptimisticPolicyOptions {
 	/**
 	 * Default value when no override is set. Resolved from the device tier

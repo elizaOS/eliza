@@ -139,6 +139,7 @@ export {
 	type PowerSourceState,
 	type ResolveOptimisticPolicyArgs,
 	resolveOptimisticPolicyEnabled,
+	resolvePowerSourceState,
 } from "./optimistic-policy";
 export {
 	CharacterPhonemeStub,
