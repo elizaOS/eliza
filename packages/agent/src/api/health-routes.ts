@@ -23,9 +23,9 @@ let localInferenceHealthApiPromise: Promise<LocalInferenceHealthApi> | null =
   null;
 
 function getCloudHealthApi(): Promise<CloudHealthApi> {
-  cloudHealthApiPromise ??= import("@elizaos/plugin-elizacloud") as Promise<
-    CloudHealthApi
-  >;
+  cloudHealthApiPromise ??= import(
+    "@elizaos/plugin-elizacloud"
+  ) as Promise<CloudHealthApi>;
   return cloudHealthApiPromise;
 }
 

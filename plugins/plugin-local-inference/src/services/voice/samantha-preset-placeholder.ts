@@ -34,6 +34,7 @@ import {
 	VOICE_PRESET_HEADER_BYTES_V2,
 	VOICE_PRESET_MAGIC,
 	VOICE_PRESET_VERSION_V2,
+	type VoicePresetFile,
 	VoicePresetFormatError,
 } from "./voice-preset-format";
 
@@ -84,11 +85,7 @@ export function detectSamanthaPlaceholder(
 	if (bytes.byteLength < VOICE_PRESET_HEADER_BYTES_V2) {
 		return { kind: "real-preset", reason: "too short for v2 header" };
 	}
-	const view = new DataView(
-		bytes.buffer,
-		bytes.byteOffset,
-		bytes.byteLength,
-	);
+	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 	if (view.getUint32(0, true) !== VOICE_PRESET_MAGIC) {
 		return { kind: "real-preset", reason: "magic mismatch" };
 	}
@@ -96,7 +93,7 @@ export function detectSamanthaPlaceholder(
 		return { kind: "real-preset", reason: "version mismatch" };
 	}
 
-	let parsed;
+	let parsed: VoicePresetFile;
 	try {
 		parsed = readVoicePresetFile(bytes);
 	} catch (err) {

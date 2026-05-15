@@ -2105,8 +2105,7 @@ async function handleRequest(
         readJsonBody,
         readBody,
         discoverSkills,
-        saveElizaConfig:
-          coerce<(config: unknown) => void>(saveElizaConfig),
+        saveElizaConfig: coerce<(config: unknown) => void>(saveElizaConfig),
       })
     ) {
       return;
@@ -3301,9 +3300,7 @@ export async function startApiServer(opts?: {
     }
   });
   void getOptionalPluginApi<{
-    attachMobileDeviceBridgeToServer: (
-      server: http.Server,
-    ) => Promise<void>;
+    attachMobileDeviceBridgeToServer: (server: http.Server) => Promise<void>;
   }>("capacitor")
     .then(({ attachMobileDeviceBridgeToServer }) =>
       attachMobileDeviceBridgeToServer(server),
@@ -4456,11 +4453,11 @@ export async function startApiServer(opts?: {
                 state.signalPairingSessions.clear();
               }
               if (state.telegramAccountAuthSession) {
-                void Promise.resolve(state.telegramAccountAuthSession.stop()).catch(
-                  () => {
-                    /* non-fatal */
-                  },
-                );
+                void Promise.resolve(
+                  state.telegramAccountAuthSession.stop(),
+                ).catch(() => {
+                  /* non-fatal */
+                });
                 state.telegramAccountAuthSession = null;
               }
               wss.close();

@@ -80,7 +80,8 @@ export class NoVisionProviderError extends Error {
 export async function discoverRuntimeAdapter(
   opts: DiscoverRuntimeOptions = {},
 ): Promise<RealRuntimeAdapter> {
-  const env = opts.env ?? (process.env as Readonly<Record<string, string | undefined>>);
+  const env =
+    opts.env ?? (process.env as Readonly<Record<string, string | undefined>>);
   const missing: string[] = [];
 
   if ((env.ANTHROPIC_API_KEY ?? "").length > 0) {
@@ -94,7 +95,9 @@ export async function discoverRuntimeAdapter(
   }
 
   // Future: OpenAI / Google / OpenRouter handlers go here.
-  missing.push("OPENAI_API_KEY (for cloud OpenAI IMAGE_DESCRIPTION — not yet wired)");
+  missing.push(
+    "OPENAI_API_KEY (for cloud OpenAI IMAGE_DESCRIPTION — not yet wired)",
+  );
   missing.push(
     "eliza-1 local bundle under ~/.milady/local-inference/ with IMAGE_DESCRIPTION-capable mmproj",
   );
@@ -124,8 +127,7 @@ async function tryBuildAnthropicAdapter(
   }
 
   const minimalRuntime = createMinimalRuntime(env);
-  const modelName =
-    env.ANTHROPIC_SMALL_MODEL ?? "claude-haiku-4-5-20251001";
+  const modelName = env.ANTHROPIC_SMALL_MODEL ?? "claude-haiku-4-5-20251001";
 
   return {
     providerInfo: {

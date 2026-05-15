@@ -453,6 +453,23 @@ export function request(): never {
   return unavailable("http.request");
 }
 
+export class ServerResponse {
+  statusCode = 200;
+
+  setHeader(): this {
+    return this;
+  }
+
+  writeHead(statusCode: number): this {
+    this.statusCode = statusCode;
+    return this;
+  }
+
+  end(): this {
+    return this;
+  }
+}
+
 export function connect(): never {
   return unavailable("net.connect");
 }
@@ -592,6 +609,7 @@ const nodeBuiltins = {
   runInNewContext,
   scryptSync,
   sep,
+  ServerResponse,
   stat,
   statSync,
   strict,

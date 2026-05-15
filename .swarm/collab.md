@@ -68,6 +68,13 @@
 
 ## Active agents
 
+- 2026-05-15 H4 phase=impl-done: All 10 elizaos/eliza-1-voice-* repos confirmed live
+  on HuggingFace with real ONNX/GGUF weights. SHA256 verified against HF LFS metadata
+  for all binaries. models/voice/manifest.json: turn-detector promoted to v0.2.0
+  (hfRevision=9eaff4947ebd87b1d811e27dec939e29362a9e42). CHANGELOG updated with H4
+  section. Install smoke: 10/10 PASS (artifact: artifacts/eliza-1-install-smoke/h4-1778829296/).
+  Report: .swarm/impl/H4-hf-weights.md. No blockers — every repo has real weights.
+
 - 2026-05-15 response-streaming-review phase=impl: reviewed local llama text
   streaming + cloud bridge fallback SSE. Fixed two scoped issues: local
   `streamLlamaPrompt` now filters `<think>...</think>` spans before chunks
@@ -624,3 +631,15 @@ read from `HF_TOKEN` env. Never commit it.
 
 - 2026-05-15 V-verify-final phase=start: PID=1041120. Watching for L-kokoro-distill / M-emotion-final / O-turn-intl / S-static-models / T-asr commits. Will write `.swarm/voice-finish/WAVE_2_GRIND_FINAL.md` when wave closes (or 2h cap).
 
+
+## H1 — G3 retry: Kokoro sam FT with OmniVoice teacher (2026-05-15)
+
+- 2026-05-15 00:10 H1 phase=impl: PID=1072910. G3 retry with OmniVoice sam teacher.
+  Corpus audit: sam-distill/ has 1090 clips / 95.06 min synthesized by G3 with
+  sam-melfit-ref_s teacher (NOT af_bella). ≥80% distilled / ≤20% real target met.
+  982 train + 108 val clips. Phonemes.jsonl generated. Full-FT launched against
+  kokoro_same_g3.yaml (lr=3e-5, anchor=0.0005, 8000 max_steps, APOLLO-mini, bf16,
+  RTX 5080 16GB). Training PID=1092352. Log: /tmp/kokoro-g3/train.log.
+  GPU VRAM: 14.9 GB / 16.3 GB allocated during training — eval must wait until
+  training pause or completion. Loss trajectory: step=0:0.0899 → step=500:0.6016
+  (convergent, warmup spike then decreasing).

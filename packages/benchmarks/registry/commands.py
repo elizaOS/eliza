@@ -418,6 +418,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         timeout = extra.get("timeout")
         if isinstance(timeout, int) and timeout > 0:
             args.extend(["--timeout", str(timeout)])
+        network_mode = extra.get("network_mode")
+        if isinstance(network_mode, str) and network_mode.strip():
+            args.extend(["--network-mode", network_mode.strip()])
         sample = extra.get("sample")
         if sample is True:
             args.append("--sample")
@@ -972,6 +975,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_steps = extra.get("max_steps")
         if isinstance(max_steps, int) and max_steps > 0:
             args.extend(["--max_steps", str(max_steps)])
+        a11y_tree_max_tokens = extra.get("a11y_tree_max_tokens")
+        if isinstance(a11y_tree_max_tokens, int) and a11y_tree_max_tokens > 0:
+            args.extend(["--a11y_tree_max_tokens", str(a11y_tree_max_tokens)])
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max_tasks", str(max_tasks)])

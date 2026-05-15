@@ -216,9 +216,9 @@ describe("GgmlWakeWordModel", () => {
 			ctx,
 			headName: "hey-eliza",
 		});
-		await expect(
-			model.scoreFrame(new Float32Array(FRAME - 1)),
-		).rejects.toThrow(/1280/);
+		await expect(model.scoreFrame(new Float32Array(FRAME - 1))).rejects.toThrow(
+			/1280/,
+		);
 	});
 
 	it("reset() and close() drive the matching FFI symbols", async () => {
@@ -240,11 +240,11 @@ describe("GgmlWakeWordModel", () => {
 
 	it("wraps a head-bind failure as WakeWordUnavailableError(model-load-failed)", async () => {
 		const ffi = makeMockFfi(true);
-		(ffi.wakewordOpen as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-			() => {
-				throw new Error("[ffi-bindings] unknown head 'banana'");
-			},
-		);
+		(
+			ffi.wakewordOpen as unknown as ReturnType<typeof vi.fn>
+		).mockImplementation(() => {
+			throw new Error("[ffi-bindings] unknown head 'banana'");
+		});
 		const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
 		await expect(
 			GgmlWakeWordModel.load({ ffi, ctx, headName: "banana" }),

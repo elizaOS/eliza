@@ -21,19 +21,16 @@ import { ChartQaAdapter, predictChartQa } from "./adapters/chartqa_adapter.ts";
 import { DocVqaAdapter, predictDocVqa } from "./adapters/docvqa_adapter.ts";
 import { OSWorldAdapter, predictOSWorld } from "./adapters/osworld_adapter.ts";
 import {
-  ScreenSpotAdapter,
   predictScreenSpot,
+  ScreenSpotAdapter,
 } from "./adapters/screenspot_adapter.ts";
-import {
-  TextVqaAdapter,
-  predictTextVqa,
-} from "./adapters/textvqa_adapter.ts";
+import { predictTextVqa, TextVqaAdapter } from "./adapters/textvqa_adapter.ts";
 import { resolveRuntime } from "./runtime-resolver.ts";
 import type {
   BaselineEntry,
-  BenchReport,
   BenchmarkAdapter,
   BenchmarkName,
+  BenchReport,
   Eliza1TierId,
   Prediction,
   Sample,
@@ -169,18 +166,26 @@ async function predictFor(
   samples: Sample[],
   smoke: boolean,
 ): Promise<Prediction[]> {
-  if (name === "textvqa") return predictTextVqa(runtime, samples as Sample<{ answers: string[] }>[]);
-  if (name === "docvqa") return predictDocVqa(runtime, samples as Sample<{ answers: string[] }>[]);
+  if (name === "textvqa")
+    return predictTextVqa(runtime, samples as Sample<{ answers: string[] }>[]);
+  if (name === "docvqa")
+    return predictDocVqa(runtime, samples as Sample<{ answers: string[] }>[]);
   if (name === "chartqa") {
     return predictChartQa(
       runtime,
-      samples as Sample<{ answers: string[]; answerType: "numeric" | "categorical" }>[],
+      samples as Sample<{
+        answers: string[];
+        answerType: "numeric" | "categorical";
+      }>[],
     );
   }
   if (name === "screenspot") {
     return predictScreenSpot(
       runtime,
-      samples as Sample<{ bbox: readonly [number, number, number, number]; platform: "desktop" | "mobile" | "web" }>[],
+      samples as Sample<{
+        bbox: readonly [number, number, number, number];
+        platform: "desktop" | "mobile" | "web";
+      }>[],
     );
   }
   if (name === "osworld") {
@@ -234,7 +239,9 @@ export interface RunOneArgs {
  */
 export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
   const adapter = adapterFor(args.benchmark);
-  const samples = await adapter.loadSamples(args.samples, { smoke: args.smoke });
+  const samples = await adapter.loadSamples(args.samples, {
+    smoke: args.smoke,
+  });
   const startedAt = Date.now();
   const predictions = await predictFor(
     args.benchmark,
@@ -277,7 +284,11 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
   };
 }
 
-function reportPath(tier: string, benchmark: BenchmarkName, override?: string): string {
+function reportPath(
+  tier: string,
+  benchmark: BenchmarkName,
+  override?: string,
+): string {
   if (override) return override;
   const date = new Date().toISOString().slice(0, 10);
   return join(PACKAGE_ROOT, "results", `${tier}-${benchmark}-${date}.json`);
@@ -291,12 +302,14 @@ function writeReport(report: BenchReport, override?: string): string {
 }
 
 function renderSummary(report: BenchReport): string {
-  const baseline = report.baseline_score === null
-    ? "n/a"
-    : (report.baseline_score * 100).toFixed(1) + "%";
-  const delta = report.delta === null
-    ? "n/a"
-    : `${report.delta >= 0 ? "+" : ""}${(report.delta * 100).toFixed(1)}pp`;
+  const baseline =
+    report.baseline_score === null
+      ? "n/a"
+      : `${(report.baseline_score * 100).toFixed(1)}%`;
+  const delta =
+    report.delta === null
+      ? "n/a"
+      : `${report.delta >= 0 ? "+" : ""}${(report.delta * 100).toFixed(1)}pp`;
   return [
     `[bench] ${report.tier} × ${report.benchmark}`,
     `  samples       : ${report.sample_count}`,
@@ -336,7 +349,10 @@ async function main(): Promise<void> {
       smoke: args.smoke,
       runtime,
     });
-    const dest = writeReport(report, args.benchmarks.length === 1 ? args.output : undefined);
+    const dest = writeReport(
+      report,
+      args.benchmarks.length === 1 ? args.output : undefined,
+    );
     process.stdout.write(`\n${renderSummary(report)}\nwrote ${dest}\n`);
     reports.push(report);
   }

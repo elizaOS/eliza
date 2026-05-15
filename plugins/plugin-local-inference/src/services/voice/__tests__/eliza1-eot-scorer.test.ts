@@ -6,18 +6,18 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
-	Eliza1EotClassifier,
-	type Eliza1EotScorerOptions,
-} from "../eot-classifier";
-import {
-	Eliza1EotScorer,
-	formatEotPrompt,
 	type ControlledEvaluateInputLike,
 	type ControlledEvaluateOutputLike,
+	Eliza1EotScorer,
+	formatEotPrompt,
 	type LlamaContextLike,
 	type LlamaContextSequenceLike,
 	type LlamaModelLike,
 } from "../eliza1-eot-scorer";
+import {
+	Eliza1EotClassifier,
+	type Eliza1EotScorerOptions,
+} from "../eot-classifier";
 
 const IM_END_ID = 199;
 
@@ -79,7 +79,8 @@ function buildFakeModel(opts: {
 	const model: LlamaModelLike = {
 		tokenize(text: string, specialTokens?: boolean) {
 			tokenizeCalls.push(text);
-			if (text === "<|im_end|>") return specialTokens ? [IM_END_ID] : [101, 102];
+			if (text === "<|im_end|>")
+				return specialTokens ? [IM_END_ID] : [101, 102];
 			return Array.from(text).map((c) => c.charCodeAt(0));
 		},
 		async createContext(args) {

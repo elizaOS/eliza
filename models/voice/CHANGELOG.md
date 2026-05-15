@@ -25,6 +25,28 @@ Stable model ids:
 
 ---
 
+## H5 — 2026-05-15 — unified eliza-1 voice repo migration gate
+
+Voice payload publishing now targets the single canonical repo
+`elizaos/eliza-1` under `voice/<model-id>/...`.
+`scripts/hf_consolidate_eliza1_voice.py` verifies source split-repo
+hashes/sizes from `models/voice/manifest.json`, can stage and publish the
+unified `voice/` tree, verifies the destination, and only then allows legacy
+split repo deletion with an explicit confirmation flag.
+
+Verified destination commit: `elizaos/eliza-1` @
+`20b291b5820937e8a1e1ca9f2927f5bc64aefe7e`. The unified upload includes the
+current manifest assets plus the historical turn-detector v0.1 payloads that
+remain in `packages/shared/src/local-inference/voice-models.ts`, so runtime
+downloads no longer require split voice repos. After verification, all 10
+legacy `elizaos/eliza-1-voice-*` repos were deleted.
+
+Remaining blocker for GGUF-only release: speaker, diarizer, turn-detector,
+voice-emotion, kokoro, VAD, and wakeword still include ONNX payloads. The
+publish/delete gate reports these explicitly via `--require-gguf`.
+
+---
+
 ## H4 — 2026-05-15 — voice sub-model weights confirmed live on HuggingFace
 
 H4 verified all 10 `elizaos/eliza-1-voice-*` repos have real ONNX/GGUF
@@ -36,14 +58,14 @@ weights pushed. SHA256 values cross-checked against HF LFS metadata.
 |------|------------|---------|
 | elizaos/eliza-1-voice-asr | c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f | eliza-1-asr-q8_0.gguf (2.0 GB) + mmproj (340 MB) |
 | elizaos/eliza-1-voice-turn | 9eaff4947ebd87b1d811e27dec939e29362a9e42 | onnx/model_q8.onnx (36 MB) + onnx/turn-detector-en-q8.gguf (39 MB) + tokenizer |
-| elizaos/eliza-1-voice-emotion | da50fd9719dd78857829b144d6f72ce3c4e3464a | wav2small-msp-dim-int8.onnx (504 KB) + fp32 variants |
-| elizaos/eliza-1-voice-speaker | f6a2c964e0f36091e995e69b506bd36e1e645289 | wespeaker-resnet34-lm.onnx (25 MB) |
-| elizaos/eliza-1-voice-diarizer | d3c4974d391d45ac9261221a96f2eeb4750aa2cf | pyannote-segmentation-3.0-int8.onnx (1.5 MB) + fp32 (5.7 MB) |
-| elizaos/eliza-1-voice-vad | 9d8f7eefc72fda18b9d8ae6e8d4cc413a939a7a7 | silero-vad-int8.onnx (624 KB) + ggml.bin (864 KB) |
-| elizaos/eliza-1-voice-wakeword | 85bef810f8bb0ca57e8625ec36abe1c617fd3e39 | hey-eliza-int8.onnx (615 KB) + melspectrogram + embedding_model |
+| elizaos/eliza-1-voice-emotion | 85c56b6f5aa4bdef801aa6d5ea082eb92f90b463 | wav2small-msp-dim-int8.onnx (504 KB) + fp32 variants |
+| elizaos/eliza-1-voice-speaker | 3d882d6dfb00c9eed49f89bb7cc2e45ac3497159 | wespeaker-resnet34-lm.onnx (25 MB) |
+| elizaos/eliza-1-voice-diarizer | 7a8d059b770aeab08e6eabcf9dcbfc051e5bafef | pyannote-segmentation-3.0-int8.onnx (1.5 MB) + fp32 (5.7 MB) |
+| elizaos/eliza-1-voice-vad | 7fc2359bbc0ee1e0dd7de2acb126f6872a4fb4c2 | silero-vad-int8.onnx (624 KB) + ggml.bin (864 KB) |
+| elizaos/eliza-1-voice-wakeword | bcd866bc070a649dfd2dfbf7aadbd01b3cc68c4b | hey-eliza-int8.onnx (615 KB) + melspectrogram + embedding_model |
 | elizaos/eliza-1-voice-kokoro | 967f7449f79414d2b49db3b2441ea683630c11ab | kokoro-v1.0-q4.onnx (291 MB) + voices/af_bella.bin + voices/af_same.bin |
 | elizaos/eliza-1-voice-omnivoice | b766eb23d5f6c84d580973c0f2013b6fcbd561c0 | omnivoice-base-q4_k_m.gguf (389 MB) + q8_0 (626 MB) + tokenizer + presets/voice-preset-same.bin |
-| elizaos/eliza-1-voice-embedding | acddce031d74deebe1027382feb143df7dd1500e | eliza-1-embedding-q8_0.gguf (609 MB) |
+| elizaos/eliza-1-voice-embedding | bf6afa907c83ec98e487f018cfb4e29ec3cb7c03 | eliza-1-embedding-q8_0.gguf (609 MB) |
 
 **turn-detector v0.2.0** (H-turn / I1-turn fine-tune): DailyDialog prefix-augmented
 EOU corpus, APOLLO-Mini scaffold, F1=0.9811 (vs 0.84 baseline). +0.1411 F1 delta.

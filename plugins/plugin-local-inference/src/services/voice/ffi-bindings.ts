@@ -1409,9 +1409,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			) {
 				return false;
 			}
-			return (
-				loadedLib.symbols.eliza_inference_wakeword_supported() === 1
-			);
+			return loadedLib.symbols.eliza_inference_wakeword_supported() === 1;
 		},
 
 		wakewordOpen({ ctx, sampleRateHz, headName }) {

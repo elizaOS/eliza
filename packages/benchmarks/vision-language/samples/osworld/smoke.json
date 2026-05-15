@@ -25,10 +25,7 @@
       "id": "smoke-osworld-0003",
       "imagePath": "samples/_placeholder.png",
       "instruction": "Save the document with Ctrl+S",
-      "trace": [
-        { "type": "HOTKEY", "keys": ["Ctrl", "s"] },
-        { "type": "DONE" }
-      ]
+      "trace": [{ "type": "HOTKEY", "keys": ["Ctrl", "s"] }, { "type": "DONE" }]
     },
     {
       "id": "smoke-osworld-0004",

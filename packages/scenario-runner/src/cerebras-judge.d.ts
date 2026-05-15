@@ -19,40 +19,40 @@ export type CerebrasJudgeVerdict = "PASS" | "FAIL" | "REVIEW";
 export type CerebrasJudgeVerdictWide = CerebrasJudgeVerdict | "NEEDS_REVIEW";
 /** Canonical response shape every Cerebras judge call resolves to. */
 export interface JudgeResponse {
-  /** Raw model text — exactly what the API returned, before parsing. */
-  raw: string;
-  /** Parsed JSON object or null if the model output never parsed. */
-  json: Record<string, unknown> | null;
-  /** 0..1 score when the model emitted a `score` field. */
-  score?: number;
-  /** Canonical verdict when the model emitted `verdict` or it can be derived from `score`. */
-  verdict?: CerebrasJudgeVerdict;
-  /** Free-text justification when the model emitted `reason` (or equivalent). */
-  reason?: string;
+    /** Raw model text — exactly what the API returned, before parsing. */
+    raw: string;
+    /** Parsed JSON object or null if the model output never parsed. */
+    json: Record<string, unknown> | null;
+    /** 0..1 score when the model emitted a `score` field. */
+    score?: number;
+    /** Canonical verdict when the model emitted `verdict` or it can be derived from `score`. */
+    verdict?: CerebrasJudgeVerdict;
+    /** Free-text justification when the model emitted `reason` (or equivalent). */
+    reason?: string;
 }
 export interface CerebrasJudgeOptions {
-  /** Default `gpt-oss-120b`. Override per call via judge() options if needed. */
-  model?: string;
-  /** OpenAI-compatible base. Default `https://api.cerebras.ai/v1`. */
-  baseUrl?: string;
-  /** Bearer key. Defaults to `process.env.CEREBRAS_API_KEY`. */
-  apiKey?: string;
-  /** Per-request abort timeout. Default 60000ms. */
-  timeoutMs?: number;
-  /** Retry count on 429/5xx (transport-only retries, not parse retries). Default 2. */
-  maxRetries?: number;
+    /** Default `gpt-oss-120b`. Override per call via judge() options if needed. */
+    model?: string;
+    /** OpenAI-compatible base. Default `https://api.cerebras.ai/v1`. */
+    baseUrl?: string;
+    /** Bearer key. Defaults to `process.env.CEREBRAS_API_KEY`. */
+    apiKey?: string;
+    /** Per-request abort timeout. Default 60000ms. */
+    timeoutMs?: number;
+    /** Retry count on 429/5xx (transport-only retries, not parse retries). Default 2. */
+    maxRetries?: number;
 }
 export interface JudgeCallOptions {
-  /** Max output tokens. Default 1024. */
-  maxTokens?: number;
-  /** Temperature. Default 0. */
-  temperature?: number;
-  /** Optional system prompt. */
-  systemPrompt?: string;
-  /** When true, sets `response_format: { type: "json_object" }`. Default false. */
-  jsonObjectMode?: boolean;
-  /** Reasoning effort hint for `gpt-oss-*` models. Default "low" for fast judges. */
-  reasoningEffort?: "low" | "medium" | "high";
+    /** Max output tokens. Default 1024. */
+    maxTokens?: number;
+    /** Temperature. Default 0. */
+    temperature?: number;
+    /** Optional system prompt. */
+    systemPrompt?: string;
+    /** When true, sets `response_format: { type: "json_object" }`. Default false. */
+    jsonObjectMode?: boolean;
+    /** Reasoning effort hint for `gpt-oss-*` models. Default "low" for fast judges. */
+    reasoningEffort?: "low" | "medium" | "high";
 }
 /**
  * Walk a string and return the first balanced `{...}` window, respecting
@@ -69,9 +69,7 @@ export declare function extractBalancedJsonObject(raw: string): string | null;
  * first-`{` to last-`}` window → balanced-object scan. Returns null when
  * the model output never resolves to a JSON object.
  */
-export declare function tolerantJsonParse(
-  text: string,
-): Record<string, unknown> | null;
+export declare function tolerantJsonParse(text: string): Record<string, unknown> | null;
 /**
  * Map a numeric score to a canonical verdict. Threshold: `>= 0.75` is PASS,
  * `<= 0.25` is FAIL, anything in between is REVIEW. This is an additive
@@ -85,9 +83,7 @@ export declare function verdictFromScore(score: number): CerebrasJudgeVerdict;
  * verdict string. Accepts YES/NO/NEEDS_REVIEW (personality-bench style) and
  * PASS/FAIL/REVIEW (scenario-runner style).
  */
-export declare function normalizeVerdict(
-  raw: unknown,
-): CerebrasJudgeVerdict | undefined;
+export declare function normalizeVerdict(raw: unknown): CerebrasJudgeVerdict | undefined;
 /**
  * Cerebras gpt-oss-120b judge transport.
  *
@@ -98,26 +94,26 @@ export declare function normalizeVerdict(
  * they can map onto their own return types.
  */
 export declare class CerebrasJudge {
-  private readonly model;
-  private readonly baseUrl;
-  private readonly apiKey;
-  private readonly timeoutMs;
-  private readonly maxRetries;
-  constructor(options?: CerebrasJudgeOptions);
-  /** Returns true when an API key is present in env. */
-  static isAvailable(): boolean;
-  /**
-   * Execute a single judge call. Retries on 429/5xx (up to `maxRetries`
-   * times) with exponential backoff. Throws on 4xx (other than 429) and
-   * after retries are exhausted.
-   */
-  judge(prompt: string, options?: JudgeCallOptions): Promise<JudgeResponse>;
-  /**
-   * Internal: dispatch one chat completion with retries on 429/5xx.
-   * Returns the raw assistant content (no parsing). Exposed via judge();
-   * not exported because the parsed surface is the contract.
-   */
-  private callChat;
-  private buildMessages;
+    private readonly model;
+    private readonly baseUrl;
+    private readonly apiKey;
+    private readonly timeoutMs;
+    private readonly maxRetries;
+    constructor(options?: CerebrasJudgeOptions);
+    /** Returns true when an API key is present in env. */
+    static isAvailable(): boolean;
+    /**
+     * Execute a single judge call. Retries on 429/5xx (up to `maxRetries`
+     * times) with exponential backoff. Throws on 4xx (other than 429) and
+     * after retries are exhausted.
+     */
+    judge(prompt: string, options?: JudgeCallOptions): Promise<JudgeResponse>;
+    /**
+     * Internal: dispatch one chat completion with retries on 429/5xx.
+     * Returns the raw assistant content (no parsing). Exposed via judge();
+     * not exported because the parsed surface is the contract.
+     */
+    private callChat;
+    private buildMessages;
 }
 //# sourceMappingURL=cerebras-judge.d.ts.map

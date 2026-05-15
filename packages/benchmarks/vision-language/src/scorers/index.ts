@@ -223,7 +223,9 @@ export function osworldStepMatch(
   // missing reference steps (the agent skips one).
   const m = predicted.length;
   const n = reference.length;
-  const dp = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  const dp = Array.from({ length: m + 1 }, () =>
+    new Array<number>(n + 1).fill(0),
+  );
   for (let i = 1; i <= m; i += 1) {
     for (let j = 1; j <= n; j += 1) {
       if (actionMatches(predicted[i - 1], reference[j - 1], clickTolerancePx)) {
@@ -259,7 +261,9 @@ function actionMatches(
   if (ref.type === "HOTKEY") {
     if (!pred.keys || !ref.keys) return false;
     if (pred.keys.length !== ref.keys.length) return false;
-    return pred.keys.every((key, i) => key.toLowerCase() === ref.keys?.[i]?.toLowerCase());
+    return pred.keys.every(
+      (key, i) => key.toLowerCase() === ref.keys?.[i]?.toLowerCase(),
+    );
   }
   return true;
 }

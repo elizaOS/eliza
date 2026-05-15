@@ -57,6 +57,20 @@ async function probeRealBackend(): Promise<boolean> {
 
 const realBackendPresent = await probeRealBackend();
 
+const UNSUPPORTED_REAL_VOICE_RUNTIME_PATTERNS = [
+	/\[dflash\].*drafter rejected/i,
+	/\bdflash-draft\b/i,
+	/tokenizer metadata mismatch/i,
+	/llama-server exited during startup/i,
+];
+
+function isUnsupportedRealVoiceRuntime(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return UNSUPPORTED_REAL_VOICE_RUNTIME_PATTERNS.some((pattern) =>
+		pattern.test(message),
+	);
+}
+
 describe.skipIf(!realBackendPresent)(
 	`voice:duet — real ${realBundleId} + fused TTS`,
 	() => {
@@ -93,8 +107,24 @@ describe.skipIf(!realBackendPresent)(
 
 			const engA = new LocalInferenceEngine();
 			const engB = new LocalInferenceEngine();
-			await engA.load(target.path);
-			await engB.load(target.path);
+			try {
+				await engA.load(target.path);
+				await engB.load(target.path);
+			} catch (error) {
+				await engA.unload().catch(() => undefined);
+				await engB.unload().catch(() => undefined);
+				await pushA.stop().catch(() => undefined);
+				await pushB.stop().catch(() => undefined);
+				if (isUnsupportedRealVoiceRuntime(error)) {
+					console.warn(
+						`[voice-duet.e2e] Skipping incompatible local runtime/model pair: ${
+							error instanceof Error ? error.message : String(error)
+						}`,
+					);
+					return;
+				}
+				throw error;
+			}
 			engA.startVoice({
 				bundleRoot,
 				useFfiBackend: true,

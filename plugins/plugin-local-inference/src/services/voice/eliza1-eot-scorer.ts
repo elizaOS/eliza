@@ -140,7 +140,9 @@ export class Eliza1EotScorer {
 
 		const tokens = this.tokenizePrompt(partialTranscript);
 		const start = performance.now();
-		const next = this.inflight.then(() => this.runOnce(sequence, tokens, imEndId));
+		const next = this.inflight.then(() =>
+			this.runOnce(sequence, tokens, imEndId),
+		);
 		this.inflight = next.catch(() => undefined);
 		const probability = await next;
 		return {
@@ -182,7 +184,10 @@ export class Eliza1EotScorer {
 		if (this.loraPath) {
 			contextOptions.lora = {
 				adapters: [
-					{ filePath: this.loraPath, ...(this.loraScale !== undefined ? { scale: this.loraScale } : {}) },
+					{
+						filePath: this.loraPath,
+						...(this.loraScale !== undefined ? { scale: this.loraScale } : {}),
+					},
 				],
 			};
 		}

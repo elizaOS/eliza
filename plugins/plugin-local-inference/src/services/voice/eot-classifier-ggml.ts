@@ -88,10 +88,7 @@ export class EotGgmlClassifier {
 	private disposed = false;
 
 	constructor(options: EotGgmlClassifierOptions) {
-		if (
-			typeof options.ggufPath !== "string" ||
-			options.ggufPath.length === 0
-		) {
+		if (typeof options.ggufPath !== "string" || options.ggufPath.length === 0) {
 			throw new EotGgmlUnavailableError(
 				"invalid-input",
 				"[eot-ggml] ggufPath is required",

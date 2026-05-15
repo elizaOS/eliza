@@ -724,7 +724,7 @@ class OpenClawClient:
         ctx = context or {}
         body: dict[str, object] = {
             "model": self.model,
-            "messages": _messages_from_context(text, ctx),
+            "messages": _direct_messages_from_context(text, ctx),
         }
         if ctx:
             tools = ctx.get("tools")
@@ -1323,6 +1323,33 @@ def _messages_from_context(text: str, ctx: Mapping[str, object]) -> list[dict[st
             messages.append({"role": "system", "content": sys_prompt.strip()})
         messages.append({"role": "user", "content": text})
     return messages
+
+
+def _direct_messages_from_context(
+    text: str,
+    ctx: Mapping[str, object],
+) -> list[dict[str, object]]:
+    """Build direct OpenAI messages while preserving benchmark context.
+
+    The CLI transport flattens ``context_to_prompt(ctx)`` into the message
+    string. Direct transport must do the same, otherwise benchmarks that pass
+    structured task metadata through ``context`` become materially different
+    between OpenClaw and Hermes/Eliza.
+    """
+    messages = _messages_from_context(text, ctx)
+    context_prompt = context_to_prompt(ctx)
+    if not context_prompt:
+        return messages
+
+    benchmark_context = f"Benchmark context:\n{context_prompt}"
+    for message in messages:
+        if message.get("role") == "system":
+            current = message.get("content")
+            prefix = current if isinstance(current, str) else ""
+            message["content"] = f"{prefix}\n\n{benchmark_context}".strip()
+            return messages
+
+    return [{"role": "system", "content": benchmark_context}, *messages]
 
 
 def _openai_message_from_raw(raw: Mapping[str, object]) -> dict[str, object] | None:

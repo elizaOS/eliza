@@ -43,6 +43,7 @@
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*",
     "fflate": "^0.8.2"
   },
   "devDependencies": {

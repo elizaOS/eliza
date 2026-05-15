@@ -28,6 +28,15 @@ export {
 	type FullContext,
 	mergeContext,
 } from "./eager-context-builder";
+export type {
+	LlamaContextLike as Eliza1EotLlamaContext,
+	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
+	LlamaModelLike as Eliza1EotLlamaModel,
+} from "./eliza1-eot-scorer";
+export {
+	Eliza1EotScorer,
+	formatEotPrompt as formatEliza1EotPrompt,
+} from "./eliza1-eot-scorer";
 export {
 	buildLocalEmbeddingRoute,
 	EMBEDDING_DIR_REL_PATH,
@@ -70,15 +79,15 @@ export {
 	DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
 	DEFAULT_TURNSENSE_DIR,
 	DEFAULT_TURNSENSE_ONNX,
+	Eliza1EotClassifier,
+	type Eliza1EotScoreResult,
+	type Eliza1EotScorerOptions,
 	EOT_COMMIT_SILENCE_MS,
 	EOT_COMMIT_THRESHOLD,
 	EOT_HANGOVER_EXTENSION_MS,
 	EOT_MID_CLAUSE_THRESHOLD,
 	EOT_TENTATIVE_SILENCE_MS,
 	EOT_TENTATIVE_THRESHOLD,
-	Eliza1EotClassifier,
-	type Eliza1EotScoreResult,
-	type Eliza1EotScorerOptions,
 	type EotClassifier,
 	HeuristicEotClassifier,
 	LEGACY_LIVEKIT_TURN_DETECTOR_ONNX,
@@ -97,15 +106,6 @@ export {
 	type VoiceNextSpeaker,
 	type VoiceTurnSignal,
 } from "./eot-classifier";
-export {
-	Eliza1EotScorer,
-	formatEotPrompt as formatEliza1EotPrompt,
-} from "./eliza1-eot-scorer";
-export type {
-	LlamaContextLike as Eliza1EotLlamaContext,
-	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
-	LlamaModelLike as Eliza1EotLlamaModel,
-} from "./eliza1-eot-scorer";
 export { VoiceStartupError } from "./errors";
 export * from "./ffi-bindings";
 export {

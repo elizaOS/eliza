@@ -2358,7 +2358,8 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
-        const { getLocalInferenceChatStatus } = await getLocalInferenceChatApi();
+        const { getLocalInferenceChatStatus } =
+          await getLocalInferenceChatApi();
         const localFailure = await getLocalInferenceChatStatus("status", err);
         json(
           res,
@@ -2804,7 +2805,8 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
-        const { getLocalInferenceChatStatus } = await getLocalInferenceChatApi();
+        const { getLocalInferenceChatStatus } =
+          await getLocalInferenceChatApi();
         const localFailure = await getLocalInferenceChatStatus("status", err);
         json(
           res,

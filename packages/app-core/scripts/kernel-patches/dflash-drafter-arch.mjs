@@ -133,10 +133,10 @@ function patchTextFile(llamaCppRoot, rel, transform, touched) {
 }
 
 function patchCmake(source, rel) {
-  if (
-    source.includes('file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")') ||
-    source.includes("models/dflash_draft.cpp")
-  ) {
+  if (source.includes("models/dflash_draft.cpp") || source.includes("models/dflash-draft.cpp")) {
+    return source;
+  }
+  if (source.includes('file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")')) {
     return source;
   }
   return insertAfter(
@@ -449,18 +449,22 @@ function patchModelCpp(source, rel, metadataExpr = "ml.metadata") {
 
 function verifyDflashDrafterArchPatch(llamaCppRoot) {
   const requiredMarkers = [
-    ["src/CMakeLists.txt", "models/dflash_draft.cpp"],
     ["src/llama-arch.h", "LLM_ARCH_DFLASH_DRAFT"],
     ["src/llama-arch.cpp", '"dflash-draft"'],
     ["src/llama-hparams.h", "dflash_n_target_features"],
     ["src/llama-model.h", "dflash_hidden_norm"],
     ["src/models/models.h", "llm_build_dflash_draft"],
-    [
-      "src/models/dflash_draft.cpp",
-      "llm_build_dflash_draft::llm_build_dflash_draft",
-    ],
   ];
   const missing = [];
+  const cmakePath = path.join(llamaCppRoot, "src/CMakeLists.txt");
+  const cmakeSource = fs.existsSync(cmakePath) ? fs.readFileSync(cmakePath, "utf8") : "";
+  if (
+    !cmakeSource.includes("models/dflash_draft.cpp") &&
+    !cmakeSource.includes("models/dflash-draft.cpp") &&
+    !cmakeSource.includes('file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")')
+  ) {
+    missing.push("src/CMakeLists.txt (missing dflash-draft model source)");
+  }
   for (const [rel, marker] of requiredMarkers) {
     const file = path.join(llamaCppRoot, rel);
     if (!fs.existsSync(file)) {
@@ -470,6 +474,21 @@ function verifyDflashDrafterArchPatch(llamaCppRoot) {
     if (!fs.readFileSync(file, "utf8").includes(marker)) {
       missing.push(`${rel} (missing ${marker})`);
     }
+  }
+  const modelSources = [
+    path.join(llamaCppRoot, "src/models/dflash_draft.cpp"),
+    path.join(llamaCppRoot, "src/models/dflash-draft.cpp"),
+  ];
+  if (
+    !modelSources.some(
+      (file) =>
+        fs.existsSync(file) &&
+        fs
+          .readFileSync(file, "utf8")
+          .includes("llm_build_dflash_draft::llm_build_dflash_draft"),
+    )
+  ) {
+    missing.push("src/models/dflash[-_]draft.cpp (missing dflash graph builder)");
   }
   if (missing.length > 0) {
     throw new Error(
@@ -492,7 +511,9 @@ function verifyDflashDrafterArchPatch(llamaCppRoot) {
 
 export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
   const touched = [];
-  const dest = path.join(llamaCppRoot, "src", "models", "dflash_draft.cpp");
+  const dashDest = path.join(llamaCppRoot, "src", "models", "dflash-draft.cpp");
+  const underscoreDest = path.join(llamaCppRoot, "src", "models", "dflash_draft.cpp");
+  const dest = fs.existsSync(dashDest) ? dashDest : underscoreDest;
   if (!fs.existsSync(DFLASH_DRAFT_SOURCE)) {
     throw new Error(
       `[dflash-build] dflash-drafter-arch: missing source ${DFLASH_DRAFT_SOURCE}`,

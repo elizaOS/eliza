@@ -264,10 +264,16 @@ export function getAgentSourceAliases(
   options: AgentSourceAliasOptions = {},
 ): ModuleAlias[] {
   if (sourceRoot) {
-    return getPackageSourceAliases("agent", sourceRoot, {
-      includeElizaAlias: options.includeElizaAlias,
-      rootReplacement: resolveModuleEntry(path.join(sourceRoot, "index")),
-    });
+    return [
+      {
+        find: /^@elizaos\/agent\/(.+)$/,
+        replacement: path.join(sourceRoot, "$1.ts"),
+      },
+      ...getPackageSourceAliases("agent", sourceRoot, {
+        includeElizaAlias: options.includeElizaAlias,
+        rootReplacement: resolveModuleEntry(path.join(sourceRoot, "index")),
+      }),
+    ];
   }
 
   return options.fallbackReplacement
@@ -302,6 +308,10 @@ export function getAppCoreSourceAliases(
         : []),
       ...(!options.stubRootSpecifier
         ? [
+            {
+              find: /^@elizaos\/app-core\/(.+)$/,
+              replacement: path.join(sourceRoot, "$1"),
+            },
             {
               find: "@elizaos/app-core",
               replacement: resolveModuleEntry(path.join(sourceRoot, "index")),

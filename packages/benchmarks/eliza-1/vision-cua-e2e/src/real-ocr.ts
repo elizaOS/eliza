@@ -84,7 +84,9 @@ export async function discoverOcrProvider(): Promise<DiscoverOcrResult> {
       }`,
     };
   }
-  let adapter: ReturnType<() => InstanceType<PluginVisionOcrCoordsModule["RapidOcrCoordAdapter"]>>;
+  let adapter: ReturnType<
+    () => InstanceType<PluginVisionOcrCoordsModule["RapidOcrCoordAdapter"]>
+  >;
   try {
     adapter = new module.RapidOcrCoordAdapter();
   } catch (err) {

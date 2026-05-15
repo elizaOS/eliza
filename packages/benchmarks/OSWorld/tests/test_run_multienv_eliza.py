@@ -4,6 +4,7 @@ import argparse
 import os
 
 import lib_run_single
+from eliza_adapter.osworld import ElizaBridgeOSWorldAgent
 from scripts.python import run_multienv_eliza
 
 
@@ -62,3 +63,43 @@ def test_model_env_is_forwarded(monkeypatch) -> None:
 
     assert os.environ["BENCHMARK_MODEL_NAME"] == "openai/gpt-oss-120b"
     assert os.environ["OPENAI_LARGE_MODEL"] == "openai/gpt-oss-120b"
+
+
+def test_osworld_adapter_does_not_inline_screenshot_by_default(monkeypatch) -> None:
+    class FakeClient:
+        context = {}
+
+        def wait_until_ready(self, timeout=120):
+            return None
+
+        def reset(self, **_kwargs):
+            return {"ready": True}
+
+        def send_message(self, text, context=None):
+            self.context = dict(context or {})
+            assert "Ubuntu Linux" in text
+
+            class Response:
+                text = "WAIT"
+                params = {}
+
+            return Response()
+
+    monkeypatch.delenv("OSWORLD_INLINE_SCREENSHOT", raising=False)
+    client = FakeClient()
+    agent = ElizaBridgeOSWorldAgent(client=client, max_steps=1)
+
+    response, actions = agent.predict(
+        "Open the browser",
+        {
+            "screenshot": b"not-a-real-png",
+            "accessibility_tree": "node\n" * 20000,
+        },
+    )
+
+    assert response == "WAIT"
+    assert actions == ["WAIT"]
+    assert client.context["screenshot_present"] is True
+    assert client.context["screenshot_inline"] is False
+    assert client.context["screenshot_base64"] is None
+    assert "[... truncated ...]" in client.context["accessibility_tree"]

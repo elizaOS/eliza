@@ -12,5 +12,10 @@
     "types": ["node"],
     "lib": ["ES2022"]
   },
-  "include": ["src/**/*.ts", "src/**/*.json", "samples/**/*.json", "tests/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.json",
+    "samples/**/*.json",
+    "tests/**/*.ts"
+  ]
 }

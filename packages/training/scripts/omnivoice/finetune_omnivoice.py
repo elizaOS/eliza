@@ -92,7 +92,7 @@ Usage
         --data-dir packages/training/data/voice/same \\
         --real-train \\
         --baseline-eval artifacts/voice-fine-tune/omnivoice-baseline/eval.json \\
-        --hf-repo elizaos/eliza-1-voice-omnivoice-same-v01 \\
+        --hf-repo elizaos/eliza-1 \\
         --operator-sign-off
 """
 

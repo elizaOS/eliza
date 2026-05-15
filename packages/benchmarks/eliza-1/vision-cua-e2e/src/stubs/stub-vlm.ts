@@ -64,7 +64,6 @@ export class StubVlm {
    * Returns the same shape plugin-vision's `extractDescriptionFromUseModel`
    * accepts (`{ description: string }`).
    */
-  // biome-ignore lint/suspicious/useAwait: matches the async surface of the real handler
   async describe(_req: VlmDescribeRequest): Promise<VlmDescribeResult> {
     switch (this.opts.fixtureId) {
       case "single-1920x1080":
@@ -100,7 +99,6 @@ export class StubVlm {
    * tile-local space. The stub assumes the harness has already picked the
    * upper-right tile (see `pickTileForUpperRight` in `pipeline.ts`).
    */
-  // biome-ignore lint/suspicious/useAwait: matches the async surface of the real handler
   async ground(
     req: GroundingRequest,
     extra: StubGroundingExtra,

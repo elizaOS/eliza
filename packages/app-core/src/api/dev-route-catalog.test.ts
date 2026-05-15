@@ -1,7 +1,15 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { TAB_PATHS } from "@elizaos/ui/navigation";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import { buildRouteCatalog } from "./dev-route-catalog";
 
@@ -163,6 +171,10 @@ describe("GET /api/dev/route-catalog", () => {
   beforeAll(async () => {
     handleDevCompatRoutes = (await import("./dev-compat-routes"))
       .handleDevCompatRoutes;
+  });
+
+  beforeEach(() => {
+    delete process.env.NODE_ENV;
   });
 
   afterEach(() => {

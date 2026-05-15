@@ -32,19 +32,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type FixtureId, loadFixture } from "./fixtures.ts";
-import { captureRealDisplays } from "./real-capture.ts";
-import { discoverOcrProvider, type RealOcrProvider } from "./real-ocr.ts";
-import {
-  RealDriver,
-  spawnControlledWindow,
-  type ControlledWindowHandle,
-} from "./real-driver.ts";
-import {
-  discoverRuntimeAdapter,
-  NoVisionProviderError,
-  type RealRuntimeAdapter,
-} from "./real-runtime.ts";
-import { RealVlm } from "./real-vlm.ts";
 import {
   reconstructAbsoluteCoords,
   type ScreenTile,
@@ -390,7 +377,7 @@ async function runDisplay(args: RunDisplayArgs): Promise<RunDisplayResult> {
     "click",
     async () => {
       if (!grounding) throw new Error("grounding result missing");
-      const tile = tiles.find((t) => t.id === grounding!.tileId);
+      const tile = tiles.find((t) => t.id === grounding?.tileId);
       if (!tile)
         throw new Error(`grounded tile ${grounding.tileId} not found in tiles`);
       const abs = reconstructAbsoluteCoords(

@@ -9,7 +9,7 @@
     "noEmit": false,
     "outDir": "./dist",
     "resolveJsonModule": true,
-    "rootDir": "../..",
+    "rootDir": "./src",
     "rewriteRelativeImportExtensions": true,
     "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",

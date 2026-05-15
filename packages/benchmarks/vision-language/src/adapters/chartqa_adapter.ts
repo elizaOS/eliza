@@ -136,7 +136,8 @@ function loadOfficial(n: number): Sample<ChartQaPayload>[] {
     payload: {
       answers: [entry.label],
       answerType:
-        entry.answer_type ?? (Number.isFinite(Number.parseFloat(entry.label))
+        entry.answer_type ??
+        (Number.isFinite(Number.parseFloat(entry.label))
           ? "numeric"
           : "categorical"),
     },

@@ -76,7 +76,10 @@ export class OSWorldAdapter implements BenchmarkAdapter<OSWorldPayload> {
       const success = last?.type === "DONE";
       return { score: success ? 1 : 0, detail: { mode: "vm" } };
     }
-    const score = osworldStepMatch(prediction.actions ?? [], sample.payload.trace);
+    const score = osworldStepMatch(
+      prediction.actions ?? [],
+      sample.payload.trace,
+    );
     return {
       score,
       detail: {

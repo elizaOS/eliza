@@ -34,6 +34,7 @@ import {
   getSharedSourceAliases,
   getUiSourceAliases,
   getWorkspaceAppAliases,
+  getWorkspacePluginAliases,
   type ModuleAlias,
 } from "./workspace-aliases";
 
@@ -233,6 +234,7 @@ const realResolveAlias: ModuleAlias[] = [
     "app-vincent",
     "app-wallet",
   ]),
+  ...getWorkspacePluginAliases(repoRoot, ["plugin-local-inference"]),
   {
     find: "@elizaos/plugin-form",
     replacement: path.join(

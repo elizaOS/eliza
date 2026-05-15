@@ -32,6 +32,37 @@ const submoduleAbs = join(repoRoot, submoduleRel);
 const gitmodules = join(repoRoot, ".gitmodules");
 const LOG_PREFIX = "[ensure-opencode-submodule]";
 
+function runGit(args, options = {}) {
+  return spawnSync("git", args, {
+    cwd: repoRoot,
+    encoding: options.encoding ?? "utf8",
+    stdio: options.stdio ?? "pipe",
+  });
+}
+
+function gitlinkCommit() {
+  const res = runGit(["rev-parse", `HEAD:${submoduleRel}`]);
+  if (res.status !== 0) return undefined;
+  const commit = res.stdout.trim();
+  return /^[0-9a-f]{40}$/i.test(commit) ? commit : undefined;
+}
+
+function repairByPinnedGitlink() {
+  const commit = gitlinkCommit();
+  if (!commit) return false;
+
+  const fetch = runGit(
+    ["-C", submoduleRel, "fetch", "--depth=1", "origin", commit],
+    { stdio: "inherit" },
+  );
+  if (fetch.status !== 0) return false;
+
+  const checkout = runGit(["-C", submoduleRel, "checkout", "--detach", commit], {
+    stdio: "inherit",
+  });
+  return checkout.status === 0;
+}
+
 if (
   existsSync(join(submoduleAbs, ".git")) &&
   existsSync(join(submoduleAbs, "package.json"))
@@ -43,11 +74,7 @@ if (!existsSync(gitmodules)) {
   process.exit(0);
 }
 
-const gm = spawnSync(
-  "git",
-  ["config", "-f", gitmodules, "--get-regexp", "path"],
-  { cwd: repoRoot, encoding: "utf8" },
-);
+const gm = runGit(["config", "-f", gitmodules, "--get-regexp", "path"]);
 if (gm.status !== 0 || !gm.stdout.includes(submoduleRel)) {
   process.exit(0);
 }
@@ -61,12 +88,18 @@ if (process.env.ELIZA_SKIP_OPENCODE_SUBMODULE === "1") {
   process.exit(0);
 }
 
-const res = spawnSync(
-  "git",
-  ["submodule", "update", "--init", "--recursive", submoduleRel],
-  { cwd: repoRoot, stdio: "inherit" },
-);
+const res = runGit(["submodule", "update", "--init", "--recursive", submoduleRel], {
+  stdio: "inherit",
+});
 if (res.status !== 0) {
+  console.warn(
+    `${LOG_PREFIX} \`git submodule update --init --recursive ${submoduleRel}\` ` +
+      `failed (exit ${res.status}); trying direct repair from the pinned gitlink.`,
+  );
+  if (repairByPinnedGitlink()) {
+    process.exit(0);
+  }
+
   console.error(
     `${LOG_PREFIX} error: \`git submodule update --init --recursive ` +
       `${submoduleRel}\` failed (exit ${res.status}).\n` +

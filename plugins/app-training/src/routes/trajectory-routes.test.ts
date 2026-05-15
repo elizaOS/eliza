@@ -8,6 +8,14 @@ import {
 import { describe, expect, it, vi } from "vitest";
 import { handleTrajectoryRoute } from "./trajectory-routes";
 
+vi.mock("@elizaos/agent", () => ({
+  createZipArchive: vi.fn(() => new Uint8Array()),
+  enrichTrajectoryLlmCall: vi.fn((call) => call),
+  executeRawSql: vi.fn(async () => []),
+  extractRows: vi.fn(() => []),
+  saveTrajectory: vi.fn(async () => undefined),
+}));
+
 type MockResponse = http.ServerResponse & {
   body?: string | Uint8Array;
   headers: Record<string, string | number | readonly string[]>;
