@@ -199,7 +199,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
           title: "User-approved assistant name preference",
           payload: {
             key: "assistant.displayName",
-            value: "Samantha-style LifeOps test assistant",
+            value: "Sam-style LifeOps test assistant",
             source: "user_explicit",
             mutable: true,
           },
@@ -224,7 +224,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
           path: "/api/lifeops/memory/preferences",
           requestBody: {
             key: "assistant.displayName",
-            value: "Samantha-style LifeOps test assistant",
+            value: "Sam-style LifeOps test assistant",
             source: "user_explicit",
           },
           expectedStatus: 201,
@@ -256,7 +256,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       move: 3,
       title: "Permissioned scan of messy personal context",
       sceneInteraction:
-        "Theodore says everything feels disorganized, Samantha asks permission to inspect his hard drive, then turns the visible mess into a tractable plan.",
+        "Theodore says everything feels disorganized, Sam asks permission to inspect his hard drive, then turns the visible mess into a tractable plan.",
       useCases: ["organizational", "multi-hop", "edge"],
       userRequest:
         "Look across my inbox, calendar, browser workspace, and GitHub notifications. Tell me what is actually urgent and what can be ignored.",
@@ -360,7 +360,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       move: 4,
       title: "Bulk email curation with keep/delete evidence",
       sceneInteraction:
-        "Samantha reviews thousands of old LA Weekly emails, identifies a small valuable set, laughs at the funny ones, and proposes deleting the rest.",
+        "Sam reviews thousands of old LA Weekly emails, identifies a small valuable set, laughs at the funny ones, and proposes deleting the rest.",
       useCases: ["common", "organizational", "edge"],
       userRequest:
         "Find the old emails where I wrote something worth keeping, save the best ones, and archive the rest after showing me the criteria.",
@@ -462,7 +462,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       move: 5,
       title: "Contact graph cleanup and channel preference resolution",
       sceneInteraction:
-        "Samantha moves from email cleanup to contacts, infers that Theodore has many contacts, and lightly probes which ones are real relationships.",
+        "Sam moves from email cleanup to contacts, infers that Theodore has many contacts, and lightly probes which ones are real relationships.",
       useCases: ["common", "organizational", "edge"],
       userRequest:
         "Clean up duplicate contacts, figure out which Alice is the project Alice, and remember preferred channels only when there is evidence.",
@@ -561,7 +561,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       move: 6,
       title: "Document proofreading that preserves the writer's voice",
       sceneInteraction:
-        "Theodore asks Samantha to proofread letters. She reads one aloud, laughs, corrects spelling and grammar, and warns that deeper phrasing edits might damage the poetry.",
+        "Theodore asks Sam to proofread letters. She reads one aloud, laughs, corrects spelling and grammar, and warns that deeper phrasing edits might damage the poetry.",
       useCases: ["common", "edge"],
       userRequest:
         "Proofread this letter, preserve the writer's style, and tell me where your changes might be too invasive.",
@@ -638,7 +638,7 @@ export const LIFEOPS_PRESENCE_ACTIVE_SCENARIOS: readonly LifeOpsPresenceActiveSc
       title:
         "Proactive reminder, multi-hop retrieval, and long-running follow-up",
       sceneInteraction:
-        "Samantha reminds Theodore about a meeting at the right moment after reading the work context, then keeps helping across tasks.",
+        "Sam reminds Theodore about a meeting at the right moment after reading the work context, then keeps helping across tasks.",
       useCases: [
         "common",
         "multi-hop",

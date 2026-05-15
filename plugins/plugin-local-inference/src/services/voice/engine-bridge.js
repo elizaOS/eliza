@@ -54,6 +54,7 @@ import {
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";
 import { AsrUnavailableError, createStreamingTranscriber } from "./transcriber";
+
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
 /**
@@ -78,7 +79,7 @@ const STUB_PCM_STREAM_CHUNKS = 4;
  * treated `null` as "auto-voice mode" and ignored any preset file under
  * `cache/voice-preset-default.bin`. That was the right behaviour when the
  * default preset was a 256-fp32-zero placeholder; it's wrong now that the
- * default preset can be a real (v2) OmniVoice samantha freeze. With ABI v4
+ * default preset can be a real (v2) OmniVoice sam freeze. With ABI v4
  * the FFI bridge looks up `<bundle>/cache/voice-preset-<id>.bin` when the
  * id is supplied and applies the `(instruct, ref_audio_tokens, ref_text)`
  * triple to `ov_tts_params` — so we must always pass the id.
@@ -104,6 +105,7 @@ function ffiSpeakerPresetId(preset) {
 	}
 	return preset.voiceId;
 }
+
 /** Re-exported from `./errors` so existing `engine-bridge` importers don't churn. */
 export { VoiceStartupError };
 /**
@@ -1201,8 +1203,10 @@ function bundleMmapRegion(dir, kind, ffi, ctx) {
 		},
 	};
 }
+
 /** Re-export for the engine and tests that want the default loader. */
 export { defaultLifecycleLoaders };
+
 /**
  * Platform-specific shared-library suffix for the fused omnivoice build.
  * macOS dylib, Linux/Android so, Windows dll. Windows artifacts have
