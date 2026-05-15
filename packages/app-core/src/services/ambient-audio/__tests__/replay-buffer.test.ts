@@ -32,11 +32,11 @@ describe("ReplayBuffer", () => {
   it("tail returns frames within window", () => {
     const b = new ReplayBuffer({ maxSeconds: 10, sampleRate: 16_000, channels: 1 });
     b.push(frame(0, 100));
-    b.push(frame(2000, 2100));
+    b.push(frame(2500, 2600));
     b.push(frame(4000, 4100));
     const tail = b.tail(2);
     expect(tail.length).toBe(2);
-    expect(tail[0]?.startMs).toBe(2000);
+    expect(tail[0]?.startMs).toBe(2500);
   });
 
   it("drain returns all frames and resets", () => {
