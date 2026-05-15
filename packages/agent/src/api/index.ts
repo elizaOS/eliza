@@ -1,10 +1,22 @@
-const computerUseModule = await import("@elizaos/plugin-computeruse");
-const signalModule = await import("@elizaos/plugin-signal");
-const whatsAppModule = (await import("@elizaos/plugin-whatsapp")) as {
+const computerUseModule = (await import(
+  "@elizaos/plugin-computeruse"
+)) as unknown as {
+  handleSandboxRoute: (...args: unknown[]) => unknown;
+};
+const signalModule = (await import("@elizaos/plugin-signal")) as unknown as {
+  applySignalQrOverride: (...args: unknown[]) => unknown;
+};
+const whatsAppModule = (await import(
+  "@elizaos/plugin-whatsapp"
+)) as unknown as {
   applyWhatsAppQrOverride: (...args: unknown[]) => unknown;
   handleWhatsAppRoute: (...args: unknown[]) => unknown;
 };
-const workflowModule = await import("@elizaos/plugin-workflow");
+const workflowModule = (await import(
+  "@elizaos/plugin-workflow"
+)) as unknown as {
+  handleTriggerRoutes: (...args: unknown[]) => unknown;
+};
 
 export const { handleSandboxRoute } = computerUseModule;
 export const { applySignalQrOverride } = signalModule;
@@ -19,11 +31,6 @@ export type WhatsAppRouteDeps = Record<string, unknown>;
 export type WhatsAppRouteState = Record<string, unknown>;
 export type TriggerRouteContext = Parameters<typeof handleTriggerRoutes>[0];
 export type TriggerRouteHelpers = Record<string, unknown>;
-export * from "./accounts-routes.ts";
-export * from "./agent-admin-routes.ts";
-export * from "./agent-lifecycle-routes.ts";
-export * from "./agent-model.ts";
-export * from "./agent-transfer-routes.ts";
 // === Phase 4G: apps routes extracted to @elizaos/plugin-app-manager ===
 // Re-export the public surface so downstream callers that imported from
 // `@elizaos/agent` keep working during the transition. New callers
@@ -34,6 +41,23 @@ export {
   type FavoriteAppsStore,
   handleAppsRoutes,
 } from "@elizaos/plugin-app-manager";
+// === Phase 4D: wallet routes extracted to @elizaos/plugin-wallet ===
+// Re-export `handleWalletRoutes` (and supporting types) from the plugin so
+// downstream callers that imported from `@elizaos/agent` keep working
+// during the transition. New callers should import from
+// `@elizaos/plugin-wallet` directly.
+export {
+  handleWalletRoutes,
+  type WalletAddressesSnapshot,
+  type WalletRouteContext,
+  type WalletRouteDependencies,
+  type WalletRpcReadinessSnapshot,
+} from "@elizaos/plugin-wallet";
+export * from "./accounts-routes.ts";
+export * from "./agent-admin-routes.ts";
+export * from "./agent-lifecycle-routes.ts";
+export * from "./agent-model.ts";
+export * from "./agent-transfer-routes.ts";
 export * from "./auth-routes.ts";
 export * from "./bug-report-routes.ts";
 export * from "./character-routes.ts";
@@ -76,18 +100,6 @@ export * from "./training-service-like.ts";
 export * from "./tx-service.ts";
 export * from "./wallet.ts";
 export * from "./wallet-evm-balance.ts";
-// === Phase 4D: wallet routes extracted to @elizaos/plugin-wallet ===
-// Re-export `handleWalletRoutes` (and supporting types) from the plugin so
-// downstream callers that imported from `@elizaos/agent` keep working
-// during the transition. New callers should import from
-// `@elizaos/plugin-wallet` directly.
-export {
-  handleWalletRoutes,
-  type WalletAddressesSnapshot,
-  type WalletRouteContext,
-  type WalletRouteDependencies,
-  type WalletRpcReadinessSnapshot,
-} from "@elizaos/plugin-wallet";
 export * from "./wallet-rpc.ts";
 export * from "./wallet-trading-profile.ts";
 export * from "./workbench-vfs-routes.ts";

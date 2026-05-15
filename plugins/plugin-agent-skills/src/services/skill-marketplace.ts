@@ -2,7 +2,6 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { logger, resolveStateDir } from "@elizaos/core";
 
 const execFileAsync = promisify(execFile);
@@ -15,6 +14,17 @@ const VALID_GIT_REF = /^[a-zA-Z0-9][\w./-]*$/;
 const GIT_TIMEOUT_MS = 15_000;
 /** Timeout for marketplace API fetch calls. */
 const FETCH_TIMEOUT_MS = 30_000;
+
+function createIntegrationTelemetrySpan(_meta: {
+  boundary: string;
+  operation: string;
+  timeoutMs?: number;
+}) {
+  return {
+    success(_metadata?: Record<string, unknown>): void {},
+    failure(_metadata?: Record<string, unknown>): void {},
+  };
+}
 
 /**
  * Minimal scan report shape used by the marketplace installer.

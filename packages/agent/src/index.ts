@@ -83,6 +83,10 @@ export {
 } from "./api/plugin-discovery-helpers.ts";
 export * from "./api/plugin-runtime-apply.ts";
 export {
+  type PluginParamInfo,
+  validatePluginConfig,
+} from "./api/plugin-validation.ts";
+export {
   applyCanonicalOnboardingConfig,
   clearPersistedOnboardingConfig,
 } from "./api/provider-switch-config.ts";
@@ -172,6 +176,7 @@ export { runBenchmark } from "./cli/benchmark.ts";
 export { CharacterSchema } from "./config/character-schema.ts";
 export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
 export * from "./config/index.ts";
+export { resolveUserPath } from "./config/paths.ts";
 // === Phase 4F ===
 // plugin-routes / plugins-compat-routes moved to @elizaos/plugin-registry.
 // Re-export the internal helpers they consume so the plugin can stay free of
@@ -180,11 +185,6 @@ export {
   getPluginWidgets,
   type PluginWidgetDeclarationServer,
 } from "./config/plugin-widgets.ts";
-export {
-  type PluginParamInfo,
-  validatePluginConfig,
-} from "./api/plugin-validation.ts";
-export { resolveUserPath } from "./config/paths.ts";
 // `contracts/awareness.js` adds the local-only (non-shared) contract surface.
 // Config media/custom-action contract types are exported from `./config/index.js`
 // (via `@elizaos/shared`); do not re-export `./contracts/config.js` here or

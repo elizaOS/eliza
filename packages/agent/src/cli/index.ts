@@ -53,9 +53,11 @@ export async function runAutonomousCli(
   }
 
   if (command === "ios-bridge") {
-    const { runIosBridgeCli } = await import(
+    const { runIosBridgeCli } = (await import(
       "@elizaos/plugin-capacitor-bridge"
-    );
+    )) as unknown as {
+      runIosBridgeCli: (argv?: string[]) => Promise<void>;
+    };
     await runIosBridgeCli(argv);
     return;
   }
@@ -89,9 +91,11 @@ export async function runAutonomousCli(
   }
 
   if (command === "android-bridge") {
-    const { runAndroidBridgeCli } = await import(
+    const { runAndroidBridgeCli } = (await import(
       "@elizaos/plugin-capacitor-bridge"
-    );
+    )) as unknown as {
+      runAndroidBridgeCli: () => Promise<void>;
+    };
     await runAndroidBridgeCli();
     return;
   }

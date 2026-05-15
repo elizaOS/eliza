@@ -37,6 +37,7 @@
     "audit:types:production": "node scripts/type-audit.mjs --json --production",
     "audit:nullish": "node scripts/nullish-operator-audit.mjs --json",
     "audit:nullish:production": "node scripts/nullish-operator-audit.mjs --json --production",
+    "audit:onnx-deps": "node scripts/onnx-dep-audit.mjs",
     "audit:apple-store-sandbox": "bun run --cwd packages/app-core audit:apple-store-sandbox",
     "audit:prompt-compliance": "node scripts/audit-prompt-compliance.mjs",
     "audit:description-compressed": "node scripts/audit-prompt-compliance.mjs --description-compressed-only",

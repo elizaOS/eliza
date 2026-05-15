@@ -18,7 +18,7 @@
       "node"
     ],
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": "../..",
     "paths": {
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],

@@ -10,7 +10,6 @@ import numpy as np
 from io import BytesIO
 from typing import List, Dict, Any
 
-import easyocr
 from PIL import Image
 from docx import Document
 from docx.enum.text import WD_PARAGRAPH_ALIGNMENT, WD_TAB_ALIGNMENT
@@ -23,6 +22,17 @@ from skimage.color import deltaE_ciede2000
 from skimage.color import rgb2lab
 
 logger = logging.getLogger("desktopenv.metric.docs")
+
+
+def _load_easyocr():
+    try:
+        import easyocr
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "easyocr is required for OCR-based document image metrics. "
+            "Install OSWorld's OCR dependencies to use compare_image_text."
+        ) from exc
+    return easyocr
 
 
 def read_x11_image(filepath):
@@ -449,6 +459,7 @@ def compare_image_text(image_path, rule):
         
         # Now attempt OCR with error handling
         try:
+            easyocr = _load_easyocr()
             reader = easyocr.Reader(['en'])
             result = reader.readtext(actual_image_path)
             extracted_text = ' '.join([entry[1] for entry in result])

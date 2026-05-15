@@ -297,11 +297,18 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   },
   {
     id: "voice-emotion",
-    version: "0.1.0",
-    publishedToHfAt: "2026-05-14T00:00:00Z",
+    version: "0.2.0",
+    publishedToHfAt: "2026-05-15T07:20:39Z",
     hfRepo: "elizaos/eliza-1-voice-emotion",
-    hfRevision: "da50fd9719dd78857829b144d6f72ce3c4e3464a",
+    hfRevision: "85c56b6f5aa4bdef801aa6d5ea082eb92f90b463",
     ggufAssets: [
+      {
+        filename: "wav2small-cls7-int8.onnx",
+        sha256:
+          "cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953",
+        sizeBytes: 524_750,
+        quant: "onnx-int8",
+      },
       {
         filename: "wav2small-msp-dim-int8.onnx",
         sha256:
@@ -324,9 +331,9 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
         quant: "onnx-fp32",
       },
     ],
-    evalDeltas: { f1Delta: -0.0308, netImprovement: false },
+    evalDeltas: { f1Delta: 0.0042, netImprovement: true },
     changelogEntry:
-      "Initial release — Wav2Small acoustic V-A-D classifier staged with evalGatePass=false for projection macro-F1; auxiliary head macro-F1=0.355.",
+      "v0.2.0 — Wav2Small cls7 head shipped (macro-F1=0.355 > 0.35 gate). V-A-D projection metric on the legacy vad head capped at 0.319 due to the teacher's compressed V-A-D distribution; runtime now auto-detects the head contract by ONNX output dim.",
     minBundleVersion: "0.0.0",
   },
   {

@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/silero_vad_resample_test.dir/test/silero_vad_resample_test.c.o -o silero_vad_resample_test  libsilero_vad.a -lm 

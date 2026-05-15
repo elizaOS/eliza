@@ -68,29 +68,41 @@ const {
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
 } = await import("@elizaos/plugin-browser");
-const { attachMobileDeviceBridgeToServer } = await import(
-  "@elizaos/plugin-capacitor-bridge"
-);
-const { handleComputerUseRoutes } = await import("@elizaos/plugin-computeruse");
-const { handleCloudStatusRoutes, isCloudProvisionedContainer } = await import(
-  "@elizaos/plugin-elizacloud"
-);
-const { resolveBlueBubblesWebhookPath } = await import(
-  "@elizaos/plugin-imessage"
-);
-const { getLocalInferenceActiveModelId, handleLocalInferenceRoutes } =
-  await import("@elizaos/plugin-local-inference");
-const { handleMcpRoutes } = await import("@elizaos/plugin-mcp");
-const { applySignalQrOverride } = await import("@elizaos/plugin-signal");
-const { handleTtsRoutes, streamManager } = await import(
-  "@elizaos/plugin-streaming"
-);
-const { applyWhatsAppQrOverride } = (await import(
-  "@elizaos/plugin-whatsapp"
-)) as {
-  applyWhatsAppQrOverride: (...args: unknown[]) => void;
+const optionalPluginImports = {
+  capacitor: () => import("@elizaos/plugin-capacitor-bridge"),
+  computerUse: () => import("@elizaos/plugin-computeruse"),
+  cloud: () => import("@elizaos/plugin-elizacloud"),
+  imessage: () => import("@elizaos/plugin-imessage"),
+  mcp: () => import("@elizaos/plugin-mcp"),
+  signal: () => import("@elizaos/plugin-signal"),
+  streaming: () => import("@elizaos/plugin-streaming"),
+  whatsapp: () => import("@elizaos/plugin-whatsapp"),
+  workflow: () => import("@elizaos/plugin-workflow"),
 };
-const { handleTriggerRoutes } = await import("@elizaos/plugin-workflow");
+
+type LocalInferenceServerApi = {
+  getLocalInferenceActiveModelId: () => string | undefined;
+  handleLocalInferenceRoutes: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ) => Promise<boolean>;
+};
+
+let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
+  null;
+
+function getLocalInferenceServerApi(): Promise<LocalInferenceServerApi> {
+  localInferenceServerApiPromise ??= import(
+    "@elizaos/plugin-local-inference"
+  ) as Promise<LocalInferenceServerApi>;
+  return localInferenceServerApiPromise;
+}
+
+async function getOptionalPluginApi<T>(
+  key: keyof typeof optionalPluginImports,
+): Promise<T> {
+  return (await optionalPluginImports[key]()) as T;
+}
 const { validateX402Startup } = await import("@elizaos/plugin-x402");
 
 type BrowserBridgeKind = (typeof BROWSER_BRIDGE_KINDS)[number];
@@ -103,6 +115,16 @@ type BrowserWorkspaceTabKind = NonNullable<
   Parameters<typeof openBrowserWorkspaceTab>[0]["kind"]
 >;
 
+// === Phase 4E: skills routes + helpers moved to plugin-agent-skills ===
+import {
+  discoverSkills,
+  handleCuratedSkillsRoutes,
+  handleSkillsRoutes,
+} from "@elizaos/plugin-agent-skills";
+import { AppManager, handleAppsRoutes } from "@elizaos/plugin-app-manager";
+// === Phase 4F: plugin routes moved to @elizaos/plugin-registry ===
+import { handlePluginRoutes } from "@elizaos/plugin-registry";
+import { handleWalletRoutes } from "@elizaos/plugin-wallet";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.ts";
 import {
   type ElizaConfig,
@@ -113,7 +135,6 @@ import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.ts";
 import { CharacterSchema } from "../config/zod-schema.ts";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
-import { persistConfigEnv } from "./config-env.ts";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
@@ -146,7 +167,6 @@ import {
   exportAgent,
   importAgent,
 } from "../services/agent-export.ts";
-import { AppManager } from "@elizaos/plugin-app-manager";
 import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
 import {
@@ -181,7 +201,6 @@ import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { handleAgentStatusRoutes } from "./agent-status-routes.ts";
 import { handleAgentTransferRoutes } from "./agent-transfer-routes.ts";
 import { handleAppPackageRoutes } from "./app-package-routes.ts";
-import { handleAppsRoutes } from "@elizaos/plugin-app-manager";
 import { handleAuthRoutes } from "./auth-routes.ts";
 import { handleAvatarRoutes } from "./avatar-routes.ts";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes.ts";
@@ -192,17 +211,12 @@ import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.ts";
+import { persistConfigEnv } from "./config-env.ts";
 import { handleConfigRoutes } from "./config-routes.ts";
 import { ConnectorHealthMonitor } from "./connector-health.ts";
 import { handleConnectorRoutes } from "./connector-routes.ts";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
-// === Phase 4E: skills routes + helpers moved to plugin-agent-skills ===
-import {
-  discoverSkills,
-  handleCuratedSkillsRoutes,
-  handleSkillsRoutes,
-} from "@elizaos/plugin-agent-skills";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
 import { handleHealthRoutes } from "./health-routes.ts";
 import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
@@ -215,8 +229,6 @@ import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallbac
 import { handleOnboardingRoutes } from "./onboarding-routes.ts";
 import { handlePermissionRoutes } from "./permissions-routes.ts";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
-// === Phase 4F: plugin routes moved to @elizaos/plugin-registry ===
-import { handlePluginRoutes } from "@elizaos/plugin-registry";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";
@@ -260,7 +272,6 @@ import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
-import { handleWalletRoutes } from "@elizaos/plugin-wallet";
 import {
   applyWalletRpcConfigUpdate,
   getStoredWalletRpcSelections,
@@ -281,7 +292,23 @@ export {
 
 type OnboardingRouteArg = Parameters<typeof handleOnboardingRoutes>[0];
 type AgentStatusRouteArg = Parameters<typeof handleAgentStatusRoutes>[0];
-type TtsRouteArg = Parameters<typeof handleTtsRoutes>[0];
+type TtsRouteArg = {
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+  method: string;
+  pathname: string;
+  state: ServerState;
+  json: (res: http.ServerResponse, data: unknown, status?: number) => void;
+  error: (res: http.ServerResponse, message: string, status?: number) => void;
+  readJsonBody: typeof readJsonBody;
+  isRedactedSecretValue: (value: unknown) => boolean;
+  fetchWithTimeoutGuard: typeof fetchWithTimeoutGuard;
+  streamResponseBodyWithByteLimit: typeof streamResponseBodyWithByteLimit;
+  responseContentLength: typeof responseContentLength;
+  isAbortError: typeof isAbortError;
+  ELEVENLABS_FETCH_TIMEOUT_MS: number;
+  ELEVENLABS_AUDIO_MAX_BYTES: number;
+};
 type PermissionsExtraRouteArg = Parameters<
   typeof handlePermissionsExtraRoutes
 >[0];
@@ -1436,6 +1463,14 @@ async function handleRequest(
   const pathname = url.pathname;
   const isAuthEndpoint = pathname.startsWith("/api/auth/");
   const isHealthEndpoint = method === "GET" && pathname === "/api/health";
+  const { isCloudProvisionedContainer, handleCloudStatusRoutes } =
+    await getOptionalPluginApi<{
+      isCloudProvisionedContainer: () => boolean;
+      handleCloudStatusRoutes: (args: unknown) => Promise<boolean>;
+    }>("cloud");
+  const { resolveBlueBubblesWebhookPath } = await getOptionalPluginApi<{
+    resolveBlueBubblesWebhookPath: (args: unknown) => string;
+  }>("imessage");
   const isCloudProvisioned = isCloudProvisionedContainer();
   const isCloudOnboardingStatusEndpoint =
     method === "GET" &&
@@ -1589,6 +1624,7 @@ async function handleRequest(
     return;
   }
 
+  const { handleLocalInferenceRoutes } = await getLocalInferenceServerApi();
   if (await handleLocalInferenceRoutes(req, res)) return;
 
   if (
@@ -1603,6 +1639,14 @@ async function handleRequest(
   ) {
     return;
   }
+  const { handleComputerUseRoutes } = await getOptionalPluginApi<{
+    handleComputerUseRoutes: (
+      req: http.IncomingMessage,
+      res: http.ServerResponse,
+      pathname: string,
+      method: string,
+    ) => Promise<boolean>;
+  }>("computerUse");
   if (await handleComputerUseRoutes(req, res, pathname, method)) return;
 
   // ── Provider inference helpers ────────────────────────────────────────
@@ -1787,6 +1831,9 @@ async function handleRequest(
     return;
   }
 
+  const { handleTriggerRoutes } = await getOptionalPluginApi<{
+    handleTriggerRoutes: (args: unknown) => Promise<boolean>;
+  }>("workflow");
   const triggerHandled = await handleTriggerRoutes({
     req,
     res,
@@ -2007,8 +2054,16 @@ async function handleRequest(
         paramKeyToCategory,
         buildPluginEvmDiagnosticEntry,
         EVM_PLUGIN_PACKAGE,
-        applyWhatsAppQrOverride,
-        applySignalQrOverride,
+        applyWhatsAppQrOverride: (
+          await getOptionalPluginApi<{
+            applyWhatsAppQrOverride: (...args: unknown[]) => void;
+          }>("whatsapp")
+        ).applyWhatsAppQrOverride,
+        applySignalQrOverride: (
+          await getOptionalPluginApi<{
+            applySignalQrOverride: (...args: unknown[]) => void;
+          }>("signal")
+        ).applySignalQrOverride,
         resolvePluginConfigMutationRejections,
         requirePluginManager,
         requireCoreManager,
@@ -2050,9 +2105,8 @@ async function handleRequest(
         readJsonBody,
         readBody,
         discoverSkills,
-        saveElizaConfig: coerce<
-          Parameters<typeof handleSkillsRoutes>[0]["saveElizaConfig"]
-        >(saveElizaConfig),
+        saveElizaConfig:
+          coerce<(config: unknown) => void>(saveElizaConfig),
       })
     ) {
       return;
@@ -2192,20 +2246,30 @@ async function handleRequest(
           deriveSolanaAddress,
           setSolanaWalletEnv,
           resolveWalletRpcReadiness: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["resolveWalletRpcReadiness"]
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["resolveWalletRpcReadiness"]
           >(resolveWalletRpcReadiness),
           resolveWalletNetworkMode: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["resolveWalletNetworkMode"]
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["resolveWalletNetworkMode"]
           >(resolveWalletNetworkMode),
           getStoredWalletRpcSelections: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["getStoredWalletRpcSelections"]
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["getStoredWalletRpcSelections"]
           >(getStoredWalletRpcSelections),
           applyWalletRpcConfigUpdate: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["applyWalletRpcConfigUpdate"]
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["applyWalletRpcConfigUpdate"]
           >(applyWalletRpcConfigUpdate),
           resolveWalletCapabilityStatus: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["resolveWalletCapabilityStatus"]
-          >((args) =>
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["resolveWalletCapabilityStatus"]
+          >((args: { config: ElizaConfig; runtime: AgentRuntime | null }) =>
             resolveWalletCapabilityStatus({
               config: args.config,
               runtime: args.runtime,
@@ -2214,7 +2278,9 @@ async function handleRequest(
           isCloudWalletEnabled,
           persistConfigEnv,
           createIntegrationTelemetrySpan: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["createIntegrationTelemetrySpan"]
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["createIntegrationTelemetrySpan"]
           >(createIntegrationTelemetrySpan),
         },
         runtime: state.runtime ?? null,
@@ -2341,6 +2407,9 @@ async function handleRequest(
     return;
   }
 
+  const { handleTtsRoutes } = await getOptionalPluginApi<{
+    handleTtsRoutes: (args: TtsRouteArg) => Promise<boolean>;
+  }>("streaming");
   if (
     await handleTtsRoutes({
       req,
@@ -2690,6 +2759,9 @@ async function handleRequest(
   // ═══════════════════════════════════════════════════════════════════════
 
   if (pathname.startsWith("/api/mcp")) {
+    const { handleMcpRoutes } = await getOptionalPluginApi<{
+      handleMcpRoutes: (args: unknown) => Promise<boolean>;
+    }>("mcp");
     if (
       await handleMcpRoutes({
         req,
@@ -3228,12 +3300,20 @@ export async function startApiServer(opts?: {
       error(res, msg, 500);
     }
   });
-  void attachMobileDeviceBridgeToServer(server).catch((err: unknown) => {
-    logger.warn(
-      "[eliza-api] Failed to attach mobile device bridge:",
-      err instanceof Error ? err.message : String(err),
-    );
-  });
+  void getOptionalPluginApi<{
+    attachMobileDeviceBridgeToServer: (
+      server: http.Server,
+    ) => Promise<void>;
+  }>("capacitor")
+    .then(({ attachMobileDeviceBridgeToServer }) =>
+      attachMobileDeviceBridgeToServer(server),
+    )
+    .catch((err: unknown) => {
+      logger.warn(
+        "[eliza-api] Failed to attach mobile device bridge:",
+        err instanceof Error ? err.message : String(err),
+      );
+    });
   logger.debug(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
   // Node's `http.createServer` defaults are tuned for snappy web traffic:
@@ -3579,6 +3659,9 @@ export async function startApiServer(opts?: {
           (destinations.size > 0
             ? destinations.keys().next().value
             : undefined);
+        const { streamManager } = await getOptionalPluginApi<{
+          streamManager: unknown;
+        }>("streaming");
 
         const streamState = {
           streamManager,
@@ -3760,7 +3843,7 @@ export async function startApiServer(opts?: {
             type: "status",
             state: state.agentState,
             agentName: state.agentName,
-            model: state.model || getLocalInferenceActiveModelId(),
+            model: state.model,
             startedAt: state.startedAt,
             startup: state.startup,
             pendingRestart: state.pendingRestartReasons.length > 0,
@@ -3953,7 +4036,7 @@ export async function startApiServer(opts?: {
       type: "status",
       state: state.agentState,
       agentName: state.agentName,
-      model: state.model || getLocalInferenceActiveModelId(),
+      model: state.model,
       startedAt: state.startedAt,
       startup: state.startup,
       pendingRestart: state.pendingRestartReasons.length > 0,
@@ -4317,9 +4400,9 @@ export async function startApiServer(opts?: {
       }
       resolve({
         port: actualPort,
-        close: async () =>
-          await new Promise<void>((r) => {
-            void (async () => {
+        close: () =>
+          new Promise<void>((r) => {
+            void Promise.resolve().then(() => {
               const closeAllConnections = (
                 server as { closeAllConnections?: () => void }
               ).closeAllConnections;
@@ -4373,11 +4456,11 @@ export async function startApiServer(opts?: {
                 state.signalPairingSessions.clear();
               }
               if (state.telegramAccountAuthSession) {
-                try {
-                  await state.telegramAccountAuthSession.stop();
-                } catch {
-                  /* non-fatal */
-                }
+                void Promise.resolve(state.telegramAccountAuthSession.stop()).catch(
+                  () => {
+                    /* non-fatal */
+                  },
+                );
                 state.telegramAccountAuthSession = null;
               }
               wss.close();
@@ -4405,7 +4488,7 @@ export async function startApiServer(opts?: {
                 }
               }
               server.close(finalize);
-            })();
+            });
           }),
         updateRuntime,
         updateStartup,

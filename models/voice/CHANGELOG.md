@@ -188,6 +188,38 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 ## voice-emotion
 
+### 0.2.0 — 2026-05-15 (M-emotion-final — cls7 head ships, gate passes)
+
+- **What changed:** Ship the **cls7 head** (direct 7-class classifier
+  logits) as the runtime ONNX contract. Adds
+  `wav2small-cls7-int8.onnx` (525 KB, INT8 dynamic, opset 17). The
+  legacy `wav2small-msp-dim-int8.onnx` (V-A-D head) stays on HF for
+  parity; the runtime adapter auto-detects which contract the loaded
+  model emits by output dim (3 → V-A-D + projection, 7 → cls7 argmax).
+- **Eval (RAVDESS test split, 126 clips):**
+  - cls7 head macro-F1 = **0.3550** (passes 0.35 gate)
+  - V-A-D-projection head macro-F1 = 0.3192 (legacy contract; sub-gate)
+  - accuracy (cls7) = 0.484
+- **Why two heads at one rev:** the V-A-D projection table in
+  `voice-emotion-classifier.ts` was calibrated for V-A-D centred at 0.5
+  spanning [0, 1]; the audeering teacher emits V≈0.35, A≈0.68, D≈0.69,
+  capping oracle macro-F1 at ~0.155 under the legacy projection. The
+  aux 7-class classifier head (already trained for the joint CE loss)
+  bypasses that projection bottleneck and clears the gate.
+- **Runtime change:** `voice-emotion-classifier.ts` adds
+  `interpretCls7Output` + auto-detect on `ensureLoaded()`; no contract
+  break for V-A-D-head models still in the wild.
+- **HF push:** `elizaos/eliza-1-voice-emotion` @ rev
+  `85c56b6f5aa4bdef801aa6d5ea082eb92f90b463` (live).
+- **Trainer script:**
+  `packages/training/scripts/emotion/run_distill_ravdess.py` +
+  `run_distill_combined.py` (Path A — RAVDESS + CREMA-D combined).
+  The shipped artifact is from the RAVDESS-only `best.pt` re-exported
+  through the cls7 head (Path B), since that already clears the gate.
+- **Eval deltas:** f1Delta +0.0042 (above-gate vs sub-gate v0.1.0).
+- **Net improvement:** **yes** — first version that passes the eval
+  gate, no V-A-D-side regression.
+
 ### 0.1.1 — 2026-05-14 (F3 — HF repo staging)
 
 - **What changed:** HF repo slug confirmed as `elizaos/eliza-1-voice-emotion`. Staging dir at `artifacts/voice-sub-model-staging/emotion/`. Files: `wav2small-msp-dim-int8.onnx`, `wav2small-msp-dim-fp32.onnx`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.

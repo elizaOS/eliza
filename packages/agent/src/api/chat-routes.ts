@@ -82,9 +82,6 @@ import type { ChatImageAttachment } from "./server-types.ts";
 
 export type { ChatImageAttachment, LogEntry };
 
-const { getLocalInferenceChatStatus, handleLocalInferenceChatCommand } =
-  await import("@elizaos/plugin-local-inference");
-
 type LocalInferenceChatMetadata = Record<string, unknown>;
 type LocalInferenceCommandIntent =
   | "cancel"
@@ -96,6 +93,32 @@ type LocalInferenceCommandIntent =
   | "switch_smaller"
   | "use_cloud"
   | "use_local";
+
+type LocalInferenceChatApi = {
+  getLocalInferenceChatStatus: (
+    intent: LocalInferenceCommandIntent,
+    error?: unknown,
+  ) => Promise<{
+    text: string;
+    localInference: LocalInferenceChatMetadata;
+  }>;
+  handleLocalInferenceChatCommand: (
+    intent: LocalInferenceCommandIntent,
+    prompt: string,
+  ) => Promise<{
+    text: string;
+    localInference: LocalInferenceChatMetadata;
+  }>;
+};
+
+let localInferenceChatApiPromise: Promise<LocalInferenceChatApi> | null = null;
+
+function getLocalInferenceChatApi(): Promise<LocalInferenceChatApi> {
+  localInferenceChatApiPromise ??= import(
+    "@elizaos/plugin-local-inference"
+  ) as unknown as Promise<LocalInferenceChatApi>;
+  return localInferenceChatApiPromise;
+}
 
 const CHAT_MAX_BODY_BYTES = 20 * 1024 * 1024; // 20 MB (image-capable)
 
@@ -1452,6 +1475,8 @@ export async function generateChatResponse(
               },
             );
             if (localInferenceIntent) {
+              const { handleLocalInferenceChatCommand } =
+                await getLocalInferenceChatApi();
               const localResult = await handleLocalInferenceChatCommand(
                 localInferenceIntent,
                 originalUserText,
@@ -2211,6 +2236,8 @@ export async function handleChatRoutes(
       } catch (err) {
         if (!aborted) {
           if (isLocalInferenceError(err)) {
+            const { getLocalInferenceChatStatus } =
+              await getLocalInferenceChatApi();
             const localFailure = await getLocalInferenceChatStatus(
               "status",
               err,
@@ -2331,6 +2358,7 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
+        const { getLocalInferenceChatStatus } = await getLocalInferenceChatApi();
         const localFailure = await getLocalInferenceChatStatus("status", err);
         json(
           res,
@@ -2776,6 +2804,7 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
+        const { getLocalInferenceChatStatus } = await getLocalInferenceChatApi();
         const localFailure = await getLocalInferenceChatStatus("status", err);
         json(
           res,

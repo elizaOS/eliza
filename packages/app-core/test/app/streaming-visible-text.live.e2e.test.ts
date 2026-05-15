@@ -10,7 +10,7 @@
  */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -18,7 +18,6 @@ import {
   type ServerResponse,
 } from "node:http";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import {
@@ -201,9 +200,9 @@ async function startHarnessServer(args: {
 }
 
 async function startStack(): Promise<Stack> {
-  const stateDir = await mkdtemp(
-    path.join(os.tmpdir(), "eliza-streaming-live-"),
-  );
+  const stateRoot = path.join(REPO_ROOT, ".tmp");
+  await mkdir(stateRoot, { recursive: true });
+  const stateDir = await mkdtemp(path.join(stateRoot, "eliza-streaming-live-"));
   const apiPort = await getFreePort();
   const harnessPort = await getFreePort();
   const apiBase = `http://127.0.0.1:${apiPort}`;
@@ -212,7 +211,7 @@ async function startStack(): Promise<Stack> {
     "node",
     [
       path.join(REPO_ROOT, "packages/app-core/scripts/run-node-tsx.mjs"),
-      path.join(REPO_ROOT, "packages/app-core/src/runtime/eliza.ts"),
+      path.join(REPO_ROOT, "packages/app-core/test/scripts/start-eliza-live.ts"),
     ],
     {
       cwd: REPO_ROOT,
@@ -233,6 +232,11 @@ async function startStack(): Promise<Stack> {
   });
   apiChild.stderr.on("data", (chunk) => {
     process.stdout.write(`[streaming-live][api-err] ${chunk}`);
+  });
+  apiChild.on("exit", (code, signal) => {
+    process.stdout.write(
+      `[streaming-live][api-exit] code=${code ?? "null"} signal=${signal ?? "null"}\n`,
+    );
   });
 
   await waitForUrl(`${apiBase}/api/health`, READY_TIMEOUT_MS);
@@ -326,7 +330,9 @@ describeLive("streaming-visible-text live e2e", () => {
         const w = window as unknown as {
           __startStream: (prompt: string) => Promise<void>;
         };
-        void w.__startStream("Tell me a paragraph about cats.");
+        void w.__startStream(
+          "Write twelve short numbered sentences about cats. Keep each sentence distinct.",
+        );
       });
 
       const samples: { t: number; len: number; text: string }[] = [];
@@ -372,7 +378,7 @@ describeLive("streaming-visible-text live e2e", () => {
       const distinct = Array.from(new Set(distinctNonEmpty));
       expect(
         distinct.length,
-        `Expected ≥5 distinct visible-text lengths to indicate streaming, got: ${JSON.stringify(distinct)}`,
+        `Expected ≥5 distinct visible-text lengths to indicate streaming, got: ${JSON.stringify(distinct)} final=${JSON.stringify(samples.findLast((sample) => sample.len > 0)?.text ?? "")}`,
       ).toBeGreaterThanOrEqual(5);
 
       // Monotonic-non-decreasing across the stream of samples.

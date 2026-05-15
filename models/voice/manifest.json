@@ -131,14 +131,29 @@
     },
     {
       "id": "voice-emotion",
-      "displayName": "Wav2Small acoustic emotion classifier",
-      "purpose": "continuous V-A-D emotion regression",
+      "displayName": "Wav2Small 7-class emotion classifier (cls7 head)",
+      "purpose": "7-class voice-emotion classifier (argmax over EXPRESSIVE_EMOTION_TAGS)",
       "runtime": "onnxruntime-node",
-      "currentVersion": "0.1.0",
+      "currentVersion": "0.2.0",
       "license": "Apache-2.0",
       "attribution": "Student distilled from audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim; teacher weights are not bundled.",
       "introducedIn": "R3/I3",
       "variants": [
+        {
+          "variantId": "wav2small-cls7-int8",
+          "filename": "wav2small-cls7-int8.onnx",
+          "format": "onnx",
+          "precision": "int8",
+          "approxSizeBytes": 524750,
+          "sizeBytes": 524750,
+          "sha256": "cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953",
+          "assetStatus": "available",
+          "stagedPath": "artifacts/voice-sub-model-staging/emotion/wav2small-cls7-int8.onnx",
+          "sourceRepo": "local-distill",
+          "sourcePath": "packages/training/out/emotion-wav2small-pathB/wav2small-cls7-int8.onnx",
+          "evalGatePass": true,
+          "evalMacroF1": 0.3550
+        },
         {
           "variantId": "wav2small-msp-dim-int8",
           "filename": "wav2small-msp-dim-int8.onnx",
@@ -150,7 +165,10 @@
           "assetStatus": "available",
           "stagedPath": "artifacts/voice-sub-model-staging/emotion/wav2small-msp-dim-int8.onnx",
           "sourceRepo": "local-distill",
-          "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.onnx"
+          "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.onnx",
+          "evalGatePass": false,
+          "evalMacroF1": 0.3192,
+          "note": "Legacy V-A-D head — kept for parity; current runtime auto-detects head by output dim and prefers cls7 when both exist."
         },
         {
           "variantId": "wav2small-msp-dim-fp32",
@@ -179,7 +197,7 @@
           "sourcePath": "packages/training/out/emotion-wav2small-v1/wav2small-msp-dim-int8.fp32.onnx.data"
         }
       ],
-      "hfRevision": "da50fd9719dd78857829b144d6f72ce3c4e3464a"
+      "hfRevision": "85c56b6f5aa4bdef801aa6d5ea082eb92f90b463"
     },
     {
       "id": "kokoro",

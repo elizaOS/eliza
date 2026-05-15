@@ -1,0 +1,2 @@
+/usr/bin/ar qc libwakeword.a CMakeFiles/wakeword.dir/src/wakeword_stub.c.o CMakeFiles/wakeword.dir/src/wakeword_melspec.c.o CMakeFiles/wakeword.dir/src/wakeword_window.c.o
+/usr/bin/ranlib libwakeword.a

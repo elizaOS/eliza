@@ -26,20 +26,28 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import {
-  _resetSharedVaultForTesting,
-  type CompatRuntimeState,
-  type ConfigField,
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
-  loadRegistry,
-  mirrorPluginSensitiveToVault,
+} from "@elizaos/app-core/api/auth";
+import {
+  type CompatRuntimeState,
   readCompatJsonBody,
-  type RegistryEntry,
   scheduleCompatRuntimeRestart,
+} from "@elizaos/app-core/api/compat-route-shared";
+import {
   sendJson as sendJsonResponse,
   sendJsonError as sendJsonErrorResponse,
+} from "@elizaos/app-core/api/response";
+import {
+  type ConfigField,
+  loadRegistry,
+  type RegistryEntry,
+} from "@elizaos/app-core/registry";
+import {
+  _resetSharedVaultForTesting,
+  mirrorPluginSensitiveToVault,
   sharedVault,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/services/vault-mirror";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   asRecord,

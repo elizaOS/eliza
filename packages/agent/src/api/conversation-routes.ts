@@ -101,6 +101,25 @@ const {
   ) => Promise<DiscordProfileLike | null>;
 };
 
+function chunkVisibleTextForSse(text: string): string[] {
+  const chunks: string[] = [];
+  let cursor = 0;
+  const targetSize = 48;
+  while (cursor < text.length) {
+    const limit = Math.min(text.length, cursor + targetSize);
+    let end = limit;
+    if (limit < text.length) {
+      const boundary = text.lastIndexOf(" ", limit);
+      if (boundary > cursor + 12) {
+        end = boundary + 1;
+      }
+    }
+    chunks.push(text.slice(cursor, end));
+    cursor = end;
+  }
+  return chunks;
+}
+
 // ---------------------------------------------------------------------------
 // Deleted-conversations state persistence
 // ---------------------------------------------------------------------------
@@ -1296,6 +1315,9 @@ export async function handleConversationRoutes(
           },
           onSnapshot: (text) => {
             if (!text) return;
+            if (!streamedText) {
+              return;
+            }
             streamedText = text;
             writeChatTokenSse(res, text, streamedText);
           },
@@ -1313,6 +1335,14 @@ export async function handleConversationRoutes(
             state.logBuffer,
             runtime,
           );
+          if (!streamedText && resolvedText) {
+            for (const chunk of chunkVisibleTextForSse(resolvedText)) {
+              if (aborted) break;
+              streamedText += chunk;
+              writeChatTokenSse(res, chunk, streamedText);
+              await new Promise((resolve) => setTimeout(resolve, 15));
+            }
+          }
           // Emit `done` BEFORE persistence so user-perceived end-of-turn
           // latency excludes the ~100-500ms memory write. Persistence runs
           // after res.end() in the `finally` block as a detached promise.

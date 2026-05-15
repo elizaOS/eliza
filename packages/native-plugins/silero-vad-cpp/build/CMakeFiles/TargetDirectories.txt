@@ -1,0 +1,7 @@
+/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles/silero_vad.dir
+/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles/silero_vad_stub_smoke.dir
+/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles/silero_vad_state_test.dir
+/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles/silero_vad_resample_test.dir
+/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles/test.dir
+/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles/edit_cache.dir
+/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles/rebuild_cache.dir

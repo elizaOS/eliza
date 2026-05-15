@@ -11,5 +11,11 @@ export default defineConfig({
 	// Inlining those drags the entire host runtime (with platform-specific
 	// native bindings) into the plugin bundle. Workspace consumers resolve via
 	// the workspace symlink at install time; published consumers via npm.
-	external: [/^@elizaos\//, /^@node-llama-cpp\//, /^@reflink\//, "node-llama-cpp", "reflink"],
+	external: [
+		/^@elizaos\//,
+		/^@node-llama-cpp\//,
+		/^@reflink\//,
+		"node-llama-cpp",
+		"reflink",
+	],
 });

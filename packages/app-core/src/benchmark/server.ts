@@ -1107,17 +1107,23 @@ export async function startBenchmarkServer() {
   // and harmlessly skips handler upgrades when no backend is available —
   // matching the main app's behavior so benchmark runs reflect real
   // retrieval semantics.
-  try {
-    const { ensureLocalInferenceHandler } = await import(
-      "@elizaos/plugin-local-inference/runtime"
-    );
-    await ensureLocalInferenceHandler(runtime);
+  if (!skipEmbeddingPlugin) {
+    try {
+      const { ensureLocalInferenceHandler } = await import(
+        "@elizaos/plugin-local-inference/runtime"
+      );
+      await ensureLocalInferenceHandler(runtime);
+      elizaLogger.info(
+        "[bench] Wired @elizaos/plugin-local-inference loader (embedding + voice handlers)",
+      );
+    } catch (err: unknown) {
+      elizaLogger.warn(
+        `[bench] Could not wire @elizaos/plugin-local-inference runtime: ${formatUnknownError(err)}`,
+      );
+    }
+  } else {
     elizaLogger.info(
-      "[bench] Wired @elizaos/plugin-local-inference loader (embedding + voice handlers)",
-    );
-  } catch (err: unknown) {
-    elizaLogger.warn(
-      `[bench] Could not wire @elizaos/plugin-local-inference runtime: ${formatUnknownError(err)}`,
+      "[bench] Skipping @elizaos/plugin-local-inference runtime wiring because benchmark embedding skip is enabled",
     );
   }
   disableManualCompactionAction(runtime);

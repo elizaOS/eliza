@@ -32,7 +32,7 @@ async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   // that requires Bun.build to statically follow this specifier.
   return import(
     /* webpackIgnore: true */ "@elizaos/app-core"
-  ) as Promise<AppCoreRuntimeModule>;
+  ) as unknown as Promise<AppCoreRuntimeModule>;
 }
 
 function resolveDefaultAgentName(config: AutonomousConfigLike): string {

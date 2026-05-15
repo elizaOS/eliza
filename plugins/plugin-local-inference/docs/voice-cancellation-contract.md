@@ -199,8 +199,9 @@ compat for callers that haven't adopted the canonical surface yet):
   in-flight `ov_synthesize` keeps running after a client-side abort. The
   audio sink drain still cuts user-facing audio within one tick (the
   player child is SIGKILLed), so the wasted GPU work is the only cost.
-  Fix tracked under R11 §5.3 — extend
-  `packages/app-core/scripts/kernel-patches/server-omnivoice-route.mjs`.
+  Fix tracked under R11 §5.3 — extend the in-source route handler at
+  `plugins/plugin-local-inference/native/llama.cpp/tools/server/server.cpp`
+  (namespace `eliza_omnivoice`, the `audio_speech_handler()` lambda).
 - **REST-shape reconciliation.** `dflash-checkpoint-client.ts` speaks
   the post-merge shape (`POST /slots/<id>/save?filename=` +
   `DELETE /slots/<id>`); the bundled fork still serves the legacy

@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/wakeword_window_test.dir/test/wakeword_window_test.c.o -o wakeword_window_test  libwakeword.a -lm 

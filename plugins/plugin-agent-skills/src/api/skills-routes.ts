@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import type http from "node:http";
+import os from "node:os";
 import path from "node:path";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
 import type { AgentRuntime } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { logger, readWorkspaceFolderConfig } from "@elizaos/core";
 import type { ReadJsonBodyOptions } from "@elizaos/shared";
 import {
   PostMarketplaceInstallRequestSchema,
@@ -23,6 +23,70 @@ import {
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace";
 import { skillScaffoldMarkdown } from "./skill-scaffold";
+
+const WORKSPACE_MARKERS = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  "package.json",
+  "skills",
+  ".git",
+] as const;
+
+function resolveUserPath(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed === "~") return os.homedir();
+  if (trimmed.startsWith("~/")) return path.join(os.homedir(), trimmed.slice(2));
+  return path.resolve(trimmed);
+}
+
+function shouldUseRuntimeCwdWorkspace(candidateDir: string): boolean {
+  const resolvedDir = resolveUserPath(candidateDir);
+  const normalized = resolvedDir.replace(/\\/g, "/").toLowerCase();
+  if (
+    normalized.includes("/eliza-dist") ||
+    normalized.includes("/contents/resources/app/") ||
+    normalized.includes("/resources/app/") ||
+    normalized.includes("/self-extraction/")
+  ) {
+    return false;
+  }
+  return WORKSPACE_MARKERS.some((marker) =>
+    fs.existsSync(path.join(resolvedDir, marker)),
+  );
+}
+
+function resolveDefaultAgentWorkspaceDir(): string {
+  const explicit = process.env.ELIZA_WORKSPACE_DIR?.trim();
+  if (explicit) return resolveUserPath(explicit);
+
+  try {
+    const persisted = readWorkspaceFolderConfig(process.env);
+    if (persisted?.path?.trim()) return resolveUserPath(persisted.path);
+  } catch {
+    // Fall through to cwd / state-dir defaults.
+  }
+
+  if (
+    !process.env.ELIZA_STATE_DIR?.trim() &&
+    !process.env.MILADY_STATE_DIR?.trim()
+  ) {
+    const cwd = process.cwd();
+    if (cwd.trim() && shouldUseRuntimeCwdWorkspace(cwd)) {
+      return resolveUserPath(cwd);
+    }
+  }
+
+  const stateDir = resolveUserPath(
+    process.env.ELIZA_STATE_DIR?.trim() ??
+      process.env.MILADY_STATE_DIR?.trim() ??
+      path.join(os.homedir(), ".eliza"),
+  );
+  const profile = process.env.ELIZA_PROFILE?.trim();
+  if (profile && profile.toLowerCase() !== "default") {
+    return path.join(stateDir, `workspace-${profile}`);
+  }
+  return path.join(stateDir, "workspace");
+}
 
 /**
  * Minimal structural shape of the agent's on-disk config used by the
