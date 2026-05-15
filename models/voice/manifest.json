@@ -3,7 +3,7 @@
   "version": 1,
   "generatedAt": "2026-05-15T00:00:00Z",
   "assetAudit": {
-    "auditedAt": "2026-05-15T12:00:00Z",
+    "auditedAt": "2026-05-15T13:00:00Z",
     "status": "all-10-voice-repos-live-on-hf-with-real-weights",
     "notes": [
       "All 10 elizaos/eliza-1-voice-* HF repos confirmed live with real ONNX/GGUF weights.",
@@ -47,7 +47,7 @@
           "sourcePath": "voxceleb_resnet34_LM.onnx"
         }
       ],
-      "hfRevision": "f6a2c964e0f36091e995e69b506bd36e1e645289"
+      "hfRevision": "3d882d6dfb00c9eed49f89bb7cc2e45ac3497159"
     },
     {
       "id": "diarizer",
@@ -86,7 +86,7 @@
           "sourcePath": "onnx/model.onnx"
         }
       ],
-      "hfRevision": "d3c4974d391d45ac9261221a96f2eeb4750aa2cf"
+      "hfRevision": "7a8d059b770aeab08e6eabcf9dcbfc051e5bafef"
     },
     {
       "id": "turn-detector",
@@ -335,7 +335,7 @@
           "sourcePath": "ggml-silero-v5.1.2.bin"
         }
       ],
-      "hfRevision": "9d8f7eefc72fda18b9d8ae6e8d4cc413a939a7a7"
+      "hfRevision": "7fc2359bbc0ee1e0dd7de2acb126f6872a4fb4c2"
     },
     {
       "id": "wakeword",
@@ -387,7 +387,7 @@
           "sourcePath": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx"
         }
       ],
-      "hfRevision": "85bef810f8bb0ca57e8625ec36abe1c617fd3e39"
+      "hfRevision": "bcd866bc070a649dfd2dfbf7aadbd01b3cc68c4b"
     },
     {
       "id": "embedding",
@@ -413,7 +413,7 @@
           "sourcePath": "Qwen3-Embedding-0.6B-Q8_0.gguf"
         }
       ],
-      "hfRevision": "acddce031d74deebe1027382feb143df7dd1500e"
+      "hfRevision": "bf6afa907c83ec98e487f018cfb4e29ec3cb7c03"
     },
     {
       "id": "asr",
