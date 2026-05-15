@@ -80,7 +80,8 @@
 #   VAST_OFFER_ID              # skip search and use this offer id directly
 #   QUANTIZE_AFTER             # default: read from REGISTRY_KEY's
 #                                quantization_after tuple via model_registry.py
-#                                (e.g. polarquant,fused_turboquant,qjl,gguf-q4_k_m).
+#                                (polarquant,turboquant,fused_turboquant,qjl
+#                                plus GGUF q3/q4/q5/q6/q8).
 #                                Each name resolves to
 #                                scripts/quantization/${name}_apply.py.
 #   BENCHMARK_AFTER            # 1 = run native function-calling benchmark (default 1)
@@ -327,10 +328,10 @@ VAST_DISK_GB="${VAST_DISK_GB:-2048}"
 # QUANTIZE_AFTER default is read from model_registry.py so the registry stays
 # the single source of truth. Each name resolves to
 # `scripts/quantization/${name}_apply.py` in quantize_remote() below.
-# Fallback is the original literal default if the registry import fails (e.g.
-# when running this script outside `uv run`); the literal still references
-# only quants whose apply.py exists.
-DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.model_registry import get; print(','.join(get('${REGISTRY_KEY}').quantization_after))" 2>/dev/null || echo "polarquant,fused_turboquant,qjl,gguf-q4_k_m")"
+# Fallback is the registry's required literal default if the registry import
+# fails (e.g. when running this script outside `uv run`); every hook has a
+# matching scripts/quantization/*_apply.py wrapper.
+DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.model_registry import get; print(','.join(get('${REGISTRY_KEY}').quantization_after))" 2>/dev/null || echo "polarquant,turboquant,fused_turboquant,qjl,gguf-q3_k_m,gguf-q4_k_m,gguf-q5_k_m,gguf-q6_k,gguf-q8_0")"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-${DEFAULT_QUANTIZE_AFTER}}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 
