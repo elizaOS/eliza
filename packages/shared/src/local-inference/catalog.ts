@@ -17,7 +17,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -26,35 +26,9 @@ export const ELIZA_1_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
-
-export const ELIZA_1_DFLASH_TIER_IDS = [
-  "eliza-1-2b",
-  "eliza-1-4b",
-  "eliza-1-9b",
-  "eliza-1-27b",
-  "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
-] as const satisfies ReadonlyArray<Eliza1TierId>;
-
-export const ELIZA_1_VISION_TIER_IDS = [
-  "eliza-1-4b",
-  "eliza-1-9b",
-  "eliza-1-27b",
-  "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
-] as const satisfies ReadonlyArray<Eliza1TierId>;
-
-const ELIZA_1_DFLASH_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
-  ELIZA_1_DFLASH_TIER_IDS,
-);
-
-const ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
-  ELIZA_1_VISION_TIER_IDS,
-);
 
 export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
@@ -160,16 +134,16 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
-  "eliza-1-2b": ["kokoro"],
-  "eliza-1-4b": ["kokoro"],
-  "eliza-1-9b": ["kokoro", "omnivoice"],
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
+  "eliza-1-4b": ["omnivoice", "kokoro"],
+  "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
-  "eliza-1-27b-1m": ["omnivoice"],
 };
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
+  "dflash",
   "turbo3",
   "turbo4",
   "qjl_full",
@@ -216,6 +190,12 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.5B",
     drafterSizeGb: 0.4,
     drafterMinRamGb: 2,
+    // WS2: vision is enabled on the smallest viable tier. The Q4_K_M
+    // mmproj for 0.8B is ~220 MB (see ELIZA_1_BUNDLE_EXTRAS.json), which
+    // fits even on 2 GB-floor devices when the text model is resident.
+    // Camera + screen analysis remain practical on low-tier phones at this
+    // size — the projector cache short-circuits the per-frame cost.
+    hasVision: true,
     // WS3: image-gen via sd-cpp + SD 1.5 Q5_0 (~1.0 GB). Co-evicts
     // with vision on the WS1 `vision` resident-role slot; only one of
     // (VL describe, diffusion generate) is held at a time.
@@ -233,6 +213,12 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.8B",
     drafterSizeGb: 0.5,
     drafterMinRamGb: 4,
+    // WS2: vision enabled — the 2B tier is the standard "small-phone"
+    // default for first-run users, so camera-to-reaction and screen
+    // analysis must work here. The mmproj is ~361 MB Q8_0 (actual:
+    // 361,518,784 bytes, published 2026-05-14); the arbiter owns the
+    // swap with the text weights under pressure.
+    hasVision: true,
     // WS3: image-gen on the standard small-phone default uses SD 1.5
     // Q5_0 too; tier-up to Z-Image-Turbo at 9B.
     hasImageGen: true,
@@ -306,24 +292,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterSizeGb: 2.6,
     drafterMinRamGb: 96,
     gpuProfile: "rtx-5090",
-    hasEmbedding: true,
-    hasVision: true,
-    hasImageGen: true,
-  },
-  "eliza-1-27b-1m": {
-    id: "eliza-1-27b-1m",
-    params: "27B",
-    parameterLabel: "27B 1M",
-    sizeGb: 16.8,
-    minRamGb: 141,
-    q4MinRamGb: 141,
-    bucket: "large",
-    contextLength: 1048576,
-    textFile: "text/eliza-1-27b-1m.gguf",
-    drafterParams: "4B",
-    drafterSizeGb: 2.6,
-    drafterMinRamGb: 141,
-    gpuProfile: "h200",
     hasEmbedding: true,
     hasVision: true,
     hasImageGen: true,
@@ -414,13 +382,12 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": [],
-  "eliza-1-2b": [],
-  "eliza-1-4b": [],
+  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
-  "eliza-1-27b-1m": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
 };
 
 export function voiceQuantLadderForTier(
@@ -450,14 +417,8 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
     voice: bundleComponent(id, primaryVoiceFileForTier(id)),
     asr: bundleComponent(id, "asr/eliza-1-asr.gguf"),
     vad: bundleComponent(id, "vad/silero-vad-v5.1.2.ggml.bin"),
+    drafter: bundleComponent(id, `dflash/drafter-${tierSlug(id)}.gguf`),
   };
-
-  if (ELIZA_1_DFLASH_TIER_ID_SET.has(id)) {
-    components.drafter = bundleComponent(
-      id,
-      `dflash/drafter-${tierSlug(id)}.gguf`,
-    );
-  }
 
   if (spec.hasEmbedding) {
     components.embedding = bundleComponent(
@@ -465,7 +426,7 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       "embedding/eliza-1-embedding.gguf",
     );
   }
-  if (spec.hasVision && ELIZA_1_VISION_TIER_ID_SET.has(id)) {
+  if (spec.hasVision) {
     components.vision = bundleComponent(
       id,
       `vision/mmproj-${tierSlug(id)}.gguf`,
@@ -479,13 +440,11 @@ function runtimeForTier(
   id: Eliza1TierId,
   contextLength: number,
 ): CatalogModel["runtime"] {
-  const hasDflash = ELIZA_1_DFLASH_TIER_ID_SET.has(id);
-  const dflashKernels: LocalRuntimeKernel[] = hasDflash ? ["dflash"] : [];
   const requiresKernel: LocalRuntimeKernel[] =
     contextLength >= 65536
-      ? [...BASE_REQUIRED_KERNELS, ...dflashKernels, "turbo3_tcq"]
-      : [...BASE_REQUIRED_KERNELS, ...dflashKernels];
-  const runtime: CatalogModel["runtime"] = {
+      ? [...BASE_REQUIRED_KERNELS, "turbo3_tcq"]
+      : BASE_REQUIRED_KERNELS;
+  return {
     preferredBackend: "llama-server",
     optimizations: {
       parallel: 4,
@@ -499,9 +458,7 @@ function runtimeForTier(
       typeV: "tbq3_0",
       requiresFork: "buun-llama-cpp",
     },
-  };
-  if (hasDflash) {
-    runtime.dflash = {
+    dflash: {
       drafterModelId: drafterId(id),
       specType: "dflash",
       contextSize: contextLength,
@@ -510,10 +467,9 @@ function runtimeForTier(
       draftMax: contextLength >= 65536 ? 6 : 4,
       gpuLayers: "auto",
       draftGpuLayers: "auto",
-      disableThinking: false,
-    };
-  }
-  return runtime;
+      disableThinking: true,
+    },
+  };
 }
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
@@ -571,8 +527,6 @@ function blurbForTier(id: Eliza1TierId): string {
       return "eliza-1-27b - high-quality local tier for GPU workstations.";
     case "eliza-1-27b-256k":
       return "eliza-1-27b-256k - high-quality local tier with a 256k context window.";
-    case "eliza-1-27b-1m":
-      return "eliza-1-27b-1m - H200-class local tier with a 1M context window.";
   }
 }
 
@@ -594,9 +548,7 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     bucket: spec.bucket,
     contextLength: spec.contextLength,
     tokenizerFamily: "qwen35",
-    companionModelIds: ELIZA_1_DFLASH_TIER_ID_SET.has(id)
-      ? [drafterId(id)]
-      : [],
+    companionModelIds: [drafterId(id)],
     sourceModel: sourceModelForTier(id),
     voiceBackends: ELIZA_1_VOICE_BACKENDS[id],
     runtime: runtimeForTier(id, spec.contextLength),
@@ -633,11 +585,10 @@ function drafterCompanion(id: Eliza1TierId): CatalogModel {
   };
 }
 
-export const MODEL_CATALOG: CatalogModel[] = ELIZA_1_TIER_IDS.flatMap((id) =>
-  ELIZA_1_DFLASH_TIER_ID_SET.has(id)
-    ? [chatTier(id), drafterCompanion(id)]
-    : [chatTier(id)],
-);
+export const MODEL_CATALOG: CatalogModel[] = ELIZA_1_TIER_IDS.flatMap((id) => [
+  chatTier(id),
+  drafterCompanion(id),
+]);
 
 export function findCatalogModel(id: string): CatalogModel | undefined {
   return MODEL_CATALOG.find((m) => m.id === id);
