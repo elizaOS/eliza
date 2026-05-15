@@ -112,6 +112,7 @@ export default defineConfig({
       "**/*.spec.{ts,tsx}",
       "platforms/electrobun/**",
       "scripts/run-mobile-build-policy.test.mjs",
+      "scripts/run-mobile-build-android-app-actions.test.mjs",
       "scripts/aosp/compile-libllama-fused.test.mjs",
       "scripts/mas-smoke.test.mjs",
       // node:sqlite (stable in Node ≥24) is unavailable in Bun. CI runs this
