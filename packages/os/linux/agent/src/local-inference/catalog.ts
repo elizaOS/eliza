@@ -69,7 +69,7 @@ export const BASELINE_MODEL_ID: ModelTierId = "eliza-1-0_8b";
  */
 export const BASELINE_EMBEDDING_ID = "eliza-1-embedding" as const;
 
-const ELIZA_1_REPO = "elizalabs/eliza-1";
+const ELIZA_1_REPO = "elizaos/eliza-1";
 
 export const MODEL_CATALOG: readonly CatalogModel[] = [
   // ─── Always-on embeddings ────────────────────────────────────────
