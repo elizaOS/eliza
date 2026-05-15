@@ -24,8 +24,8 @@ import {
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.js";
-import { handleViewsRoutes } from "../api/views-routes.js";
 import type { ViewsRouteContext } from "../api/views-routes.js";
+import { handleViewsRoutes } from "../api/views-routes.js";
 
 // ---------------------------------------------------------------------------
 // Helpers

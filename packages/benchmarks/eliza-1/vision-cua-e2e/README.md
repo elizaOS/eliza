@@ -33,11 +33,17 @@ vision-cua-e2e/
   reports/                                 — generated trace JSON lands here
   scripts/
     generate-fixtures.mjs                  — synthesise PNGs (idempotent)
+    run-real.sh                            — real-mode launcher (preflight + cleanup trap)
   src/
-    pipeline.ts                            — orchestrator
+    pipeline.ts                            — orchestrator (stub + real dispatch)
     types.ts                               — shared narrow types
     fixtures.ts                            — fixture loader
     screen-tiler.ts                        — local mirror of plugin-vision tiler
+    real-runtime.ts                        — minimal IAgentRuntime + provider discovery
+    real-vlm.ts                            — RealVlm over runtime.useModel(IMAGE_DESCRIPTION)
+    real-ocr.ts                            — discovers RapidOcrCoordAdapter from plugin-vision
+    real-driver.ts                         — RealDriver + spawnControlledWindow (xeyes)
+    real-capture.ts                        — captureRealDisplays (plugin-computeruse)
     stubs/
       stub-vlm.ts                          — fake IMAGE_DESCRIPTION handler
       stub-ocr.ts                          — fake OcrWithCoordsService
@@ -97,48 +103,76 @@ Each test run writes a trace JSON to `reports/`:
 }
 ```
 
-## Swapping stub for real eliza-1
+## Real mode
 
-The harness ships in stub mode because (a) eliza-1 weights are a heavy
-dependency, (b) the surrounding plugins are landing in parallel and the
-harness must not block on their final form, and (c) we never want the test
-suite to move the real OS mouse.
+Real mode wires the same pipeline against the live runtime stack:
 
-To wire the real loop:
+| stage   | stub                            | real                                                                |
+| ------- | ------------------------------- | ------------------------------------------------------------------- |
+| capture | `loadFixture()` reads PNGs      | `captureAllDisplays()` (plugin-computeruse) — see `src/real-capture.ts` |
+| tile    | local mirror of plugin-vision   | same                                                                |
+| OCR     | `StubOcrWithCoords` canned text | `RapidOcrCoordAdapter` (plugin-vision) — see `src/real-ocr.ts`      |
+| VLM     | `StubVlm` canned outputs        | `runtime.useModel(IMAGE_DESCRIPTION, …)` — see `src/real-vlm.ts`    |
+| click   | `StubDriver` no-op recorder     | `RealDriver` over `performDesktopClick`, clamped into a controlled  |
+|         |                                 | helper window — see `src/real-driver.ts`                            |
 
-1. **Build / install eliza-1.** Confirm that
-   `@elizaos/plugin-local-inference` is registered on the runtime; that
-   plugin owns the `IMAGE_DESCRIPTION` slot for the local Qwen3.5-VL bundle.
-2. **Set the env flag.**
-   ```bash
-   export ELIZA_VISION_CUA_E2E_REAL=1
-   ```
-3. **Replace the stubs in `runRealPipeline()`** (currently a typed
-   placeholder in `src/pipeline.ts`):
-   - `StubVlm.describe(...)` → `runtime.useModel(ModelType.IMAGE_DESCRIPTION, { imageUrl, prompt })`
-   - `StubVlm.ground(...)`  → grounding-style call against the same
-     `IMAGE_DESCRIPTION` handler (or a registered grounding model when
-     plugin-vision exposes one).
-   - `StubOcrWithCoords` → `getOcrWithCoordsService()` from
-     `@elizaos/plugin-vision`.
-   - `StubDriver.click(...)` → `performDesktopClick(x, y)` from
-     `@elizaos/plugin-computeruse`.
-   - `loadFixture(...)` → `captureAllDisplays()` /
-     `captureDisplay(displayId)` from `@elizaos/plugin-computeruse`.
-4. **Run only against a controlled UI surface.** The real driver moves the
-   mouse and dispatches clicks. Run only inside a sandboxed desktop
-   (Xvfb + a known fixture window, OSWorld VM, or a dedicated test
-   account) — not against your live desktop.
-5. **Re-capture diff.** Stub mode uses byte-equal comparison. Real mode
-   should swap to a perceptual diff over a region around the click target
-   (plugin-computeruse already exposes `frameDhash` / `diffBlocks` from
-   `scene/dhash.ts` — drop them in here).
+The minimal `IAgentRuntime` shim that hosts the IMAGE_DESCRIPTION handler
+lives in `src/real-runtime.ts`. Provider discovery is in
+`discoverRuntimeAdapter()`:
 
-When all four substitutions are wired, the harness becomes the parity gate
-for the "vision + CUA at parity" claim: the same JSON trace shape is
-emitted, the same stages are recorded, and the same assertions in
-`pipeline.e2e.test.ts` apply. The only difference is the source of the
-captured pixels and the destination of the click.
+1. `ANTHROPIC_API_KEY` set → `@elizaos/plugin-anthropic` `handleImageDescription`.
+2. `OPENAI_API_KEY` set → not yet wired (slot reserved).
+3. Local eliza-1 bundle with a vision mmproj (`~/.eliza/local-inference/models/<bundle>/vision/*mmproj*.gguf`) → not yet wired (slot reserved; needs `@elizaos/plugin-local-inference` boot path).
+
+If none of those provide a handler, `runRealPipeline()` throws
+`NoVisionProviderError` and the trace is *not* written — the harness refuses
+to fabricate output.
+
+### Launching real mode
+
+Use the launcher:
+
+```bash
+bash packages/benchmarks/eliza-1/vision-cua-e2e/scripts/run-real.sh
+```
+
+The launcher:
+
+- Refuses to run on a headless host (`DISPLAY` / `WAYLAND_DISPLAY` must be set).
+- Refuses to run without an IMAGE_DESCRIPTION provider (cloud key or local
+  vision mmproj — exits 65 with a structured message).
+- Spawns a controlled X11 window (`xeyes` by default; override with
+  `ELIZA_VISION_CUA_E2E_CONTROLLED_WINDOW_BINARY`) into which all real
+  clicks are clamped. The helper is killed in the EXIT trap.
+- Runs `vitest run pipeline.e2e.test.ts` with `ELIZA_VISION_CUA_E2E_REAL=1`,
+  which activates the real-mode `describe(...)` block in the test file.
+- Writes the trace to `reports/eliza1-vision-cua-e2e-real-<timestamp>.json`.
+
+Safety knobs (env on the launcher):
+
+- `ELIZA_VISION_CUA_E2E_NO_CONTROLLED_WINDOW=1` — skip helper, force noop click.
+- `ELIZA_VISION_CUA_E2E_NOOP_CLICK=1` — record clicks but never dispatch input.
+
+### Real-mode prerequisites on this box
+
+The harness's runtime expectations are concrete; verify each before
+expecting a green run.
+
+| requirement                           | how to check                                                                  |
+| ------------------------------------- | ----------------------------------------------------------------------------- |
+| Reachable desktop                     | `echo $DISPLAY` or `echo $WAYLAND_DISPLAY` non-empty                          |
+| IMAGE_DESCRIPTION provider            | `$ANTHROPIC_API_KEY`, `$OPENAI_API_KEY`, OR `~/.eliza/local-inference/models/<bundle>/vision/*mmproj*.gguf` present on disk |
+| Controlled helper binary              | `command -v xeyes` (or set `ELIZA_VISION_CUA_E2E_CONTROLLED_WINDOW_BINARY`)   |
+| Linux input dispatch                  | `command -v xdotool` (only required if you want a real click; noop mode does not need it) |
+| OCR-with-coords backend (plugin-vision) | optional — the OCR stage degrades to a structured failure in the trace if `RapidOcrCoordAdapter` cannot be constructed |
+
+**Status as shipped (2026-05-15):** preflight currently blocks on the
+provider check — the local eliza-1 bundles under
+`~/.eliza/local-inference/models/eliza-1-{0_8b,2b}.bundle/` declare a
+`vision/mmproj-*.gguf` in their manifest but the file is not staged on
+disk, and no cloud key is exported. Once either is satisfied the launcher
+runs end-to-end without further changes; the trace JSON shape matches the
+stub-mode reports under `reports/`.
 
 ## What this does NOT cover
 

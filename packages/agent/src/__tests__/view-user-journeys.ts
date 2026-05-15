@@ -127,7 +127,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
     id: "switch-between-views",
     description: "User asks to switch from one view to another",
     userMessage: "switch to the wallet view",
-    expectedBehavior: "Agent navigates to the wallet view from whatever is currently open",
+    expectedBehavior:
+      "Agent navigates to the wallet view from whatever is currently open",
     verificationCriteria: [
       "response confirms switch or navigation",
       "response mentions wallet",
@@ -152,9 +153,11 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "show-views-grid",
-    description: "User asks for a grid or gallery of views using alternate phrasing",
+    description:
+      "User asks for a grid or gallery of views using alternate phrasing",
     userMessage: "show me all my panels in a grid",
-    expectedBehavior: "Agent opens the view manager or lists views in a structured format",
+    expectedBehavior:
+      "Agent opens the view manager or lists views in a structured format",
     verificationCriteria: [
       "response lists or displays available views",
       "response is structured and scannable",
@@ -181,7 +184,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
     id: "search-views-by-topic",
     description: "User asks for views related to communication",
     userMessage: "what views are there for messaging or chatting?",
-    expectedBehavior: "Agent surfaces the chat view or other communication-related views",
+    expectedBehavior:
+      "Agent surfaces the chat view or other communication-related views",
     verificationCriteria: [
       "response mentions chat or messaging view",
       "response is relevant to communication",
@@ -193,7 +197,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
     id: "find-configuration-views",
     description: "User asks how to configure or set up something",
     userMessage: "where can I configure my account?",
-    expectedBehavior: "Agent points the user toward settings or configuration views",
+    expectedBehavior:
+      "Agent points the user toward settings or configuration views",
     verificationCriteria: [
       "response mentions settings or configuration view",
       "response gives a clear path to configuration",
@@ -207,7 +212,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
     id: "close-current-view",
     description: "User asks to close the current view",
     userMessage: "close the current view",
-    expectedBehavior: "Agent closes the active view or confirms it has been dismissed",
+    expectedBehavior:
+      "Agent closes the active view or confirms it has been dismissed",
     verificationCriteria: [
       "response confirms closure or dismissal",
       "response does not open a different view instead",
@@ -272,7 +278,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 
   {
     id: "view-with-agent-capability",
-    description: "User asks the agent to interact with a view that declares capabilities",
+    description:
+      "User asks the agent to interact with a view that declares capabilities",
     userMessage: "check my wallet balance",
     expectedBehavior:
       "Agent opens or focuses the wallet view and uses the check-balance capability, then reports the result",
@@ -314,12 +321,8 @@ export const VIEW_USER_JOURNEYS: ViewJourneyScenario[] = [
 /**
  * Returns all scenarios matching any of the given tags.
  */
-export function getScenariosByTag(
-  ...tags: string[]
-): ViewJourneyScenario[] {
-  return VIEW_USER_JOURNEYS.filter((s) =>
-    s.tags.some((t) => tags.includes(t)),
-  );
+export function getScenariosByTag(...tags: string[]): ViewJourneyScenario[] {
+  return VIEW_USER_JOURNEYS.filter((s) => s.tags.some((t) => tags.includes(t)));
 }
 
 /**

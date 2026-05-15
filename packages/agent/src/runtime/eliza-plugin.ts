@@ -122,8 +122,22 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           const skills = skillsService.getLoadedSkills();
           if (skills.length === 0) return false;
 
-          let registerCommand: (cmd: Record<string, unknown>) => void;
-          let initForRuntime: (agentId: string) => void;
+          // eslint-disable-next-line prefer-const
+          let registerCommand!: (cmd: {
+            key: string;
+            description: string;
+            textAliases: string[];
+            scope: "text" | "native" | "both";
+            category?: string;
+            acceptsArgs?: boolean;
+            args?: {
+              name: string;
+              description: string;
+              captureRemaining?: boolean;
+            }[];
+          }) => void;
+          // eslint-disable-next-line prefer-const
+          let initForRuntime!: (agentId: string) => void;
           try {
             const cmds = await import("@elizaos/plugin-commands");
             registerCommand = cmds.registerCommand;

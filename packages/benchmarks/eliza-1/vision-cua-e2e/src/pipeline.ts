@@ -32,6 +32,11 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type FixtureId, loadFixture } from "./fixtures.ts";
+import { captureRealDisplays } from "./real-capture.ts";
+import { RealDriver, spawnControlledWindow } from "./real-driver.ts";
+import { discoverOcrProvider, type RealOcrProvider } from "./real-ocr.ts";
+import { discoverRuntimeAdapter } from "./real-runtime.ts";
+import { RealVlm } from "./real-vlm.ts";
 import {
   reconstructAbsoluteCoords,
   type ScreenTile,
@@ -541,32 +546,214 @@ function nowStamp(): string {
 }
 
 /**
- * Real-mode runner — placeholder. The harness ships in stub mode by default
- * and is invoked through `runStubPipeline`. To wire real mode, this function
- * should:
- *   1. Boot an `IAgentRuntime` with @elizaos/plugin-local-inference loaded
- *      so eliza-1 owns the IMAGE_DESCRIPTION slot.
- *   2. Register @elizaos/plugin-vision and @elizaos/plugin-computeruse on
- *      the runtime so `OcrWithCoordsService` and the desktop driver are
- *      available.
- *   3. Replace `StubVlm.describe()` with `runtime.useModel(IMAGE_DESCRIPTION, …)`
- *      and `StubVlm.ground()` with a grounding-style call against the same
- *      handler.
- *   4. Replace `StubOcrWithCoords` with `getOcrWithCoordsService()` from
- *      plugin-vision.
- *   5. Replace `StubDriver.click()` with `performDesktopClick(x, y)` from
- *      plugin-computeruse, and `loadFixture()` with `captureAllDisplays()` /
- *      `captureDisplay()`.
+ * Real-mode runner. Wires the same pipeline against the real plugin-vision
+ * + plugin-computeruse + IMAGE_DESCRIPTION provider stack:
  *
- * Until then, calling this throws — the README documents the swap.
+ *   - capture: `captureRealDisplays()` (workspace plugin-computeruse).
+ *   - tile:    same local mirror of plugin-vision's tiler.
+ *   - VLM:     `RealVlm` over `runtime.useModel(IMAGE_DESCRIPTION, …)` —
+ *              provider discovered by `discoverRuntimeAdapter()`.
+ *   - OCR:     `RealOcrProvider` from plugin-vision's `RapidOcrCoordAdapter`,
+ *              soft-degraded if the backend is unavailable on this host
+ *              (the OCR stage is recorded as failed; pipeline continues).
+ *   - click:   `RealDriver` — sandbox dispatcher when available, otherwise
+ *              clamped into a controlled X11 window we spawn ourselves; if
+ *              neither is available the click is recorded as a noop with a
+ *              structured note.
+ *
+ * Throws `NoVisionProviderError` if no IMAGE_DESCRIPTION provider can be
+ * wired — the harness deliberately refuses to fabricate output.
  */
 export async function runRealPipeline(
-  _opts: RunPipelineOptions,
-): Promise<never> {
-  throw new Error(
-    "runRealPipeline: not yet wired. Set ELIZA_VISION_CUA_E2E_REAL=1 only after wiring " +
-      "runtime.useModel(IMAGE_DESCRIPTION) and performDesktopClick — see README.md.",
-  );
+  opts: RunRealPipelineOptions = {},
+): Promise<RunPipelineResult> {
+  const target =
+    opts.groundingTarget ?? "the close button on the focused window";
+  const runId = opts.runId ?? `vision-cua-e2e-real-${nowStamp()}`;
+  const startedAt = new Date();
+
+  const runtimeAdapter = await discoverRuntimeAdapter();
+  const vlm = new RealVlm(runtimeAdapter);
+
+  const ocrDiscovery = await discoverOcrProvider();
+  const ocrProvider = ocrDiscovery.provider;
+
+  const controlledWindow = opts.skipControlledWindow
+    ? null
+    : await spawnControlledWindow({
+        binary: opts.controlledWindowBinary,
+        description: opts.controlledWindowBinary ?? "xeyes",
+      });
+  const driver = new RealDriver({
+    controlledWindow,
+    noopOnly: opts.noopClick === true || opts.skipControlledWindow === true,
+  });
+
+  const stages: StageRecord[] = [];
+  const failures: string[] = [];
+  const displays: DisplayRunRecord[] = [];
+
+  let providerCleanup: (() => Promise<void>) | null = null;
+  if (controlledWindow) {
+    providerCleanup = async () => {
+      await controlledWindow.close();
+    };
+  }
+
+  try {
+    type CaptureResult = Awaited<ReturnType<typeof captureRealDisplays>>;
+    const captureBox: { value: CaptureResult | null } = { value: null };
+    const enumerate = await runStage("enumerate_displays", async () => {
+      const cr = await captureRealDisplays({});
+      captureBox.value = cr;
+      return {
+        summary: `${cr.captures.length} display(s) via ${cr.providerInfo.captureName}: ${cr.captures
+          .map((c) => `${c.display.name}@${c.display.bounds.join(",")}`)
+          .join(" | ")}`,
+      };
+    });
+    stages.push(enumerate);
+    if (!enumerate.ok || !captureBox.value) {
+      failures.push(
+        `enumerate_displays: ${enumerate.error ?? "no captures returned"}`,
+      );
+    }
+
+    const captures = captureBox.value?.captures ?? [];
+    const backends = createRealBackends({
+      vlm,
+      ocrProvider,
+      ocrUnavailableReason: ocrProvider ? null : ocrDiscovery.reason,
+      driver,
+    });
+
+    for (const capture of captures) {
+      const displayRecord = await runDisplay({
+        capture,
+        backends,
+        groundingTarget: target,
+        maxTileEdge: opts.maxTileEdge ?? 1280,
+      });
+      displays.push(displayRecord.record);
+      stages.push(...displayRecord.stages);
+      failures.push(...displayRecord.failures);
+    }
+
+    const finishedAt = new Date();
+    const trace: PipelineTrace = {
+      run_id: runId,
+      mode: "real",
+      fixture_id: `live:${captures
+        .map((c) => `${c.display.name}@${c.display.bounds.join(",")}`)
+        .join("|")}`,
+      started_at: startedAt.toISOString(),
+      finished_at: finishedAt.toISOString(),
+      duration_ms: finishedAt.getTime() - startedAt.getTime(),
+      displays,
+      stages,
+      success:
+        failures.length === 0 &&
+        displays.length > 0 &&
+        displays.every((d) => d.stateChangeDetected),
+      failures,
+    };
+
+    let reportPath: string | null = null;
+    if (opts.writeReport !== false) {
+      const dir = opts.reportDir ?? REPORT_DIR;
+      mkdirSync(dir, { recursive: true });
+      reportPath = join(dir, `${runId}.json`);
+      writeFileSync(reportPath, `${JSON.stringify(trace, null, 2)}\n`, "utf8");
+    }
+
+    const recordedClicks = driver
+      .recordedClicks()
+      .map((click) => click.remappedTo ?? click.target);
+
+    return { trace, reportPath, recordedClicks };
+  } finally {
+    if (providerCleanup) await providerCleanup();
+  }
+}
+
+interface CreateRealBackendsArgs {
+  readonly vlm: RealVlm;
+  readonly ocrProvider: RealOcrProvider | null;
+  readonly ocrUnavailableReason: string | null;
+  readonly driver: RealDriver;
+}
+
+function createRealBackends(args: CreateRealBackendsArgs): PipelineBackends {
+  const { vlm, ocrProvider, ocrUnavailableReason, driver } = args;
+  return {
+    mode: "real",
+    async describe({ tile, displayId }) {
+      return vlm.describe({
+        imageUrl: pngToDataUrl(tile.pngBytes),
+        prompt: JSON.stringify({
+          task: "describe_visual_scene",
+          instructions: ["Describe the focused window and its chrome."],
+          tile: { id: tile.id, displayId },
+        }),
+      });
+    },
+    async ground({ tile, displayId, target }) {
+      return vlm.ground(
+        { description: target, tileId: tile.id, displayId },
+        { tileWidth: tile.tileW, tileHeight: tile.tileH },
+        pngToDataUrl(tile.pngBytes),
+      );
+    },
+    async ocr({ tile, displayId }) {
+      if (!ocrProvider) {
+        throw new Error(
+          `[real-mode] OCR-with-coords provider unavailable: ${
+            ocrUnavailableReason ?? "unknown"
+          }`,
+        );
+      }
+      return ocrProvider.describe({
+        displayId,
+        sourceX: tile.sourceX,
+        sourceY: tile.sourceY,
+        tileWidth: tile.tileW,
+        tileHeight: tile.tileH,
+        pngBytes: new Uint8Array(tile.pngBytes),
+      });
+    },
+    async click(target) {
+      await driver.click(target);
+    },
+    recordedClicks() {
+      return driver.recordedClicks().map((c) => ({ target: c.target }));
+    },
+  };
+}
+
+/**
+ * Unified entrypoint that honours `ELIZA_VISION_CUA_E2E_REAL=1` to dispatch
+ * to the real-mode runner. In stub mode `fixtureId` is required; in real
+ * mode it is ignored (the live captures define the workload).
+ */
+export async function runPipeline(
+  opts: RunPipelineOptions,
+): Promise<RunPipelineResult> {
+  const real = process.env.ELIZA_VISION_CUA_E2E_REAL === "1";
+  if (real) {
+    return runRealPipeline({
+      groundingTarget: opts.groundingTarget,
+      writeReport: opts.writeReport,
+      reportDir: opts.reportDir,
+      runId: opts.runId,
+      maxTileEdge: opts.maxTileEdge,
+      noopClick: process.env.ELIZA_VISION_CUA_E2E_NOOP_CLICK === "1",
+      skipControlledWindow:
+        process.env.ELIZA_VISION_CUA_E2E_NO_CONTROLLED_WINDOW === "1",
+      controlledWindowBinary:
+        process.env.ELIZA_VISION_CUA_E2E_CONTROLLED_WINDOW_BINARY,
+    });
+  }
+  return runStubPipeline(opts);
 }
 
 export const REPORT_DIR_PATH = REPORT_DIR;
