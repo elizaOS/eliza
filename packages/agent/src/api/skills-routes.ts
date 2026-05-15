@@ -15,30 +15,15 @@ import {
   PutSkillSourceRequestSchema,
   parseClampedInteger,
 } from "@elizaos/shared";
-import { resolveDefaultAgentWorkspaceDir } from "@elizaos/agent";
+import type { ElizaConfig } from "../config/config.ts";
 import {
   installMarketplaceSkill,
   listInstalledMarketplaceSkills,
   searchSkillsMarketplace,
   uninstallMarketplaceSkill,
 } from "../services/skill-marketplace.ts";
-import { skillScaffoldMarkdown } from "./skill-scaffold.ts";
-
-/**
- * Minimal structural shape of the agent's on-disk config used by the
- * skills routes. Avoids a hard type dependency on `@elizaos/agent`'s
- * private `ElizaConfig` shape — the route handlers only ever touch the
- * fields below.
- */
-export interface ElizaConfig {
-  agents?: {
-    defaults?: {
-      workspace?: string;
-    };
-  };
-  env?: Record<string, string>;
-  [key: string]: unknown;
-}
+import { resolveDefaultAgentWorkspaceDir } from "../shared/workspace-resolution.ts";
+import { skillScaffoldMarkdown } from "../templates/skill-scaffold.ts";
 
 // ---------------------------------------------------------------------------
 // Types shared with server.ts (kept lean to avoid circular deps)

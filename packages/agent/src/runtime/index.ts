@@ -4,6 +4,7 @@ export * from "./conversation-compactor.ts";
 export * from "./conversation-compactor.types.ts";
 export * from "./eliza.ts";
 export * from "./eliza-plugin.ts";
+export * from "./embedding-presets.ts";
 export * from "./onboarding-names.ts";
 export * from "./owner-entity.ts";
 export * from "./plugin-collector.ts";

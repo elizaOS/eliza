@@ -53,8 +53,7 @@
   "sideEffects": false,
   "dependencies": {
     "ai": "^6.0.174",
-    "ollama-ai-provider-v2": "^3.5.0",
-    "zod": "^4.4.3"
+    "ollama-ai-provider-v2": "^3.5.0"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

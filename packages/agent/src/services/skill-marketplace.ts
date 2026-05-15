@@ -2,8 +2,8 @@ import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
-import { createIntegrationTelemetrySpan } from "@elizaos/agent";
 import { logger, resolveStateDir } from "@elizaos/core";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
 
 const execFileAsync = promisify(execFile);
 

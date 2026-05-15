@@ -1,4 +1,3 @@
-import { VisionOllamaConfigSchema } from "@elizaos/plugin-ollama";
 import { isSafeExecutableValue } from "@elizaos/shared";
 import { z } from "zod";
 import {
@@ -816,12 +815,15 @@ export const VisionXaiConfigSchema = z
   .strict()
   .optional();
 
-// VisionOllamaConfigSchema moved to @elizaos/plugin-ollama in Phase 4B. The
-// canonical declaration lives alongside the OllamaVisionProvider in
-// plugins/plugin-ollama/schema.ts; imported at the top of this file and
-// re-exported below for in-package consumers that previously took it from
-// this module.
-export { VisionOllamaConfigSchema };
+export const VisionOllamaConfigSchema = z
+  .object({
+    baseUrl: z.string().url().optional(),
+    model: z.string().optional(),
+    maxTokens: z.number().int().positive().optional(),
+    autoDownload: z.boolean().optional(),
+  })
+  .strict()
+  .optional();
 
 export const VisionConfigSchema = z
   .object({
