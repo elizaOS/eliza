@@ -729,7 +729,7 @@ export class MusicService extends Service {
           );
           const subscription = broadcast.subscribe(subscriptionId);
           logger.info(
-            `[MusicService] Got subscription for guild ${guildId}, stream readable: ${subscription.stream?.readable}, feeding to sink...`,
+            `[MusicService] Got subscription for guild ${guildId}, stream readable: ${subscription.stream.readable}, feeding to sink...`,
           );
           await sink.feed(subscription.stream);
           logger.info(

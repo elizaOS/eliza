@@ -469,9 +469,9 @@ export class SolanaService extends Service {
       assets: wp.items.map((i) => ({
         address: i.address,
         symbol: i.symbol,
-        balance: Number(i.uiAmount ?? 0).toString(),
+        balance: Number(i.uiAmount).toString(),
         decimals: i.decimals,
-        valueUsd: Number(i.valueUsd ?? 0),
+        valueUsd: Number(i.valueUsd),
       })),
     };
   }
@@ -812,7 +812,7 @@ export class SolanaService extends Service {
 
     if (!quoteData || quoteData.error) {
       this.runtime.logger.error({ quoteData }, "Quote error");
-      throw new Error(`Failed to get quote: ${quoteData?.error || "Unknown error"}`);
+      throw new Error(`Failed to get quote: ${quoteData.error || "Unknown error"}`);
     }
 
     const swapRequestBody = {
@@ -838,10 +838,10 @@ export class SolanaService extends Service {
       [key: string]: string | number | boolean | undefined;
     };
 
-    if (!swapData?.swapTransaction) {
+    if (!swapData.swapTransaction) {
       this.runtime.logger.error({ swapData }, "Swap error");
       throw new Error(
-        `Failed to get swap transaction: ${swapData?.error || "No swap transaction returned"}`
+        `Failed to get swap transaction: ${swapData.error || "No swap transaction returned"}`
       );
     }
 
@@ -1220,7 +1220,7 @@ export class SolanaService extends Service {
         `${PROVIDER_CONFIG.BIRDEYE_API}/defi/price?address=${token}`
       )) as BirdeyePriceResponse;
 
-      if (response.success && response.data?.value) {
+      if (response.success && response.data.value) {
         const price = response.data.value.toString();
         prices[token === SOL ? "solana" : token === BTC ? "bitcoin" : "ethereum"].usd = price;
       }
@@ -1306,7 +1306,7 @@ export class SolanaService extends Service {
     if (inline) {
       try {
         const md = unpackToken2022Metadata(inline);
-        const mdSymbol = md?.symbol;
+        const mdSymbol = md.symbol;
         const symbol = mdSymbol ? mdSymbol.replace(/\0/g, "").trim() : null;
         return { symbol };
       } catch {
@@ -1413,7 +1413,7 @@ export class SolanaService extends Service {
           }
           try {
             const md = unpackToken2022Metadata(pinfo.data);
-            const mdSymbol = md?.symbol;
+            const mdSymbol = md.symbol;
             const symbol = mdSymbol ? mdSymbol.replace(/\0/g, "").trim() : null;
             if (symbol) {
               out[mintB58] = symbol;
@@ -1653,7 +1653,7 @@ export class SolanaService extends Service {
 
       const infoOwner = info.owner;
       const isT22 =
-        infoOwner?.toBase58 && infoOwner.toBase58() === TOKEN_2022_PROGRAM_ID.toBase58();
+        infoOwner.toBase58 && infoOwner.toBase58() === TOKEN_2022_PROGRAM_ID.toBase58();
       const mintKeyStr = mk.toBase58();
 
       if (isT22) {
@@ -1663,7 +1663,7 @@ export class SolanaService extends Service {
         mpSupply.set(mintKeyStr, uiSupply);
         this.decimalsCache.set(mintKeyStr, parsedMint.decimals);
 
-        const tlv = parsedMint.tlvData ?? Buffer.alloc(0);
+        const tlv = parsedMint.tlvData;
         const mdExt = getExtensionData(ExtensionType.TokenMetadata, tlv);
         if (mdExt) {
           const res = parseToken2022MetadataTLV(mdExt);
@@ -1854,7 +1854,7 @@ export class SolanaService extends Service {
             `${PROVIDER_CONFIG.BIRDEYE_API}/v1/wallet/token_list?wallet=${publicKey.toBase58()}`
           )) as BirdeyeWalletTokenListResponse;
 
-          if (walletData?.success && walletData?.data) {
+          if (walletData.success && walletData.data) {
             const data = walletData.data;
             const totalUsd = new BigNumber(data.totalUsd.toString());
             const prices = await this.fetchPrices();
@@ -1994,7 +1994,7 @@ export class SolanaService extends Service {
         const check = await this.runtime.getCache<CacheWrapper<KeyedParsedTokenAccount[]>>(key);
         if (check) {
           const diff = now - check.exp;
-          const acceptableInMs: number = options.notOlderThan ?? 60_000;
+          const acceptableInMs: number = options.notOlderThan;
           if (diff < acceptableInMs) {
             return check.data;
           }
@@ -2438,7 +2438,7 @@ export class SolanaService extends Service {
           const secretKey = bs58.decode(bs58.encode(wallet.keypair.secretKey));
           const keypair = Keypair.fromSecretKey(secretKey);
 
-          if (!swapResponse?.swapTransaction) {
+          if (!swapResponse.swapTransaction) {
             throw new Error("Swap response missing transaction");
           }
           const txBuffer = Buffer.from(swapResponse.swapTransaction, "base64");
@@ -2496,7 +2496,7 @@ export class SolanaService extends Service {
           if (signal.targetTokenCA === "So11111111111111111111111111111111111111112") {
             if (inBal && outBal) {
               const diff =
-                Number(inBal.uiTokenAmount.amount ?? 0) - Number(outBal.uiTokenAmount.amount ?? 0);
+                Number(inBal.uiTokenAmount.amount) - Number(outBal.uiTokenAmount.amount);
               if (diff) {
                 outAmount = String(diff);
               }
@@ -2509,7 +2509,7 @@ export class SolanaService extends Service {
           } else {
             if (inBal && outBal) {
               const diff =
-                Number(outBal.uiTokenAmount.amount ?? 0) - Number(inBal.uiTokenAmount.amount ?? 0);
+                Number(outBal.uiTokenAmount.amount) - Number(inBal.uiTokenAmount.amount);
               if (diff) {
                 outAmount = String(diff);
               }

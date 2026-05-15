@@ -835,7 +835,7 @@ export class SteerLiquidityService extends Service {
 
       const processedVault: SteerVaultDetailInput = {
         address: vaultAddress,
-        name: vault.name || `Steer Vault ${vaultAddress?.slice(0, 8)}...`,
+        name: vault.name || `Steer Vault ${vaultAddress.slice(0, 8)}...`,
         chainId,
         token0: vault.token0 || "Unknown",
         token1: vault.token1 || "Unknown",

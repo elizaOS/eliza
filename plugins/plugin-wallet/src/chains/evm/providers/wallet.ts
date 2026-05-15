@@ -343,7 +343,7 @@ function genChainsFromRuntime(runtime: IAgentRuntime): {
   chains: Record<string, Chain>;
   rpcConfigs: Record<string, ChainRpcConfig>;
 } {
-  const settings = runtime.character?.settings;
+  const settings = runtime.character.settings;
   let configuredChains: string[] = [];
   if (
     typeof settings === "object" &&

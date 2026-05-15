@@ -48,7 +48,7 @@ export const musicLibraryProvider: Provider = {
     _state: State,
   ): Promise<ProviderResult> => {
     try {
-      const messageText = (message.content?.text || "").trim();
+      const messageText = (message.content.text || "").trim();
       const isAskingForList = isAskingAboutAvailable(messageText);
 
       if (isAskingForList) {

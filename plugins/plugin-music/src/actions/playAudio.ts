@@ -180,7 +180,7 @@ function hasPlayAudioIntent(
   state: State | undefined,
 ): boolean {
   const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof message.content.text === "string" ? message.content.text : "",
     typeof state?.values?.recentMessages === "string"
       ? state.values.recentMessages
       : "",
@@ -597,7 +597,7 @@ export const playAudio: Action = {
     },
   ],
   validate: async (_runtime: IAgentRuntime, message: Memory, state: State) => {
-    const text = message.content?.text || "";
+    const text = message.content.text || "";
     if (isPlaybackTransportControlOnlyMessage(text)) {
       return false;
     }
@@ -984,7 +984,7 @@ export const playAudio: Action = {
         }
       }
 
-      const room = state.data?.room || (await runtime.getRoom(message.roomId));
+      const room = state.data.room || (await runtime.getRoom(message.roomId));
       let currentServerId = room?.serverId;
 
       // For non-Discord platforms, create a deterministic server ID

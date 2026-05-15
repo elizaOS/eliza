@@ -80,7 +80,7 @@ export const trendingProvider: Provider = {
   //position: -1,
   get: async (runtime: IAgentRuntime, _message: Memory, _state: State) => {
     try {
-      runtime.logger?.log("birdeye:provider:trending - get birdeye");
+      runtime.logger.log("birdeye:provider:trending - get birdeye");
       // Get all sentiments
 
       /*
@@ -96,7 +96,7 @@ export const trendingProvider: Provider = {
         setAt: number;
       }>("tokens_v2_solana");
       if (!solanaCache?.data) {
-        runtime.logger?.warn(
+        runtime.logger.warn(
           "birdeye:provider:trending - no birdeye token data found",
         );
         return {
@@ -112,7 +112,7 @@ export const trendingProvider: Provider = {
       const solanaTokens = solanaCache.data;
       //console.log('intel:provider - birdeye data', tokens)
       if (!solanaTokens.length) {
-        runtime.logger?.warn(
+        runtime.logger.warn(
           "birdeye:provider:trending - no birdeye token data found",
         );
         return {
@@ -152,7 +152,7 @@ export const trendingProvider: Provider = {
           }
         | undefined;
       if (!solanaService) {
-        runtime.logger?.warn(
+        runtime.logger.warn(
           "no chain_solana service found - market cap calculation will be skipped for Solana tokens",
         );
       }
@@ -167,7 +167,7 @@ export const trendingProvider: Provider = {
           const CAs = topSolanaTokens.map((t) => t.address);
           supplies = await solanaService.getSupply(CAs);
         } catch (error) {
-          runtime.logger?.warn(
+          runtime.logger.warn(
             `Failed to get supply data from Solana service: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
@@ -184,7 +184,7 @@ export const trendingProvider: Provider = {
 
         // Damnatio memoriae
         if (rugCache && rugCache === "rug") {
-          runtime.logger?.log("omitting", token.address, "because in rugCache");
+          runtime.logger.log("omitting", token.address, "because in rugCache");
           continue;
         }
 
@@ -235,11 +235,11 @@ export const trendingProvider: Provider = {
             chain: "ethereum",
             address: token.address,
             symbol: token.symbol,
-            priceUsd: token.price?.toFixed(4) || "0",
+            priceUsd: token.price.toFixed(4) || "0",
             marketCapUsd: "unknown",
-            volume24hUsd: token.volume24hUSD?.toFixed(0) || "0",
-            change24hPct: token.price24hChangePercent?.toFixed(2) || "0",
-            liquidityUsd: token.liquidity?.toFixed(2) || "0",
+            volume24hUsd: token.volume24hUSD.toFixed(0) || "0",
+            change24hPct: token.price24hChangePercent.toFixed(2) || "0",
+            liquidityUsd: token.liquidity.toFixed(2) || "0",
           });
         }
       }
@@ -268,11 +268,11 @@ export const trendingProvider: Provider = {
             chain: "base",
             address: token.address,
             symbol: token.symbol,
-            priceUsd: token.price?.toFixed(4) || "0",
+            priceUsd: token.price.toFixed(4) || "0",
             marketCapUsd: "unknown",
-            volume24hUsd: token.volume24hUSD?.toFixed(0) || "0",
-            change24hPct: token.price24hChangePercent?.toFixed(2) || "0",
-            liquidityUsd: token.liquidity?.toFixed(2) || "0",
+            volume24hUsd: token.volume24hUSD.toFixed(0) || "0",
+            change24hPct: token.price24hChangePercent.toFixed(2) || "0",
+            liquidityUsd: token.liquidity.toFixed(2) || "0",
           });
         }
       }
@@ -345,7 +345,7 @@ export const trendingProvider: Provider = {
         text,
       };
     } catch (error) {
-      runtime.logger?.error(
+      runtime.logger.error(
         `Error fetching trending data: ${error instanceof Error ? error.message : String(error)}`,
       );
       return {

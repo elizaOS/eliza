@@ -327,9 +327,9 @@ export class TheAudioDbClient {
 
           // Only retry on network errors, not auth errors
           return (
-            error?.code === "ECONNRESET" ||
-            error?.code === "ETIMEDOUT" ||
-            error?.code === "ENOTFOUND" ||
+            error.code === "ECONNRESET" ||
+            error.code === "ETIMEDOUT" ||
+            error.code === "ENOTFOUND" ||
             (typeof status === "number" && status >= 500 && status < 600)
           );
         },

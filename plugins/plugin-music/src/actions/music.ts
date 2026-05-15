@@ -287,7 +287,7 @@ async function inferSubactionFromText(
   state: State | undefined,
   merged: Record<string, unknown>,
 ): Promise<MusicSubaction | null> {
-  const text = message.content?.text ?? "";
+  const text = message.content.text ?? "";
 
   if (isPlaybackTransportControlOnlyMessage(text)) {
     const playbackInferred = inferOpFromText(text);
@@ -403,7 +403,7 @@ function ensurePlaybackMerged(
     normalizeOp(out.op) ??
     normalizeOp(out.playback_op) ??
     normalizeOp(out.action);
-  const resolved = op ?? inferOpFromText(message.content?.text ?? "");
+  const resolved = op ?? inferOpFromText(message.content.text ?? "");
   if (resolved) {
     out.op = resolved;
   }

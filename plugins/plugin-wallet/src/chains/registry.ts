@@ -60,7 +60,7 @@ function configuredEvmChains(runtime: IAgentRuntime): Array<{
   readonly key: string;
   readonly chain: Chain;
 }> {
-  const settings = runtime.character?.settings;
+  const settings = runtime.character.settings;
   const configured =
     settings &&
     typeof settings === "object" &&
