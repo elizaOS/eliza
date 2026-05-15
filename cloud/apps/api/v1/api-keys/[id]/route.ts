@@ -7,8 +7,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { ApiKeysService, apiKeysService } from "@/lib/services/api-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -17,6 +20,9 @@ import { updateApiKeySchema } from "../schemas";
 const app = new Hono<AppEnv>();
 
 app.use("*", rateLimit(RateLimitPresets.STANDARD));
+
+const AGENT_KEY_SHIELDED_MESSAGE =
+  "This API key is managed by an agent sandbox. Delete the agent to revoke this key.";
 
 app.delete("/", async (c) => {
   try {
@@ -28,6 +34,9 @@ app.delete("/", async (c) => {
     if (!existingKey) return c.json({ error: "API key not found" }, 404);
     if (existingKey.organization_id !== user.organization_id) {
       return c.json({ error: "Forbidden" }, 403);
+    }
+    if (ApiKeysService.isAgentSandboxKey(existingKey)) {
+      return c.json({ error: AGENT_KEY_SHIELDED_MESSAGE }, 403);
     }
 
     await apiKeysService.delete(id);
@@ -49,10 +58,19 @@ app.patch("/", async (c) => {
     if (existingKey.organization_id !== user.organization_id) {
       return c.json({ error: "Forbidden" }, 403);
     }
+    if (ApiKeysService.isAgentSandboxKey(existingKey)) {
+      return c.json({ error: AGENT_KEY_SHIELDED_MESSAGE }, 403);
+    }
 
     const body = await c.req.json();
-    const { name, description, permissions, rate_limit, is_active, expires_at } =
-      updateApiKeySchema.parse(body);
+    const {
+      name,
+      description,
+      permissions,
+      rate_limit,
+      is_active,
+      expires_at,
+    } = updateApiKeySchema.parse(body);
 
     const updatedKey = await apiKeysService.update(id, {
       ...(name !== undefined && { name }),
