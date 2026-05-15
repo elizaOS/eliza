@@ -799,6 +799,7 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"ATTACHMENTS",
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
+	"RUNTIME_MODEL_CONTEXT",
 	// CURRENT_TIME is dynamic and would otherwise be filtered out before
 	// reaching the response handler. The wall-clock time is a baseline
 	// signal for nearly every routing decision (scheduling, freshness of
@@ -1583,11 +1584,15 @@ function appendPriorDialogueEvents(
 			if (!memory || typeof memory !== "object") return false;
 			const m = memory as Memory;
 			if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
+			if (m.entityId === runtime.agentId || m.agentId === runtime.agentId) {
+				return false;
+			}
 			const contentType =
 				m.content && typeof m.content === "object"
 					? (m.content as { type?: string }).type
 					: undefined;
 			if (contentType === "action_result") return false;
+			if (isSubAgentCompletionArtifact(m)) return false;
 			const text =
 				typeof m.content?.text === "string" ? m.content.text.trim() : "";
 			return text.length > 0;
@@ -1611,6 +1616,20 @@ function appendPriorDialogueEvents(
 			},
 		});
 	}
+}
+
+function isSubAgentCompletionArtifact(memory: Memory): boolean {
+	const content = memory.content;
+	if (!content || typeof content !== "object") return false;
+	const metadata =
+		content.metadata && typeof content.metadata === "object"
+			? (content.metadata as Record<string, unknown>)
+			: {};
+	if (metadata.subAgent === true) return true;
+	const source = typeof content.source === "string" ? content.source : "";
+	if (source.startsWith("acpx:sub-agent-router")) return true;
+	const text = typeof content.text === "string" ? content.text.trim() : "";
+	return text.startsWith("[sub-agent:");
 }
 
 function hasStructuredRecentMessagesProvider(state: State): boolean {
@@ -1656,6 +1675,7 @@ function getRecentConversationSearchText(
 			if (memory.id && currentMessage.id && memory.id === currentMessage.id) {
 				return false;
 			}
+			if (isSubAgentCompletionArtifact(memory)) return false;
 			return typeof memory.content?.text === "string";
 		})
 		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
@@ -2120,6 +2140,21 @@ async function createV5MessageContextObject(args: {
 			: []),
 	];
 	appendStateProviderEvents(events, args.state, renderExclusions);
+
+	if (hasStructuredRecentMessagesProvider(args.state)) {
+		events.push({
+			id: "prior-dialogue-policy",
+			type: "segment",
+			source: "message-service",
+			segment: {
+				id: "prior-dialogue-policy",
+				label: "system",
+				content:
+					"prior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.",
+				stable: true,
+			},
+		});
+	}
 
 	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
 
@@ -2706,8 +2741,12 @@ export function messageHandlerFromFieldResult(
 	const replyTextRaw =
 		typeof result.replyText === "string" ? result.replyText : "";
 	const currentMessageText = runtimeContext?.messageText ?? "";
+	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
+		candidateActions,
+		runtimeContext,
+	);
 	const inferredAckCandidateActions =
-		candidateActions.length === 0 &&
+		!hasRunnableCandidateAction &&
 		hasAckOnlyActionableIntent(result, replyTextRaw, currentMessageText)
 			? inferAckIntentCandidateActions(
 					result,
@@ -2716,7 +2755,7 @@ export function messageHandlerFromFieldResult(
 				)
 			: [];
 	const inferredDirectCandidateActions =
-		candidateActions.length === 0 &&
+		!hasRunnableCandidateAction &&
 		inferredAckCandidateActions.length === 0 &&
 		currentMessageText.trim().length > 0
 			? inferDirectCurrentRequestCandidateActions(
@@ -2834,6 +2873,25 @@ export function messageHandlerFromFieldResult(
 	};
 }
 
+function candidateActionsContainRunnableAction(
+	candidateActions: readonly string[],
+	runtimeContext:
+		| {
+				actions: ReadonlyArray<Pick<Action, "name">>;
+		  }
+		| undefined,
+): boolean {
+	if (candidateActions.length === 0) return false;
+	if (!runtimeContext) return true;
+	return candidateActions.some((name) => {
+		const normalized = normalizeActionIdentifier(name);
+		if (canonicalPlannerControlActionName(normalized) !== null) return true;
+		return runtimeContext.actions.some(
+			(action) => normalizeActionIdentifier(action.name) === normalized,
+		);
+	});
+}
+
 const PLANNING_ACK_REPLIES = new Set([
 	"got it.",
 	"looking into it.",
@@ -2869,7 +2927,7 @@ function hasAckOnlyActionableIntent(
 	return (
 		looksLikeLocalShellRequest(actionText) ||
 		looksLikeWebSearchRequest(actionText) ||
-		looksLikeCodingDelegationRequest(actionText)
+		looksLikeCodingWorkRequest(actionText)
 	);
 }
 
@@ -2901,9 +2959,10 @@ function inferAckIntentCandidateActions(
 		const lookupAction = findWebLookupActionName(actions);
 		if (lookupAction) return [lookupAction];
 	}
-	if (looksLikeCodingDelegationRequest(actionText)) {
+	if (looksLikeCodingWorkRequest(actionText)) {
 		const codingAction = findAvailableActionName(actions, [
 			"TASKS",
+			"TASKS_SPAWN_AGENT",
 			"SPAWN_AGENT",
 			"START_CODING_TASK",
 			"CODE_TASK",
@@ -2934,9 +2993,10 @@ function inferDirectCurrentRequestCandidateActions(
 		const lookupAction = findWebLookupActionName(actions);
 		if (lookupAction) return [lookupAction];
 	}
-	if (looksLikeCodingDelegationRequest(messageText)) {
+	if (looksLikeCodingWorkRequest(messageText)) {
 		const codingAction = findAvailableActionName(actions, [
 			"TASKS",
+			"TASKS_SPAWN_AGENT",
 			"SPAWN_AGENT",
 			"START_CODING_TASK",
 			"CODE_TASK",
@@ -3543,7 +3603,11 @@ async function executeV5PlannedToolCall(
 		(candidate) => candidate.name === toolCall.name,
 	);
 
-	if (action && actionHasSubActions(action)) {
+	if (
+		action &&
+		actionHasSubActions(action) &&
+		!hasDispatcherActionParam(toolCall)
+	) {
 		const subResult = await runSubPlanner({
 			runtime: args.runtime as IAgentRuntime & PlannerRuntime,
 			action,
@@ -3567,6 +3631,11 @@ async function executeV5PlannedToolCall(
 		{ ...(args.executorOptions ?? {}), actions: executionActions },
 	);
 	return actionResultToPlannerToolResult(actionResult);
+}
+
+function hasDispatcherActionParam(toolCall: PlannerToolCall): boolean {
+	const action = toolCall.params?.action;
+	return typeof action === "string" && action.trim().length > 0;
 }
 
 export function subPlannerResultToPlannerToolResult(
@@ -5517,7 +5586,7 @@ function looksLikeWebSearchRequest(text: string): boolean {
 	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
 }
 
-function looksLikeCodingDelegationRequest(text: string): boolean {
+function looksLikeCodingWorkRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (!normalized.trim()) {
 		return false;
@@ -5535,23 +5604,14 @@ function looksLikeCodingDelegationRequest(text: string): boolean {
 		return false;
 	}
 
-	const asksDelegation =
-		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
-			normalized,
-		) ||
-		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
-			normalized,
-		);
-	if (!asksDelegation) return false;
-
-	const asksCodingWork =
+	return (
 		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
 			normalized,
 		) ||
 		/\b(?:app|site|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
 			normalized,
-		);
-	return asksCodingWork;
+		)
+	);
 }
 
 function quoteShellArg(value: string): string {
