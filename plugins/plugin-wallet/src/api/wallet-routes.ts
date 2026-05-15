@@ -225,7 +225,12 @@ export interface WalletRouteDependencies {
   importWallet: (
     chain: WalletChain,
     privateKey: string,
-  ) => { success: boolean; address?: string; error?: string };
+  ) => {
+    success: boolean;
+    chain: WalletChain;
+    address: string | null;
+    error: string | null;
+  };
   generateWalletForChain: (chain: WalletChain) => {
     privateKey: string;
     address: string;
