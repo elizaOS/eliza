@@ -9,9 +9,8 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
-
-import { logger, type Plugin, type ViewDeclaration } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger, type Plugin, type ViewDeclaration } from "@elizaos/core";
 import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import type { AgentPlatform } from "./platform-detect.ts";
 import { viewSearchIndex } from "./views-search-index.ts";

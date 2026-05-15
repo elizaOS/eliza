@@ -211,7 +211,9 @@ export const plugin: Plugin = {
     );
   },
   async dispose(runtime) {
-    await runtime.getService<AdvancedMemoryStorageService>(AdvancedMemoryStorageService.serviceType)?.stop();
+    await runtime
+      .getService<AdvancedMemoryStorageService>(AdvancedMemoryStorageService.serviceType)
+      ?.stop();
   },
 };
 

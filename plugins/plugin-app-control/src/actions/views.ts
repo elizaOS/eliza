@@ -223,8 +223,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			},
 			{
 				name: "timeoutMs",
-				description:
-					"Timeout in ms for interact responses. Default 5000.",
+				description: "Timeout in ms for interact responses. Default 5000.",
 				required: false,
 				schema: { type: "number" },
 			},
@@ -302,7 +301,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						readStringOption(options, "type");
 					if (!eventType) {
 						const reply =
-							'Specify an event type to broadcast, e.g. action=broadcast eventType=wallet:refresh.';
+							"Specify an event type to broadcast, e.g. action=broadcast eventType=wallet:refresh.";
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
@@ -331,7 +330,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					const capability = readStringOption(options, "capability");
 					if (!viewId || !capability) {
 						const reply =
-							'Specify view and capability, e.g. action=interact view=wallet capability=get-state.';
+							"Specify view and capability, e.g. action=interact view=wallet capability=get-state.";
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
@@ -605,14 +604,52 @@ async function broadcastViewEvent(
 		if (resp.ok) {
 			return `Broadcast view event "${eventType}" to all connected views.`;
 		}
-		logger.warn(
-			`[plugin-app-control] VIEWS/broadcast returned ${resp.status}`,
-		);
+		logger.warn(`[plugin-app-control] VIEWS/broadcast returned ${resp.status}`);
 	} catch {
 		// Network or timeout — not fatal.
 	}
 
 	return `Attempted to broadcast view event "${eventType}".`;
+}
+
+/**
+ * POST /api/views/:viewId/interact — invoke a named capability on a specific
+ * view and return the result text.
+ */
+async function interactWithView(
+	viewId: string,
+	capability: string,
+	params: Record<string, unknown> | undefined,
+	timeoutMs: number,
+): Promise<string> {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+
+	try {
+		const resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/interact`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ capability, params }),
+				signal: AbortSignal.timeout(timeoutMs),
+			},
+		);
+		if (resp.ok) {
+			const body = (await resp.json()) as { result?: string };
+			return (
+				body.result ?? `View "${viewId}" handled capability "${capability}".`
+			);
+		}
+		logger.warn(
+			`[plugin-app-control] VIEWS/interact returned ${resp.status} for ${viewId}/${capability}`,
+		);
+	} catch {
+		// Network or timeout — not fatal.
+	}
+
+	return `Sent "${capability}" to view "${viewId}".`;
 }
 
 export const viewsAction: Action = createViewsAction();

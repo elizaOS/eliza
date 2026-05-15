@@ -10,8 +10,8 @@
  *   const results = await viewSearchIndex.search(query, runtime, 10);
  */
 
-import { logger, ModelType } from "@elizaos/core";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger, ModelType } from "@elizaos/core";
 import type { ViewRegistryEntry } from "./views-registry.ts";
 
 export interface ViewSearchEntry {
