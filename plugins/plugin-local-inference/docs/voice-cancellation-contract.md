@@ -138,6 +138,60 @@ barge-ins abort it cleanly.
   2. "User barges in mid-response, TTS stops within 100 ms of speech-
      detected timestamp, LM aborts, new turn re-plans."
 
+## Production path — engine bridge wiring (W3-9 F1)
+
+`EngineVoiceBridge.start()` constructs the canonical
+`VoiceCancellationCoordinator` and the `OptimisticGenerationPolicy` for
+the session whenever a `runtime` option is supplied. The bridge wires
+both into the production hot path; nothing in the live voice loop is
+manual any more. The flow:
+
+```
+EngineVoiceBridge.start({ runtime, ... })
+  │
+  ├─► VoiceCancellationCoordinator (per session, owns per-roomId tokens)
+  │       │
+  │       ├─ slotAbort   ← opts.slotAbort (production wires DflashLlamaServer.abortSlot
+  │       │                when a slot id is known per turn)
+  │       ├─ ttsStop     ← bridge.triggerBargeIn()  ← audio sink drain
+  │       │                                          + scheduler chunker flush
+  │       │                                          + in-flight TTS cancel
+  │       └─ runtime.turnControllers.{abortTurn, onEvent}  ← both directions
+  │
+  └─► OptimisticGenerationPolicy (per session, hot-swappable power source)
+          │
+          └─ Primed with resolvePowerSourceState()  ← env override OR Linux sysfs
+                                                       ("plugged-in" | "battery"
+                                                        | "unknown")
+                                                      Plugged-in / unknown → enabled
+                                                      Battery → disabled
+
+EngineVoiceBridge.bindBargeInControllerForRoom(roomId)
+  │
+  └─► coordinator.bindBargeInController(roomId, scheduler.bargeIn)
+        │
+        └─ scheduler.bargeIn.hardStop("barge-in-words")
+            → coordinator.bargeIn(roomId)
+              → token.abort("barge-in")
+                → fan-out (runtime / slotAbort / ttsStop / AbortSignal)
+
+VoiceStateMachine.firePrefill(partial, eotProb, turnId)  ← speech-pause / EOT
+  │
+  └─ if (optimisticPolicy && !policy.shouldStartOptimisticLm(eotProb))
+       return — prefill suppressed (battery / below threshold / override off)
+     else
+       fire-and-forget prefillOptimistic + retain promise for speech-end
+```
+
+Accessors on the bridge (`null` when no `runtime` was supplied — back-
+compat for callers that haven't adopted the canonical surface yet):
+
+- `bridge.cancellationCoordinatorOrNull()` — the live coordinator.
+- `bridge.optimisticPolicyOrNull()` — the live policy.
+- `bridge.bindBargeInControllerForRoom(roomId)` — idempotent binding;
+  returns an unsubscribe handle. Bridge `dispose()` tears down every
+  remaining binding before the FFI context goes away.
+
 ## Open follow-ups
 
 - **HTTP `/v1/audio/speech` C++ interrupt.** The fused-build synthesis

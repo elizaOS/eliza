@@ -65,6 +65,7 @@ import {
 	EOT_TENTATIVE_THRESHOLD,
 	type EotClassifier,
 } from "./eot-classifier";
+import type { OptimisticGenerationPolicy } from "./optimistic-policy";
 import {
 	type PrefillOptimisticOptions,
 	type PrefillOptimisticResult,
@@ -241,6 +242,17 @@ export interface VoiceStateMachineOptions {
 		 */
 		getContext?: () => ContextPartial | null;
 	};
+	/**
+	 * W3-9 / F1 — optional optimistic-generation policy. When provided, the
+	 * machine consults `policy.shouldStartOptimisticLm(eotProb)` at the
+	 * `firePrefill` site before kicking off the speculative prefill. When
+	 * the policy says no (e.g. on battery, or below the configured EOT
+	 * threshold) `firePrefill` is a no-op and `handleSpeechEnd` falls back
+	 * to a regular (non-prefilled) verifier pass. Omit to keep the prior
+	 * behaviour (fire on every PAUSE_TENTATIVE entry regardless of EOT
+	 * probability).
+	 */
+	optimisticPolicy?: OptimisticGenerationPolicy;
 }
 
 // Lowered from 220ms; further reduction gated on semantic EOT classifier (V2).
@@ -293,6 +305,8 @@ export class VoiceStateMachine {
 	 */
 	private prefillPromise: Promise<PrefillOptimisticResult> | null = null;
 	private readonly prefillConfig: VoiceStateMachineOptions["prefillConfig"];
+	/** W3-9 / F1 — optimistic-generation policy gate for `firePrefill`. */
+	private readonly optimisticPolicy: OptimisticGenerationPolicy | undefined;
 	/**
 	 * Most recently observed EOT probability from the Tier-3 classifier.
 	 * Used as the `eotProb` argument to `prefillOptimistic` when PAUSE_TENTATIVE
@@ -310,6 +324,7 @@ export class VoiceStateMachine {
 		this.events = opts.events ?? {};
 		this.eotClassifier = opts.eotClassifier;
 		this.prefillConfig = opts.prefillConfig;
+		this.optimisticPolicy = opts.optimisticPolicy;
 	}
 
 	/** Current state — read-only view for tests / telemetry. */
@@ -622,6 +637,13 @@ export class VoiceStateMachine {
 	 * finished. On `SPEECH_ACTIVE_REBOUND` the promise is discarded; on
 	 * `SPEECH_END` it is awaited (or its cached result used) and passed
 	 * through `onCommit(prefillResult)`.
+	 *
+	 * W3-9 / F1 — when an `optimisticPolicy` is configured, this is gated on
+	 * `policy.shouldStartOptimisticLm(eotProb)`. The policy folds the
+	 * device's power source (plugged-in / battery / unknown), the user's
+	 * explicit override, and the EOT threshold into a single decision; when
+	 * it returns false the prefill is suppressed and `handleSpeechEnd`
+	 * runs a regular (non-prefilled) verifier pass.
 	 */
 	private firePrefill(
 		partialText: string,
@@ -629,6 +651,12 @@ export class VoiceStateMachine {
 		turnId: string,
 	): void {
 		if (!this.prefillConfig) return;
+		if (
+			this.optimisticPolicy &&
+			!this.optimisticPolicy.shouldStartOptimisticLm(eotProb)
+		) {
+			return;
+		}
 		const { baseUrl, checkpointOptions, getContext } = this.prefillConfig;
 		const context = getContext?.() ?? undefined;
 		const promise = prefillOptimistic(
