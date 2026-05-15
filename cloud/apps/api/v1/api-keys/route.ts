@@ -9,8 +9,11 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { ApiKeysService, apiKeysService } from "@/lib/services/api-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -42,7 +45,13 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserWithOrg(c);
     const keys = await apiKeysService.listByOrganization(user.organization_id);
-    return c.json({ keys: keys.map(toClientApiKey) });
+    // Sandbox-managed keys (name prefix `agent-sandbox:`) are lifecycle-owned
+    // by the provisioner and must not surface in the user dashboard — see
+    // ApiKeysService.isAgentSandboxKey for the rationale.
+    const visibleKeys = keys.filter(
+      (key) => !ApiKeysService.isAgentSandboxKey(key),
+    );
+    return c.json({ keys: visibleKeys.map(toClientApiKey) });
   } catch (error) {
     logger.error("Error fetching API keys:", error);
     return failureResponse(c, error);
