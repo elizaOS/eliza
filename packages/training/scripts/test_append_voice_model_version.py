@@ -28,7 +28,7 @@ VOICE_MODELS_TS_TEMPLATE = dedent(
         id: "kokoro",
         version: "0.1.0",
         publishedToHfAt: "2026-05-14T00:00:00Z",
-        hfRepo: "elizaOS/eliza-1-voice-kokoro-sam",
+        hfRepo: "elizaOS/eliza-1-voice-kokoro-same",
         hfRevision: "main",
         ggufAssets: [],
         evalDeltas: { netImprovement: true },
@@ -90,7 +90,7 @@ def test_invalid_semver_rejected(tmp_path: Path) -> None:
     res = _run(
         "--id", "kokoro",
         "--version", "bogus",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
         "--hf-revision", "main",
         "--min-bundle", "0.0.0",
         "--changelog-entry", "hi",
@@ -104,7 +104,7 @@ def test_bad_asset_rejected(tmp_path: Path) -> None:
     res = _run(
         "--id", "kokoro",
         "--version", "0.2.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
         "--hf-revision", "main",
         "--asset", "kokoro.onnx:not-a-sha:1024:onnx-fp16",
         "--min-bundle", "0.0.0",
@@ -120,7 +120,7 @@ def test_writes_new_version_block(tmp_path: Path) -> None:
         "--id", "kokoro",
         "--version", "0.2.0",
         "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
         "--hf-revision", "abc123def456abc123def456abc123def456abcd",
         "--asset",
         "kokoro.onnx:"
@@ -155,7 +155,7 @@ def test_idempotent_rerun(tmp_path: Path) -> None:
         "--id", "kokoro",
         "--version", "0.2.0",
         "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
         "--hf-revision", "main",
         "--asset",
         "kokoro.onnx:"
@@ -184,7 +184,7 @@ def test_append_changelog_inserts_h3(tmp_path: Path) -> None:
         "--id", "kokoro",
         "--version", "0.2.0",
         "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
         "--hf-revision", "abc",
         "--asset",
         "kokoro.onnx:"
@@ -215,7 +215,7 @@ def test_dry_run_writes_nothing(tmp_path: Path) -> None:
         "--id", "kokoro",
         "--version", "0.2.0",
         "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
         "--hf-revision", "main",
         "--asset",
         "kokoro.onnx:"
@@ -240,7 +240,7 @@ def test_successor_requires_net_improvement(tmp_path: Path) -> None:
         "--id", "kokoro",
         "--version", "0.2.0",
         "--parent-version", "0.1.0",
-        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-sam",
+        "--hf-repo", "elizaOS/eliza-1-voice-kokoro-same",
         "--hf-revision", "main",
         "--min-bundle", "0.1.0",
         "--changelog-entry", "sam v2.",

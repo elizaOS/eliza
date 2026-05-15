@@ -15,7 +15,7 @@ the scaffold, eval script, manifest entry, and CI smoke tests land here.
 | `finetune_asr.py` | End-to-end fine-tune pipeline (real + synthetic-smoke). |
 | `eval_asr.py` | WER + RTF evaluation + baseline comparison + HF-push gating. |
 | `configs/base.yaml` | Base hyperparameter config for all ASR fine-tunes. |
-| `configs/asr_sam.yaml` | Sam-corpus-specific overrides. |
+| `configs/asr_same.yaml` | Same-corpus-specific overrides. |
 | `__tests__/test_asr_pipeline.py` | CI tests (synthetic-smoke + config + gate logic). |
 
 ---
@@ -26,29 +26,29 @@ the scaffold, eval script, manifest entry, and CI smoke tests land here.
 # CI smoke (no GPU):
 python3 packages/training/scripts/asr/finetune_asr.py \
     --run-dir /tmp/asr-runs/smoke \
-    --config packages/training/scripts/asr/configs/asr_sam.yaml \
+    --config packages/training/scripts/asr/configs/asr_same.yaml \
     --synthetic-smoke
 
 # Real training (RTX 5080 / H200):
 python3 packages/training/scripts/asr/finetune_asr.py \
     --run-dir /tmp/asr-runs/sam \
-    --config packages/training/scripts/asr/configs/asr_sam.yaml \
-    --data-dir packages/training/data/voice/sam \
+    --config packages/training/scripts/asr/configs/asr_same.yaml \
+    --data-dir packages/training/data/voice/same \
     --real-train
 
 # Eval (real checkpoint):
 python3 packages/training/scripts/asr/eval_asr.py \
     --run-dir /tmp/asr-runs/sam \
     --checkpoint /tmp/asr-runs/sam/checkpoints/best.pt \
-    --data-dir packages/training/data/voice/sam \
-    --config packages/training/scripts/asr/configs/asr_sam.yaml \
+    --data-dir packages/training/data/voice/same \
+    --config packages/training/scripts/asr/configs/asr_same.yaml \
     --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json
 
 # HF push (gated on beats-baseline + operator sign-off):
 python3 packages/training/scripts/asr/finetune_asr.py \
     --run-dir /tmp/asr-runs/sam \
-    --config packages/training/scripts/asr/configs/asr_sam.yaml \
-    --data-dir packages/training/data/voice/sam \
+    --config packages/training/scripts/asr/configs/asr_same.yaml \
+    --data-dir packages/training/data/voice/same \
     --real-train \
     --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json \
     --hf-repo elizaos/eliza-1-asr-sam-v01 \

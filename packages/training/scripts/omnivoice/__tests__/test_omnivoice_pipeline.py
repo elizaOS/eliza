@@ -31,7 +31,7 @@ def test_finetune_synthetic_smoke_writes_manifest(tmp_path: Path) -> None:
             "--run-dir",
             str(run_dir),
             "--config",
-            str(OMNIVOICE_DIR / "configs" / "omnivoice_sam.yaml"),
+            str(OMNIVOICE_DIR / "configs" / "omnivoice_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -50,7 +50,7 @@ def test_finetune_synthetic_smoke_writes_eval(tmp_path: Path) -> None:
             "--run-dir",
             str(run_dir),
             "--config",
-            str(OMNIVOICE_DIR / "configs" / "omnivoice_sam.yaml"),
+            str(OMNIVOICE_DIR / "configs" / "omnivoice_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -70,7 +70,7 @@ def test_eval_synthetic_smoke(tmp_path: Path) -> None:
             "--run-dir",
             str(run_dir),
             "--config",
-            str(OMNIVOICE_DIR / "configs" / "omnivoice_sam.yaml"),
+            str(OMNIVOICE_DIR / "configs" / "omnivoice_same.yaml"),
             "--synthetic-smoke",
         ]
     )
@@ -94,7 +94,7 @@ def test_config_defaults() -> None:
 
 def test_config_sam_yaml() -> None:
     cfg = finetune_omnivoice._load_config(
-        str(OMNIVOICE_DIR / "configs" / "omnivoice_sam.yaml")
+        str(OMNIVOICE_DIR / "configs" / "omnivoice_same.yaml")
     )
     assert cfg["voice_name"] == "sam"
     assert cfg["max_steps"] == 500

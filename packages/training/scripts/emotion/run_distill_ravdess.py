@@ -275,6 +275,8 @@ def train_eval(
     device: str,
     lr: float,
     weight_decay: float,
+    cls_loss_weight: float = 1.0,
+    vad_loss_weight: float = 0.5,
 ) -> dict[str, float]:
     """Joint V-A-D regression + 7-class classification training loop.
 
@@ -321,15 +323,55 @@ def train_eval(
     test_loader = DataLoader(test_ds, batch_size=batch_size)
 
     student = student.to(device)
-    w_vad, w_cls = dw._projection_loss_weights()
+    w_vad, w_cls = float(vad_loss_weight), float(cls_loss_weight)
+    LOG.info("loss weights: vad=%.3f cls=%.3f", w_vad, w_cls)
+
+    # Class-balanced CE weights against the training-set class distribution.
+    # The mapping collapses RAVDESS neutral+calm → expressive `calm`, so the
+    # raw distribution is heavily biased; class weighting keeps the head from
+    # collapsing to the majority class.
+    import collections as _co
+    class_counts = _co.Counter(gold_idxs[i] for i in train_ids)
+    n_classes = len(dw.EXPRESSIVE_EMOTION_TAGS)
+    class_weights = np.zeros(n_classes, dtype="float32")
+    total = sum(class_counts.values())
+    for c in range(n_classes):
+        cnt = class_counts.get(c, 0)
+        # Inverse-frequency weights (smoothed). Unrepresented classes get 0
+        # so they don't dominate when their support is empty.
+        class_weights[c] = (total / max(1, cnt)) / n_classes if cnt > 0 else 0.0
+    LOG.info(
+        "class counts (train): %s",
+        {dw.EXPRESSIVE_EMOTION_TAGS[c]: int(class_counts.get(c, 0)) for c in range(n_classes)},
+    )
+    LOG.info(
+        "class weights: %s",
+        {dw.EXPRESSIVE_EMOTION_TAGS[c]: round(float(class_weights[c]), 3) for c in range(n_classes)},
+    )
+
     mse = nn.MSELoss()
-    ce = nn.CrossEntropyLoss()
+    ce = nn.CrossEntropyLoss(weight=torch.tensor(class_weights, device=device))
     try:
         optimizer = build_apollo_mini_optimizer(student, lr=lr, weight_decay=weight_decay)
         LOG.info("optimizer: APOLLO-Mini (rank-1 tensor-wise)")
     except ValueError:
         optimizer = build_apollo_optimizer(student, lr=lr, weight_decay=weight_decay, rank=8)
         LOG.info("optimizer: APOLLO (rank-8 fallback)")
+
+    # Cosine schedule with linear warmup over 5% of total steps.
+    steps_per_epoch = max(1, len(train_loader))
+    total_steps = steps_per_epoch * epochs
+    warmup_steps = max(1, int(0.05 * total_steps))
+
+    def _lr_at(step: int) -> float:
+        if step < warmup_steps:
+            return step / warmup_steps
+        progress = (step - warmup_steps) / max(1, total_steps - warmup_steps)
+        import math
+        return 0.5 * (1 + math.cos(math.pi * min(1.0, progress)))
+
+    scheduler = torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=_lr_at)
+    LOG.info("schedule: cosine + %d-step warmup over %d total steps", warmup_steps, total_steps)
 
     def _eval(loader: DataLoader) -> dict[str, float]:
         student.eval()
@@ -372,6 +414,7 @@ def train_eval(
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
             optimizer.step()
+            scheduler.step()
             train_loss += float(loss.item())
             n_batches += 1
         train_loss /= max(1, n_batches)
@@ -430,6 +473,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=3e-4)
     parser.add_argument("--weight-decay", type=float, default=0.01)
+    parser.add_argument(
+        "--cls-loss-weight", type=float, default=1.0,
+        help="Override aux 7-class CE weight (default 0.5 in distill script).",
+    )
+    parser.add_argument(
+        "--vad-loss-weight", type=float, default=0.5,
+        help="Override V-A-D MSE weight.",
+    )
     parser.add_argument("--device", default="cuda:0")
     parser.add_argument(
         "--eval-gate-macro-f1", type=float, default=0.35,
@@ -493,6 +544,8 @@ def main(argv: list[str] | None = None) -> int:
             device=args.device,
             lr=args.lr,
             weight_decay=args.weight_decay,
+            cls_loss_weight=args.cls_loss_weight,
+            vad_loss_weight=args.vad_loss_weight,
         )
 
     LOG.info("phase 4: eval gate (macro_f1 >= %.2f)", args.eval_gate_macro_f1)

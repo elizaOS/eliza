@@ -23,15 +23,15 @@ Usage
     # Smoke (CI):
     python3 eval_asr.py \\
         --run-dir /tmp/asr-runs/sam \\
-        --config asr_sam.yaml \\
+        --config asr_same.yaml \\
         --synthetic-smoke
 
     # Real eval:
     python3 eval_asr.py \\
         --run-dir /tmp/asr-runs/sam \\
         --checkpoint /tmp/asr-runs/sam/checkpoints/best.pt \\
-        --data-dir packages/training/data/voice/sam \\
-        --config asr_sam.yaml \\
+        --data-dir packages/training/data/voice/same \\
+        --config asr_same.yaml \\
         --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json
 """
 

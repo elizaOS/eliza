@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
-"""G3 OmniVoice-sam distillation corpus synthesis.
+"""G3 OmniVoice-samee distillation corpus synthesis.
 
-Uses Kokoro KPipeline conditioned on the **sam voice ref_s** (either a
+Uses Kokoro KPipeline conditioned on the **same voice ref_s** (either a
 precomputed .bin from extract_voice_embedding.py or from HF
 `hexgrad/Kokoro-82M` voices/) as the teacher — NOT af_bella.
 
 This is F2's structural next-step per F2's post-mortem (§"What would actually
-work", Option A): synthesize diverse text with the sam-conditioned teacher so
-the full-FT student learns sam timbre rather than af_bella timbre.
+work", Option A): synthesize diverse text with the same-conditioned teacher so
+the full-FT student learns same timbre rather than af_bella timbre.
 
-If `--voice-bin` points to the mel-fit ref_s .bin produced from real sam audio,
-the teacher is as close to sam's voice as Kokoro can produce. The result is
-still synthetic but is sam-characteristic rather than af_bella-characteristic.
+If `--voice-bin` points to the mel-fit ref_s .bin produced from real same audio,
+the teacher is as close to same's voice as Kokoro can produce. The result is
+still synthetic but is same-characteristic rather than af_bella-characteristic.
 
 Usage::
 
     python3 synthesize_distillation_corpus_omnivoice.py \\
-        --voice-bin /tmp/kokoro-f2/melfit-5/af_samantha.bin \\
-        --out-dir packages/training/data/voice/sam-distill \\
+        --voice-bin /tmp/kokoro-f2/melfit-5/af_same.bin \\
+        --out-dir packages/training/data/voice/same-distill \\
         --target-min 60.0
 
 Output layout::
@@ -54,7 +54,7 @@ TARGET_LUFS = -23.0
 
 # ---------------------------------------------------------------------------
 # Expanded text corpus — conversational English, varied length.
-# Matches the register of the Her/sam corpus.
+# Matches the register of the Her/samee corpus.
 # Expanded vs F2's corpus to yield more unique clips for 60 min target.
 # ---------------------------------------------------------------------------
 
@@ -223,16 +223,16 @@ def _load_voice_bin(voice_bin: Path) -> "Any":
 def synthesize_corpus(
     out_dir: Path,
     voice_bin: Path | None = None,
-    voice_id: str = "af_sam",
+    voice_id: str = "af_same",
     target_min: float = 60.0,
     val_fraction: float = 0.10,
     seed: int = 1337,
 ) -> dict[str, Any]:
-    """Synthesize sam-conditioned distillation corpus.
+    """Synthesize same-conditioned distillation corpus.
 
-    The teacher is the Kokoro KPipeline conditioned on the sam voice ref_s
+    The teacher is the Kokoro KPipeline conditioned on the same voice ref_s
     (from voice_bin if provided, else the stock voice_id). This produces
-    sam-characteristic audio, NOT af_bella-characteristic audio.
+    same-characteristic audio, NOT af_bella-characteristic audio.
     """
     from kokoro import KPipeline  # type: ignore  # noqa: PLC0415
 
@@ -245,11 +245,11 @@ def synthesize_corpus(
     log.info("loading KPipeline lang_code=a")
     pipeline = KPipeline(lang_code="a")
 
-    # Build voice tensor — sam ref_s (not af_bella!)
+    # Build voice tensor — same ref_s (not af_bella!)
     voice: Any = voice_id
     if voice_bin is not None and voice_bin.exists():
         import torch  # noqa: PLC0415
-        log.info("using sam voice.bin teacher from %s (NOT af_bella)", voice_bin)
+        log.info("using same voice.bin teacher from %s (NOT af_bella)", voice_bin)
         arr = np.fromfile(str(voice_bin), dtype="<f4").reshape(510, 1, 256)
         voice = torch.from_numpy(arr)
     else:
@@ -271,7 +271,7 @@ def synthesize_corpus(
     random.shuffle(text_cycle)
 
     log.info(
-        "synthesizing %.0f min target with sam-conditioned teacher (corpus=%d texts × %d repeats)",
+        "synthesizing %.0f min target with same-conditioned teacher (corpus=%d texts × %d repeats)",
         target_min,
         len(texts),
         repeats_needed,
@@ -329,8 +329,8 @@ def synthesize_corpus(
             "norm_text": norm_text,
             "duration_s": round(duration_s, 3),
             "rtf": round(rtf, 2),
-            "source": "synth-omnivoice-sam",
-            "teacher": "sam-melfit-ref_s",
+            "source": "synth-omnivoice-samee",
+            "teacher": "same-melfit-ref_s",
             "voice": str(voice_bin) if voice_bin else voice_id,
         })
 
@@ -346,7 +346,7 @@ def synthesize_corpus(
             )
 
     log.info(
-        "synthesis complete: %d clips / %.1f min (teacher=sam ref_s)",
+        "synthesis complete: %d clips / %.1f min (teacher=same ref_s)",
         len(manifest),
         total_s / 60,
     )
@@ -373,10 +373,10 @@ def synthesize_corpus(
         "trainLines": len(train_lines),
         "valLines": len(val_lines),
         "targetMinutes": target_min,
-        "teacher": "sam-melfit-ref_s (NOT af_bella)",
+        "teacher": "same-melfit-ref_s (NOT af_bella)",
         "voiceBin": str(voice_bin) if voice_bin else voice_id,
         "outDir": str(out_dir),
-        "note": "G3 OmniVoice-sam teacher. F2 used af_bella which dominated training signal. G3 uses sam ref_s so model learns sam timbre.",
+        "note": "G3 OmniVoice-samee teacher. F2 used af_bella which dominated training signal. G3 uses same ref_s so model learns same timbre.",
     }
     (out_dir / "synthesis_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
@@ -388,9 +388,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--voice-bin",
         type=Path,
         default=None,
-        help="Path to sam voice.bin (mel-fit ref_s). CRITICAL: use the sam ref_s, NOT af_bella.",
+        help="Path to same voice.bin (mel-fit ref_s). CRITICAL: use the same ref_s, NOT af_bella.",
     )
-    p.add_argument("--voice-id", type=str, default="af_sam",
+    p.add_argument("--voice-id", type=str, default="af_same",
                    help="Fallback stock voice id if voice-bin absent.")
     p.add_argument(
         "--out-dir",

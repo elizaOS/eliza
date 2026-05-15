@@ -290,6 +290,107 @@ def build_pretrain_corpus(
     return out_path
 
 
+def build_eou_prefix_corpus(
+    out_dir: Path,
+    *,
+    corpus: str = "dailydialog",
+    max_dialogues: int | None = None,
+    min_words: int = 3,
+    seed: int = 20260514,
+) -> Path:
+    """Build a proper EOU corpus from DailyDialog utterances.
+
+    Strategy: every full utterance is a positive (EOU=1). For each
+    positive, also emit one *prefix* sample (truncated at a random
+    word boundary, with terminal punctuation stripped) as a negative
+    (EOU=0). This is the signal the LiveKit detector is trained on —
+    "is this transcript a complete turn vs. a mid-utterance prefix?"
+    — and it matches the runtime semantics (the streaming ASR feeds
+    growing prefixes; we score P(<|im_end|>) on each one).
+
+    Output JSONL schema mirrors ``build_pretrain_corpus``::
+
+        {"utterance": str, "eou_label": 0|1, "dialogue_id": str, "turn_idx": int}
+
+    Returns the absolute path to the written JSONL.
+    """
+    if corpus != "dailydialog":
+        raise NotImplementedError(
+            f"build_eou_prefix_corpus: corpus={corpus!r} not wired yet"
+        )
+
+    try:
+        from datasets import load_dataset  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise RuntimeError(
+            "build_eou_prefix_corpus requires `datasets`"
+        ) from exc
+
+    import random
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "dailydialog-eou-prefix.jsonl"
+
+    ds = load_dataset(DAILYDIALOG_HF_REPO, split="train")
+    rng = random.Random(seed)
+
+    def _strip_trailing_punct(text: str) -> str:
+        # The DailyDialog corpus separates trailing punctuation with a
+        # space (e.g. "hello ."). Drop terminal punctuation tokens so
+        # the prefix doesn't look obviously complete.
+        tokens = text.split()
+        while tokens and tokens[-1] in {".", "?", "!", ",", ";", ":", "..."}:
+            tokens.pop()
+        return " ".join(tokens)
+
+    with out_path.open("w", encoding="utf-8") as fh:
+        for dialogue_idx, row in enumerate(ds):
+            if max_dialogues is not None and dialogue_idx >= max_dialogues:
+                break
+            utterances = row.get("dialog") or row.get("utterances") or []
+            for turn_idx, raw in enumerate(utterances):
+                if not isinstance(raw, str):
+                    continue
+                utterance = raw.strip()
+                tokens = utterance.split()
+                if len(tokens) < min_words:
+                    continue
+                # Positive: full utterance.
+                fh.write(
+                    json.dumps(
+                        {
+                            "utterance": utterance,
+                            "eou_label": 1,
+                            "dialogue_id": f"dailydialog-{dialogue_idx}",
+                            "turn_idx": turn_idx,
+                        }
+                    )
+                    + "\n"
+                )
+                # Negative: prefix truncated at a word boundary, with
+                # trailing punctuation removed. Skip 1-token prefixes,
+                # they're too short to learn from.
+                # Strip terminal punctuation from the source so we
+                # don't generate "hello" with the stripped period.
+                stripped_tokens = _strip_trailing_punct(utterance).split()
+                if len(stripped_tokens) < 2:
+                    continue
+                cut = rng.randint(1, max(1, len(stripped_tokens) - 1))
+                prefix = " ".join(stripped_tokens[:cut])
+                fh.write(
+                    json.dumps(
+                        {
+                            "utterance": prefix,
+                            "eou_label": 0,
+                            "dialogue_id": f"dailydialog-{dialogue_idx}",
+                            "turn_idx": turn_idx,
+                        }
+                    )
+                    + "\n"
+                )
+    return out_path
+
+
 def build_sft_corpus(
     pretrain_jsonl: Path,
     out_dir: Path,
@@ -968,6 +1069,7 @@ def stage_dailydialog_train_eval(
     eval_max: int = 2000,
     train_max: int | None = None,
     seed: int = 20260514,
+    corpus_kind: str = "eou-prefix",
 ) -> "tuple[Path, Path]":
     """Build and split DailyDialog into train/eval JSONL.
 
@@ -977,11 +1079,24 @@ def stage_dailydialog_train_eval(
     (``{"utterance": str, "eou_label": 0|1, ...}``) so ``train_lora``
     consumes it. Both files are deterministically derived from the same
     DailyDialog snapshot.
+
+    ``corpus_kind`` selects:
+
+      - ``"eou-prefix"`` (default) — proper EOU corpus. Each utterance
+        contributes a positive (EOU=1) and a prefix-truncated negative
+        (EOU=0). Matches the runtime semantics — streaming-ASR prefixes.
+      - ``"dialogue-last"`` — legacy "last utterance in dialogue = EOU"
+        corpus from ``build_pretrain_corpus``. Retained for compatibility.
     """
     import random
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    base = build_pretrain_corpus(out_dir, corpus="dailydialog")
+    if corpus_kind == "eou-prefix":
+        base = build_eou_prefix_corpus(out_dir, corpus="dailydialog", seed=seed)
+    elif corpus_kind == "dialogue-last":
+        base = build_pretrain_corpus(out_dir, corpus="dailydialog")
+    else:
+        raise ValueError(f"unknown corpus_kind: {corpus_kind!r}")
     train_path = out_dir / "dailydialog.train.jsonl"
     eval_path = out_dir / "dailydialog.eval.jsonl"
 

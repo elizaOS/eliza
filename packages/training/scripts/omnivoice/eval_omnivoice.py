@@ -18,9 +18,9 @@ Usage
 
     python3 eval_omnivoice.py \\
         --run-dir /tmp/omnivoice-runs/sam \\
-        --config omnivoice_sam.yaml \\
-        --data-dir packages/training/data/voice/sam \\
-        --preset-path ~/.eliza/local-inference/models/eliza-1-1_7b.bundle/cache/voice-preset-sam.bin \\
+        --config omnivoice_same.yaml \\
+        --data-dir packages/training/data/voice/same \\
+        --preset-path ~/.eliza/local-inference/models/eliza-1-1_7b.bundle/cache/voice-preset-same.bin \\
         --baseline-eval artifacts/voice-fine-tune/omnivoice-baseline/eval.json
 """
 

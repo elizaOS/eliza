@@ -36,14 +36,14 @@ private until the user explicitly OKs a public release. Pass
 Usage:
 
     python3 push_voice_to_hf.py \\
-        --release-dir /tmp/kokoro-runs/sam/release/af_sam \\
-        --hf-repo elizalabs/eliza-1-voice-kokoro-sam-v01
+        --release-dir /tmp/kokoro-runs/same/release/af_same \\
+        --hf-repo elizalabs/eliza-1-voice-kokoro-same-v01
 
     # Dry run — exercises every gate + assembles the upload plan but does
     # not call the HF API.
     python3 push_voice_to_hf.py \\
-        --release-dir /tmp/kokoro-runs/sam/release/af_sam \\
-        --hf-repo elizalabs/eliza-1-voice-kokoro-sam-v01 \\
+        --release-dir /tmp/kokoro-runs/same/release/af_same \\
+        --hf-repo elizalabs/eliza-1-voice-kokoro-same-v01 \\
         --dry-run
 """
 
