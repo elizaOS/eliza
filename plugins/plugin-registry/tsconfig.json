@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
+    "allowJs": false,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": false,
+    "strictNullChecks": true,
+    "useUnknownInCatchVariables": false,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "types": ["node"],
+    "typeRoots": [
+      "../app-core/node_modules/@types",
+      "../../node_modules/@types",
+      "../../node_modules/.bun/node_modules/@types"
+    ],
+    "paths": {
+      "@elizaos/plugin-registry": ["./src/index.ts"],
+      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/vault": ["../../packages/vault/src/index.ts"]
+    }
+  },
+  "include": ["src"],
+  "references": [],
+  "exclude": [
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
+}
