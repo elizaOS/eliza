@@ -152,17 +152,32 @@ function nowMs(): number {
 
 type GroqPluginModule = { groqPlugin?: Plugin; default?: Plugin };
 
-async function resolveGroqPlugin(): Promise<Plugin> {
+async function resolveGroqPlugin(): Promise<Plugin | null> {
+  // If no API key, don't load Groq plugin — it will throw on init.
+  // The harness will fall back to synthetic TTS/ASR.
+  if (!process.env.GROQ_API_KEY) {
+    console.warn(
+      "[three-agent-dialogue] GROQ_API_KEY not set — Groq plugin will not be loaded. " +
+        "TTS will use synthetic sine-wave fallback; ASR will use ground-truth text.",
+    );
+    return null;
+  }
   let mod: GroqPluginModule;
   try {
     mod = (await import("@elizaos/plugin-groq")) as GroqPluginModule;
   } catch {
-    throw new Error(
-      "Failed to load @elizaos/plugin-groq. Set GROQ_API_KEY and ensure the plugin is installed.",
+    console.warn(
+      "[three-agent-dialogue] Failed to load @elizaos/plugin-groq. Using synthetic fallback.",
     );
+    return null;
   }
   const plugin = mod?.groqPlugin ?? mod?.default;
-  if (!plugin) throw new Error("@elizaos/plugin-groq did not export a plugin");
+  if (!plugin) {
+    console.warn(
+      "[three-agent-dialogue] @elizaos/plugin-groq did not export a plugin. Using synthetic fallback.",
+    );
+    return null;
+  }
   return plugin;
 }
 
@@ -216,7 +231,7 @@ async function seedRuntimeGraph(
 async function createAgentRuntime(
   agentName: string,
   character: Character,
-  groqPlugin: Plugin,
+  groqPlugin: Plugin | null,
   embeddingPlugin: Plugin | null,
 ): Promise<AgentRuntime> {
   const agentId = AGENT_IDS[agentName];
@@ -224,7 +239,8 @@ async function createAgentRuntime(
 
   const adapter = new InMemoryDatabaseAdapter();
 
-  const plugins: Plugin[] = [groqPlugin];
+  const plugins: Plugin[] = [];
+  if (groqPlugin) plugins.push(groqPlugin);
   if (embeddingPlugin) plugins.push(embeddingPlugin);
 
   const envPassthrough: Record<string, string> = {};

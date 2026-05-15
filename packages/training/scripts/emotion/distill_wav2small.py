@@ -851,6 +851,9 @@ def export_student_onnx(
     student = student.eval().cpu()
     sample_len = int(smoke_input_seconds * WAV2SMALL_SAMPLE_RATE)
     dummy = torch.zeros(1, sample_len, dtype=torch.float32)
+    # `dynamo=False` keeps us on the legacy TorchScript exporter, which is
+    # what onnxruntime-node 1.20.x ships against. The dynamo path also
+    # requires `onnxscript`, an extra dep we don't want in the training env.
     torch.onnx.export(
         student,
         dummy,
@@ -859,6 +862,7 @@ def export_student_onnx(
         output_names=["vad"],
         opset_version=opset,
         dynamic_axes={"pcm": {0: "batch", 1: "samples"}, "vad": {0: "batch"}},
+        dynamo=False,
     )
 
     # Bake emotion-tag metadata into the ONNX so the runtime classifier can
