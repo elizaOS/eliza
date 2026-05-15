@@ -33,7 +33,6 @@ export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
 export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
 
-
 export const ELIZA_1_VISION_TIER_IDS = [
   "eliza-1-4b",
   "eliza-1-9b",
@@ -41,7 +40,7 @@ export const ELIZA_1_VISION_TIER_IDS = [
   "eliza-1-27b-256k",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
-const ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+const _ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
   ELIZA_1_VISION_TIER_IDS,
 );
 
