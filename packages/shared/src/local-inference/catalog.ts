@@ -224,8 +224,9 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterMinRamGb: 4,
     // WS2: vision enabled — the 2B tier is the standard "small-phone"
     // default for first-run users, so camera-to-reaction and screen
-    // analysis must work here. The mmproj is ~320 MB Q8_0; the arbiter
-    // owns the swap with the text weights under pressure.
+    // analysis must work here. The mmproj is ~361 MB Q8_0 (actual:
+    // 361,518,784 bytes, published 2026-05-14); the arbiter owns the
+    // swap with the text weights under pressure.
     hasVision: true,
     // WS3: image-gen on the standard small-phone default uses SD 1.5
     // Q5_0 too; tier-up to Z-Image-Turbo at 9B.
