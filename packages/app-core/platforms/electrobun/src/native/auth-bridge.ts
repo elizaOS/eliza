@@ -358,6 +358,12 @@ export async function bootstrapDesktopSession(
 				reject(err instanceof Error ? err : new Error(String(err))),
 			);
 	});
+	// The early bail-outs below (fetch throw, !response.ok) return without
+	// awaiting this promise, but the consume-timeout still fires ~5s later.
+	// Swallow that orphaned rejection so it can't surface as an unhandled
+	// rejection and crash the Electrobun worker; the awaited path on line ~388
+	// still re-throws normally because `.catch()` returns a separate chain.
+	consumedOrTimeout.catch(() => {});
 
 	let body: DesktopBootstrapResponseBody | null = null;
 	try {

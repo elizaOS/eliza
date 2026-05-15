@@ -2,7 +2,7 @@
   "id": "documents",
   "name": "Knowledge",
   "description": "Character Knowledge documents, fragments, and search routes for the agent.",
-  "npmName": "@elizaos/app-documents",
+  "npmName": "@elizaos/plugin-documents",
   "source": "bundled",
   "tags": ["documents", "documents"],
   "config": {},
@@ -23,7 +23,7 @@
     "type": "server-launch",
     "capabilities": ["documents"],
     "routePlugin": {
-      "specifier": "@elizaos/app-documents",
+      "specifier": "@elizaos/plugin-documents",
       "exportName": "documentsPlugin"
     }
   }

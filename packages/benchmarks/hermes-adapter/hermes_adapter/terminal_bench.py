@@ -155,6 +155,7 @@ class HermesTerminalAgent:
         self._client = client or HermesClient()
         self._verbose = verbose
         self._initialized = False
+        self._last_session = None
         # Hermes is stateless per send_message — every turn carries the full
         # conversation in context["messages"]. ``_history`` accumulates the
         # OpenAI-shape transcript for this task.
@@ -229,6 +230,7 @@ class HermesTerminalAgent:
             environment_vars={},
             start_time=datetime.now(),
         )
+        self._last_session = session
 
         try:
             self._client.reset(task_id=task.task_id, benchmark="terminal_bench")
@@ -272,6 +274,7 @@ class HermesTerminalAgent:
 
                 response = self._client.send_message(text=last_user, context=context)
                 text = response.text or ""
+                session.model_responses.append(text)
 
                 if _signals_complete(text, response.params):
                     self._record_assistant(text, None)
@@ -302,6 +305,14 @@ class HermesTerminalAgent:
                     continue
 
                 self._record_assistant(text, command)
+                session.tool_calls.append(
+                    {
+                        "type": "command",
+                        "name": "terminal.execute",
+                        "params": {"command": command},
+                        "command": command,
+                    }
+                )
                 cmd_result = await self._environment.execute(command)
                 session.commands.append(cmd_result)
                 feedback = (
@@ -324,6 +335,8 @@ class HermesTerminalAgent:
             )
 
         session.end_time = datetime.now()
+        session.final_test_output = test_output
+        session.final_test_exit_code = test_exit_code
         total_execution_time = sum(c.execution_time_ms for c in session.commands)
 
         return TerminalBenchResult(

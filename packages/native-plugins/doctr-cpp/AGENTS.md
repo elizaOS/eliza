@@ -143,59 +143,24 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-Output:
-- `libdoctr.a` + `doctr_stub_smoke` — Phase 1 ENOSYS stub link guard.
-- `libdoctr_ref.a` + `doctr_detector_ref_test` + `doctr_recognizer_ref_test` —
-  Phase 2 pure-C reference impl. Both libs satisfy the same C ABI in
-  `include/doctr/doctr.h`; consumers link exactly one. Phase 2 reports
-  `doctr_active_backend() == "ref-c"`.
-
-## Phase status
-
-- **Phase 1 (ENOSYS stub):** DONE. `libdoctr.a` + smoke test ship and
-  pass.
-- **Phase 2 (pure-C reference impl):** IMPLEMENTED.
-  - GGUF reader (`src/doctr_gguf.c`) — mmap'd v3 reader; F32 + F16
-    tensors; metadata strings + uint32; refuses unknown dtypes.
-  - Image preprocess (`src/doctr_image.c`) — letterbox-to-1024 for
-    detector, plain bilinear-to-32xW for recognizer, doctr ImageNet
-    mean/std normalization.
-  - NN kernels (`src/doctr_kernels.c`) — Conv2D, BN-fold, BN+ReLU,
-    MaxPool2d, bilinear upsample, ConvTranspose2d (2x2 s=2 only),
-    sigmoid, Linear, LSTM single-step.
-  - Detector forward (`src/doctr_detector_ref.c`) — db_resnet50: stem,
-    layer1..4 bottlenecks, FPN (in_branches → top-down sum →
-    out_branches → concat), prob_head, sigmoid → DBNet postprocess.
-  - Recognizer forward (`src/doctr_recognizer_ref.c`) — VGG-16-BN
-    backbone, 2-layer BiLSTM, linear head → CTC greedy decode.
-  - DBNet postprocess (`src/doctr_polygon.c`) — binarize + 4-connected
-    BFS labelling + axis-aligned bbox + threshold filter; OpenCV-free.
-  - CTC greedy decoder (`src/doctr_ctc.c`) — argmax → collapse
-    repeats → drop blanks; UTF-8-aware vocab; per-character mean
-    softmax confidence.
-  - Public ABI (`src/doctr_ref_api.c`) — wraps the ref forward passes;
-    validates GGUF metadata against the locked variant tags before
-    constructing a session.
-  - Conversion script (`scripts/doctr_to_gguf.py`) — working against
-    `python-doctr==1.0.1`; downloads pretrained weights, walks both
-    state_dicts, emits a single GGUF (~165 MB fp32) with the locked
-    metadata keys; round-trips through the C reader.
-- **Phase 3 (SIMD dispatch):** PENDING. The conv/gemm/maxpool kernels
-  in `src/doctr_kernels.c` are scalar O3 — full forward over a 1024²
-  canvas takes minutes, fine for the parity test, far too slow for
-  prod. Phase 3 swaps them for AVX2 (x86) / NEON (aarch64) im2col +
-  packed GEMM behind the same `doctr_internal.h` API. No ABI change.
+Output: `libdoctr.a` plus `doctr_stub_smoke` (asserts every entry
+point still returns `-ENOSYS`). Both succeed today on the dev host;
+that's the contract the port preserves while it grows real
+implementations behind the same ABI.
 
 ## What's missing before the port is real
 
-- Parity fixture: a small set of real document crops with ground-truth
-  bboxes + transcriptions, packaged so CI can run both python-doctr
-  and this library and assert per-bbox IoU ≥ 0.95, per-word
-  edit-distance ≤ 1.
-- Bit-exact CTC decode test against weights — the
-  `doctr_recognizer_ref_test` covers the weight-free CTC path; the
-  end-to-end decode against a labelled crop fixture is PENDING and
-  needs the GGUF on the test runner.
-- Phase 3 SIMD kernels (above).
-- `fork-integration/` patches if Phase 3 grows new ggml ops or quant
-  types (none expected for the pure-C ref).
+- Pinned mindee/doctr upstream commit + recorded weights download
+  recipe.
+- `discover_detector_tensors`, `discover_recognizer_tensors`,
+  `load_vocab`, `write_gguf` implementations in
+  `scripts/doctr_to_gguf.py` (TODO blocks call out the exact work).
+- DBNet postprocess (binarization + contour extraction) in C — port
+  from doctr's reference postprocess; OpenCV-free.
+- crnn_vgg16_bn forward + CTC beam decoder in C, dispatched through
+  the elizaOS/llama.cpp fork's ggml ops.
+- Parity test: ingest a small set of real document crops, run both
+  the doctr Python reference and this library, assert per-bbox
+  IoU ≥ 0.95 and per-word edit-distance ≤ 1 over the fixture set.
+- `fork-integration/` patches if any new ggml ops or quant types are
+  needed (none expected for the first pass).

@@ -1,7 +1,0 @@
-/home/shaw/milady/eliza/packages/native-plugins/yolo-cpp/build/CMakeFiles/yolo.dir
-/home/shaw/milady/eliza/packages/native-plugins/yolo-cpp/build/CMakeFiles/yolo_stub_smoke.dir
-/home/shaw/milady/eliza/packages/native-plugins/yolo-cpp/build/CMakeFiles/yolo_nms_test.dir
-/home/shaw/milady/eliza/packages/native-plugins/yolo-cpp/build/CMakeFiles/yolo_classes_test.dir
-/home/shaw/milady/eliza/packages/native-plugins/yolo-cpp/build/CMakeFiles/test.dir
-/home/shaw/milady/eliza/packages/native-plugins/yolo-cpp/build/CMakeFiles/edit_cache.dir
-/home/shaw/milady/eliza/packages/native-plugins/yolo-cpp/build/CMakeFiles/rebuild_cache.dir

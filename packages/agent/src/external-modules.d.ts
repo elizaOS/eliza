@@ -367,6 +367,8 @@ declare module "@elizaos/plugin-phone" {
 
   export const phoneCallLogProvider: Provider;
   export const appPhonePlugin: Plugin;
+  const plugin: Plugin;
+  export default plugin;
 }
 
 declare module "@elizaos/plugin-wifi" {
@@ -568,8 +570,8 @@ declare module "isomorphic-git" {
     auth: { username?: string; password?: string },
   ) =>
     | { username?: string; password?: string }
-    | undefined
-    | Promise<{ username?: string; password?: string } | undefined>;
+    | void
+    | Promise<{ username?: string; password?: string } | void>;
   // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for optional dep
   const git: any;
   export default git;

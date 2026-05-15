@@ -144,7 +144,7 @@ export interface DflashServerPlan {
 	/**
 	 * Absolute paths to the bundle's OmniVoice GGUFs (`tts/omnivoice-*.gguf`
 	 * and `tts/omnivoice-tokenizer-*.gguf`). When BOTH are set AND the
-	 * resolved `llama-server` is the omnivoice-fused build, `start()` passes
+	 * resolved `llama-server` is the omnivoice-mergedd build, `start()` passes
 	 * `--omnivoice-model` / `--omnivoice-codec` so the same process serves
 	 * `POST /v1/audio/speech` (AGENTS.md §4 — fused, not an IPC second
 	 * process). Absent on non-voice bundles or non-fused builds, in which
@@ -154,6 +154,15 @@ export interface DflashServerPlan {
 	ttsCodecPath?: string;
 	/** Absolute path to a multimodal projector GGUF passed to llama-server as --mmproj. */
 	mmprojPath?: string;
+}
+
+export interface DflashRuntimeLoadConfig {
+	contextSize: number;
+	cacheTypeK: string | null;
+	cacheTypeV: string | null;
+	gpuLayers: number | null;
+	parallel: number;
+	binaryPath: string;
 }
 
 export type DflashKvOffloadMode = "cpu" | "gpu" | "split";
@@ -179,6 +188,12 @@ export interface DflashGenerateArgs extends StructuredGenerateParams {
 	slotId?: number;
 	/** Per-request abort signal forwarded to llama-server's HTTP request. */
 	signal?: AbortSignal;
+	/**
+	 * Optional per-request backend transport budget. Keep this aligned with the
+	 * caller's chat/message timeout; Stage 1 local structured turns can spend
+	 * more than a minute in prompt prefill before the first SSE delta.
+	 */
+	requestTimeoutMs?: number;
 	/** Incremental accepted text chunks from streaming chat completions. */
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 	/**
@@ -1084,29 +1099,60 @@ export function resolveDisableThinkingFlags(binaryPath: string): string[] {
 	return [...flags];
 }
 
-export function appendMetalSafeStartupFlags(
+export function appendBackendSafeStartupFlags(
 	args: string[],
 	binaryPath: string,
 ): void {
 	const caps = readDflashBinaryCapabilities(binaryPath);
-	if (caps?.backend !== "metal") return;
+	if (!isCompressedKvGraphUnsafeBackend(caps?.backend)) return;
 	const help = llamaServerHelpText(binaryPath);
 	if (/(^|\n)\s*(?:-fit,|-fit\b|--fit\b)/.test(help)) {
 		// The automatic fit probe constructs a temporary context before normal
-		// serving. With Qwen3.5 hybrid attention + compressed KV, that graph can
-		// still route QJL/Polar cache tensors through generic Metal attention
-		// kernels before the dedicated compressed-KV graph route is selected.
-		// Disable the probe on Metal; explicit ctx/gpu-layer values are already
-		// supplied by the catalog/active-model planner.
+		// serving. With Qwen3.5 hybrid attention/recurrent layers + compressed KV,
+		// backend graph reserve can route QJL/Polar cache tensors through unsafe
+		// generic graph ops before a backend-specific compressed-KV path is selected.
+		// Explicit ctx/gpu-layer values are already supplied by the catalog/active
+		// model planner, so the server does not need llama.cpp to auto-fit them.
 		args.push("-fit", "off");
 	}
 }
 
-const METAL_COMPRESSED_KV_FALLBACK = "q8_0";
-const METAL_COMPRESSED_KV_UNSUPPORTED = new Set(["qjl1_256", "q4_polar"]);
-const metalCompressedKvWarnings = new Set<string>();
+const RUNTIME_COMPRESSED_KV_FALLBACK = "q8_0";
+const RUNTIME_COMPRESSED_KV_UNSAFE = new Set(
+	Object.keys(CACHE_TYPE_REQUIRED_KERNEL),
+);
+const compressedKvGraphUnsafeBackends = new Set(["metal", "vulkan"]);
+const runtimeCompressedKvWarnings = new Set<string>();
 
-export function resolveMetalRuntimeCacheTypes(opts: {
+function normalizedBackendName(backend: unknown): string | null {
+	return typeof backend === "string" ? backend.trim().toLowerCase() : null;
+}
+
+function isCompressedKvGraphUnsafeBackend(backend: unknown): boolean {
+	const normalized = normalizedBackendName(backend);
+	return normalized !== null && compressedKvGraphUnsafeBackends.has(normalized);
+}
+
+function allowsUnsafeCompressedKv(backend: string): boolean {
+	const upper = backend.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+	return (
+		readBool("ELIZA_DFLASH_ALLOW_UNSAFE_COMPRESSED_KV") ||
+		readBool(`ELIZA_DFLASH_${upper}_COMPRESSED_KV`) ||
+		readBool(`ELIZA_DFLASH_ALLOW_UNSAFE_${upper}_COMPRESSED_KV`)
+	);
+}
+
+function compressedKvGraphFallbackReason(backend: string): string {
+	if (backend === "metal") {
+		return "Metal runtime graph dispatch for Qwen3.5 hybrid attention still routes compressed QJL/Polar KV tensors through generic attention/MUL_MAT in the built decoder graph; using q8_0 KV keeps the fused Metal+DFlash+voice path live until the graph selects the dedicated compressed-KV attention ops.";
+	}
+	if (backend === "vulkan") {
+		return "Vulkan runtime graph dispatch for Qwen3.5 recurrent layers routes compressed QJL/Polar KV tensors through SET_ROWS, which ggml-vulkan cannot execute on those pre-allocated KV buffers; using q8_0 KV keeps the fused Vulkan+DFlash+voice path live until compressed-KV SET_ROWS is implemented in the backend.";
+	}
+	return `${backend} runtime graph dispatch is not yet verified with compressed QJL/Polar KV tensors; using q8_0 KV keeps the fused local path live until that backend is verified.`;
+}
+
+export function resolveRuntimeCacheTypes(opts: {
 	binaryPath: string;
 	targetModelPath: string;
 	cacheTypeK: string | undefined;
@@ -1119,19 +1165,20 @@ export function resolveMetalRuntimeCacheTypes(opts: {
 	reason: string | null;
 } {
 	const caps = readDflashBinaryCapabilities(opts.binaryPath);
+	const backend = normalizedBackendName(caps?.backend);
 	const k = opts.cacheTypeK?.trim();
 	const v = opts.cacheTypeV?.trim();
 	const kLower = k?.toLowerCase();
 	const vLower = v?.toLowerCase();
-	const usesMetalCompressedKv =
-		(kLower !== undefined && METAL_COMPRESSED_KV_UNSUPPORTED.has(kLower)) ||
-		(vLower !== undefined && METAL_COMPRESSED_KV_UNSUPPORTED.has(vLower));
+	const usesUnsafeCompressedKv =
+		(kLower !== undefined && RUNTIME_COMPRESSED_KV_UNSAFE.has(kLower)) ||
+		(vLower !== undefined && RUNTIME_COMPRESSED_KV_UNSAFE.has(vLower));
 
 	if (
-		caps?.backend !== "metal" ||
-		!usesMetalCompressedKv ||
-		readBool("ELIZA_DFLASH_METAL_COMPRESSED_KV") ||
-		readBool("ELIZA_DFLASH_ALLOW_UNSAFE_METAL_COMPRESSED_KV")
+		backend === null ||
+		!compressedKvGraphUnsafeBackends.has(backend) ||
+		!usesUnsafeCompressedKv ||
+		allowsUnsafeCompressedKv(backend)
 	) {
 		return {
 			cacheTypeK: k,
@@ -1142,22 +1189,21 @@ export function resolveMetalRuntimeCacheTypes(opts: {
 	}
 
 	const cacheTypeK =
-		kLower !== undefined && METAL_COMPRESSED_KV_UNSUPPORTED.has(kLower)
-			? METAL_COMPRESSED_KV_FALLBACK
+		kLower !== undefined && RUNTIME_COMPRESSED_KV_UNSAFE.has(kLower)
+			? RUNTIME_COMPRESSED_KV_FALLBACK
 			: k;
 	const cacheTypeV =
-		vLower !== undefined && METAL_COMPRESSED_KV_UNSUPPORTED.has(vLower)
-			? METAL_COMPRESSED_KV_FALLBACK
+		vLower !== undefined && RUNTIME_COMPRESSED_KV_UNSAFE.has(vLower)
+			? RUNTIME_COMPRESSED_KV_FALLBACK
 			: v;
-	const reason =
-		"Metal runtime graph dispatch for Qwen3.5 hybrid attention still routes compressed QJL/Polar KV tensors through generic attention/MUL_MAT in the built decoder graph; using q8_0 KV keeps the fused Metal+DFlash+voice path live until the graph selects the dedicated compressed-KV attention ops.";
+	const reason = compressedKvGraphFallbackReason(backend);
 
 	if (opts.emitWarning !== false) {
 		const warningKey = `${path.resolve(opts.binaryPath)}:${cacheTypeK}:${cacheTypeV}`;
-		if (!metalCompressedKvWarnings.has(warningKey)) {
-			metalCompressedKvWarnings.add(warningKey);
+		if (!runtimeCompressedKvWarnings.has(warningKey)) {
+			runtimeCompressedKvWarnings.add(warningKey);
 			console.warn(
-				`[local-inference] ${reason} Set ELIZA_DFLASH_METAL_COMPRESSED_KV=1 only for kernel-runtime experiments; standalone QJL/Polar Metal shaders are verified, but the current built-fork graph path is not production-safe.`,
+				`[local-inference] ${reason} Set ELIZA_DFLASH_${backend.toUpperCase()}_COMPRESSED_KV=1 only for kernel-runtime experiments; standalone QJL/Polar kernels may be present, but the current built-fork graph path is not production-safe on this backend.`,
 			);
 		}
 	}
@@ -1169,6 +1215,9 @@ export function resolveMetalRuntimeCacheTypes(opts: {
 		reason,
 	};
 }
+
+export const appendMetalSafeStartupFlags = appendBackendSafeStartupFlags;
+export const resolveMetalRuntimeCacheTypes = resolveRuntimeCacheTypes;
 
 export function dflashEnabled(): boolean {
 	// Developer kill-switch wins over everything, including ELIZA_DFLASH_ENABLED.
@@ -1261,6 +1310,33 @@ export function getDflashRuntimeStatus(): DflashRuntimeStatus {
 
 function normalizeGpuLayers(value: number | "auto"): string {
 	return value === "auto" ? "99" : String(value);
+}
+
+function parseRuntimeGpuLayers(value: string | undefined): number | null {
+	if (!value) return null;
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveRuntimeGpuLayersFromArgs(
+	args: readonly string[],
+): number | null {
+	let resolved: number | null = null;
+	for (let i = 0; i < args.length; i += 1) {
+		const arg = args[i];
+		if (arg === "--n-gpu-layers" || arg === "-ngl") {
+			resolved = parseRuntimeGpuLayers(args[i + 1]);
+			continue;
+		}
+		if (arg.startsWith("--n-gpu-layers=")) {
+			resolved = parseRuntimeGpuLayers(arg.slice("--n-gpu-layers=".length));
+			continue;
+		}
+		if (arg.startsWith("-ngl=")) {
+			resolved = parseRuntimeGpuLayers(arg.slice("-ngl=".length));
+		}
+	}
+	return resolved;
 }
 
 function resolveDflashGpuLayers(
@@ -2003,9 +2079,19 @@ async function fetchJson(
 	const abort = () => controller.abort(externalSignal?.reason);
 	if (externalSignal?.aborted) abort();
 	externalSignal?.addEventListener("abort", abort, { once: true });
-	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	const timer = setTimeout(
+		() =>
+			controller.abort(
+				new DOMException(
+					`DFlash request timed out after ${timeoutMs}ms`,
+					"TimeoutError",
+				),
+			),
+		timeoutMs,
+	);
+	let res: Response | null = null;
 	try {
-		const res = await fetch(url, { ...init, signal: controller.signal });
+		res = await fetch(url, { ...init, signal: controller.signal });
 		if (!res.ok) {
 			const body = await res.text().catch(() => "");
 			throw new Error(
@@ -2016,7 +2102,46 @@ async function fetchJson(
 	} finally {
 		clearTimeout(timer);
 		externalSignal?.removeEventListener("abort", abort);
+		if (controller.signal.aborted) {
+			await res?.body?.cancel(controller.signal.reason).catch(() => undefined);
+		}
 	}
+}
+
+const DEFAULT_DFLASH_GENERATE_REQUEST_TIMEOUT_MS = 5 * 60_000;
+const DFLASH_TIMEOUT_GRACE_MS = 5_000;
+
+function parsePositiveTimeoutMs(value: string | undefined): number | null {
+	if (!value) return null;
+	const parsed = Number.parseInt(value, 10);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+export function resolveDflashGenerateRequestTimeoutMs(args?: {
+	requestTimeoutMs?: number;
+}): number {
+	if (
+		typeof args?.requestTimeoutMs === "number" &&
+		Number.isFinite(args.requestTimeoutMs) &&
+		args.requestTimeoutMs > 0
+	) {
+		return Math.max(1, Math.floor(args.requestTimeoutMs));
+	}
+
+	const explicit =
+		parsePositiveTimeoutMs(
+			process.env.ELIZA_LOCAL_INFERENCE_REQUEST_TIMEOUT_MS,
+		) ?? parsePositiveTimeoutMs(process.env.ELIZA_DFLASH_GENERATE_TIMEOUT_MS);
+	if (explicit !== null) return explicit;
+
+	const chatTimeout = parsePositiveTimeoutMs(
+		process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS,
+	);
+	if (chatTimeout !== null) {
+		return Math.max(1, chatTimeout + DFLASH_TIMEOUT_GRACE_MS);
+	}
+
+	return DEFAULT_DFLASH_GENERATE_REQUEST_TIMEOUT_MS;
 }
 
 export function extractStreamingChatDelta(json: unknown): string {
@@ -2126,6 +2251,7 @@ async function fetchStreamingChatCompletion(
 	// queue + first SSE chunk).
 	const t0 = performance.now();
 	let firstTokenMs: number | null = null;
+	let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 	try {
 		const res = await fetch(url, { ...init, signal: controller.signal });
 		if (!res.ok) {
@@ -2139,7 +2265,7 @@ async function fetchStreamingChatCompletion(
 		}
 
 		const decoder = new TextDecoder();
-		const reader = res.body.getReader();
+		reader = res.body.getReader();
 		let buffer = "";
 		let text = "";
 		let nextIndex = startIndex;
@@ -2299,6 +2425,9 @@ async function fetchStreamingChatCompletion(
 	} finally {
 		clearTimeout(timer);
 		externalSignal?.removeEventListener("abort", abort);
+		if (controller.signal.aborted) {
+			await reader?.cancel(controller.signal.reason).catch(() => undefined);
+		}
 	}
 }
 
@@ -2683,6 +2812,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	 * the same llama-server flags.
 	 */
 	private lastOptimizations: LocalRuntimeOptimizations | null = null;
+	private loadedRuntimeConfig: DflashRuntimeLoadConfig | null = null;
 	private evictionTimer: NodeJS.Timeout | null = null;
 	/**
 	 * Per-conversation slot files persisted on shutdown for cross-restart
@@ -2745,6 +2875,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 
 	currentModelPath(): string | null {
 		return this.loadedPlan?.targetModelPath ?? null;
+	}
+
+	currentRuntimeLoadConfig(): DflashRuntimeLoadConfig | null {
+		return this.loadedRuntimeConfig;
 	}
 
 	/**
@@ -2888,7 +3022,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	/**
 	 * Merged HTTP route descriptor for the fused build (`packages/inference/
 	 * AGENTS.md` §4 + remaining-work-ledger P0 #3): when the running
-	 * `llama-server` is the omnivoice-fused build it serves `/v1/audio/speech`
+	 * `llama-server` is the omnivoice-mergedd build it serves `/v1/audio/speech`
 	 * *itself*, in the same process as `/completion` + `/v1/chat/completions`
 	 * + the DFlash speculative loop — there is no compat
 	 * `llama-omnivoice-server` second process and no IPC tax. Returns the
@@ -3124,9 +3258,21 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			);
 		}
 		const drafter = installed.find((m) => m.id === dflash.drafterModelId);
-		if (!drafter) {
-			throw new Error(
-				`[dflash] ${target.displayName} requires companion drafter ${dflash.drafterModelId}; install it first.`,
+		// DFlash is normally always-on (AGENTS.md §4), but staged bundles
+		// ("weights-staged.*") ship a drafter that is a byte-copy of the target
+		// — not a usable draft model — and some bundles ship no drafter at all.
+		// Rather than hard-fail and leave the tier unusable, fall back to the
+		// already-wired drafter-less path (the same `disableDrafter` mode
+		// `restartWithoutDrafter()` uses for memory eviction): the server runs
+		// target-only, no `-md`. Loud warning because this departs from the
+		// always-on DFlash contract.
+		const drafterUnavailable = !drafter;
+		if (drafterUnavailable) {
+			console.warn(
+				`[dflash] ⚠️  ${target.displayName}: companion drafter ` +
+					`'${dflash.drafterModelId}' is not installed — loading target-only ` +
+					`(speculative decoding OFF). Install a valid drafter to restore the ` +
+					`always-on DFlash path.`,
 			);
 		}
 
@@ -3148,13 +3294,24 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// A per-load override (`overrides.cacheTypeK/V`) wins; `start()` then runs
 		// `assertCacheTypeSupportedOnBackend` on whichever value it ends up with,
 		// and the `ELIZA_DFLASH_CACHE_TYPE_K/_V` env vars override even that.
-		const kvCache = catalog.runtime?.kvCache;
-		const cacheTypeK =
-			typeof overrides?.cacheTypeK === "string"
+		const kvCache = catalog?.runtime?.kvCache;
+		// `ELIZA_LOCAL_ALLOW_STOCK_KV=1` (reduced-optimization local mode) means
+		// the binary may not advertise the custom KV-cache kernels (qjl1_256 /
+		// q4_polar). The backend coordinator strips per-load cacheType *overrides*,
+		// but the catalog's `runtime.kvCache.typeK/V` would still leak through here
+		// and trip `assertCacheTypeSupportedOnBackend` in start(). Drop the catalog
+		// custom KV types too so the server falls back to stock f16 KV.
+		const allowStockKv =
+			readBool("ELIZA_LOCAL_ALLOW_STOCK_KV") ||
+			readBool("MILADY_LOCAL_ALLOW_STOCK_KV");
+		const cacheTypeK = allowStockKv
+			? undefined
+			: typeof overrides?.cacheTypeK === "string"
 				? overrides.cacheTypeK
 				: kvCache?.typeK;
-		const cacheTypeV =
-			typeof overrides?.cacheTypeV === "string"
+		const cacheTypeV = allowStockKv
+			? undefined
+			: typeof overrides?.cacheTypeV === "string"
 				? overrides.cacheTypeV
 				: kvCache?.typeV;
 
@@ -3182,7 +3339,13 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		await this.start(
 			{
 				targetModelPath: target.path,
-				drafterModelPath: drafter.path,
+				// Carried even when disabled so a later re-arm can restore it; not
+				// passed to llama-server (`-md`) while `disableDrafter` is true.
+				drafterModelPath: drafter?.path ?? target.path,
+				disableDrafter: drafterUnavailable,
+				disabledDrafterReason: drafterUnavailable
+					? `companion drafter '${dflash.drafterModelId}' is not installed`
+					: undefined,
 				contextSize,
 				draftContextSize: dflash.draftContextSize,
 				draftMin: dflash.draftMin,
@@ -3279,7 +3442,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim() || effectivePlan.cacheTypeK;
 		const requestedCacheTypeV =
 			process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim() || effectivePlan.cacheTypeV;
-		const runtimeCacheTypes = resolveMetalRuntimeCacheTypes({
+		const runtimeCacheTypes = resolveRuntimeCacheTypes({
 			binaryPath: status.binaryPath,
 			targetModelPath: effectivePlan.targetModelPath,
 			cacheTypeK: requestedCacheTypeK,
@@ -3422,9 +3585,9 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// optimistic-rollback path (`OptimisticRollbackController`) reads these
 		// snapshots over `/slots/<id>/save` + `/restore`.
 		appendCtxCheckpointFlags(args, optimizations ?? null, status.binaryPath);
-		appendMetalSafeStartupFlags(args, status.binaryPath);
+		appendBackendSafeStartupFlags(args, status.binaryPath);
 
-		// Fused omnivoice TTS: when the resolved binary is the omnivoice-fused
+		// Fused omnivoice TTS: when the resolved binary is the omnivoice-mergedd
 		// `llama-server` and the bundle ships its TTS GGUFs, hand them to the
 		// server so it mounts `POST /v1/audio/speech` in-process (AGENTS.md §4
 		// — one process, not a second `llama-omnivoice-server` over IPC). The
@@ -3477,6 +3640,14 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		this.baseUrl = `http://${host}:${port}`;
 		this.loadedPlan = effectivePlan;
 		this.loadedBinaryPath = status.binaryPath;
+		this.loadedRuntimeConfig = {
+			contextSize: effectivePlan.contextSize,
+			cacheTypeK: cacheTypeK ?? null,
+			cacheTypeV: cacheTypeV ?? null,
+			gpuLayers: resolveRuntimeGpuLayersFromArgs(args),
+			parallel,
+			binaryPath: status.binaryPath,
+		};
 
 		child.stdout.on("data", (chunk) => this.captureLog(chunk));
 		child.stderr.on("data", (chunk) => this.captureLog(chunk));
@@ -3486,6 +3657,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				this.baseUrl = null;
 				this.loadedPlan = null;
 				this.loadedBinaryPath = null;
+				this.loadedRuntimeConfig = null;
 			}
 		});
 
@@ -3606,6 +3778,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		this.baseUrl = null;
 		this.loadedPlan = null;
 		this.loadedBinaryPath = null;
+		this.loadedRuntimeConfig = null;
 		this.cacheModelHash = null;
 		this.cacheSlotDir = null;
 		this.conversationKvDir = null;
@@ -3922,6 +4095,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
 				? dflashArgs.prefill
 				: "";
+		const requestTimeoutMs = resolveDflashGenerateRequestTimeoutMs(args);
 		const payload = buildChatCompletionBody(dflashArgs, slotId, streaming);
 		attachDflashSpeculativeRequestFields(payload, this.loadedPlan);
 		if (readBool("ELIZA_DFLASH_DEBUG_REQUEST")) {
@@ -4001,7 +4175,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 					headers: { "content-type": "application/json" },
 					body: JSON.stringify(payload),
 				},
-				60_000,
+				requestTimeoutMs,
 				{
 					onTextChunk: args.onTextChunk,
 					onVerifierEvent: dflashArgs.onVerifierEvent,
@@ -4052,7 +4226,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 					headers: { "content-type": "application/json" },
 					body: JSON.stringify(payload),
 				},
-				60_000,
+				requestTimeoutMs,
 				args.signal,
 			)) as Record<string, unknown>;
 			text = prefill + extractCompletionText(json);

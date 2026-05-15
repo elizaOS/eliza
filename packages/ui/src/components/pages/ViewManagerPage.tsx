@@ -9,8 +9,10 @@
  * or via the `eliza:navigate:view` custom event dispatched by VIEWS actions.
  */
 
-import { Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { Pin, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { fetchWithCsrf } from "../../api/csrf-client";
+import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   useAvailableViews,
   type ViewRegistryEntry,
@@ -29,64 +31,86 @@ const VIEW_LOADING_SKELETON_KEYS = [
 function ViewCard({
   view,
   onClick,
+  onPin,
 }: {
   view: ViewRegistryEntry;
   onClick: (view: ViewRegistryEntry) => void;
+  onPin?: (view: ViewRegistryEntry) => void;
 }) {
+  const isDesktop = isElectrobunRuntime();
+  const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
+
   return (
-    <button
-      type="button"
-      onClick={() => onClick(view)}
-      className="group flex flex-col gap-2 rounded-xl border border-border/50 bg-card p-4 text-left transition-colors hover:bg-card/80 hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {view.heroImageUrl && (
-        <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
-          <img
-            src={view.heroImageUrl}
-            alt={view.label}
-            className="h-full w-full object-cover"
-            loading="lazy"
-          />
-        </div>
+    <div className="group relative flex flex-col gap-2 rounded-xl border border-border/50 bg-card p-4 text-left transition-colors hover:bg-card/80 hover:border-border">
+      {showPinButton && (
+        <button
+          type="button"
+          title="Pin as desktop tab"
+          onClick={(e) => {
+            e.stopPropagation();
+            onPin(view);
+          }}
+          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted opacity-0 transition-opacity hover:border-accent hover:text-accent group-hover:opacity-100 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label={`Pin ${view.label} as desktop tab`}
+        >
+          <Pin className="h-3 w-3" />
+        </button>
       )}
 
-      <div className="flex items-start gap-3">
-        {view.icon && !view.heroImageUrl && (
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-lg">
-            {view.icon}
+      <button
+        type="button"
+        onClick={() => onClick(view)}
+        className="flex flex-col gap-2 text-left focus:outline-none"
+      >
+        {view.heroImageUrl && (
+          <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
+            <img
+              src={view.heroImageUrl}
+              alt={view.label}
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
           </div>
         )}
 
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-txt group-hover:text-accent transition-colors">
-            {view.label}
-          </p>
-          {view.description && (
-            <p className="mt-0.5 line-clamp-2 text-xs text-muted">
-              {view.description}
-            </p>
+        <div className="flex items-start gap-3">
+          {view.icon && !view.heroImageUrl && (
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-lg">
+              {view.icon}
+            </div>
           )}
-          {view.pluginName && (
-            <p className="mt-1 text-xs text-muted/60 truncate">
-              {view.pluginName}
-            </p>
-          )}
-        </div>
-      </div>
 
-      {view.tags && view.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1">
-          {view.tags.slice(0, 3).map((tag) => (
-            <span
-              key={tag}
-              className="inline-flex items-center rounded-full bg-muted/40 px-2 py-0.5 text-xs text-muted"
-            >
-              {tag}
-            </span>
-          ))}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-txt group-hover:text-accent transition-colors">
+              {view.label}
+            </p>
+            {view.description && (
+              <p className="mt-0.5 line-clamp-2 text-xs text-muted">
+                {view.description}
+              </p>
+            )}
+            {view.pluginName && (
+              <p className="mt-1 text-xs text-muted/60 truncate">
+                {view.pluginName}
+              </p>
+            )}
+          </div>
         </div>
-      )}
-    </button>
+
+        {view.tags && view.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {view.tags.slice(0, 3).map((tag) => (
+              <span
+                key={tag}
+                className="inline-flex items-center rounded-full bg-muted/40 px-2 py-0.5 text-xs text-muted"
+              >
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </button>
+    </div>
   );
 }
 
@@ -124,10 +148,12 @@ function ViewSection({
   title,
   views,
   onViewClick,
+  onViewPin,
 }: {
   title: string;
   views: ViewRegistryEntry[];
   onViewClick: (view: ViewRegistryEntry) => void;
+  onViewPin: (view: ViewRegistryEntry) => void;
 }) {
   if (views.length === 0) return null;
   return (
@@ -137,26 +163,88 @@ function ViewSection({
       </h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {views.map((view) => (
-          <ViewCard key={view.id} view={view} onClick={onViewClick} />
+          <ViewCard
+            key={view.id}
+            view={view}
+            onClick={onViewClick}
+            onPin={onViewPin}
+          />
         ))}
       </div>
     </div>
   );
 }
 
+/** Fetch semantic search results from /api/views/search. */
+async function fetchSearchResults(
+  q: string,
+  limit: number,
+): Promise<ViewRegistryEntry[]> {
+  const url = new URL("/api/views/search", window.location.origin);
+  url.searchParams.set("q", q);
+  url.searchParams.set("limit", String(limit));
+  const resp = await fetchWithCsrf(url.pathname + url.search);
+  if (!resp.ok) return [];
+  const body = (await resp.json()) as unknown;
+  if (!body || typeof body !== "object" || !("results" in body)) return [];
+  const { results } = body as { results: unknown };
+  return Array.isArray(results) ? (results as ViewRegistryEntry[]) : [];
+}
+
 export function ViewManagerPage() {
   const { views, loading, error } = useAvailableViews();
   const isDeveloperMode = useIsDeveloperMode();
   const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<
+    ViewRegistryEntry[] | null
+  >(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When the query changes, debounce a call to the semantic search endpoint.
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = query.trim();
+    if (!q) {
+      setSearchResults(null);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const results = await fetchSearchResults(q, 10);
+        setSearchResults(results);
+      } catch {
+        // Semantic search unavailable — fall back to client-side filtering.
+        setSearchResults(null);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 200);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
 
   const { builtinViews, pluginViews } = useMemo(() => {
+    // When the search endpoint returned results, display those ranked by score.
+    if (searchResults !== null) {
+      const visible = searchResults.filter((v) => {
+        if (v.developerOnly && !isDeveloperMode) return false;
+        if (v.visibleInManager === false) return false;
+        return true;
+      });
+      return {
+        builtinViews: visible.filter((v) => v.builtin),
+        pluginViews: visible.filter((v) => !v.builtin),
+      };
+    }
+    // No active search — show all views with client-side visibility rules.
     const q = query.trim().toLowerCase();
     const visible = views.filter((v) => {
-      // Hide developer-only views when not in developer mode.
       if (v.developerOnly && !isDeveloperMode) return false;
-      // Hide views explicitly excluded from the manager grid.
       if (v.visibleInManager === false) return false;
-      // Text search across label, description, tags, and plugin name.
       if (!q) return true;
       return (
         v.label.toLowerCase().includes(q) ||
@@ -169,9 +257,10 @@ export function ViewManagerPage() {
       builtinViews: visible.filter((v) => v.builtin),
       pluginViews: visible.filter((v) => !v.builtin),
     };
-  }, [views, isDeveloperMode, query]);
+  }, [views, isDeveloperMode, query, searchResults]);
 
   const totalVisible = builtinViews.length + pluginViews.length;
+  const isSearching = searchLoading && query.trim().length > 0;
 
   function handleViewClick(view: ViewRegistryEntry) {
     const path = view.path ?? `/apps/${view.id}`;
@@ -188,6 +277,22 @@ export function ViewManagerPage() {
     } catch {
       // sandboxed — best effort navigation
     }
+  }
+
+  function handleViewPin(view: ViewRegistryEntry) {
+    // Dispatch a navigate event with action="pin-tab" so the App shell's
+    // eliza:navigate:view handler adds this view to the desktop tab bar.
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: {
+          viewId: view.id,
+          viewPath: view.path ?? `/apps/${view.id}`,
+          viewLabel: view.label,
+          action: "pin-tab",
+        },
+      }),
+    );
   }
 
   return (
@@ -222,7 +327,7 @@ export function ViewManagerPage() {
           </div>
         )}
 
-        {loading && views.length === 0 ? (
+        {(loading && views.length === 0) || isSearching ? (
           <ViewsLoadingSkeleton />
         ) : totalVisible === 0 ? (
           <ViewsEmptyState hasQuery={query.trim().length > 0} />
@@ -232,11 +337,13 @@ export function ViewManagerPage() {
               title="Core"
               views={builtinViews}
               onViewClick={handleViewClick}
+              onViewPin={handleViewPin}
             />
             <ViewSection
               title="Plugins"
               views={pluginViews}
               onViewClick={handleViewClick}
+              onViewPin={handleViewPin}
             />
           </>
         )}

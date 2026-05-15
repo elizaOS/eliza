@@ -35,6 +35,7 @@ if str(_HERE) not in sys.path:
 
 from _common import (  # noqa: E402
     add_quantization_cli_args,
+    full_attention_layer_indices,
     get_text_config,
     kernel_manifest_fragment,
     load_model_and_tokenizer,
@@ -42,6 +43,17 @@ from _common import (  # noqa: E402
     validate_quantization_args,
     write_sidecar,
 )
+
+# Exit code surfaced when the source model's attention layout is structurally
+# incompatible with fused-TurboQuant's vendored cache (e.g., hybrid
+# linear+full attention models like Qwen3.5/Qwen3.6, where the HF modeling
+# code calls ``cache.has_previous_state(layer_idx)`` to discriminate between
+# linear-attention and standard-attention layers — a contract the vendored
+# ``CompressedKVCache`` does not implement). Distinct from exit 2
+# (``check_model_compatibility`` says no) and exit 1 (operational failure)
+# so callers (e.g., smoke_full_stack.sh) can distinguish "skip this recipe
+# for this architecture" from "the recipe is broken" without parsing logs.
+EXIT_INCOMPATIBLE_ARCH = 3
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s"
@@ -121,6 +133,33 @@ def main(argv: list[str] | None = None) -> int:
             arch_lc,
             _KNOWN_GOOD_ARCH_SUBSTRINGS,
         )
+
+    # Hybrid linear+full attention models (Qwen3.5/3.6 with
+    # ``full_attention_interval``, declared via per-layer ``layer_types``)
+    # are not supported by the vendored fused-TurboQuant cache: the HF
+    # modeling code calls ``cache.has_previous_state(layer_idx)`` on linear
+    # layers, but ``CompressedKVCache`` only models standard Attention. The
+    # patch_model verify pass crashes with a misleading ValueError mid-run.
+    # Detect this structurally up front and exit with EXIT_INCOMPATIBLE_ARCH
+    # so callers (smoke_full_stack.sh) can mark the step SKIPPED without
+    # treating it as a recipe failure.
+    text_cfg_pre = get_text_config(model.config)
+    layer_types = getattr(text_cfg_pre, "layer_types", None)
+    if layer_types and any(t == "linear_attention" for t in layer_types):
+        full_idx = full_attention_layer_indices(text_cfg_pre)
+        log.error(
+            "fused-TurboQuant is not compatible with hybrid linear+full "
+            "attention models. Detected layer_types with %d linear and %d "
+            "full attention layers (architecture=%s). The vendored "
+            "CompressedKVCache does not implement has_previous_state() for "
+            "linear-attention layers, which is required by the HF modeling "
+            "code path. Use turboquant_apply.py (pure-PyTorch) for hybrid "
+            "models, or apply fused-TurboQuant only to non-hybrid backbones.",
+            sum(1 for t in layer_types if t == "linear_attention"),
+            len(full_idx),
+            arch_lc or "unknown",
+        )
+        return EXIT_INCOMPATIBLE_ARCH
 
     from quantization.fused_turboquant_vendored.hf import (
         check_model_compatibility,

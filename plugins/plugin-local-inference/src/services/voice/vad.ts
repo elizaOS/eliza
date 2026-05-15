@@ -50,6 +50,7 @@ import type {
 	VadEvent,
 	VadEventListener,
 } from "./types";
+import { SileroVadGgml, VadGgmlUnavailableError } from "./vad-ggml";
 
 /** Thrown when the Silero VAD backend cannot be loaded — the native VAD FFI
  *  is missing or stubbed, the model file is absent, or the model is corrupt.
@@ -98,6 +99,53 @@ export function resolveSileroVadPath(opts: {
 			: undefined,
 		path.join(localInferenceRoot(), SILERO_VAD_BUNDLE_REL_PATH),
 		process.env.ELIZA_VAD_MODEL_PATH?.trim() || undefined,
+	];
+	for (const c of candidates) {
+		if (c && existsSync(c)) return path.resolve(c);
+	}
+	return null;
+}
+
+/** Relative path of the standalone silero-vad-cpp GGUF (produced by
+ *  `packages/native-plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`).
+ *  Distinct from `SILERO_VAD_BUNDLE_REL_PATH` above (which points at
+ *  the whisper.cpp-format `.bin` consumed by libelizainference's
+ *  legacy whisper-style VAD ABI). */
+export const SILERO_VAD_CPP_BUNDLE_REL_PATH = path.join(
+	"vad",
+	"silero-vad-v5.gguf",
+);
+
+/** Resolve the standalone silero-vad-cpp GGUF on disk. Search order
+ *  mirrors {@link resolveSileroVadPath}:
+ *    1. `opts.modelPath` if supplied (no fallback if missing).
+ *    2. `<bundleRoot>/vad/silero-vad-v5.gguf`.
+ *    3. `<state-dir>/local-inference/vad/silero-vad-v5.gguf`.
+ *    4. `$ELIZA_SILERO_VAD_GGUF`.
+ *    5. The repo-local CMake build output
+ *       (`packages/native-plugins/silero-vad-cpp/build/silero-vad-v5.gguf`).
+ *  Returns `null` when none exist. */
+export function resolveSileroVadCppGgufPath(opts: {
+	modelPath?: string;
+	bundleRoot?: string;
+}): string | null {
+	if (opts.modelPath) {
+		return existsSync(opts.modelPath) ? path.resolve(opts.modelPath) : null;
+	}
+	const candidates: Array<string | undefined> = [
+		opts.bundleRoot
+			? path.join(opts.bundleRoot, SILERO_VAD_CPP_BUNDLE_REL_PATH)
+			: undefined,
+		path.join(localInferenceRoot(), SILERO_VAD_CPP_BUNDLE_REL_PATH),
+		process.env.ELIZA_SILERO_VAD_GGUF?.trim() || undefined,
+		path.join(
+			process.cwd(),
+			"packages",
+			"native-plugins",
+			"silero-vad-cpp",
+			"build",
+			"silero-vad-v5.gguf",
+		),
 	];
 	for (const c of candidates) {
 		if (c && existsSync(c)) return path.resolve(c);
@@ -384,7 +432,7 @@ export interface VadLike {
 	reset(): void;
 }
 
-export type VadProviderId = "qwen-toolkit" | "silero-ggml";
+export type VadProviderId = "qwen-toolkit" | "silero-cpp" | "silero-ggml";
 export type VadProviderPreference = "auto" | VadProviderId;
 
 export interface QwenToolkitVadAdapter {
@@ -405,13 +453,28 @@ export interface CreateVadDetectorOptions {
 	qwenToolkitVad?: QwenToolkitVadAdapter | null;
 	config?: VadDetectorConfig;
 	prefer?: VadProviderPreference;
+	/** Optional explicit path to the standalone Silero VAD GGUF
+	 *  produced by `packages/native-plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`.
+	 *  Resolved via `resolveSileroVadCppGgufPath` when omitted. */
+	sileroCppGgufPath?: string;
+	/** Optional override path to `libsilero_vad.{so,dylib,dll}`. Falls
+	 *  back to the env var `ELIZA_SILERO_VAD_LIB` then the repo-local
+	 *  CMake build dir. */
+	sileroCppLibraryPath?: string;
+	/** Repo root for resolving `silero-cpp` artifacts. Defaults to `process.cwd()`. */
+	sileroCppRepoRoot?: string;
 }
 
 export function vadProviderOrder(
 	prefer: VadProviderPreference = "auto",
 ): VadProviderId[] {
 	if (prefer !== "auto") return [prefer];
-	return ["qwen-toolkit", "silero-ggml"];
+	// `silero-cpp` is the new standalone, GGUF-backed pure-C runtime
+	// (packages/native-plugins/silero-vad-cpp). It wins when both the
+	// shared library and the converted GGUF are present. The legacy
+	// `silero-ggml` (libelizainference's whisper-style VAD ABI) stays
+	// as a fallback until `silero-cpp` has soaked in production.
+	return ["qwen-toolkit", "silero-cpp", "silero-ggml"];
 }
 
 export async function resolveVadProvider(
@@ -438,6 +501,34 @@ export async function resolveVadProvider(
 					id: provider,
 					vad: await opts.qwenToolkitVad.loadVad({ sampleRate }),
 				};
+			}
+			case "silero-cpp": {
+				tried.push(provider);
+				const ggufPath = resolveSileroVadCppGgufPath({
+					modelPath: opts.sileroCppGgufPath,
+					bundleRoot: opts.bundleRoot,
+				});
+				if (!ggufPath) {
+					reasons.push(
+						"silero-cpp: GGUF not found (looked for silero-vad-v5.gguf in bundle/state-dir; set ELIZA_SILERO_VAD_GGUF or run scripts/silero_vad_to_gguf.py)",
+					);
+					break;
+				}
+				try {
+					const vad = await SileroVadGgml.load({
+						ggufPath,
+						libraryPath: opts.sileroCppLibraryPath,
+						repoRoot: opts.sileroCppRepoRoot,
+						sampleRate,
+					});
+					return { id: provider, vad };
+				} catch (e) {
+					if (e instanceof VadGgmlUnavailableError) {
+						reasons.push(`silero-cpp: ${e.code} — ${e.message}`);
+						break;
+					}
+					throw e;
+				}
 			}
 			case "silero-ggml": {
 				tried.push(provider);

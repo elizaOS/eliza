@@ -140,6 +140,7 @@ beforeEach(() => {
 	modeState.mode = "local";
 	delete process.env.ELIZA_LOCAL_LLAMA;
 	delete process.env.ELIZA_DEVICE_BRIDGE_ENABLED;
+	delete process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS;
 	engineState.available.mockResolvedValue(true);
 	engineState.currentModelPath.mockReturnValue(null);
 	engineState.canEmbed.mockReturnValue(false);
@@ -172,6 +173,21 @@ describe("ensureLocalInferenceHandler", () => {
 					priority: 0,
 				}),
 				expect.objectContaining({
+					modelType: ModelType.RESPONSE_HANDLER,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
+				expect.objectContaining({
+					modelType: ModelType.ACTION_PLANNER,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
+				expect.objectContaining({
+					modelType: ModelType.TEXT_COMPLETION,
+					provider: "eliza-local-inference",
+					priority: 0,
+				}),
+				expect.objectContaining({
 					modelType: ModelType.TEXT_EMBEDDING,
 					provider: "eliza-local-inference",
 					priority: 0,
@@ -191,6 +207,30 @@ describe("ensureLocalInferenceHandler", () => {
 					provider: "eliza-local-inference",
 					priority: 0,
 				}),
+			]),
+		);
+	});
+
+	it("honors ELIZA_DISABLE_LOCAL_EMBEDDINGS by leaving TEXT_EMBEDDING unregistered", async () => {
+		process.env.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
+		const { registrations, runtime } = makeRuntime();
+
+		await ensureLocalInferenceHandler(runtime);
+
+		expect(
+			registrations.some(
+				(entry) => entry.modelType === ModelType.TEXT_EMBEDDING,
+			),
+		).toBe(false);
+		expect(registrations).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ modelType: ModelType.TEXT_SMALL }),
+				expect.objectContaining({ modelType: ModelType.TEXT_LARGE }),
+				expect.objectContaining({ modelType: ModelType.RESPONSE_HANDLER }),
+				expect.objectContaining({ modelType: ModelType.ACTION_PLANNER }),
+				expect.objectContaining({ modelType: ModelType.TEXT_COMPLETION }),
+				expect.objectContaining({ modelType: ModelType.TEXT_TO_SPEECH }),
+				expect.objectContaining({ modelType: ModelType.TRANSCRIPTION }),
 			]),
 		);
 	});
@@ -285,6 +325,39 @@ describe("ensureLocalInferenceHandler", () => {
 		expect(runtime.setSetting).toHaveBeenCalledWith(
 			"ELIZA1_VISION_HANDLER_PRESENT",
 			"1",
+		);
+	});
+
+	it("threads structured streaming callbacks through the RESPONSE_HANDLER registration", async () => {
+		const { registrations, runtime } = makeRuntime();
+		engineState.hasLoadedModel.mockReturnValue(true);
+
+		await ensureLocalInferenceHandler(runtime);
+		const registration = registrations.find(
+			(entry) => entry.modelType === ModelType.RESPONSE_HANDLER,
+		);
+		const handler = registration?.handler as
+			| ((
+					runtime: AgentRuntime,
+					params: Record<string, unknown>,
+			  ) => Promise<string>)
+			| undefined;
+		expect(handler).toBeDefined();
+
+		const onStreamChunk = vi.fn();
+		await handler?.(runtime, {
+			messages: [{ role: "user", content: "hello" }],
+			streamStructured: true,
+			responseSkeleton: { spans: [] },
+			onStreamChunk,
+		});
+
+		expect(engineState.generate).toHaveBeenCalledWith(
+			expect.objectContaining({
+				prompt: "user:\nhello",
+				streamStructured: true,
+				onTextChunk: expect.any(Function),
+			}),
 		);
 	});
 });

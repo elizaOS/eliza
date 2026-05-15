@@ -19,6 +19,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { KokoroTtsBackend } from "@elizaos/shared/local-inference";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { LocalInferenceEngine } from "./engine";
 import {
@@ -122,6 +123,12 @@ function writePresetBundle(
 		path.join(root, "cache", "voice-preset-default.bin"),
 		Buffer.from(bytes),
 	);
+}
+
+function writeKokoroModelRoot(root: string): void {
+	writeFileSync(path.join(root, "kokoro-v1.0.onnx"), Buffer.alloc(4));
+	mkdirSync(path.join(root, "voices"), { recursive: true });
+	writeFileSync(path.join(root, "voices", "af_bella.bin"), Buffer.alloc(1024));
 }
 
 function lifecycleLoadersOk(): VoiceLifecycleLoaders {
@@ -303,6 +310,49 @@ describe("LocalInferenceEngine voice surface", () => {
 		expect(thrown).toBeInstanceOf(VoiceStartupError);
 		if (thrown instanceof VoiceStartupError) {
 			expect(thrown.code).toBe("missing-speaker-preset");
+		}
+	});
+
+	it("uses Kokoro for active Eliza-1 tiers whose voice policy selects Kokoro", async () => {
+		const kokoroRoot = mkdtempSync(path.join(tmpdir(), "eliza-kokoro-"));
+		const previousModelDir = process.env.ELIZA_KOKORO_MODEL_DIR;
+		const previousBackend = process.env.ELIZA_TTS_BACKEND;
+		try {
+			writeKokoroModelRoot(kokoroRoot);
+			process.env.ELIZA_KOKORO_MODEL_DIR = kokoroRoot;
+			delete process.env.ELIZA_TTS_BACKEND;
+
+			const engine = new LocalInferenceEngine();
+			(
+				engine as unknown as {
+					activeEliza1Bundle: {
+						root: string;
+						tierId: "eliza-1-0_8b";
+						voiceBackends: ["kokoro"];
+					};
+				}
+			).activeEliza1Bundle = {
+				root: bundleRoot,
+				tierId: "eliza-1-0_8b",
+				voiceBackends: ["kokoro"],
+			};
+
+			const bridge = await engine.ensureActiveBundleVoiceReady();
+			expect(bridge.backend).toBeInstanceOf(KokoroTtsBackend);
+			expect(bridge.bundlePath()).not.toBe(bundleRoot);
+			await engine.stopVoice();
+		} finally {
+			rmSync(kokoroRoot, { recursive: true, force: true });
+			if (previousModelDir === undefined) {
+				delete process.env.ELIZA_KOKORO_MODEL_DIR;
+			} else {
+				process.env.ELIZA_KOKORO_MODEL_DIR = previousModelDir;
+			}
+			if (previousBackend === undefined) {
+				delete process.env.ELIZA_TTS_BACKEND;
+			} else {
+				process.env.ELIZA_TTS_BACKEND = previousBackend;
+			}
 		}
 	});
 

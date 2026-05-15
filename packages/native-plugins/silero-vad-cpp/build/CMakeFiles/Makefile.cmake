@@ -104,7 +104,9 @@ set(CMAKE_MAKEFILE_PRODUCTS
 # Dependency information for all targets:
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/silero_vad.dir/DependInfo.cmake"
+  "CMakeFiles/silero_vad_shared.dir/DependInfo.cmake"
   "CMakeFiles/silero_vad_stub_smoke.dir/DependInfo.cmake"
   "CMakeFiles/silero_vad_state_test.dir/DependInfo.cmake"
   "CMakeFiles/silero_vad_resample_test.dir/DependInfo.cmake"
+  "CMakeFiles/silero_vad_runtime_test.dir/DependInfo.cmake"
   )

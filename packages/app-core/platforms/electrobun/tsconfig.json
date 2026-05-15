@@ -81,13 +81,13 @@
 				"../../../native-plugins/llama/src/index.ts"
 			],
 			"@elizaos/capacitor-*": ["../../../native-plugins/*/src/index.ts"],
-			"@elizaos/app-wallet": ["../../../../plugins/app-wallet/src/index.ts"],
-			"@elizaos/app-wallet/*": ["../../../../plugins/app-wallet/src/*"],
-			"@elizaos/app-task-coordinator": [
-				"../../../../plugins/app-task-coordinator/src/index.ts"
+			"@elizaos/plugin-wallet-ui": ["../../../../plugins/plugin-wallet-ui/src/index.ts"],
+			"@elizaos/plugin-wallet-ui/*": ["../../../../plugins/plugin-wallet-ui/src/*"],
+			"@elizaos/plugin-task-coordinator": [
+				"../../../../plugins/plugin-task-coordinator/src/index.ts"
 			],
-			"@elizaos/app-task-coordinator/*": [
-				"../../../../plugins/app-task-coordinator/src/*"
+			"@elizaos/plugin-task-coordinator/*": [
+				"../../../../plugins/plugin-task-coordinator/src/*"
 			]
 		}
 	},

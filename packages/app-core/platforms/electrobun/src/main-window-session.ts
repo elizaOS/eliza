@@ -11,6 +11,18 @@ type BuildInfo = {
 	availableRenderers: Renderer[];
 };
 
+type MainWindowPartitionOptions = {
+	platform?: NodeJS.Platform;
+	buildInfo?: BuildInfo;
+};
+
+type IsolatedMainViewOptions = {
+	platform?: NodeJS.Platform;
+	mainWindowPartition: string | null;
+	forceMainWindowCef: boolean;
+	buildInfo: BuildInfo;
+};
+
 function trimToNull(value: string | undefined): string | null {
 	const trimmed = value?.trim();
 	return trimmed ? trimmed : null;
@@ -38,8 +50,9 @@ function parseEnabledFlag(value: string | null): boolean {
 
 export function shouldForceMainWindowCef(
 	env: NodeJS.ProcessEnv = process.env,
+	platform: NodeJS.Platform = process.platform,
 ): boolean {
-	if (process.platform !== "darwin") {
+	if (platform !== "darwin") {
 		return false;
 	}
 
@@ -54,7 +67,9 @@ export function shouldUseHeadlessDesktopSmoke(
 
 export function resolveMainWindowPartition(
 	env: NodeJS.ProcessEnv = process.env,
+	options: MainWindowPartitionOptions = {},
 ): string | null {
+	const platform = options.platform ?? process.platform;
 	const explicit = trimToNull(env.ELIZA_DESKTOP_TEST_PARTITION);
 	if (explicit) {
 		return normalizePersistentPartition(explicit);
@@ -66,11 +81,32 @@ export function resolveMainWindowPartition(
 		return PACKAGED_WINDOWS_BOOTSTRAP_PARTITION;
 	}
 
-	if (shouldForceMainWindowCef(env)) {
+	if (shouldForceMainWindowCef(env, platform)) {
+		return MAC_DESKTOP_CEF_PARTITION;
+	}
+
+	if (platform === "linux" && options.buildInfo?.defaultRenderer === "cef") {
 		return MAC_DESKTOP_CEF_PARTITION;
 	}
 
 	return null;
+}
+
+export function shouldUseIsolatedMainView({
+	platform = process.platform,
+	mainWindowPartition,
+	forceMainWindowCef,
+	buildInfo,
+}: IsolatedMainViewOptions): boolean {
+	if (!mainWindowPartition) {
+		return false;
+	}
+
+	if (platform === "win32") {
+		return true;
+	}
+
+	return forceMainWindowCef && buildInfo.availableRenderers.includes("cef");
 }
 
 export function resolveBootstrapShellRenderer(buildInfo: BuildInfo): Renderer {

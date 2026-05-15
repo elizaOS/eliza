@@ -316,7 +316,7 @@ When enough trajectories accumulate, the runtime can trigger native optimization
 
 ### Privacy Filter
 
-All write paths that touch real user trajectories run through the privacy filter (`eliza/plugins/app-training/src/core/privacy-filter.ts`) before any JSONL is written. This applies to both the nightly export cron and on-demand training.
+All write paths that touch real user trajectories run through the privacy filter (`eliza/plugins/plugin-training/src/core/privacy-filter.ts`) before any JSONL is written. This applies to both the nightly export cron and on-demand training.
 
 ---
 
@@ -400,7 +400,7 @@ The auto-bootstrap runs at runtime boot when trajectory counters exceed the thre
 
 ### Privacy Filter
 
-A privacy filter (`eliza/plugins/app-training/src/core/privacy-filter.ts`) is mandatory on every write path that touches real user trajectories. Both the nightly export cron and the on-demand training orchestrator run it before any JSONL is written, ensuring that sensitive user data is stripped from training datasets.
+A privacy filter (`eliza/plugins/plugin-training/src/core/privacy-filter.ts`) is mandatory on every write path that touches real user trajectories. Both the nightly export cron and the on-demand training orchestrator run it before any JSONL is written, ensuring that sensitive user data is stripped from training datasets.
 
 ---
 

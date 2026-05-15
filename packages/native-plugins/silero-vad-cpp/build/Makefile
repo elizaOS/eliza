@@ -140,6 +140,19 @@ silero_vad/fast:
 .PHONY : silero_vad/fast
 
 #=============================================================================
+# Target rules for targets named silero_vad_shared
+
+# Build rule for target.
+silero_vad_shared: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 silero_vad_shared
+.PHONY : silero_vad_shared
+
+# fast build rule for target.
+silero_vad_shared/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/build
+.PHONY : silero_vad_shared/fast
+
+#=============================================================================
 # Target rules for targets named silero_vad_stub_smoke
 
 # Build rule for target.
@@ -178,12 +191,26 @@ silero_vad_resample_test/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_resample_test.dir/build.make CMakeFiles/silero_vad_resample_test.dir/build
 .PHONY : silero_vad_resample_test/fast
 
+#=============================================================================
+# Target rules for targets named silero_vad_runtime_test
+
+# Build rule for target.
+silero_vad_runtime_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 silero_vad_runtime_test
+.PHONY : silero_vad_runtime_test
+
+# fast build rule for target.
+silero_vad_runtime_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_runtime_test.dir/build.make CMakeFiles/silero_vad_runtime_test.dir/build
+.PHONY : silero_vad_runtime_test/fast
+
 src/silero_vad_resample.o: src/silero_vad_resample.c.o
 .PHONY : src/silero_vad_resample.o
 
 # target to build an object file
 src/silero_vad_resample.c.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_resample.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/src/silero_vad_resample.c.o
 .PHONY : src/silero_vad_resample.c.o
 
 src/silero_vad_resample.i: src/silero_vad_resample.c.i
@@ -192,6 +219,7 @@ src/silero_vad_resample.i: src/silero_vad_resample.c.i
 # target to preprocess a source file
 src/silero_vad_resample.c.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_resample.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/src/silero_vad_resample.c.i
 .PHONY : src/silero_vad_resample.c.i
 
 src/silero_vad_resample.s: src/silero_vad_resample.c.s
@@ -200,7 +228,35 @@ src/silero_vad_resample.s: src/silero_vad_resample.c.s
 # target to generate assembly for a file
 src/silero_vad_resample.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_resample.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/src/silero_vad_resample.c.s
 .PHONY : src/silero_vad_resample.c.s
+
+src/silero_vad_runtime.o: src/silero_vad_runtime.c.o
+.PHONY : src/silero_vad_runtime.o
+
+# target to build an object file
+src/silero_vad_runtime.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/src/silero_vad_runtime.c.o
+.PHONY : src/silero_vad_runtime.c.o
+
+src/silero_vad_runtime.i: src/silero_vad_runtime.c.i
+.PHONY : src/silero_vad_runtime.i
+
+# target to preprocess a source file
+src/silero_vad_runtime.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/src/silero_vad_runtime.c.i
+.PHONY : src/silero_vad_runtime.c.i
+
+src/silero_vad_runtime.s: src/silero_vad_runtime.c.s
+.PHONY : src/silero_vad_runtime.s
+
+# target to generate assembly for a file
+src/silero_vad_runtime.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/src/silero_vad_runtime.c.s
+.PHONY : src/silero_vad_runtime.c.s
 
 src/silero_vad_state.o: src/silero_vad_state.c.o
 .PHONY : src/silero_vad_state.o
@@ -208,6 +264,7 @@ src/silero_vad_state.o: src/silero_vad_state.c.o
 # target to build an object file
 src/silero_vad_state.c.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_state.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/src/silero_vad_state.c.o
 .PHONY : src/silero_vad_state.c.o
 
 src/silero_vad_state.i: src/silero_vad_state.c.i
@@ -216,6 +273,7 @@ src/silero_vad_state.i: src/silero_vad_state.c.i
 # target to preprocess a source file
 src/silero_vad_state.c.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_state.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/src/silero_vad_state.c.i
 .PHONY : src/silero_vad_state.c.i
 
 src/silero_vad_state.s: src/silero_vad_state.c.s
@@ -224,31 +282,8 @@ src/silero_vad_state.s: src/silero_vad_state.c.s
 # target to generate assembly for a file
 src/silero_vad_state.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_state.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/src/silero_vad_state.c.s
 .PHONY : src/silero_vad_state.c.s
-
-src/silero_vad_stub.o: src/silero_vad_stub.c.o
-.PHONY : src/silero_vad_stub.o
-
-# target to build an object file
-src/silero_vad_stub.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o
-.PHONY : src/silero_vad_stub.c.o
-
-src/silero_vad_stub.i: src/silero_vad_stub.c.i
-.PHONY : src/silero_vad_stub.i
-
-# target to preprocess a source file
-src/silero_vad_stub.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.i
-.PHONY : src/silero_vad_stub.c.i
-
-src/silero_vad_stub.s: src/silero_vad_stub.c.s
-.PHONY : src/silero_vad_stub.s
-
-# target to generate assembly for a file
-src/silero_vad_stub.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad.dir/build.make CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.s
-.PHONY : src/silero_vad_stub.c.s
 
 test/silero_vad_resample_test.o: test/silero_vad_resample_test.c.o
 .PHONY : test/silero_vad_resample_test.o
@@ -273,6 +308,30 @@ test/silero_vad_resample_test.s: test/silero_vad_resample_test.c.s
 test/silero_vad_resample_test.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_resample_test.dir/build.make CMakeFiles/silero_vad_resample_test.dir/test/silero_vad_resample_test.c.s
 .PHONY : test/silero_vad_resample_test.c.s
+
+test/silero_vad_runtime_test.o: test/silero_vad_runtime_test.c.o
+.PHONY : test/silero_vad_runtime_test.o
+
+# target to build an object file
+test/silero_vad_runtime_test.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_runtime_test.dir/build.make CMakeFiles/silero_vad_runtime_test.dir/test/silero_vad_runtime_test.c.o
+.PHONY : test/silero_vad_runtime_test.c.o
+
+test/silero_vad_runtime_test.i: test/silero_vad_runtime_test.c.i
+.PHONY : test/silero_vad_runtime_test.i
+
+# target to preprocess a source file
+test/silero_vad_runtime_test.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_runtime_test.dir/build.make CMakeFiles/silero_vad_runtime_test.dir/test/silero_vad_runtime_test.c.i
+.PHONY : test/silero_vad_runtime_test.c.i
+
+test/silero_vad_runtime_test.s: test/silero_vad_runtime_test.c.s
+.PHONY : test/silero_vad_runtime_test.s
+
+# target to generate assembly for a file
+test/silero_vad_runtime_test.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_runtime_test.dir/build.make CMakeFiles/silero_vad_runtime_test.dir/test/silero_vad_runtime_test.c.s
+.PHONY : test/silero_vad_runtime_test.c.s
 
 test/silero_vad_state_test.o: test/silero_vad_state_test.c.o
 .PHONY : test/silero_vad_state_test.o
@@ -333,20 +392,25 @@ help:
 	@echo "... test"
 	@echo "... silero_vad"
 	@echo "... silero_vad_resample_test"
+	@echo "... silero_vad_runtime_test"
+	@echo "... silero_vad_shared"
 	@echo "... silero_vad_state_test"
 	@echo "... silero_vad_stub_smoke"
 	@echo "... src/silero_vad_resample.o"
 	@echo "... src/silero_vad_resample.i"
 	@echo "... src/silero_vad_resample.s"
+	@echo "... src/silero_vad_runtime.o"
+	@echo "... src/silero_vad_runtime.i"
+	@echo "... src/silero_vad_runtime.s"
 	@echo "... src/silero_vad_state.o"
 	@echo "... src/silero_vad_state.i"
 	@echo "... src/silero_vad_state.s"
-	@echo "... src/silero_vad_stub.o"
-	@echo "... src/silero_vad_stub.i"
-	@echo "... src/silero_vad_stub.s"
 	@echo "... test/silero_vad_resample_test.o"
 	@echo "... test/silero_vad_resample_test.i"
 	@echo "... test/silero_vad_resample_test.s"
+	@echo "... test/silero_vad_runtime_test.o"
+	@echo "... test/silero_vad_runtime_test.i"
+	@echo "... test/silero_vad_runtime_test.s"
 	@echo "... test/silero_vad_state_test.o"
 	@echo "... test/silero_vad_state_test.i"
 	@echo "... test/silero_vad_state_test.s"

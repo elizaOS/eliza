@@ -2,7 +2,7 @@
   "id": "training",
   "name": "Training",
   "description": "Training jobs, datasets, models, blueprints, and trajectory routes for the agent.",
-  "npmName": "@elizaos/app-training",
+  "npmName": "@elizaos/plugin-training",
   "source": "bundled",
   "tags": ["training", "trajectories"],
   "config": {},
@@ -23,7 +23,7 @@
     "type": "server-launch",
     "capabilities": ["training", "trajectories"],
     "routePlugin": {
-      "specifier": "@elizaos/app-training",
+      "specifier": "@elizaos/plugin-training",
       "exportName": "trainingPlugin"
     }
   }

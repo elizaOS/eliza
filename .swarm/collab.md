@@ -1,5 +1,25 @@
 # Swarm collaboration notes — Voice Waves 2+3
 
+## J3 — Single-runtime finalizer phase=impl-done
+
+2026-05-15 J3 phase=impl-done (partial — 3 ONNX paths remain compute-gated; Kokoro C++ done).
+- J1.d (GGUF turn-detector): `eot-classifier-ggml.ts` LiveKitGgmlTurnDetector committed.
+  Production EOT chain: Eliza1Eot → GgmlTurnDetector → ONNX (last resort) → Heuristic.
+- J2 (Kokoro C++ port): committed to fork at `97b258922`; submodule bumped.
+  tools/kokoro/ subtree: 974 lines (kokoro.cpp + istft + phonemes + server-mount).
+  LLAMA_BUILD_KOKORO=ON builds kokoro_lib + /v1/audio/speech handler. Default OFF.
+  GGUF conversion + HF publish + TS runtime wiring pending (K2 wave).
+- 3 ONNX-active paths remain: Wav2Small, WeSpeaker, pyannote-3 (C stubs -ENOSYS).
+- Kokoro ONNX remains active (C++ done; no GGUF on HF; TS not switched yet).
+- AGENTS.md: `plugins/plugin-local-inference/native/AGENTS.md` §11 +
+  `packages/native-plugins/voice-classifier-cpp/AGENTS.md` header.
+- Submodule pin bumped to `97b258922` (Kokoro C++ port commit).
+- No-ONNX lsof proof deferred: Wav2Small+WeSpeaker+pyannote+Kokoro still ONNX-active.
+- Next wave (K2): (a) produce convert_kokoro_to_gguf.py + Q4_K_M on HF + TS GGUF wiring;
+  (b) J1 ports: Wav2Small+WeSpeaker ggml graph + pyannote diarizer.
+  When all done: remove onnxruntime-node from package.json, lsof proof, dep cleanup.
+- Report: `.swarm/impl/J3-finalize.md`
+
 ## W3-5 — Emotion roundtrip validation phase=impl-done
 
 2026-05-15 W3-5 phase=impl-done. 21/21 tests green on real audio (Kokoro + SUPERB proxy).
@@ -67,6 +87,23 @@
   `git add -A` commits to develop.
 
 ## Active agents
+
+- 2026-05-15 I2 phase=impl-done: af_sam.bin shipped to elizaos/eliza-1-voice-kokoro:voices/af_sam.bin
+  per user override (H1 NO-SHIP overridden). HF revision 4b8809b197aa90ae486f83c1e0a5dc7effb6b285.
+  Eval: WER=1.0/UTMOS=2.32/SpkSim=0.15 (all gate-fail, documented honestly). Synthesis smoke PASS
+  (3.2s non-silent). Registry: manifest.json kokoro v0.2.0, CHANGELOG.md updated, voice-models.ts
+  kokoro v0.2.0 entry added (netImprovement=false). af_same.bin was not present in HF repo (no deletion
+  needed). Report: .swarm/impl/I2-kokoro-ship.md.
+
+- 2026-05-15 H3 phase=impl-done: @elizaos/agent and @elizaos/plugin-local-inference
+  typecheck both GREEN (EXIT:0). Four fixes: (1) plugin-compiler.ts bunGlobal.Bun?.Transpiler
+  optional chain; (2) removed bare `declare module "@elizaos/plugin-commands"` stub from
+  external-modules.d.ts that shadowed real types → TS2709; (3) typed registerCommand local
+  variable as CommandDefinition instead of Record<string, unknown> → TS2322 under strict:true;
+  (4) added "skills" to CommandCategory union in plugin-commands types.ts; (5) added
+  @elizaos/app-phone ambient stub (no package.json in plugins/app-phone). Merge-safety
+  caveat: bare plugin-commands stub was re-introduced by merge from fdd1603889 — fixed again
+  in b6d38696f6. Report: .swarm/impl/H3-agent-typecheck.md. Commits: 61630536bf, b6d38696f6.
 
 - 2026-05-15 H4 phase=impl-done: All 10 elizaos/eliza-1-voice-* repos confirmed live
   on HuggingFace with real ONNX/GGUF weights. SHA256 verified against HF LFS metadata
@@ -214,7 +251,7 @@
 
 - 2026-05-14 02:25 I3-emotion phase=impl-done: 8 commits pushed to
   origin/develop, 103 tests green across packages/core,
-  plugins/plugin-local-inference, plugins/app-training, and the new
+  plugins/plugin-local-inference, plugins/plugin-training, and the new
   packages/benchmarks/voice-emotion sibling. Report at
   .swarm/impl/I3-emotion.md. Kokoro emotion-knob gap documented as I7
   follow-up; engine.ts/voice/index.ts pre-existing typecheck breakage
@@ -286,7 +323,7 @@
 
 - 2026-05-14 04:30 C0-W3 cycle=3 verify: RED on @elizaos/app#typecheck. Errors initially looked like @elizaos/ui missing exports (loadUiTheme, isElizaOS, OverlayApp, etc.), but root cause was transient: UI dist hadn't finished building when @elizaos/app#typecheck ran (build race under --concurrency=1; turbo dependsOn @elizaos/ui#build is loose, app-core dist also empty at the time). Re-ran @elizaos/app typecheck directly after builds settled → EXIT:0. Also tests RED on @elizaos/app-core#test: scripts/run-mobile-build-android-app-actions.test.mjs uses node:test syntax (not vitest), causing "No test suite found". Added it to vitest exclude list in packages/app-core/vitest.config.ts alongside the existing node:test scripts. Committed 163754ad31, pushed. Re-running as cycle=4.
 - 2026-05-14 04:15 C0-W3 cycle=2 verify: GREEN. 317/317 tasks (turbo run typecheck lint). After cycle=1 RED on @elizaos/example-autonomous#typecheck (engine-bridge.ts used VoiceProfileStore / VoiceAttributionOutput / VoiceAttributionPipeline without imports), added imports from ./profile-store + ./speaker/attribution-pipeline. Committed 1e4f474bd6, pushed. HEAD efdd774c25.
-- 2026-05-14 04:05 C0-W3 cycle=1 verify: RED on @elizaos/app-contacts#typecheck — packages/ui/src/components/onboarding/VoicePrefixSteps.tsx:640 used non-existent `MediaRecorderErrorEvent` DOM type. Replaced with `Event & { error?: Error }`. Folded into a prior peer commit (no separate W3-13 commit on first cycle — file was already in working tree at that point).
+- 2026-05-14 04:05 C0-W3 cycle=1 verify: RED on @elizaos/plugin-contacts#typecheck — packages/ui/src/components/onboarding/VoicePrefixSteps.tsx:640 used non-existent `MediaRecorderErrorEvent` DOM type. Replaced with `Event & { error?: Error }`. Folded into a prior peer commit (no separate W3-13 commit on first cycle — file was already in working tree at that point).
 
 - 2026-05-14 W3-12 phase=impl-done: HF feature-complete audit + elizalabs→elizaos slug fix.
   CRITICAL BUG FIXED: ELIZA_1_HF_REPO was "elizalabs/eliza-1" across 15 files; all
@@ -590,7 +627,7 @@ Each writes `.swarm/impl/G<N>-<slug>.md` and posts `phase=impl-done` here.
 - 2026-05-15 06:36 G6 cycle=8 verify: **GREEN**. 317/317 tasks, 5m0s (cache miss after llama.cpp bump b28109fc24). green_streak=3/5. Still only G4 impl-done; no new G1/G2/G3/G5 commits in 30+ min. Wave appears stalled — peer agents may be done but never posted impl-done lines.
 - 2026-05-15 06:17 G6 cycle=7 verify: **GREEN**. 317/317 tasks, 5m11s (cache miss after llama.cpp submodule bump aabdc063d0). green_streak=2/5. G-agent impl-done count still G4 only.
 - 2026-05-15 05:57 G6 cycle=6 verify: **GREEN**. 317/317 tasks, 8.19s (full turbo cache hit). green_streak=1/5. G-agent impl-done count still G4 only.
-- 2026-05-15 05:43 G6 cycle=5 verify: RED on @elizaos/app-device-settings#typecheck — CatalogQuantizationId was extended upstream with q3_k_m + q5_k_m but QUANT_SUFFIX's Record<CatalogQuantizationId, string> wasn't updated (TS2739). Added the two entries. Committed b0e59da28f + pushed. Also had to resolve a merge conflict on active-model.test.ts (502c98780b + 4d005f9406, kept incoming 40 GB scenario). green_streak reset 1 → 0.
+- 2026-05-15 05:43 G6 cycle=5 verify: RED on @elizaos/plugin-device-settings#typecheck — CatalogQuantizationId was extended upstream with q3_k_m + q5_k_m but QUANT_SUFFIX's Record<CatalogQuantizationId, string> wasn't updated (TS2739). Added the two entries. Committed b0e59da28f + pushed. Also had to resolve a merge conflict on active-model.test.ts (502c98780b + 4d005f9406, kept incoming 40 GB scenario). green_streak reset 1 → 0.
 - 2026-05-15 05:25 G6 cycle=4 verify: **GREEN**. 317/317 tasks successful, 5m27s. green_streak=1/5. G-agent impl-done count: G4 only (still waiting on G1, G2, G3, G5).
 - 2026-05-15 05:00 G6 cycle=3 verify: RED on @elizaos/app-core#typecheck — ComputerUseConfig.mode is now required but computer-use-service.ts initialized without it. Also restored actions/clipboard.ts (untracked in HEAD, wrong imports from driver.js → clipboard.js) and added missing `clipboard` field to PlatformCapabilities + per-platform detection + DESKTOP_PARITY entries. Committed ca86c5a39f + pushed. Affected packages all green (app-core, agent, electrobun, plugin-computeruse).
 - 2026-05-15 04:40 G6 cycle=2 verify: RED on @elizaos/agent#typecheck — plugin-computeruse/src/platform/clipboard.ts was untracked in HEAD; working-tree version had TS2339 on `out.toString` since execFileSync with encoding:"utf-8" returns string (narrowing the else-branch to `never`). Restored + fixed + biome auto-fix; committed a158c9e146 + pushed. Two prep commits to clear inherited 48 dirty working-tree files: e1c80ab8da (plugin-vision), 32b9410ff5 (backend.ts merge resolution).
@@ -647,13 +684,6 @@ read from `HF_TOKEN` env. Never commit it.
   training pause or completion. Loss trajectory: step=0:0.0899 → step=500:0.6016
   (convergent, warmup spike then decreasing).
 
-- 2026-05-15 H1 phase=impl-done (re-spawn): All 5 attempts (F-kokoro, F2, L-kokoro-distill
-  original, H1 G3-retry 8000 steps, H1 re-spawn) confirm structural failure. WER=1.0,
-  UTMOS≈2.3, SpkSim≈0.10–0.15 on all candidates. SpkSim gate ≥0.40 is structurally
-  unreachable — real sam corpus ECAPA self-cosine ceiling = 0.561. No HF push.
-  Ship path: OmniVoice ELZ2 v2 frozen sam preset (elizaos/eliza-1-voice-omnivoice,
-  omnivoice 0.2.0, revision b766eb23d). Final decision doc: .swarm/impl/H1-kokoro-final.md.
-
 
 ## M-emotion-final — re-dispatch close (2026-05-15)
 
@@ -690,3 +720,177 @@ read from `HF_TOKEN` env. Never commit it.
   (`elizaos/eliza-1-voice-omnivoice-same-v01@fd0d04439d`,
   `voice-models.ts` `omnivoice` 0.2.0). Impl report:
   `.swarm/impl/L-kokoro-distill.md`. Commit: `3f505127c1`.
+
+---
+
+## I-wave — single-runtime policy + Kokoro ship + gaps (2026-05-15)
+
+User directive 2026-05-15:
+- **No `node-llama-cpp` anywhere** unless it's the canonical wrapper for our
+  forked llama.cpp. No two versions.
+- **No ONNX. No external model runtimes.** Everything local → our llama.cpp
+  fork. End-to-end migration.
+- **Ship Kokoro sam FT** — don't care about quality. Just push it.
+- **Issue sub-agents for all remaining items / gaps.**
+
+Same hard rules: no worktrees, no stash, no branch hops, commit dirty,
+coordinate here, don't kill peers.
+
+- **I1** (Opus) — Single-runtime policy: remove `node-llama-cpp` dep + all
+  ONNX usage + every external model runtime. Port voice sub-models
+  (Wav2Small, Pyannote-3, WeSpeaker, Silero-VAD, hey-eliza wakeword,
+  Kokoro) into our llama.cpp fork as GGML kernels. Bump submodule pin.
+  Verify end-to-end via existing benches.
+- **I2** — Ship Kokoro sam FT regardless of eval — push the best weights
+  H1 produced to `elizaos/eliza-1-voice-kokoro` as `af_sam.bin`, update
+  manifest, ship. (Overrides H1 no-ship per user directive.)
+- **I3** — Close every remaining gap in `.swarm/impl/*.md` (W3, F, G, H
+  reports) that's not yet resolved. Drive each to DONE or
+  `compute-gated: <reason>` with precise next-step.
+
+
+
+## H2 — Gauntlet cleanup re-spawn (2026-05-15)
+
+- 2026-05-15 04:25 H2 (respawn) phase=impl-done. PID written to .swarm/run/H2.pid.
+  Closed five of six sub-workstreams; H2.f in flight.
+  - **H2.a DONE.** Real Wav2Small cls7 ONNX wired into voice-emotion bench via
+    HF auto-download from elizaos/eliza-1-voice-emotion. Adapter auto-detects
+    head (vad/cls7) from output shape, matches the TS runtime contract.
+    test_emotion_real_classifier.py runs against held-out xbgoose/ravdess
+    clips: 4 tests pass (backend=wav2small-cls7 + aggregate ≥55% + 3 high-
+    accuracy classes ≥70% + discriminates ≥4 classes). Commit 47303ea360.
+  - **H2.b DONE.** Production stack (pyannote-segmentation-3.0-int8 +
+    wespeaker-resnet34-lm) wired into voice-speaker-validation behind
+    PRODUCTION_SPEAKER_STACK=1. Powerset decoder (7-class softmax) handles the
+    pyannote-3 output correctly. test_diarization_production.py: 7 tests pass
+    across all 5 W3-6 fixtures (>=GT speaker count, DER<=0.50, solo doesn't
+    over-split). Commit b119faddac.
+  - **H2.c DONE.** /v1/audio/speech preset-aware route moved from inline
+    server.cpp block (lines 15-491) into committed source at
+    tools/omnivoice/{include/server-mount.h, src/server-mount.cpp}. CMakeLists
+    adds the new TU to llama-server's PRIVATE sources. streaming-opts.h
+    prefix_slot is now a real PrefixSlotPool (thread-safe LRU, refcount,
+    invalidate). Submodule commit cd0108bbd. Parent commit 46a442ea68 collapses
+    the legacy graft path entirely: omnivoice-fuse/ directory is gone
+    (prepare.mjs + cmake-graft.mjs + kokoro-graft/ deleted; freeze-voice.mjs
+    moved to scripts/voice/; verify-symbols.mjs → build-helpers/; FFI stub
+    artefacts → ffi-stub/). OMNIVOICE_INSIDE_LLAMA_CPP=0 now no-ops.
+  - **H2.d DONE (already migrated).** Earlier F1/G5.d work already migrated
+    the session-level coordinator to read from EngineVoiceBridge. Only one
+    `new VoiceCancellationCoordinator` callsite exists in the codebase
+    (engine-bridge.ts:696 inside buildCancellationWiring). engine.ts
+    startVoiceSession uses bridge.bindBargeInControllerForRoom(roomId).
+    No further code change required.
+  - **H2.e compute-gated: H2.f fused build + GPU runtime required.** All 6
+    tier manifests (0_8b/2b/4b/9b/27b/27b-256k) on HF currently have every
+    eval (textEval / asrWer / vadLatency / voiceRtf / e2eLoop / thirtyTurn /
+    expressive) at `passed=false` with zero placeholder scores. Real evals
+    cannot run until the fused llama-server is built (H2.f in flight). Once
+    built, the precise sequence is in .swarm/impl/H2-cleanup.md §H2.e
+    "Precise next-step" (9 steps culminating in finalize_eliza1_evidence.py
+    deriving releaseState + publishEligible).
+  - **H2.f RUNNING (local CUDA) / Metal compute-gated.** Nebius
+    89.169.121.175 SSH key is gone (Permission denied (publickey)) — falling
+    back to local RTX 5080 Laptop GPU. CMake configure GREEN (CUDA 12.0,
+    ggml=cd0108bbd, compute_90 target). Build kicked off with
+    `cmake --build . --target llama-server -j8` against the merged tree
+    (LLAMA_BUILD_OMNIVOICE=ON, OMNIVOICE_SHARED=ON). Build PID
+    /tmp/h2f-build.pid, log /tmp/h2f-build.log. Currently at 45% (CUDA
+    fattn-vec template instances). Metal: hardware-blocked (no Mac).
+  - Verify GREEN: `bun x turbo run typecheck lint --filter
+    @elizaos/plugin-local-inference --filter @elizaos/shared` →
+    20/20 tasks success (1m32s).
+  - Impl report: .swarm/impl/H2-cleanup.md.
+
+- 2026-05-15 I1-single-runtime phase=impl-audit-done: comprehensive audit
+  of every `node-llama-cpp` + ONNX + external-runtime touchpoint landed at
+  .swarm/impl/I1-single-runtime.md. Findings: (1) VAD + wakeword
+  resolved-runtime paths are already on the fork's FFI
+  (`eliza_inference_vad_*` / `eliza_inference_wakeword_*` on
+  libelizainference) — DONE; (2) five voice sub-models still hit ONNX in
+  the resolved path (Wav2Small, WeSpeaker, pyannote-3 diarizer, Kokoro
+  TTS, LiveKit turn-detector) — each compute-gated with a precise
+  next-step + worker-day estimate (1d Wav2Small, 2d WeSpeaker, 1d
+  pyannote, 5-10d Kokoro, 1d turn-detector); (3) `node-llama-cpp@3.18.1`
+  npm dep stays — it IS the canonical wrapper for the fork's libllama +
+  llama-server per native/AGENTS.md; (4) `voice-classifier-cpp` C ABI
+  exists with `-ENOSYS` model heads — Phase-2 worker unblocked to land
+  the ggml graphs without touching the fork. Hard policy enforceable
+  end-to-end once those stubs become real. Bookkeeping landed:
+  registry description ("no more ONNX"), CHANGELOG I1 section,
+  manifest assetAudit note. NO source deletions this wave —
+  removing the ONNX paths today would crash voice (AGENTS.md §3
+  "no silent fallback" is intact). Commits: 2e8eab3d87
+  (docs(I1): drop "+ ONNX" from local-inference registry description).
+  Manifest + CHANGELOG bookkeeping picked up by peer auto-commits prior
+  to my commit (already in HEAD). Report:
+  .swarm/impl/I1-single-runtime.md.
+
+
+## H2.f — CUDA fused build green (2026-05-15)
+
+- 2026-05-15 04:44 H2 (respawn) phase=h2f-done. Local RTX 5080 CUDA fused
+  build of merged-OmniVoice llama.cpp went `[100%] Built target llama-server`
+  after the `static`→`extern` fix on `audio_speech_handler()` (commit
+  `5da0f068a` on fork, `a8bf079685` parent). Artefacts:
+  - `build-h2f-cuda/bin/llama-server` (8.3 MB, version 9879 / d0c714786)
+  - `build-h2f-cuda/tools/omnivoice/libomnivoice_lib.a` (614 KB)
+  - 23 `eliza_omnivoice::*` symbols resolved: `audio_speech_handler()`,
+    `g_model_path`/`g_codec_path`, `route_voice_preset::~dtor`,
+    `cli_or_env`, `json_int_clamped`/`json_float_positive`.
+  All H2.c committed-source surfaces link clean. H2.f Linux/CUDA DONE.
+  Metal stays compute-gated (no Mac). H2.e can now run per-tier eval
+  rounds against the green binary; that's a separate operator workstream
+  (~30 min/tier for text_eval + voice_rtf + e2e_loop + finalize).
+
+## I3 — gap close (2026-05-15)
+
+- 2026-05-15 I3 phase=impl: PID written to .swarm/run/I3.pid.
+  Gaps swept and dispositioned.
+
+  **T-asr DONE**: K-quant ladder (Q3_K_M/Q4_K_M/Q5_K_M/Q6_K) for
+  Qwen3-ASR-1.7B pushed to elizaos/eliza-1 (commit 50cffb075ae3c24a).
+  voice-models.ts updated with asr v0.2.0 entry. CHANGELOG updated.
+  Commit: c933c2bf0a.
+
+  **stale 1_7b bundle default DONE**: freeze-voice.mjs + voice-create-profile.mjs
+  both updated to use eliza-1-2b.bundle. Commit: 7afb8ce504.
+
+  **Q1-utmos DONE**: utmos>=0.1.0 added to kokoro/requirements.txt.
+  Commit: 967cb62163.
+
+  **H2.f CUDA fused build DONE**: Retried build after submodule bump
+  (5da0f068a — drop static on audio_speech_handler). llama-server binary
+  produced at build-h2f-cuda/bin/llama-server (8.4 MB, CUDA, OmniVoice
+  audio_speech_handler linked). Commit: 4ffeb5cdf8.
+
+  **T-asr phase=impl-done**: K-quant ladder complete.
+  **H2.f phase=impl-done**: CUDA fused build verified GREEN.
+  **W3-3 follow-up 1 DONE** (preset-aware logic in committed source): H2.c.
+  **W3-3 follow-up 2 DONE** (slot-KV-pool real LRU impl): H2.c.
+  **W3-3 follow-up 3** (stale verify-symbols.mjs): removed by H2.c.
+
+
+## V-verify-final (re-dispatch) — verify watcher (2026-05-15 04:57)
+
+Resuming as the verify watcher after rate-limit. Wave 2 was already
+closed by K-verify on 2026-05-14 (.swarm/voice-finish/WAVE_2_FINAL_SUMMARY.md
+remains canonical). The 5-parallel-agent wave noted in the brief
+(L-kokoro-distill / M-emotion-final / O-turn-intl / S-static-models / T-asr)
+appears to have already landed — no PIDs found, no active swarm dirs.
+
+Current Wave 3 Gauntlet / H/I-wave is still actively running. So my
+re-dispatched role is: keep `develop` green while peer agents
+push, fix transient lint/typecheck breakage, and write a final
+WAVE_2_GRIND_FINAL.md summarizing the post-Wave-2 grind state.
+
+Session fixes so far (all `fix(V-verify-final): ...`):
+- biome format fixes: packages/agent, packages/app-core/platforms/electrobun, packages/benchmarks/eliza-1
+- ui DynamicViewLoader biome-ignore for reloadKey hook dep
+- e2e.config.ts merge resolution (app-lifeops → plugin-lifeops rename + local-inference voice paths union)
+- packages/core/src/connectors/account-manager.ts: default accessGate/status in normalizeAccount
+- packages/agent/tsconfig.json: bump module ES2022 → ESNext (for `with { type: "json" }` import attributes in @elizaos/ui i18n)
+- packages/agent/src/api/conversation-routes.ts: replace bare `aborted` with `disconnectTracker.isAborted()` in stream handler
+- gitignore *.pt (after accidentally tracking yolov8n.pt in a peer-state checkpoint; untracked + ignored)
+

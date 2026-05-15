@@ -69,19 +69,19 @@ include CMakeFiles/silero_vad.dir/progress.make
 # Include the compile flags for this target's objects.
 include CMakeFiles/silero_vad.dir/flags.make
 
-CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o: CMakeFiles/silero_vad.dir/flags.make
-CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o: /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_stub.c
-CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o: CMakeFiles/silero_vad.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o -MF CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o.d -o CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o -c /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_stub.c
+CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o: CMakeFiles/silero_vad.dir/flags.make
+CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o: /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_runtime.c
+CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o: CMakeFiles/silero_vad.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o -MF CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o.d -o CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o -c /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_runtime.c
 
-CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.i"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_stub.c > CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.i
+CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_runtime.c > CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.i
 
-CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.s"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_stub.c -o CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.s
+CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_runtime.c -o CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.s
 
 CMakeFiles/silero_vad.dir/src/silero_vad_state.c.o: CMakeFiles/silero_vad.dir/flags.make
 CMakeFiles/silero_vad.dir/src/silero_vad_state.c.o: /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_state.c
@@ -113,14 +113,14 @@ CMakeFiles/silero_vad.dir/src/silero_vad_resample.c.s: cmake_force
 
 # Object files for target silero_vad
 silero_vad_OBJECTS = \
-"CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o" \
+"CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o" \
 "CMakeFiles/silero_vad.dir/src/silero_vad_state.c.o" \
 "CMakeFiles/silero_vad.dir/src/silero_vad_resample.c.o"
 
 # External object files for target silero_vad
 silero_vad_EXTERNAL_OBJECTS =
 
-libsilero_vad.a: CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o
+libsilero_vad.a: CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o
 libsilero_vad.a: CMakeFiles/silero_vad.dir/src/silero_vad_state.c.o
 libsilero_vad.a: CMakeFiles/silero_vad.dir/src/silero_vad_resample.c.o
 libsilero_vad.a: CMakeFiles/silero_vad.dir/build.make

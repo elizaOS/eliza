@@ -503,7 +503,7 @@ export function shouldKeepPackageRelativePath(
     }
   }
 
-  if (packageName === "@elizaos/app-companion") {
+  if (packageName === "@elizaos/plugin-companion") {
     if (
       normalizedPath === "public_src" ||
       normalizedPath.startsWith("public_src/")

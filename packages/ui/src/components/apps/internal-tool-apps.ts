@@ -21,7 +21,7 @@ interface InternalToolAppDefinition {
 
 const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
   {
-    name: "@elizaos/app-lifeops",
+    name: "@elizaos/plugin-lifeops",
     displayName: "LifeOps",
     description:
       "Run tasks, reminders, calendar, inbox, and connected operational workflows.",
@@ -53,7 +53,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     windowPath: "/apps/skills",
   },
   {
-    name: "@elizaos/app-training",
+    name: "@elizaos/plugin-training",
     displayName: "Fine Tuning",
     description:
       "Build datasets, inspect trajectories, run training jobs, and activate tuned models.",
@@ -96,7 +96,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     windowPath: "/apps/memories",
   },
   {
-    name: "@elizaos/app-steward",
+    name: "@elizaos/plugin-steward-app",
     displayName: "Steward",
     description:
       "Review wallet approvals, transaction history, and signing execution status.",
@@ -129,7 +129,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     windowPath: "/apps/database",
   },
   {
-    name: "@elizaos/app-elizamaker",
+    name: "@elizaos/plugin-elizamaker",
     displayName: "ElizaMaker",
     description:
       "Run drop, mint, whitelist, and verification workflows through the agent surfaces.",
@@ -151,7 +151,7 @@ const INTERNAL_TOOL_APPS: readonly InternalToolAppDefinition[] = [
     windowPath: "/apps/logs",
   },
   {
-    name: "@elizaos/app-task-coordinator",
+    name: "@elizaos/plugin-task-coordinator",
     displayName: "Automations",
     description: "Create, inspect, and manage scheduled tasks and workflows.",
     heroImage: "/api/apps/hero/tasks",

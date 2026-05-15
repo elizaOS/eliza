@@ -1,16 +1,26 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createPersistedActiveServer,
   loadPersistedActiveServer,
   savePersistedActiveServer,
 } from "./persistence";
-import { canRestoreActiveServer } from "./startup-phase-restore";
+import {
+  applyRestoredConnection,
+  canRestoreActiveServer,
+} from "./startup-phase-restore";
 
 describe("Cloud active server persistence", () => {
+  const elizaWindow = window as typeof window & {
+    __ELIZA_API_BASE__?: string;
+    __ELIZAOS_API_BASE__?: string;
+  };
+
   beforeEach(() => {
     localStorage.clear();
+    Reflect.deleteProperty(elizaWindow, "__ELIZA_API_BASE__");
+    Reflect.deleteProperty(elizaWindow, "__ELIZAOS_API_BASE__");
   });
 
   it("does not persist the Eliza Cloud control plane as a runtime API base", () => {
@@ -72,5 +82,26 @@ describe("Cloud active server persistence", () => {
         isDesktop: false,
       }),
     ).toBe(false);
+  });
+
+  it("preserves the injected desktop API base when restoring a local session", async () => {
+    elizaWindow.__ELIZA_API_BASE__ = "http://127.0.0.1:31337";
+    const setBaseUrl = vi.fn();
+    const setToken = vi.fn();
+    const startLocalRuntime = vi.fn().mockResolvedValue(undefined);
+
+    await applyRestoredConnection({
+      restoredActiveServer: {
+        id: "local",
+        kind: "local",
+        label: "Local Agent",
+      },
+      clientRef: { setBaseUrl, setToken },
+      startLocalRuntime,
+    });
+
+    expect(setBaseUrl).toHaveBeenCalledWith("http://127.0.0.1:31337");
+    expect(setToken).not.toHaveBeenCalled();
+    expect(startLocalRuntime).toHaveBeenCalledTimes(1);
   });
 });

@@ -167,6 +167,13 @@ function mobileLoopbackActiveServer(): PersistedActiveServer {
   };
 }
 
+function restoredLocalApiBase(): string | null {
+  if (isAndroid || isIOS) {
+    return null;
+  }
+  return getElizaApiBase() ?? null;
+}
+
 export async function applyRestoredConnection(args: {
   restoredActiveServer: PersistedActiveServer;
   clientRef: Pick<typeof client, "setBaseUrl" | "setToken">;
@@ -177,7 +184,7 @@ export async function applyRestoredConnection(args: {
   if (restoredActiveServer.kind === "local") {
     // Don't clear an already-set token: "local" means the agent runs
     // on this machine, not that the dashboard is unauthenticated.
-    clientRef.setBaseUrl(null);
+    clientRef.setBaseUrl(restoredLocalApiBase());
     if (startLocalRuntime) {
       await startLocalRuntime();
     }

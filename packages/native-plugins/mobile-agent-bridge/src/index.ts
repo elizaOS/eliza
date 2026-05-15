@@ -1,7 +1,7 @@
 import { registerPlugin } from "@capacitor/core";
 import type { MobileAgentBridgePlugin } from "./definitions";
 
-export * from "./definitions";
+export type * from "./definitions";
 
 const loadWeb = () => import("./web").then((m) => new m.MobileAgentBridgeWeb());
 

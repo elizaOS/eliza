@@ -10,7 +10,7 @@ dataset disagrees with this file, this file wins.
 - **Canonical corpus record = `eliza_native_v1`.** One row per Vercel AI SDK
   model-call boundary, carrying the exact request sent to the provider and the
   exact normalized response received. This is what the runtime trajectory
-  exporter emits, what `eliza/plugins/app-training/datasets/lifeops_*.jsonl`
+  exporter emits, what `eliza/plugins/plugin-training/datasets/lifeops_*.jsonl`
   trace files reduce to, and what `scripts/prepare_eliza1_trajectory_dataset.py`
   writes for the default `train/val/test` splits.
 - **Rendered training example = ChatML SFT row.** `scripts/format_for_training.py`

@@ -39,7 +39,7 @@ const canRunLiveTests = liveModelTestsEnabled && selectedLiveProvider !== null;
 
 const DEFAULT_TEST_TIMEOUT_MS = 90_000;
 
-type LifeOpsModule = typeof import("@elizaos/app-lifeops");
+type LifeOpsModule = typeof import("@elizaos/plugin-lifeops");
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -227,7 +227,7 @@ describe("Action Invocation E2E", () => {
     previousDisableLifeOpsScheduler =
       process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
     process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
-    lifeOps = await import("@elizaos/app-lifeops");
+    lifeOps = await import("@elizaos/plugin-lifeops");
 
     const result = await createRealTestRuntime({
       withLLM: true,
@@ -433,7 +433,7 @@ describe("Action Invocation E2E", () => {
     );
 
     // Morning/night CHECKIN tests removed: the CHECKIN action was deleted in
-    // favor of scheduled tasks. See plugins/app-lifeops/src/actions/CHECKIN_MIGRATION.TODO.md.
+    // favor of scheduled tasks. See plugins/plugin-lifeops/src/actions/CHECKIN_MIGRATION.TODO.md.
   });
 
   // ===================================================================

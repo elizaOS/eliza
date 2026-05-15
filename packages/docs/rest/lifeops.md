@@ -19,7 +19,7 @@ under `/api/lifeops` returns `503 Service Unavailable`.
 
 ## Endpoint Index
 
-> This index is auto-generated from the route declarations in `eliza/plugins/app-lifeops/src/routes/plugin.ts` and `scheduled-tasks.ts` by `eliza/scripts/generate-lifeops-rest-docs.mjs`. Do not hand-edit; rerun the generator instead.
+> This index is auto-generated from the route declarations in `eliza/plugins/plugin-lifeops/src/routes/plugin.ts` and `scheduled-tasks.ts` by `eliza/scripts/generate-lifeops-rest-docs.mjs`. Do not hand-edit; rerun the generator instead.
 
 Total documented routes: **188**.
 
@@ -369,4 +369,4 @@ Total documented routes: **188**.
 - Public OAuth + connector callback routes (e.g. `GET /api/lifeops/connectors/health/:provider/callback`) are unauthenticated by design.
 - Scheduled-task verbs (`/api/lifeops/scheduled-tasks/:id/{snooze,skip,complete,dismiss,escalate,acknowledge,reopen,edit}`) post no body when the verb is unambiguous; some accept JSON for context.
 - Cadence kinds supported by definitions: `once`, `daily`, `times_per_day`, `interval`, `weekly`. Reminder channels: `in_app`, `sms`, `voice`, `telegram`, `discord`, `signal`, `whatsapp`, `imessage`, `email`, `push`.
-- For request/response shape details, see `eliza/plugins/app-lifeops/src/routes/lifeops-routes.ts` and the corresponding handler in `src/routes/{entities,relationships,scheduled-tasks,sleep-routes,website-blocker-routes}.ts`. Each handler validates input via Zod schemas declared at module top.
+- For request/response shape details, see `eliza/plugins/plugin-lifeops/src/routes/lifeops-routes.ts` and the corresponding handler in `src/routes/{entities,relationships,scheduled-tasks,sleep-routes,website-blocker-routes}.ts`. Each handler validates input via Zod schemas declared at module top.

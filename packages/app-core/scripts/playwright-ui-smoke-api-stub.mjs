@@ -18,11 +18,11 @@ const ONE_PIXEL_PNG = Buffer.from(
 function readSmokeVrm() {
   const candidates = [
     new URL(
-      "../../../plugins/app-companion/public/vrms/eliza-1.vrm.gz",
+      "../../../plugins/plugin-companion/public/vrms/eliza-1.vrm.gz",
       import.meta.url,
     ),
     new URL(
-      "../../../plugins/app-companion/public_src/vrms/eliza-1.vrm",
+      "../../../plugins/plugin-companion/public_src/vrms/eliza-1.vrm",
       import.meta.url,
     ),
   ];
@@ -121,7 +121,7 @@ function stubCatalogApp({
 
 const stubCatalogApps = [
   stubCatalogApp({
-    name: "@elizaos/app-lifeops",
+    name: "@elizaos/plugin-lifeops",
     displayName: "LifeOps",
     description:
       "Run tasks, reminders, calendar, inbox, and connected workflows.",
@@ -144,7 +144,7 @@ const stubCatalogApps = [
     heroImage: "/app-heroes/skills-viewer.png",
   }),
   stubCatalogApp({
-    name: "@elizaos/app-training",
+    name: "@elizaos/plugin-training",
     displayName: "Fine Tuning",
     description:
       "Build datasets, inspect trajectories, and activate tuned models.",
@@ -194,44 +194,44 @@ const stubCatalogApps = [
     heroImage: "/app-heroes/log-viewer.png",
   }),
   stubCatalogApp({
-    name: "@elizaos/app-companion",
+    name: "@elizaos/plugin-companion",
     displayName: "Companion",
     description: "The companion overlay shell for ambient agent presence.",
     category: "social",
   }),
   stubCatalogApp({
-    name: "@elizaos/app-steward",
+    name: "@elizaos/plugin-steward-app",
     displayName: "Steward",
     description: "Review wallet approvals and inventory status.",
     capabilities: ["wallet", "approvals", "inventory"],
   }),
   stubCatalogApp({
-    name: "@elizaos/app-elizamaker",
+    name: "@elizaos/plugin-elizamaker",
     displayName: "ElizaMaker",
     description: "Run drop, mint, whitelist, and verification workflows.",
     capabilities: ["drops", "minting", "whitelist"],
   }),
   stubCatalogApp({
-    name: "@elizaos/app-shopify",
+    name: "@elizaos/plugin-shopify-ui",
     displayName: "Shopify",
     description: "Manage Shopify store operations from the agent workspace.",
     category: "platform",
   }),
   stubCatalogApp({
-    name: "@elizaos/app-vincent",
+    name: "@elizaos/plugin-vincent",
     displayName: "Vincent",
     description: "Manage Vincent DeFi account access and trading context.",
     category: "platform",
   }),
   stubCatalogApp({
-    name: "@elizaos/app-hyperliquid",
+    name: "@elizaos/plugin-hyperliquid-app",
     displayName: "Hyperliquid",
     description: "Inspect Hyperliquid markets, positions, and order status.",
     category: "platform",
     capabilities: ["hyperliquid", "trading", "wallet"],
   }),
   stubCatalogApp({
-    name: "@elizaos/app-polymarket",
+    name: "@elizaos/plugin-polymarket-app",
     displayName: "Polymarket",
     description: "Browse prediction markets and native trading readiness.",
     category: "platform",

@@ -1,1 +1,0 @@
-/usr/bin/cc -O3 -DNDEBUG CMakeFiles/yolo_nms_test.dir/test/yolo_nms_test.c.o -o yolo_nms_test  libyolo.a -lm 

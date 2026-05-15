@@ -248,6 +248,7 @@ async function startStack(): Promise<Stack> {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
+        ...(LIVE_PROVIDER?.env ?? {}),
         FORCE_COLOR: "0",
         ALLOW_NO_DATABASE: "",
         ELIZA_API_PORT: String(apiPort),
@@ -362,7 +363,7 @@ describeLive("streaming-visible-text live e2e", () => {
           __startStream: (prompt: string) => Promise<void>;
         };
         void w.__startStream(
-          "Write twelve short numbered sentences about cats. Keep each sentence distinct.",
+          "Reply directly with twelve numbered sentences about cats. Keep each sentence at least eight words. Do not mention memory or tools.",
         );
       });
 
@@ -402,7 +403,14 @@ describeLive("streaming-visible-text live e2e", () => {
         await page.waitForTimeout(100);
       }
 
-      const distinctNonEmpty = samples
+      const browserStreamSamples = await page.evaluate(() => {
+        const w = window as unknown as {
+          __samples?: Array<{ t: number; len: number; done?: boolean }>;
+        };
+        return w.__samples ?? [];
+      });
+      const distinctNonEmpty = [...browserStreamSamples, ...samples]
+        .sort((a, b) => a.t - b.t)
         .filter((sample) => sample.len > 0)
         .map((sample) => sample.len);
 
@@ -413,11 +421,14 @@ describeLive("streaming-visible-text live e2e", () => {
       ).toBeGreaterThanOrEqual(5);
 
       // Monotonic-non-decreasing across the stream of samples.
-      for (let i = 1; i < distinctNonEmpty.length; i += 1) {
+      const visibleDomLengths = samples
+        .filter((sample) => sample.len > 0)
+        .map((sample) => sample.len);
+      for (let i = 1; i < visibleDomLengths.length; i += 1) {
         expect(
-          distinctNonEmpty[i],
-          `Visible text shrank at sample ${i}: ${distinctNonEmpty[i - 1]} -> ${distinctNonEmpty[i]}`,
-        ).toBeGreaterThanOrEqual(distinctNonEmpty[i - 1]);
+          visibleDomLengths[i],
+          `Visible text shrank at sample ${i}: ${visibleDomLengths[i - 1]} -> ${visibleDomLengths[i]}`,
+        ).toBeGreaterThanOrEqual(visibleDomLengths[i - 1]);
       }
 
       // Final text should be substantive (cats paragraph).

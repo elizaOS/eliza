@@ -7,10 +7,10 @@ import {
 	__resetLlamaServerHelpTextForTests,
 	__setCtxCheckpointsProbeCacheForTests,
 	__setLlamaServerHelpTextForTests,
+	appendBackendSafeStartupFlags,
 	appendCtxCheckpointFlags,
 	appendDflashDraftTuningFlags,
 	appendKvOffloadFlags,
-	appendMetalSafeStartupFlags,
 	appendOptimizationFlags,
 	applyUnsupportedKernelEnv,
 	attachDflashSpeculativeRequestFields,
@@ -28,10 +28,11 @@ import {
 	logDflashDevDisabledWarning,
 	parseDflashMetrics,
 	resolveDflashBinary,
+	resolveDflashGenerateRequestTimeoutMs,
 	resolveDflashKvOffload,
 	resolveDisableThinkingFlags,
 	resolveFusedDflashBinary,
-	resolveMetalRuntimeCacheTypes,
+	resolveRuntimeCacheTypes,
 	shouldRequireActiveDflashForRequest,
 	validateDflashDrafterCompatibility,
 } from "./dflash-server";
@@ -387,6 +388,65 @@ describe("fused-vs-two-process spawn selection", () => {
 	});
 });
 
+describe("DflashLlamaServer runtime load config", () => {
+	it("reports the normalized target GPU layers passed to llama-server", async () => {
+		const root = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-runtime-config-"),
+		);
+		const binary = path.join(root, "llama-server");
+		fs.writeFileSync(
+			binary,
+			[
+				"#!/bin/sh",
+				'if [ "$1" = "--help" ]; then',
+				'  echo "--n-gpu-layers N"',
+				"  exit 0",
+				"fi",
+				"trap 'exit 0' TERM INT",
+				"while true; do sleep 1; done",
+				"",
+			].join("\n"),
+			"utf8",
+		);
+		fs.chmodSync(binary, 0o755);
+		process.env.ELIZA_STATE_DIR = root;
+		process.env.ELIZA_DFLASH_ENABLED = "1";
+		process.env.ELIZA_DFLASH_LLAMA_SERVER = binary;
+		__setCtxCheckpointsProbeCacheForTests(binary, false);
+		installDflashFetchMock((url) =>
+			url.pathname === "/health"
+				? new Response("{}", { status: 200 })
+				: notFoundResponse(),
+		);
+
+		const server = new DflashLlamaServer();
+		try {
+			await server.start({
+				targetModelPath: path.join(root, "target.gguf"),
+				drafterModelPath: path.join(root, "drafter.gguf"),
+				contextSize: 128,
+				draftContextSize: 64,
+				draftMin: 1,
+				draftMax: 4,
+				gpuLayers: "auto",
+				draftGpuLayers: "auto",
+				disableThinking: false,
+				disableDrafter: true,
+			});
+
+			expect(server.currentRuntimeLoadConfig()).toMatchObject({
+				contextSize: 128,
+				cacheTypeK: null,
+				cacheTypeV: null,
+				gpuLayers: 99,
+				binaryPath: binary,
+			});
+		} finally {
+			await server.stop();
+		}
+	});
+});
+
 describe("DFlash draft CLI flag drift", () => {
 	it("prefers --reasoning off over deprecated chat-template kwargs when both are advertised", () => {
 		const bin = "/tmp/reasoning-llama-server";
@@ -417,16 +477,16 @@ describe("DFlash draft CLI flag drift", () => {
 		]);
 	});
 
-	it("adds -fit off for Metal fused binaries to avoid unsafe fit-time compressed-KV graphs", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-fit-"));
+	it("adds -fit off for graph-unsafe fused backends to avoid unsafe fit-time compressed-KV graphs", () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "runtime-fit-"));
 		const binary = path.join(root, "llama-server");
 		fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
 		fs.chmodSync(binary, 0o755);
 		fs.writeFileSync(
 			path.join(root, "CAPABILITIES.json"),
 			JSON.stringify({
-				target: "darwin-arm64-metal-fused",
-				backend: "metal",
+				target: "linux-x64-vulkan-fused",
+				backend: "vulkan",
 				kernels: { dflash: true },
 			}),
 			"utf8",
@@ -434,41 +494,53 @@ describe("DFlash draft CLI flag drift", () => {
 		__setLlamaServerHelpTextForTests(binary, "-fit,  --fit [on|off]\n");
 		const args: string[] = [];
 
-		appendMetalSafeStartupFlags(args, binary);
+		appendBackendSafeStartupFlags(args, binary);
 
 		expect(args).toEqual(["-fit", "off"]);
 	});
 
-	it("downgrades compressed QJL/Polar KV to q8_0 on Metal runtime graph dispatch", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-"));
-		const binary = path.join(root, "llama-server");
-		fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
-		fs.chmodSync(binary, 0o755);
-		fs.writeFileSync(
-			path.join(root, "CAPABILITIES.json"),
-			JSON.stringify({
-				target: "darwin-arm64-metal-fused",
-				backend: "metal",
-				kernels: { dflash: true, qjl_full: true, polarquant: true },
-			}),
-			"utf8",
-		);
+	for (const backend of ["metal", "vulkan"] as const) {
+		it(`downgrades fork-only compressed KV to q8_0 on ${backend} runtime graph dispatch`, () => {
+			const root = fs.mkdtempSync(path.join(os.tmpdir(), `${backend}-kv-`));
+			const binary = path.join(root, "llama-server");
+			fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+			fs.chmodSync(binary, 0o755);
+			fs.writeFileSync(
+				path.join(root, "CAPABILITIES.json"),
+				JSON.stringify({
+					target:
+						backend === "metal"
+							? "darwin-arm64-metal-fused"
+							: "linux-x64-vulkan-fused",
+					backend,
+					kernels: {
+						dflash: true,
+						qjl_full: true,
+						polarquant: true,
+						turbo3: true,
+					},
+				}),
+				"utf8",
+			);
 
-		const resolved = resolveMetalRuntimeCacheTypes({
-			binaryPath: binary,
-			targetModelPath: "/models/eliza-1-2b.gguf",
-			cacheTypeK: "qjl1_256",
-			cacheTypeV: "q4_polar",
-			emitWarning: false,
-		});
+			const resolved = resolveRuntimeCacheTypes({
+				binaryPath: binary,
+				targetModelPath: "/models/eliza-1-2b.gguf",
+				cacheTypeK: "qjl1_256",
+				cacheTypeV: "tbq3_0",
+				emitWarning: false,
+			});
 
-		expect(resolved).toMatchObject({
-			cacheTypeK: "q8_0",
-			cacheTypeV: "q8_0",
-			downgraded: true,
+			expect(resolved).toMatchObject({
+				cacheTypeK: "q8_0",
+				cacheTypeV: "q8_0",
+				downgraded: true,
+			});
+			expect(resolved.reason).toContain(
+				backend === "metal" ? "generic attention/MUL_MAT" : "SET_ROWS",
+			);
 		});
-		expect(resolved.reason).toContain("generic attention/MUL_MAT");
-	});
+	}
 
 	it("keeps compressed KV on Metal only when the unsafe experiment flag is explicit", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-exp-"));
@@ -486,7 +558,7 @@ describe("DFlash draft CLI flag drift", () => {
 		);
 		process.env.ELIZA_DFLASH_METAL_COMPRESSED_KV = "1";
 
-		const resolved = resolveMetalRuntimeCacheTypes({
+		const resolved = resolveRuntimeCacheTypes({
 			binaryPath: binary,
 			targetModelPath: "/models/eliza-1-2b.gguf",
 			cacheTypeK: "qjl1_256",
@@ -1041,6 +1113,20 @@ describe("extractVerifierRejectRange", () => {
 });
 
 describe("DFlash streaming callbacks", () => {
+	it("keeps the backend request timeout aligned with the chat generation budget", () => {
+		process.env.ELIZA_CHAT_GENERATION_TIMEOUT_MS = "180000";
+		delete process.env.ELIZA_LOCAL_INFERENCE_REQUEST_TIMEOUT_MS;
+		delete process.env.ELIZA_DFLASH_GENERATE_TIMEOUT_MS;
+
+		expect(resolveDflashGenerateRequestTimeoutMs()).toBe(185000);
+		expect(
+			resolveDflashGenerateRequestTimeoutMs({ requestTimeoutMs: 42_000 }),
+		).toBe(42_000);
+
+		process.env.ELIZA_LOCAL_INFERENCE_REQUEST_TIMEOUT_MS = "240000";
+		expect(resolveDflashGenerateRequestTimeoutMs()).toBe(240000);
+	});
+
 	it("synthesizes verifier accept events from streamed OpenAI deltas", async () => {
 		installDflashFetchMock((url, init) => {
 			if (url.pathname === "/metrics") return metricsResponse();

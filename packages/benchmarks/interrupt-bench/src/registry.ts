@@ -3,7 +3,7 @@
  *
  * Registers a minimal set that mirrors the core fields exported from
  * `@elizaos/core` PLUS the threadOps field (mirroring the one in
- * `@elizaos/app-lifeops`). We don't import the real threadOps evaluator here
+ * `@elizaos/plugin-lifeops`). We don't import the real threadOps evaluator here
  * because it pulls in plugin-side stores (work-threads, pending-prompts) that
  * require a full IAgentRuntime — out of scope for an in-process benchmark.
  *

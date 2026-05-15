@@ -1,20 +1,17 @@
 import type {
 	LocalImageDescriptionHandler,
 	LocalVisionOutcome,
-	VisionFallbackReason,
 } from "./cloud-fallback";
+
 export interface VisionVastFallbackOptions {
+	enabled?: boolean;
 	handler?: LocalImageDescriptionHandler;
 	log?: (message: string, detail?: Record<string, unknown>) => void;
 }
-function asError(err: unknown): Error {
-	return err instanceof Error ? err : new Error(String(err));
-}
-function isFallback(outcome: LocalVisionOutcome): outcome is {
-	kind: "fallback";
-	reason: VisionFallbackReason;
-	cause?: Error;
-} {
+
+function isFallbackOutcome(
+	outcome: LocalVisionOutcome,
+): outcome is Extract<LocalVisionOutcome, { kind: "fallback" }> {
 	return (
 		typeof outcome === "object" &&
 		outcome !== null &&
@@ -22,22 +19,29 @@ function isFallback(outcome: LocalVisionOutcome): outcome is {
 		outcome.kind === "fallback"
 	);
 }
+
 export function wrapImageDescriptionHandlerWithVastFallback(
 	upstream: LocalImageDescriptionHandler,
 	options: VisionVastFallbackOptions = {},
 ): LocalImageDescriptionHandler {
+	const enabled = options.enabled ?? true;
 	const log = options.log ?? (() => undefined);
 	return async (params) => {
-		const outcome = await upstream(params);
-		if (!isFallback(outcome)) return outcome;
-		if (!options.handler) return outcome;
-		log("[vision/vast-fallback] forwarding IMAGE_DESCRIPTION", {
-			reason: outcome.reason,
+		const upstreamOutcome = await upstream(params);
+		if (!isFallbackOutcome(upstreamOutcome)) return upstreamOutcome;
+		if (!enabled || !options.handler) return upstreamOutcome;
+
+		log("[vision/vast-fallback] upstream IMAGE_DESCRIPTION fallback", {
+			reason: upstreamOutcome.reason,
 		});
 		try {
 			return await options.handler(params);
-		} catch (err) {
-			return { kind: "fallback", reason: "cloud-error", cause: asError(err) };
+		} catch (error) {
+			return {
+				kind: "fallback",
+				reason: "vast-error",
+				cause: error instanceof Error ? error : new Error(String(error)),
+			};
 		}
 	};
 }

@@ -420,7 +420,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
         COMPANION_ENABLED &&
         APPS_ENABLED;
       if (launchCompanionOverlay) {
-        setActiveOverlayApp("@elizaos/app-companion");
+        setActiveOverlayApp("@elizaos/plugin-companion");
         replaceNavigationPathForCompanionLaunch();
         setTab("apps");
       } else {

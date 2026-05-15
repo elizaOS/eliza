@@ -92,7 +92,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
       }
     )[OVERLAY_REGISTRY_KEY] = new Map();
     registerOverlayApp({
-      name: "@elizaos/app-phone",
+      name: "@elizaos/plugin-phone",
       displayName: "Phone",
       description: "phone",
       category: "system",
@@ -101,7 +101,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
       Component: () => null as never,
     });
     registerOverlayApp({
-      name: "@elizaos/app-contacts",
+      name: "@elizaos/plugin-contacts",
       displayName: "Contacts",
       description: "contacts",
       category: "system",
@@ -110,7 +110,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
       Component: () => null as never,
     });
     registerOverlayApp({
-      name: "@elizaos/app-wifi",
+      name: "@elizaos/plugin-wifi",
       displayName: "WiFi",
       description: "wifi",
       category: "system",
@@ -123,10 +123,10 @@ describe("loadMergedCatalogApps AOSP filter", () => {
     listAppsMock.mockReset();
     listCatalogAppsMock.mockResolvedValue([]);
     listAppsMock.mockResolvedValue([
-      makeServerApp("@elizaos/app-phone"),
-      makeServerApp("@elizaos/app-contacts"),
-      makeServerApp("@elizaos/app-wifi"),
-      makeServerApp("@elizaos/app-companion"),
+      makeServerApp("@elizaos/plugin-phone"),
+      makeServerApp("@elizaos/plugin-contacts"),
+      makeServerApp("@elizaos/plugin-wifi"),
+      makeServerApp("@elizaos/plugin-companion"),
     ]);
     capacitorState.platform = "android";
     navigatorMock.userAgent = STOCK_ANDROID_UA;
@@ -141,9 +141,9 @@ describe("loadMergedCatalogApps AOSP filter", () => {
   });
 
   const ANDROID_ONLY_APP_NAMES = [
-    "@elizaos/app-contacts",
-    "@elizaos/app-phone",
-    "@elizaos/app-wifi",
+    "@elizaos/plugin-contacts",
+    "@elizaos/plugin-phone",
+    "@elizaos/plugin-wifi",
   ];
 
   function pickAndroidOnly(names: string[]): string[] {
@@ -154,7 +154,7 @@ describe("loadMergedCatalogApps AOSP filter", () => {
     const apps = await loadMergedCatalogApps({ includeHiddenApps: true });
     const names = apps.map((a) => a.name);
     expect(pickAndroidOnly(names)).toEqual([]);
-    expect(names).toContain("@elizaos/app-companion");
+    expect(names).toContain("@elizaos/plugin-companion");
   });
 
   it("shows androidOnly apps once on AOSP Eliza-derived Android, deduped across overlay+installed", async () => {
@@ -173,6 +173,6 @@ describe("loadMergedCatalogApps AOSP filter", () => {
     const apps = await loadMergedCatalogApps({ includeHiddenApps: true });
     const names = apps.map((a) => a.name);
     expect(pickAndroidOnly(names)).toEqual([]);
-    expect(names).toContain("@elizaos/app-companion");
+    expect(names).toContain("@elizaos/plugin-companion");
   });
 });

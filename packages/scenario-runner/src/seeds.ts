@@ -63,11 +63,11 @@ type LifeOpsRepositoryModule = {
 // scenario-runner rootDir (app-lifeops is only available at runtime).
 async function loadLifeOps() {
   const defaultsSpecifier: string =
-    "../../../plugins/app-lifeops/src/lifeops/defaults.ts";
+    "../../../plugins/plugin-lifeops/src/lifeops/defaults.ts";
   const engineSpecifier: string =
-    "../../../plugins/app-lifeops/src/lifeops/engine.ts";
+    "../../../plugins/plugin-lifeops/src/lifeops/engine.ts";
   const repositorySpecifier: string =
-    "../../../plugins/app-lifeops/src/lifeops/repository.ts";
+    "../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
   const [
     { resolveDefaultWindowPolicy },
     { materializeDefinitionOccurrences },

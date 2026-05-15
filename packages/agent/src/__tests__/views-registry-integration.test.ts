@@ -23,11 +23,35 @@ import { handleViewsRoutes } from "../api/views-routes.js";
 // Context factory
 // ---------------------------------------------------------------------------
 
+import { EventEmitter } from "node:events";
+
+function makeReqWithBody(body?: unknown): http.IncomingMessage {
+  const em = new EventEmitter() as http.IncomingMessage;
+  // Provide just enough of the IncomingMessage interface for readJsonBody.
+  (em as unknown as { headers: Record<string, string> }).headers = {
+    "content-type": "application/json",
+  };
+  (em as unknown as { method: string }).method = "POST";
+  if (body !== undefined) {
+    const chunk = Buffer.from(JSON.stringify(body));
+    // Emit data/end asynchronously on next tick so callers have time to attach listeners.
+    process.nextTick(() => {
+      em.emit("data", chunk);
+      em.emit("end");
+    });
+  } else {
+    process.nextTick(() => em.emit("end"));
+  }
+  return em;
+}
+
 function makeCtx(
   method: string,
   pathname: string,
   queryParams: Record<string, string> = {},
   developerMode?: boolean,
+  body?: unknown,
+  broadcastWs?: (payload: object) => void,
 ): {
   ctx: ViewsRouteContext;
   json: ReturnType<typeof vi.fn>;
@@ -40,15 +64,30 @@ function makeCtx(
   const urlString = `http://localhost${pathname}${search ? `?${search}` : ""}`;
   const url = new URL(urlString);
 
+  // Build a minimal res mock that readJsonBody can write errors to without crashing.
+  const res = {
+    writeHead: vi.fn(),
+    end: vi.fn(),
+    setHeader: vi.fn(),
+    getHeader: vi.fn(),
+    statusCode: 200,
+  } as unknown as http.ServerResponse;
+
+  const req =
+    body !== undefined || method === "POST"
+      ? makeReqWithBody(body)
+      : ({ headers: {} } as http.IncomingMessage);
+
   const ctx: ViewsRouteContext = {
-    req: { headers: {} } as http.IncomingMessage,
-    res: {} as http.ServerResponse,
+    req,
+    res,
     method,
     pathname,
     url,
     json,
     error,
     developerMode,
+    broadcastWs,
   };
   return { ctx, json, error };
 }
@@ -383,8 +422,26 @@ describe("GET /api/views/:id/bundle.js", () => {
 // POST /api/views/:id/interact
 // ---------------------------------------------------------------------------
 
+import { resolveViewInteractResult } from "../api/views-routes.js";
+
 describe("POST /api/views/:id/interact", () => {
-  it("returns 400 for a known view when the JSON body is missing", async () => {
+  it("returns 404 for interact on an unknown view", async () => {
+    const { ctx, error } = makeCtx(
+      "POST",
+      "/api/views/unknown.view/interact",
+      {},
+      undefined,
+      { capability: "get-text" },
+    );
+    const handled = await handleViewsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledOnce();
+    const [, , status] = error.mock.calls[0] as [unknown, string, number];
+    expect(status).toBe(404);
+  });
+
+  it("returns 400 when capability field is missing in body", async () => {
     await registerPluginViews(
       {
         name: "views-integration-wallet",
@@ -398,6 +455,9 @@ describe("POST /api/views/:id/interact", () => {
     const { ctx, error } = makeCtx(
       "POST",
       "/api/views/wallet.inventory/interact",
+      {},
+      undefined,
+      { /* no capability */ params: {} },
     );
     const handled = await handleViewsRoutes(ctx);
 
@@ -407,14 +467,118 @@ describe("POST /api/views/:id/interact", () => {
     expect(status).toBe(400);
   });
 
-  it("returns 404 for interact on an unknown view", async () => {
-    const { ctx, error } = makeCtx("POST", "/api/views/unknown.view/interact");
+  it("broadcasts view:interact WS message and resolves when result arrives", async () => {
+    await registerPluginViews(
+      {
+        name: "views-integration-wallet",
+        description: "wallet",
+        actions: [],
+        views: [WALLET_VIEW],
+      },
+      undefined,
+    );
+
+    const broadcasts: object[] = [];
+    const broadcastWs = (payload: object) => broadcasts.push(payload);
+
+    const { ctx, json } = makeCtx(
+      "POST",
+      "/api/views/wallet.inventory/interact",
+      {},
+      undefined,
+      { capability: "get-text", timeoutMs: 2000 },
+      broadcastWs,
+    );
+
+    const routePromise = handleViewsRoutes(ctx);
+
+    // Simulate the frontend sending back a result after the WS broadcast.
+    await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    expect(broadcasts).toHaveLength(1);
+    const broadcast = broadcasts[0] as { type: string; requestId: string };
+    expect(broadcast.type).toBe("view:interact");
+    expect(typeof broadcast.requestId).toBe("string");
+
+    // Resolve the pending request as the frontend would.
+    resolveViewInteractResult({
+      requestId: broadcast.requestId,
+      success: true,
+      result: "Hello from the view",
+    });
+
+    const handled = await routePromise;
+    expect(handled).toBe(true);
+    expect(json).toHaveBeenCalledOnce();
+    const [, result] = json.mock.calls[0] as [
+      unknown,
+      { success: boolean; result: unknown },
+    ];
+    expect(result.success).toBe(true);
+    expect(result.result).toBe("Hello from the view");
+  });
+
+  it("returns 400 for undeclared capability when view has declared capabilities", async () => {
+    const viewWithCaps = {
+      ...WALLET_VIEW,
+      capabilities: [{ id: "custom-action", description: "A custom action" }],
+    };
+    await registerPluginViews(
+      {
+        name: "views-integration-wallet",
+        description: "wallet",
+        actions: [],
+        views: [viewWithCaps],
+      },
+      undefined,
+    );
+
+    const { ctx, error } = makeCtx(
+      "POST",
+      "/api/views/wallet.inventory/interact",
+      {},
+      undefined,
+      { capability: "undeclared-capability" },
+    );
     const handled = await handleViewsRoutes(ctx);
 
     expect(handled).toBe(true);
     expect(error).toHaveBeenCalledOnce();
     const [, , status] = error.mock.calls[0] as [unknown, string, number];
-    expect(status).toBe(404);
+    expect(status).toBe(400);
+  });
+
+  it("allows standard capabilities on views with declared capabilities", async () => {
+    const viewWithCaps = {
+      ...WALLET_VIEW,
+      capabilities: [{ id: "custom-action", description: "A custom action" }],
+    };
+    await registerPluginViews(
+      {
+        name: "views-integration-wallet",
+        description: "wallet",
+        actions: [],
+        views: [viewWithCaps],
+      },
+      undefined,
+    );
+
+    const broadcasts: object[] = [];
+    const { ctx } = makeCtx(
+      "POST",
+      "/api/views/wallet.inventory/interact",
+      {},
+      undefined,
+      { capability: "get-text", timeoutMs: 500 },
+      (payload) => broadcasts.push(payload),
+    );
+
+    // This will time out (504) since no frontend resolves it — that's fine,
+    // we just want to confirm the broadcast happened (capability was accepted).
+    await handleViewsRoutes(ctx);
+    expect(broadcasts).toHaveLength(1);
+    const broadcast = broadcasts[0] as { type: string; capability: string };
+    expect(broadcast.type).toBe("view:interact");
+    expect(broadcast.capability).toBe("get-text");
   });
 });
 
@@ -490,7 +654,7 @@ describe("handleViewsRoutes route fallthrough", () => {
     const { ctx, json } = makeCtx("POST", "/api/views");
     // POST /api/views is not a registered route; should fall through or return handled=false
     // The actual handler only handles GET /api/views exactly.
-    const _handled = await handleViewsRoutes(ctx);
+    await handleViewsRoutes(ctx);
     // POST to /api/views should not be handled (no matching route)
     expect(json).not.toHaveBeenCalled();
     // handled may be true or false — the important thing is no json response on POST /api/views

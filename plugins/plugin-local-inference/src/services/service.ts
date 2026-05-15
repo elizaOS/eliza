@@ -9,7 +9,12 @@
 
 import { existsSync } from "node:fs";
 import { join as pathJoin } from "node:path";
-import type { AgentRuntime } from "@elizaos/core";
+import {
+	type AgentRuntime,
+	logger,
+	renderMessageHandlerStablePrefix,
+	type UUID,
+} from "@elizaos/core";
 import {
 	ActiveModelCoordinator,
 	type LocalInferenceLoadOverrides,
@@ -79,6 +84,8 @@ import type {
 	VisionDescribeRequest,
 	VisionDescribeResult,
 } from "./vision/types";
+
+const SYSTEM_PREFIX_CONVERSATION_ID = "__system_prefix__";
 
 export class LocalInferenceService {
 	// The downloader runs the engine-backed on-device verify pass
@@ -330,7 +337,50 @@ export class LocalInferenceService {
 		if (!installed) {
 			throw new Error(`Model not installed: ${modelId}`);
 		}
-		return this.activeModel.switchTo(runtime, installed, overrides);
+		const state = await this.activeModel.switchTo(
+			runtime,
+			installed,
+			overrides,
+		);
+		if (runtime && state.status === "ready") {
+			void this.prewarmSystemPrefix(runtime).catch(() => {
+				// Logged inside prewarmSystemPrefix at debug; activation should not
+				// regress to a blocking path if a best-effort warmup misses.
+			});
+		}
+		return state;
+	}
+
+	/**
+	 * Warm the Stage-1 stable prefix after an explicit model activation.
+	 *
+	 * `ensureLocalInferenceHandler` also attempts this at runtime boot, but
+	 * desktop activation often happens later through `/api/local-inference/active`;
+	 * at boot there may be no resident model, so that early warmup correctly
+	 * no-ops. Running it here closes that gap without blocking activation.
+	 */
+	async prewarmSystemPrefix(runtime: AgentRuntime): Promise<boolean> {
+		if (!localInferenceEngine.hasLoadedModel()) return false;
+		if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
+		try {
+			const fixedRoomId = (runtime.agentId ??
+				SYSTEM_PREFIX_CONVERSATION_ID) as UUID;
+			const prefix = await renderMessageHandlerStablePrefix(
+				runtime,
+				fixedRoomId,
+			);
+			if (!prefix) return false;
+			return await localInferenceEngine.prewarmConversation(
+				SYSTEM_PREFIX_CONVERSATION_ID,
+				prefix,
+			);
+		} catch (err) {
+			logger.debug(
+				"[local-inference] activation prewarmSystemPrefix failed (best-effort):",
+				err instanceof Error ? err.message : String(err),
+			);
+			return false;
+		}
 	}
 
 	async clearActive(runtime: AgentRuntime | null): Promise<ActiveModelState> {

@@ -88,8 +88,8 @@ async function assertWalletExportRejected(
     headers,
   );
   expect([401, 410]).toContain(status);
-  expect(String((data as { error?: string }).error ?? "")).toContain(
-    "Invalid export token",
+  expect(String((data as { error?: string }).error ?? "")).toMatch(
+    /Invalid export token|Private key export has been removed/i,
   );
 }
 

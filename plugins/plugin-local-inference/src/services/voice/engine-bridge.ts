@@ -1915,6 +1915,28 @@ function locateBundleLibrary(bundleRoot: string): string {
 	);
 }
 
+function bundleHasOmniVoiceWeights(bundleRoot: string): boolean {
+	const ttsDir = path.join(bundleRoot, "tts");
+	if (!existsSync(ttsDir)) return false;
+	try {
+		return readdirSync(ttsDir, { withFileTypes: true }).some(
+			(entry) => entry.isFile() && /^omnivoice-.+\.gguf$/i.test(entry.name),
+		);
+	} catch {
+		return false;
+	}
+}
+
+export function isOmniVoiceBundleAvailable(bundleRoot: string): boolean {
+	if (!bundleRoot || !existsSync(bundleRoot)) return false;
+	const presetPath = path.join(bundleRoot, DEFAULT_VOICE_PRESET_REL_PATH);
+	return (
+		existsSync(presetPath) &&
+		bundleHasOmniVoiceWeights(bundleRoot) &&
+		existsSync(locateBundleLibrary(bundleRoot))
+	);
+}
+
 function directoryHasRegularFile(dir: string): boolean {
 	for (const entry of readdirSync(dir, { withFileTypes: true })) {
 		if (entry.isFile()) return true;

@@ -62,6 +62,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
+/* Visibility: when building the SHARED library
+ * (`VOICE_CLASSIFIER_BUILD_SHARED=1`), mark the public C ABI as
+ * exported so the rest of the TU keeps `-fvisibility=hidden` to
+ * shrink the symbol table and avoid leaking internal helpers. The
+ * STATIC library and consumers see the default (visible) attribute. */
+#if defined(VOICE_CLASSIFIER_BUILD_SHARED) && (defined(__GNUC__) || defined(__clang__))
+#define VOICE_CLASSIFIER_API __attribute__((visibility("default")))
+#elif defined(_WIN32) && defined(VOICE_CLASSIFIER_BUILD_SHARED)
+#define VOICE_CLASSIFIER_API __declspec(dllexport)
+#else
+#define VOICE_CLASSIFIER_API
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -99,7 +112,7 @@ typedef void *voice_emotion_handle;
  *   pinned variant.
  * On failure `*out` (when non-NULL) is set to NULL.
  */
-int voice_emotion_open(const char *gguf, voice_emotion_handle *out);
+VOICE_CLASSIFIER_API int voice_emotion_open(const char *gguf, voice_emotion_handle *out);
 
 /*
  * Run the emotion classifier over a mono 16 kHz float-PCM window of
@@ -112,7 +125,7 @@ int voice_emotion_open(const char *gguf, voice_emotion_handle *out);
  * Returns `-ENOSYS` from the stub.
  * On failure the `probs` array (when non-NULL) is zeroed.
  */
-int voice_emotion_classify(voice_emotion_handle h,
+VOICE_CLASSIFIER_API int voice_emotion_classify(voice_emotion_handle h,
                            const float *pcm_16khz,
                            size_t n,
                            float probs[VOICE_EMOTION_NUM_CLASSES]);
@@ -124,7 +137,7 @@ int voice_emotion_classify(voice_emotion_handle h,
  * non-NULL handle (the stub never produces a real handle, so a non-NULL
  * argument is a misuse the stub surfaces explicitly).
  */
-int voice_emotion_close(voice_emotion_handle h);
+VOICE_CLASSIFIER_API int voice_emotion_close(voice_emotion_handle h);
 
 /*
  * Return the canonical class name for emotion class index `idx`.
@@ -144,7 +157,7 @@ int voice_emotion_close(voice_emotion_handle h);
  * or NULL for out-of-range indices. The returned pointer is valid for
  * the lifetime of the process; callers must not free it.
  */
-const char *voice_emotion_class_name(int idx);
+VOICE_CLASSIFIER_API const char *voice_emotion_class_name(int idx);
 
 /* ---------------- end-of-turn detector ---------------- */
 
@@ -156,7 +169,7 @@ typedef void *voice_eot_handle;
  * `scripts/voice_eot_to_gguf.py`. Same contract as the other `*_open`
  * entry points. Returns `-ENOSYS` from the stub.
  */
-int voice_eot_open(const char *gguf, voice_eot_handle *out);
+VOICE_CLASSIFIER_API int voice_eot_open(const char *gguf, voice_eot_handle *out);
 
 /*
  * Score a mono 16 kHz float-PCM window for end-of-turn likelihood.
@@ -168,13 +181,13 @@ int voice_eot_open(const char *gguf, voice_eot_handle *out);
  * Returns `-ENOSYS` from the stub.
  * On failure `*eot_prob` (when non-NULL) is set to 0.
  */
-int voice_eot_score(voice_eot_handle h,
+VOICE_CLASSIFIER_API int voice_eot_score(voice_eot_handle h,
                     const float *pcm_16khz,
                     size_t n,
                     float *eot_prob);
 
 /* Release an EOT session. NULL-safe. */
-int voice_eot_close(voice_eot_handle h);
+VOICE_CLASSIFIER_API int voice_eot_close(voice_eot_handle h);
 
 /* ---------------- speaker embedding ---------------- */
 
@@ -186,7 +199,7 @@ typedef void *voice_speaker_handle;
  * `scripts/voice_speaker_to_gguf.py`. Same contract as the other
  * `*_open` entry points. Returns `-ENOSYS` from the stub.
  */
-int voice_speaker_open(const char *gguf, voice_speaker_handle *out);
+VOICE_CLASSIFIER_API int voice_speaker_open(const char *gguf, voice_speaker_handle *out);
 
 /*
  * Compute a 192-dim L2-normalized speaker embedding for a mono 16 kHz
@@ -198,13 +211,13 @@ int voice_speaker_open(const char *gguf, voice_speaker_handle *out);
  * Returns `-ENOSYS` from the stub.
  * On failure `embedding` (when non-NULL) is zeroed.
  */
-int voice_speaker_embed(voice_speaker_handle h,
+VOICE_CLASSIFIER_API int voice_speaker_embed(voice_speaker_handle h,
                         const float *pcm_16khz,
                         size_t n,
                         float embedding[VOICE_SPEAKER_EMBEDDING_DIM]);
 
 /* Release a speaker session. NULL-safe. */
-int voice_speaker_close(voice_speaker_handle h);
+VOICE_CLASSIFIER_API int voice_speaker_close(voice_speaker_handle h);
 
 /*
  * Cosine distance between two 192-dim speaker embeddings. Defined as
@@ -220,7 +233,75 @@ int voice_speaker_close(voice_speaker_handle h);
  *
  * Real implementation — used by callers and by the test suite.
  */
-float voice_speaker_distance(const float *a, const float *b);
+VOICE_CLASSIFIER_API float voice_speaker_distance(const float *a, const float *b);
+
+/* ---------------- diarizer (pyannote-3) ---------------- */
+
+/* Pyannote-3 segmentation diarizer: SincNet front-end + LSTM +
+ * 7-class powerset classifier head. Input: a fixed 10 s mono 16 kHz
+ * float window; output: a per-frame label sequence of length T (where
+ * T is the model's frame rate for the input window) over the 7
+ * powerset classes:
+ *
+ *   0 = silence
+ *   1 = speaker A only
+ *   2 = speaker B only
+ *   3 = speaker C only
+ *   4 = speakers A + B
+ *   5 = speakers A + C
+ *   6 = speakers B + C
+ *
+ * The 7-class powerset is the upstream pyannote-3 contract (see
+ * `pyannote/Powerset`). Callers consume the per-frame label sequence
+ * by running agglomerative clustering across windows; that clustering
+ * is JS-side in `services/voice/speaker/diarizer.ts` so this library
+ * stays focused on the model forward pass.
+ *
+ * Output dim is fixed at 7 powerset classes; if the upstream model
+ * scales up to more concurrent speakers, the GGUF carries an updated
+ * `voice_diarizer.num_classes` metadata key and this library refuses
+ * to load it (the JS-side label decoder is hardcoded to 7 today).
+ */
+
+#define VOICE_DIARIZER_NUM_CLASSES 7
+
+/* Opaque session handle for the diarizer. */
+typedef void *voice_diarizer_handle;
+
+/*
+ * Open a diarizer session against a GGUF file produced by
+ * `scripts/voice_diarizer_to_gguf.py`. Same contract as the other
+ * `*_open` entry points. Returns `-ENOSYS` from the stub.
+ */
+VOICE_CLASSIFIER_API int voice_diarizer_open(const char *gguf, voice_diarizer_handle *out);
+
+/*
+ * Run the diarizer over a mono 16 kHz float-PCM window of length `n`
+ * and write the per-frame label sequence into `labels_out` (one
+ * int8_t label per frame, in `[0, VOICE_DIARIZER_NUM_CLASSES)`).
+ *
+ * The caller passes the capacity of `labels_out` in
+ * `*frames_capacity_inout`. On success the function sets
+ * `*frames_capacity_inout` to the number of labels actually written
+ * (`frames_per_window`). On `-ENOSPC` the function does not write to
+ * `labels_out` but sets `*frames_capacity_inout` to the required
+ * frame count so the caller can resize and re-call.
+ *
+ * Returns 0 on success.
+ * Returns `-EINVAL` on NULL handle / pcm / labels_out, or zero `n`.
+ * Returns `-ENOSPC` when `*frames_capacity_inout < frames_per_window`.
+ * Returns `-ENOSYS` from the stub.
+ * On any failure `labels_out` (when non-NULL and the size was
+ * adequate) is zeroed.
+ */
+VOICE_CLASSIFIER_API int voice_diarizer_segment(voice_diarizer_handle h,
+                           const float *pcm_16khz,
+                           size_t n,
+                           int8_t *labels_out,
+                           size_t *frames_capacity_inout);
+
+/* Release a diarizer session. NULL-safe. */
+VOICE_CLASSIFIER_API int voice_diarizer_close(voice_diarizer_handle h);
 
 /* ---------------- shared mel front-end ---------------- */
 
@@ -242,7 +323,7 @@ float voice_speaker_distance(const float *a, const float *b);
  *
  * Real implementation — used by all three heads and by the test suite.
  */
-int voice_mel_compute(const float *pcm_16khz,
+VOICE_CLASSIFIER_API int voice_mel_compute(const float *pcm_16khz,
                       size_t n_samples,
                       float *mel_out,
                       size_t mel_capacity,
@@ -250,7 +331,7 @@ int voice_mel_compute(const float *pcm_16khz,
 
 /* Number of mel frames a window of `n_samples` produces. Returns 0 if
  * the window is too short to fit a single FFT. */
-size_t voice_mel_frame_count(size_t n_samples);
+VOICE_CLASSIFIER_API size_t voice_mel_frame_count(size_t n_samples);
 
 /* ---------------- diagnostics ---------------- */
 
@@ -259,7 +340,7 @@ size_t voice_mel_frame_count(size_t n_samples);
  * selected dispatch path. The stub returns "stub"; the real ggml-backed
  * implementation will return "ggml-cpu", "ggml-metal", etc. Never NULL.
  */
-const char *voice_classifier_active_backend(void);
+VOICE_CLASSIFIER_API const char *voice_classifier_active_backend(void);
 
 #ifdef __cplusplus
 }

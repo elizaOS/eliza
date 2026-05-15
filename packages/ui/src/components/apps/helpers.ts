@@ -45,12 +45,12 @@ export const APPS_VIEW_HIDDEN_APP_NAMES = [
   "@elizaos/browser-bridge-extension",
   "app-counter",
   "@elizaos/plugin-form",
-  "@elizaos/app-documents",
-  "@elizaos/app-screenshare",
-  "@elizaos/app-task-coordinator",
+  "@elizaos/plugin-documents",
+  "@elizaos/plugin-screenshare",
+  "@elizaos/plugin-task-coordinator",
   // Shared wallet/inventory system package — provides components used by the
   // app shell, not a standalone installable app.
-  "@elizaos/app-wallet",
+  "@elizaos/plugin-wallet-ui",
 ] as const;
 
 const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
@@ -58,31 +58,31 @@ const APPS_VIEW_HIDDEN_APP_NAME_SET = new Set<string>(
 );
 
 const FEATURED_APP_NAMES = new Set<string>([
-  "@elizaos/app-lifeops",
-  "@elizaos/app-companion",
-  "@elizaos/app-defense-of-the-agents",
-  "@elizaos/app-clawville",
+  "@elizaos/plugin-lifeops",
+  "@elizaos/plugin-companion",
+  "@elizaos/plugin-defense-of-the-agents",
+  "@elizaos/plugin-clawville",
 ]);
 
 const DEFAULT_VISIBLE_GAME_APP_NAMES = new Set<string>([
-  "@elizaos/app-companion",
-  "@elizaos/app-defense-of-the-agents",
-  "@elizaos/app-clawville",
+  "@elizaos/plugin-companion",
+  "@elizaos/plugin-defense-of-the-agents",
+  "@elizaos/plugin-clawville",
 ]);
 
 const DEFAULT_HIDDEN_APP_NAMES = new Set<string>([
-  "@elizaos/app-elizamaker",
-  "@elizaos/app-hyperliquid",
-  "@elizaos/app-polymarket",
-  "@elizaos/app-shopify",
-  "@elizaos/app-steward",
-  "@elizaos/app-vincent",
+  "@elizaos/plugin-elizamaker",
+  "@elizaos/plugin-hyperliquid-app",
+  "@elizaos/plugin-polymarket-app",
+  "@elizaos/plugin-shopify-ui",
+  "@elizaos/plugin-steward-app",
+  "@elizaos/plugin-vincent",
 ]);
 
 const WALLET_SCOPED_APP_NAMES = new Set<string>([
-  "@elizaos/app-hyperliquid",
-  "@elizaos/app-polymarket",
-  "@elizaos/app-vincent",
+  "@elizaos/plugin-hyperliquid-app",
+  "@elizaos/plugin-polymarket-app",
+  "@elizaos/plugin-vincent",
 ]);
 
 const APP_CATALOG_SECTION_ORDER: readonly AppCatalogSectionKey[] = [
@@ -339,8 +339,8 @@ export function getAppCatalogSectionKey(
   }
 
   if (
-    app.name === "@elizaos/app-steward" ||
-    app.name === "@elizaos/app-elizamaker"
+    app.name === "@elizaos/plugin-steward-app" ||
+    app.name === "@elizaos/plugin-elizamaker"
   ) {
     return "finance";
   }
@@ -351,21 +351,21 @@ export function getAppCatalogSectionKey(
 
   const canonicalName = normalizeElizaCuratedAppName(app.name) ?? app.name;
   switch (canonicalName) {
-    case "@elizaos/app-companion":
+    case "@elizaos/plugin-companion":
       return "games";
-    case "@elizaos/app-vincent":
-    case "@elizaos/app-shopify":
-    case "@elizaos/app-hyperliquid":
-    case "@elizaos/app-polymarket":
+    case "@elizaos/plugin-vincent":
+    case "@elizaos/plugin-shopify-ui":
+    case "@elizaos/plugin-hyperliquid-app":
+    case "@elizaos/plugin-polymarket-app":
       return "finance";
-    case "@elizaos/app-babylon":
+    case "@elizaos/plugin-babylon":
       return "games";
     case "@hyperscape/plugin-hyperscape":
-    case "@elizaos/app-hyperscape":
-    case "@elizaos/app-2004scape":
-    case "@elizaos/app-scape":
-    case "@elizaos/app-defense-of-the-agents":
-    case "@elizaos/app-clawville":
+    case "@elizaos/plugin-hyperscape":
+    case "@elizaos/plugin-2004scape":
+    case "@elizaos/plugin-scape":
+    case "@elizaos/plugin-defense-of-the-agents":
+    case "@elizaos/plugin-clawville":
       return "games";
   }
 

@@ -48,7 +48,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### BURN_LOGS
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/burn-logs.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/burn-logs.ts`
 - **Description:** Use tinderbox on logs in inventory to light a fire
 - **Similes:** `LIGHT_FIRE`, `FIREMAKING`
 - **Validate:** ✅ yes
@@ -57,7 +57,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### BUY_FROM_SHOP
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/buy-from-shop.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/buy-from-shop.ts`
 - **Description:** Buy an item from the currently open shop, optionally specifying a count (defaults to 1)
 - **Similes:** `PURCHASE_ITEM`, `BUY_ITEM`
 - **Validate:** ✅ yes
@@ -66,7 +66,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### CAST_SPELL
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/cast-spell.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/cast-spell.ts`
 - **Description:** Cast a spell by ID, optionally targeting an NPC
 - **Similes:** `USE_MAGIC`, `CAST`
 - **Validate:** ✅ yes
@@ -75,7 +75,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### CHOP_TREE
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/chop-tree.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/chop-tree.ts`
 - **Description:** Chop a nearby tree, optionally specifying the tree type (oak, willow, etc.)
 - **Similes:** `CUT_TREE`, `WOODCUT`
 - **Validate:** ✅ yes
@@ -84,7 +84,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### CLOSE_BANK
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/close-bank.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/close-bank.ts`
 - **Description:** Close the bank interface
 - **Similes:** `EXIT_BANK`
 - **Validate:** ✅ yes
@@ -93,7 +93,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### CLOSE_SHOP
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/close-shop.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/close-shop.ts`
 - **Description:** Close the shop interface
 - **Similes:** `EXIT_SHOP`
 - **Validate:** ✅ yes
@@ -102,7 +102,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### COOK_FOOD
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/cook-food.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/cook-food.ts`
 - **Description:** Cook raw food on a nearby fire or range, optionally specifying the food name
 - **Similes:** `COOK`, `COOK_RAW_FOOD`
 - **Validate:** ✅ yes
@@ -111,7 +111,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### CRAFT_LEATHER
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/craft-leather.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/craft-leather.ts`
 - **Description:** Use a needle on leather in inventory to craft leather armour
 - **Similes:** `CRAFTING`, `SEW_LEATHER`
 - **Validate:** ✅ yes
@@ -120,7 +120,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### DEPOSIT_ITEM
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/deposit-item.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/deposit-item.ts`
 - **Description:** Deposit an item into the bank by name, optionally specifying a count (defaults to all)
 - **Similes:** `BANK_ITEM`, `STORE_ITEM`
 - **Validate:** ✅ yes
@@ -129,7 +129,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### EQUIP_ITEM
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/equip-item.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/equip-item.ts`
 - **Description:** Equip an item from inventory by name
 - **Similes:** `WEAR_ITEM`, `WIELD_ITEM`
 - **Validate:** ✅ yes
@@ -138,7 +138,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### FISH
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/fish.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/fish.ts`
 - **Description:** Fish at a nearby fishing spot, optionally specifying the spot type
 - **Similes:** `GO_FISHING`, `CATCH_FISH`
 - **Validate:** ✅ yes
@@ -147,7 +147,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### FLETCH_LOGS
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/fletch-logs.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/fletch-logs.ts`
 - **Description:** Use a knife on logs in inventory to fletch them
 - **Similes:** `FLETCHING`, `CARVE_LOGS`
 - **Validate:** ✅ yes
@@ -156,7 +156,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### INTERACT_OBJECT
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/interact-object.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/interact-object.ts`
 - **Description:** Interact with a world object by name, with an optional interaction option
 - **Similes:** `USE_OBJECT`, `CLICK_OBJECT`
 - **Validate:** ✅ yes
@@ -165,7 +165,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### MINE_ROCK
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/mine-rock.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/mine-rock.ts`
 - **Description:** Mine a nearby rock, optionally specifying the ore type (copper, tin, iron, etc.)
 - **Similes:** `MINE_ORE`, `MINE`
 - **Validate:** ✅ yes
@@ -174,7 +174,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### NAVIGATE_DIALOG
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/navigate-dialog.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/navigate-dialog.ts`
 - **Description:** Select a dialog option by number (1-based) during an NPC conversation
 - **Similes:** `SELECT_DIALOG`, `CHOOSE_OPTION`, `DIALOG_OPTION`
 - **Validate:** ✅ yes
@@ -183,7 +183,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### OPEN_BANK
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/open-bank.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/open-bank.ts`
 - **Description:** Open the nearest bank booth or banker NPC
 - **Similes:** `USE_BANK`, `ACCESS_BANK`
 - **Validate:** ✅ yes
@@ -192,7 +192,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### OPEN_DOOR
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/open-door.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/open-door.ts`
 - **Description:** Open the nearest door or gate
 - **Similes:** `OPEN_GATE`, `USE_DOOR`
 - **Validate:** ✅ yes
@@ -201,7 +201,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### OPEN_SHOP
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/open-shop.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/open-shop.ts`
 - **Description:** Open a shop by talking to a shopkeeper NPC
 - **Similes:** `TRADE_WITH_NPC`, `BROWSE_SHOP`
 - **Validate:** ✅ yes
@@ -210,7 +210,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### PICKPOCKET_NPC
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/pickpocket-npc.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/pickpocket-npc.ts`
 - **Description:** Pickpocket a nearby NPC by name
 - **Similes:** `STEAL_FROM_NPC`, `THIEVE_NPC`
 - **Validate:** ✅ yes
@@ -219,7 +219,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### PICKUP_ITEM
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/pickup-item.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/pickup-item.ts`
 - **Description:** Pick up an item from the ground by name
 - **Similes:** `TAKE_ITEM`, `GRAB_ITEM`, `LOOT_ITEM`
 - **Validate:** ✅ yes
@@ -228,7 +228,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### SELL_TO_SHOP
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/sell-to-shop.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/sell-to-shop.ts`
 - **Description:** Sell an item to the currently open shop, optionally specifying a count (defaults to 1)
 - **Similes:** `SELL_ITEM`
 - **Validate:** ✅ yes
@@ -237,7 +237,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### SET_COMBAT_STYLE
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/set-combat-style.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/set-combat-style.ts`
 - **Description:** Set the combat style (0=Attack, 1=Strength, 2=Defence, 3=Controlled)
 - **Similes:** `CHANGE_COMBAT_STYLE`, `SWITCH_COMBAT`
 - **Validate:** ✅ yes
@@ -246,7 +246,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### SMITH_AT_ANVIL
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/smith-at-anvil.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/smith-at-anvil.ts`
 - **Description:** Smith a metal bar at a nearby anvil, optionally specifying what to make
 - **Similes:** `SMITHING`, `USE_ANVIL`
 - **Validate:** ✅ yes
@@ -255,7 +255,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### TALK_TO_NPC
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/talk-to-npc.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/talk-to-npc.ts`
 - **Description:** Talk to a nearby NPC by name
 - **Similes:** `SPEAK_TO_NPC`, `CHAT_WITH_NPC`
 - **Validate:** ✅ yes
@@ -264,7 +264,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### UNEQUIP_ITEM
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/unequip-item.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/unequip-item.ts`
 - **Description:** Unequip a worn item by name
 - **Similes:** `REMOVE_ITEM`, `TAKE_OFF_ITEM`
 - **Validate:** ✅ yes
@@ -273,7 +273,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### USE_ITEM
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/use-item.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/use-item.ts`
 - **Description:** Use an item from inventory by name
 - **Similes:** `ACTIVATE_ITEM`
 - **Validate:** ✅ yes
@@ -282,7 +282,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### USE_ITEM_ON_ITEM
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/use-item-on-item.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/use-item-on-item.ts`
 - **Description:** Use one inventory item on another (e.g. tinderbox on logs)
 - **Similes:** `COMBINE_ITEMS`
 - **Validate:** ✅ yes
@@ -291,7 +291,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### USE_ITEM_ON_OBJECT
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/use-item-on-object.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/use-item-on-object.ts`
 - **Description:** Use an inventory item on a world object (e.g. ore on furnace)
 - **Similes:** `ITEM_ON_OBJECT`
 - **Validate:** ✅ yes
@@ -300,7 +300,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### WITHDRAW_ITEM
 
-- **File:** `eliza/plugins/app-2004scape/src/actions/withdraw-item.ts`
+- **File:** `eliza/plugins/plugin-2004scape/src/actions/withdraw-item.ts`
 - **Description:** Withdraw an item from the bank by name, optionally specifying a count (defaults to 1)
 - **Similes:** `TAKE_FROM_BANK`
 - **Validate:** ✅ yes
@@ -685,7 +685,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### ATTACK_NPC
 
-- **File:** `eliza/plugins/app-scape/src/actions/attack-npc.ts`
+- **File:** `eliza/plugins/plugin-scape/src/actions/attack-npc.ts`
 - **Description:** Engage a nearby NPC in combat by its instance id. The server pathfinds the agent into attack range automatically.
 - **Similes:** `FIGHT_NPC`, `KILL_NPC`, `ENGAGE`
 - **Validate:** ✅ yes
@@ -694,7 +694,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### CHAT_PUBLIC
 
-- **File:** `eliza/plugins/app-scape/src/actions/chat-public.ts`
+- **File:** `eliza/plugins/plugin-scape/src/actions/chat-public.ts`
 - **Description:** Say something in public chat so nearby players and agents can see it. Use to narrate, socialize, or respond to operator prompts.
 - **Similes:** `SAY`, `SPEAK`, `TALK`, `BROADCAST`
 - **Validate:** ✅ yes
@@ -703,7 +703,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### COMPLETE_GOAL
 
-- **File:** `eliza/plugins/app-scape/src/actions/complete-goal.ts`
+- **File:** `eliza/plugins/plugin-scape/src/actions/complete-goal.ts`
 - **Description:** Mark the active goal (or a specific goal id) as completed or abandoned. Use <status>completed|abandoned</status> and optional <notes>why</notes>.
 - **Similes:** `FINISH_GOAL`, `ABANDON_GOAL`, `CLOSE_GOAL`
 - **Validate:** ✅ yes
@@ -712,7 +712,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### DROP_ITEM
 
-- **File:** `eliza/plugins/app-scape/src/actions/drop-item.ts`
+- **File:** `eliza/plugins/plugin-scape/src/actions/drop-item.ts`
 - **Description:** Drop an item from an inventory slot onto the ground at your feet. Useful when inventory is full or you don
 - **Similes:** `DISCARD`, `THROW_AWAY`, `DUMP`
 - **Validate:** ✅ yes
@@ -721,7 +721,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### EAT_FOOD
 
-- **File:** `eliza/plugins/app-scape/src/actions/eat-food.ts`
+- **File:** `eliza/plugins/plugin-scape/src/actions/eat-food.ts`
 - **Description:** Eat a food item from an inventory slot to restore hitpoints. Prioritize this when HP is low.
 - **Similes:** `CONSUME_FOOD`, `HEAL`, `EAT`
 - **Validate:** ✅ yes
@@ -730,7 +730,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### REMEMBER
 
-- **File:** `eliza/plugins/app-scape/src/actions/remember.ts`
+- **File:** `eliza/plugins/plugin-scape/src/actions/remember.ts`
 - **Description:** Write a note to the Scape Journal. Use for lessons, landmarks, and things you want to remember next step.
 - **Similes:** `NOTE`, `LOG`, `JOURNAL`, `RECORD`
 - **Validate:** ✅ yes
@@ -739,7 +739,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### SET_GOAL
 
-- **File:** `eliza/plugins/app-scape/src/actions/set-goal.ts`
+- **File:** `eliza/plugins/plugin-scape/src/actions/set-goal.ts`
 - **Description:** Declare a new goal you want to pursue. Write a short title and optional notes; the goal goes into the Scape Journal and drives future steps until it
 - **Similes:** `DECLARE_GOAL`, `NEW_GOAL`, `PLAN`
 - **Validate:** ✅ yes
@@ -748,7 +748,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### WALK_TO
 
-- **File:** `eliza/plugins/app-scape/src/actions/walk-to.ts`
+- **File:** `eliza/plugins/plugin-scape/src/actions/walk-to.ts`
 - **Description:** Walk the agent toward a specific world tile (x, z). Use this to move to banks, NPCs, resource nodes, or just to explore.
 - **Similes:** `MOVE_TO`, `GO_TO`, `TRAVEL_TO`, `HEAD_TO`
 - **Validate:** ✅ yes
@@ -889,13 +889,13 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 > This generated inventory is incomplete for LifeOps. The canonical action
 > registration is `appLifeOpsPlugin.actions` in
-> `eliza/plugins/app-lifeops/src/plugin.ts`, which currently includes browser
+> `eliza/plugins/plugin-lifeops/src/plugin.ts`, which currently includes browser
 > companion, inbox, approvals, travel, check-in, follow-up, scheduling, and
 > activity actions beyond the legacy subset below.
 
 ### BLOCK_APPS
 
-- **File:** `eliza/plugins/app-lifeops/src/actions/app-blocker.ts`
+- **File:** `eliza/plugins/plugin-lifeops/src/actions/app-blocker.ts`
 - **Description:** Admin-only. Block selected apps on the user
 - **Similes:** `BLOCK_APP`, `BLOCK_APPLICATION`, `APP_BLOCKER`, `START_APP_BLOCK`, `BLOCK_DISTRACTING_APPS`, `SHIELD_APPS`
 - **Validate:** ✅ yes
@@ -904,7 +904,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### BLOCK_WEBSITES
 
-- **File:** `eliza/plugins/app-lifeops/src/actions/website-blocker.ts`
+- **File:** `eliza/plugins/plugin-lifeops/src/actions/website-blocker.ts`
 - **Description:** Admin-only. Start a local website block by editing the system hosts file.
 - **Similes:** `SELFCONTROL_BLOCK_WEBSITES`, `BLOCK_WEBSITE`, `BLOCK_SITE`, `BLOCK_WEBSITE_NOW`, `WEBSITE_BLOCKER`, `WEBSITEBLOCKER`, `START_FOCUS_BLOCK`, `BLOCK_SITE`, `BLOCK_DISTRACTING_SITES`
 - **Validate:** ✅ yes
@@ -913,7 +913,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### CALENDAR_ACTION
 
-- **File:** `eliza/plugins/app-lifeops/src/actions/calendar.ts`
+- **File:** `eliza/plugins/plugin-lifeops/src/actions/calendar.ts`
 - **Description:** Interact with Google Calendar through LifeOps.
 - **Similes:** `CALENDAR`, `CHECK_CALENDAR`, `SCHEDULE_EVENT`, `CREATE_CALENDAR_EVENT`, `SEARCH_CALENDAR`, `NEXT_MEETING`, `ITINERARY`, `TRAVEL_SCHEDULE`, `CHECK_SCHEDULE`
 - **Validate:** ✅ yes
@@ -922,7 +922,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### GMAIL_ACTION
 
-- **File:** `eliza/plugins/app-lifeops/src/actions/gmail.ts`
+- **File:** `eliza/plugins/plugin-lifeops/src/actions/gmail.ts`
 - **Description:** Interact with Gmail through LifeOps.
 - **Similes:** `GMAIL`, `CHECK_EMAIL`, `EMAIL_TRIAGE`, `SEARCH_EMAIL`, `DRAFT_EMAIL_REPLY`, `SEND_EMAIL_REPLY`
 - **Validate:** ✅ yes
@@ -931,7 +931,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### LIFE
 
-- **File:** `eliza/plugins/app-lifeops/src/actions/life.ts`
+- **File:** `eliza/plugins/plugin-lifeops/src/actions/life.ts`
 - **Description:** Manage the user
 - **Similes:** `MANAGE_LIFEOPS`, `QUERY_LIFEOPS`, `CREATE_TASK`, `CREATE_HABIT`, `CREATE_GOAL`, `TRACK_HABIT`, `COMPLETE_TASK`, `SET_ALARM`, `SET_REMINDER`, `SNOOZE_REMINDER`, `SET_REMINDER_INTENSITY`
 - **Validate:** ✅ yes
@@ -940,7 +940,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### UPDATE_OWNER_PROFILE
 
-- **File:** `eliza/plugins/app-lifeops/src/actions/update-owner-profile.ts`
+- **File:** `eliza/plugins/plugin-lifeops/src/actions/update-owner-profile.ts`
 - **Description:** Silently persist stable, owner-only LifeOps profile details when the canonical owner clearly states or confirms them.
 - **Similes:** `SAVE_OWNER_PROFILE`, `SET_OWNER_PROFILE`, `UPDATE_USER_PROFILE`, `SAVE_USER_PROFILE`
 - **Validate:** ✅ yes
@@ -1183,7 +1183,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### CHECK_BALANCE
 
-- **File:** `eliza/plugins/app-steward/src/actions/check-balance.ts`
+- **File:** `eliza/plugins/plugin-steward-app/src/actions/check-balance.ts`
 - **Description:** Check wallet balances across chains. Use this when a user asks about
 - **Similes:** `GET_BALANCE`, `WALLET_BALANCE`, `CHECK_WALLET`, `MY_BALANCE`, `PORTFOLIO`, `HOLDINGS`
 - **Validate:** ✅ yes
@@ -1192,7 +1192,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### EXECUTE_TRADE
 
-- **File:** `eliza/plugins/app-steward/src/actions/execute-trade.ts`
+- **File:** `eliza/plugins/plugin-steward-app/src/actions/execute-trade.ts`
 - **Description:** Execute a BSC token trade (buy or sell). Use this when a user asks to
 - **Similes:** `BUY_TOKEN`, `SELL_TOKEN`, `SWAP`, `TRADE`, `BUY`, `SELL`
 - **Validate:** ✅ yes
@@ -1201,7 +1201,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### TRANSFER_TOKEN
 
-- **File:** `eliza/plugins/app-steward/src/actions/transfer-token.ts`
+- **File:** `eliza/plugins/plugin-steward-app/src/actions/transfer-token.ts`
 - **Description:** Transfer tokens or native BNB to another address. Use this when a user
 - **Similes:** `SEND_TOKEN`, `TRANSFER`, `SEND`, `SEND_BNB`, `SEND_CRYPTO`, `PAY`
 - **Validate:** ✅ yes
@@ -1286,7 +1286,7 @@ _Catalog snapshot from 2026-04-16. Total actions: 147._
 
 ### PLAY_EMOTE
 
-- **File:** `eliza/plugins/app-companion/src/actions/emote.ts`
+- **File:** `eliza/plugins/plugin-companion/src/actions/emote.ts`
 - **Description:** Play a one-shot emote animation on your 3D VRM avatar, then return to idle.
 - **Similes:** `EMOTE`, `ANIMATE`, `GESTURE`, `DANCE`, `WAVE`, `PLAY_ANIMATION`, `DO_EMOTE`, `PERFORM`
 - **Validate:** ✅ yes
@@ -1347,13 +1347,13 @@ Notable actions without examples (first 10):
 ### Files That Could Not Parse
 - **Count:** 25
 
-  - `eliza/plugins/app-2004scape/src/actions/param-parser.ts`
-  - `eliza/plugins/app-lifeops/src/actions/inbox-digest.ts`
-  - `eliza/plugins/app-lifeops/src/actions/inbox-respond.ts`
-  - `eliza/plugins/app-lifeops/src/actions/inbox-triage.ts`
-  - `eliza/plugins/app-lifeops/src/actions/inbox.ts`
-  - `eliza/plugins/app-lifeops/src/actions/life-goal-extractor.ts`
-  - `eliza/plugins/app-lifeops/src/actions/life-param-extractor.ts`
-  - `eliza/plugins/app-lifeops/src/actions/life-recent-context.ts`
-  - `eliza/plugins/app-lifeops/src/actions/life-update-extractor.ts`
-  - `eliza/plugins/app-lifeops/src/actions/life.extractor.ts`
+  - `eliza/plugins/plugin-2004scape/src/actions/param-parser.ts`
+  - `eliza/plugins/plugin-lifeops/src/actions/inbox-digest.ts`
+  - `eliza/plugins/plugin-lifeops/src/actions/inbox-respond.ts`
+  - `eliza/plugins/plugin-lifeops/src/actions/inbox-triage.ts`
+  - `eliza/plugins/plugin-lifeops/src/actions/inbox.ts`
+  - `eliza/plugins/plugin-lifeops/src/actions/life-goal-extractor.ts`
+  - `eliza/plugins/plugin-lifeops/src/actions/life-param-extractor.ts`
+  - `eliza/plugins/plugin-lifeops/src/actions/life-recent-context.ts`
+  - `eliza/plugins/plugin-lifeops/src/actions/life-update-extractor.ts`
+  - `eliza/plugins/plugin-lifeops/src/actions/life.extractor.ts`

@@ -99,10 +99,16 @@ class TestSWEBenchEvaluator:
         assert not result.success
 
     @pytest.mark.asyncio
-    async def test_no_docker_uses_basic_patch_validation(
+    async def test_docker_unavailable_returns_incompatible(
         self, evaluator: SWEBenchEvaluator, sample_instance: SWEBenchInstance
     ) -> None:
-        """No-Docker mode is smoke-grade shape validation, not test execution."""
+        """Without Docker, evaluator must refuse to fall back to similarity scoring.
+
+        The previous behavior leaked the ground-truth patch into a fuzzy
+        line/file overlap comparison and reported ``success=True`` for any
+        patch with similarity >= 0.35. That is removed in favor of an
+        ``incompatible`` outcome so the orchestrator quarantines the result.
+        """
         patch = """diff --git a/file.py b/file.py
 --- a/file.py
 +++ b/file.py
@@ -112,10 +118,11 @@ class TestSWEBenchEvaluator:
 +    return True
 """
         result = await evaluator.evaluate_patch(sample_instance, patch)
-        assert result.patch_status == PatchStatus.PASS
-        assert result.success is True
+        assert result.patch_status == PatchStatus.GENERATED
+        assert result.success is False
         assert result.tokens_used is None
-        assert result.status == "smoke_validated"
+        assert result.status == "incompatible"
+        assert "Docker unavailable" in (result.error or "")
 
     def test_parse_test_results_pytest(self, evaluator: SWEBenchEvaluator) -> None:
         """Test parsing pytest output."""

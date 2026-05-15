@@ -110,6 +110,7 @@ import {
 	isTrajectoryRecordingEnabled,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
+import { TurnAbortedError } from "../runtime/turn-controller";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
 	getModelStreamChunkDeliveryDepth,
@@ -2171,18 +2172,19 @@ async function createV5MessageContextObject(args: {
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
-	const renderExclusions = [
-		...MODEL_CONTEXT_PROVIDER_EXCLUSIONS,
-		...(args.extraProviderExclusions ?? []),
-		// The recent-messages provider exposes structured prior turns in
-		// data.recentMessages. appendPriorDialogueEvents renders those as proper
-		// chat-message events, so also rendering provider.text would duplicate the
-		// same conversation and can leak stored assistant thought/action metadata
-		// into the prompt. Keep the text fallback only for legacy/unstructured
-		// provider states.
-		...(hasStructuredRecentMessages(args.state) ? ["RECENT_MESSAGES"] : []),
-	];
-	appendStateProviderEvents(events, args.state, renderExclusions);
+	const excludeRecentMessagesProviderText = hasStructuredRecentMessages(
+		args.state,
+	);
+	const renderExclusions = args.extraProviderExclusions?.length
+		? [...MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
+		: MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
+	appendStateProviderEvents(
+		events,
+		args.state,
+		excludeRecentMessagesProviderText
+			? [...renderExclusions, "RECENT_MESSAGES"]
+			: renderExclusions,
+	);
 
 	appendPriorDialogueEvents(events, args.runtime, args.state, args.message, {
 		plannerScope: args.includeTools === true,
@@ -2675,7 +2677,14 @@ function extractHandleResponseToolArguments(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const name = String(entry.name ?? entry.toolName).trim();
+		const record = entry as unknown as Record<string, unknown>;
+		const rawFunction =
+			record.function && typeof record.function === "object"
+				? (record.function as Record<string, unknown>)
+				: null;
+		const name = String(
+			record.name ?? record.toolName ?? rawFunction?.name,
+		).trim();
 		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
 		}
@@ -8056,6 +8065,12 @@ export class DefaultMessageService implements IMessageService {
 					state = outcome.result.state;
 				}
 			} catch (error) {
+				if (
+					error instanceof TurnAbortedError ||
+					(isRecord(error) && error.code === "TURN_ABORTED")
+				) {
+					throw error;
+				}
 				const errMsg = error instanceof Error ? error.message : String(error);
 				const errStack = error instanceof Error ? error.stack : undefined;
 				runtime.logger.warn(

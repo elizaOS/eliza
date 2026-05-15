@@ -30,6 +30,7 @@ import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-se
 import { readNavigationEventUrl } from "./cloud-auth-window";
 import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
+import { shouldCreateDesktopTray } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { getFloatingChatManager } from "./floating-chat-window";
@@ -44,6 +45,7 @@ import {
 	resolveBootstrapViewRenderer,
 	resolveMainWindowPartition,
 	shouldForceMainWindowCef,
+	shouldUseIsolatedMainView,
 } from "./main-window-session";
 import {
 	buildMainMenuResetApiCandidates,
@@ -69,6 +71,11 @@ import {
 import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
+import {
+	createRendererApiProxyRequestInit,
+	isRendererApiProxyPath,
+	resolveRendererProxyIdleTimeoutSeconds,
+} from "./renderer-api-proxy";
 import { resolveRendererAsset } from "./renderer-static";
 import {
 	buildBunRpcHandlers,
@@ -737,9 +744,17 @@ async function startRendererServer(): Promise<string> {
 		return "public, max-age=0, must-revalidate";
 	};
 
+	const rendererProxyIdleTimeoutSeconds =
+		resolveRendererProxyIdleTimeoutSeconds(process.env);
+
 	Bun.serve({
 		port,
 		hostname: "127.0.0.1",
+		// The renderer fetches long-lived chat/SSE endpoints through this
+		// same-origin proxy. Bun's default 10s idle timeout cuts those streams
+		// while local inference is still pre-filling; keep it aligned with the
+		// API server's long request budget, capped to Bun.serve's accepted range.
+		idleTimeout: rendererProxyIdleTimeoutSeconds,
 		async fetch(req) {
 			const url = new URL(req.url);
 			const pathname = url.pathname;
@@ -750,23 +765,13 @@ async function startRendererServer(): Promise<string> {
 			// or this static server (non-watch dev:desktop). Without this, every
 			// /api/* call returned SPA HTML and Settings sat on "Loading…" forever.
 			const apiBase = apiBaseOwner.getCurrent().base ?? initialApiBase;
-			if (
-				apiBase &&
-				(pathname.startsWith("/api/") ||
-					pathname === "/ws" ||
-					pathname.startsWith("/music-player"))
-			) {
+			if (apiBase && isRendererApiProxyPath(pathname)) {
 				const target = new URL(pathname + url.search, apiBase);
-				const headers = new Headers(req.headers);
-				headers.set("host", target.host);
 				try {
-					const upstreamRequest: RequestInit & { duplex: "half" } = {
-						method: req.method,
-						headers,
-						body: req.body,
-						duplex: "half",
-						redirect: "manual",
-					};
+					const upstreamRequest = createRendererApiProxyRequestInit(
+						req,
+						target,
+					);
 					const upstream = await fetch(target, upstreamRequest);
 					return new Response(upstream.body, {
 						status: upstream.status,
@@ -854,11 +859,13 @@ async function resolveRendererUrl(): Promise<string> {
 
 async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 	const rendererUrl = await resolveRendererUrl();
-	const mainWindowPartition = resolveMainWindowPartition(process.env);
+	const buildInfo = await BuildConfig.get();
+	const mainWindowPartition = resolveMainWindowPartition(process.env, {
+		platform: process.platform,
+		buildInfo,
+	});
 	if (mainWindowPartition) {
-		logger.info(
-			`[Main] Using isolated main window partition ${mainWindowPartition}`,
-		);
+		logger.info(`[Main] Using main window partition ${mainWindowPartition}`);
 	}
 
 	const statePath = path.join(Utils.paths.userData, "window-state.json");
@@ -883,12 +890,17 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 	const titleBarStyle =
 		process.platform === "darwin" ? "hiddenInset" : "default";
 	const transparent = process.platform === "darwin";
-	const buildInfo = await BuildConfig.get();
-	const forceMainWindowCef = shouldForceMainWindowCef(process.env);
+	const forceMainWindowCef = shouldForceMainWindowCef(
+		process.env,
+		process.platform,
+	);
 	const canUseCefView = buildInfo.availableRenderers.includes("cef");
-	const useIsolatedMainView =
-		(process.platform === "win32" && mainWindowPartition) ||
-		(forceMainWindowCef && canUseCefView && !!mainWindowPartition);
+	const useIsolatedMainView = shouldUseIsolatedMainView({
+		platform: process.platform,
+		mainWindowPartition,
+		forceMainWindowCef,
+		buildInfo,
+	});
 
 	if (forceMainWindowCef && !canUseCefView) {
 		logger.warn(
@@ -944,6 +956,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 			titleBarStyle,
 			transparent,
 			rpc,
+			...(mainWindowPartition ? { partition: mainWindowPartition } : {}),
 		});
 	}
 
@@ -1929,8 +1942,8 @@ function initializeBundledWebGPU(): void {
  * On macOS 26+ with native renderer, WebGPU is expected via WKWebView.
  * On Linux/Windows with CEF, upstream Electrobun flag support is still needed.
  */
-function checkWebGpuBrowserSupport(): void {
-	const status = checkWebGpuSupport();
+function checkWebGpuBrowserSupport(rendererType: "native" | "cef"): void {
+	const status = checkWebGpuSupport(rendererType);
 	if (status.available) {
 		logger.info(`[WebGPU Browser] ${status.reason}`);
 	} else {
@@ -2045,7 +2058,8 @@ async function main(): Promise<void> {
 	recordStartupPhase("webgpu_initialized", {
 		pid: process.pid,
 	});
-	checkWebGpuBrowserSupport();
+	const buildInfo = await BuildConfig.get();
+	checkWebGpuBrowserSupport(buildInfo.defaultRenderer);
 	cleanupFns.length = 0;
 	cleanupFns.push(await startBrowserWorkspaceBridgeServer());
 	recordStartupPhase("browser_workspace_bridge_ready", {
@@ -2206,19 +2220,23 @@ async function main(): Promise<void> {
 	setupDockReopen();
 
 	const desktop = getDesktopManager();
-	try {
-		// Tray is created here so the icon appears at startup, but the menu is
-		// owned by the renderer (DesktopTrayRuntime + main.tsx → Desktop.setTrayMenu).
-		// That keeps a single source of truth for tray items and their handlers.
-		await desktop.createTray({
-			icon: resolveDesktopAppIconPath(),
-			tooltip: BRAND.appName,
-			title: BRAND.appName,
-		});
-	} catch (err) {
-		logger.warn(
-			`[Main] Tray creation failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
+	if (shouldCreateDesktopTray(process.env)) {
+		try {
+			// Tray is created here so the icon appears at startup, but the menu is
+			// owned by the renderer (DesktopTrayRuntime + main.tsx → Desktop.setTrayMenu).
+			// That keeps a single source of truth for tray items and their handlers.
+			await desktop.createTray({
+				icon: resolveDesktopAppIconPath(),
+				tooltip: BRAND.appName,
+				title: BRAND.appName,
+			});
+		} catch (err) {
+			logger.warn(
+				`[Main] Tray creation failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
+	} else {
+		logger.info("[Main] Desktop tray disabled by environment");
 	}
 
 	// ── Steward sidecar startup (must happen BEFORE agent) ────────────

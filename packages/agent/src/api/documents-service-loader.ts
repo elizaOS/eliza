@@ -1,7 +1,7 @@
 import type { AgentRuntime, Memory, Service, UUID } from "@elizaos/core";
 
 // Canonical union types for the documents service surface.
-// Plugin packages (e.g. @elizaos/app-documents) re-export these so route
+// Plugin packages (e.g. @elizaos/plugin-documents) re-export these so route
 // helpers and presenters share one type vocabulary across the workspace.
 export type DocumentVisibilityScope =
   | "global"

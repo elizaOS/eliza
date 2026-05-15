@@ -1,71 +1,39 @@
 // face-recognition-ggml.ts — EXPERIMENTAL.
 //
-// bun:ffi binding for the face-embedding head exposed by the standalone
+// bun:ffi binding for the face-embed head exposed by the standalone
 // `packages/native-plugins/face-cpp/` library. This is the ggml-backed
-// replacement for `face-recognition.ts` (face-api.js, deprecated). It
-// exposes a parallel surface — `FaceRecognitionGgml` mirrors `FaceRecognition`
-// for `recognizeFace`, `addOrUpdateFace`, `getFaceProfile`, `getAllProfiles`,
-// `saveFaceLibrary`, `loadFaceLibrary` — so existing callers can migrate
-// behind the planned `setFaceBackend("ggml")` toggle without touching them.
+// replacement for the face-api.js descriptor path inside
+// `face-recognition.ts`.
 //
-// EXPERIMENTAL: the C ABI is frozen but the model entries
-// (`face_embed_open`, `face_embed`) currently return `-ENOSYS` from the
-// stub. `FaceRecognitionGgml.isAvailable()` returns false until both the
-// compiled `libface.<so|dylib|dll>` AND the embedder GGUF artifact exist.
-// `embedFace()` throws a typed `FaceCppUnavailableError({ code: "stub" })`
-// when the C ABI surfaces `-ENOSYS`. Real model wiring lands with the
-// face-cpp port (see `packages/native-plugins/face-cpp/AGENTS.md`).
+// The native library produces a 128-d L2-normalized embedding from a
+// `face_detection` record (bbox + 6 BlazeFace landmarks). That detection
+// is what `BlazeFaceGgmlDetector` returns, so the typical pipeline is:
 //
-// This binding intentionally does NOT couple to `face-detector-mediapipe.ts`
-// or `face-recognition.ts` — both are read-only here. Callers feed in
-// detections produced by `BlazeFaceGgmlDetector` (`face-detector-ggml.ts`)
-// which carry the 6 BlazeFace keypoints the embedder uses for alignment.
+//   const det = await blazefaceDetector.detect(buffer);
+//   const emb = await embedder.embed(buffer, det[i]);
+//
+// The class deliberately only owns the embedding step; matching,
+// storage, and the rest of the FaceLibrary surface live in
+// `face-recognition.ts` (which the planned `setFaceBackend("ggml")`
+// toggle will wire to this module). Cosine + L2 distance helpers below
+// mirror `face_embed_distance` / `face_embed_distance_l2` so callers
+// can keep their existing math when swapping the backend.
 
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
-import type { FaceLibrary, FaceProfile } from "./types";
+import sharp from "sharp";
 import type { MediaPipeFaceDetection } from "./face-detector-ggml";
 
-const MODULE_TAG = "[FaceRecognitionGgml]";
+const MODULE_TAG = "[FaceEmbedGgml]";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Mirrors include/face/face.h. Keep these in sync with the header — the C
-// side validates struct sizing on its end; mismatches here produce wrong
-// embeddings rather than a load failure.
-const FACE_EMBED_DIM = 128;
 const FACE_DETECTOR_KEYPOINT_COUNT = 6;
 const FACE_DETECTION_FLOATS = 5 + FACE_DETECTOR_KEYPOINT_COUNT * 2; // 17
-
-// Linux errno for ENOSYS (function not implemented). The C ABI returns
-// `-ENOSYS` from the stub; this is the value bun:ffi surfaces back as a
-// negative int32. macOS uses ENOSYS=78 — we accept either.
-const RC_ENOSYS_LINUX = -38;
-const RC_ENOSYS_MACOS = -78;
-
-/**
- * Typed error surfaced when the face-cpp library is loadable but its
- * model entries return `-ENOSYS`. Callers should branch on `code` to
- * decide whether to fall back to a different backend or surface an
- * actionable diagnostic.
- */
-export class FaceCppUnavailableError extends Error {
-  public readonly code: "stub" | "missing-library" | "missing-gguf";
-  constructor(opts: {
-    code: "stub" | "missing-library" | "missing-gguf";
-    message?: string;
-  }) {
-    super(
-      opts.message ??
-        `face-cpp embedder unavailable (code=${opts.code}). See packages/native-plugins/face-cpp/AGENTS.md.`,
-    );
-    this.name = "FaceCppUnavailableError";
-    this.code = opts.code;
-  }
-}
+const FACE_EMBED_DIM = 128;
 
 function defaultLibraryPath(): string {
   const ext =
@@ -104,11 +72,6 @@ function defaultEmbedWeightsPath(): string {
   );
 }
 
-/**
- * Minimal structural type for the bun:ffi pieces we need. Keeps this
- * file typecheckable under plain Node tsc without `bun-types` resolved
- * on every downstream consumer (same trick `face-detector-ggml.ts` uses).
- */
 interface BunFFIModule {
   dlopen: (
     p: string,
@@ -132,11 +95,9 @@ interface FaceEmbedBindings {
     w: number,
     h: number,
     stride: number,
-    detectionRecord: Float32Array,
+    detection: MediaPipeFaceDetection,
   ): Float32Array;
   close(handle: unknown): void;
-  cosineDistance(a: Float32Array, b: Float32Array): number;
-  l2Distance(a: Float32Array, b: Float32Array): number;
 }
 
 let bindingsPromise: Promise<FaceEmbedBindings | null> | null = null;
@@ -190,14 +151,6 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
           args: [FFIType.pointer],
           returns: FFIType.i32,
         },
-        face_embed_distance: {
-          args: [FFIType.pointer, FFIType.pointer],
-          returns: FFIType.f32,
-        },
-        face_embed_distance_l2: {
-          args: [FFIType.pointer, FFIType.pointer],
-          returns: FFIType.f32,
-        },
       });
     } catch (error) {
       logger.warn(
@@ -215,24 +168,32 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
           ptr(cstr) as never,
           ptr(handleSlot) as never,
         ) as number;
-        if (rc === RC_ENOSYS_LINUX || rc === RC_ENOSYS_MACOS) {
-          throw new FaceCppUnavailableError({ code: "stub" });
-        }
         if (rc !== 0) {
           throw new Error(
-            `face_embed_open failed (rc=${rc}) — GGUF likely missing or shape mismatch.`,
+            `face_embed_open failed (rc=${rc}) — GGUF likely missing or invalid.`,
           );
         }
-        return handleSlot[0];
+        const handle = handleSlot[0];
+        if (handle === 0n) {
+          throw new Error("face_embed_open returned NULL handle");
+        }
+        // bun:ffi pointer-typed args expect a Number, not a BigInt.
+        return Number(handle);
       },
-      embed(handle, rgb, w, h, stride, detectionRecord) {
-        // The C-side `face_embed` takes a `face_detection*` whose layout
-        // matches a 17-float record (5 + 6 keypoint pairs). We pass the
-        // already-packed Float32Array directly.
-        if (detectionRecord.length < FACE_DETECTION_FLOATS) {
-          throw new Error(
-            `${MODULE_TAG} detection record too small: ${detectionRecord.length} < ${FACE_DETECTION_FLOATS}`,
-          );
+      embed(handle, rgb, w, h, stride, detection) {
+        // Pack a face_detection record into a 17-float buffer matching
+        // the C struct layout: x, y, w, h, conf, then 12 landmark floats.
+        const det = new Float32Array(FACE_DETECTION_FLOATS);
+        det[0] = detection.bbox.x;
+        det[1] = detection.bbox.y;
+        det[2] = detection.bbox.width;
+        det[3] = detection.bbox.height;
+        det[4] = detection.confidence;
+        const kps = detection.keypoints ?? [];
+        for (let i = 0; i < FACE_DETECTOR_KEYPOINT_COUNT; i++) {
+          const kp = kps[i];
+          det[5 + i * 2 + 0] = kp ? kp.x : 0;
+          det[5 + i * 2 + 1] = kp ? kp.y : 0;
         }
         const out = new Float32Array(FACE_EMBED_DIM);
         const rc = lib.symbols.face_embed(
@@ -241,12 +202,9 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
           w,
           h,
           stride,
-          ptr(detectionRecord) as never,
+          ptr(det) as never,
           ptr(out) as never,
         ) as number;
-        if (rc === RC_ENOSYS_LINUX || rc === RC_ENOSYS_MACOS) {
-          throw new FaceCppUnavailableError({ code: "stub" });
-        }
         if (rc !== 0) {
           throw new Error(`face_embed failed (rc=${rc}).`);
         }
@@ -255,28 +213,6 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
       close(handle) {
         lib.symbols.face_embed_close(handle as never);
       },
-      cosineDistance(a, b) {
-        if (a.length !== FACE_EMBED_DIM || b.length !== FACE_EMBED_DIM) {
-          throw new Error(
-            `${MODULE_TAG} embeddings must be ${FACE_EMBED_DIM}-d.`,
-          );
-        }
-        return lib.symbols.face_embed_distance(
-          ptr(a) as never,
-          ptr(b) as never,
-        ) as number;
-      },
-      l2Distance(a, b) {
-        if (a.length !== FACE_EMBED_DIM || b.length !== FACE_EMBED_DIM) {
-          throw new Error(
-            `${MODULE_TAG} embeddings must be ${FACE_EMBED_DIM}-d.`,
-          );
-        }
-        return lib.symbols.face_embed_distance_l2(
-          ptr(a) as never,
-          ptr(b) as never,
-        ) as number;
-      },
     };
     return bindings;
   })();
@@ -284,56 +220,68 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
 }
 
 /**
- * Pack a `MediaPipeFaceDetection` (output of `BlazeFaceGgmlDetector`)
- * into the 17-float layout the C ABI expects (mirrors `face_detection`
- * in include/face/face.h).
+ * Configuration for the ggml-backed face embedder.
  */
-function packDetection(det: MediaPipeFaceDetection): Float32Array {
-  const out = new Float32Array(FACE_DETECTION_FLOATS);
-  out[0] = det.bbox.x;
-  out[1] = det.bbox.y;
-  out[2] = det.bbox.width;
-  out[3] = det.bbox.height;
-  out[4] = det.confidence;
-  const kps = det.keypoints ?? [];
-  for (let i = 0; i < FACE_DETECTOR_KEYPOINT_COUNT; i++) {
-    const kp = kps[i];
-    out[5 + i * 2 + 0] = kp ? kp.x : 0;
-    out[5 + i * 2 + 1] = kp ? kp.y : 0;
-  }
-  return out;
+export interface FaceEmbedGgmlConfig {
+  modelPath?: string;
+  modelDir?: string;
 }
 
 /**
- * EXPERIMENTAL ggml-backed face-recognition store. Mirrors
- * `FaceRecognition` (face-api.js) for the parts that don't depend on
- * `canvas` / `face-api.js`: cosine matching, profile bookkeeping,
- * persistence. Detection + embedding go through `face-cpp` via
- * `BlazeFaceGgmlDetector` and this class.
- *
- * Currently disabled (`isAvailable()` returns `false`) until the
- * face-cpp model entries graduate from the ENOSYS stub and a face
- * embedder GGUF artifact lands.
+ * Cosine distance between two 128-d unit-norm embeddings. Matches
+ * `face_embed_distance` in the C library: 0 for identical, 1 for
+ * orthogonal, 2 for antipodal.
  */
-export class FaceRecognitionGgml {
+export function cosineDistance(a: Float32Array, b: Float32Array): number {
+  if (a.length !== b.length) {
+    throw new Error(`embedding length mismatch: ${a.length} vs ${b.length}`);
+  }
+  let dot = 0;
+  for (let i = 0; i < a.length; i++) dot += a[i] * b[i];
+  if (dot > 1) dot = 1;
+  if (dot < -1) dot = -1;
+  return 1 - dot;
+}
+
+/**
+ * L2 distance between two 128-d embeddings. For unit-norm inputs this
+ * is sqrt(2 - 2*dot(a, b)), in [0, 2].
+ */
+export function l2Distance(a: Float32Array, b: Float32Array): number {
+  if (a.length !== b.length) {
+    throw new Error(`embedding length mismatch: ${a.length} vs ${b.length}`);
+  }
+  let sum = 0;
+  for (let i = 0; i < a.length; i++) {
+    const d = a[i] - b[i];
+    sum += d * d;
+  }
+  return Math.sqrt(sum);
+}
+
+/**
+ * EXPERIMENTAL ggml-backed 128-d face embedder. Mirrors the descriptor
+ * path inside the legacy face-api.js `FaceRecognition` class — same
+ * 128-d L2-normalized output, swappable via the planned
+ * `setFaceBackend("ggml")` toggle.
+ */
+export class FaceEmbedGgmlRecognizer {
+  private readonly cfg: FaceEmbedGgmlConfig & { modelDir: string };
   private bindings: FaceEmbedBindings | null = null;
   private handle: unknown = null;
   private initialized = false;
   private initPromise: Promise<void> | null = null;
-  private faceLibrary: FaceLibrary = {
-    faces: new Map(),
-    embeddings: new Map(),
-  };
 
-  // Cosine-distance threshold. ArcFace / FaceNet embedders typically
-  // place same-identity pairs around 0.2–0.4 and different identities
-  // above 0.6. We start at the conservative 0.5 cutoff used by
-  // insightface's own demos.
-  private readonly FACE_MATCH_THRESHOLD = 0.5;
+  constructor(config: FaceEmbedGgmlConfig = {}) {
+    this.cfg = {
+      modelDir: config.modelDir ?? defaultModelDir(),
+      ...config,
+    };
+  }
 
   /**
-   * `true` only when both the native library AND the embedder GGUF
-   * weights are on disk. Loading happens lazily in `initialize()`.
+   * `true` only when both the native library AND the GGUF weights are
+   * on disk.
    */
   static async isAvailable(): Promise<boolean> {
     const libPath = defaultLibraryPath();
@@ -365,19 +313,17 @@ export class FaceRecognitionGgml {
   private async _initialize(): Promise<void> {
     this.bindings = await loadBindings();
     if (!this.bindings) {
-      throw new FaceCppUnavailableError({
-        code: "missing-library",
-        message: `${MODULE_TAG} face-cpp library unavailable; build packages/native-plugins/face-cpp first.`,
-      });
+      throw new Error(
+        `${MODULE_TAG} face-cpp library unavailable; build packages/native-plugins/face-cpp first.`,
+      );
     }
-    const ggufPath = defaultEmbedWeightsPath();
+    const ggufPath = this.cfg.modelPath ?? defaultEmbedWeightsPath();
     try {
       await fs.access(ggufPath);
     } catch {
-      throw new FaceCppUnavailableError({
-        code: "missing-gguf",
-        message: `${MODULE_TAG} embedder GGUF missing at ${ggufPath} — see scripts/face_embed_to_gguf.py.`,
-      });
+      throw new Error(
+        `${MODULE_TAG} face-embed GGUF missing at ${ggufPath} — see scripts/face_embed_to_gguf.py.`,
+      );
     }
     this.handle = this.bindings.open(ggufPath);
     this.initialized = true;
@@ -385,128 +331,36 @@ export class FaceRecognitionGgml {
   }
 
   /**
-   * Compute a 128-d L2-normalized embedding for one detection.
-   * Surfaces `FaceCppUnavailableError({ code: "stub" })` when the C ABI
-   * returns `-ENOSYS` (i.e. the model entries have not been wired yet).
+   * Compute a 128-d L2-normalized face embedding from an RGB(A) image
+   * buffer plus a detection record (bbox + BlazeFace landmarks).
+   *
+   * The image is decoded via sharp; pass any sharp-supported format
+   * (PNG, JPEG, raw). `detection` should come from
+   * `BlazeFaceGgmlDetector` so the keypoints already match the
+   * BlazeFace order.
    */
-  async embedFace(
-    rgb: Buffer,
-    width: number,
-    height: number,
+  async embed(
+    imageBuffer: Buffer,
     detection: MediaPipeFaceDetection,
   ): Promise<Float32Array> {
     if (!this.initialized) await this.initialize();
     if (!this.bindings || !this.handle) {
-      throw new FaceCppUnavailableError({ code: "missing-library" });
-    }
-    const det = packDetection(detection);
-    return this.bindings.embed(
-      this.handle,
-      rgb,
-      width,
-      height,
-      width * 3,
-      det,
-    );
-  }
-
-  /** Cosine distance between two 128-d embeddings via the C helper. */
-  cosineDistance(a: Float32Array, b: Float32Array): number {
-    if (!this.bindings) {
-      throw new FaceCppUnavailableError({ code: "missing-library" });
-    }
-    return this.bindings.cosineDistance(a, b);
-  }
-
-  async recognizeFace(
-    descriptor: Float32Array,
-  ): Promise<{ profileId: string; distance: number } | null> {
-    let bestMatch: { profileId: string; distance: number } | null = null;
-    let minDistance = Infinity;
-
-    for (const [profileId, embeddings] of this.faceLibrary.embeddings) {
-      for (const known of embeddings) {
-        const distance = this.cosineDistanceJs(descriptor, known);
-        if (distance < this.FACE_MATCH_THRESHOLD && distance < minDistance) {
-          minDistance = distance;
-          bestMatch = { profileId, distance };
-        }
-      }
-    }
-    return bestMatch;
-  }
-
-  async addOrUpdateFace(
-    descriptor: Float32Array,
-    attributes?: Partial<FaceProfile>,
-  ): Promise<string> {
-    const match = await this.recognizeFace(descriptor);
-    if (match) {
-      const profile = this.faceLibrary.faces.get(match.profileId);
-      if (!profile) {
-        throw new Error(
-          `${MODULE_TAG} profile not found for matched profileId: ${match.profileId}`,
-        );
-      }
-      profile.lastSeen = Date.now();
-      profile.seenCount++;
-
-      const embeddings = this.faceLibrary.embeddings.get(match.profileId);
-      if (!embeddings) {
-        throw new Error(
-          `${MODULE_TAG} embeddings not found for matched profileId: ${match.profileId}`,
-        );
-      }
-      if (embeddings.length < 10) {
-        embeddings.push(Array.from(descriptor));
-      }
-      if (attributes) {
-        Object.assign(profile, attributes);
-      }
-      return match.profileId;
+      throw new Error(`${MODULE_TAG} not initialized`);
     }
 
-    const profileId = `face-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-    const profile: FaceProfile = {
-      id: profileId,
-      embeddings: [Array.from(descriptor)],
-      firstSeen: Date.now(),
-      lastSeen: Date.now(),
-      seenCount: 1,
-      ...attributes,
-    };
-    this.faceLibrary.faces.set(profileId, profile);
-    this.faceLibrary.embeddings.set(profileId, [Array.from(descriptor)]);
-    logger.info(`${MODULE_TAG} new face registered: ${profileId}`);
-    return profileId;
-  }
+    const meta = await sharp(imageBuffer).metadata();
+    const w = meta.width ?? 0;
+    const h = meta.height ?? 0;
+    if (!w || !h) {
+      throw new Error(`${MODULE_TAG} sharp could not determine image size`);
+    }
 
-  getFaceProfile(profileId: string): FaceProfile | undefined {
-    return this.faceLibrary.faces.get(profileId);
-  }
+    const { data: rgb } = await sharp(imageBuffer)
+      .removeAlpha()
+      .raw()
+      .toBuffer({ resolveWithObject: true });
 
-  getAllProfiles(): FaceProfile[] {
-    return Array.from(this.faceLibrary.faces.values());
-  }
-
-  async saveFaceLibrary(filePath: string): Promise<void> {
-    const data = {
-      faces: Array.from(this.faceLibrary.faces.entries()),
-      embeddings: Array.from(this.faceLibrary.embeddings.entries()),
-    };
-    const fsp = await import("node:fs/promises");
-    await fsp.writeFile(filePath, JSON.stringify(data, null, 2));
-    logger.info(`${MODULE_TAG} face library saved to ${filePath}`);
-  }
-
-  async loadFaceLibrary(filePath: string): Promise<void> {
-    const fsp = await import("node:fs/promises");
-    const data = JSON.parse(await fsp.readFile(filePath, "utf-8"));
-    this.faceLibrary.faces = new Map(data.faces);
-    this.faceLibrary.embeddings = new Map(data.embeddings);
-    logger.info(
-      `${MODULE_TAG} loaded ${this.faceLibrary.faces.size} face profiles`,
-    );
+    return this.bindings.embed(this.handle, rgb, w, h, w * 3, detection);
   }
 
   async dispose(): Promise<void> {
@@ -517,28 +371,5 @@ export class FaceRecognitionGgml {
     this.initialized = false;
     this.initPromise = null;
     logger.debug(`${MODULE_TAG} disposed`);
-  }
-
-  // Pure-JS fallback for cosine distance against stored number[] arrays.
-  // The C helper is only invoked between two Float32Arrays both produced
-  // by the embedder; persisted embeddings come back as plain number[].
-  private cosineDistanceJs(
-    a: Float32Array | number[],
-    b: number[] | Float32Array,
-  ): number {
-    let dot = 0;
-    let na = 0;
-    let nb = 0;
-    const n = Math.min(a.length, b.length);
-    for (let i = 0; i < n; i++) {
-      const x = a[i] as number;
-      const y = b[i] as number;
-      dot += x * y;
-      na += x * x;
-      nb += y * y;
-    }
-    const denom = Math.sqrt(na) * Math.sqrt(nb);
-    if (denom === 0) return 1;
-    return 1 - dot / denom;
   }
 }

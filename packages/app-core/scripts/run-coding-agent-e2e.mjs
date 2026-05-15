@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..", "..", "..", "..");
 const requiredTests = [
-  "eliza/plugins/app-task-coordinator/test/coding-agent-codex-artifact.live.e2e.test.ts",
-  "eliza/plugins/app-task-coordinator/test/quicksort-coding-agent.live.e2e.test.ts",
+  "eliza/plugins/plugin-task-coordinator/test/coding-agent-codex-artifact.live.e2e.test.ts",
+  "eliza/plugins/plugin-task-coordinator/test/quicksort-coding-agent.live.e2e.test.ts",
 ];
 const missingTests = requiredTests.filter(
   (relativePath) => !fs.existsSync(path.join(repoRoot, relativePath)),

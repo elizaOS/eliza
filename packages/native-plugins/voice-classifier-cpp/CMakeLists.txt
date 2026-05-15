@@ -11,26 +11,62 @@ endif()
 
 include_directories(include)
 
-# One library, three model heads. Today the model entry points
-# (`voice_emotion_*`, `voice_eot_*`, `voice_speaker_open` /
-# `voice_speaker_embed` / `voice_speaker_close`) are stubbed in
-# `src/voice_classifier_stub.c`; the class-name table, the cosine
-# distance helper, and the mel front-end are real implementations and
-# stay in their own translation units. The eventual ggml-backed port
-# replaces the stub TU with three model TUs without changing the ABI.
+# ---------------------------------------------------------------------------
+# Source files
+# ---------------------------------------------------------------------------
+#
+# One library, three model heads. Each head lives in its own translation
+# unit so the J1.a/J1.b/J1.c real GGML graphs can replace them
+# independently without touching the others. The shared utilities
+# (class-name table, cosine distance helper, mel front-end,
+# diagnostics) stay in their own TUs.
+#
+# Today the per-head TUs are GGUF-aware loaders that validate the
+# bundle's metadata block and return `-ENOSYS` from the forward-pass
+# entry points (real graphs come in J1.a / J1.b / J1.c). The TS GGML
+# surfaces (`*-ggml.ts`) can still dlopen the SHARED library, call
+# `*_open(gguf_path, &h)` to validate that the GGUF parses, and surface
+# a structured error (rather than the bare construction-time exception
+# they raise today) when the forward graph is missing.
+
 set(VOICE_CLASSIFIER_SRCS
-    src/voice_classifier_stub.c
+    src/voice_emotion.c
+    src/voice_speaker.c
+    src/voice_eot.c
+    src/voice_diarizer.c
+    src/voice_classifier_diagnostics.c
     src/voice_emotion_classes.c
     src/voice_speaker_distance.c
     src/voice_mel_features.c
+    src/voice_gguf_loader.c
 )
+
+# ---------------------------------------------------------------------------
+# Shared + static targets
+# ---------------------------------------------------------------------------
+#
+# The SHARED library is what `bun:ffi` dlopens from the TS GGML
+# surfaces (mirrors silero-vad-cpp's two-target layout). The STATIC
+# variant is kept for ctest harnesses that prefer it (smaller binaries,
+# no rpath gymnastics).
+
+add_library(voice_classifier_shared SHARED ${VOICE_CLASSIFIER_SRCS})
+set_target_properties(voice_classifier_shared PROPERTIES
+    OUTPUT_NAME "voice_classifier"
+    C_VISIBILITY_PRESET hidden)
+target_include_directories(voice_classifier_shared PUBLIC include)
+target_compile_options(voice_classifier_shared PRIVATE -O3 -Wall -Wextra -Wno-unused-parameter -fvisibility=hidden)
+target_compile_definitions(voice_classifier_shared PRIVATE VOICE_CLASSIFIER_BUILD_SHARED=1)
+target_link_libraries(voice_classifier_shared PUBLIC m)
 
 add_library(voice_classifier STATIC ${VOICE_CLASSIFIER_SRCS})
 target_include_directories(voice_classifier PUBLIC include)
 target_compile_options(voice_classifier PRIVATE -O3 -Wall -Wextra -Wno-unused-parameter)
-# `voice_mel_features.c` and `voice_speaker_distance.c` use libm; on
-# Linux that requires an explicit link.
 target_link_libraries(voice_classifier PUBLIC m)
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
 enable_testing()
 
@@ -53,3 +89,11 @@ add_executable(voice_mel_features_test test/voice_mel_features_test.c)
 target_link_libraries(voice_mel_features_test PRIVATE voice_classifier)
 target_compile_options(voice_mel_features_test PRIVATE -O2 -Wall -Wextra)
 add_test(NAME voice_mel_features_test COMMAND voice_mel_features_test)
+
+# GGUF-loader smoke test: confirms the metadata-validation path is
+# real (opens a hand-rolled GGUF with the right metadata block,
+# rejects ones with wrong sample rate / class count / etc).
+add_executable(voice_gguf_loader_test test/voice_gguf_loader_test.c)
+target_link_libraries(voice_gguf_loader_test PRIVATE voice_classifier)
+target_compile_options(voice_gguf_loader_test PRIVATE -O2 -Wall -Wextra)
+add_test(NAME voice_gguf_loader_test COMMAND voice_gguf_loader_test)

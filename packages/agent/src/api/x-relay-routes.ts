@@ -32,6 +32,13 @@ const MAX_BODY_BYTES = 1_048_576;
 const X_RELAY_PATH_RE = /^\/api\/cloud\/x(\/.*)$/;
 
 interface CloudHelperModule {
+  isCloudAuthApiKeyService: (
+    value: Service | null | undefined,
+  ) => value is Service & {
+    isAuthenticated: () => boolean;
+    getApiKey?: () => string | undefined;
+  };
+  normalizeCloudApiKey: (value: string | null | undefined) => string | null;
   resolveCloudApiKey: (
     config: ElizaConfig,
     runtime?: XRelayRuntime | null,
@@ -49,11 +56,15 @@ interface CloudAuthApiKeyService {
 }
 
 function getCloudHelpers(): Promise<CloudHelperModule> {
-  cloudHelpersPromise ??= import("@elizaos/plugin-elizacloud");
+  if (!cloudHelpersPromise) {
+    cloudHelpersPromise = import(
+      "@elizaos/plugin-elizacloud"
+    ) as unknown as Promise<CloudHelperModule>;
+  }
   return cloudHelpersPromise;
 }
 
-function isCloudAuthApiKeyService(
+function _isCloudAuthApiKeyService(
   value: Service | null | undefined,
 ): value is Service & CloudAuthApiKeyService {
   return (
@@ -63,7 +74,9 @@ function isCloudAuthApiKeyService(
   );
 }
 
-function normalizeCloudApiKey(value: string | null | undefined): string | null {
+function _normalizeCloudApiKey(
+  value: string | null | undefined,
+): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return null;
@@ -76,11 +89,12 @@ async function resolveProxyApiKey(
   const cloudAuth = state.runtime
     ? state.runtime.getService("CLOUD_AUTH")
     : null;
+  const { isCloudAuthApiKeyService, normalizeCloudApiKey, resolveCloudApiKey } =
+    await getCloudHelpers();
   const runtimeApiKey =
     isCloudAuthApiKeyService(cloudAuth) && cloudAuth.isAuthenticated() === true
       ? normalizeCloudApiKey(cloudAuth.getApiKey?.())
       : null;
-  const { resolveCloudApiKey } = await getCloudHelpers();
   return runtimeApiKey ?? resolveCloudApiKey(state.config, state.runtime);
 }
 

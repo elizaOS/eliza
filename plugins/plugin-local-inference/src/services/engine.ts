@@ -40,6 +40,7 @@ import {
 } from "./conversation-registry";
 import {
 	type DflashGenerateResult,
+	type DflashRuntimeLoadConfig,
 	type DflashServerPlan,
 	dflashLlamaServer,
 	dflashRequired,
@@ -71,8 +72,14 @@ import {
 import {
 	EngineVoiceBridge,
 	type EngineVoiceBridgeOptions,
+	isOmniVoiceBundleAvailable,
 	VoiceStartupError,
 } from "./voice/engine-bridge";
+import {
+	readVoiceBackendModeFromEnv,
+	selectVoiceBackend,
+	type VoiceBackendChoice,
+} from "./voice/kokoro/runtime-selection";
 import type { VoicePipelineEvents } from "./voice/pipeline";
 import {
 	type DflashTextRunner,
@@ -181,12 +188,23 @@ export type GenerateArgs = BackendGenerateArgs;
  * Eliza-1 InstalledModel carries `bundleRoot` and an `eliza-1-<tier>` id
  * (the catalog placeholder ids). Drives the local-embedding route.
  */
+interface ActiveEliza1Bundle {
+	root: string;
+	tierId: Eliza1TierId;
+	voiceBackends?: ReadonlyArray<VoiceBackendChoice>;
+}
+
 function resolveActiveEliza1Bundle(
 	target: InstalledModel | undefined,
-): { root: string; tierId: Eliza1TierId } | null {
+	catalog: ReturnType<typeof findCatalogModel>,
+): ActiveEliza1Bundle | null {
 	if (!target?.bundleRoot) return null;
 	if (!ELIZA_1_PLACEHOLDER_IDS.has(target.id)) return null;
-	return { root: target.bundleRoot, tierId: target.id as Eliza1TierId };
+	return {
+		root: target.bundleRoot,
+		tierId: target.id as Eliza1TierId,
+		voiceBackends: catalog?.voiceBackends,
+	};
 }
 
 /**
@@ -851,8 +869,7 @@ export class LocalInferenceEngine {
 	 * Eliza-1 bundle (a user-installed custom). Drives the local-embedding
 	 * route — see `embed()`.
 	 */
-	private activeEliza1Bundle: { root: string; tierId: Eliza1TierId } | null =
-		null;
+	private activeEliza1Bundle: ActiveEliza1Bundle | null = null;
 	/**
 	 * Lazily-started embedding `llama-server` sidecar for the active bundle
 	 * (over the text GGUF on `0_8b` / `2b`, over the `embedding/` GGUF on larger
@@ -1032,6 +1049,11 @@ export class LocalInferenceEngine {
 		return this.dispatcher.activeBackendId();
 	}
 
+	currentRuntimeLoadConfig(): DflashRuntimeLoadConfig | null {
+		if (this.activeBackendId() !== "llama-server") return null;
+		return dflashLlamaServer.currentRuntimeLoadConfig();
+	}
+
 	async unload(): Promise<void> {
 		// Stop the memory monitor + idle timer and deregister evictable roles
 		// before anything else — they reference the model that's about to go.
@@ -1070,7 +1092,7 @@ export class LocalInferenceEngine {
 		// `bundleRoot` and an `eliza-1-<tier>` id. Reset on every load — a
 		// non-Eliza-1 model clears it (the local embedding handler then falls
 		// through to the operator-configured provider).
-		this.activeEliza1Bundle = resolveActiveEliza1Bundle(target);
+		this.activeEliza1Bundle = resolveActiveEliza1Bundle(target, catalog);
 		if (this.embeddingServer) {
 			void this.embeddingServer.stop();
 			this.embeddingServer = null;
@@ -1484,29 +1506,47 @@ export class LocalInferenceEngine {
 		if (!bridge) {
 			const bundle = this.activeEliza1Bundle;
 			if (bundle) {
-				// Detect + auto-regenerate the Samantha placeholder preset
-				// before the bridge's synchronous load hits it. The
-				// regenerator is a no-op when a real preset is already in
-				// place (kind="real-preset"); when regen cannot run it logs
-				// loudly and the bridge falls through to af_bella via the
-				// kokoro discovery layer.
-				const { ensureSamanthaPresetReady } = await import(
-					"./voice/samantha-preset-regenerator"
-				);
-				const outcome = await ensureSamanthaPresetReady(bundle.root);
-				if (outcome.kind === "regenerated") {
-					logger.info(
-						`[voice] regenerated Samantha preset on first boot: ${outcome.bytes} bytes (K=${outcome.K}, refT=${outcome.refT})`,
-					);
-				} else if (outcome.kind === "placeholder-no-regen") {
-					logger.warn(
-						`[voice] Samantha preset is the I-wave placeholder and on-the-fly regen is unavailable (reason=${outcome.reason}, detail=${outcome.detail}). The runtime will fall back to af_bella; run packages/training/scripts/voice/samantha_lora/RUNBOOK.md or plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs to produce a real preset.`,
-					);
-				}
-				bridge = this.startVoice({
-					bundleRoot: bundle.root,
-					useFfiBackend: true,
+				const kokoro = resolveKokoroEngineConfig();
+				const decision = selectVoiceBackend({
+					mode: readVoiceBackendModeFromEnv(),
+					kokoroAvailable: kokoro !== null,
+					omnivoiceAvailable: isOmniVoiceBundleAvailable(bundle.root),
+					tierVoiceBackends: bundle.voiceBackends,
 				});
+				console.info(
+					`[voice] Selected ${decision.backend} backend for ${bundle.tierId}: ${decision.reason}`,
+				);
+				if (decision.backend === "kokoro") {
+					if (!kokoro) {
+						throw new VoiceStartupError(
+							"missing-bundle-root",
+							"[voice] Kokoro was selected but its model artifacts are not staged under ~/.eliza/local-inference/models/kokoro/.",
+						);
+					}
+					bridge = this.startVoice({
+						bundleRoot: "",
+						useFfiBackend: false,
+						kokoroOnly: kokoro,
+					});
+				} else {
+					const { ensureSamanthaPresetReady } = await import(
+						"./voice/samantha-preset-regenerator"
+					);
+					const outcome = await ensureSamanthaPresetReady(bundle.root);
+					if (outcome.kind === "regenerated") {
+						logger.info(
+							`[voice] regenerated Samantha preset on first boot: ${outcome.bytes} bytes (K=${outcome.K}, refT=${outcome.refT})`,
+						);
+					} else if (outcome.kind === "placeholder-no-regen") {
+						logger.warn(
+							`[voice] Samantha preset is the I-wave placeholder and on-the-fly regen is unavailable (reason=${outcome.reason}, detail=${outcome.detail}). Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md or plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs to produce a real preset.`,
+						);
+					}
+					bridge = this.startVoice({
+						bundleRoot: bundle.root,
+						useFfiBackend: true,
+					});
+				}
 			} else {
 				// No Eliza-1 bundle. Fall back to the Kokoro-only path when its
 				// artifacts are staged. No silent degrade: when both are absent
@@ -1649,12 +1689,14 @@ export class LocalInferenceEngine {
 			{ VoiceTurnController },
 			{ InMemoryAudioSink },
 			eotMod,
+			eotGgmlMod,
 		] = await Promise.all([
 			import("./voice/mic-source"),
 			import("./voice/vad"),
 			import("./voice/turn-controller"),
 			import("./voice/ring-buffer"),
 			import("./voice/eot-classifier"),
+			import("./voice/eot-classifier-ggml"),
 		]);
 
 		const micSource = opts.micSource ?? new DesktopMicSource();
@@ -1710,11 +1752,30 @@ export class LocalInferenceEngine {
 				"[voice] useEliza1Eot:true requested but the in-process text model is not loaded — load a node-llama-cpp model before starting the voice session, or set useEliza1Eot:false.",
 			);
 		}
+		// Resolver order (J1.d single-runtime policy): prefer the
+		// fork-served GGUF over the legacy ONNX path. The GGUF binding
+		// loads the Qwen2-style decoder through `node-llama-cpp` (the
+		// canonical fork wrapper), so the resolved path drops ONNX +
+		// `@huggingface/transformers` entirely. The ONNX fallback exists
+		// as a one-release deprecation runway and is retired in the
+		// follow-up J3 wave.
+		const ggmlTurnDetector =
+			opts.turnDetector === false
+				? undefined
+				: await eotGgmlMod
+						.createBundledLiveKitGgmlTurnDetector({
+							...(opts.turnDetectorModelDir
+								? { modelDir: opts.turnDetectorModelDir }
+								: {}),
+							...(tierRevision ? { revision: tierRevision } : {}),
+						})
+						.catch(() => null);
 		const turnDetector =
 			opts.turnDetector === false
 				? undefined
 				: (opts.turnDetector ??
 					eliza1EotClassifier ??
+					ggmlTurnDetector ??
 					(await eotMod.createBundledLiveKitTurnDetector({
 						...(opts.turnDetectorModelDir
 							? { modelDir: opts.turnDetectorModelDir }

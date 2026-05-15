@@ -127,6 +127,19 @@ depend:
 .PHONY : depend
 
 #=============================================================================
+# Target rules for targets named voice_classifier_shared
+
+# Build rule for target.
+voice_classifier_shared: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 voice_classifier_shared
+.PHONY : voice_classifier_shared
+
+# fast build rule for target.
+voice_classifier_shared/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/build
+.PHONY : voice_classifier_shared/fast
+
+#=============================================================================
 # Target rules for targets named voice_classifier
 
 # Build rule for target.
@@ -191,35 +204,106 @@ voice_mel_features_test/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_mel_features_test.dir/build.make CMakeFiles/voice_mel_features_test.dir/build
 .PHONY : voice_mel_features_test/fast
 
-src/voice_classifier_stub.o: src/voice_classifier_stub.c.o
-.PHONY : src/voice_classifier_stub.o
+#=============================================================================
+# Target rules for targets named voice_gguf_loader_test
+
+# Build rule for target.
+voice_gguf_loader_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 voice_gguf_loader_test
+.PHONY : voice_gguf_loader_test
+
+# fast build rule for target.
+voice_gguf_loader_test/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_gguf_loader_test.dir/build.make CMakeFiles/voice_gguf_loader_test.dir/build
+.PHONY : voice_gguf_loader_test/fast
+
+src/voice_classifier_diagnostics.o: src/voice_classifier_diagnostics.c.o
+.PHONY : src/voice_classifier_diagnostics.o
 
 # target to build an object file
-src/voice_classifier_stub.c.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o
-.PHONY : src/voice_classifier_stub.c.o
+src/voice_classifier_diagnostics.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_classifier_diagnostics.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.o
+.PHONY : src/voice_classifier_diagnostics.c.o
 
-src/voice_classifier_stub.i: src/voice_classifier_stub.c.i
-.PHONY : src/voice_classifier_stub.i
+src/voice_classifier_diagnostics.i: src/voice_classifier_diagnostics.c.i
+.PHONY : src/voice_classifier_diagnostics.i
 
 # target to preprocess a source file
-src/voice_classifier_stub.c.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.i
-.PHONY : src/voice_classifier_stub.c.i
+src/voice_classifier_diagnostics.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_classifier_diagnostics.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.i
+.PHONY : src/voice_classifier_diagnostics.c.i
 
-src/voice_classifier_stub.s: src/voice_classifier_stub.c.s
-.PHONY : src/voice_classifier_stub.s
+src/voice_classifier_diagnostics.s: src/voice_classifier_diagnostics.c.s
+.PHONY : src/voice_classifier_diagnostics.s
 
 # target to generate assembly for a file
-src/voice_classifier_stub.c.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.s
-.PHONY : src/voice_classifier_stub.c.s
+src/voice_classifier_diagnostics.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_classifier_diagnostics.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.s
+.PHONY : src/voice_classifier_diagnostics.c.s
+
+src/voice_diarizer.o: src/voice_diarizer.c.o
+.PHONY : src/voice_diarizer.o
+
+# target to build an object file
+src/voice_diarizer.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_diarizer.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.o
+.PHONY : src/voice_diarizer.c.o
+
+src/voice_diarizer.i: src/voice_diarizer.c.i
+.PHONY : src/voice_diarizer.i
+
+# target to preprocess a source file
+src/voice_diarizer.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_diarizer.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.i
+.PHONY : src/voice_diarizer.c.i
+
+src/voice_diarizer.s: src/voice_diarizer.c.s
+.PHONY : src/voice_diarizer.s
+
+# target to generate assembly for a file
+src/voice_diarizer.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_diarizer.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.s
+.PHONY : src/voice_diarizer.c.s
+
+src/voice_emotion.o: src/voice_emotion.c.o
+.PHONY : src/voice_emotion.o
+
+# target to build an object file
+src/voice_emotion.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_emotion.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_emotion.c.o
+.PHONY : src/voice_emotion.c.o
+
+src/voice_emotion.i: src/voice_emotion.c.i
+.PHONY : src/voice_emotion.i
+
+# target to preprocess a source file
+src/voice_emotion.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_emotion.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_emotion.c.i
+.PHONY : src/voice_emotion.c.i
+
+src/voice_emotion.s: src/voice_emotion.c.s
+.PHONY : src/voice_emotion.s
+
+# target to generate assembly for a file
+src/voice_emotion.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_emotion.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_emotion.c.s
+.PHONY : src/voice_emotion.c.s
 
 src/voice_emotion_classes.o: src/voice_emotion_classes.c.o
 .PHONY : src/voice_emotion_classes.o
 
 # target to build an object file
 src/voice_emotion_classes.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_emotion_classes.c.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o
 .PHONY : src/voice_emotion_classes.c.o
 
@@ -228,6 +312,7 @@ src/voice_emotion_classes.i: src/voice_emotion_classes.c.i
 
 # target to preprocess a source file
 src/voice_emotion_classes.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_emotion_classes.c.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.i
 .PHONY : src/voice_emotion_classes.c.i
 
@@ -236,14 +321,70 @@ src/voice_emotion_classes.s: src/voice_emotion_classes.c.s
 
 # target to generate assembly for a file
 src/voice_emotion_classes.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_emotion_classes.c.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.s
 .PHONY : src/voice_emotion_classes.c.s
+
+src/voice_eot.o: src/voice_eot.c.o
+.PHONY : src/voice_eot.o
+
+# target to build an object file
+src/voice_eot.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_eot.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_eot.c.o
+.PHONY : src/voice_eot.c.o
+
+src/voice_eot.i: src/voice_eot.c.i
+.PHONY : src/voice_eot.i
+
+# target to preprocess a source file
+src/voice_eot.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_eot.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_eot.c.i
+.PHONY : src/voice_eot.c.i
+
+src/voice_eot.s: src/voice_eot.c.s
+.PHONY : src/voice_eot.s
+
+# target to generate assembly for a file
+src/voice_eot.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_eot.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_eot.c.s
+.PHONY : src/voice_eot.c.s
+
+src/voice_gguf_loader.o: src/voice_gguf_loader.c.o
+.PHONY : src/voice_gguf_loader.o
+
+# target to build an object file
+src/voice_gguf_loader.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_gguf_loader.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o
+.PHONY : src/voice_gguf_loader.c.o
+
+src/voice_gguf_loader.i: src/voice_gguf_loader.c.i
+.PHONY : src/voice_gguf_loader.i
+
+# target to preprocess a source file
+src/voice_gguf_loader.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_gguf_loader.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.i
+.PHONY : src/voice_gguf_loader.c.i
+
+src/voice_gguf_loader.s: src/voice_gguf_loader.c.s
+.PHONY : src/voice_gguf_loader.s
+
+# target to generate assembly for a file
+src/voice_gguf_loader.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_gguf_loader.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.s
+.PHONY : src/voice_gguf_loader.c.s
 
 src/voice_mel_features.o: src/voice_mel_features.c.o
 .PHONY : src/voice_mel_features.o
 
 # target to build an object file
 src/voice_mel_features.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_mel_features.c.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o
 .PHONY : src/voice_mel_features.c.o
 
@@ -252,6 +393,7 @@ src/voice_mel_features.i: src/voice_mel_features.c.i
 
 # target to preprocess a source file
 src/voice_mel_features.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_mel_features.c.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.i
 .PHONY : src/voice_mel_features.c.i
 
@@ -260,14 +402,43 @@ src/voice_mel_features.s: src/voice_mel_features.c.s
 
 # target to generate assembly for a file
 src/voice_mel_features.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_mel_features.c.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.s
 .PHONY : src/voice_mel_features.c.s
+
+src/voice_speaker.o: src/voice_speaker.c.o
+.PHONY : src/voice_speaker.o
+
+# target to build an object file
+src/voice_speaker.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_speaker.c.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o
+.PHONY : src/voice_speaker.c.o
+
+src/voice_speaker.i: src/voice_speaker.c.i
+.PHONY : src/voice_speaker.i
+
+# target to preprocess a source file
+src/voice_speaker.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_speaker.c.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_speaker.c.i
+.PHONY : src/voice_speaker.c.i
+
+src/voice_speaker.s: src/voice_speaker.c.s
+.PHONY : src/voice_speaker.s
+
+# target to generate assembly for a file
+src/voice_speaker.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_speaker.c.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_speaker.c.s
+.PHONY : src/voice_speaker.c.s
 
 src/voice_speaker_distance.o: src/voice_speaker_distance.c.o
 .PHONY : src/voice_speaker_distance.o
 
 # target to build an object file
 src/voice_speaker_distance.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_speaker_distance.c.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o
 .PHONY : src/voice_speaker_distance.c.o
 
@@ -276,6 +447,7 @@ src/voice_speaker_distance.i: src/voice_speaker_distance.c.i
 
 # target to preprocess a source file
 src/voice_speaker_distance.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_speaker_distance.c.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.i
 .PHONY : src/voice_speaker_distance.c.i
 
@@ -284,6 +456,7 @@ src/voice_speaker_distance.s: src/voice_speaker_distance.c.s
 
 # target to generate assembly for a file
 src/voice_speaker_distance.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier_shared.dir/build.make CMakeFiles/voice_classifier_shared.dir/src/voice_speaker_distance.c.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_classifier.dir/build.make CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.s
 .PHONY : src/voice_speaker_distance.c.s
 
@@ -334,6 +507,30 @@ test/voice_emotion_classes_test.s: test/voice_emotion_classes_test.c.s
 test/voice_emotion_classes_test.c.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_emotion_classes_test.dir/build.make CMakeFiles/voice_emotion_classes_test.dir/test/voice_emotion_classes_test.c.s
 .PHONY : test/voice_emotion_classes_test.c.s
+
+test/voice_gguf_loader_test.o: test/voice_gguf_loader_test.c.o
+.PHONY : test/voice_gguf_loader_test.o
+
+# target to build an object file
+test/voice_gguf_loader_test.c.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_gguf_loader_test.dir/build.make CMakeFiles/voice_gguf_loader_test.dir/test/voice_gguf_loader_test.c.o
+.PHONY : test/voice_gguf_loader_test.c.o
+
+test/voice_gguf_loader_test.i: test/voice_gguf_loader_test.c.i
+.PHONY : test/voice_gguf_loader_test.i
+
+# target to preprocess a source file
+test/voice_gguf_loader_test.c.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_gguf_loader_test.dir/build.make CMakeFiles/voice_gguf_loader_test.dir/test/voice_gguf_loader_test.c.i
+.PHONY : test/voice_gguf_loader_test.c.i
+
+test/voice_gguf_loader_test.s: test/voice_gguf_loader_test.c.s
+.PHONY : test/voice_gguf_loader_test.s
+
+# target to generate assembly for a file
+test/voice_gguf_loader_test.c.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/voice_gguf_loader_test.dir/build.make CMakeFiles/voice_gguf_loader_test.dir/test/voice_gguf_loader_test.c.s
+.PHONY : test/voice_gguf_loader_test.c.s
 
 test/voice_mel_features_test.o: test/voice_mel_features_test.c.o
 .PHONY : test/voice_mel_features_test.o
@@ -393,19 +590,36 @@ help:
 	@echo "... rebuild_cache"
 	@echo "... test"
 	@echo "... voice_classifier"
+	@echo "... voice_classifier_shared"
 	@echo "... voice_classifier_stub_smoke"
 	@echo "... voice_emotion_classes_test"
+	@echo "... voice_gguf_loader_test"
 	@echo "... voice_mel_features_test"
 	@echo "... voice_speaker_distance_test"
-	@echo "... src/voice_classifier_stub.o"
-	@echo "... src/voice_classifier_stub.i"
-	@echo "... src/voice_classifier_stub.s"
+	@echo "... src/voice_classifier_diagnostics.o"
+	@echo "... src/voice_classifier_diagnostics.i"
+	@echo "... src/voice_classifier_diagnostics.s"
+	@echo "... src/voice_diarizer.o"
+	@echo "... src/voice_diarizer.i"
+	@echo "... src/voice_diarizer.s"
+	@echo "... src/voice_emotion.o"
+	@echo "... src/voice_emotion.i"
+	@echo "... src/voice_emotion.s"
 	@echo "... src/voice_emotion_classes.o"
 	@echo "... src/voice_emotion_classes.i"
 	@echo "... src/voice_emotion_classes.s"
+	@echo "... src/voice_eot.o"
+	@echo "... src/voice_eot.i"
+	@echo "... src/voice_eot.s"
+	@echo "... src/voice_gguf_loader.o"
+	@echo "... src/voice_gguf_loader.i"
+	@echo "... src/voice_gguf_loader.s"
 	@echo "... src/voice_mel_features.o"
 	@echo "... src/voice_mel_features.i"
 	@echo "... src/voice_mel_features.s"
+	@echo "... src/voice_speaker.o"
+	@echo "... src/voice_speaker.i"
+	@echo "... src/voice_speaker.s"
 	@echo "... src/voice_speaker_distance.o"
 	@echo "... src/voice_speaker_distance.i"
 	@echo "... src/voice_speaker_distance.s"
@@ -415,6 +629,9 @@ help:
 	@echo "... test/voice_emotion_classes_test.o"
 	@echo "... test/voice_emotion_classes_test.i"
 	@echo "... test/voice_emotion_classes_test.s"
+	@echo "... test/voice_gguf_loader_test.o"
+	@echo "... test/voice_gguf_loader_test.i"
+	@echo "... test/voice_gguf_loader_test.s"
 	@echo "... test/voice_mel_features_test.o"
 	@echo "... test/voice_mel_features_test.i"
 	@echo "... test/voice_mel_features_test.s"

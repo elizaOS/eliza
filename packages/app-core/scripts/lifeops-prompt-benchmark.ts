@@ -5,7 +5,7 @@ import type { LiveProviderName } from "../test/helpers/live-provider.ts";
 
 type PromptBenchmarkCase = Awaited<
   ReturnType<
-    typeof import("../../../plugins/app-lifeops/test/helpers/lifeops-prompt-benchmark-cases.ts")["buildLifeOpsPromptBenchmarkCases"]
+    typeof import("../../../plugins/plugin-lifeops/test/helpers/lifeops-prompt-benchmark-cases.ts")["buildLifeOpsPromptBenchmarkCases"]
   >
 >[number];
 
@@ -103,7 +103,7 @@ async function loadCases(
     buildLifeOpsPromptBenchmarkCases,
     buildSelfCarePromptBenchmarkCases,
   } = await import(
-    "../../../plugins/app-lifeops/test/helpers/lifeops-prompt-benchmark-cases.ts"
+    "../../../plugins/plugin-lifeops/test/helpers/lifeops-prompt-benchmark-cases.ts"
   );
   if (suite === "self-care") {
     return buildSelfCarePromptBenchmarkCases();
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
     runLifeOpsPromptBenchmark,
     serializeAxOptimizationRows,
   } = await import(
-    "../../../plugins/app-lifeops/test/helpers/lifeops-prompt-benchmark-runner.ts"
+    "../../../plugins/plugin-lifeops/test/helpers/lifeops-prompt-benchmark-runner.ts"
   );
   const report = await runLifeOpsPromptBenchmark({
     cases: allCases,

@@ -2,7 +2,7 @@
   "id": "shopify",
   "name": "Shopify",
   "description": "Storefront and admin tools for agent-driven commerce.",
-  "npmName": "@elizaos/app-shopify",
+  "npmName": "@elizaos/plugin-shopify-ui",
   "source": "bundled",
   "tags": [],
   "config": {},
@@ -24,7 +24,7 @@
     "capabilities": [],
     "curatedSlug": "shopify",
     "routePlugin": {
-      "specifier": "@elizaos/app-shopify",
+      "specifier": "@elizaos/plugin-shopify-ui",
       "exportName": "shopifyPlugin"
     }
   }

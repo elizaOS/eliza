@@ -36,7 +36,7 @@ import {
   TrainedModelsSection,
   TrainingJobsSection,
   TrajectoriesSection,
-} from "./fine-tuning-panels";
+} from "./fine-tuning-panels.js";
 
 function asArray<T>(value: T[] | null | undefined): T[] {
   return Array.isArray(value) ? value : [];

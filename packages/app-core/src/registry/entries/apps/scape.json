@@ -2,7 +2,7 @@
   "id": "scape",
   "name": "'scape",
   "description": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, Scape Journal, and directed-prompt operator control.",
-  "npmName": "@elizaos/app-scape",
+  "npmName": "@elizaos/plugin-scape",
   "version": "0.1.0",
   "source": "bundled",
   "tags": [

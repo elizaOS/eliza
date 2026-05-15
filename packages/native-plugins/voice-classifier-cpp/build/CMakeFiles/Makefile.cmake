@@ -103,9 +103,11 @@ set(CMAKE_MAKEFILE_PRODUCTS
 
 # Dependency information for all targets:
 set(CMAKE_DEPEND_INFO_FILES
+  "CMakeFiles/voice_classifier_shared.dir/DependInfo.cmake"
   "CMakeFiles/voice_classifier.dir/DependInfo.cmake"
   "CMakeFiles/voice_classifier_stub_smoke.dir/DependInfo.cmake"
   "CMakeFiles/voice_emotion_classes_test.dir/DependInfo.cmake"
   "CMakeFiles/voice_speaker_distance_test.dir/DependInfo.cmake"
   "CMakeFiles/voice_mel_features_test.dir/DependInfo.cmake"
+  "CMakeFiles/voice_gguf_loader_test.dir/DependInfo.cmake"
   )

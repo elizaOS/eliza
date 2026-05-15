@@ -11,13 +11,13 @@ const sharedSrc = path.join(monorepoRoot, "packages/shared/src");
 const coreSrc = path.join(monorepoRoot, "packages/core/src");
 const cloudRoutingSrc = path.join(monorepoRoot, "packages/cloud-routing/src");
 const cloudSdkSrc = path.join(monorepoRoot, "cloud/packages/sdk/src");
-const appLifeopsSrc = path.join(monorepoRoot, "plugins/app-lifeops/src");
+const appLifeopsSrc = path.join(monorepoRoot, "plugins/plugin-lifeops/src");
 const appTaskCoordinatorSrc = path.join(
   monorepoRoot,
-  "plugins/app-task-coordinator/src",
+  "plugins/plugin-task-coordinator/src",
 );
-const appCompanionSrc = path.join(monorepoRoot, "plugins/app-companion/src");
-const appWalletSrc = path.join(monorepoRoot, "plugins/app-wallet/src");
+const appCompanionSrc = path.join(monorepoRoot, "plugins/plugin-companion/src");
+const appWalletSrc = path.join(monorepoRoot, "plugins/plugin-wallet-ui/src");
 const pluginSqlSrc = path.join(monorepoRoot, "plugins/plugin-sql/src");
 const pluginAgentSkillsSrc = path.join(
   monorepoRoot,
@@ -185,7 +185,7 @@ export default defineConfig({
         find: /^@elizaos\/app-lifeops\/selfcontrol$/,
         replacement: path.join(
           monorepoRoot,
-          "plugins/app-lifeops/src/website-blocker/public.ts",
+          "plugins/plugin-lifeops/src/website-blocker/public.ts",
         ),
       },
       {

@@ -118,6 +118,13 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	 */
 	signal?: AbortSignal;
 	/**
+	 * Optional per-request backend transport budget. This should be at least as
+	 * long as the caller's user-visible generation timeout; shorter inner
+	 * timeouts abort long local-prefill turns before the chat route can make the
+	 * user-facing decision.
+	 */
+	requestTimeoutMs?: number;
+	/**
 	 * Incremental accepted text from the backend. llama-server calls this for
 	 * streamed OpenAI-compatible deltas; node-llama-cpp calls it once with the
 	 * completed text until the binding path exposes token callbacks here.

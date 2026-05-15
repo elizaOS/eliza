@@ -45,6 +45,12 @@ interface ChatViewRouting {
   capabilities: string[];
 }
 
+interface ActiveChatTurn {
+  controller: AbortController;
+  roomId: string | null;
+  abortServerTurn: (() => void) | null;
+}
+
 function uniq(values: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -65,6 +71,14 @@ function asStringList(value: unknown): string[] {
     return value.split(/[\n,;]/);
   }
   return [];
+}
+
+function abortServerConversationTurn(
+  roomId: string | null | undefined,
+  reason: string,
+): void {
+  if (!roomId) return;
+  void client.abortConversationTurn(roomId, reason).catch(() => {});
 }
 
 function resolveChatViewRouting(tab: Tab): ChatViewRouting {
@@ -198,7 +212,6 @@ export interface UseChatSendDeps {
   tab: Tab;
 
   // Chat state
-  conversations: Conversation[];
   activeConversationId: string | null;
   /** Stable ref whose .current mirrors the latest ptySessions array. */
   ptySessionsRef: MutableRefObject<CodingAgentSession[]>;
@@ -240,6 +253,7 @@ export interface UseChatSendDeps {
   activeConversationIdRef: MutableRefObject<string | null>;
   chatInputRef: MutableRefObject<string>;
   chatPendingImagesRef: MutableRefObject<ImageAttachment[]>;
+  conversationsRef: MutableRefObject<Conversation[]>;
   conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
   chatAbortRef: MutableRefObject<AbortController | null>;
   chatSendBusyRef: MutableRefObject<boolean>;
@@ -264,7 +278,6 @@ export function useChatSend(deps: UseChatSendDeps) {
     t,
     uiLanguage,
     tab,
-    conversations,
     activeConversationId,
     ptySessionsRef,
     setChatInput,
@@ -281,6 +294,7 @@ export function useChatSend(deps: UseChatSendDeps) {
     activeConversationIdRef,
     chatInputRef,
     chatPendingImagesRef,
+    conversationsRef,
     conversationMessagesRef,
     chatAbortRef,
     chatSendBusyRef,
@@ -293,6 +307,7 @@ export function useChatSend(deps: UseChatSendDeps) {
   } = deps;
 
   const chatSendQueueRef = useRef<QueuedChatSend[]>([]);
+  const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
 
   const resolveQueuedChatSends = useCallback(() => {
     const queued = chatSendQueueRef.current.splice(0);
@@ -301,9 +316,43 @@ export function useChatSend(deps: UseChatSendDeps) {
     }
   }, []);
 
+  const resolveConversationRoomId = useCallback(
+    async (
+      conversationId: string,
+      knownRoomId: string | null | undefined,
+    ): Promise<string | null> => {
+      if (knownRoomId?.trim()) return knownRoomId.trim();
+
+      const cachedRoomId = conversationsRef.current
+        .find((conversation) => conversation.id === conversationId)
+        ?.roomId?.trim();
+      if (cachedRoomId) return cachedRoomId;
+
+      const refreshed = await loadConversations();
+      return (
+        refreshed
+          ?.find((conversation) => conversation.id === conversationId)
+          ?.roomId?.trim() ?? null
+      );
+    },
+    [conversationsRef, loadConversations],
+  );
+
   const interruptActiveChatPipeline = useCallback(() => {
     resolveQueuedChatSends();
+    const activeTurn = activeChatTurnRef.current;
+    if (activeTurn?.roomId) {
+      abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop");
+    }
+    if (activeTurn?.abortServerTurn) {
+      activeTurn.controller.signal.removeEventListener(
+        "abort",
+        activeTurn.abortServerTurn,
+      );
+    }
+    activeTurn?.controller.abort();
     chatAbortRef.current?.abort();
+    activeChatTurnRef.current = null;
     chatAbortRef.current = null;
     setChatSending(false);
     setChatFirstTokenReceived(false);
@@ -564,6 +613,8 @@ export function useChatSend(deps: UseChatSendDeps) {
       const channelType = turn.channelType;
       const imagesToSend = turn.images;
       let controller: AbortController | null = null;
+      let abortServerTurn: (() => void) | null = null;
+      let convRoomId: string | null = null;
 
       let text = hasAttachedImages
         ? rawText || "Please review the attached image."
@@ -610,6 +661,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           activeConversationIdRef.current = conversation.id;
           setCompanionMessageCutoffTs(nextCutoffTs);
           convId = conversation.id;
+          convRoomId = conversation.roomId;
         } catch {
           return;
         }
@@ -620,7 +672,8 @@ export function useChatSend(deps: UseChatSendDeps) {
         conversationId: convId,
       });
 
-      const activeConv = conversations.find((c) => c.id === convId);
+      const activeConv = conversationsRef.current.find((c) => c.id === convId);
+      convRoomId = await resolveConversationRoomId(convId, convRoomId);
       if (
         activeConv &&
         (!activeConv.title ||
@@ -651,6 +704,17 @@ export function useChatSend(deps: UseChatSendDeps) {
 
       controller = new AbortController();
       chatAbortRef.current = controller;
+      abortServerTurn = () => {
+        abortServerConversationTurn(convRoomId, "ui-chat-abort");
+      };
+      controller.signal.addEventListener("abort", abortServerTurn, {
+        once: true,
+      });
+      activeChatTurnRef.current = {
+        controller,
+        roomId: convRoomId,
+        abortServerTurn,
+      };
       let streamedAssistantText = "";
 
       try {
@@ -729,10 +793,22 @@ export function useChatSend(deps: UseChatSendDeps) {
             message.role === "user" && !message.id.startsWith("temp-"),
         ).length;
 
-        if (userMessageCount === 1) {
+        if (
+          userMessageCount === 1 &&
+          data.completed !== false &&
+          data.text.trim() &&
+          !data.failureKind
+        ) {
           void client
             .renameConversation(convId, "", { generate: true })
             .then(() => {
+              void loadConversations();
+            })
+            .catch((err) => {
+              console.warn(
+                "Failed to generate conversation title",
+                err instanceof Error ? err.message : err,
+              );
               void loadConversations();
             });
         } else {
@@ -744,7 +820,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
       } catch (err) {
         const abortError = err as Error;
-        if (abortError.name === "AbortError") {
+        if (abortError.name === "AbortError" || controller?.signal.aborted) {
           setConversationMessages((prev) =>
             prev.filter(
               (message) =>
@@ -813,8 +889,14 @@ export function useChatSend(deps: UseChatSendDeps) {
           await loadConversationMessages(convId);
         }
       } finally {
+        if (controller && abortServerTurn) {
+          controller.signal.removeEventListener("abort", abortServerTurn);
+        }
         if (chatAbortRef.current === controller) {
           chatAbortRef.current = null;
+        }
+        if (activeChatTurnRef.current?.controller === controller) {
+          activeChatTurnRef.current = null;
         }
       }
     },
@@ -822,11 +904,12 @@ export function useChatSend(deps: UseChatSendDeps) {
       appendLocalCommandTurn,
       loadConversationMessages,
       loadConversations,
+      resolveConversationRoomId,
       tryHandlePrefixedChatCommand,
       activeConversationIdRef,
       chatAbortRef,
       conversationMessagesRef.current.filter,
-      conversations.find,
+      conversationsRef,
       setActiveConversationId,
       setChatFirstTokenReceived,
       setChatLastUsage,
@@ -952,6 +1035,8 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
       let controller: AbortController | null = null;
+      let abortServerTurn: (() => void) | null = null;
+      let convRoomId: string | null = null;
 
       try {
         let convId: string = activeConversationId ?? "";
@@ -975,6 +1060,7 @@ export function useChatSend(deps: UseChatSendDeps) {
             activeConversationIdRef.current = conversation.id;
             setCompanionMessageCutoffTs(nextCutoffTs);
             convId = conversation.id;
+            convRoomId = conversation.roomId;
           } catch {
             return;
           }
@@ -986,7 +1072,10 @@ export function useChatSend(deps: UseChatSendDeps) {
         });
 
         // Eagerly rename "New Chat" using a snippet of the first message
-        const activeConv = conversations.find((c) => c.id === convId);
+        const activeConv = conversationsRef.current.find(
+          (c) => c.id === convId,
+        );
+        convRoomId = await resolveConversationRoomId(convId, convRoomId);
         if (
           activeConv &&
           (!activeConv.title ||
@@ -1018,6 +1107,17 @@ export function useChatSend(deps: UseChatSendDeps) {
 
         controller = new AbortController();
         chatAbortRef.current = controller;
+        abortServerTurn = () => {
+          abortServerConversationTurn(convRoomId, "ui-chat-abort");
+        };
+        controller.signal.addEventListener("abort", abortServerTurn, {
+          once: true,
+        });
+        activeChatTurnRef.current = {
+          controller,
+          roomId: convRoomId,
+          abortServerTurn,
+        };
         let streamedAssistantText = "";
 
         try {
@@ -1085,7 +1185,7 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
         } catch (err) {
           const abortError = err as Error;
-          if (abortError.name === "AbortError") {
+          if (abortError.name === "AbortError" || controller?.signal.aborted) {
             setConversationMessages((prev) =>
               prev.filter(
                 (message) =>
@@ -1099,6 +1199,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           if (chatAbortRef.current === controller) {
             chatAbortRef.current = null;
           }
+          if (activeChatTurnRef.current?.controller === controller) {
+            activeChatTurnRef.current = null;
+          }
           if (chatSendNonceRef.current === sendNonce) {
             chatSendBusyRef.current = false;
             setChatSending(false);
@@ -1109,6 +1212,9 @@ export function useChatSend(deps: UseChatSendDeps) {
           }
         }
       } finally {
+        if (controller && abortServerTurn) {
+          controller.signal.removeEventListener("abort", abortServerTurn);
+        }
         if (controller == null && chatSendNonceRef.current === sendNonce) {
           chatSendBusyRef.current = false;
           if (chatSendQueueRef.current.length > 0) {

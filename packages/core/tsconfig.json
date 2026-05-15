@@ -41,8 +41,8 @@
 			"@elizaos/plugin-whatsapp": [
 				"../../plugins/plugin-whatsapp/src/index.ts"
 			],
-			"@elizaos/app-task-coordinator": [
-				"../../plugins/app-task-coordinator/src/api/coordinator-types.ts"
+			"@elizaos/plugin-task-coordinator": [
+				"../../plugins/plugin-task-coordinator/src/api/coordinator-types.ts"
 			]
 		}
 	},

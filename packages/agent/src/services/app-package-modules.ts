@@ -142,8 +142,7 @@ async function resolveWorkspacePackageDirs(
       path.join(workspaceRoot, "packages", dirName),
     );
     if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
-      // Opt-in for older external workspaces; current Eliza app plugins live
-      // under plugins/app-* and keep @elizaos/app-* names.
+      // Opt-in for older external workspaces that place apps under apps/.
       candidateDirs.push(path.join(workspaceRoot, "apps", dirName));
     }
 

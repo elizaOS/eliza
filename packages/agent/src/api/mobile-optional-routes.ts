@@ -1,14 +1,15 @@
 import type http from "node:http";
 import { readRequestBody, sendJson, sendJsonError } from "@elizaos/core";
+import type { StreamVisualSettings } from "@elizaos/plugin-streaming";
 import { isMobilePlatform } from "@elizaos/shared";
 
 type StreamingSettingsModule = {
-  readStreamSettings: () => Record<string, unknown>;
+  readStreamSettings: () => StreamVisualSettings;
   validateStreamSettings: (value: unknown) => {
     error?: string;
-    settings?: Record<string, unknown>;
+    settings?: StreamVisualSettings;
   };
-  writeStreamSettings: (value: Record<string, unknown>) => void;
+  writeStreamSettings: (value: StreamVisualSettings) => void;
 };
 
 let streamingSettingsModulePromise: Promise<StreamingSettingsModule> | null =

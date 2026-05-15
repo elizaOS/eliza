@@ -224,17 +224,20 @@ const realResolveAlias: ModuleAlias[] = [
     replacement: path.join(pluginDiscordRoot, "index.ts"),
   },
   ...getWorkspaceAppAliases(repoRoot, [
-    "app-lifeops",
-    "app-documents",
     "app-task-coordinator",
-    "app-companion",
-    "app-shopify",
     "app-steward",
-    "app-training",
-    "app-vincent",
     "app-wallet",
   ]),
-  ...getWorkspacePluginAliases(repoRoot, ["plugin-local-inference"]),
+  ...getWorkspacePluginAliases(repoRoot, [
+    "plugin-companion",
+    "plugin-documents",
+    "plugin-lifeops",
+    "plugin-local-inference",
+    "plugin-shopify-ui",
+    "plugin-training",
+    "plugin-vincent",
+    "plugin-wallet-ui",
+  ]),
   {
     find: "@elizaos/plugin-form",
     replacement: path.join(

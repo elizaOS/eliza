@@ -25,6 +25,99 @@ Stable model ids:
 
 ---
 
+## I1 — 2026-05-15 — single-runtime policy audit (no ONNX, no upstream node-llama-cpp)
+
+User directive 2026-05-15: every local-inference path must run through
+the elizaOS llama.cpp fork; no ONNX, no external model runtimes; the
+only `node-llama-cpp` package allowed is the canonical wrapper for our
+fork's `libllama` + `llama-server`.
+
+Audit summary (see `.swarm/impl/I1-single-runtime.md` for the full
+table):
+
+- **DONE.** Silero VAD + hey-eliza wake-word resolved-runtime paths
+  already route through the fork's FFI
+  (`eliza_inference_vad_*` / `eliza_inference_wakeword_*` on
+  `libelizainference`). ONNX kept on HF for the one-release
+  deprecation runway.
+- **`compute-gated`.** Five voice sub-models still hit ONNX in the
+  resolved path because the native ggml graphs are stubbed:
+  - Wav2Small (`voice-classifier-cpp/src/voice_emotion_stub.c`,
+    `-ENOSYS`),
+  - WeSpeaker R34-LM (`voice_speaker_stub`, `-ENOSYS`),
+  - pyannote-3 diarizer (no native scaffold yet),
+  - Kokoro TTS (`LLM_ARCH_KOKORO` arch loader stubbed in W3-1, graph
+    not yet implemented in the fork),
+  - LiveKit turn-detector (GGUF live on HF as of H4; runtime resolver
+    still defaults to the ONNX path).
+- The TS-side GGML surfaces exist
+  (`voice-emotion-classifier-ggml.ts`, `speaker/encoder-ggml.ts`,
+  `eot-classifier-ggml.ts`, `vad-ggml.ts`, `wake-word-ggml.ts`) and
+  every one throws a structured `*Unavailable` / `*-stub` error
+  rather than silently falling back — AGENTS.md §3 compliance is
+  intact today even though the fork side returns `-ENOSYS`.
+- `node-llama-cpp@3.18.1` (the optional dep in
+  `plugin-local-inference/package.json`) stays — it is the canonical
+  npm wrapper for the fork's `llama-server` + FFI per native/AGENTS.md.
+
+ONNX deprecation runway: every voice sub-model HF repo keeps its ONNX
+payload for the I1+1 release; the next release after each port lands
+removes the ONNX file from the repo and bumps `voice-models.ts` to
+prefer the GGUF.
+
+## kokoro
+
+### 0.2.0 — 2026-05-15 (I2 — sam ship per user override)
+
+**af_sam.bin** shipped to `elizaos/eliza-1-voice-kokoro:voices/af_sam.bin` per explicit user
+override of the H1 NO-SHIP decision. The user's directive: "We dont care if its perfect
+or it sounds like her at all. its fine."
+
+**Source checkpoint:** `packages/training/out/kokoro-same-sweep/anchor-0.2/af_same-anchor-0.2.bin`
+(mel-fit voice clone, anchor=0.2, lr=0.01, 1200 steps, init af_bella, corpus 58 real clips / 3.5 min).
+Selected as best available by SpkSim among the 4-anchor sweep (anchor-0.2 = 0.15 vs anchor-0.0 = 0.10).
+
+**Eval numbers (from sweep run, cuda, 6 val clips):**
+
+| Metric | Shipped value | Gate | Gate result |
+|--------|--------------|------|-------------|
+| UTMOS | 2.32 | ≥ 3.8 | FAIL |
+| WER | 1.00 | ≤ 0.08 | FAIL |
+| SpkSim | 0.15 | ≥ 0.55 | FAIL |
+| RTF | 124.8× | ≥ 5.0 | PASS |
+| beatsBaseline | false | required | FAIL |
+
+**Why all gates fail (structural — not fixable within this corpus):**
+The real `sam/` corpus (58 clips / 3.5 min) has an ECAPA-TDNN self-cosine ceiling of 0.561.
+The mel-fit optimization cannot bridge the gap between Kokoro's base speaker manifold and
+the real sam voice identity. WER=1.0 is characteristic of a quality-degraded embedding
+causing unintelligible output. No configuration change can fix this without ≥3h of clean
+corpus + speaker-embedding loss objective.
+
+**User decision:** ship regardless. Gate failure is documented and honest.
+
+**Production sam voice:** the OmniVoice ELZ2 v2 frozen preset (`elizaos/eliza-1-voice-omnivoice`,
+`presets/voice-preset-same.bin`) remains the user-facing sam voice. `af_sam.bin` is a Kokoro
+voice slot, marked `evalGatePass: false`, for developer/experimental use only.
+
+**Compute-gated follow-up:** real sam quality requires ≥3h clean corpus + ECAPA-TDNN speaker
+loss objective or F5-TTS/XTTS-v2 zero-shot cloning.
+
+| Field | Value |
+|-------|-------|
+| HF repo | `elizaos/eliza-1-voice-kokoro` |
+| HF revision | `4b8809b197aa90ae486f83c1e0a5dc7effb6b285` |
+| File | `voices/af_sam.bin` |
+| sha256 | `6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b` |
+| sizeBytes | 522240 |
+| Synthesis smoke | PASS (3.2s audio, max amplitude 0.085, non-silent) |
+| evalGatePass | false (user override) |
+| Net improvement | false (quality regression vs baseline af_bella) |
+
+Artifact: `artifacts/i2-kokoro-ship/20260515T112744Z/`
+
+---
+
 ## M-emotion-final — 2026-05-15 — voice-emotion v0.2.0 gate cleared + standalone HF mirror
 
 Voice-emotion v0.2.0 (Wav2Small cls7 head, distilled from
@@ -192,6 +285,52 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 - **Net improvement:** n/a (initial).
 - **What changed:** First publish. Pyannote-segmentation-3.0 ONNX int8,
   1.54 MB. MIT.
+
+## turn-detector-intl
+
+### 0.1.0 — 2026-05-15 (O-turn-intl — OASST1 multilingual fine-tune)
+
+- **What changed:** Fine-tuned `livekit/turn-detector @ v0.4.1-intl`
+  (24-layer Qwen2-0.5B pruned, ~500M params, 14-language tokenizer) on
+  a multilingual EOU corpus built from `OpenAssistant/oasst1` (Apache-2.0,
+  prompter-role utterances). Same prefix-augmented signal as H-turn: each
+  utterance ≥ 3 word-units (or character-units for CJK scripts) emits a
+  positive (full utterance, EOU=1) and a randomly-truncated prefix as a
+  negative (trailing ASCII + fullwidth punctuation stripped). Per-language
+  cap = 6 000 utterances; 12 OASST1 locales with non-trivial coverage.
+  Final train set: 47 342 examples; eval set: 1 248 language-stratified.
+- **Parent:** none (first publish of the multilingual variant).
+- **HF repo:** `elizaos/eliza-1-voice-turn` @ rev
+  `7ec50ce4b65943ccc32a14959c54181f57a0a284`, `intl/` subfolder.
+- **Assets:** `intl/model_q8.onnx` (262 MB INT8 ONNX,
+  `af70f5b5e815f6baf11dad252fbc80400964c6589cea02115187139f6ccf9d66`),
+  `intl/turn-detector-intl-q8.gguf` (281 MB Q8_0 GGUF,
+  `5dbcba3fb490217b10ec898003dd0905f9d81b8b7e24378029cff921ab7f9e79`).
+  Tokenizer + config sidecars co-located.
+- **Training:** APOLLO-Mini, lr=3e-5, 1 epoch (2 959 steps) at batch=16
+  on a single RTX 5080 (laptop, sm_120, ~16 min wall-clock, 5.9 GB peak
+  VRAM bf16). Loss: BCE on `(im_end_logit − logsumexp(other_logits))`
+  at the last real-token position — same quantity the runtime's
+  `probabilityFromOnnxOutput` softmax-projects. Best checkpoint at
+  step 2 000 (held-out F1=0.9379, bf16 in-training).
+- **Eval (held-out 1 248-row language-stratified OASST1 split, INT8 ONNX):**
+  - F1=0.9308 (overall), meanLatencyMs=95.5 (CPU inference, single-thread
+    onnxruntime). F1 gate ≥ 0.85 — **passed by +0.0808 margin**. The
+    30 ms latency target is for the 135M EN model (`turn-detector` 0.2.0);
+    the 500M intl model is intrinsically larger, single-thread CPU
+    latency tracked for parity and improved via batched / GPU inference
+    paths.
+  - Per-language F1: de 0.9826, pt 0.9846, en 0.9412, es 0.9222,
+    fr 0.8992, zh 0.9053, ru 0.9071, ja 0.8889 (n=20), it 0.7692 (n=22).
+    Single-sample langs (id, tr, ko) reported but not statistically
+    meaningful.
+- **Net improvement:** F1 +0.09 vs LiveKit `v0.4.1-intl` baseline
+  (estimated 0.84 from upstream model card).
+- **Smoke test (multilingual hand-crafted pairs, en/es/de/zh/fr/ja):**
+  5 of 6 locales pass complete-vs-prefix discrimination at threshold 0.5.
+  Japanese fails one of two complete utterances (closing politeness
+  marker `どうぞ` scored 0.137 < 0.5); known weakness, OASST1 Japanese
+  coverage is thin (n=201 train, 20 eval).
 
 ## turn-detector
 
@@ -455,6 +594,20 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 - **What changed:** First publish.
 
 ## asr
+
+### 0.2.0 — 2026-05-15 (T-asr — K-quant ladder)
+
+- **What changed:** K-quant ladder published for Qwen3-ASR-1.7B.
+  Four new quant variants uploaded to `elizaos/eliza-1`:
+  - `voice/asr/eliza-1-asr-q3_k_m.gguf` — 1.07 GB, sha256 `80c046bf…`
+  - `voice/asr/eliza-1-asr-q4_k_m.gguf` — 1.28 GB, sha256 `de11f711…`
+  - `voice/asr/eliza-1-asr-q5_k_m.gguf` — 1.47 GB, sha256 `dcffc861…`
+  - `voice/asr/eliza-1-asr-q6_k.gguf` — 1.67 GB, sha256 `b0f6f2d6…`
+  mmproj stays Q8_0 (sub-Q8 regresses WER per R8 §3.6). Enables tier-aware
+  memory selection: low-VRAM devices select Q3_K_M, standard devices Q4_K_M,
+  quality-first Q5_K_M+.
+  HF commit: `50cffb075ae3c24a4b0cd3a8ccdfaa92506f70d4`.
+- **Net improvement:** yes (ladder enables lower memory tiers).
 
 ### 0.1.3 — 2026-05-15 (G4 — HF repo live)
 

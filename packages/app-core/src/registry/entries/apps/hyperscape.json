@@ -2,7 +2,7 @@
   "id": "hyperscape",
   "name": "Hyperscape",
   "description": "Multiplayer 3D world for embodied agent interactions.",
-  "npmName": "@elizaos/app-hyperscape",
+  "npmName": "@elizaos/plugin-hyperscape",
   "source": "bundled",
   "tags": [],
   "config": {},

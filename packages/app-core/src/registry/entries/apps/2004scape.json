@@ -2,7 +2,7 @@
   "id": "2004scape",
   "name": "2004scape",
   "description": "Classic-era RuneScape-inspired multiplayer world.",
-  "npmName": "@elizaos/app-2004scape",
+  "npmName": "@elizaos/plugin-2004scape",
   "source": "bundled",
   "tags": [],
   "config": {},

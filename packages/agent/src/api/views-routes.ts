@@ -7,6 +7,7 @@
  * Routes:
  *   GET  /api/views                    — list all registered views (JSON)
  *   GET  /api/views/platform-info      — platform detection info (JSON)
+ *   GET  /api/views/search?q=&limit=   — hybrid keyword+semantic ranked search (JSON)
  *   GET  /api/views/:id                — single view metadata (JSON)
  *   GET  /api/views/:id/bundle.js      — compiled view bundle (JS)
  *   GET  /api/views/:id/hero           — hero image (image/*)
@@ -391,17 +392,28 @@ export async function handleViewsRoutes(
   // Broadcasts a shell:navigate:view WebSocket event to all connected clients.
   // The frontend's startup-phase-hydrate WS handler dispatches eliza:navigate:view
   // on window when it receives this message, which App.tsx handles.
+  //
+  // Optional body fields:
+  //   action: "pin-tab"    — tells the shell to add to desktop tab bar
+  //   action: "open-window" — tells the shell to open in a new Electrobun window
+  //   path: string         — override the navigation path
   if (method === "POST" && subResource === "navigate") {
+    const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
+      () => null,
+    );
     const entry = getView(id);
     // Allow navigating to synthetic IDs (like __view-manager__) even when not
     // in the registry — they route to built-in shell tabs.
     const viewPath =
-      entry?.path ?? (id === "__view-manager__" ? "/apps" : null);
+      (typeof body?.path === "string" ? body.path : null) ??
+      entry?.path ??
+      (id === "__view-manager__" ? "/apps" : null);
     const viewLabel = entry?.label ?? id;
+    const action = typeof body?.action === "string" ? body.action : undefined;
 
     logger.info(
-      { src: "ViewsRoutes", viewId: id, viewPath },
-      `[ViewsRoutes] Navigate to view "${id}"`,
+      { src: "ViewsRoutes", viewId: id, viewPath, action },
+      `[ViewsRoutes] Navigate to view "${id}"${action ? ` (action=${action})` : ""}`,
     );
 
     ctx.broadcastWs?.({
@@ -409,9 +421,15 @@ export async function handleViewsRoutes(
       viewId: id,
       viewPath,
       viewLabel,
+      ...(action ? { action } : {}),
     });
 
-    json(res, { ok: true, viewId: id, viewPath });
+    json(res, {
+      ok: true,
+      viewId: id,
+      viewPath,
+      ...(action ? { action } : {}),
+    });
     return true;
   }
 

@@ -15,6 +15,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import type http from "node:http";
 import path from "node:path";
 import type { RouteRequestContext } from "@elizaos/core";
 import {
@@ -208,6 +209,246 @@ export function resolveConversationAdminEntityId(
   state: ConversationRouteState,
 ): UUID {
   return resolveClientChatAdminEntityId(state);
+}
+
+type StreamEventListener = (...args: unknown[]) => void;
+
+interface StreamEventSource {
+  on?: (event: string, listener: StreamEventListener) => unknown;
+  off?: (event: string, listener: StreamEventListener) => unknown;
+}
+
+type StreamSocketLike = StreamEventSource & {
+  destroyed?: boolean;
+  writable?: boolean;
+};
+
+interface ConversationStreamDisconnectTracker {
+  signal: AbortSignal;
+  abort: (reason?: unknown) => void;
+  checkConnectionClosed: () => boolean;
+  dispose: () => void;
+  isAborted: () => boolean;
+  markCompleted: () => void;
+}
+
+interface RequestDisconnectAbortTracker {
+  signal: AbortSignal;
+  dispose: () => void;
+  isAborted: () => boolean;
+  markCompleted: () => void;
+}
+
+function isStreamEventSource(value: unknown): value is StreamEventSource {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as StreamEventSource).on === "function"
+  );
+}
+
+function isStreamSocketLike(value: unknown): value is StreamSocketLike {
+  return typeof value === "object" && value !== null;
+}
+
+function createRequestDisconnectAbortTracker({
+  req,
+  res,
+  operation,
+}: {
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+  operation: string;
+}): RequestDisconnectAbortTracker {
+  const abortController = new AbortController();
+  const registrations: Array<{
+    source: StreamEventSource;
+    event: string;
+    listener: StreamEventListener;
+  }> = [];
+  let aborted = false;
+  let completed = false;
+
+  const abort = (reason?: unknown) => {
+    if (completed || aborted) return;
+    aborted = true;
+    abortController.abort(
+      reason instanceof Error ? reason : new Error(`${operation} aborted`),
+    );
+  };
+
+  const register = (
+    source: unknown,
+    event: string,
+    listener: StreamEventListener,
+  ) => {
+    if (!isStreamEventSource(source)) return;
+    source.on?.(event, listener);
+    registrations.push({ source, event, listener });
+  };
+
+  const onClientGone = () =>
+    abort(new Error(`${operation} client disconnected`));
+  const onResponseClose = () => {
+    const ended = Boolean(
+      (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
+    );
+    if (!ended) onClientGone();
+  };
+
+  register(req, "aborted", onClientGone);
+  register(req, "error", onClientGone);
+  register(res, "close", onResponseClose);
+  register(res, "error", onClientGone);
+
+  return {
+    signal: abortController.signal,
+    dispose: () => {
+      for (const { source, event, listener } of registrations) {
+        source.off?.(event, listener);
+      }
+      registrations.length = 0;
+    },
+    isAborted: () => aborted,
+    markCompleted: () => {
+      completed = true;
+    },
+  };
+}
+
+function createConversationStreamDisconnectTracker({
+  req,
+  res,
+  conversationId,
+  roomId,
+}: {
+  req: http.IncomingMessage;
+  res: http.ServerResponse;
+  conversationId: string;
+  roomId: UUID;
+}): ConversationStreamDisconnectTracker {
+  const abortController = new AbortController();
+  const registrations: Array<{
+    source: StreamEventSource;
+    event: string;
+    listener: StreamEventListener;
+  }> = [];
+  let aborted = false;
+  let completed = false;
+
+  const requestSocket = isStreamSocketLike(
+    (req as http.IncomingMessage & { socket?: unknown }).socket,
+  )
+    ? ((req as http.IncomingMessage & { socket?: StreamSocketLike }).socket ??
+      null)
+    : null;
+  const responseSocket = isStreamSocketLike(
+    (res as http.ServerResponse & { socket?: unknown }).socket,
+  )
+    ? ((res as http.ServerResponse & { socket?: StreamSocketLike }).socket ??
+      null)
+    : null;
+
+  const responseEnded = () =>
+    Boolean(
+      (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
+    );
+
+  const abort = (reason?: unknown) => {
+    if (completed || aborted) return;
+    aborted = true;
+    logger.info(
+      { conversationId, roomId },
+      "[ConversationStream] client disconnected; aborting generation",
+    );
+    abortController.abort(reason ?? new Error("Client disconnected"));
+  };
+
+  const checkConnectionClosed = () => {
+    const socketClosed =
+      requestSocket?.destroyed === true ||
+      responseSocket?.destroyed === true ||
+      (requestSocket?.writable === false && !responseEnded()) ||
+      (responseSocket?.writable === false && !responseEnded());
+    const responseClosed =
+      (res as http.ServerResponse & { destroyed?: boolean }).destroyed ===
+        true && !responseEnded();
+    if (socketClosed || responseClosed) {
+      abort(new Error("Client disconnected"));
+      return true;
+    }
+    return false;
+  };
+
+  const register = (
+    source: unknown,
+    event: string,
+    listener: StreamEventListener,
+  ) => {
+    if (!isStreamEventSource(source)) return;
+    source.on?.(event, listener);
+    registrations.push({ source, event, listener });
+  };
+
+  const onRequestClose = () => {
+    checkConnectionClosed();
+  };
+  const onClientGone = () => {
+    abort(new Error("Client disconnected"));
+  };
+
+  // Bun's node:http shim emits req.close when the POST body finishes, before
+  // the SSE response is complete. Socket events must be attached before that
+  // point; listeners added after body parsing can miss later client exits.
+  register(req, "aborted", onClientGone);
+  register(req, "close", onRequestClose);
+  register(req, "error", onClientGone);
+  register(res, "close", onClientGone);
+  register(res, "error", onClientGone);
+  register(requestSocket, "close", onClientGone);
+  register(requestSocket, "error", onClientGone);
+  if (responseSocket && responseSocket !== requestSocket) {
+    register(responseSocket, "close", onClientGone);
+    register(responseSocket, "error", onClientGone);
+  }
+
+  return {
+    signal: abortController.signal,
+    abort,
+    checkConnectionClosed,
+    dispose: () => {
+      for (const { source, event, listener } of registrations) {
+        source.off?.(event, listener);
+      }
+      registrations.length = 0;
+    },
+    isAborted: () => aborted,
+    markCompleted: () => {
+      completed = true;
+    },
+  };
+}
+
+function writeConversationStreamHeartbeat(
+  res: http.ServerResponse,
+  disconnectTracker: ConversationStreamDisconnectTracker,
+): void {
+  if (disconnectTracker.isAborted() || res.writableEnded) return;
+  try {
+    res.write(": heartbeat\n\n");
+  } catch {
+    disconnectTracker.abort(new Error("Client disconnected"));
+  }
+}
+
+function isTurnAbortError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const code = (err as Error & { code?: unknown }).code;
+  return (
+    code === "TURN_ABORTED" ||
+    err.name === "TurnAbortedError" ||
+    err.message.startsWith("Turn aborted:")
+  );
 }
 
 function ensureAdminEntityId(state: ConversationRouteState): UUID {
@@ -1192,11 +1433,28 @@ export async function handleConversationRoutes(
       return true;
     }
 
+    const disconnectTracker = createConversationStreamDisconnectTracker({
+      req,
+      res,
+      conversationId: conv.id,
+      roomId: conv.roomId,
+    });
+    const finishStreamResponse = () => {
+      disconnectTracker.markCompleted();
+      disconnectTracker.dispose();
+      if (!res.writableEnded) {
+        res.end();
+      }
+    };
+
     const chatPayload = await readChatRequestPayload(req, res, {
       readJsonBody,
       error,
     });
-    if (!chatPayload) return true;
+    if (!chatPayload) {
+      finishStreamResponse();
+      return true;
+    }
     const {
       prompt,
       channelType,
@@ -1208,6 +1466,8 @@ export async function handleConversationRoutes(
 
     const runtime = state.runtime;
     if (!runtime) {
+      disconnectTracker.markCompleted();
+      disconnectTracker.dispose();
       error(res, "Agent is not running", 503);
       return true;
     }
@@ -1223,6 +1483,8 @@ export async function handleConversationRoutes(
         `Failed to initialize conversation room: ${getErrorMessage(err)}`,
         500,
       );
+      disconnectTracker.markCompleted();
+      disconnectTracker.dispose();
       return true;
     }
 
@@ -1240,6 +1502,8 @@ export async function handleConversationRoutes(
     try {
       await persistConversationMemory(runtime, messageToStore);
     } catch (err) {
+      disconnectTracker.markCompleted();
+      disconnectTracker.dispose();
       error(res, `Failed to store user message: ${getErrorMessage(err)}`, 500);
       return true;
     }
@@ -1247,52 +1511,48 @@ export async function handleConversationRoutes(
     const walletModeGuidance = resolveWalletModeGuidanceReply(state, prompt);
     if (walletModeGuidance) {
       initSse(res);
-      let aborted = false;
-      req.on("close", () => {
-        aborted = true;
-      });
-      if (!aborted) {
-        writeChatTokenSse(res, walletModeGuidance, walletModeGuidance);
-        try {
-          await persistAssistantConversationMemory(
-            runtime,
-            conv.roomId,
-            walletModeGuidance,
-            channelType,
-            turnStartedAt,
-          );
-          conv.updatedAt = new Date().toISOString();
-        } catch (persistErr) {
-          writeSse(res, {
-            type: "error",
-            message: getErrorMessage(persistErr),
+      try {
+        if (!disconnectTracker.isAborted()) {
+          writeChatTokenSse(res, walletModeGuidance, walletModeGuidance);
+          try {
+            await persistAssistantConversationMemory(
+              runtime,
+              conv.roomId,
+              walletModeGuidance,
+              channelType,
+              turnStartedAt,
+            );
+            conv.updatedAt = new Date().toISOString();
+          } catch (persistErr) {
+            writeSse(res, {
+              type: "error",
+              message: getErrorMessage(persistErr),
+            });
+            return true;
+          }
+          writeSseJson(res, {
+            type: "done",
+            fullText: walletModeGuidance,
+            agentName: state.agentName,
           });
-          res.end();
-          return true;
         }
-        writeSseJson(res, {
-          type: "done",
-          fullText: walletModeGuidance,
-          agentName: state.agentName,
-        });
+      } finally {
+        finishStreamResponse();
       }
-      res.end();
       return true;
     }
 
     // ── Local runtime path (streaming) ───────────────────────
 
     initSse(res);
-    let aborted = false;
-    req.on("close", () => {
-      aborted = true;
-    });
+    writeConversationStreamHeartbeat(res, disconnectTracker);
 
     // SSE heartbeat to keep connection alive during long generation
     const heartbeatInterval = setInterval(() => {
-      if (!aborted && !res.writableEnded) {
-        res.write(": heartbeat\n\n");
+      if (disconnectTracker.checkConnectionClosed()) {
+        return;
       }
+      writeConversationStreamHeartbeat(res, disconnectTracker);
     }, 5000);
 
     let streamedText = "";
@@ -1307,15 +1567,37 @@ export async function handleConversationRoutes(
         userMessage,
         state.agentName,
         {
-          isAborted: () => aborted,
+          isAborted: () => disconnectTracker.isAborted(),
+          abortSignal: disconnectTracker.signal,
           onChunk: (chunk) => {
             if (!chunk) return;
+            if (
+              disconnectTracker.isAborted() ||
+              disconnectTracker.checkConnectionClosed()
+            ) {
+              return;
+            }
             streamedText += chunk;
             writeChatTokenSse(res, chunk, streamedText);
           },
           onSnapshot: (text) => {
             if (!text) return;
-            if (!streamedText) {
+            if (
+              !streamedText ||
+              disconnectTracker.isAborted() ||
+              disconnectTracker.checkConnectionClosed()
+            ) {
+              return;
+            }
+            // Structured field extractors can briefly normalize whitespace or
+            // closing punctuation while the same visible field is still
+            // streaming. Do not shrink the user-visible token stream for
+            // prefix-equivalent snapshots; later longer snapshots/deltas still
+            // advance normally.
+            if (
+              text.length < streamedText.length &&
+              streamedText.startsWith(text)
+            ) {
               return;
             }
             streamedText = text;
@@ -1327,7 +1609,7 @@ export async function handleConversationRoutes(
         },
       );
 
-      if (!aborted) {
+      if (!disconnectTracker.isAborted()) {
         conv.updatedAt = new Date().toISOString();
         if (result.noResponseReason !== "ignored") {
           const resolvedText = normalizeChatResponseText(
@@ -1337,7 +1619,7 @@ export async function handleConversationRoutes(
           );
           if (!streamedText && resolvedText) {
             for (const chunk of chunkVisibleTextForSse(resolvedText)) {
-              if (aborted) break;
+              if (disconnectTracker.isAborted()) break;
               streamedText += chunk;
               writeChatTokenSse(res, chunk, streamedText);
               await new Promise((resolve) => setTimeout(resolve, 60));
@@ -1389,7 +1671,12 @@ export async function handleConversationRoutes(
         }
       }
     } catch (err) {
-      if (!aborted) {
+      if (isTurnAbortError(err)) {
+        logger.info(
+          { conversationId: conv.id, roomId: conv.roomId },
+          "[ConversationStream] generation aborted",
+        );
+      } else if (!disconnectTracker.isAborted()) {
         // If text was already streamed to the client (e.g. the initial
         // response succeeded but planner follow-up failed), use the
         // streamed text as the final reply instead of replacing it with a
@@ -1455,7 +1742,7 @@ export async function handleConversationRoutes(
       }
     } finally {
       clearInterval(heartbeatInterval);
-      res.end();
+      finishStreamResponse();
       // Persistence runs after the client has already received `done` + the
       // socket is closed. Failures must still be observable — never swallow.
       if (deferredPersistence !== null) {
@@ -1738,11 +2025,24 @@ export async function handleConversationRoutes(
         );
       }
 
-      const newTitle = await generateConversationTitle(
-        state.runtime,
-        prompt,
-        state.agentName,
-      );
+      const titleAbortTracker = createRequestDisconnectAbortTracker({
+        req,
+        res,
+        operation: "conversation title generation",
+      });
+      let newTitle: string | null = null;
+      try {
+        newTitle = await generateConversationTitle(
+          state.runtime,
+          prompt,
+          state.agentName,
+          { signal: titleAbortTracker.signal },
+        );
+      } finally {
+        titleAbortTracker.markCompleted();
+        titleAbortTracker.dispose();
+      }
+      if (titleAbortTracker.isAborted()) return true;
 
       const fallbackTitle = prompt
         .replace(/\s+/g, " ")

@@ -5,7 +5,7 @@
  * On a fresh clone, the companion plugin's public/vrms/ and animations/
  * may be empty or contain only Git LFS pointers.  This script clones the
  * elizaos/avatars repository (org-owned) into a temp directory and copies
- * the assets into eliza/plugins/app-companion/public/.
+ * the assets into eliza/plugins/plugin-companion/public/.
  *
  * Run automatically via the `postinstall` hook, or manually:
  *   node scripts/ensure-avatars.mjs

@@ -1,43 +1,35 @@
 # Nullish Operator Audit Report
 
-Generated: 2026-05-15T10:53:40.460Z
+Generated: 2026-05-15T11:27:17.349Z
 
 ## Summary
 
 | Metric | Count |
 | --- | ---: |
 | TypeScript files scanned | 348 |
-| Operators found | 10453 |
-| Type-obvious removable | 4 |
+| Operators found | 10465 |
+| Type-obvious removable | 0 |
 | Applied edits | 0 |
 
 ## By Kind
 
 | Kind | Count |
 | --- | ---: |
-| `binary-??` | 1959 |
-| `binary-&&` | 1922 |
-| `binary-\|\|` | 1707 |
-| `optional-chain` | 1974 |
-| `optional-declaration` | 2891 |
+| `binary-??` | 1963 |
+| `binary-&&` | 1925 |
+| `binary-\|\|` | 1710 |
+| `optional-chain` | 1973 |
+| `optional-declaration` | 2894 |
 
 ## By Classification
 
 | Classification | Count |
 | --- | ---: |
-| `review-required` | 3602 |
+| `review-required` | 3608 |
 | `truthy-left-review` | 27 |
-| `type-obvious-removable` | 4 |
-| `type-required-or-unknown` | 3929 |
-| `upstream-type-review` | 2891 |
+| `type-required-or-unknown` | 3936 |
+| `upstream-type-review` | 2894 |
 
 ## Type-Obvious Removable Examples
 
-- `packages/agent/src/api/connector-account-routes.ts:863:38` binary-??: query.outcome ?? ""
-  - left-hand type excludes null and undefined; type: `string`
-- `packages/agent/src/api/connector-account-routes.ts:871:37` binary-??: query.accountId ?? ""
-  - left-hand type excludes null and undefined; type: `string`
-- `packages/agent/src/api/connector-account-routes.ts:872:31` binary-??: query.action ?? ""
-  - left-hand type excludes null and undefined; type: `string`
-- `packages/agent/src/api/views-routes.ts:122:26` optional-chain: body?.payload
-  - receiver type excludes null and undefined; type: `Record<string, unknown>`
+No type-obvious removable operators found.
