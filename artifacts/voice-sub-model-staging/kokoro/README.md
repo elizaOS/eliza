@@ -38,9 +38,9 @@
 | `bf_isabella` | British female, warm |
 | `bm_george` | British male, authoritative |
 | `bm_lewis` | British male, casual |
-| `af_sam` | Sam clone (best-available; see note below) |
+| `af_same` | Same clone (best-available; see note below) |
 
-> **Note on sam:** The W3-11 fine-tune attempt for the sam voice clone regressed on all quality metrics (WER +53%, SpkSim -0.21, UTMOS -34 vs baseline). The `af_sam.bin` preset here is the best-available approximation pending corpus expansion (≥3h target). For production sam TTS, the primary path is OmniVoice frozen-conditioning (`elizaos/eliza-1-voice-omnivoice`). See `.swarm/impl/W3-11-kokoro-post-mortem.md`.
+> **Note on same:** The W3-11 fine-tune attempt for the same voice clone regressed on all quality metrics (WER +53%, SpkSim -0.21, UTMOS -34 vs baseline). The `af_same.bin` preset here is the best-available approximation pending corpus expansion (≥3h target). For production same TTS, the primary path is OmniVoice frozen-conditioning (`elizaos/eliza-1-voice-omnivoice`). See `.swarm/impl/W3-11-kokoro-post-mortem.md`.
 
 ## Files
 
@@ -48,7 +48,7 @@
 |------|------|------|
 | `kokoro-v1.0-q4.onnx` | Base weights (Q4) | ~311 MB |
 | `voices/af_bella.bin` | Voice preset (bella) | ~512 KB |
-| `voices/af_sam.bin` | Voice preset (sam, best-available) | ~512 KB |
+| `voices/af_same.bin` | Voice preset (same, best-available) | ~512 KB |
 | `manifest.json` | Machine-readable metadata | — |
 
 ## Coordination Note

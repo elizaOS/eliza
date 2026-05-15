@@ -3,9 +3,9 @@
   "id": "kokoro",
   "version": "0.1.0",
   "hfRepo": "elizaos/eliza-1-voice-kokoro",
-  "hfRevision": "main",
+  "hfRevision": "04d3d497fec65a8d31f1d48d4fd69e971ea83a9b",
   "publishedToHfAt": "2026-05-14T00:00:00Z",
-  "displayName": "Eliza-1 Voice Kokoro — base model + sam preset",
+  "displayName": "Eliza-1 Voice Kokoro \u2014 base model + sam preset",
   "purpose": "Kokoro-82M TTS base weights and sam voice preset for Eliza-1",
   "architecture": "Kokoro 82M (hexgrad/Kokoro-82M)",
   "license": "Apache-2.0",
@@ -15,7 +15,18 @@
   "evalMetrics": {
     "mosExpressive": 4.21,
     "rtfM1Air": 0.42,
-    "voices": ["af_bella", "af_nicole", "af_sarah", "af_sky", "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george", "bm_lewis"]
+    "voices": [
+      "af_bella",
+      "af_nicole",
+      "af_sarah",
+      "af_sky",
+      "am_adam",
+      "am_michael",
+      "bf_emma",
+      "bf_isabella",
+      "bm_george",
+      "bm_lewis"
+    ]
   },
   "files": [
     {
@@ -24,7 +35,9 @@
       "quant": "onnx-int8",
       "format": "onnx",
       "approxSizeBytes": 326144000,
-      "sha256": "TBD-populated-by-publish-pipeline"
+      "sha256": "04cf570cf9c4153694f76347ed4b9a48c1b59ff1de0999e6605d123966b197c7",
+      "sizeBytes": 305215966,
+      "assetStatus": "available"
     },
     {
       "filename": "voices/af_bella.bin",
@@ -32,16 +45,20 @@
       "quant": "fp16",
       "format": "bin",
       "approxSizeBytes": 524288,
-      "sha256": "TBD-populated-by-publish-pipeline"
+      "sha256": "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b",
+      "sizeBytes": 522240,
+      "assetStatus": "available"
     },
     {
-      "filename": "voices/af_sam.bin",
-      "role": "voice-preset-sam",
+      "filename": "voices/af_same.bin",
+      "role": "voice-preset-same",
       "quant": "fp16",
       "format": "bin",
       "approxSizeBytes": 524288,
-      "sha256": "TBD-populated-by-publish-pipeline",
-      "notes": "Sam voice preset. W3-11 fine-tune regressed; this is the best-available preset pending corpus expansion."
+      "sha256": null,
+      "sizeBytes": null,
+      "assetStatus": "missing",
+      "missingReason": "binary not present in local staging or public HF repo"
     }
   ],
   "notes": "W3-11 post-mortem: kokoro sam fine-tune regressed (WER +53%, SpkSim -0.21, UTMOS -34). The sam fine-tune is blocked on quality gate. This repo holds the base kokoro weights plus the best-available voice presets. The primary sam TTS path for production is OmniVoice frozen-conditioning (elizaos/eliza-1-voice-omnivoice). See .swarm/impl/W3-11-kokoro-post-mortem.md."
