@@ -11,19 +11,18 @@ import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
 const DFLASH_TIERS = new Set<Eliza1Tier>([
+	"0_8b",
 	"2b",
 	"4b",
 	"9b",
 	"27b",
 	"27b-256k",
-	"27b-1m",
 ]);
 const VISION_TIERS = new Set<Eliza1Tier>([
 	"4b",
 	"9b",
 	"27b",
 	"27b-256k",
-	"27b-1m",
 ]);
 
 function passingBackends() {
@@ -118,12 +117,11 @@ describe("Eliza-1 manifest schema constants", () => {
 			"9b",
 			"27b",
 			"27b-256k",
-			"27b-1m",
 		]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["0_8b", "2b", "4b"]),
 		);
-		expect(REQUIRED_KERNELS_BY_TIER["0_8b"]).not.toContain("dflash");
+		expect(REQUIRED_KERNELS_BY_TIER["0_8b"]).toContain("dflash");
 		expect(REQUIRED_KERNELS_BY_TIER["2b"]).toContain("dflash");
 		expect(REQUIRED_KERNELS_BY_TIER["4b"]).toContain("dflash");
 	});
@@ -281,7 +279,7 @@ describe("validateManifest — contract rejections", () => {
 	});
 
 	it("requires vision and DFlash artifacts for 4b and larger tiers", () => {
-		for (const tier of ["4b", "9b", "27b", "27b-256k", "27b-1m"] as const) {
+		for (const tier of ["4b", "9b", "27b", "27b-256k"] as const) {
 			const m = baseManifest(tier);
 			delete m.lineage.vision;
 			delete m.lineage.drafter;

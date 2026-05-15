@@ -20,6 +20,8 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 # Add the package to path
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -72,6 +74,11 @@ class TestResults:
                 print(f"  - {err}")
         print(f"{'=' * 60}")
         return self.failed == 0
+
+
+@pytest.fixture
+def results() -> TestResults:
+    return TestResults()
 
 
 async def test_environment(results: TestResults):
