@@ -25,8 +25,8 @@ the upstream BASE GGUFs, so the license for each component is the
 *upstream component's* license, not a fresh "trained Eliza-1" license.
 `LICENSE.eliza-1` is the project-level umbrella notice: the bundle as a
 whole is governed by its most-restrictive component term (CC-BY-NC-SA-4.0
-once the omnivoice-singing voice — which carries CC-BY-NC-SA training
-lineage — is in the bundle), hence the non-commercial open-source
+when a tier includes a CC-BY-NC-SA component such as OmniVoice singing
+or an experimental wakeword head), hence the non-commercial open-source
 positioning in `packages/inference/AGENTS.md` §1.
 """
 
@@ -74,8 +74,10 @@ class LicenseAttestation:
     upstream_url: str
     copyright_holder: str
     note: str
-    # Components present only in some tiers (vision -> mmproj tiers,
-    # embedding -> non-lite, wakeword -> opt-in voice bundles).
+    # Components present only in some bundle shapes (embedding -> non-lite,
+    # wakeword -> opt-in voice bundles). Vision is required for active
+    # Eliza-1 release tiers but remains component-detected so legacy/no-vision
+    # fixtures can still be verified honestly.
     tiers: tuple[str, ...] | None = None
 
     def render(self) -> str:
@@ -98,15 +100,14 @@ class LicenseAttestation:
 
 # The text backbone, the DFlash drafter (distilled from the text
 # backbone) and the embedding model are all Apache-2.0 (Qwen3 family on
-# HuggingFace ships the Apache-2.0 LICENSE). OmniVoice's GGUF repo
-# (Serveurperso/OmniVoice-GGUF) and the omnivoice.cpp source both
-# declare Apache-2.0 for the model weights; the C++ glue is MIT but is
-# vendored into the llama.cpp build (a code dependency, not a shipped
-# weight), so the *bundle* voice license is Apache-2.0. Qwen3-ASR is
-# Apache-2.0. Silero VAD is MIT. openWakeWord code + feature models are
-# Apache-2.0; the pre-trained wake-phrase head is CC-BY-NC-SA-4.0 (the
-# bundle only ships the head as an opt-in experimental placeholder — see
-# wakeword-head-plan.md).
+# HuggingFace ships the Apache-2.0 LICENSE). Voice artifacts are tiered:
+# 0_8b/2b/4b/9b ship OmniVoice first with Kokoro fallback, and 27B-class
+# tiers ship OmniVoice only. Kokoro and OmniVoice weights both declare
+# Apache-2.0; omnivoice.cpp C++ glue is MIT but is a code dependency, not a
+# shipped weight. Qwen3-ASR is Apache-2.0. Silero VAD is MIT. openWakeWord
+# code + feature models are Apache-2.0; the pre-trained wake-phrase head is
+# CC-BY-NC-SA-4.0 (the bundle only ships the head as an opt-in experimental
+# placeholder — see wakeword-head-plan.md).
 _APACHE = "Apache-2.0.txt"
 _MIT = "MIT-silero-vad.txt"
 _CC_BY_NC_SA = "CC-BY-NC-SA-4.0.txt"
@@ -140,20 +141,28 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
     ),
     LicenseAttestation(
         bundle_file="LICENSE.voice",
-        component="voice (OmniVoice TTS)",
+        component="voice (tiered TTS)",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="Serveurperso/OmniVoice-GGUF; ServeurpersoCom/omnivoice.cpp",
-        upstream_url="https://huggingface.co/Serveurperso/OmniVoice-GGUF",
-        copyright_holder="the OmniVoice / omnivoice.cpp authors; Qwen-TTS lineage (Alibaba Cloud)",
+        upstream_repo=(
+            "onnx-community/Kokoro-82M-v1.0-ONNX; "
+            "Serveurperso/OmniVoice-GGUF; ServeurpersoCom/omnivoice.cpp"
+        ),
+        upstream_url="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+        copyright_holder=(
+            "the Kokoro authors; the OmniVoice / omnivoice.cpp authors; "
+            "Qwen-TTS lineage (Alibaba Cloud)"
+        ),
         note=(
-            "The TTS weights are OmniVoice (Qwen3-TTS lineage), staged from "
-            "Serveurperso/OmniVoice-GGUF (declared Apache-2.0). The omnivoice.cpp "
-            "C++ source fused into the llama.cpp build is MIT-licensed; that is a "
-            "code dependency, not a shipped weight. The omnivoice-singing emotion / "
-            "singing tag vocabulary inherits CC-BY-NC-SA training-data lineage "
-            "(GTSinger / RAVDESS / Expresso) — acceptable for this non-commercial "
-            "release; see LICENSE.eliza-1 for the bundle-level term."
+            "The active Eliza-1 TTS policy is tiered: 0_8b, 2b, 4b, and 9b "
+            "ship OmniVoice first with Kokoro fallback; 27B-class tiers ship "
+            "OmniVoice only. Kokoro ONNX assets are staged from "
+            "onnx-community/Kokoro-82M-v1.0-ONNX. OmniVoice GGUF assets, when "
+            "present, are staged from Serveurperso/OmniVoice-GGUF (Qwen3-TTS "
+            "lineage), and omnivoice.cpp is a MIT-licensed code dependency, not "
+            "a shipped weight. OmniVoice singing/emotion tag data carries "
+            "CC-BY-NC-SA lineage; active mobile tiers publish only the narrow "
+            "OmniVoice Q3/Q4/Q5 ladder."
         ),
     ),
     LicenseAttestation(
@@ -234,11 +243,11 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
             "The vision projector (mmproj) is part of the Qwen3.5 multimodal "
-            "lineage; present only on the mmproj-capable 4B tier where it is "
-            "not inlined into the text GGUF. Declared "
-            "upstream license: Apache-2.0."
+            "lineage; active Eliza-1 release tiers ship a tier-compatible "
+            "vision/mmproj artifact rather than reusing the ASR audio mmproj. "
+            "Declared upstream license: Apache-2.0."
         ),
-        tiers=("4b",),
+        tiers=("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.wakeword",
@@ -275,17 +284,15 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "Eliza-1 is a non-commercial open-source on-device model line. This "
             "bundle is composed of components under permissive (Apache-2.0 / MIT) "
             "and CC-compatible terms; see the per-component LICENSE.* files and the "
-            "manifest lineage / provenance blocks for the full breakdown. Because "
-            "the bundle includes the omnivoice-singing voice (whose training-data "
-            "lineage is CC-BY-NC-SA), the BUNDLE AS A WHOLE is governed by the "
-            "most-restrictive component term, CC-BY-NC-SA-4.0 (verbatim legalcode "
-            "below): you may use, share, and adapt it for NON-COMMERCIAL purposes "
-            "with attribution and ShareAlike. Individual permissively-licensed "
-            "components remain usable under their own (less restrictive) terms — "
-            "see their LICENSE.* file. If the project pivots to commercial "
-            "licensing, the CC-BY-NC-SA voice training-data lineage (GTSinger / "
-            "RAVDESS / Expresso) must be re-evaluated and likely re-trained on "
-            "commercially-licensed corpora."
+            "manifest lineage / provenance blocks for the full breakdown. The "
+            "bundle-level term follows the most-restrictive shipped component. "
+            "0_8b/2b/4b mobile bundles include the narrow OmniVoice voice "
+            "ladder; 9b and 27B-class bundles that include OmniVoice singing/"
+            "emotion data carry CC-BY-NC-SA lineage. Individual permissively "
+            "licensed components remain usable under their own terms. If the "
+            "project pivots to commercial licensing, any CC-BY-NC-SA voice or "
+            "wakeword training-data lineage must be re-evaluated and likely "
+            "re-trained on commercially-licensed corpora."
         ),
     ),
 )
@@ -294,6 +301,50 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
 _ATTESTATION_BY_FILE: Final[Mapping[str, LicenseAttestation]] = {
     a.bundle_file: a for a in ATTESTATIONS
 }
+
+
+def _voice_attestation_for_components(
+    components: Sequence[str],
+) -> LicenseAttestation:
+    comp_set = set(components)
+    has_kokoro = "kokoro" in comp_set
+    has_omnivoice = "omnivoice" in comp_set
+    if has_kokoro and not has_omnivoice:
+        return LicenseAttestation(
+            bundle_file="LICENSE.voice",
+            component="voice (Kokoro TTS)",
+            spdx="Apache-2.0",
+            text_file=_APACHE,
+            upstream_repo="onnx-community/Kokoro-82M-v1.0-ONNX",
+            upstream_url="https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX",
+            copyright_holder="the Kokoro authors",
+            note=(
+                "This legacy/no-OmniVoice Eliza-1 bundle is Kokoro-only for TTS. It "
+                "ships no OmniVoice GGUF weights and no OmniVoice quant ladder. "
+                "Kokoro ONNX assets are staged from "
+                "onnx-community/Kokoro-82M-v1.0-ONNX and declare Apache-2.0."
+            ),
+        )
+    if has_omnivoice and not has_kokoro:
+        return LicenseAttestation(
+            bundle_file="LICENSE.voice",
+            component="voice (OmniVoice TTS)",
+            spdx="Apache-2.0",
+            text_file=_APACHE,
+            upstream_repo="Serveurperso/OmniVoice-GGUF; ServeurpersoCom/omnivoice.cpp",
+            upstream_url="https://huggingface.co/Serveurperso/OmniVoice-GGUF",
+            copyright_holder=(
+                "the OmniVoice / omnivoice.cpp authors; Qwen-TTS lineage "
+                "(Alibaba Cloud)"
+            ),
+            note=(
+                "This 27B-class Eliza-1 bundle is OmniVoice-only for TTS. "
+                "OmniVoice GGUF assets are staged from Serveurperso/OmniVoice-GGUF "
+                "(Qwen3-TTS lineage), and omnivoice.cpp is a MIT-licensed code "
+                "dependency, not a shipped weight."
+            ),
+        )
+    return _ATTESTATION_BY_FILE["LICENSE.voice"]
 
 
 def attestations_for_components(components: Sequence[str]) -> tuple[LicenseAttestation, ...]:
@@ -325,7 +376,11 @@ def attestations_for_components(components: Sequence[str]) -> tuple[LicenseAttes
     for a in ATTESTATIONS:
         if a.bundle_file in wanted and a.bundle_file not in seen:
             seen.add(a.bundle_file)
-            out.append(a)
+            out.append(
+                _voice_attestation_for_components(components)
+                if a.bundle_file == "LICENSE.voice"
+                else a
+            )
     return tuple(out)
 
 
@@ -451,6 +506,11 @@ def _detect_components(bundle_dir: Path) -> list[str]:
     """
 
     components = ["text", "voice", "asr", "vad", "dflash"]
+    tts_dir = bundle_dir / "tts"
+    if (tts_dir / "kokoro").is_dir() and any((tts_dir / "kokoro").iterdir()):
+        components.append("kokoro")
+    if tts_dir.is_dir() and any(tts_dir.glob("omnivoice-*.gguf")):
+        components.append("omnivoice")
     if (bundle_dir / "vision").is_dir() and any((bundle_dir / "vision").iterdir()):
         components.append("vision")
     if (bundle_dir / "embedding").is_dir() and any((bundle_dir / "embedding").iterdir()):

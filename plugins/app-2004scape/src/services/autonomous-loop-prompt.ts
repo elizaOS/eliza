@@ -1,4 +1,4 @@
-export interface Rs2004SubactionDefinition {
+interface Rs2004SubactionDefinition {
   name: string;
   dispatch: string;
   legacyAction: string;
@@ -6,14 +6,14 @@ export interface Rs2004SubactionDefinition {
   description: string;
 }
 
-export interface Rs2004RouterDefinition {
+interface Rs2004RouterDefinition {
   name: string;
   description: string;
   descriptionCompressed: string;
   subactions: readonly Rs2004SubactionDefinition[];
 }
 
-export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
+const RS_2004_ACTION_ROUTER_DEFINITIONS = [
   {
     name: "SKILL",
     description:
@@ -290,7 +290,7 @@ export const RS_2004_ACTION_ROUTER_DEFINITIONS = [
   },
 ] as const satisfies readonly Rs2004RouterDefinition[];
 
-export type Rs2004RouterActionName =
+type Rs2004RouterActionName =
   (typeof RS_2004_ACTION_ROUTER_DEFINITIONS)[number]["name"];
 
 export interface ResolvedRs2004Action {
@@ -334,13 +334,6 @@ for (const router of RS_2004_ACTION_ROUTER_DEFINITIONS) {
     );
     RESOLVED_BY_LEGACY_ACTION.set(subaction.legacyAction, resolved);
   }
-}
-
-export function isRs2004RouterActionName(actionName: unknown): boolean {
-  const normalized = normalizeActionName(actionName);
-  return RS_2004_ACTION_ROUTER_DEFINITIONS.some(
-    (router) => router.name === normalized,
-  );
 }
 
 export function resolveRs2004RouterAction(

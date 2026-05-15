@@ -58,10 +58,11 @@ The machine-readable contract lives at
 the image at `/product/etc/eliza/aosp-assistant-full-control.json`. It records
 the full AOSP-only control surface:
 
-- `ROLE_ASSISTANT`, `ACTION_ASSIST`, and `VOICE_COMMAND` ownership.
-- Accessibility and notification-listener capability declarations. These are
-  declarations of the allowed system path; add concrete services only on the
-  AOSP/system build path, never in the Play/cloud build.
+- `RoleManager.ROLE_ASSISTANT`, `Intent.ACTION_ASSIST`, and
+  `Intent.ACTION_VOICE_COMMAND` ownership and their concrete platform values.
+- Concrete AOSP-only `ElizaAccessibilityService` and
+  `ElizaNotificationListenerService` declarations. The Play/cloud build strips
+  the services, Java sources, and accessibility-service XML resource.
 - Usage stats through `PACKAGE_USAGE_STATS` plus the boot-time
   `GET_USAGE_STATS` appop grant path.
 - MediaProjection/foreground-service screen capture for user-consented paths
@@ -77,8 +78,9 @@ the full AOSP-only control surface:
 
 Google Play builds must use `android-cloud`. Static checks assert that the
 cloud build strips assistant/default-role components, boot/direct-boot
-receivers, background microphone foreground service, MediaProjection service
-permission, privileged permissions, and native system-control plugins.
+receivers, `RECEIVE_BOOT_COMPLETED`, background microphone foreground service,
+MediaProjection service permission, privileged permissions, and native
+system-control plugins.
 
 ## Whitelabel — building a downstream brand
 

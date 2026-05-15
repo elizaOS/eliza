@@ -13,9 +13,9 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "repository": {
@@ -84,7 +84,11 @@
   "files": [
     "dist"
   ],
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   }
 }

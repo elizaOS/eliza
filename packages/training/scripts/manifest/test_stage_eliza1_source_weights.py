@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
 _TRAINING_ROOT = Path(__file__).resolve().parents[2]
 if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
@@ -77,3 +79,17 @@ def test_stage_sources_accepts_large_active_tier(
     report = stage.stage_sources(_args(tmp_path, "27b"))
 
     assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
+
+
+@pytest.mark.parametrize("tier", ["27b", "27b-256k", "27b-1m"])
+def test_27b_class_tiers_use_qwen36_source(
+    tmp_path: Path,
+    monkeypatch,
+    tier: str,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+
+    report = stage.stage_sources(_args(tmp_path, tier))
+
+    assert "unsloth/Qwen3.6-27B-GGUF" in report["sources"]
+    assert all("Qwen3.5-27B" not in f["repo"] for f in report["files"])

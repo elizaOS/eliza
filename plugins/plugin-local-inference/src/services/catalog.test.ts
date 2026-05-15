@@ -44,13 +44,13 @@ describe("local inference catalog", () => {
 		}
 	});
 
-	it("uses the single elizalabs HuggingFace repo for every visible Eliza-1 tier", () => {
+	it("uses the single elizaos HuggingFace repo for every visible Eliza-1 tier", () => {
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
 			const tier = model.id.slice("eliza-1-".length);
-			expect(model.hfRepo).toBe("elizalabs/eliza-1");
+			expect(model.hfRepo).toBe("elizaos/eliza-1");
 			expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
 			expect(buildHuggingFaceResolveUrl(model)).toContain(
-				`/elizalabs/eliza-1/resolve/main/bundles/${tier}/`,
+				`/elizaos/eliza-1/resolve/main/bundles/${tier}/`,
 			);
 		}
 	});
@@ -175,6 +175,9 @@ describe("local inference catalog", () => {
 					"turbo3_tcq",
 				);
 			}
+			expect(model?.runtime?.optimizations?.requiresKernel).not.toContain(
+				"openvino",
+			);
 		}
 	});
 
@@ -202,21 +205,12 @@ describe("local inference catalog", () => {
 			]);
 		}
 
-		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual([
-			"omnivoice",
-			"kokoro",
-		]);
-		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual([
-			"omnivoice",
-			"kokoro",
-		]);
-		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual([
-			"omnivoice",
-			"kokoro",
-		]);
+		expect(findCatalogModel("eliza-1-0_8b")?.voiceBackends).toEqual(["kokoro"]);
+		expect(findCatalogModel("eliza-1-2b")?.voiceBackends).toEqual(["kokoro"]);
+		expect(findCatalogModel("eliza-1-4b")?.voiceBackends).toEqual(["kokoro"]);
 		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
-			"omnivoice",
 			"kokoro",
+			"omnivoice",
 		]);
 		expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual([
 			"omnivoice",
@@ -234,7 +228,7 @@ describe("local inference catalog", () => {
 		expect(model?.sourceModel?.finetuned).toBe(false);
 		const components = model?.sourceModel?.components;
 		expect(components?.text).toEqual({
-			repo: "elizalabs/eliza-1",
+			repo: "elizaos/eliza-1",
 			file: "bundles/27b-1m/text/eliza-1-27b-1m.gguf",
 		});
 		// WS2 (vision-describe): vision is enabled on the 1M-context tier
@@ -244,7 +238,7 @@ describe("local inference catalog", () => {
 		// projector cost on server-class hosts. On smaller hosts the
 		// arbiter evicts vision under pressure before the text model.
 		expect(components?.vision).toEqual({
-			repo: "elizalabs/eliza-1",
+			repo: "elizaos/eliza-1",
 			file: "bundles/27b-1m/vision/mmproj-27b-1m.gguf",
 		});
 	});

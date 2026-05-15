@@ -6,12 +6,6 @@
 // auto-enable engine loads dozens of these per boot.
 import type { PluginAutoEnableContext } from "@elizaos/core";
 
-function isTruthy(value: string | undefined): boolean {
-  if (!value) return false;
-  const v = value.trim().toLowerCase();
-  return v === "1" || v === "true" || v === "yes" || v === "on";
-}
-
 function isFeatureEnabled(
   config: PluginAutoEnableContext["config"],
   key: string,

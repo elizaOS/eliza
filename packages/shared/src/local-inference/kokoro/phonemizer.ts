@@ -25,61 +25,191 @@ import {
 } from "./types.js";
 
 /**
- * Kokoro v1.0 phoneme vocabulary. The model embeds 178 phoneme ids; this
- * table is the canonical mapping used by upstream espeak-ng exports. We
- * encode here only the subset the fallback emits — real espeak phonemizers
- * deliver pre-tokenised id arrays already so the table size does not bound
- * them.
+ * Kokoro v1.0 phoneme vocabulary. These ids must match the bundled
+ * `tts/kokoro/tokenizer.json` asset. The boundary token is `$` (id 0);
+ * feeding invented `<s>` / `</s>` ids shifts the whole utterance and produces
+ * plausible-sounding but lexically wrong audio.
  */
 const VOCAB: Readonly<Record<string, number>> = {
-  "<pad>": 0,
-  "<s>": 1,
-  "</s>": 2,
-  // Whitespace / punctuation — kept terse, this is the fallback path.
+  $: 0,
+  ";": 1,
+  ":": 2,
+  ",": 3,
+  ".": 4,
+  "!": 5,
+  "?": 6,
+  "—": 9,
+  "…": 10,
+  '"': 11,
+  "(": 12,
+  ")": 13,
+  "“": 14,
+  "”": 15,
   " ": 16,
-  ",": 17,
-  ".": 18,
-  "?": 19,
-  "!": 20,
-  ";": 21,
-  ":": 22,
-  // Vowels (very rough mapping — see README "fallback phonemizer caveats").
+  "̃": 17,
+  ʣ: 18,
+  ʥ: 19,
+  ʦ: 20,
+  ʨ: 21,
+  ᵝ: 22,
+  ꭧ: 23,
+  A: 24,
+  I: 25,
+  O: 31,
+  Q: 33,
+  S: 35,
+  T: 36,
+  W: 39,
+  Y: 41,
+  ᵊ: 42,
   a: 43,
-  e: 44,
-  i: 45,
-  o: 46,
-  u: 47,
-  // Consonants.
-  b: 60,
-  d: 61,
-  f: 62,
-  g: 63,
-  h: 64,
-  j: 65,
-  k: 66,
-  l: 67,
-  m: 68,
-  n: 69,
-  p: 70,
-  q: 71,
-  r: 72,
-  s: 73,
-  t: 74,
-  v: 75,
-  w: 76,
-  x: 77,
-  y: 78,
-  z: 79,
+  b: 44,
+  c: 45,
+  d: 46,
+  e: 47,
+  f: 48,
+  h: 50,
+  i: 51,
+  j: 52,
+  k: 53,
+  l: 54,
+  m: 55,
+  n: 56,
+  o: 57,
+  p: 58,
+  q: 59,
+  r: 60,
+  s: 61,
+  t: 62,
+  u: 63,
+  v: 64,
+  w: 65,
+  x: 66,
+  y: 67,
+  z: 68,
+  ɑ: 69,
+  ɐ: 70,
+  ɒ: 71,
+  æ: 72,
+  β: 75,
+  ɔ: 76,
+  ɕ: 77,
+  ç: 78,
+  ɖ: 80,
+  ð: 81,
+  ʤ: 82,
+  ə: 83,
+  ɚ: 85,
+  ɛ: 86,
+  ɜ: 87,
+  ɟ: 90,
+  ɡ: 92,
+  ɥ: 99,
+  ɨ: 101,
+  ɪ: 102,
+  ʝ: 103,
+  ɯ: 110,
+  ɰ: 111,
+  ŋ: 112,
+  ɳ: 113,
+  ɲ: 114,
+  ɴ: 115,
+  ø: 116,
+  ɸ: 118,
+  θ: 119,
+  œ: 120,
+  ɹ: 123,
+  ɾ: 125,
+  ɻ: 126,
+  ʁ: 128,
+  ɽ: 129,
+  ʂ: 130,
+  ʃ: 131,
+  ʈ: 132,
+  ʧ: 133,
+  ʊ: 135,
+  ʋ: 136,
+  ʌ: 138,
+  ɣ: 139,
+  ɤ: 140,
+  χ: 142,
+  ʎ: 143,
+  ʒ: 147,
+  ʔ: 148,
+  ˈ: 156,
+  ˌ: 157,
+  ː: 158,
+  ʰ: 162,
+  ʲ: 164,
+  "↓": 169,
+  "→": 171,
+  "↗": 172,
+  "↘": 173,
+  ᵻ: 177,
 };
 
-const PAD = VOCAB["<pad>"];
-const BOS = VOCAB["<s>"];
-const EOS = VOCAB["</s>"];
+const PAD = VOCAB.$;
+const BOS = VOCAB.$;
+const EOS = VOCAB.$;
+
+const FALLBACK_WORD_IPA: Readonly<Record<string, string>> = {
+  a: "ə",
+  am: "æm",
+  and: "ænd",
+  are: "ɑɹ",
+  cal: "kæl",
+  capital: "kæpɪtəl",
+  can: "kæn",
+  france: "fɹæns",
+  hello: "hɛloʊ",
+  hear: "hiɹ",
+  is: "ɪz",
+  me: "mi",
+  meeting: "mitɪŋ",
+  of: "ʌv",
+  the: "ðə",
+  there: "ðɛɹ",
+  to: "tu",
+  you: "ju",
+};
+
+const FALLBACK_DIGRAPH_IPA: Readonly<Record<string, string>> = {
+  ch: "ʧ",
+  ng: "ŋ",
+  sh: "ʃ",
+  th: "θ",
+  wh: "w",
+  zh: "ʒ",
+};
+
+function fallbackWordToIpa(word: string): string {
+  const known = FALLBACK_WORD_IPA[word];
+  if (known) return known;
+  let out = "";
+  for (let i = 0; i < word.length; i += 1) {
+    const pair = word.slice(i, i + 2);
+    const digraph = FALLBACK_DIGRAPH_IPA[pair];
+    if (digraph) {
+      out += digraph;
+      i += 1;
+      continue;
+    }
+    out += word[i];
+  }
+  return out;
+}
+
+function fallbackTextToIpa(cleaned: string): string {
+  return cleaned.replace(/[a-z]+|[^a-z]+/g, (part) =>
+    /^[a-z]+$/.test(part) ? fallbackWordToIpa(part) : part,
+  );
+}
 
 /**
  * Deterministic ASCII-only G2P used when no real phonemizer is installed.
- * Lossy by design — this exists so dev environments without espeak-ng can
- * still hear *something*, not to ship to production. README documents.
+ * Lossy by design — this exists so dev environments without espeak-ng still
+ * produce lexically useful smoke output for common English phrases, not to
+ * replace a production Misaki/espeak phonemizer.
  */
 export class FallbackG2PPhonemizer implements KokoroPhonemizer {
   readonly id = "fallback-g2p";
@@ -97,8 +227,9 @@ export class FallbackG2PPhonemizer implements KokoroPhonemizer {
         );
       }
     }
+    const phonemes = fallbackTextToIpa(cleaned);
     const ids: number[] = [BOS];
-    for (const ch of cleaned) {
+    for (const ch of phonemes) {
       const id = VOCAB[ch];
       if (id !== undefined) ids.push(id);
       // Unknown char: skip (acts as a pad). The model's training data did
@@ -107,7 +238,7 @@ export class FallbackG2PPhonemizer implements KokoroPhonemizer {
     ids.push(EOS);
     return {
       ids: Int32Array.from(ids),
-      phonemes: cleaned,
+      phonemes,
     };
   }
 }

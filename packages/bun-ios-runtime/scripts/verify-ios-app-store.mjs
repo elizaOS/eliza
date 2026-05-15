@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
@@ -50,6 +50,14 @@ const forbiddenStrings = [
   /\bdynamic-codesigning\b/i,
   /\bunsigned-executable-memory\b/i,
 ];
+const networkPolicyTextExtensions = new Set([
+  ".html",
+  ".json",
+  ".plist",
+  ".xml",
+]);
+const networkUrlPattern =
+  /\b(?:https?|wss?):\/\/(?:\[[^\]\s"'`<>]+\]|[^\s"'`<>/;)]+)/gi;
 
 function argValue(name, fallback = null) {
   const prefix = `${name}=`;
@@ -84,12 +92,16 @@ function fail(message) {
 function parsePlist(file) {
   const result = run("plutil", ["-convert", "json", "-o", "-", file]);
   if (result.status !== 0) {
-    fail(`failed to parse ${file}: ${result.stderr.trim() || result.stdout.trim()}`);
+    fail(
+      `failed to parse ${file}: ${result.stderr.trim() || result.stdout.trim()}`,
+    );
   }
   try {
     return JSON.parse(result.stdout);
   } catch (err) {
-    fail(`failed to decode ${file}: ${err instanceof Error ? err.message : String(err)}`);
+    fail(
+      `failed to decode ${file}: ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 }
 
@@ -97,15 +109,40 @@ function frameworkBinary(frameworkDir) {
   return path.join(frameworkDir, frameworkName);
 }
 
-function selectXcframeworkLibraries(root) {
+function selectXcframeworkLibraries(root, { target = "device" } = {}) {
   const info = parsePlist(path.join(root, "Info.plist"));
   const libraries = Array.isArray(info.AvailableLibraries)
     ? info.AvailableLibraries
     : [];
-  return libraries.map((entry) => {
-    const rel = typeof entry.LibraryPath === "string"
-      ? entry.LibraryPath
-      : `${frameworkName}.framework`;
+  const selected = libraries.filter((entry) => {
+    if (!entry || entry.SupportedPlatform !== "ios") return false;
+    const variant = entry.SupportedPlatformVariant;
+    if (target === "all") return true;
+    if (target === "simulator") return variant === "simulator";
+    return !variant;
+  });
+  if (selected.length === 0) {
+    const available = libraries
+      .map(
+        (entry) =>
+          `${entry?.SupportedPlatform ?? "unknown"}${
+            entry?.SupportedPlatformVariant
+              ? `-${entry.SupportedPlatformVariant}`
+              : ""
+          }/${entry?.LibraryIdentifier ?? "missing-id"}`,
+      )
+      .join(", ");
+    fail(
+      `${root} does not contain an iOS ${target} ElizaBunEngine library. Available: ${
+        available || "none"
+      }`,
+    );
+  }
+  return selected.map((entry) => {
+    const rel =
+      typeof entry.LibraryPath === "string"
+        ? entry.LibraryPath
+        : `${frameworkName}.framework`;
     return {
       id: entry.LibraryIdentifier,
       frameworkDir: path.join(root, entry.LibraryIdentifier, rel),
@@ -116,7 +153,9 @@ function selectXcframeworkLibraries(root) {
 function validateFrameworkMetadata(frameworkDir) {
   const plist = parsePlist(path.join(frameworkDir, "Info.plist"));
   if (String(plist.ElizaBunEngineABIVersion ?? "") !== expectedAbiVersion) {
-    fail(`${frameworkDir} has ABI ${String(plist.ElizaBunEngineABIVersion)}; expected ${expectedAbiVersion}`);
+    fail(
+      `${frameworkDir} has ABI ${String(plist.ElizaBunEngineABIVersion)}; expected ${expectedAbiVersion}`,
+    );
   }
   if (plist.ElizaBunEngineNoJIT !== true) {
     fail(`${frameworkDir} does not declare ElizaBunEngineNoJIT=true`);
@@ -129,15 +168,18 @@ function validateFrameworkMetadata(frameworkDir) {
 function validateUnsafeRuntimeBinary(binary) {
   if (!fs.existsSync(binary)) fail(`${binary} does not exist`);
   const imports = run("nm", ["-u", binary]);
-  if (imports.status !== 0) fail(`nm -u failed for ${binary}: ${imports.stderr.trim()}`);
+  if (imports.status !== 0)
+    fail(`nm -u failed for ${binary}: ${imports.stderr.trim()}`);
   const importOutput = `${imports.stdout}\n${imports.stderr}`;
   const badImports = forbiddenRuntimeImports.filter((symbol) =>
-    new RegExp(`(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
-      importOutput,
-    ),
+    new RegExp(
+      `(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+    ).test(importOutput),
   );
   if (badImports.length > 0) {
-    fail(`${binary} imports App Store-sensitive symbols: ${badImports.join(", ")}`);
+    fail(
+      `${binary} imports App Store-sensitive symbols: ${badImports.join(", ")}`,
+    );
   }
 
   const stringOutput = run("strings", [binary]).stdout;
@@ -145,16 +187,21 @@ function validateUnsafeRuntimeBinary(binary) {
     .filter((pattern) => pattern.test(stringOutput))
     .map((pattern) => pattern.source);
   if (badStrings.length > 0) {
-    fail(`${binary} contains executable-memory markers: ${badStrings.join(", ")}`);
+    fail(
+      `${binary} contains executable-memory markers: ${badStrings.join(", ")}`,
+    );
   }
 }
 
 function validateBinary(binary) {
   if (!fs.existsSync(binary)) fail(`${binary} does not exist`);
   const defined = run("nm", ["-gU", binary]);
-  if (defined.status !== 0) fail(`nm failed for ${binary}: ${defined.stderr.trim()}`);
+  if (defined.status !== 0)
+    fail(`nm failed for ${binary}: ${defined.stderr.trim()}`);
   const definedOutput = `${defined.stdout}\n${defined.stderr}`;
-  const missing = requiredSymbols.filter((symbol) => !definedOutput.includes(symbol));
+  const missing = requiredSymbols.filter(
+    (symbol) => !definedOutput.includes(symbol),
+  );
   if (missing.length > 0) {
     fail(`${binary} is missing required ABI symbols: ${missing.join(", ")}`);
   }
@@ -190,7 +237,9 @@ function validateNoNestedExecutables(frameworkDir, binary) {
     }
   }
   if (unexpected.length > 0) {
-    fail(`${frameworkDir} contains nested executable payloads: ${unexpected.join(", ")}`);
+    fail(
+      `${frameworkDir} contains nested executable payloads: ${unexpected.join(", ")}`,
+    );
   }
 }
 
@@ -201,9 +250,151 @@ function validateFramework(frameworkDir) {
   validateNoNestedExecutables(frameworkDir, binary);
 }
 
-function validateXcframework(root) {
+function normalizePolicyHost(host) {
+  return String(host ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "")
+    .replace(/^\*\./, "")
+    .replace(/^\./, "");
+}
+
+function isPrivateOrLoopbackPolicyHost(host) {
+  const normalized = normalizePolicyHost(host);
+  return (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized === "0.0.0.0" ||
+    normalized.startsWith("127.") ||
+    normalized.startsWith("10.") ||
+    normalized.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(normalized) ||
+    normalized.startsWith("169.254.") ||
+    (normalized.includes(":") &&
+      (normalized.startsWith("fe80:") ||
+        normalized.startsWith("fc") ||
+        normalized.startsWith("fd"))) ||
+    normalized === "local" ||
+    normalized === "internal" ||
+    normalized === "lan" ||
+    normalized === "ts.net" ||
+    normalized.endsWith(".local") ||
+    normalized.endsWith(".internal") ||
+    normalized.endsWith(".lan") ||
+    normalized.endsWith(".ts.net")
+  );
+}
+
+function isUnsafeNetworkUrlLiteral(value) {
+  let parsed;
+  try {
+    parsed = new URL(String(value).replace(/:\*(?=\/|$)/, ":0"));
+  } catch {
+    return false;
+  }
+  if (!["http:", "ws:"].includes(parsed.protocol)) return false;
+  return isPrivateOrLoopbackPolicyHost(parsed.hostname);
+}
+
+function isUnsafeAllowNavigationEntry(value) {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
+    return isUnsafeNetworkUrlLiteral(trimmed);
+  }
+  return isPrivateOrLoopbackPolicyHost(trimmed);
+}
+
+function collectNetworkPolicyTextFiles(root) {
+  const files = [];
+  const stack = [root];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const candidate = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (
+          entry.name === "_CodeSignature" ||
+          entry.name === "Frameworks" ||
+          entry.name.endsWith(".framework")
+        ) {
+          continue;
+        }
+        stack.push(candidate);
+        continue;
+      }
+      if (
+        networkPolicyTextExtensions.has(path.extname(entry.name).toLowerCase())
+      ) {
+        files.push(candidate);
+      }
+    }
+  }
+  return files;
+}
+
+function findUnsafeNetworkPolicyFindings(appPath) {
+  const findings = [];
+  for (const file of collectNetworkPolicyTextFiles(appPath)) {
+    let text = "";
+    try {
+      text = fs.readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
+    for (const match of text.matchAll(networkUrlPattern)) {
+      const url = match[0];
+      if (isUnsafeNetworkUrlLiteral(url)) {
+        findings.push({
+          file,
+          value: url,
+          reason: "loopback/private cleartext URL",
+        });
+      }
+    }
+    if (path.basename(file) === "capacitor.config.json") {
+      try {
+        const config = JSON.parse(text);
+        const allowNavigation = config?.server?.allowNavigation;
+        if (Array.isArray(allowNavigation)) {
+          for (const entry of allowNavigation) {
+            if (isUnsafeAllowNavigationEntry(entry)) {
+              findings.push({
+                file,
+                value: String(entry),
+                reason: "loopback/private allowNavigation host",
+              });
+            }
+          }
+        }
+      } catch (err) {
+        findings.push({
+          file,
+          value: "capacitor.config.json",
+          reason: `invalid JSON: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
+    }
+  }
+  return findings;
+}
+
+function validateAppNetworkPolicy(appPath) {
+  const findings = findUnsafeNetworkPolicyFindings(appPath);
+  if (findings.length === 0) return;
+  const formatted = findings
+    .map((finding) => `${finding.file}: ${finding.reason} (${finding.value})`)
+    .join("; ");
+  fail(
+    `${appPath} contains App Store-unsafe loopback/private HTTP or WS policy: ${formatted}`,
+  );
+}
+
+function validateXcframework(root, { target = "device" } = {}) {
   if (!fs.existsSync(root)) fail(`${root} does not exist`);
-  const libraries = selectXcframeworkLibraries(root);
+  const libraries = selectXcframeworkLibraries(root, { target });
   if (libraries.length === 0) fail(`${root} has no AvailableLibraries`);
   for (const library of libraries) {
     validateFramework(library.frameworkDir);
@@ -214,11 +405,15 @@ function validateXcframework(root) {
 function entitlementsFor(pathToCode) {
   const result = run("codesign", ["-d", "--entitlements", ":-", pathToCode]);
   if (result.status !== 0) {
-    fail(`${pathToCode} is not code-signed or entitlements cannot be read: ${result.stderr.trim()}`);
+    fail(
+      `${pathToCode} is not code-signed or entitlements cannot be read: ${result.stderr.trim()}`,
+    );
   }
   if (!result.stdout.trim().startsWith("<?xml")) return {};
   const tmp = path.join(
-    fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "eliza-ios-entitlements-")),
+    fs.mkdtempSync(
+      path.join(process.env.TMPDIR || "/tmp", "eliza-ios-entitlements-"),
+    ),
     "entitlements.plist",
   );
   fs.writeFileSync(tmp, result.stdout);
@@ -228,17 +423,24 @@ function entitlementsFor(pathToCode) {
 function validateEntitlements(pathToCode) {
   const entitlements = entitlementsFor(pathToCode);
   const present = forbiddenEntitlements.filter((key) =>
-    Object.prototype.hasOwnProperty.call(entitlements, key),
+    Object.hasOwn(entitlements, key),
   );
   if (present.length > 0) {
-    fail(`${pathToCode} contains App Store-incompatible entitlements: ${present.join(", ")}`);
+    fail(
+      `${pathToCode} contains App Store-incompatible entitlements: ${present.join(", ")}`,
+    );
   }
 }
 
 function validateApp(appPath) {
-  if (!appPath.endsWith(".app")) fail(`--app must point at an .app bundle: ${appPath}`);
+  if (!appPath.endsWith(".app"))
+    fail(`--app must point at an .app bundle: ${appPath}`);
   validateEntitlements(appPath);
-  const frameworkDir = path.join(appPath, "Frameworks", `${frameworkName}.framework`);
+  const frameworkDir = path.join(
+    appPath,
+    "Frameworks",
+    `${frameworkName}.framework`,
+  );
   validateFramework(frameworkDir);
   validateEntitlements(frameworkDir);
   const runtimePluginDir = path.join(
@@ -246,20 +448,47 @@ function validateApp(appPath) {
     "Frameworks",
     `${runtimePluginFrameworkName}.framework`,
   );
-  const runtimePluginBinary = path.join(runtimePluginDir, runtimePluginFrameworkName);
+  const runtimePluginBinary = path.join(
+    runtimePluginDir,
+    runtimePluginFrameworkName,
+  );
   validateUnsafeRuntimeBinary(runtimePluginBinary);
   validateEntitlements(runtimePluginDir);
-  console.log(`[bun-ios-runtime] verified App Store no-JIT profile for ${appPath}`);
+  validateAppNetworkPolicy(appPath);
+  console.log(
+    `[bun-ios-runtime] verified App Store no-JIT profile for ${appPath}`,
+  );
 }
 
-const app = argValue("--app", process.env.ELIZA_IOS_APP_PATH || "");
-const xcframework = argValue(
-  "--xcframework",
-  process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK || defaultXcframework,
-);
+function main() {
+  const app = argValue("--app", process.env.ELIZA_IOS_APP_PATH || "");
+  const target = argValue(
+    "--target",
+    process.env.ELIZA_IOS_VERIFY_TARGET || "device",
+  );
+  const xcframework = argValue(
+    "--xcframework",
+    process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK || defaultXcframework,
+  );
 
-if (app) {
-  validateApp(path.resolve(app));
-} else {
-  validateXcframework(path.resolve(xcframework));
+  if (app) {
+    validateApp(path.resolve(app));
+  } else {
+    validateXcframework(path.resolve(xcframework), { target });
+  }
 }
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
+  main();
+}
+
+export {
+  findUnsafeNetworkPolicyFindings,
+  isPrivateOrLoopbackPolicyHost,
+  isUnsafeAllowNavigationEntry,
+  isUnsafeNetworkUrlLiteral,
+  validateAppNetworkPolicy,
+};

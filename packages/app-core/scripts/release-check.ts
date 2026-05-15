@@ -18,9 +18,9 @@ const requiredPaths = [
   "dist/index.js",
   "dist/entry.js",
   "dist/build-info.json",
-  "eliza/packages/app-core/scripts",
-  "scripts/setup-upstreams.mjs",
-  "scripts/init-submodules.mjs",
+  "packages/app-core/scripts",
+  "packages/app-core/scripts/setup-upstreams.mjs",
+  "packages/app-core/scripts/init-submodules.mjs",
 ];
 const forbiddenPrefixes = ["dist/Eliza.app/"];
 const orchestratorBrokenLifecycleTarget = "./scripts/ensure-node-pty.mjs";
@@ -50,6 +50,7 @@ const autonomousElizaPathCandidates = [
   "eliza/packages/agent/src/runtime/eliza.ts",
 ] as const;
 const homepageReleaseDataPathCandidates = [
+  "packages/homepage/src/generated/release-data.ts",
   "apps/homepage/src/generated/release-data.ts",
 ] as const;
 const patchedElectrobunCliHelperPathCandidates = [
@@ -1420,16 +1421,26 @@ function assertHomepageReleaseDataUsesCurrentAssetRoot() {
     process.exit(1);
   }
 
-  if (!releaseDataSource.includes("/apps/homepage/public/")) {
+  const hasNoPublishedRelease =
+    releaseDataSource.includes('"homepageAssetBaseUrl": ""') ||
+    releaseDataSource.includes("homepageAssetBaseUrl: ''") ||
+    releaseDataSource.includes('homepageAssetBaseUrl: ""');
+  if (
+    !hasNoPublishedRelease &&
+    !releaseDataSource.includes("/packages/homepage/public/")
+  ) {
     console.error(
-      "release-check: generated homepage release data must point homepageAssetBaseUrl at /apps/homepage/public/.",
+      "release-check: generated homepage release data must point homepageAssetBaseUrl at /packages/homepage/public/.",
     );
     process.exit(1);
   }
 
-  if (releaseDataSource.includes("/apps/web/public/")) {
+  if (
+    releaseDataSource.includes("/apps/web/public/") ||
+    releaseDataSource.includes("/apps/homepage/public/")
+  ) {
     console.error(
-      "release-check: generated homepage release data still points at legacy /apps/web/public/. Regenerate it with node scripts/write-homepage-release-data.mjs.",
+      "release-check: generated homepage release data still points at legacy /apps/*/public/. Regenerate it with node scripts/write-homepage-release-data.mjs.",
     );
     process.exit(1);
   }

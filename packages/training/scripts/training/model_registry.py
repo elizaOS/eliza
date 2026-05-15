@@ -23,7 +23,7 @@ by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
   - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B-Base``   → ``eliza-1-2b``    (mid local tier; full-param SFT on a 16-24 GB GPU)
   - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B-Base``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24-28 GB GPU)
   - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
-  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2)
+  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2; also serves ``eliza-1-27b-256k`` / ``eliza-1-27b-1m`` aliases)
 
 All active bases are published on the Hub. The 9b/27b tiers need workstation /
 cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's DFlash
@@ -228,20 +228,20 @@ def _entry(**kw) -> ModelEntry:
 
 
 # Layer counts / head shapes come straight from the HF `config.json` of each
-# base model. All entries are Qwen3.5 hybrid linear-attn VLMs
-# (`model_type: qwen3_5`, `full_attention_interval=4` → 3:1 linear:full), so
-# the KV-bearing layer count is total_layers // 4.
+# base model. Active entries are Qwen3.5/Qwen3.6 hybrid linear-attn VLMs
+# (`model_type: qwen3_5`/`qwen3_6`, `full_attention_interval=4` → 3:1
+# linear:full), so the KV-bearing layer count is total_layers // 4.
 #   total layers   q_heads  kv_heads  head_dim   vocab    (HF base id)
 #   24 (6 full)    8         2         256        248320   Qwen/Qwen3.5-0.8B → eliza-1-0_8b   (qwen3_5, hidden 1024, max_pos 262144)
 #   24 (6 full)    8         2         256        248320   Qwen/Qwen3.5-2B   → eliza-1-2b     (qwen3_5, hidden 2048, max_pos 262144)
 #
 # DFlash speculative-decode drafter base, per eliza tier id. The drafter
-# must share the target's tokenizer/vocab: every Qwen3.5 target drafts
-# from the Qwen3.5-0.8B-Base pretrain checkpoint — published, vocab 248320 —
-# and the *shipped* drafter GGUF is that base distilled down to ~0.6B params
-# (a smaller Qwen3.5-arch student; `scripts/distill_dflash_drafter.py` is the
-# distiller, run on a cloud GPU; the artifact is not produced here). The
-# all active tiers ship a DFlash companion so the app can exercise the same
+# must share the target's tokenizer/vocab: every active Qwen3.5/Qwen3.6 target
+# drafts from the Qwen3.5-0.8B-Base pretrain checkpoint — published, vocab
+# 248320 — and the *shipped* drafter GGUF is that base distilled down to ~0.6B
+# params (a smaller Qwen3.5-arch student; `scripts/distill_dflash_drafter.py`
+# is the distiller, run on a cloud GPU; the artifact is not produced here). All
+# active tiers ship a DFlash companion so the app can exercise the same
 # optimized runtime path end to end. Mirrors `DEFAULT_STUDENT_BASE` in
 # `scripts/distill_dflash_drafter.py` — keep the two in sync.
 DFLASH_DRAFTER_BASE: dict[str, str] = {
@@ -432,6 +432,48 @@ REGISTRY: dict[str, ModelEntry] = {
 }
 
 
+ELIZA_1_27B_VARIANT_ALIASES: dict[str, str] = {
+    "27b": "qwen3.6-27b",
+    "27b-256k": "qwen3.6-27b",
+    "27b-1m": "qwen3.6-27b",
+    "qwen3.6-27b-256k": "qwen3.6-27b",
+    "qwen3.6-27b-1m": "qwen3.6-27b",
+    "qwen-qwen3.6-27b-256k": "qwen3.6-27b",
+    "qwen-qwen3.6-27b-1m": "qwen3.6-27b",
+    "qwen/qwen3.6-27b-256k": "qwen3.6-27b",
+    "qwen/qwen3.6-27b-1m": "qwen3.6-27b",
+    "eliza-1-27b-256k": "qwen3.6-27b",
+    "eliza-1-27b-1m": "qwen3.6-27b",
+}
+
+QWEN36_LOWER_TIER_FALLBACK_ALIASES: dict[str, str] = {
+    # No lower-tier Qwen3.6 checkpoints are release-supported for eliza-1.
+    # Resolve these common operator spellings to the Qwen3.5 bases rather
+    # than letting ad hoc scripts invent unsupported registry keys.
+    "qwen3.6-0.8b": "qwen3.5-0.8b",
+    "qwen3.6-0.8b-base": "qwen3.5-0.8b",
+    "qwen-qwen3.6-0.8b": "qwen3.5-0.8b",
+    "qwen-qwen3.6-0.8b-base": "qwen3.5-0.8b",
+    "qwen/qwen3.6-0.8b": "qwen3.5-0.8b",
+    "qwen/qwen3.6-0.8b-base": "qwen3.5-0.8b",
+    "qwen3.6-2b": "qwen3.5-2b",
+    "qwen3.6-2b-base": "qwen3.5-2b",
+    "qwen-qwen3.6-2b": "qwen3.5-2b",
+    "qwen-qwen3.6-2b-base": "qwen3.5-2b",
+    "qwen/qwen3.6-2b": "qwen3.5-2b",
+    "qwen/qwen3.6-2b-base": "qwen3.5-2b",
+    "qwen3.6-4b": "qwen3.5-4b",
+    "qwen3.6-4b-base": "qwen3.5-4b",
+    "qwen-qwen3.6-4b": "qwen3.5-4b",
+    "qwen-qwen3.6-4b-base": "qwen3.5-4b",
+    "qwen/qwen3.6-4b": "qwen3.5-4b",
+    "qwen/qwen3.6-4b-base": "qwen3.5-4b",
+    "qwen3.6-9b": "qwen3.5-9b",
+    "qwen-qwen3.6-9b": "qwen3.5-9b",
+    "qwen/qwen3.6-9b": "qwen3.5-9b",
+}
+
+
 def get(name: str) -> ModelEntry:
     raw = name.strip()
     lowered = raw.lower()
@@ -440,6 +482,8 @@ def get(name: str) -> ModelEntry:
         "qwen3-4b": "qwen3.5-4b",
         "qwen-qwen3-4b": "qwen3.5-4b",
         "qwen/qwen3-4b": "qwen3.5-4b",
+        **QWEN36_LOWER_TIER_FALLBACK_ALIASES,
+        **ELIZA_1_27B_VARIANT_ALIASES,
     }
     key = aliases.get(lowered, aliases.get(key, key))
     if key in REGISTRY:

@@ -39,7 +39,7 @@ describe("assistant launch deep-link routing", () => {
 
   it("routes LifeOps create text into chat/planner, not a native task path", () => {
     const hashRoute = buildAssistantLaunchHashRoute(
-      "lifeops/create",
+      "lifeops/task/new",
       new URLSearchParams("text=Water%20plants%20tomorrow"),
       { generateLaunchId: () => "launch-lifeops" },
     );
@@ -48,10 +48,71 @@ describe("assistant launch deep-link routing", () => {
     expect(params(hashRoute ?? "").get("text")).toBe("Water plants tomorrow");
     expect(params(hashRoute ?? "").get("source")).toBe("assistant-entry");
     expect(params(hashRoute ?? "").get("action")).toBe("lifeops.create");
-    expect(params(hashRoute ?? "").get("lifeops.section")).toBe("reminders");
+    expect(params(hashRoute ?? "").get("lifeops.section")).toBeNull();
     expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
       "launch-lifeops",
     );
+  });
+
+  it("preserves macOS Shortcuts source and action on assistant links", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "assistant",
+      new URLSearchParams(
+        "text=Water%20plants%20tomorrow&source=macos-shortcuts&action=lifeops.create",
+      ),
+      { generateLaunchId: () => "launch-macos-shortcuts" },
+    );
+
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("macos-shortcuts");
+    expect(params(hashRoute ?? "").get("action")).toBe("lifeops.create");
+    expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
+      "launch-macos-shortcuts",
+    );
+    expect(params(hashRoute ?? "").get("lifeops.section")).toBeNull();
+  });
+
+  it("routes Android feature-open inventory to voice chat", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "feature/open",
+      new URLSearchParams(
+        "source=android-app-actions&feature=eliza_app_action_voice",
+      ),
+      { generateLaunchId: () => "launch-voice" },
+    );
+
+    expect(hashRoute?.startsWith("#chat?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("android-app-actions");
+    expect(params(hashRoute ?? "").get("voice")).toBe("1");
+    expect(params(hashRoute ?? "").get("assistant.launchId")).toBe(
+      "launch-voice",
+    );
+  });
+
+  it("routes Android feature-open inventory to LifeOps daily brief", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "feature/open",
+      new URLSearchParams("source=android-app-actions&feature=daily%20brief"),
+      { generateLaunchId: () => "launch-brief" },
+    );
+
+    expect(hashRoute?.startsWith("#lifeops?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("android-app-actions");
+    expect(params(hashRoute ?? "").get("action")).toBe("lifeops.daily-brief");
+    expect(params(hashRoute ?? "").get("lifeops.section")).toBe("overview");
+  });
+
+  it("routes Android feature-open task inventory into LifeOps reminders", () => {
+    const hashRoute = buildAssistantLaunchHashRoute(
+      "feature/open",
+      new URLSearchParams("source=android-app-actions&feature=tasks"),
+      { generateLaunchId: () => "launch-tasks" },
+    );
+
+    expect(hashRoute?.startsWith("#lifeops?")).toBe(true);
+    expect(params(hashRoute ?? "").get("source")).toBe("android-app-actions");
+    expect(params(hashRoute ?? "").get("action")).toBe("lifeops.tasks");
+    expect(params(hashRoute ?? "").get("lifeops.section")).toBe("reminders");
   });
 
   it("opens LifeOps reminders when create links do not carry text", () => {

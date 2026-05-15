@@ -105,6 +105,7 @@ function installDbMock(stub: DbStub): void {
           },
         };
         Object.defineProperties(chained, {
+          // biome-ignore lint/suspicious/noThenProperty: Drizzle select builders are awaited as thenables in repository code.
           then: {
             value: (
               onFulfilled?: Parameters<typeof promise.then>[0],

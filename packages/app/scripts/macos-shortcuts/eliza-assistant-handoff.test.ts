@@ -1,4 +1,6 @@
 import { execFile, spawn } from "node:child_process";
+import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -54,32 +56,82 @@ describe("macOS Shortcuts assistant handoff", () => {
     );
   });
 
-  it("installs the handoff and verifier scripts into the configured directory", async () => {
-    const tempDir = path.join(
-      await import("node:os").then((os) => os.tmpdir()),
-      `eliza-shortcuts-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  it("percent-encodes multiline stdin and punctuation deterministically", async () => {
+    const stdout = await runWithStdin(
+      "sh",
+      [handoffScript, "--dry-run"],
+      "line one\nit's 100% (done) * now!",
+      {},
     );
 
-    const { stdout } = await execFileAsync("sh", [installScript], {
-      env: {
-        ...process.env,
-        ELIZA_SHORTCUT_INSTALL_DIR: tempDir,
-      },
-    });
+    expect(stdout.trim()).toBe(
+      "elizaos://assistant?text=line%20one%0Ait%27s%20100%25%20%28done%29%20%2A%20now%21&source=macos-shortcuts&action=ask",
+    );
+  });
 
-    expect(stdout).toContain("Installed Eliza macOS Shortcuts handoff helper");
-    expect(stdout).toContain("PASS helper builds assistant deep links");
+  it("rejects invalid URL schemes before opening", async () => {
+    await expectCommandFails(
+      "sh",
+      [handoffScript, "--dry-run", "--scheme", "not a scheme", "hello"],
+      /invalid URL scheme/,
+    );
+  });
 
-    const { stdout: verifyStdout } = await execFileAsync("sh", [
-      verifyScript,
-      "--helper",
-      path.join(tempDir, "eliza-assistant-handoff.sh"),
-      "--no-shortcuts-warning",
-    ]);
+  it("installs the handoff and verifier scripts into the configured directory", async () => {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "eliza-shortcuts-"),
+    );
 
-    expect(verifyStdout).toContain("PASS helper builds assistant deep links");
+    try {
+      const { stdout } = await execFileAsync("sh", [installScript], {
+        env: {
+          ...process.env,
+          ELIZA_SHORTCUT_INSTALL_DIR: tempDir,
+        },
+      });
+
+      expect(stdout).toContain(
+        "Installed Eliza macOS Shortcuts handoff helper",
+      );
+      expect(stdout).toContain("PASS helper builds assistant deep links");
+      expect(stdout).toContain(
+        "PASS multiline stdin and punctuation are percent-encoded",
+      );
+
+      const { stdout: verifyStdout } = await execFileAsync("sh", [
+        verifyScript,
+        "--helper",
+        path.join(tempDir, "eliza-assistant-handoff.sh"),
+        "--no-shortcuts-warning",
+      ]);
+
+      expect(verifyStdout).toContain("PASS helper builds assistant deep links");
+      expect(verifyStdout).toContain(
+        "PASS multiline stdin and punctuation are percent-encoded",
+      );
+    } finally {
+      await fs.rm(tempDir, { force: true, recursive: true });
+    }
   });
 });
+
+async function expectCommandFails(
+  command: string,
+  args: string[],
+  stderrPattern: RegExp,
+): Promise<void> {
+  try {
+    await execFileAsync(command, args);
+  } catch (error) {
+    const stderr =
+      typeof error === "object" && error && "stderr" in error
+        ? String((error as { stderr?: unknown }).stderr)
+        : "";
+    expect(stderr).toMatch(stderrPattern);
+    return;
+  }
+  throw new Error(`${command} unexpectedly succeeded`);
+}
 
 function runWithStdin(
   command: string,

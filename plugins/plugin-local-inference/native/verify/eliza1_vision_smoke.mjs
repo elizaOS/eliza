@@ -12,8 +12,16 @@ const MODELS_ROOT = path.join(
   "models",
 );
 
-const VISION_TIERS = new Set(["4b", "9b", "27b", "27b-256k"]);
-const TEXT_VOICE_ONLY_TIERS = new Set(["0_6b", "0_8b", "2b"]);
+const VISION_TIERS = new Set([
+  "0_8b",
+  "2b",
+  "4b",
+  "9b",
+  "27b",
+  "27b-256k",
+  "27b-1m",
+]);
+const TEXT_VOICE_ONLY_TIERS = new Set(["0_6b", "1_7b"]);
 
 function usage() {
   return [

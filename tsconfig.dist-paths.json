@@ -14,6 +14,9 @@
       "@elizaos/cloud-routing": ["./packages/cloud-routing/dist/index.d.ts"],
       "@elizaos/agent": ["./packages/agent/dist/index.d.ts"],
       "@elizaos/shared": ["./packages/shared/dist/index.d.ts"],
+      "@elizaos/shared/local-inference": [
+        "./packages/shared/src/local-inference/index.ts"
+      ],
       "@elizaos/capacitor-wifi": [
         "./packages/native-plugins/wifi/dist/index.d.ts"
       ],
@@ -177,7 +180,7 @@
       ],
       "@elizaos/prompts": ["./packages/prompts/dist/index.d.ts"],
       "@elizaos/skills": ["./packages/skills/dist/index.d.ts"],
-      "@elizaos/vault": ["./packages/vault/dist/index.d.ts"],
+      "@elizaos/vault": ["./packages/vault/src/index.ts"],
       "@elizaos/plugin-linear": ["./plugins/plugin-linear/dist/index.d.ts"],
       "@elizaos/plugin-bluesky": ["./plugins/plugin-bluesky/dist/index.d.ts"],
       "@elizaos/app-companion": ["./plugins/app-companion/dist/index.d.ts"],

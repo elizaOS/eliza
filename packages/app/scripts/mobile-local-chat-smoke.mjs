@@ -39,10 +39,19 @@ const IOS_FULL_BUN_SMOKE_ATTEMPTS = 180;
 const IOS_FULL_BUN_SMOKE_DELAY_MS = 2000;
 const IOS_FULL_BUN_SMOKE_PROMPT_ECHO_RE = /in one short sentence/i;
 const ANDROID_HEALTH_ATTEMPTS = 240;
+const ANDROID_FULL_TURN_TIMEOUT_MS = 10 * 60_000;
+const ANDROID_FULL_TURN_PROMPT =
+  "Reply in one short sentence confirming Android local inference is running.";
+const ANDROID_FULL_TURN_FAILURE_RE =
+  /something went wrong|no local gguf|no local model|no model registered|no provider|connect a provider|device_disconnected|device_timeout|timed out|chat generation failed/i;
 const IOS_WAKE_POLL_ATTEMPTS = 30;
 const IOS_WAKE_POLL_DELAY_MS = 1000;
 const ANDROID_WAKE_POLL_ATTEMPTS = 30;
 const ANDROID_WAKE_POLL_DELAY_MS = 1000;
+const ANDROID_CONFLICTING_AGENT_PACKAGES = [
+  "ai.milady.milady",
+  "ai.elizaos.eliza",
+];
 
 function printHelp() {
   console.log(`Usage: node packages/app/scripts/mobile-local-chat-smoke.mjs [options]
@@ -63,8 +72,8 @@ Options:
 
 Notes:
   --live validates the running app-core/local-agent API. It is not a remote
-  service test. The chat step verifies conversation routes and local-inference
-  hub readiness/download state; it does not require a completed model reply.`);
+  service test. The chat step requires local-inference readiness and a completed
+  streamed model reply from the local Android agent.`);
 }
 
 if (process.argv.includes("--help")) {
@@ -466,6 +475,12 @@ function launchAndroidEmulatorApp() {
     return { adb, serial, installed: false };
   }
 
+  const context = { adb, serial, installed: true };
+  if (androidSelectLocal) {
+    forceStopConflictingAndroidAgents(context);
+    preseedAndroidLocalRuntime(context);
+  }
+
   console.log(`[local-chat-smoke] Launching ${id} on ${serial}.`);
   requireExec(
     adb,
@@ -484,7 +499,91 @@ function launchAndroidEmulatorApp() {
     "elizaos://chat",
     id,
   ]);
-  return { adb, serial, installed: true };
+  return context;
+}
+
+function xmlEscape(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function writeAndroidCapacitorPreferences(context, entries) {
+  const xml = [
+    "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
+    "<map>",
+    ...Object.entries(entries).map(
+      ([key, value]) =>
+        `    <string name="${xmlEscape(key)}">${xmlEscape(value)}</string>`,
+    ),
+    "</map>",
+    "",
+  ].join("\n");
+  const encoded = Buffer.from(xml, "utf8").toString("base64");
+  const script = [
+    "mkdir -p shared_prefs",
+    `(printf %s ${encoded} | base64 -d > shared_prefs/CapacitorStorage.xml) || (printf %s ${encoded} | toybox base64 -d > shared_prefs/CapacitorStorage.xml)`,
+    "chmod 660 shared_prefs/CapacitorStorage.xml",
+  ].join(" && ");
+  requireExec(
+    context.adb,
+    [
+      "-s",
+      context.serial,
+      "shell",
+      `run-as ${shellQuote(appId())} sh -c ${shellQuote(script)}`,
+    ],
+    "Failed to pre-seed Android Capacitor Preferences.",
+  );
+}
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", "'\\''")}'`;
+}
+
+function forceStopConflictingAndroidAgents(context) {
+  const id = appId();
+  for (const packageName of [id, ...ANDROID_CONFLICTING_AGENT_PACKAGES]) {
+    if (!packageName || packageName === id) {
+      tryExec(context.adb, [
+        "-s",
+        context.serial,
+        "shell",
+        "am",
+        "force-stop",
+        id,
+      ]);
+      continue;
+    }
+    tryExec(context.adb, [
+      "-s",
+      context.serial,
+      "shell",
+      "am",
+      "force-stop",
+      packageName,
+    ]);
+  }
+}
+
+function preseedAndroidLocalRuntime(context) {
+  const activeServer = JSON.stringify({
+    id: "local:android",
+    kind: "remote",
+    label: "On-device agent",
+    apiBase: "http://127.0.0.1:31337",
+  });
+  writeAndroidCapacitorPreferences(context, {
+    "eliza:mobile-runtime-mode": "local",
+    "eliza:onboarding-complete": "1",
+    "elizaos:active-server": activeServer,
+  });
+  console.log(
+    `[local-chat-smoke] Pre-seeded Android Local runtime preferences for ${appId()}.`,
+  );
 }
 
 function androidScreenSize(context) {
@@ -503,7 +602,7 @@ function androidScreenSize(context) {
   };
 }
 
-function tapAndroidRatio(context, xRatio, yRatio) {
+function _tapAndroidRatio(context, xRatio, yRatio) {
   const { width, height } = androidScreenSize(context);
   requireExec(
     context.adb,
@@ -564,13 +663,8 @@ function cleanupAndroidAgentForwards(context, reason) {
 async function selectAndroidLocalRuntime(context) {
   if (!context?.installed) return;
   if (readAndroidLocalAgentToken(context)) return;
-  console.log("[local-chat-smoke] Selecting Local runtime on Android.");
-  await sleep(5000);
-  // Current first-run flow: "I want to run it myself" -> "Use Local".
-  tapAndroidRatio(context, 0.5, 0.695);
-  await sleep(1500);
-  for (let attempt = 1; attempt <= 6; attempt += 1) {
-    tapAndroidRatio(context, 0.29, 0.675);
+  console.log("[local-chat-smoke] Waiting for Android Local runtime service.");
+  for (let attempt = 1; attempt <= 24; attempt += 1) {
     await sleep(2500);
     if (readAndroidLocalAgentToken(context)) return;
   }
@@ -1390,26 +1484,46 @@ async function requestJsonResponse(
   body,
   baseUrl = apiBase,
   authToken = authTokenArg,
+  options = {},
 ) {
   const base = baseUrl.replace(/\/$/, "");
   const headers = {};
   if (body) headers["Content-Type"] = "application/json";
   if (authToken) headers.Authorization = `Bearer ${authToken.trim()}`;
-  const response = await fetch(`${base}${pathname}`, {
-    method,
-    headers: Object.keys(headers).length > 0 ? headers : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await response.text();
-  let data = {};
-  if (text) {
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { raw: text };
+  const timeoutMs = options.timeoutMs;
+  const controller =
+    typeof timeoutMs === "number" && timeoutMs > 0
+      ? new AbortController()
+      : null;
+  const timeout =
+    controller !== null
+      ? setTimeout(() => controller.abort(), timeoutMs)
+      : null;
+  try {
+    const response = await fetch(`${base}${pathname}`, {
+      method,
+      headers: Object.keys(headers).length > 0 ? headers : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    const text = await response.text();
+    let data = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { raw: text };
+      }
     }
+    return { response, data, text };
+  } catch (error) {
+    if (controller?.signal.aborted) {
+      throw new Error(`${method} ${pathname} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    if (timeout !== null) clearTimeout(timeout);
   }
-  return { response, data, text };
 }
 
 async function requestJson(
@@ -1432,14 +1546,191 @@ async function requestJson(
   return data;
 }
 
+async function requestTextResponse(
+  method,
+  pathname,
+  body,
+  baseUrl = apiBase,
+  authToken = authTokenArg,
+  timeoutMs = ANDROID_FULL_TURN_TIMEOUT_MS,
+) {
+  const { response, text } = await requestJsonResponse(
+    method,
+    pathname,
+    body,
+    baseUrl,
+    authToken,
+    { timeoutMs },
+  );
+  if (!response.ok) {
+    throw new Error(`${method} ${pathname} failed: ${response.status} ${text}`);
+  }
+  return text;
+}
+
+async function requestOptionalJson(method, pathname, baseUrl, authToken) {
+  const { response, data, text } = await requestJsonResponse(
+    method,
+    pathname,
+    undefined,
+    baseUrl,
+    authToken,
+  );
+  if (response.status === 404) return null;
+  if (!response.ok) {
+    throw new Error(`${method} ${pathname} failed: ${response.status} ${text}`);
+  }
+  return data;
+}
+
+function parseSseEvents(text) {
+  const events = [];
+  const blocks = text.replace(/\r\n/g, "\n").split(/\n\n+/);
+  for (const block of blocks) {
+    const dataLines = [];
+    let event = null;
+    for (const line of block.split("\n")) {
+      if (!line || line.startsWith(":")) continue;
+      const sep = line.indexOf(":");
+      const field = sep >= 0 ? line.slice(0, sep) : line;
+      let value = sep >= 0 ? line.slice(sep + 1) : "";
+      if (value.startsWith(" ")) value = value.slice(1);
+      if (field === "event") {
+        event = value;
+      } else if (field === "data") {
+        dataLines.push(value);
+      }
+    }
+    if (dataLines.length === 0) continue;
+    const dataText = dataLines.join("\n");
+    let data = dataText;
+    try {
+      data = JSON.parse(dataText);
+    } catch {
+      // Keep raw SSE payloads for diagnostics.
+    }
+    events.push({ event, data, dataText });
+  }
+  return events;
+}
+
+function assertObjectLike(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} was not an object: ${JSON.stringify(value)}`);
+  }
+  return value;
+}
+
+function localInferenceSummary({ hub, device, providers }) {
+  return {
+    hubActive: hub?.active ?? null,
+    hubDownloads: Array.isArray(hub?.downloads) ? hub.downloads : [],
+    device: device ?? null,
+    providers: Array.isArray(providers?.providers) ? providers.providers : [],
+  };
+}
+
+async function requireLocalInferenceReady(baseUrl, authToken) {
+  const hub = await requestJson(
+    "GET",
+    "/api/local-inference/hub",
+    undefined,
+    baseUrl,
+    authToken,
+  );
+  const device = await requestOptionalJson(
+    "GET",
+    "/api/local-inference/device",
+    baseUrl,
+    authToken,
+  );
+  const providers = await requestOptionalJson(
+    "GET",
+    "/api/local-inference/providers",
+    baseUrl,
+    authToken,
+  );
+
+  const activeStatus = String(hub?.active?.status ?? "");
+  const activeError = String(hub?.active?.error ?? "");
+  if (activeStatus === "error") {
+    throw new Error(
+      `Local inference hub is in error state: ${activeError || "unknown"}`,
+    );
+  }
+
+  const activeReady = activeStatus === "ready";
+  const deviceConnected = device?.connected === true;
+  const deviceModelPath =
+    typeof device?.modelPath === "string" && device.modelPath.trim().length > 0;
+
+  if (!activeReady && !(deviceConnected && deviceModelPath)) {
+    throw new Error(
+      `Local inference is not ready for a full turn: ${JSON.stringify(
+        localInferenceSummary({ hub, device, providers }),
+      )}`,
+    );
+  }
+
+  return { hub, device, providers };
+}
+
+function extractDoneEventFromSse(text) {
+  const events = parseSseEvents(text);
+  const errorEvent = events.find(
+    (event) =>
+      event.data &&
+      typeof event.data === "object" &&
+      event.data.type === "error",
+  );
+  if (errorEvent) {
+    throw new Error(`Stream returned error event: ${errorEvent.dataText}`);
+  }
+  const done = events
+    .map((event) => event.data)
+    .find((data) => data && typeof data === "object" && data.type === "done");
+  if (!done) {
+    throw new Error(
+      `Stream did not return a done event: ${text.slice(0, 500)}`,
+    );
+  }
+  return done;
+}
+
+function requireUsableFullTurnReply(done, rawStreamText) {
+  const doneObject = assertObjectLike(done, "Stream done event");
+  if (doneObject.failureKind) {
+    throw new Error(
+      `Full-turn smoke returned failureKind=${doneObject.failureKind}: ${JSON.stringify(doneObject)}`,
+    );
+  }
+  if (doneObject.noResponseReason) {
+    throw new Error(
+      `Full-turn smoke returned noResponseReason=${doneObject.noResponseReason}`,
+    );
+  }
+  const reply = String(doneObject.fullText ?? doneObject.text ?? "").trim();
+  if (!reply) {
+    throw new Error(`Full-turn smoke returned empty reply: ${rawStreamText}`);
+  }
+  if (
+    /<think\b|<\/think>|\/?\bno_think\b/i.test(reply) ||
+    ANDROID_FULL_TURN_FAILURE_RE.test(reply)
+  ) {
+    throw new Error(`Full-turn smoke returned unusable reply: ${reply}`);
+  }
+  return reply;
+}
+
 async function runLocalInferenceApiSmoke(
   baseUrl = apiBase,
   authToken = authTokenArg,
 ) {
   console.log(
-    `[local-chat-smoke] Exercising app-core API at ${baseUrl} (conversation + local-inference hub).`,
+    `[local-chat-smoke] Exercising app-core API at ${baseUrl} (conversation + local-inference full turn).`,
   );
   await requestJson("GET", "/api/health", undefined, baseUrl, authToken);
+  const readiness = await requireLocalInferenceReady(baseUrl, authToken);
   const created = await requestJson(
     "POST",
     "/api/conversations",
@@ -1465,48 +1756,25 @@ async function runLocalInferenceApiSmoke(
     throw new Error("Stale local-mode greeting is still present.");
   }
 
-  const reply = await requestJson(
+  const streamText = await requestTextResponse(
     "POST",
-    `/api/conversations/${encodeURIComponent(conversationId)}/messages`,
-    { text: "download the default local model" },
+    `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
+    {
+      text: ANDROID_FULL_TURN_PROMPT,
+      channelType: "DM",
+    },
     baseUrl,
     authToken,
+    ANDROID_FULL_TURN_TIMEOUT_MS,
   );
-  const hub = await requestJson(
-    "GET",
-    "/api/local-inference/hub",
-    undefined,
-    baseUrl,
-    authToken,
-  );
-  const activeStatus = String(hub.active?.status ?? "");
-  const activeError = String(hub.active?.error ?? "");
-  const downloads = Array.isArray(hub.downloads) ? hub.downloads : [];
-  const hasActiveDownload = downloads.some((download) =>
-    ["queued", "downloading", "verifying", "complete"].includes(
-      String(download?.state ?? ""),
-    ),
-  );
-  if (activeStatus === "error") {
-    throw new Error(
-      `Local inference hub is in error state: ${activeError || "unknown"}`,
-    );
-  }
-  if (activeStatus !== "ready" && !hasActiveDownload) {
-    throw new Error(
-      `Local model is neither ready nor downloading (active=${activeStatus || "unknown"}, downloads=${downloads.length}).`,
-    );
-  }
+  const done = extractDoneEventFromSse(streamText);
+  const reply = requireUsableFullTurnReply(done, streamText);
   console.log("[local-chat-smoke] conversation:", conversationId);
   console.log("[local-chat-smoke] greeting:", greeting.text);
-  console.log("[local-chat-smoke] reply:", reply.text);
+  console.log("[local-chat-smoke] reply:", reply);
   console.log(
     "[local-chat-smoke] local inference:",
-    JSON.stringify({
-      active: hub.active,
-      downloads: hub.downloads,
-      hardware: hub.hardware,
-    }),
+    JSON.stringify(localInferenceSummary(readiness)),
   );
 }
 
@@ -1570,18 +1838,20 @@ async function main() {
       await verifyIosFullBunSmoke(iosContext);
     }
 
-    run(
-      "bunx",
-      [
-        "vitest",
-        "run",
-        "--config",
-        "vitest.config.ts",
-        "src/api/ios-local-agent-kernel.local-inference.test.ts",
-        "src/onboarding/auto-download-recommended.test.ts",
-      ],
-      { cwd: path.join(repoRoot, "packages/ui") },
-    );
+    if (platform === "ios" || platform === "both") {
+      run(
+        "bunx",
+        [
+          "vitest",
+          "run",
+          "--config",
+          "vitest.config.ts",
+          "src/api/ios-local-agent-kernel.local-inference.test.ts",
+          "src/onboarding/auto-download-recommended.test.ts",
+        ],
+        { cwd: path.join(repoRoot, "packages/ui") },
+      );
+    }
   } finally {
     cleanupAndroidAgentForwards(androidContext, "shutdown");
   }

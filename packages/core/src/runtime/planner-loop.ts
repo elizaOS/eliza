@@ -851,9 +851,10 @@ async function callPlanner(params: {
 		// the exact enum of actions exposed this turn and carry each action's
 		// normalized parameter schema so the local engine (W4) can do the
 		// second constrained pass (`parameters` against the chosen action's
-		// schema). Cloud adapters ignore `responseSkeleton` / `grammar` /
-		// `providerOptions.eliza.plannerActionSchemas` — `tools` carries the
-		// equivalent unforced contract for them.
+		// schema). Cloud adapters may ignore local structured-output hints like
+		// `responseSkeleton`, `grammar`, and
+		// `providerOptions.eliza.plannerActionSchemas`; `tools` carries the
+		// equivalent portable contract for them.
 		const exposedTools = collectExposedTools(params.context);
 		const plannerActions = exposedTools.map((tool) => ({
 			name: tool.name,
@@ -867,8 +868,8 @@ async function callPlanner(params: {
 		// shape. Chosen `action` and parameter shape are co-determined by the
 		// grammar in one call; the `validate-tool-args.ts` re-plan round
 		// becomes a no-op when the model lands inside the strict grammar.
-		// Cloud adapters ignore the skeleton/grammar and use `tools` carrying
-		// the same schemas via the W3 contract.
+		// Cloud adapters can use `tools` carrying the same schemas if they do not
+		// honor local skeleton/grammar hints.
 		const plannerActionGrammar =
 			buildPlannerActionGrammarStrict(plannerActions);
 		if (plannerActionGrammar) {

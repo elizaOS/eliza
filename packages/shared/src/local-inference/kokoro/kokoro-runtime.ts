@@ -42,6 +42,10 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  buildKokoroOrtSessionOptions,
+  type KokoroExecutionProvider,
+} from "../kokoro-execution-provider.js";
+import {
   type KokoroModelLayout,
   KokoroModelMissingError,
   type KokoroPhonemeSequence,
@@ -183,6 +187,11 @@ function isInt32TensorType(type: string | undefined): boolean {
 
 export interface KokoroOnnxRuntimeOptions {
   layout: KokoroModelLayout;
+  /**
+   * ORT execution provider. Defaults to CPU so existing Kokoro behavior stays
+   * unchanged until Android callers explicitly gate NNAPI through their probe.
+   */
+  executionProvider?: KokoroExecutionProvider;
   /** Custom ORT module loader (tests inject mocks). Defaults to dynamic
    *  import of `onnxruntime-node`. */
   loadOrt?: () => Promise<OrtModule>;
@@ -238,7 +247,7 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
     // very few independent ops to parallelise across.
     const cpuCores = Math.max(1, os.cpus().length);
     this.session = await this.ort.InferenceSession.create(modelPath, {
-      executionProviders: ["cpu"],
+      ...buildKokoroOrtSessionOptions(this.opts.executionProvider),
       graphOptimizationLevel: "all",
       intraOpNumThreads: cpuCores,
       interOpNumThreads: 1,

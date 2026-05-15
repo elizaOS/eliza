@@ -25,17 +25,47 @@ export const NATIVE_TOOL_NAME_PATTERN = /^[A-Z_][A-Z0-9_]*$/;
 export const HANDLE_RESPONSE_TOOL_NAME = "HANDLE_RESPONSE" as const;
 
 /**
- * Schema for the `extract` field on HANDLE_RESPONSE. Populated only when
- * the inbound message states a durable fact about a user, person, or
- * relationship. Drives the facts / relationships memory pipeline.
+ * Canonical Stage-1 HANDLE_RESPONSE parameters. This mirrors the builtin
+ * ResponseHandlerFieldRegistry field order used in production. Plugin callers
+ * may still pass an explicit `parameters` object to `createHandleResponseTool`;
+ * callers that omit it get the same builtin field shape.
  */
-export const HANDLE_RESPONSE_EXTRACT_SCHEMA: JSONSchema = {
+export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
 	type: "object",
 	additionalProperties: false,
 	properties: {
+		shouldRespond: {
+			type: "string",
+			enum: ["RESPOND", "IGNORE", "STOP"],
+			description:
+				"RESPOND=reply/run actions. IGNORE=silent. STOP=explicit user stop.",
+		},
+		contexts: {
+			type: "array",
+			items: { type: "string" },
+			description:
+				"Context ids from available_contexts. 'simple'=direct reply, no planner.",
+		},
+		intents: {
+			type: "array",
+			items: { type: "string" },
+			description: "Verb-led intents. Lowercase. No punctuation. ~6 words max.",
+		},
+		replyText: {
+			type: "string",
+			description:
+				'User-facing reply. Simple=whole answer. Planning=brief ack ("On it.", "Working on it.").',
+		},
+		candidateActionNames: {
+			type: "array",
+			items: { type: "string" },
+			description:
+				"Action names. UPPER_SNAKE_CASE. Retrieval hints; high-precision hits expose planner actions.",
+		},
 		facts: {
 			type: "array",
 			items: { type: "string" },
+			description: "Durable user/person facts stated this turn.",
 		},
 		relationships: {
 			type: "array",
@@ -49,141 +79,40 @@ export const HANDLE_RESPONSE_EXTRACT_SCHEMA: JSONSchema = {
 				},
 				required: ["subject", "predicate", "object"],
 			},
+			description: "Durable subject-predicate-object relationships.",
 		},
 		addressedTo: {
 			type: "array",
-			description:
-				"Entity UUIDs or participant names this message is directed at. Empty when unsure or when the message is broadcast / not directed at anyone in particular.",
 			items: { type: "string" },
+			description:
+				"Entity UUIDs or participant names this message is directed at.",
 		},
-	},
-};
-
-/**
- * Shared property definitions for the flat HANDLE_RESPONSE envelope. Declared
- * once and referenced by both the full and direct schemas so the rendered
- * shape stays byte-identical between them (only the `shouldRespond` key and the
- * `required` list differ). The key insertion order here is the canonical
- * envelope order: `shouldRespond` (full schema only), then `thought`, then
- * `replyText`, then `contexts` **directly after** `replyText`, then the
- * planning-hint fields, then `extract` last. This is the order the model is
- * trained to emit and the order the incremental field parser walks.
- */
-const HANDLE_RESPONSE_REPLY_TEXT_PROPERTY: JSONSchema = {
-	type: "string",
-	description:
-		"User-facing reply. Required. Simple/direct=whole answer; planning=brief ack, planner final later.",
-};
-
-const HANDLE_RESPONSE_CONTEXTS_PROPERTY: JSONSchema = {
-	type: "array",
-	description:
-		"Context ids from available_contexts. ['simple'] or []=direct reply/no planner. Other id/general=planner contexts. Directly after replyText.",
-	items: { type: "string" },
-};
-
-const HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES = {
-	contextSlices: {
-		type: "array",
-		description:
-			"Optional visible retrieval slice ids/stable handles useful this turn.",
-		items: { type: "string" },
-	} as JSONSchema,
-	candidateActions: {
-		type: "array",
-		description:
-			"Optional action names/operation phrases for action catalog retrieval.",
-		items: { type: "string" },
-	} as JSONSchema,
-	parentActionHints: {
-		type: "array",
-		description:
-			"Optional parent action names when confident. High-precision hints, not guesses.",
-		items: { type: "string" },
-	} as JSONSchema,
-	requiresTool: {
-		type: "boolean",
-		description:
-			"True when answer needs action/tool/provider/subagent, filesystem/runtime inspect, browser/network/API, live/current/external data, side effects, long work, or verification. Router upgrades empty/simple to general planning and retries terminal output before non-terminal tool.",
-	} as JSONSchema,
-} as const;
-
-/**
- * Schema for the full HANDLE_RESPONSE tool — used outside DM channels where the
- * agent must explicitly choose RESPOND / IGNORE / STOP.
- *
- * Flat, single-object envelope (no `plan` nesting): the model emits one ordered
- * object — `shouldRespond`, `thought`, `replyText`, `contexts`, then the
- * planning hints, then `extract`. `parseMessageHandlerOutput` still accepts the
- * legacy `{ processMessage, plan:{...} }` nesting for older trajectories.
- *
- * Source-of-truth note (two envelope definitions exist — read this):
- *   The schema actually sent to the Stage-1 LLM in production is composed at
- *   request time by `ResponseHandlerFieldRegistry.composeSchema()` (see
- *   `../runtime/response-handler-field-registry.ts`) from the registered
- *   builtin field evaluators (`../runtime/builtin-field-evaluators.ts`:
- *   shouldRespond / contexts / intents / replyText / candidateActionNames /
- *   facts / relationships / addressedTo). `services/message.ts` calls
- *   `createHandleResponseTool({ parameters: composeSchema() })`, so this
- *   `HANDLE_RESPONSE_SCHEMA` constant is **not** the bytes the model sees in
- *   production — it is the W3 flat-envelope shape kept here as (a) the default
- *   `parameters` for `createHandleResponseTool` when no override is passed,
- *   (b) the shape `parseMessageHandlerOutput` decodes back-compat trajectories
- *   into, and (c) a stable reference for tests / `buildResponseGrammar`'s
- *   no-field fallback. `buildResponseGrammar` (`../runtime/response-grammar.ts`)
- *   prefers the field-registry envelope when evaluators are registered (always,
- *   in production) and only falls back to this fixed key order otherwise.
- *
- *   The field registry's `composeSchema()` is canonical TODAY.
- *
- * TODO(consolidate): derive `HANDLE_RESPONSE_SCHEMA` /
- *   `HANDLE_RESPONSE_DIRECT_SCHEMA` from `composeSchema()` of the builtin field
- *   evaluators so there is one source of truth. Not done in this pass: the two
- *   envelopes have *different field sets* (W3: thought/contextSlices/
- *   parentActionHints/requiresTool/extract vs. registry: intents/
- *   candidateActionNames/facts/relationships/addressedTo), so a direct swap
- *   changes the constant's shape and breaks the W3-envelope tests + the
- *   back-compat parser path that still reads `plan.*` / `contextSlices` /
- *   `requiresTool`. The migration needs the W3 fields fully retired from the
- *   parser and the trajectory corpus first.
- */
-export const HANDLE_RESPONSE_SCHEMA: JSONSchema = {
-	type: "object",
-	additionalProperties: false,
-	properties: {
-		shouldRespond: {
+		emotion: {
 			type: "string",
-			enum: ["RESPOND", "IGNORE", "STOP"],
+			enum: [
+				"none",
+				"happy",
+				"sad",
+				"angry",
+				"nervous",
+				"calm",
+				"excited",
+				"whisper",
+			],
+			description: "Expressive voice emotion tag.",
 		},
-		thought: { type: "string" },
-		replyText: HANDLE_RESPONSE_REPLY_TEXT_PROPERTY,
-		contexts: HANDLE_RESPONSE_CONTEXTS_PROPERTY,
-		...HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES,
-		extract: HANDLE_RESPONSE_EXTRACT_SCHEMA,
 	},
-	required: ["shouldRespond", "replyText", "contexts"],
-};
-
-/**
- * Schema for HANDLE_RESPONSE in direct-message / API / SELF channels
- * where the agent always responds — `shouldRespond` is implicit RESPOND so we
- * drop it from the schema to save tokens and avoid spurious IGNORE.
- *
- * Voice channels do not use this direct schema: VAD/STT/turn-detection signals
- * may determine that the user is still speaking or that the agent should stay
- * silent.
- */
-export const HANDLE_RESPONSE_DIRECT_SCHEMA: JSONSchema = {
-	type: "object",
-	additionalProperties: false,
-	properties: {
-		thought: { type: "string" },
-		replyText: HANDLE_RESPONSE_REPLY_TEXT_PROPERTY,
-		contexts: HANDLE_RESPONSE_CONTEXTS_PROPERTY,
-		...HANDLE_RESPONSE_PLANNING_HINT_PROPERTIES,
-		extract: HANDLE_RESPONSE_EXTRACT_SCHEMA,
-	},
-	required: ["replyText", "contexts"],
+	required: [
+		"shouldRespond",
+		"contexts",
+		"intents",
+		"replyText",
+		"candidateActionNames",
+		"facts",
+		"relationships",
+		"addressedTo",
+		"emotion",
+	],
 };
 
 export interface PlannerToolDefinition {
@@ -205,15 +134,16 @@ export function assertNativeToolName(name: string): void {
 }
 
 const HANDLE_RESPONSE_DESCRIPTION =
-	"Stage 1: handle turn. Call exactly once before action tools. Set shouldRespond RESPOND/IGNORE/STOP. Always write replyText. List contexts after replyText. requiresTool=true for tools/actions/providers/subagents, filesystem/runtime inspect, live/current/external data, side effects, long work, verification. Trivial reply: contexts=['simple'], replyText whole answer. Optional candidateActions/parentActionHints/contextSlices retrieval hints; extract durable facts/relationships.";
+	"Stage 1: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, candidateActionNames, facts, relationships, addressedTo, emotion. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
 
 const HANDLE_RESPONSE_DIRECT_DESCRIPTION =
-	"Stage 1 direct-message: handle turn. Call exactly once before action tools. shouldRespond implicit RESPOND. Always write replyText. List contexts after replyText. requiresTool=true for tools/actions/providers/subagents, filesystem/runtime inspect, live/current/external data, side effects, long work, verification. Trivial reply: contexts=['simple'], replyText whole answer. Optional candidateActions/parentActionHints/contextSlices retrieval hints; extract durable facts/relationships.";
+	"Stage 1 direct-message: handle turn. Call exactly once before action tools. Fill registered fields: shouldRespond, contexts, intents, replyText, candidateActionNames, facts, relationships, addressedTo, emotion. Usually RESPOND unless explicit stop. Trivial reply: contexts=['simple'], replyText whole answer. Tool/planning path: choose non-simple contexts or candidateActionNames and use brief replyText ack.";
 
 /**
  * Build the Stage 1 tool definition. Pass `directMessage: true` for DM /
- * API / SELF channels to drop the explicit RESPOND/IGNORE/STOP flag (the
- * agent always responds in those channels). Keep it false for voice channels.
+ * API / SELF channels to use the direct-message description. The schema stays
+ * canonical and still includes `shouldRespond`; the field evaluator decides the
+ * value, and direct-message defaults are handled by prompt/parse policy.
  */
 export function createHandleResponseTool(options?: {
 	directMessage?: boolean;
@@ -229,11 +159,7 @@ export function createHandleResponseTool(options?: {
 				: HANDLE_RESPONSE_DESCRIPTION),
 		type: "function",
 		strict: true,
-		parameters:
-			options?.parameters ??
-			(options?.directMessage
-				? HANDLE_RESPONSE_DIRECT_SCHEMA
-				: HANDLE_RESPONSE_SCHEMA),
+		parameters: options?.parameters ?? HANDLE_RESPONSE_SCHEMA,
 	};
 }
 

@@ -6,13 +6,14 @@
     <string name="app_action_voice_long">Start voice chat</string>
     <string name="app_action_daily_brief_short">Daily brief</string>
     <string name="app_action_daily_brief_long">Open daily brief</string>
+    <string name="app_action_new_task_short">New task</string>
+    <string name="app_action_new_task_long">Create LifeOps task</string>
     <string name="app_action_tasks_short">Tasks</string>
     <string name="app_action_tasks_long">Open LifeOps tasks</string>
 
     <string-array name="app_action_chat_features">
         <item>chat</item>
         <item>ask</item>
-        <item>assistant</item>
     </string-array>
     <string-array name="app_action_voice_features">
         <item>voice</item>
@@ -25,6 +26,13 @@
         <item>lifeops daily brief</item>
         <item>briefing</item>
         <item>recap</item>
+    </string-array>
+    <string-array name="app_action_new_task_features">
+        <item>new task</item>
+        <item>create task</item>
+        <item>add task</item>
+        <item>lifeops task</item>
+        <item>reminder</item>
     </string-array>
     <string-array name="app_action_tasks_features">
         <item>task</item>

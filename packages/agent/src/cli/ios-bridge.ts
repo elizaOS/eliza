@@ -871,7 +871,8 @@ function callIosHost(
   payload: unknown,
   timeoutMs = 120_000,
 ): Promise<unknown> {
-  if (!hostProtocolWrite) {
+  const writeHostMessage = hostProtocolWrite;
+  if (!writeHostMessage) {
     return Promise.reject(
       new Error("iOS native host-call protocol is not installed"),
     );
@@ -888,7 +889,7 @@ function callIosHost(
       );
     }, boundedTimeout);
     pendingHostCalls.set(id, { resolve, reject, timeout });
-    hostProtocolWrite({
+    writeHostMessage({
       type: "host_call",
       id,
       method,

@@ -426,8 +426,6 @@ export async function resolveLaunchSession(
   }
 }
 
-export async function stopRun(): Promise<void> {}
-
 function buildCachedConnect(
   config: ClawvilleConfig,
   sessionId: string,

@@ -85,7 +85,7 @@ const TtsBody = z.object({
  * @param request - Request body with text, voiceId, and optional modelId.
  * @returns Streaming audio response (audio/mpeg).
  */
-async function __hono_POST(request: Request) {
+async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
   let reservation: CreditReservation | undefined;
 
   try {
@@ -241,7 +241,7 @@ async function __hono_POST(request: Request) {
       throw error;
     }
 
-    const elevenlabs = getElevenLabsService();
+    const elevenlabs = getElevenLabsService(env);
 
     const startTime = Date.now();
     const audioStream = await elevenlabs.textToSpeech({
@@ -451,5 +451,5 @@ async function __hono_POST(request: Request) {
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.post("/", async (c) => __hono_POST(c.req.raw));
+__hono_app.post("/", async (c) => __hono_POST(c.req.raw, c.env));
 export default __hono_app;

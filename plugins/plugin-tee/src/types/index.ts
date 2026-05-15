@@ -58,8 +58,8 @@ export interface TeeServiceConfig {
 }
 
 export interface TeeProviderResult {
-  readonly data: Record<string, string> | null;
-  readonly values: Record<string, string>;
+  readonly data?: ProviderDataRecord;
+  readonly values: Record<string, ProviderValue>;
   readonly text: string;
 }
 
@@ -88,3 +88,4 @@ export function parseTeeVendor(vendor: string): TeeVendor {
       throw new Error(`Invalid TEE_VENDOR: ${vendor}. Must be one of: phala`);
   }
 }
+import type { ProviderDataRecord, ProviderValue } from "@elizaos/core";

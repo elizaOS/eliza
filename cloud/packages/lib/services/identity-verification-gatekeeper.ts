@@ -108,13 +108,18 @@ async function defaultVerifyEd25519Signature(args: {
   if (signatureBytes.length !== 64) return false;
   const key = await subtle.importKey(
     "raw",
-    publicKeyBytes,
+    bytesToArrayBuffer(publicKeyBytes),
     { name: "Ed25519" },
     false,
     ["verify"],
   );
   const messageBytes = new TextEncoder().encode(args.message);
-  return subtle.verify("Ed25519", key, signatureBytes, messageBytes);
+  return subtle.verify(
+    "Ed25519",
+    key,
+    bytesToArrayBuffer(signatureBytes),
+    bytesToArrayBuffer(messageBytes),
+  );
 }
 
 function base64ToBytes(input: string): Uint8Array {
@@ -126,6 +131,12 @@ function base64ToBytes(input: string): Uint8Array {
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
+}
+
+function bytesToArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  return copy.buffer;
 }
 
 function deriveSignerIdentityId(payload: ApprovalChallengePayload): string | null {
@@ -217,8 +228,7 @@ class IdentityVerificationGatekeeperImpl implements IdentityVerificationGatekeep
       return { valid: false, error: "could not derive signer identity" };
     }
 
-    const expected =
-      input.expectedSignerIdentityId ?? approval.expectedSignerIdentityId ?? null;
+    const expected = input.expectedSignerIdentityId ?? approval.expectedSignerIdentityId ?? null;
     if (expected && expected !== signerIdentityId) {
       logger.warn("[IdentityVerificationGatekeeper] signer mismatch", {
         approvalRequestId: input.approvalId,

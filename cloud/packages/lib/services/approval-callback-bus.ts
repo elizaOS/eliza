@@ -49,10 +49,7 @@ export interface ApprovalCallbackWaitFilter {
 export interface ApprovalCallbackBus {
   publish(event: ApprovalCallbackEvent): Promise<void>;
   subscribe(filter: ApprovalCallbackFilter, listener: ApprovalCallbackListener): () => void;
-  waitFor(
-    filter: ApprovalCallbackWaitFilter,
-    timeoutMs: number,
-  ): Promise<ApprovalCallbackEvent>;
+  waitFor(filter: ApprovalCallbackWaitFilter, timeoutMs: number): Promise<ApprovalCallbackEvent>;
 }
 
 export interface CreateApprovalCallbackBusDeps {
@@ -117,10 +114,7 @@ export function createApprovalCallbackBus(
       };
     },
 
-    waitFor(
-      filter: ApprovalCallbackWaitFilter,
-      timeoutMs: number,
-    ): Promise<ApprovalCallbackEvent> {
+    waitFor(filter: ApprovalCallbackWaitFilter, timeoutMs: number): Promise<ApprovalCallbackEvent> {
       return new Promise<ApprovalCallbackEvent>((resolve, reject) => {
         const names = new Set<ApprovalCallbackEventName>(filter.names);
         let unsubscribe: (() => void) | null = null;
@@ -133,15 +127,12 @@ export function createApprovalCallbackBus(
           );
         }, timeoutMs);
 
-        unsubscribe = this.subscribe(
-          { approvalRequestId: filter.approvalRequestId },
-          (event) => {
-            if (!names.has(event.name)) return;
-            clearTimeout(timer);
-            if (unsubscribe) unsubscribe();
-            resolve(event);
-          },
-        );
+        unsubscribe = this.subscribe({ approvalRequestId: filter.approvalRequestId }, (event) => {
+          if (!names.has(event.name)) return;
+          clearTimeout(timer);
+          if (unsubscribe) unsubscribe();
+          resolve(event);
+        });
       });
     },
   };

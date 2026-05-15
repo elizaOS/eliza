@@ -2,21 +2,24 @@
 
 Issue: elizaOS/eliza#7667.
 
-Status: blocked on elizaOS/eliza#7666 and real Tensor TPU/NPU hardware.
+Status: CPU Kokoro `TEXT_TO_SPEECH` registration has landed for the AOSP
+plugin; accelerator delegate work remains blocked on real Tensor TPU/NPU
+hardware and a captured CPU baseline.
 
 Snapshot checked on 2026-05-14 with
 `gh issue view 7667 --repo elizaOS/eliza --comments` and
-`gh issue view 7666 --repo elizaOS/eliza --comments`: #7667 is still queued
-behind #7666, and #7666 still requires the AOSP/package-boundary decision for a
-CPU Kokoro TTS baseline.
+`gh issue view 7666 --repo elizaOS/eliza --comments`: #7666 was previously
+blocked on the Kokoro package boundary. In this checkout, Kokoro discovery and
+runtime code live in `@elizaos/shared/local-inference`, so the AOSP plugin can
+register a CPU Kokoro handler without importing `@elizaos/app-core`.
 
 ## Current Repo State
 
 - `plugins/plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts`
-  registers `TEXT_SMALL`, `TEXT_LARGE`, and `TEXT_EMBEDDING` for the AOSP
-  bun:ffi path. It does not register `ModelType.TEXT_TO_SPEECH`.
-- Kokoro TTS discovery and runtime code still live in
-  `plugins/plugin-local-inference/src/services/voice/kokoro/`.
+  registers `TEXT_SMALL`, `TEXT_LARGE`, `TEXT_EMBEDDING`, and
+  `ModelType.TEXT_TO_SPEECH` for the AOSP path.
+- Kokoro TTS discovery and runtime code live in
+  `packages/shared/src/local-inference/kokoro/`.
 - The desktop/server local-inference handler registers
   `ModelType.TEXT_TO_SPEECH` in
   `plugins/plugin-local-inference/src/runtime/ensure-local-inference-handler.ts`,
@@ -25,9 +28,10 @@ CPU Kokoro TTS baseline.
 
 The delegate work must not proceed by adding a second TTS primitive or by
 duplicating Kokoro behavior into a separate Android-only implementation. The
-next real implementation step is the #7666 CPU Kokoro path: AOSP needs a local
-`TEXT_TO_SPEECH` handler that can synthesize with CPU ORT or the fused Kokoro
-path and produce a baseline before an accelerator delegate is selected.
+next real implementation step is on-device validation: stage the Kokoro ONNX
+model plus at least one voice under the Android agent state dir, synthesize
+through `ModelType.TEXT_TO_SPEECH`, and capture the CPU baseline before an
+accelerator delegate is selected.
 
 ## Delegate Paths
 
@@ -47,7 +51,7 @@ Path B: TFLite + Android delegate.
 
 ## Validation Plan
 
-1. Land #7666 and prove CPU Kokoro TTS on AOSP:
+1. Prove CPU Kokoro TTS on AOSP:
    - `ModelType.TEXT_TO_SPEECH` registered by `@elizaos/plugin-aosp-local-inference`.
    - Kokoro model + at least one voice staged under the Android agent state dir.
    - Baseline metrics captured on the target device: TTFB, RTF, peak RSS, and

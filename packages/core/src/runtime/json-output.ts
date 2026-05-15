@@ -7,24 +7,36 @@ export function parseJsonObject<T extends object>(raw: string): T | null {
 	const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
 	const candidate = fenced?.[1] ?? trimmed;
 
+	const parsedCandidate =
+		parseObjectCandidate<T>(candidate) ??
+		parseObjectCandidate<T>(repairJsonStringEscapes(candidate));
+	if (parsedCandidate) {
+		return parsedCandidate;
+	}
+
+	const repairedCandidate = repairJsonStringEscapes(candidate);
+	const objectText =
+		extractFirstJsonObject(candidate) ??
+		(repairedCandidate === candidate
+			? null
+			: extractFirstJsonObject(repairedCandidate));
+	if (!objectText) return null;
+
+	return (
+		parseObjectCandidate<T>(objectText) ??
+		parseObjectCandidate<T>(repairJsonStringEscapes(objectText))
+	);
+}
+
+function parseObjectCandidate<T extends object>(candidate: string): T | null {
 	try {
 		const parsed = JSON.parse(candidate);
 		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
 			return parsed as T;
 		}
 	} catch {
-		const objectText = extractFirstJsonObject(candidate);
-		if (!objectText) return null;
-		try {
-			const parsed = JSON.parse(objectText);
-			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-				return parsed as T;
-			}
-		} catch {
-			return null;
-		}
+		return null;
 	}
-
 	return null;
 }
 
@@ -62,6 +74,114 @@ function extractFirstJsonObject(raw: string): string | null {
 		}
 	}
 	return null;
+}
+
+export function repairJsonStringEscapes(raw: string): string {
+	let output = "";
+	let inString = false;
+	let escaped = false;
+
+	for (let index = 0; index < raw.length; index++) {
+		const char = raw[index] ?? "";
+		if (!inString) {
+			output += char;
+			if (char === '"') {
+				inString = true;
+			}
+			continue;
+		}
+
+		if (escaped) {
+			if (char === '"' && looksLikeJsonDelimiterAfterString(raw, index + 1)) {
+				output += '\\\\"';
+				inString = false;
+				escaped = false;
+				continue;
+			}
+			if (isValidJsonEscape(raw, index)) {
+				output += `\\${char}`;
+				if (char === "u") {
+					output += raw.slice(index + 1, index + 5);
+					index += 4;
+				}
+			} else {
+				output += `\\\\${escapeRawJsonStringChar(char)}`;
+			}
+			escaped = false;
+			continue;
+		}
+
+		if (char === "\\") {
+			escaped = true;
+			continue;
+		}
+		if (char === '"') {
+			inString = false;
+			output += char;
+			continue;
+		}
+		output += escapeRawJsonStringChar(char);
+	}
+
+	if (escaped) {
+		output += "\\\\";
+	}
+
+	return output;
+}
+
+function looksLikeJsonDelimiterAfterString(
+	raw: string,
+	index: number,
+): boolean {
+	for (let cursor = index; cursor < raw.length; cursor++) {
+		const char = raw[cursor];
+		if (char === " " || char === "\n" || char === "\r" || char === "\t") {
+			continue;
+		}
+		return char === "," || char === "}" || char === "]";
+	}
+	return true;
+}
+
+function isValidJsonEscape(raw: string, index: number): boolean {
+	const char = raw[index];
+	if (
+		char === '"' ||
+		char === "\\" ||
+		char === "/" ||
+		char === "b" ||
+		char === "f" ||
+		char === "n" ||
+		char === "r" ||
+		char === "t"
+	) {
+		return true;
+	}
+	if (char !== "u") {
+		return false;
+	}
+	const hex = raw.slice(index + 1, index + 5);
+	return /^[0-9a-fA-F]{4}$/.test(hex);
+}
+
+function escapeRawJsonStringChar(char: string): string {
+	switch (char) {
+		case "\b":
+			return "\\b";
+		case "\f":
+			return "\\f";
+		case "\n":
+			return "\\n";
+		case "\r":
+			return "\\r";
+		case "\t":
+			return "\\t";
+		default: {
+			const code = char.codePointAt(0) ?? 0;
+			return code < 0x20 ? `\\u${code.toString(16).padStart(4, "0")}` : char;
+		}
+	}
 }
 
 export function stringifyForModel(value: unknown): string {

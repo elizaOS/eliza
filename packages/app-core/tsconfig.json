@@ -75,6 +75,7 @@
       ],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "@elizaos/core": ["../core/src/index.node.ts"],
       "@elizaos/capacitor-*": ["../native-plugins/*/src/index.ts"],

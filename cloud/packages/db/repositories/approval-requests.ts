@@ -3,13 +3,13 @@ import { dbWrite as db } from "@/db/client";
 import {
   type ApprovalChallengeKind,
   type ApprovalChallengePayload,
-  type ApprovalRequestEventRow as ApprovalRequestEventDbRow,
   type ApprovalRequestRow as ApprovalRequestDbRow,
+  type ApprovalRequestEventRow as ApprovalRequestEventDbRow,
   type ApprovalRequestStatus,
-  type NewApprovalRequest as NewApprovalRequestDbRow,
-  type NewApprovalRequestEvent as NewApprovalRequestEventDbRow,
   approvalRequestEvents,
   approvalRequests,
+  type NewApprovalRequest as NewApprovalRequestDbRow,
+  type NewApprovalRequestEvent as NewApprovalRequestEventDbRow,
 } from "@/db/schemas/approval-requests";
 
 export interface ListApprovalRequestsFilter {
@@ -193,9 +193,7 @@ export class ApprovalRequestsRepository {
     const rows = await db
       .update(approvalRequests)
       .set({ status: "expired", updated_at: now })
-      .where(
-        and(inArray(approvalRequests.status, expirable), lt(approvalRequests.expires_at, now)),
-      )
+      .where(and(inArray(approvalRequests.status, expirable), lt(approvalRequests.expires_at, now)))
       .returning({ id: approvalRequests.id });
     return rows.map((r) => r.id);
   }

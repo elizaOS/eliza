@@ -23,7 +23,6 @@
  */
 
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import { sql } from "drizzle-orm";
 import { bigint, index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 export const ttsFirstLineCache = pgTable(

@@ -1,6 +1,5 @@
 import { Capacitor } from "@capacitor/core";
-import { isMobileLocalAgentUrl } from "../onboarding/local-agent-token";
-import { getElizaApiBase } from "../utils/eliza-globals";
+import { isStoreBuild } from "../build-variant";
 import {
   handleIosLocalAgentRequest,
   startIosLocalAgentKernel,
@@ -16,6 +15,9 @@ let fullBunRuntime:
   | Promise<FullBunRuntimePlugin | null>
   | PrimedFullBunRuntime
   | null = null;
+const IOS_LOCAL_AGENT_IPC_BASE = "eliza-local-agent://ipc";
+const LOCAL_AGENT_PORT = "31337";
+const LOCAL_AGENT_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 type FetchWithOptionalPreconnect = typeof fetch & {
   preconnect?: (...args: unknown[]) => unknown;
@@ -72,6 +74,8 @@ type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
 declare global {
   interface Window {
+    __ELIZA_API_BASE__?: string;
+    __ELIZAOS_API_BASE__?: string;
     __ELIZA_IOS_LOCAL_AGENT_REQUEST__?: (
       options: IosLocalAgentNativeRequestOptions,
     ) => Promise<IosLocalAgentNativeRequestResult>;
@@ -86,16 +90,41 @@ function isTruthyBuildFlag(value: string | boolean | undefined): boolean {
   return value === true || /^(1|true|yes|on)$/i.test(String(value ?? ""));
 }
 
+function isDevBuild(): boolean {
+  const env = viteEnv();
+  return (
+    env.DEV === true ||
+    String(env.MODE ?? "")
+      .trim()
+      .toLowerCase() === "development"
+  );
+}
+
+function readRuntimeMode(): string | null {
+  const persisted = readPersistedRuntimeMode()?.trim();
+  if (persisted) return persisted;
+  const env = viteEnv();
+  const iosRuntimeMode =
+    typeof env.VITE_ELIZA_IOS_RUNTIME_MODE === "string"
+      ? env.VITE_ELIZA_IOS_RUNTIME_MODE.trim()
+      : "";
+  const mobileRuntimeMode =
+    typeof env.VITE_ELIZA_MOBILE_RUNTIME_MODE === "string"
+      ? env.VITE_ELIZA_MOBILE_RUNTIME_MODE.trim()
+      : "";
+  return iosRuntimeMode || mobileRuntimeMode || null;
+}
+
 function shouldRequireFullBunRuntime(): boolean {
   const env = viteEnv();
-  const iosRuntimeMode = env.VITE_ELIZA_IOS_RUNTIME_MODE;
-  const persistedRuntimeMode = readPersistedRuntimeMode();
+  const runtimeMode = readRuntimeMode();
   return (
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_STRICT) ||
     isTruthyBuildFlag(env.VITE_ELIZA_IOS_FULL_BUN_SMOKE) ||
     hasIosFullBunSmokeRequest() ||
-    (isTruthyBuildFlag(env.PROD) && iosRuntimeMode === "local") ||
-    (isNativeIos() && persistedRuntimeMode === "local")
+    (isNativeIosStoreBuild() && runtimeMode === "local") ||
+    (isTruthyBuildFlag(env.PROD) && runtimeMode === "local") ||
+    (isNativeIos() && !isDevBuild() && runtimeMode === "local")
   );
 }
 
@@ -120,6 +149,14 @@ function readPersistedRuntimeMode(): string | null {
   }
 }
 
+function getElizaApiBase(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const primary = window.__ELIZA_API_BASE__?.trim();
+  if (primary) return primary;
+  const branded = window.__ELIZAOS_API_BASE__?.trim();
+  return branded || undefined;
+}
+
 function fullBunStartupError(message: string, cause?: unknown): Error {
   const causeMessage =
     cause instanceof Error ? cause.message : cause ? String(cause) : "";
@@ -136,6 +173,107 @@ function isNativeIos(): boolean {
   } catch {
     return false;
   }
+}
+
+function isNativeIosStoreBuild(): boolean {
+  return isNativeIos() && isStoreBuild();
+}
+
+function isNativeIosCloudRuntime(): boolean {
+  if (!isNativeIos()) return false;
+  const runtimeMode = readRuntimeMode();
+  if (!runtimeMode && isTruthyBuildFlag(viteEnv().PROD)) return true;
+  return runtimeMode === "cloud" || runtimeMode === "cloud-hybrid";
+}
+
+function usesStrictIosNetworkPolicy(): boolean {
+  return isNativeIosStoreBuild() || isNativeIosCloudRuntime();
+}
+
+function isLoopbackLocalAgentUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return (
+      parsed.protocol === "http:" &&
+      parsed.port === "31337" &&
+      (parsed.hostname === "127.0.0.1" ||
+        parsed.hostname.startsWith("127.") ||
+        parsed.hostname === "localhost" ||
+        parsed.hostname === "::1" ||
+        parsed.hostname === "[::1]")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function normalizeHost(host: string): string {
+  return host
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+}
+
+function isPrivateOrLoopbackHost(host: string): boolean {
+  const normalized = normalizeHost(host);
+  return (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized === "0.0.0.0" ||
+    normalized.startsWith("127.") ||
+    normalized.startsWith("10.") ||
+    normalized.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(normalized) ||
+    normalized.startsWith("169.254.") ||
+    (normalized.includes(":") &&
+      (normalized.startsWith("fe80:") ||
+        normalized.startsWith("fc") ||
+        normalized.startsWith("fd"))) ||
+    normalized === "local" ||
+    normalized === "internal" ||
+    normalized === "lan" ||
+    normalized === "ts.net" ||
+    normalized.endsWith(".local") ||
+    normalized.endsWith(".internal") ||
+    normalized.endsWith(".lan") ||
+    normalized.endsWith(".ts.net")
+  );
+}
+
+function isCleartextNetworkUrl(url: URL): boolean {
+  return url.protocol === "http:" || url.protocol === "ws:";
+}
+
+function isIosLocalAgentIpcUrl(url: URL): boolean {
+  return url.protocol === "eliza-local-agent:" && url.hostname === "ipc";
+}
+
+function isMobileLocalAgentUrl(value: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  if (isIosLocalAgentIpcUrl(parsed)) return true;
+  return (
+    parsed.protocol === "http:" &&
+    parsed.port === LOCAL_AGENT_PORT &&
+    LOCAL_AGENT_HOSTS.has(parsed.hostname)
+  );
+}
+
+function canUseIosLocalAgentIpc(): boolean {
+  if (!isNativeIos()) return false;
+  if (readRuntimeMode() === "local" || shouldRequireFullBunRuntime()) {
+    return true;
+  }
+  return !usesStrictIosNetworkPolicy();
+}
+
+function canUseJsContextCompatibilityFallback(): boolean {
+  return isNativeIos() && isDevBuild() && !isNativeIosStoreBuild();
 }
 
 function isFullBunRuntimePluginAvailable(): boolean {
@@ -160,6 +298,20 @@ function wrapFullBunRuntime(
 }
 
 export function isIosInProcessLocalAgentUrl(url: string): boolean {
+  if (isNativeIosStoreBuild() && isLoopbackLocalAgentUrl(url)) return false;
+  try {
+    const parsed = new URL(url);
+    if (isIosLocalAgentIpcUrl(parsed)) return canUseIosLocalAgentIpc();
+    if (
+      usesStrictIosNetworkPolicy() &&
+      isCleartextNetworkUrl(parsed) &&
+      isPrivateOrLoopbackHost(parsed.hostname)
+    ) {
+      return false;
+    }
+  } catch {
+    return false;
+  }
   return isNativeIos() && isMobileLocalAgentUrl(url);
 }
 
@@ -181,7 +333,7 @@ function isSafeLocalPath(path: string): boolean {
 }
 
 function requestPathFromUrl(url: string): string {
-  const parsed = new URL(url, "http://127.0.0.1:31337");
+  const parsed = new URL(url, `${IOS_LOCAL_AGENT_IPC_BASE}/`);
   return `${parsed.pathname}${parsed.search}`;
 }
 
@@ -378,9 +530,20 @@ export async function handleIosLocalAgentNativeRequest(
   });
   if (fullBunResult) return fullBunResult;
 
+  if (isNativeIosStoreBuild()) {
+    throw fullBunStartupError(
+      "the foreground ITTP compatibility transport is disabled for iOS store builds",
+    );
+  }
+  if (!canUseJsContextCompatibilityFallback()) {
+    throw fullBunStartupError(
+      "the JSContext compatibility transport is disabled outside iOS development builds",
+    );
+  }
+
   startIosLocalAgentKernel();
   const response = await handleIosLocalAgentRequest(
-    new Request(`http://127.0.0.1:31337${path}`, {
+    new Request(`${IOS_LOCAL_AGENT_IPC_BASE}${path}`, {
       method,
       headers: options.headers,
       body:
@@ -411,6 +574,25 @@ export function installIosLocalAgentNativeRequestBridge(): void {
 
 function shouldBridgeFetchUrl(url: URL): boolean {
   if (!isNativeIos()) return false;
+  if (isNativeIosStoreBuild() && isLoopbackLocalAgentUrl(url.toString())) {
+    throw new TypeError(
+      "iOS store builds must use eliza-local-agent://ipc for local-agent requests",
+    );
+  }
+  if (isIosLocalAgentIpcUrl(url) && !canUseIosLocalAgentIpc()) {
+    throw new TypeError(
+      "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
+    );
+  }
+  if (
+    usesStrictIosNetworkPolicy() &&
+    isCleartextNetworkUrl(url) &&
+    (isNativeIosStoreBuild() || isPrivateOrLoopbackHost(url.hostname))
+  ) {
+    throw new TypeError(
+      "iOS store/cloud builds block cleartext loopback or private-network requests",
+    );
+  }
   if (isMobileLocalAgentUrl(url.toString())) return true;
   if (url.pathname.startsWith("/api/")) {
     return (
@@ -424,9 +606,7 @@ function shouldBridgeFetchUrl(url: URL): boolean {
 
 function localAgentUrlForFetch(url: URL): string {
   if (isMobileLocalAgentUrl(url.toString())) return url.toString();
-  // Internal URL identity only. iOS never opens this as a TCP socket; the
-  // request is intercepted below and dispatched over ITTP/Capacitor IPC.
-  return `http://127.0.0.1:31337${url.pathname}${url.search}`;
+  return `${IOS_LOCAL_AGENT_IPC_BASE}${url.pathname}${url.search}`;
 }
 
 export function installIosLocalAgentFetchBridge(): void {
@@ -483,6 +663,3 @@ export async function iosInProcessAgentTransportForUrl(
   );
   return transport;
 }
-
-installIosLocalAgentNativeRequestBridge();
-installIosLocalAgentFetchBridge();

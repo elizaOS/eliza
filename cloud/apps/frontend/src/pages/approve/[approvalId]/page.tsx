@@ -100,14 +100,13 @@ export default function ApprovalPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const response = await api.get<PublicResponse>(
-        `/v1/approval-requests/${encodeURIComponent(approvalId)}?public=1`,
-        { auth: false },
+      const response = await api<PublicResponse>(
+        `/api/v1/approval-requests/${encodeURIComponent(approvalId)}?public=1`,
+        { skipAuth: true },
       );
       setRequest(response.approvalRequest);
     } catch (error) {
-      const message =
-        error instanceof ApiError ? error.message : "Failed to load approval request";
+      const message = error instanceof ApiError ? error.message : "Failed to load approval request";
       setLoadError(message);
     } finally {
       setLoading(false);
@@ -133,16 +132,18 @@ export default function ApprovalPage() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const response = await api.post<ApproveResponse>(
-        `/v1/approval-requests/${encodeURIComponent(approvalId)}/approve`,
-        { signature: signature.trim() },
-        { auth: false },
+      const response = await api<ApproveResponse>(
+        `/api/v1/approval-requests/${encodeURIComponent(approvalId)}/approve`,
+        {
+          method: "POST",
+          json: { signature: signature.trim() },
+          skipAuth: true,
+        },
       );
       setRequest(response.approvalRequest);
       setSubmitResult("approved");
     } catch (error) {
-      const message =
-        error instanceof ApiError ? error.message : "Failed to submit signature";
+      const message = error instanceof ApiError ? error.message : "Failed to submit signature";
       setSubmitError(message);
     } finally {
       setSubmitting(false);
@@ -154,16 +155,18 @@ export default function ApprovalPage() {
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const response = await api.post<ApproveResponse>(
-        `/v1/approval-requests/${encodeURIComponent(approvalId)}/deny`,
-        { reason: "denied by signer" },
-        { auth: false },
+      const response = await api<ApproveResponse>(
+        `/api/v1/approval-requests/${encodeURIComponent(approvalId)}/deny`,
+        {
+          method: "POST",
+          json: { reason: "denied by signer" },
+          skipAuth: true,
+        },
       );
       setRequest(response.approvalRequest);
       setSubmitResult("denied");
     } catch (error) {
-      const message =
-        error instanceof ApiError ? error.message : "Failed to deny approval";
+      const message = error instanceof ApiError ? error.message : "Failed to deny approval";
       setSubmitError(message);
     } finally {
       setSubmitting(false);
@@ -218,9 +221,7 @@ export default function ApprovalPage() {
           {request.expectedSignerIdentityId ? (
             <div>
               <dt className="text-zinc-500">Expected signer</dt>
-              <dd className="break-all font-mono text-xs">
-                {request.expectedSignerIdentityId}
-              </dd>
+              <dd className="break-all font-mono text-xs">{request.expectedSignerIdentityId}</dd>
             </div>
           ) : null}
           {signerKind ? (
@@ -233,9 +234,7 @@ export default function ApprovalPage() {
 
         {challenge.message ? (
           <div className="mt-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">
-              Challenge message
-            </p>
+            <p className="text-xs uppercase tracking-wide text-zinc-500">Challenge message</p>
             <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-50 p-3 text-xs dark:bg-zinc-900">
               {challenge.message}
             </pre>
@@ -273,9 +272,7 @@ export default function ApprovalPage() {
             rows={4}
             className="w-full rounded border border-zinc-300 bg-white p-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-950"
           />
-          {submitError ? (
-            <p className="text-sm text-red-600">{submitError}</p>
-          ) : null}
+          {submitError ? <p className="text-sm text-red-600">{submitError}</p> : null}
           <div className="flex gap-2">
             <button
               type="button"

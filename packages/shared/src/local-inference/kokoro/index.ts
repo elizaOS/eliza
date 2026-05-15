@@ -6,6 +6,7 @@
  * internal layout may change; this surface is stable.
  */
 
+export type { KokoroExecutionProvider } from "../kokoro-execution-provider.js";
 export type { KokoroTtsBackendDeps } from "./kokoro-backend.js";
 export { KokoroTtsBackend } from "./kokoro-backend.js";
 export type { KokoroEngineDiscoveryResult } from "./kokoro-engine-discovery.js";

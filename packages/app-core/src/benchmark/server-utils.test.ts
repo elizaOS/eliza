@@ -10,6 +10,8 @@ import {
   benchmarkTurnMetadata,
   capturedActionsToToolCalls,
   composeBenchmarkPrompt,
+  normalizeBenchmarkModelUsage,
+  summarizeBenchmarkTurnUsage,
 } from "./server-utils";
 
 const uuid = (value: string) =>
@@ -93,6 +95,115 @@ describe("benchmark function-call metadata", () => {
     expect(metadata.tool_schema_count).toBe(1);
     expect(metadata.tool_names).toEqual(["calendar.search"]);
     expect(metadata.trajectory_endpoint).toContain("loca_bench");
+  });
+});
+
+describe("benchmark MODEL_USED cache telemetry", () => {
+  it("normalizes cache read and creation token fields from MODEL_USED payloads", () => {
+    expect(
+      normalizeBenchmarkModelUsage({
+        type: "TEXT_LARGE",
+        provider: "anthropic",
+        source: "anthropic",
+        tokens: {
+          prompt: 120,
+          completion: 30,
+          total: 150,
+          cache_read_input_tokens: 80,
+          cache_creation_input_tokens: 12,
+        },
+      }),
+    ).toEqual({
+      modelType: "TEXT_LARGE",
+      provider: "anthropic",
+      source: "anthropic",
+      promptTokens: 120,
+      completionTokens: 30,
+      totalTokens: 150,
+      cachedTokens: 80,
+      cacheReadInputTokens: 80,
+      cacheCreationInputTokens: 12,
+    });
+  });
+
+  it("accepts legacy cacheRead/cacheWrite aliases from MODEL_USED payloads", () => {
+    expect(
+      normalizeBenchmarkModelUsage({
+        type: "TEXT_SMALL",
+        source: "anthropic",
+        tokens: {
+          prompt: 10,
+          completion: 2,
+          total: 12,
+          cacheRead: 6,
+          cacheWrite: 4,
+        },
+      }),
+    ).toEqual({
+      modelType: "TEXT_SMALL",
+      provider: "anthropic",
+      source: "anthropic",
+      promptTokens: 10,
+      completionTokens: 2,
+      totalTokens: 12,
+      cachedTokens: 6,
+      cacheReadInputTokens: 6,
+      cacheCreationInputTokens: 4,
+    });
+  });
+
+  it("preserves cache read and creation totals in per-turn usage JSON", () => {
+    expect(
+      summarizeBenchmarkTurnUsage([
+        {
+          modelType: "TEXT_LARGE",
+          promptTokens: 100,
+          completionTokens: 20,
+          totalTokens: 120,
+          cachedTokens: 60,
+          cacheReadInputTokens: 60,
+          cacheCreationInputTokens: 8,
+        },
+        {
+          modelType: "TEXT_LARGE",
+          promptTokens: 40,
+          completionTokens: 10,
+          totalTokens: 50,
+          cachedTokens: 15,
+          cacheReadInputTokens: 15,
+          cacheCreationInputTokens: 2,
+        },
+      ]),
+    ).toEqual({
+      promptTokens: 140,
+      completionTokens: 30,
+      totalTokens: 170,
+      cachedTokens: 75,
+      cacheReadInputTokens: 75,
+      cacheCreationInputTokens: 10,
+      cacheHitRatio: 75 / 140,
+      callCount: 2,
+      calls: [
+        {
+          modelType: "TEXT_LARGE",
+          promptTokens: 100,
+          completionTokens: 20,
+          totalTokens: 120,
+          cachedTokens: 60,
+          cacheReadInputTokens: 60,
+          cacheCreationInputTokens: 8,
+        },
+        {
+          modelType: "TEXT_LARGE",
+          promptTokens: 40,
+          completionTokens: 10,
+          totalTokens: 50,
+          cachedTokens: 15,
+          cacheReadInputTokens: 15,
+          cacheCreationInputTokens: 2,
+        },
+      ],
+    });
   });
 });
 

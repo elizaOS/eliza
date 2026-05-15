@@ -15,13 +15,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getIpKey, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import {
-  type OAuthCallbackBus,
-  createOAuthCallbackBus,
-} from "@/lib/services/oauth-callback-bus";
+import { createOAuthCallbackBus, type OAuthCallbackBus } from "@/lib/services/oauth-callback-bus";
 import { getOAuthIntentsService } from "@/lib/services/oauth-intents-default";
 import { logger } from "@/lib/utils/logger";
-import type { AppEnv } from "@/types/cloud-worker-env";
+import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const SUPPORTED_PROVIDERS = new Set([
   "google",
@@ -53,6 +50,12 @@ async function hashState(state: string): Promise<string> {
     .join("");
 }
 
+function providerFromCallbackUrl(url: string): string | undefined {
+  const pathname = new URL(url).pathname.replace(/\/+$/, "");
+  const provider = pathname.split("/").pop();
+  return provider && provider !== "callback" ? decodeURIComponent(provider) : undefined;
+}
+
 const app = new Hono<AppEnv>();
 
 app.use(
@@ -64,7 +67,7 @@ app.use(
   }),
 );
 
-async function handleCallback(c: Parameters<Parameters<typeof app.get>[1]>[0], rawProvider: string) {
+async function handleCallback(c: AppContext, rawProvider: string | undefined) {
   const provider = rawProvider?.toLowerCase();
   if (!provider || !SUPPORTED_PROVIDERS.has(provider)) {
     return c.json({ success: false, error: "Unsupported provider" }, 400);
@@ -102,7 +105,10 @@ async function handleCallback(c: Parameters<Parameters<typeof app.get>[1]>[0], r
   const bus = getOAuthCallbackBus();
 
   if (params.data.error) {
-    const denied = await service.markDenied(intent.id, params.data.error_description ?? params.data.error);
+    const denied = await service.markDenied(
+      intent.id,
+      params.data.error_description ?? params.data.error,
+    );
     await bus.publish({
       name: "OAuthCallbackReceived",
       intentId: denied.id,
@@ -133,7 +139,7 @@ async function handleCallback(c: Parameters<Parameters<typeof app.get>[1]>[0], r
 
 app.get("/", async (c) => {
   try {
-    return await handleCallback(c, c.req.param("provider"));
+    return await handleCallback(c, providerFromCallbackUrl(c.req.raw.url));
   } catch (error) {
     logger.error("[OAuthCallback API] Failed to handle GET callback", { error });
     return failureResponse(c, error);
@@ -142,7 +148,7 @@ app.get("/", async (c) => {
 
 app.post("/", async (c) => {
   try {
-    return await handleCallback(c, c.req.param("provider"));
+    return await handleCallback(c, providerFromCallbackUrl(c.req.raw.url));
   } catch (error) {
     logger.error("[OAuthCallback API] Failed to handle POST callback", { error });
     return failureResponse(c, error);

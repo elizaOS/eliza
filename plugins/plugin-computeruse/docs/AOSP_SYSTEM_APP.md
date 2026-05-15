@@ -30,10 +30,10 @@ that can open a chat screen. The system build path therefore owns:
 - Boot/direct-boot recovery through the direct-boot-aware boot receiver.
 - Foreground service declarations for the local agent runtime, gateway sync,
   voice capture, and MediaProjection.
-- Accessibility and notification-listener capability declarations in
-  `/product/etc/eliza/aosp-assistant-full-control.json`. A concrete
-  listener/service component must stay on the AOSP/system build path and must
-  be stripped from cloud/Play builds.
+- AOSP-only `ElizaAccessibilityService` and
+  `ElizaNotificationListenerService` components. Their contract is recorded in
+  `/product/etc/eliza/aosp-assistant-full-control.json`, and the cloud/Play
+  build strips the services, Java sources, and accessibility-service resource.
 
 Being the system assistant does not change LifeOps persistence. Assistant-role
 entry points may wake Eliza and pass an utterance into the app/runtime, but
@@ -171,6 +171,32 @@ Do not place these privileged declarations in the Google Play/cloud target.
 receiver, screen-capture plugin, local agent runtime, and privileged
 permissions after Capacitor sync.
 
+The AOSP-only APK also declares accessibility and notification listener
+services:
+
+```xml
+<service
+    android:name="ai.elizaos.app.ElizaAccessibilityService"
+    android:exported="true"
+    android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+    <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+    </intent-filter>
+    <meta-data
+        android:name="android.accessibilityservice"
+        android:resource="@xml/eliza_accessibility_service" />
+</service>
+
+<service
+    android:name="ai.elizaos.app.ElizaNotificationListenerService"
+    android:exported="true"
+    android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+    <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService" />
+    </intent-filter>
+</service>
+```
+
 ## Kotlin implementation notes (aosp flavor)
 
 ### `SurfaceControl.captureDisplay()` (READ_FRAME_BUFFER)
@@ -253,11 +279,13 @@ On a flashed AOSP image:
    `adb shell dumpsys package ai.elizaos.app | grep -E 'directBootAware|PACKAGE_USAGE_STATS|READ_FRAME_BUFFER|INJECT_EVENTS|REAL_GET_TASKS'`.
 5. Confirm foreground service declarations:
    `adb shell dumpsys package ai.elizaos.app | grep -E 'ElizaAgentService|GatewayConnectionService|ElizaVoiceCaptureService|foregroundServiceType'`.
-6. Confirm the system-image capability manifest is present:
+6. Confirm accessibility and notification-listener declarations:
+   `adb shell dumpsys package ai.elizaos.app | grep -E 'ElizaAccessibilityService|ElizaNotificationListenerService|BIND_ACCESSIBILITY_SERVICE|BIND_NOTIFICATION_LISTENER_SERVICE'`.
+7. Confirm the system-image capability manifest is present:
    `adb shell cat /product/etc/eliza/aosp-assistant-full-control.json`.
-7. Ask for a reminder, a check-in, and a follow-up. Verify the app/runtime
+8. Ask for a reminder, a check-in, and a follow-up. Verify the app/runtime
    creates LifeOps `ScheduledTask` records for each request.
-8. Verify privileged capture/input (`SurfaceControl` / `InputManager`) does not
+9. Verify privileged capture/input (`SurfaceControl` / `InputManager`) does not
    introduce a separate scheduling or notification store.
 
 ## Sepolicy considerations

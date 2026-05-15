@@ -2,8 +2,8 @@ import type {
   ApprovalChallengeKind,
   ApprovalChallengePayload,
   ApprovalRequestRow,
-  ApprovalRequestsRepository,
   ApprovalRequestStatus,
+  ApprovalRequestsRepository,
 } from "@/db/repositories/approval-requests";
 import { logger } from "@/lib/utils/logger";
 
@@ -54,10 +54,7 @@ export interface ApprovalRequestsService {
   create(input: CreateApprovalRequestInput): Promise<ApprovalRequestRow>;
   get(id: string, organizationId: string): Promise<ApprovalRequestRow | null>;
   getPublic(id: string): Promise<ApprovalRequestRow | null>;
-  list(
-    organizationId: string,
-    filter?: ListApprovalRequestsFilter,
-  ): Promise<ApprovalRequestRow[]>;
+  list(organizationId: string, filter?: ListApprovalRequestsFilter): Promise<ApprovalRequestRow[]>;
   markDelivered(id: string): Promise<ApprovalRequestRow>;
   markApproved(input: MarkApprovedInput): Promise<ApprovalRequestRow>;
   markDenied(id: string, reason?: string): Promise<ApprovalRequestRow>;
@@ -298,20 +295,10 @@ class ApprovalRequestsServiceImpl implements ApprovalRequestsService {
     return updated;
   }
 
-  async cancel(
-    id: string,
-    organizationId: string,
-    reason?: string,
-  ): Promise<ApprovalRequestRow> {
-    const existing = requireRow(
-      await this.repository.getApprovalRequest(id),
-      id,
-      "cancel lookup",
-    );
+  async cancel(id: string, organizationId: string, reason?: string): Promise<ApprovalRequestRow> {
+    const existing = requireRow(await this.repository.getApprovalRequest(id), id, "cancel lookup");
     if (existing.organizationId !== organizationId) {
-      throw new Error(
-        `Approval request ${id} does not belong to organization ${organizationId}`,
-      );
+      throw new Error(`Approval request ${id} does not belong to organization ${organizationId}`);
     }
     assertCancelable(existing);
 

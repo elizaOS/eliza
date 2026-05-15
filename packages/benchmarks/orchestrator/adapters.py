@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -117,7 +119,40 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    if benchmark_id == "voicebench" and not os.environ.get("GROQ_API_KEY"):
+        return ()
+    if benchmark_id == "hermes_swe_env":
+        return ()
+    if benchmark_id in {"hermes_tblite", "hermes_terminalbench_2"} and not _has_hermes_sandbox_backend():
+        return ()
     return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
+
+
+_HERMES_SANDBOX_BACKEND_AVAILABLE: bool | None = None
+
+
+def _has_hermes_sandbox_backend() -> bool:
+    global _HERMES_SANDBOX_BACKEND_AVAILABLE
+    if _HERMES_SANDBOX_BACKEND_AVAILABLE is not None:
+        return _HERMES_SANDBOX_BACKEND_AVAILABLE
+    if os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET"):
+        _HERMES_SANDBOX_BACKEND_AVAILABLE = True
+        return True
+    if shutil.which("docker"):
+        try:
+            completed = subprocess.run(
+                ["docker", "info"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+                check=False,
+            )
+            _HERMES_SANDBOX_BACKEND_AVAILABLE = completed.returncode == 0
+            return _HERMES_SANDBOX_BACKEND_AVAILABLE
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    _HERMES_SANDBOX_BACKEND_AVAILABLE = False
+    return False
 
 
 def _is_benchmark_directory(path: Path) -> bool:
@@ -943,6 +978,19 @@ def _score_from_eliza_1(path: Path) -> ScoreSummary:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    raw_cases = data.get("cases")
+    if isinstance(raw_cases, list) and raw_cases:
+        case_dicts = [case for case in raw_cases if isinstance(case, dict)]
+        if case_dicts and all(case.get("error") for case in case_dicts):
+            raise ValueError("eliza_1: all cases failed with adapter errors")
+        if case_dicts and all(
+            not str(case.get("raw_output") or "").strip()
+            and case.get("tokens_generated") not in (None, 0)
+            for case in case_dicts
+        ):
+            raise ValueError(
+                "eliza_1: all cases produced empty outputs despite token usage"
+            )
     summaries = data.get("summaries")
     if not isinstance(summaries, list) or not summaries:
         return ScoreSummary(
@@ -1803,7 +1851,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mmlu": {
             "limit": 2,
-            "max_tokens": 8,
+            "max_tokens": 256,
         },
         "mt_bench": {
             "limit": 1,

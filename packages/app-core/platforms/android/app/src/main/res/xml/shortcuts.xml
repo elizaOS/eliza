@@ -2,10 +2,14 @@
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <capability android:name="actions.intent.OPEN_APP_FEATURE">
         <intent android:action="android.intent.action.VIEW">
-            <url-template android:value="eliza://assistant/open?source=android-app-actions{&amp;feature}" />
+            <url-template android:value="eliza://feature/open?source=android-app-actions{&amp;feature}" />
             <parameter
                 android:name="feature"
-                android:key="feature" />
+                android:key="feature"
+                android:required="true" />
+        </intent>
+        <intent android:action="android.intent.action.VIEW">
+            <url-template android:value="eliza://chat?source=android-app-actions&amp;action=chat" />
         </intent>
     </capability>
 
@@ -19,22 +23,6 @@
         </intent>
         <intent android:action="android.intent.action.VIEW">
             <url-template android:value="eliza://chat?source=android-app-actions&amp;action=chat" />
-        </intent>
-    </capability>
-
-    <capability android:name="actions.intent.CREATE_THING">
-        <intent android:action="android.intent.action.VIEW">
-            <url-template android:value="eliza://lifeops/task/new?source=android-app-actions{&amp;title,description}" />
-            <parameter
-                android:name="thing.name"
-                android:key="title"
-                android:required="true" />
-            <parameter
-                android:name="thing.description"
-                android:key="description" />
-        </intent>
-        <intent android:action="android.intent.action.VIEW">
-            <url-template android:value="eliza://lifeops/task/new?source=android-app-actions" />
         </intent>
     </capability>
 
@@ -58,7 +46,7 @@
         <intent
             android:action="android.intent.action.VIEW"
             android:targetPackage="app.eliza"
-            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetClass="app.eliza.MainActivity"
             android:data="eliza://chat?source=android-static-shortcut" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding
@@ -74,7 +62,7 @@
         <intent
             android:action="android.intent.action.VIEW"
             android:targetPackage="app.eliza"
-            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetClass="app.eliza.MainActivity"
             android:data="eliza://voice?source=android-static-shortcut" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding
@@ -90,12 +78,28 @@
         <intent
             android:action="android.intent.action.VIEW"
             android:targetPackage="app.eliza"
-            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetClass="app.eliza.MainActivity"
             android:data="eliza://lifeops/daily-brief?source=android-static-shortcut" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding
                 android:key="feature"
                 android:value="@array/app_action_daily_brief_features" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="eliza_app_action_new_task"
+        android:shortcutShortLabel="@string/app_action_new_task_short"
+        android:shortcutLongLabel="@string/app_action_new_task_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.eliza"
+            android:targetClass="app.eliza.MainActivity"
+            android:data="eliza://lifeops/task/new?source=android-static-shortcut" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/app_action_new_task_features" />
         </capability-binding>
     </shortcut>
 
@@ -106,7 +110,7 @@
         <intent
             android:action="android.intent.action.VIEW"
             android:targetPackage="app.eliza"
-            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetClass="app.eliza.MainActivity"
             android:data="eliza://lifeops/tasks?source=android-static-shortcut" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding

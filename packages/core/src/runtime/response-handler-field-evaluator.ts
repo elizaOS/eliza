@@ -67,8 +67,7 @@ export type ResponseHandlerSenderRole =
 	| "SELF";
 
 /**
- * The flat, all-required result of one Stage-1 LLM call. Replaces the legacy
- * nested `{ processMessage, plan: {...}, thought, extract: {...} }` shape.
+ * The flat, all-required result of one Stage-1 LLM call.
  *
  * Field ownership:
  *   shouldRespond        - core

@@ -12,7 +12,12 @@ from unittest.mock import patch
 
 import pytest
 
-from hermes_adapter.client import HermesClient, MessageResponse, _build_openai_messages
+from hermes_adapter.client import (
+    HermesClient,
+    MessageResponse,
+    _assistant_text_and_thought,
+    _build_openai_messages,
+)
 
 
 def _fake_completed(
@@ -259,6 +264,75 @@ def test_client_send_message_payload_includes_generation_options(tmp_path: Path)
     assert payload["temperature"] == 0.1
     assert payload["reasoning_effort"] == "medium"
     assert payload["max_tokens"] == 1024
+
+
+def test_client_defaults_gpt_oss_reasoning_effort_to_low_when_unset(
+    tmp_path: Path,
+) -> None:
+    client = HermesClient(
+        repo_path=tmp_path,
+        api_key="test-key",
+        base_url="https://test.example/v1",
+    )
+
+    payload = client.build_send_message_payload("hi", {})
+
+    assert payload["reasoning_effort"] == "low"
+
+
+def test_assistant_text_falls_back_to_vendor_reasoning_when_content_empty() -> None:
+    class _Msg:
+        content = ""
+        reasoning_content = None
+        reasoning = "vendor reasoning"
+
+    text, thought = _assistant_text_and_thought(_Msg())
+
+    assert text == "vendor reasoning"
+    assert thought == "vendor reasoning"
+
+
+def test_client_send_message_falls_back_to_reasoning_and_flattens_usage_cache_fields(
+    client_with_fake_venv: HermesClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    telemetry = tmp_path / "telemetry.jsonl"
+    monkeypatch.setenv("BENCHMARK_TELEMETRY_JSONL", str(telemetry))
+
+    response = {
+        "text": "",
+        "thought": "vendor reasoning",
+        "actions": [],
+        "params": {
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 12,
+                "total_tokens": 112,
+                "prompt_tokens_details": {"cached_tokens": 0},
+                "input_token_details": {
+                    "cached_tokens": 25,
+                    "cache_creation_input_tokens": 8,
+                },
+            }
+        },
+    }
+
+    with patch("hermes_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(stdout=json.dumps(response) + "\n", rc=0)
+        result = client_with_fake_venv.send_message("hello")
+
+    assert result.text == "vendor reasoning"
+    assert result.thought == "vendor reasoning"
+    assert result.params["usage"]["cache_read_input_tokens"] == 0
+    assert result.params["usage"]["cache_creation_input_tokens"] == 8
+
+    record = json.loads(telemetry.read_text().strip())
+    assert record["response_text"] == "vendor reasoning"
+    assert record["cache_read_input_tokens"] == 0
+    assert record["cache_creation_input_tokens"] == 8
+    assert record["usage"]["cache_read_input_tokens"] == 0
+    assert record["usage"]["cache_creation_input_tokens"] == 8
 
 
 def test_client_provider_specific_env_defaults(

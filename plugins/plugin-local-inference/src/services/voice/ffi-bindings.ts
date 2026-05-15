@@ -614,7 +614,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// RETURN-only type for "library hands back a NUL-terminated string".
 	// For inputs we encode UTF-8 to a NUL-terminated Buffer on the JS
 	// side and pass `ffi.ptr(buffer)`.
-	let lib: BunFfiLib;
+	let lib: BunFfiLib | null = null;
 	let nativeVadSymbolsAvailable = true;
 	const nativeVadDefs = {
 		// Native Silero VAD (ABI v3). These are additive; some transitional
@@ -678,6 +678,18 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			returns: T.void,
 		},
 	};
+	const referenceEncodeDefs = {
+		// OmniVoice reference encode (ABI v4) — optional for transitional
+		// fused libraries. Default TTS/ASR must still load when reference-clone
+		// freezing is unavailable; encodeReferenceSupported() exposes that state.
+		eliza_inference_encode_reference: {
+			// ctx, pcm, n_samples, sample_rate_hz, out_K, out_ref_T, out_tokens (int**), out_error
+			args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.ptr, T.ptr, T.ptr],
+			returns: T.i32,
+		},
+		eliza_inference_free_tokens: { args: [T.usize], returns: T.void },
+	};
+	let referenceEncodeSymbolsAvailable = true;
 	const coreDefs = {
 		eliza_inference_abi_version: { args: [], returns: T.cstring },
 		eliza_inference_create: {
@@ -718,16 +730,6 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			args: [T.ptr, T.usize, T.usize, T.ptr],
 			returns: T.i32,
 		},
-		// OmniVoice reference encode (ABI v4) — encode 24 kHz mono PCM
-		// through HuBERT + RVQ and return [K=8, ref_T] int32 row-major
-		// tokens. The library malloc-allocates the buffer; callers MUST
-		// free it via `eliza_inference_free_tokens`.
-		eliza_inference_encode_reference: {
-			// ctx, pcm, n_samples, sample_rate_hz, out_K, out_ref_T, out_tokens (int**), out_error
-			args: [T.ptr, T.ptr, T.usize, T.i32, T.ptr, T.ptr, T.ptr, T.ptr],
-			returns: T.i32,
-		},
-		eliza_inference_free_tokens: { args: [T.usize], returns: T.void },
 		// Streaming ASR (ABI v2).
 		eliza_inference_asr_stream_supported: { args: [], returns: T.i32 },
 		eliza_inference_asr_stream_open: {
@@ -752,38 +754,84 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		// `usize`, while `ptr` is for JS-owned ArrayBuffer pointers.
 		eliza_inference_free_string: { args: [T.usize], returns: T.void },
 	};
-	// Try the maximal symbol set first (core + vad + streaming-llm), then
-	// fall back through core+vad, then core-only. Each fallback flips a
-	// sentinel so the corresponding `*Supported()` probe reports false
-	// instead of trying to call a missing symbol.
-	try {
-		lib = ffi.dlopen(dylibPath, {
-			...coreDefs,
-			...nativeVadDefs,
-			...llmStreamDefs,
-		});
-	} catch {
+	// Try the maximal additive symbol set first, then progressively drop
+	// optional families. Each fallback flips a sentinel so `*Supported()` probes
+	// report false instead of making an unavailable native call.
+	const attempts = [
+		{
+			defs: {
+				...coreDefs,
+				...referenceEncodeDefs,
+				...nativeVadDefs,
+				...llmStreamDefs,
+			},
+			referenceEncode: true,
+			nativeVad: true,
+			llmStream: true,
+		},
+		{
+			defs: { ...coreDefs, ...nativeVadDefs, ...llmStreamDefs },
+			referenceEncode: false,
+			nativeVad: true,
+			llmStream: true,
+		},
+		{
+			defs: { ...coreDefs, ...referenceEncodeDefs, ...nativeVadDefs },
+			referenceEncode: true,
+			nativeVad: true,
+			llmStream: false,
+		},
+		{
+			defs: { ...coreDefs, ...nativeVadDefs },
+			referenceEncode: false,
+			nativeVad: true,
+			llmStream: false,
+		},
+		{
+			defs: { ...coreDefs, ...referenceEncodeDefs },
+			referenceEncode: true,
+			nativeVad: false,
+			llmStream: false,
+		},
+		{
+			defs: coreDefs,
+			referenceEncode: false,
+			nativeVad: false,
+			llmStream: false,
+		},
+	];
+	let lastOpenError: unknown = null;
+	for (const attempt of attempts) {
 		try {
-			lib = ffi.dlopen(dylibPath, { ...coreDefs, ...nativeVadDefs });
-			llmStreamSymbolsAvailable = false;
+			lib = ffi.dlopen(dylibPath, attempt.defs);
+			referenceEncodeSymbolsAvailable = attempt.referenceEncode;
+			nativeVadSymbolsAvailable = attempt.nativeVad;
+			llmStreamSymbolsAvailable = attempt.llmStream;
+			break;
 		} catch (err) {
-			try {
-				lib = ffi.dlopen(dylibPath, coreDefs);
-				nativeVadSymbolsAvailable = false;
-				llmStreamSymbolsAvailable = false;
-			} catch {
-				throw new VoiceLifecycleError(
-					"kernel-missing",
-					`[ffi-bindings] Failed to open libelizainference at ${dylibPath}: ${formatFfiError(err)}`,
-				);
-			}
+			lastOpenError = err;
 		}
 	}
+	if (lib === null) {
+		throw new VoiceLifecycleError(
+			"kernel-missing",
+			`[ffi-bindings] Failed to open libelizainference at ${dylibPath}: ${formatFfiError(lastOpenError)}`,
+		);
+	}
+	const loadedLib = lib;
 
-	// ABI version check — refuse to run if the loaded library is not v3.
-	const reported = readCString(lib.symbols.eliza_inference_abi_version(), ffi);
-	if (reported !== String(ELIZA_INFERENCE_ABI_VERSION)) {
-		lib.close();
+	// ABI version check. v4 is the current full surface; v3 is accepted only
+	// when the optional reference-encode symbols are absent so default TTS/ASR
+	// can still run while sample-to-profile freezing stays explicitly disabled.
+	const reported = readCString(
+		loadedLib.symbols.eliza_inference_abi_version(),
+		ffi,
+	);
+	const abiOk =
+		reported === String(ELIZA_INFERENCE_ABI_VERSION) ||
+		(reported === "3" && !referenceEncodeSymbolsAvailable);
+	if (!abiOk) {
+		loadedLib.close();
 		throw new VoiceLifecycleError(
 			"kernel-missing",
 			`[ffi-bindings] ABI mismatch: binding expected v${ELIZA_INFERENCE_ABI_VERSION}, ` +
@@ -810,7 +858,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		}
 		const cstr = new ffi.CString(ptrNumber);
 		const message = cstr.toString();
-		lib.symbols.eliza_inference_free_string(ptrValue);
+		loadedLib.symbols.eliza_inference_free_string(ptrValue);
 		return message;
 	}
 
@@ -857,7 +905,10 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		create(bundleDir: string): ElizaInferenceContextHandle {
 			const err = makeOutErr();
 			const bundleArg = cstr(bundleDir);
-			const handle = lib.symbols.eliza_inference_create(bundleArg.ptr, err.ptr);
+			const handle = loadedLib.symbols.eliza_inference_create(
+				bundleArg.ptr,
+				err.ptr,
+			);
 			if (isNullPointer(handle)) {
 				const message =
 					takeError(err.buf) ??
@@ -868,13 +919,13 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		destroy(ctx: ElizaInferenceContextHandle): void {
-			lib.symbols.eliza_inference_destroy(ctx);
+			loadedLib.symbols.eliza_inference_destroy(ctx);
 		},
 
 		mmapAcquire(ctx, region) {
 			const err = makeOutErr();
 			const regionArg = cstr(region);
-			const rc = lib.symbols.eliza_inference_mmap_acquire(
+			const rc = loadedLib.symbols.eliza_inference_mmap_acquire(
 				ctx,
 				regionArg.ptr,
 				err.ptr,
@@ -890,7 +941,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		mmapEvict(ctx, region) {
 			const err = makeOutErr();
 			const regionArg = cstr(region);
-			const rc = lib.symbols.eliza_inference_mmap_evict(
+			const rc = loadedLib.symbols.eliza_inference_mmap_evict(
 				ctx,
 				regionArg.ptr,
 				err.ptr,
@@ -907,7 +958,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			const err = makeOutErr();
 			const textArg = cstr(text);
 			const speakerArg = cstr(speakerPresetId);
-			const rc = lib.symbols.eliza_inference_tts_synthesize(
+			const rc = loadedLib.symbols.eliza_inference_tts_synthesize(
 				ctx,
 				textArg.ptr,
 				BigInt(textArg.bytes),
@@ -929,7 +980,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			const err = makeOutErr();
 			const cap = maxTextBytes ?? 4096;
 			const outText = new Uint8Array(cap);
-			const rc = lib.symbols.eliza_inference_asr_transcribe(
+			const rc = loadedLib.symbols.eliza_inference_asr_transcribe(
 				ctx,
 				ffi.ptr(pcm),
 				BigInt(pcm.length),
@@ -954,7 +1005,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		/* ---- Streaming TTS + verifier callback (ABI v2) ------------ */
 
 		ttsStreamSupported(): boolean {
-			return lib.symbols.eliza_inference_tts_stream_supported() === 1;
+			return loadedLib.symbols.eliza_inference_tts_stream_supported() === 1;
 		},
 
 		ttsSynthesizeStream({ ctx, text, speakerPresetId, onChunk }) {
@@ -981,7 +1032,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				},
 			);
 			try {
-				const rc = lib.symbols.eliza_inference_tts_synthesize_stream(
+				const rc = loadedLib.symbols.eliza_inference_tts_synthesize_stream(
 					ctx,
 					textArg.ptr,
 					BigInt(textArg.bytes),
@@ -1005,7 +1056,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
 		cancelTts(ctx) {
 			const err = makeOutErr();
-			const rc = lib.symbols.eliza_inference_cancel_tts(ctx, err.ptr);
+			const rc = loadedLib.symbols.eliza_inference_cancel_tts(ctx, err.ptr);
 			if (rc !== ELIZA_OK) {
 				const message =
 					takeError(err.buf) ??
@@ -1015,13 +1066,16 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		encodeReferenceSupported(): boolean {
-			return typeof lib.symbols.eliza_inference_encode_reference === "function";
+			return (
+				typeof loadedLib.symbols.eliza_inference_encode_reference === "function"
+			);
 		},
 
 		encodeReference({ ctx, pcm, sampleRateHz }) {
 			if (
-				typeof lib.symbols.eliza_inference_encode_reference !== "function" ||
-				typeof lib.symbols.eliza_inference_free_tokens !== "function"
+				typeof loadedLib.symbols.eliza_inference_encode_reference !==
+					"function" ||
+				typeof loadedLib.symbols.eliza_inference_free_tokens !== "function"
 			) {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
@@ -1040,7 +1094,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			const outK = new Int32Array(1);
 			const outRefT = new Int32Array(1);
 			const outTokensPtr = new BigUint64Array(1);
-			const rc = lib.symbols.eliza_inference_encode_reference(
+			const rc = loadedLib.symbols.eliza_inference_encode_reference(
 				ctx,
 				ffi.ptr(pcm),
 				BigInt(pcm.length),
@@ -1073,14 +1127,14 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				const tokens = new Int32Array(ab.slice(0));
 				return { K, refT, tokens };
 			} finally {
-				lib.symbols.eliza_inference_free_tokens(tokensRaw);
+				loadedLib.symbols.eliza_inference_free_tokens(tokensRaw);
 			}
 		},
 
 		setVerifierCallback(ctx, cbFn) {
 			const err = makeOutErr();
 			if (cbFn === null) {
-				const rc = lib.symbols.eliza_inference_set_verifier_callback(
+				const rc = loadedLib.symbols.eliza_inference_set_verifier_callback(
 					ctx,
 					0n,
 					0n,
@@ -1101,7 +1155,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 				}) as unknown as (...args: never[]) => unknown,
 				{ args: [T.ptr, T.ptr], returns: T.void },
 			);
-			const rc = lib.symbols.eliza_inference_set_verifier_callback(
+			const rc = loadedLib.symbols.eliza_inference_set_verifier_callback(
 				ctx,
 				BigInt(cb.ptr),
 				0n,
@@ -1120,7 +1174,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 					// JSCallback — order matters so the native side never
 					// dereferences a closed callback.
 					const clearErr = makeOutErr();
-					lib.symbols.eliza_inference_set_verifier_callback(
+					loadedLib.symbols.eliza_inference_set_verifier_callback(
 						ctx,
 						0n,
 						0n,
@@ -1137,15 +1191,15 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		vadSupported(): boolean {
 			if (
 				!nativeVadSymbolsAvailable ||
-				typeof lib.symbols.eliza_inference_vad_supported !== "function"
+				typeof loadedLib.symbols.eliza_inference_vad_supported !== "function"
 			) {
 				return false;
 			}
-			return lib.symbols.eliza_inference_vad_supported() === 1;
+			return loadedLib.symbols.eliza_inference_vad_supported() === 1;
 		},
 
 		vadOpen({ ctx, sampleRateHz }) {
-			const open = lib.symbols.eliza_inference_vad_open;
+			const open = loadedLib.symbols.eliza_inference_vad_open;
 			if (!nativeVadSymbolsAvailable || typeof open !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
@@ -1164,7 +1218,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		vadProcess({ vad, pcm }) {
-			const process = lib.symbols.eliza_inference_vad_process;
+			const process = loadedLib.symbols.eliza_inference_vad_process;
 			if (!nativeVadSymbolsAvailable || typeof process !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
@@ -1190,7 +1244,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		vadReset(vad) {
-			const reset = lib.symbols.eliza_inference_vad_reset;
+			const reset = loadedLib.symbols.eliza_inference_vad_reset;
 			if (!nativeVadSymbolsAvailable || typeof reset !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
@@ -1208,18 +1262,18 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		vadClose(vad) {
-			lib.symbols.eliza_inference_vad_close?.(vad);
+			loadedLib.symbols.eliza_inference_vad_close?.(vad);
 		},
 
 		/* ---- Streaming ASR (ABI v2) -------------------------------- */
 
 		asrStreamSupported(): boolean {
-			return lib.symbols.eliza_inference_asr_stream_supported() === 1;
+			return loadedLib.symbols.eliza_inference_asr_stream_supported() === 1;
 		},
 
 		asrStreamOpen({ ctx, sampleRateHz }) {
 			const err = makeOutErr();
-			const handle = lib.symbols.eliza_inference_asr_stream_open(
+			const handle = loadedLib.symbols.eliza_inference_asr_stream_open(
 				ctx,
 				sampleRateHz,
 				err.ptr,
@@ -1235,7 +1289,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 
 		asrStreamFeed({ stream, pcm }) {
 			const err = makeOutErr();
-			const rc = lib.symbols.eliza_inference_asr_stream_feed(
+			const rc = loadedLib.symbols.eliza_inference_asr_stream_feed(
 				stream,
 				ffi.ptr(pcm),
 				BigInt(pcm.length),
@@ -1252,7 +1306,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		asrStreamPartial(args) {
 			return readAsrStreamResult(
 				"partial",
-				lib.symbols.eliza_inference_asr_stream_partial,
+				loadedLib.symbols.eliza_inference_asr_stream_partial,
 				args,
 			);
 		},
@@ -1260,13 +1314,13 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		asrStreamFinish(args) {
 			return readAsrStreamResult(
 				"finish",
-				lib.symbols.eliza_inference_asr_stream_finish,
+				loadedLib.symbols.eliza_inference_asr_stream_finish,
 				args,
 			);
 		},
 
 		asrStreamClose(stream) {
-			lib.symbols.eliza_inference_asr_stream_close(stream);
+			loadedLib.symbols.eliza_inference_asr_stream_close(stream);
 		},
 
 		/* ---- Streaming LLM (additive on top of v3) ----------------- */
@@ -1276,12 +1330,12 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			// out, the runtime never advertises support.
 			return (
 				llmStreamSymbolsAvailable &&
-				typeof lib.symbols.eliza_inference_llm_stream_open === "function"
+				typeof loadedLib.symbols.eliza_inference_llm_stream_open === "function"
 			);
 		},
 
 		llmStreamOpen({ ctx, config }) {
-			const open = lib.symbols.eliza_inference_llm_stream_open;
+			const open = loadedLib.symbols.eliza_inference_llm_stream_open;
 			if (!llmStreamSymbolsAvailable || typeof open !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
@@ -1325,7 +1379,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		llmStreamPrefill({ stream, tokens }) {
-			const prefill = lib.symbols.eliza_inference_llm_stream_prefill;
+			const prefill = loadedLib.symbols.eliza_inference_llm_stream_prefill;
 			if (!llmStreamSymbolsAvailable || typeof prefill !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
@@ -1348,7 +1402,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		llmStreamNext({ stream, maxTokensPerStep, maxTextBytes }) {
-			const next = lib.symbols.eliza_inference_llm_stream_next;
+			const next = loadedLib.symbols.eliza_inference_llm_stream_next;
 			if (!llmStreamSymbolsAvailable || typeof next !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
@@ -1399,7 +1453,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		llmStreamCancel(stream) {
-			const cancel = lib.symbols.eliza_inference_llm_stream_cancel;
+			const cancel = loadedLib.symbols.eliza_inference_llm_stream_cancel;
 			if (!llmStreamSymbolsAvailable || typeof cancel !== "function") {
 				// Cancel is best-effort — a build without the symbol just means
 				// the runtime cannot interrupt mid-step. The next `_next` call
@@ -1410,7 +1464,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		llmStreamSaveSlot({ stream, filename }) {
-			const save = lib.symbols.eliza_inference_llm_stream_save_slot;
+			const save = loadedLib.symbols.eliza_inference_llm_stream_save_slot;
 			if (!llmStreamSymbolsAvailable || typeof save !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
@@ -1429,7 +1483,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		llmStreamRestoreSlot({ stream, filename }) {
-			const restore = lib.symbols.eliza_inference_llm_stream_restore_slot;
+			const restore = loadedLib.symbols.eliza_inference_llm_stream_restore_slot;
 			if (!llmStreamSymbolsAvailable || typeof restore !== "function") {
 				throw new VoiceLifecycleError(
 					"kernel-missing",
@@ -1448,11 +1502,11 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 		},
 
 		llmStreamClose(stream) {
-			lib.symbols.eliza_inference_llm_stream_close?.(stream);
+			loadedLib.symbols.eliza_inference_llm_stream_close?.(stream);
 		},
 
 		close(): void {
-			lib.close();
+			loadedLib.close();
 		},
 	};
 

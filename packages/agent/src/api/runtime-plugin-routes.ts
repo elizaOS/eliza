@@ -23,6 +23,8 @@ type X402RoutesModule = {
   isRoutePaymentWrapped: (route: Route) => boolean;
 };
 
+type X402RouteHandler = NonNullable<Route["handler"]>;
+
 let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
 
 function getX402RoutesModule(): Promise<X402RoutesModule> {

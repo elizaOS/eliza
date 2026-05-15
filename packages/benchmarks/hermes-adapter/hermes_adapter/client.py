@@ -247,6 +247,14 @@ def _default_base_url(provider: str) -> str:
     )
 
 
+def _usage_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    return None
+
+
 _TELEMETRY_TURN_COUNTER = 0
 _TELEMETRY_FALLBACK_PATH: str | None = None
 
@@ -281,10 +289,47 @@ def _resolve_telemetry_path() -> str | None:
 def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
     def pick(*keys: str) -> int | None:
         for key in keys:
-            value = usage.get(key)
-            if isinstance(value, (int, float)) and value:
-                return int(value)
+            value = _usage_int(usage.get(key))
+            if value is not None:
+                return value
         return None
+
+    def pick_from_details(detail_keys: Sequence[str], field_keys: Sequence[str]) -> int | None:
+        for detail_key in detail_keys:
+            detail = usage.get(detail_key)
+            if not isinstance(detail, Mapping):
+                continue
+            for field_key in field_keys:
+                value = _usage_int(detail.get(field_key))
+                if value is not None:
+                    return value
+        return None
+
+    cache_read_input_tokens = pick(
+        "cache_read_input_tokens",
+        "cachedTokens",
+        "cached_tokens",
+    )
+    if cache_read_input_tokens is None:
+        cache_read_input_tokens = pick_from_details(
+            ("prompt_tokens_details", "input_token_details"),
+            ("cached_tokens", "cachedTokens", "cache_read_input_tokens"),
+        )
+
+    cache_creation_input_tokens = pick(
+        "cache_creation_input_tokens",
+        "cacheCreationInputTokens",
+    )
+    if cache_creation_input_tokens is None:
+        cache_creation_input_tokens = pick_from_details(
+            ("prompt_tokens_details", "input_token_details"),
+            (
+                "cache_creation_input_tokens",
+                "cacheCreationInputTokens",
+                "cache_write_tokens",
+                "cacheWriteTokens",
+            ),
+        )
 
     return {
         "prompt_tokens": pick("prompt_tokens", "promptTokens", "input_tokens"),
@@ -292,13 +337,35 @@ def _extract_usage_tokens(usage: Mapping[str, object]) -> dict[str, int | None]:
             "completion_tokens", "completionTokens", "output_tokens"
         ),
         "total_tokens": pick("total_tokens", "totalTokens"),
-        "cache_read_input_tokens": pick(
-            "cache_read_input_tokens", "cachedTokens", "cached_tokens"
-        ),
-        "cache_creation_input_tokens": pick(
-            "cache_creation_input_tokens", "cacheCreationInputTokens"
-        ),
+        "cache_read_input_tokens": cache_read_input_tokens,
+        "cache_creation_input_tokens": cache_creation_input_tokens,
     }
+
+
+def _normalize_usage_payload(usage: Mapping[str, object]) -> dict[str, object]:
+    normalized = dict(usage)
+    tokens = _extract_usage_tokens(normalized)
+    for key in ("cache_read_input_tokens", "cache_creation_input_tokens"):
+        value = tokens[key]
+        if value is not None:
+            normalized[key] = value
+    return normalized
+
+
+def _assistant_text_and_thought(msg: object) -> tuple[str, str | None]:
+    content = getattr(msg, "content", None)
+    thought = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
+    if not isinstance(thought, str) or not thought.strip():
+        thought = None
+    if isinstance(content, str) and content.strip():
+        text = content
+    elif thought is not None:
+        text = thought
+    elif content is None:
+        text = ""
+    else:
+        text = str(content)
+    return text, thought
 
 
 def _write_telemetry(
@@ -321,11 +388,11 @@ def _write_telemetry(
     if response is not None:
         usage_raw = response.params.get("usage")
         if isinstance(usage_raw, Mapping):
-            usage = dict(usage_raw)
+            usage = _normalize_usage_payload(usage_raw)
         else:
             meta_raw = response.params.get("_meta")
             if isinstance(meta_raw, Mapping) and isinstance(meta_raw.get("usage"), Mapping):
-                usage = dict(meta_raw["usage"])  # type: ignore[index]
+                usage = _normalize_usage_payload(meta_raw["usage"])  # type: ignore[index]
     prompt = _prompt_text(text, context)
     global _TELEMETRY_TURN_COUNTER
     turn_index = _TELEMETRY_TURN_COUNTER
@@ -589,6 +656,11 @@ class HermesClient:
             system_prompt = (
                 f"{prefix}\n\nAvailable benchmark tools/context:\n{tool_context}".strip()
             )
+        reasoning_effort = _coerce_optional_str(
+            ctx.get("reasoning_effort"), fallback=self.reasoning_effort
+        )
+        if reasoning_effort is None and _is_gpt_oss_model(self.model):
+            reasoning_effort = "low"
         return {
             "text": text,
             "context": ctx,
@@ -600,9 +672,7 @@ class HermesClient:
             "temperature": _coerce_optional_float(
                 ctx.get("temperature"), fallback=self.temperature
             ),
-            "reasoning_effort": _coerce_optional_str(
-                ctx.get("reasoning_effort"), fallback=self.reasoning_effort
-            ),
+            "reasoning_effort": reasoning_effort,
             "max_tokens": _coerce_optional_int(
                 ctx.get("max_tokens"), fallback=self.max_tokens
             ),
@@ -782,9 +852,11 @@ class HermesClient:
             usage_payload = dict(usage_obj)
         else:
             usage_payload = {}
+        usage_payload = _normalize_usage_payload(usage_payload)
+        text, thought = _assistant_text_and_thought(msg)
         return MessageResponse(
-            text=str(msg.content or ""),
-            thought=getattr(msg, "reasoning_content", None) or None,
+            text=text,
+            thought=thought,
             actions=actions,
             params={"tool_calls": parsed_tool_calls, "usage": usage_payload},
         )
@@ -802,8 +874,14 @@ class HermesClient:
             params["tool_calls"] = _normalize_tool_calls(params.get("tool_calls"))
         thought_raw = raw.get("thought")
         thought = str(thought_raw) if isinstance(thought_raw, str) and thought_raw else None
+        text = str(raw.get("text") or "")
+        if not text.strip() and thought is not None:
+            text = thought
+        params_usage = params.get("usage")
+        if isinstance(params_usage, Mapping):
+            params["usage"] = _normalize_usage_payload(params_usage)
         return MessageResponse(
-            text=str(raw.get("text") or ""),
+            text=text,
             thought=thought,
             actions=actions,
             params=params,
@@ -1047,6 +1125,62 @@ def _retry_after_from_exc(exc):
     return _parse_retry_after(raw)
 
 
+def _normalize_usage_payload(usage):
+    if not isinstance(usage, dict):
+        return {}
+    normalized = dict(usage)
+
+    def _usage_int(value):
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, (int, float)):
+            return int(value)
+        return None
+
+    def _pick(*keys):
+        for key in keys:
+            value = _usage_int(normalized.get(key))
+            if value is not None:
+                return value
+        return None
+
+    def _pick_from_details(detail_keys, field_keys):
+        for detail_key in detail_keys:
+            detail = normalized.get(detail_key)
+            if not isinstance(detail, dict):
+                continue
+            for field_key in field_keys:
+                value = _usage_int(detail.get(field_key))
+                if value is not None:
+                    return value
+        return None
+
+    cache_read = _pick("cache_read_input_tokens", "cachedTokens", "cached_tokens")
+    if cache_read is None:
+        cache_read = _pick_from_details(
+            ("prompt_tokens_details", "input_token_details"),
+            ("cached_tokens", "cachedTokens", "cache_read_input_tokens"),
+        )
+    if cache_read is not None:
+        normalized["cache_read_input_tokens"] = cache_read
+
+    cache_creation = _pick("cache_creation_input_tokens", "cacheCreationInputTokens")
+    if cache_creation is None:
+        cache_creation = _pick_from_details(
+            ("prompt_tokens_details", "input_token_details"),
+            (
+                "cache_creation_input_tokens",
+                "cacheCreationInputTokens",
+                "cache_write_tokens",
+                "cacheWriteTokens",
+            ),
+        )
+    if cache_creation is not None:
+        normalized["cache_creation_input_tokens"] = cache_creation
+
+    return normalized
+
+
 def _main() -> int:
     raw = sys.stdin.read()
     if not raw:
@@ -1177,12 +1311,10 @@ def _main() -> int:
     if isinstance(max_tokens, int) and max_tokens > 0:
         kwargs["max_completion_tokens"] = max_tokens
     model_name = str(model or "")
-    if (
-        isinstance(reasoning_effort, str)
-        and reasoning_effort
-        and model_name.rsplit("/", 1)[-1].startswith("gpt-oss")
-    ):
+    if isinstance(reasoning_effort, str) and reasoning_effort:
         kwargs["reasoning_effort"] = reasoning_effort
+    elif model_name.rsplit("/", 1)[-1].startswith("gpt-oss"):
+        kwargs["reasoning_effort"] = "low"
 
     completion = None
     last_status = None
@@ -1243,14 +1375,24 @@ def _main() -> int:
         tool_calls.append({"id": getattr(tc, "id", "") or "", "name": name, "arguments": args})
 
     thought = getattr(msg, "reasoning_content", None) or getattr(msg, "reasoning", None)
-    if not isinstance(thought, str):
+    if not isinstance(thought, str) or not thought.strip():
         thought = None
+    content = getattr(msg, "content", None)
+    if isinstance(content, str) and content.strip():
+        text = content
+    elif thought is not None:
+        text = thought
+    elif content is None:
+        text = ""
+    else:
+        text = str(content)
 
     usage = getattr(completion, "usage", None)
     usage_payload = usage.model_dump() if hasattr(usage, "model_dump") else {}
+    usage_payload = _normalize_usage_payload(usage_payload)
 
     result = {
-        "text": msg.content or "",
+        "text": text,
         "thought": thought,
         "actions": [tc["name"] for tc in tool_calls if tc["name"]],
         "params": {"tool_calls": tool_calls, "usage": usage_payload},

@@ -43,6 +43,7 @@ except ModuleNotFoundError:  # pragma: no cover - env-only path
 try:
     from .eliza1_manifest import (
         ELIZA_1_HF_REPO,
+        VOICE_BACKENDS_BY_TIER,
         VOICE_QUANT_BY_TIER,
         VOICE_QUANT_LADDER_BY_TIER,
         validate_manifest,
@@ -50,6 +51,7 @@ try:
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import (
         ELIZA_1_HF_REPO,
+        VOICE_BACKENDS_BY_TIER,
         VOICE_QUANT_BY_TIER,
         VOICE_QUANT_LADDER_BY_TIER,
         validate_manifest,
@@ -250,7 +252,7 @@ def merge_manifest_asset_entries(
     staged_files: Sequence[Mapping[str, Any]],
     *,
     voice_preset: Mapping[str, Any],
-    dry_run: bool,
+    dry_run: bool = False,
 ) -> dict[str, Any] | None:
     """Merge newly staged non-text assets into an existing bundle manifest."""
 
@@ -332,7 +334,7 @@ def merge_release_evidence_assets(
     bundle_dir: Path,
     staged_files: Sequence[Mapping[str, Any]],
     *,
-    dry_run: bool,
+    dry_run: bool = False,
 ) -> dict[str, Any] | None:
     evidence_path = bundle_dir / "evidence" / "release.json"
     if dry_run or not evidence_path.is_file():
@@ -381,7 +383,7 @@ def copy_hf_file(
     remote_path: str,
     destination: Path,
     link_mode: str,
-    dry_run: bool,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if dry_run:
@@ -432,7 +434,7 @@ def download_url_file(
     url: str,
     destination: Path,
     min_bytes: int,
-    dry_run: bool,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     destination.parent.mkdir(parents=True, exist_ok=True)
     if dry_run:
@@ -514,7 +516,7 @@ def stage_turn_detector(
     license: str,
     bundle_dir: Path,
     link_mode: str,
-    dry_run: bool,
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Stage the semantic end-of-turn detector ONNX into ``bundle_dir/turn/``.
 
@@ -649,45 +651,50 @@ def merge_lineage(
     revisions: dict[str, str],
     *,
     asr_repo: str,
+    voice_backends: tuple[str, ...] = ("kokoro",),
     turn_detector: dict[str, Any] | None = None,
-    dry_run: bool,
+    dry_run: bool = False,
 ) -> None:
     path = bundle_dir / "lineage.json"
     data: dict[str, Any] = {}
     if path.is_file():
         data = json.loads(path.read_text())
-    data.update(
-        {
-            "voice": {
-                "base": f"{VOICE_REPO}@{revisions[VOICE_REPO]}",
-                "license": "apache-2.0",
-            },
-            "asr": {
-                "base": f"{asr_repo}@{revisions[asr_repo]}",
-                "license": "apache-2.0; review upstream model card before release",
-            },
-            "vad": {
-                "base": f"{VAD_NATIVE_REPO}@{revisions[VAD_NATIVE_REPO]}",
-                "license": "mit",
-                "format": "ggml",
-                "artifact": "vad/silero-vad-v5.1.2.ggml.bin",
-                "onnxFallback": (
-                    f"{VAD_ONNX_REPO}@{revisions[VAD_ONNX_REPO]}"
-                    if VAD_ONNX_REPO in revisions
-                    else None
-                ),
-            },
-            "wakeword": {
-                "base": f"{WAKEWORD_RELEASE}",
-                "license": (
-                    "openWakeWord code + feature models: Apache-2.0; "
-                    "pre-trained wake-phrase heads: CC-BY-NC-SA-4.0 "
-                    "(acceptable for Eliza-1's non-commercial release; "
-                    "retrain the head for any commercial pivot)"
-                ),
-            },
+    update: dict[str, Any] = {
+        "asr": {
+            "base": f"{asr_repo}@{revisions[asr_repo]}",
+            "license": "apache-2.0; review upstream model card before release",
+        },
+        "vad": {
+            "base": f"{VAD_NATIVE_REPO}@{revisions[VAD_NATIVE_REPO]}",
+            "license": "mit",
+            "format": "ggml",
+            "artifact": "vad/silero-vad-v5.1.2.ggml.bin",
+            "onnxFallback": (
+                f"{VAD_ONNX_REPO}@{revisions[VAD_ONNX_REPO]}"
+                if VAD_ONNX_REPO in revisions
+                else None
+            ),
+        },
+        "wakeword": {
+            "base": f"{WAKEWORD_RELEASE}",
+            "license": (
+                "openWakeWord code + feature models: Apache-2.0; "
+                "pre-trained wake-phrase heads: CC-BY-NC-SA-4.0 "
+                "(acceptable for Eliza-1's non-commercial release; "
+                "retrain the head for any commercial pivot)"
+            ),
+        },
+    }
+    if "omnivoice" in voice_backends:
+        update["voice"] = {
+            "base": f"{VOICE_REPO}@{revisions[VOICE_REPO]}",
+            "license": "apache-2.0",
         }
-    )
+    elif isinstance(data.get("kokoro"), dict):
+        update["voice"] = data["kokoro"]
+    elif "Serveurperso/OmniVoice-GGUF" in json.dumps(data.get("voice", {})):
+        data.pop("voice", None)
+    data.update(update)
     if turn_detector is not None:
         repo = turn_detector["repo"]
         revision = turn_detector.get("revision")
@@ -703,14 +710,29 @@ def merge_lineage(
 def write_license_notes(
     bundle_dir: Path,
     *,
+    voice_backends: tuple[str, ...] = ("kokoro",),
     turn_license: str | None = None,
-    dry_run: bool,
+    dry_run: bool = False,
 ) -> None:
-    licenses = {
-        "LICENSE.voice": (
+    voice_note = (
+        "Kokoro-82M ONNX TTS assets staged from "
+        "onnx-community/Kokoro-82M-v1.0-ONNX.\n"
+        "Declared upstream license: Apache-2.0.\n"
+    )
+    if "omnivoice" in voice_backends and "kokoro" in voice_backends:
+        voice_note = (
+            "Tiered TTS assets: Kokoro-82M ONNX from "
+            "onnx-community/Kokoro-82M-v1.0-ONNX plus OmniVoice GGUF from "
+            "Serveurperso/OmniVoice-GGUF.\n"
+            "Declared upstream licenses: Apache-2.0.\n"
+        )
+    elif "omnivoice" in voice_backends:
+        voice_note = (
             "OmniVoice GGUF assets staged from Serveurperso/OmniVoice-GGUF.\n"
             "Declared upstream license: Apache-2.0.\n"
-        ),
+        )
+    licenses = {
+        "LICENSE.voice": voice_note,
         "LICENSE.asr": (
             "ASR GGUF assets staged from ggml-org/Qwen3-ASR-0.6B-GGUF "
             "or ggml-org/Qwen3-ASR-1.7B-GGUF.\n"
@@ -756,7 +778,11 @@ def write_license_notes(
     license_dir.mkdir(parents=True, exist_ok=True)
     for name, text in licenses.items():
         target = license_dir / name
-        if not target.exists():
+        if not target.exists() or (
+            name == "LICENSE.voice"
+            and "omnivoice" not in voice_backends
+            and "OmniVoice" in target.read_text(encoding="utf-8", errors="ignore")
+        ):
             target.write_text(text)
 
 
@@ -951,11 +977,13 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
         bundle_dir,
         revisions,
         asr_repo=asr_repo,
+        voice_backends=voice_backends,
         turn_detector=turn_detector_report,
         dry_run=args.dry_run,
     )
     write_license_notes(
         bundle_dir,
+        voice_backends=voice_backends,
         turn_license=None if args.skip_turn_detector else args.turn_license,
         dry_run=args.dry_run,
     )
@@ -977,7 +1005,8 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
         "generatedAt": datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "tier": tier,
         "bundleDir": str(bundle_dir),
-        "voiceQuant": quant,
+        "voiceBackends": list(voice_backends),
+        "voiceQuant": quant if "omnivoice" in voice_backends else None,
         "asrRepo": asr_repo,
         "asrRemotePath": asr_remote_path,
         "asrMmprojRemotePath": asr_mmproj_remote_path,

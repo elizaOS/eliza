@@ -81,6 +81,10 @@ export const ELIZA_1_KERNELS = [
 	"turbo3_tcq",
 ] as const;
 export type Eliza1Kernel = (typeof ELIZA_1_KERNELS)[number];
+export type Eliza1RequiredRuntimeKernel = Exclude<
+	LocalRuntimeKernel,
+	"openvino"
+>;
 
 // Manifest-kernel ↔ runtime-kernel bridge.
 //
@@ -97,11 +101,14 @@ export type Eliza1Kernel = (typeof ELIZA_1_KERNELS)[number];
 //   dflash         ↔ dflash       (same name on both layers)
 //   turbo3_tcq     ↔ turbo3_tcq   (same name on both layers)
 //
-// Every member of both enums is covered (both are total maps). When code needs
-// to translate between the catalog's `requiresKernel: LocalRuntimeKernel[]` and
-// the manifest's `kernels.required: Eliza1Kernel[]`, route it through these.
+// Every Eliza-1 custom-kernel member is covered (both are total maps over the
+// custom W4-B/DFlash kernel set). `openvino` is a runtime backend capability,
+// not an Eliza-1 bundle optimization, so it intentionally stays outside this
+// bridge. When code needs to translate between the catalog's custom
+// `requiresKernel` entries and the manifest's `kernels.required:
+// Eliza1Kernel[]`, route it through these.
 export const ELIZA1_TO_RUNTIME_KERNEL: Readonly<
-	Record<Eliza1Kernel, LocalRuntimeKernel>
+	Record<Eliza1Kernel, Eliza1RequiredRuntimeKernel>
 > = {
 	turboquant_q3: "turbo3",
 	turboquant_q4: "turbo4",
@@ -112,7 +119,7 @@ export const ELIZA1_TO_RUNTIME_KERNEL: Readonly<
 };
 
 export const RUNTIME_TO_ELIZA1_KERNEL: Readonly<
-	Record<LocalRuntimeKernel, Eliza1Kernel>
+	Record<Eliza1RequiredRuntimeKernel, Eliza1Kernel>
 > = {
 	turbo3: "turboquant_q3",
 	turbo4: "turboquant_q4",

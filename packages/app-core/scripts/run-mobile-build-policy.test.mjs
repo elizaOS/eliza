@@ -7,9 +7,10 @@ import {
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
+  ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_PERMISSIONS,
   applyAndroidCleartextPolicy,
-  IOS_AGENT_ROOT_EXTENSION_ASSETS,
+  configureIosAppStoreBuildDefaults,
   IOS_AGENT_RUNTIME_ASSETS,
   IOS_OFFICIAL_PODS,
   isIosAppStoreBuild,
@@ -77,8 +78,11 @@ test("AOSP Android keeps assistant/full-control permissions in the system manife
 test("Google Play Android strips AOSP assistant/full-control components and permissions", () => {
   for (const component of [
     "ElizaAssistActivity",
+    "ElizaAccessibilityService",
     "ElizaAgentService",
     "ElizaBootReceiver",
+    "ElizaNotificationListenerService",
+    "ElizaVoiceCaptureService",
   ]) {
     assert.ok(
       ANDROID_CLOUD_STRIPPED_COMPONENTS.includes(component),
@@ -92,9 +96,12 @@ test("Google Play Android strips AOSP assistant/full-control components and perm
     "INJECT_EVENTS",
     "REAL_GET_TASKS",
     "FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "FOREGROUND_SERVICE_MICROPHONE",
     "FOREGROUND_SERVICE_SPECIAL_USE",
     "RECEIVE_BOOT_COMPLETED",
     "REQUEST_IGNORE_BATTERY_OPTIMIZATIONS",
+    "BIND_ACCESSIBILITY_SERVICE",
+    "BIND_NOTIFICATION_LISTENER_SERVICE",
   ]) {
     assert.ok(
       ANDROID_CLOUD_STRIPPED_PERMISSIONS.includes(permission),
@@ -106,6 +113,12 @@ test("Google Play Android strips AOSP assistant/full-control components and perm
       ([pkg]) => pkg === "@elizaos/capacitor-screencapture",
     ),
     "android-cloud should strip the MediaProjection screen-capture plugin",
+  );
+  assert.ok(
+    ANDROID_CLOUD_STRIPPED_RESOURCE_FILES.includes(
+      path.join("xml", "eliza_accessibility_service.xml"),
+    ),
+    "android-cloud should strip the accessibility-service resource",
   );
 });
 
@@ -156,6 +169,41 @@ test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () =>
     releaseAuthority: "developer-toolchain",
     appControlledOta: false,
   });
+});
+
+test("configureIosAppStoreBuildDefaults bakes the same local-safe runtime env", () => {
+  const keys = [
+    "ELIZA_BUILD_VARIANT",
+    "ELIZA_RELEASE_AUTHORITY",
+    "ELIZA_IOS_RUNTIME_MODE",
+    "VITE_ELIZA_IOS_RUNTIME_MODE",
+    "ELIZA_RUNTIME_MODE",
+    "RUNTIME_MODE",
+    "LOCAL_RUNTIME_MODE",
+    "VITE_ELIZA_RUNTIME_MODE",
+  ];
+  const previous = Object.fromEntries(
+    keys.map((key) => [key, process.env[key]]),
+  );
+  try {
+    for (const key of keys) {
+      delete process.env[key];
+    }
+    configureIosAppStoreBuildDefaults();
+    assert.equal(process.env.ELIZA_BUILD_VARIANT, "store");
+    assert.equal(process.env.ELIZA_RELEASE_AUTHORITY, "apple-app-store");
+    assert.equal(process.env.ELIZA_IOS_RUNTIME_MODE, "cloud-hybrid");
+    assert.equal(process.env.VITE_ELIZA_IOS_RUNTIME_MODE, "cloud-hybrid");
+    assert.equal(process.env.ELIZA_RUNTIME_MODE, "local-safe");
+    assert.equal(process.env.RUNTIME_MODE, "local-safe");
+    assert.equal(process.env.LOCAL_RUNTIME_MODE, "local-safe");
+    assert.equal(process.env.VITE_ELIZA_RUNTIME_MODE, "local-safe");
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value == null) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 });
 
 test("resolveIosBuildTarget honors simulator overrides used by local iOS smoke builds", () => {

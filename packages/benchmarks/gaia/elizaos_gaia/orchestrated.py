@@ -34,6 +34,7 @@ _HARNESS_ALIASES = {
     "open_claw": "openclaw",
 }
 _LEGACY_PROVIDER_DEFAULTS = ("claude-code", "swe-agent", "codex")
+_OPENAI_COMPATIBLE_API_BASE = "https://api.cerebras.ai/v1"
 
 DEFAULT_PROVIDER_CAPABILITIES: dict[str, set[str]] = {
     "claude-code": set(_RESEARCH_CAPABILITIES),
@@ -128,8 +129,21 @@ def _model_provider_for_config(harness: str | None = None) -> str:
         or ""
     ).strip().lower()
     if configured:
+        return "openai" if configured == "cerebras" else configured
+    return "eliza" if harness == "eliza" else "openai"
+
+
+def _model_api_base_for_config(harness: str | None = None) -> str | None:
+    if harness == "eliza":
+        return None
+    configured = (
+        os.environ.get("OPENAI_BASE_URL")
+        or os.environ.get("OPENAI_API_BASE")
+        or ""
+    ).strip()
+    if configured:
         return configured
-    return "eliza" if harness == "eliza" else "cerebras"
+    return _OPENAI_COMPATIBLE_API_BASE
 
 
 def _model_env_updates(
@@ -137,13 +151,15 @@ def _model_env_updates(
     harness: str,
     telemetry_path: Path,
     model_provider: str,
+    model_api_base: str | None,
 ) -> dict[str, str]:
-    return {
+    updates = {
         "BENCHMARK_HARNESS": harness,
         "ELIZA_BENCH_HARNESS": harness,
         "BENCHMARK_AGENT": harness,
         "BENCHMARK_TELEMETRY_JSONL": str(telemetry_path),
         "BENCHMARK_MODEL_PROVIDER": model_provider,
+        "ELIZA_PROVIDER": model_provider,
         "BENCHMARK_MODEL_NAME": model_name,
         "MODEL_NAME": model_name,
         "OPENAI_MODEL": model_name,
@@ -157,6 +173,10 @@ def _model_env_updates(
         "CEREBRAS_LARGE_MODEL": model_name,
         "CEREBRAS_SMALL_MODEL": model_name,
     }
+    if model_api_base:
+        updates["OPENAI_BASE_URL"] = model_api_base
+        updates["OPENAI_API_BASE"] = model_api_base
+    return updates
 
 
 @contextmanager
@@ -314,13 +334,24 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
         max_questions=args.max_questions,
         model_name=args.model,
         provider=_model_provider_for_config(harness),
+        api_base=_model_api_base_for_config(harness),
         temperature=args.temperature,
         compare_leaderboard=False,
         include_model_in_output=True,
     )
     model_provider = _model_provider_for_config(harness)
-    with _patched_env(_model_env_updates(args.model, harness, telemetry_path, model_provider)):
+    model_api_base = _model_api_base_for_config(harness)
+    with _patched_env(
+        _model_env_updates(
+            args.model,
+            harness,
+            telemetry_path,
+            model_provider,
+            model_api_base,
+        )
+    ):
         config.provider = model_provider
+        config.api_base = model_api_base
         results = await run_quick_test(
             config,
             num_questions=args.max_questions,
@@ -337,6 +368,7 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
             "provider_label": provider_label,
             "benchmark_harness": harness,
             "model_provider": model_provider,
+            "model_api_base": model_api_base,
         },
         "metrics": {
             "overall_accuracy": metrics.overall_accuracy,

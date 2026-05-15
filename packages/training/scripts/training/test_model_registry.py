@@ -110,10 +110,30 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("qwen3.6-27b").short_name == "qwen3.6-27b"
     assert get("Qwen/Qwen3.6-27B").short_name == "qwen3.6-27b"
     assert get("eliza-1-27b").short_name == "qwen3.6-27b"
+    assert get("27b").short_name == "qwen3.6-27b"
+    assert get("27b-256k").short_name == "qwen3.6-27b"
+    assert get("27b-1m").short_name == "qwen3.6-27b"
+    assert get("qwen3.6-27b-256k").short_name == "qwen3.6-27b"
+    assert get("qwen3.6-27b-1m").short_name == "qwen3.6-27b"
+    assert get("Qwen/Qwen3.6-27B-256K").short_name == "qwen3.6-27b"
+    assert get("Qwen/Qwen3.6-27B-1M").short_name == "qwen3.6-27b"
+    assert get("eliza-1-27b-256k").short_name == "qwen3.6-27b"
+    assert get("eliza-1-27b-1m").short_name == "qwen3.6-27b"
 
 
-def test_dflash_drafter_base_is_qwen3_5_for_qwen3_5_targets() -> None:
-    # The Qwen3.5 target tiers must draft from the Qwen3.5-0.8B-Base
+def test_qwen36_lower_tiers_fall_back_to_qwen35_bases() -> None:
+    assert get("qwen3.6-0.8b").short_name == "qwen3.5-0.8b"
+    assert get("Qwen/Qwen3.6-0.8B-Base").short_name == "qwen3.5-0.8b"
+    assert get("qwen3.6-2b").short_name == "qwen3.5-2b"
+    assert get("Qwen/Qwen3.6-2B-Base").short_name == "qwen3.5-2b"
+    assert get("qwen3.6-4b").short_name == "qwen3.5-4b"
+    assert get("Qwen/Qwen3.6-4B").short_name == "qwen3.5-4b"
+    assert get("qwen3.6-9b").short_name == "qwen3.5-9b"
+    assert get("Qwen/Qwen3.6-9B").short_name == "qwen3.5-9b"
+
+
+def test_dflash_drafter_base_is_qwen3_5_for_active_targets() -> None:
+    # The Qwen3.5/Qwen3.6 target tiers draft from the Qwen3.5-0.8B-Base
     # checkpoint — it shares their 248320-token tokenizer (a legacy Qwen3 drafter has the wrong vocab). The shipped drafter GGUF is that base
     # distilled to ~0.6B. Mirrors DEFAULT_STUDENT_BASE in
     # scripts/distill_dflash_drafter.py. Per the 2026-05-12 operator

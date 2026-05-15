@@ -38,15 +38,15 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="theme-color" content="__APP_THEME_COLOR__" />
   <meta name="color-scheme" content="dark light" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' electrobun://* https://* http://localhost:* http://127.0.0.1:*;
-               script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' http://localhost:* http://127.0.0.1:* https://*;
-               style-src 'self' 'unsafe-inline' http://localhost:* http://127.0.0.1:* https://*;
-               connect-src 'self' blob: data: http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:* https://* wss://*;
-               img-src 'self' data: blob: http://localhost:* http://127.0.0.1:* https://*;
-               media-src 'self' blob: http://localhost:* http://127.0.0.1:* https://*;
-               frame-src 'self' http://localhost:* http://127.0.0.1:* https://*;
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' electrobun://* https://*__APP_CSP_LOCAL_HTTP__;
+               script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://*__APP_CSP_LOCAL_HTTP__;
+               style-src 'self' 'unsafe-inline' https://*__APP_CSP_LOCAL_HTTP__;
+               connect-src 'self' blob: data: eliza-local-agent: https://* wss://*__APP_CSP_LOCAL_CONNECT__;
+               img-src 'self' data: blob: https://*__APP_CSP_LOCAL_HTTP__;
+               media-src 'self' blob: https://*__APP_CSP_LOCAL_HTTP__;
+               frame-src 'self' https://*__APP_CSP_LOCAL_HTTP__;
                worker-src 'self' blob:;
-               font-src 'self' data: http://localhost:* http://127.0.0.1:* https://*;" />
+               font-src 'self' data: https://*__APP_CSP_LOCAL_HTTP__;" />
   <title>__APP_NAME__</title>
   <meta name="description" content="__APP_DESCRIPTION__" />
 

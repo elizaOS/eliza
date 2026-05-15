@@ -33,6 +33,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.json.JSONException;
+import org.json.JSONObject;
+
 /**
  * Foreground service that owns the local Eliza agent process on Android.
  *
@@ -92,7 +95,7 @@ public class ElizaAgentService extends Service {
 
     // The on-device boot path is heavy: PGlite extension extraction +
     // plugin resolution + libllama dlopen + first-time model load can
-    // exceed 240 s on a cold cuttlefish x86_64 image. The chat path is
+    // exceed several minutes on a cold cuttlefish x86_64 image. The chat path is
     // even heavier: a single planner-produced prompt at ~12k tokens,
     // chunked through llama_decode on emulated CPU, can run 15–30 min
     // wall-clock for a single chat turn (multiple model invocations:
@@ -105,7 +108,7 @@ public class ElizaAgentService extends Service {
     // event loop yet), we DO NOT count a strike — the process is doing
     // exactly what it should be doing, just synchronously inside a
     // native call. We only count strikes when the process is actually
-    // dead OR returns 5xx from /api/health (a real crash signal).
+    // dead OR returns non-2xx / non-ready health (a real crash signal).
     // Strikes accumulate when the process is dead, which forces a
     // restart via the existing scheduleRestart() path.
     //
@@ -119,7 +122,9 @@ public class ElizaAgentService extends Service {
     private static final long WATCHDOG_INTERVAL_MS = 600_000L;
     private static final int HEALTH_FAIL_STRIKES = 3;
     private static final long HEALTH_TIMEOUT_MS = 30_000L;
-    private static final long STARTUP_HEALTH_GRACE_MS = 240_000L;
+    // Keep this aligned with packages/app/scripts/mobile-local-chat-smoke.mjs:
+    // ANDROID_HEALTH_ATTEMPTS (240) × 2000 ms = 480 s.
+    private static final long STARTUP_HEALTH_GRACE_MS = 480_000L;
     private static final long STARTUP_HEALTH_POLL_MS = 5_000L;
     private static final int MAX_RESTART_ATTEMPTS = 5;
     private static final long PROCESS_TERMINATE_GRACE_MS = 5_000L;
@@ -785,6 +790,7 @@ public class ElizaAgentService extends Service {
             agentEnv.put("LOG_FILE", new File(root, AGENT_LOG_NAME).getAbsolutePath());
             agentEnv.put("PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("ELIZA_API_PORT", String.valueOf(AGENT_PORT));
+            agentEnv.put("ELIZA_API_BIND", "127.0.0.1");
             // The agent's runtime-env resolver reads ELIZA_PORT / ELIZA_UI_PORT
             // (defaulting to 2138) before falling back to PORT. Without
             // these the agent binds 2138 even though the service advertises
@@ -809,12 +815,13 @@ public class ElizaAgentService extends Service {
             // device-bridge. The WebView dials it over loopback once the
             // user picks the local runtime mode in onboarding.
             agentEnv.put("ELIZA_DEVICE_BRIDGE_ENABLED", "1");
+            agentEnv.put("ELIZA_DEVICE_PAIRING_TOKEN", token);
             // CPU-only inference on a stock-Android Capacitor APK runs the
             // same on-device chat path as the AOSP variant — Snapdragon
             // 4 Gen 1 / Tensor G1 class hardware lands at 3–7 tok/s and a
-            // ~4.5 k-token system prompt + 256-token reply easily blows
-            // past the chat-route 180 s / device-bridge 120 s defaults.
-            // The upstream gate that bumps these (under
+            // ~4.5 k-token system prompt + 256-token reply needs the
+            // same 600 s native/chat budget the bridge uses by default.
+            // The upstream gate that previously bumped these (under
             // `BuildConfig.AOSP_BUILD && isBrandedDevice()` further down)
             // only fires for branded AOSP builds; stock-Android sideloads
             // get the defaults and time out on every first turn with
@@ -1460,13 +1467,22 @@ public class ElizaAgentService extends Service {
             conn.setConnectTimeout((int) HEALTH_TIMEOUT_MS);
             conn.setReadTimeout((int) HEALTH_TIMEOUT_MS);
             conn.setRequestMethod("GET");
+            String token = currentLocalAgentToken;
+            if (token != null && !token.trim().isEmpty()) {
+                conn.setRequestProperty("Authorization", "Bearer " + token.trim());
+            }
             int status = conn.getResponseCode();
-            if (status >= 200 && status < 500) {
+            if (status >= 200 && status < 300) {
+                String body = readResponseBody(conn);
+                if (!isReadyHealthBody(body)) {
+                    Log.w(TAG, "Agent health endpoint responded before ready: " + compactForLog(body));
+                    return ProbeResult.DEAD;
+                }
                 return ProbeResult.OK;
             }
-            // 5xx: agent process is up but reported a server error.
-            // Treat as DEAD so strikes accumulate — a 5xx on /api/health
-            // is a crash signal, not a busy signal.
+            // Non-2xx: agent process is up but not healthy/authenticated.
+            // Treat as DEAD so strikes accumulate — this is a crash or
+            // readiness signal, not a busy signal.
             return ProbeResult.DEAD;
         } catch (IOException error) {
             // HTTP request failed (timeout / connect refused / read
@@ -1486,6 +1502,39 @@ public class ElizaAgentService extends Service {
         } finally {
             if (conn != null) conn.disconnect();
         }
+    }
+
+    private static String readResponseBody(HttpURLConnection conn) throws IOException {
+        try (InputStream in = conn.getInputStream()) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) >= 0) {
+                out.write(buf, 0, n);
+            }
+            return out.toString(StandardCharsets.UTF_8.name());
+        }
+    }
+
+    private static boolean isReadyHealthBody(String body) {
+        if (body == null || body.trim().isEmpty()) return false;
+        try {
+            JSONObject json = new JSONObject(body);
+            if (!json.optBoolean("ready", false)) return false;
+            String runtime = json.optString("runtime", "");
+            if (!runtime.isEmpty() && !"ok".equals(runtime)) return false;
+            String agentState = json.optString("agentState", "");
+            return agentState.isEmpty() || "running".equals(agentState);
+        } catch (JSONException error) {
+            return false;
+        }
+    }
+
+    private static String compactForLog(String value) {
+        if (value == null) return "";
+        String compact = value.replaceAll("\\s+", " ").trim();
+        if (compact.length() <= 240) return compact;
+        return compact.substring(0, 240) + "…";
     }
 
     private void scheduleRestart() {
@@ -1610,7 +1659,7 @@ public class ElizaAgentService extends Service {
                     Log.i(TAG, "Agent HTTP probe timed out but process is alive — likely mid-decode. No strike.");
                 } else {
                     // ProbeResult.DEAD: process is dead, OR /api/health
-                    // returned 5xx (a real crash signal). Only here do we
+                    // did not return 2xx with ready=true. Only here do we
                     // accumulate strikes toward a force-restart.
                     unhealthyTicks++;
                     Log.w(TAG, "Agent health probe failed (" + unhealthyTicks + " consecutive).");
@@ -1634,8 +1683,9 @@ public class ElizaAgentService extends Service {
      *          HEALTH_TIMEOUT_MS. Typically means bun is synchronously
      *          inside a native FFI call (llama_decode on a long prompt).
      *          No strike.
-     *   DEAD → process is dead, OR the HTTP server returned 5xx, OR a
-     *          hard connection failure (port closed). Count a strike.
+     *   DEAD → process is dead, OR the HTTP server did not return 2xx
+     *          with ready=true, OR a hard connection failure (port
+     *          closed). Count a strike.
      */
     private enum ProbeResult {
         OK,

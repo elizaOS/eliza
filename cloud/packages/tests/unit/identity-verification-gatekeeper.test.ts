@@ -134,9 +134,7 @@ describe("identityVerificationGatekeeper.verify", () => {
     });
     const result = await gk.verify({ approvalId: "appr_1", signature: "AAAA" });
     expect(result.valid).toBe(true);
-    expect(result.signerIdentityId).toBe(
-      "ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
-    );
+    expect(result.signerIdentityId).toBe("ed25519:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
   });
 
   test("returns invalid when payload has no signerKind", async () => {

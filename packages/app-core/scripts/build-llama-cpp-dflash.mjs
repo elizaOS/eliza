@@ -1889,6 +1889,7 @@ function ensureCheckout(cacheDir, ref) {
       );
     }
   }
+  const hasSwaSpecDecodeFallback = sourceContainsSwaSpecDecodeFallback(cacheDir);
   const swaFallback = spawnSync(
     "git",
     ["merge-base", "--is-ancestor", SWA_SPEC_DECODE_FALLBACK_COMMIT, "HEAD"],
@@ -1902,13 +1903,13 @@ function ensureCheckout(cacheDir, ref) {
       cwd: cacheDir,
       capture: true,
     });
-    if (shallow !== "true") {
+    if (shallow !== "true" && !hasSwaSpecDecodeFallback) {
       console.warn(
         `[dflash-build] warning: HEAD does not contain SWA spec-decode fallback commit ${SWA_SPEC_DECODE_FALLBACK_COMMIT}`,
       );
     }
   }
-  if (!sourceContainsSwaSpecDecodeFallback(cacheDir)) {
+  if (!hasSwaSpecDecodeFallback) {
     throw new Error(
       `[dflash-build] checkout ${head} lacks the SWA-aware seq_rm fallback ` +
         `required for --spec-type dflash on SWA target bodies (elizaOS/eliza#7635). ` +
@@ -2399,6 +2400,7 @@ function writeLegacyDflashDrafterCapabilities({
     turbo3_tcq: false,
     qjl_full: false,
     polarquant: false,
+    openvino: false,
     lookahead: true,
     ngramDraft: true,
   };
@@ -2524,6 +2526,7 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
     turbo3_tcq: false,
     qjl_full: false,
     polarquant: false,
+    openvino: backend === "openvino",
     lookahead: true, // upstream
     ngramDraft: true, // upstream
   };

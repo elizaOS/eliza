@@ -51,14 +51,6 @@ export function findInventoryItem(
   );
 }
 
-/** Find an inventory item by its numeric id. */
-export function findInventoryItemById(
-  state: BotWorldState,
-  id: number,
-): InventoryItem | null {
-  return state.inventory.find((i) => i.id === id) ?? null;
-}
-
 /** Case-insensitive partial match on ground item name, closest first. */
 export function findGroundItemByName(
   state: BotWorldState,
@@ -115,13 +107,6 @@ export function getOptionIndex(options: string[], optionName: string): number {
 /** Returns true when all 28 inventory slots are occupied. */
 export function isInventoryFull(state: BotWorldState): boolean {
   return state.inventory.length >= 28;
-}
-
-/** Get current level for a skill by name (case-insensitive). Returns 0 if not found. */
-export function getSkillLevel(state: BotWorldState, skillName: string): number {
-  const lower = skillName.toLowerCase();
-  const skill = state.skills.find((s) => s.name.toLowerCase() === lower);
-  return skill?.level ?? 0;
 }
 
 /** Chebyshev distance (game-tile distance). */
@@ -200,31 +185,4 @@ export async function withDoorRetry<T>(
     }
   }
   throw lastError;
-}
-
-/**
- * Walks a single step toward the target coordinates. Useful for
- * incremental pathfinding or approaching an entity. Returns true if a
- * step was taken, false if already at target.
- */
-export async function walkStepToward(
-  sdk: BotSDK,
-  targetX: number,
-  targetZ: number,
-  stepSize = 1,
-): Promise<boolean> {
-  const state = sdk.getState();
-  if (!state?.player) return false;
-
-  const dx = targetX - state.player.worldX;
-  const dz = targetZ - state.player.worldZ;
-
-  if (Math.abs(dx) <= 1 && Math.abs(dz) <= 1) return false; // already adjacent
-
-  const sx = dx === 0 ? 0 : dx > 0 ? stepSize : -stepSize;
-  const sz = dz === 0 ? 0 : dz > 0 ? stepSize : -stepSize;
-
-  await sdk.sendWalk(state.player.worldX + sx, state.player.worldZ + sz);
-  await sdk.waitForTicks(2);
-  return true;
 }

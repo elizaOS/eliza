@@ -29,8 +29,8 @@ def test_dry_run_returns_zero_and_emits_summary(capsys, monkeypatch):
     assert rc == 0
     out = capsys.readouterr().out
     assert "Eliza-1 HF publish summary" in out
-    assert "elizaos/eliza-1-training" in out
-    assert "elizaos/eliza-1-evals" in out
+    assert "elizalabs/eliza-1-training" in out
+    assert "elizalabs/eliza-1-evals" in out
     # Nothing pushed in dry-run.
     assert "nothing was pushed" in out
 

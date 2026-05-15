@@ -23,12 +23,27 @@ const envelopeSkeleton: ResponseSkeleton = {
 			key: "shouldRespond",
 			enumValues: ["RESPOND", "IGNORE", "STOP"],
 		},
-		{ kind: "literal", value: '",\n  "replyText": "' },
-		{ kind: "free-string", key: "replyText" },
 		{ kind: "literal", value: '",\n  "contexts": ' },
 		{ kind: "free-json", key: "contexts" },
-		{ kind: "literal", value: ',\n  "extract": ' },
-		{ kind: "free-json", key: "extract" },
+		{ kind: "literal", value: ',\n  "intents": ' },
+		{ kind: "free-json", key: "intents" },
+		{ kind: "literal", value: ',\n  "replyText": "' },
+		{ kind: "free-string", key: "replyText" },
+		{ kind: "literal", value: '",\n  "candidateActionNames": ' },
+		{ kind: "free-json", key: "candidateActionNames" },
+		{ kind: "literal", value: ',\n  "facts": ' },
+		{ kind: "free-json", key: "facts" },
+		{ kind: "literal", value: ',\n  "relationships": ' },
+		{ kind: "free-json", key: "relationships" },
+		{ kind: "literal", value: ',\n  "addressedTo": ' },
+		{ kind: "free-json", key: "addressedTo" },
+		{ kind: "literal", value: ',\n  "emotion": "' },
+		{
+			kind: "enum",
+			key: "emotion",
+			enumValues: ["neutral", "positive", "concerned"],
+		},
+		{ kind: "literal", value: '"' },
 		{ kind: "literal", value: "\n}" },
 	],
 };
@@ -67,7 +82,7 @@ describe("compileSkeletonToGbnf", () => {
 		expect(grammar?.lazy).toBe(true);
 		expect(grammar?.triggers).toEqual(['{\n  "shouldRespond": "']);
 		// root concatenates the spans: leading literal, enum rule, more literals,
-		// a free-string rule, then two json-value rules.
+		// field JSON/string rules, then the closing literal.
 		expect(grammar?.source.startsWith("root ::= ")).toBe(true);
 		expect(grammar?.source).toContain("jsonvalue");
 		// The enum alternation lists all three values as GBNF string literals of
@@ -163,15 +178,15 @@ describe("compilePrefillPlan + prefillPlanRequestFields", () => {
 		expect(plan).not.toBeNull();
 		if (!plan) return;
 		expect(plan.prefix).toBe('{\n  "shouldRespond": "');
-		expect(plan.freeCount).toBe(4); // shouldRespond enum, replyText, contexts, extract
+		expect(plan.freeCount).toBe(9);
 		expect(plan.runs[0]).toEqual({
 			afterFreeSpan: -1,
 			text: '{\n  "shouldRespond": "',
 		});
 		// The tail closing literal is the run after the last free span.
 		expect(plan.runs[plan.runs.length - 1]).toEqual({
-			afterFreeSpan: 3,
-			text: "\n}",
+			afterFreeSpan: 8,
+			text: '"\n}',
 		});
 	});
 

@@ -19,14 +19,7 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ChallengeKindSchema = z.enum(["login", "signature", "generic"]);
-const StatusSchema = z.enum([
-  "pending",
-  "delivered",
-  "approved",
-  "denied",
-  "expired",
-  "canceled",
-]);
+const StatusSchema = z.enum(["pending", "delivered", "approved", "denied", "expired", "canceled"]);
 const SignerKindSchema = z.enum(["wallet", "ed25519"]);
 
 const ChallengePayloadSchema = z.object({
@@ -115,10 +108,7 @@ app.get("/", async (c) => {
       offset: c.req.query("offset"),
     });
     if (!parsed.success) {
-      return c.json(
-        { success: false, error: "Invalid query", details: parsed.error.issues },
-        400,
-      );
+      return c.json({ success: false, error: "Invalid query", details: parsed.error.issues }, 400);
     }
 
     const service = getApprovalRequestsService();

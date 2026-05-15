@@ -103,6 +103,24 @@ export function isBunHelperBinary(target, appPath) {
   return rel === `Contents/MacOS/${basename}`;
 }
 
+function parentAppExecutablePath(appPath) {
+  const infoPlist = path.join(appPath, "Contents", "Info.plist");
+  if (!existsSync(infoPlist)) return null;
+  const content = readFileSync(infoPlist, "utf8");
+  const match = content.match(
+    /<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/,
+  );
+  const executable = match?.[1]?.trim();
+  return executable
+    ? path.join(appPath, "Contents", "MacOS", executable)
+    : null;
+}
+
+function isParentAppExecutable(target, appPath) {
+  const executablePath = parentAppExecutablePath(appPath);
+  return executablePath ? path.resolve(target) === path.resolve(executablePath) : false;
+}
+
 function parseArgs(argv) {
   const out = {};
   for (const arg of argv.slice(2)) {
@@ -264,13 +282,25 @@ function assertNoForbiddenMasExceptions(filePath) {
   );
 }
 
-function assertSignedEntitlements(target, targetId, label, manifest) {
+function assertSignedEntitlements(
+  target,
+  targetId,
+  label,
+  manifest,
+  { allowAbsent = false } = {},
+) {
   const entitlementsXml = runCapture("codesign", [
     "-d",
     "--entitlements",
     ":-",
     target,
   ]);
+  if (!/<dict\b/i.test(entitlementsXml)) {
+    if (allowAbsent) {
+      return null;
+    }
+    throw new Error(`${label}: signed code has no readable entitlements`);
+  }
   return assertReviewedEntitlementsText({
     plistXml: entitlementsXml,
     targetId,
@@ -304,7 +334,10 @@ function entitlementsForMacho(target, appPath) {
 }
 
 function entitlementTargetIdForMacho(target, appPath) {
-  return isBunRuntimeExecutable(target, appPath)
+  if (isParentAppExecutable(target, appPath)) {
+    return "macos-mas-app";
+  }
+  return isBunHelperBinary(target, appPath)
     ? "macos-mas-bun"
     : "macos-mas-child";
 }
@@ -404,7 +437,9 @@ function main() {
         targetId,
         `signed Mach-O ${path.relative(appPath, target)}`,
         entitlementManifest,
+        { allowAbsent: /\.(dylib|so|node)$/i.test(target) },
       );
+      if (!entitlements) continue;
       assertMasEntitlementRuntimeEvidence({
         entitlements,
         scan: nativeScan,

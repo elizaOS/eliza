@@ -16,10 +16,7 @@ import type {
   SecretBallotRow,
   SecretBallotsRepository,
 } from "@/db/repositories/secret-ballots";
-import type {
-  SecretBallotParticipant,
-  SecretBallotTallyResult,
-} from "@/db/schemas/secret-ballots";
+import type { SecretBallotParticipant, SecretBallotTallyResult } from "@/db/schemas/secret-ballots";
 import { logger } from "@/lib/utils/logger";
 
 export type {
@@ -117,13 +114,22 @@ export interface SecretBallotsService {
   get(id: string, organizationId: string): Promise<SecretBallotRow | null>;
   list(
     organizationId: string,
-    filter?: { status?: SecretBallotRow["status"]; agentId?: string; limit?: number; offset?: number },
+    filter?: {
+      status?: SecretBallotRow["status"];
+      agentId?: string;
+      limit?: number;
+      offset?: number;
+    },
   ): Promise<SecretBallotRow[]>;
   distribute(input: DistributeSecretBallotInput): Promise<SecretBallotDistributionResult>;
   submitVote(input: SubmitVoteInput): Promise<SubmitVoteResult>;
   tallyIfThresholdMet(input: { ballotId: string }): Promise<TallyResult>;
   expireBallot(input: { ballotId: string; organizationId: string }): Promise<SecretBallotRow>;
-  cancel(input: { ballotId: string; organizationId: string; reason?: string }): Promise<SecretBallotRow>;
+  cancel(input: {
+    ballotId: string;
+    organizationId: string;
+    reason?: string;
+  }): Promise<SecretBallotRow>;
   expirePast(now?: Date): Promise<string[]>;
 }
 
@@ -279,7 +285,12 @@ class SecretBallotsServiceImpl implements SecretBallotsService {
 
   async list(
     organizationId: string,
-    filter: { status?: SecretBallotRow["status"]; agentId?: string; limit?: number; offset?: number } = {},
+    filter: {
+      status?: SecretBallotRow["status"];
+      agentId?: string;
+      limit?: number;
+      offset?: number;
+    } = {},
   ): Promise<SecretBallotRow[]> {
     return this.repository.listBallots({
       organizationId,
@@ -292,7 +303,9 @@ class SecretBallotsServiceImpl implements SecretBallotsService {
 
   async distribute(input: DistributeSecretBallotInput): Promise<SecretBallotDistributionResult> {
     if (input.target !== "dm") {
-      throw new Error(`Unsupported distribution target: ${input.target}. Only "dm" is allowed for ballots.`);
+      throw new Error(
+        `Unsupported distribution target: ${input.target}. Only "dm" is allowed for ballots.`,
+      );
     }
 
     const ballot = requireRow(
@@ -491,14 +504,19 @@ class SecretBallotsServiceImpl implements SecretBallotsService {
     return { tallied: true, ballot: updated, result: tally };
   }
 
-  async expireBallot(input: { ballotId: string; organizationId: string }): Promise<SecretBallotRow> {
+  async expireBallot(input: {
+    ballotId: string;
+    organizationId: string;
+  }): Promise<SecretBallotRow> {
     const ballot = requireRow(
       await this.repository.getBallot(input.ballotId),
       input.ballotId,
       "expire lookup",
     );
     if (ballot.organizationId !== input.organizationId) {
-      throw new Error(`Ballot ${ballot.id} does not belong to organization ${input.organizationId}`);
+      throw new Error(
+        `Ballot ${ballot.id} does not belong to organization ${input.organizationId}`,
+      );
     }
     if (ballot.status !== "open") {
       return ballot;
@@ -516,14 +534,20 @@ class SecretBallotsServiceImpl implements SecretBallotsService {
     return updated;
   }
 
-  async cancel(input: { ballotId: string; organizationId: string; reason?: string }): Promise<SecretBallotRow> {
+  async cancel(input: {
+    ballotId: string;
+    organizationId: string;
+    reason?: string;
+  }): Promise<SecretBallotRow> {
     const ballot = requireRow(
       await this.repository.getBallot(input.ballotId),
       input.ballotId,
       "cancel lookup",
     );
     if (ballot.organizationId !== input.organizationId) {
-      throw new Error(`Ballot ${ballot.id} does not belong to organization ${input.organizationId}`);
+      throw new Error(
+        `Ballot ${ballot.id} does not belong to organization ${input.organizationId}`,
+      );
     }
     if (ballot.status !== "open") {
       throw new Error(`Cannot cancel ballot ${ballot.id}: status "${ballot.status}"`);
@@ -562,9 +586,7 @@ class SecretBallotsServiceImpl implements SecretBallotsService {
   }
 }
 
-export function createSecretBallotsService(
-  deps: SecretBallotsServiceDeps,
-): SecretBallotsService {
+export function createSecretBallotsService(deps: SecretBallotsServiceDeps): SecretBallotsService {
   return new SecretBallotsServiceImpl(deps);
 }
 
@@ -573,10 +595,7 @@ export function createSecretBallotsService(
  * ballot row otherwise contains no sensitive material in v1.
  */
 export function redactSecretBallotForPublic(row: SecretBallotRow): SecretBallotRow {
-  const { tokenHashByIdentity: _omitted, ...metadata } = row.metadata as Record<
-    string,
-    unknown
-  > & {
+  const { tokenHashByIdentity: _omitted, ...metadata } = row.metadata as Record<string, unknown> & {
     tokenHashByIdentity?: unknown;
   };
   return { ...row, metadata };

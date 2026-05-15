@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+} from "node:fs";
 import { delimiter, join, relative, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -234,14 +240,23 @@ function getKnipCommand() {
   const bunCommand = getBunCommand();
 
   if (existsSync(localBin)) {
+    const resolvedLocalBin = resolveExecutable(localBin);
     if (bunCommand) {
-      return { command: bunCommand, prefixArgs: [localBin] };
+      return { command: bunCommand, prefixArgs: [resolvedLocalBin] };
     }
 
-    return { command: localBin, prefixArgs: [] };
+    return { command: resolvedLocalBin, prefixArgs: [] };
   }
 
   return { command: "bunx", prefixArgs: ["knip"] };
+}
+
+function resolveExecutable(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
 }
 
 function getBunCommand() {

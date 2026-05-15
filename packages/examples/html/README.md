@@ -37,16 +37,7 @@ This demo mirrors the structure of `examples/chat/chat.ts` exactly, but runs in 
 
 ```bash
 # From the monorepo root
-cd /path/to/eliza
-
-# Option 1: Using Python (built into most systems)
-python3 -m http.server 3000
-
-# Option 2: Using Node.js serve
-npx serve .
-
-# Option 3: Using PHP
-php -S localhost:3000
+bun run --cwd packages/examples/html start
 ```
 
 Then open: **http://localhost:3000/examples/html/**

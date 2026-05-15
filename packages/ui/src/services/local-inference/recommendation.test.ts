@@ -207,6 +207,39 @@ describe("local inference recommendations", () => {
     expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(largeId)).toBe(true);
   });
 
+  it("does not recommend external Qwen2.5-14B entries on the Linux GPU ladder", () => {
+    const probe = hardware({
+      totalRamGb: 64,
+      freeRamGb: 48,
+      gpu: { backend: "vulkan", totalVramGb: 32, freeVramGb: 24 },
+      source: "node-llama-cpp",
+    });
+    const base = findCatalogModel("eliza-1-27b");
+
+    if (!base) throw new Error("eliza-1-27b missing from catalog");
+
+    const externalQwen14b = {
+      ...base,
+      id: "qwen2.5-14b-q4_k_m",
+      displayName: "Qwen2.5 14B Q4_K_M",
+      hfRepo: "Qwen/Qwen2.5-14B-Instruct-GGUF",
+      ggufFile: "qwen2.5-14b-instruct-q4_k_m.gguf",
+      params: "14B" as const,
+      sizeGb: 9,
+      minRamGb: 16,
+      companionModelIds: [],
+      runtime: undefined,
+      publishStatus: "published" as const,
+    };
+
+    const recommended = selectRecommendedModels(probe, [externalQwen14b]);
+
+    expect(recommended.TEXT_SMALL.model).toBeNull();
+    expect(recommended.TEXT_LARGE.model).toBeNull();
+    expect(recommended.TEXT_LARGE.alternatives).toEqual([]);
+    expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(externalQwen14b.id)).toBe(false);
+  });
+
   it("prefers long-context entries within the ladder on hosts with >= 16 GB RAM/VRAM", () => {
     const probe = hardware({
       totalRamGb: 64,

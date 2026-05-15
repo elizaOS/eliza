@@ -8,6 +8,20 @@
     "android.app.role.SMS": "ai.elizaos.app",
     "android.app.role.BROWSER": "ai.elizaos.app"
   },
+  "apiConstants": {
+    "assistantRole": {
+      "symbol": "RoleManager.ROLE_ASSISTANT",
+      "value": "android.app.role.ASSISTANT"
+    },
+    "assistAction": {
+      "symbol": "Intent.ACTION_ASSIST",
+      "value": "android.intent.action.ASSIST"
+    },
+    "voiceCommandAction": {
+      "symbol": "Intent.ACTION_VOICE_COMMAND",
+      "value": "android.intent.action.VOICE_COMMAND"
+    }
+  },
   "assistantEntryPoints": [
     "android.intent.action.ASSIST",
     "android.intent.action.VOICE_COMMAND"
@@ -83,16 +97,21 @@
   ],
   "capabilityDeclarations": {
     "accessibility": {
-      "status": "available-via-aosp-only-bridge",
+      "status": "declared-aosp-system-service",
+      "component": "ElizaAccessibilityService",
+      "intentAction": "android.accessibilityservice.AccessibilityService",
       "permission": "android.permission.BIND_ACCESSIBILITY_SERVICE",
-      "componentPolicy": "Declare an AccessibilityService only in the AOSP/system build or companion system bridge; Play/cloud builds must strip it.",
+      "metadata": "@xml/eliza_accessibility_service",
+      "componentPolicy": "Declare only in the AOSP/system build; Play/cloud builds must strip the service, Java source, and accessibility-service XML resource.",
       "notes": "Used for accessibility tree observation and user-consented gesture dispatch on non-privileged paths; privileged AOSP input uses INJECT_EVENTS."
     },
     "notificationListener": {
-      "status": "available-declaration-only",
+      "status": "declared-aosp-system-service",
+      "component": "ElizaNotificationListenerService",
+      "intentAction": "android.service.notification.NotificationListenerService",
       "permission": "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
-      "componentPolicy": "Add only with a concrete NotificationListenerService on the AOSP/system build path; cloud/Play builds must not declare it.",
-      "notes": "Current system image exposes the capability contract without declaring a listener component in this APK."
+      "componentPolicy": "Declare only in the AOSP/system build; cloud/Play builds must strip the service and Java source.",
+      "notes": "Used by the privileged assistant image to observe notification lifecycle events for the local agent."
     },
     "screenCapture": {
       "consumerPath": "MediaProjection with foreground-service notification and user consent",
@@ -135,20 +154,25 @@
     "stripTarget": "android-cloud",
     "mustStripComponents": [
       "ElizaAgentService",
+      "ElizaAccessibilityService",
       "ElizaAssistActivity",
       "ElizaBootReceiver",
+      "ElizaNotificationListenerService",
       "ElizaVoiceCaptureService"
     ],
     "mustStripPermissions": [
       "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
       "android.permission.FOREGROUND_SERVICE_MICROPHONE",
       "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+      "android.permission.RECEIVE_BOOT_COMPLETED",
       "android.permission.PACKAGE_USAGE_STATS",
       "android.permission.MANAGE_APP_OPS_MODES",
       "android.permission.MANAGE_VIRTUAL_MACHINE",
       "android.permission.READ_FRAME_BUFFER",
       "android.permission.INJECT_EVENTS",
-      "android.permission.REAL_GET_TASKS"
+      "android.permission.REAL_GET_TASKS",
+      "android.permission.BIND_ACCESSIBILITY_SERVICE",
+      "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
     ],
     "mustStripPlugins": [
       "@elizaos/capacitor-agent",

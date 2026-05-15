@@ -8,9 +8,9 @@ This is one of three canonical operator-facing publishers in
                               ``elizalabs/eliza-1`` repo (or, for the legacy
                               fused-GGUF flow, to ``elizaos/<base>-optimized``).
   - ``publish_dataset.py``  — pushes the SFT dataset bundles to
-                              ``elizaos/eliza-1-training`` (and siblings).
+                              ``elizalabs/eliza-1-training`` (and siblings).
   - ``publish_pipeline.py`` — pushes the training-pipeline source tree to
-                              ``elizaos/eliza-1-pipeline``.
+                              ``elizalabs/eliza-1-pipeline``.
 
 This script is a thin dispatcher that picks the right concrete uploader for
 the chosen mode:

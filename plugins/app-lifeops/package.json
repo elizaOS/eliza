@@ -44,7 +44,7 @@
     "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts",
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
-    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:js": "bun run clean && tsup --config tsup.config.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {

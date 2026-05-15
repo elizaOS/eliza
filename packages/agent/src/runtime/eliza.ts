@@ -4258,6 +4258,7 @@ export async function startEliza(
     // Log to both stderr (visible to Electrobun agent.ts) and the in-memory
     // logger so the error is never silently swallowed in packaged builds.
     const apiErrMsg = `[eliza] Could not start API server: ${formatError(apiErr)}`;
+    console.error(apiErrMsg);
     logger.error(apiErrMsg);
 
     // In server-only mode (Electrobun desktop), a missing API server is fatal

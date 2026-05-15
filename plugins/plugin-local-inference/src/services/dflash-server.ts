@@ -77,7 +77,7 @@ import type {
 	InstalledModel,
 	LocalRuntimeOptimizations,
 } from "./types";
-import type { VerifierStreamEvent } from "./voice/types";
+import type { TextToken, VerifierStreamEvent } from "./voice/types";
 
 export interface DflashServerPlan {
 	targetModelPath: string;
@@ -642,6 +642,7 @@ export interface DflashBinaryCapabilities {
 		turbo3_tcq: boolean;
 		qjl_full: boolean;
 		polarquant: boolean;
+		openvino?: boolean;
 		lookahead: boolean;
 		ngramDraft: boolean;
 	};
@@ -2186,7 +2187,7 @@ async function fetchStreamingChatCompletion(
 			if (rejectRange) {
 				const [from, to] = rejectRange;
 				if (callbacks.onVerifierEvent) {
-					const tokens = [];
+					const tokens: TextToken[] = [];
 					for (let i = from; i <= to; i += 1)
 						tokens.push({ index: i, text: "" });
 					await callbacks.onVerifierEvent({ kind: "reject", tokens });

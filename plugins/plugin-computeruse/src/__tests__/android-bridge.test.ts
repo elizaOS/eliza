@@ -79,17 +79,26 @@ describe("Android Assistant and App Actions routing source", () => {
 
     expect(shortcuts).toContain('android:name="actions.intent.OPEN_APP_FEATURE"');
     expect(shortcuts).toContain('android:name="actions.intent.CREATE_MESSAGE"');
-    expect(shortcuts).toContain('android:name="actions.intent.CREATE_THING"');
     expect(shortcuts).toContain('android:name="actions.intent.GET_THING"');
+    expect(shortcuts).toContain('android:name="feature"');
+    expect(shortcuts).toContain('android:required="true"');
+    expect(shortcuts).not.toContain("actions.intent.CREATE_THING");
     expect(shortcuts).toContain('android:shortcutId="eliza_app_action_chat"');
     expect(shortcuts).toContain('android:shortcutId="eliza_app_action_voice"');
     expect(shortcuts).toContain(
       'android:shortcutId="eliza_app_action_daily_brief"',
     );
+    expect(shortcuts).toContain('android:shortcutId="eliza_app_action_new_task"');
     expect(shortcuts).toContain('android:shortcutId="eliza_app_action_tasks"');
     expect(shortcuts).toContain("source=android-app-actions");
     expect(shortcuts).toContain("source=android-static-shortcut");
+    expect(shortcuts).toContain("eliza://feature/open?source=android-app-actions");
+    expect(shortcuts).toContain("eliza://chat?source=android-app-actions&amp;action=chat");
+    expect(shortcuts).toContain("eliza://lifeops/task/new?source=android-static-shortcut");
     expect(shortcuts.toLowerCase()).not.toContain("notification");
+    expect(shortcuts).not.toContain("assistant/open");
+    expect(shortcuts).not.toContain("android.intent.action.ASSIST");
+    expect(shortcuts).not.toContain("android.intent.action.VOICE_COMMAND");
     expect(shortcuts).not.toContain("ScheduledTask");
   });
 });

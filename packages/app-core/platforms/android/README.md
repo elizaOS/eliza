@@ -13,8 +13,10 @@ bun run build:android:cloud
 ```
 
 A Play-Store-compliant Capacitor APK backed by Eliza Cloud as the only
-hosting target. Produces a debug APK at
-`packages/app-core/platforms/android/app/build/outputs/apk/debug/`.
+hosting target. Produces a release AAB at
+`packages/app-core/platforms/android/app/build/outputs/bundle/release/`.
+For local Pixel smoke tests, `android-cloud-debug` produces a debug APK
+under `packages/app-core/platforms/android/app/build/outputs/apk/debug/`.
 
 What this target deliberately does **not** ship:
 
@@ -44,12 +46,15 @@ What this target still ships for Pixel/Google Android entry points:
 
 - `res/xml/shortcuts.xml` registered from `MainActivity` with
   `android.app.shortcuts`.
-- App Actions capabilities for `OPEN_APP_FEATURE`, `CREATE_MESSAGE`,
-  `CREATE_THING`, and `GET_THING`. These cover chat/ask, voice, LifeOps
-  daily brief, and LifeOps tasks by opening source-tagged deep links in
-  the app.
-- Static launcher/Assistant shortcuts for chat, voice, daily brief, and
-  tasks.
+- App Actions capabilities for the supported BIIs `OPEN_APP_FEATURE`,
+  `CREATE_MESSAGE`, and `GET_THING`. These cover chat/ask, voice,
+  LifeOps daily brief, LifeOps task creation, and LifeOps task lists by
+  opening source-tagged deep links in the app.
+- `OPEN_APP_FEATURE` uses inline inventory for known features and keeps a
+  no-parameter fallback fulfillment, as required by the App Actions
+  `shortcuts.xml` schema.
+- Static launcher/Assistant shortcuts for chat, voice, daily brief, new
+  task, and tasks.
 
 Entry-point mapping:
 
@@ -58,7 +63,7 @@ Entry-point mapping:
 | Ask or chat with Eliza | `CREATE_MESSAGE` for message text, `GET_THING` for search-style ask text, plus the chat static shortcut | `eliza://chat?...` source-tagged deep links |
 | Start voice chat | `OPEN_APP_FEATURE` inline inventory plus the voice static shortcut | `eliza://voice?source=android-static-shortcut` |
 | Open LifeOps daily brief | `OPEN_APP_FEATURE` inline inventory plus the daily-brief static shortcut | `eliza://lifeops/daily-brief?source=android-static-shortcut` |
-| Create a LifeOps task | `CREATE_THING` for task title/description | `eliza://lifeops/task/new?...` deep link, then runtime confirmation/planning |
+| Create a LifeOps task | `OPEN_APP_FEATURE` inline inventory plus the new-task static shortcut | `eliza://lifeops/task/new?source=android-static-shortcut` deep link, then runtime confirmation/planning |
 | View LifeOps tasks | `OPEN_APP_FEATURE` inline inventory plus the tasks static shortcut | `eliza://lifeops/tasks?source=android-static-shortcut` |
 
 There is no general third-party "be Gemini/default assistant" API for the
@@ -74,7 +79,8 @@ default-role components, boot receiver, MediaProjection foreground
 service, or special-use foreground service. Gemini/Assistant
 interoperability for this target is through Google App Actions and
 Android shortcuts, not by trying to become the device's default
-assistant.
+assistant. Do not add unsupported BIIs such as `actions.intent.CREATE_THING`;
+task creation is modeled as opening the LifeOps task feature.
 
 Build-time flag set: `VITE_ELIZA_ANDROID_RUNTIME_MODE=cloud`. The
 renderer reads this via
@@ -123,7 +129,8 @@ The matching system image also copies
 AOSP-only assistant/full-control contract: `ROLE_ASSISTANT`,
 `ACTION_ASSIST`, `VOICE_COMMAND`, boot/direct-boot, foreground services,
 usage stats, MediaProjection/SurfaceControl screen capture, Accessibility
-input control, and notification-listener capability status.
+input control, and the AOSP-only accessibility and notification-listener
+service declarations.
 
 The release APK is staged at
 `<repoRoot>/packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk` (or

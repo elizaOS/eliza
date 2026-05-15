@@ -208,8 +208,10 @@ class MobileAgentBridgePlugin : Plugin() {
         if (!method.matches(Regex("^[A-Z]{1,16}$"))) {
             throw IllegalArgumentException("Unsupported HTTP method")
         }
-        val timeoutMs = frame.optInt("timeoutMs", frame.optInt("timeout_ms", 30_000))
-            .coerceIn(1_000, 120_000)
+        val timeoutMs = frame.optInt(
+            "timeoutMs",
+            frame.optInt("timeout_ms", DEFAULT_LOCAL_REQUEST_TIMEOUT_MS),
+        ).coerceIn(1_000, MAX_LOCAL_REQUEST_TIMEOUT_MS)
         val body = frame.opt("body")?.takeUnless { it == JSONObject.NULL }?.toString()
         val url = URL("${localAgentApiBase.trimEnd('/')}$path")
         val connection = (url.openConnection() as HttpURLConnection).apply {
@@ -303,5 +305,7 @@ class MobileAgentBridgePlugin : Plugin() {
 
     private companion object {
         private const val DEFAULT_LOCAL_AGENT_API_BASE = "http://127.0.0.1:31337"
+        private const val DEFAULT_LOCAL_REQUEST_TIMEOUT_MS = 30_000
+        private const val MAX_LOCAL_REQUEST_TIMEOUT_MS = 600_000
     }
 }

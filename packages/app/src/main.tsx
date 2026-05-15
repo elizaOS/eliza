@@ -51,6 +51,7 @@ import {
   dispatchAppEvent,
   getBootConfig,
   getWindowNavigationPath,
+  IOS_LOCAL_AGENT_IPC_BASE,
   initializeCapacitorBridge,
   initializeStorageBridge,
   installDesktopPermissionsClientPatch,
@@ -105,6 +106,8 @@ import {
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
+
+declare const __ELIZA_BUILD_VARIANT__: string | undefined;
 
 declare global {
   interface Window {
@@ -318,6 +321,9 @@ const platform = Capacitor.getPlatform();
 const isNative = Capacitor.isNativePlatform();
 const isIOS = platform === "ios";
 const isAndroid = platform === "android";
+const isStoreBuild =
+  typeof __ELIZA_BUILD_VARIANT__ === "string" &&
+  __ELIZA_BUILD_VARIANT__ === "store";
 const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
@@ -1685,11 +1691,18 @@ function isPopoutWindow(): boolean {
 
 function isTrustedPrivateHttpHost(host: string): boolean {
   return (
+    host === "0.0.0.0" ||
     /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
     /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
     /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
     /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^169\.254\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    host === "local" ||
+    host === "internal" ||
+    host === "lan" ||
+    host === "ts.net" ||
     host.endsWith(".local") ||
+    host.endsWith(".lan") ||
     host.endsWith(".internal") ||
     host.endsWith(".ts.net")
   );
@@ -1702,6 +1715,40 @@ function isLoopbackApiHost(host: string): boolean {
     host === "[::1]" ||
     host === "::1"
   );
+}
+
+function isNativeIosStoreBuild(): boolean {
+  return isNative && isIOS && isStoreBuild;
+}
+
+function isIosLocalAgentIpcUrl(parsed: URL): boolean {
+  return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
+}
+
+function isPrivateOrLoopbackApiHost(host: string): boolean {
+  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
+  return (
+    isLoopbackApiHost(normalized) ||
+    (normalized.includes(":") &&
+      (normalized.startsWith("fc") ||
+        normalized.startsWith("fd") ||
+        normalized.startsWith("fe80:"))) ||
+    isTrustedPrivateHttpHost(normalized)
+  );
+}
+
+function isNativeIosCloudRuntimeMode(): boolean {
+  if (!isNative || !isIOS) return false;
+  const mode = getCurrentIosRuntimeConfig().mode;
+  return mode === "cloud" || mode === "cloud-hybrid";
+}
+
+function usesStrictIosNetworkPolicy(): boolean {
+  return isNativeIosStoreBuild() || isNativeIosCloudRuntimeMode();
+}
+
+function canUseIosLocalAgentIpc(): boolean {
+  return isNative && isIOS && getCurrentIosRuntimeConfig().mode === "local";
 }
 
 function isCurrentOriginHost(host: string): boolean {
@@ -1719,8 +1766,15 @@ function isConfiguredCloudApiHost(host: string): boolean {
 }
 
 function isTrustedApiBaseUrl(parsed: URL): boolean {
+  if (isIosLocalAgentIpcUrl(parsed)) return canUseIosLocalAgentIpc();
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   const host = parsed.hostname;
+  if (usesStrictIosNetworkPolicy()) {
+    if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
+      return false;
+    }
+    return isCurrentOriginHost(host) || isConfiguredCloudApiHost(host);
+  }
   if (isPopoutWindow() && parsed.protocol === "https:") return true;
   return (
     isLoopbackApiHost(host) ||
@@ -1731,8 +1785,18 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
 }
 
 function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
+  if (isIosLocalAgentIpcUrl(parsed)) return canUseIosLocalAgentIpc();
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   const host = parsed.hostname;
+  if (usesStrictIosNetworkPolicy()) {
+    if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
+      return false;
+    }
+    return (
+      isCurrentOriginHost(host) ||
+      (parsed.protocol === "https:" && isConfiguredCloudApiHost(host))
+    );
+  }
   return (
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
@@ -1741,9 +1805,23 @@ function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
   );
 }
 
+function isTrustedNativeWebSocketUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") return false;
+    if (!usesStrictIosNetworkPolicy()) return true;
+    return (
+      parsed.protocol === "wss:" && !isPrivateOrLoopbackApiHost(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Validates an apiBase string and applies it to the boot config.
- * Allows localhost, loopback, configured cloud, current-origin, and private-network hosts.
+ * Allows local dev hosts outside store iOS, configured cloud/current-origin
+ * HTTPS, and the iOS in-app local-agent IPC identity.
  */
 function validateAndSetApiBase(apiBase: string): void {
   try {
@@ -1793,17 +1871,22 @@ function getCurrentIosRuntimeConfig(): IosRuntimeConfig {
 
 function applyBuildTimeIosConnection(): void {
   if (!isNative) return;
-  if (!IOS_RUNTIME_ENV_CONFIG.apiBase && !IOS_RUNTIME_ENV_CONFIG.apiToken)
-    return;
 
   const current = getBootConfig();
   const next: AppBootConfig = {
     ...current,
+    ...(isIOS && IOS_RUNTIME_ENV_CONFIG.mode === "local"
+      ? { apiBase: IOS_LOCAL_AGENT_IPC_BASE }
+      : {}),
     ...(IOS_RUNTIME_ENV_CONFIG.apiToken
       ? { apiToken: IOS_RUNTIME_ENV_CONFIG.apiToken }
       : {}),
   };
   setBootConfig(next);
+
+  if (isIOS && IOS_RUNTIME_ENV_CONFIG.mode === "local") return;
+  if (!IOS_RUNTIME_ENV_CONFIG.apiBase && !IOS_RUNTIME_ENV_CONFIG.apiToken)
+    return;
 
   if (IOS_RUNTIME_ENV_CONFIG.apiBase) {
     validateAndSetApiBase(IOS_RUNTIME_ENV_CONFIG.apiBase);
@@ -1824,7 +1907,9 @@ async function getOrCreateDeviceBridgeId(): Promise<string> {
 
 function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
   if (config.deviceBridgeUrl) {
-    return config.deviceBridgeUrl;
+    return isTrustedNativeWebSocketUrl(config.deviceBridgeUrl)
+      ? config.deviceBridgeUrl
+      : null;
   }
   // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
   // Android local: the foreground agent service owns the loopback API and the
@@ -1840,7 +1925,8 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
   const apiBase = getBootConfig().apiBase?.trim();
   if (!apiBase) return null;
   try {
-    return apiBaseToDeviceBridgeUrl(apiBase);
+    const bridgeUrl = apiBaseToDeviceBridgeUrl(apiBase);
+    return isTrustedNativeWebSocketUrl(bridgeUrl) ? bridgeUrl : null;
   } catch {
     return null;
   }
@@ -1881,7 +1967,11 @@ async function configureMobileBackgroundRunner(retry = 0): Promise<void> {
     details.localApiBase = MOBILE_LOCAL_AGENT_API_BASE;
   }
   if (isIOS && runtimeConfig.mode === "local") {
-    details.localRouteKernel = runtimeConfig.fullBun ? "bun-host-ipc" : "ittp";
+    details.localApiBase = IOS_LOCAL_AGENT_IPC_BASE;
+    details.localRouteKernel =
+      runtimeConfig.fullBun || isNativeIosStoreBuild()
+        ? "bun-host-ipc"
+        : "ittp";
   }
 
   try {
@@ -1976,6 +2066,10 @@ async function initializeMobileAgentTunnel(): Promise<void> {
     console.warn(
       `${APP_LOG_PREFIX} tunnel-to-mobile mode requires VITE_ELIZA_TUNNEL_RELAY_URL`,
     );
+    return;
+  }
+  if (!isTrustedNativeWebSocketUrl(relayUrl)) {
+    console.warn(`${APP_LOG_PREFIX} Rejected unsafe mobile tunnel relay URL`);
     return;
   }
 

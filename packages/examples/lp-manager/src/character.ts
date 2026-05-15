@@ -75,5 +75,3 @@ Report status with: positions, yields, opportunities detected, and actions taken
     LP_MAX_IL_RISK_PERCENT: "10",
   },
 });
-
-export default character;

@@ -13,7 +13,6 @@ import {
 } from "@elizaos/core";
 import { stableSerialize } from "../stable-serialize";
 
-// biome-ignore lint/suspicious/noExplicitAny: heterogeneous adapter shim — implementations have unrelated tuple signatures
 type CompatDatabaseMethod = (...args: any[]) => Promise<unknown> | unknown;
 type CompatDatabaseAdapter = IDatabaseAdapter & Record<string, unknown>;
 type LegacyDeleteAllMemories = (roomId: UUID, tableName: string) => Promise<void>;

@@ -264,6 +264,7 @@ def test_real_stage_writes_evidence_report_without_downloading(
     release = json.loads((bundle / "evidence" / "release.json").read_text())
     assert release["repoId"] == "elizalabs/eliza-1"
     assert "tts/omnivoice-base-Q4_K_M.gguf" in release["weights"]
+    assert stage.VOICE_REPO in report["sources"]
     assert (bundle / "checksums" / "SHA256SUMS").is_file()
     assert report["manifestUpdate"]["updatedPaths"]
     assert report["releaseEvidenceUpdate"]["weights"]

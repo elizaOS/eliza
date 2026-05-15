@@ -33,8 +33,9 @@
  *   6. Native build         — gradlew / xcodebuild
  *
  * iOS targets:
- *   - ios         App Store iOS cloud/client build. No local-yolo execution,
- *                 no local agent payload, and no full Bun engine.
+ *   - ios         App Store iOS cloud-hybrid build. Keeps the App Store-safe
+ *                 no-JIT local runtime path when available, but strips
+ *                 local-yolo bridges and native model runtimes.
  *   - ios-local   Dev/sideload iOS build. Bakes runtimeMode=local with
  *                 ELIZA_RUNTIME_MODE=local-safe, stages the agent payload,
  *                 and defaults to JSContext/compat unless full Bun is
@@ -70,7 +71,7 @@ const packagesRoot = path.resolve(appCoreRoot, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
 const androidDir = path.join(appDir, "android");
-const IOS_DEFAULT_DEPLOYMENT_TARGET = "15.0";
+const IOS_DEFAULT_DEPLOYMENT_TARGET = "16.0";
 const IOS_FULL_BUN_DEPLOYMENT_TARGET = "16.0";
 
 // AOSP system APK staging path. Brand-aware: forks declare their vendor
@@ -171,7 +172,10 @@ export const IOS_AGENT_RUNTIME_ASSETS = [
   "fuzzystrmatch.tar.gz",
   "plugins-manifest.json",
 ];
-export const IOS_AGENT_ROOT_EXTENSION_ASSETS = ["vector.tar.gz", "fuzzystrmatch.tar.gz"];
+export const IOS_AGENT_ROOT_EXTENSION_ASSETS = [
+  "vector.tar.gz",
+  "fuzzystrmatch.tar.gz",
+];
 // ── Phase 1: Resolve app identity from app.config.ts ────────────────────
 
 function readAppIdentity() {
@@ -659,7 +663,7 @@ export function resolveMobileBuildPolicy(platform) {
   const runtimeExecutionMode =
     platform === "android-cloud" || platform === "android-cloud-debug"
       ? "cloud"
-        : platform === "android" || platform === "android-system"
+      : platform === "android" || platform === "android-system"
         ? "local-yolo"
         : platform === "ios-local"
           ? "local-safe"
@@ -667,7 +671,7 @@ export function resolveMobileBuildPolicy(platform) {
             ? "local-safe"
             : platform === "ios-overlay"
               ? "cloud"
-            : null;
+              : null;
   const buildVariant =
     platform === "android-cloud" || platform === "ios" ? "store" : "direct";
   const releaseAuthority =
@@ -1485,7 +1489,6 @@ export function patchAndroidAppActionsXmlResource(
 export const ANDROID_APP_ACTION_CAPABILITIES = [
   "actions.intent.OPEN_APP_FEATURE",
   "actions.intent.CREATE_MESSAGE",
-  "actions.intent.CREATE_THING",
   "actions.intent.GET_THING",
 ];
 
@@ -1493,18 +1496,71 @@ export const ANDROID_APP_ACTION_SHORTCUT_IDS = [
   "eliza_app_action_chat",
   "eliza_app_action_voice",
   "eliza_app_action_daily_brief",
+  "eliza_app_action_new_task",
   "eliza_app_action_tasks",
 ];
+
+export const ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS = [
+  "feature/open?source=android-app-actions",
+  "chat?source=android-app-actions&amp;action=ask",
+  "chat?source=android-app-actions&amp;action=chat",
+  "voice?source=android-static-shortcut",
+  "lifeops/daily-brief?source=android-static-shortcut",
+  "lifeops/task/new?source=android-static-shortcut",
+  "lifeops/tasks?source=android-static-shortcut",
+];
+
+export const ANDROID_APP_ACTION_FORBIDDEN_MARKERS = [
+  "actions.intent.CREATE_THING",
+  "android.intent.action.ASSIST",
+  "android.intent.action.VOICE_COMMAND",
+  "android.app.role.ASSISTANT",
+  "android.permission.BIND_VOICE_INTERACTION",
+  "assistant/open",
+];
+
+function extractAndroidAppActionCapabilityBlocks(xml) {
+  const blocks = new Map();
+  const capabilityRe =
+    /<capability\b[^>]*android:name="(actions\.intent\.[^"]+)"[^>]*>([\s\S]*?)<\/capability>/g;
+  for (const match of xml.matchAll(capabilityRe)) {
+    blocks.set(match[1], match[2]);
+  }
+  return blocks;
+}
 
 export function validateAndroidAppActionsXmlResource(
   xml,
   { androidPackage, urlScheme },
 ) {
   const failures = [];
+  const capabilityBlocks = extractAndroidAppActionCapabilityBlocks(xml);
 
   for (const capability of ANDROID_APP_ACTION_CAPABILITIES) {
     if (!xml.includes(`android:name="${capability}"`)) {
       failures.push(`shortcuts.xml is missing ${capability}`);
+    }
+    const block = capabilityBlocks.get(capability);
+    if (!block) continue;
+    const intentBlocks = [
+      ...block.matchAll(/<intent\b[^>]*\/>|<intent\b[\s\S]*?<\/intent>/g),
+    ].map((match) => match[0]);
+    const hasFallbackIntent = intentBlocks.some(
+      (intent) => !/android:required="true"/.test(intent),
+    );
+    if (!hasFallbackIntent) {
+      failures.push(
+        `shortcuts.xml ${capability} is missing a no-required-parameter fallback intent`,
+      );
+    }
+  }
+
+  for (const match of xml.matchAll(
+    /\bandroid:name="(actions\.intent\.[^"]+)"/g,
+  )) {
+    const action = match[1];
+    if (!ANDROID_APP_ACTION_CAPABILITIES.includes(action)) {
+      failures.push(`shortcuts.xml declares unsupported App Action ${action}`);
     }
   }
 
@@ -1517,6 +1573,18 @@ export function validateAndroidAppActionsXmlResource(
   for (const source of ["android-app-actions", "android-static-shortcut"]) {
     if (!xml.includes(`source=${source}`)) {
       failures.push(`shortcuts.xml is missing source=${source} deep links`);
+    }
+  }
+
+  for (const deepLink of ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS) {
+    if (!xml.includes(`${urlScheme}://${deepLink}`)) {
+      failures.push(`shortcuts.xml is missing ${urlScheme}://${deepLink}`);
+    }
+  }
+
+  for (const marker of ANDROID_APP_ACTION_FORBIDDEN_MARKERS) {
+    if (xml.includes(marker)) {
+      failures.push(`shortcuts.xml contains forbidden marker ${marker}`);
     }
   }
 
@@ -1570,15 +1638,10 @@ function syncAndroidAppActionsResources() {
     "main",
     "res",
   );
-  const targetResDir = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "res",
-  );
+  const targetResDir = path.join(androidDir, "app", "src", "main", "res");
   const resourceFiles = [
     path.join("xml", "shortcuts.xml"),
+    path.join("xml", "eliza_accessibility_service.xml"),
     path.join("values", "android_app_actions.xml"),
   ];
   for (const relPath of resourceFiles) {
@@ -1587,7 +1650,9 @@ function syncAndroidAppActionsResources() {
     if (!fs.existsSync(templatePath) || fs.existsSync(targetPath)) continue;
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
     fs.copyFileSync(templatePath, targetPath);
-    console.log(`[mobile-build] Added Android App Actions resource ${relPath}.`);
+    console.log(
+      `[mobile-build] Added Android App Actions resource ${relPath}.`,
+    );
   }
 
   const shortcutsPath = path.join(targetResDir, "xml", "shortcuts.xml");
@@ -1600,7 +1665,9 @@ function syncAndroidAppActionsResources() {
   });
   if (patched !== current) {
     fs.writeFileSync(shortcutsPath, patched, "utf8");
-    console.log("[mobile-build] Rewrote Android App Actions package and scheme.");
+    console.log(
+      "[mobile-build] Rewrote Android App Actions package and scheme.",
+    );
   }
 }
 
@@ -1695,7 +1762,9 @@ function overlayAndroid() {
       "MainActivity.java",
       "ElizaAgentService.java",
       "ElizaAssistActivity.java",
+      "ElizaAccessibilityService.java",
       "ElizaBootReceiver.java",
+      "ElizaNotificationListenerService.java",
       "ElizaVoiceCaptureService.java",
       "ElizaBrowserActivity.java",
       "ElizaCalendarActivity.java",
@@ -1792,7 +1861,8 @@ function overlayAndroid() {
       xml = withUrlSchemeFilter;
       dirty = true;
     }
-    const withShortcutsMetadata = ensureAndroidMainActivityShortcutsMetadata(xml);
+    const withShortcutsMetadata =
+      ensureAndroidMainActivityShortcutsMetadata(xml);
     if (withShortcutsMetadata !== xml) {
       xml = withShortcutsMetadata;
       dirty = true;
@@ -1844,7 +1914,9 @@ function overlayAndroid() {
     for (const component of [
       "ElizaDialActivity",
       "ElizaAssistActivity",
+      "ElizaAccessibilityService",
       "ElizaInCallService",
+      "ElizaNotificationListenerService",
       "ElizaSmsReceiver",
       "ElizaMmsReceiver",
       "ElizaRespondViaMessageService",
@@ -1868,7 +1940,9 @@ function overlayAndroid() {
     for (const component of [
       "ElizaDialActivity",
       "ElizaAssistActivity",
+      "ElizaAccessibilityService",
       "ElizaInCallService",
+      "ElizaNotificationListenerService",
       "ElizaSmsReceiver",
       "ElizaMmsReceiver",
       "ElizaRespondViaMessageService",
@@ -1930,6 +2004,35 @@ function overlayAndroid() {
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaAccessibilityService`,
+      `
+        <service
+            android:name="${androidPackage}.ElizaAccessibilityService"
+            android:exported="true"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/eliza_accessibility_service" />
+        </service>`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaNotificationListenerService`,
+      `
+        <service
+            android:name="${androidPackage}.ElizaNotificationListenerService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>`,
     );
     xml = appendMissingApplicationBlock(
       xml,
@@ -2332,9 +2435,7 @@ export function resolveIosCustomPods({
     ["ElizaosCapacitorTalkmode", "@elizaos/capacitor-talkmode"],
     ["ElizaosCapacitorWebsiteblocker", "@elizaos/capacitor-websiteblocker"],
     ...(includeBunRuntime
-      ? [
-          ["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"],
-        ]
+      ? [["ElizaosCapacitorBunRuntime", "@elizaos/capacitor-bun-runtime"]]
       : []),
     ...(includeTunnelBridge
       ? [
@@ -2562,9 +2663,7 @@ function generatePodfile() {
       "[mobile-build] iOS Podfile: including JSContext compatibility runtime pod",
     );
   } else if (includeFullBunEngine) {
-    console.log(
-      "[mobile-build] iOS Podfile: requiring no-JIT Bun engine pod",
-    );
+    console.log("[mobile-build] iOS Podfile: requiring no-JIT Bun engine pod");
   }
   if (appStoreBuild) {
     console.log(
@@ -3486,7 +3585,29 @@ function resolveIosFullBunEngineXcframework({ buildTarget = null } = {}) {
       `${IOS_BUN_ENGINE_FRAMEWORK_NAME}.xcframework`,
     ),
   ].filter(Boolean);
-  return firstExisting(candidates);
+  const existing = candidates.filter((candidate) => fs.existsSync(candidate));
+  if (process.env.ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK) {
+    return existing[0] ?? null;
+  }
+  return (
+    existing.find((candidate) =>
+      xcframeworkContainsIosBunEngineLibrary(candidate, { buildTarget }),
+    ) ??
+    existing[0] ??
+    null
+  );
+}
+
+function xcframeworkContainsIosBunEngineLibrary(
+  xcframework,
+  { buildTarget = null } = {},
+) {
+  try {
+    resolveIosBunEngineLibrary(xcframework, { buildTarget });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function parsePlistJson(plistPath) {
@@ -3602,9 +3723,9 @@ function validateIosBunEngineSymbols(binary) {
   }
   const importOutput = `${imports.stdout}\n${imports.stderr}`;
   const badImports = IOS_BUN_ENGINE_FORBIDDEN_IMPORTS.filter((symbol) =>
-    new RegExp(`(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
-      importOutput,
-    ),
+    new RegExp(
+      `(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+    ).test(importOutput),
   );
   if (badImports.length > 0) {
     throw new Error(
@@ -3794,7 +3915,9 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaAgentService",
   "ElizaDialActivity",
   "ElizaAssistActivity",
+  "ElizaAccessibilityService",
   "ElizaInCallService",
+  "ElizaNotificationListenerService",
   "ElizaVoiceCaptureService",
   "ElizaSmsReceiver",
   "ElizaMmsReceiver",
@@ -3844,6 +3967,8 @@ export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
   "READ_FRAME_BUFFER",
   "INJECT_EVENTS",
   "REAL_GET_TASKS",
+  "BIND_ACCESSIBILITY_SERVICE",
+  "BIND_NOTIFICATION_LISTENER_SERVICE",
   "BIND_DEVICE_ADMIN",
 ];
 
@@ -3852,8 +3977,10 @@ export const ANDROID_CLOUD_STRIPPED_PERMISSIONS = [
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "AndroidVirtualizationBridge.java",
   "ElizaAgentService.java",
+  "ElizaAccessibilityService.java",
   "ElizaAssistActivity.java",
   "ElizaBootReceiver.java",
+  "ElizaNotificationListenerService.java",
   "ElizaVoiceCaptureService.java",
   "ElizaBrowserActivity.java",
   "ElizaCalendarActivity.java",
@@ -3871,6 +3998,10 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
 export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([
   "llama-cpp-kernels.json",
 ]);
+
+export const ANDROID_CLOUD_STRIPPED_RESOURCE_FILES = [
+  path.join("xml", "eliza_accessibility_service.xml"),
+];
 
 export const ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS = [
   ["@elizaos/capacitor-agent", "elizaos-capacitor-agent"],
@@ -4315,6 +4446,13 @@ function auditAndroidCloudSource(phase) {
     );
   }
 
+  const resRoot = path.join(androidDir, "app", "src", "main", "res");
+  for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {
+    if (fs.existsSync(path.join(resRoot, relPath))) {
+      failures.push(`app/src/main/res/${relPath} still exists`);
+    }
+  }
+
   const javaRoot = path.join(androidDir, "app", "src", "main", "java");
   walkFiles(javaRoot, (filePath) => {
     const base = path.basename(filePath);
@@ -4377,7 +4515,10 @@ function auditAndroidCloudSource(phase) {
   console.log(`[mobile-build] android-cloud ${phase} audit passed.`);
 }
 
-function auditAndroidSystemSource(phase) {
+function auditAndroidSystemSource(
+  phase,
+  { requireCapabilityManifest = true } = {},
+) {
   const failures = [];
   const manifestPath = path.join(
     androidDir,
@@ -4394,9 +4535,16 @@ function auditAndroidSystemSource(phase) {
       "ElizaAssistActivity",
       "android.intent.action.ASSIST",
       "android.intent.action.VOICE_COMMAND",
+      "ElizaAccessibilityService",
+      "android.permission.BIND_ACCESSIBILITY_SERVICE",
+      "android.accessibilityservice.AccessibilityService",
+      "@xml/eliza_accessibility_service",
+      "ElizaNotificationListenerService",
+      "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+      "android.service.notification.NotificationListenerService",
       "ElizaAgentService",
       "ElizaBootReceiver",
-      "android:directBootAware=\"true\"",
+      'android:directBootAware="true"',
       "ElizaVoiceCaptureService",
       "android.permission.PACKAGE_USAGE_STATS",
       "android.permission.MANAGE_APP_OPS_MODES",
@@ -4419,7 +4567,7 @@ function auditAndroidSystemSource(phase) {
     "manifests",
     "aosp-assistant-full-control.json",
   );
-  if (!fs.existsSync(capabilityManifestPath)) {
+  if (requireCapabilityManifest && !fs.existsSync(capabilityManifestPath)) {
     failures.push(
       `${path.relative(repoRoot, capabilityManifestPath)} is missing`,
     );
@@ -4517,6 +4665,21 @@ function stripAndroidForCloud() {
   }
   rewriteCloudJavaSources(javaRoots, androidPackage);
 
+  const resRoot = path.join(androidDir, "app", "src", "main", "res");
+  let removedResourceCount = 0;
+  for (const relPath of ANDROID_CLOUD_STRIPPED_RESOURCE_FILES) {
+    const target = path.join(resRoot, relPath);
+    if (fs.existsSync(target)) {
+      fs.rmSync(target);
+      removedResourceCount += 1;
+    }
+  }
+  if (removedResourceCount > 0) {
+    console.log(
+      `[mobile-build] Removed ${removedResourceCount} Play-Store-noncompliant Android resource(s).`,
+    );
+  }
+
   // 3. Wipe any previously-staged on-device agent runtime. These are
   //    build artifacts (.gitignore covers them) — the cloud APK must not
   //    embed bun, musl, libstdc++, libgcc, llama-server, or the
@@ -4572,7 +4735,7 @@ async function buildAndroid() {
   await generateAndroidBrandAssets();
   overlayAndroid();
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
-  auditAndroidSystemSource("pre-gradle");
+  auditAndroidSystemSource("pre-gradle", { requireCapabilityManifest: false });
   writeAndroidCleartextPolicy({
     allowCleartext: true,
     label: "sideload",
@@ -4931,15 +5094,15 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("ELIZA_IOS_BUILD_SDK", "iphonesimulator");
 }
 
-function configureIosAppStoreBuildDefaults() {
+export function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("ELIZA_BUILD_VARIANT", "store");
   setDefaultProcessEnv("ELIZA_RELEASE_AUTHORITY", "apple-app-store");
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "cloud");
-  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "cloud");
+  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
+  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
+  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "local-safe");
+  setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
+  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
+  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
 }
 
 async function buildIos({ local = false } = {}) {

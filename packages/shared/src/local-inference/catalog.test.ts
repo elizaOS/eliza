@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   defaultVoiceQuantForTier,
   ELIZA_1_TIER_IDS,
+  MODEL_CATALOG,
   type OmniVoiceQuantLevel,
   voiceQuantLadderForTier,
 } from "./catalog.js";
@@ -70,6 +71,23 @@ describe("defaultVoiceQuantForTier", () => {
   it("returns Q8_0 for large tiers (matches publish path workstation default)", () => {
     for (const id of LARGE_TIERS) {
       expect(defaultVoiceQuantForTier(id)).toBe("Q8_0");
+    }
+  });
+});
+
+describe("Eliza-1 runtime quant metadata", () => {
+  it("uses QJL K-cache and TurboQuant V-cache for every chat tier", () => {
+    for (const id of ELIZA_1_TIER_IDS) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      expect(entry?.runtime?.kvCache?.typeK).toBe("qjl1_256");
+      expect(entry?.runtime?.kvCache?.typeV).toBe("tbq3_0");
+      expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
+        "qjl_full",
+      );
+      expect(entry?.runtime?.optimizations?.requiresKernel).toContain("turbo3");
+      expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
+        "polarquant",
+      );
     }
   });
 });

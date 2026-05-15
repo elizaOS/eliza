@@ -2,10 +2,7 @@
  * Built-in `ResponseHandlerFieldEvaluator`s — the canonical core fields the
  * Stage-1 response handler extracts from every turn.
  *
- * Replaces the legacy nested `HANDLE_RESPONSE_SCHEMA` (processMessage +
- * plan.{contexts, candidateActions, parentActionHints, reply, requiresTool,
- * simple, contextSlices} + thought + extract.{facts, relationships,
- * addressedTo}) with a flat list of typed fields. Each field is an
+ * The model-facing schema is a flat list of typed fields. Each field is an
  * independent registered evaluator with:
  *
  *   - description: verbatim in the system prompt
@@ -60,6 +57,12 @@ function isExpressiveEmotionEnumValue(
 	value: string,
 ): value is ExpressiveEmotionEnumValue {
 	return (EXPRESSIVE_EMOTION_ENUM_VALUES as readonly string[]).includes(value);
+}
+
+function stripJsonStructuralJunkReply(value: string): string {
+	const trimmed = value.trim();
+	if (!trimmed) return "";
+	return /^[\s{}[\]":,]+$/.test(trimmed) ? "" : trimmed;
 }
 
 // ---------------------------------------------------------------------------
@@ -161,7 +164,7 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 
 // ---------------------------------------------------------------------------
 // candidateActionNames — priority 50.
-// Merges legacy candidateActions + parentActionHints into one flat field.
+// One flat model-facing hint list; downstream retrieval can fan it back out.
 // ---------------------------------------------------------------------------
 
 export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
@@ -211,7 +214,7 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	},
 	parse(value) {
 		if (typeof value !== "string") return "";
-		return value.trim();
+		return stripJsonStructuralJunkReply(value);
 	},
 };
 

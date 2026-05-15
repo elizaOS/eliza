@@ -59,8 +59,6 @@ export const EventBodySchema = z.object({
   payload: JsonObjectSchema,
 });
 
-type AgentEvent = z.infer<typeof EventBodySchema>;
-
 /**
  * Dispatch result returned by each per-type handler, merged into the
  * route response alongside { handled: true, type }.

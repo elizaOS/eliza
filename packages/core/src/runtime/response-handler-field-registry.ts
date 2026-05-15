@@ -92,12 +92,9 @@ export class ResponseHandlerFieldRegistry {
 	 * receives in production — `services/message.ts` passes it to
 	 * `createHandleResponseTool({ parameters: ... })`, and `buildResponseGrammar`
 	 * (`./response-grammar.ts`) composes the GBNF skeleton from the same
-	 * registered field set. The static `HANDLE_RESPONSE_SCHEMA` /
-	 * `HANDLE_RESPONSE_DIRECT_SCHEMA` in `../actions/to-tool.ts` are the legacy
-	 * W3 flat-envelope shape (different field set) kept only as the default tool
-	 * `parameters` and for the back-compat trajectory parser; see the
-	 * `TODO(consolidate)` block on `HANDLE_RESPONSE_SCHEMA` there for why the two
-	 * have not yet been unified.
+	 * registered field set. The static `HANDLE_RESPONSE_SCHEMA` in
+	 * `../actions/to-tool.ts` mirrors the builtin shape for older callers that
+	 * build the tool without passing an explicit registry-composed schema.
 	 */
 	composeSchema(): JSONSchema {
 		if (this.cachedSchema) return this.cachedSchema;

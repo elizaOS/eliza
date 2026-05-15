@@ -854,5 +854,3 @@ export class LpMonitoringService extends Service {
     return result;
   }
 }
-
-export default LpMonitoringService;

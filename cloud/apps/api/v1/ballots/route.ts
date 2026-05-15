@@ -68,10 +68,7 @@ app.post("/", async (c) => {
       );
     }
     if (parsed.data.threshold > parsed.data.participants.length) {
-      return c.json(
-        { success: false, error: "threshold cannot exceed participant count" },
-        400,
-      );
+      return c.json({ success: false, error: "threshold cannot exceed participant count" }, 400);
     }
 
     const service = buildService();

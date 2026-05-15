@@ -30,6 +30,7 @@ import {
   type WebsiteBlockerStatusResult,
 } from "../bridge/native-plugins";
 import { TERMINAL_STATUSES } from "../chat/coding-agent-session-state";
+import { androidNativeAgentLifecycleForUrl } from "./android-native-agent-transport";
 import { ElizaClient } from "./client-base";
 import type {
   AgentAutomationMode,
@@ -987,6 +988,12 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
   } catch {
     /* fall through */
   }
+  const nativeAgent = await androidNativeAgentLifecycleForUrl(
+    this.getBaseUrl(),
+  );
+  if (nativeAgent?.getStatus) {
+    return (await nativeAgent.getStatus()) as AgentStatus;
+  }
   return this.fetch("/api/status");
 };
 
@@ -1368,6 +1375,12 @@ ElizaClient.prototype.exchangeOpenAICode = async function (
 };
 
 ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
+  const nativeAgent = await androidNativeAgentLifecycleForUrl(
+    this.getBaseUrl(),
+  );
+  if (nativeAgent?.start) {
+    return (await nativeAgent.start()) as AgentStatus;
+  }
   const res = await this.fetch<{ status: AgentStatus }>("/api/agent/start", {
     method: "POST",
   });
@@ -1375,6 +1388,18 @@ ElizaClient.prototype.startAgent = async function (this: ElizaClient) {
 };
 
 ElizaClient.prototype.stopAgent = async function (this: ElizaClient) {
+  const nativeAgent = await androidNativeAgentLifecycleForUrl(
+    this.getBaseUrl(),
+  );
+  if (nativeAgent?.stop) {
+    await nativeAgent.stop();
+    return {
+      state: "stopped",
+      agentName: "Eliza",
+      port: undefined,
+      startedAt: undefined,
+    } as AgentStatus;
+  }
   const res = await this.fetch<{ status: AgentStatus }>("/api/agent/stop", {
     method: "POST",
   });
@@ -1396,6 +1421,15 @@ ElizaClient.prototype.resumeAgent = async function (this: ElizaClient) {
 };
 
 ElizaClient.prototype.restartAgent = async function (this: ElizaClient) {
+  const nativeAgent = await androidNativeAgentLifecycleForUrl(
+    this.getBaseUrl(),
+  );
+  if (nativeAgent?.start) {
+    if (nativeAgent.stop) {
+      await nativeAgent.stop();
+    }
+    return (await nativeAgent.start()) as AgentStatus;
+  }
   try {
     const res = await this.fetch<{ status: AgentStatus }>(
       "/api/agent/restart",

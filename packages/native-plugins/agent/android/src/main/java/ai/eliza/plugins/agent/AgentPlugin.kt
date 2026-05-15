@@ -14,6 +14,8 @@ import org.json.JSONObject
 private const val LOCAL_AGENT_BASE_URL = "http://127.0.0.1:31337"
 private const val MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
 private const val MAX_RESPONSE_BODY_BYTES = 10 * 1024 * 1024
+private const val DEFAULT_REQUEST_TIMEOUT_MS = 10_000
+private const val MAX_REQUEST_TIMEOUT_MS = 600_000
 
 /**
  * Eliza Agent Plugin — Android bridge.
@@ -91,7 +93,8 @@ class AgentPlugin : Plugin() {
             return
         }
 
-        val timeoutMs = (call.getInt("timeoutMs") ?: 10_000).coerceIn(1_000, 120_000)
+        val timeoutMs = (call.getInt("timeoutMs") ?: DEFAULT_REQUEST_TIMEOUT_MS)
+            .coerceIn(1_000, MAX_REQUEST_TIMEOUT_MS)
         val body = call.getString("body")
         val headers = call.getObject("headers") ?: JSObject()
         val token = readLocalAgentToken()

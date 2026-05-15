@@ -54,6 +54,9 @@ KNOWN_COMPATIBLE = {
     "Qwen3_5ForCausalLM",
     "Qwen3_5ForConditionalGeneration",
     "Qwen3_5MoeForCausalLM",
+    "Qwen3_6ForCausalLM",
+    "Qwen3_6ForConditionalGeneration",
+    "Qwen3_6MoeForCausalLM",
     # Multimodal (text decoder patched, vision encoder skipped)
     "Qwen2VLForConditionalGeneration",
     "InternVLForConditionalGeneration",
