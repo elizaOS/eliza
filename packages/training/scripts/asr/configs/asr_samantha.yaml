@@ -1,0 +1,43 @@
+# Qwen3-ASR fine-tune on the `samantha` voice from lalalune/ai_voices.
+#
+# The samantha corpus (58 clips, ~3.5 min, 44.1 kHz) is small for ASR
+# fine-tuning; it is primarily useful for voice-adapted language model
+# probabilities (reducing WER on samantha-style prosody/vocabulary) rather
+# than large acoustic model shifts.
+#
+# Per W3-11 scope: real training is out of scope for Wave 3 (compute), but
+# the scaffold + eval + manifest must land. Run with --synthetic-smoke in CI.
+# Run with --real-train on an RTX 5080 / H200 for actual training.
+#
+# Expected outcome: WER on samantha val set should beat the baseline
+# (Qwen3-ASR-0.6B zero-shot) by 5–15% relative on in-domain prompts.
+# Out-of-domain WER is expected to be unchanged (the model is pretrained on
+# large-scale diverse speech).
+
+extends: base.yaml
+
+voice_name: samantha
+voice_display_name: Samantha ASR (AI Voices, US English)
+voice_lang: a
+
+# Data paths (override via CLI for portability).
+dataset_path: packages/training/data/voice/samantha
+run_dir: /tmp/asr-runs/samantha
+
+# Corpus-tuned hyperparameters.
+# 58 clips / val_fraction=0.10 → ~5 val clips. Tight eval, but sufficient
+# for WER trend tracking.
+max_steps: 500            # short run for tiny corpus; escalate if WER improves
+eval_every: 100
+checkpoint_every: 100
+warmup_steps: 30          # shorter warmup — fewer steps overall
+val_fraction: 0.10
+early_stop_patience: 2    # aggressive — stop quickly if no improvement
+
+# Smaller LR for domain-adaptation (vs. base 2e-5 for clean pretraining).
+learning_rate: 1.0e-5
+
+# Gates relaxed slightly for tiny-corpus eval variance.
+gates:
+  wer_max: 0.20           # more lenient than base (15%) — 5-clip val is noisy
+  rtf_min: 2.0
