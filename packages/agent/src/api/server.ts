@@ -143,7 +143,7 @@ import {
   exportAgent,
   importAgent,
 } from "../services/agent-export.ts";
-import { AppManager } from "../services/app-manager.ts";
+import { AppManager } from "@elizaos/plugin-app-manager";
 import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
 import {
@@ -178,7 +178,7 @@ import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { handleAgentStatusRoutes } from "./agent-status-routes.ts";
 import { handleAgentTransferRoutes } from "./agent-transfer-routes.ts";
 import { handleAppPackageRoutes } from "./app-package-routes.ts";
-import { handleAppsRoutes } from "./apps-routes.ts";
+import { handleAppsRoutes } from "@elizaos/plugin-app-manager";
 import { handleAuthRoutes } from "./auth-routes.ts";
 import { handleAvatarRoutes } from "./avatar-routes.ts";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes.ts";
@@ -212,7 +212,8 @@ import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallbac
 import { handleOnboardingRoutes } from "./onboarding-routes.ts";
 import { handlePermissionRoutes } from "./permissions-routes.ts";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
-import { handlePluginRoutes } from "./plugin-routes.ts";
+// Phase 4F: plugin routes moved to @elizaos/plugin-registry.
+import { handlePluginRoutes } from "@elizaos/plugin-registry";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";

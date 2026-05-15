@@ -123,6 +123,7 @@
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-streaming": "workspace:*",
     "@elizaos/plugin-video": "workspace:*",
+    "@elizaos/plugin-wallet": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/plugin-x402": "workspace:*",
