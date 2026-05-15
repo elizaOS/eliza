@@ -230,9 +230,8 @@ describe("EngineVoiceBridge — VoiceProfileStore attribution wiring (W3-1 item 
 		if (!attributionCalled) {
 			// Encoder not available in test environment — expected.
 			// The bridge emits a console.warn with the turn id and error message.
-			expect(consoleWarnSpy).toHaveBeenCalledWith(
-				expect.stringContaining("[voice-bridge] speaker attribution failed"),
-				expect.anything(),
+			expect(consoleWarnSpy.mock.calls.flat().join(" ")).toContain(
+				"[voice-bridge] speaker attribution failed",
 			);
 		}
 

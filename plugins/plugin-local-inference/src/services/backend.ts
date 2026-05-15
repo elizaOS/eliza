@@ -22,7 +22,9 @@
  *      `llama-server` when this is set AND the binary is available;
  *      otherwise we fall back to `node-llama-cpp` unless DFlash is
  *      explicitly required (`ELIZA_DFLASH_REQUIRED=1`).
- *   4. Default: `node-llama-cpp` for stock GGUFs without runtime metadata.
+ *   4. Default: custom `llama-server` when the managed binary is available;
+ *      `node-llama-cpp` is only a last-resort compatibility path for hosts
+ *      without the custom llama.cpp runtime.
  *
  * The dispatcher does NOT own the spawn body — `llama-server` and the
  * node binding own that. It owns selection only, plus a small load-state
@@ -341,6 +343,14 @@ export function decideBackend(input: {
 		return {
 			backend: "node-llama-cpp",
 			reason: "preferred-backend",
+			kernels,
+			unsatisfiedKernels,
+		};
+	}
+	if (llamaServerAvailable) {
+		return {
+			backend: "llama-server",
+			reason: "default",
 			kernels,
 			unsatisfiedKernels,
 		};

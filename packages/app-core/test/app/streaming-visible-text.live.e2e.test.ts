@@ -10,7 +10,7 @@
  */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, symlink, unlink } from "node:fs/promises";
 import {
   createServer,
   type IncomingMessage,
@@ -199,9 +199,37 @@ async function startHarnessServer(args: {
   return server;
 }
 
+async function ensureAgentDevDistLinks(): Promise<void> {
+  const distRoot = path.join(REPO_ROOT, "packages/agent/dist");
+  const nestedSrc = path.join(distRoot, "packages/agent/src");
+  let entries: string[];
+  try {
+    entries = await readdir(nestedSrc);
+  } catch {
+    return;
+  }
+  await Promise.all(
+    entries.map(async (entry) => {
+      const target = path.join(nestedSrc, entry);
+      const link = path.join(distRoot, entry);
+      try {
+        await unlink(link);
+      } catch {
+        /* absent or non-symlink; keep going */
+      }
+      try {
+        await symlink(target, link);
+      } catch {
+        /* best effort; startup will surface any unresolved import */
+      }
+    }),
+  );
+}
+
 async function startStack(): Promise<Stack> {
   const stateRoot = path.join(REPO_ROOT, ".tmp");
   await mkdir(stateRoot, { recursive: true });
+  await ensureAgentDevDistLinks();
   const stateDir = await mkdtemp(path.join(stateRoot, "eliza-streaming-live-"));
   const apiPort = await getFreePort();
   const harnessPort = await getFreePort();
@@ -211,7 +239,10 @@ async function startStack(): Promise<Stack> {
     "node",
     [
       path.join(REPO_ROOT, "packages/app-core/scripts/run-node-tsx.mjs"),
-      path.join(REPO_ROOT, "packages/app-core/test/scripts/start-eliza-live.ts"),
+      path.join(
+        REPO_ROOT,
+        "packages/app-core/test/scripts/start-eliza-live.ts",
+      ),
     ],
     {
       cwd: REPO_ROOT,
