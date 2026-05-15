@@ -227,7 +227,6 @@ if [[ -d "$REPO_ROOT/.eliza.ci-disabled" && ! -d "$REPO_ROOT/eliza" ]]; then
   mv "$REPO_ROOT/.eliza.ci-disabled" "$REPO_ROOT/eliza"
 fi
 export ELIZA_SKIP_LOCAL_UPSTREAMS=1
-export ELIZA_SKIP_LOCAL_UPSTREAMS=1
 
 log "Installing published-workspace fallback dependencies"
 if [[ -f "$REPO_ROOT/scripts/install-published-workspace-fallback-deps.sh" ]]; then
@@ -249,6 +248,12 @@ node packages/scripts/patch-tsup-dts.mjs || true
 
 if [[ -f "$TYPESCRIPT_DIR/package.json" ]]; then
   log "Building @elizaos/core source artifacts"
+  if [[ -f "$PACKAGES_DIR/contracts/package.json" ]] && jq -e '.scripts.build' "$PACKAGES_DIR/contracts/package.json" >/dev/null; then
+    log "Building @elizaos/contracts source artifacts"
+    pushd "$PACKAGES_DIR/contracts" >/dev/null
+    "$BUN_BIN" run build
+    popd >/dev/null
+  fi
   pushd "$TYPESCRIPT_DIR" >/dev/null
   "$BUN_BIN" run build:node
   popd >/dev/null

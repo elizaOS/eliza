@@ -6,7 +6,9 @@ import { spawnSync } from "node:child_process";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const args = process.argv.slice(2);
-const filterArg = args.find((arg) => arg === "--filter" || arg.startsWith("--filter="));
+const filterArg = args.find(
+  (arg) => arg === "--filter" || arg.startsWith("--filter="),
+);
 const filter =
   filterArg === "--filter"
     ? args[args.indexOf(filterArg) + 1]
@@ -42,7 +44,11 @@ for (const configPath of configs) {
   const outDir = path.resolve(cwd, config.outDir ?? "dist/views");
   const externals = [
     config.packageName,
+    "@elizaos/app-core",
+    "@elizaos/core",
+    "@elizaos/shared",
     "@elizaos/ui",
+    "lucide-react",
     "react",
     "react-dom",
     "react/jsx-dev-runtime",

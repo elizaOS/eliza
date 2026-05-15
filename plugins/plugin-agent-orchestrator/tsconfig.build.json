@@ -16,7 +16,7 @@
     },
     "types": ["node", "bun-types"]
   },
-  "include": ["**/*.ts"],
+  "include": ["index.ts", "index.node.ts", "src/**/*.ts"],
   "exclude": [
     "build.ts",
     "dist",
