@@ -36,7 +36,7 @@ function purposeForAccount(_account: ResolvedSignalAccount): string[] {
 
 function accessGateForAccount(account: ResolvedSignalAccount): string {
   // Signal numbers are owner-paired via signal-cli device link.
-  const dmPolicy = account.config?.dm?.policy;
+  const dmPolicy = account.config.dm?.policy;
   if (dmPolicy === "disabled") return "disabled";
   if (dmPolicy === "pairing") return "pairing";
   // Default: device link is itself a pairing operation, so treat as pairing.
@@ -65,8 +65,8 @@ function toConnectorAccount(account: ResolvedSignalAccount): ConnectorAccount {
     metadata: {
       phoneNumber: account.account,
       baseUrl: account.baseUrl,
-      dmPolicy: account.config?.dm?.policy ?? "pairing",
-      groupPolicy: account.config?.group?.policy ?? "open",
+      dmPolicy: account.config.dm?.policy ?? "pairing",
+      groupPolicy: account.config.group?.policy ?? "open",
     },
   };
 }

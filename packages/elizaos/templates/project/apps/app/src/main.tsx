@@ -2,6 +2,12 @@ import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { StatusBar, Style } from "@capacitor/status-bar";
+import {
+  DESKTOP_TRAY_MENU_ITEMS,
+  DesktopSurfaceNavigationRuntime,
+  DesktopTrayRuntime,
+  DetachedShellRoot,
+} from "@elizaos/app-core";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import {
@@ -19,10 +25,6 @@ import {
   COMMAND_PALETTE_EVENT,
   CONNECT_EVENT,
   client,
-  DESKTOP_TRAY_MENU_ITEMS,
-  DesktopSurfaceNavigationRuntime,
-  DesktopTrayRuntime,
-  DetachedShellRoot,
   dispatchAppEvent,
   ErrorBoundary,
   getBootConfig,

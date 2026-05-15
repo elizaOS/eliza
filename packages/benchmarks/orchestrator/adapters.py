@@ -123,6 +123,10 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # validation. Hermes/OpenClaw labels would still run the same voicebench
     # runtime/profile rather than distinct agent harnesses.
     "voicebench": ("eliza",),
+    # VoiceAgentBench in this checkout only ships transcript fixtures and a
+    # deterministic mock path. Publishing it as Eliza/Hermes/OpenClaw would be
+    # larp until real audio fixtures or a direct-audio adapter are available.
+    "voiceagentbench": (),
     # eliza-1 bench compares local eliza-1 decode modes / Cerebras reference
     # mode, not Hermes/OpenClaw agent harnesses.
     "eliza_1": ("eliza",),
@@ -138,10 +142,20 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # Eliza/Hermes/OpenClaw that all exercised the same direct-provider path.
     "openclaw_bench": (),
     "interrupt_bench": (),
+    "scambench": (),
+    # GAIA and WebShop are bridge-backed Eliza integrations in this checkout;
+    # Hermes/OpenClaw labels would still exercise the Eliza path.
+    "gaia": ("eliza",),
+    "gaia_orchestrated": ("eliza",),
+    "webshop": ("eliza",),
 }
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    if benchmark_id in {"hermes_tblite", "hermes_terminalbench_2", "hermes_swe_env"}:
+        return ("hermes",) if _has_hermes_sandbox_backend() else ()
+    if benchmark_id in {"voicebench", "voicebench_quality"} and not os.environ.get("GROQ_API_KEY"):
+        return ()
     return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
 
 
@@ -256,13 +270,19 @@ def _make_registry_adapter(
             ("openclaw_timeout_s", "OPENCLAW_TIMEOUT_S"),
             ("hermes_timeout_s", "HERMES_TIMEOUT_S"),
             ("eliza_bench_http_timeout_s", "ELIZA_BENCH_HTTP_TIMEOUT"),
+            ("hl_bench_command_timeout_s", "HL_BENCH_COMMAND_TIMEOUT_S"),
         ):
             value = ctx.request.extra_config.get(extra_key)
             if isinstance(value, (int, float)) and value > 0:
                 env[env_key] = str(float(value))
-        if benchmark_id == "bfcl" and harness == "openclaw":
+        if benchmark_id in {"bfcl", "terminal_bench", "tau_bench"} and harness == "openclaw":
             env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
             env["OPENCLAW_USE_CLI"] = "0"
+        if benchmark_id == "hyperliquid_bench":
+            # Hyperliquid asks for strict JSON text plans. The generic
+            # benchmark action tool surface makes malformed-plan retries more
+            # likely and can stall the smoke when the model keeps tool-calling.
+            env["ELIZA_BENCH_FORCE_TOOL_CALL"] = "0"
         return env
 
     return BenchmarkAdapter(
@@ -338,6 +358,8 @@ def _command_hyperliquid(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
         args.extend(["--model", ctx.request.model])
     if "max_steps" in ctx.request.extra_config:
         args.extend(["--max-steps", str(int(ctx.request.extra_config["max_steps"]))])
+    if "max_iterations" in ctx.request.extra_config:
+        args.extend(["--max-iterations", str(int(ctx.request.extra_config["max_iterations"]))])
     return args
 
 
@@ -788,10 +810,29 @@ def _command_hyperliquid_env(ctx: ExecutionContext, adapter: BenchmarkAdapter) -
     }
     model = _provider_model_name(ctx.request.provider, ctx.request.model)
     provider = ctx.request.provider.strip().lower()
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
+    if harness:
+        env["BENCHMARK_HARNESS"] = harness
+        env["ELIZA_BENCH_HARNESS"] = harness
     if model:
         env["MODEL_NAME"] = model
+        env["BENCHMARK_MODEL_NAME"] = model
     if provider:
         env["MODEL_PROVIDER"] = provider
+        env["BENCHMARK_MODEL_PROVIDER"] = provider
+    http_timeout = ctx.request.extra_config.get("eliza_bench_http_timeout_s", 90)
+    if isinstance(http_timeout, (int, float)) and http_timeout > 0:
+        env["ELIZA_BENCH_HTTP_TIMEOUT"] = str(float(http_timeout))
+    command_timeout = ctx.request.extra_config.get("hl_bench_command_timeout_s", 60)
+    if isinstance(command_timeout, (int, float)) and command_timeout > 0:
+        env["HL_BENCH_COMMAND_TIMEOUT_S"] = str(float(command_timeout))
+    # Hyperliquid wants strict JSON text, not the generic required benchmark
+    # action surface.
+    env["ELIZA_BENCH_FORCE_TOOL_CALL"] = "0"
     return env
 
 
@@ -895,7 +936,7 @@ def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, s
     max_messages = ctx.request.extra_config.get("max_messages")
     if not isinstance(max_messages, int):
         max_messages = ctx.request.extra_config.get("max_tasks")
-    if isinstance(max_messages, int) and max_messages >= 0:
+    if isinstance(max_messages, int) and max_messages > 0:
         env["MAX_MESSAGES"] = str(max_messages)
     environment_config = ctx.request.extra_config.get("environment_config")
     if isinstance(environment_config, str) and environment_config.strip():
@@ -1817,6 +1858,29 @@ def _score_from_personality_bench(path: Path) -> ScoreSummary:
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
     calibration = data.get("calibration")
     totals = data.get("totals") if isinstance(data.get("totals"), dict) else {}
+    scenario_count = totals.get("scenarios", 0) if isinstance(totals, dict) else 0
+    passed = totals.get("pass", 0) if isinstance(totals, dict) else 0
+    if isinstance(scenario_count, (int, float)) and scenario_count:
+        score = float(passed) / float(scenario_count) if isinstance(passed, (int, float)) else None
+        metrics = dict(totals)
+        if isinstance(calibration, dict):
+            metrics.update(
+                {
+                    "calibration_score": calibration.get("score"),
+                    "agreementRate": calibration.get("agreementRate"),
+                    "falsePositiveRate": calibration.get("falsePositiveRate"),
+                    "reviewRate": calibration.get("reviewRate"),
+                    "mismatch_count": len(calibration.get("mismatches", []))
+                    if isinstance(calibration.get("mismatches"), list)
+                    else 0,
+                }
+            )
+        return ScoreSummary(
+            score=score,
+            unit="ratio",
+            higher_is_better=True,
+            metrics=metrics,
+        )
     if isinstance(calibration, dict):
         raw_score = calibration.get("score", calibration.get("agreementRate"))
         score = float(raw_score) if isinstance(raw_score, (int, float)) else None
@@ -1841,11 +1905,8 @@ def _score_from_personality_bench(path: Path) -> ScoreSummary:
             metrics=metrics,
         )
 
-    scenario_count = totals.get("scenarios", 0) if isinstance(totals, dict) else 0
-    passed = totals.get("pass", 0) if isinstance(totals, dict) else 0
-    score = (float(passed) / float(scenario_count)) if scenario_count else None
     return ScoreSummary(
-        score=score,
+        score=None,
         unit="ratio",
         higher_is_better=True,
         metrics=dict(totals) if isinstance(totals, dict) else {},
@@ -1920,9 +1981,15 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "hyperliquid_bench": {
             "max_steps": 1,
+            "max_iterations": 2,
+            "eliza_bench_http_timeout_s": 90,
+            "hl_bench_command_timeout_s": 60,
         },
         "hyperliquidbench": {
             "max_steps": 1,
+            "max_iterations": 2,
+            "eliza_bench_http_timeout_s": 90,
+            "hl_bench_command_timeout_s": 60,
         },
         "gsm8k": {
             "limit": 2,
@@ -2140,7 +2207,12 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             result_patterns=["hyperliquid_bench-*.json", "runs/hyperliquid_bench-*.json"],
             env_builder=_command_hyperliquid_env,
             score_extractor=score_extractor_factory.for_benchmark("hyperliquid_bench"),
-            default_extra_config={"max_steps": 1},
+            default_extra_config={
+                "max_steps": 1,
+                "max_iterations": 2,
+                "eliza_bench_http_timeout_s": 90,
+                "hl_bench_command_timeout_s": 60,
+            },
         ),
         _make_extra_adapter(
             adapter_id="adhdbench",

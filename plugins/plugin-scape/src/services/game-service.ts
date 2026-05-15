@@ -103,7 +103,7 @@ function resolveSetting(
   runtime: IAgentRuntime,
   key: string,
 ): string | undefined {
-  const fromRuntime = runtime.getSetting?.(key);
+  const fromRuntime = runtime.getSetting(key);
   if (typeof fromRuntime === "string" && fromRuntime.trim().length > 0) {
     return fromRuntime.trim();
   }
@@ -234,7 +234,7 @@ export class ScapeGameService extends Service {
         // `::steer <text>` from an in-game chat message, or
         // any future admin path. Route to the same operator
         // goal buffer the POST /prompt endpoint writes to.
-        const source = frame.fromPlayerName ?? frame.source ?? "operator";
+        const source = frame.fromPlayerName ?? frame.source;
         this.log(
           `operator steering from ${source}: "${frame.text.slice(0, 80)}"`,
         );
@@ -565,7 +565,7 @@ export class ScapeGameService extends Service {
           dummyMemory,
           dummyState,
         );
-        const text = result?.text ?? "";
+        const text = result.text ?? "";
         if (text.length > 0) {
           sections.push(text);
         }

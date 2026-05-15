@@ -44,7 +44,7 @@ export * from "./components/shared/LanguageDropdown.tsx";
 export * from "./components/shared/ThemeToggle.tsx";
 export { LoadingScreen } from "./components/shell/LoadingScreen.tsx";
 export * from "./components/workspace/AppWorkspaceChrome.tsx";
-export * from "./config/app-config.ts";
+// === Phase 5C: ./config/app-config moved to @elizaos/app-core/config/app-config ===
 export * from "./config/boot-config.ts";
 export * from "./config/boot-config-react.tsx";
 export type {
@@ -60,7 +60,7 @@ export {
   buildPluginListUiSpec,
 } from "./config/plugin-ui-spec.ts";
 export * from "./config/ui-spec.ts";
-export * from "./desktop-runtime/index.ts";
+// === Phase 5C: ./desktop-runtime moved to @elizaos/app-core/runtime/desktop ===
 export * from "./events/index.ts";
 export * from "./hooks/useActivityEvents.ts";
 export * from "./hooks/useBugReport.tsx";

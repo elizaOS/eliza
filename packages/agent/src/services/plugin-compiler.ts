@@ -186,7 +186,12 @@ function transpileWithBun(entrySource: string, loader: esbuild.Loader): string {
       }) => { transformSync(source: string): string };
     };
   };
-  const Transpiler = bunGlobal.Bun?.Transpiler;
+  if (!bunGlobal.Bun) {
+    throw new Error(
+      "PluginCompiler.compile: esbuild service stopped and Bun is unavailable",
+    );
+  }
+  const Transpiler = bunGlobal.Bun.Transpiler;
   if (!Transpiler) {
     throw new Error(
       "PluginCompiler.compile: esbuild service stopped and Bun.Transpiler is unavailable",

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { type IAgentRuntime, Service } from "@elizaos/core";
+import type { IAgentRuntime } from "@elizaos/core";
 import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
@@ -89,7 +89,7 @@ const DENY_ENV_PATTERNS = [
   /ELIZA_VAULT_PASSPHRASE/i,
 ];
 
-export class AcpService extends Service {
+export class AcpService {
   static serviceType = "ACP_SUBPROCESS_SERVICE";
 
   capabilityDescription =
@@ -98,7 +98,7 @@ export class AcpService extends Service {
   readonly defaultApprovalPreset: ApprovalPreset;
   readonly agentSelectionStrategy: string;
 
-  protected override runtime: RuntimeLike;
+  private readonly runtime: RuntimeLike;
   private readonly logger: RuntimeLogger;
   private readonly store: SessionStore;
   private readonly cliPath: string;
@@ -112,7 +112,6 @@ export class AcpService extends Service {
   private started = false;
 
   constructor(runtime: IAgentRuntime, opts: { store?: SessionStore } = {}) {
-    super(runtime);
     this.runtime = runtime as RuntimeLike;
     this.logger = (this.runtime.logger ?? {}) as RuntimeLogger;
     this.store = opts.store ?? new InMemorySessionStore();

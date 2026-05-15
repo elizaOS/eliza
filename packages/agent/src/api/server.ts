@@ -38,6 +38,11 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type {
+  AppManagerLike,
+  FavoriteAppsStore,
+} from "@elizaos/plugin-app-manager";
+import type { WalletRouteDependencies } from "@elizaos/plugin-wallet";
 import {
   getStylePresets,
   isMobilePlatform,
@@ -115,12 +120,23 @@ type BrowserWorkspaceTabKind = NonNullable<
   Parameters<typeof openBrowserWorkspaceTab>[0]["kind"]
 >;
 
-const { discoverSkills, handleCuratedSkillsRoutes, handleSkillsRoutes } =
-  await import("@elizaos/plugin-agent-skills");
-const { AppManager, handleAppsRoutes } = await import(
-  "@elizaos/plugin-app-manager"
-);
-const { handleWalletRoutes } = await import("@elizaos/plugin-wallet");
+let agentSkillsApiPromise: Promise<any> | undefined;
+function getAgentSkillsApi(): Promise<any> {
+  agentSkillsApiPromise ??= import("@elizaos/plugin-agent-skills");
+  return agentSkillsApiPromise;
+}
+
+let appManagerApiPromise: Promise<any> | undefined;
+function getAppManagerApi(): Promise<any> {
+  appManagerApiPromise ??= import("@elizaos/plugin-app-manager");
+  return appManagerApiPromise;
+}
+
+let walletApiPromise: Promise<any> | undefined;
+function getWalletApi(): Promise<any> {
+  walletApiPromise ??= import("@elizaos/plugin-wallet");
+  return walletApiPromise;
+}
 
 let pluginRegistryApiPromise:
   | Promise<typeof import("@elizaos/plugin-registry")>
@@ -2087,6 +2103,7 @@ async function handleRequest(
   // Curated-skills routes must be dispatched before generic skills routes
   // (which reject "/" in skill IDs).
   if (pathname.startsWith("/api/skills/curated")) {
+    const { handleCuratedSkillsRoutes } = await getAgentSkillsApi();
     if (
       await handleCuratedSkillsRoutes({
         req,
@@ -2103,6 +2120,7 @@ async function handleRequest(
     }
   }
   if (pathname.startsWith("/api/skills")) {
+    const { discoverSkills, handleSkillsRoutes } = await getAgentSkillsApi();
     if (
       await handleSkillsRoutes({
         req,
@@ -2230,6 +2248,7 @@ async function handleRequest(
         return;
       }
     }
+    const { handleWalletRoutes } = await getWalletApi();
     if (
       await handleWalletRoutes({
         req,
@@ -2256,29 +2275,19 @@ async function handleRequest(
           deriveSolanaAddress,
           setSolanaWalletEnv,
           resolveWalletRpcReadiness: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["resolveWalletRpcReadiness"]
+            WalletRouteDependencies["resolveWalletRpcReadiness"]
           >(resolveWalletRpcReadiness),
           resolveWalletNetworkMode: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["resolveWalletNetworkMode"]
+            WalletRouteDependencies["resolveWalletNetworkMode"]
           >(resolveWalletNetworkMode),
           getStoredWalletRpcSelections: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["getStoredWalletRpcSelections"]
+            WalletRouteDependencies["getStoredWalletRpcSelections"]
           >(getStoredWalletRpcSelections),
           applyWalletRpcConfigUpdate: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["applyWalletRpcConfigUpdate"]
+            WalletRouteDependencies["applyWalletRpcConfigUpdate"]
           >(applyWalletRpcConfigUpdate),
           resolveWalletCapabilityStatus: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["resolveWalletCapabilityStatus"]
+            WalletRouteDependencies["resolveWalletCapabilityStatus"]
           >((args: { config: ElizaConfig; runtime: AgentRuntime | null }) =>
             resolveWalletCapabilityStatus({
               config: args.config,
@@ -2288,9 +2297,7 @@ async function handleRequest(
           isCloudWalletEnabled,
           persistConfigEnv,
           createIntegrationTelemetrySpan: coerce<
-            Parameters<
-              typeof handleWalletRoutes
-            >[0]["deps"]["createIntegrationTelemetrySpan"]
+            WalletRouteDependencies["createIntegrationTelemetrySpan"]
           >(createIntegrationTelemetrySpan),
         },
         runtime: state.runtime ?? null,
@@ -2643,7 +2650,8 @@ async function handleRequest(
   }
 
   // ── App routes (/api/apps/*) ──────────────────────────────────────────
-  const appManager = state.appManager as InstanceType<typeof AppManager>;
+  const { handleAppsRoutes } = await getAppManagerApi();
+  const appManager = state.appManager as AppManagerLike;
   if (
     await handleAppsRoutes({
       req,
@@ -2697,10 +2705,12 @@ async function handleRequest(
               ? (runtime as IAgentRuntime)
               : null,
           ),
-        recordHeartbeat: (runId) => appManager.recordHeartbeat(runId),
-        getInfo: (pluginManager, name) =>
-          appManager.getInfo(pluginManager, name),
-      },
+	        recordHeartbeat: (runId) => appManager.recordHeartbeat(runId),
+	        startStaleRunSweeper: (getRuntime) =>
+	          appManager.startStaleRunSweeper(getRuntime),
+	        getInfo: (pluginManager, name) =>
+	          appManager.getInfo(pluginManager, name),
+      } satisfies AppManagerLike,
       getPluginManager: () => getPluginManagerForState(state),
       parseBoundedLimit,
       readJsonBody,
@@ -2710,7 +2720,7 @@ async function handleRequest(
       favoriteApps: {
         read: () => readFavoriteAppsFromConfig(state.config),
         write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
-      },
+      } satisfies FavoriteAppsStore,
     })
   ) {
     return;
@@ -3063,6 +3073,7 @@ export async function startApiServer(opts?: {
     : resolveDefaultAgentName(config);
 
   const deletedConversationIds = readDeletedConversationIdsFromState();
+  const { AppManager } = await getAppManagerApi();
 
   const state: ServerState = {
     runtime: opts?.runtime ?? null,
@@ -3146,7 +3157,7 @@ export async function startApiServer(opts?: {
   // the Defense-of-the-Agents game loop — would tick forever after the
   // browser disappeared. The sweeper invokes the same `stopRun` route
   // hook the Stop button uses so plugins have one shutdown path.
-  (state.appManager as InstanceType<typeof AppManager>).startStaleRunSweeper(
+  (state.appManager as AppManagerLike).startStaleRunSweeper(
     () => state.runtime,
   );
 
@@ -3334,18 +3345,23 @@ export async function startApiServer(opts?: {
       error(res, msg, 500);
     }
   });
-  void getOptionalPluginApi<{
-    attachMobileDeviceBridgeToServer: (server: http.Server) => Promise<void>;
-  }>("capacitor")
-    .then(({ attachMobileDeviceBridgeToServer }) =>
-      attachMobileDeviceBridgeToServer(server),
-    )
-    .catch((err: unknown) => {
-      logger.warn(
-        "[eliza-api] Failed to attach mobile device bridge:",
-        err instanceof Error ? err.message : String(err),
-      );
-    });
+  if (
+    isMobilePlatform() ||
+    process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
+  ) {
+    void getOptionalPluginApi<{
+      attachMobileDeviceBridgeToServer: (server: http.Server) => Promise<void>;
+    }>("capacitor")
+      .then(({ attachMobileDeviceBridgeToServer }) =>
+        attachMobileDeviceBridgeToServer(server),
+      )
+      .catch((err: unknown) => {
+        logger.warn(
+          "[eliza-api] Failed to attach mobile device bridge:",
+          err instanceof Error ? err.message : String(err),
+        );
+      });
+  }
   logger.debug(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
   // Node's `http.createServer` defaults are tuned for snappy web traffic:
@@ -3512,6 +3528,7 @@ export async function startApiServer(opts?: {
   const startDeferredStartupWork = () => {
     void (async () => {
       try {
+        const { discoverSkills } = await getAgentSkillsApi();
         const discoveredSkills = await discoverSkills(
           workspaceDir,
           state.config,

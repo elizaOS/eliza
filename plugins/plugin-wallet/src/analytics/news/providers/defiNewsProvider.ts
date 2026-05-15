@@ -132,7 +132,7 @@ export const defiNewsProvider: Provider = {
       console.log("DeFi News services found, generating report...");
 
       // Check if a specific token is mentioned in the message
-      const messageText = message.content?.text || "";
+      const messageText = message.content.text || "";
 
       defiNewsInfo += `=== DEFI & CRYPTO MARKET REPORT ===\n\n`;
 
@@ -283,7 +283,7 @@ export const extractSymbols = (
   // strict mode will only extract symbols that are clearly formatted as a symbol using $SOL format
   mode: "strict" | "loose" = "loose",
 ): string[] => {
-  if (!text?.matchAll) return [];
+  if (!text.matchAll) return [];
   const symbols = new Set<string>();
 
   // Match patterns

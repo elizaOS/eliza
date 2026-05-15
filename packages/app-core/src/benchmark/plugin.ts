@@ -569,6 +569,7 @@ providers:
 
 action-based benchmarks: call BENCHMARK_ACTION with one of:
 - AgentBench: { "command": "search[laptop] | click[42] | ls | SELECT ..." }
+- WebShop: { "command": "search[...] | click[...] | buy" }
 - Tau-bench: { "tool_name": "...", "arguments": { ... } }
 - LifeOpsBench: { "tool_name": "CALENDAR", "arguments": { "subaction": "update_event", ... } }
 - LOCA-bench: { "tool_name": "filesystem_list_directory | filesystem_read_file | filesystem_write_file | ...", "arguments": { ... } }
@@ -741,6 +742,8 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   const isGauntletBenchmark = benchmark === "gauntlet";
   const isLocaBenchmark =
     benchmark === "loca_bench" || benchmark === "loca-bench";
+  const isWebShopBenchmark =
+    benchmark === "webshop" || benchmark === "web-shop";
   const isConversationalBenchmark = new Set([
     "woobench",
     "woo-bench",
@@ -937,6 +940,13 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     );
     sections.push(
       `Example tool-call JSON: {"actions":["BENCHMARK_ACTION"],"text":"","params":{"BENCHMARK_ACTION":{"tool_name":"filesystem_list_directory","arguments":{"path":"source_data"}}}}`,
+    );
+  } else if (isWebShopBenchmark) {
+    sections.push(
+      `This is WebShop. Choose exactly one command from Available Actions and call BENCHMARK_ACTION with params.BENCHMARK_ACTION.command set to that exact command string.`,
+    );
+    sections.push(
+      `Do not answer with progress prose. The WebShop runner executes only the captured command, for example {"actions":["BENCHMARK_ACTION"],"text":"","params":{"BENCHMARK_ACTION":{"command":"click[buy now]"}}}.`,
     );
   } else if (ctx.tools && ctx.tools.length > 0) {
     // Tau-bench-style harnesses: emphasise tool calling

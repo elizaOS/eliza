@@ -172,6 +172,66 @@ function tidyAssistantTextSpacing(input: string): string {
     .replace(/\s+\)/g, ")");
 }
 
+function tryParseObject(input: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(input);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function isResponseHandlerPayload(
+  value: Record<string, unknown>,
+): value is Record<string, unknown> & { replyText: string } {
+  const shouldRespond = value.shouldRespond;
+  return (
+    typeof value.replyText === "string" &&
+    (shouldRespond === "RESPOND" ||
+      shouldRespond === "IGNORE" ||
+      shouldRespond === "STOP" ||
+      Array.isArray(value.contexts) ||
+      Array.isArray(value.intents) ||
+      Array.isArray(value.threadOps) ||
+      Array.isArray(value.candidateActionNames))
+  );
+}
+
+/**
+ * Extracts the user-facing reply from a response-handler payload that leaked as
+ * plain text. Local models can emit tool arguments as text when function-call
+ * transport is unavailable, for example:
+ *
+ *   "RESPOND", "contexts": ["simple"], "replyText": "Hello"
+ *
+ * That string is valid object content once the first value is named
+ * `shouldRespond`, so parse that shape without touching ordinary chat text.
+ */
+export function extractAssistantReplyText(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed.includes("replyText")) return null;
+
+  const candidates = [trimmed];
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    candidates.push(`{"shouldRespond":${trimmed}}`);
+    if (trimmed.endsWith("}")) {
+      candidates.push(`{"shouldRespond":${trimmed.slice(0, -1)}}`);
+    }
+  }
+
+  for (const candidate of candidates) {
+    const parsed = tryParseObject(candidate);
+    if (!parsed || !isResponseHandlerPayload(parsed)) continue;
+    const replyText = parsed.replyText.trim();
+    if (!replyText) return null;
+    return stripAssistantStageDirections(replyText).trim() || null;
+  }
+
+  return null;
+}
+
 export function stripAssistantStageDirections(input: string): string {
   let normalized = input;
   normalized = stripWrappedStageDirections(normalized, /\*([^*\n]+)\*/g);

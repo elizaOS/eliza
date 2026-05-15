@@ -95,6 +95,7 @@ export const marketProvider: Provider = {
             getTokensMarketData?: (
               chain: string,
               addresses: string[],
+              options?: GetCacheTimedOptions,
             ) => Promise<Record<string, MarketTokenSnapshot | undefined>>;
           }
         | undefined;
@@ -112,7 +113,7 @@ export const marketProvider: Provider = {
         !birdeyeService ||
         typeof birdeyeService.getTokensMarketData !== "function"
       ) {
-        runtime.logger?.error(
+        runtime.logger.error(
           "Birdeye service is unavailable or does not have getTokensMarketData method",
         );
         return {
@@ -126,7 +127,6 @@ export const marketProvider: Provider = {
         };
       }
 
-      // FIXME: cache (how fresh does this have to be? 5 mins? 1 min?)
       // get data
       const tokenSymbolsPromise =
         solanaService && typeof solanaService.getTokensSymbols === "function"
@@ -134,7 +134,9 @@ export const marketProvider: Provider = {
           : Promise.resolve({} as Record<string, string>);
 
       const [result, tokenSymbols] = await Promise.all([
-        birdeyeService.getTokensMarketData("solana", CAs),
+        birdeyeService.getTokensMarketData("solana", CAs, {
+          notOlderThan: 30 * 1000,
+        }),
         tokenSymbolsPromise,
       ]);
 
@@ -183,7 +185,7 @@ export const marketProvider: Provider = {
       const boundedRows = rows.slice(0, MARKET_ROW_LIMIT);
       const data = {
         tokens: Object.fromEntries(
-          Object.entries(result ?? {}).slice(0, MARKET_ROW_LIMIT),
+          Object.entries(result).slice(0, MARKET_ROW_LIMIT),
         ),
       };
 
@@ -210,7 +212,7 @@ export const marketProvider: Provider = {
         text,
       };
     } catch (err) {
-      runtime.logger?.error(
+      runtime.logger.error(
         `Error fetching Birdeye market data: ${err instanceof Error ? err.message : String(err)}`,
       );
       return {

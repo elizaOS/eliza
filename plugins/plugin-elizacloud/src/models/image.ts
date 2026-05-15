@@ -114,9 +114,11 @@ export async function handleImageDescription(
     let response: Response | null = null;
     let attemptedRetry = false;
     for (let attempt = 0; attempt < 2; attempt++) {
-      response = await client.routes.postApiV1ChatCompletionsRaw({
+      const nextResponse = await client.routes.postApiV1ChatCompletionsRaw({
         json: requestBody,
       });
+      if (!nextResponse) break;
+      response = nextResponse;
       if (response.status !== 429 || attemptedRetry) break;
 
       // `Number(null) === 0`, so guard against a missing header before
@@ -133,7 +135,7 @@ export async function handleImageDescription(
           retryAfter?: unknown;
         };
         bodyRetryAfter =
-          typeof peek?.retryAfter === "number" && Number.isFinite(peek.retryAfter)
+          typeof peek.retryAfter === "number" && Number.isFinite(peek.retryAfter)
             ? peek.retryAfter
             : undefined;
       } catch {
@@ -160,8 +162,10 @@ export async function handleImageDescription(
       throw new Error("ElizaOS Cloud API did not return a response");
     }
 
-    if (!response.ok) {
-      const status = response.status;
+    const finalResponse = response;
+
+    if (!finalResponse.ok) {
+      const status = finalResponse.status;
       if (status === 402) {
         throw new Error(
           "Eliza Cloud credits exhausted — top up at https://www.elizacloud.ai/dashboard/settings?tab=billing"
@@ -187,7 +191,7 @@ export async function handleImageDescription(
       };
     };
 
-    const typedResult = (await response.json()) as OpenAIResponseType;
+    const typedResult = (await finalResponse.json()) as OpenAIResponseType;
     const content = typedResult.choices?.[0]?.message?.content;
 
     if (typedResult.usage) {

@@ -14,7 +14,10 @@
 import * as React from "react";
 import { client } from "../../api/client";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
+import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
+import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type { VoicePrefixStep } from "../../onboarding/voice-prefix";
+import { applyVoiceProviderDefaults } from "../../voice/character-voice-config";
 import { VoicePrefixSteps } from "./VoicePrefixSteps";
 
 export interface VoicePrefixGateProps {
@@ -28,6 +31,18 @@ export function VoicePrefixGate({
   onDone,
 }: VoicePrefixGateProps): React.ReactElement {
   const [step, setStep] = React.useState<VoicePrefixStep>("welcome");
+  const { defaults: voiceProviderDefaults } = useDefaultProviderPresets();
+  const voiceConfig = React.useMemo(
+    () => applyVoiceProviderDefaults(null, voiceProviderDefaults),
+    [voiceProviderDefaults],
+  );
+  const voice = useVoiceChat({
+    cloudConnected: false,
+    interruptOnSpeech: false,
+    lang: "en-US",
+    onTranscript: () => {},
+    voiceConfig,
+  });
 
   const handleAdvance = React.useCallback(
     (next: VoicePrefixStep | null) => {
@@ -79,6 +94,7 @@ export function VoicePrefixGate({
           onBack={handleBack}
           onSkipPrefix={handleSkipPrefix}
           onRequestMicPermission={handleRequestMicPermission}
+          onAgentSpeak={voice.speak}
         />
       </div>
     </div>

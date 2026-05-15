@@ -101,7 +101,7 @@ async function runHfCli(
         stdio: ["ignore", "ignore", "pipe"],
       });
       let stderr = "";
-      child.stderr?.on("data", (chunk) => {
+      child.stderr.on("data", (chunk) => {
         stderr += String(chunk);
       });
       child.on("error", (err: NodeJS.ErrnoException) => {

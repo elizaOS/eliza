@@ -107,6 +107,18 @@ function resolvePackageExportTarget(value: unknown): string | null {
   return null;
 }
 
+function isAppPluginPackage(
+  packageRootName: string,
+  entryName: string,
+  pkg: Record<string, unknown>,
+): boolean {
+  if (packageRootName !== "plugins") return true;
+  if (entryName.startsWith("app-")) return true;
+  const elizaos = pkg.elizaos;
+  if (!elizaos || typeof elizaos !== "object") return false;
+  return "app" in elizaos;
+}
+
 function createWorkspacePackageAliases(packageRoots: string[]) {
   const aliases = [];
   for (const packageRoot of packageRoots) {
@@ -114,16 +126,21 @@ function createWorkspacePackageAliases(packageRoots: string[]) {
     const packageRootName = path.basename(packageRoot);
     for (const entry of fs.readdirSync(packageRoot, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      if (packageRootName === "plugins" && !entry.name.startsWith("app-")) {
-        continue;
-      }
       const pkgPath = path.join(packageRoot, entry.name, "package.json");
       if (!fs.existsSync(pkgPath)) continue;
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as Record<
+        string,
+        unknown
+      >;
+      if (!isAppPluginPackage(packageRootName, entry.name, pkg)) continue;
       const pkgName = pkg.name;
-      if (!pkgName) continue;
+      if (typeof pkgName !== "string") continue;
+      const pkgExports =
+        pkg.exports && typeof pkg.exports === "object"
+          ? (pkg.exports as Record<string, unknown>)
+          : {};
       const pkgDir = path.dirname(pkgPath);
-      for (const [key, value] of Object.entries(pkg.exports || {})) {
+      for (const [key, value] of Object.entries(pkgExports)) {
         if (key !== ".") continue;
         const exportTarget = resolvePackageExportTarget(value);
         if (!exportTarget) continue;
@@ -157,13 +174,17 @@ function createAppPluginBrowserAliases() {
   if (!fs.existsSync(pluginsRoot)) return aliases;
 
   for (const entry of fs.readdirSync(pluginsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.startsWith("app-")) continue;
+    if (!entry.isDirectory()) continue;
     const pkgDir = path.join(pluginsRoot, entry.name);
     const pkgPath = path.join(pkgDir, "package.json");
     if (!fs.existsSync(pkgPath)) continue;
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    if (!isAppPluginPackage("plugins", entry.name, pkg)) continue;
     const pkgName = pkg.name;
-    if (!pkgName) continue;
+    if (typeof pkgName !== "string") continue;
 
     const browserEntry = resolveAppPluginBrowserEntry(pkgDir);
     if (browserEntry) {
@@ -1012,6 +1033,68 @@ export default defineConfig({
         find: /^@elizaos\/plugin-browser$/,
         replacement: path.join(pluginBrowserBridgeSrcRoot, "index.ts"),
       },
+      // Side-effect app modules are loaded by the renderer only to register
+      // UI surfaces/pages. Route handlers and runtime services stay server-side.
+      ...[
+        ["@elizaos/plugin-babylon", "plugins/plugin-babylon/src/ui/index.ts"],
+        ["@elizaos/plugin-scape", "plugins/plugin-scape/src/ui/index.ts"],
+        [
+          "@elizaos/plugin-hyperscape",
+          "plugins/plugin-hyperscape/src/ui/index.ts",
+        ],
+        [
+          "@elizaos/plugin-2004scape",
+          "plugins/plugin-2004scape/src/ui/index.ts",
+        ],
+        [
+          "@elizaos/plugin-defense-of-the-agents",
+          "plugins/plugin-defense-of-the-agents/src/ui/index.ts",
+        ],
+        [
+          "@elizaos/plugin-clawville",
+          "plugins/plugin-clawville/src/ui/index.ts",
+        ],
+        [
+          "@elizaos/plugin-trajectory-logger",
+          "plugins/plugin-trajectory-logger/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-shopify-ui",
+          "plugins/plugin-shopify-ui/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-hyperliquid-app",
+          "plugins/plugin-hyperliquid-app/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-polymarket-app",
+          "plugins/plugin-polymarket-app/src/register.ts",
+        ],
+        ["@elizaos/plugin-wallet-ui", "plugins/plugin-wallet-ui/src/index.ts"],
+        [
+          "@elizaos/plugin-contacts/register",
+          "plugins/plugin-contacts/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-device-settings/register",
+          "plugins/plugin-device-settings/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-messages/register",
+          "plugins/plugin-messages/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-phone/register",
+          "plugins/plugin-phone/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-wifi/register",
+          "plugins/plugin-wifi/src/register.ts",
+        ],
+      ].map(([pkgName, relativeEntry]) => ({
+        find: new RegExp(`^${escapeRegExp(pkgName)}$`),
+        replacement: path.resolve(elizaRoot, relativeEntry),
+      })),
       // Node built-in subpaths that browser polyfills don't provide.
       // Server-only code imports these but they're never executed in-browser.
       ...["util/types", "stream/promises", "stream/web"].flatMap((sub) => [
@@ -1045,6 +1128,33 @@ export default defineConfig({
       {
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiPkgRoot, "src/$1"),
+      },
+      // The LifeOps package root also exports server/service internals.
+      // The renderer only needs the UI facade; keep it off Discord/native deps.
+      {
+        find: /^@elizaos\/plugin-lifeops$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-lifeops/src/ui.ts",
+        ),
+      },
+      // The Steward app package root includes wallet route handlers and
+      // server-side signing services. The renderer imports only these views.
+      {
+        find: /^@elizaos\/plugin-steward-app$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-steward-app/src/ui.ts",
+        ),
+      },
+      // The training package root exports runtime routes and native backends.
+      // The renderer only needs the fine-tuning UI facade.
+      {
+        find: /^@elizaos\/plugin-training$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "plugins/plugin-training/src/ui/index.ts",
+        ),
       },
       // Browser-safe aliases for local app plugin package roots.
       ...createAppPluginBrowserAliases(),

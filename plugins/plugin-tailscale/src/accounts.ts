@@ -160,7 +160,7 @@ export function readTailscaleAccounts(
   runtime: IAgentRuntime,
 ): TailscaleAccountConfig[] {
   const accounts = new Map<string, TailscaleAccountConfig>();
-  const characterConfig = runtime.character?.settings?.tailscale as
+  const characterConfig = runtime.character.settings?.tailscale as
     | { accounts?: unknown }
     | undefined;
   const characterAccounts = characterConfig?.accounts;

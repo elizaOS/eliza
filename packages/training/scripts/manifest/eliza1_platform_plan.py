@@ -16,9 +16,11 @@ from typing import Final, Mapping, Sequence
 
 try:
     from scripts.manifest.eliza1_manifest import (
+        ELIZA_1_DFLASH_TIERS,
         ELIZA_1_HF_REPO,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
+        ELIZA_1_VISION_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
@@ -28,9 +30,11 @@ try:
     )
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import (
+        ELIZA_1_DFLASH_TIERS,
         ELIZA_1_HF_REPO,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
+        ELIZA_1_VISION_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
@@ -48,13 +52,19 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "27b-256k": "Q4_K_M",
 }
 
-TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = ("Q4_K_M", "Q6_K", "Q8_0")
+TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = (
+    "Q3_K_M",
+    "Q4_K_M",
+    "Q5_K_M",
+    "Q6_K",
+    "Q8_0",
+)
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("32k",),
-    "2b": ("32k",),
-    "4b": ("64k", "128k"),
-    "9b": ("64k", "128k"),
+    "0_8b": ("128k",),
+    "2b": ("128k",),
+    "4b": ("128k",),
+    "9b": ("128k",),
     "27b": ("128k",),
     "27b-256k": ("256k",),
 }
@@ -68,7 +78,8 @@ VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.1.2.ggml.bin",)
 VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
     "vad/silero-vad-int8.onnx",
 )
-VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
+VISION_TIERS: Final[frozenset[str]] = ELIZA_1_VISION_TIERS
+DFLASH_TIERS: Final[frozenset[str]] = ELIZA_1_DFLASH_TIERS
 
 COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     tier: (
@@ -76,7 +87,7 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "licenses/LICENSE.voice",
         "licenses/LICENSE.asr",
         "licenses/LICENSE.vad",
-        "licenses/LICENSE.dflash",
+        *(("licenses/LICENSE.dflash",) if tier in DFLASH_TIERS else ()),
         "licenses/LICENSE.eliza-1",
         *(("licenses/LICENSE.vision",) if tier in VISION_TIERS else ()),
     )
@@ -185,7 +196,11 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
     dispatch_reports = tuple(
         f"evals/{backend}_dispatch.json" for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
     )
-    dflash_files = (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
+    dflash_files = (
+        (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
+        if tier in DFLASH_TIERS
+        else ()
+    )
     vision_files = (
         (f"vision/mmproj-{tier}.gguf",)
         if tier in VISION_TIERS
@@ -459,9 +474,9 @@ def render_readiness(
         "Important caveats:",
         "",
         "- Text, ASR, DFlash, vision mmproj, and OmniVoice TTS payloads are "
-        "GGUF artifacts. 0.8B/2B/4B/9B carry OmniVoice first with Kokoro as "
-        "the bundled fallback; Kokoro is ONNX by design. 27B-class tiers ship "
-        "OmniVoice GGUF only.",
+        "GGUF artifacts when a tier ships them. 0.8B/2B/4B use Kokoro only; "
+        "9B carries Kokoro plus OmniVoice; Kokoro is ONNX by design. "
+        "27B-class tiers ship OmniVoice GGUF only.",
         "- VAD is a native GGML artifact at "
         "`vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. "
         "Legacy bundles may additionally carry the ONNX fallback "

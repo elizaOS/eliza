@@ -216,7 +216,7 @@ async function executeInstall(
 			let stdout = "";
 			let stderr = "";
 
-			child.stdout?.on("data", (data) => {
+			child.stdout.on("data", (data) => {
 				stdout += data.toString();
 				onProgress?.({
 					phase: "installing",
@@ -225,7 +225,7 @@ async function executeInstall(
 				});
 			});
 
-			child.stderr?.on("data", (data) => {
+			child.stderr.on("data", (data) => {
 				stderr += data.toString();
 			});
 

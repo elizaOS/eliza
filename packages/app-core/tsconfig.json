@@ -35,7 +35,7 @@
       "@elizaos/ui/navigation": ["../ui/src/navigation/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
-      "@elizaos/cloud-sdk": ["../../cloud/packages/sdk/src/index.ts"],
+      "@elizaos/cloud-sdk": ["../cloud-sdk/src/index.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
       ],

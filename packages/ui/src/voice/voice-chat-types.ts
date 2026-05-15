@@ -37,10 +37,13 @@ export interface SpeechRecognitionResultList {
 
 export type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
 
-export interface WindowWithSpeechRecognition extends Window {
+export type WindowWithSpeechRecognition = Omit<
+  Window,
+  "SpeechRecognition" | "webkitSpeechRecognition"
+> & {
   SpeechRecognition?: SpeechRecognitionCtor;
   webkitSpeechRecognition?: SpeechRecognitionCtor;
-}
+};
 
 function isSpeechRecognitionCtor(
   value: unknown,

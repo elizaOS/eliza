@@ -29,7 +29,7 @@ export const shellPlugin: Plugin = {
   // Self-declared auto-enable: activate when features.shell is enabled.
   autoEnable: {
     shouldEnable: (env, config) => {
-      const f = (config?.features as Record<string, unknown> | undefined)?.shell;
+      const f = (config.features as Record<string, unknown> | undefined)?.shell;
       return (
         (f === true ||
           (typeof f === "object" &&

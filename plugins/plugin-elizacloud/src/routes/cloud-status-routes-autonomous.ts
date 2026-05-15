@@ -212,9 +212,9 @@ export async function handleCloudStatusRoutes(
     const creditResponse =
       await client.get<Record<string, unknown>>("/credits/balance");
     const balance =
-      coerceCloudBalance(creditResponse?.balance) ??
+      coerceCloudBalance(creditResponse.balance) ??
       coerceCloudBalance(
-        (creditResponse?.data as Record<string, unknown> | undefined)?.balance,
+        (creditResponse.data as Record<string, unknown> | undefined)?.balance,
       );
     if (typeof balance !== "number") {
       throw new Error(

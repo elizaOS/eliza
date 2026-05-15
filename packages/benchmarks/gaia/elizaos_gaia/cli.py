@@ -18,7 +18,7 @@ import os
 import sys
 from pathlib import Path
 
-from elizaos_gaia.harness import resolve_harness
+from elizaos_gaia.harness import harness_env_updates, resolve_harness
 from elizaos_gaia.providers import (
     PRESETS,
     ModelProvider,
@@ -262,10 +262,31 @@ async def run_benchmark_async(args: argparse.Namespace) -> int:
     hf_token = args.hf_token or os.getenv("HF_TOKEN")
 
     route = resolve_harness(config)
+    os.environ.update(harness_env_updates(route))
+    if config.model_name:
+        model_env = {
+            "BENCHMARK_MODEL_NAME": config.model_name,
+            "MODEL_NAME": config.model_name,
+            "OPENAI_MODEL": config.model_name,
+            "OPENAI_LARGE_MODEL": config.model_name,
+            "OPENAI_SMALL_MODEL": config.model_name,
+            "GROQ_LARGE_MODEL": config.model_name,
+            "GROQ_SMALL_MODEL": config.model_name,
+            "OPENROUTER_LARGE_MODEL": config.model_name,
+            "OPENROUTER_SMALL_MODEL": config.model_name,
+            "CEREBRAS_MODEL": config.model_name,
+            "CEREBRAS_LARGE_MODEL": config.model_name,
+            "CEREBRAS_SMALL_MODEL": config.model_name,
+        }
+        for key, value in model_env.items():
+            os.environ[key] = value
+    if config.api_base:
+        os.environ["OPENAI_BASE_URL"] = config.api_base
+        os.environ["OPENAI_API_BASE"] = config.api_base
     print(f"\nHarness: {route.harness} ({route.backend})")
 
     server_mgr = None
-    spawn_server = not os.environ.get("ELIZA_BENCH_URL")
+    spawn_server = route.harness == "eliza" and not os.environ.get("ELIZA_BENCH_URL")
     try:
         if spawn_server:
             from eliza_adapter.server_manager import ElizaServerManager
@@ -292,7 +313,9 @@ async def run_benchmark_async(args: argparse.Namespace) -> int:
             f"Correct: {results.metrics.correct_answers}/{results.metrics.total_questions}"
         )
 
-        return 0 if results.metrics.overall_accuracy >= 0.3 else 2
+        # Low accuracy is a benchmark score, not a runner failure. The matrix
+        # extracts the score from the emitted JSON artifact.
+        return 0
     except KeyboardInterrupt:
         print("\nBenchmark interrupted by user")
         return 130

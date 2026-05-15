@@ -204,8 +204,8 @@ export class YOLODetector {
     }
 
     const meta = await sharp(imageBuffer).metadata();
-    const origW = meta.width ?? 0;
-    const origH = meta.height ?? 0;
+    const origW = meta.width;
+    const origH = meta.height;
     if (!origW || !origH) return [];
 
     // YOLOv8 expects 640x640 letterboxed RGB input, /255 normalization.

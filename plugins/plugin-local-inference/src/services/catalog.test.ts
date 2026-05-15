@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
 	buildHuggingFaceResolveUrl,
 	DEFAULT_ELIGIBLE_MODEL_IDS,
+	ELIZA_1_DFLASH_TIER_IDS,
 	ELIZA_1_TIER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
@@ -44,13 +45,13 @@ describe("local inference catalog", () => {
 		}
 	});
 
-	it("uses the single elizaos HuggingFace repo for every visible Eliza-1 tier", () => {
+	it("uses the single elizalabs HuggingFace repo for every visible Eliza-1 tier", () => {
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
 			const tier = model.id.slice("eliza-1-".length);
-			expect(model.hfRepo).toBe("elizaos/eliza-1");
+			expect(model.hfRepo).toBe("elizalabs/eliza-1");
 			expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
 			expect(buildHuggingFaceResolveUrl(model)).toContain(
-				`/elizaos/eliza-1/resolve/main/bundles/${tier}/`,
+				`/elizalabs/eliza-1/resolve/main/bundles/${tier}/`,
 			);
 		}
 	});
@@ -145,29 +146,35 @@ describe("local inference catalog", () => {
 	});
 
 	it("declares the mandatory local runtime contract for every default tier", () => {
-		const baseKernels = [
-			"dflash",
-			"turbo3",
-			"turbo4",
-			"qjl_full",
-			"polarquant",
-		];
+		const baseKernels = ["turbo3", "turbo4", "qjl_full", "polarquant"];
+		const dflashTierIds = new Set(ELIZA_1_DFLASH_TIER_IDS);
 		for (const id of ELIZA_1_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
 				"llama-server",
-			);
-			expect(model?.runtime?.dflash?.drafterModelId, `${id} drafter`).toBe(
-				`${id}-drafter`,
-			);
-			expect(model?.companionModelIds, `${id} companions`).toContain(
-				`${id}-drafter`,
 			);
 			for (const kernel of baseKernels) {
 				expect(
 					model?.runtime?.optimizations?.requiresKernel,
 					`${id} kernel ${kernel}`,
 				).toContain(kernel);
+			}
+			if (dflashTierIds.has(id)) {
+				expect(model?.runtime?.dflash?.drafterModelId, `${id} drafter`).toBe(
+					`${id}-drafter`,
+				);
+				expect(model?.companionModelIds, `${id} companions`).toContain(
+					`${id}-drafter`,
+				);
+				expect(model?.runtime?.optimizations?.requiresKernel).toContain(
+					"dflash",
+				);
+			} else {
+				expect(model?.runtime?.dflash, `${id} dflash`).toBeUndefined();
+				expect(model?.companionModelIds, `${id} companions`).toBeUndefined();
+				expect(model?.runtime?.optimizations?.requiresKernel).not.toContain(
+					"dflash",
+				);
 			}
 			if ((model?.contextLength ?? 0) >= 65536) {
 				expect(model?.runtime?.optimizations?.requiresKernel).toContain(
@@ -184,7 +191,7 @@ describe("local inference catalog", () => {
 		const drafters = MODEL_CATALOG.filter(
 			(m) => m.runtimeRole === "dflash-drafter",
 		);
-		expect(drafters.length).toBe(ELIZA_1_TIER_IDS.length);
+		expect(drafters.length).toBe(ELIZA_1_DFLASH_TIER_IDS.length);
 		for (const drafter of drafters) {
 			expect(drafter.hiddenFromCatalog).toBe(true);
 			expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(drafter.id)).toBe(false);
@@ -221,8 +228,8 @@ describe("local inference catalog", () => {
 			"kokoro",
 		]);
 		expect(findCatalogModel("eliza-1-9b")?.voiceBackends).toEqual([
-			"omnivoice",
 			"kokoro",
+			"omnivoice",
 		]);
 		expect(findCatalogModel("eliza-1-27b")?.voiceBackends).toEqual([
 			"omnivoice",

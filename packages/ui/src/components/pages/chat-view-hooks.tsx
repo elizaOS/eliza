@@ -22,12 +22,16 @@ import {
   type ContinuousChatState,
   useContinuousChat,
 } from "../../hooks/useContinuousChat";
+import { useDefaultProviderPresets } from "../../hooks/useDefaultProviderPresets";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
-import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
+import {
+  applyVoiceProviderDefaults,
+  resolveCharacterVoiceConfigFromAppConfig,
+} from "../../voice/character-voice-config";
 import {
   DEFAULT_VOICE_CONTINUOUS_MODE,
   type VoiceAssistantSpeechTelemetry,
@@ -216,7 +220,12 @@ export function useChatVoiceController(options: {
   const [cloudVoiceSnapshot, setCloudVoiceSnapshot] = useState<boolean | null>(
     null,
   );
+  const { defaults: voiceProviderDefaults } = useDefaultProviderPresets();
   const [voiceConfig, setVoiceConfig] = useState<VoiceConfig | null>(null);
+  const effectiveVoiceConfig = useMemo(
+    () => applyVoiceProviderDefaults(voiceConfig, voiceProviderDefaults),
+    [voiceConfig, voiceProviderDefaults],
+  );
   /** Bumps after each `getConfig` (or inline VOICE_CONFIG event) settles — game-modal auto-speak waits for this so TTS does not run with a stale/null voice profile and get stuck deduped. */
   const [voiceBootstrapTick, setVoiceBootstrapTick] = useState(0);
   const [voiceLatency, setVoiceLatency] = useState<VoiceLatencyState | null>(
@@ -491,7 +500,7 @@ export function useChatVoiceController(options: {
     onPlaybackStart: handleVoicePlaybackStart,
     onTranscript: handleVoiceTranscript,
     onTranscriptPreview: handleVoiceTranscriptPreview,
-    voiceConfig,
+    voiceConfig: effectiveVoiceConfig,
   });
   const {
     queueAssistantSpeech,

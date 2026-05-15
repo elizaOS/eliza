@@ -245,7 +245,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			message: Memory,
 		): Promise<boolean> => {
 			if (!(await canManageApps(runtime, message))) return false;
-			const text = message.content?.text ?? "";
+			const text = message.content.text ?? "";
 
 			// Multi-turn follow-up: short reply matches a pending intent task.
 			if (isChoiceReply(text)) {
@@ -271,7 +271,7 @@ export function createAppAction(deps: AppActionDeps = {}): Action {
 			}
 
 			const client = clientFactory();
-			const text = message.content?.text ?? "";
+			const text = message.content.text ?? "";
 
 			// Follow-up choice reply always routes to create.
 			if (isChoiceReply(text)) {

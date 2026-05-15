@@ -113,24 +113,29 @@ describe("createBundledLiveKitTurnDetector — filename resolution", () => {
 		expect(detector).toBeNull();
 	});
 
-	it("picks the canonical onnx/model_q8.onnx when both are present", async () => {
+	// The factory currently always returns null even when the bundle is
+	// fully staged: the @huggingface/transformers runtime dependency was
+	// removed and the LiveKit detector cannot load its tokenizer without it.
+	// Once a ggml/llama.cpp-backed tokenizer lands, these cases should
+	// expect `not.toBeNull()` again.
+
+	it("returns null when the canonical bundle is staged (tokenizer dep removed)", async () => {
 		await stub(
 			DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
 			LEGACY_LIVEKIT_TURN_DETECTOR_ONNX,
 			"tokenizer.json",
 		);
 		const detector = await createBundledLiveKitTurnDetector({ modelDir });
-		expect(detector).not.toBeNull();
+		expect(detector).toBeNull();
 	});
 
-	it("falls back to the legacy model_quantized.onnx when canonical missing", async () => {
+	it("returns null when only the legacy bundle is staged (tokenizer dep removed)", async () => {
 		await stub(LEGACY_LIVEKIT_TURN_DETECTOR_ONNX, "tokenizer.json");
 		const detector = await createBundledLiveKitTurnDetector({ modelDir });
-		// Construction succeeds — the legacy bundle layout is still usable.
-		expect(detector).not.toBeNull();
+		expect(detector).toBeNull();
 	});
 
-	it("honors an explicit onnxFilename even when the default is present", async () => {
+	it("returns null with an explicit onnxFilename (tokenizer dep removed)", async () => {
 		await stub(
 			DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
 			"custom/finetune.onnx",
@@ -140,7 +145,7 @@ describe("createBundledLiveKitTurnDetector — filename resolution", () => {
 			modelDir,
 			onnxFilename: "custom/finetune.onnx",
 		});
-		expect(detector).not.toBeNull();
+		expect(detector).toBeNull();
 	});
 
 	it("returns null when the explicit onnxFilename does not exist", async () => {
@@ -154,14 +159,14 @@ describe("createBundledLiveKitTurnDetector — filename resolution", () => {
 		expect(detector).toBeNull();
 	});
 
-	it("honors ELIZA_TURN_DETECTOR_ONNX env override", async () => {
+	it("returns null with ELIZA_TURN_DETECTOR_ONNX env override (tokenizer dep removed)", async () => {
 		await stub("custom/from-env.onnx", "tokenizer.json");
 		process.env.ELIZA_TURN_DETECTOR_ONNX = "custom/from-env.onnx";
 		const detector = await createBundledLiveKitTurnDetector({ modelDir });
-		expect(detector).not.toBeNull();
+		expect(detector).toBeNull();
 	});
 
-	it("honors ELIZA_TURN_DETECTOR_MODEL_DIR env override", async () => {
+	it("returns null with ELIZA_TURN_DETECTOR_MODEL_DIR env override (tokenizer dep removed)", async () => {
 		const otherDir = await mkdtemp(path.join(tmpdir(), "eliza-turn-env-"));
 		try {
 			const tok = path.join(otherDir, "tokenizer.json");
@@ -171,7 +176,7 @@ describe("createBundledLiveKitTurnDetector — filename resolution", () => {
 			await writeFile(onnx, "");
 			process.env.ELIZA_TURN_DETECTOR_MODEL_DIR = otherDir;
 			const detector = await createBundledLiveKitTurnDetector({});
-			expect(detector).not.toBeNull();
+			expect(detector).toBeNull();
 		} finally {
 			await rm(otherDir, { recursive: true, force: true });
 		}

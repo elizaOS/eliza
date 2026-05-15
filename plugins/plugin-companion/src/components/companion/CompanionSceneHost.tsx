@@ -265,7 +265,7 @@ function CompanionSceneSurface({
         for (const engine of stageEnginesRef.current) {
           engine.resetDragOrbit();
         }
-        event.preventDefault?.();
+        event.preventDefault();
         return;
       }
       dragStateRef.current = {
@@ -274,7 +274,7 @@ function CompanionSceneSurface({
         startX: event.clientX,
         startY: event.clientY,
       };
-      event.preventDefault?.();
+      event.preventDefault();
     },
     [active, interactive],
   );
@@ -526,7 +526,7 @@ function CompanionSceneSurface({
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ offset: number }>).detail;
-      const offset = detail?.offset ?? 0;
+      const offset = detail?.offset;
       for (const engine of stageEnginesRef.current) {
         engine.setCameraXOffset(offset);
       }

@@ -32,7 +32,7 @@ ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
-ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
+ELIZA_1_HF_REPO: Final[str] = "elizalabs/eliza-1"
 
 # The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
@@ -42,6 +42,13 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "9b",
     "27b",
     "27b-256k",
+)
+
+ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
+    ("2b", "4b", "9b", "27b", "27b-256k")
+)
+ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(
+    ("4b", "9b", "27b", "27b-256k")
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -67,6 +74,7 @@ ELIZA_1_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
 )
 ELIZA_1_VOICE_MANIFEST_VERSION: Final[str] = "1"
 VOICE_PRESET_CACHE_PATH: Final[str] = "cache/voice-preset-default.bin"
+MIN_TEXT_CONTEXT: Final[int] = 131_072
 
 # Release-state vocabulary recorded in `manifest.provenance.releaseState` and
 # `evidence/release.json.releaseState`. `base-v1` is the v1 product: the
@@ -145,8 +153,8 @@ CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "0_8b": ("turboquant_q4", "qjl", "polarquant", "turbo3_tcq"),
+    "2b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
     "4b": (
         "turboquant_q4",
         "qjl",
@@ -194,6 +202,13 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
 }
 
+ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
+    ("2b", "4b", "9b", "27b", "27b-256k")
+)
+ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(
+    ("4b", "9b", "27b", "27b-256k")
+)
+
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "0_8b": "Q4_K_M",
     "2b": "Q4_K_M",
@@ -207,22 +222,22 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 # of ``OMNIVOICE_QUANT_LADDER_BY_TIER`` in
 # ``packages/shared/src/local-inference/catalog.ts``. The downloader picks
 # the appropriate level from this ladder at install time based on the
-# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Small tiers keep
-# the OmniVoice ladder narrow and retain Kokoro as their low-latency fallback.
+# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Kokoro-only tiers
+# publish no OmniVoice ladder.
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
-    "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
-    "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "0_8b": (),
+    "2b": (),
+    "4b": (),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("omnivoice", "kokoro"),
-    "2b": ("omnivoice", "kokoro"),
-    "4b": ("omnivoice", "kokoro"),
-    "9b": ("omnivoice", "kokoro"),
+    "0_8b": ("kokoro",),
+    "2b": ("kokoro",),
+    "4b": ("kokoro",),
+    "9b": ("kokoro", "omnivoice"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
 }
@@ -238,9 +253,8 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line uses OmniVoice as the required/default backend for active
-    0_8b, 2b, 4b, and 9b tiers, keeps Kokoro as their low-latency fallback,
-    and ships OmniVoice only for 27B-class tiers.
+    release line uses Kokoro for 0_8b/2b/4b, keeps Kokoro first with
+    OmniVoice bundled at 9B, and ships OmniVoice only for 27B-class tiers.
     """
 
     out: list[str] = []
@@ -534,8 +548,11 @@ def validate_manifest(
     if not _is_object(lineage):
         errors.append("lineage: must be an object")
     else:
+        required_lineage_slots = ["text", "voice"]
+        if tier in ELIZA_1_DFLASH_TIERS:
+            required_lineage_slots.append("drafter")
         # Required lineage entries.
-        for slot in ("text", "voice", "drafter"):
+        for slot in required_lineage_slots:
             entry = lineage.get(slot)
             if not _is_object(entry):
                 errors.append(f"lineage.{slot}: must be an object")
@@ -545,7 +562,9 @@ def validate_manifest(
             if not entry.get("license"):
                 errors.append(f"lineage.{slot}.license: required")
         # Wave-6 optional lineage entries — must validate when present.
-        for slot in ("asr", "embedding", "vision", "vad", "wakeword"):
+        for slot in ("drafter", "asr", "embedding", "vision", "vad", "wakeword"):
+            if slot in required_lineage_slots:
+                continue
             entry = lineage.get(slot)
             if entry is None:
                 continue
@@ -562,8 +581,8 @@ def validate_manifest(
     if not _is_object(files):
         errors.append("files: must be an object")
     else:
-        kinds_min1 = ("text", "voice", "dflash", "cache")
-        kinds_optional = ("asr", "vision")
+        kinds_min1 = ("text", "voice", "cache")
+        kinds_optional = ("asr", "vision", "dflash")
         # Wave-6 fully-optional file slots: missing key = "this bundle
         # does not ship this component". The validator does not require
         # an empty array for absence (TS schema makes the array itself
@@ -597,6 +616,20 @@ def validate_manifest(
                     errors.append(
                         f"files.{kind}[{i}].ctx: must be a positive integer when set"
                     )
+                if kind == "text":
+                    if ctx is None:
+                        errors.append(f"files.text[{i}].ctx: required for text GGUFs")
+                    elif isinstance(ctx, int) and ctx < MIN_TEXT_CONTEXT:
+                        errors.append(
+                            f"files.text[{i}].ctx: {ctx} is below the 128k text GGUF floor"
+                        )
+                    path = entry.get("path")
+                    if isinstance(path, str) and re.search(
+                        r"-(32k|64k)\.gguf$", path, re.I
+                    ):
+                        errors.append(
+                            f"files.text[{i}].path: 32k/64k text GGUFs are below the Eliza-1 release floor"
+                        )
 
     # ── kernels ──────────────────────────────────────────────────────────
     kernels = manifest["kernels"]
@@ -673,6 +706,52 @@ def validate_manifest(
                         errors.append(
                             f"kernels.recipeManifest.{target}.perBlockTolerance: required positive number"
                         )
+
+        eagle3 = kernels.get("eagle3")
+        if eagle3 is not None:
+            if not _is_object(eagle3):
+                errors.append("kernels.eagle3: must be an object when present")
+            else:
+                enabled = eagle3.get("enabled")
+                if enabled is not None and not isinstance(enabled, bool):
+                    errors.append(
+                        "kernels.eagle3.enabled: must be a boolean when present"
+                    )
+                capability = eagle3.get("capability")
+                if capability is not None and (
+                    not isinstance(capability, str) or not capability
+                ):
+                    errors.append(
+                        "kernels.eagle3.capability: must be a non-empty string when present"
+                    )
+                spec_type = eagle3.get("specType")
+                if spec_type is not None and (
+                    not isinstance(spec_type, str) or not spec_type
+                ):
+                    errors.append(
+                        "kernels.eagle3.specType: must be a non-empty string when present"
+                    )
+                model = eagle3.get("model")
+                if model is not None and (not isinstance(model, str) or not model):
+                    errors.append(
+                        "kernels.eagle3.model: must be a non-empty string when present"
+                    )
+                failure = eagle3.get("failure")
+                if failure is not None and (
+                    not isinstance(failure, str) or not failure
+                ):
+                    errors.append(
+                        "kernels.eagle3.failure: must be a non-empty string when present"
+                    )
+                max_draft_tokens = eagle3.get("maxDraftTokens")
+                if max_draft_tokens is not None and (
+                    not isinstance(max_draft_tokens, int)
+                    or isinstance(max_draft_tokens, bool)
+                    or max_draft_tokens <= 0
+                ):
+                    errors.append(
+                        "kernels.eagle3.maxDraftTokens: must be a positive integer when present"
+                    )
 
     # ── evals ────────────────────────────────────────────────────────────
     evals = manifest["evals"]
@@ -810,6 +889,65 @@ def validate_manifest(
                         "evals.dflash: passed=true but acceptanceRate/speedup is null"
                     )
 
+        eagle3_eval = evals.get("eagle3")
+        if eagle3_eval is not None:
+            if not _is_object(eagle3_eval):
+                errors.append("evals.eagle3: must be an object when present")
+            else:
+                rate = eagle3_eval.get("acceptanceRate")
+                if rate is not None and (
+                    not isinstance(rate, (int, float))
+                    or isinstance(rate, bool)
+                    or not 0 <= rate <= 1
+                ):
+                    errors.append(
+                        "evals.eagle3.acceptanceRate: must be null or a number in [0, 1]"
+                    )
+                speedup = eagle3_eval.get("speedup")
+                if speedup is not None and (
+                    not isinstance(speedup, (int, float))
+                    or isinstance(speedup, bool)
+                    or speedup < 0
+                ):
+                    errors.append(
+                        "evals.eagle3.speedup: must be null or a non-negative number"
+                    )
+                pass_value = eagle3_eval.get("pass")
+                passed_value = eagle3_eval.get("passed")
+                if pass_value is not None and not isinstance(pass_value, bool):
+                    errors.append("evals.eagle3.pass: must be a boolean when present")
+                if passed_value is not None and not isinstance(passed_value, bool):
+                    errors.append("evals.eagle3.passed: must be a boolean when present")
+                if (
+                    isinstance(pass_value, bool)
+                    and isinstance(passed_value, bool)
+                    and pass_value != passed_value
+                ):
+                    errors.append(
+                        "evals.eagle3: pass and passed must agree when both are present"
+                    )
+                failure = eagle3_eval.get("failure")
+                if failure is not None and (
+                    not isinstance(failure, str) or not failure
+                ):
+                    errors.append(
+                        "evals.eagle3.failure: must be a non-empty string when present"
+                    )
+                eagle3_passed = (
+                    passed_value
+                    if isinstance(passed_value, bool)
+                    else pass_value
+                    if isinstance(pass_value, bool)
+                    else None
+                )
+                if eagle3_passed is True and (
+                    eagle3_eval.get("acceptanceRate") is None
+                    or eagle3_eval.get("speedup") is None
+                ):
+                    errors.append(
+                        "evals.eagle3: passed=true but acceptanceRate/speedup is null"
+                    )
+
     # ── ram budget ───────────────────────────────────────────────────────
     ram = manifest["ramBudgetMb"]
     if not _is_object(ram):
@@ -933,6 +1071,20 @@ def validate_manifest(
                 f"kernels.required: missing required kernel for tier {tier}: {k}"
             )
 
+    for i, entry in enumerate(files["text"]):
+        ctx = entry.get("ctx")
+        if ctx is None:
+            errors.append(f"files.text[{i}].ctx: required for text GGUFs")
+        elif isinstance(ctx, int) and ctx < MIN_TEXT_CONTEXT:
+            errors.append(
+                f"files.text[{i}].ctx: {ctx} is below the 128k text GGUF floor"
+            )
+        path = entry.get("path")
+        if isinstance(path, str) and re.search(r"-(32k|64k)\.gguf$", path, re.I):
+            errors.append(
+                f"files.text[{i}].path: 32k/64k text GGUFs are below the Eliza-1 release floor"
+            )
+
     must_have_recipe_manifest = require_publish_ready or manifest["defaultEligible"]
     if must_have_recipe_manifest:
         missing_recipe_targets: list[str] = []
@@ -953,6 +1105,33 @@ def validate_manifest(
         errors.append(
             "kernels.required: text variant with ctx > 64k requires turbo3_tcq"
         )
+
+    dflash_enabled = tier in ELIZA_1_DFLASH_TIERS
+    vision_enabled = tier in ELIZA_1_VISION_TIERS
+    if dflash_enabled:
+        if not files.get("dflash"):
+            errors.append(f"files.dflash: required for DFlash-enabled tier {tier}")
+        if files.get("dflash") and not lineage.get("drafter"):
+            errors.append("lineage.drafter: required when files.dflash is non-empty")
+        if lineage.get("drafter") and not files.get("dflash"):
+            errors.append("files.dflash: required when lineage.drafter is present")
+    else:
+        if files.get("dflash"):
+            errors.append(f"files.dflash: unsupported for DFlash-disabled tier {tier}")
+        if "dflash" in declared_set:
+            errors.append(
+                f"kernels.required: dflash is unsupported for DFlash-disabled tier {tier}"
+            )
+        if lineage.get("drafter"):
+            errors.append(
+                f"lineage.drafter: unsupported for DFlash-disabled tier {tier}"
+            )
+
+    if vision_enabled:
+        if not files.get("vision"):
+            errors.append(f"files.vision: required for vision-enabled tier {tier}")
+    elif files.get("vision"):
+        errors.append(f"files.vision: unsupported for text/voice-only tier {tier}")
 
     # ── §4 contract: frozen voice cache artifacts ───────────────────────
     cache_paths = {
@@ -1051,9 +1230,11 @@ def validate_manifest(
     # and passed. Keep this in lockstep with the TS runtime validator.
     dflash_gate = evals.get("dflash")
     if not _is_object(dflash_gate):
-        if manifest["defaultEligible"]:
+        if manifest["defaultEligible"] and dflash_enabled:
             errors.append("evals.dflash: required when defaultEligible=true")
     else:
+        if not dflash_enabled:
+            errors.append(f"evals.dflash: unsupported for DFlash-disabled tier {tier}")
         if dflash_gate["passed"] and (
             dflash_gate["acceptanceRate"] is None
             or dflash_gate["speedup"] is None
@@ -1061,7 +1242,7 @@ def validate_manifest(
             errors.append(
                 "evals.dflash: passed=true but acceptanceRate/speedup is null"
             )
-        if manifest["defaultEligible"]:
+        if manifest["defaultEligible"] and dflash_enabled:
             if not dflash_gate["passed"]:
                 readiness_errors.append(
                     "evals.dflash.passed: false for defaultEligible manifest"
@@ -1081,7 +1262,9 @@ def validate_manifest(
     if _is_object(provenance) and provenance.get("releaseState") == "base-v1":
         sources = provenance.get("sourceModels")
         if _is_object(sources):
-            required_slots = ["text", "voice", "drafter"]
+            required_slots = ["text", "voice"]
+            if dflash_enabled:
+                required_slots.append("drafter")
             for slot in ("asr", "vad", "embedding", "vision"):
                 if files.get(slot):
                     required_slots.append(slot)
@@ -1197,6 +1380,15 @@ def build_manifest(
     dflash_acceptance_rate: float | None = None,
     dflash_speedup: float | None = None,
     dflash_passed: bool | None = None,
+    # EAGLE3 speculative-decode metadata is optional for all tiers. It is
+    # recorded separately from DFlash so manifests can describe either or both
+    # without changing required-tier policy.
+    eagle3_kernel: Mapping[str, Any] | None = None,
+    eagle3_eval: bool = False,
+    eagle3_acceptance_rate: float | None = None,
+    eagle3_speedup: float | None = None,
+    eagle3_passed: bool | None = None,
+    eagle3_failure: str | None = None,
     voice_capabilities: Sequence[str] | None = None,
     voice_version: str = ELIZA_1_VOICE_MANIFEST_VERSION,
     voice_frozen: bool = True,
@@ -1290,6 +1482,22 @@ def build_manifest(
             "speedup": dflash_speedup,
             "passed": bool(dflash_passed),
         }
+    if (
+        eagle3_eval
+        or eagle3_acceptance_rate is not None
+        or eagle3_speedup is not None
+        or eagle3_passed is not None
+        or eagle3_failure is not None
+    ):
+        evals["eagle3"] = {}
+        if eagle3_acceptance_rate is not None or eagle3_eval:
+            evals["eagle3"]["acceptanceRate"] = eagle3_acceptance_rate
+        if eagle3_speedup is not None or eagle3_eval:
+            evals["eagle3"]["speedup"] = eagle3_speedup
+        if eagle3_passed is not None or eagle3_eval:
+            evals["eagle3"]["passed"] = bool(eagle3_passed)
+        if eagle3_failure is not None:
+            evals["eagle3"]["failure"] = eagle3_failure
 
     manifest: dict[str, Any] = {
         "$schema": ELIZA_1_MANIFEST_SCHEMA_URL,
@@ -1326,6 +1534,8 @@ def build_manifest(
         merged_recipe_manifest = merge_kernel_manifest_fragments(kernel_manifest_fragments)
     if merged_recipe_manifest is not None:
         manifest["kernels"]["recipeManifest"] = merged_recipe_manifest
+    if eagle3_kernel is not None:
+        manifest["kernels"]["eagle3"] = dict(eagle3_kernel)
     manifest["ramBudgetMb"] = {
         "min": ram_budget_min_mb,
         "recommended": ram_budget_recommended_mb,

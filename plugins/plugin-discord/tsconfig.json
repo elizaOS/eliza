@@ -2,6 +2,8 @@
 	"compilerOptions": {
 		"baseUrl": ".",
 		"paths": {
+			"@elizaos/contracts": ["../../packages/contracts/src/index.ts"],
+			"@elizaos/contracts/*": ["../../packages/contracts/src/*"],
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
 			"@elizaos/core/*": ["../../packages/core/src/*"],
 			"@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"]

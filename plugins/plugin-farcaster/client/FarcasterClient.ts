@@ -215,7 +215,7 @@ export class FarcasterClient {
       timeline.push(neynarCastToCast(cast));
     }
 
-    const nextCursor = response.next?.cursor ?? undefined;
+    const nextCursor = response.next.cursor ?? undefined;
 
     return {
       timeline,

@@ -260,4 +260,4 @@ jobs:
           merge-multiple: true
 
       - name: Aggregate
-        run: bun run scripts/aggregate-scenario-reports.mjs reports/scenarios/all >> "$GITHUB_STEP_SUMMARY"
+        run: bun run packages/scripts/aggregate-scenario-reports.mjs reports/scenarios/all >> "$GITHUB_STEP_SUMMARY"

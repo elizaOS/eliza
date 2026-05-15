@@ -17,11 +17,10 @@
     "polarquant"
   ],
   "latestReports": [
-    "reports/porting/2026-05-10/platform-verification-performance-grid.md",
-    "reports/porting/2026-05-11/guided-structured-decoding.md",
     "verify/HARDWARE_VERIFICATION.md",
     "verify/CUDA_VERIFICATION.md",
-    "reports/porting/2026-05-11/cuda-kernel-optimization.md"
+    "reports/porting/2026-05-14/kokoro-llama-cpp-feasibility.md",
+    "reports/porting/2026-05-14/smoke-pipeline-audit.md"
   ],
   "hardwareEvidence": {
     "schemaVersion": 1,
@@ -97,8 +96,7 @@
     "capabilityKey": "fused_attn",
     "description": "Fused attention forward (QJL-K score -> online softmax -> quantized-V mix, score vector never materialized). C reference: eliza_fused_attn_qjl_tbq3 (bit-exact to the fork's GGML_OP_FUSED_ATTN_QJL_TBQ CPU op) and eliza_fused_attn_qjl_polar in packages/inference/verify/qjl_polar_ref.{h,c}. This is an optimization on top of the existing five score/softmax/V-mix kernels (AGENTS.md \u00a73) \u2014 a backend that cannot dispatch the fused op routes through the standalone path, it does not silently degrade. NOT in requiredRuntimeCapabilityKeys / manifestKernelNames yet: no backend has verified a fused dispatch, so the capability is not part of the build-script required-kernel gate. Promote it (and add a manifest kernel name) only once a backend reports a runtime-ready fused smoke.",
     "contractDocs": [
-      "verify/fused-attn-op-contract.md",
-      "reports/porting/2026-05-11/metal-fused-attn-and-polar-preht-design.md"
+      "verify/fused-attn-op-contract.md"
     ],
     "fixtures": [
       {
@@ -194,6 +192,60 @@
     "nextGate": "Vulkan fused dispatch verified on Intel ANV (GGML_OP_FUSED_ATTN_QJL_TBQ graph route, vulkan-dispatch-smoke 7/7, max diff 4.5e-8; standalone fused 1920/1920 PASS). CUDA fused verified on NVIDIA GeForce RTX 5080 Laptop (Blackwell sm_120, NATIVE SASS via CUDA 12.8 nvcc V12.8.93 \u2014 no longer compute_90 PTX JIT): make cuda-verify-fused 1920/1920 outputs PASS across 4 GQA/n_kv cases, max diff 4.47e-7, against the warp-cooperative kernel that mirrors the production cuda/fused-attn-qjl-tbq.cu (compiles clean into the fork libggml-cuda via patchCudaKernels + -DGGML_CUDA_FUSED_ATTN_QJL=ON; cuobjdump --list-elf confirms sm_80/86/89/90/90a/100/120 cubins with the fat-binary arch list). build-llama-cpp-dflash.mjs resolveNvcc()+cudaCompilerFlags() pin the 12.8 side-by-side toolkit; P3 occupancy/__ldg/vectorized-load + DP4A-as-default-standalone-QJL landed (nsys: DP4A ~2.27x faster than fp32 qjl_score); P2 cp.async deferred (on-cache QJL/TBQ blocks have no 4B alignment at a token stride). **Full ggml-cuda integration build verified-here 2026-05-12** \u2014 the non-fused linux-x64-cuda target (forkCommit a61c93aaa5 = v1.2.0-eliza, builtAt 2026-05-12T17:16:58Z) is installed at ~/.eliza/local-inference/bin/dflash/linux-x64-cuda/ with libggml-cuda.so.0.9.7 (473 MB, real sm_120 SASS), llama-bench + llama-server + llama-cli + llama-completion. llama-bench on the bundle 0_6b/1_7b GGUFs reports pp512 19932 / tg128 345 (0_6b) and pp512 11931 / tg128 195 (1_7b) at d=0; pp512 1956 / tg128 108 (0_6b) and pp512 1797 / tg128 85 (1_7b) at d=16000. llama-server boots clean (4 GPU slots, /health ok, /completion 32 tokens at 420 tps decode / 1093 tps prefill). cuda-verify + cuda-verify-fused re-run against this real install: 8/8 + 1920/1920 PASS. The linux-x64-cuda-fused build is queued. CPU fused dispatch verified on Intel Core Ultra 9 275HX (GGML_OP_FUSED_ATTN_QJL_TBQ CPU graph route, cpu-dispatch-smoke MT-vs-ST bit-identical, no NaN). Remaining: run metal-verify-fused on an Apple-Silicon Mac (metal/fused_attn_*.metal + metal/polar_preht.metal authored, byte-faithful to the Vulkan ports). fused_attn stays out of requiredRuntimeCapabilityKeys / manifestKernelNames \u2014 it is an optimization on top of the five required kernels (AGENTS.md \u00a73), not a required kernel \u2014 until all backends report a runtime-ready fused smoke and the manifest schema adds a fused kernel name."
   },
   "kernels": [
+    {
+      "id": "istft",
+      "family": "iSTFT",
+      "manifestKernelNames": [],
+      "runtimeCapabilityKeys": [],
+      "description": "Native GGML_OP_ISTFT (inverse short-time Fourier transform). Promotes J2's CPU post-graph iSTFT to a backend-dispatched graph op. Enables Vulkan/CUDA acceleration for the Kokoro iSTFTNet vocoder head. Not a KV-cache kernel; not in requiredRuntimeCapabilityKeys or manifestKernelNames until all backends report runtime-ready smoke.",
+      "fixtures": [
+        {
+          "path": "verify/fixtures/istft.json",
+          "kernelField": "istft",
+          "shape": "cases",
+          "requiredFields": [
+            "n_fft",
+            "hop_length",
+            "win_length",
+            "cases"
+          ],
+          "caseRequiredFields": [
+            "mag",
+            "phase",
+            "expected_pcm"
+          ]
+        }
+      ],
+      "metal": {
+        "source": "ggml/src/ggml-metal/eliza-kernels/istft.metal",
+        "verifySymbol": "kernel_istft_f32"
+      },
+      "vulkan": {
+        "source": "ggml/src/ggml-vulkan/vulkan-shaders/istft.comp",
+        "spirvName": "istft_f32"
+      },
+      "cuda": {
+        "source": "ggml/src/ggml-cuda/istft.cu",
+        "opFunction": "ggml_cuda_op_istft"
+      },
+      "verifyHarness": {
+        "cpp": "verify/istft-verify.cpp",
+        "mjs": "verify/istft-verify.mjs",
+        "makeTargets": [
+          "kernel-contract",
+          "reference-test",
+          "cpu-bench"
+        ],
+        "tolerance": 1e-3
+      },
+      "runtimeStatus": {
+        "metal": "authored-only",
+        "vulkan": "authored",
+        "cuda": "authored",
+        "cpu": "authored"
+      },
+      "notes": "K5 wave: CPU + Vulkan + CUDA kernels authored. Metal authored only — hardware blocked (no Mac available). Kokoro wiring: ggml_istft() replaces the CPU post-graph call; falls back to CPU overlap-add when backend does not support the op. Verify harness generates 10 random (n_fft, hop, win, T) cases and checks max-abs error <= 1e-3 across CPU/Vulkan/CUDA."
+    },
     {
       "id": "turbo3",
       "family": "TurboQuant",

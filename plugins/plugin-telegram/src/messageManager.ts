@@ -149,14 +149,14 @@ export class MessageManager {
         "Processing image from message",
       );
 
-      if ("photo" in message && message.photo?.length > 0) {
+      if ("photo" in message && message.photo.length > 0) {
         const photo = message.photo[message.photo.length - 1];
         const fileLink = await this.bot.telegram.getFileLink(photo.file_id);
         imageUrl = fileLink.toString();
       } else if (
         "document" in message &&
-        message.document?.mime_type?.startsWith("image/") &&
-        !message.document?.mime_type?.startsWith("application/pdf")
+        message.document.mime_type?.startsWith("image/") &&
+        !message.document.mime_type.startsWith("application/pdf")
       ) {
         const fileLink = await this.bot.telegram.getFileLink(
           message.document.file_id,
@@ -489,7 +489,7 @@ export class MessageManager {
     }
 
     // Process images
-    if ("photo" in message && message.photo?.length > 0) {
+    if ("photo" in message && message.photo.length > 0) {
       const imageInfo = await this.processImage(message);
       if (imageInfo) {
         const photo = message.photo[message.photo.length - 1];
@@ -702,18 +702,52 @@ export class MessageManager {
     if (!text) {
       return chunks;
     }
+
     let currentChunk = "";
+
+    const appendSegment = (segment: string) => {
+      let remaining = segment;
+
+      while (remaining.length > 0) {
+        const availableLength = MAX_MESSAGE_LENGTH - currentChunk.length;
+
+        if (remaining.length <= availableLength) {
+          currentChunk += remaining;
+          return;
+        }
+
+        if (availableLength > 0) {
+          currentChunk += remaining.slice(0, availableLength);
+          remaining = remaining.slice(availableLength);
+        }
+
+        if (currentChunk) {
+          chunks.push(currentChunk);
+          currentChunk = "";
+        }
+      }
+    };
 
     const lines = text.split("\n");
     for (const line of lines) {
-      if (currentChunk.length + line.length + 1 <= MAX_MESSAGE_LENGTH) {
-        currentChunk += (currentChunk ? "\n" : "") + line;
-      } else {
-        if (currentChunk) {
-          chunks.push(currentChunk);
-        }
-        currentChunk = line;
+      let segment = currentChunk ? `\n${line}` : line;
+      if (!segment) {
+        continue;
       }
+
+      if (
+        currentChunk &&
+        currentChunk.length + segment.length > MAX_MESSAGE_LENGTH
+      ) {
+        chunks.push(currentChunk);
+        currentChunk = "";
+        segment = line;
+        if (!segment) {
+          continue;
+        }
+      }
+
+      appendSegment(segment);
     }
 
     if (currentChunk) {
@@ -874,15 +908,16 @@ export class MessageManager {
 
           let sentMessages: boolean | Message.TextMessage[] = false;
           // channelType target === 'telegram'
-          if (content?.channelType === "DM") {
+          if (content.channelType === "DM") {
             sentMessages = [];
             if (ctx.from) {
-              // FIXME split on 4096 chars
-              const res = await this.bot.telegram.sendMessage(
-                ctx.from.id,
-                content.text,
-              );
-              sentMessages.push(res);
+              for (const chunk of this.splitMessage(content.text)) {
+                const res = await this.bot.telegram.sendMessage(
+                  ctx.from.id,
+                  chunk,
+                );
+                sentMessages.push(res);
+              }
             }
           } else {
             sentMessages = await this.sendMessageInChunks(
@@ -1005,8 +1040,8 @@ export class MessageManager {
           src: "plugin:telegram",
           agentId: this.runtime.agentId,
           chatId: ctx.chat?.id,
-          messageId: ctx.message?.message_id,
-          from: ctx.from?.username || ctx.from?.id,
+          messageId: ctx.message.message_id,
+          from: ctx.from.username || ctx.from.id,
           error: error instanceof Error ? error.message : String(error),
         },
         "Error handling Telegram message",
@@ -1195,7 +1230,7 @@ export class MessageManager {
         messageThreadId,
       );
 
-      if (!sentMessages?.length) {
+      if (!sentMessages.length) {
         return [];
       }
 

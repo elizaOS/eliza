@@ -5,6 +5,7 @@ import {
 import type { VoiceConfig } from "../api/client";
 import { asRecord } from "../state/config-readers";
 import { PREMADE_VOICES } from "./types";
+import type { DefaultVoiceProviderResult } from "./voice-provider-defaults";
 
 const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_flash_v2_5";
 const DEFAULT_ELEVENLABS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
@@ -122,5 +123,17 @@ export function resolveCharacterVoiceConfigFromAppConfig(args: {
       },
     },
     shouldPersist: true,
+  };
+}
+
+export function applyVoiceProviderDefaults(
+  config: VoiceConfig | null,
+  defaults: DefaultVoiceProviderResult,
+): VoiceConfig {
+  const base = config ?? {};
+  return {
+    ...base,
+    provider: base.provider ?? defaults.tts,
+    asr: base.asr ?? { provider: defaults.asr },
   };
 }

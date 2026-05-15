@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const MODELS_ROOT = path.join(
   os.homedir(),
@@ -12,20 +13,19 @@ const MODELS_ROOT = path.join(
   "models",
 );
 
-const VISION_TIERS = new Set([
-  "0_8b",
-  "2b",
+const VISION_TIER_LIST = [
   "4b",
   "9b",
   "27b",
   "27b-256k",
-  "27b-256k",
-]);
-const TEXT_VOICE_ONLY_TIERS = new Set(["0_6b", "1_7b"]);
+];
+const TEXT_VOICE_ONLY_TIER_LIST = ["0_8b", "2b"];
+const VISION_TIERS = new Set(VISION_TIER_LIST);
+const TEXT_VOICE_ONLY_TIERS = new Set(TEXT_VOICE_ONLY_TIER_LIST);
 
 function usage() {
   return [
-    "Usage: node packages/inference/verify/eliza1_vision_smoke.mjs --bundle-dir <path> [options]",
+    "Usage: node plugins/plugin-local-inference/native/verify/eliza1_vision_smoke.mjs --bundle-dir <path> [options]",
     "",
     "Options:",
     "  --bundle-dir <path>       Eliza-1 bundle directory to inspect",
@@ -112,6 +112,81 @@ function relativeFiles(bundleDir, dir) {
   );
 }
 
+function tierAliases(tier) {
+  const aliases = new Set([tier]);
+  if (tier.includes("_")) aliases.add(tier.replace("_", "."));
+  if (tier === "0_8b") aliases.add("0.8b");
+  return [...aliases];
+}
+
+function basenameHasTier(file, tier) {
+  const base = path.basename(file).toLowerCase();
+  return tierAliases(tier).some((alias) => base.includes(alias.toLowerCase()));
+}
+
+function isMmprojGguf(file) {
+  const base = path.basename(file).toLowerCase();
+  return base.endsWith(".gguf") && /mmproj|projector|multimodal/.test(base);
+}
+
+function visionMmprojCandidates(bundleDir, tier, manifestVisionFiles) {
+  const candidates = [];
+  const push = (source, rel, rank) => {
+    if (typeof rel !== "string" || rel.trim() === "") return;
+    const normalizedRel = rel.replaceAll("\\", "/");
+    const abs = path.join(bundleDir, normalizedRel);
+    candidates.push({
+      source,
+      path: abs,
+      relPath: normalizedRel,
+      exists: fs.existsSync(abs),
+      tierMatch: basenameHasTier(normalizedRel, tier),
+      mmprojLike: isMmprojGguf(normalizedRel),
+      rank,
+    });
+  };
+
+  if (Array.isArray(manifestVisionFiles)) {
+    for (const entry of manifestVisionFiles) {
+      push("manifest.files.vision", entry?.path, 0);
+    }
+  }
+
+  for (const rel of relativeFiles(bundleDir, "vision")) {
+    push("bundle.vision", rel, basenameHasTier(rel, tier) ? 1 : 2);
+  }
+  for (const rel of relativeFiles(bundleDir, "source/vision")) {
+    push("bundle.sourceVision", rel, basenameHasTier(rel, tier) ? 3 : 4);
+  }
+
+  const byRel = new Map();
+  for (const candidate of candidates) {
+    const existing = byRel.get(candidate.relPath);
+    if (!existing || candidate.rank < existing.rank) {
+      byRel.set(candidate.relPath, candidate);
+    }
+  }
+  return [...byRel.values()]
+    .filter((candidate) => candidate.mmprojLike)
+    .sort((a, b) => {
+      if (a.exists !== b.exists) return a.exists ? -1 : 1;
+      if (a.tierMatch !== b.tierMatch) return a.tierMatch ? -1 : 1;
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      return a.relPath.localeCompare(b.relPath);
+    });
+}
+
+function resolveVisionArtifact(bundleDir, tier, manifestVisionFiles) {
+  const candidates = visionMmprojCandidates(bundleDir, tier, manifestVisionFiles);
+  return {
+    selected:
+      candidates.find((candidate) => candidate.exists && candidate.tierMatch) ||
+      candidates.find((candidate) => candidate.exists) ||
+      null,
+    candidates,
+  };
+}
+
 function sha256(file) {
   return createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 }
@@ -193,11 +268,37 @@ function inspectMtmdCandidate(file) {
 }
 
 function resolveMtmdCli(explicit) {
+  const buildCommands = mtmdBuildCommands();
+  const explicitPath = explicit?.trim() || "";
+  if (explicitPath) {
+    const resolved = path.resolve(explicitPath);
+    const inspection = fs.existsSync(resolved)
+      ? inspectMtmdCandidate(resolved)
+      : {
+          path: resolved,
+          exists: false,
+          executable: false,
+          helpExitCode: null,
+          compatible: false,
+          helpSignals: {
+            mmproj: false,
+            image: false,
+            mtmd: false,
+            metal: false,
+          },
+          stderrTail: "",
+        };
+    return {
+      selected: inspection.compatible ? inspection.path : "",
+      candidates: [inspection],
+      buildCommands,
+    };
+  }
+
   const stateDir =
     process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
   const cwd = process.cwd();
   const fixed = [
-    explicit,
     process.env.ELIZA_LLAMA_MTMD_CLI?.trim() || "",
     path.join(
       stateDir,
@@ -249,7 +350,7 @@ function resolveMtmdCli(explicit) {
   return {
     selected: inspections.find((candidate) => candidate.compatible)?.path || "",
     candidates: inspections,
-    buildCommands: mtmdBuildCommands(),
+    buildCommands,
   };
 }
 
@@ -409,9 +510,19 @@ function buildReport(args) {
   );
   const expectedVisionTier = VISION_TIERS.has(tier);
   const textVoiceOnlyTier = TEXT_VOICE_ONLY_TIERS.has(tier);
-  const mmprojRel = manifestVisionFiles[0]?.path;
-  const mmprojPath =
-    typeof mmprojRel === "string" ? path.join(bundleDir, mmprojRel) : "";
+  const visionArtifact = resolveVisionArtifact(
+    bundleDir,
+    tier,
+    manifestVisionFiles,
+  );
+  const selectedVisionArtifact = visionArtifact.selected;
+  const manifestVisionExisting = visionArtifact.candidates.some(
+    (candidate) =>
+      candidate.source === "manifest.files.vision" && candidate.exists,
+  );
+  const mmprojRel =
+    selectedVisionArtifact?.relPath || manifestVisionFiles[0]?.path;
+  const mmprojPath = selectedVisionArtifact?.path || "";
   const textModel = findTextModel(bundleDir, manifest);
   const mtmdCli = resolveMtmdCli(args.mtmdCli);
   const textFilesSized = sizeFiles(bundleDir, manifest?.files?.text);
@@ -427,10 +538,14 @@ function buildReport(args) {
     tier,
     expectedVisionTier,
     textVoiceOnlyTier,
-    supported: manifestVisionFiles.length > 0,
+    supported: Boolean(selectedVisionArtifact),
     passed: false,
     status: "not-run",
     action: "undecided",
+    tierContract: {
+      visionTiers: VISION_TIER_LIST,
+      textVoiceOnlyTiers: TEXT_VOICE_ONLY_TIER_LIST,
+    },
     smokeConfig: {
       image: args.image ? path.resolve(args.image) : "",
       ctxSize: args.ctxSize,
@@ -451,6 +566,7 @@ function buildReport(args) {
       visionFiles,
       sourceVisionFiles,
       asrMmprojFiles,
+      visionMmprojCandidates: visionArtifact.candidates,
       borrowedVisionArtifactsSeen: [
         path.join(
           MODELS_ROOT,
@@ -494,32 +610,65 @@ function buildReport(args) {
       status: "skipped",
       reason: "no tier-compatible vision/mmproj artifact selected",
     },
+    evidence: {
+      result: "fail",
+      passRecordable: false,
+      status: "fail",
+      blockers: [],
+    },
   };
 
-  if (textVoiceOnlyTier && manifestVisionFiles.length === 0) {
+  if (
+    textVoiceOnlyTier &&
+    manifestVisionFiles.length === 0 &&
+    visionArtifact.candidates.length === 0
+  ) {
     report.status = "not-applicable";
     report.action = "mark-text-voice-only";
     report.reason =
-      `${tier} is text/voice-only by the Eliza-1 tier contract: packages/inference/AGENTS.md marks Vision=no for ${tier}, ` +
+      `${tier} is text/voice-only by the Eliza-1 tier contract: 0_8B and 2B do not ship image-analysis mmproj files, ` +
       "packages/shared/src/local-inference/catalog.ts has no sourceModel.components.vision for this tier, " +
-      "packages/training/scripts/manifest/stage_eliza1_source_weights.py has no vision source for this tier, " +
       "and manifest.files.vision is empty. The ASR mmproj is audio-only and cannot be reused for image analysis; " +
-      "the local 9B/27B mmproj files are tied to different text backbones and are not compatible substitutes.";
+      "4B/9B/27B mmproj files are tied to their text backbones and are not compatible substitutes.";
     report.imageAnalysis.reason = "skipped because manifest.files.vision is empty";
+    report.evidence = {
+      result: "not-applicable",
+      passRecordable: true,
+      status: "not-applicable",
+      blockers: [],
+    };
     return report;
   }
 
-  if (!expectedVisionTier && manifestVisionFiles.length > 0) {
+  if (!expectedVisionTier && visionArtifact.candidates.length > 0) {
     report.status = "fail";
     report.action = "remove-unexpected-vision-artifact";
-    report.reason = `${tier} is not a configured vision tier but manifest.files.vision is non-empty`;
+    report.reason = `${tier} is not a configured vision tier but bundle vision/mmproj artifacts were found`;
+    report.evidence.blockers = ["unexpected-vision-artifact"];
     return report;
   }
 
   if (expectedVisionTier && manifestVisionFiles.length === 0) {
     report.status = "fail";
-    report.action = "stage-compatible-mmproj";
+    report.action = "fix-manifest-vision-entry";
     report.reason = `${tier} is a configured vision tier but manifest.files.vision is empty`;
+    report.evidence.blockers = ["manifest-files-vision-empty"];
+    return report;
+  }
+
+  if (expectedVisionTier && !manifest?.lineage?.vision) {
+    report.status = "fail";
+    report.action = "fix-manifest-vision-lineage";
+    report.reason = `${tier} is a configured vision tier but lineage.vision is missing`;
+    report.evidence.blockers = ["manifest-lineage-vision-missing"];
+    return report;
+  }
+
+  if (expectedVisionTier && !manifestVisionExisting) {
+    report.status = "fail";
+    report.action = "fix-manifest-or-stage-mmproj";
+    report.reason = `manifest.files.vision does not point at an existing mmproj for ${tier}`;
+    report.evidence.blockers = ["manifest-mmproj-missing"];
     return report;
   }
 
@@ -527,12 +676,16 @@ function buildReport(args) {
     report.status = "fail";
     report.action = "fix-manifest-or-stage-mmproj";
     report.reason = `manifest.files.vision points at a missing mmproj: ${mmprojRel}`;
+    report.evidence.blockers = ["mmproj-missing"];
     return report;
   }
 
   report.supported = true;
   report.mmproj = {
     path: mmprojPath,
+    relPath:
+      selectedVisionArtifact?.relPath || path.relative(bundleDir, mmprojPath),
+    source: selectedVisionArtifact?.source || "unknown",
     sha256: sha256(mmprojPath),
     sizeBytes: fs.statSync(mmprojPath).size,
   };
@@ -548,12 +701,23 @@ function buildReport(args) {
     gpuLayers: args.gpuLayers,
     timeoutMs: args.timeoutMs,
   });
-  report.status = report.imageAnalysis.status;
+  report.status =
+    report.imageAnalysis.status === "pass"
+      ? "pass"
+      : expectedVisionTier
+        ? "fail"
+        : report.imageAnalysis.status;
   report.passed = report.imageAnalysis.status === "pass";
   report.action = report.passed ? "vision-smoke-passed" : "needs-vision-smoke";
   report.reason = report.passed
     ? "tier-compatible mmproj loaded and image analysis command completed"
     : report.imageAnalysis.reason || "image analysis command did not pass";
+  report.evidence = {
+    result: report.passed ? "pass" : "fail",
+    passRecordable: report.passed,
+    status: report.status,
+    blockers: report.passed ? [] : ["vision-smoke-not-passed"],
+  };
   return report;
 }
 
@@ -570,26 +734,45 @@ function writeReport(report, outs) {
   return targets.map((out) => path.resolve(out));
 }
 
-try {
-  const args = parseArgs(process.argv.slice(2));
-  const report = buildReport(args);
-  const written = writeReport(report, args.outs);
-  console.log(
-    JSON.stringify(
-      {
-        status: report.status,
-        passed: report.passed,
-        tier: report.tier,
-        action: report.action,
-        reason: report.reason,
-        written,
-      },
-      null,
-      2,
-    ),
-  );
-  process.exit(report.status === "fail" ? 1 : 0);
-} catch (error) {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(2);
+function main() {
+  try {
+    const args = parseArgs(process.argv.slice(2));
+    const report = buildReport(args);
+    const written = writeReport(report, args.outs);
+    console.log(
+      JSON.stringify(
+        {
+          status: report.status,
+          passed: report.passed,
+          tier: report.tier,
+          action: report.action,
+          reason: report.reason,
+          written,
+        },
+        null,
+        2,
+      ),
+    );
+    process.exit(report.status === "fail" ? 1 : 0);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(2);
+  }
 }
+
+const isMain =
+  process.argv[1] &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (isMain) {
+  main();
+}
+
+export {
+  buildReport,
+  parseArgs,
+  resolveVisionArtifact,
+  runVisionSmoke,
+  visionMmprojCandidates,
+  writeReport,
+};

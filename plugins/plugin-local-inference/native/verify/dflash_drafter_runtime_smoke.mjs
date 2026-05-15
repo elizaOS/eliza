@@ -1,10 +1,17 @@
 #!/usr/bin/env node
+import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  buildSpeculativeBenchmarkReport,
+  latestSpeculativeReportPath,
+  timestampedSpeculativeReportPath,
+  writeSpeculativeBenchmarkReport,
+} from "./speculative_benchmark_report.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,6 +36,28 @@ const DEFAULT_TARGET = firstExisting(
 const DEFAULT_DRAFTER = firstExisting(
   path.join(DEFAULT_BUNDLE, "dflash", "drafter-0_8b.gguf"),
 );
+const DFLASH_TIERS = new Set(["2b", "4b", "9b", "27b", "27b-256k"]);
+const TOKENIZER_COMPATIBILITY_KEYS = [
+  "tokenizer.ggml.model",
+  "tokenizer.ggml.pre",
+  "tokenizer.ggml.tokens",
+  "tokenizer.ggml.token_type",
+  "tokenizer.ggml.merges",
+  "tokenizer.ggml.eos_token_id",
+  "tokenizer.ggml.bos_token_id",
+  "tokenizer.ggml.padding_token_id",
+  "tokenizer.ggml.add_bos_token",
+  "tokenizer.ggml.add_eos_token",
+];
+const REQUIRED_TOKENIZER_COMPATIBILITY_KEYS = new Set([
+  "tokenizer.ggml.model",
+  "tokenizer.ggml.pre",
+  "tokenizer.ggml.tokens",
+  "tokenizer.ggml.token_type",
+  "tokenizer.ggml.merges",
+  "tokenizer.ggml.eos_token_id",
+  "tokenizer.ggml.padding_token_id",
+]);
 const DEFAULT_BIN = path.join(
   process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza"),
   "local-inference",
@@ -45,11 +74,42 @@ function timestamp() {
     .replace(/\.\d{3}Z$/, "Z");
 }
 
+function sha256File(file) {
+  const hash = crypto.createHash("sha256");
+  const fd = fs.openSync(file, "r");
+  const buffer = Buffer.allocUnsafe(1 << 20);
+  try {
+    for (;;) {
+      const read = fs.readSync(fd, buffer, 0, buffer.length, null);
+      if (read === 0) break;
+      hash.update(buffer.subarray(0, read));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return hash.digest("hex");
+}
+
+function inferTier(...values) {
+  for (const value of values) {
+    const match = String(value ?? "").match(
+      /eliza-1-(0_8b|2b|4b|9b|27b(?:-256k)?)/,
+    );
+    if (match) return match[1];
+    const drafterMatch = String(value ?? "").match(
+      /drafter-(0_8b|2b|4b|9b|27b(?:-256k)?)/,
+    );
+    if (drafterMatch) return drafterMatch[1];
+  }
+  return "";
+}
+
 function parseArgs(argv) {
   const args = {
     targetModel: process.env.ELIZA_DFLASH_TARGET_MODEL || DEFAULT_TARGET,
     drafterModel: process.env.ELIZA_DFLASH_DRAFTER_MODEL || DEFAULT_DRAFTER,
     specBinary: process.env.ELIZA_DFLASH_SPEC_BINARY || DEFAULT_BIN,
+    tier: process.env.ELIZA_DFLASH_TIER || "",
     referenceBinary: process.env.ELIZA_DFLASH_REFERENCE_SPEC_BINARY || "",
     referenceLibraryPath: process.env.ELIZA_DFLASH_REFERENCE_LIBRARY_PATH || "",
     skipInstalled: process.env.ELIZA_DFLASH_SKIP_INSTALLED === "1",
@@ -65,8 +125,9 @@ function parseArgs(argv) {
         __dirname,
         "hardware-results",
         `dflash-drafter-runtime-${timestamp()}.json`,
-      ),
+    ),
     metadataOnly: false,
+    selfTest: false,
     // --bench: in addition to the loadability smoke, run a short generation
     // with and without the drafter (`-md`), record tok/s + DFlash acceptance
     // rate, and write a speedup report under packages/inference/reports/.
@@ -77,13 +138,7 @@ function parseArgs(argv) {
     ),
     benchReport:
       process.env.ELIZA_DFLASH_BENCH_REPORT ||
-      path.join(
-        __dirname,
-        "..",
-        "reports",
-        "dflash-bench",
-        `dflash-bench-${timestamp()}.json`,
-      ),
+      timestampedSpeculativeReportPath(__dirname, "dflash"),
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -96,6 +151,7 @@ function parseArgs(argv) {
     if (arg === "--target-model") args.targetModel = next();
     else if (arg === "--drafter-model") args.drafterModel = next();
     else if (arg === "--spec-binary") args.specBinary = next();
+    else if (arg === "--tier") args.tier = next();
     else if (arg === "--reference-binary") args.referenceBinary = next();
     else if (arg === "--reference-library-path")
       args.referenceLibraryPath = next();
@@ -108,6 +164,7 @@ function parseArgs(argv) {
     else if (arg === "--tree-budget") args.treeBudget = next();
     else if (arg === "--report") args.report = next();
     else if (arg === "--metadata-only") args.metadataOnly = true;
+    else if (arg === "--self-test") args.selfTest = true;
     else if (arg === "--bench") args.bench = true;
     else if (arg === "--bench-tokens")
       args.benchTokens = Number.parseInt(next(), 10);
@@ -120,6 +177,7 @@ function parseArgs(argv) {
           "Options:",
           "  --target-model <path>          Target GGUF (default: local eliza-1-0_8b bundle)",
           "  --drafter-model <path>         DFlash drafter GGUF",
+          "  --tier <tier>                  Eliza-1 tier; non-DFlash tiers are recorded as not-applicable",
           "  --spec-binary <path>           llama-speculative-simple binary to test",
           "  --reference-binary <path>      Optional known-DFlash binary to compare loader errors",
           "  --reference-library-path <dir> Optional DYLD/LD library path for the reference binary",
@@ -132,6 +190,7 @@ function parseArgs(argv) {
           "  --tree-budget <N>             Optional DFlash tree budget",
           "  --report <path>                JSON report path",
           "  --metadata-only                Parse GGUF metadata only; skip runtime execution",
+          "  --self-test                    Run tokenizer-compatibility unit checks",
           "  --bench                        Also run a short generation with vs without -md and",
           "                                 record tok/s + DFlash acceptance rate to a speedup report",
           "  --bench-tokens <N>             Tokens to generate per bench run (default: 128)",
@@ -144,6 +203,7 @@ function parseArgs(argv) {
     }
   }
 
+  args.tier = args.tier || inferTier(args.targetModel, args.drafterModel) || "0_8b";
   return args;
 }
 
@@ -549,6 +609,34 @@ function metadataArrayLength(value) {
 function tokenizerSummary(parsed) {
   const metadata = parsed.metadata;
   const hashes = parsed.metadataHashes;
+  const hashByKey = Object.fromEntries(
+    TOKENIZER_COMPATIBILITY_KEYS.map((key) => [key, hashes[key] ?? null]),
+  );
+  const valueByKey = {
+    "tokenizer.ggml.model": metadata["tokenizer.ggml.model"] ?? null,
+    "tokenizer.ggml.pre": metadata["tokenizer.ggml.pre"] ?? null,
+    "tokenizer.ggml.eos_token_id":
+      metadata["tokenizer.ggml.eos_token_id"] ?? null,
+    "tokenizer.ggml.bos_token_id":
+      metadata["tokenizer.ggml.bos_token_id"] ?? null,
+    "tokenizer.ggml.padding_token_id":
+      metadata["tokenizer.ggml.padding_token_id"] ?? null,
+    "tokenizer.ggml.add_bos_token":
+      metadata["tokenizer.ggml.add_bos_token"] ?? null,
+    "tokenizer.ggml.add_eos_token":
+      metadata["tokenizer.ggml.add_eos_token"] ?? null,
+  };
+  const lengthByKey = {
+    "tokenizer.ggml.tokens": metadataArrayLength(
+      metadata["tokenizer.ggml.tokens"],
+    ),
+    "tokenizer.ggml.token_type": metadataArrayLength(
+      metadata["tokenizer.ggml.token_type"],
+    ),
+    "tokenizer.ggml.merges": metadataArrayLength(
+      metadata["tokenizer.ggml.merges"],
+    ),
+  };
   return {
     architecture: metadata["general.architecture"] ?? null,
     name: metadata["general.name"] ?? null,
@@ -574,58 +662,149 @@ function tokenizerSummary(parsed) {
       addBosToken: hashes["tokenizer.ggml.add_bos_token"] ?? null,
       addEosToken: hashes["tokenizer.ggml.add_eos_token"] ?? null,
     },
+    hashByKey,
+    valueByKey,
+    lengthByKey,
   };
 }
 
+function tokenizerBlockingReason(mismatch) {
+  const missingSides = [];
+  if (mismatch.targetHash === null) missingSides.push("target");
+  if (mismatch.drafterHash === null) missingSides.push("drafter");
+  if (missingSides.length > 0) {
+    return mismatch.required
+      ? `${mismatch.key} missing from ${missingSides.join(" and ")}`
+      : `${mismatch.key} present on only one side`;
+  }
+  if (mismatch.targetLength !== null || mismatch.drafterLength !== null) {
+    if (mismatch.targetLength !== mismatch.drafterLength) {
+      return (
+        `${mismatch.key} array length mismatch: ` +
+        `target=${mismatch.targetLength}, drafter=${mismatch.drafterLength}`
+      );
+    }
+    return `${mismatch.key} payload hash mismatch (length=${mismatch.targetLength})`;
+  }
+  if (
+    Object.hasOwn(mismatch, "targetValue") ||
+    Object.hasOwn(mismatch, "drafterValue")
+  ) {
+    return (
+      `${mismatch.key} value mismatch: ` +
+      `target=${JSON.stringify(mismatch.targetValue)}, ` +
+      `drafter=${JSON.stringify(mismatch.drafterValue)}`
+    );
+  }
+  return `${mismatch.key} payload hash mismatch`;
+}
+
+function tokenizerCompatibilityFailure(compatibility) {
+  if (!compatibility || compatibility.compatible) return null;
+  const reasons = compatibility.blockingReasons?.length
+    ? compatibility.blockingReasons
+    : compatibility.mismatches?.map((mismatch) => mismatch.key) ?? [];
+  return (
+    "target/drafter tokenizer metadata mismatch: " +
+    reasons.join("; ") +
+    "; speculative drafting must fail closed until a drafter distilled against this exact target tokenizer is provided"
+  );
+}
+
+function normalizeSha256(value) {
+  const raw = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return /^[0-9a-f]{64}$/.test(raw) ? raw : null;
+}
+
+function compareTargetCheckpointSha256(recorded, actual) {
+  const recordedSha256 = normalizeSha256(recorded);
+  const actualSha256 = normalizeSha256(actual);
+  if (!recordedSha256) {
+    return {
+      compatible: false,
+      recordedSha256: recorded ?? null,
+      actualSha256: actualSha256 ?? actual ?? null,
+      blockingReason:
+        "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint",
+    };
+  }
+  if (!actualSha256) {
+    return {
+      compatible: false,
+      recordedSha256,
+      actualSha256: actual ?? null,
+      blockingReason:
+        "target GGUF sha256 is unavailable; release validation cannot prove the drafter matches this text checkpoint",
+    };
+  }
+  if (recordedSha256 !== actualSha256) {
+    return {
+      compatible: false,
+      recordedSha256,
+      actualSha256,
+      blockingReason:
+        "drafter GGUF target checkpoint sha256 mismatch: " +
+        `recorded=${recordedSha256}, target=${actualSha256}; ` +
+        "release validation must fail closed until a drafter distilled against this exact text checkpoint is provided",
+    };
+  }
+  return {
+    compatible: true,
+    recordedSha256,
+    actualSha256,
+    blockingReason: null,
+    reason: `target checkpoint sha256 ok (${actualSha256})`,
+  };
+}
+
+function releaseCompatibilityFailure(...failures) {
+  const reasons = failures.filter(Boolean);
+  return reasons.length > 0 ? reasons.join("; ") : null;
+}
+
 function compareTokenizers(target, drafter) {
-  const boolValue = (value) => value === true;
-  const compared = [
-    ["tokenizer.ggml.model", target.hashes.model, drafter.hashes.model],
-    ["tokenizer.ggml.pre", target.hashes.pre, drafter.hashes.pre],
-    ["tokenizer.ggml.tokens", target.hashes.tokens, drafter.hashes.tokens],
-  ];
-  const targetAddBos = boolValue(target.addBosToken);
-  const drafterAddBos = boolValue(drafter.addBosToken);
-  if (targetAddBos !== drafterAddBos) {
-    compared.push([
-      "tokenizer.ggml.add_bos_token",
-      target.hashes.addBosToken,
-      drafter.hashes.addBosToken,
-    ]);
-  }
-  if (targetAddBos || drafterAddBos) {
-    compared.push([
-      "tokenizer.ggml.bos_token_id",
-      target.hashes.bosTokenId,
-      drafter.hashes.bosTokenId,
-    ]);
-  }
-  const targetAddEos = boolValue(target.addEosToken);
-  const drafterAddEos = boolValue(drafter.addEosToken);
-  if (targetAddEos !== drafterAddEos) {
-    compared.push([
-      "tokenizer.ggml.add_eos_token",
-      target.hashes.addEosToken,
-      drafter.hashes.addEosToken,
-    ]);
-  }
-  if (targetAddEos || drafterAddEos) {
-    compared.push([
-      "tokenizer.ggml.eos_token_id",
-      target.hashes.eosTokenId,
-      drafter.hashes.eosTokenId,
-    ]);
-  }
-  const mismatches = compared
-    .filter(([, targetHash, drafterHash]) => targetHash !== drafterHash)
-    .map(([key, targetHash, drafterHash]) => ({
+  const mismatches = [];
+  for (const key of TOKENIZER_COMPATIBILITY_KEYS) {
+    const targetHash = target.hashByKey?.[key] ?? null;
+    const drafterHash = drafter.hashByKey?.[key] ?? null;
+    const required = REQUIRED_TOKENIZER_COMPATIBILITY_KEYS.has(key);
+    const requiredMissing =
+      required && (targetHash === null || drafterHash === null);
+    if (targetHash === drafterHash && !requiredMissing) continue;
+    const mismatch = {
       key,
       targetHash,
       drafterHash,
-    }));
+      targetLength: target.lengthByKey?.[key] ?? null,
+      drafterLength: drafter.lengthByKey?.[key] ?? null,
+      targetValue: target.valueByKey?.[key] ?? null,
+      drafterValue: drafter.valueByKey?.[key] ?? null,
+      required,
+    };
+    mismatch.blockingReason = tokenizerBlockingReason(mismatch);
+    mismatches.push(mismatch);
+  }
+  const requiredMissing = mismatches.filter(
+    (mismatch) =>
+      mismatch.required &&
+      (mismatch.targetHash === null || mismatch.drafterHash === null),
+  );
+  const blockingReasons = mismatches.map(
+    (mismatch) => mismatch.blockingReason,
+  );
   return {
     compatible: mismatches.length === 0,
+    reason:
+      mismatches.length === 0
+        ? "target and drafter tokenizer metadata are byte-compatible"
+        : tokenizerCompatibilityFailure({
+            compatible: false,
+            mismatches,
+            blockingReasons,
+          }),
     mismatches,
+    requiredMissing,
+    blockingReasons,
   };
 }
 
@@ -720,6 +899,21 @@ function buildRuntimeArgs(targetModel, drafterModel, options) {
 }
 
 function classifyRuntimeOutput(text) {
+  if (/draft model vocab type must match target model/i.test(text)) {
+    return "target_draft_vocab_type_mismatch";
+  }
+  if (/draft model bos tokens must match target model/i.test(text)) {
+    return "target_draft_bos_mismatch";
+  }
+  if (/draft model eos tokens must match target model/i.test(text)) {
+    return "target_draft_eos_mismatch";
+  }
+  if (/target vocab size .* does not match draft vocab size/i.test(text)) {
+    return "target_draft_vocab_size_mismatch";
+  }
+  if (/token \d+ content differs/i.test(text)) {
+    return "target_draft_token_content_mismatch";
+  }
   if (/target and draft vocabs are not compatible/i.test(text)) {
     return "target_draft_vocab_incompatible";
   }
@@ -790,10 +984,19 @@ function runRuntime(
       ? "generation_attempt_completed"
       : classifyRuntimeOutput(output);
   let dflashFailure = null;
+  if (
+    result.status !== 0 &&
+    classification.startsWith("target_draft_")
+  ) {
+    dflashFailure =
+      tokenizerCompatibilityFailure(options.tokenizerCompatibility) ??
+      `runtime rejected target/draft tokenizer compatibility (${classification})`;
+  }
   if (result.status === 0 && requiresTrueDrafting) {
     if (vocabIncompatible && (dflash.drafted ?? 0) === 0) {
       classification = "dflash_vocab_incompatible_no_drafts";
       dflashFailure =
+        tokenizerCompatibilityFailure(options.tokenizerCompatibility) ??
         "target and DFlash drafter tokenizers are incompatible; runtime translated tokens but produced zero drafted tokens";
     } else if (!hasDflashCounters) {
       classification = "dflash_counters_missing";
@@ -821,6 +1024,40 @@ function runRuntime(
     },
     dflashFailure,
     outputTail: lines.slice(-120).join("\n"),
+  };
+}
+
+function blockedRuntime(
+  label,
+  binary,
+  targetModel,
+  drafterModel,
+  options,
+  reason,
+) {
+  const { args, skippedCliFlags } = buildRuntimeArgs(
+    targetModel,
+    drafterModel,
+    options,
+  );
+  return {
+    label,
+    binary,
+    args,
+    skippedCliFlags,
+    status: null,
+    signal: null,
+    classification: "blocked_by_tokenizer_metadata_mismatch",
+    dflash: {
+      drafted: null,
+      accepted: null,
+      acceptanceRate: null,
+      requiresTrueDrafting: Boolean(options.requiresTrueDflashDrafting),
+      tokenizerCompatible: false,
+      draftingActive: false,
+    },
+    dflashFailure: reason,
+    outputTail: "",
   };
 }
 
@@ -1004,7 +1241,8 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     !draftingActive &&
     (parsed.vocabIncompatibleWarning ||
       options.tokenizerCompatibility?.compatible === false)
-      ? "target and DFlash drafter tokenizers are incompatible; runtime produced zero drafted tokens"
+      ? tokenizerCompatibilityFailure(options.tokenizerCompatibility) ??
+        "target and DFlash drafter tokenizers are incompatible; runtime produced zero drafted tokens"
       : withDrafter && !draftingActive
         ? "runtime produced zero drafted tokens"
         : null;
@@ -1025,12 +1263,103 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
   };
 }
 
+function blockedBenchPass(binary, options, withDrafter, reason) {
+  return {
+    available: true,
+    binary,
+    withDrafter,
+    skippedReason: reason,
+    status: null,
+    wallMs: 0,
+    tokensRequested: options.benchTokens > 0 ? options.benchTokens : 128,
+    drafted: null,
+    accepted: null,
+    acceptanceRate: null,
+    tokensPerSecond: null,
+    generation: {
+      encoded: null,
+      decoded: null,
+      tokensPerSecond: null,
+    },
+    timings: {
+      targetPromptEval: null,
+      targetEval: null,
+      draftPromptEval: null,
+      draftEval: null,
+    },
+    vocabIncompatibleWarning: false,
+    draftingActive: false,
+    dflashFailure: withDrafter ? reason : null,
+    tokenizerCompatible: false,
+    outputTail: "",
+  };
+}
+
 /**
  * Bench DFlash speedup: run the spec binary with and without the drafter,
  * compute the tok/s ratio + acceptance rate, and write a report JSON.
  * Coordinates its shape with W11 (eliza1_gates.yaml + manifest evals).
  */
 function runDflashBench(args) {
+  const compatibilityFailure =
+    args.releaseCompatibilityFailure ??
+    tokenizerCompatibilityFailure(args.tokenizerCompatibility);
+  if (compatibilityFailure) {
+    const withDrafter = blockedBenchPass(
+      args.specBinary,
+      args,
+      true,
+      compatibilityFailure,
+    );
+    const withoutDrafter = blockedBenchPass(
+      args.specBinary,
+      args,
+      false,
+      "baseline not run because DFlash drafter metadata failed release compatibility",
+    );
+    const report = buildSpeculativeBenchmarkReport({
+      speculator: "dflash",
+      verifier: path.relative(process.cwd(), __filename),
+      tier: args.tier,
+      targetModel: args.targetModel,
+      drafterModel: args.drafterModel,
+      specBinary: args.specBinary,
+      benchTokens: args.benchTokens,
+      withDrafter,
+      withoutDrafter,
+      speedup: null,
+      acceptanceRate: null,
+      status: "fail",
+      failure: compatibilityFailure,
+      extra: {
+        draftingActive: false,
+        dflashFailure: compatibilityFailure,
+        summary: {
+          speculator: "dflash",
+          tier: args.tier,
+          backend: undefined,
+          binarySha256: undefined,
+          drafted: null,
+          accepted: null,
+          acceptanceRate: null,
+          speedup: null,
+          status: "fail",
+          failure: compatibilityFailure,
+          tokenizerCompatible: false,
+        },
+      },
+    });
+    report.summary.backend = report.backend;
+    report.summary.binarySha256 = report.binary.sha256;
+    writeSpeculativeBenchmarkReport(args.benchReport, report, {
+      verifyDir: __dirname,
+    });
+    console.log(`wrote ${args.benchReport}`);
+    console.log(`wrote ${latestSpeculativeReportPath(__dirname, "dflash")}`);
+    console.log(`dflash-bench: ${compatibilityFailure}`);
+    return report;
+  }
+
   const withDrafter = runBenchPass(
     args.specBinary,
     args.targetModel,
@@ -1052,59 +1381,78 @@ function runDflashBench(args) {
     withoutDrafter.tokensPerSecond
       ? withDrafter.tokensPerSecond / withoutDrafter.tokensPerSecond
       : null;
-  const report = {
-    generatedAt: new Date().toISOString(),
+  const legacySummary = {
+    tokensPerSecondWithDrafter: withDrafter.tokensPerSecond ?? null,
+    tokensPerSecondBaseline: withoutDrafter.tokensPerSecond ?? null,
+    generationTokensPerSecondWithDrafter:
+      withDrafter.generation?.tokensPerSecond ?? null,
+    generationTokensPerSecondBaseline:
+      withoutDrafter.generation?.tokensPerSecond ?? null,
+    targetEvalTokensPerSecondWithDrafter:
+      withDrafter.timings?.targetEval?.tokensPerSecond ?? null,
+    draftEvalTokensPerSecondWithDrafter:
+      withDrafter.timings?.draftEval?.tokensPerSecond ?? null,
+    dflashDraftedTokens: withDrafter.drafted ?? null,
+    dflashAcceptedTokens: withDrafter.accepted ?? null,
+    dflashAcceptanceRate: withDrafter.acceptanceRate ?? null,
+    dflashSpeedup: speedup,
+    dflashDraftingActive: withDrafter.draftingActive ?? false,
+    dflashFailure: withDrafter.dflashFailure ?? null,
+    tokenizerCompatible: withDrafter.tokenizerCompatible ?? null,
+  };
+  const report = buildSpeculativeBenchmarkReport({
+    speculator: "dflash",
     verifier: path.relative(process.cwd(), __filename),
+    tier: args.tier,
     targetModel: args.targetModel,
     drafterModel: args.drafterModel,
     specBinary: args.specBinary,
     benchTokens: args.benchTokens,
-    available: withDrafter.available && withoutDrafter.available,
     withDrafter,
     withoutDrafter,
-    acceptanceRate: withDrafter.acceptanceRate ?? null,
     speedup,
-    draftingActive: withDrafter.draftingActive ?? false,
-    dflashFailure: withDrafter.dflashFailure ?? null,
-    // A neutral schema W11 can re-key into eliza1_gates.yaml. Null fields mean
-    // "needs hardware" — recorded, not faked (AGENTS.md §3 / §7).
-    summary: {
-      tokensPerSecondWithDrafter: withDrafter.tokensPerSecond ?? null,
-      tokensPerSecondBaseline: withoutDrafter.tokensPerSecond ?? null,
-      generationTokensPerSecondWithDrafter:
-        withDrafter.generation?.tokensPerSecond ?? null,
-      generationTokensPerSecondBaseline:
-        withoutDrafter.generation?.tokensPerSecond ?? null,
-      targetEvalTokensPerSecondWithDrafter:
-        withDrafter.timings?.targetEval?.tokensPerSecond ?? null,
-      draftEvalTokensPerSecondWithDrafter:
-        withDrafter.timings?.draftEval?.tokensPerSecond ?? null,
-      dflashDraftedTokens: withDrafter.drafted ?? null,
-      dflashAcceptedTokens: withDrafter.accepted ?? null,
-      dflashAcceptanceRate: withDrafter.acceptanceRate ?? null,
-      dflashSpeedup: speedup,
-      dflashDraftingActive: withDrafter.draftingActive ?? false,
+    acceptanceRate: withDrafter.acceptanceRate ?? null,
+    status:
+      withDrafter.available && withoutDrafter.available
+        ? withDrafter.dflashFailure
+          ? "fail"
+          : "pass"
+        : "needs-data",
+    failure: withDrafter.dflashFailure ?? null,
+    extra: {
+      draftingActive: withDrafter.draftingActive ?? false,
       dflashFailure: withDrafter.dflashFailure ?? null,
-      tokenizerCompatible: withDrafter.tokenizerCompatible ?? null,
+      summary: {
+        ...legacySummary,
+        speculator: "dflash",
+        tier: args.tier,
+        backend: undefined,
+        binarySha256: undefined,
+        drafted: withDrafter.drafted ?? null,
+        accepted: withDrafter.accepted ?? null,
+        acceptanceRate: withDrafter.acceptanceRate ?? null,
+        speedup,
+        status:
+          withDrafter.available && withoutDrafter.available
+            ? withDrafter.dflashFailure
+              ? "fail"
+              : "pass"
+            : "needs-data",
+        failure: withDrafter.dflashFailure ?? null,
+      },
     },
-  };
-  fs.mkdirSync(path.dirname(args.benchReport), { recursive: true });
-  fs.writeFileSync(args.benchReport, `${JSON.stringify(report, null, 2)}\n`);
+  });
+  report.summary.backend = report.backend;
+  report.summary.binarySha256 = report.binary.sha256;
+  writeSpeculativeBenchmarkReport(args.benchReport, report, {
+    verifyDir: __dirname,
+  });
   console.log(`wrote ${args.benchReport}`);
-  // Also write/overwrite a stable `dflash-bench-latest.json` next to the
-  // timestamped report so `eliza1_gates_collect.mjs` and the manifest evals
-  // writer have a fixed path to read (the collector also picks the newest
-  // timestamped file — this is the convenience alias). Null fields are kept
-  // as-is: a needs-hardware bench produces a latest entry that says so.
-  try {
-    const latest = path.join(
-      path.dirname(args.benchReport),
-      "dflash-bench-latest.json",
-    );
-    fs.writeFileSync(latest, `${JSON.stringify(report, null, 2)}\n`);
-  } catch {
-    // Non-fatal — the timestamped report is the source of truth.
-  }
+  // Also write/overwrite the stable per-speculator latest report so
+  // `eliza1_gates_collect.mjs` and the manifest evals writer have a fixed
+  // path to read. Null fields are kept as-is: a needs-hardware bench produces
+  // a latest entry that says so.
+  console.log(`wrote ${latestSpeculativeReportPath(__dirname, "dflash")}`);
   if (report.available) {
     console.log(
       `dflash-bench: tok/s with-drafter=${withDrafter.tokensPerSecond} ` +
@@ -1119,8 +1467,143 @@ function runDflashBench(args) {
   return report;
 }
 
+function makeTokenizerSelfTestSummary(overrides = {}) {
+  const hashByKey = Object.fromEntries(
+    TOKENIZER_COMPATIBILITY_KEYS.map((key) => [key, `hash:${key}`]),
+  );
+  const valueByKey = {
+    "tokenizer.ggml.model": "gpt2",
+    "tokenizer.ggml.pre": "qwen35",
+    "tokenizer.ggml.eos_token_id": 248046,
+    "tokenizer.ggml.bos_token_id": null,
+    "tokenizer.ggml.padding_token_id": 248044,
+    "tokenizer.ggml.add_bos_token": false,
+    "tokenizer.ggml.add_eos_token": null,
+  };
+  const lengthByKey = {
+    "tokenizer.ggml.tokens": 248320,
+    "tokenizer.ggml.token_type": 248320,
+    "tokenizer.ggml.merges": 247587,
+  };
+  return {
+    hashByKey: { ...hashByKey, ...(overrides.hashByKey ?? {}) },
+    valueByKey: { ...valueByKey, ...(overrides.valueByKey ?? {}) },
+    lengthByKey: { ...lengthByKey, ...(overrides.lengthByKey ?? {}) },
+  };
+}
+
+function runSelfTest() {
+  assert.equal(DFLASH_TIERS.has("0_8b"), false);
+  for (const tier of ["2b", "4b", "9b", "27b", "27b-256k"]) {
+    assert.equal(DFLASH_TIERS.has(tier), true);
+  }
+
+  assert.equal(
+    compareTokenizers(
+      makeTokenizerSelfTestSummary(),
+      makeTokenizerSelfTestSummary(),
+    ).compatible,
+    true,
+  );
+
+  const tokenTypeMismatch = compareTokenizers(
+    makeTokenizerSelfTestSummary({
+      hashByKey: { "tokenizer.ggml.token_type": "target-token-type" },
+    }),
+    makeTokenizerSelfTestSummary({
+      hashByKey: { "tokenizer.ggml.token_type": "draft-token-type" },
+    }),
+  );
+  assert.equal(tokenTypeMismatch.compatible, false);
+  assert.deepEqual(
+    tokenTypeMismatch.mismatches.map((mismatch) => mismatch.key),
+    ["tokenizer.ggml.token_type"],
+  );
+  assert.match(
+    tokenTypeMismatch.blockingReasons[0],
+    /tokenizer\.ggml\.token_type payload hash mismatch/,
+  );
+
+  const specialIdMismatch = compareTokenizers(
+    makeTokenizerSelfTestSummary({
+      hashByKey: { "tokenizer.ggml.padding_token_id": "target-padding" },
+      valueByKey: { "tokenizer.ggml.padding_token_id": 248055 },
+    }),
+    makeTokenizerSelfTestSummary({
+      hashByKey: { "tokenizer.ggml.padding_token_id": "draft-padding" },
+      valueByKey: { "tokenizer.ggml.padding_token_id": 248044 },
+    }),
+  );
+  assert.equal(specialIdMismatch.compatible, false);
+  assert.equal(
+    specialIdMismatch.blockingReasons[0],
+    "tokenizer.ggml.padding_token_id value mismatch: target=248055, drafter=248044",
+  );
+
+  const missingRequired = compareTokenizers(
+    makeTokenizerSelfTestSummary({
+      hashByKey: { "tokenizer.ggml.merges": null },
+    }),
+    makeTokenizerSelfTestSummary({
+      hashByKey: { "tokenizer.ggml.merges": null },
+    }),
+  );
+  assert.equal(missingRequired.compatible, false);
+  assert.equal(missingRequired.requiredMissing.length, 1);
+  assert.match(
+    tokenizerCompatibilityFailure(missingRequired),
+    /tokenizer\.ggml\.merges missing from target and drafter/,
+  );
+
+  const targetSha = "a".repeat(64);
+  assert.equal(
+    compareTargetCheckpointSha256(targetSha, targetSha).compatible,
+    true,
+  );
+  const checkpointMismatch = compareTargetCheckpointSha256(
+    "b".repeat(64),
+    targetSha,
+  );
+  assert.equal(checkpointMismatch.compatible, false);
+  assert.match(
+    checkpointMismatch.blockingReason,
+    /drafter GGUF target checkpoint sha256 mismatch/,
+  );
+  assert.match(checkpointMismatch.blockingReason, /recorded=bbbb/);
+  const missingCheckpoint = compareTargetCheckpointSha256(null, targetSha);
+  assert.equal(missingCheckpoint.compatible, false);
+  assert.match(
+    missingCheckpoint.blockingReason,
+    /missing dflash-draft\.target_checkpoint_sha256/,
+  );
+  assert.match(
+    releaseCompatibilityFailure(
+      tokenizerCompatibilityFailure(missingRequired),
+      checkpointMismatch.blockingReason,
+    ),
+    /target\/drafter tokenizer metadata mismatch: .*sha256 mismatch/,
+  );
+
+  assert.equal(
+    classifyRuntimeOutput(
+      "draft model bos tokens must match target model to use speculation",
+    ),
+    "target_draft_bos_mismatch",
+  );
+  assert.equal(
+    classifyRuntimeOutput("token 248044 content differs - target '<pad>'"),
+    "target_draft_token_content_mismatch",
+  );
+
+  console.log("dflash_drafter_runtime_smoke self-test: pass");
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
+  if (args.selfTest) {
+    runSelfTest();
+    return;
+  }
   const installedCliFeatures = detectCliFeatures(args.specBinary);
   const referenceCliFeatures = args.referenceBinary
     ? detectCliFeatures(args.referenceBinary, args.referenceLibraryPath)
@@ -1139,10 +1622,39 @@ function main() {
     runtime: [],
   };
 
+  if (!DFLASH_TIERS.has(args.tier)) {
+    report.status = "not-applicable";
+    report.reason = `tier ${args.tier} does not ship a DFlash drafter`;
+    report.checks = {
+      tierShipsDflash: false,
+      drafterRequired: false,
+    };
+    fs.mkdirSync(path.dirname(args.report), { recursive: true });
+    fs.writeFileSync(args.report, `${JSON.stringify(report, null, 2)}\n`);
+    console.log(`wrote ${args.report}`);
+    console.log(`metadataStatus=not-applicable (${report.reason})`);
+    return;
+  }
+
+  if (!fs.existsSync(args.drafterModel)) {
+    report.status = "needs-data";
+    report.reason = `tier ${args.tier} requires DFlash but drafter model is missing: ${args.drafterModel}`;
+    report.checks = {
+      tierShipsDflash: true,
+      drafterPresent: false,
+    };
+    fs.mkdirSync(path.dirname(args.report), { recursive: true });
+    fs.writeFileSync(args.report, `${JSON.stringify(report, null, 2)}\n`);
+    console.log(`wrote ${args.report}`);
+    console.log(`metadataStatus=needs-data (${report.reason})`);
+    process.exit(1);
+  }
+
   const parsedTarget = parseGguf(args.targetModel);
   const parsed = parseGguf(args.drafterModel);
   const metadata = parsed.metadata;
   const targetMetadata = parsedTarget.metadata;
+  const targetModelSha256 = sha256File(args.targetModel);
   const tensorNames = new Set(parsed.tensorNames);
   const hasTokenizerMerges = Object.hasOwn(metadata, "tokenizer.ggml.merges");
   const tokenizerModel = metadata["tokenizer.ggml.model"];
@@ -1153,6 +1665,9 @@ function main() {
   const tokenizerCompatibility = compareTokenizers(
     targetTokenizer,
     drafterTokenizer,
+  );
+  const tokenizerFailure = tokenizerCompatibilityFailure(
+    tokenizerCompatibility,
   );
 
   // Two valid drafter shapes:
@@ -1191,6 +1706,17 @@ function main() {
   ];
   const targetCheckpointSha256 =
     metadata["dflash-draft.target_checkpoint_sha256"] ?? null;
+  const targetCheckpointCompatibility = compareTargetCheckpointSha256(
+    targetCheckpointSha256,
+    targetModelSha256,
+  );
+  const targetCheckpointFailure = targetCheckpointCompatibility.compatible
+    ? null
+    : targetCheckpointCompatibility.blockingReason;
+  const metadataCompatibilityFailure = releaseCompatibilityFailure(
+    tokenizerFailure,
+    targetCheckpointFailure,
+  );
 
   report.metadata = {
     target: {
@@ -1199,6 +1725,7 @@ function main() {
       kvCount: parsedTarget.kvCount,
       architecture: targetMetadata["general.architecture"],
       name: targetMetadata["general.name"],
+      sha256: targetModelSha256,
     },
     version: parsed.version,
     tensorCount: parsed.tensorCount,
@@ -1209,6 +1736,7 @@ function main() {
     tokenizerPre: metadata["tokenizer.ggml.pre"],
     hasTokenizerMerges,
     targetCheckpointSha256,
+    targetCheckpointCompatibility,
     dflash: {
       blockSize: metadata["dflash-draft.dflash.block_size"],
       maskTokenId: metadata["dflash-draft.dflash.mask_token_id"],
@@ -1254,7 +1782,10 @@ function main() {
     plainArShapeOk,
     drafterSmallerThanTarget: parsed.sizeBytes < parsedTarget.sizeBytes,
     hasTargetCheckpointSha256: targetCheckpointSha256 !== null,
+    targetCheckpointMatchesTarget: targetCheckpointCompatibility.compatible,
+    targetCheckpointFailure,
     targetDrafterTokenizerCompatible: tokenizerCompatibility.compatible,
+    targetDrafterTokenizerFailure: tokenizerFailure,
     gpt2TokenizerHasMerges: tokenizerModel !== "gpt2" || hasTokenizerMerges,
   };
 
@@ -1279,10 +1810,8 @@ function main() {
       `DFlash drafter is not smaller than the target (drafter=${parsed.sizeBytes} bytes, target=${parsedTarget.sizeBytes} bytes)`,
     );
   }
-  if (!targetCheckpointSha256) {
-    failedMetadata.push(
-      "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint",
-    );
+  if (!targetCheckpointCompatibility.compatible) {
+    failedMetadata.push(targetCheckpointCompatibility.blockingReason);
   }
   if (targetMeta.status === "loaded") {
     const matchesTarget =
@@ -1294,12 +1823,11 @@ function main() {
     }
   }
   if (!tokenizerCompatibility.compatible) {
-    const keys = tokenizerCompatibility.mismatches
-      .map((mismatch) => mismatch.key)
-      .join(", ");
-    failedMetadata.push(
-      `target/drafter tokenizer metadata mismatch (${keys}); speculative drafting must fail closed until a drafter distilled against this target is provided`,
-    );
+    for (const reason of tokenizerCompatibility.blockingReasons) {
+      failedMetadata.push(
+        `target/drafter tokenizer metadata mismatch: ${reason}; speculative drafting must fail closed until a drafter distilled against this exact target tokenizer is provided`,
+      );
+    }
   }
   report.metadataStatus =
     failedMetadata.length === 0 ? "metadata_loadable" : "metadata_invalid";
@@ -1308,36 +1836,64 @@ function main() {
   if (!args.metadataOnly) {
     if (!args.skipInstalled) {
       report.runtime.push(
-        runRuntime(
-          "installed",
-          args.specBinary,
-          "",
-          args.targetModel,
-          args.drafterModel,
-          {
-            ...args,
-            cliFeatures: installedCliFeatures,
-            requiresTrueDflashDrafting,
-            tokenizerCompatibility,
-          },
-        ),
+        metadataCompatibilityFailure
+          ? blockedRuntime(
+              "installed",
+              args.specBinary,
+              args.targetModel,
+              args.drafterModel,
+              {
+                ...args,
+                cliFeatures: installedCliFeatures,
+                requiresTrueDflashDrafting,
+                tokenizerCompatibility,
+              },
+              metadataCompatibilityFailure,
+            )
+          : runRuntime(
+              "installed",
+              args.specBinary,
+              "",
+              args.targetModel,
+              args.drafterModel,
+              {
+                ...args,
+                cliFeatures: installedCliFeatures,
+                requiresTrueDflashDrafting,
+                tokenizerCompatibility,
+              },
+            ),
       );
     }
     if (args.referenceBinary) {
       report.runtime.push(
-        runRuntime(
-          "reference",
-          args.referenceBinary,
-          args.referenceLibraryPath,
-          args.targetModel,
-          args.drafterModel,
-          {
-            ...args,
-            cliFeatures: referenceCliFeatures,
-            requiresTrueDflashDrafting,
-            tokenizerCompatibility,
-          },
-        ),
+        metadataCompatibilityFailure
+          ? blockedRuntime(
+              "reference",
+              args.referenceBinary,
+              args.targetModel,
+              args.drafterModel,
+              {
+                ...args,
+                cliFeatures: referenceCliFeatures,
+                requiresTrueDflashDrafting,
+                tokenizerCompatibility,
+              },
+              metadataCompatibilityFailure,
+            )
+          : runRuntime(
+              "reference",
+              args.referenceBinary,
+              args.referenceLibraryPath,
+              args.targetModel,
+              args.drafterModel,
+              {
+                ...args,
+                cliFeatures: referenceCliFeatures,
+                requiresTrueDflashDrafting,
+                tokenizerCompatibility,
+              },
+            ),
       );
     }
   }
@@ -1347,6 +1903,7 @@ function main() {
       ...args,
       cliFeatures: installedCliFeatures,
       tokenizerCompatibility,
+      releaseCompatibilityFailure: metadataCompatibilityFailure,
     });
   }
 

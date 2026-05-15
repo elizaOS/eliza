@@ -212,7 +212,7 @@ jobs:
           SCENARIO_ENFORCE_GATE: ${{ inputs.enforce_gate && '1' || '0' }}
           SKIP_REASON: ${{ inputs.skip_reason }}
           REPORT_PATH: artifacts/lifeops-scenario-report.json
-        run: node scripts/run-live-scenarios.mjs
+        run: node packages/scripts/run-live-scenarios.mjs
 
       - name: Upload scenario report
         if: always()

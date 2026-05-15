@@ -125,6 +125,7 @@ import {
 } from "./providers/platformContext.ts";
 import { providersProvider } from "./providers/providers.ts";
 import { recentMessagesProvider } from "./providers/recentMessages.ts";
+import { runtimeModelContextProvider } from "./providers/runtimeModelContext.ts";
 import { uiContextProvider } from "./providers/uiContext.ts";
 import { userEmotionSignalProvider } from "./providers/userEmotionSignal.ts";
 import { worldProvider } from "./providers/world.ts";
@@ -1271,6 +1272,7 @@ export const basicProviders = [
 	platformUserContextProvider,
 	providersProvider,
 	recentMessagesProvider,
+	runtimeModelContextProvider,
 	uiContextProvider,
 	userEmotionSignalProvider,
 	worldProvider,

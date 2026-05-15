@@ -3,7 +3,7 @@ import { defineConfig } from "vitest/config";
 import {
   providerSdkAliases,
   providerSdkShimPlugin,
-} from "../../test/vitest/provider-sdk-aliases";
+} from "../../packages/test/vitest/provider-sdk-aliases";
 
 export default defineConfig({
   plugins: [providerSdkShimPlugin()],

@@ -126,7 +126,7 @@ export class FarcasterService extends Service {
   }
 
   static registerSendHandlers(runtime: IAgentRuntime, serviceInstance: FarcasterService): void {
-    const accounts = serviceInstance?.agents.get(runtime.agentId);
+    const accounts = serviceInstance.agents.get(runtime.agentId);
     if (!accounts || accounts.castServices.size === 0) {
       runtime.logger.warn(
         { src: "plugin:farcaster", agentId: runtime.agentId },

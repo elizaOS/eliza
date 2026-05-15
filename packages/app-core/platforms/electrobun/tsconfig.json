@@ -15,7 +15,9 @@
 		"declaration": false,
 		"outDir": "./dist",
 		"rootDir": "../../../..",
-		"types": ["bun-types"],
+		"types": [
+			"bun-types"
+		],
 		"paths": {
 			"drizzle-orm": [
 				"../../../../plugins/plugin-sql/node_modules/drizzle-orm"
@@ -26,21 +28,45 @@
 			"@capacitor/app": [
 				"../../../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
 			],
-			"@clack/prompts": ["../../../agent/node_modules/@clack/prompts"],
-			"@elizaos/app-core": ["../../src/index.ts"],
-			"@elizaos/app-core/*": ["../../src/*"],
+			"@clack/prompts": [
+				"../../../agent/node_modules/@clack/prompts"
+			],
+			"@elizaos/app-core": [
+				"../../src/index.ts"
+			],
+			"@elizaos/app-core/*": [
+				"../../src/*"
+			],
 			"@elizaos/electrobun-carrots": [
 				"../../../electrobun-carrots/src/index.ts"
 			],
-			"@elizaos/electrobun-carrots/*": ["../../../electrobun-carrots/src/*"],
-			"@elizaos/agent": ["../../../agent/src/index.ts"],
-			"@elizaos/agent/*": ["../../../agent/src/*"],
-			"@elizaos/core": ["../../../core/src/index.node.ts"],
-			"@elizaos/core/*": ["../../../core/src/*"],
-			"@elizaos/shared": ["../../../shared/src/index.ts"],
-			"@elizaos/shared/*": ["../../../shared/src/*"],
-			"@elizaos/ui": ["../../../ui/src/index.ts"],
-			"@elizaos/ui/*": ["../../../ui/src/*"],
+			"@elizaos/electrobun-carrots/*": [
+				"../../../electrobun-carrots/src/*"
+			],
+			"@elizaos/agent": [
+				"../../../agent/src/index.ts"
+			],
+			"@elizaos/agent/*": [
+				"../../../agent/src/*"
+			],
+			"@elizaos/core": [
+				"../../../core/src/index.node.ts"
+			],
+			"@elizaos/core/*": [
+				"../../../core/src/*"
+			],
+			"@elizaos/shared": [
+				"../../../shared/src/index.ts"
+			],
+			"@elizaos/shared/*": [
+				"../../../shared/src/*"
+			],
+			"@elizaos/ui": [
+				"../../../ui/src/index.ts"
+			],
+			"@elizaos/ui/*": [
+				"../../../ui/src/*"
+			],
 			"@elizaos/plugin-elizacloud": [
 				"../../../../plugins/plugin-elizacloud/src/index.node.ts"
 			],
@@ -59,18 +85,30 @@
 			"@elizaos/plugin-local-inference/*": [
 				"../../../../plugins/plugin-local-inference/src/*"
 			],
+			"@elizaos/plugin-app-manager": [
+				"../../../../plugins/plugin-app-manager/src/index.ts"
+			],
+			"@elizaos/plugin-app-manager/*": [
+				"../../../../plugins/plugin-app-manager/src/*"
+			],
 			"@elizaos/plugin-workflow": [
 				"../../../../plugins/plugin-workflow/src/index.ts"
 			],
 			"@elizaos/plugin-workflow/*": [
 				"../../../../plugins/plugin-workflow/src/*"
 			],
-			"@elizaos/workflows": ["../../../workflows/src/index.ts"],
-			"@elizaos/workflows/*": ["../../../workflows/src/*"],
+			"@elizaos/workflows": [
+				"../../../workflows/src/index.ts"
+			],
+			"@elizaos/workflows/*": [
+				"../../../workflows/src/*"
+			],
 			"@elizaos/plugin-signal": [
 				"../../../../plugins/plugin-signal/src/index.ts"
 			],
-			"@elizaos/plugin-signal/*": ["../../../../plugins/plugin-signal/src/*"],
+			"@elizaos/plugin-signal/*": [
+				"../../../../plugins/plugin-signal/src/*"
+			],
 			"@elizaos/plugin-whatsapp": [
 				"../../../../plugins/plugin-whatsapp/src/index.ts"
 			],
@@ -80,14 +118,38 @@
 			"@elizaos/capacitor-llama": [
 				"../../../native-plugins/llama/src/index.ts"
 			],
-			"@elizaos/capacitor-*": ["../../../native-plugins/*/src/index.ts"],
-			"@elizaos/plugin-wallet-ui": ["../../../../plugins/plugin-wallet-ui/src/index.ts"],
-			"@elizaos/plugin-wallet-ui/*": ["../../../../plugins/plugin-wallet-ui/src/*"],
+			"@elizaos/capacitor-*": [
+				"../../../native-plugins/*/src/index.ts"
+			],
+			"@elizaos/plugin-wallet-ui": [
+				"../../../../plugins/plugin-wallet-ui/src/index.ts"
+			],
+			"@elizaos/plugin-wallet-ui/*": [
+				"../../../../plugins/plugin-wallet-ui/src/*"
+			],
 			"@elizaos/plugin-task-coordinator": [
 				"../../../../plugins/plugin-task-coordinator/src/index.ts"
 			],
 			"@elizaos/plugin-task-coordinator/*": [
 				"../../../../plugins/plugin-task-coordinator/src/*"
+			],
+			"@elizaos/vault": [
+				"../../../vault/src/index.ts"
+			],
+			"@elizaos/vault/*": [
+				"../../../vault/src/*"
+			],
+			"@elizaos/plugin-wallet": [
+				"../../../../plugins/plugin-wallet/src/index.ts"
+			],
+			"@elizaos/plugin-wallet/*": [
+				"../../../../plugins/plugin-wallet/src/*"
+			],
+			"@elizaos/plugin-registry": [
+				"../../../../plugins/plugin-registry/src/index.ts"
+			],
+			"@elizaos/plugin-registry/*": [
+				"../../../../plugins/plugin-registry/src/*"
 			]
 		}
 	},
@@ -96,5 +158,8 @@
 		"scripts/**/*.ts",
 		"../../../agent/src/external-modules.d.ts"
 	],
-	"exclude": ["node_modules", "dist"]
+	"exclude": [
+		"node_modules",
+		"dist"
+	]
 }

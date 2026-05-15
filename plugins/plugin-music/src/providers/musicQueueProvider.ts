@@ -36,7 +36,7 @@ export const musicQueueProvider: Provider = {
       ) as MusicService | null;
       if (!musicService) return { text: "" };
 
-      const room = state?.data?.room || (await runtime.getRoom(message.roomId));
+      const room = state.data.room || (await runtime.getRoom(message.roomId));
       const currentServerId = room?.serverId;
       if (!currentServerId) return { text: "" };
 

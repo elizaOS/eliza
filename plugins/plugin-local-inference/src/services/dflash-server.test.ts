@@ -23,7 +23,6 @@ import {
 	estimateOutputTokensForDflashEvidence,
 	extractStreamingChatDelta,
 	extractVerifierRejectRange,
-	findBundleOmnivoiceAssets,
 	getDflashRuntimeStatus,
 	logDflashDevDisabledWarning,
 	parseDflashMetrics,
@@ -361,30 +360,64 @@ describe("fused-vs-two-process spawn selection", () => {
 		process.env.ELIZA_DFLASH_LLAMA_SERVER = explicit;
 		expect(resolveDflashBinary()).toBe(explicit);
 	});
+});
 
-	it("findBundleOmnivoiceAssets resolves tts/ GGUFs from the text model path", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-bundle-test-"));
-		const bundle = path.join(root, "eliza-1-2b.bundle");
-		fs.mkdirSync(path.join(bundle, "text"), { recursive: true });
-		fs.mkdirSync(path.join(bundle, "tts"), { recursive: true });
-		fs.writeFileSync(path.join(bundle, "text", "eliza-1-2b-32k.gguf"), "x");
-		fs.writeFileSync(path.join(bundle, "tts", "omnivoice-0.8b.gguf"), "x");
+describe("DflashLlamaServer runtime load config", () => {
+	it("reports the normalized target GPU layers passed to llama-server", async () => {
+		const root = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-runtime-config-"),
+		);
+		const binary = path.join(root, "llama-server");
 		fs.writeFileSync(
-			path.join(bundle, "tts", "omnivoice-tokenizer-0.8b.gguf"),
-			"x",
+			binary,
+			[
+				"#!/bin/sh",
+				'if [ "$1" = "--help" ]; then',
+				'  echo "--n-gpu-layers N"',
+				"  exit 0",
+				"fi",
+				"trap 'exit 0' TERM INT",
+				"while true; do sleep 1; done",
+				"",
+			].join("\n"),
+			"utf8",
 		);
-		const assets = findBundleOmnivoiceAssets(
-			path.join(bundle, "text", "eliza-1-2b-32k.gguf"),
+		fs.chmodSync(binary, 0o755);
+		process.env.ELIZA_STATE_DIR = root;
+		process.env.ELIZA_DFLASH_ENABLED = "1";
+		process.env.ELIZA_DFLASH_LLAMA_SERVER = binary;
+		__setCtxCheckpointsProbeCacheForTests(binary, false);
+		installDflashFetchMock((url) =>
+			url.pathname === "/health"
+				? new Response("{}", { status: 200 })
+				: notFoundResponse(),
 		);
-		expect(assets).not.toBeNull();
-		expect(assets?.modelPath).toBe(
-			path.join(bundle, "tts", "omnivoice-0.8b.gguf"),
-		);
-		expect(assets?.codecPath).toBe(
-			path.join(bundle, "tts", "omnivoice-tokenizer-0.8b.gguf"),
-		);
-		// A non-bundle layout (no text/ parent) returns null.
-		expect(findBundleOmnivoiceAssets(path.join(root, "model.gguf"))).toBeNull();
+
+		const server = new DflashLlamaServer();
+		try {
+			await server.start({
+				targetModelPath: path.join(root, "target.gguf"),
+				drafterModelPath: path.join(root, "drafter.gguf"),
+				contextSize: 128,
+				draftContextSize: 64,
+				draftMin: 1,
+				draftMax: 4,
+				gpuLayers: "auto",
+				draftGpuLayers: "auto",
+				disableThinking: false,
+				disableDrafter: true,
+			});
+
+			expect(server.currentRuntimeLoadConfig()).toMatchObject({
+				contextSize: 128,
+				cacheTypeK: null,
+				cacheTypeV: null,
+				gpuLayers: 99,
+				binaryPath: binary,
+			});
+		} finally {
+			await server.stop();
+		}
 	});
 });
 

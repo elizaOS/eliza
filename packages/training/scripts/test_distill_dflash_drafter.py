@@ -7,13 +7,18 @@ from pathlib import Path
 import pytest
 
 from scripts.distill_dflash_drafter import (
+    ACCEPTANCE_GATE,
     ACTIVE_TIERS,
     DEFAULT_TARGET_MODEL,
     DEFAULT_STUDENT_BASE,
+    QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE,
+    TRAINING_SUPPORTED_TIERS,
     _build_manifest,
+    _find_convert_script,
     _resolve_student_base,
     _tokenizer_parity_report,
 )
+from scripts.dflash.nebius import distill_drafter_h200
 
 
 class FakeTokenizer:
@@ -145,12 +150,47 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
 
 def test_active_tier_matrix_has_no_retired_defaults() -> None:
     assert ACTIVE_TIERS == ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
+    assert TRAINING_SUPPORTED_TIERS == ACTIVE_TIERS
     assert "0_6b" not in DEFAULT_STUDENT_BASE
     assert "1_7b" not in DEFAULT_STUDENT_BASE
     assert "0_6b" not in DEFAULT_TARGET_MODEL
     assert "1_7b" not in DEFAULT_TARGET_MODEL
 
 
+def test_0_8b_is_training_supported_not_manifest_required_here() -> None:
+    assert "0_8b" in TRAINING_SUPPORTED_TIERS
+    assert DEFAULT_TARGET_MODEL["0_8b"] == "elizaos/eliza-1/bundles/0_8b"
+    assert ACCEPTANCE_GATE["0_8b"] == pytest.approx(0.40)
+
+
 @pytest.mark.parametrize("tier", ["0_8b", "2b", "4b", "9b", "27b", "27b-256k"])
 def test_qwen35_tiers_default_to_qwen35_student_base(tier: str) -> None:
     assert _resolve_student_base(_args(tier=tier)) == "Qwen/Qwen3.5-0.8B-Base"
+
+
+def test_qwen35_synthetic_vocab_fixture_matches_current_family() -> None:
+    assert QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE == 248320
+    assert (
+        distill_drafter_h200.QWEN35_SYNTHETIC_VOCAB_SIZE
+        == QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE
+    )
+
+
+def test_nebius_derives_vocab_size_from_tokenizer() -> None:
+    tok = FakeTokenizer(vocab={"a": 0, "b": 1, "c": 2})
+
+    assert distill_drafter_h200._tokenizer_vocab_size(tok) == 3
+
+
+def test_convert_script_prefers_plugin_local_inference_checkout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ELIZA_LLAMACPP_DIR", raising=False)
+    monkeypatch.delenv("LLAMA_CPP_DIR", raising=False)
+
+    convert = _find_convert_script()
+
+    assert convert is not None
+    assert convert.as_posix().endswith(
+        "plugins/plugin-local-inference/native/llama.cpp/convert_hf_to_gguf.py"
+    )

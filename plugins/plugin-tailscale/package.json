@@ -26,7 +26,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
     "typecheck": "tsc --noEmit",
-    "test": "bun run --cwd ../../packages/cloud-routing build && vitest run",
+    "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "clean": "rm -rf dist coverage",
@@ -40,7 +40,7 @@
     "@elizaos/plugin-tunnel": "workspace:*"
   },
   "dependencies": {
-    "@elizaos/cloud-routing": "workspace:*",
+    "@elizaos/cloud-shared": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-tunnel": "workspace:*",
     "zod": "^4.4.3"

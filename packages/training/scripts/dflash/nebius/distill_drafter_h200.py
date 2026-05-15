@@ -9,7 +9,7 @@ Key design points:
   - FlashAttention2 for H200 (sm_90 architecture)
   - BF16 training (H200 native precision)
   - Gradient checkpointing to reduce activation memory
-  - Vocab size: 151936 (Qwen3 tokenizer — resolves prior 248320 mismatch)
+  - Qwen3.5 tokenizer family; vocab size is derived from the tokenizer
   - Checkpoint every 500 steps
   - After training, gates via validate_drafter.py acceptance check
 
@@ -52,35 +52,26 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+_TRAINING_ROOT = Path(__file__).resolve().parents[3]
+if str(_TRAINING_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAINING_ROOT))
+
+from scripts.distill_dflash_drafter import (  # noqa: E402
+    ACCEPTANCE_GATE,
+    DEFAULT_STUDENT_BASE,
+    QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE,
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
 )
 log = logging.getLogger("distill_drafter_h200")
 
-# Canonical vocab size for Qwen3-family tokenizer — this resolves the prior
-# mismatch (old drafter shipped with 248320-token vocab; Qwen3 uses 151936).
-QWEN3_VOCAB_SIZE: int = 151936
-
-# Per-tier acceptance-rate gates (mirrors distill_dflash_drafter.ACCEPTANCE_GATE).
-ACCEPTANCE_GATE: dict[str, float] = {
-    "0_8b": 0.40,
-    "2b": 0.50,
-    "4b": 0.52,
-    "9b": 0.55,
-    "27b": 0.55,
-    "27b-256k": 0.55,
-}
-
-# Default student base per tier (Qwen3.5 family, tokenizer-compatible).
-DEFAULT_STUDENT_BASE: dict[str, str] = {
-    "0_8b": "Qwen/Qwen3.5-0.8B",
-    "2b": "Qwen/Qwen3.5-0.8B",
-    "4b": "Qwen/Qwen3.5-0.8B",
-    "9b": "Qwen/Qwen3.5-2B",
-    "27b": "Qwen/Qwen3.5-4B",
-    "27b-256k": "Qwen/Qwen3.5-4B",
-}
+# Synthetic smoke has no real tokenizer to inspect; use the current Qwen3.5
+# family size only for random tensor dimensions. Real runs derive this from
+# the loaded tokenizer and verify target/student equality.
+QWEN35_SYNTHETIC_VOCAB_SIZE: int = QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE
 
 # Approximate drafter size-B per tier (used for --drafter-size-b default).
 DEFAULT_DRAFTER_SIZE_B: dict[str, float] = {
@@ -121,6 +112,10 @@ def _git_commit() -> str | None:
         return None
 
 
+def _tokenizer_vocab_size(tokenizer: Any) -> int:
+    return len(tokenizer.get_vocab())
+
+
 # --------------------------------------------------------------------------
 # Synthetic smoke: validates APOLLO + FlashAttn2 imports + pipeline wiring
 # without loading any real model weights.
@@ -156,7 +151,7 @@ def run_synthetic_smoke(args: argparse.Namespace) -> None:
     # steps on random tensors to prove the optimizer is wired correctly.
     import torch.nn as nn  # noqa: PLC0415
 
-    vocab = QWEN3_VOCAB_SIZE
+    vocab = QWEN35_SYNTHETIC_VOCAB_SIZE
     hidden = 64
     model = nn.Sequential(
         nn.Embedding(vocab, hidden),
@@ -198,8 +193,9 @@ def run_synthetic_smoke(args: argparse.Namespace) -> None:
         )
 
     log.info(
-        "[synthetic-smoke] PASS — environment validated (2 APOLLO steps, vocab=%d); no artifacts written to %s",
-        QWEN3_VOCAB_SIZE,
+        "[synthetic-smoke] PASS — environment validated "
+        "(2 APOLLO steps, vocab=%d); no artifacts written to %s",
+        QWEN35_SYNTHETIC_VOCAB_SIZE,
         args.output_dir,
     )
 
@@ -220,16 +216,9 @@ def load_drafter_model(args: argparse.Namespace) -> Any:
 
     log.info("Loading student base: %s", student_base)
     tok = AutoTokenizer.from_pretrained(student_base)
-    actual_vocab = len(tok.get_vocab())
-    if actual_vocab != QWEN3_VOCAB_SIZE:
-        log.error(
-            "Student tokenizer vocab size mismatch: got %d, expected %d (Qwen3). "
-            "DFlash speculative decode requires vocab-aligned drafter and target. "
-            "Use a Qwen3-family student base.",
-            actual_vocab,
-            QWEN3_VOCAB_SIZE,
-        )
-        sys.exit(3)
+    actual_vocab = _tokenizer_vocab_size(tok)
+    args.student_vocab_size = actual_vocab
+    log.info("Student tokenizer vocab size: %d", actual_vocab)
 
     model = AutoModelForCausalLM.from_pretrained(
         student_base,
@@ -249,6 +238,8 @@ def load_target_model(args: argparse.Namespace) -> Any:
     checkpoint = args.target_checkpoint
     log.info("Loading target model from: %s", checkpoint)
     tok = AutoTokenizer.from_pretrained(checkpoint)
+    args.target_vocab_size = _tokenizer_vocab_size(tok)
+    log.info("Target tokenizer vocab size: %d", args.target_vocab_size)
     model = AutoModelForCausalLM.from_pretrained(
         checkpoint,
         torch_dtype=torch.bfloat16,
@@ -601,10 +592,9 @@ def main(argv: list[str] | None = None) -> None:
         sys.exit(2)
 
     log.info(
-        "Starting DFlash drafter distillation: tier=%s drafter_size=%.1fB vocab=%d",
+        "Starting DFlash drafter distillation: tier=%s drafter_size=%.1fB",
         args.target_tier,
         args.drafter_size_b,
-        QWEN3_VOCAB_SIZE,
     )
     log.info("Output dir: %s", args.output_dir)
 
@@ -619,6 +609,15 @@ def main(argv: list[str] | None = None) -> None:
 
     student_model, student_tok = load_drafter_model(args)
     target_model, target_tok = load_target_model(args)
+    if args.student_vocab_size != args.target_vocab_size:
+        log.error(
+            "Tokenizer vocab mismatch: student=%d target=%d. DFlash speculative "
+            "decode requires a vocab-aligned drafter and target.",
+            args.student_vocab_size,
+            args.target_vocab_size,
+        )
+        sys.exit(3)
+    log.info("Tokenizer vocab aligned: %d", args.student_vocab_size)
 
     device = "cuda"
     student_model = student_model.to(device)
@@ -666,7 +665,7 @@ def main(argv: list[str] | None = None) -> None:
         "kind": "dflash-drafter-h200-distillation",
         "tier": args.target_tier,
         "drafterSizeB": args.drafter_size_b,
-        "vocabSize": QWEN3_VOCAB_SIZE,
+        "vocabSize": args.student_vocab_size,
         "studentBase": args.student_base or DEFAULT_STUDENT_BASE.get(args.target_tier),
         "targetCheckpoint": args.target_checkpoint,
         "targetGguf": args.target_gguf,

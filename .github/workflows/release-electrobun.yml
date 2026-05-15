@@ -235,7 +235,7 @@ jobs:
         run: |
           bunx tsdown
           echo '{"type":"module"}' > dist/package.json
-          node --import tsx scripts/write-build-info.ts
+          node --import tsx packages/scripts/write-build-info.ts
 
       - name: Run heavy E2E regression suite
         # TODO: verify this target exists in eliza root package.json.
@@ -272,7 +272,7 @@ jobs:
           ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
 
       - name: Restore build metadata after test rebuilds
-        run: node --import tsx scripts/write-build-info.ts
+        run: node --import tsx packages/scripts/write-build-info.ts
 
       - name: Release readiness checks
         env:
@@ -415,30 +415,6 @@ jobs:
       - name: Run repository postinstall patches
         run: bun run postinstall
 
-      - name: Cache Whisper models and binaries
-        if: matrix.platform.os == 'macos' || matrix.platform.os == 'linux'
-        uses: actions/cache@v5
-        with:
-          path: |
-            ~/.cache/eliza/whisper
-            node_modules/whisper-node/lib/whisper.cpp/main
-            node_modules/whisper-node/lib/whisper.cpp/build
-          key: whisper-${{ matrix.platform.artifact-name }}-${{ hashFiles('packages/app-core/platforms/electrobun/scripts/build-whisper.sh', 'packages/app-core/platforms/electrobun/scripts/build-whisper-universal.sh', 'packages/app-core/platforms/electrobun/scripts/ensure-whisper-model.sh') }}
-          restore-keys: whisper-${{ matrix.platform.artifact-name }}-
-
-      - name: Download Whisper model artifact
-        if: matrix.platform.os == 'macos' || matrix.platform.os == 'linux'
-        uses: actions/download-artifact@v8
-        with:
-          name: whisper-model-base-en
-          path: .artifacts/whisper-model
-
-      - name: Seed Whisper model cache
-        if: matrix.platform.os == 'macos' || matrix.platform.os == 'linux'
-        run: |
-          mkdir -p "$HOME/.cache/eliza/whisper"
-          cp .artifacts/whisper-model/ggml-base.en.bin "$HOME/.cache/eliza/whisper/ggml-base.en.bin"
-
       - name: Align version with release tag
         run: |
           node packages/app-core/scripts/align-electrobun-version.mjs
@@ -465,9 +441,9 @@ jobs:
       - name: Stage desktop bundle inputs
         run: |
           if [ "${{ matrix.platform.os }}" = "macos" ] && [ "${{ matrix.platform.artifact-name }}" = "macos-x64" ]; then
-            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" node packages/app-core/scripts/desktop-build.mjs stage --variant=base --build-whisper
+            ELIZA_DESKTOP_COMMAND_PREFIX="arch -x86_64" node packages/app-core/scripts/desktop-build.mjs stage --variant=base
           else
-            node packages/app-core/scripts/desktop-build.mjs stage --variant=base --build-whisper
+            node packages/app-core/scripts/desktop-build.mjs stage --variant=base
           fi
           mkdir -p dist/node_modules/@elizaos/shared/src/i18n/generated
           cp packages/shared/src/i18n/generated/validation-keyword-data.ts dist/node_modules/@elizaos/shared/src/i18n/generated/

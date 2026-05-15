@@ -759,7 +759,7 @@ function resolveAllowlistCandidatePath(
   if (!resolution) return undefined;
   if (resolution.resolvedPath) return resolution.resolvedPath;
 
-  const raw = resolution.rawExecutable?.trim();
+  const raw = resolution.rawExecutable.trim();
   if (!raw) return undefined;
 
   const expanded = raw.startsWith("~") ? expandHome(raw) : raw;

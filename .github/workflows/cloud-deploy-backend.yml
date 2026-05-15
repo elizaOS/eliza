@@ -7,22 +7,10 @@ on:
     branches: [develop, main]
     paths:
       - '.github/workflows/cloud-deploy-backend.yml'
-      - 'cloud/apps/api/**'
-      - 'cloud/apps/frontend/**'
-      - 'cloud/packages/config/**'
-      - 'cloud/packages/content/**'
-      - 'cloud/packages/lib/**'
-      - 'cloud/packages/db/**'
-      - 'cloud/packages/scripts/**'
-      - 'cloud/packages/services/**'
-      - 'cloud/packages/types/**'
-      - 'cloud/packages/ui/**'
-      - 'cloud/public/**'
-      - 'cloud/services/**'
-      - 'cloud/drizzle.config.ts'
-      - 'cloud/package.json'
-      - 'cloud/postcss.config.mjs'
-      - 'cloud/bun.lock'
+      - 'packages/cloud-api/**'
+      - 'packages/cloud-frontend/**'
+      - 'packages/cloud-shared/**'
+      - 'packages/cloud-services/**'
   workflow_dispatch:
     inputs:
       environment:
@@ -43,10 +31,6 @@ concurrency:
   group: cloud-deploy-backend-${{ github.ref }}
   cancel-in-progress: false
 
-defaults:
-  run:
-    working-directory: cloud
-
 env:
   BUN_VERSION: "1.3.9"
 
@@ -54,11 +38,6 @@ jobs:
   determine-env:
     name: Determine Environment
     runs-on: ubuntu-latest
-    # Workflow defaults use working-directory: cloud; this job does not checkout,
-    # so `cloud/` does not exist yet and bash fails to start.
-    defaults:
-      run:
-        working-directory: .
     outputs:
       environment: ${{ steps.env.outputs.environment }}
       branch: ${{ steps.env.outputs.branch }}
@@ -117,7 +96,7 @@ jobs:
         if: ${{ env.MIGRATION_DATABASE_URL != '' }}
         env:
           DATABASE_URL: ${{ env.MIGRATION_DATABASE_URL }}
-        run: bun run db:migrate
+        run: bun run db:cloud:migrate
 
       - name: Notify Discord (Success)
         if: success() && env.MIGRATION_DATABASE_URL != ''

@@ -344,6 +344,7 @@ async function runCreate(
           label,
           source: content.source,
           workdirRouteId: route?.id,
+          workdirRoute: route,
         },
       });
       await runPromptAndClose(
@@ -523,6 +524,7 @@ async function runSpawnAgent(
         source: resolvedSpawnSource,
         keepAliveAfterComplete,
         workdirRouteId: route?.id,
+        workdirRoute: route,
         // Stash the resolved task so SubAgentRouter can re-dispatch the
         // sub-agent on a failed verification without reconstructing it.
         // SessionInfo itself doesn't carry initialTask; metadata does.

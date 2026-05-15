@@ -322,8 +322,10 @@ class HarnessClient:
             "tools": [dict(tool) for tool in config.tools],
             "tool_choice": config.tool_choice or "auto",
         }
-        if system_prompt and self._harness != "hermes":
+        if system_prompt:
             context["system_prompt"] = system_prompt
+        if config.temperature != 0.0:
+            context["temperature"] = config.temperature
         response = self._client.send_message(
             user_text,
             context=context,

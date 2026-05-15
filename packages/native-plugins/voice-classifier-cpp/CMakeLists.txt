@@ -39,6 +39,7 @@ set(VOICE_CLASSIFIER_SRCS
     src/voice_speaker_distance.c
     src/voice_mel_features.c
     src/voice_gguf_loader.c
+    src/voice_gguf_tensors.c
 )
 
 # ---------------------------------------------------------------------------
@@ -97,3 +98,33 @@ add_executable(voice_gguf_loader_test test/voice_gguf_loader_test.c)
 target_link_libraries(voice_gguf_loader_test PRIVATE voice_classifier)
 target_compile_options(voice_gguf_loader_test PRIVATE -O2 -Wall -Wextra)
 add_test(NAME voice_gguf_loader_test COMMAND voice_gguf_loader_test)
+
+# K3 — pyannote-3 forward parity gate. Loads the GGUF emitted by
+# scripts/voice_diarizer_to_gguf.py and asserts ≥ 99% per-frame label
+# agreement against the ONNX reference (labels precomputed into
+# test/voice_diarizer_parity_fixtures.h). Skipped when GGUF/fixtures
+# are absent so devs without HF_TOKEN can still run the unit suite.
+add_executable(voice_diarizer_parity_test test/voice_diarizer_parity_test.c)
+target_link_libraries(voice_diarizer_parity_test PRIVATE voice_classifier)
+target_compile_options(voice_diarizer_parity_test PRIVATE -O2 -Wall -Wextra)
+add_test(NAME voice_diarizer_parity_test COMMAND voice_diarizer_parity_test)
+set_tests_properties(voice_diarizer_parity_test PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}"
+)
+
+# K2 — WeSpeaker speaker-encoder ONNX parity gate. Loads the GGUF
+# emitted by scripts/voice_speaker_to_gguf.py and 10 PCM/ONNX
+# embedding fixtures from /tmp/k2-parity (or
+# $VOICE_SPEAKER_FIXTURE_DIR). Asserts cos(c-side, onnx) ≥ 0.99 plus
+# same/different-speaker discriminative gates. Returns 77 (skip) when
+# GGUF or fixtures are missing so the unit suite still runs on dev
+# machines without the upstream model staged.
+add_executable(voice_speaker_parity_test test/voice_speaker_parity_test.c)
+target_link_libraries(voice_speaker_parity_test PRIVATE voice_classifier)
+target_compile_options(voice_speaker_parity_test PRIVATE -O2 -Wall -Wextra)
+add_test(NAME voice_speaker_parity_test
+         COMMAND voice_speaker_parity_test
+                 ${CMAKE_SOURCE_DIR}/../../../models/voice/speaker/wespeaker-resnet34-lm-fp32.gguf)
+set_tests_properties(voice_speaker_parity_test PROPERTIES
+    SKIP_RETURN_CODE 77
+)

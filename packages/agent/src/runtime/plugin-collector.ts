@@ -57,7 +57,15 @@ function orchestratorCompatPluginRequested(config: ElizaConfig): boolean {
   if (raw === "0" || raw === "false" || raw === "no") {
     return false;
   }
-  return raw === "1" || raw === "true" || raw === "yes";
+  if (raw === "1" || raw === "true" || raw === "yes") {
+    return true;
+  }
+  return [
+    "ELIZA_DEFAULT_AGENT_TYPE",
+    "ELIZA_ACP_DEFAULT_AGENT",
+    "ELIZA_AGENT_SELECTION_STRATEGY",
+    "ELIZA_MAX_CONCURRENT_SPAWNS",
+  ].some((key) => Boolean(process.env[key]?.trim()));
 }
 
 function isElizaOsAndroidRuntime(): boolean {

@@ -108,3 +108,4 @@ CMakeFiles/silero_vad_runtime_test.dir/clean:
 CMakeFiles/silero_vad_runtime_test.dir/depend:
 	cd /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build && $(CMAKE_COMMAND) -E cmake_depends "Unix Makefiles" /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles/silero_vad_runtime_test.dir/DependInfo.cmake "--color=$(COLOR)"
 .PHONY : CMakeFiles/silero_vad_runtime_test.dir/depend
+

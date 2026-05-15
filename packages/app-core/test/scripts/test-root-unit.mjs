@@ -158,7 +158,7 @@ for (const shard of unitShards) {
       "./node_modules/.bin/vitest",
       "run",
       "--config",
-      "eliza/test/vitest/default.config.ts",
+      "eliza/packages/test/vitest/default.config.ts",
       "--reporter=dot",
       ...shard.patterns,
     ],

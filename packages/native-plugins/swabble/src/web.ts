@@ -74,8 +74,8 @@ function subscribeDesktopBridgeEvent(options: {
 }
 
 const getSpeechRecognition = (): SpeechRecognitionCtor | null =>
-  (window as SpeechRecognitionWindow).SpeechRecognition ||
-  (window as SpeechRecognitionWindow).webkitSpeechRecognition ||
+  (window as unknown as SpeechRecognitionWindow).SpeechRecognition ||
+  (window as unknown as SpeechRecognitionWindow).webkitSpeechRecognition ||
   null;
 
 /**

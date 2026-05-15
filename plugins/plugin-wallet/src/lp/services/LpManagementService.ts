@@ -636,7 +636,7 @@ export function createEvmLpProtocolProvider({
         ),
         percentageToRemove:
           typeof params.amount === "object"
-            ? params.amount?.percentage
+            ? params.amount.percentage
             : undefined,
         slippageBps: params.slippageBps ?? 50,
         deadline: params.deadline,

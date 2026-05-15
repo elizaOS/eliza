@@ -331,7 +331,7 @@ jobs:
         run: |
           bunx tsdown
           echo '{"type":"module"}' > dist/package.json
-          node --import tsx scripts/write-build-info.ts
+          node --import tsx packages/scripts/write-build-info.ts
 
       - name: Build renderer
         working-directory: packages/app

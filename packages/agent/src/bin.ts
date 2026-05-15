@@ -76,7 +76,7 @@ _binDebugLog("[bin.ts] pre-runAutonomousCli");
 if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1") {
   try {
     const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-      "@elizaos/plugin-capacitor-bridge"
+      "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
     );
     (
       globalThis as {

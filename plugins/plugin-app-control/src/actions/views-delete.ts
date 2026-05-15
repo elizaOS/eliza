@@ -105,7 +105,7 @@ function extractDeleteTarget(
 		readStringOption(options, "viewId") ??
 		readStringOption(options, "id") ??
 		readStringOption(options, "name") ??
-		extractTargetFromText(message.content?.text ?? "")
+		extractTargetFromText(message.content.text ?? "")
 	);
 }
 
@@ -325,7 +325,7 @@ export async function runViewsDelete({
 }: ViewsDeleteInput): Promise<ActionResult> {
 	const roomId =
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-	const userText = (message.content?.text ?? "").trim();
+	const userText = (message.content.text ?? "").trim();
 
 	// Follow-up turn: user replied "yes" / "no" to a pending confirmation.
 	const existingConfirm = await findConfirmTask(runtime, roomId);

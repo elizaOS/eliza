@@ -73,7 +73,8 @@ Options:
 Notes:
   --live validates the running app-core/local-agent API. It is not a remote
   service test. The chat step requires local-inference readiness and a completed
-  streamed model reply from the local Android agent.`);
+  streamed model reply from the local Android agent.
+  ANDROID_SERIAL selects a specific Android device or emulator when set.`);
 }
 
 if (process.argv.includes("--help")) {
@@ -439,13 +440,30 @@ function androidDeviceSerial(adb) {
     ["devices"],
     "No Android device or emulator is available.",
   );
-  const line = devices
+  const connected = devices
     .split("\n")
     .slice(1)
     .map((entry) => entry.trim())
-    .find((entry) => entry.endsWith("\tdevice"));
-  if (!line) return null;
-  return line.split(/\s+/)[0];
+    .filter((entry) => entry.endsWith("\tdevice"))
+    .map((entry) => entry.split(/\s+/)[0]);
+  const requested = process.env.ANDROID_SERIAL?.trim();
+  if (requested) {
+    if (connected.includes(requested)) return requested;
+    const state = tryExec(adb, ["-s", requested, "get-state"], {
+      allowFailure: true,
+    });
+    if (state === "device") return requested;
+    if (requireInstalled) {
+      throw new Error(
+        `ANDROID_SERIAL=${requested} is not an attached Android device/emulator.`,
+      );
+    }
+  }
+  return (
+    connected.find((serial) => serial.startsWith("emulator-")) ??
+    connected[0] ??
+    null
+  );
 }
 
 function launchAndroidEmulatorApp() {

@@ -97,7 +97,8 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert manifest["lineage"]["text"]["base"] == "Qwen/Qwen3.5-0.8B@deadbeef"
     # 0_8b ships no separate embedding artifact (text backbone IS the embedding).
     assert "embedding" not in manifest["lineage"]
-    assert manifest["files"]["text"][0]["ctx"] == 32768
+    assert manifest["files"]["text"][0]["ctx"] == 131072
+    assert manifest["files"]["text"][0]["path"] == "text/eliza-1-0_8b-128k.gguf"
     assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.1.2.ggml.bin"
     assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
     assert manifest["evals"]["vadLatencyMs"]["endpointMs"] == 0.0
@@ -150,6 +151,6 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     assert manifest["lineage"]["embedding"]["base"] == "Qwen/Qwen3-Embedding-0.6B-GGUF"
     assert manifest["files"]["embedding"][0]["path"] == "embedding/eliza-1-embedding.gguf"
-    # Two context variants for 4b.
+    # 4b ships the half-context 128k variant as its release floor.
     ctxs = sorted(f["ctx"] for f in manifest["files"]["text"])
-    assert ctxs == [65536, 131072]
+    assert ctxs == [131072]

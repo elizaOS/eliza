@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ES2022",
+    "module": "ESNext",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
     "esModuleInterop": true,
@@ -25,6 +25,12 @@
       "@elizaos/core/*": ["./packages/core/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
+      "@elizaos/app-wallet": ["./plugins/app-wallet/src/index.ts"],
+      "@elizaos/app-wallet/*": ["./plugins/app-wallet/src/*"],
+      "@elizaos/cloud-shared": ["./packages/cloud-shared/src/index.ts"],
+      "@elizaos/cloud-shared/*": ["./packages/cloud-shared/src/*"],
+      "@elizaos/cloud-sdk": ["./packages/cloud-sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["./packages/cloud-sdk/src/*"],
       "@elizaos/plugin-wallet-ui": ["./plugins/plugin-wallet-ui/src/index.ts"],
       "@elizaos/plugin-wallet-ui/*": ["./plugins/plugin-wallet-ui/src/*"]
     }

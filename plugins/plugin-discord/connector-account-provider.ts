@@ -43,7 +43,7 @@ function purposeForAccount(_account: ResolvedDiscordAccount): string[] {
 }
 
 function accessGateForAccount(account: ResolvedDiscordAccount): string {
-	const dmPolicy = account.config?.dm?.policy;
+	const dmPolicy = account.config.dm?.policy;
 	if (dmPolicy === "pairing") {
 		return "pairing";
 	}
@@ -56,7 +56,7 @@ function accessGateForAccount(account: ResolvedDiscordAccount): string {
 function roleForAccount(account: ResolvedDiscordAccount): "OWNER" | "AGENT" {
 	// Owner-paired accounts surface as OWNER, otherwise treat the bot token
 	// as the agent's own connector identity.
-	const dmPolicy = account.config?.dm?.policy;
+	const dmPolicy = account.config.dm?.policy;
 	if (dmPolicy === "pairing") {
 		return "OWNER";
 	}
@@ -77,7 +77,7 @@ function toConnectorAccount(account: ResolvedDiscordAccount): ConnectorAccount {
 		updatedAt: now,
 		metadata: {
 			tokenSource: account.tokenSource,
-			dmPolicy: account.config?.dm?.policy ?? "open",
+			dmPolicy: account.config.dm?.policy ?? "open",
 		},
 	};
 }

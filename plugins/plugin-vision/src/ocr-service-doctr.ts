@@ -131,8 +131,8 @@ export class DoctrOCRService {
     }
 
     const meta = await sharp(imageBuffer).metadata();
-    const origW = meta.width ?? 0;
-    const origH = meta.height ?? 0;
+    const origW = meta.width;
+    const origH = meta.height;
     if (!origW || !origH) {
       return { text: "", blocks: [], fullText: "" };
     }

@@ -76,7 +76,7 @@ export const toggleSkillAction = {
 			return { success: false, error: new Error(errorText) };
 		}
 
-		const text = message.content?.text || "";
+		const text = message.content.text || "";
 		const slug = extractSlugFromMessage(text);
 		const enable = detectEnableIntent(text);
 

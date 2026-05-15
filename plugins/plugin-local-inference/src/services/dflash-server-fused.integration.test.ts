@@ -1,23 +1,20 @@
 /**
- * Integration smoke for the fused omnivoice `llama-server`: one process,
- * one llama.cpp build (packages/inference/AGENTS.md §4 — no IPC second TTS
- * process; remaining-work-ledger P0 #3 merged-route item).
+ * Integration smoke for the fused omnivoice `llama-server`.
  *
  * The test spawns the real fused `llama-server` (the `*-fused` build
  * produced by `node packages/app-core/scripts/build-llama-cpp-dflash.mjs
  * --target <triple>-fused`) against a small staged text GGUF and asserts:
- *   1. `POST /completion` does a 1-token text generation,
- *   2. `POST /v1/audio/speech` is mounted and answers from the *same PID*
- *      (returns the structured 503 "not configured" body when no OmniVoice
- *      GGUF is wired, which still proves the route is live and in-process —
- *      with `--omnivoice-model` / `--omnivoice-codec` it synthesizes), and
- *   3. cancelling an in-flight generation drains cleanly (the cancel signal
+ *   1. `POST /completion` does a 1-token text generation, and
+ *   2. cancelling an in-flight generation drains cleanly (the cancel signal
  *      aborts the request without leaving the server wedged).
+ *
+ * The fused binary's compiled-in `/v1/audio/speech` route is no longer
+ * exercised: OmniVoice TTS goes through the in-process `bun:ffi` binding in
+ * `plugin-omnivoice`, not over HTTP.
  *
  * It SKIPS when no fused build is on disk for this host's backend or no
  * staged text GGUF is found — this is a smoke test against real artifacts,
- * not a hermetic unit test. The unit-level "fused-vs-two-process spawn
- * selection" coverage lives in `dflash-server.test.ts`.
+ * not a hermetic unit test.
  */
 
 import { existsSync, readdirSync } from "node:fs";
@@ -82,7 +79,7 @@ const haveArtifacts = existsSync(FUSED_BIN) && TEXT_GGUF !== null;
 // eslint-disable-next-line vitest/no-conditional-tests
 const maybe = haveArtifacts ? describe : describe.skip;
 
-maybe("fused llama-server: text + /v1/audio/speech from one process", () => {
+maybe("fused llama-server: text generation + clean cancel", () => {
 	// Spawning a real llama-server can take a while to load weights.
 	const STARTUP_MS = 90_000;
 
@@ -95,7 +92,7 @@ maybe("fused llama-server: text + /v1/audio/speech from one process", () => {
 	});
 
 	it(
-		"spawns the fused binary, serves /completion and /v1/audio/speech, then cancels cleanly",
+		"spawns the fused binary, serves /completion, then cancels cleanly",
 		async () => {
 			// Point the runtime at the real .eliza state dir, enable DFlash, and
 			// make the bundled shared libs resolvable for the spawned child.
@@ -147,28 +144,10 @@ maybe("fused llama-server: text + /v1/audio/speech from one process", () => {
 			};
 			expect(completion.tokens_predicted).toBeGreaterThanOrEqual(1);
 
-			// 2) /v1/audio/speech mounted on the SAME process. No OmniVoice GGUF is
-			//    wired in this smoke (the stand-in text bundle has no tts/), so the
-			//    route answers with the structured "not configured" 503 — which
-			//    proves it is live and in-process (a stock llama-server returns 404).
-			const speechRoute = server.audioSpeechRoute();
-			expect(speechRoute).not.toBeNull();
-			expect(speechRoute?.fused).toBe(true);
-			expect(speechRoute?.baseUrl).toBe(baseUrl);
-			const speechRes = await fetch(`${baseUrl}${speechRoute?.speechPath}`, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ input: "hello there" }),
-			});
-			// 503 = route present but TTS not configured (no GGUF). 200 = configured
-			// and synthesized. Either proves the route is mounted in this process.
-			expect([200, 503]).toContain(speechRes.status);
-			const speechBody = await speechRes.text();
-			if (speechRes.status === 503) {
-				expect(speechBody).toContain("omnivoice");
-			}
-
-			// Confirm both responses came from the same PID (the server we spawned).
+			// 2) /v1/audio/speech is intentionally NOT exercised from JS — TTS now
+			//    goes through `plugin-omnivoice`'s in-process `bun:ffi` binding,
+			//    not over the spawned server's HTTP. The compiled-in route may
+			//    still exist in the binary but the agent never calls it.
 			const stillPid = (server as unknown as { child: { pid: number } | null })
 				.child?.pid;
 			expect(stillPid).toBe(pid);

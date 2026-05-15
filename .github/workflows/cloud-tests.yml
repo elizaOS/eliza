@@ -1,30 +1,37 @@
 name: Cloud Tests
 
-# Runs cloud's lint/typecheck/unit/integration/e2e/playwright suite when cloud/** changes.
+# Runs cloud's lint/typecheck/unit/integration/playwright suite when cloud-* packages or tests change.
 # Source: cloud/.github/workflows/tests.yml in the original elizaOS/cloud repo.
-# Root cause of prior failures: CatalogModel["params"] was missing "0.5B" in packages/shared.
 
 on:
   pull_request:
     branches: [develop, main]
     paths:
-      - "cloud/**"
+      - "packages/cloud-api/**"
+      - "packages/cloud-frontend/**"
+      - "packages/cloud-shared/**"
+      - "packages/cloud-sdk/**"
+      - "packages/cloud-services/**"
+      - "tests/cloud/**"
+      - "scripts/cloud/**"
       - ".github/workflows/cloud-tests.yml"
-      - "cloud/.github/actions/setup-test-env/**"
+      - ".github/actions/cloud-setup-test-env/**"
   push:
     branches: [develop, main]
     paths:
-      - "cloud/**"
+      - "packages/cloud-api/**"
+      - "packages/cloud-frontend/**"
+      - "packages/cloud-shared/**"
+      - "packages/cloud-sdk/**"
+      - "packages/cloud-services/**"
+      - "tests/cloud/**"
+      - "scripts/cloud/**"
       - ".github/workflows/cloud-tests.yml"
-      - "cloud/.github/actions/setup-test-env/**"
+      - ".github/actions/cloud-setup-test-env/**"
 
 concurrency:
   group: cloud-tests-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-
-defaults:
-  run:
-    working-directory: cloud
 
 env:
   DATABASE_URL: postgresql://postgres@127.0.0.1:5432/postgres
@@ -39,11 +46,9 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-      - name: Check migration journal
-        run: bun run db:check-migrations
-      - name: Lint, circular deps, and typecheck
-        run: bun run verify
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Lint and typecheck cloud workspaces
+        run: bun run verify:cloud
 
   unit-tests:
     runs-on: ubuntu-latest
@@ -52,35 +57,9 @@ jobs:
       NODE_ENV: test
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-      - name: Run unit tests
-        run: |
-          bun run test:repo-unit:bulk
-          bun run test:repo-unit:special
-          for test_file in \
-            packages/tests/unit/auth-pair-route.test.ts \
-            packages/tests/unit/steward-user-migration.test.ts \
-            packages/tests/unit/discord-automation-oauth.test.ts \
-            packages/tests/unit/docker-infrastructure.test.ts \
-            packages/tests/unit/oauth/secrets-adapter-utils.test.ts \
-            packages/tests/unit/market-price-preview-route.test.ts; do
-            if [ -f "$test_file" ]; then
-              SKIP_DB_DEPENDENT=1 SKIP_SERVER_CHECK=true bun test --preload ./packages/tests/load-env.ts "./$test_file"
-            fi
-          done
-
-  integration-db-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      NODE_ENV: test
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-        with:
-          setup-db: "true"
-      - name: Run focused DB-backed integration tests
-        run: bun run test:integration:db
+      - uses: ./.github/actions/cloud-setup-test-env
+      - name: Run cloud unit tests
+        run: bun run test:cloud
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -89,146 +68,39 @@ jobs:
       NODE_ENV: test
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
+      - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
-      - name: Run integration tests
-        run: bun run test:integration
+      - name: Run cloud integration tests
+        run: bun run test:cloud:integration
 
-  property-tests:
+  e2e-tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
+    needs: [lint-and-types]
     env:
       NODE_ENV: test
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
+      - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
-      - name: Run property tests
-        run: bun run test:properties
-
-  runtime-tests:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    env:
-      NODE_ENV: test
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-        with:
-          setup-db: "true"
-      - name: Run runtime tests
-        run: bun run test:runtime
-
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      NODE_ENV: production
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-      - name: Run build
-        run: bun run build
-
-  e2e-api:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [lint-and-types, build]
-    env:
-      NODE_ENV: test
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-        with:
-          setup-db: "true"
-      - name: Run API e2e tests
-        run: bun run test:e2e:api
-
-  e2e-auth:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [lint-and-types, build]
-    env:
-      NODE_ENV: test
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-        with:
-          setup-db: "true"
-      - name: Run auth e2e tests
-        run: bun run test:e2e:auth
-
-  e2e-cron:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [lint-and-types, build]
-    env:
-      NODE_ENV: test
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-        with:
-          setup-db: "true"
-      - name: Run cron e2e tests
-        run: bun run test:e2e:cron
-
-  e2e-v1:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [lint-and-types, build]
-    env:
-      NODE_ENV: test
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-        with:
-          setup-db: "true"
-      - name: Run V1 e2e tests
-        run: bun run test:e2e:v1
-
-  e2e-miniapp:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [lint-and-types, build]
-    env:
-      NODE_ENV: test
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-        with:
-          setup-db: "true"
-      - name: Run miniapp e2e tests
-        run: bun run test:e2e:miniapp
-
-  e2e-worker:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    needs: [lint-and-types, build]
-    env:
-      NODE_ENV: test
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
-        with:
-          setup-db: "true"
-      - name: Run Worker e2e tests
-        run: bun run test:e2e:worker
+      - name: Run cloud e2e tests
+        run: bun run test:cloud:e2e
 
   playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    needs: [lint-and-types, build]
+    needs: [lint-and-types]
     env:
       NODE_ENV: test
       PLAYWRIGHT_WORKERS: "1"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-      - uses: ./cloud/.github/actions/setup-test-env
+      - uses: ./.github/actions/cloud-setup-test-env
         with:
           setup-db: "true"
       - name: Install Playwright browsers
         run: bunx playwright install --with-deps chromium
       - name: Run Playwright tests
-        run: bun run test:playwright
+        run: bun run test:cloud:playwright

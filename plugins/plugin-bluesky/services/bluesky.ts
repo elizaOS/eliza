@@ -11,7 +11,6 @@ import { BlueSkyClient } from "../client";
 import { BlueSkyAgentManager } from "../managers/agent";
 import { BLUESKY_SERVICE_NAME } from "../types";
 import {
-	DEFAULT_BLUESKY_ACCOUNT_ID,
 	hasBlueSkyEnabled,
 	listBlueSkyAccountIds,
 	normalizeBlueSkyAccountId,
@@ -153,7 +152,7 @@ export class BlueSkyService extends Service {
 		runtime: IAgentRuntime,
 		serviceInstance: BlueSkyService,
 	): void {
-		const accounts = serviceInstance?.agents.get(runtime.agentId);
+		const accounts = serviceInstance.agents.get(runtime.agentId);
 		if (!accounts) {
 			runtime.logger.warn(
 				{ src: "plugin:bluesky", agentId: runtime.agentId },
@@ -254,8 +253,7 @@ export class BlueSkyService extends Service {
 		if (typeof withPostConnector.registerPostConnector !== "function") {
 			return;
 		}
-		const accountId =
-			postService.getAccountId?.() ?? DEFAULT_BLUESKY_ACCOUNT_ID;
+		const accountId = postService.getAccountId();
 
 		withPostConnector.registerPostConnector({
 			source: "bluesky",

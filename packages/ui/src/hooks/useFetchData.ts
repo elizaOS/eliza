@@ -94,13 +94,12 @@ export function useFetchData<T>(
     });
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   // `deps` is the intentional dependency list passed by the caller;
   // `reloadTick` is a monotonically-increasing counter that forces a refetch
   // when `refetch()` is called. Both are legitimate dep-array entries even
   // though `reloadTick` is not read inside the effect body.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadTick is an intentional trigger dep, not a used value
   useEffect(() => {
+    void reloadTick;
     const controller = new AbortController();
     setState({ status: "loading" });
 

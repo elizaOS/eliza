@@ -3,7 +3,8 @@ import sharedConfig from "../tsup.plugin-packages.shared";
 export default {
   ...sharedConfig,
   external: [
-    "@elizaos/cloud-routing",
+    "@elizaos/cloud-shared",
+    "@elizaos/cloud-shared/routing",
     "@elizaos/core",
     "@elizaos/shared",
     "@napi-rs/keyring",

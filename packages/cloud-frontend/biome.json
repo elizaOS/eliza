@@ -1,0 +1,23 @@
+{
+  "extends": ["../../biome.json"],
+  "linter": {
+    "rules": {
+      "a11y": {
+        "noLabelWithoutControl": "warn",
+        "noStaticElementInteractions": "warn",
+        "noSvgWithoutTitle": "warn",
+        "useButtonType": "warn",
+        "useKeyWithClickEvents": "warn",
+        "useMediaCaption": "warn",
+        "useSemanticElements": "warn"
+      },
+      "correctness": {
+        "noInvalidPositionAtImportRule": "warn",
+        "noUnusedFunctionParameters": "warn"
+      },
+      "suspicious": {
+        "noArrayIndexKey": "warn"
+      }
+    }
+  }
+}

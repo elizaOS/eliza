@@ -178,13 +178,13 @@ export async function saveSpiderState(
 		let channelName = state.channelId;
 
 		try {
-			if (service.client?.isReady?.()) {
+			if (service.client.isReady()) {
 				const channel = await service.client.channels.fetch(state.channelId);
 				if (channel && "guild" in channel && channel.guild) {
 					serverId = channel.guild.id;
 					channelName =
 						"name" in channel
-							? (channel.name ?? state.channelId)
+							? (channel.name)
 							: state.channelId;
 				}
 			}
@@ -395,12 +395,12 @@ export async function buildMemoryFromMessage(
 			? await service.messageManager.processMessage(message)
 			: { processedContent: message.content, attachments: [] };
 
-		const processedContent = processed?.processedContent;
+		const processedContent = processed.processedContent;
 		textContent =
 			processedContent && processedContent.trim().length > 0
 				? processedContent
 				: message.content || " ";
-		attachments = processed?.attachments ?? [];
+		attachments = processed.attachments;
 	}
 
 	const entityName =
@@ -427,7 +427,7 @@ export async function buildMemoryFromMessage(
 		// stamps this so outbound resolution can route replies back through the
 		// same connector account.
 		accountId,
-		timestamp: message.createdTimestamp ?? Date.now(),
+		timestamp: message.createdTimestamp,
 		entityName,
 		entityUserName: message.author.username,
 		entityAvatarUrl: message.author.displayAvatarURL(),
@@ -476,7 +476,7 @@ export async function buildMemoryFromMessage(
 			...(options?.extraContent ? options.extraContent : {}),
 		},
 		metadata: metadata as Memory["metadata"],
-		createdAt: message.createdTimestamp ?? Date.now(),
+		createdAt: message.createdTimestamp,
 		worldId,
 	};
 
@@ -607,7 +607,7 @@ export async function fetchChannelHistory(
 	options: ChannelHistoryOptions = {},
 ): Promise<ChannelHistoryResult> {
 	const accountId = service.accountId ?? "default";
-	if (!service.client?.isReady?.()) {
+	if (!service.client.isReady()) {
 		service.runtime.logger.warn(
 			{ src: "plugin:discord", agentId: service.runtime.agentId, channelId },
 			"Discord client not ready for history fetch",
@@ -725,13 +725,13 @@ export async function fetchChannelHistory(
 
 			const messages = Array.from(
 				batch.values() as IterableIterator<Message>,
-			).sort((a, b) => (a.createdTimestamp ?? 0) - (b.createdTimestamp ?? 0));
+			).sort((a, b) => (a.createdTimestamp) - (b.createdTimestamp));
 
 			const knownNewestTimestamp = spiderState.newestMessageTimestamp ?? 0;
 			const knownNewestId = spiderState.newestMessageId;
 			const filteredMessages: Message[] = [];
 			for (const msg of messages) {
-				const msgTimestamp = msg.createdTimestamp ?? 0;
+				const msgTimestamp = msg.createdTimestamp;
 				if (msgTimestamp > knownNewestTimestamp) {
 					filteredMessages.push(msg);
 				} else if (
@@ -787,7 +787,7 @@ export async function fetchChannelHistory(
 
 			if (messages.length > 0) {
 				const lastMsg = messages[messages.length - 1];
-				const lastTimestamp = lastMsg.createdTimestamp ?? 0;
+				const lastTimestamp = lastMsg.createdTimestamp;
 				if (!newestMessageTimestamp || lastTimestamp > newestMessageTimestamp) {
 					newestMessageId = lastMsg.id;
 					newestMessageTimestamp = lastTimestamp;
@@ -961,15 +961,15 @@ export async function fetchChannelHistory(
 		}
 
 		const messages = Array.from(batch.values()).sort(
-			(a, b) => (a.createdTimestamp ?? 0) - (b.createdTimestamp ?? 0),
+			(a, b) => (a.createdTimestamp) - (b.createdTimestamp),
 		);
 		totalFetched += messages.length;
 
 		if (messages.length > 0) {
 			const firstMsg = messages[0];
 			const lastMsg = messages[messages.length - 1];
-			const firstTimestamp = firstMsg.createdTimestamp ?? 0;
-			const lastTimestamp = lastMsg.createdTimestamp ?? 0;
+			const firstTimestamp = firstMsg.createdTimestamp;
+			const lastTimestamp = lastMsg.createdTimestamp;
 
 			if (!oldestMessageTimestamp || firstTimestamp < oldestMessageTimestamp) {
 				oldestMessageId = firstMsg.id;

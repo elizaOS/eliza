@@ -24,10 +24,13 @@
  *
  * Usage:
  *   node packages/inference/verify/eliza1_gates_collect.mjs \
- *     [--tier 0_8b|2b|4b|9b|27b|27b-256k|27b-256k] [--gates PATH] [--report PATH] [--json]
+ *     [--tier 0_8b|2b|4b|9b|27b|27b-256k] [--bundle PATH] \
+ *     [--sync-bundle-manifest-evals] [--gates PATH] [--report PATH] [--json]
  */
 
+import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -69,12 +72,16 @@ const DEFAULT_GATES = path.join(
   "eliza1_gates.yaml",
 );
 const ACTIVE_VISION_TIERS = new Set([
-  "0_8b",
-  "2b",
   "4b",
   "9b",
   "27b",
   "27b-256k",
+]);
+const ACTIVE_DFLASH_TIERS = new Set([
+  "2b",
+  "4b",
+  "9b",
+  "27b",
   "27b-256k",
 ]);
 
@@ -88,6 +95,8 @@ function timestamp() {
 function parseArgs(argv) {
   const args = {
     tier: "2b",
+    bundle: null,
+    syncBundleManifestEvals: false,
     gates: DEFAULT_GATES,
     report: null,
     json: false,
@@ -97,6 +106,11 @@ function parseArgs(argv) {
     if (a === "--tier") {
       i += 1;
       args.tier = argv[i];
+    } else if (a === "--bundle" || a === "--bundle-dir") {
+      i += 1;
+      args.bundle = argv[i] ?? null;
+    } else if (a === "--sync-bundle-manifest-evals") {
+      args.syncBundleManifestEvals = true;
     } else if (a === "--gates") {
       i += 1;
       args.gates = argv[i];
@@ -107,7 +121,7 @@ function parseArgs(argv) {
       args.json = true;
     } else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: node eliza1_gates_collect.mjs [--tier <tier>] [--gates PATH] [--report PATH] [--json]",
+        "Usage: node eliza1_gates_collect.mjs [--tier <tier>] [--bundle PATH] [--sync-bundle-manifest-evals] [--gates PATH] [--report PATH] [--json]",
       );
       process.exit(0);
     }
@@ -189,6 +203,27 @@ function newestJsonReportWhere(dirs, predicate, { recursive = true } = {}) {
   return match ? { path: match.full, data: match.data } : null;
 }
 
+function stateDir() {
+  return process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
+}
+
+function installedBundleDir(tier) {
+  return path.join(
+    stateDir(),
+    "local-inference",
+    "models",
+    `eliza-1-${tier}.bundle`,
+  );
+}
+
+function bundleEvalDirs(args) {
+  const dirs = [];
+  if (args.bundle) dirs.push(path.join(path.resolve(args.bundle), "evals"));
+  const installed = path.join(installedBundleDir(args.tier), "evals");
+  if (!dirs.includes(installed)) dirs.push(installed);
+  return dirs.filter((dir) => fs.existsSync(dir));
+}
+
 /** Newest file matching `<dir>/<prefix>*.json`, or null. */
 function newestReport(dir, prefix) {
   return newestJsonReportWhere(
@@ -256,8 +291,195 @@ function sourcePath(report) {
   return report ? path.relative(process.cwd(), report.path) : null;
 }
 
+function sha256File(file) {
+  return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+}
+
+function listChecksumInputs(root, dir = root) {
+  const out = [];
+  if (!fs.existsSync(dir)) return out;
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  entries.sort((a, b) => a.name.localeCompare(b.name));
+  for (const entry of entries) {
+    if (entry.name === ".DS_Store" || entry.name === "__MACOSX") continue;
+    const full = path.join(dir, entry.name);
+    const rel = path.relative(root, full).split(path.sep).join("/");
+    if (entry.isDirectory()) {
+      out.push(...listChecksumInputs(root, full));
+    } else if (entry.isFile() && rel !== "checksums/SHA256SUMS") {
+      out.push(rel);
+    }
+  }
+  return out;
+}
+
+function regenerateBundleChecksums(bundleDir) {
+  const checksumPath = path.join(bundleDir, "checksums", "SHA256SUMS");
+  fs.mkdirSync(path.dirname(checksumPath), { recursive: true });
+  const lines = listChecksumInputs(bundleDir)
+    .map((rel) => `${sha256File(path.join(bundleDir, rel))}  ${rel}`)
+    .join("\n");
+  fs.writeFileSync(checksumPath, `${lines}\n`);
+  return checksumPath;
+}
+
+function syncBundleManifestEvals(
+  bundleDir,
+  manifestEvalsFragment,
+  { generatedAt, measured, requiresDflash, results },
+) {
+  const manifestPath = path.join(bundleDir, "eliza-1.manifest.json");
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const before = JSON.stringify(manifest.evals ?? {});
+  const evals = { ...(manifest.evals ?? {}) };
+  const removed = [];
+  const updated = [];
+  const hasFiles = (slot) =>
+    Array.isArray(manifest.files?.[slot]) && manifest.files[slot].length > 0;
+  const voiceCapabilities = Array.isArray(manifest.voice?.capabilities)
+    ? manifest.voice.capabilities
+    : [];
+  const needsExpressiveEval =
+    voiceCapabilities.includes("emotion-tags") ||
+    voiceCapabilities.includes("singing");
+
+  for (const key of ["textEval", "voiceRtf"]) {
+    if (Object.prototype.hasOwnProperty.call(manifestEvalsFragment, key)) {
+      evals[key] = manifestEvalsFragment[key];
+      updated.push(key);
+    }
+  }
+  for (const key of ["e2eLoopOk", "thirtyTurnOk"]) {
+    if (Object.prototype.hasOwnProperty.call(manifestEvalsFragment, key)) {
+      evals[key] = manifestEvalsFragment[key];
+      updated.push(key);
+    } else if (typeof evals[key] !== "boolean") {
+      evals[key] = false;
+      updated.push(key);
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(manifestEvalsFragment, "asrWer")) {
+    evals.asrWer = manifestEvalsFragment.asrWer;
+    updated.push("asrWer");
+  } else if (hasFiles("asr")) {
+    evals.asrWer = {
+      wer: 1,
+      passed: false,
+      status: "not-run",
+      reason: "no real recorded/external ASR WER report was measured",
+    };
+    updated.push("asrWer");
+  } else if (Object.prototype.hasOwnProperty.call(evals, "asrWer")) {
+    delete evals.asrWer;
+    removed.push("asrWer");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(manifestEvalsFragment, "vadLatencyMs")) {
+    evals.vadLatencyMs = manifestEvalsFragment.vadLatencyMs;
+    updated.push("vadLatencyMs");
+  } else if (hasFiles("vad")) {
+    evals.vadLatencyMs = {
+      median: 999999,
+      boundaryMs: 999999,
+      endpointMs: 999999,
+      falseBargeInRate: 1,
+      passed: false,
+      status: "not-run",
+      reason: "native VAD metrics were not measured for this bundle",
+    };
+    updated.push("vadLatencyMs");
+  } else if (Object.prototype.hasOwnProperty.call(evals, "vadLatencyMs")) {
+    delete evals.vadLatencyMs;
+    removed.push("vadLatencyMs");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(manifestEvalsFragment, "expressive")) {
+    evals.expressive = manifestEvalsFragment.expressive;
+    updated.push("expressive");
+  } else if (needsExpressiveEval) {
+    evals.expressive = {
+      tagFaithfulness: 0,
+      mosExpressive: 0,
+      tagLeakage: 1,
+      passed: false,
+      status: "not-run",
+      reason: "expressive voice evals were not measured for this bundle",
+    };
+    updated.push("expressive");
+  } else if (Object.prototype.hasOwnProperty.call(evals, "expressive")) {
+    delete evals.expressive;
+    removed.push("expressive");
+  }
+  if (requiresDflash && Object.prototype.hasOwnProperty.call(manifestEvalsFragment, "dflash")) {
+    evals.dflash = manifestEvalsFragment.dflash;
+    updated.push("dflash");
+  } else if (requiresDflash) {
+    evals.dflash = {
+      acceptanceRate: null,
+      speedup: null,
+      passed: false,
+      status: "not-run",
+      reason: "DFlash benchmark was not measured for this bundle",
+    };
+    updated.push("dflash");
+  } else if (Object.prototype.hasOwnProperty.call(evals, "dflash")) {
+    delete evals.dflash;
+    removed.push("dflash");
+  }
+
+  manifest.evals = evals;
+  const after = JSON.stringify(evals);
+  fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  const aggregatePath = path.join(bundleDir, "evals", "aggregate.json");
+  const aggregate = fs.existsSync(aggregatePath)
+    ? JSON.parse(fs.readFileSync(aggregatePath, "utf8"))
+    : { schemaVersion: 1, tier: manifest.tier, mode: "collector-sync" };
+  const gateRows = results.map((r) => ({
+    name: r.name,
+    passed: r.status === "pass",
+    skipped: r.status === "needs-data",
+    required: Boolean(r.required),
+    provisional: Boolean(r.provisional),
+    metric: r.name,
+    observed: r.measured,
+    op: r.op === "bool" ? "is_true" : r.op,
+    threshold: r.threshold,
+    reason: r.reason,
+  }));
+  const failures = gateRows
+    .filter((g) => g.required && g.passed !== true)
+    .map((g) => `${g.name}: ${g.reason}`);
+  aggregate.generatedAt = generatedAt;
+  aggregate.tier = manifest.tier;
+  aggregate.results = { ...(aggregate.results ?? {}), ...measured };
+  aggregate.gateReport = {
+    tier: manifest.tier,
+    mode: aggregate.mode ?? "collector-sync",
+    passed: failures.length === 0,
+    gates: gateRows,
+    failures,
+  };
+  aggregate.passed = failures.length === 0;
+  fs.mkdirSync(path.dirname(aggregatePath), { recursive: true });
+  fs.writeFileSync(aggregatePath, `${JSON.stringify(aggregate, null, 2)}\n`);
+  const checksumsPath = regenerateBundleChecksums(bundleDir);
+  return {
+    changed: before !== after,
+    aggregatePath: path.relative(process.cwd(), aggregatePath),
+    manifestPath: path.relative(process.cwd(), manifestPath),
+    checksumsPath: path.relative(process.cwd(), checksumsPath),
+    updated: [...new Set(updated)].sort(),
+    removed: [...new Set(removed)].sort(),
+  };
+}
+
 function extractDflashAcceptance(data) {
-  const summaryRate = finiteOrNull(data?.summary?.dflashAcceptanceRate);
+  const summaryRate = firstFinite(
+    data?.summary?.dflashAcceptanceRate,
+    data?.summary?.acceptanceRate,
+    data?.acceptanceRate,
+  );
   if (summaryRate !== null) return summaryRate;
   const directRate = finiteOrNull(data?.withDrafter?.acceptanceRate);
   if (directRate !== null) return directRate;
@@ -265,10 +487,16 @@ function extractDflashAcceptance(data) {
   const drafted = firstFinite(
     data?.withDrafter?.drafted,
     data?.summary?.dflashDraftedTotal,
+    data?.summary?.dflashDraftedTokens,
+    data?.summary?.drafted,
+    data?.drafted,
   );
   const accepted = firstFinite(
     data?.withDrafter?.accepted,
     data?.summary?.dflashAcceptedTotal,
+    data?.summary?.dflashAcceptedTokens,
+    data?.summary?.accepted,
+    data?.accepted,
   );
   if (drafted !== null && accepted !== null) {
     return drafted > 0 ? accepted / drafted : 0;
@@ -280,12 +508,22 @@ function extractDflashSpeedup(data) {
   const drafted = firstFinite(
     data?.withDrafter?.drafted,
     data?.summary?.dflashDraftedTotal,
+    data?.summary?.dflashDraftedTokens,
+    data?.summary?.drafted,
+    data?.drafted,
   );
   const accepted = firstFinite(
     data?.withDrafter?.accepted,
     data?.summary?.dflashAcceptedTotal,
+    data?.summary?.dflashAcceptedTokens,
+    data?.summary?.accepted,
+    data?.accepted,
   );
-  const summarySpeedup = finiteOrNull(data?.summary?.dflashSpeedup);
+  const summarySpeedup = firstFinite(
+    data?.summary?.dflashSpeedup,
+    data?.summary?.speedup,
+    data?.speedup,
+  );
   if (summarySpeedup !== null) return summarySpeedup;
   const withTps = finiteOrNull(data?.withDrafter?.tokensPerSecond);
   const withoutTps = finiteOrNull(data?.withoutDrafter?.tokensPerSecond);
@@ -295,6 +533,7 @@ function extractDflashSpeedup(data) {
   const draftingActive =
     data?.draftingActive ??
     data?.summary?.dflashDraftingActive ??
+    data?.summary?.draftingActive ??
     data?.withDrafter?.draftingActive ??
     (drafted !== null && drafted > 0 && accepted !== null);
   const tokenizerCompatible =
@@ -310,6 +549,15 @@ function averageStepRtf(data) {
   const rows = data?.summary?.stepSweep;
   if (!Array.isArray(rows) || rows.length === 0) return null;
   return firstFinite(rows[0]?.meanRtf);
+}
+
+function kokoroE2eLoopbackOk(data) {
+  return (
+    data?.voiceLoop?.backend === "kokoro" &&
+    data?.e2eLoopOk === true &&
+    data?.summary?.flowCompletedOk === true &&
+    firstFinite(data?.summary?.ttsRtfMedian, data?.summary?.ttsRtfMean) !== null
+  );
 }
 
 function extractCpuSimd(data) {
@@ -419,22 +667,26 @@ async function main() {
     process.exit(2);
   }
   const gateDefs = gatesDoc?.gates ?? {};
+  const evalSearchDirs = [path.join(REPORTS_ROOT, "local-e2e"), ...bundleEvalDirs(args)];
 
   // ── Collect measured values from the latest reports ──────────────────
-  const evalAggregate = newestReportRecursiveWhere(
-    path.join(REPORTS_ROOT, "local-e2e"),
-    `${args.tier}-aggregate`,
-    (data) => data?.tier === args.tier,
+  const evalAggregate = newestJsonReportWhere(
+    evalSearchDirs,
+    ({ name, data }) =>
+      (name === "aggregate.json" || name.startsWith(`${args.tier}-aggregate`)) &&
+      data?.tier === args.tier,
   );
-  const textEval = newestReportRecursiveWhere(
-    path.join(REPORTS_ROOT, "local-e2e"),
-    `${args.tier}-text-eval`,
-    (data) => data?.metric === "text_eval" || data?.score !== undefined,
+  const textEval = newestJsonReportWhere(
+    evalSearchDirs,
+    ({ name, data }) =>
+      (name === "text-eval.json" || name.startsWith(`${args.tier}-text-eval`)) &&
+      (data?.metric === "text_eval" || data?.score !== undefined),
   );
-  const expressive = newestReportRecursiveWhere(
-    path.join(REPORTS_ROOT, "local-e2e"),
-    `${args.tier}-expressive`,
-    (data) => data?.metric === "expressive",
+  const expressive = newestJsonReportWhere(
+    evalSearchDirs,
+    ({ name, data }) =>
+      (name === "expressive.json" || name.startsWith(`${args.tier}-expressive`)) &&
+      data?.metric === "expressive",
   );
   const dflashBench = newestJsonReportWhere(
     [
@@ -444,9 +696,10 @@ async function main() {
       HARDWARE_RESULTS_ROOT,
     ],
     ({ name, data }) =>
-      name.toLowerCase().includes("dflash") &&
-      Boolean(data?.withDrafter) &&
-      Boolean(data?.withoutDrafter) &&
+      (name.toLowerCase().includes("dflash") ||
+        data?.speculator === "dflash") &&
+      (Boolean(data?.withDrafter) ||
+        data?.reportSchema === "eliza.speculative-benchmark.v1") &&
       matchesTier(data, args.tier),
   );
   const asrExternal = newestJsonReportWhere(
@@ -517,11 +770,14 @@ async function main() {
     ({ name, data }) =>
       name.toLowerCase().includes("bargein") &&
       data?.summary?.bargeInCancelMs !== undefined &&
-      matchesTier(data, args.tier),
+      (matchesTier(data, args.tier) || name.includes(args.tier)),
   );
-  const endurance = newestReport(
-    path.join(REPORTS_ROOT, "endurance"),
-    "thirty-turn-endurance-",
+  const endurance = newestJsonReportWhere(
+    [path.join(REPORTS_ROOT, "endurance")],
+    ({ name, data }) =>
+      name.startsWith("thirty-turn-endurance-") &&
+      (matchesTier(data, args.tier) || name.includes(args.tier)),
+    { recursive: false },
   );
   const mobileRss = newestReport(
     path.join(REPORTS_ROOT, "mobile-rss"),
@@ -752,6 +1008,7 @@ async function main() {
       gateByName.get("expressive_mos")?.status === "pass" &&
       gateByName.get("expressive_tag_leakage")?.status === "pass",
   };
+  const requiresDflash = ACTIVE_DFLASH_TIERS.has(args.tier);
   const manifestEvalsFragment = {
     // Only emit `thirtyTurnOk`/`e2eLoopOk` when actually measured (true or
     // false from a real run). `null` means "not measured" — the publish
@@ -763,7 +1020,7 @@ async function main() {
     ...(e2eLoopOk !== null ? { e2eLoopOk } : {}),
     ...(vadLatencyEval ? { vadLatencyMs: vadLatencyEval } : {}),
     ...(expressiveManifest ? { expressive: expressiveManifest } : {}),
-    dflash: dflashEval,
+    ...(requiresDflash ? { dflash: dflashEval } : {}),
   };
 
   function gateRow(name, area, source, reasonOverride = null, blockingOverride = null) {
@@ -817,28 +1074,40 @@ async function main() {
   const cpuKernelReady = Boolean(cpuSimdEvidence?.qjlReady && cpuSimdEvidence?.polarReady);
   const dflashDrafted = firstFinite(
     dflashBench?.data?.withDrafter?.drafted,
+    dflashBench?.data?.summary?.dflashDraftedTokens,
+    dflashBench?.data?.summary?.drafted,
+    dflashBench?.data?.drafted,
     e2eLoop?.data?.summary?.dflashDraftedTotal,
   );
   const dflashAccepted = firstFinite(
     dflashBench?.data?.withDrafter?.accepted,
+    dflashBench?.data?.summary?.dflashAcceptedTokens,
+    dflashBench?.data?.summary?.accepted,
+    dflashBench?.data?.accepted,
     e2eLoop?.data?.summary?.dflashAcceptedTotal,
   );
   const e2eOptimizations = e2eLoop?.data?.summary?.requiredOptimizations ?? e2eLoop?.data?.requiredOptimizations;
-  const streamingTtsActive = boolOrNull(e2eOptimizations?.streamingTtsActive);
+  const e2eStreamingTtsActive = boolOrNull(e2eOptimizations?.streamingTtsActive);
+  const ttsStreamSmokeActive =
+    ttsStreamSmoke?.data?.streamSupported === true &&
+    firstFinite(ttsStreamSmoke?.data?.chunks) !== null &&
+    firstFinite(ttsStreamSmoke?.data?.chunks) > 0;
+  const streamingTtsActive =
+    e2eStreamingTtsActive ?? ttsStreamSmokeActive;
+  const streamingTtsSource = e2eStreamingTtsActive !== null ? e2eLoop : ttsStreamSmoke;
   const dflashDraftingActive = boolOrNull(e2eOptimizations?.dflashDraftingActive);
   const requiresVision = ACTIVE_VISION_TIERS.has(args.tier);
-  const visionStatus =
-    visionSmoke?.data?.passed === true
+  const visionStatus = requiresVision
+    ? visionSmoke?.data?.passed === true
       ? "pass"
       : visionSmoke
-        ? requiresVision
-          ? "fail"
-          : visionSmoke.data?.status === "not-applicable"
-            ? "not-applicable"
-            : "fail"
-        : "needs-data";
+        ? "fail"
+        : "needs-data"
+    : "not-applicable";
   const visionReason =
-    visionStatus === "pass"
+    !requiresVision
+      ? `tier ${args.tier} is text/voice-only; vision smoke is not required`
+      : visionStatus === "pass"
       ? "vision smoke passed"
       : visionSmoke?.data?.status === "not-applicable" && requiresVision
         ? "active Eliza-1 tier requires vision; stale not-applicable vision evidence is invalid"
@@ -848,15 +1117,25 @@ async function main() {
             : "no vision smoke evidence for this tier"));
   const iosStatus = iosSmoke?.data?.status === "passed" ? "pass" : iosSmoke ? "fail" : "needs-data";
   const iosBlocker = iosSmoke?.data?.blocker;
+  const kokoroLoopbackPass = kokoroE2eLoopbackOk(e2eLoop?.data);
   const localVoiceLoopbackPass =
+    kokoroLoopbackPass ||
     asrTtsLoopbackSmoke?.data?.ok === true ||
     voiceProfile?.data?.defaultStreamingTtsRoundTrip?.status === "pass";
-  const localVoiceLoopbackRtf = firstFinite(
-    ttsStreamSmoke?.data?.rtf,
-    voiceProfile?.data?.defaultStreamingTtsRoundTrip?.tts?.rtf,
-    averageStepRtf(ttsSweep?.data),
-  );
+  const localVoiceLoopbackRtf = kokoroLoopbackPass
+    ? firstFinite(
+        e2eLoop?.data?.summary?.ttsRtfMedian,
+        e2eLoop?.data?.summary?.ttsRtfMean,
+      )
+    : firstFinite(
+        ttsStreamSmoke?.data?.rtf,
+        voiceProfile?.data?.defaultStreamingTtsRoundTrip?.tts?.rtf,
+        averageStepRtf(ttsSweep?.data),
+      );
   const localVoiceLoopbackWer = firstFinite(
+    e2eLoop?.data?.voiceLoop?.backend === "kokoro"
+      ? e2eLoop?.data?.summary?.asrWerMean
+      : null,
     ttsSweep?.data?.summary?.stepSweep?.[0]?.meanAsrWer,
     asrBench?.data?.aggregate?.wer,
   );
@@ -869,6 +1148,14 @@ async function main() {
   const localVoiceLoopbackMeasured =
     localVoiceLoopbackStatus === "needs-data"
       ? null
+      : kokoroLoopbackPass
+        ? [
+            "backend=kokoro",
+            `asrWer=${localVoiceLoopbackWer ?? "unknown"}`,
+            `rtf=${localVoiceLoopbackRtf ?? "unknown"}`,
+            `embedding=${e2eLoop.data?.summary?.embedding?.status ?? "unknown"}`,
+            `micSource=${e2eLoop.data?.voiceLoop?.micInputSource ?? "unknown"}`,
+          ].join(", ")
       : asrTtsLoopbackSmoke
         ? [
             `lexical=${asrTtsLoopbackSmoke.data.ok === true}`,
@@ -893,6 +1180,31 @@ async function main() {
       ? endurance.data?.reason ??
         "30-turn report exists, but it did not emit summary.thirtyTurnOk"
       : null;
+  const vadQualityReason =
+    vadQuality?.data?.reason ??
+    vadQuality?.data?.error ??
+    null;
+  const bargeInReason =
+    bargeInCancelMs === null && (bargein || e2eLoop)
+      ? bargein?.data?.reason ??
+        e2eLoop?.data?.reason ??
+        "barge-in report exists, but it did not emit summary.bargeInCancelMs"
+      : null;
+  const e2eLoopReason =
+    e2eLoopOk === null && e2eLoop
+      ? e2eLoop.data?.reason ??
+        "e2e report exists, but it did not emit e2eLoopOk"
+      : null;
+  const firstTokenReason =
+    firstTokenLatencyMs === null && e2eLoop
+      ? e2eLoop.data?.reason ??
+        "e2e report exists, but it did not emit summary.firstTokenMsMedian"
+      : null;
+  const firstAudioReason =
+    firstAudioLatencyMs === null && e2eLoop
+      ? e2eLoop.data?.reason ??
+        "e2e report exists, but it did not emit summary.firstAudioFromMicMsMedian"
+      : null;
   const releaseGateMatrix = [
     gateRow("text_eval", "quality", sourcePath(textEval ?? evalAggregate)),
     gateRow("voice_rtf", "voice", sourcePath(ttsSweep ?? ttsStreamSmoke ?? e2eLoop)),
@@ -913,27 +1225,31 @@ async function main() {
       threshold: "generated TTS->ASR smoke pass",
       reason:
         localVoiceLoopbackStatus === "pass"
-          ? "default generated TTS audio round-tripped through local ASR"
+          ? kokoroLoopbackPass
+            ? "Kokoro small-tier loop completed ASR -> text -> Kokoro TTS"
+            : "default generated TTS audio round-tripped through local ASR"
           : "generated TTS->ASR smoke did not pass lexical validation",
       source: sourcePath(
-        asrTtsLoopbackSmoke ?? voiceProfile ?? ttsSweep ?? asrBench,
+        kokoroLoopbackPass
+          ? e2eLoop
+          : asrTtsLoopbackSmoke ?? voiceProfile ?? ttsSweep ?? asrBench,
       ),
     },
-    gateRow("vad_latency_ms", "voice", sourcePath(vadQuality)),
-    gateRow("vad_boundary_mae_ms", "voice", sourcePath(vadQuality)),
-    gateRow("vad_endpoint_p95_ms", "voice", sourcePath(vadQuality)),
-    gateRow("vad_false_bargein_per_hour", "voice", sourcePath(vadQuality)),
-    gateRow("first_token_latency_ms", "latency", sourcePath(e2eLoop)),
+    gateRow("vad_latency_ms", "voice", sourcePath(vadQuality), vadQualityReason),
+    gateRow("vad_boundary_mae_ms", "voice", sourcePath(vadQuality), vadQualityReason),
+    gateRow("vad_endpoint_p95_ms", "voice", sourcePath(vadQuality), vadQualityReason),
+    gateRow("vad_false_bargein_per_hour", "voice", sourcePath(vadQuality), vadQualityReason),
+    gateRow("first_token_latency_ms", "latency", sourcePath(e2eLoop), firstTokenReason),
     gateRow(
       "first_audio_latency_ms",
       "latency",
       sourcePath(e2eLoop),
       firstAudioLatencyMs !== null
         ? `first audio is ${firstAudioLatencyMs} ms; TTS best preset passes RTF but first-audio remains slow`
-        : null,
+        : firstAudioReason,
       false,
     ),
-    gateRow("barge_in_cancel_ms", "latency", sourcePath(bargein ?? e2eLoop)),
+    gateRow("barge_in_cancel_ms", "latency", sourcePath(bargein ?? e2eLoop), bargeInReason),
     {
       ...gateRow(
         "thirty_turn_ok",
@@ -943,23 +1259,45 @@ async function main() {
       ),
       measured: thirtyTurnMeasured,
     },
-    gateRow("e2e_loop_ok", "e2e", sourcePath(e2eLoop)),
-    gateRow(
-      "dflash_acceptance",
-      "dflash",
-      sourcePath(dflashBench ?? e2eLoop),
-      dflashDrafted === 0 && dflashAccepted === 0
-        ? "DFlash generated zero drafted and accepted tokens; acceptance is an honest 0"
-        : null,
-    ),
-    gateRow(
-      "dflash_speedup",
-      "dflash",
-      sourcePath(dflashBench),
-      dflashSpeedup !== null
-        ? `DFlash speedup ${dflashSpeedup.toFixed(3)}x is below target`
-        : null,
-    ),
+    gateRow("e2e_loop_ok", "e2e", sourcePath(e2eLoop), e2eLoopReason),
+    requiresDflash
+      ? gateRow(
+          "dflash_acceptance",
+          "dflash",
+          sourcePath(dflashBench ?? e2eLoop),
+          dflashDrafted === 0 && dflashAccepted === 0
+            ? "DFlash generated zero drafted and accepted tokens; acceptance is an honest 0"
+            : null,
+        )
+      : {
+          area: "dflash",
+          gate: "dflash_acceptance",
+          status: "not-applicable",
+          blocking: false,
+          measured: null,
+          threshold: "tier ships DFlash",
+          reason: `tier ${args.tier} does not ship a DFlash drafter`,
+          source: null,
+        },
+    requiresDflash
+      ? gateRow(
+          "dflash_speedup",
+          "dflash",
+          sourcePath(dflashBench),
+          dflashSpeedup !== null
+            ? `DFlash speedup ${dflashSpeedup.toFixed(3)}x is below target`
+            : null,
+        )
+      : {
+          area: "dflash",
+          gate: "dflash_speedup",
+          status: "not-applicable",
+          blocking: false,
+          measured: null,
+          threshold: "tier ships DFlash",
+          reason: `tier ${args.tier} does not ship a DFlash drafter`,
+          source: null,
+        },
     gateRow(
       "expressive_tag_faithfulness",
       "expressive",
@@ -1017,19 +1355,29 @@ async function main() {
       threshold: "true",
       reason:
         streamingTtsActive === true
-          ? "e2e loop observed streaming TTS active; installed dylib rebuild is still tracked separately"
+          ? e2eStreamingTtsActive === true
+            ? "e2e loop observed streaming TTS active; installed dylib rebuild is still tracked separately"
+            : "standalone streaming TTS smoke emitted audio chunks from the installed runtime"
           : "streaming TTS was not active in the selected e2e loop",
-      source: sourcePath(e2eLoop),
+      source: sourcePath(streamingTtsSource),
     },
     {
       area: "worker-output",
       gate: "dflash_drafting_active",
-      status: dflashDraftingActive === true ? "pass" : dflashDraftingActive === false ? "fail" : "needs-data",
-      blocking: dflashDraftingActive !== true,
+      status: requiresDflash
+        ? dflashDraftingActive === true
+          ? "pass"
+          : dflashDraftingActive === false
+            ? "fail"
+            : "needs-data"
+        : "not-applicable",
+      blocking: requiresDflash && dflashDraftingActive !== true,
       measured: dflashDraftingActive,
       threshold: "true",
       reason:
-        dflashDraftingActive === true
+        !requiresDflash
+          ? `tier ${args.tier} does not ship a DFlash drafter`
+          : dflashDraftingActive === true
           ? "e2e loop observed DFlash drafting"
           : "required optimization is inactive in the selected e2e loop",
       source: sourcePath(e2eLoop),
@@ -1083,9 +1431,24 @@ async function main() {
       .filter((r) => r.blocking && r.status !== "pass" && r.status !== "not-applicable")
       .map((r) => `${r.gate}: ${r.reason}`),
   };
+  const generatedAt = new Date().toISOString();
+  let bundleManifestEvalSync = null;
+  if (args.syncBundleManifestEvals) {
+    if (!args.bundle) {
+      console.error(
+        "[eliza1-gates-collect] --sync-bundle-manifest-evals requires --bundle",
+      );
+      process.exit(2);
+    }
+    bundleManifestEvalSync = syncBundleManifestEvals(
+      path.resolve(args.bundle),
+      manifestEvalsFragment,
+      { generatedAt, measured, requiresDflash, results },
+    );
+  }
 
   const report = {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     collector: path.relative(process.cwd(), __filename),
     reportPath: path.relative(process.cwd(), args.report),
     tier: args.tier,
@@ -1127,6 +1490,7 @@ async function main() {
       blocking: hardFailures.length > 0,
     },
     manifestEvalsFragment,
+    bundleManifestEvalSync,
     releaseGateMatrix,
     releaseMatrixSummary,
   };

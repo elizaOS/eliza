@@ -40,4 +40,4 @@ jobs:
           AUTH_NPMRC="${NPM_CONFIG_USERCONFIG:-$HOME/.npmrc}"
           mkdir -p "$(dirname "$AUTH_NPMRC")"
           echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" > "$AUTH_NPMRC"
-          node scripts/sync-prerelease-dist-tags.js "${{ inputs.source_tag || 'beta' }}" "${{ inputs.target_tag || 'next' }}"
+          node packages/scripts/sync-prerelease-dist-tags.js "${{ inputs.source_tag || 'beta' }}" "${{ inputs.target_tag || 'next' }}"

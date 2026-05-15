@@ -349,8 +349,8 @@ export class FaceEmbedGgmlRecognizer {
     }
 
     const meta = await sharp(imageBuffer).metadata();
-    const w = meta.width ?? 0;
-    const h = meta.height ?? 0;
+    const w = meta.width;
+    const h = meta.height;
     if (!w || !h) {
       throw new Error(`${MODULE_TAG} sharp could not determine image size`);
     }

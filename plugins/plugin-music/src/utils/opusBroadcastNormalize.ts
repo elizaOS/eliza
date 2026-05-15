@@ -94,7 +94,7 @@ function spawnFfmpegRealtimeRelay(
   });
 
   let stderrAcc = "";
-  ff.stderr?.on("data", (ch: Buffer) => {
+  ff.stderr.on("data", (ch: Buffer) => {
     stderrAcc += ch.toString();
   });
 

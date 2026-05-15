@@ -201,8 +201,8 @@ runs:
       # regardless of how postinstall fared. Both scripts are idempotent.
       shell: bash
       run: |
-        node scripts/ensure-workspace-symlinks.mjs || echo "::warning::ensure-workspace-symlinks failed"
-        node scripts/ensure-native-plugins-linked.mjs || echo "::warning::ensure-native-plugins-linked failed"
+        node packages/scripts/ensure-workspace-symlinks.mjs || echo "::warning::ensure-workspace-symlinks failed"
+        node packages/scripts/ensure-native-plugins-linked.mjs || echo "::warning::ensure-native-plugins-linked failed"
 
     - name: Ensure generated shared i18n data
       shell: bash

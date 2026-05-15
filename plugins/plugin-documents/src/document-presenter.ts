@@ -289,13 +289,13 @@ export function isDocumentTextBacked(memory: Memory): boolean {
     return metadata.textBacked;
   }
 
-  const filename = getDocumentTitleFromMetadata(metadata, memory.content?.text);
+  const filename = getDocumentTitleFromMetadata(metadata, memory.content.text);
   const contentType = getDocumentContentType(metadata);
   if (isBinaryLike(contentType, filename)) {
     return false;
   }
 
-  const contentText = memory.content?.text;
+  const contentText = memory.content.text;
   if (typeof contentText !== "string" || contentText.trim().length === 0) {
     return false;
   }
@@ -304,7 +304,7 @@ export function isDocumentTextBacked(memory: Memory): boolean {
 }
 
 export function getDocumentPreviewText(memory: Memory): string | undefined {
-  const contentText = memory.content?.text;
+  const contentText = memory.content.text;
   if (typeof contentText !== "string") return undefined;
   const trimmed = contentText.trim();
   if (trimmed.length === 0 || looksLikeBase64(trimmed)) {
@@ -382,7 +382,7 @@ export function presentDocument(
 
   return {
     id: String(memory.id ?? ""),
-    filename: getDocumentTitleFromMetadata(metadata, memory.content?.text),
+    filename: getDocumentTitleFromMetadata(metadata, memory.content.text),
     contentType,
     fileSize: asNumber(metadata?.fileSize) ?? 0,
     createdAt: asNumber(memory.createdAt) ?? 0,

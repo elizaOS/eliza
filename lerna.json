@@ -5,7 +5,7 @@
     "packages/native-plugins/*",
     "packages/app-core/platforms/*",
     "plugins/*",
-    "cloud/packages/sdk"
+    "packages/cloud-sdk"
   ],
   "npmClient": "bun",
   "command": {

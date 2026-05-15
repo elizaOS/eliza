@@ -1,6 +1,0 @@
-voice_classifier_stub_smoke 2 0.00100194
-voice_emotion_classes_test 2 0.000386615
-voice_speaker_distance_test 2 0.000427634
-voice_mel_features_test 2 0.0438395
-voice_gguf_loader_test 2 0.0018241
----

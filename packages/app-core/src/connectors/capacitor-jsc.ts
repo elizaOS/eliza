@@ -1,12 +1,10 @@
-// TODO(native): Swift implementation pending — this file is the TS-side
-// facade for the eventual `CapacitorJsc` Capacitor plugin. The Swift class
-// (target name: `CapacitorJscPlugin`, registered with
+// Native boundary contract for the `CapacitorJsc` Capacitor plugin. The Swift
+// class (target name: `CapacitorJscPlugin`, registered with
 // `@objc(CapacitorJscPlugin)`) must implement the methods declared on
-// `CapacitorJscPlugin` below. Use a host JSContext (JavaScriptCore) — NOT a
-// WKWebView — so App Review treats the runtime as a sandboxed scripting
-// engine, not a browser.
+// `CapacitorJscPlugin` below. Use a host JSContext (JavaScriptCore), not a
+// WKWebView, so App Review treats the runtime as a sandboxed scripting engine.
 
-import { registerPlugin } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 
 import {
   type JsValue as AgentJsValue,
@@ -72,6 +70,28 @@ export const CapacitorJsc = registerPlugin<CapacitorJscPlugin>("CapacitorJsc");
 
 /* ── Bridge adapter registration ───────────────────────────────────────── */
 
+interface CapacitorHost {
+  isNativePlatform?: () => boolean;
+  getPlatform?: () => string;
+  isPluginAvailable?: (name: string) => boolean;
+}
+
+function getCapacitorHost(): CapacitorHost {
+  return (
+    (globalThis as { Capacitor?: CapacitorHost }).Capacitor ??
+    (Capacitor as CapacitorHost)
+  );
+}
+
+function isJscPluginAvailable(): boolean {
+  const cap = getCapacitorHost();
+  return (
+    cap.isNativePlatform?.() === true &&
+    cap.getPlatform?.() === "ios" &&
+    cap.isPluginAvailable?.("CapacitorJsc") === true
+  );
+}
+
 class CapacitorJscBridge implements JsRuntimeBridge {
   readonly kind = "jsc-ios" as const;
   constructor(private readonly plugin: CapacitorJscPlugin) {}
@@ -98,15 +118,7 @@ class CapacitorJscBridge implements JsRuntimeBridge {
 registerJsRuntimeFactory({
   kind: "jsc-ios",
   async create() {
-    const cap = (
-      globalThis as {
-        Capacitor?: {
-          isNativePlatform?: () => boolean;
-          getPlatform?: () => string;
-        };
-      }
-    ).Capacitor;
-    if (!cap?.isNativePlatform?.() || cap.getPlatform?.() !== "ios") {
+    if (!isJscPluginAvailable()) {
       return null;
     }
     return new CapacitorJscBridge(CapacitorJsc);
