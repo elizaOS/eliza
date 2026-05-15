@@ -1,5 +1,5 @@
-import BigNumberLib from "bignumber.js";
 import type { default as BigNumberType } from "bignumber.js";
+import BigNumberLib from "bignumber.js";
 
 export const BN = BigNumberLib;
 export default BigNumberLib;

@@ -13,6 +13,8 @@ const VIEWPORTS: ViewportCase[] = [
   { name: "wide-web", width: 1440, height: 900 },
 ];
 
+const VOICE_PREFIX_DONE_STORAGE_KEY = "eliza:voice:prefix-done";
+
 function apiBaseFromTest(baseURL: string | undefined): string {
   expect(baseURL, "Playwright baseURL must be configured").toBeTruthy();
   return (baseURL ?? "").replace(/\/$/, "");
@@ -54,10 +56,11 @@ for (const viewport of VIEWPORTS) {
       width: viewport.width,
       height: viewport.height,
     });
-    await page.addInitScript(() => {
+    await page.addInitScript((voicePrefixDoneKey) => {
       localStorage.clear();
       sessionStorage.clear();
-    });
+      localStorage.setItem(voicePrefixDoneKey, "1");
+    }, VOICE_PREFIX_DONE_STORAGE_KEY);
 
     await installDefaultAppRoutes(page);
 

@@ -315,9 +315,7 @@ export async function handleRelationshipsRoutes(
       });
       for (const fact of recentFacts) {
         const text =
-          typeof fact.content.text === "string"
-            ? fact.content.text.trim()
-            : "";
+          typeof fact.content.text === "string" ? fact.content.text.trim() : "";
         if (!text) {
           continue;
         }

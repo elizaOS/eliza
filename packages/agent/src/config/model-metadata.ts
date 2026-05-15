@@ -110,7 +110,7 @@ export function normalizeModelMetadataInConfig(config: ElizaConfig): void {
 
   for (const [providerId, provider] of Object.entries(providers)) {
     const providerRecord = provider as ModelProviderConfig;
-    providerRecord.models = (providerRecord.models).map((model) =>
+    providerRecord.models = providerRecord.models.map((model) =>
       normalizeModelDefinitionConfig(
         { ...model, id: model.id },
         providerId === "bedrock" ? defaults : undefined,

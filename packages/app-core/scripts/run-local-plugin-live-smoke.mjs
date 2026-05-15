@@ -21,6 +21,17 @@ const vitestConfigPath = path.join(
 );
 const runtimePackageBuildPrerequisites = [
   {
+    name: "@elizaos/agent",
+    packageRoot: path.join(repoRoot, "eliza", "packages", "agent"),
+    requiredPaths: [
+      path.join("dist", "index.js"),
+      path.join("dist", "services", "app-package-modules.js"),
+      path.join("dist", "services", "overlay-app-presence.js"),
+      path.join("dist", "services", "plugin-manager-types.js"),
+      path.join("dist", "services", "registry-client-queries.js"),
+    ],
+  },
+  {
     name: "@elizaos/app-core",
     packageRoot: path.join(repoRoot, "eliza", "packages", "app-core"),
     requiredPaths: [

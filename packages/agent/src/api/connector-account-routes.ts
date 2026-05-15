@@ -937,8 +937,7 @@ export async function handleConnectorAccountRoutes(
           ? await readJsonBody<Record<string, unknown>>(req, res)
           : undefined;
       if (method === "POST" && !body) return true;
-      const state =
-        typeof body?.state === "string" ? body.state : (query.state);
+      const state = typeof body?.state === "string" ? body.state : query.state;
       if (!state) {
         error(res, "Missing OAuth state", 400);
         return true;

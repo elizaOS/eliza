@@ -126,7 +126,11 @@ export function resolveSileroVadGgmlLibrary(opts: {
 		"silero-vad-cpp",
 		"build",
 	);
-	for (const name of ["libsilero_vad.so", "libsilero_vad.dylib", "silero_vad.dll"]) {
+	for (const name of [
+		"libsilero_vad.so",
+		"libsilero_vad.dylib",
+		"silero_vad.dll",
+	]) {
 		const candidate = path.join(buildDir, name);
 		if (existsSync(candidate)) return candidate;
 	}

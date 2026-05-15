@@ -273,6 +273,7 @@ const startAt = process.env.TEST_START_AT?.trim() || "";
 const DEFAULT_POSTGRES_URL =
   "postgresql://eliza_test:test123@localhost:5432/eliza_test";
 const DEFAULT_TASK_TIMEOUT_MS = 15 * 60 * 1000;
+const DEFAULT_E2E_TASK_TIMEOUT_MS = 40 * 60 * 1000;
 const POSTGRES_INIT_SQL_PATH = path.join(
   repoRoot,
   "plugins",
@@ -336,6 +337,17 @@ function collectPackageJsonPaths() {
   }
 
   return [...packageJsonPaths].sort((left, right) => left.localeCompare(right));
+}
+
+function getTaskTimeoutMs() {
+  const defaultTimeoutMs =
+    selectedMode === "e2e"
+      ? DEFAULT_E2E_TASK_TIMEOUT_MS
+      : DEFAULT_TASK_TIMEOUT_MS;
+  return Number.parseInt(
+    process.env.ELIZA_TEST_TASK_TIMEOUT_MS ?? `${defaultTimeoutMs}`,
+    10,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -885,10 +897,7 @@ function runScript(cwd, scriptName, label, extraEnv = {}) {
     });
     let capturedOutput = "";
     let timedOut = false;
-    const timeoutMs = Number.parseInt(
-      process.env.ELIZA_TEST_TASK_TIMEOUT_MS ?? `${DEFAULT_TASK_TIMEOUT_MS}`,
-      10,
-    );
+    const timeoutMs = getTaskTimeoutMs();
     const timeout =
       Number.isFinite(timeoutMs) && timeoutMs > 0
         ? setTimeout(() => {
@@ -953,10 +962,7 @@ function runDirectTask(label, command, args, cwd, extraEnv = {}) {
     });
     let capturedOutput = "";
     let timedOut = false;
-    const timeoutMs = Number.parseInt(
-      process.env.ELIZA_TEST_TASK_TIMEOUT_MS ?? `${DEFAULT_TASK_TIMEOUT_MS}`,
-      10,
-    );
+    const timeoutMs = getTaskTimeoutMs();
     const timeout =
       Number.isFinite(timeoutMs) && timeoutMs > 0
         ? setTimeout(() => {

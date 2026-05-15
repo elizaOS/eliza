@@ -116,12 +116,20 @@ export async function tileScreenshot(
 
   const cols = Math.max(1, Math.ceil(width / maxEdge));
   const rows = Math.max(1, Math.ceil(height / maxEdge));
-  const tileWidth = Math.min(maxEdge, Math.ceil(width / cols + maxEdge * overlapFraction));
-  const tileHeight = Math.min(maxEdge, Math.ceil(height / rows + maxEdge * overlapFraction));
+  const tileWidth = Math.min(
+    maxEdge,
+    Math.ceil(width / cols + maxEdge * overlapFraction),
+  );
+  const tileHeight = Math.min(
+    maxEdge,
+    Math.ceil(height / rows + maxEdge * overlapFraction),
+  );
   // Stride between top-left corners of adjacent tiles. With a single tile per
   // axis, stride is the full width/height — no overlap math needed.
-  const strideX = cols > 1 ? Math.floor((width - tileWidth) / (cols - 1)) : tileWidth;
-  const strideY = rows > 1 ? Math.floor((height - tileHeight) / (rows - 1)) : tileHeight;
+  const strideX =
+    cols > 1 ? Math.floor((width - tileWidth) / (cols - 1)) : tileWidth;
+  const strideY =
+    rows > 1 ? Math.floor((height - tileHeight) / (rows - 1)) : tileHeight;
 
   const image = sharp(pngBytes);
   const tiles: ScreenTile[] = [];
@@ -185,10 +193,14 @@ export function reconstructAbsoluteCoords(
 
 function validateInput(width: number, height: number, pngBytes: Buffer): void {
   if (!Number.isInteger(width) || width <= 0) {
-    throw new Error(`[ScreenTiler] width must be a positive integer, got ${width}`);
+    throw new Error(
+      `[ScreenTiler] width must be a positive integer, got ${width}`,
+    );
   }
   if (!Number.isInteger(height) || height <= 0) {
-    throw new Error(`[ScreenTiler] height must be a positive integer, got ${height}`);
+    throw new Error(
+      `[ScreenTiler] height must be a positive integer, got ${height}`,
+    );
   }
   if (!Buffer.isBuffer(pngBytes) || pngBytes.length === 0) {
     throw new Error("[ScreenTiler] pngBytes must be a non-empty Buffer");
@@ -201,7 +213,11 @@ function validateOptions(maxEdge: number, overlapFraction: number): void {
       `[ScreenTiler] maxEdge must be an integer >= 64, got ${maxEdge}`,
     );
   }
-  if (!Number.isFinite(overlapFraction) || overlapFraction < 0 || overlapFraction >= 1) {
+  if (
+    !Number.isFinite(overlapFraction) ||
+    overlapFraction < 0 ||
+    overlapFraction >= 1
+  ) {
     throw new Error(
       `[ScreenTiler] overlapFraction must be in [0, 1), got ${overlapFraction}`,
     );

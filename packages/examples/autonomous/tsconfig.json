@@ -20,7 +20,8 @@
       ],
       "@elizaos/plugin-local-inference": [
         "../../../plugins/plugin-local-inference/src/index.ts"
-      ]
+      ],
+      "@elizaos/plugin-shell": ["../../../plugins/plugin-shell/dist/index.d.ts"]
     }
   },
   "include": [

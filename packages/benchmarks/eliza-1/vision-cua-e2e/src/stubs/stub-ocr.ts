@@ -30,7 +30,6 @@ export class StubOcrWithCoords {
    * tile-local bbox), matching the contract the real `OcrWithCoordsService`
    * follows.
    */
-  // biome-ignore lint/suspicious/useAwait: matches the async surface of the real provider
   async describe(input: StubOcrInput): Promise<OcrCoordResult> {
     const { sourceX, sourceY, tileWidth } = input;
     const closeBoxLocal = { x: tileWidth - 140, y: 8, width: 32, height: 32 };

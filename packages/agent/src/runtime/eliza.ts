@@ -283,13 +283,15 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
       return await import("@elizaos/plugin-commands");
     }
     if (packageName === "@elizaos/plugin-video") {
-      return await import("@elizaos/plugin-video");
+      const pluginVideoSpecifier = "@elizaos/plugin-video";
+      return await import(pluginVideoSpecifier);
     }
     if (packageName === "@elizaos/plugin-background-runner") {
       return await import("@elizaos/plugin-background-runner");
     }
     if (packageName === "@elizaos/plugin-mlx") {
-      return await import("@elizaos/plugin-mlx");
+      const pluginMlxSpecifier = "@elizaos/plugin-mlx";
+      return await import(pluginMlxSpecifier);
     }
     if (packageName === "@elizaos/plugin-anthropic") {
       return await import("@elizaos/plugin-anthropic");

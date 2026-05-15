@@ -582,8 +582,7 @@ function extractDiscordReactionEvent(
       action: structuredAction,
       emoji: structuredEmoji,
       targetMessageId,
-      userKey:
-        memory.entityId,
+      userKey: memory.entityId,
       userLabel: extractFrom(memory) ?? extractFromUserName(memory),
     };
   }
@@ -603,8 +602,7 @@ function extractDiscordReactionEvent(
     action: legacyMatch[1].toLowerCase() === "added" ? "add" : "remove",
     emoji: legacyMatch[2].trim(),
     targetMessageId,
-    userKey:
-      memory.entityId,
+    userKey: memory.entityId,
     userLabel: extractFrom(memory) ?? extractFromUserName(memory),
   };
 }

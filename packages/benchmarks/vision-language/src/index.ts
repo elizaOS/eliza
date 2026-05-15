@@ -1,26 +1,30 @@
 /**
  * Public surface for `@elizaos/bench-vision-language`.
  */
-export { ChartQaAdapter, predictChartQa } from "./adapters/chartqa_adapter.ts";
+
 export type { ChartQaPayload } from "./adapters/chartqa_adapter.ts";
-export { DocVqaAdapter, predictDocVqa } from "./adapters/docvqa_adapter.ts";
+export { ChartQaAdapter, predictChartQa } from "./adapters/chartqa_adapter.ts";
 export type { DocVqaPayload } from "./adapters/docvqa_adapter.ts";
-export {
-  OSWorldAdapter,
-  predictOSWorld,
-  parseActionList,
-  actionListPrompt,
-} from "./adapters/osworld_adapter.ts";
+export { DocVqaAdapter, predictDocVqa } from "./adapters/docvqa_adapter.ts";
 export type { OSWorldPayload } from "./adapters/osworld_adapter.ts";
 export {
-  ScreenSpotAdapter,
-  predictScreenSpot,
-  parseClickFromText,
-  groundingPrompt,
-} from "./adapters/screenspot_adapter.ts";
+  actionListPrompt,
+  OSWorldAdapter,
+  parseActionList,
+  predictOSWorld,
+} from "./adapters/osworld_adapter.ts";
 export type { ScreenSpotPayload } from "./adapters/screenspot_adapter.ts";
-export { TextVqaAdapter, predictTextVqa } from "./adapters/textvqa_adapter.ts";
+export {
+  groundingPrompt,
+  parseClickFromText,
+  predictScreenSpot,
+  ScreenSpotAdapter,
+} from "./adapters/screenspot_adapter.ts";
 export type { TextVqaPayload } from "./adapters/textvqa_adapter.ts";
+export { predictTextVqa, TextVqaAdapter } from "./adapters/textvqa_adapter.ts";
+export type { RunOneArgs } from "./runner.ts";
+export { lookupBaseline, runOneBenchmark } from "./runner.ts";
+export { createStubRuntime, resolveRuntime } from "./runtime-resolver.ts";
 export {
   anls,
   bboxIoU,
@@ -34,15 +38,12 @@ export {
   relaxedNumeric,
   vqaSoftScore,
 } from "./scorers/index.ts";
-export { lookupBaseline, runOneBenchmark } from "./runner.ts";
-export type { RunOneArgs } from "./runner.ts";
-export { createStubRuntime, resolveRuntime } from "./runtime-resolver.ts";
 export type {
-  BBox,
   BaselineEntry,
-  BenchReport,
+  BBox,
   BenchmarkAdapter,
   BenchmarkName,
+  BenchReport,
   Eliza1TierId,
   Point,
   PredictedAction,

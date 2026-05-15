@@ -296,7 +296,7 @@
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": [],
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
       "outputs": []
     },
     "@elizaos/app#typecheck": {

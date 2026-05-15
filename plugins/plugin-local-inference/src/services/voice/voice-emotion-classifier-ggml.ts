@@ -76,10 +76,7 @@ export class VoiceEmotionGgmlUnavailableError extends Error {
 		| "native-stub"
 		| "model-load-failed"
 		| "invalid-input";
-	constructor(
-		code: VoiceEmotionGgmlUnavailableError["code"],
-		message: string,
-	) {
+	constructor(code: VoiceEmotionGgmlUnavailableError["code"], message: string) {
 		super(message);
 		this.name = "VoiceEmotionGgmlUnavailableError";
 		this.code = code;
@@ -123,10 +120,7 @@ export class VoiceEmotionGgmlClassifier {
 	private disposed = false;
 
 	constructor(options: VoiceEmotionGgmlClassifierOptions) {
-		if (
-			typeof options.ggufPath !== "string" ||
-			options.ggufPath.length === 0
-		) {
+		if (typeof options.ggufPath !== "string" || options.ggufPath.length === 0) {
 			throw new VoiceEmotionGgmlUnavailableError(
 				"invalid-input",
 				"[voice-emotion-ggml] ggufPath is required",

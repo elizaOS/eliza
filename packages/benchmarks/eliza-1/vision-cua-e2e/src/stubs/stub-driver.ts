@@ -24,7 +24,6 @@ export interface RecordedClick {
 export class StubDriver {
   private readonly clicks: RecordedClick[] = [];
 
-  // biome-ignore lint/suspicious/useAwait: matches the async surface of the real driver
   async click(target: AbsoluteClickTarget): Promise<void> {
     this.clicks.push({ target, at: Date.now() });
   }

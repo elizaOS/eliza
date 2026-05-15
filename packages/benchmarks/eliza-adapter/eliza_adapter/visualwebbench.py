@@ -57,9 +57,10 @@ class ElizaVisualWebBenchAgent:
         started = time.time()
         self._client.reset(task_id=task.id, benchmark="visualwebbench")
 
-        # Attach the screenshot. The eliza bridge supports both an on-disk path
-        # (resolved server-side) and inline base64 bytes for vision-capable
-        # models. We pass both so whichever the model expects is available.
+        # Attach the screenshot by path. Inline base64 screenshots are often
+        # megabytes long in the HF corpus; passing them through text-only or
+        # OpenAI-compatible benchmark bridges blows provider context limits.
+        # Enable VISUALWEBBENCH_INLINE_IMAGES=1 only for a known vision path.
         attachments: list[dict[str, object]] = []
         if task.image_path:
             attachments.append({
@@ -67,7 +68,7 @@ class ElizaVisualWebBenchAgent:
                 "path": task.image_path,
                 "media_type": "image/png",
             })
-        if task.image_bytes:
+        if task.image_bytes and _env_enabled("VISUALWEBBENCH_INLINE_IMAGES"):
             import base64
 
             attachments.append({
@@ -442,6 +443,15 @@ def _parse_int(value: object) -> int | None:
         except ValueError:
             return None
     return None
+
+
+def _env_enabled(name: str) -> bool:
+    return str(__import__("os").environ.get(name, "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def _parse_bbox(value: object) -> "BBox | None":

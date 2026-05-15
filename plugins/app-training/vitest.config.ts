@@ -23,7 +23,14 @@ const pluginCodingToolsSrc = path.join(
   "plugin-coding-tools",
   "src",
 );
+const pluginAppManagerSrc = path.join(
+  repoRoot,
+  "plugins",
+  "plugin-app-manager",
+  "src",
+);
 const vaultSrc = path.join(repoRoot, "packages", "vault", "src");
+const agentSrc = path.join(repoRoot, "packages", "agent", "src");
 const baseAliases = Array.isArray(baseConfig.resolve?.alias)
   ? baseConfig.resolve.alias
   : [];
@@ -74,12 +81,24 @@ export default defineConfig({
         replacement: path.join(pluginCodingToolsSrc, "$1"),
       },
       {
+        find: /^@elizaos\/plugin-app-manager$/,
+        replacement: path.join(pluginAppManagerSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-app-manager\/(.+)$/,
+        replacement: path.join(pluginAppManagerSrc, "$1"),
+      },
+      {
         find: /^@elizaos\/vault$/,
         replacement: path.join(vaultSrc, "index.ts"),
       },
       {
         find: /^@elizaos\/vault\/(.+)$/,
         replacement: path.join(vaultSrc, "$1"),
+      },
+      {
+        find: /^@elizaos\/agent\/(.+)$/,
+        replacement: path.join(agentSrc, "$1"),
       },
       ...baseAliases,
     ],

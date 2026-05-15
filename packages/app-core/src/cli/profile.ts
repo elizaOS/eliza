@@ -15,7 +15,7 @@ function takeValue(
 } {
   if (raw.includes("=")) {
     const [, value] = raw.split("=", 2);
-    const trimmed = (value).trim();
+    const trimmed = value.trim();
     return { value: trimmed || null, consumedNext: false };
   }
   const trimmed = (next ?? "").trim();

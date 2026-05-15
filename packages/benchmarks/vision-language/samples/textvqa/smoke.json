@@ -5,13 +5,35 @@
       "id": "smoke-textvqa-0001",
       "imagePath": "samples/_placeholder.png",
       "question": "What word is written on the orange sign?",
-      "answers": ["stop", "stop", "stop", "stop", "stop", "stop", "stop", "stop", "stop", "stop"]
+      "answers": [
+        "stop",
+        "stop",
+        "stop",
+        "stop",
+        "stop",
+        "stop",
+        "stop",
+        "stop",
+        "stop",
+        "stop"
+      ]
     },
     {
       "id": "smoke-textvqa-0002",
       "imagePath": "samples/_placeholder.png",
       "question": "What is the time on the clock?",
-      "answers": ["3:15", "3:15", "3:15", "3:15", "3:15", "3:15", "3:15", "3:15", "3:15", "3:15"]
+      "answers": [
+        "3:15",
+        "3:15",
+        "3:15",
+        "3:15",
+        "3:15",
+        "3:15",
+        "3:15",
+        "3:15",
+        "3:15",
+        "3:15"
+      ]
     },
     {
       "id": "smoke-textvqa-0003",
@@ -23,13 +45,35 @@
       "id": "smoke-textvqa-0004",
       "imagePath": "samples/_placeholder.png",
       "question": "What city is on the airport sign?",
-      "answers": ["paris", "paris", "paris", "paris", "paris", "paris", "paris", "paris", "paris", "paris"]
+      "answers": [
+        "paris",
+        "paris",
+        "paris",
+        "paris",
+        "paris",
+        "paris",
+        "paris",
+        "paris",
+        "paris",
+        "paris"
+      ]
     },
     {
       "id": "smoke-textvqa-0005",
       "imagePath": "samples/_placeholder.png",
       "question": "What does the small label on the bottle say?",
-      "answers": ["water", "water", "water", "water", "water", "water", "water", "water", "water", "water"]
+      "answers": [
+        "water",
+        "water",
+        "water",
+        "water",
+        "water",
+        "water",
+        "water",
+        "water",
+        "water",
+        "water"
+      ]
     }
   ]
 }

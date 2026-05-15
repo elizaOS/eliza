@@ -1210,7 +1210,7 @@ function rewriteStateRecentMessages(args: {
     RECENT_MESSAGES: nextProvider,
   };
   const nextValues = {
-    ...(args.state.values),
+    ...args.state.values,
     recentMessages: rendered,
     recentPosts: rendered,
     messageHistoryCompaction: args.telemetry as unknown as JsonValue,

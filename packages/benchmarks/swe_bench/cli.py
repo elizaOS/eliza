@@ -617,6 +617,7 @@ def _build_client_for_harness(
         normalized_model = _openai_compat_model_name(model_name)
         if normalized_model:
             client_kwargs["model"] = normalized_model
+        client_kwargs["mode"] = "in_process"
         client = HermesClient(**client_kwargs)
         try:
             client.wait_until_ready(timeout=60)
@@ -630,6 +631,7 @@ def _build_client_for_harness(
         client_kwargs: dict[str, object] = {}
         if model_name:
             client_kwargs["model"] = model_name
+        client_kwargs["direct_openai_compatible"] = True
         client = OpenClawClient(**client_kwargs)
         # OpenClawClient.wait_until_ready requires the binary on disk; the
         # direct-OpenAI-compat path doesn't, so we skip the readiness probe

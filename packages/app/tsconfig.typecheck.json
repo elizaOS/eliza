@@ -35,7 +35,7 @@
         "./src/types/side-effect-app-modules.d.ts"
       ],
       "@elizaos/plugin-wallet": [
-        "../../plugins/plugin-wallet/dist/index.d.mts"
+        "../../plugins/plugin-wallet/dist/index.d.ts"
       ],
       "@elizaos/plugin-sql": [
         "../../plugins/plugin-sql/src/dist/index.node.d.ts"

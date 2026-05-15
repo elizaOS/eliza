@@ -38,25 +38,30 @@ You can always change tiers in **Settings → Local Model**.
 The maximum supported context is `27b-256k` (262k tokens natural context). No 1M tier is
 available or planned.
 
-### Voice sub-model repos (advanced / separate download)
+### Voice payloads
 
-Each voice component is also published as a standalone HuggingFace repo:
+Voice payloads are part of the single `elizaos/eliza-1` HuggingFace repo. The
+canonical advanced layout is `voice/<component>/...`. The unified destination
+has been verified against the local sha256/size manifest at commit
+`20b291b5820937e8a1e1ca9f2927f5bc64aefe7e`.
 
-| Component | Repo | Notes |
-|-----------|------|-------|
-| ASR | `elizaos/eliza-1-voice-asr` | Qwen3-ASR GGUF streaming |
-| Turn detector | `elizaos/eliza-1-voice-turn` | LiveKit EN + INTL |
-| Emotion | `elizaos/eliza-1-voice-emotion` | Wav2Small V-A-D |
-| Speaker encoder | `elizaos/eliza-1-voice-speaker` | WeSpeaker ResNet34-LM |
-| Diarizer | `elizaos/eliza-1-voice-diarizer` | Pyannote-segmentation-3.0 |
-| VAD | `elizaos/eliza-1-voice-vad` | Silero VAD v5.1.2 |
-| Wakeword | `elizaos/eliza-1-voice-wakeword` | hey-eliza head |
-| Kokoro TTS | `elizaos/eliza-1-voice-kokoro` | Kokoro-82M base |
-| OmniVoice TTS | `elizaos/eliza-1-voice-omnivoice` | OmniVoice presets |
-| Embedding | `elizaos/eliza-1-voice-embedding` | Qwen3-Embedding GGUF |
+| Component | Canonical path | Notes |
+|-----------|----------------|-------|
+| ASR | `voice/asr/` | Qwen3-ASR GGUF streaming |
+| Turn detector | `voice/turn-detector/` | LiveKit EN + INTL |
+| Emotion | `voice/voice-emotion/` | Wav2Small V-A-D |
+| Speaker encoder | `voice/speaker-encoder/` | WeSpeaker ResNet34-LM |
+| Diarizer | `voice/diarizer/` | Pyannote-segmentation-3.0 |
+| VAD | `voice/vad/` | Silero VAD v5.1.2 |
+| Wakeword | `voice/wakeword/` | hey-eliza head |
+| Kokoro TTS | `voice/kokoro/` | Kokoro-82M base |
+| OmniVoice TTS | `voice/omnivoice/` | OmniVoice presets |
+| Embedding | `voice/embedding/` | Qwen3-Embedding GGUF |
 
-These are bundled into the main tier download automatically — the separate repos exist
-for advanced use cases (custom pipelines, model comparison, research).
+These are bundled into the main tier download automatically. Use
+`scripts/hf_consolidate_eliza1_voice.py --verify-destination` to re-verify the
+unified repo. The legacy split `elizaos/eliza-1-voice-*` repos have been
+removed.
 
 ---
 

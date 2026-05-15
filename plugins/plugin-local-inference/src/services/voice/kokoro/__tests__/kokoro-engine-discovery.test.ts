@@ -107,9 +107,9 @@ describe("resolveKokoroEngineConfig", () => {
 			expect(cfg).not.toBeNull();
 			expect(cfg?.defaultVoiceId).toBe("af_bella");
 			expect(warnings.some((w) => /af_same/.test(w))).toBe(true);
-			expect(
-				warnings.some((w) => /falling back to af_bella/.test(w)),
-			).toBe(true);
+			expect(warnings.some((w) => /falling back to af_bella/.test(w))).toBe(
+				true,
+			);
 		} finally {
 			console.warn = origWarn;
 		}

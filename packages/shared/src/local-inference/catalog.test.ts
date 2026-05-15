@@ -9,7 +9,7 @@ import {
 
 const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
 const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b", "eliza-1-27b-256k"] as const;
-const OMNIVOICE_TIERS = LARGE_TIERS;
+const OMNIVOICE_TIERS = ELIZA_1_TIER_IDS;
 
 describe("voiceQuantLadderForTier", () => {
   it("covers every canonical tier id", () => {
@@ -21,9 +21,10 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("does not publish OmniVoice ladders for Kokoro-only small tiers", () => {
+  it("returns the narrow mobile ladder for small OmniVoice tiers", () => {
+    const expected: OmniVoiceQuantLevel[] = ["Q3_K_M", "Q4_K_M", "Q5_K_M"];
     for (const id of SMALL_TIERS) {
-      expect(voiceQuantLadderForTier(id)).toEqual([]);
+      expect(voiceQuantLadderForTier(id)).toEqual(expected);
     }
   });
 
@@ -53,7 +54,7 @@ describe("voiceQuantLadderForTier", () => {
 });
 
 describe("defaultVoiceQuantForTier", () => {
-  it("keeps a Q4_K_M OmniVoice default if a small tier enables OmniVoice later", () => {
+  it("keeps a Q4_K_M OmniVoice default for small tiers", () => {
     for (const id of SMALL_TIERS) {
       expect(defaultVoiceQuantForTier(id)).toBe("Q4_K_M");
     }

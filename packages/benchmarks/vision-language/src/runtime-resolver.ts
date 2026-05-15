@@ -18,10 +18,16 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
-  parseClickFromText,
-} from "./adapters/screenspot_adapter.ts";
-import { actionListPrompt, parseActionList } from "./adapters/osworld_adapter.ts";
-import type { Eliza1TierId, Point, PredictedAction, VisionRuntime } from "./types.ts";
+  actionListPrompt,
+  parseActionList,
+} from "./adapters/osworld_adapter.ts";
+import { parseClickFromText } from "./adapters/screenspot_adapter.ts";
+import type {
+  Eliza1TierId,
+  Point,
+  PredictedAction,
+  VisionRuntime,
+} from "./types.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 
@@ -31,7 +37,11 @@ interface AppCoreVisionLike {
     tier: Eliza1TierId;
     modelPath: string;
   }) => Promise<{
-    describe(args: { imagePath: string; prompt: string; maxTokens?: number }): Promise<string>;
+    describe(args: {
+      imagePath: string;
+      prompt: string;
+      maxTokens?: number;
+    }): Promise<string>;
     cleanup?(): Promise<void>;
   }>;
 }
@@ -73,7 +83,11 @@ async function tryLoadPluginVision(
 function wrapVisionImpl(
   tier: Eliza1TierId,
   impl: {
-    describe(args: { imagePath: string; prompt: string; maxTokens?: number }): Promise<string>;
+    describe(args: {
+      imagePath: string;
+      prompt: string;
+      maxTokens?: number;
+    }): Promise<string>;
     cleanup?(): Promise<void>;
   },
 ): VisionRuntime {
@@ -97,7 +111,11 @@ function wrapVisionImpl(
       });
       return parseClickFromText(text);
     },
-    async runActionLoop({ instruction, initialScreenshotPath, maxSteps }): Promise<PredictedAction[]> {
+    async runActionLoop({
+      instruction,
+      initialScreenshotPath,
+      maxSteps,
+    }): Promise<PredictedAction[]> {
       const text = await impl.describe({
         imagePath: initialScreenshotPath,
         prompt: actionListPrompt(instruction),
@@ -112,10 +130,7 @@ function wrapVisionImpl(
 
 function resolveModelPath(tier: Eliza1TierId): string | null {
   const root = elizaModelsDir();
-  const candidates = [
-    path.join(root, `${tier}.bundle`),
-    path.join(root, tier),
-  ];
+  const candidates = [path.join(root, `${tier}.bundle`), path.join(root, tier)];
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }

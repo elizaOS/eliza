@@ -233,7 +233,9 @@ export class GgmlWakeWordModel implements WakeWordModel {
 
 	async scoreFrame(frame: Float32Array): Promise<number> {
 		if (this.closed) {
-			throw new Error("[wake-word] GgmlWakeWordModel.scoreFrame called after close()");
+			throw new Error(
+				"[wake-word] GgmlWakeWordModel.scoreFrame called after close()",
+			);
 		}
 		if (frame.length !== FRAME_SAMPLES) {
 			throw new Error(

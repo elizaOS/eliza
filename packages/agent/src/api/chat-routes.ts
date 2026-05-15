@@ -1215,9 +1215,7 @@ export async function generateChatResponse(
     throw createChatGenerationTimeoutError(generationTimeoutMs);
   }
   try {
-    const originalUserText = String(
-      extractCompatTextContent(message.content),
-    );
+    const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
     let forcedWalletExecutionText = false;
@@ -2358,7 +2356,8 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
-        const { getLocalInferenceChatStatus } = await getLocalInferenceChatApi();
+        const { getLocalInferenceChatStatus } =
+          await getLocalInferenceChatApi();
         const localFailure = await getLocalInferenceChatStatus("status", err);
         json(
           res,
@@ -2804,7 +2803,8 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
-        const { getLocalInferenceChatStatus } = await getLocalInferenceChatApi();
+        const { getLocalInferenceChatStatus } =
+          await getLocalInferenceChatApi();
         const localFailure = await getLocalInferenceChatStatus("status", err);
         json(
           res,

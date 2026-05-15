@@ -350,10 +350,7 @@ export async function findRoomForEntity(
       const room = await runtime.getRoom(roomId);
       if (!room) continue;
       const roomRecord = room as Room & { source?: string };
-      if (
-        (roomRecord.source).toLowerCase() ===
-        platform.toLowerCase()
-      ) {
+      if (roomRecord.source.toLowerCase() === platform.toLowerCase()) {
         return room;
       }
     }
