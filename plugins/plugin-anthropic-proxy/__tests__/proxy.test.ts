@@ -41,11 +41,22 @@ function withEnv<T>(overrides: Record<string, string | undefined>, fn: () => T):
 		if (v === undefined) delete process.env[k];
 		else process.env[k] = v;
 	}
-	try { return fn(); } finally {
+	const restore = () => {
 		for (const [k, v] of Object.entries(prev)) {
 			if (v === undefined) delete process.env[k];
 			else process.env[k] = v;
 		}
+	};
+	try {
+		const result = fn();
+		if (result && typeof (result as Promise<unknown>).finally === "function") {
+			return (result as Promise<unknown>).finally(restore) as T;
+		}
+		restore();
+		return result;
+	} catch (err) {
+		restore();
+		throw err;
 	}
 }
 
@@ -184,18 +195,24 @@ describe("AnthropicProxyService modes", () => {
 	});
 
 	it("does not poison ANTHROPIC_BASE_URL when inline startup falls back to off", async () => {
-		const service = await withEnv(
-			{
-				ANTHROPIC_BASE_URL: "auto",
-				CLAUDE_MAX_PROXY_MODE: "inline",
-				CLAUDE_CODE_OAUTH_TOKEN: undefined,
-				CLAUDE_MAX_CREDENTIALS_PATH: "/nonexistent/path/that/does/not/exist.json",
-			},
-			() => AnthropicProxyService.start({} as unknown as never),
-		);
-		cleanup.push(() => service.stop());
-		expect(service.getEffectiveMode()).toBe("off");
-		expect(process.env.ANTHROPIC_BASE_URL).toBe("auto");
+		const previous = process.env.ANTHROPIC_BASE_URL;
+		process.env.ANTHROPIC_BASE_URL = "auto";
+		try {
+			const service = await withEnv(
+				{
+					CLAUDE_MAX_PROXY_MODE: "inline",
+					CLAUDE_CODE_OAUTH_TOKEN: undefined,
+					CLAUDE_MAX_CREDENTIALS_PATH: "/nonexistent/path/that/does/not/exist.json",
+				},
+				() => AnthropicProxyService.start({} as unknown as never),
+			);
+			cleanup.push(() => service.stop());
+			expect(service.getEffectiveMode()).toBe("off");
+			expect(process.env.ANTHROPIC_BASE_URL).toBe("auto");
+		} finally {
+			if (previous === undefined) delete process.env.ANTHROPIC_BASE_URL;
+			else process.env.ANTHROPIC_BASE_URL = previous;
+		}
 	});
 });
 
