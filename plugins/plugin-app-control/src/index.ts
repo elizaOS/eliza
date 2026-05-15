@@ -70,6 +70,12 @@ export const appControlPlugin: Plugin = {
 		AppWorkerHostService,
 		VerificationRoomBridgeService,
 	],
+	async dispose(runtime) {
+		await runtime.getService<VerificationRoomBridgeService>(VerificationRoomBridgeService.serviceType)?.stop();
+		await runtime.getService<AppWorkerHostService>(AppWorkerHostService.serviceType)?.stop();
+		await runtime.getService<AppVerificationService>(AppVerificationService.serviceType)?.stop();
+		await runtime.getService<AppRegistryService>(AppRegistryService.serviceType)?.stop();
+	},
 	views: [
 		{
 			id: "views-manager",

@@ -74,10 +74,10 @@ const ciExcludedRealPaths = [
     "plugins/plugin-form/src/tests/json-integration.live.test.ts",
   ),
   elizaWorkspacePattern(
-    "plugins/app-lifeops/test/lifeops-life-chat.real.test.ts",
+    "plugins/plugin-lifeops/test/lifeops-life-chat.real.test.ts",
   ),
   elizaWorkspacePattern(
-    "plugins/app-lifeops/test/lifeops-llm-extraction.live.test.ts",
+    "plugins/plugin-lifeops/test/lifeops-llm-extraction.live.test.ts",
   ),
   elizaWorkspacePattern(
     "packages/agent/src/providers/media-provider.real.test.ts",
@@ -502,7 +502,7 @@ export default defineConfig({
       // The default real/live lane only uses public chains. Local Anvil coverage
       // stays out of bun run test until it is replaced with public-chain tests.
       elizaWorkspacePattern(
-        "plugins/app-steward/test/anvil-contracts.real.e2e.test.ts",
+        "plugins/plugin-steward-app/test/anvil-contracts.real.e2e.test.ts",
       ),
       elizaWorkspacePattern("packages/app-core/platforms/electrobun/**"),
       "apps/chrome-extension/**",

@@ -1,0 +1,47 @@
+{
+  "name": "@elizaos/plugin-task-coordinator",
+  "version": "2.0.0-beta.2",
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./*.css": "./dist/*.css",
+    "./*": {
+      "import": "./dist/*.js",
+      "default": "./dist/*.js",
+      "types": "./dist/*.d.ts"
+    }
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/ui": "workspace:*",
+    "lucide-react": "^1.0.0"
+  },
+  "elizaos": {
+    "app": {
+      "heroImage": "assets/hero.png"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "bun run build:js && bun run build:types",
+    "clean": "rm -rf dist",
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.live.e2e.test.ts"
+  },
+  "files": [
+    "dist"
+  ],
+  "devDependencies": {
+    "tsup": "^8.5.1"
+  }
+}

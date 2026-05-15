@@ -14,7 +14,7 @@
  *     `bedtime.target`, `nap.start`)
  *   - Default-pack `ScheduledTask` records (bedtime / wake-up / sleep-recap)
  *
- * See `eliza/plugins/app-lifeops/docs/audit/IMPLEMENTATION_PLAN.md` §3.2 and
+ * See `eliza/plugins/plugin-lifeops/docs/audit/IMPLEMENTATION_PLAN.md` §3.2 and
  * `wave1-interfaces.md` §5 for the canonical scope.
  */
 

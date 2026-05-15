@@ -120,14 +120,38 @@ function ViewsLoadingSkeleton() {
   );
 }
 
+function ViewSection({
+  title,
+  views,
+  onViewClick,
+}: {
+  title: string;
+  views: ViewRegistryEntry[];
+  onViewClick: (view: ViewRegistryEntry) => void;
+}) {
+  if (views.length === 0) return null;
+  return (
+    <div className="mb-5">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted/70">
+        {title}
+      </h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        {views.map((view) => (
+          <ViewCard key={view.id} view={view} onClick={onViewClick} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function ViewManagerPage() {
   const { views, loading, error } = useAvailableViews();
   const isDeveloperMode = useIsDeveloperMode();
   const [query, setQuery] = useState("");
 
-  const visibleViews = useMemo(() => {
+  const { builtinViews, pluginViews } = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return views.filter((v) => {
+    const visible = views.filter((v) => {
       // Hide developer-only views when not in developer mode.
       if (v.developerOnly && !isDeveloperMode) return false;
       // Hide views explicitly excluded from the manager grid.
@@ -141,7 +165,13 @@ export function ViewManagerPage() {
         (v.tags?.some((t) => t.toLowerCase().includes(q)) ?? false)
       );
     });
+    return {
+      builtinViews: visible.filter((v) => v.builtin),
+      pluginViews: visible.filter((v) => !v.builtin),
+    };
   }, [views, isDeveloperMode, query]);
+
+  const totalVisible = builtinViews.length + pluginViews.length;
 
   function handleViewClick(view: ViewRegistryEntry) {
     const path = view.path ?? `/apps/${view.id}`;
@@ -166,7 +196,7 @@ export function ViewManagerPage() {
       <div className="shrink-0 border-b border-border/50 px-4 py-3">
         <h1 className="text-sm font-semibold text-txt">Views</h1>
         <p className="text-xs text-muted">
-          Agent-provided views from installed plugins
+          Built-in shell views and agent-provided views from installed plugins
         </p>
       </div>
 
@@ -194,14 +224,21 @@ export function ViewManagerPage() {
 
         {loading && views.length === 0 ? (
           <ViewsLoadingSkeleton />
-        ) : visibleViews.length === 0 ? (
+        ) : totalVisible === 0 ? (
           <ViewsEmptyState hasQuery={query.trim().length > 0} />
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {visibleViews.map((view) => (
-              <ViewCard key={view.id} view={view} onClick={handleViewClick} />
-            ))}
-          </div>
+          <>
+            <ViewSection
+              title="Core"
+              views={builtinViews}
+              onViewClick={handleViewClick}
+            />
+            <ViewSection
+              title="Plugins"
+              views={pluginViews}
+              onViewClick={handleViewClick}
+            />
+          </>
         )}
       </div>
     </div>

@@ -291,6 +291,8 @@ export {
   ttsDebug,
   ttsDebugTextPreview,
 } from "./utils";
+export * from "./views/view-event-bus";
+export * from "./views/view-event-types";
 export * from "./voice";
 export * from "./widgets";
 export * from "./widgets/registry-store";

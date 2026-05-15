@@ -254,6 +254,7 @@ import {
 import { handleSubscriptionRoutes } from "./subscription-routes.ts";
 import { handleUpdateRoutes } from "./update-routes.ts";
 import { handleViewsRoutes } from "./views-routes.ts";
+import { registerBuiltinViews } from "./views-registry.ts";
 import {
   deriveSolanaAddress,
   fetchEvmBalances,
@@ -3292,6 +3293,10 @@ export async function startApiServer(opts?: {
   // Store the restart callback on the state so the route handler can access it.
   const onRestart = opts?.onRestart ?? null;
 
+  // Register built-in first-party shell views in the view registry so
+  // GET /api/views always includes them and the agent can navigate to them.
+  registerBuiltinViews();
+
   logger.debug(
     `[eliza-api] Creating http server (${Date.now() - apiStartTime}ms)`,
   );
@@ -4009,6 +4014,19 @@ export async function startApiServer(opts?: {
               );
             }
           }
+        } else if (
+          msg.type === "view:interact:result" &&
+          typeof msg.requestId === "string"
+        ) {
+          const { resolveViewInteractResult } = await import(
+            "./views-routes.ts"
+          );
+          resolveViewInteractResult({
+            requestId: msg.requestId,
+            success: msg.success === true,
+            result: msg.result,
+            error: typeof msg.error === "string" ? msg.error : undefined,
+          });
         }
       } catch (err) {
         logger.error(

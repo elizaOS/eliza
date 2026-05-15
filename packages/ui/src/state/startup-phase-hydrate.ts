@@ -25,6 +25,7 @@ import {
   tabFromPath,
 } from "../navigation";
 import { isTransientOptionalFetchFailure, resolveApiUrl } from "../utils";
+import { emitViewEvent } from "../views/view-event-bus";
 import {
   loadAvatarIndex,
   normalizeAvatarIndex,
@@ -400,6 +401,53 @@ export function bindReadyPhase(
     },
   );
 
+  const unbindViewEvent = client.onWsEvent(
+    "view:event",
+    (data: Record<string, unknown>) => {
+      const viewEventType =
+        typeof data.viewEventType === "string" ? data.viewEventType : null;
+      if (!viewEventType) return;
+      const payload =
+        data.payload !== null &&
+        typeof data.payload === "object" &&
+        !Array.isArray(data.payload)
+          ? (data.payload as Record<string, unknown>)
+          : {};
+      emitViewEvent(viewEventType, payload, "agent");
+    },
+  );
+
+  const unbindViewInteract = client.onWsEvent(
+    "view:interact",
+    (data: Record<string, unknown>) => {
+      const viewId = typeof data.viewId === "string" ? data.viewId : null;
+      const capability =
+        typeof data.capability === "string" ? data.capability : null;
+      const requestId =
+        typeof data.requestId === "string" ? data.requestId : null;
+      if (!viewId || !capability || !requestId) return;
+      const params =
+        data.params !== null &&
+        typeof data.params === "object" &&
+        !Array.isArray(data.params)
+          ? (data.params as Record<string, unknown>)
+          : undefined;
+      // Lazy-import to avoid pulling the registry into the startup bundle.
+      import("../components/views/view-interact-registry")
+        .then(({ dispatchViewInteract }) =>
+          dispatchViewInteract(viewId, capability, params, requestId),
+        )
+        .catch(() => {
+          client.sendWsMessage({
+            type: "view:interact:result",
+            requestId,
+            success: false,
+            error: "view-interact-registry not available",
+          });
+        });
+    },
+  );
+
   const unbindAgent = client.onWsEvent(
     "agent_event",
     (data: Record<string, unknown>) => {
@@ -655,6 +703,8 @@ export function bindReadyPhase(
     unbindSysWarn();
     unbindRestart();
     unbindShellNavigateView();
+    unbindViewEvent();
+    unbindViewInteract();
     unbindConvUp();
     unbindPty();
     if (ptyPollInterval) clearInterval(ptyPollInterval);

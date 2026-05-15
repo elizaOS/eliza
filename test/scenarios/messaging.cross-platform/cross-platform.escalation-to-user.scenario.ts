@@ -1,6 +1,6 @@
 import type { AgentRuntime } from "@elizaos/core";
 import { scenario } from "@elizaos/scenario-schema";
-import { receivePendingIntents } from "../../../plugins/app-lifeops/src/lifeops/intent-sync.ts";
+import { receivePendingIntents } from "../../../plugins/plugin-lifeops/src/lifeops/intent-sync.ts";
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,

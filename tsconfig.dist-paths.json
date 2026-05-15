@@ -183,8 +183,8 @@
       "@elizaos/vault": ["./packages/vault/src/index.ts"],
       "@elizaos/plugin-linear": ["./plugins/plugin-linear/dist/index.d.ts"],
       "@elizaos/plugin-bluesky": ["./plugins/plugin-bluesky/dist/index.d.ts"],
-      "@elizaos/app-companion": ["./plugins/app-companion/dist/index.d.ts"],
-      "@elizaos/app-polymarket": ["./plugins/app-polymarket/dist/index.d.ts"],
+      "@elizaos/plugin-companion": ["./plugins/plugin-companion/dist/index.d.ts"],
+      "@elizaos/plugin-polymarket-app": ["./plugins/plugin-polymarket-app/dist/index.d.ts"],
       "@elizaos/plugin-computeruse": [
         "./plugins/plugin-computeruse/dist/index.d.ts"
       ],
@@ -195,12 +195,12 @@
         "./plugins/plugin-farcaster/dist/index.d.ts"
       ],
       "@elizaos/plugin-google": ["./plugins/plugin-google/dist/index.d.ts"],
-      "@elizaos/app-hyperscape": ["./plugins/app-hyperscape/dist/index.d.ts"],
-      "@elizaos/app-babylon": ["./plugins/app-babylon/dist/index.d.ts"],
+      "@elizaos/plugin-hyperscape": ["./plugins/plugin-hyperscape/dist/index.d.ts"],
+      "@elizaos/plugin-babylon": ["./plugins/plugin-babylon/dist/index.d.ts"],
       "@elizaos/plugin-openrouter": [
         "./plugins/plugin-openrouter/dist/index.d.ts"
       ],
-      "@elizaos/app-2004scape": ["./plugins/app-2004scape/dist/index.d.ts"],
+      "@elizaos/plugin-2004scape": ["./plugins/plugin-2004scape/dist/index.d.ts"],
       "@elizaos/plugin-coding-tools": [
         "./plugins/plugin-coding-tools/dist/index.d.ts"
       ],
@@ -211,34 +211,34 @@
       "@elizaos/plugin-tailscale": [
         "./plugins/plugin-tailscale/dist/index.d.ts"
       ],
-      "@elizaos/app-phone": ["./plugins/app-phone/dist/index.d.ts"],
+      "@elizaos/plugin-phone": ["./plugins/plugin-phone/dist/index.d.ts"],
       "@elizaos/plugin-agent-skills": [
         "./plugins/plugin-agent-skills/dist/index.d.ts"
       ],
       "@elizaos/plugin-elizacloud": [
         "./plugins/plugin-elizacloud/dist/node/index.d.ts"
       ],
-      "@elizaos/app-documents": ["./plugins/app-documents/dist/index.d.ts"],
-      "@elizaos/app-elizamaker": ["./plugins/app-elizamaker/dist/index.d.ts"],
-      "@elizaos/app-shopify": ["./plugins/app-shopify/dist/index.d.ts"],
+      "@elizaos/plugin-documents": ["./plugins/plugin-documents/dist/index.d.ts"],
+      "@elizaos/plugin-elizamaker": ["./plugins/plugin-elizamaker/dist/index.d.ts"],
+      "@elizaos/plugin-shopify-ui": ["./plugins/plugin-shopify-ui/dist/index.d.ts"],
       "@elizaos/plugin-app-control": [
         "./plugins/plugin-app-control/dist/index.d.ts"
       ],
-      "@elizaos/app-hyperliquid": ["./plugins/app-hyperliquid/dist/index.d.ts"],
+      "@elizaos/plugin-hyperliquid-app": ["./plugins/plugin-hyperliquid-app/dist/index.d.ts"],
       "@elizaos/plugin-rlm": ["./plugins/plugin-rlm/dist/index.d.ts"],
       "@elizaos/plugin-anthropic": [
         "./plugins/plugin-anthropic/dist/index.d.ts"
       ],
       "@elizaos/plugin-nostr": ["./plugins/plugin-nostr/dist/index.d.ts"],
-      "@elizaos/app-wallet": ["./plugins/app-wallet/dist/index.d.ts"],
+      "@elizaos/plugin-wallet-ui": ["./plugins/plugin-wallet-ui/dist/index.d.ts"],
       "@elizaos/plugin-inmemorydb": [
         "./plugins/plugin-inmemorydb/dist/index.d.ts"
       ],
       "@elizaos/plugin-edge-tts": ["./plugins/plugin-edge-tts/dist/index.d.ts"],
       "@elizaos/plugin-todos": ["./plugins/plugin-todos/dist/index.d.ts"],
       "@elizaos/plugin-line": ["./plugins/plugin-line/dist/index.d.ts"],
-      "@elizaos/app-lifeops": ["./plugins/app-lifeops/dist/index.d.ts"],
-      "@elizaos/app-screenshare": ["./plugins/app-screenshare/dist/index.d.ts"],
+      "@elizaos/plugin-lifeops": ["./plugins/plugin-lifeops/dist/index.d.ts"],
+      "@elizaos/plugin-screenshare": ["./plugins/plugin-screenshare/dist/index.d.ts"],
       "@elizaos/plugin-feishu": ["./plugins/plugin-feishu/dist/index.d.ts"],
       "@elizaos/plugin-slack": ["./plugins/plugin-slack/dist/index.d.ts"],
       "@elizaos/plugin-roblox": ["./plugins/plugin-roblox/dist/index.d.ts"],
@@ -258,8 +258,8 @@
       "@elizaos/plugin-local-storage": [
         "./plugins/plugin-local-storage/dist/index.d.ts"
       ],
-      "@elizaos/app-trajectory-logger": [
-        "./plugins/app-trajectory-logger/dist/index.d.ts"
+      "@elizaos/plugin-trajectory-logger": [
+        "./plugins/plugin-trajectory-logger/dist/index.d.ts"
       ],
       "@elizaos/plugin-codex-cli": [
         "./plugins/plugin-codex-cli/dist/index.d.ts"
@@ -273,7 +273,7 @@
       "@elizaos/plugin-elevenlabs": [
         "./plugins/plugin-elevenlabs/dist/index.d.ts"
       ],
-      "@elizaos/app-vincent": ["./plugins/app-vincent/dist/index.d.ts"],
+      "@elizaos/plugin-vincent": ["./plugins/plugin-vincent/dist/index.d.ts"],
       "@elizaos/plugin-mysticism": [
         "./plugins/plugin-mysticism/dist/index.d.ts"
       ],
@@ -287,7 +287,7 @@
         "./plugins/plugin-music/dist/index.d.ts"
       ],
       "@elizaos/plugin-calendly": ["./plugins/plugin-calendly/dist/index.d.ts"],
-      "@elizaos/app-wifi": ["./plugins/app-wifi/dist/index.d.ts"],
+      "@elizaos/plugin-wifi": ["./plugins/plugin-wifi/dist/index.d.ts"],
       "@elizaos/plugin-xai": ["./plugins/plugin-xai/dist/index.d.ts"],
       "@elizaos/plugin-xai/*": ["./plugins/plugin-xai/*"],
       "@elizaos/plugin-cli": ["./plugins/plugin-cli/dist/index.d.ts"],
@@ -316,28 +316,28 @@
       "@elizaos/plugin-local-inference/services": [
         "./plugins/plugin-local-inference/src/services/index.ts"
       ],
-      "@elizaos/app-task-coordinator": [
-        "./plugins/app-task-coordinator/dist/index.d.ts"
+      "@elizaos/plugin-task-coordinator": [
+        "./plugins/plugin-task-coordinator/dist/index.d.ts"
       ],
       "@elizaos/plugin-google-chat": [
         "./plugins/plugin-google-chat/dist/index.d.ts"
       ],
-      "@elizaos/app-steward": ["./plugins/app-steward/dist/index.d.ts"],
-      "@elizaos/app-contacts": ["./plugins/app-contacts/dist/index.d.ts"],
+      "@elizaos/plugin-steward-app": ["./plugins/plugin-steward-app/dist/index.d.ts"],
+      "@elizaos/plugin-contacts": ["./plugins/plugin-contacts/dist/index.d.ts"],
       "@elizaos/plugin-form": ["./plugins/plugin-form/dist/index.d.ts"],
-      "@elizaos/app-defense-of-the-agents": [
-        "./plugins/app-defense-of-the-agents/dist/index.d.ts"
+      "@elizaos/plugin-defense-of-the-agents": [
+        "./plugins/plugin-defense-of-the-agents/dist/index.d.ts"
       ],
       "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/dist/index.d.ts"],
       "@elizaos/plugin-agent-orchestrator": [
         "./plugins/plugin-agent-orchestrator/dist/index.d.ts"
       ],
-      "@elizaos/app-scape": ["./plugins/app-scape/dist/index.d.ts"],
+      "@elizaos/plugin-scape": ["./plugins/plugin-scape/dist/index.d.ts"],
       "@elizaos/plugin-shell": ["./plugins/plugin-shell/dist/index.d.ts"],
       "@elizaos/plugin-bluebubbles": [
         "./plugins/plugin-bluebubbles/dist/index.d.ts"
       ],
-      "@elizaos/app-training": ["./plugins/app-training/dist/index.d.ts"],
+      "@elizaos/plugin-training": ["./plugins/plugin-training/dist/index.d.ts"],
       "@elizaos/cloud-sdk": ["./cloud/packages/sdk/dist/index.d.ts"]
     }
   },

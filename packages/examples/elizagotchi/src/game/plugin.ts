@@ -919,4 +919,7 @@ export const elizagotchiPlugin: Plugin = {
     [ModelType.TEXT_LARGE]: elizagotchiModelHandler,
     [ModelType.TEXT_SMALL]: elizagotchiModelHandler,
   },
+  async dispose(runtime) {
+    await runtime.getService<ElizagotchiTickService>(ElizagotchiTickService.serviceType)?.stop();
+  },
 };

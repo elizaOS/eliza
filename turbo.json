@@ -300,7 +300,7 @@
       "outputs": []
     },
     "@elizaos/app#typecheck": {
-      "dependsOn": ["@elizaos/app-lifeops#build", "@elizaos/ui#build"],
+      "dependsOn": ["@elizaos/plugin-lifeops#build", "@elizaos/ui#build"],
       "outputs": []
     },
     "@elizaos/example-telegram#typecheck": {

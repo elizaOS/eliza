@@ -5,7 +5,7 @@ import { agentTable } from "./agent";
 /**
  * Persistent backing store for the LifeOps human-in-the-loop approval queue.
  *
- * Owned by `plugins/app-lifeops` (see `src/lifeops/approval-queue.types.ts`),
+ * Owned by `plugins/plugin-lifeops` (see `src/lifeops/approval-queue.types.ts`),
  * but lives in plugin-sql so the runtime migrator picks it up automatically
  * for both PostgreSQL and PGlite deployments.
  *

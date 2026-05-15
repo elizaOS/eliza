@@ -210,6 +210,13 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the
       // CODE umbrella).
     ],
+
+    async dispose(runtime) {
+      await runtime.getService<PermissionRegistry>(PermissionRegistry.serviceType)?.stop();
+      await runtime.getService<AgentMediaGenerationService>(AgentMediaGenerationService.serviceType)?.stop();
+      await runtime.getService<ElizaCharacterPersistenceService>(ElizaCharacterPersistenceService.serviceType)?.stop();
+      await runtime.getService<AgentEventService>(AgentEventService.serviceType)?.stop();
+    },
   };
 
   return plugin;
