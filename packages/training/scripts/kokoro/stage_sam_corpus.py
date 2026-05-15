@@ -3,7 +3,7 @@
 
 Voice Wave 2 / I7. The upstream corpus is **58 paired `samantha_NNN.{wav,txt}`
 files** at 44.1 kHz mono 16-bit, totaling 3.51 minutes of audio. Note that
-the upstream subset directory in `lalalune/ai_voices` is named `samantha/`;
+the upstream subset directory in `lalalune/ai_voices` is named `sam/`;
 we land it locally as `same` (the canonical name in this repo). This script
 copies the raw clips and emits the `metadata.csv` + `source.json` artifacts
 that `prep_ljspeech.py` and downstream tooling consume.
@@ -22,14 +22,14 @@ can decide whether to drop the clip.
 Usage:
 
     python3 stage_same_corpus.py \\
-        --source /tmp/ai_voices/samantha \\
+        --source /tmp/ai_voices/sam \\
         --out packages/training/data/voice/same \\
         --upstream-sha <git sha of the ai_voices clone>
 
     # Re-transcribe samantha_002 with whisper-large-v3 (requires GPU + the
     # `openai-whisper` package; falls back to flagging if unavailable):
     python3 stage_same_corpus.py \\
-        --source /tmp/ai_voices/samantha \\
+        --source /tmp/ai_voices/sam \\
         --out packages/training/data/voice/same \\
         --retranscribe-suspicious --whisper-model large-v3
 
@@ -219,7 +219,7 @@ def _stage(args: argparse.Namespace) -> int:
     source_record = {
         "schemaVersion": 1,
         "kind": "same-corpus-source",
-        "upstream": "https://github.com/lalalune/ai_voices/tree/main/samantha",
+        "upstream": "https://github.com/lalalune/ai_voices/tree/main/sam",
         "commitSha": args.upstream_sha or "unknown",
         "clipCount": len(records),
         "totalDurationSeconds": round(sum(r["duration_s"] for r in records), 3),
@@ -259,7 +259,7 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
         clip_id = f"samantha_{i:03d}"
         wav_path = raw_dir / f"{clip_id}.wav"
         # 0.5 s of digital silence at 44.1 kHz mono 16-bit — matches the
-        # upstream samantha format and lets the downstream `wave` probe work.
+        # upstream sam format and lets the downstream `wave` probe work.
         with wave.open(str(wav_path), "wb") as w:
             w.setnchannels(1)
             w.setsampwidth(2)
@@ -320,7 +320,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--source",
         type=Path,
-        default=Path("/tmp/ai_voices/samantha"),
+        default=Path("/tmp/ai_voices/sam"),
         help="Directory containing samantha_NNN.wav + samantha_NNN.txt pairs.",
     )
     p.add_argument(

@@ -12,7 +12,7 @@ for Kokoro (and as the freeze target for OmniVoice). Lands here from
 
 ## Provenance
 
-- **Upstream:** [`lalalune/ai_voices`](https://github.com/lalalune/ai_voices) — `samantha/` subset (renamed locally to `same`).
+- **Upstream:** [`lalalune/ai_voices`](https://github.com/lalalune/ai_voices) — `sam/` subset (renamed locally to `same`).
 - **Format on disk (upstream):** flat directory of `samantha_NNN.wav` (44.1 kHz mono 16-bit PCM) + `samantha_NNN.txt` (Whisper-base transcripts). The build script re-keys these to `same_NNN.{wav,txt}` when landing them locally.
 - **Commit pinned in `source.json`** — written by `build_same_manifest.py` at fetch time.
 - **R12 inventory:** `.swarm/research/R12-ai_voices.md`.
@@ -58,7 +58,7 @@ LoRA is an experimental comparison only.
 ## How to fetch
 
 The corpus is **regenerable** from upstream. The build script sparse-clones
-only the samantha slice (not the full 258 MB repo).
+only the sam slice (not the full 258 MB repo).
 
 ### End-to-end (recommended)
 
@@ -70,7 +70,7 @@ python3 packages/training/scripts/voice/build_same_manifest.py \
 This will:
 
 1. `git clone --filter=blob:none --sparse` `lalalune/ai_voices` into
-   `/tmp/ai_voices`, with `sparse-checkout set samantha utils README.md`
+   `/tmp/ai_voices`, with `sparse-checkout set sam utils README.md`
    (so only ~19 MB of audio is fetched, not 258 MB).
 2. Validate 58 wav/txt pairs, uniform 44.1 kHz mono 16-bit PCM,
    total duration in [180, 240] s.
@@ -87,14 +87,14 @@ This will:
 
 ```bash
 python3 packages/training/scripts/voice/build_same_manifest.py \
-    --src /tmp/ai_voices/samantha \
+    --src /tmp/ai_voices/sam \
     --dst packages/training/data/voice/same
 ```
 
 ### Pre-flight audit
 
 ```bash
-bash packages/training/scripts/voice/audit_same.sh /tmp/ai_voices/samantha
+bash packages/training/scripts/voice/audit_same.sh /tmp/ai_voices/sam
 ```
 
 I7 and I11 must run this **before** invoking the kokoro pipeline.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the same voice corpus manifest from `lalalune/ai_voices`.
 
-The upstream repo ships clips under `samantha/` named `samantha_NNN.wav` —
+The upstream repo ships clips under `sam/` named `samantha_NNN.wav` —
 we land them in `packages/training/data/voice/same/` and rename clip IDs to
 `same_NNN` so the canonical name across this repo is `same`.
 
@@ -31,13 +31,13 @@ Usage:
 
     # Use an existing clone, write manifest only:
     python3 scripts/voice/build_same_manifest.py \\
-        --src /tmp/ai_voices/samantha \\
+        --src /tmp/ai_voices/sam \\
         --dst packages/training/data/voice/same
 
     # Dry run — validate inputs, emit manifest in memory, do not write
     # normalized audio or ljspeech mirror (still writes manifest.jsonl
     # + source.json + ljspeech/metadata.csv).
-    python3 scripts/voice/build_same_manifest.py --src /tmp/ai_voices/samantha --dry-run
+    python3 scripts/voice/build_same_manifest.py --src /tmp/ai_voices/sam --dry-run
 
 Exit codes:
     0  success
@@ -74,7 +74,7 @@ NORMALIZED_LUFS = -23.0
 UPSTREAM_URL = "https://github.com/lalalune/ai_voices.git"
 # Upstream subset directory name in the ai_voices repo. The clips ship as
 # `samantha_NNN.wav`; we re-label them as `same_NNN` on landing.
-UPSTREAM_SUBSET = "samantha"
+UPSTREAM_SUBSET = "sam"
 UPSTREAM_CLIP_PREFIX = "samantha_"
 LOCAL_CLIP_PREFIX = "same_"
 LOCAL_SUBSET = "same"
@@ -115,7 +115,7 @@ def _git_commit_sha(repo_root: Path) -> str:
 def sparse_clone(target_dir: Path, *, branch: str | None = None) -> Path:
     """Sparse-clone the same slice of `lalalune/ai_voices`.
 
-    Pulls only `samantha/` + `utils/` + `README.md` so CI doesn't fetch
+    Pulls only `sam/` + `utils/` + `README.md` so CI doesn't fetch
     the full 258 MB repo (ava, c3po, data, hal, smith subsets).
     """
     if target_dir.exists():
@@ -164,7 +164,7 @@ def _local_id(upstream_stem: str) -> str:
 
 
 def collect_clips(src: Path) -> list[ClipProbe]:
-    """Validate the upstream samantha source directory and return per-clip probes.
+    """Validate the upstream sam source directory and return per-clip probes.
 
     Clips are re-keyed to local IDs (`same_NNN`) in the returned probes; the
     source paths still point at the upstream `samantha_NNN.{wav,txt}` files.
@@ -444,14 +444,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--src",
         type=Path,
-        help="Path to the upstream samantha subset (e.g. /tmp/ai_voices/samantha). "
+        help="Path to the upstream sam subset (e.g. /tmp/ai_voices/sam). "
         "If omitted, --sparse-clone is required.",
     )
     parser.add_argument(
         "--sparse-clone",
         type=Path,
         help="Sparse-clone ai_voices to this path (filter=blob:none, "
-        "sparse=samantha+utils+README.md) before building.",
+        "sparse=sam+utils+README.md) before building.",
     )
     parser.add_argument(
         "--dst",
