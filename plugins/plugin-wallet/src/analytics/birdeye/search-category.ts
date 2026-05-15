@@ -382,7 +382,7 @@ async function searchTokensBySymbol(
         markets:
           typeof filters.markets === "string" ? filters.markets : undefined,
       });
-      const tokens = (response.data.items)
+      const tokens = response.data.items
         .filter((item) => item.type === "token" && item.result)
         .flatMap((item) => item.result)
         .filter(

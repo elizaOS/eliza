@@ -6,7 +6,10 @@
  */
 
 import { Hono } from "hono";
-import { failureResponse, ApiError as WorkerApiError } from "@/lib/api/cloud-worker-errors";
+import {
+  failureResponse,
+  ApiError as WorkerApiError,
+} from "@/lib/api/cloud-worker-errors";
 import { ApiError } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -47,7 +50,9 @@ app.post("/", async (c) => {
 
     if (!isValidString(body.platform)) {
       return c.json(
-        validationErrorResponse("platform is required and must be a non-empty string"),
+        validationErrorResponse(
+          "platform is required and must be a non-empty string",
+        ),
         400,
       );
     }

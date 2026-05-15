@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readFileSync } from "node:fs";
 import { logger } from "./logger";
 
 const REFRESH_INTERVAL_MS = 60_000;
@@ -14,7 +14,10 @@ let k8sNamespace: string | null = null;
 function getK8sToken(): string | null {
   if (k8sToken !== null) return k8sToken;
   try {
-    k8sToken = readFileSync("/var/run/secrets/kubernetes.io/serviceaccount/token", "utf-8").trim();
+    k8sToken = readFileSync(
+      "/var/run/secrets/kubernetes.io/serviceaccount/token",
+      "utf-8",
+    ).trim();
   } catch {
     k8sToken = "";
   }
@@ -24,7 +27,10 @@ function getK8sToken(): string | null {
 function getK8sCaCert(): string | null {
   if (k8sCaCert !== null) return k8sCaCert;
   try {
-    k8sCaCert = readFileSync("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt", "utf-8");
+    k8sCaCert = readFileSync(
+      "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt",
+      "utf-8",
+    );
   } catch {
     k8sCaCert = "";
   }

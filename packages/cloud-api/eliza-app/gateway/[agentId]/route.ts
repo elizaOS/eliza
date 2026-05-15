@@ -11,7 +11,10 @@ import { Hono } from "hono";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const agentMemories = new Map<string, Array<{ role: string; content: string }>>();
+const agentMemories = new Map<
+  string,
+  Array<{ role: string; content: string }>
+>();
 
 const app = new Hono<AppEnv>();
 
@@ -33,7 +36,10 @@ app.post("/", async (c) => {
     let reply = "";
     if (lowerMessage.includes("hello") || lowerMessage.includes("hi")) {
       reply = `Hello there! I'm your dedicated agent (${agentId}). How can I help you today?`;
-    } else if (lowerMessage.includes("status") || lowerMessage.includes("mode")) {
+    } else if (
+      lowerMessage.includes("status") ||
+      lowerMessage.includes("mode")
+    ) {
       reply = `I am operating normally. If I were a workflow agent, I'd run the workflow here. If I were autonomous, I'd spawn an isolated container.`;
     } else {
       reply = `I received your message: "${message}". I will process it based on my configured capabilities.`;
@@ -44,7 +50,10 @@ app.post("/", async (c) => {
 
     return c.json({ success: true, reply, historyLength: history.length });
   } catch (e) {
-    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+    return c.json(
+      { success: false, error: e instanceof Error ? e.message : String(e) },
+      500,
+    );
   }
 });
 

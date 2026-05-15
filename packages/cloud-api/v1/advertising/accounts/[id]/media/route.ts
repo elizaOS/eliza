@@ -16,7 +16,9 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id")!;
-    const providerAssetResourceName = c.req.query("providerAssetResourceName")?.trim();
+    const providerAssetResourceName = c.req
+      .query("providerAssetResourceName")
+      ?.trim();
     if (!providerAssetResourceName) {
       return c.json(
         {
@@ -53,10 +55,17 @@ app.post("/", async (c) => {
     const id = c.req.param("id")!;
     const parsed = UploadMediaSchema.safeParse(await c.req.json());
     if (!parsed.success) {
-      return c.json({ error: "Invalid request", details: parsed.error.flatten() }, 400);
+      return c.json(
+        { error: "Invalid request", details: parsed.error.flatten() },
+        400,
+      );
     }
 
-    const result = await advertisingService.uploadMedia(user.organization_id, id, parsed.data);
+    const result = await advertisingService.uploadMedia(
+      user.organization_id,
+      id,
+      parsed.data,
+    );
 
     logger.info("[Advertising API] Media uploaded", {
       adAccountId: id,

@@ -157,7 +157,6 @@ function statusCopy(status: SensitiveRequestStatus | "success"): {
         body: "Ask for a fresh request link to continue.",
         tone: "destructive",
       };
-    case "pending":
     default:
       return {
         title: "Sensitive request",

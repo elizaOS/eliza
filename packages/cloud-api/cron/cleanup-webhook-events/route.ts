@@ -18,9 +18,12 @@ app.get("/", async (c) => {
   try {
     requireCronSecret(c);
 
-    logger.info("[Webhook Events Cleanup] Starting old webhook events cleanup", {
-      retentionDays: WEBHOOK_EVENT_RETENTION_DAYS,
-    });
+    logger.info(
+      "[Webhook Events Cleanup] Starting old webhook events cleanup",
+      {
+        retentionDays: WEBHOOK_EVENT_RETENTION_DAYS,
+      },
+    );
 
     const deletedCount = await webhookEventsRepository.cleanupOldEvents(
       WEBHOOK_EVENT_RETENTION_DAYS,

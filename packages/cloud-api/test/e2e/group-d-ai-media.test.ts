@@ -29,7 +29,13 @@
 
 import { beforeAll, describe, expect, test } from "bun:test";
 
-import { api, bearerHeaders, getBaseUrl, isServerReachable, url } from "./_helpers/api";
+import {
+  api,
+  bearerHeaders,
+  getBaseUrl,
+  isServerReachable,
+  url,
+} from "./_helpers/api";
 
 let serverReachable = false;
 let hasTestApiKey = false;
@@ -72,7 +78,10 @@ describe("Group D — /api/elevenlabs/stt", () => {
   test("happy path: with Bearer, handler is reachable without upstream STT", async () => {
     if (!shouldRunAuthed()) return;
     const form = new FormData();
-    form.set("audio", new File(["not audio"], "bad.wav", { type: "audio/wav" }));
+    form.set(
+      "audio",
+      new File(["not audio"], "bad.wav", { type: "audio/wav" }),
+    );
     const res = await fetch(url("/api/elevenlabs/stt"), {
       method: "POST",
       headers: bearerOnlyHeaders(),
@@ -110,7 +119,11 @@ describe("Group D — /api/elevenlabs/tts", () => {
 
   test("validation: empty body with auth returns 400", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/elevenlabs/tts", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/elevenlabs/tts",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect(res.status).toBe(400);
   });
 });
@@ -127,7 +140,11 @@ describe("Group D — /api/v1/responses", () => {
 
   test("validation: malformed body with auth returns 400", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/v1/responses", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/v1/responses",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error?: { code?: string } };
     expect(body.error?.code).toBe("missing_required_parameter");
@@ -169,7 +186,11 @@ describe("Group D — /api/v1/responses", () => {
         object?: string;
         output_text?: string;
         output?: unknown[];
-        usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
+        usage?: {
+          input_tokens?: number;
+          output_tokens?: number;
+          total_tokens?: number;
+        };
       };
       expect(body.object).toBe("response");
       expect(typeof body.output_text).toBe("string");
@@ -190,7 +211,11 @@ describe("Group D — /api/v1/generate-image", () => {
 
   test("validation: malformed body with auth returns 400", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/v1/generate-image", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/v1/generate-image",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect(res.status).toBe(400);
     expect(res.status).not.toBe(501);
   });
@@ -203,7 +228,10 @@ describe("Group D — /api/v1/generate-image", () => {
       { headers: bearerHeaders() },
     );
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error?: string; details?: { supportedModels?: string[] } };
+    const body = (await res.json()) as {
+      error?: string;
+      details?: { supportedModels?: string[] };
+    };
     expect(body.error).toContain("Unsupported image model");
     expect(Array.isArray(body.details?.supportedModels)).toBe(true);
   });
@@ -221,7 +249,11 @@ describe("Group D — /api/v1/generate-video", () => {
 
   test("validation: malformed body with auth returns 400", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/v1/generate-video", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/v1/generate-video",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect(res.status).toBe(400);
     expect(res.status).not.toBe(501);
   });
@@ -234,7 +266,10 @@ describe("Group D — /api/v1/generate-video", () => {
       { headers: bearerHeaders() },
     );
     expect(res.status).toBe(400);
-    const body = (await res.json()) as { error?: string; details?: { supportedModels?: string[] } };
+    const body = (await res.json()) as {
+      error?: string;
+      details?: { supportedModels?: string[] };
+    };
     expect(body.error).toContain("Unsupported video model");
     expect(Array.isArray(body.details?.supportedModels)).toBe(true);
   });
@@ -260,7 +295,11 @@ describe("Group D — /api/fal/proxy", () => {
     if (!shouldRunAuthed()) return;
     // The handler only registers GET/POST/PUT. PATCH should not produce a
     // success — Hono returns 404 for unmatched methods on a sub-app.
-    const res = await api.patch("/api/fal/proxy", {}, { headers: bearerHeaders() });
+    const res = await api.patch(
+      "/api/fal/proxy",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect(res.status).not.toBe(200);
     expect([400, 401, 403, 404, 405]).toContain(res.status);
   });

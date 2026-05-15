@@ -10,14 +10,6 @@
  */
 
 import {
-  type JSX,
-  Suspense,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
   type AppLaunchResult,
   type AppRunSummary,
   client,
@@ -62,6 +54,14 @@ import { useBootConfig } from "@elizaos/ui/config/boot-config-react";
 import type { Tab } from "@elizaos/ui/navigation";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openExternalUrl } from "@elizaos/ui/utils";
+import {
+  type JSX,
+  Suspense,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 interface AppWindowRendererProps {
   slug: string;

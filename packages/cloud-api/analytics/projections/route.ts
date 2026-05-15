@@ -5,10 +5,16 @@
  */
 
 import { Hono } from "hono";
-import { generateProjectionAlerts, generateProjections } from "@/lib/analytics/projections";
+import {
+  generateProjectionAlerts,
+  generateProjections,
+} from "@/lib/analytics/projections";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { analyticsService } from "@/lib/services/analytics";
 import { analyticsAlertsService } from "@/lib/services/analytics-alerts";
 import { organizationsService } from "@/lib/services/organizations";
@@ -23,7 +29,10 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const periodsRaw = Number(c.req.query("periods") ?? "7");
-    const periods = Number.isFinite(periodsRaw) && periodsRaw > 0 ? Math.min(periodsRaw, 90) : 7;
+    const periods =
+      Number.isFinite(periodsRaw) && periodsRaw > 0
+        ? Math.min(periodsRaw, 90)
+        : 7;
 
     const now = new Date();
     const startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -43,7 +52,11 @@ app.get("/", async (c) => {
 
     const creditBalance = Number(organization.credit_balance ?? 0);
     const projections = generateProjections(historicalData, periods);
-    const alerts = generateProjectionAlerts(historicalData, projections, creditBalance);
+    const alerts = generateProjectionAlerts(
+      historicalData,
+      projections,
+      creditBalance,
+    );
     const alertEvents = await analyticsAlertsService.persistProjectionAlerts({
       organizationId: user.organization_id,
       alerts,
@@ -65,7 +78,9 @@ app.get("/", async (c) => {
         })),
         projections,
         alerts: alerts.map((alert) => {
-          const event = alertEvents.find((candidate) => candidate.title === alert.title);
+          const event = alertEvents.find(
+            (candidate) => candidate.title === alert.title,
+          );
           return {
             ...alert,
             eventId: event?.id,

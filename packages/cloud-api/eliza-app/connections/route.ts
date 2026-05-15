@@ -16,17 +16,26 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   const authHeader = c.req.header("Authorization");
   if (!authHeader) {
-    return c.json({ error: "Authorization header required", code: "UNAUTHORIZED" }, 401);
+    return c.json(
+      { error: "Authorization header required", code: "UNAUTHORIZED" },
+      401,
+    );
   }
 
   const session = await elizaAppSessionService.validateAuthHeader(authHeader);
   if (!session) {
-    return c.json({ error: "Invalid or expired session", code: "INVALID_SESSION" }, 401);
+    return c.json(
+      { error: "Invalid or expired session", code: "INVALID_SESSION" },
+      401,
+    );
   }
 
   const platform = (c.req.query("platform") || "google").toLowerCase();
   if (!getProvider(platform)) {
-    return c.json({ error: "Unsupported platform", code: "PLATFORM_NOT_SUPPORTED" }, 400);
+    return c.json(
+      { error: "Unsupported platform", code: "PLATFORM_NOT_SUPPORTED" },
+      400,
+    );
   }
 
   try {
@@ -37,8 +46,12 @@ app.get("/", async (c) => {
       platform,
     });
 
-    const active = connections.find((connection) => connection.status === "active");
-    const expired = connections.find((connection) => connection.status === "expired");
+    const active = connections.find(
+      (connection) => connection.status === "active",
+    );
+    const expired = connections.find(
+      (connection) => connection.status === "expired",
+    );
     const current = active ?? expired ?? null;
 
     return c.json({
@@ -58,7 +71,10 @@ app.get("/", async (c) => {
   } catch (error) {
     return c.json(
       {
-        error: error instanceof Error ? error.message : "Failed to load connection status",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to load connection status",
         code: "CONNECTION_STATUS_FAILED",
       },
       500,

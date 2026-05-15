@@ -14,7 +14,8 @@ const app = new Hono<AppEnv>();
 
 const topup = createTopupHandler({
   amount: 100,
-  getSourceId: (walletAddress, paymentId) => `${walletAddress.toLowerCase()}:100:${paymentId}`,
+  getSourceId: (walletAddress, paymentId) =>
+    `${walletAddress.toLowerCase()}:100:${paymentId}`,
 });
 
 app.post("/", (c) => topup(c.req.raw, c.env));

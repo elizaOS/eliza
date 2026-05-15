@@ -257,7 +257,7 @@ export function GalleryPageClient() {
         const next = { ...prev };
         for (const tab of tabsAffected) {
           if (next[tab]) {
-            next[tab] = next[tab]!.filter((item) => item.id !== itemId);
+            next[tab] = next[tab]?.filter((item) => item.id !== itemId);
           }
         }
         return next;

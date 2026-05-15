@@ -16,7 +16,10 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id")!;
 
-    const campaign = await advertisingService.startCampaign(id, user.organization_id);
+    const campaign = await advertisingService.startCampaign(
+      id,
+      user.organization_id,
+    );
 
     logger.info("[Advertising API] Campaign started", { campaignId: id });
 

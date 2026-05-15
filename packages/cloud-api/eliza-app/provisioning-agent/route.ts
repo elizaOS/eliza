@@ -29,8 +29,13 @@ async function resolveSession(c: Context<AppEnv>) {
   return elizaAppSessionService.validateAuthHeader(authHeader);
 }
 
-function sandboxPayload(sandbox: { id: string; status: string; bridge_url: string | null }) {
-  const bridgeUrl = sandbox.status === "running" ? (sandbox.bridge_url ?? null) : null;
+function sandboxPayload(sandbox: {
+  id: string;
+  status: string;
+  bridge_url: string | null;
+}) {
+  const bridgeUrl =
+    sandbox.status === "running" ? (sandbox.bridge_url ?? null) : null;
   return {
     status: sandbox.status,
     agentId: sandbox.id,
@@ -42,11 +47,16 @@ function sandboxPayload(sandbox: { id: string; status: string; bridge_url: strin
 app.get("/", async (c) => {
   const session = await resolveSession(c);
   if (!session) {
-    return c.json({ error: "Authorization required", code: "UNAUTHORIZED" }, 401);
+    return c.json(
+      { error: "Authorization required", code: "UNAUTHORIZED" },
+      401,
+    );
   }
 
   try {
-    const sandboxes = await agentSandboxesRepository.listByOrganization(session.organizationId);
+    const sandboxes = await agentSandboxesRepository.listByOrganization(
+      session.organizationId,
+    );
     const sandbox = sandboxes[0];
     if (!sandbox) {
       return c.json({ success: true, data: { status: "none" } });
@@ -62,11 +72,16 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   const session = await resolveSession(c);
   if (!session) {
-    return c.json({ error: "Authorization required", code: "UNAUTHORIZED" }, 401);
+    return c.json(
+      { error: "Authorization required", code: "UNAUTHORIZED" },
+      401,
+    );
   }
 
   try {
-    const sandboxes = await agentSandboxesRepository.listByOrganization(session.organizationId);
+    const sandboxes = await agentSandboxesRepository.listByOrganization(
+      session.organizationId,
+    );
     const existing = sandboxes[0];
 
     if (existing) {
@@ -98,7 +113,9 @@ app.post("/", async (c) => {
       data: { status: sandbox.status, agentId: sandbox.id },
     });
   } catch (err) {
-    logger.error("[eliza-app provisioning-agent] POST provision error", { error: err });
+    logger.error("[eliza-app provisioning-agent] POST provision error", {
+      error: err,
+    });
     return c.json({ success: false, error: "Failed to provision" }, 500);
   }
 });

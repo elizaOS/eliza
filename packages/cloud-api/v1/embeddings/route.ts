@@ -11,15 +11,26 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { enforceOrgRateLimit } from "@/lib/middleware/rate-limit";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { estimateTokens, getProviderFromModel, normalizeModelName } from "@/lib/pricing";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  estimateTokens,
+  getProviderFromModel,
+  normalizeModelName,
+} from "@/lib/pricing";
 import {
   getAiProviderConfigurationError,
   getTextEmbeddingModel,
   hasTextEmbeddingProviderConfigured,
   resolveEmbeddingProviderSource,
 } from "@/lib/providers/language-model";
-import { billUsage, InsufficientCreditsError, reserveCredits } from "@/lib/services/ai-billing";
+import {
+  billUsage,
+  InsufficientCreditsError,
+  reserveCredits,
+} from "@/lib/services/ai-billing";
 import { usageService } from "@/lib/services/usage";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -32,11 +43,13 @@ interface EmbeddingsRequest {
   user?: string;
 }
 
-async function getRequestApiKeyId(c: AppContext): Promise<{ id: string } | null> {
+async function getRequestApiKeyId(
+  c: AppContext,
+): Promise<{ id: string } | null> {
   const apiKeyHeader = c.req.header("X-API-Key") || c.req.header("x-api-key");
   const auth = c.req.header("authorization");
   const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
-  const elizaBearer = bearer && bearer.startsWith("eliza_") ? bearer : null;
+  const elizaBearer = bearer?.startsWith("eliza_") ? bearer : null;
   const apiKey = apiKeyHeader || elizaBearer;
   if (!apiKey) return null;
   const { apiKeysService } = await import("@/lib/services/api-keys");
@@ -56,7 +69,10 @@ app.post("/", async (c) => {
     const apiKey = await getRequestApiKeyId(c);
 
     if (user.organization_id) {
-      const orgRateLimited = await enforceOrgRateLimit(user.organization_id, "embeddings");
+      const orgRateLimited = await enforceOrgRateLimit(
+        user.organization_id,
+        "embeddings",
+      );
       if (orgRateLimited) return orgRateLimited;
     }
 
@@ -90,7 +106,10 @@ app.post("/", async (c) => {
       );
     }
 
-    if (typeof request.input === "string" && request.input.trim().length === 0) {
+    if (
+      typeof request.input === "string" &&
+      request.input.trim().length === 0
+    ) {
       return c.json(
         {
           error: {
@@ -122,7 +141,9 @@ app.post("/", async (c) => {
       );
     }
 
-    const inputText = Array.isArray(request.input) ? request.input.join(" ") : request.input;
+    const inputText = Array.isArray(request.input)
+      ? request.input.join(" ")
+      : request.input;
     const estimatedInputTokens = estimateTokens(inputText);
 
     let reservation;
@@ -238,10 +259,16 @@ app.post("/", async (c) => {
 
     // Upstream provider failures (invalid provider key, provider 5xx) must not
     // surface as 401/403 to the caller — the user authenticated to us fine.
-    const providerError = RetryError.isInstance(error) ? error.lastError : error;
+    const providerError = RetryError.isInstance(error)
+      ? error.lastError
+      : error;
     if (APICallError.isInstance(providerError)) {
       const status =
-        providerError.statusCode === 429 ? 429 : providerError.statusCode === 402 ? 402 : 503;
+        providerError.statusCode === 429
+          ? 429
+          : providerError.statusCode === 402
+            ? 402
+            : 503;
       return c.json(
         {
           error: {

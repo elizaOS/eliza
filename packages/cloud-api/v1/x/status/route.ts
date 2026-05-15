@@ -15,7 +15,8 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const connectionRole = c.req.query("connectionRole") === "agent" ? "agent" : "owner";
+    const connectionRole =
+      c.req.query("connectionRole") === "agent" ? "agent" : "owner";
     const status = await getXCloudStatus(user.organization_id, connectionRole);
     return c.json({ success: true, ...status });
   } catch (error) {

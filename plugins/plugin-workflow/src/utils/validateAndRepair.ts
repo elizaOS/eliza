@@ -162,7 +162,7 @@ function applyAuthenticationBackfill(
   }
 
   const requiredAuth = authOpts[0];
-  const params = (node.parameters) as Record<string, unknown>;
+  const params = node.parameters as Record<string, unknown>;
   if (typeof params.authentication === 'string' && params.authentication.length > 0) {
     return; // LLM already set it
   }
@@ -445,7 +445,7 @@ function applyRequiredParameterPreflight(
       if (!prop.required) {
         continue;
       }
-      const params = (node.parameters) as Record<string, unknown>;
+      const params = node.parameters as Record<string, unknown>;
       if (params[prop.name] === undefined || params[prop.name] === '') {
         clarifications.push(
           `${node.name} (${node.type}) is missing required parameter "${prop.name}" ${CATALOG_CLARIFICATION_SUFFIX}`

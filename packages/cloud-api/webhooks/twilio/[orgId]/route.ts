@@ -5,10 +5,16 @@
  * to the appropriate agent for processing.
  */
 
-import { calculateTwilioSmsBilling, resolveTwilioSmsCostPerSegment } from "@elizaos/cloud-shared/billing";
+import {
+  calculateTwilioSmsBilling,
+  resolveTwilioSmsCostPerSegment,
+} from "@elizaos/cloud-shared/billing";
 import { Hono } from "hono";
 import { ZodError } from "zod";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { twilioAutomationService } from "@/lib/services/twilio-automation";
 import { usageService } from "@/lib/services/usage";
 import { isAlreadyProcessed, markAsProcessed } from "@/lib/utils/idempotency";
@@ -21,14 +27,20 @@ import {
 } from "@/lib/utils/twilio-api";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
-function firstForwardedHeaderValue(value: string | undefined): string | undefined {
+function firstForwardedHeaderValue(
+  value: string | undefined,
+): string | undefined {
   return value?.split(",")[0]?.trim() || undefined;
 }
 
 function resolveTwilioVerificationUrl(c: AppContext): string {
   const url = new URL(c.req.url);
-  const forwardedProto = firstForwardedHeaderValue(c.req.header("x-forwarded-proto"));
-  const forwardedHost = firstForwardedHeaderValue(c.req.header("x-forwarded-host"));
+  const forwardedProto = firstForwardedHeaderValue(
+    c.req.header("x-forwarded-proto"),
+  );
+  const forwardedHost = firstForwardedHeaderValue(
+    c.req.header("x-forwarded-host"),
+  );
 
   if (forwardedProto) {
     url.protocol = `${forwardedProto}:`;
@@ -46,9 +58,12 @@ function resolveSmsCostPerSegment(env: AppContext["env"]): number {
   if (raw) {
     const parsed = Number.parseFloat(raw);
     if (!Number.isFinite(parsed) || parsed < 0) {
-      logger.warn("[TwilioWebhook] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; using default", {
-        raw,
-      });
+      logger.warn(
+        "[TwilioWebhook] Invalid TWILIO_SMS_COST_PER_SEGMENT_USD; using default",
+        {
+          raw,
+        },
+      );
     }
   }
   return resolveTwilioSmsCostPerSegment(raw);
@@ -75,7 +90,10 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
       if (validationError instanceof ZodError) {
         logger.warn("[TwilioWebhook] Invalid webhook payload", {
           orgId,
-          errors: validationError.issues.map((e) => ({ path: e.path, message: e.message })),
+          errors: validationError.issues.map((e) => ({
+            path: e.path,
+            message: e.message,
+          })),
         });
         return c.text("Invalid webhook payload", 400);
       }
@@ -83,22 +101,37 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
     }
 
     const isProduction = c.env.NODE_ENV === "production";
-    const skipVerification = c.env.SKIP_WEBHOOK_VERIFICATION === "true" && !isProduction;
+    const skipVerification =
+      c.env.SKIP_WEBHOOK_VERIFICATION === "true" && !isProduction;
     const authToken = await twilioAutomationService.getAuthToken(orgId);
 
     if (c.env.SKIP_WEBHOOK_VERIFICATION === "true" && isProduction) {
-      logger.error("[TwilioWebhook] SKIP_WEBHOOK_VERIFICATION ignored in production", { orgId });
+      logger.error(
+        "[TwilioWebhook] SKIP_WEBHOOK_VERIFICATION ignored in production",
+        { orgId },
+      );
     }
 
     if (skipVerification) {
-      logger.warn("[TwilioWebhook] Signature validation disabled (non-production)", { orgId });
+      logger.warn(
+        "[TwilioWebhook] Signature validation disabled (non-production)",
+        { orgId },
+      );
     } else if (!authToken) {
-      logger.error("[TwilioWebhook] No auth token configured - rejecting webhook", { orgId });
+      logger.error(
+        "[TwilioWebhook] No auth token configured - rejecting webhook",
+        { orgId },
+      );
       return c.text("Webhook not configured", 500);
     } else {
       const signature = c.req.header("X-Twilio-Signature") || "";
       const url = resolveTwilioVerificationUrl(c);
-      const isValid = await verifyTwilioSignature(authToken, signature, url, webhookData);
+      const isValid = await verifyTwilioSignature(
+        authToken,
+        signature,
+        url,
+        webhookData,
+      );
       if (!isValid) {
         logger.warn("[TwilioWebhook] Signature validation failed", { orgId });
         return c.text("Invalid signature", 401);
@@ -111,9 +144,13 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
         orgId,
         messageSid: event.MessageSid,
       });
-      return c.body('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', 200, {
-        "Content-Type": "application/xml",
-      });
+      return c.body(
+        '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+        200,
+        {
+          "Content-Type": "application/xml",
+        },
+      );
     }
 
     logger.info("[TwilioWebhook] Received SMS", {
@@ -128,9 +165,13 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
     await handleIncomingMessage(c, orgId, event);
     await markAsProcessed(idempotencyKey, "twilio");
 
-    return c.body('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', 200, {
-      "Content-Type": "application/xml",
-    });
+    return c.body(
+      '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+      200,
+      {
+        "Content-Type": "application/xml",
+      },
+    );
   } catch (error) {
     logger.error("[TwilioWebhook] Error processing webhook", {
       orgId,
@@ -141,7 +182,9 @@ async function handleTwilioWebhook(c: AppContext): Promise<Response> {
 }
 
 const app = new Hono<AppEnv>();
-app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) => handleTwilioWebhook(c));
+app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
+  handleTwilioWebhook(c),
+);
 
 /**
  * Handle incoming SMS message from Twilio
@@ -151,10 +194,11 @@ async function handleIncomingMessage(
   orgId: string,
   event: TwilioWebhookEvent,
 ): Promise<void> {
-  const [{ messageRouterService }, { agentGatewayRouterService }] = await Promise.all([
-    import("@/lib/services/message-router"),
-    import("@/lib/services/agent-gateway-router"),
-  ]);
+  const [{ messageRouterService }, { agentGatewayRouterService }] =
+    await Promise.all([
+      import("@/lib/services/message-router"),
+      import("@/lib/services/agent-gateway-router"),
+    ]);
 
   const from = event.From;
   const to = event.To;

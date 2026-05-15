@@ -39,19 +39,26 @@ app.get("/", async (c) => {
   try {
     const { role } = await requireAdmin(c);
     if (role !== "super_admin") {
-      return c.json({ success: false, error: "Super admin access required" }, 403);
+      return c.json(
+        { success: false, error: "Super admin access required" },
+        403,
+      );
     }
 
     const HEADSCALE_API_URL =
-      (c.env.HEADSCALE_API_URL as string | undefined) || "http://localhost:8081";
-    const HEADSCALE_API_KEY = (c.env.HEADSCALE_API_KEY as string | undefined) || "";
-    const HEADSCALE_USER = (c.env.HEADSCALE_USER as string | undefined) || "agent";
+      (c.env.HEADSCALE_API_URL as string | undefined) ||
+      "http://localhost:8081";
+    const HEADSCALE_API_KEY =
+      (c.env.HEADSCALE_API_KEY as string | undefined) || "";
+    const HEADSCALE_USER =
+      (c.env.HEADSCALE_USER as string | undefined) || "agent";
 
     if (!HEADSCALE_API_KEY) {
       return c.json(
         {
           success: false,
-          error: "Headscale not configured: HEADSCALE_API_KEY environment variable is missing",
+          error:
+            "Headscale not configured: HEADSCALE_API_KEY environment variable is missing",
         },
         503,
       );
@@ -90,7 +97,8 @@ app.get("/", async (c) => {
     }
 
     const nodesData = (await nodesResponse.json()) as HeadscaleNodesResponse;
-    const machines: HeadscaleNode[] = nodesData.nodes || nodesData.machines || [];
+    const machines: HeadscaleNode[] =
+      nodesData.nodes || nodesData.machines || [];
 
     const filteredMachines = HEADSCALE_USER
       ? machines.filter((m) => m.user?.name === HEADSCALE_USER || !m.user?.name)

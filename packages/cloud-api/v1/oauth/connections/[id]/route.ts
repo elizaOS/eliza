@@ -9,7 +9,12 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { ApiError } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { Errors, internalErrorResponse, OAuthError, oauthService } from "@/lib/services/oauth";
+import {
+  Errors,
+  internalErrorResponse,
+  OAuthError,
+  oauthService,
+} from "@/lib/services/oauth";
 import { invalidateOAuthState } from "@/lib/services/oauth/invalidation";
 import { logger } from "@/lib/utils/logger";
 
@@ -27,7 +32,10 @@ async function getAccessibleConnection(
   return connection;
 }
 
-async function __hono_GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const { id: connectionId } = await params;
   let organizationId: string | undefined;
 
@@ -40,7 +48,11 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
       connectionId,
     });
 
-    const connection = await getAccessibleConnection(organizationId, user.id, connectionId);
+    const connection = await getAccessibleConnection(
+      organizationId,
+      user.id,
+      connectionId,
+    );
 
     if (!connection) {
       const error = Errors.connectionNotFound(connectionId);
@@ -71,11 +83,16 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
       });
     }
 
-    return Response.json(internalErrorResponse("Failed to get connection"), { status: 500 });
+    return Response.json(internalErrorResponse("Failed to get connection"), {
+      status: 500,
+    });
   }
 }
 
-async function __hono_DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const { id: connectionId } = await params;
   let organizationId: string | undefined;
   let userId: string | undefined;
@@ -90,7 +107,11 @@ async function __hono_DELETE(request: Request, { params }: { params: Promise<{ i
       connectionId,
     });
 
-    const connection = await getAccessibleConnection(organizationId, userId, connectionId);
+    const connection = await getAccessibleConnection(
+      organizationId,
+      userId,
+      connectionId,
+    );
     if (!connection) {
       const error = Errors.connectionNotFound(connectionId);
       return Response.json(error.toResponse(), { status: 404 });
@@ -123,15 +144,21 @@ async function __hono_DELETE(request: Request, { params }: { params: Promise<{ i
       });
     }
 
-    return Response.json(internalErrorResponse("Failed to revoke connection"), { status: 500 });
+    return Response.json(internalErrorResponse("Failed to revoke connection"), {
+      status: 500,
+    });
   }
 }
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

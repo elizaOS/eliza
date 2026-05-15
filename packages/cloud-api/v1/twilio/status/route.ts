@@ -23,7 +23,9 @@ app.get("/", async (c) => {
     ]);
 
     // Include webhook URL for reference
-    const webhookUrl = twilioAutomationService.getWebhookUrl(user.organization_id);
+    const webhookUrl = twilioAutomationService.getWebhookUrl(
+      user.organization_id,
+    );
 
     // Map properties for frontend compatibility:
     // - `configured` -> `webhookConfigured`

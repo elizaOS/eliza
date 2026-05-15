@@ -7,7 +7,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -33,7 +36,13 @@ app.post("/", async (c) => {
     const authed = await requireUserOrApiKeyWithOrg(c);
     const ct = c.req.header("content-type") ?? "";
     if (!ct.includes("multipart/form-data")) {
-      return c.json({ success: false, error: "Expected multipart form data with file field" }, 400);
+      return c.json(
+        {
+          success: false,
+          error: "Expected multipart form data with file field",
+        },
+        400,
+      );
     }
 
     const form = await c.req.formData();
@@ -79,6 +88,8 @@ app.post("/", async (c) => {
   }
 });
 
-app.all("*", (c) => c.json({ success: false, error: "Method not allowed" }, 405));
+app.all("*", (c) =>
+  c.json({ success: false, error: "Method not allowed" }, 405),
+);
 
 export default app;

@@ -1010,7 +1010,7 @@ function createDateTimeNode(): INodeType {
       const now = new Date().toISOString();
       return [
         inputItems.map((item, index) => ({
-          json: { ...(item.json), [fieldName]: now } as INodeExecutionData['json'],
+          json: { ...item.json, [fieldName]: now } as INodeExecutionData['json'],
           pairedItem: item.pairedItem ?? { item: index },
         })),
       ];
@@ -1046,7 +1046,7 @@ function createCryptoNode(): INodeType {
             raw === '' || typeof raw === 'undefined' ? JSON.stringify(item.json) : String(raw);
           return {
             json: {
-              ...(item.json),
+              ...item.json,
               [fieldName]: createHash(algorithm).update(source).digest('hex'),
             } as INodeExecutionData['json'],
             pairedItem: item.pairedItem ?? { item: index },

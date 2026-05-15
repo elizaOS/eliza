@@ -17,7 +17,8 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const rawMaxResults = c.req.query("maxResults");
-    const connectionRole = c.req.query("connectionRole") === "agent" ? "agent" : "owner";
+    const connectionRole =
+      c.req.query("connectionRole") === "agent" ? "agent" : "owner";
     const maxResults =
       rawMaxResults && rawMaxResults.trim().length > 0
         ? Number.parseInt(rawMaxResults, 10)

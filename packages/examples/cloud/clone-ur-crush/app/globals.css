@@ -1,5 +1,8 @@
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS directive processed by PostCSS. */
 @tailwind base;
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS directive processed by PostCSS. */
 @tailwind components;
+/* biome-ignore lint/suspicious/noUnknownAtRules: Tailwind CSS directive processed by PostCSS. */
 @tailwind utilities;
 
 :root {
@@ -17,9 +20,9 @@
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu",
+    "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -53,14 +56,19 @@ body {
 
 /* Mobile-friendly touch targets */
 @media (max-width: 767px) {
-  button, a, input, textarea, select {
+  button,
+  a,
+  input,
+  textarea,
+  select {
     min-height: 44px;
   }
 }
 
 /* Animation for character cloning */
 @keyframes pulse-glow {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
@@ -93,4 +101,3 @@ body {
     transform: translateY(0);
   }
 }
-

@@ -10,7 +10,11 @@
  */
 
 import { Hono } from "hono";
-import { failureResponse, NotFoundError, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  failureResponse,
+  NotFoundError,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -19,7 +23,9 @@ const app = new Hono<AppEnv>();
 
 const WORKFLOW_ID_PATTERN = /^[a-zA-Z0-9_-]{1,128}$/;
 
-function workflowIdOrThrow(c: { req: { param: (k: string) => string | undefined } }): string {
+function workflowIdOrThrow(c: {
+  req: { param: (k: string) => string | undefined };
+}): string {
   const workflowId = c.req.param("workflowId") ?? "";
   if (!WORKFLOW_ID_PATTERN.test(workflowId)) {
     throw ValidationError("Invalid workflow id");

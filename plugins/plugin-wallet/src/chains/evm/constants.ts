@@ -40,4 +40,3 @@ export const KYBERSWAP_CHAIN_MAP: Readonly<Record<string, string>> = {
 } as const;
 
 export const DEFAULT_CHAINS = ["mainnet", "base", "bsc"] as const;
-

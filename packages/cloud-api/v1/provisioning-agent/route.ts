@@ -19,14 +19,17 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const sandboxes = await agentSandboxesRepository.listByOrganization(user.organization_id);
+    const sandboxes = await agentSandboxesRepository.listByOrganization(
+      user.organization_id,
+    );
     const sandbox = sandboxes[0];
 
     if (!sandbox) {
       return c.json({ success: true, data: { status: "none" } });
     }
 
-    const bridgeUrl = sandbox.status === "running" ? (sandbox.bridge_url ?? null) : null;
+    const bridgeUrl =
+      sandbox.status === "running" ? (sandbox.bridge_url ?? null) : null;
 
     return c.json({
       success: true,

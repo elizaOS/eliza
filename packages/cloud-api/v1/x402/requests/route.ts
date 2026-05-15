@@ -10,7 +10,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appsService } from "@/lib/services/apps";
 import {
   X402PaymentRequestError,
@@ -39,7 +42,11 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     const parsed = CreatePaymentRequestSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.format() },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.format(),
+        },
         400,
       );
     }
@@ -47,7 +54,8 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     const { appId, callback_channel, ...paymentRequestInput } = parsed.data;
     if (appId) {
       const targetApp = await appsService.getById(appId);
-      if (!targetApp) return c.json({ success: false, error: "App not found" }, 404);
+      if (!targetApp)
+        return c.json({ success: false, error: "App not found" }, 404);
       if (targetApp.organization_id !== user.organization_id) {
         return c.json({ success: false, error: "Forbidden" }, 403);
       }

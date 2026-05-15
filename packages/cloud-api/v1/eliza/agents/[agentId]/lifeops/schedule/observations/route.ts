@@ -7,7 +7,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CORS_METHODS = "POST, OPTIONS";
 
-async function __hono_POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_POST(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
@@ -24,7 +27,10 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
     const body = await request.text();
     if (body.length > 1_048_576) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Request body too large" }, { status: 413 }),
+        Response.json(
+          { success: false, error: "Request body too large" },
+          { status: 413 },
+        ),
         CORS_METHODS,
       );
     }
@@ -45,7 +51,8 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
       );
     }
     const responseBody = await agentResponse.text();
-    const responseType = agentResponse.headers.get("content-type") ?? "application/json";
+    const responseType =
+      agentResponse.headers.get("content-type") ?? "application/json";
     return applyCorsHeaders(
       new Response(responseBody, {
         status: agentResponse.status,
@@ -61,6 +68,8 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;

@@ -35,20 +35,24 @@ async function loadCloudflareManagedDomain(c: AppContext) {
   const user = await requireUserOrApiKeyWithOrg(c);
   const appId = c.req.param("id");
   const domainParam = c.req.param("domain");
-  if (!appId || !domainParam) return { error: "missing path params", status: 400 as const };
+  if (!appId || !domainParam)
+    return { error: "missing path params", status: 400 as const };
 
   const appRow = await appsService.getById(appId);
   if (!appRow || appRow.organization_id !== user.organization_id) {
     return { error: "App not found", status: 404 as const };
   }
 
-  const md = await managedDomainsService.getDomainByName(decodeURIComponent(domainParam));
+  const md = await managedDomainsService.getDomainByName(
+    decodeURIComponent(domainParam),
+  );
   if (!md || md.organizationId !== user.organization_id || md.appId !== appId) {
     return { error: "Domain not attached to this app", status: 404 as const };
   }
   if (md.registrar !== "cloudflare" || !md.cloudflareZoneId) {
     return {
-      error: "DNS records on external domains must be edited at your existing DNS provider",
+      error:
+        "DNS records on external domains must be edited at your existing DNS provider",
       status: 409 as const,
     };
   }
@@ -58,12 +62,17 @@ async function loadCloudflareManagedDomain(c: AppContext) {
 app.get("/", async (c) => {
   try {
     const ctx = await loadCloudflareManagedDomain(c);
-    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
+    if ("error" in ctx)
+      return c.json({ success: false, error: ctx.error }, ctx.status);
 
-    const records = await cloudflareDnsService.listRecords(ctx.domain.cloudflareZoneId as string);
+    const records = await cloudflareDnsService.listRecords(
+      ctx.domain.cloudflareZoneId as string,
+    );
     return c.json({ success: true, domain: ctx.domain.domain, records });
   } catch (error) {
-    logger.error("[Domains DNS GET] list failed", { error: extractErrorMessage(error) });
+    logger.error("[Domains DNS GET] list failed", {
+      error: extractErrorMessage(error),
+    });
     return failureResponse(c, error);
   }
 });
@@ -71,12 +80,16 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const ctx = await loadCloudflareManagedDomain(c);
-    if ("error" in ctx) return c.json({ success: false, error: ctx.error }, ctx.status);
+    if ("error" in ctx)
+      return c.json({ success: false, error: ctx.error }, ctx.status);
 
     const parsed = CreateRecordSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "invalid input" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "invalid input",
+        },
         400,
       );
     }
@@ -93,7 +106,9 @@ app.post("/", async (c) => {
     });
     return c.json({ success: true, record: created }, 201);
   } catch (error) {
-    logger.error("[Domains DNS POST] add failed", { error: extractErrorMessage(error) });
+    logger.error("[Domains DNS POST] add failed", {
+      error: extractErrorMessage(error),
+    });
     return failureResponse(c, error);
   }
 });

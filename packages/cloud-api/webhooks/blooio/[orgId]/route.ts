@@ -7,7 +7,10 @@
 
 import { Hono } from "hono";
 import { ZodError } from "zod";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { blooioAutomationService } from "@/lib/services/blooio-automation";
 import {
   type BlooioWebhookEvent,
@@ -28,21 +31,35 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
     const rawBody = await c.req.text();
 
     const isProduction = c.env.NODE_ENV === "production";
-    const skipVerification = c.env.SKIP_WEBHOOK_VERIFICATION === "true" && !isProduction;
+    const skipVerification =
+      c.env.SKIP_WEBHOOK_VERIFICATION === "true" && !isProduction;
     const webhookSecret = await blooioAutomationService.getWebhookSecret(orgId);
 
     if (c.env.SKIP_WEBHOOK_VERIFICATION === "true" && isProduction) {
-      logger.error("[BlooioWebhook] SKIP_WEBHOOK_VERIFICATION ignored in production", { orgId });
+      logger.error(
+        "[BlooioWebhook] SKIP_WEBHOOK_VERIFICATION ignored in production",
+        { orgId },
+      );
     }
 
     if (skipVerification) {
-      logger.warn("[BlooioWebhook] Signature validation disabled (non-production)", { orgId });
+      logger.warn(
+        "[BlooioWebhook] Signature validation disabled (non-production)",
+        { orgId },
+      );
     } else if (!webhookSecret) {
-      logger.error("[BlooioWebhook] No webhook secret configured - rejecting webhook", { orgId });
+      logger.error(
+        "[BlooioWebhook] No webhook secret configured - rejecting webhook",
+        { orgId },
+      );
       return c.json({ error: "Webhook not configured" }, 500);
     } else {
       const signatureHeader = c.req.header("X-Blooio-Signature") || "";
-      const isValid = await verifyBlooioSignature(webhookSecret, signatureHeader, rawBody);
+      const isValid = await verifyBlooioSignature(
+        webhookSecret,
+        signatureHeader,
+        rawBody,
+      );
       if (!isValid) {
         logger.warn("[BlooioWebhook] Signature validation failed", { orgId });
         return c.json({ error: "Invalid webhook signature" }, 401);
@@ -62,9 +79,15 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
       if (parseError instanceof ZodError) {
         logger.warn("[BlooioWebhook] Invalid webhook payload schema", {
           orgId,
-          errors: parseError.issues.map((e) => ({ path: e.path, message: e.message })),
+          errors: parseError.issues.map((e) => ({
+            path: e.path,
+            message: e.message,
+          })),
         });
-        return c.json({ error: "Invalid webhook payload", details: parseError.issues }, 400);
+        return c.json(
+          { error: "Invalid webhook payload", details: parseError.issues },
+          400,
+        );
       }
       throw parseError;
     }
@@ -79,9 +102,12 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
         return c.json({ success: true, status: "already_processed" });
       }
     } else {
-      logger.warn("[BlooioWebhook] No message_id in payload, skipping idempotency check", {
-        orgId,
-      });
+      logger.warn(
+        "[BlooioWebhook] No message_id in payload, skipping idempotency check",
+        {
+          orgId,
+        },
+      );
     }
 
     // Log the event
@@ -149,16 +175,22 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
 }
 
 const app = new Hono<AppEnv>();
-app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) => handleBlooioWebhook(c));
+app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
+  handleBlooioWebhook(c),
+);
 
 /**
  * Handle incoming message from Blooio
  */
-async function handleIncomingMessage(orgId: string, event: BlooioWebhookEvent): Promise<void> {
-  const [{ messageRouterService }, { agentGatewayRouterService }] = await Promise.all([
-    import("@/lib/services/message-router"),
-    import("@/lib/services/agent-gateway-router"),
-  ]);
+async function handleIncomingMessage(
+  orgId: string,
+  event: BlooioWebhookEvent,
+): Promise<void> {
+  const [{ messageRouterService }, { agentGatewayRouterService }] =
+    await Promise.all([
+      import("@/lib/services/message-router"),
+      import("@/lib/services/agent-gateway-router"),
+    ]);
 
   const chatId = event.external_id || event.sender;
 

@@ -22,7 +22,7 @@ export function StateDeviceSecurity(
         I recommend sandbox if this is your regular machine. Run without
         sandboxing if you want to give me full access.
       </p>
-      <div className="eliza-ob-choice-list" role="list">
+      <div className="eliza-ob-choice-list">
         <button
           type="button"
           className={`eliza-ob-choice${selected === "sandbox" ? " selected" : ""}`}

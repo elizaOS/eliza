@@ -3,7 +3,10 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getErrorStatusCode, getSafeErrorMessage } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { executeHostedGoogleSearch } from "@/lib/services/google-search";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -14,7 +17,9 @@ const searchRequestSchema = z.object({
   model: z.string().trim().min(1).max(128).optional(),
   source: z.string().trim().min(1).max(255).optional(),
   topic: z.enum(["general", "finance"]).optional(),
-  timeRange: z.enum(["day", "week", "month", "year", "d", "w", "m", "y"]).optional(),
+  timeRange: z
+    .enum(["day", "week", "month", "year", "d", "w", "m", "y"])
+    .optional(),
   startDate: z.string().trim().min(1).max(32).optional(),
   endDate: z.string().trim().min(1).max(32).optional(),
 });

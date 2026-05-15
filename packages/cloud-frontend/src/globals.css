@@ -532,7 +532,7 @@
   }
 
   .group:hover .corner-bracket-hover {
-    border-color: var(--accent) !important;
+    border-color: var(--accent);
     filter: drop-shadow(0 0 8px rgba(var(--accent-rgb), 0.58));
   }
 
@@ -617,54 +617,54 @@
 
 /* Sonner Toast Customization */
 [data-sonner-toast] {
-  border-radius: 0px !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  background: rgba(0, 0, 0, 0.8) !important;
-  backdrop-filter: blur(12px) !important;
-  font-family: var(--font-display) !important;
+  border-radius: 0px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(12px);
+  font-family: var(--font-display);
 }
 
 [data-sonner-toast][data-type="success"] {
-  background: rgba(34, 197, 94, 0.15) !important;
-  border-color: rgba(34, 197, 94, 0.3) !important;
-  color: rgb(134, 239, 172) !important;
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: rgb(134, 239, 172);
 }
 
 [data-sonner-toast][data-type="error"] {
-  background: rgba(239, 68, 68, 0.15) !important;
-  border-color: rgba(239, 68, 68, 0.3) !important;
-  color: rgb(252, 165, 165) !important;
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: rgb(252, 165, 165);
 }
 
 [data-sonner-toast][data-type="warning"] {
-  background: rgba(251, 146, 60, 0.15) !important;
-  border-color: rgba(251, 146, 60, 0.3) !important;
-  color: rgb(253, 186, 116) !important;
+  background: rgba(251, 146, 60, 0.15);
+  border-color: rgba(251, 146, 60, 0.3);
+  color: rgb(253, 186, 116);
 }
 
 [data-sonner-toast][data-type="info"],
 [data-sonner-toast][data-type="loading"] {
-  background: rgba(var(--accent-rgb), 0.15) !important;
-  border-color: rgba(var(--accent-rgb), 0.3) !important;
-  color: rgb(255, 255, 255) !important;
+  background: rgba(var(--accent-rgb), 0.15);
+  border-color: rgba(var(--accent-rgb), 0.3);
+  color: rgb(255, 255, 255);
 }
 
 /* Toast icons */
 [data-icon] {
-  color: inherit !important;
+  color: inherit;
 }
 
 /* Toast close button */
 [data-close-button] {
-  background: rgba(255, 255, 255, 0.1) !important;
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  color: white !important;
-  border-radius: 0px !important;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: white;
+  border-radius: 0px;
 }
 
 [data-close-button]:hover {
-  background: rgba(var(--accent-rgb), 0.3) !important;
-  border-color: rgba(var(--accent-rgb), 0.5) !important;
+  background: rgba(var(--accent-rgb), 0.3);
+  border-color: rgba(var(--accent-rgb), 0.5);
 }
 /* All buttons should have cursor pointer */
 button:not(:disabled),
@@ -1948,7 +1948,7 @@ button:not(:disabled),
   color: #fafafa;
 }
 .stwd-eliza-login .stwd-login__notice-sub {
-  color: #737373 !important;
+  color: #737373;
 }
 
 /* Spinner — orange */

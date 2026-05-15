@@ -19,7 +19,9 @@ beforeAll(async () => {
 afterAll(async () => {
   for (const id of createdCharacterIds) {
     await api
-      .delete(`/api/my-agents/characters/${id}`, { headers: affiliateBearerHeaders() })
+      .delete(`/api/my-agents/characters/${id}`, {
+        headers: affiliateBearerHeaders(),
+      })
       .catch(() => undefined);
   }
 });

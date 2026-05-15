@@ -256,7 +256,7 @@ export function ApiTester({
       const headers: Record<string, string> = {};
 
       if (endpoint.requiresAuth && authToken) {
-        headers["Authorization"] = `Bearer ${authToken}`;
+        headers.Authorization = `Bearer ${authToken}`;
       }
 
       let body: string | FormData | undefined;

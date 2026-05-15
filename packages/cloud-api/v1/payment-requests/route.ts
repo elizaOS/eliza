@@ -13,7 +13,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -21,7 +24,14 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const CreateProviderSchema = z.enum(["stripe"]);
 const ProviderSchema = z.enum(["stripe", "oxapay", "x402", "wallet_native"]);
 const PaymentContextSchema = z.enum(["verified_payer", "any_payer"]);
-const StatusSchema = z.enum(["pending", "delivered", "settled", "expired", "canceled", "failed"]);
+const StatusSchema = z.enum([
+  "pending",
+  "delivered",
+  "settled",
+  "expired",
+  "canceled",
+  "failed",
+]);
 
 const CreatePaymentRequestSchema = z.object({
   provider: CreateProviderSchema,
@@ -86,7 +96,11 @@ app.post("/", async (c) => {
     const parsed = CreatePaymentRequestSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }
@@ -125,7 +139,9 @@ app.post("/", async (c) => {
       hostedUrl: result.hostedUrl,
     });
   } catch (error) {
-    logger.error("[PaymentRequests API] Failed to create payment request", { error });
+    logger.error("[PaymentRequests API] Failed to create payment request", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });
@@ -142,7 +158,14 @@ app.get("/", async (c) => {
       offset: c.req.query("offset"),
     });
     if (!parsed.success) {
-      return c.json({ success: false, error: "Invalid query", details: parsed.error.issues }, 400);
+      return c.json(
+        {
+          success: false,
+          error: "Invalid query",
+          details: parsed.error.issues,
+        },
+        400,
+      );
     }
 
     const service = getPaymentRequestsService(c.env);
@@ -156,7 +179,9 @@ app.get("/", async (c) => {
 
     return c.json({ success: true, paymentRequests });
   } catch (error) {
-    logger.error("[PaymentRequests API] Failed to list payment requests", { error });
+    logger.error("[PaymentRequests API] Failed to list payment requests", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });

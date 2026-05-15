@@ -18,7 +18,10 @@ async function handleDisconnect(c: AppContext) {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    await twilioAutomationService.removeCredentials(user.organization_id, user.id);
+    await twilioAutomationService.removeCredentials(
+      user.organization_id,
+      user.id,
+    );
 
     await invalidateOAuthState(user.organization_id, "twilio", user.id);
 

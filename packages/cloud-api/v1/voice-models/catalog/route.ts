@@ -69,7 +69,10 @@ app.get("/", async (c) => {
     });
 
     c.header("Content-Type", "application/json; charset=utf-8");
-    c.header("Cache-Control", "public, s-maxage=900, stale-while-revalidate=3600");
+    c.header(
+      "Cache-Control",
+      "public, s-maxage=900, stale-while-revalidate=3600",
+    );
     c.header("X-Eliza-Signature", signature);
     c.header("X-Eliza-Catalog-Schema", "eliza-1-voice-models.v1");
     return c.body(bodyText);

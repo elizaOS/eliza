@@ -25,7 +25,10 @@ app.post("/", async (c) => {
     const { user } = await requireAuthOrApiKeyWithOrg(c.req.raw);
 
     if (!twitterAutomationService.isConfigured()) {
-      return c.json({ error: "Twitter integration is not configured on this platform" }, 503);
+      return c.json(
+        { error: "Twitter integration is not configured on this platform" },
+        503,
+      );
     }
 
     const rawBody = await c.req.json().catch(() => ({}));
@@ -33,20 +36,25 @@ app.post("/", async (c) => {
     const body = parsedBody.success ? parsedBody.data : {};
     const connectionRole = body.connectionRole === "agent" ? "agent" : "owner";
     const baseUrl =
-      c.env?.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
+      c.env?.NEXT_PUBLIC_APP_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      "https://www.elizacloud.ai";
     const defaultRedirectPath = "/dashboard/settings?tab=connections";
-    const { target: safeRedirectTarget, rejected } = resolveOAuthSuccessRedirectUrl({
-      value: typeof body.redirectUrl === "string" ? body.redirectUrl : undefined,
-      baseUrl,
-      fallbackPath: defaultRedirectPath,
-      allowedAbsoluteOrigins: [
-        ...getDefaultPlatformRedirectOrigins(),
-        ...LOOPBACK_REDIRECT_ORIGINS,
-      ],
-    });
+    const { target: safeRedirectTarget, rejected } =
+      resolveOAuthSuccessRedirectUrl({
+        value:
+          typeof body.redirectUrl === "string" ? body.redirectUrl : undefined,
+        baseUrl,
+        fallbackPath: defaultRedirectPath,
+        allowedAbsoluteOrigins: [
+          ...getDefaultPlatformRedirectOrigins(),
+          ...LOOPBACK_REDIRECT_ORIGINS,
+        ],
+      });
     if (rejected) {
       logger.warn("[Twitter Connect API] Rejected unsafe redirect URL", {
-        redirectUrl: typeof body.redirectUrl === "string" ? body.redirectUrl : undefined,
+        redirectUrl:
+          typeof body.redirectUrl === "string" ? body.redirectUrl : undefined,
       });
     }
     const redirectUrl = safeRedirectTarget.toString();
@@ -54,12 +62,18 @@ app.post("/", async (c) => {
 
     let authLink;
     try {
-      authLink = await twitterAutomationService.generateAuthLink(callbackUrl, connectionRole);
+      authLink = await twitterAutomationService.generateAuthLink(
+        callbackUrl,
+        connectionRole,
+      );
     } catch (error) {
       logger.error("[Twitter Connect API] Failed to generate auth link", {
         error: error instanceof Error ? error.message : String(error),
       });
-      return c.json({ error: "Twitter integration is currently unavailable" }, 503);
+      return c.json(
+        { error: "Twitter integration is currently unavailable" },
+        503,
+      );
     }
 
     if (authLink.flow === "oauth1a") {

@@ -28,7 +28,8 @@ const DateRangeSchema = z
   .refine(
     (data) => {
       if (data.startDate && data.endDate) {
-        const range = new Date(data.endDate).getTime() - new Date(data.startDate).getTime();
+        const range =
+          new Date(data.endDate).getTime() - new Date(data.startDate).getTime();
         return range <= MAX_DATE_RANGE_MS;
       }
       return true;
@@ -84,7 +85,10 @@ app.get("/", async (c) => {
         roas: metrics.roas,
       },
       dateRange: dateRange
-        ? { start: dateRange.start.toISOString(), end: dateRange.end.toISOString() }
+        ? {
+            start: dateRange.start.toISOString(),
+            end: dateRange.end.toISOString(),
+          }
         : null,
     });
   } catch (error) {

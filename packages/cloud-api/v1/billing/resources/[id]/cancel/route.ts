@@ -7,8 +7,14 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { activeBillingService, type BillableResourceType } from "@/lib/services/active-billing";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  activeBillingService,
+  type BillableResourceType,
+} from "@/lib/services/active-billing";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -29,10 +35,14 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Resource id required" }, 400);
     }
 
-    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await c.req.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
     const parsed = CancelSchema.safeParse({
       ...body,
-      resourceType: body.resourceType ?? c.req.query("resourceType") ?? c.req.query("type"),
+      resourceType:
+        body.resourceType ?? c.req.query("resourceType") ?? c.req.query("type"),
     });
     if (!parsed.success) {
       return c.json(
@@ -48,7 +58,9 @@ app.post("/", async (c) => {
     const result = await activeBillingService.cancelResource({
       organizationId: user.organization_id,
       resourceId,
-      resourceType: parsed.data.resourceType as BillableResourceType | undefined,
+      resourceType: parsed.data.resourceType as
+        | BillableResourceType
+        | undefined,
       mode: parsed.data.mode,
     });
 
@@ -58,7 +70,10 @@ app.post("/", async (c) => {
     if (message === "Billable resource not found") {
       return c.json({ success: false, error: message }, 404);
     }
-    logger.error("[Billing Cancel API] Error cancelling billable resource", error);
+    logger.error(
+      "[Billing Cancel API] Error cancelling billable resource",
+      error,
+    );
     return failureResponse(c, error);
   }
 });

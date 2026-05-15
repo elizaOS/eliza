@@ -42,17 +42,20 @@ async function acquireToken(): Promise<void> {
 
   logger.info("Acquiring JWT token", { podName: config.podName });
 
-  const response = await fetchWithTimeout(`${config.cloudUrl}/api/internal/auth/token`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Gateway-Secret": config.bootstrapSecret,
+  const response = await fetchWithTimeout(
+    `${config.cloudUrl}/api/internal/auth/token`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Gateway-Secret": config.bootstrapSecret,
+      },
+      body: JSON.stringify({
+        pod_name: config.podName,
+        service: "webhook-gateway",
+      }),
     },
-    body: JSON.stringify({
-      pod_name: config.podName,
-      service: "webhook-gateway",
-    }),
-  });
+  );
 
   if (!response.ok) {
     const error = await response.text();
@@ -81,13 +84,16 @@ async function refreshToken(): Promise<void> {
   logger.info("Refreshing JWT token", { podName: config.podName });
 
   try {
-    const response = await fetchWithTimeout(`${config.cloudUrl}/api/internal/auth/refresh`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${accessToken}`,
+    const response = await fetchWithTimeout(
+      `${config.cloudUrl}/api/internal/auth/refresh`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
       },
-    });
+    );
 
     if (!response.ok) {
       logger.warn("Token refresh failed, acquiring new token", {

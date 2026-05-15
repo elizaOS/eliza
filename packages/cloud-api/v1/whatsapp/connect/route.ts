@@ -33,7 +33,8 @@ app.post("/", async (c) => {
       const message = parsed.error.issues[0]?.message || "Invalid request body";
       return c.json({ error: message }, 400);
     }
-    const { accessToken, phoneNumberId, appSecret, businessPhone } = parsed.data;
+    const { accessToken, phoneNumberId, appSecret, businessPhone } =
+      parsed.data;
 
     // Validate the access token by calling Meta Graph API
     const validation = await whatsappAutomationService.validateAccessToken(
@@ -49,16 +50,22 @@ app.post("/", async (c) => {
     const verifyToken = whatsappAutomationService.generateVerifyToken();
 
     // Store credentials
-    await whatsappAutomationService.storeCredentials(user.organization_id, user.id, {
-      accessToken,
-      phoneNumberId,
-      appSecret,
-      verifyToken,
-      businessPhone: businessPhone || validation.phoneDisplay,
-    });
+    await whatsappAutomationService.storeCredentials(
+      user.organization_id,
+      user.id,
+      {
+        accessToken,
+        phoneNumberId,
+        appSecret,
+        verifyToken,
+        businessPhone: businessPhone || validation.phoneDisplay,
+      },
+    );
 
     // Get the webhook URL to display to user
-    const webhookUrl = whatsappAutomationService.getWebhookUrl(user.organization_id);
+    const webhookUrl = whatsappAutomationService.getWebhookUrl(
+      user.organization_id,
+    );
 
     logger.info("[WhatsApp Connect] Credentials stored", {
       organizationId: user.organization_id,

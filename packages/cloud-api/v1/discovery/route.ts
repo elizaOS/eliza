@@ -12,7 +12,10 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { cache } from "@/lib/cache/client";
 import { CacheKeys, CacheTTL } from "@/lib/cache/keys";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { charactersService } from "@/lib/services/characters/characters";
 import { userMcpsService } from "@/lib/services/user-mcps";
 import { logger } from "@/lib/utils/logger";
@@ -62,7 +65,9 @@ interface DiscoveryResponse {
 function resolveDiscoverySource(baseUrl: string): ServiceSource {
   try {
     const host = new URL(baseUrl).hostname.toLowerCase();
-    return host === "localhost" || host === "127.0.0.1" || host.endsWith(".local")
+    return host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".local")
       ? "local"
       : "cloud";
   } catch {
@@ -90,7 +95,9 @@ function getServiceScore(service: DiscoveredService): number {
   );
 }
 
-function dedupeDiscoveredServices(services: DiscoveredService[]): DiscoveredService[] {
+function dedupeDiscoveredServices(
+  services: DiscoveredService[],
+): DiscoveredService[] {
   const unique = new Map<string, DiscoveredService>();
 
   for (const service of services) {
@@ -159,7 +166,10 @@ app.get("/", async (c) => {
 
     const parseResult = querySchema.safeParse(rawParams);
     if (!parseResult.success) {
-      return c.json({ error: "Invalid parameters", details: parseResult.error.issues }, 400);
+      return c.json(
+        { error: "Invalid parameters", details: parseResult.error.issues },
+        400,
+      );
     }
 
     const params = parseResult.data;
@@ -181,7 +191,10 @@ app.get("/", async (c) => {
     const types = params.types ?? ["agent", "mcp", "app"];
 
     if (types.includes("agent")) {
-      const localAgents = await fetchLocalAgents(params, c.env.NEXT_PUBLIC_APP_URL);
+      const localAgents = await fetchLocalAgents(
+        params,
+        c.env.NEXT_PUBLIC_APP_URL,
+      );
       services.push(...localAgents);
     }
 
@@ -195,7 +208,9 @@ app.get("/", async (c) => {
     if (params.query) {
       const query = params.query.toLowerCase();
       filtered = filtered.filter(
-        (s) => s.name.toLowerCase().includes(query) || s.description.toLowerCase().includes(query),
+        (s) =>
+          s.name.toLowerCase().includes(query) ||
+          s.description.toLowerCase().includes(query),
       );
     }
 
@@ -208,18 +223,25 @@ app.get("/", async (c) => {
     }
 
     if (params.categories?.length) {
-      filtered = filtered.filter((s) => s.category && params.categories!.includes(s.category));
+      filtered = filtered.filter(
+        (s) => s.category && params.categories?.includes(s.category),
+      );
     }
 
     if (params.tags?.length) {
-      filtered = filtered.filter((s) => s.tags.some((tag) => params.tags!.includes(tag)));
+      filtered = filtered.filter((s) =>
+        s.tags.some((tag) => params.tags?.includes(tag)),
+      );
     }
 
     filtered = dedupeDiscoveredServices(filtered);
     filtered.sort((a, b) => a.name.localeCompare(b.name));
 
     const total = filtered.length;
-    const paginated = filtered.slice(params.offset, params.offset + params.limit);
+    const paginated = filtered.slice(
+      params.offset,
+      params.offset + params.limit,
+    );
 
     const result: DiscoveryResponse = {
       services: paginated,
@@ -262,14 +284,18 @@ async function fetchLocalAgents(
     characters = characters.filter(
       (char) =>
         char.name.toLowerCase().includes(query) ||
-        (typeof char.bio === "string" && char.bio.toLowerCase().includes(query)) ||
-        (Array.isArray(char.bio) && char.bio.some((b) => b.toLowerCase().includes(query))),
+        (typeof char.bio === "string" &&
+          char.bio.toLowerCase().includes(query)) ||
+        (Array.isArray(char.bio) &&
+          char.bio.some((b) => b.toLowerCase().includes(query))),
     );
   }
 
   if (params.categories && params.categories.length > 1) {
     // Repo filters on the first category; filter the rest in-memory.
-    characters = characters.filter((char) => params.categories?.includes(char.category ?? ""));
+    characters = characters.filter((char) =>
+      params.categories?.includes(char.category ?? ""),
+    );
   }
 
   return characters.map((char): DiscoveredService => {

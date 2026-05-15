@@ -1,11 +1,3 @@
-import {
-  type ComponentType,
-  type JSX,
-  type LazyExoticComponent,
-  lazy,
-  type ReactNode,
-  Suspense,
-} from "react";
 import { ConversationsSidebar } from "@elizaos/ui/components/conversations/ConversationsSidebar";
 import { ChatView } from "@elizaos/ui/components/pages/ChatView";
 import { ConfigPageView } from "@elizaos/ui/components/pages/ConfigPageView";
@@ -25,6 +17,14 @@ import {
 } from "@elizaos/ui/platform/window-shell";
 import { CodingAgentSettingsSection } from "@elizaos/ui/slots/task-coordinator-slots.js";
 import { useApp } from "@elizaos/ui/state/useApp";
+import {
+  type ComponentType,
+  type JSX,
+  type LazyExoticComponent,
+  lazy,
+  type ReactNode,
+  Suspense,
+} from "react";
 
 interface DetachedShellRootProps {
   route: Exclude<WindowShellRoute, { mode: "main" }>;

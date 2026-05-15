@@ -13,7 +13,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const app = new Hono<AppEnv>();
 app.all("/", (c) =>
   c.json(
-    { success: false, error: "Not implemented on Workers (agent-server sidecar handles this)" },
+    {
+      success: false,
+      error: "Not implemented on Workers (agent-server sidecar handles this)",
+    },
     501,
   ),
 );

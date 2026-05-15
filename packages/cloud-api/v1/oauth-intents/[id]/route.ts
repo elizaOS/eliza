@@ -9,7 +9,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { redactOAuthIntentForPublic } from "@/lib/services/oauth-intents";
 import { getOAuthIntentsService } from "@/lib/services/oauth-intents-default";
 import { logger } from "@/lib/utils/logger";
@@ -33,7 +36,10 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "OAuth intent not found" }, 404);
     }
 
-    return c.json({ success: true, oauthIntent: redactOAuthIntentForPublic(row) });
+    return c.json({
+      success: true,
+      oauthIntent: redactOAuthIntentForPublic(row),
+    });
   } catch (error) {
     logger.error("[OAuthIntents API] Failed to get oauth intent", { error });
     return failureResponse(c, error);

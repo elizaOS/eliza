@@ -40,7 +40,10 @@ interface IngressEntry {
 async function __hono_GET(request: Request) {
   const { role } = await requireAdmin(request);
   if (role !== "super_admin") {
-    return Response.json({ success: false, error: "Super admin access required" }, { status: 403 });
+    return Response.json(
+      { success: false, error: "Super admin access required" },
+      { status: 403 },
+    );
   }
 
   const url = new URL(request.url);
@@ -87,7 +90,8 @@ async function __hono_GET(request: Request) {
     if (format === "caddy") {
       const body = entries
         .map(
-          (e) => `${e.host} {\n  reverse_proxy ${e.upstream}\n  log {\n    output stdout\n  }\n}`,
+          (e) =>
+            `${e.host} {\n  reverse_proxy ${e.upstream}\n  log {\n    output stdout\n  }\n}`,
         )
         .join("\n\n");
       return new Response(`${body}\n`, {
@@ -107,7 +111,8 @@ async function __hono_GET(request: Request) {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to read ingress map",
+        error:
+          error instanceof Error ? error.message : "Failed to read ingress map",
       },
       { status: 500 },
     );

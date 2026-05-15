@@ -384,6 +384,7 @@ export interface AppManagerLike {
     runtime?: IAgentRuntime | null,
   ) => Promise<AppStopResult>;
   recordHeartbeat: (runId: string) => unknown;
+  startStaleRunSweeper: (getRuntime: () => IAgentRuntime | null) => void;
   getInfo: (pluginManager: PluginManagerLike, name: string) => Promise<unknown>;
 }
 

@@ -1652,8 +1652,7 @@ export class SolanaService extends Service {
       if (!info?.data) return;
 
       const infoOwner = info.owner;
-      const isT22 =
-        infoOwner.toBase58 && infoOwner.toBase58() === TOKEN_2022_PROGRAM_ID.toBase58();
+      const isT22 = infoOwner.toBase58 && infoOwner.toBase58() === TOKEN_2022_PROGRAM_ID.toBase58();
       const mintKeyStr = mk.toBase58();
 
       if (isT22) {
@@ -2495,8 +2494,7 @@ export class SolanaService extends Service {
 
           if (signal.targetTokenCA === "So11111111111111111111111111111111111111112") {
             if (inBal && outBal) {
-              const diff =
-                Number(inBal.uiTokenAmount.amount) - Number(outBal.uiTokenAmount.amount);
+              const diff = Number(inBal.uiTokenAmount.amount) - Number(outBal.uiTokenAmount.amount);
               if (diff) {
                 outAmount = String(diff);
               }
@@ -2508,8 +2506,7 @@ export class SolanaService extends Service {
             }
           } else {
             if (inBal && outBal) {
-              const diff =
-                Number(outBal.uiTokenAmount.amount) - Number(inBal.uiTokenAmount.amount);
+              const diff = Number(outBal.uiTokenAmount.amount) - Number(inBal.uiTokenAmount.amount);
               if (diff) {
                 outAmount = String(diff);
               }

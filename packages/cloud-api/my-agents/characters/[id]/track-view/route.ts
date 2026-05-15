@@ -12,7 +12,9 @@ const app = new Hono<AppEnv>();
 
 app.post("/", (c) => {
   const id = c.req.param("id") ?? "";
-  logger.warn("[My Agents API] Rejecting removed track-view route", { characterId: id });
+  logger.warn("[My Agents API] Rejecting removed track-view route", {
+    characterId: id,
+  });
   return c.json(
     {
       success: false,

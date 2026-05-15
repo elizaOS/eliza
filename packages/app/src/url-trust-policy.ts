@@ -89,9 +89,7 @@ export function createUrlTrustPolicy(ctx: UrlTrustPolicyContext) {
   }
 
   function canUseIosLocalAgentIpc(): boolean {
-    return (
-      ctx.isNative && ctx.isIOS && ctx.getIosRuntimeMode() === "local"
-    );
+    return ctx.isNative && ctx.isIOS && ctx.getIosRuntimeMode() === "local";
   }
 
   function isCurrentOriginHost(host: string): boolean {

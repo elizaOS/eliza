@@ -48,7 +48,7 @@ export function InviteMemberDialog({
     e.preventDefault();
     setError(null);
 
-    if (!email || !email.includes("@")) {
+    if (!email?.includes("@")) {
       setError("Please enter a valid email address");
       return;
     }

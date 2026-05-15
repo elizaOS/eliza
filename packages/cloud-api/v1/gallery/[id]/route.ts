@@ -33,11 +33,14 @@ app.delete("/", async (c) => {
         // Log and proceed with the soft delete so the row is removed from
         // the gallery even if the R2 object cleanup fails. An out-of-band
         // sweeper can reconcile orphaned objects later.
-        logger.error("[GALLERY API] R2 delete failed; marking generation deleted only", {
-          id,
-          storageUrl: generation.storage_url,
-          error: error instanceof Error ? error.message : String(error),
-        });
+        logger.error(
+          "[GALLERY API] R2 delete failed; marking generation deleted only",
+          {
+            id,
+            storageUrl: generation.storage_url,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        );
       }
     }
 

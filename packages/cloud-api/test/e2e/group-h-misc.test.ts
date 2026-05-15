@@ -83,15 +83,20 @@ beforeAll(async () => {
 describe("Group H — /api/v1/chain/nfts/:chain/:address", () => {
   test("auth gate: missing credentials → 401", async () => {
     if (!reachableOnly()) return;
-    const res = await api.get(`/api/v1/chain/nfts/ethereum/${VALID_ETH_ADDRESS}`);
+    const res = await api.get(
+      `/api/v1/chain/nfts/ethereum/${VALID_ETH_ADDRESS}`,
+    );
     expect(res.status).toBe(401);
   });
 
   test("happy path: with Bearer, handler reaches chain-data proxy", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get(`/api/v1/chain/nfts/ethereum/${VALID_ETH_ADDRESS}`, {
-      headers: bearerHeaders(),
-    });
+    const res = await api.get(
+      `/api/v1/chain/nfts/ethereum/${VALID_ETH_ADDRESS}`,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect(res.status).not.toBe(501);
     expect([200, 400, 402, 502, 504]).toContain(res.status);
   });
@@ -108,15 +113,20 @@ describe("Group H — /api/v1/chain/nfts/:chain/:address", () => {
 describe("Group H — /api/v1/chain/transfers/:chain/:address", () => {
   test("auth gate: missing credentials → 401", async () => {
     if (!reachableOnly()) return;
-    const res = await api.get(`/api/v1/chain/transfers/base/${VALID_ETH_ADDRESS}`);
+    const res = await api.get(
+      `/api/v1/chain/transfers/base/${VALID_ETH_ADDRESS}`,
+    );
     expect(res.status).toBe(401);
   });
 
   test("happy path: with Bearer, handler reaches chain-data proxy", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get(`/api/v1/chain/transfers/base/${VALID_ETH_ADDRESS}`, {
-      headers: bearerHeaders(),
-    });
+    const res = await api.get(
+      `/api/v1/chain/transfers/base/${VALID_ETH_ADDRESS}`,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect(res.status).not.toBe(501);
     expect([200, 400, 402, 502, 504]).toContain(res.status);
   });
@@ -185,7 +195,9 @@ describe("Group H — GET /api/v1/gallery/stats", () => {
 
   test("happy path: with Bearer, returns numeric totals", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/v1/gallery/stats", { headers: bearerHeaders() });
+    const res = await api.get("/api/v1/gallery/stats", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
       totalImages?: number;
@@ -199,7 +211,11 @@ describe("Group H — GET /api/v1/gallery/stats", () => {
 
   test("validation: only GET supported; POST returns non-200", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/v1/gallery/stats", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/v1/gallery/stats",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect(res.status).not.toBe(200);
     expect([400, 401, 403, 404, 405]).toContain(res.status);
   });
@@ -214,9 +230,12 @@ describe("Group H — DELETE /api/v1/gallery/:id", () => {
 
   test("happy path: with Bearer, unknown id → 404 (handler reaches NotFoundError)", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.delete("/api/v1/gallery/00000000-0000-0000-0000-000000000000", {
-      headers: bearerHeaders(),
-    });
+    const res = await api.delete(
+      "/api/v1/gallery/00000000-0000-0000-0000-000000000000",
+      {
+        headers: bearerHeaders(),
+      },
+    );
     // Either the row doesn't exist (404) or the handler reports a generic
     // failure. Auth is not the issue.
     expect(res.status).not.toBe(401);
@@ -226,7 +245,9 @@ describe("Group H — DELETE /api/v1/gallery/:id", () => {
 
   test("validation: GET (unsupported method) does not return 200", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/v1/gallery/some-id", { headers: bearerHeaders() });
+    const res = await api.get("/api/v1/gallery/some-id", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).not.toBe(200);
     expect([400, 401, 403, 404, 405]).toContain(res.status);
   });
@@ -238,10 +259,13 @@ describe("Group H — DELETE /api/v1/gallery/:id", () => {
 describe("Group H — GET /api/v1/proxy/birdeye/*", () => {
   test("legacy mount redirects to /api/v1/apis/birdeye (308)", async () => {
     if (!reachableOnly()) return;
-    const res = await fetch(url("/api/v1/proxy/birdeye/defi/price?address=foo"), {
-      redirect: "manual",
-      signal: AbortSignal.timeout(30_000),
-    });
+    const res = await fetch(
+      url("/api/v1/proxy/birdeye/defi/price?address=foo"),
+      {
+        redirect: "manual",
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
     expect(res.status).toBe(308);
     const loc = res.headers.get("location") ?? "";
     expect(loc).toContain("/api/v1/apis/birdeye/");
@@ -303,15 +327,20 @@ describe("Group H — GET /api/v1/apis/birdeye/*", () => {
 describe("Group H — GET /api/v1/apis/dexscreener/*", () => {
   test("auth gate: missing credentials → 401", async () => {
     if (!reachableOnly()) return;
-    const res = await api.get("/api/v1/apis/dexscreener/latest/dex/search?q=SOL");
+    const res = await api.get(
+      "/api/v1/apis/dexscreener/latest/dex/search?q=SOL",
+    );
     expect(res.status).toBe(401);
   });
 
   test("happy path: with Bearer, reaches handler", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/v1/apis/dexscreener/latest/dex/search?q=SOL", {
-      headers: bearerHeaders(),
-    });
+    const res = await api.get(
+      "/api/v1/apis/dexscreener/latest/dex/search?q=SOL",
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect(res.status).not.toBe(401);
     expect(res.status).not.toBe(403);
   });
@@ -345,7 +374,11 @@ describe("Group H — POST /api/cron/agent-billing", () => {
 
   test("happy path: with cron headers, returns success envelope", async () => {
     if (!reachableOnly()) return;
-    const res = await api.post("/api/cron/agent-billing", {}, { headers: cronHeaders() });
+    const res = await api.post(
+      "/api/cron/agent-billing",
+      {},
+      { headers: cronHeaders() },
+    );
     // 200 when CRON_SECRET matches and the billing run completes (even
     // with zero billable sandboxes). 401/403 if the test secret doesn't
     // match the worker's env. 500 if billing service errors. We assert
@@ -414,7 +447,10 @@ describe("Group H — POST /api/crypto/payments/:id/confirm", () => {
 describe("Group H — /api/crypto/webhook", () => {
   test("auth gate: POST without HMAC header → 401 (signature verification fails)", async () => {
     if (!reachableOnly()) return;
-    const res = await api.post("/api/crypto/webhook", { trackId: "1", status: "paid" });
+    const res = await api.post("/api/crypto/webhook", {
+      trackId: "1",
+      status: "paid",
+    });
     // /api/crypto/webhook is public in middleware. Handler verifies the
     // HMAC header. Missing signature → 401, or 503 if not configured.
     expect([401, 403, 503]).toContain(res.status);
@@ -467,7 +503,11 @@ describe("Group H — POST /api/feedback", () => {
 
   test("validation: missing comment → 400 (Zod parse error)", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/feedback", { name: "Test" }, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/feedback",
+      { name: "Test" },
+      { headers: bearerHeaders() },
+    );
     // The handler `parse()`s and lets Zod throw; failureResponse converts
     // ZodError to 400. Accept 400 or 500 if the failure handler doesn't
     // recognize the error class on every deployment.
@@ -521,7 +561,8 @@ const internalDiscordRoutes: Array<{
   {
     path: "/api/internal/discord/gateway/assignments",
     method: "GET",
-    validPath: "/api/internal/discord/gateway/assignments?pod=gateway-1&current=1&max=1",
+    validPath:
+      "/api/internal/discord/gateway/assignments?pod=gateway-1&current=1&max=1",
     invalidPath: "/api/internal/discord/gateway/assignments?pod=",
     okStatuses: [200],
   },
@@ -535,7 +576,11 @@ const internalDiscordRoutes: Array<{
   {
     path: "/api/internal/discord/gateway/heartbeat",
     method: "POST",
-    validBody: { pod_name: "gateway-1", connection_ids: [], connection_stats: [] },
+    validBody: {
+      pod_name: "gateway-1",
+      connection_ids: [],
+      connection_stats: [],
+    },
     invalidBody: { pod_name: "gateway-1", connection_ids: ["not-a-uuid"] },
     okStatuses: [200],
   },
@@ -567,7 +612,8 @@ for (const {
   describe(`Group H — ${method} ${path}`, () => {
     test("auth gate: missing internal bearer → 401", async () => {
       if (!reachableOnly()) return;
-      const res = method === "GET" ? await api.get(path) : await api.post(path, {});
+      const res =
+        method === "GET" ? await api.get(path) : await api.post(path, {});
       expect(res.status).toBe(401);
     });
 
@@ -576,7 +622,9 @@ for (const {
       const res =
         method === "GET"
           ? await api.get(validPath ?? path, { headers: internalHeaders() })
-          : await api.post(path, validBody ?? {}, { headers: internalHeaders() });
+          : await api.post(path, validBody ?? {}, {
+              headers: internalHeaders(),
+            });
       expect(res.status).not.toBe(501);
       expect(okStatuses ?? [200]).toContain(res.status);
     });
@@ -585,8 +633,12 @@ for (const {
       if (!reachableOnly()) return;
       const res =
         method === "GET"
-          ? await api.get(invalidPath ?? `${path}?pod=`, { headers: internalHeaders() })
-          : await api.post(path, invalidBody ?? {}, { headers: internalHeaders() });
+          ? await api.get(invalidPath ?? `${path}?pod=`, {
+              headers: internalHeaders(),
+            })
+          : await api.post(path, invalidBody ?? {}, {
+              headers: internalHeaders(),
+            });
       expect(res.status).toBe(400);
     });
   });
@@ -618,7 +670,11 @@ describe("Group H — POST /api/invites/accept", () => {
 
   test("validation: missing token → 400", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/invites/accept", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/invites/accept",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect([400, 500]).toContain(res.status);
   });
 });
@@ -644,7 +700,9 @@ describe("Group H — GET /api/invites/validate", () => {
 
   test("validation: missing token → 400", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/invites/validate", { headers: bearerHeaders() });
+    const res = await api.get("/api/invites/validate", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBeTruthy();
@@ -663,7 +721,9 @@ describe("Group H — GET /api/organizations/invites", () => {
 
   test("happy path: with Bearer, owner/admin gets list; member → 403", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/organizations/invites", { headers: bearerHeaders() });
+    const res = await api.get("/api/organizations/invites", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).not.toBe(401);
     // 200 (owner/admin) or 403 (non-admin). Both prove auth+routing succeeded.
     expect([200, 403]).toContain(res.status);
@@ -688,7 +748,9 @@ describe("Group H — GET /api/organizations/invites", () => {
 describe("Group H — DELETE /api/organizations/invites/:inviteId", () => {
   test("auth gate: missing credentials → 401", async () => {
     if (!reachableOnly()) return;
-    const res = await api.delete("/api/organizations/invites/00000000-0000-0000-0000-000000000000");
+    const res = await api.delete(
+      "/api/organizations/invites/00000000-0000-0000-0000-000000000000",
+    );
     expect(res.status).toBe(401);
   });
 
@@ -704,9 +766,12 @@ describe("Group H — DELETE /api/organizations/invites/:inviteId", () => {
 
   test("validation: GET (unsupported) does not return 200", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/organizations/invites/00000000-0000-0000-0000-000000000000", {
-      headers: bearerHeaders(),
-    });
+    const res = await api.get(
+      "/api/organizations/invites/00000000-0000-0000-0000-000000000000",
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect(res.status).not.toBe(200);
     expect([400, 401, 403, 404, 405]).toContain(res.status);
   });
@@ -721,18 +786,27 @@ describe("Group H — GET /api/organizations/members", () => {
 
   test("happy path: with Bearer, owner/admin gets list; member → 403", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.get("/api/organizations/members", { headers: bearerHeaders() });
+    const res = await api.get("/api/organizations/members", {
+      headers: bearerHeaders(),
+    });
     expect(res.status).not.toBe(401);
     expect([200, 403]).toContain(res.status);
     if (res.status === 200) {
-      const body = (await res.json()) as { data?: unknown[]; success?: boolean };
+      const body = (await res.json()) as {
+        data?: unknown[];
+        success?: boolean;
+      };
       expect(Array.isArray(body.data)).toBe(true);
     }
   });
 
   test("validation: POST (unsupported) does not return 200", async () => {
     if (!shouldRunAuthed()) return;
-    const res = await api.post("/api/organizations/members", {}, { headers: bearerHeaders() });
+    const res = await api.post(
+      "/api/organizations/members",
+      {},
+      { headers: bearerHeaders() },
+    );
     expect(res.status).not.toBe(200);
     expect([400, 401, 403, 404, 405]).toContain(res.status);
   });
@@ -741,9 +815,12 @@ describe("Group H — GET /api/organizations/members", () => {
 describe("Group H — PATCH /api/organizations/members/:userId", () => {
   test("auth gate: missing credentials → 401", async () => {
     if (!reachableOnly()) return;
-    const res = await api.patch("/api/organizations/members/00000000-0000-0000-0000-000000000000", {
-      role: "member",
-    });
+    const res = await api.patch(
+      "/api/organizations/members/00000000-0000-0000-0000-000000000000",
+      {
+        role: "member",
+      },
+    );
     expect(res.status).toBe(401);
   });
 

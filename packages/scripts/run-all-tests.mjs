@@ -57,7 +57,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "..");
+const repoRoot = path.resolve(here, "..", "..");
 const bunCmd = process.env.npm_execpath || process.env.BUN || "bun";
 
 // ---------------------------------------------------------------------------

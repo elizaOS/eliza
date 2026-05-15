@@ -9,7 +9,10 @@ import { Hono } from "hono";
 import { generationsRepository } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 type VideoStatus = "completed" | "processing" | "failed";
@@ -37,14 +40,15 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.get("/", async (c) => {
   const user = await requireUserOrApiKeyWithOrg(c);
 
-  const completed = await generationsRepository.listByOrganizationAndStatusSummary(
-    user.organization_id,
-    "completed",
-    { userId: user.id, type: "video", limit: 1 },
-  );
+  const completed =
+    await generationsRepository.listByOrganizationAndStatusSummary(
+      user.organization_id,
+      "completed",
+      { userId: user.id, type: "video", limit: 1 },
+    );
 
   const latest = completed[0];
-  if (!latest || !latest.storage_url) {
+  if (!latest?.storage_url) {
     const empty: FeaturedVideoResponse = { video: null };
     return c.json(empty);
   }

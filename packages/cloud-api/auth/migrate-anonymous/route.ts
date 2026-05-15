@@ -16,7 +16,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const ANON_SESSION_COOKIE = "eliza-anon-session";
 
 async function hashTokenForLogging(token: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(token),
+  );
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("")
@@ -35,7 +38,9 @@ app.post("/", async (c) => {
 
     let sessionToken: string | undefined = getCookie(c, ANON_SESSION_COOKIE);
     if (!sessionToken) {
-      const body = (await c.req.json().catch(() => ({}))) as { sessionToken?: string };
+      const body = (await c.req.json().catch(() => ({}))) as {
+        sessionToken?: string;
+      };
       sessionToken = body.sessionToken;
     }
 
@@ -61,10 +66,17 @@ app.post("/", async (c) => {
 
     if (anonSession.converted_at) {
       deleteCookie(c, ANON_SESSION_COOKIE, { path: "/" });
-      return c.json({ success: true, message: "Session already migrated", migrated: false });
+      return c.json({
+        success: true,
+        message: "Session already migrated",
+        migrated: false,
+      });
     }
 
-    const migrationResult = await migrateAnonymousSession(anonSession.user_id, user.steward_id);
+    const migrationResult = await migrateAnonymousSession(
+      anonSession.user_id,
+      user.steward_id,
+    );
 
     deleteCookie(c, ANON_SESSION_COOKIE, { path: "/" });
 
@@ -77,7 +89,10 @@ app.post("/", async (c) => {
   } catch (error) {
     logger.error("[Migrate Anonymous] Error during migration:", error);
 
-    if (error instanceof Error && error.message === "Anonymous user not found") {
+    if (
+      error instanceof Error &&
+      error.message === "Anonymous user not found"
+    ) {
       return c.json({
         success: true,
         message: "No anonymous data to migrate",

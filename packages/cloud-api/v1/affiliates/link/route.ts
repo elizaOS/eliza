@@ -7,8 +7,14 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { ERRORS as AFFILIATE_ERRORS, affiliatesService } from "@/lib/services/affiliates";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  ERRORS as AFFILIATE_ERRORS,
+  affiliatesService,
+} from "@/lib/services/affiliates";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -30,7 +36,10 @@ app.post("/", async (c) => {
       return c.json({ error: "Invalid affiliate code format." }, 400);
     }
 
-    const link = await affiliatesService.linkUserToAffiliateCode(user.id, validation.data.code);
+    const link = await affiliatesService.linkUserToAffiliateCode(
+      user.id,
+      validation.data.code,
+    );
     return c.json({ success: true, link });
   } catch (error: unknown) {
     if (error instanceof Error) {

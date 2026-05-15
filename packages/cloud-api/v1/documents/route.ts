@@ -2,7 +2,10 @@ import { Hono } from "hono";
 
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
@@ -28,8 +31,14 @@ app.get("/", async (c) => {
     const scope = await resolveDocumentScope(user, c.req.query("characterId"));
     if (scope instanceof Response) return scope;
 
-    const limit = Math.min(Number.parseInt(c.req.query("limit") ?? "100", 10) || 100, 200);
-    const offset = Math.max(Number.parseInt(c.req.query("offset") ?? "0", 10) || 0, 0);
+    const limit = Math.min(
+      Number.parseInt(c.req.query("limit") ?? "100", 10) || 100,
+      200,
+    );
+    const offset = Math.max(
+      Number.parseInt(c.req.query("offset") ?? "0", 10) || 0,
+      0,
+    );
     const documents = await listDocumentRecords(scope, limit, offset);
 
     return c.json({
@@ -39,7 +48,8 @@ app.get("/", async (c) => {
     });
   } catch (error) {
     logger.error("[DocumentsRoute] Failed to list documents", {
-      error: error instanceof Error ? error.stack || error.message : String(error),
+      error:
+        error instanceof Error ? error.stack || error.message : String(error),
     });
     return failureResponse(c, error);
   }
@@ -48,11 +58,18 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const body = (await c.req.json().catch(() => null)) as CreateDocumentBody | null;
-    if (!body) return c.json({ success: false, error: "Request body must be JSON" }, 400);
+    const body = (await c.req
+      .json()
+      .catch(() => null)) as CreateDocumentBody | null;
+    if (!body)
+      return c.json(
+        { success: false, error: "Request body must be JSON" },
+        400,
+      );
 
     const content = body.content?.trim();
-    if (!content) return c.json({ success: false, error: "content is required" }, 400);
+    if (!content)
+      return c.json({ success: false, error: "content is required" }, 400);
 
     const scope = await resolveDocumentScope(user, body.characterId);
     if (scope instanceof Response) return scope;
@@ -71,7 +88,8 @@ app.post("/", async (c) => {
     });
   } catch (error) {
     logger.error("[DocumentsRoute] Failed to create document", {
-      error: error instanceof Error ? error.stack || error.message : String(error),
+      error:
+        error instanceof Error ? error.stack || error.message : String(error),
       cause:
         error instanceof Error && error.cause instanceof Error
           ? error.cause.stack || error.cause.message

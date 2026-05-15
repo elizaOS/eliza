@@ -1,5 +1,10 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { api, bearerHeaders, getBaseUrl, isServerReachable } from "./_helpers/api";
+import {
+  api,
+  bearerHeaders,
+  getBaseUrl,
+  isServerReachable,
+} from "./_helpers/api";
 
 let serverReachable = false;
 let hasTestApiKey = false;
@@ -41,7 +46,9 @@ beforeAll(async () => {
     return;
   }
   if (!hasTestApiKey) {
-    console.warn("[group-l-app-charges] TEST_API_KEY is not set; auth-required tests will skip.");
+    console.warn(
+      "[group-l-app-charges] TEST_API_KEY is not set; auth-required tests will skip.",
+    );
   }
 });
 
@@ -57,9 +64,12 @@ afterAll(async () => {
 describe("App charge requests", () => {
   test("auth gate: rejects one dollar charge creation without credentials", async () => {
     if (!serverReachable) return;
-    const res = await api.post("/api/v1/apps/00000000-0000-4000-8000-000000000000/charges", {
-      amount: 1,
-    });
+    const res = await api.post(
+      "/api/v1/apps/00000000-0000-4000-8000-000000000000/charges",
+      {
+        amount: 1,
+      },
+    );
     expect(res.status).toBe(401);
   });
 
@@ -110,7 +120,9 @@ describe("App charge requests", () => {
     expect(body.charge?.metadata?.callback_secret).toBeUndefined();
     expect(body.charge?.metadata?.callback_secret_set).toBe(true);
 
-    const publicRes = await api.get(`/api/v1/apps/${appId}/charges/${body.charge?.id}`);
+    const publicRes = await api.get(
+      `/api/v1/apps/${appId}/charges/${body.charge?.id}`,
+    );
     expect(publicRes.status).toBe(200);
     const publicBody = (await publicRes.json()) as {
       charge?: { amountUsd?: number; metadata?: Record<string, unknown> };
@@ -127,7 +139,9 @@ describe("App charge requests", () => {
     const listBody = (await listRes.json()) as {
       charges?: Array<{ id?: string; amountUsd?: number; paymentUrl?: string }>;
     };
-    const listed = listBody.charges?.find((charge) => charge.id === body.charge?.id);
+    const listed = listBody.charges?.find(
+      (charge) => charge.id === body.charge?.id,
+    );
     expect(listed?.amountUsd).toBe(5);
     expect(listed?.paymentUrl).toBe(body.charge?.paymentUrl);
   });

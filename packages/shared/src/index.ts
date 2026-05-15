@@ -202,6 +202,12 @@ export {
   DEFAULT_ELIZA_CLOUD_FREE_TEXT_MODEL,
   DEFAULT_ELIZA_CLOUD_TEXT_MODEL,
 } from "./contracts/service-routing.js";
+// themes/ runtime (presets + apply engine) moved to @elizaos/ui/themes in
+// Phase 5B (shared shrink). The theme TYPE contract stays here because
+// `contracts/content-pack` references `ThemeDefinition`. Consumers should
+// import the runtime helpers (`ELIZA_DEFAULT_THEME`, `applyThemeToDocument`,
+// etc.) from `@elizaos/ui`.
+export * from "./contracts/theme.js";
 // db types — canonical handles for the runtime Drizzle database so consumers
 // don't reverse-import the plugin-sql package for type-only uses.
 export type { DrizzleDatabase } from "./db/drizzle-database.js";
@@ -235,12 +241,6 @@ export * from "./terminal/links.js";
 export * from "./terminal/theme.js";
 export * from "./test-support/process-helpers.js";
 export * from "./test-support/test-helpers.js";
-// themes/ runtime (presets + apply engine) moved to @elizaos/ui/themes in
-// Phase 5B (shared shrink). The theme TYPE contract stays here because
-// `contracts/content-pack` references `ThemeDefinition`. Consumers should
-// import the runtime helpers (`ELIZA_DEFAULT_THEME`, `applyThemeToDocument`,
-// etc.) from `@elizaos/ui`.
-export * from "./contracts/theme.js";
 export * from "./type-guards.js";
 export * from "./types/index.js";
 export * from "./utils/asset-url.js";

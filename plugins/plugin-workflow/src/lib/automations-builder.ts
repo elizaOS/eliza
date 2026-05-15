@@ -263,8 +263,7 @@ async function listTriggerTasks(runtime: AgentRuntime): Promise<Task[]> {
 
   const merged = new Map<string, Task>();
   for (const task of [...triggerTasks, ...heartbeatTasks]) {
-    const key =
-      task.id ?? `${task.name}:${task.description ?? ''}:${(task.tags ?? []).join(',')}`;
+    const key = task.id ?? `${task.name}:${task.description ?? ''}:${(task.tags ?? []).join(',')}`;
     if (!merged.has(key)) {
       merged.set(key, task);
     }

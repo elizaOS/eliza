@@ -20,10 +20,16 @@ app.get("/", async (c) => {
 
     const agentId = c.req.query("agentId")?.trim() ?? "";
     if (!agentId) {
-      return c.json({ success: false, error: "agentId query parameter is required" }, 400);
+      return c.json(
+        { success: false, error: "agentId query parameter is required" },
+        400,
+      );
     }
 
-    const sandbox = await agentSandboxesRepository.findByIdAndOrg(agentId, user.organization_id);
+    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
+      agentId,
+      user.organization_id,
+    );
     if (!sandbox) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }

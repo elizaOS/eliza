@@ -22,7 +22,8 @@ app.get("/", async (c) => {
     if (auth instanceof Response) return auth;
 
     const podName = podNameSchema.parse(c.req.query("pod") ?? auth.podName);
-    const connections = await discordConnectionsRepository.findByAssignedPod(podName);
+    const connections =
+      await discordConnectionsRepository.findByAssignedPod(podName);
     return c.json({
       podName,
       connections: connections.map((connection) => ({
@@ -60,7 +61,11 @@ app.post("/", async (c) => {
     if (!connection) {
       return c.json({ error: "connection_not_found" }, 404);
     }
-    return c.json({ success: true, connectionId: connection.id, status: connection.status });
+    return c.json({
+      success: true,
+      connectionId: connection.id,
+      status: connection.status,
+    });
   } catch (err) {
     logger.error("[internal/discord/gateway/status:post]", { error: err });
     return failureResponse(c, err);

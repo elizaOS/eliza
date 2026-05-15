@@ -26,7 +26,9 @@ export function getAIProvider(): AIProvider {
   }
 
   if (!openaiKey) {
-    throw new Error("No AI API key configured (GROQ_API_KEY or OPENAI_API_KEY)");
+    throw new Error(
+      "No AI API key configured (GROQ_API_KEY or OPENAI_API_KEY)",
+    );
   }
 
   return {

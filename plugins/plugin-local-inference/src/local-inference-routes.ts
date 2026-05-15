@@ -62,7 +62,7 @@ function getMobileDeviceBridgeApi(): Promise<MobileDeviceBridgeApi> {
 	return mobileDeviceBridgeApiPromise;
 }
 
-function getMobileDeviceBridgeStatusUnavailable() {
+function getMobileDeviceBridgeStatusUnavailable(): MobileDeviceBridgeStatus {
 	return {
 		enabled: false,
 		connected: false,

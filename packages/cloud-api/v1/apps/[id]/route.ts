@@ -48,7 +48,10 @@ app.get("/", async (c) => {
     if (found.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
-    return c.json({ success: true, app: await appsService.withDatabaseState(found) });
+    return c.json({
+      success: true,
+      app: await appsService.withDatabaseState(found),
+    });
   } catch (error) {
     logger.error("[Apps API] Failed to get app:", error);
     return failureResponse(c, error);
@@ -85,12 +88,15 @@ async function updateApp(c: AppContext, verb: "PUT" | "PATCH") {
   };
   const updated = await appsService.update(id, updateData);
 
-  logger.info(`[Apps API] ${verb === "PUT" ? "Updated" : "Patched"} app: ${id}`, {
-    appId: id,
-    userId: user.id,
-    organizationId: user.organization_id,
-    fields: Object.keys(validationResult.data),
-  });
+  logger.info(
+    `[Apps API] ${verb === "PUT" ? "Updated" : "Patched"} app: ${id}`,
+    {
+      appId: id,
+      userId: user.id,
+      organizationId: user.organization_id,
+      fields: Object.keys(validationResult.data),
+    },
+  );
 
   return c.json({
     success: true,
@@ -123,7 +129,8 @@ app.delete("/", async (c) => {
     if (!id) return c.json({ success: false, error: "Missing app id" }, 400);
 
     const existing = await appsService.getById(id);
-    if (!existing) return c.json({ success: false, error: "App not found" }, 404);
+    if (!existing)
+      return c.json({ success: false, error: "App not found" }, 404);
     if (existing.organization_id !== user.organization_id) {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
@@ -149,7 +156,8 @@ app.delete("/", async (c) => {
         ? "App deleted successfully with all resources cleaned up"
         : "App deleted with some cleanup errors",
       cleaned: cleanupResult.cleaned,
-      errors: cleanupResult.errors.length > 0 ? cleanupResult.errors : undefined,
+      errors:
+        cleanupResult.errors.length > 0 ? cleanupResult.errors : undefined,
     });
   } catch (error) {
     logger.error("[Apps API] Failed to delete app:", error);

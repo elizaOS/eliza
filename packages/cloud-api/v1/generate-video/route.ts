@@ -1,9 +1,16 @@
 import { createFalClient } from "@fal-ai/client";
 import { Hono } from "hono";
 import { z } from "zod";
-import { ApiError, failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  failureResponse,
+  jsonError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   calculateVideoGenerationCostFromCatalog,
   getDefaultVideoBillingDimensions,
@@ -13,7 +20,10 @@ import {
   SUPPORTED_VIDEO_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
-import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
+import {
+  creditsService,
+  InsufficientCreditsError,
+} from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv, Bindings } from "@/types/cloud-worker-env";
@@ -64,7 +74,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function stringValue(value: unknown): string | undefined {
@@ -72,12 +84,15 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function booleanArrayValue(value: unknown): boolean[] | undefined {
-  return Array.isArray(value) && value.every((item) => typeof item === "boolean")
+  return Array.isArray(value) &&
+    value.every((item) => typeof item === "boolean")
     ? value
     : undefined;
 }
 
-function recordNumberMap(value: unknown): Record<string, number> | null | undefined {
+function recordNumberMap(
+  value: unknown,
+): Record<string, number> | null | undefined {
   if (value === null) return null;
   if (!isRecord(value)) return undefined;
 
@@ -104,20 +119,28 @@ function normalizeVideoObject(value: unknown): FalVideoObject | null {
   };
 }
 
-function normalizeFalResult(result: unknown, requestId?: string): NormalizedFalVideoResult {
+function normalizeFalResult(
+  result: unknown,
+  requestId?: string,
+): NormalizedFalVideoResult {
   if (!isRecord(result)) {
     throw new Error("fal.ai returned an invalid video response");
   }
 
   const video =
     normalizeVideoObject(result.video) ??
-    (Array.isArray(result.videos) ? normalizeVideoObject(result.videos[0]) : null);
+    (Array.isArray(result.videos)
+      ? normalizeVideoObject(result.videos[0])
+      : null);
   if (!video?.url) {
     throw new Error("fal.ai returned no video URL");
   }
 
   return {
-    requestId: stringValue(result.requestId) ?? stringValue(result.request_id) ?? requestId,
+    requestId:
+      stringValue(result.requestId) ??
+      stringValue(result.request_id) ??
+      requestId,
     video,
     seed: numberValue(result.seed),
     timings: recordNumberMap(result.timings) ?? null,
@@ -148,21 +171,33 @@ function buildFalInput(request: VideoRequest): Record<string, unknown> {
 }
 
 app.post("/", async (c) => {
-  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null = null;
+  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
+    null;
 
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const request = videoRequestSchema.parse(await c.req.json());
     const definition = getSupportedVideoModelDefinition(request.model);
     if (!definition) {
-      return jsonError(c, 400, `Unsupported video model: ${request.model}`, "validation_error", {
-        supportedModels: SUPPORTED_VIDEO_MODEL_IDS,
-      });
+      return jsonError(
+        c,
+        400,
+        `Unsupported video model: ${request.model}`,
+        "validation_error",
+        {
+          supportedModels: SUPPORTED_VIDEO_MODEL_IDS,
+        },
+      );
     }
 
     const key = falKey(c.env);
     if (!key) {
-      return jsonError(c, 503, "Fal video generation is not configured", "internal_error");
+      return jsonError(
+        c,
+        503,
+        "Fal video generation is not configured",
+        "internal_error",
+      );
     }
 
     await contentSafetyService.assertSafeForPublicUse({
@@ -171,7 +206,9 @@ app.post("/", async (c) => {
       userId: user.id,
       text: [
         `Video prompt: ${request.prompt}`,
-        request.referenceUrl ? `Reference URL: ${request.referenceUrl}` : undefined,
+        request.referenceUrl
+          ? `Reference URL: ${request.referenceUrl}`
+          : undefined,
       ],
       imageUrls: request.referenceUrl ? [request.referenceUrl] : undefined,
       metadata: { type: "video", model: request.model },
@@ -183,8 +220,12 @@ app.post("/", async (c) => {
       ...defaults.dimensions,
       ...(request.resolution ? { resolution: request.resolution } : {}),
       ...(request.audio !== undefined ? { audio: request.audio } : {}),
-      ...(request.voiceControl !== undefined ? { voiceControl: request.voiceControl } : {}),
-      ...(defaults.dimensions.durationSeconds !== undefined ? { durationSeconds } : {}),
+      ...(request.voiceControl !== undefined
+        ? { voiceControl: request.voiceControl }
+        : {}),
+      ...(defaults.dimensions.durationSeconds !== undefined
+        ? { durationSeconds }
+        : {}),
     };
     const cost = await calculateVideoGenerationCostFromCatalog({
       model: request.model,
@@ -203,7 +244,11 @@ app.post("/", async (c) => {
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return c.json(
-          { success: false, error: "Insufficient credits", required: error.required },
+          {
+            success: false,
+            error: "Insufficient credits",
+            required: error.required,
+          },
           402,
         );
       }
@@ -223,12 +268,17 @@ app.post("/", async (c) => {
     });
     const normalized = normalizeFalResult(result, requestId);
     if (normalized.hasNsfwConcepts?.some(Boolean)) {
-      throw new ApiError(400, "validation_error", "Generated video failed safety review", {
-        surface: "media_generation_output",
-        provider: definition.provider,
-        model: request.model,
-        issues: ["provider_nsfw_signal"],
-      });
+      throw new ApiError(
+        400,
+        "validation_error",
+        "Generated video failed safety review",
+        {
+          surface: "media_generation_output",
+          provider: definition.provider,
+          model: request.model,
+          issues: ["provider_nsfw_signal"],
+        },
+      );
     }
 
     await reservation.reconcile(cost.totalCost);
@@ -249,7 +299,9 @@ app.post("/", async (c) => {
       status: "completed",
       storage_url: normalized.video.url,
       thumbnail_url: normalized.video.url,
-      file_size: normalized.video.file_size ? BigInt(normalized.video.file_size) : undefined,
+      file_size: normalized.video.file_size
+        ? BigInt(normalized.video.file_size)
+        : undefined,
       mime_type: normalized.video.content_type ?? "video/mp4",
       parameters: {
         referenceUrl: request.referenceUrl,
@@ -283,7 +335,10 @@ app.post("/", async (c) => {
     if (reservation) {
       await reservation.reconcile(0).catch((reconcileError) => {
         logger.error("[GenerateVideo] Failed to refund reservation", {
-          error: reconcileError instanceof Error ? reconcileError.message : String(reconcileError),
+          error:
+            reconcileError instanceof Error
+              ? reconcileError.message
+              : String(reconcileError),
         });
       });
     }
@@ -291,6 +346,8 @@ app.post("/", async (c) => {
   }
 });
 
-app.all("*", (c) => c.json({ success: false, error: "Method not allowed" }, 405));
+app.all("*", (c) =>
+  c.json({ success: false, error: "Method not allowed" }, 405),
+);
 
 export default app;

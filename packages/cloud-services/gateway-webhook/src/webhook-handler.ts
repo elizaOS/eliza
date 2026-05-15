@@ -1,4 +1,9 @@
-import type { ChatEvent, Platform, PlatformAdapter, WebhookConfig } from "./adapters/types";
+import type {
+  ChatEvent,
+  Platform,
+  PlatformAdapter,
+  WebhookConfig,
+} from "./adapters/types";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
 import {
@@ -82,14 +87,16 @@ export async function handleWebhook(
 
   // ── Async phase: identity → forward → reply (runs in background) ──
 
-  processMessage(adapter, config, event, deps, project, agentId).catch((err) => {
-    logger.error("Background message processing failed", {
-      error: err instanceof Error ? err.message : String(err),
-      project,
-      platform: adapter.platform,
-      messageId: event.messageId,
-    });
-  });
+  processMessage(adapter, config, event, deps, project, agentId).catch(
+    (err) => {
+      logger.error("Background message processing failed", {
+        error: err instanceof Error ? err.message : String(err),
+        project,
+        platform: adapter.platform,
+        messageId: event.messageId,
+      });
+    },
+  );
 
   return ackResponse(adapter.platform);
 }
@@ -188,25 +195,30 @@ async function sendOnboardingReply(
   const { cloudBaseUrl, getAuthHeader } = deps;
 
   try {
-    const response = await fetch(`${cloudBaseUrl}/api/eliza-app/onboarding/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeader(),
+    const response = await fetch(
+      `${cloudBaseUrl}/api/eliza-app/onboarding/chat`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...getAuthHeader(),
+        },
+        body: JSON.stringify({
+          sessionId: `platform:${adapter.platform}:${event.senderId}`,
+          message: event.text,
+          platform: adapter.platform,
+          platformUserId: event.senderId,
+          platformDisplayName: event.senderName,
+        }),
+        signal: AbortSignal.timeout(30_000),
       },
-      body: JSON.stringify({
-        sessionId: `platform:${adapter.platform}:${event.senderId}`,
-        message: event.text,
-        platform: adapter.platform,
-        platformUserId: event.senderId,
-        platformDisplayName: event.senderName,
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
+    );
 
     if (!response.ok) {
       const body = await response.text().catch(() => "");
-      throw new Error(`onboarding chat failed (${response.status}) ${body.slice(0, 200)}`);
+      throw new Error(
+        `onboarding chat failed (${response.status}) ${body.slice(0, 200)}`,
+      );
     }
 
     const body = (await response.json()) as {
@@ -229,10 +241,13 @@ async function sendOnboardingReply(
 function ackResponse(platform: Platform): Response {
   // Twilio expects empty TwiML
   if (platform === "twilio") {
-    return new Response('<?xml version="1.0" encoding="UTF-8"?><Response></Response>', {
-      status: 200,
-      headers: { "Content-Type": "text/xml" },
-    });
+    return new Response(
+      '<?xml version="1.0" encoding="UTF-8"?><Response></Response>',
+      {
+        status: 200,
+        headers: { "Content-Type": "text/xml" },
+      },
+    );
   }
   return new Response(JSON.stringify({ ok: true }), {
     status: 200,

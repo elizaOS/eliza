@@ -20,7 +20,8 @@ app.get("/", async (c) => {
       rawMaxResults && rawMaxResults.trim().length > 0
         ? Number.parseInt(rawMaxResults, 10)
         : undefined;
-    const connectionRole = c.req.query("connectionRole") === "agent" ? "agent" : "owner";
+    const connectionRole =
+      c.req.query("connectionRole") === "agent" ? "agent" : "owner";
 
     const result = await getXFeed({
       organizationId: user.organization_id,

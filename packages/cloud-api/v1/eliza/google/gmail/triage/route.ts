@@ -27,7 +27,9 @@ app.get("/", async (c) => {
       return c.json({ error: "side must be owner or agent." }, 400);
     }
     const maxResults =
-      rawMaxResults && rawMaxResults.trim().length > 0 ? Number.parseInt(rawMaxResults, 10) : 12;
+      rawMaxResults && rawMaxResults.trim().length > 0
+        ? Number.parseInt(rawMaxResults, 10)
+        : 12;
     if (!Number.isFinite(maxResults) || maxResults <= 0) {
       return c.json({ error: "maxResults must be a positive integer." }, 400);
     }

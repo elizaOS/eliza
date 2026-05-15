@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { getAIProvider } from "@/lib/ai-provider";
 
 export async function POST(req: NextRequest) {
@@ -7,7 +7,10 @@ export async function POST(req: NextRequest) {
     const photo = formData.get("photo") as File;
 
     if (!photo) {
-      return NextResponse.json({ success: false, error: "No photo provided" }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: "No photo provided" },
+        { status: 400 },
+      );
     }
 
     const provider = getAIProvider();
@@ -66,6 +69,9 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Error analyzing photo:", error);
-    return NextResponse.json({ success: false, error: "Failed to analyze photo" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, error: "Failed to analyze photo" },
+      { status: 500 },
+    );
   }
 }

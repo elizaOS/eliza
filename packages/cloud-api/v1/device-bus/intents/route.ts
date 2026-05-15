@@ -30,7 +30,10 @@ app.post("/", async (c) => {
     const body = await c.req.json().catch(() => null);
     const parsed = publishSchema.safeParse(body);
     if (!parsed.success) {
-      return c.json({ error: parsed.error.issues[0]?.message ?? "Invalid body" }, 400);
+      return c.json(
+        { error: parsed.error.issues[0]?.message ?? "Invalid body" },
+        400,
+      );
     }
 
     const { kind, payload, userId } = parsed.data;
@@ -38,7 +41,10 @@ app.post("/", async (c) => {
     // for the initial rollout.
     const targetUserId = userId ?? user.id;
     if (targetUserId !== user.id) {
-      return c.json({ error: "Cannot publish intents for a different user" }, 403);
+      return c.json(
+        { error: "Cannot publish intents for a different user" },
+        403,
+      );
     }
 
     const [row] = await dbWrite

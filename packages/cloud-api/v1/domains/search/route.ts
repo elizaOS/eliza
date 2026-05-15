@@ -35,7 +35,10 @@ app.post("/", async (c) => {
     const parsed = SearchSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "invalid input" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "invalid input",
+        },
         400,
       );
     }

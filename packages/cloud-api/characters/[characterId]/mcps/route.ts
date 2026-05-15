@@ -4,7 +4,8 @@ import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const app = new Hono<AppEnv>();
 
@@ -22,7 +23,10 @@ app.get("/", async (c) => {
       return jsonError(c, 400, "Invalid character id", "validation_error");
     }
 
-    const character = await charactersService.getByIdForUser(characterId, user.id);
+    const character = await charactersService.getByIdForUser(
+      characterId,
+      user.id,
+    );
     if (!character) {
       return jsonError(c, 404, "Character not found", "resource_not_found");
     }

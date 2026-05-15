@@ -20,7 +20,10 @@ const CheckSchema = z.object({
     .string()
     .min(4)
     .max(253)
-    .regex(/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i, "Invalid domain format")
+    .regex(
+      /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i,
+      "Invalid domain format",
+    )
     .transform((d) => d.toLowerCase().trim()),
 });
 
@@ -40,13 +43,17 @@ app.post("/", async (c) => {
     const parsed = CheckSchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "invalid input" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "invalid input",
+        },
         400,
       );
     }
     const { domain } = parsed.data;
 
-    const availability = await cloudflareRegistrarService.checkAvailability(domain);
+    const availability =
+      await cloudflareRegistrarService.checkAvailability(domain);
     if (!availability.available) {
       return c.json({ success: true, domain, available: false });
     }

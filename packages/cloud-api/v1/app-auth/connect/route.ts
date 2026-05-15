@@ -70,7 +70,10 @@ app.post("/", async (c) => {
     if (connectionAction === "updated") {
       logger.info("Updated app user connection", { userId: user.id, appId });
     } else {
-      logger.info("Created new app user connection", { userId: user.id, appId });
+      logger.info("Created new app user connection", {
+        userId: user.id,
+        appId,
+      });
     }
 
     let authCode: Awaited<ReturnType<typeof issueAppAuthCode>>;

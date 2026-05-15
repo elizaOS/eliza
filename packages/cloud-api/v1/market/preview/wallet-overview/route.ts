@@ -6,7 +6,10 @@
 
 import { Hono } from "hono";
 import { fetchHonoRoot } from "@/lib/api/hono-root-request";
-import { getIpKey, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  getIpKey,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   loadPublicWalletMarketOverview,
   PUBLIC_MARKET_OVERVIEW_CACHE_CONTROL,

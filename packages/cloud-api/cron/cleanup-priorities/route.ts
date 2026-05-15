@@ -22,7 +22,11 @@ app.get("/", async (c) => {
 
     return c.json({
       success: true,
-      data: { deleted_count: deletedCount, stats_before: statsBefore, stats_after: statsAfter },
+      data: {
+        deleted_count: deletedCount,
+        stats_before: statsBefore,
+        stats_after: statsAfter,
+      },
     });
   } catch (error) {
     logger.error("Cron job error:", error);

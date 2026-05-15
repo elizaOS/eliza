@@ -7,7 +7,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { invitesService } from "@/lib/services/invites";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -22,7 +25,10 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     if (user.role !== "owner" && user.role !== "admin") {
-      return c.json({ success: false, error: "Only owners and admins can invite members" }, 403);
+      return c.json(
+        { success: false, error: "Only owners and admins can invite members" },
+        403,
+      );
     }
 
     const body = await c.req.json();
@@ -48,10 +54,17 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return c.json({ success: false, error: "Validation error", details: error.issues }, 400);
+      return c.json(
+        { success: false, error: "Validation error", details: error.issues },
+        400,
+      );
     }
-    const message = error instanceof Error ? error.message : "Failed to create invitation";
-    if (message.includes("already a member") || message.includes("already pending")) {
+    const message =
+      error instanceof Error ? error.message : "Failed to create invitation";
+    if (
+      message.includes("already a member") ||
+      message.includes("already pending")
+    ) {
       return c.json({ success: false, error: message }, 409);
     }
     if (message.includes("Only owners and admins")) {
@@ -65,12 +78,24 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     if (user.role !== "owner" && user.role !== "admin") {
-      return c.json({ success: false, error: "Only owners and admins can view invitations" }, 403);
+      return c.json(
+        {
+          success: false,
+          error: "Only owners and admins can view invitations",
+        },
+        403,
+      );
     }
 
-    const invites = await invitesService.listByOrganization(user.organization_id);
+    const invites = await invitesService.listByOrganization(
+      user.organization_id,
+    );
     type InviteWithInviter = (typeof invites)[number] & {
-      inviter?: { id: string; name: string | null; email: string | null } | null;
+      inviter?: {
+        id: string;
+        name: string | null;
+        email: string | null;
+      } | null;
     };
 
     return c.json({

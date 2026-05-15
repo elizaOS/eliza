@@ -17,7 +17,8 @@ app.get("/", (c) =>
     {
       success: false,
       error: "not_yet_migrated",
-      reason: "node-only dep: ssh2 (docker stats over SSH). Sidecar serves this endpoint.",
+      reason:
+        "node-only dep: ssh2 (docker stats over SSH). Sidecar serves this endpoint.",
     },
     501,
   ),

@@ -21,7 +21,10 @@ app.post("/", async (c) => {
 
     logger.info("[service-api] Resuming agent", { agentId });
 
-    const result = await elizaSandboxService.provision(agentId, identity.organizationId);
+    const result = await elizaSandboxService.provision(
+      agentId,
+      identity.organizationId,
+    );
     if (!result.success) {
       const status =
         result.error === "Agent not found"

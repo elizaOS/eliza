@@ -20,7 +20,9 @@ import {
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
-const ACCOUNT_ROLES = [...OAUTH_CONNECTION_ROLES] satisfies OAuthStandardConnectionRole[];
+const ACCOUNT_ROLES = [
+  ...OAUTH_CONNECTION_ROLES,
+] satisfies OAuthStandardConnectionRole[];
 
 app.get("/", async (c) => {
   try {

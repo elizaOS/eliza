@@ -7,7 +7,10 @@ import { appsService } from "@/lib/services/apps";
 import { conversionTrackingService } from "@/lib/services/conversion-tracking";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-async function __hono_GET(request: Request, { params }: RouteContext<{ id: string }>) {
+async function __hono_GET(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
@@ -18,10 +21,13 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ id: strin
     }
 
     const url = new URL(request.url);
-    const days = parseInt(url.searchParams.get("days") || "30");
+    const days = parseInt(url.searchParams.get("days") || "30", 10);
     const startDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
-    const campaigns = await advertisingService.listCampaigns(user.organization_id!, { appId: id });
+    const campaigns = await advertisingService.listCampaigns(
+      user.organization_id!,
+      { appId: id },
+    );
 
     const totals = campaigns.reduce(
       (acc, c) => ({
@@ -34,7 +40,8 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ id: strin
     );
 
     const round2 = (n: number) => Math.round(n * 100) / 100;
-    const safeDiv = (a: number, b: number, mult = 1) => (b > 0 ? (a / b) * mult : 0);
+    const safeDiv = (a: number, b: number, mult = 1) =>
+      b > 0 ? (a / b) * mult : 0;
 
     const attribution = await conversionTrackingService.getCampaignAttribution(
       user.organization_id!,
@@ -84,6 +91,8 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ id: strin
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

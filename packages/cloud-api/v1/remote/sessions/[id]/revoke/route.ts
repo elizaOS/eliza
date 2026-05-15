@@ -16,15 +16,24 @@ import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 
 const CORS_METHODS = "POST, OPTIONS";
 
-async function __hono_POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
 
-    const existing = await remoteSessionsRepository.findByIdAndOrg(id, user.organization_id);
+    const existing = await remoteSessionsRepository.findByIdAndOrg(
+      id,
+      user.organization_id,
+    );
     if (!existing) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Session not found" }, { status: 404 }),
+        Response.json(
+          { success: false, error: "Session not found" },
+          { status: 404 },
+        ),
         CORS_METHODS,
       );
     }
@@ -43,10 +52,16 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ id:
       );
     }
 
-    const revoked = await remoteSessionsRepository.revoke(id, user.organization_id);
+    const revoked = await remoteSessionsRepository.revoke(
+      id,
+      user.organization_id,
+    );
     if (!revoked) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Revoke failed" }, { status: 409 }),
+        Response.json(
+          { success: false, error: "Revoke failed" },
+          { status: 409 },
+        ),
         CORS_METHODS,
       );
     }
@@ -70,6 +85,8 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ id:
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

@@ -16,7 +16,7 @@
 export {
   ACTION_BENCHMARK_CASES,
   type ActionBenchmarkCase,
-} from "../../packages/app-core/test/benchmarks/action-selection-cases";
+} from "../app-core/test/benchmarks/action-selection-cases";
 
 export {
   type ActionBenchmarkLatencyStats,
@@ -26,17 +26,17 @@ export {
   type ActionBenchmarkTagStats,
   formatBenchmarkReportMarkdown,
   runActionSelectionBenchmark,
-} from "../../packages/app-core/test/benchmarks/action-selection-runner";
+} from "../app-core/test/benchmarks/action-selection-runner";
 
 import type { AgentRuntime } from "@elizaos/core";
 import {
   ACTION_BENCHMARK_CASES,
   type ActionBenchmarkCase,
-} from "../../packages/app-core/test/benchmarks/action-selection-cases";
+} from "../app-core/test/benchmarks/action-selection-cases";
 import {
   type ActionBenchmarkReport,
   runActionSelectionBenchmark,
-} from "../../packages/app-core/test/benchmarks/action-selection-runner";
+} from "../app-core/test/benchmarks/action-selection-runner";
 
 // ---------------------------------------------------------------------------
 // Convenience types and defaults

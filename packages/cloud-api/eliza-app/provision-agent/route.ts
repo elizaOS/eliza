@@ -16,14 +16,18 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
-    const body = (await c.req.json()) as { userId?: string; name?: string; mode?: string };
+    const body = (await c.req.json()) as {
+      userId?: string;
+      name?: string;
+      mode?: string;
+    };
     const { userId, name, mode } = body;
 
     if (!userId || !mode) {
       return c.json({ success: false, error: "Missing required fields" }, 400);
     }
 
-    const agentId = "agent-" + Math.random().toString(36).substring(2, 10);
+    const agentId = `agent-${Math.random().toString(36).substring(2, 10)}`;
     agentsStore.set(agentId, {
       ownerId: userId,
       name: name || "Unknown",
@@ -51,7 +55,10 @@ app.post("/", async (c) => {
       gatewayUrl: `${baseUrl}/api/eliza-app/gateway/${agentId}`,
     });
   } catch (e) {
-    return c.json({ success: false, error: e instanceof Error ? e.message : String(e) }, 500);
+    return c.json(
+      { success: false, error: e instanceof Error ? e.message : String(e) },
+      500,
+    );
   }
 });
 

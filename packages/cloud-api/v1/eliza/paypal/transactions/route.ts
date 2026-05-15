@@ -28,9 +28,17 @@ const requestSchema = z.object({
 app.post("/", async (c) => {
   try {
     await requireUserOrApiKeyWithOrg(c);
-    const parsed = requestSchema.safeParse(await c.req.json().catch(() => ({})));
+    const parsed = requestSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
     if (!parsed.success) {
-      return c.json({ error: "Invalid transactions request.", details: parsed.error.issues }, 400);
+      return c.json(
+        {
+          error: "Invalid transactions request.",
+          details: parsed.error.issues,
+        },
+        400,
+      );
     }
     const result = await searchPaypalTransactions(parsed.data);
     return c.json(result);

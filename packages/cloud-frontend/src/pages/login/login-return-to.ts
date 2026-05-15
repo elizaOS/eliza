@@ -5,9 +5,7 @@ export const OAUTH_LOGIN_RETURN_TO_STORAGE_KEY = "oauth_login_return_to";
 export function sanitizeLoginReturnTo(
   value: string | null | undefined,
 ): string | null {
-  return value && value.startsWith("/") && !value.startsWith("//")
-    ? value
-    : null;
+  return value?.startsWith("/") && !value.startsWith("//") ? value : null;
 }
 
 export function resolveLoginReturnTo(

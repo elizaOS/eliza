@@ -12,7 +12,10 @@
  */
 
 import type { Context } from "hono";
-import { failureResponse, ApiError as WorkerApiError } from "@/lib/api/cloud-worker-errors";
+import {
+  failureResponse,
+  ApiError as WorkerApiError,
+} from "@/lib/api/cloud-worker-errors";
 import { ApiError } from "@/lib/api/errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
@@ -22,7 +25,10 @@ import {
   LOOPBACK_REDIRECT_ORIGINS,
 } from "@/lib/security/redirect-validation";
 import { OAuthError } from "@/lib/services/oauth";
-import { getProvider, isProviderConfigured } from "@/lib/services/oauth/provider-registry";
+import {
+  getProvider,
+  isProviderConfigured,
+} from "@/lib/services/oauth/provider-registry";
 import { initiateOAuth2 } from "@/lib/services/oauth/providers";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -97,7 +103,8 @@ export async function handleGenericOAuthInitiate(
       // Empty body is fine — defaults apply.
     }
 
-    const redirectUrl = body.redirectUrl || "/dashboard/settings?tab=connections";
+    const redirectUrl =
+      body.redirectUrl || "/dashboard/settings?tab=connections";
     if (redirectUrl.startsWith("http")) {
       const allowedAbsoluteOrigins = [
         ...getDefaultPlatformRedirectOrigins(),

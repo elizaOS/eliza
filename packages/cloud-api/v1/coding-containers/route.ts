@@ -63,7 +63,8 @@ async function forwardContainerCreate(
   headers.set("x-eliza-organization-id", user.organization_id);
 
   const internalToken = readStringEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
-  if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  if (internalToken)
+    headers.set("x-container-control-plane-token", internalToken);
 
   const databaseUrl = readStringEnv(c, ["DATABASE_URL"]);
   if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
@@ -90,19 +91,22 @@ async function forwardContainerCreate(
         text ||
           JSON.stringify({
             success: false,
-            error: "Container control plane rejected the coding-container request",
+            error:
+              "Container control plane rejected the coding-container request",
           }),
         {
           status: upstream.status,
           statusText: upstream.statusText,
           headers: {
-            "content-type": upstream.headers.get("content-type") ?? "application/json",
+            "content-type":
+              upstream.headers.get("content-type") ?? "application/json",
           },
         },
       );
     }
 
-    const body = json && typeof json === "object" ? (json as Record<string, unknown>) : {};
+    const body =
+      json && typeof json === "object" ? (json as Record<string, unknown>) : {};
     return c.json(
       {
         success: true,
@@ -116,7 +120,10 @@ async function forwardContainerCreate(
         }),
         controlPlane: {
           status: upstream.status,
-          polling: body.polling && typeof body.polling === "object" ? body.polling : undefined,
+          polling:
+            body.polling && typeof body.polling === "object"
+              ? body.polling
+              : undefined,
         },
       },
       201,

@@ -4,7 +4,10 @@ import { memoriesRepository } from "@/db/repositories/agents/memories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import {
   isStoredDocumentMemory,
@@ -19,7 +22,8 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { id } = await nextStyleParams(c, ROUTE_PARAM_SPEC).params;
-    if (!id) return c.json({ success: false, error: "Document ID is required" }, 400);
+    if (!id)
+      return c.json({ success: false, error: "Document ID is required" }, 400);
 
     const scope = await resolveDocumentScope(user, c.req.query("characterId"));
     if (scope instanceof Response) return scope;
@@ -42,7 +46,8 @@ app.delete("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const { id } = await nextStyleParams(c, ROUTE_PARAM_SPEC).params;
-    if (!id) return c.json({ success: false, error: "Document ID is required" }, 400);
+    if (!id)
+      return c.json({ success: false, error: "Document ID is required" }, 400);
 
     const scope = await resolveDocumentScope(user, c.req.query("characterId"));
     if (scope instanceof Response) return scope;

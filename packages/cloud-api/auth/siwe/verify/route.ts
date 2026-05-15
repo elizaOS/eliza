@@ -9,7 +9,10 @@
 import { Hono } from "hono";
 import { getAddress } from "viem";
 import { buildRedisClient } from "@/lib/cache/redis-factory";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { apiKeysService } from "@/lib/services/api-keys";
 import { findOrCreateUserByWalletAddress } from "@/lib/services/wallet-signup";
 import { getAppHost } from "@/lib/utils/app-url";
@@ -55,7 +58,10 @@ app.post("/", async (c) => {
 
   const { user, isNewAccount } = await findOrCreateUserByWalletAddress(address);
   if (!user.organization_id) {
-    return c.json({ error: "Organization creation failed - please try again" }, 400);
+    return c.json(
+      { error: "Organization creation failed - please try again" },
+      400,
+    );
   }
 
   await apiKeysService.deactivateUserKeysByName(user.id, "SIWE sign-in");

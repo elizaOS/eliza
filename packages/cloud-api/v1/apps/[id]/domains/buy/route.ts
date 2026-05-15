@@ -14,12 +14,18 @@ import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getCloudAwareEnv } from "@/lib/runtime/cloud-bindings";
 import { appDomainsCompat } from "@/lib/services/app-domains-compat";
 import { appsService } from "@/lib/services/apps";
-import { cloudflareDnsService, type DnsRecordType } from "@/lib/services/cloudflare-dns";
+import {
+  cloudflareDnsService,
+  type DnsRecordType,
+} from "@/lib/services/cloudflare-dns";
 import {
   cloudflareRegistrarService,
   type RegisteredDomain,
 } from "@/lib/services/cloudflare-registrar";
-import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
+import {
+  creditsService,
+  InsufficientCreditsError,
+} from "@/lib/services/credits";
 import { computeDomainPrice } from "@/lib/services/domain-pricing";
 import { managedDomainsService } from "@/lib/services/managed-domains";
 import { extractErrorMessage } from "@/lib/utils/error-handling";
@@ -31,7 +37,10 @@ const BuySchema = z.object({
     .string()
     .min(4)
     .max(253)
-    .regex(/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i, "Invalid domain format")
+    .regex(
+      /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i,
+      "Invalid domain format",
+    )
     .transform((d) => d.toLowerCase().trim()),
 });
 
@@ -46,7 +55,10 @@ app.post("/", async (c) => {
     const parsed = BuySchema.safeParse(await c.req.json());
     if (!parsed.success) {
       return c.json(
-        { success: false, error: parsed.error.issues[0]?.message ?? "invalid input" },
+        {
+          success: false,
+          error: parsed.error.issues[0]?.message ?? "invalid input",
+        },
         400,
       );
     }
@@ -70,7 +82,11 @@ app.post("/", async (c) => {
         );
       }
 
-      const registered = await fetchRegisteredDomainForRecovery(domain, appId, "existing-row");
+      const registered = await fetchRegisteredDomainForRecovery(
+        domain,
+        appId,
+        "existing-row",
+      );
       if (existing.registrar === "cloudflare" || registered) {
         const result = await persistAndAssignCloudflareDomain({
           organizationId: user.organization_id,
@@ -91,7 +107,8 @@ app.post("/", async (c) => {
           status: result.status,
           verified: result.verified,
           alreadyRegistered: true,
-          recoveredFromRegistrar: existing.registrar !== "cloudflare" && Boolean(registered),
+          recoveredFromRegistrar:
+            existing.registrar !== "cloudflare" && Boolean(registered),
           pendingZoneProvisioning: !result.zoneId,
         });
       }
@@ -107,9 +124,14 @@ app.post("/", async (c) => {
     }
 
     // 1. availability + price quote
-    const availability = await cloudflareRegistrarService.checkAvailability(domain);
+    const availability =
+      await cloudflareRegistrarService.checkAvailability(domain);
     if (!availability.available) {
-      const registered = await fetchRegisteredDomainForRecovery(domain, appId, "unavailable");
+      const registered = await fetchRegisteredDomainForRecovery(
+        domain,
+        appId,
+        "unavailable",
+      );
       if (registered) {
         const result = await persistAndAssignCloudflareDomain({
           organizationId: user.organization_id,
@@ -130,7 +152,10 @@ app.post("/", async (c) => {
           pendingZoneProvisioning: !result.zoneId,
         });
       }
-      return c.json({ success: false, error: "Domain is not available for registration" }, 409);
+      return c.json(
+        { success: false, error: "Domain is not available for registration" },
+        409,
+      );
     }
     const price = computeDomainPrice(availability.priceUsdCents);
     const renewalPrice = computeDomainPrice(
@@ -156,7 +181,10 @@ app.post("/", async (c) => {
     } catch (err) {
       if (err instanceof InsufficientCreditsError) {
         return c.json(
-          { success: false, error: "Insufficient credit balance for this domain" },
+          {
+            success: false,
+            error: "Insufficient credit balance for this domain",
+          },
           402,
         );
       }
@@ -185,7 +213,11 @@ app.post("/", async (c) => {
     }
 
     // 4. fetch the registered domain to get zone_id
-    const reg = await fetchRegisteredDomainForRecovery(domain, appId, "post-register");
+    const reg = await fetchRegisteredDomainForRecovery(
+      domain,
+      appId,
+      "post-register",
+    );
     const result = await persistAndAssignCloudflareDomain({
       organizationId: user.organization_id,
       appId,
@@ -226,13 +258,20 @@ interface PersistCloudflareDomainInput {
   cloudflareRegistrationId?: string | null;
   existingCloudflareRegistrationId?: string | null;
   existingZoneId?: string | null;
-  existingStatus?: "pending" | "active" | "expired" | "suspended" | "transferring";
+  existingStatus?:
+    | "pending"
+    | "active"
+    | "expired"
+    | "suspended"
+    | "transferring";
   existingVerified?: boolean;
   purchasePriceCents?: number | null;
   renewalPriceCents?: number | null;
 }
 
-async function persistAndAssignCloudflareDomain(input: PersistCloudflareDomainInput): Promise<{
+async function persistAndAssignCloudflareDomain(
+  input: PersistCloudflareDomainInput,
+): Promise<{
   appDomainId: string;
   zoneId: string | null;
   status: "pending" | "active" | "expired" | "suspended" | "transferring";
@@ -246,10 +285,14 @@ async function persistAndAssignCloudflareDomain(input: PersistCloudflareDomainIn
     domain: input.domain,
     cloudflareZoneId: zoneId,
     cloudflareRegistrationId:
-      input.cloudflareRegistrationId ?? input.existingCloudflareRegistrationId ?? null,
+      input.cloudflareRegistrationId ??
+      input.existingCloudflareRegistrationId ??
+      null,
     purchasePriceCents: input.purchasePriceCents,
     renewalPriceCents: input.renewalPriceCents,
-    expiresAt: input.registered?.expiresAt ? new Date(input.registered.expiresAt) : undefined,
+    expiresAt: input.registered?.expiresAt
+      ? new Date(input.registered.expiresAt)
+      : undefined,
     autoRenew: input.registered?.autoRenew,
     status,
     verified,
@@ -273,10 +316,13 @@ async function persistAndAssignCloudflareDomain(input: PersistCloudflareDomainIn
       zoneId,
     });
   } else {
-    logger.warn("[Domains Buy] domain registered but zone provisioning is still pending", {
-      appId: input.appId,
-      domain: input.domain,
-    });
+    logger.warn(
+      "[Domains Buy] domain registered but zone provisioning is still pending",
+      {
+        appId: input.appId,
+        domain: input.domain,
+      },
+    );
   }
 
   return {
@@ -313,26 +359,32 @@ async function configureDomainDns(input: {
 }): Promise<void> {
   const dnsTarget = resolveCustomDomainDnsTarget(input.appUrl);
   if (!dnsTarget) {
-    logger.warn("[Domains Buy] no container target — DNS not configured automatically", {
-      appId: input.appId,
-      domain: input.domain,
-    });
+    logger.warn(
+      "[Domains Buy] no container target — DNS not configured automatically",
+      {
+        appId: input.appId,
+        domain: input.domain,
+      },
+    );
     return;
   }
 
-  const records = await cloudflareDnsService.listRecords(input.zoneId).catch((err) => {
-    logger.warn("[Domains Buy] DNS record lookup failed before CNAME setup", {
-      appId: input.appId,
-      domain: input.domain,
-      error: extractErrorMessage(err),
+  const records = await cloudflareDnsService
+    .listRecords(input.zoneId)
+    .catch((err) => {
+      logger.warn("[Domains Buy] DNS record lookup failed before CNAME setup", {
+        appId: input.appId,
+        domain: input.domain,
+        error: extractErrorMessage(err),
+      });
+      return null;
     });
-    return null;
-  });
   const existing = records?.find((record) => record.name === input.domain);
   if (existing) {
     if (
       existing.type === dnsTarget.type &&
-      normalizeDnsContent(existing.content) === normalizeDnsContent(dnsTarget.content) &&
+      normalizeDnsContent(existing.content) ===
+        normalizeDnsContent(dnsTarget.content) &&
       existing.proxied === true
     ) {
       return;

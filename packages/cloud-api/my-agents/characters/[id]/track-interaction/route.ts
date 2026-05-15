@@ -21,12 +21,16 @@ app.post("/", async (c) => {
     return c.json(
       {
         success: false,
-        error: "Character interaction tracking was removed with the marketplace service",
+        error:
+          "Character interaction tracking was removed with the marketplace service",
       },
       410,
     );
   } catch {
-    return c.json({ success: false, error: "Failed to track interaction" }, 500);
+    return c.json(
+      { success: false, error: "Failed to track interaction" },
+      500,
+    );
   }
 });
 

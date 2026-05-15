@@ -53,7 +53,8 @@ app.post("/", async (c) => {
         return c.json(
           {
             error: "sync failed",
-            message: syncErr instanceof Error ? syncErr.message : String(syncErr),
+            message:
+              syncErr instanceof Error ? syncErr.message : String(syncErr),
             claims: {
               userId: claims.userId,
               email: claims.email,
@@ -78,7 +79,10 @@ app.post("/", async (c) => {
       orgId: user?.organization_id,
     });
   } catch (err) {
-    return c.json({ error: err instanceof Error ? err.message : String(err) }, 500);
+    return c.json(
+      { error: err instanceof Error ? err.message : String(err) },
+      500,
+    );
   }
 });
 

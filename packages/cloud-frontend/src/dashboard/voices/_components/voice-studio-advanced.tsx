@@ -144,7 +144,7 @@ export function VoiceStudioAdvanced({
     // Check if professional voice is still processing based on time
     const minutesElapsed = Math.max(
       0,
-      (new Date().getTime() - new Date(voice.createdAt).getTime()) / 1000 / 60,
+      (Date.now() - new Date(voice.createdAt).getTime()) / 1000 / 60,
     );
     const isProcessing =
       voice.cloneType === "professional" && minutesElapsed < 30;
@@ -298,8 +298,7 @@ export function VoiceStudioAdvanced({
                     {voices.some((v) => {
                       const mins = Math.max(
                         0,
-                        (new Date().getTime() -
-                          new Date(v.createdAt).getTime()) /
+                        (Date.now() - new Date(v.createdAt).getTime()) /
                           1000 /
                           60,
                       );

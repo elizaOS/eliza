@@ -435,31 +435,35 @@ function preseedIosFullBunSmoke(udid, id) {
 }
 
 function androidDeviceSerial(adb) {
-	const devices = requireExec(
-		adb,
-		["devices"],
-		"No Android device or emulator is available.",
-	);
-	const connected = devices
-		.split("\n")
-		.slice(1)
-		.map((entry) => entry.trim())
-		.filter((entry) => entry.endsWith("\tdevice"))
-		.map((entry) => entry.split(/\s+/)[0]);
-	const requested = process.env.ANDROID_SERIAL?.trim();
-	if (requested) {
-		if (connected.includes(requested)) return requested;
-		const state = tryExec(adb, ["-s", requested, "get-state"], {
-			allowFailure: true,
-		});
-		if (state === "device") return requested;
-		if (requireInstalled) {
-			throw new Error(
-				`ANDROID_SERIAL=${requested} is not an attached Android device/emulator.`,
-			);
-		}
-	}
-	return connected.find((serial) => serial.startsWith("emulator-")) ?? connected[0] ?? null;
+  const devices = requireExec(
+    adb,
+    ["devices"],
+    "No Android device or emulator is available.",
+  );
+  const connected = devices
+    .split("\n")
+    .slice(1)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.endsWith("\tdevice"))
+    .map((entry) => entry.split(/\s+/)[0]);
+  const requested = process.env.ANDROID_SERIAL?.trim();
+  if (requested) {
+    if (connected.includes(requested)) return requested;
+    const state = tryExec(adb, ["-s", requested, "get-state"], {
+      allowFailure: true,
+    });
+    if (state === "device") return requested;
+    if (requireInstalled) {
+      throw new Error(
+        `ANDROID_SERIAL=${requested} is not an attached Android device/emulator.`,
+      );
+    }
+  }
+  return (
+    connected.find((serial) => serial.startsWith("emulator-")) ??
+    connected[0] ??
+    null
+  );
 }
 
 function launchAndroidEmulatorApp() {

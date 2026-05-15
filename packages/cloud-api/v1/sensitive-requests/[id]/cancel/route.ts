@@ -5,7 +5,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   type SensitiveRequestActor,
   sensitiveRequestsService,
@@ -32,9 +35,13 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id");
-    if (!id) return c.json({ success: false, error: "Missing request id" }, 400);
+    if (!id)
+      return c.json({ success: false, error: "Missing request id" }, 400);
 
-    const request = await sensitiveRequestsService.cancel(id, actorFromUser(user));
+    const request = await sensitiveRequestsService.cancel(
+      id,
+      actorFromUser(user),
+    );
     return c.json({ success: true, request });
   } catch (error) {
     logger.error("[SensitiveRequests API] cancel failed", { error });

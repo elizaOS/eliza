@@ -84,7 +84,7 @@ function HandleBody({
 function PlanBody({ calls }: { calls: UILlmCall[] }) {
   const last = calls[calls.length - 1];
   if (!last) return null;
-  const text = previewText((last.response).trim());
+  const text = previewText(last.response.trim());
   return (
     <div className="flex flex-col gap-2 text-xs">
       {last.actionType ? (

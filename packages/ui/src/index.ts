@@ -37,24 +37,17 @@ export * from "./api";
 // === Phase 3A: barrel-promoted from api/ios-local-agent-transport ===
 export * from "./api/ios-local-agent-transport";
 export * from "./app-shell-components";
+export * from "./app-shell-registry";
 export * from "./avatar-runtime/index";
 export * from "./backgrounds/index";
-export * from "./companion/index";
-export * from "./components/onboarding/states/index";
-export type {
-  ElizaPluginViews,
-  PluginViewProps,
-  PluginViewRegistration,
-} from "./types/plugin-views";
-export * from "./app-shell-registry";
 export * from "./bridge/index";
 export * from "./character-catalog";
 export * from "./chat/index";
+export * from "./companion/index";
 export type {
   DocumentImageCompressionPlatform,
   DocumentImageUploadFile,
 } from "./components";
-export * from "./components/index";
 export {
   autoLabel,
   ENV_KEY_ACRONYMS,
@@ -69,6 +62,8 @@ export * from "./components/apps/overlay-app-api";
 export * from "./components/apps/overlay-app-registry";
 export * from "./components/composites/index";
 export * from "./components/composites/page-panel/index";
+export * from "./components/index";
+export * from "./components/onboarding/states/index";
 export * from "./components/pages/vector-browser-utils";
 export * from "./components/primitives/index";
 export type {
@@ -228,6 +223,11 @@ export {
 } from "./state/index";
 export * from "./themes/index.js";
 export * from "./types/index";
+export type {
+  ElizaPluginViews,
+  PluginViewProps,
+  PluginViewRegistration,
+} from "./types/plugin-views";
 export type {
   BrowserTabKit,
   BrowserTabKitCursorPoint,

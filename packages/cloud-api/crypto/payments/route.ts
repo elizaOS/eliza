@@ -8,19 +8,33 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserOrApiKeyWithOrg, requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import {
+  requireUserOrApiKeyWithOrg,
+  requireUserWithOrg,
+} from "@/lib/auth/workers-hono-auth";
 import { SUPPORTED_PAY_CURRENCIES } from "@/lib/config/crypto";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { CryptoPaymentError, cryptoPaymentsService } from "@/lib/services/crypto-payments";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  CryptoPaymentError,
+  cryptoPaymentsService,
+} from "@/lib/services/crypto-payments";
 import { isOxaPayConfigured } from "@/lib/services/oxapay";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const createPaymentSchema = z.object({
-  amount: z.number().min(1, "Minimum amount is $1").max(10000, "Maximum amount is $10,000"),
+  amount: z
+    .number()
+    .min(1, "Minimum amount is $1")
+    .max(10000, "Maximum amount is $10,000"),
   currency: z.string().default("USD"),
   payCurrency: z.enum(SUPPORTED_PAY_CURRENCIES).default("USDT"),
-  network: z.enum(["ERC20", "TRC20", "BEP20", "POLYGON", "SOL", "BASE", "ARB", "OP"]).optional(),
+  network: z
+    .enum(["ERC20", "TRC20", "BEP20", "POLYGON", "SOL", "BASE", "ARB", "OP"])
+    .optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -37,7 +51,10 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     const validation = createPaymentSchema.safeParse(body);
     if (!validation.success) {
       return c.json(
-        { error: "Validation failed", details: validation.error.flatten().fieldErrors },
+        {
+          error: "Validation failed",
+          details: validation.error.flatten().fieldErrors,
+        },
         400,
       );
     }
@@ -63,13 +80,22 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
   } catch (error) {
     logger.error("[Crypto Payments API] Create payment error:", error);
     if (error instanceof CryptoPaymentError) {
-      const statusMap: Record<string, { status: 400 | 503 | 500; message: string }> = {
+      const statusMap: Record<
+        string,
+        { status: 400 | 503 | 500; message: string }
+      > = {
         INVALID_UUID: { status: 400, message: "Invalid request format" },
         AMOUNT_TOO_SMALL: { status: 400, message: "Amount too small" },
         AMOUNT_TOO_LARGE: { status: 400, message: "Amount too large" },
-        SERVICE_NOT_CONFIGURED: { status: 503, message: "Service temporarily unavailable" },
+        SERVICE_NOT_CONFIGURED: {
+          status: 503,
+          message: "Service temporarily unavailable",
+        },
       };
-      const response = statusMap[error.code] || { status: 500 as const, message: error.message };
+      const response = statusMap[error.code] || {
+        status: 500 as const,
+        message: error.message,
+      };
       return c.json({ error: response.message }, response.status);
     }
     return failureResponse(c, error);
@@ -79,7 +105,9 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
 app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const payments = await cryptoPaymentsService.listPaymentsByOrganization(user.organization_id);
+    const payments = await cryptoPaymentsService.listPaymentsByOrganization(
+      user.organization_id,
+    );
     return c.json({ payments });
   } catch (error) {
     logger.error("[Crypto Payments API] List payments error:", error);

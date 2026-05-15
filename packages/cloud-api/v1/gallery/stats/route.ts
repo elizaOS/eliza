@@ -27,9 +27,16 @@ app.get("/", async (c) => {
 
     const userGenerations = generations.filter((gen) => gen.storage_url);
 
-    const totalImages = userGenerations.filter((gen) => gen.type === "image").length;
-    const totalVideos = userGenerations.filter((gen) => gen.type === "video").length;
-    const totalSize = userGenerations.reduce((acc, gen) => acc + Number(gen.file_size || 0), 0);
+    const totalImages = userGenerations.filter(
+      (gen) => gen.type === "image",
+    ).length;
+    const totalVideos = userGenerations.filter(
+      (gen) => gen.type === "video",
+    ).length;
+    const totalSize = userGenerations.reduce(
+      (acc, gen) => acc + Number(gen.file_size || 0),
+      0,
+    );
 
     return c.json({ totalImages, totalVideos, totalSize });
   } catch (error) {

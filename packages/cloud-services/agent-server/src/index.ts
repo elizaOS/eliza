@@ -1,6 +1,6 @@
 import { Elysia } from "elysia";
 import { AgentManager } from "./agent-manager";
-import { ensureServerName } from "./config";
+import { ensureServerName, getRequiredEnv } from "./config";
 import { logger } from "./logger";
 import { getRedis } from "./redis";
 import { createRoutes } from "./routes";
@@ -21,7 +21,9 @@ const required = [
   "AGENT_SERVER_SHARED_SECRET",
 ];
 for (const key of required) {
-  if (!process.env[key]) {
+  try {
+    getRequiredEnv(key);
+  } catch {
     logger.error("Missing required env var", { key });
     process.exit(1);
   }
@@ -33,6 +35,7 @@ if (process.env.AGENT_ID && !process.env.CHARACTER_REF) {
 }
 
 const PORT = Number(process.env.PORT ?? 3000);
+const sharedSecret = getRequiredEnv("AGENT_SERVER_SHARED_SECRET");
 const manager = new AgentManager();
 
 // Initialize manager before accepting connections
@@ -49,7 +52,7 @@ if (agentId && characterRef) {
   });
 }
 
-new Elysia().use(createRoutes(manager, process.env.AGENT_SERVER_SHARED_SECRET!)).listen(PORT);
+new Elysia().use(createRoutes(manager, sharedSecret)).listen(PORT);
 
 logger.info("Agent-server listening", {
   serverName: process.env.SERVER_NAME,

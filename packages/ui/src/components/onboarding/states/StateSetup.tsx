@@ -32,10 +32,7 @@ export function StateSetup(props: StateSetupProps): JSX.Element {
   const selected = runtime ?? (copy.preferLocal ? "device" : "cloud");
 
   return (
-    <section
-      className="eliza-ob-screen centered"
-      data-eliza-ob-state="setup"
-    >
+    <section className="eliza-ob-screen centered" data-eliza-ob-state="setup">
       <div className="eliza-ob-language">
         <select
           aria-label="Language"
@@ -56,7 +53,7 @@ export function StateSetup(props: StateSetupProps): JSX.Element {
           {copy.recommendation}
         </span>
       </div>
-      <div className="eliza-ob-choice-list" role="list">
+      <div className="eliza-ob-choice-list">
         <button
           type="button"
           className={`eliza-ob-choice${selected === "cloud" ? " selected" : ""}`}

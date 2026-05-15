@@ -27,9 +27,14 @@ const requestSchema = z.object({
 app.post("/", async (c) => {
   try {
     await requireUserOrApiKeyWithOrg(c);
-    const parsed = requestSchema.safeParse(await c.req.json().catch(() => ({})));
+    const parsed = requestSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
     if (!parsed.success) {
-      return c.json({ error: "Invalid sync request.", details: parsed.error.issues }, 400);
+      return c.json(
+        { error: "Invalid sync request.", details: parsed.error.issues },
+        400,
+      );
     }
     const delta = await syncPlaidTransactions(parsed.data);
     return c.json(delta);

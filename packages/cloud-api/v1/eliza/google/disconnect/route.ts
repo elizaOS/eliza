@@ -25,9 +25,14 @@ const requestSchema = z.object({
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const parsed = requestSchema.safeParse(await c.req.json().catch(() => ({})));
+    const parsed = requestSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
     if (!parsed.success) {
-      return c.json({ error: "Invalid disconnect request.", details: parsed.error.issues }, 400);
+      return c.json(
+        { error: "Invalid disconnect request.", details: parsed.error.issues },
+        400,
+      );
     }
 
     await disconnectManagedGoogleConnection({

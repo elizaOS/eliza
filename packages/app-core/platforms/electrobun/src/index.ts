@@ -29,7 +29,6 @@ import { getBrandConfig } from "./brand-config";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
 import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
-import { shouldCreateDesktopTray } from "./desktop-tray-config";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { shouldCreateDesktopTray } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";

@@ -27,13 +27,19 @@ app.post("/", async (c) => {
       body = refreshSchema.parse(rawBody);
     } catch (error) {
       if (error instanceof z.ZodError) {
-        return c.json({ error: "Validation failed", details: error.flatten() }, 400);
+        return c.json(
+          { error: "Validation failed", details: error.flatten() },
+          400,
+        );
       }
       return c.json({ error: "Invalid request body" }, 400);
     }
 
     // Verify the guild belongs to this organization
-    const guild = await discordAutomationService.getGuild(user.organization_id, body.guildId);
+    const guild = await discordAutomationService.getGuild(
+      user.organization_id,
+      body.guildId,
+    );
     if (!guild) {
       return c.json({ error: "Guild not found" }, 404);
     }

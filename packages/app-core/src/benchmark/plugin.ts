@@ -742,7 +742,8 @@ function formatContextAsText(ctx: BenchmarkContext): string {
   const isGauntletBenchmark = benchmark === "gauntlet";
   const isLocaBenchmark =
     benchmark === "loca_bench" || benchmark === "loca-bench";
-  const isWebShopBenchmark = benchmark === "webshop" || benchmark === "web-shop";
+  const isWebShopBenchmark =
+    benchmark === "webshop" || benchmark === "web-shop";
   const isConversationalBenchmark = new Set([
     "woobench",
     "woo-bench",

@@ -16,12 +16,11 @@
  * regression tracking (see .swarm/impl/W3-8-tts-cache.md §5).
  */
 
-import crypto from "node:crypto";
 import { describe, expect, mock, test } from "bun:test";
+import crypto from "node:crypto";
 import {
-  CloudFirstLineCacheService,
-  type CloudFirstLineCachePutInput,
   type CloudFirstLineCacheKey,
+  type CloudFirstLineCachePutInput,
   fingerprintCloudVoiceSettings,
   hashCloudCacheKey,
 } from "../../../packages/lib/services/tts-first-line-cache";
@@ -38,7 +37,8 @@ mock.module("../../../packages/lib/storage/r2-runtime-binding", () => ({
       const data = r2Store.get(key);
       if (!data) return null;
       return {
-        arrayBuffer: async () => data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+        arrayBuffer: async () =>
+          data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
         text: async () => new TextDecoder().decode(data),
       };
     },
@@ -184,9 +184,15 @@ class InMemoryCloudCache {
     return this.store.has(`${h}:${k.scope}`);
   }
 
-  get hitCount() { return this.hits; }
-  get missCount() { return this.misses; }
-  get hitRate() { return this.hits / (this.hits + this.misses); }
+  get hitCount() {
+    return this.hits;
+  }
+  get missCount() {
+    return this.misses;
+  }
+  get hitRate() {
+    return this.hits / (this.hits + this.misses);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -242,12 +248,24 @@ function snipNormalize(text: string): string | null {
   const match = text.match(/^[^.!?…]+[.!?…]+/);
   if (!match) return null;
   const snip = match[0].trim();
-  const wordCount = snip.replace(/[.!?…]+$/, "").trim().split(/\s+/).length;
+  const wordCount = snip
+    .replace(/[.!?…]+$/, "")
+    .trim()
+    .split(/\s+/).length;
   if (wordCount > 10) return null;
-  return snip.replace(/[.!?…]+$/, "").trim().toLowerCase();
+  return snip
+    .replace(/[.!?…]+$/, "")
+    .trim()
+    .toLowerCase();
 }
 
-const PROVIDERS_LIST = ["kokoro", "elevenlabs", "edge-tts", "omnivoice", "cloud"] as const;
+const PROVIDERS_LIST = [
+  "kokoro",
+  "elevenlabs",
+  "edge-tts",
+  "omnivoice",
+  "cloud",
+] as const;
 const VOICES_PER_PROVIDER = Array.from({ length: 10 }, (_, i) => `voice-${i}`);
 const FP = fingerprintCloudVoiceSettings({});
 
@@ -265,7 +283,8 @@ const VOICE_CONTEXTS_50: VoiceCtx[] = PROVIDERS_LIST.flatMap((provider) =>
     voiceId,
     voiceRevision: `${provider}-rev-${i}`,
     codec: provider === "omnivoice" ? ("wav" as const) : ("mp3" as const),
-    sampleRate: provider === "kokoro" || provider === "omnivoice" ? 24000 : 44100,
+    sampleRate:
+      provider === "kokoro" || provider === "omnivoice" ? 24000 : 44100,
   })),
 );
 
@@ -347,11 +366,11 @@ describe("TTS cache load test — 1k requests / 50 voices", () => {
 
     console.info(
       `[W3-8 cloud load test] N=${totalRequests}, ` +
-      `hits=${cache.hitCount}, misses=${cache.missCount}, ` +
-      `hit-rate=${(hitRate * 100).toFixed(1)}%`
+        `hits=${cache.hitCount}, misses=${cache.missCount}, ` +
+        `hit-rate=${(hitRate * 100).toFixed(1)}%`,
     );
 
-    expect(hitRate).toBeGreaterThan(0.30);
+    expect(hitRate).toBeGreaterThan(0.3);
   });
 
   test("cross-voice safety: cache does not return entries for wrong provider", async () => {
@@ -371,7 +390,14 @@ describe("TTS cache load test — 1k requests / 50 voices", () => {
       normalizedText: text,
       scope: "global",
     };
-    await cache.put({ ...kokoroKey, bytes: fakeBytes, rawText: "Got it.", contentType: "audio/opus", durationMs: 0, wordCount: 2 });
+    await cache.put({
+      ...kokoroKey,
+      bytes: fakeBytes,
+      rawText: "Got it.",
+      contentType: "audio/opus",
+      durationMs: 0,
+      wordCount: 2,
+    });
     expect(await cache.has(kokoroKey)).toBe(true);
 
     // ElevenLabs lookup → MISS.
@@ -413,8 +439,22 @@ describe("TTS cache load test — 1k requests / 50 voices", () => {
     const globalBytes = new Uint8Array(32).fill(0x11);
     const orgBytes = new Uint8Array(32).fill(0x22);
 
-    await cache.put({ ...globalKey, bytes: globalBytes, rawText: "Got it.", contentType: "audio/mpeg", durationMs: 0, wordCount: 2 });
-    await cache.put({ ...orgKey, bytes: orgBytes, rawText: "Got it.", contentType: "audio/mpeg", durationMs: 0, wordCount: 2 });
+    await cache.put({
+      ...globalKey,
+      bytes: globalBytes,
+      rawText: "Got it.",
+      contentType: "audio/mpeg",
+      durationMs: 0,
+      wordCount: 2,
+    });
+    await cache.put({
+      ...orgKey,
+      bytes: orgBytes,
+      rawText: "Got it.",
+      contentType: "audio/mpeg",
+      durationMs: 0,
+      wordCount: 2,
+    });
 
     expect((await cache.get(globalKey))?.bytes[0]).toBe(0x11);
     expect((await cache.get(orgKey))?.bytes[0]).toBe(0x22);
@@ -462,7 +502,10 @@ describe("TTS cache load test — 1k requests / 50 voices", () => {
         normalizedText: text,
         scope: "global",
       });
-      expect(hit, `miss for voice context ${i} (${ctx.provider}:${ctx.voiceId})`).not.toBeNull();
+      expect(
+        hit,
+        `miss for voice context ${i} (${ctx.provider}:${ctx.voiceId})`,
+      ).not.toBeNull();
       expect(hit?.bytes[0]).toBe(i);
     }
   });

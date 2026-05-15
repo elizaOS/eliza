@@ -428,7 +428,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        rate_limit: parseInt(e.target.value) || 100,
+                        rate_limit: parseInt(e.target.value, 10) || 100,
                       })
                     }
                     min={100}

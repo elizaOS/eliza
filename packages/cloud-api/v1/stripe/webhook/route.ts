@@ -12,7 +12,10 @@
  */
 
 import { Hono } from "hono";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { stripePaymentAdapter } from "@/lib/services/payment-adapters/stripe";
 import { paymentCallbackBus } from "@/lib/services/payment-callback-bus";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
@@ -27,31 +30,49 @@ app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
   const signature = c.req.header("stripe-signature") ?? null;
 
   if (!signature) {
-    return c.json({ success: false, error: "Missing stripe-signature header" }, 400);
+    return c.json(
+      { success: false, error: "Missing stripe-signature header" },
+      400,
+    );
   }
 
   if (!stripePaymentAdapter.parseWebhook) {
-    return c.json({ success: false, error: "Stripe adapter does not support webhooks" }, 500);
+    return c.json(
+      { success: false, error: "Stripe adapter does not support webhooks" },
+      500,
+    );
   }
 
-  let parsed: Awaited<ReturnType<NonNullable<typeof stripePaymentAdapter.parseWebhook>>>;
+  let parsed: Awaited<
+    ReturnType<NonNullable<typeof stripePaymentAdapter.parseWebhook>>
+  >;
   try {
     parsed = await stripePaymentAdapter.parseWebhook({ rawBody, signature });
   } catch (error) {
     if (error instanceof IgnoredWebhookEvent) {
-      logger.info("[StripeWebhook API] Ignored event", { reason: error.message });
+      logger.info("[StripeWebhook API] Ignored event", {
+        reason: error.message,
+      });
       return c.json({ success: true, ignored: true }, 200);
     }
     logger.warn("[StripeWebhook API] Signature verification or parse failed", {
       error: error instanceof Error ? error.message : String(error),
     });
-    return c.json({ success: false, error: "Webhook verification failed" }, 400);
+    return c.json(
+      { success: false, error: "Webhook verification failed" },
+      400,
+    );
   }
 
   const providerEventId =
-    typeof parsed.proof.stripe_event_id === "string" ? parsed.proof.stripe_event_id : null;
+    typeof parsed.proof.stripe_event_id === "string"
+      ? parsed.proof.stripe_event_id
+      : null;
   if (providerEventId) {
-    const recorded = paymentCallbackBus.recordProviderEvent("stripe", providerEventId);
+    const recorded = paymentCallbackBus.recordProviderEvent(
+      "stripe",
+      providerEventId,
+    );
     if (!recorded) {
       logger.debug("[StripeWebhook API] Duplicate event — skipping publish", {
         providerEventId,

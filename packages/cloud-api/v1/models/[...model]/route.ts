@@ -5,7 +5,10 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKey } from "@/lib/auth";
 import { getGroqCatalogModel, isGroqNativeModel } from "@/lib/models";
-import { getProviderForModel, hasGroqProviderConfigured } from "@/lib/providers";
+import {
+  getProviderForModel,
+  hasGroqProviderConfigured,
+} from "@/lib/providers";
 import { getCachedGatewayModelById } from "@/lib/services/model-catalog";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -19,7 +22,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * @param context - Route context containing model segments as an array.
  * @returns Model details from the provider gateway.
  */
-async function __next_GET(request: Request, context: { params: Promise<{ model: string[] }> }) {
+async function __next_GET(
+  request: Request,
+  context: { params: Promise<{ model: string[] }> },
+) {
   try {
     await requireAuthOrApiKey(request);
 
@@ -69,10 +75,13 @@ async function __next_GET(request: Request, context: { params: Promise<{ model: 
         return Response.json(cachedModel);
       }
     } catch (error) {
-      logger.warn("Error reading cached model catalog, falling back to provider", {
-        model,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "Error reading cached model catalog, falling back to provider",
+        {
+          model,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
 
     const provider = getProviderForModel(model);

@@ -18,7 +18,12 @@ const CORS_METHODS = "POST, OPTIONS";
 // Statuses we'll auto-resume on. `error` is excluded — surfacing the error
 // here lets the client show a real diagnostic instead of looping forever.
 const RESUMABLE_STATUSES = new Set(["pending", "stopped", "disconnected"]);
-const STARTING_STATUSES = new Set(["pending", "provisioning", "stopped", "disconnected"]);
+const STARTING_STATUSES = new Set([
+  "pending",
+  "provisioning",
+  "stopped",
+  "disconnected",
+]);
 const RETRY_AFTER_SECONDS = 5;
 
 type PairingSandbox = NonNullable<
@@ -55,7 +60,9 @@ async function isWebUiReachable(webUiUrl: string): Promise<boolean> {
   }
 }
 
-async function resolveReachableWebUiUrl(sandbox: PairingSandbox): Promise<string | null> {
+async function resolveReachableWebUiUrl(
+  sandbox: PairingSandbox,
+): Promise<string | null> {
   const publicUrl = getElizaAgentPublicWebUiUrl(sandbox);
   const directUrl = getDirectDockerWebUiUrl(sandbox);
 
@@ -86,16 +93,25 @@ async function resolveReachableWebUiUrl(sandbox: PairingSandbox): Promise<string
  * for waking the agent onto every caller; now the server kicks off the
  * resume so any client gets the same self-healing flow.
  */
-async function __hono_POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_POST(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
 
-    const sandbox = await agentSandboxesRepository.findByIdAndOrg(agentId, user.organization_id);
+    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
+      agentId,
+      user.organization_id,
+    );
 
     if (!sandbox) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Agent not found" }, { status: 404 }),
+        Response.json(
+          { success: false, error: "Agent not found" },
+          { status: 404 },
+        ),
         CORS_METHODS,
       );
     }
@@ -105,7 +121,8 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
         Response.json(
           {
             success: false,
-            error: "Agent is in an error state. Resolve the failure before pairing.",
+            error:
+              "Agent is in an error state. Resolve the failure before pairing.",
             data: { status: sandbox.status },
           },
           { status: 500 },
@@ -122,12 +139,15 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
       if (RESUMABLE_STATUSES.has(sandbox.status)) {
         const workerHealth = await checkProvisioningWorkerHealth();
         if (!workerHealth.ok) {
-          logger.warn("[pairing-token] auto-resume blocked: provisioning worker unavailable", {
-            agentId,
-            orgId: user.organization_id,
-            status: sandbox.status,
-            code: workerHealth.code,
-          });
+          logger.warn(
+            "[pairing-token] auto-resume blocked: provisioning worker unavailable",
+            {
+              agentId,
+              orgId: user.organization_id,
+              status: sandbox.status,
+              code: workerHealth.code,
+            },
+          );
           return applyCorsHeaders(
             Response.json(provisioningWorkerFailureBody(workerHealth), {
               status: workerHealth.status,
@@ -137,13 +157,14 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
         }
 
         try {
-          const { job, created } = await provisioningJobService.enqueueAgentProvisionOnce({
-            agentId,
-            organizationId: user.organization_id,
-            userId: user.id,
-            agentName: sandbox.agent_name ?? agentId,
-            expectedUpdatedAt: sandbox.updated_at,
-          });
+          const { job, created } =
+            await provisioningJobService.enqueueAgentProvisionOnce({
+              agentId,
+              organizationId: user.organization_id,
+              userId: user.id,
+              agentName: sandbox.agent_name ?? agentId,
+              expectedUpdatedAt: sandbox.updated_at,
+            });
           jobId = job.id;
           alreadyInProgress = !created;
         } catch (error) {
@@ -173,7 +194,9 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
             success: true,
             data: {
               agentId,
-              status: STARTING_STATUSES.has(sandbox.status) ? "starting" : sandbox.status,
+              status: STARTING_STATUSES.has(sandbox.status)
+                ? "starting"
+                : sandbox.status,
               jobId,
               alreadyInProgress,
               retryAfterMs: RETRY_AFTER_SECONDS * 1000,
@@ -215,14 +238,19 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
         success: true,
         data: {
           token: pairingToken,
-          redirectUrl: supportsUiTokenPairing ? `${webUiUrl}/pair?token=${pairingToken}` : webUiUrl,
+          redirectUrl: supportsUiTokenPairing
+            ? `${webUiUrl}/pair?token=${pairingToken}`
+            : webUiUrl,
           expiresIn: 60,
         },
       }),
       CORS_METHODS,
     );
 
-    response.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    response.headers.set(
+      "Cache-Control",
+      "no-store, no-cache, must-revalidate, proxy-revalidate",
+    );
     response.headers.set("Pragma", "no-cache");
     response.headers.set("Expires", "0");
 
@@ -235,7 +263,9 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;
 

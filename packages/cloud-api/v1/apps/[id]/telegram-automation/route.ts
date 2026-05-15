@@ -50,7 +50,10 @@ async function __hono_GET(
       appId,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    return Response.json({ error: "Failed to get automation status" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to get automation status" },
+      { status: 500 },
+    );
   }
 }
 
@@ -126,14 +129,20 @@ async function __hono_POST(
     if (error instanceof Error && error.message === "App not found") {
       return Response.json({ error: "App not found" }, { status: 404 });
     }
-    if (error instanceof Error && error.message.includes("Telegram bot not connected")) {
+    if (
+      error instanceof Error &&
+      error.message.includes("Telegram bot not connected")
+    ) {
       return Response.json({ error: error.message }, { status: 400 });
     }
     logger.error("[Telegram Automation] Failed to enable", {
       appId,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    return Response.json({ error: "Failed to enable automation" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to enable automation" },
+      { status: 500 },
+    );
   }
 }
 
@@ -145,7 +154,10 @@ async function __hono_DELETE(
   const { id: appId } = await params;
 
   try {
-    await telegramAppAutomationService.disableAutomation(user.organization_id, appId);
+    await telegramAppAutomationService.disableAutomation(
+      user.organization_id,
+      appId,
+    );
 
     logger.info("[Telegram Automation] Automation disabled", {
       appId,
@@ -161,18 +173,27 @@ async function __hono_DELETE(
       appId,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    return Response.json({ error: "Failed to disable automation" }, { status: 500 });
+    return Response.json(
+      { error: "Failed to disable automation" },
+      { status: 500 },
+    );
   }
 }
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

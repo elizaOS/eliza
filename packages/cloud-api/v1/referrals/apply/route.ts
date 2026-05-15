@@ -5,7 +5,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { referralsService } from "@/lib/services/referrals";
 import { getCorsHeaders } from "@/lib/utils/cors";
 import { logger } from "@/lib/utils/logger";
@@ -37,7 +40,11 @@ app.post("/", async (c) => {
     const body = await c.req.json();
     const validation = ApplySchema.safeParse(body);
     if (!validation.success) {
-      return c.json({ error: "Invalid referral code format." }, 400, corsHeaders);
+      return c.json(
+        { error: "Invalid referral code format." },
+        400,
+        corsHeaders,
+      );
     }
 
     const result = await referralsService.applyReferralCode(

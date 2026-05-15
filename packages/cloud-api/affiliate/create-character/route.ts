@@ -68,10 +68,17 @@ const CreateCharacterSchema = z.object({
     settings: z
       .record(
         z.string(),
-        z.union([z.string(), z.number(), z.boolean(), z.record(z.string(), z.unknown())]),
+        z.union([
+          z.string(),
+          z.number(),
+          z.boolean(),
+          z.record(z.string(), z.unknown()),
+        ]),
       )
       .optional(),
-    secrets: z.record(z.string(), z.union([z.string(), z.number(), z.boolean()])).optional(),
+    secrets: z
+      .record(z.string(), z.union([z.string(), z.number(), z.boolean()]))
+      .optional(),
     avatar_url: urlOrBase64.optional(),
   }),
   affiliateId: z.string().min(1),
@@ -120,7 +127,9 @@ async function authenticateAffiliate(c: AppContext) {
     throw AuthenticationError("API key has expired");
   }
 
-  const permissions = Array.isArray(apiKey.permissions) ? apiKey.permissions : [];
+  const permissions = Array.isArray(apiKey.permissions)
+    ? apiKey.permissions
+    : [];
   if (!permissions.includes(AFFILIATE_PERMISSION)) {
     throw ForbiddenError(
       "This API key does not have permission to create characters via affiliate API",
@@ -185,13 +194,21 @@ app.post("/", async (c) => {
       });
     }
 
-    const { character, affiliateId, sessionId: providedSessionId, metadata } = parsed.data;
+    const {
+      character,
+      affiliateId,
+      sessionId: providedSessionId,
+      metadata,
+    } = parsed.data;
 
-    logger.info(`[Affiliate API] Creating character for affiliate: ${affiliateId}`, {
-      characterName: character.name,
-      hasSessionId: !!providedSessionId,
-      imageCount: metadata?.imageUrls?.length ?? 0,
-    });
+    logger.info(
+      `[Affiliate API] Creating character for affiliate: ${affiliateId}`,
+      {
+        characterName: character.name,
+        hasSessionId: !!providedSessionId,
+        imageCount: metadata?.imageUrls?.length ?? 0,
+      },
+    );
 
     const affiliateOrg = await getOrCreateAffiliateOrg();
 
@@ -223,18 +240,25 @@ app.post("/", async (c) => {
         user_agent: c.req.header("user-agent") ?? undefined,
       });
     } catch (error) {
-      logger.warn("[Affiliate API] Failed to create anonymous session — continuing", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      logger.warn(
+        "[Affiliate API] Failed to create anonymous session — continuing",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
 
     const httpImageUrls = (metadata?.imageUrls ?? []).filter(isHttpUrl);
-    const resolvedAvatarUrl = resolveAvatarUrl(character.avatar_url, httpImageUrls);
+    const resolvedAvatarUrl = resolveAvatarUrl(
+      character.avatar_url,
+      httpImageUrls,
+    );
 
     const elizaCharacter: ElizaCharacter = {
       name: character.name,
       bio: character.bio,
-      messageExamples: character.messageExamples as ElizaCharacter["messageExamples"],
+      messageExamples:
+        character.messageExamples as ElizaCharacter["messageExamples"],
       style: character.style,
       topics: character.topics,
       adjectives: character.adjectives,
@@ -248,7 +272,10 @@ app.post("/", async (c) => {
       user_id: anonymousUser.id,
       name: elizaCharacter.name,
       bio: elizaCharacter.bio,
-      message_examples: (elizaCharacter.messageExamples ?? []) as Record<string, unknown>[][],
+      message_examples: (elizaCharacter.messageExamples ?? []) as Record<
+        string,
+        unknown
+      >[][],
       post_examples: [],
       topics: elizaCharacter.topics ?? [],
       adjectives: elizaCharacter.adjectives ?? [],
@@ -258,7 +285,10 @@ app.post("/", async (c) => {
         string,
         string | number | boolean | Record<string, unknown>
       >,
-      secrets: (elizaCharacter.secrets ?? {}) as Record<string, string | number | boolean>,
+      secrets: (elizaCharacter.secrets ?? {}) as Record<
+        string,
+        string | number | boolean
+      >,
       style: elizaCharacter.style ?? {},
       character_data: {
         ...elizaCharacter,
@@ -296,11 +326,14 @@ app.post("/", async (c) => {
     redirectUrl.searchParams.set("session", sessionId);
     if (metadata?.vibe) redirectUrl.searchParams.set("vibe", metadata.vibe);
 
-    logger.info(`[Affiliate API] Request completed in ${Date.now() - startTime}ms`, {
-      characterId: createdCharacter.id,
-      sessionId,
-      affiliateId,
-    });
+    logger.info(
+      `[Affiliate API] Request completed in ${Date.now() - startTime}ms`,
+      {
+        characterId: createdCharacter.id,
+        sessionId,
+        affiliateId,
+      },
+    );
 
     return c.json(
       {

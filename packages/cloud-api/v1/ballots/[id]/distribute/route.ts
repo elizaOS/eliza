@@ -12,7 +12,10 @@ import { z } from "zod";
 import { secretBallotsRepository } from "@/db/repositories/secret-ballots";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { createSecretBallotsService } from "@/lib/services/secret-ballots";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -37,20 +40,26 @@ app.post("/", async (c) => {
       return c.json(
         {
           success: false,
-          error: "Invalid request: only 'dm' target is supported for ballot distribution",
+          error:
+            "Invalid request: only 'dm' target is supported for ballot distribution",
           details: parsed.error.issues,
         },
         400,
       );
     }
 
-    const service = createSecretBallotsService({ repository: secretBallotsRepository });
+    const service = createSecretBallotsService({
+      repository: secretBallotsRepository,
+    });
     const ballot = await service.get(id, user.organization_id);
     if (!ballot) {
       return c.json({ success: false, error: "Ballot not found" }, 404);
     }
 
-    const result = await service.distribute({ ballotId: id, target: parsed.data.target });
+    const result = await service.distribute({
+      ballotId: id,
+      target: parsed.data.target,
+    });
     return c.json({ success: true, ...result });
   } catch (error) {
     logger.error("[SecretBallots API] Failed to distribute ballot", { error });

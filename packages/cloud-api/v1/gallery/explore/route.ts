@@ -9,7 +9,10 @@
 
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { generationsService } from "@/lib/services/generations";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -21,9 +24,11 @@ app.get("/", async (c) => {
   try {
     const limitParam = c.req.query("limit");
     const parsed = limitParam ? Number.parseInt(limitParam, 10) : 20;
-    const limit = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 100) : 20;
+    const limit =
+      Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 100) : 20;
 
-    const generations = await generationsService.listRandomPublicImageSummaries(limit);
+    const generations =
+      await generationsService.listRandomPublicImageSummaries(limit);
 
     const items = generations.map((gen) => ({
       id: gen.id,

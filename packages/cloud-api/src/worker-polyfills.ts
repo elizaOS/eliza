@@ -29,8 +29,11 @@ class MessageChannelPolyfill {
 
 /** No-op FinalizationRegistry for runtimes where the V8 builtin is unavailable. */
 class FinalizationRegistryPolyfill {
-  constructor(_cleanup: (heldValue: object) => void) {}
-  register(_target: object, _heldValue: object, _unregisterToken?: object): void {}
+  register(
+    _target: object,
+    _heldValue: object,
+    _unregisterToken?: object,
+  ): void {}
   unregister(_unregisterToken: object): void {}
 }
 
@@ -44,7 +47,8 @@ if (root.MessagePort === undefined) {
   root.MessagePort = MessagePortPolyfill as unknown as typeof MessagePort;
 }
 if (root.MessageChannel === undefined) {
-  root.MessageChannel = MessageChannelPolyfill as unknown as typeof MessageChannel;
+  root.MessageChannel =
+    MessageChannelPolyfill as unknown as typeof MessageChannel;
 }
 if (root.FinalizationRegistry === undefined) {
   root.FinalizationRegistry =

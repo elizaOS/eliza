@@ -31,7 +31,8 @@ const STORAGE_SERVICE_ID = "storage";
 const MAX_OBJECT_KEY_LENGTH = 1024;
 const MAX_PUT_BYTES = 50 * 1024 * 1024;
 const R2_NOT_CONFIGURED_BODY = {
-  error: "Attachment storage proxy not available — server misconfigured (R2_* env vars unset)",
+  error:
+    "Attachment storage proxy not available — server misconfigured (R2_* env vars unset)",
 };
 
 const app = new Hono<AppEnv>();
@@ -45,7 +46,9 @@ function scopedKey(organizationId: string, userKey: string): string {
  * descriptive error message. Rejects empty, oversized, NUL-containing, and
  * `..`-traversal keys.
  */
-function validateUserKey(rawKey: string | undefined): { key: string } | { error: string } {
+function validateUserKey(
+  rawKey: string | undefined,
+): { key: string } | { error: string } {
   if (!rawKey) {
     return { error: "Object key is required" };
   }
@@ -54,7 +57,9 @@ function validateUserKey(rawKey: string | undefined): { key: string } | { error:
     return { error: "Object key is required" };
   }
   if (key.length > MAX_OBJECT_KEY_LENGTH) {
-    return { error: `Object key exceeds ${MAX_OBJECT_KEY_LENGTH} character limit` };
+    return {
+      error: `Object key exceeds ${MAX_OBJECT_KEY_LENGTH} character limit`,
+    };
   }
   if (key.includes("\0")) {
     return { error: "Object key may not contain NUL bytes" };
@@ -113,7 +118,10 @@ app.put("/*", async (c) => {
       return c.json({ error: "Request body is required" }, 400);
     }
     if (bytes > MAX_PUT_BYTES) {
-      return c.json({ error: `Object exceeds ${MAX_PUT_BYTES} byte limit (${bytes})` }, 413);
+      return c.json(
+        { error: `Object exceeds ${MAX_PUT_BYTES} byte limit (${bytes})` },
+        413,
+      );
     }
 
     const reserved = await orgStorageQuotaRepository.tryReserveBytes(
@@ -121,11 +129,17 @@ app.put("/*", async (c) => {
       BigInt(bytes),
     );
     if (reserved === null) {
-      return c.json({ error: "Storage quota exceeded for this organization" }, 413);
+      return c.json(
+        { error: "Storage quota exceeded for this organization" },
+        413,
+      );
     }
 
     const flatCost = await getServiceMethodCost(STORAGE_SERVICE_ID, "put");
-    const perByteCost = await getServiceMethodCost(STORAGE_SERVICE_ID, "put_per_byte");
+    const perByteCost = await getServiceMethodCost(
+      STORAGE_SERVICE_ID,
+      "put_per_byte",
+    );
     const totalCost = flatCost + perByteCost * bytes;
     const deductResult = await creditsService.deductCredits({
       organizationId: organization_id,
@@ -139,7 +153,10 @@ app.put("/*", async (c) => {
       },
     });
     if (!deductResult.success) {
-      await orgStorageQuotaRepository.releaseBytes(organization_id, BigInt(bytes));
+      await orgStorageQuotaRepository.releaseBytes(
+        organization_id,
+        BigInt(bytes),
+      );
       return c.json(
         {
           error: "Insufficient credits",
@@ -153,7 +170,10 @@ app.put("/*", async (c) => {
     try {
       await adapter.write(key, Buffer.from(arrayBuffer));
     } catch (error) {
-      await orgStorageQuotaRepository.releaseBytes(organization_id, BigInt(bytes));
+      await orgStorageQuotaRepository.releaseBytes(
+        organization_id,
+        BigInt(bytes),
+      );
       throw error;
     }
 
@@ -187,10 +207,15 @@ app.get("/*", async (c) => {
       return c.json({ error: validated.error }, 400);
     }
 
-    const deduct = await deductFlatCost(organization_id, "get", { key: validated.key });
+    const deduct = await deductFlatCost(organization_id, "get", {
+      key: validated.key,
+    });
     if (!deduct.ok) {
       return c.json(
-        { error: "Insufficient credits", topUpUrl: "https://www.elizacloud.ai/dashboard/billing" },
+        {
+          error: "Insufficient credits",
+          topUpUrl: "https://www.elizacloud.ai/dashboard/billing",
+        },
         402,
       );
     }
@@ -199,7 +224,10 @@ app.get("/*", async (c) => {
     if (!(await adapter.exists(key))) {
       return c.json({ error: "Object not found" }, 404);
     }
-    const [bytes, stat] = await Promise.all([adapter.read(key), adapter.stat(key)]);
+    const [bytes, stat] = await Promise.all([
+      adapter.read(key),
+      adapter.stat(key),
+    ]);
     const body = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(body).set(bytes);
     return new Response(body, {
@@ -231,10 +259,15 @@ app.on(["HEAD"], "/*", async (c) => {
       return c.json({ error: validated.error }, 400);
     }
 
-    const deduct = await deductFlatCost(organization_id, "head", { key: validated.key });
+    const deduct = await deductFlatCost(organization_id, "head", {
+      key: validated.key,
+    });
     if (!deduct.ok) {
       return c.json(
-        { error: "Insufficient credits", topUpUrl: "https://www.elizacloud.ai/dashboard/billing" },
+        {
+          error: "Insufficient credits",
+          topUpUrl: "https://www.elizacloud.ai/dashboard/billing",
+        },
         402,
       );
     }
@@ -279,7 +312,10 @@ app.delete("/*", async (c) => {
     }
     const stat = await adapter.stat(key);
     await adapter.remove(key);
-    await orgStorageQuotaRepository.releaseBytes(organization_id, BigInt(stat.size));
+    await orgStorageQuotaRepository.releaseBytes(
+      organization_id,
+      BigInt(stat.size),
+    );
     return new Response(null, { status: 204 });
   } catch (error) {
     return failureResponse(c, error);

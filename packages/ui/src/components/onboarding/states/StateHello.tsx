@@ -8,10 +8,7 @@ export interface StateHelloProps {
 export function StateHello(props: StateHelloProps): JSX.Element {
   const { transcript, onBegin } = props;
   return (
-    <section
-      className="eliza-ob-screen centered"
-      data-eliza-ob-state="hello"
-    >
+    <section className="eliza-ob-screen centered" data-eliza-ob-state="hello">
       <div className="eliza-ob-hello">
         <div
           className="eliza-ob-agent-canvas"
@@ -21,11 +18,7 @@ export function StateHello(props: StateHelloProps): JSX.Element {
         </div>
         <div className="eliza-ob-hello-word">Hello</div>
         <div className="eliza-ob-transcript">{transcript ?? ""}</div>
-        <button
-          type="button"
-          className="eliza-ob-btn orange"
-          onClick={onBegin}
-        >
+        <button type="button" className="eliza-ob-btn orange" onClick={onBegin}>
           Tap to begin
         </button>
         <div className="eliza-ob-tap-hint">

@@ -100,7 +100,13 @@ app.get("/", async (c) => {
     return respond({ status: "error", message: githubError });
   }
 
-  if (!agentId || !organizationId || !userId || !connectionId || githubConnected !== "true") {
+  if (
+    !agentId ||
+    !organizationId ||
+    !userId ||
+    !connectionId ||
+    githubConnected !== "true"
+  ) {
     logger.warn("[managed-github] OAuth completion missing required params", {
       hasAgentId: !!agentId,
       hasOrgId: !!organizationId,
@@ -115,7 +121,10 @@ app.get("/", async (c) => {
   }
 
   try {
-    const sandbox = await agentSandboxesRepository.findByIdAndOrg(agentId, organizationId);
+    const sandbox = await agentSandboxesRepository.findByIdAndOrg(
+      agentId,
+      organizationId,
+    );
     if (!sandbox) {
       logger.error("[managed-github] Agent not found or org mismatch", {
         agentId,
@@ -197,7 +206,10 @@ app.get("/", async (c) => {
     });
     return respond({
       status: "error",
-      message: error instanceof Error ? error.message : "Failed to link GitHub to agent",
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to link GitHub to agent",
     });
   }
 });

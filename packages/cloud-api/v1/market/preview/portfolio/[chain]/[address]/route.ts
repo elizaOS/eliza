@@ -37,11 +37,15 @@ const ROUTE_PARAM_SPEC = [
 ] as const;
 const honoRouter = new Hono<AppEnv>();
 honoRouter.options("/", () => __next_OPTIONS());
-honoRouter.get("/", rateLimit(PUBLIC_MARKET_PORTFOLIO_RATE_LIMIT), async (c) => {
-  try {
-    return await handleGET(c.req.raw, nextStyleParams(c, ROUTE_PARAM_SPEC));
-  } catch (error) {
-    return failureResponse(c, error);
-  }
-});
+honoRouter.get(
+  "/",
+  rateLimit(PUBLIC_MARKET_PORTFOLIO_RATE_LIMIT),
+  async (c) => {
+    try {
+      return await handleGET(c.req.raw, nextStyleParams(c, ROUTE_PARAM_SPEC));
+    } catch (error) {
+      return failureResponse(c, error);
+    }
+  },
+);
 export default honoRouter;

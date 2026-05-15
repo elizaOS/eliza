@@ -12,7 +12,10 @@ import {
 } from "@/db/repositories/token-redemptions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { secureTokenRedemptionService } from "@/lib/services/token-redemption-secure";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -69,7 +72,8 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
       );
     });
 
-    const statusCounts: Record<string, { count: number; totalUsd: number }> = {};
+    const statusCounts: Record<string, { count: number; totalUsd: number }> =
+      {};
     for (const row of counts) {
       statusCounts[row.status] = {
         count: Number(row.count),
@@ -161,7 +165,11 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
 
     if (!validation.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: validation.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: validation.error.issues,
+        },
         400,
       );
     }
@@ -179,7 +187,8 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         adminUser.id,
         notes,
       );
-      if (!result.success) return c.json({ success: false, error: result.error }, 400);
+      if (!result.success)
+        return c.json({ success: false, error: result.error }, 400);
       return c.json({
         success: true,
         message: "Redemption approved. It will be processed in the next batch.",
@@ -191,7 +200,8 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       adminUser.id,
       reason || notes || "Rejected by admin",
     );
-    if (!result.success) return c.json({ success: false, error: result.error }, 400);
+    if (!result.success)
+      return c.json({ success: false, error: result.error }, 400);
     return c.json({
       success: true,
       message: "Redemption rejected. User balance has been refunded.",
@@ -205,7 +215,8 @@ app.options("/", (c) =>
   c.body(null, 204, {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key, X-App-Id",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, X-API-Key, X-App-Id",
   }),
 );
 

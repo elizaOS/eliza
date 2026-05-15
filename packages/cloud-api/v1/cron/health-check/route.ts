@@ -18,7 +18,9 @@ async function runHealthCheck(c: AppContext) {
   try {
     requireCronSecret(c);
 
-    logger.info("[Health Check Cron] Starting scheduled container health check");
+    logger.info(
+      "[Health Check Cron] Starting scheduled container health check",
+    );
 
     const results = await monitorAllContainers({
       checkIntervalMs: 60000,

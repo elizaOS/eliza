@@ -1,4 +1,4 @@
-import { randomBytes } from "crypto";
+import { randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import { z } from "zod";
 import { errorToResponse } from "@/lib/api/errors";
@@ -35,7 +35,10 @@ function resolveManagedReturnUrl(rawValue: string | undefined): string {
   }
 
   if (rawValue.startsWith("/")) {
-    return new URL(sanitizeRelativeRedirectPath(rawValue, defaultPath), baseUrl).toString();
+    return new URL(
+      sanitizeRelativeRedirectPath(rawValue, defaultPath),
+      baseUrl,
+    ).toString();
   }
 
   return assertAllowedAbsoluteRedirectUrl(rawValue, [
@@ -44,7 +47,10 @@ function resolveManagedReturnUrl(rawValue: string | undefined): string {
   ]).toString();
 }
 
-async function __hono_POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_POST(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
@@ -59,10 +65,16 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
       );
     }
 
-    const sandbox = await elizaSandboxService.getAgent(agentId, user.organization_id);
+    const sandbox = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
     if (!sandbox) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Agent not found" }, { status: 404 }),
+        Response.json(
+          { success: false, error: "Agent not found" },
+          { status: 404 },
+        ),
         CORS_METHODS,
       );
     }
@@ -115,6 +127,8 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;

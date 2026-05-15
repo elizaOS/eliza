@@ -22,12 +22,18 @@ const chatSchema = z.object({
 app.post("/", async (c) => {
   const authHeader = c.req.header("Authorization");
   if (!authHeader) {
-    return c.json({ error: "Authorization required", code: "UNAUTHORIZED" }, 401);
+    return c.json(
+      { error: "Authorization required", code: "UNAUTHORIZED" },
+      401,
+    );
   }
 
   const session = await elizaAppSessionService.validateAuthHeader(authHeader);
   if (!session) {
-    return c.json({ error: "Invalid or expired session", code: "INVALID_SESSION" }, 401);
+    return c.json(
+      { error: "Invalid or expired session", code: "INVALID_SESSION" },
+      401,
+    );
   }
 
   let body: unknown;
@@ -39,7 +45,10 @@ app.post("/", async (c) => {
 
   const parsed = chatSchema.safeParse(body);
   if (!parsed.success) {
-    return c.json({ error: "Invalid request", details: parsed.error.issues }, 400);
+    return c.json(
+      { error: "Invalid request", details: parsed.error.issues },
+      400,
+    );
   }
 
   try {

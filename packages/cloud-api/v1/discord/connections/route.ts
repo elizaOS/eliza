@@ -7,7 +7,10 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { discordConnectionsRepository, userCharactersRepository } from "@/db/repositories";
+import {
+  discordConnectionsRepository,
+  userCharactersRepository,
+} from "@/db/repositories";
 import {
   DISCORD_DEFAULT_INTENTS,
   DiscordConnectionMetadataSchema,
@@ -134,7 +137,9 @@ app.post("/", async (c) => {
     } catch (error) {
       // Handle PostgreSQL unique constraint violation (discord_connections_org_app_unique_idx)
       const isUniqueViolation =
-        error instanceof Error && "code" in error && (error as { code: string }).code === "23505";
+        error instanceof Error &&
+        "code" in error &&
+        (error as { code: string }).code === "23505";
 
       if (isUniqueViolation) {
         // Fetch existing connection to provide helpful response
@@ -173,7 +178,8 @@ app.post("/", async (c) => {
         metadata: connection.metadata,
         createdAt: connection.created_at,
       },
-      message: "Connection created. The gateway will pick it up within 30 seconds.",
+      message:
+        "Connection created. The gateway will pick it up within 30 seconds.",
     });
   } catch (error) {
     return failureResponse(c, error);

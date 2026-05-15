@@ -121,23 +121,27 @@ app.post("/", async (c) => {
   let affiliateOwnerId: string | undefined;
   let affiliateCodeId: string | undefined;
 
-  const referrerPromise = affiliatesService.getReferrer(user.id).catch((error: Error | string) => {
-    logger.error("[MCP Proxy] Failed to resolve affiliate referrer", {
-      mcpId,
-      userId: user.id,
-      error: typeof error === "string" ? error : error.message,
+  const referrerPromise = affiliatesService
+    .getReferrer(user.id)
+    .catch((error: Error | string) => {
+      logger.error("[MCP Proxy] Failed to resolve affiliate referrer", {
+        mcpId,
+        userId: user.id,
+        error: typeof error === "string" ? error : error.message,
+      });
+      return null;
     });
-    return null;
-  });
   const referrer = await referrerPromise;
   if (referrer) {
     affiliateOwnerId = referrer.user_id;
     affiliateCodeId = referrer.id;
-    affiliateFeeCredits = creditsRequired * (Number(referrer.markup_percent) / 100);
+    affiliateFeeCredits =
+      creditsRequired * (Number(referrer.markup_percent) / 100);
     platformFeeCredits = creditsRequired * 0.2;
   }
 
-  const totalCreditsRequired = creditsRequired + affiliateFeeCredits + platformFeeCredits;
+  const totalCreditsRequired =
+    creditsRequired + affiliateFeeCredits + platformFeeCredits;
 
   const preChargeResult = await creditsService.reserveAndDeductCredits({
     organizationId: user.organization_id,
@@ -182,8 +186,11 @@ app.post("/", async (c) => {
     }
     targetUrl = parsed.toString();
   } else if (mcp.endpoint_type === "container" && mcp.container_id) {
-    const container = await containersService.getById(mcp.container_id, mcp.organization_id);
-    if (!container || !container.load_balancer_url) {
+    const container = await containersService.getById(
+      mcp.container_id,
+      mcp.organization_id,
+    );
+    if (!container?.load_balancer_url) {
       return c.json({ error: "MCP container not available" }, 503);
     }
     targetUrl = `${container.load_balancer_url}${mcp.endpoint_path || "/mcp"}`;
@@ -244,7 +251,8 @@ app.post("/", async (c) => {
       .catch((usageError: Error | string) => {
         logger.error("[MCP Proxy] Failed to record usage", {
           mcpId,
-          error: typeof usageError === "string" ? usageError : usageError.message,
+          error:
+            typeof usageError === "string" ? usageError : usageError.message,
         });
       });
   } else {
@@ -262,7 +270,8 @@ app.post("/", async (c) => {
       .catch((refundError: Error | string) => {
         logger.error("[MCP Proxy] Failed to refund credits", {
           mcpId,
-          error: typeof refundError === "string" ? refundError : refundError.message,
+          error:
+            typeof refundError === "string" ? refundError : refundError.message,
         });
       });
   }
@@ -272,7 +281,8 @@ app.post("/", async (c) => {
   return new Response(responseBody, {
     status: mcpResponse.status,
     headers: {
-      "Content-Type": mcpResponse.headers.get("content-type") || "application/json",
+      "Content-Type":
+        mcpResponse.headers.get("content-type") || "application/json",
       "X-MCP-Id": mcp.id,
       "X-MCP-Name": mcp.name,
     },

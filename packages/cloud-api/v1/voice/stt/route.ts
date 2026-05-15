@@ -63,7 +63,10 @@ const ALLOWED_AUDIO_SIGNATURES = new Set([
   "video/webm", // Safari/macOS creates this for audio recordings
 ]);
 
-function estimateAudioDurationMinutes(fileSizeBytes: number, mimeType: string): number {
+function estimateAudioDurationMinutes(
+  fileSizeBytes: number,
+  mimeType: string,
+): number {
   const bitratesKbps: Record<string, number> = {
     "audio/mpeg": 128,
     "audio/mp3": 128,
@@ -110,7 +113,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const languageCode = formData.get("languageCode") as string | undefined;
 
     if (!audioFile) {
-      return Response.json({ error: "No audio file provided" }, { status: 400 });
+      return Response.json(
+        { error: "No audio file provided" },
+        { status: 400 },
+      );
     }
 
     if (audioFile.size > MAX_FILE_SIZE) {
@@ -136,7 +142,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const fileTypeResult = await fileTypeFromBuffer(buffer);
 
     if (!fileTypeResult) {
-      logger.warn(`[Voice STT API] Unable to detect file type for ${audioFile.name} - rejecting`);
+      logger.warn(
+        `[Voice STT API] Unable to detect file type for ${audioFile.name} - rejecting`,
+      );
       return Response.json(
         {
           error:
@@ -174,7 +182,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
     const parsedDurationSeconds = metadata.format?.duration;
     const durationSeconds = Number.isFinite(parsedDurationSeconds)
       ? Math.max(parsedDurationSeconds ?? 0, 1)
-      : Math.max(estimateAudioDurationMinutes(audioFile.size, finalMimeType) * 60, 1);
+      : Math.max(
+          estimateAudioDurationMinutes(audioFile.size, finalMimeType) * 60,
+          1,
+        );
     const estimatedDurationMinutes = durationSeconds / 60;
     const sttCost = await calculateSTTCostFromCatalog({
       model: "elevenlabs/scribe_v1",
@@ -227,7 +238,9 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       reservation,
     );
 
-    logger.info(`[Voice STT API] Completed in ${duration}ms: "${transcript.substring(0, 100)}..."`);
+    logger.info(
+      `[Voice STT API] Completed in ${duration}ms: "${transcript.substring(0, 100)}..."`,
+    );
 
     (async () => {
       try {
@@ -309,7 +322,8 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
         ) {
           return Response.json(
             {
-              error: "Speech-to-Text requires a paid plan. Please upgrade to continue.",
+              error:
+                "Speech-to-Text requires a paid plan. Please upgrade to continue.",
             },
             { status: 402 },
           );
@@ -326,7 +340,10 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
       }
 
       if (errorMessage.includes("elevenlabs_api_key")) {
-        return Response.json({ error: "Service not configured" }, { status: 500 });
+        return Response.json(
+          { error: "Service not configured" },
+          { status: 500 },
+        );
       }
     }
 

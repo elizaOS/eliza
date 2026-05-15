@@ -29,7 +29,10 @@ app.get("/", async (c) => {
     const sortBy = (c.req.query("sortBy") || "newest") as SortBy;
     const order = (c.req.query("order") || "desc") as SortOrder;
     const page = Math.max(1, parseInt(c.req.query("page") || "1", 10));
-    const limit = Math.min(1000, Math.max(1, parseInt(c.req.query("limit") || "30", 10)));
+    const limit = Math.min(
+      1000,
+      Math.max(1, parseInt(c.req.query("limit") || "30", 10)),
+    );
 
     logger.debug("[My Agents API] Search request:", {
       userId: user.id,
@@ -48,8 +51,10 @@ app.get("/", async (c) => {
       characters = characters.filter(
         (char) =>
           char.name.toLowerCase().includes(query) ||
-          (typeof char.bio === "string" && char.bio.toLowerCase().includes(query)) ||
-          (Array.isArray(char.bio) && char.bio.some((b) => b.toLowerCase().includes(query))),
+          (typeof char.bio === "string" &&
+            char.bio.toLowerCase().includes(query)) ||
+          (Array.isArray(char.bio) &&
+            char.bio.some((b) => b.toLowerCase().includes(query))),
       );
     }
     if (category) {
@@ -129,7 +134,10 @@ app.post("/", async (c) => {
     ];
 
     // Normalize isPublic to ensure consistency between is_public column and character_data
-    const isPublic = typeof elizaCharacter.isPublic === "boolean" ? elizaCharacter.isPublic : false;
+    const isPublic =
+      typeof elizaCharacter.isPublic === "boolean"
+        ? elizaCharacter.isPublic
+        : false;
 
     const characterDataRecord: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(elizaCharacter)) {
@@ -145,7 +153,10 @@ app.post("/", async (c) => {
       username: elizaCharacter.username ?? null,
       system: elizaCharacter.system ?? null,
       bio: elizaCharacter.bio,
-      message_examples: (elizaCharacter.messageExamples ?? []) as Record<string, unknown>[][],
+      message_examples: (elizaCharacter.messageExamples ?? []) as Record<
+        string,
+        unknown
+      >[][],
       post_examples: elizaCharacter.postExamples ?? [],
       topics: elizaCharacter.topics ?? [],
       adjectives: elizaCharacter.adjectives ?? [],
@@ -170,7 +181,9 @@ app.post("/", async (c) => {
         userName: user.email || null,
         userId: user.id,
         organizationName: user.organization.name ?? "",
-        bio: Array.isArray(elizaCharacter.bio) ? elizaCharacter.bio.join(" ") : elizaCharacter.bio,
+        bio: Array.isArray(elizaCharacter.bio)
+          ? elizaCharacter.bio.join(" ")
+          : elizaCharacter.bio,
         plugins: elizaCharacter.plugins,
       })
       .catch((error) => {

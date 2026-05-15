@@ -10,7 +10,10 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  */
 
 import { z } from "zod";
-import { discordConnectionsRepository, userCharactersRepository } from "@/db/repositories";
+import {
+  discordConnectionsRepository,
+  userCharactersRepository,
+} from "@/db/repositories";
 import { DiscordConnectionMetadataSchema } from "@/db/schemas/discord-connections";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { logger } from "@/lib/utils/logger";
@@ -43,11 +46,17 @@ async function __hono_GET(
   const connection = await discordConnectionsRepository.findById(id);
 
   if (!connection) {
-    return Response.json({ success: false, error: "Connection not found" }, { status: 404 });
+    return Response.json(
+      { success: false, error: "Connection not found" },
+      { status: 404 },
+    );
   }
 
   if (connection.organization_id !== user.organization_id) {
-    return Response.json({ success: false, error: "Connection not found" }, { status: 404 });
+    return Response.json(
+      { success: false, error: "Connection not found" },
+      { status: 404 },
+    );
   }
 
   return Response.json({
@@ -87,18 +96,27 @@ async function __hono_PATCH(
   const connection = await discordConnectionsRepository.findById(id);
 
   if (!connection) {
-    return Response.json({ success: false, error: "Connection not found" }, { status: 404 });
+    return Response.json(
+      { success: false, error: "Connection not found" },
+      { status: 404 },
+    );
   }
 
   if (connection.organization_id !== user.organization_id) {
-    return Response.json({ success: false, error: "Connection not found" }, { status: 404 });
+    return Response.json(
+      { success: false, error: "Connection not found" },
+      { status: 404 },
+    );
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return Response.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+    return Response.json(
+      { success: false, error: "Invalid JSON body" },
+      { status: 400 },
+    );
   }
 
   const validation = UpdateConnectionSchema.safeParse(body);
@@ -119,7 +137,10 @@ async function __hono_PATCH(
   if (data.characterId) {
     const character = await userCharactersRepository.findById(data.characterId);
     if (!character) {
-      return Response.json({ success: false, error: "Character not found" }, { status: 404 });
+      return Response.json(
+        { success: false, error: "Character not found" },
+        { status: 404 },
+      );
     }
     if (character.organization_id !== user.organization_id) {
       return Response.json(
@@ -209,17 +230,26 @@ async function __hono_DELETE(
   const connection = await discordConnectionsRepository.findById(id);
 
   if (!connection) {
-    return Response.json({ success: false, error: "Connection not found" }, { status: 404 });
+    return Response.json(
+      { success: false, error: "Connection not found" },
+      { status: 404 },
+    );
   }
 
   if (connection.organization_id !== user.organization_id) {
-    return Response.json({ success: false, error: "Connection not found" }, { status: 404 });
+    return Response.json(
+      { success: false, error: "Connection not found" },
+      { status: 404 },
+    );
   }
 
   const deleted = await discordConnectionsRepository.delete(id);
 
   if (!deleted) {
-    return Response.json({ success: false, error: "Failed to delete connection" }, { status: 500 });
+    return Response.json(
+      { success: false, error: "Failed to delete connection" },
+      { status: 500 },
+    );
   }
 
   logger.info("[Discord Connections] Deleted connection", {
@@ -237,12 +267,18 @@ async function __hono_DELETE(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.patch("/", async (c) =>
-  __hono_PATCH(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_PATCH(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

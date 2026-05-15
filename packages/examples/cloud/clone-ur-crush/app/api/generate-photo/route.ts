@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
 export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
@@ -8,7 +8,10 @@ export async function POST(req: NextRequest) {
 
     if (!appearance) {
       return new Response(
-        JSON.stringify({ success: false, error: "Physical appearance description required" }),
+        JSON.stringify({
+          success: false,
+          error: "Physical appearance description required",
+        }),
         { status: 400, headers: { "Content-Type": "application/json" } },
       );
     }
@@ -20,7 +23,8 @@ export async function POST(req: NextRequest) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Image generation not available. Please configure FAL_KEY or OPENAI_API_KEY.",
+          error:
+            "Image generation not available. Please configure FAL_KEY or OPENAI_API_KEY.",
         }),
         { status: 400, headers: { "Content-Type": "application/json" } },
       );
@@ -75,7 +79,10 @@ export async function POST(req: NextRequest) {
                   ),
                 );
               } else {
-                console.log("Event did not contain image data, keys:", Object.keys(event));
+                console.log(
+                  "Event did not contain image data, keys:",
+                  Object.keys(event),
+                );
               }
             }
 
@@ -103,14 +110,19 @@ export async function POST(req: NextRequest) {
 
             // Send final complete event
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: "complete", imageUrl })}\n\n`),
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "complete", imageUrl })}\n\n`,
+              ),
             );
             controller.close();
           } catch (error) {
             console.error("Fal streaming error:", error);
-            const errorMessage = error instanceof Error ? error.message : "Generation failed";
+            const errorMessage =
+              error instanceof Error ? error.message : "Generation failed";
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: "error", error: errorMessage })}\n\n`),
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "error", error: errorMessage })}\n\n`,
+              ),
             );
             controller.close();
           }
@@ -127,38 +139,47 @@ export async function POST(req: NextRequest) {
     }
 
     // Fallback to OpenAI DALL-E (non-streaming)
-    const response = await fetch("https://api.openai.com/v1/images/generations", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiKey}`,
+    const response = await fetch(
+      "https://api.openai.com/v1/images/generations",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${openaiKey}`,
+        },
+        body: JSON.stringify({
+          model: "dall-e-3",
+          prompt,
+          n: 1,
+          size: "1024x1024",
+          quality: "standard",
+        }),
       },
-      body: JSON.stringify({
-        model: "dall-e-3",
-        prompt,
-        n: 1,
-        size: "1024x1024",
-        quality: "standard",
-      }),
-    });
+    );
 
     if (!response.ok) {
       const errorData = await response.json();
       console.error("DALL-E API error:", errorData);
-      return new Response(JSON.stringify({ success: false, error: "Failed to generate photo" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "Failed to generate photo" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     const data = await response.json();
     const imageUrl = data.data[0]?.url;
 
     if (!imageUrl) {
-      return new Response(JSON.stringify({ success: false, error: "No image generated" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ success: false, error: "No image generated" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     }
 
     return new Response(JSON.stringify({ success: true, imageUrl }), {
@@ -166,9 +187,12 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Error generating photo:", error);
-    return new Response(JSON.stringify({ success: false, error: "Failed to generate photo" }), {
-      status: 500,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ success: false, error: "Failed to generate photo" }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   }
 }

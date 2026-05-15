@@ -17,7 +17,10 @@ async function handleDisconnect(c: AppContext) {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    await whatsappAutomationService.removeCredentials(user.organization_id, user.id);
+    await whatsappAutomationService.removeCredentials(
+      user.organization_id,
+      user.id,
+    );
 
     logger.info("[WhatsApp Disconnect] Credentials removed", {
       organizationId: user.organization_id,

@@ -85,8 +85,6 @@ export type { ChatImageAttachment, LogEntry };
 
 const DEFAULT_CONVERSATION_TITLE_TIMEOUT_MS = 5_000;
 
-const DEFAULT_CONVERSATION_TITLE_TIMEOUT_MS = 5_000;
-
 type LocalInferenceChatMetadata = Record<string, unknown>;
 type LocalInferenceCommandIntent =
   | "cancel"

@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { generateSessionId } from "@/lib/utils";
-import { CreateCharacterResponse, ElizaCharacter } from "@/types";
+import type { CreateCharacterResponse, ElizaCharacter } from "@/types";
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,7 +11,9 @@ export async function POST(req: NextRequest) {
     const howYouMet = formData.get("howYouMet") as string;
     const photo = formData.get("photo") as File | null;
     const photoUrl = formData.get("photoUrl") as string | null;
-    const physicalAppearance = formData.get("physicalAppearance") as string | null;
+    const physicalAppearance = formData.get("physicalAppearance") as
+      | string
+      | null;
 
     // Speech examples
     const sayHello = formData.get("sayHello") as string | null;
@@ -23,7 +25,10 @@ export async function POST(req: NextRequest) {
     // Validate required fields
     if (!name || !description || !howYouMet) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields: name, description, howYouMet" },
+        {
+          success: false,
+          error: "Missing required fields: name, description, howYouMet",
+        },
         { status: 400 },
       );
     }
@@ -92,7 +97,9 @@ async function generateCharacter(input: {
   const adjectives = extractAdjectives(description, "");
 
   // Generate bio
-  const bioArray = [description, `Context: ${howYouMet}`].filter((s) => s.length > 0);
+  const bioArray = [description, `Context: ${howYouMet}`].filter(
+    (s) => s.length > 0,
+  );
 
   // Generate example messages using speech examples
   const messageExamples = generateMessageExamples(name, speechExamples);
@@ -161,7 +168,11 @@ CRITICAL RULES:
           ? "Match the speech examples - keep that vibe and length"
           : "",
       ].filter((s) => s.length > 0),
-      post: ["Keep it short and casual", "Share genuine moments", "No emojis or hashtags"],
+      post: [
+        "Keep it short and casual",
+        "Share genuine moments",
+        "No emojis or hashtags",
+      ],
     },
     settings: {
       model: "gpt-5-mini",
@@ -178,15 +189,18 @@ function extractAdjectives(description: string, interests: string): string[] {
   const adjectives = ["friendly", "engaging", "thoughtful"];
   const text = `${description} ${interests}`.toLowerCase();
 
-  if (text.includes("funny") || text.includes("humor")) adjectives.push("funny", "playful");
+  if (text.includes("funny") || text.includes("humor"))
+    adjectives.push("funny", "playful");
   if (text.includes("smart") || text.includes("intelligent"))
     adjectives.push("intelligent", "insightful");
-  if (text.includes("kind") || text.includes("caring")) adjectives.push("kind", "caring");
+  if (text.includes("kind") || text.includes("caring"))
+    adjectives.push("kind", "caring");
   if (text.includes("creative") || text.includes("artistic"))
     adjectives.push("creative", "artistic");
   if (text.includes("adventurous") || text.includes("outdoors"))
     adjectives.push("adventurous", "energetic");
-  if (text.includes("calm") || text.includes("relaxed")) adjectives.push("calm", "easygoing");
+  if (text.includes("calm") || text.includes("relaxed"))
+    adjectives.push("calm", "easygoing");
   if (text.includes("passionate") || text.includes("enthusiastic"))
     adjectives.push("passionate", "enthusiastic");
 
@@ -244,7 +258,8 @@ function generateMessageExamples(
     bad: string | null;
   },
 ): Array<Array<{ name: string; content: { text: string } }>> {
-  const examples: Array<Array<{ name: string; content: { text: string } }>> = [];
+  const examples: Array<Array<{ name: string; content: { text: string } }>> =
+    [];
 
   // Hello example
   if (speechExamples.hello) {
@@ -333,7 +348,7 @@ function generateMessageExamples(
   return examples;
 }
 
-function generatePostExamples(name: string, topics: string[]): string[] {
+function generatePostExamples(_name: string, topics: string[]): string[] {
   if (topics.length === 0) {
     return [
       "Just had the best day! Sometimes the simple moments are the best.",

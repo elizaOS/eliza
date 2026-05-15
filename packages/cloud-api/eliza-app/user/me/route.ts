@@ -7,8 +7,14 @@
 
 import { Hono } from "hono";
 import { organizationsRepository } from "@/db/repositories/organizations";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { elizaAppSessionService, elizaAppUserService } from "@/lib/services/eliza-app";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  elizaAppSessionService,
+  elizaAppUserService,
+} from "@/lib/services/eliza-app";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -17,12 +23,18 @@ const app = new Hono<AppEnv>();
 app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   const authHeader = c.req.header("Authorization");
   if (!authHeader) {
-    return c.json({ error: "Authorization header required", code: "UNAUTHORIZED" }, 401);
+    return c.json(
+      { error: "Authorization header required", code: "UNAUTHORIZED" },
+      401,
+    );
   }
 
   const session = await elizaAppSessionService.validateAuthHeader(authHeader);
   if (!session) {
-    return c.json({ error: "Invalid or expired session", code: "INVALID_SESSION" }, 401);
+    return c.json(
+      { error: "Invalid or expired session", code: "INVALID_SESSION" },
+      401,
+    );
   }
 
   const user = await elizaAppUserService.getById(session.userId);

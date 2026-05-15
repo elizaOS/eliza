@@ -14,14 +14,20 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { getCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { executeWithBody } from "@/lib/services/proxy/engine";
-import { solanaRpcConfig, solanaRpcHandler } from "@/lib/services/proxy/services/solana-rpc";
+import {
+  solanaRpcConfig,
+  solanaRpcHandler,
+} from "@/lib/services/proxy/services/solana-rpc";
 import { isValidSolanaAddress } from "@/lib/services/proxy/services/solana-validation";
 
 async function __hono_OPTIONS() {
   return handleCorsOptions("GET, OPTIONS");
 }
 
-async function __hono_GET(request: Request, { params }: { params: Promise<{ address: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ address: string }> },
+) {
   const { address } = await params;
 
   if (!isValidSolanaAddress(address)) {
@@ -47,7 +53,12 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ addr
   };
 
   try {
-    const response = await executeWithBody(solanaRpcConfig, solanaRpcHandler, request, body);
+    const response = await executeWithBody(
+      solanaRpcConfig,
+      solanaRpcHandler,
+      request,
+      body,
+    );
 
     const corsHeaders = getCorsHeaders("GET, OPTIONS");
     for (const [key, value] of Object.entries(corsHeaders)) {
@@ -66,6 +77,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ addr
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", async () => __hono_OPTIONS());
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ address: c.req.param("address")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ address: c.req.param("address")! }),
+  }),
 );
 export default __hono_app;

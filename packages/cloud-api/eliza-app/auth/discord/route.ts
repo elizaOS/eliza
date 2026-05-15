@@ -15,7 +15,10 @@ import { z } from "zod";
 import type { Organization } from "@/db/repositories/organizations";
 import type { User } from "@/db/repositories/users";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   discordAuthService,
   elizaAppSessionService,
@@ -23,7 +26,10 @@ import {
   type ValidatedSession,
 } from "@/lib/services/eliza-app";
 import { logger } from "@/lib/utils/logger";
-import { isValidE164, normalizePhoneNumber } from "@/lib/utils/phone-normalization";
+import {
+  isValidE164,
+  normalizePhoneNumber,
+} from "@/lib/utils/phone-normalization";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 /**
@@ -38,7 +44,8 @@ const optionalPhoneSchema = z
     if (!isValidE164(normalized)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "Invalid phone number format. Please use international format (e.g., +1234567890)",
+        message:
+          "Invalid phone number format. Please use international format (e.g., +1234567890)",
       });
       return z.NEVER;
     }
@@ -131,7 +138,7 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
 
   logger.info("[ElizaApp DiscordAuth] Processing OAuth2 callback", {
     redirectUri,
-    statePrefix: state.slice(0, 8) + "...",
+    statePrefix: `${state.slice(0, 8)}...`,
     hasPhone: !!phoneNumber,
     hasSignupCode: !!signupCode,
   });
@@ -140,7 +147,8 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
   const authHeader = request.headers.get("authorization");
   let existingSession: ValidatedSession | null = null;
   if (authHeader) {
-    existingSession = await elizaAppSessionService.validateAuthHeader(authHeader);
+    existingSession =
+      await elizaAppSessionService.validateAuthHeader(authHeader);
     if (existingSession) {
       logger.info("[ElizaApp DiscordAuth] Session-based linking detected", {
         existingUserId: existingSession.userId,
@@ -149,7 +157,10 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
   }
 
   // Exchange OAuth2 code for Discord user data
-  const discordUser = await discordAuthService.verifyOAuthCode(code, redirectUri);
+  const discordUser = await discordAuthService.verifyOAuthCode(
+    code,
+    redirectUri,
+  );
 
   if (!discordUser) {
     logger.warn("[ElizaApp DiscordAuth] OAuth2 verification failed");
@@ -164,7 +175,10 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
   }
 
   // Build avatar URL
-  const avatarUrl = discordAuthService.getAvatarUrl(discordUser.id, discordUser.avatar);
+  const avatarUrl = discordAuthService.getAvatarUrl(
+    discordUser.id,
+    discordUser.avatar,
+  );
 
   let user: User;
   let organization: Organization;
@@ -172,18 +186,23 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
 
   if (existingSession) {
     // ---- SESSION-BASED LINKING: Link Discord to existing user ----
-    const linkResult = await elizaAppUserService.linkDiscordToUser(existingSession.userId, {
-      discordId: discordUser.id,
-      username: discordUser.username,
-      globalName: discordUser.global_name,
-      avatarUrl,
-    });
+    const linkResult = await elizaAppUserService.linkDiscordToUser(
+      existingSession.userId,
+      {
+        discordId: discordUser.id,
+        username: discordUser.username,
+        globalName: discordUser.global_name,
+        avatarUrl,
+      },
+    );
 
     if (!linkResult.success) {
       return Response.json(
         {
           success: false,
-          error: linkResult.error || "This Discord account is already linked to another account",
+          error:
+            linkResult.error ||
+            "This Discord account is already linked to another account",
           code: "DISCORD_ALREADY_LINKED",
         },
         { status: 409 },
@@ -191,8 +210,10 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
     }
 
     // Fetch the updated user
-    const updatedUser = await elizaAppUserService.getById(existingSession.userId);
-    if (!updatedUser || !updatedUser.organization) {
+    const updatedUser = await elizaAppUserService.getById(
+      existingSession.userId,
+    );
+    if (!updatedUser?.organization) {
       return Response.json(
         {
           success: false,
@@ -207,10 +228,13 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
     organization = updatedUser.organization;
     isNew = false;
 
-    logger.info("[ElizaApp DiscordAuth] Session-based Discord linking successful", {
-      userId: user.id,
-      discordId: discordUser.id,
-    });
+    logger.info(
+      "[ElizaApp DiscordAuth] Session-based Discord linking successful",
+      {
+        userId: user.id,
+        discordId: discordUser.id,
+      },
+    );
   } else {
     // ---- STANDARD FLOW: Find or create user by Discord ID (with optional phone cross-linking) ----
     let result;
@@ -231,7 +255,8 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
           return Response.json(
             {
               success: false,
-              error: "This phone number is already linked to a different account",
+              error:
+                "This phone number is already linked to a different account",
               code: "PHONE_ALREADY_LINKED",
             },
             { status: 409 },
@@ -248,10 +273,13 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
           );
         }
       }
-      logger.error("[ElizaApp DiscordAuth] Unexpected error during user creation", {
-        error: error instanceof Error ? error.message : String(error),
-        discordId: discordUser.id,
-      });
+      logger.error(
+        "[ElizaApp DiscordAuth] Unexpected error during user creation",
+        {
+          error: error instanceof Error ? error.message : String(error),
+          discordId: discordUser.id,
+        },
+      );
       return Response.json(
         {
           success: false,
@@ -269,19 +297,26 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
     // If phone was provided but not linked during findOrCreate (e.g., user already existed without phone),
     // attempt to link it separately
     if (phoneNumber && !user.phone_number) {
-      const linkResult = await elizaAppUserService.linkPhoneToUser(user.id, phoneNumber);
+      const linkResult = await elizaAppUserService.linkPhoneToUser(
+        user.id,
+        phoneNumber,
+      );
       if (!linkResult.success) {
         return Response.json(
           {
             success: false,
-            error: linkResult.error || "This phone number is already linked to a different account",
+            error:
+              linkResult.error ||
+              "This phone number is already linked to a different account",
             code: "PHONE_ALREADY_LINKED",
           },
           { status: 409 },
         );
       }
       // Refetch user to reflect the newly linked phone number in the response
-      const updatedUser = await elizaAppUserService.getByDiscordId(discordUser.id);
+      const updatedUser = await elizaAppUserService.getByDiscordId(
+        discordUser.id,
+      );
       if (updatedUser) {
         user = updatedUser;
       }
@@ -298,12 +333,16 @@ async function handleDiscordAuth(request: Request): Promise<Response> {
   });
 
   // Create session (new session includes discord identity)
-  const session = await elizaAppSessionService.createSession(user.id, organization.id, {
-    discordId: discordUser.id,
-    ...(user.phone_number && { phoneNumber: user.phone_number }),
-    ...(user.telegram_id && { telegramId: user.telegram_id }),
-    ...(user.whatsapp_id && { whatsappId: user.whatsapp_id }),
-  });
+  const session = await elizaAppSessionService.createSession(
+    user.id,
+    organization.id,
+    {
+      discordId: discordUser.id,
+      ...(user.phone_number && { phoneNumber: user.phone_number }),
+      ...(user.telegram_id && { telegramId: user.telegram_id }),
+      ...(user.whatsapp_id && { whatsappId: user.whatsapp_id }),
+    },
+  );
 
   return Response.json({
     success: true,

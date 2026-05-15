@@ -20,7 +20,10 @@ import { Hono } from "hono";
 import { usageRecordsRepository } from "@/db/repositories/usage-records";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { containersService, getContainer } from "@/lib/services/containers";
+import {
+  containersService,
+  type getContainer,
+} from "@/lib/services/containers";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { forwardToContainerControlPlane } from "../../_container-control-plane-forward";
@@ -29,7 +32,8 @@ const app = new Hono<AppEnv>();
 
 const SIDECAR_NOT_MIGRATED = {
   not_yet_migrated: true,
-  reason: "Served by the Node sidecar over SSH; not available from this Worker.",
+  reason:
+    "Served by the Node sidecar over SSH; not available from this Worker.",
 } as const;
 
 interface DeploymentMetadata {
@@ -43,13 +47,22 @@ interface DeploymentMetadata {
 
 type ContainerRecord = NonNullable<Awaited<ReturnType<typeof getContainer>>>;
 
-async function buildDeployments(container: ContainerRecord, organizationId: string) {
-  const allRecords = await usageRecordsRepository.listByOrganization(organizationId, 50);
+async function buildDeployments(
+  container: ContainerRecord,
+  organizationId: string,
+) {
+  const allRecords = await usageRecordsRepository.listByOrganization(
+    organizationId,
+    50,
+  );
   const containerDeployments = allRecords
     .filter((record) => record.type === "container_deployment")
     .filter((record) => {
       const metadata = (record.metadata as DeploymentMetadata | null) ?? {};
-      return metadata.container_id === container.id || metadata.container_name === container.name;
+      return (
+        metadata.container_id === container.id ||
+        metadata.container_name === container.name
+      );
     });
 
   return {
@@ -100,7 +113,10 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Container id required" }, 400);
     }
 
-    const container = await containersService.getById(containerId, user.organization_id);
+    const container = await containersService.getById(
+      containerId,
+      user.organization_id,
+    );
     if (!container) {
       return c.json({ success: false, error: "Container not found" }, 404);
     }

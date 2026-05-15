@@ -34,10 +34,14 @@ const patchAgentSchema = z.object({
   action: z.enum(["shutdown", "suspend"]),
 });
 
-type Agent = NonNullable<Awaited<ReturnType<typeof elizaSandboxService.getAgent>>>;
+type Agent = NonNullable<
+  Awaited<ReturnType<typeof elizaSandboxService.getAgent>>
+>;
 
 function toIsoString(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  return value instanceof Date
+    ? value.toISOString()
+    : new Date(value).toISOString();
 }
 
 function toIsoStringOrNull(value: Date | string | null): string | null {
@@ -52,7 +56,10 @@ function stringConfigValue(
   return typeof value === "string" ? value : null;
 }
 
-function toAdminDetailsDto(agent: Agent, isDockerAgent: boolean): AgentAdminDetailsDto {
+function toAdminDetailsDto(
+  agent: Agent,
+  isDockerAgent: boolean,
+): AgentAdminDetailsDto {
   return {
     nodeId: agent.node_id,
     containerName: agent.container_name,
@@ -72,7 +79,10 @@ const CONTROL_PLANE_URL_KEYS = [
   "HETZNER_CONTAINER_CONTROL_PLANE_URL",
 ] as const;
 
-function readControlPlaneEnv(c: AppContext, keys: readonly string[]): string | null {
+function readControlPlaneEnv(
+  c: AppContext,
+  keys: readonly string[],
+): string | null {
   for (const key of keys) {
     const value = c.env[key];
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -93,8 +103,11 @@ async function deleteDockerBackedAgentViaControlPlane(
 
   const headers = new Headers(c.req.raw.headers);
   headers.delete("host");
-  const internalToken = readControlPlaneEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
-  if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  const internalToken = readControlPlaneEnv(c, [
+    "CONTAINER_CONTROL_PLANE_TOKEN",
+  ]);
+  if (internalToken)
+    headers.set("x-container-control-plane-token", internalToken);
   const databaseUrl = readControlPlaneEnv(c, ["DATABASE_URL"]);
   if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
   headers.set("x-eliza-user-id", user.id);
@@ -141,7 +154,10 @@ app.get("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
 
-    const agent = await elizaSandboxService.getAgent(agentId, user.organization_id);
+    const agent = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
     if (!agent) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
@@ -165,7 +181,10 @@ app.get("/", async (c) => {
     }
 
     if (!tokenAddress) {
-      tokenAddress = stringConfigValue(agent.agent_config, "tokenContractAddress");
+      tokenAddress = stringConfigValue(
+        agent.agent_config,
+        "tokenContractAddress",
+      );
       tokenChain = stringConfigValue(agent.agent_config, "chain");
       tokenName = stringConfigValue(agent.agent_config, "tokenName");
       tokenTicker = stringConfigValue(agent.agent_config, "tokenTicker");
@@ -191,7 +210,9 @@ app.get("/", async (c) => {
           walletStatus = "pending";
         }
       } catch (err) {
-        logger.warn(`[agent-api] Steward wallet lookup failed for ${agentId}`, { err });
+        logger.warn(`[agent-api] Steward wallet lookup failed for ${agentId}`, {
+          err,
+        });
       }
     }
 
@@ -208,7 +229,9 @@ app.get("/", async (c) => {
 
     const { isAdmin } = await adminService.getAdminStatusForUser(user);
 
-    const adminDetails = isAdmin ? toAdminDetailsDto(agent, isDockerAgent) : null;
+    const adminDetails = isAdmin
+      ? toAdminDetailsDto(agent, isDockerAgent)
+      : null;
 
     const data: AgentDetailDto = {
       id: agent.id,
@@ -262,7 +285,10 @@ app.patch("/", async (c) => {
       );
     }
 
-    const agent = await elizaSandboxService.getAgentForWrite(agentId, user.organization_id);
+    const agent = await elizaSandboxService.getAgentForWrite(
+      agentId,
+      user.organization_id,
+    );
     if (!agent) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
@@ -282,7 +308,10 @@ app.patch("/", async (c) => {
       });
     }
 
-    const result = await elizaSandboxService.shutdown(agentId, user.organization_id);
+    const result = await elizaSandboxService.shutdown(
+      agentId,
+      user.organization_id,
+    );
     if (!result.success) {
       const status =
         result.error === "Agent not found"
@@ -327,17 +356,27 @@ app.delete("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const agentId = c.req.param("agentId") ?? "";
 
-    const existing = await elizaSandboxService.getAgent(agentId, user.organization_id);
+    const existing = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
     if (!existing) {
       return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
     if (existing.node_id && existing.sandbox_id) {
-      const forwarded = await deleteDockerBackedAgentViaControlPlane(c, user, agentId);
+      const forwarded = await deleteDockerBackedAgentViaControlPlane(
+        c,
+        user,
+        agentId,
+      );
       if (forwarded) return forwarded;
     }
 
-    const deleted = await elizaSandboxService.deleteAgent(agentId, user.organization_id);
+    const deleted = await elizaSandboxService.deleteAgent(
+      agentId,
+      user.organization_id,
+    );
     if (!deleted.success) {
       const status =
         deleted.error === "Agent not found"
@@ -361,11 +400,17 @@ app.delete("/", async (c) => {
           characterId,
         });
       } catch (characterErr) {
-        logger.warn("[agent-api] Failed to clean up linked character after delete", {
-          agentId,
-          characterId,
-          error: characterErr instanceof Error ? characterErr.message : String(characterErr),
-        });
+        logger.warn(
+          "[agent-api] Failed to clean up linked character after delete",
+          {
+            agentId,
+            characterId,
+            error:
+              characterErr instanceof Error
+                ? characterErr.message
+                : String(characterErr),
+          },
+        );
       }
     }
 

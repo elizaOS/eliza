@@ -16,12 +16,17 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * @param params - Route parameters containing the app ID.
  * @returns List of app users with pagination information.
  */
-async function __hono_GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
     const { searchParams } = new URL(request.url);
-    const limit = searchParams.get("limit") ? parseInt(searchParams.get("limit")!) : undefined;
+    const limit = searchParams.get("limit")
+      ? parseInt(searchParams.get("limit")!, 10)
+      : undefined;
 
     // Verify the app exists and belongs to the user's organization
     const existingApp = await appsService.getById(id);
@@ -62,7 +67,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to get app users",
+        error:
+          error instanceof Error ? error.message : "Failed to get app users",
       },
       { status: 500 },
     );
@@ -71,6 +77,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

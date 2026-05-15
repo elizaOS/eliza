@@ -13,7 +13,10 @@ import {
   calculateEffectiveTokens,
   SUPPLY_SHOCK_PROTECTION,
 } from "@/lib/config/redemption-security";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { ELIZA_TOKEN_ADDRESSES } from "@/lib/services/eliza-token-price";
 import { payoutStatusService } from "@/lib/services/payout-status";
 import { secureTokenRedemptionService } from "@/lib/services/token-redemption-secure";
@@ -23,7 +26,13 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-const validNetworkParams = ["ethereum", "base", "bnb", "bsc", "solana"] as const;
+const validNetworkParams = [
+  "ethereum",
+  "base",
+  "bnb",
+  "bsc",
+  "solana",
+] as const;
 type NetworkParam = (typeof validNetworkParams)[number];
 
 function normalizeNetworkParam(network: NetworkParam) {
@@ -32,13 +41,14 @@ function normalizeNetworkParam(network: NetworkParam) {
 
 app.options(
   "/",
-  (c) =>
+  (_c) =>
     new Response(null, {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key, X-App-Id",
+        "Access-Control-Allow-Headers":
+          "Content-Type, Authorization, X-API-Key, X-App-Id",
       },
     }),
 );
@@ -52,7 +62,10 @@ app.get("/", async (c) => {
     const networkParam = c.req.query("network");
     const pointsParam = c.req.query("pointsAmount");
 
-    if (!networkParam || !validNetworkParams.includes(networkParam as NetworkParam)) {
+    if (
+      !networkParam ||
+      !validNetworkParams.includes(networkParam as NetworkParam)
+    ) {
       return c.json(
         {
           success: false,
@@ -65,11 +78,12 @@ app.get("/", async (c) => {
     const network = normalizeNetworkParam(networkParam as NetworkParam);
     const pointsAmount = pointsParam ? parseInt(pointsParam, 10) : 100;
 
-    if (isNaN(pointsAmount) || pointsAmount < 1) {
+    if (Number.isNaN(pointsAmount) || pointsAmount < 1) {
       return c.json({ success: false, error: "Invalid pointsAmount" }, 400);
     }
 
-    const networkAvailability = await payoutStatusService.isNetworkAvailable(network);
+    const networkAvailability =
+      await payoutStatusService.isNetworkAvailable(network);
     if (!networkAvailability.available) {
       const status = await payoutStatusService.getStatus();
       const availableNetworks = status.networks
@@ -98,7 +112,11 @@ app.get("/", async (c) => {
       );
     }
 
-    const quoteResult = await twapPriceOracle.getRedemptionQuote(network, pointsAmount, user.id);
+    const quoteResult = await twapPriceOracle.getRedemptionQuote(
+      network,
+      pointsAmount,
+      user.id,
+    );
 
     if (!quoteResult.success) {
       return c.json(
@@ -114,12 +132,16 @@ app.get("/", async (c) => {
     const quote = quoteResult.quote!;
     const usdValue = quote.usdValue;
 
-    const effectiveElizaAmount = calculateEffectiveTokens(usdValue, quote.twapPrice);
-
-    const availability = await secureTokenRedemptionService.checkTokenAvailability(
-      network,
-      effectiveElizaAmount,
+    const effectiveElizaAmount = calculateEffectiveTokens(
+      usdValue,
+      quote.twapPrice,
     );
+
+    const availability =
+      await secureTokenRedemptionService.checkTokenAvailability(
+        network,
+        effectiveElizaAmount,
+      );
 
     logger.debug("[Redemption Quote] TWAP quote generated", {
       network,
@@ -160,8 +182,10 @@ app.get("/", async (c) => {
           maxRedemptionUsd: SUPPLY_SHOCK_PROTECTION.MAX_SINGLE_REDEMPTION_USD,
           userDailyLimitUsd: SUPPLY_SHOCK_PROTECTION.USER_DAILY_LIMIT_USD,
           userHourlyLimitUsd: SUPPLY_SHOCK_PROTECTION.USER_HOURLY_LIMIT_USD,
-          largeRedemptionThresholdUsd: SUPPLY_SHOCK_PROTECTION.LARGE_REDEMPTION_THRESHOLD_USD,
-          adminApprovalThresholdUsd: ADMIN_CONTROLS.ADMIN_APPROVAL_THRESHOLD_USD,
+          largeRedemptionThresholdUsd:
+            SUPPLY_SHOCK_PROTECTION.LARGE_REDEMPTION_THRESHOLD_USD,
+          adminApprovalThresholdUsd:
+            ADMIN_CONTROLS.ADMIN_APPROVAL_THRESHOLD_USD,
         },
       },
       warnings: quoteResult.warnings,

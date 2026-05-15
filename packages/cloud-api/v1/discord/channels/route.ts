@@ -23,12 +23,18 @@ app.get("/", async (c) => {
     }
 
     // Verify the guild belongs to this organization
-    const guild = await discordAutomationService.getGuild(user.organization_id, guildId);
+    const guild = await discordAutomationService.getGuild(
+      user.organization_id,
+      guildId,
+    );
     if (!guild) {
       return c.json({ error: "Guild not found" }, 404);
     }
 
-    const channels = await discordAutomationService.getChannels(user.organization_id, guildId);
+    const channels = await discordAutomationService.getChannels(
+      user.organization_id,
+      guildId,
+    );
 
     return c.json({
       channels: channels.map((ch) => ({

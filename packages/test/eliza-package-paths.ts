@@ -6,7 +6,7 @@ if (
 }
 
 const upstream = await import(
-  "../packages/app-core/test/eliza-package-paths.ts"
+  "../app-core/test/eliza-package-paths.ts"
 );
 
 export const getAppCoreSourceRoot = upstream.getAppCoreSourceRoot;

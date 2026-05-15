@@ -22,7 +22,10 @@ const CONTROL_PLANE_URL_KEYS = [
   "HETZNER_CONTAINER_CONTROL_PLANE_URL",
 ] as const;
 
-function readControlPlaneEnv(c: AppContext | undefined, keys: readonly string[]): string | null {
+function readControlPlaneEnv(
+  c: AppContext | undefined,
+  keys: readonly string[],
+): string | null {
   if (!c?.env) return null;
   for (const key of keys) {
     const value = c.env[key];
@@ -46,8 +49,11 @@ async function forwardBridgeToControlPlane(params: {
 
   const headers = new Headers(params.request.headers);
   headers.delete("host");
-  const internalToken = readControlPlaneEnv(params.ctx, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
-  if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  const internalToken = readControlPlaneEnv(params.ctx, [
+    "CONTAINER_CONTROL_PLANE_TOKEN",
+  ]);
+  if (internalToken)
+    headers.set("x-container-control-plane-token", internalToken);
   const databaseUrl = readControlPlaneEnv(params.ctx, ["DATABASE_URL"]);
   if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
   headers.set("content-type", "application/json");
@@ -109,7 +115,11 @@ async function __hono_POST(
       return applyCorsHeaders(forwarded, CORS_METHODS);
     }
 
-    const response = await elizaSandboxService.bridge(agentId, user.organization_id, rpcRequest);
+    const response = await elizaSandboxService.bridge(
+      agentId,
+      user.organization_id,
+      rpcRequest,
+    );
 
     return applyCorsHeaders(Response.json(response), CORS_METHODS);
   } catch (error) {
@@ -120,6 +130,10 @@ async function __hono_POST(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }, c),
+  __hono_POST(
+    c.req.raw,
+    { params: Promise.resolve({ agentId: c.req.param("agentId")! }) },
+    c,
+  ),
 );
 export default __hono_app;

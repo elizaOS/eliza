@@ -20,10 +20,11 @@ app.post("/", async (c) => {
       return c.json({ error: "cannot_claim_self" }, 400);
     }
 
-    const podStillHealthy = await discordConnectionsRepository.hasRecentHeartbeat(
-      body.dead_pod,
-      RECENT_HEARTBEAT_THRESHOLD_MS,
-    );
+    const podStillHealthy =
+      await discordConnectionsRepository.hasRecentHeartbeat(
+        body.dead_pod,
+        RECENT_HEARTBEAT_THRESHOLD_MS,
+      );
     if (podStillHealthy) {
       return c.json({ error: "pod_still_healthy", claimed: 0 }, 409);
     }

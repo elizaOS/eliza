@@ -9,7 +9,10 @@
 
 import { Hono } from "hono";
 import { executeWithBody } from "@/lib/services/proxy/engine";
-import { solanaRpcConfig, solanaRpcHandler } from "@/lib/services/proxy/services/solana-rpc";
+import {
+  solanaRpcConfig,
+  solanaRpcHandler,
+} from "@/lib/services/proxy/services/solana-rpc";
 import type { ProxyRequestBody } from "@/lib/services/proxy/types";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -20,7 +23,11 @@ app.post("/", async (c) => {
   // cannot set custom headers (mirrors apps/api/v1/proxy/solana-rpc).
   const headers = new Headers(c.req.raw.headers);
   const queryApiKey = c.req.query("api_key");
-  if (queryApiKey && !c.req.header("authorization") && !c.req.header("X-API-Key")) {
+  if (
+    queryApiKey &&
+    !c.req.header("authorization") &&
+    !c.req.header("X-API-Key")
+  ) {
     headers.set("authorization", `Bearer ${queryApiKey}`);
   }
 

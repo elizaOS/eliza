@@ -15,7 +15,8 @@ const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
   try {
-    const pricingRecords = await servicePricingRepository.listByService("solana-rpc");
+    const pricingRecords =
+      await servicePricingRepository.listByService("solana-rpc");
 
     // Active methods only, excluding internal underscore-prefixed entries.
     const activeMethods = pricingRecords
@@ -27,7 +28,10 @@ app.get("/", async (c) => {
       }))
       .sort((a, b) => a.method.localeCompare(b.method));
 
-    c.header("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=7200");
+    c.header(
+      "Cache-Control",
+      "public, s-maxage=3600, stale-while-revalidate=7200",
+    );
     return c.json({
       service: "solana-rpc",
       total: activeMethods.length,

@@ -56,7 +56,10 @@ afterAll(() => {});
  * Build an HMAC-SHA256 Blooio signature header.
  * Format: t=<unix>,v1=<hex>
  */
-async function buildBlooioSignature(secret: string, body: string): Promise<string> {
+async function buildBlooioSignature(
+  secret: string,
+  body: string,
+): Promise<string> {
   const timestamp = Math.floor(Date.now() / 1000);
   const signedPayload = `${timestamp}.${body}`;
   const encoder = new TextEncoder();
@@ -67,7 +70,11 @@ async function buildBlooioSignature(secret: string, body: string): Promise<strin
     false,
     ["sign"],
   );
-  const sig = await crypto.subtle.sign("HMAC", key, encoder.encode(signedPayload));
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    encoder.encode(signedPayload),
+  );
   const hex = Array.from(new Uint8Array(sig))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -106,7 +113,10 @@ async function buildTwilioSignature(
  * in Workers runtime (the handler's verifyWebhookSignature delegates to
  * whatsappAutomationService, which ultimately calls verifyWhatsAppSignature).
  */
-async function buildWhatsAppSignature(secret: string, body: string): Promise<string> {
+async function buildWhatsAppSignature(
+  secret: string,
+  body: string,
+): Promise<string> {
   const encoder = new TextEncoder();
   const key = await crypto.subtle.importKey(
     "raw",
@@ -146,9 +156,12 @@ describe("GET /api/eliza-app/connections", () => {
   test("unsupported platform query param with invalid session → 401 before 400", async () => {
     // Session validation runs before platform validation, so even with an
     // unsupported platform we hit the auth gate first.
-    const res = await api.get("/api/eliza-app/connections?platform=fakePlatform999", {
-      headers: { Authorization: "Bearer bogus" },
-    });
+    const res = await api.get(
+      "/api/eliza-app/connections?platform=fakePlatform999",
+      {
+        headers: { Authorization: "Bearer bogus" },
+      },
+    );
     // Auth gate fires before platform check
     expect([400, 401]).toContain(res.status);
   });
@@ -160,7 +173,10 @@ describe("GET /api/eliza-app/connections", () => {
 
 describe("POST /api/eliza-app/connections/:platform/initiate", () => {
   test("no Authorization header → 401", async () => {
-    const res = await api.post("/api/eliza-app/connections/google/initiate", {});
+    const res = await api.post(
+      "/api/eliza-app/connections/google/initiate",
+      {},
+    );
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code?: string };
     expect(body.code).toBe("UNAUTHORIZED");
@@ -214,16 +230,19 @@ describe("POST /api/eliza-app/gateway/:agentId", () => {
     };
     expect(body.success).toBe(true);
     expect(typeof body.reply).toBe("string");
-    expect(body.reply!.length).toBeGreaterThan(0);
+    expect(body.reply?.length).toBeGreaterThan(0);
     expect(typeof body.historyLength).toBe("number");
   });
 
   test("non-JSON body → 400 or 500", async () => {
-    const res = await fetch(`${getBaseUrl()}/api/eliza-app/gateway/test-agent-001`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "not-json{{",
-    });
+    const res = await fetch(
+      `${getBaseUrl()}/api/eliza-app/gateway/test-agent-001`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "not-json{{",
+      },
+    );
     expect([400, 500]).toContain(res.status);
   });
 });
@@ -270,7 +289,7 @@ describe("POST /api/eliza-app/provision-agent", () => {
     };
     expect(body.success).toBe(true);
     expect(typeof body.agentId).toBe("string");
-    expect(body.agentId!.startsWith("agent-")).toBe(true);
+    expect(body.agentId?.startsWith("agent-")).toBe(true);
     expect(typeof body.gatewayUrl).toBe("string");
   });
 });
@@ -305,7 +324,9 @@ describe("GET /api/eliza-app/user/me", () => {
 
 describe("POST /api/eliza-app/webhook/blooio", () => {
   test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
-    const res = await api.post("/api/eliza-app/webhook/blooio", { event: "test" });
+    const res = await api.post("/api/eliza-app/webhook/blooio", {
+      event: "test",
+    });
     expect(res.status).toBe(503);
     const body = (await res.json()) as { code?: string };
     expect(body.code).toBe("WEBHOOK_GATEWAY_NOT_CONFIGURED");
@@ -314,7 +335,9 @@ describe("POST /api/eliza-app/webhook/blooio", () => {
 
 describe("POST /api/eliza-app/webhook/discord", () => {
   test("without Discord webhook handler URL → 503 DISCORD_WEBHOOK_HANDLER_NOT_CONFIGURED", async () => {
-    const res = await api.post("/api/eliza-app/webhook/discord", { event: "test" });
+    const res = await api.post("/api/eliza-app/webhook/discord", {
+      event: "test",
+    });
     expect(res.status).toBe(503);
     const body = (await res.json()) as { code?: string };
     expect(body.code).toBe("DISCORD_WEBHOOK_HANDLER_NOT_CONFIGURED");
@@ -323,7 +346,9 @@ describe("POST /api/eliza-app/webhook/discord", () => {
 
 describe("POST /api/eliza-app/webhook/telegram", () => {
   test("without gateway URL → 503 WEBHOOK_GATEWAY_NOT_CONFIGURED", async () => {
-    const res = await api.post("/api/eliza-app/webhook/telegram", { update_id: 1 });
+    const res = await api.post("/api/eliza-app/webhook/telegram", {
+      update_id: 1,
+    });
     expect(res.status).toBe(503);
     const body = (await res.json()) as { code?: string };
     expect(body.code).toBe("WEBHOOK_GATEWAY_NOT_CONFIGURED");
@@ -390,9 +415,12 @@ describe("POST /api/eliza/rooms/:roomId/messages (stubbed)", () => {
 
 describe("POST /api/eliza/rooms/:roomId/messages/stream (stubbed)", () => {
   test("any request → 501 not_yet_migrated", async () => {
-    const res = await api.post("/api/eliza/rooms/room-test-001/messages/stream", {
-      text: "hello",
-    });
+    const res = await api.post(
+      "/api/eliza/rooms/room-test-001/messages/stream",
+      {
+        text: "hello",
+      },
+    );
     expect(res.status).toBe(501);
     const body = (await res.json()) as { error?: string };
     expect(body.error).toBe("not_yet_migrated");
@@ -426,7 +454,10 @@ describe("POST /api/eliza/rooms/:roomId/welcome", () => {
     // Even without auth, validation fires before auth when text is empty in
     // some code paths — but in this handler auth check runs second. Either
     // 400 or 401 is acceptable here; we assert the body is not 200.
-    const res = await api.post("/api/eliza/rooms/room-welcome-test/welcome", {});
+    const res = await api.post(
+      "/api/eliza/rooms/room-welcome-test/welcome",
+      {},
+    );
     expect([400, 401]).toContain(res.status);
   });
 });
@@ -459,15 +490,21 @@ describe("POST /api/webhooks/blooio/:orgId", () => {
     //   (a) returns 500 "Webhook not configured" (no secret in DB), or
     //   (b) returns 401 "Invalid webhook signature" (bad sig).
     // Both are correct rejection paths — we assert the request is not 200.
-    const body = JSON.stringify({ event: "message.received", message_id: "msg-001" });
-    const res = await fetch(`${getBaseUrl()}/api/webhooks/blooio/test-org-blooio`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Blooio-Signature": "t=0,v1=invalidsig",
-      },
-      body,
+    const body = JSON.stringify({
+      event: "message.received",
+      message_id: "msg-001",
     });
+    const res = await fetch(
+      `${getBaseUrl()}/api/webhooks/blooio/test-org-blooio`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Blooio-Signature": "t=0,v1=invalidsig",
+        },
+        body,
+      },
+    );
     expect([401, 500]).toContain(res.status);
   });
 
@@ -475,14 +512,17 @@ describe("POST /api/webhooks/blooio/:orgId", () => {
     // When SKIP_WEBHOOK_VERIFICATION is enabled on the Worker, invalid JSON
     // surfaces as 400 before the signature check. Without it we still get a
     // rejection, though the status may be 401/500 due to missing secret first.
-    const res = await fetch(`${getBaseUrl()}/api/webhooks/blooio/test-org-blooio`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Blooio-Signature": "t=0,v1=invalidsig",
+    const res = await fetch(
+      `${getBaseUrl()}/api/webhooks/blooio/test-org-blooio`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Blooio-Signature": "t=0,v1=invalidsig",
+        },
+        body: "not-json{{{{",
       },
-      body: "not-json{{{{",
-    });
+    );
     expect([400, 401, 500]).toContain(res.status);
   });
 
@@ -498,14 +538,17 @@ describe("POST /api/webhooks/blooio/:orgId", () => {
       sender: "+15550000001",
     });
     const sig = await buildBlooioSignature(secret, bodyJson);
-    const res = await fetch(`${getBaseUrl()}/api/webhooks/blooio/test-org-blooio`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Blooio-Signature": sig,
+    const res = await fetch(
+      `${getBaseUrl()}/api/webhooks/blooio/test-org-blooio`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Blooio-Signature": sig,
+        },
+        body: bodyJson,
       },
-      body: bodyJson,
-    });
+    );
     // Worker may not have the test secret configured, so either 200 (sig
     // skipped via env) or 401/500 (no secret in DB / sig mismatch).
     expect([200, 401, 500]).toContain(res.status);
@@ -536,22 +579,28 @@ describe("POST /api/webhooks/twilio/:orgId", () => {
       Body: "Hello from test",
       NumMedia: "0",
     });
-    const res = await fetch(`${getBaseUrl()}/api/webhooks/twilio/test-org-twilio`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: formParams.toString(),
-    });
+    const res = await fetch(
+      `${getBaseUrl()}/api/webhooks/twilio/test-org-twilio`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: formParams.toString(),
+      },
+    );
     // Without X-Twilio-Signature + no auth token in DB → 401 or 500.
     expect([401, 500]).toContain(res.status);
   });
 
   test("invalid/missing form fields → 400", async () => {
     // Sending an empty form body fails Zod schema validation before sig check.
-    const res = await fetch(`${getBaseUrl()}/api/webhooks/twilio/test-org-twilio`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: "not=valid",
-    });
+    const res = await fetch(
+      `${getBaseUrl()}/api/webhooks/twilio/test-org-twilio`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "not=valid",
+      },
+    );
     // Zod validation runs before sig check in this handler, so 400.
     // If SKIP_WEBHOOK_VERIFICATION is set AND the body passes Zod but sig check
     // is skipped, we'd still get 400 for the invalid fields. Without
@@ -618,27 +667,33 @@ describe("POST /api/webhooks/whatsapp/:orgId", () => {
       object: "whatsapp_business_account",
       entry: [],
     });
-    const res = await fetch(`${getBaseUrl()}/api/webhooks/whatsapp/test-org-wa`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-hub-signature-256": "sha256=invalidsig",
+    const res = await fetch(
+      `${getBaseUrl()}/api/webhooks/whatsapp/test-org-wa`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": "sha256=invalidsig",
+        },
+        body,
       },
-      body,
-    });
+    );
     // 400 — orgId fails uuid validation; 401 — signature mismatch; 500 — verifier threw.
     expect([400, 401, 500]).toContain(res.status);
   });
 
   test("invalid JSON body → 400", async () => {
-    const res = await fetch(`${getBaseUrl()}/api/webhooks/whatsapp/test-org-wa`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-hub-signature-256": "sha256=invalidsig",
+    const res = await fetch(
+      `${getBaseUrl()}/api/webhooks/whatsapp/test-org-wa`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": "sha256=invalidsig",
+        },
+        body: "not-json{{",
       },
-      body: "not-json{{",
-    });
+    );
     expect([400, 401, 500]).toContain(res.status);
   });
 
@@ -649,14 +704,17 @@ describe("POST /api/webhooks/whatsapp/:orgId", () => {
       entry: [],
     });
     const sig = await buildWhatsAppSignature(secret, bodyJson);
-    const res = await fetch(`${getBaseUrl()}/api/webhooks/whatsapp/test-org-wa`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-hub-signature-256": sig,
+    const res = await fetch(
+      `${getBaseUrl()}/api/webhooks/whatsapp/test-org-wa`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-hub-signature-256": sig,
+        },
+        body: bodyJson,
       },
-      body: bodyJson,
-    });
+    );
     // 400 — orgId fails uuid validation; 401 — signature rejected; 500 — verifier threw.
     expect([200, 400, 401, 500]).toContain(res.status);
   });

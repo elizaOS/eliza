@@ -7,7 +7,10 @@
 
 import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getPairingTokenService } from "@/lib/services/pairing-token";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -21,7 +24,9 @@ function isPlausiblePairingToken(token: string): boolean {
 
 app.post("/", async (c) => {
   try {
-    const body = (await c.req.json().catch(() => null)) as { token?: string } | null;
+    const body = (await c.req.json().catch(() => null)) as {
+      token?: string;
+    } | null;
     const token = body?.token;
 
     if (!token) {

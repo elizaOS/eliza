@@ -49,7 +49,11 @@ interface ChatCompletionPayload {
 
 const app = new Hono<AppEnv>();
 
-function jsonError(message: string, status = 400, code = "invalid_request_error") {
+function jsonError(
+  message: string,
+  status = 400,
+  code = "invalid_request_error",
+) {
   return Response.json(
     {
       error: {
@@ -66,7 +70,9 @@ function extractPartText(part: ResponseInputPart): string {
   return part.text ?? part.input_text ?? part.output_text ?? "";
 }
 
-function extractContentText(content: string | ResponseInputPart[] | undefined): string {
+function extractContentText(
+  content: string | ResponseInputPart[] | undefined,
+): string {
   if (typeof content === "string") {
     return content.trim();
   }
@@ -113,13 +119,19 @@ function toChatMessages(body: ResponsesRequest) {
   return messages;
 }
 
-function mapChatCompletionToResponse(payload: ChatCompletionPayload, requestedModel: string) {
+function mapChatCompletionToResponse(
+  payload: ChatCompletionPayload,
+  requestedModel: string,
+) {
   const text = payload.choices?.[0]?.message?.content?.trim() ?? "";
-  const responseId = payload.id?.startsWith("resp_") ? payload.id : `resp_${crypto.randomUUID()}`;
+  const responseId = payload.id?.startsWith("resp_")
+    ? payload.id
+    : `resp_${crypto.randomUUID()}`;
   const createdAt = Math.floor(Date.now() / 1000);
   const promptTokens = payload.usage?.prompt_tokens ?? 0;
   const completionTokens = payload.usage?.completion_tokens ?? 0;
-  const totalTokens = payload.usage?.total_tokens ?? promptTokens + completionTokens;
+  const totalTokens =
+    payload.usage?.total_tokens ?? promptTokens + completionTokens;
 
   return {
     id: responseId,
@@ -190,7 +202,10 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     if (user.organization_id) {
-      const rateLimited = await enforceOrgRateLimit(user.organization_id, "completions");
+      const rateLimited = await enforceOrgRateLimit(
+        user.organization_id,
+        "completions",
+      );
       if (rateLimited) return rateLimited;
     }
 
@@ -200,7 +215,11 @@ app.post("/", async (c) => {
     }
 
     if (!body.model?.trim()) {
-      return jsonError("Missing required field: model", 400, "missing_required_parameter");
+      return jsonError(
+        "Missing required field: model",
+        400,
+        "missing_required_parameter",
+      );
     }
 
     if (body.stream === true) {
@@ -211,7 +230,11 @@ app.post("/", async (c) => {
 
     const messages = toChatMessages(body);
     if (messages.length === 0) {
-      return jsonError("Missing required field: input", 400, "missing_required_parameter");
+      return jsonError(
+        "Missing required field: input",
+        400,
+        "missing_required_parameter",
+      );
     }
 
     const chatRequest = buildChatRequest(c.req.raw, body, messages);

@@ -14,8 +14,14 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { getIpKey, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { createOAuthCallbackBus, type OAuthCallbackBus } from "@/lib/services/oauth-callback-bus";
+import {
+  getIpKey,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  createOAuthCallbackBus,
+  type OAuthCallbackBus,
+} from "@/lib/services/oauth-callback-bus";
 import { getOAuthIntentsService } from "@/lib/services/oauth-intents-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
@@ -53,7 +59,9 @@ async function hashState(state: string): Promise<string> {
 function providerFromCallbackUrl(url: string): string | undefined {
   const pathname = new URL(url).pathname.replace(/\/+$/, "");
   const provider = pathname.split("/").pop();
-  return provider && provider !== "callback" ? decodeURIComponent(provider) : undefined;
+  return provider && provider !== "callback"
+    ? decodeURIComponent(provider)
+    : undefined;
 }
 
 const app = new Hono<AppEnv>();
@@ -81,7 +89,11 @@ async function handleCallback(c: AppContext, rawProvider: string | undefined) {
   });
   if (!params.success) {
     return c.json(
-      { success: false, error: "Invalid callback query", details: params.error.issues },
+      {
+        success: false,
+        error: "Invalid callback query",
+        details: params.error.issues,
+      },
       400,
     );
   }
@@ -141,7 +153,9 @@ app.get("/", async (c) => {
   try {
     return await handleCallback(c, providerFromCallbackUrl(c.req.raw.url));
   } catch (error) {
-    logger.error("[OAuthCallback API] Failed to handle GET callback", { error });
+    logger.error("[OAuthCallback API] Failed to handle GET callback", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });
@@ -150,7 +164,9 @@ app.post("/", async (c) => {
   try {
     return await handleCallback(c, providerFromCallbackUrl(c.req.raw.url));
   } catch (error) {
-    logger.error("[OAuthCallback API] Failed to handle POST callback", { error });
+    logger.error("[OAuthCallback API] Failed to handle POST callback", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });

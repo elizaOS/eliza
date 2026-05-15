@@ -11,7 +11,10 @@ import { Hono } from "hono";
 import { secretBallotsRepository } from "@/db/repositories/secret-ballots";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { createSecretBallotsService } from "@/lib/services/secret-ballots";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -26,7 +29,9 @@ app.post("/", async (c) => {
     if (!id) {
       return c.json({ success: false, error: "Missing ballot id" }, 400);
     }
-    const service = createSecretBallotsService({ repository: secretBallotsRepository });
+    const service = createSecretBallotsService({
+      repository: secretBallotsRepository,
+    });
     const ballot = await service.get(id, user.organization_id);
     if (!ballot) {
       return c.json({ success: false, error: "Ballot not found" }, 404);

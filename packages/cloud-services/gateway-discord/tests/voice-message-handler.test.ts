@@ -20,15 +20,22 @@ describe("Voice attachment detection logic", () => {
 
   test("audio content types are detected as voice", () => {
     // isVoiceAttachment checks contentType?.startsWith("audio/") || name?.endsWith(".ogg")
-    const isVoiceAttachment = (att: { contentType?: string | null; name?: string | null }) => {
-      return att.contentType?.startsWith("audio/") || att.name?.endsWith(".ogg");
+    const isVoiceAttachment = (att: {
+      contentType?: string | null;
+      name?: string | null;
+    }) => {
+      return (
+        att.contentType?.startsWith("audio/") || att.name?.endsWith(".ogg")
+      );
     };
 
     expect(isVoiceAttachment({ contentType: "audio/ogg" })).toBe(true);
     expect(isVoiceAttachment({ contentType: "audio/wav" })).toBe(true);
     expect(isVoiceAttachment({ contentType: "audio/mpeg" })).toBe(true);
     expect(isVoiceAttachment({ name: "voice.ogg" })).toBe(true);
-    expect(isVoiceAttachment({ name: "recording.ogg", contentType: null })).toBe(true);
+    expect(
+      isVoiceAttachment({ name: "recording.ogg", contentType: null }),
+    ).toBe(true);
   });
 
   test("non-audio content types are not detected as voice", () => {
@@ -36,7 +43,9 @@ describe("Voice attachment detection logic", () => {
       contentType?: string | null;
       name?: string | null;
     }): boolean => {
-      return !!(att.contentType?.startsWith("audio/") || att.name?.endsWith(".ogg"));
+      return !!(
+        att.contentType?.startsWith("audio/") || att.name?.endsWith(".ogg")
+      );
     };
 
     expect(isVoiceAttachment({ contentType: "image/png" })).toBe(false);
@@ -49,7 +58,8 @@ describe("Voice attachment detection logic", () => {
   test("IsVoiceMessage flag (8192) can be detected", () => {
     const IS_VOICE_MESSAGE = 8192;
 
-    const hasVoiceFlag = (bitfield: number) => (bitfield & IS_VOICE_MESSAGE) !== 0;
+    const hasVoiceFlag = (bitfield: number) =>
+      (bitfield & IS_VOICE_MESSAGE) !== 0;
 
     expect(hasVoiceFlag(8192)).toBe(true);
     expect(hasVoiceFlag(8192 | 1 | 2)).toBe(true); // Combined with other flags
@@ -63,26 +73,33 @@ describe("Filename sanitization", () => {
   test("removes path traversal characters", () => {
     // The actual sanitization regex from voice-message-handler.ts: /[^a-zA-Z0-9._-]/g replaced with "_"
     // Note: dots are preserved in the regex, so "../" becomes ".._" not "___"
-    const sanitizeFilename = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const sanitizeFilename = (name: string) =>
+      name.replace(/[^a-zA-Z0-9._-]/g, "_");
 
     // Path traversal - the dots remain but slashes become underscores
     expect(sanitizeFilename("../../../etc/passwd")).toBe(".._.._.._etc_passwd");
     expect(sanitizeFilename("..\\..\\file.txt")).toBe(".._.._file.txt");
     expect(sanitizeFilename("normal-file.ogg")).toBe("normal-file.ogg");
-    expect(sanitizeFilename("file with spaces.ogg")).toBe("file_with_spaces.ogg");
+    expect(sanitizeFilename("file with spaces.ogg")).toBe(
+      "file_with_spaces.ogg",
+    );
     expect(sanitizeFilename('file<>:"|?*.ogg')).toBe("file_______.ogg");
   });
 
   test("preserves safe characters", () => {
-    const sanitizeFilename = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const sanitizeFilename = (name: string) =>
+      name.replace(/[^a-zA-Z0-9._-]/g, "_");
 
-    expect(sanitizeFilename("my-voice_2024.01.15.ogg")).toBe("my-voice_2024.01.15.ogg");
+    expect(sanitizeFilename("my-voice_2024.01.15.ogg")).toBe(
+      "my-voice_2024.01.15.ogg",
+    );
     expect(sanitizeFilename("Voice123.ogg")).toBe("Voice123.ogg");
     expect(sanitizeFilename("a.b.c.d.ogg")).toBe("a.b.c.d.ogg");
   });
 
   test("path traversal prevention works by sanitizing parent directory references", () => {
-    const sanitizeFilename = (name: string) => name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const sanitizeFilename = (name: string) =>
+      name.replace(/[^a-zA-Z0-9._-]/g, "_");
 
     // Even though dots remain, the path separator is removed
     // This means "../" becomes ".._" which won't traverse directories
@@ -127,7 +144,10 @@ describe("parseIntEnv behavior", () => {
 
   test("parseIntEnv logic validates integers correctly", () => {
     // Replicate parseIntEnv logic
-    const parseIntEnv = (value: string | undefined, defaultValue: number): number => {
+    const parseIntEnv = (
+      value: string | undefined,
+      defaultValue: number,
+    ): number => {
       if (value === undefined) return defaultValue;
       const parsed = parseInt(value, 10);
       if (Number.isNaN(parsed)) {
@@ -140,7 +160,9 @@ describe("parseIntEnv behavior", () => {
     expect(parseIntEnv("7200", 3600)).toBe(7200);
     expect(parseIntEnv("0", 3600)).toBe(0);
     expect(parseIntEnv("-100", 3600)).toBe(-100);
-    expect(() => parseIntEnv("not-a-number", 3600)).toThrow("not a valid integer");
+    expect(() => parseIntEnv("not-a-number", 3600)).toThrow(
+      "not a valid integer",
+    );
     // parseInt("12.5", 10) returns 12 (truncates at decimal)
     expect(parseIntEnv("12.5", 3600)).toBe(12);
   });

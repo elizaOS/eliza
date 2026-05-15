@@ -18,7 +18,8 @@ app.all("*", (c) =>
     {
       success: false,
       error: "not_yet_migrated",
-      reason: "node-only dep: ssh2 (DockerSSHClient via admin-infrastructure snapshot).",
+      reason:
+        "node-only dep: ssh2 (DockerSSHClient via admin-infrastructure snapshot).",
     },
     501,
   ),

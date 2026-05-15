@@ -38,11 +38,13 @@ const TwilioVoicePayloadSchema = z
   })
   .passthrough();
 
-const INITIAL_PROMPT = "Hi, you're connected to Eliza. What would you like to work on?";
+const INITIAL_PROMPT =
+  "Hi, you're connected to Eliza. What would you like to work on?";
 const NOT_CONFIGURED_PROMPT =
   "This phone number is not configured for voice yet. Please check the Eliza Cloud control panel.";
 const NO_SPEECH_PROMPT = "I didn't catch that. Please say that again.";
-const EMPTY_AGENT_REPLY = "I heard you, but I don't have a response yet. Please try again.";
+const EMPTY_AGENT_REPLY =
+  "I heard you, but I don't have a response yet. Please try again.";
 
 function escapeTwiML(value: string): string {
   return value
@@ -98,13 +100,18 @@ app.post("/", async (c) => {
 
   const authToken = (c.env.TWILIO_AUTH_TOKEN as string | undefined)?.trim();
   if (!authToken) {
-    logger.warn("[twilio-voice-inbound] TWILIO_AUTH_TOKEN not configured — refusing call");
+    logger.warn(
+      "[twilio-voice-inbound] TWILIO_AUTH_TOKEN not configured — refusing call",
+    );
     return new Response("Twilio auth token not configured", { status: 503 });
   }
 
   const signature = c.req.header("x-twilio-signature") ?? "";
   const fullUrl = resolveForwardedUrl(c);
-  if (!signature || !(await verifyTwilioSignature(authToken, signature, fullUrl, params))) {
+  if (
+    !signature ||
+    !(await verifyTwilioSignature(authToken, signature, fullUrl, params))
+  ) {
     logger.warn("[twilio-voice-inbound] signature verification failed", {
       url: fullUrl,
     });
@@ -191,7 +198,9 @@ app.post("/", async (c) => {
 
   let reply = EMPTY_AGENT_REPLY;
   try {
-    const { messageRouterService } = await import("@/lib/services/message-router");
+    const { messageRouterService } = await import(
+      "@/lib/services/message-router"
+    );
     const agentResponse = await messageRouterService.processWithAgent(
       phoneNumber.agentId,
       phoneNumber.organizationId,

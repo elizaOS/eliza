@@ -9,7 +9,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   type SensitiveRequestActor,
   sensitiveRequestsService,
@@ -59,7 +62,10 @@ const CreateSensitiveRequestSchema = z.object({
   sourceRoomId: z.string().optional(),
   sourceChannelType: z.string().optional(),
   sourcePlatform: z.string().optional(),
-  target: z.discriminatedUnion("kind", [SecretTargetSchema, PrivateInfoTargetSchema]),
+  target: z.discriminatedUnion("kind", [
+    SecretTargetSchema,
+    PrivateInfoTargetSchema,
+  ]),
   policy: z.record(z.string(), z.unknown()).optional(),
   delivery: z.record(z.string(), z.unknown()).optional(),
   callback: z.record(z.string(), z.unknown()).optional(),
@@ -94,7 +100,11 @@ app.post("/", async (c) => {
     const parsed = CreateSensitiveRequestSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }

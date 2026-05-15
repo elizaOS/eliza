@@ -7,7 +7,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { ERRORS, redeemSignupCode } from "@/lib/services/signup-code";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -38,15 +41,26 @@ app.post("/", async (c) => {
     try {
       body = await c.req.json();
     } catch {
-      return c.json({ error: "Invalid JSON in request body" }, 400, NO_CACHE_HEADERS);
+      return c.json(
+        { error: "Invalid JSON in request body" },
+        400,
+        NO_CACHE_HEADERS,
+      );
     }
 
     const result = bodySchema.safeParse(body);
     if (!result.success) {
-      return c.json({ error: "code is required in request body" }, 400, NO_CACHE_HEADERS);
+      return c.json(
+        { error: "code is required in request body" },
+        400,
+        NO_CACHE_HEADERS,
+      );
     }
 
-    const bonus = await redeemSignupCode(user.organization_id, result.data.code);
+    const bonus = await redeemSignupCode(
+      user.organization_id,
+      result.data.code,
+    );
     return c.json(
       {
         success: true,

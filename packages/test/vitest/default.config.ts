@@ -21,7 +21,7 @@ import { defineConfig } from "vitest/config";
 import {
   coverageSummaryReporters,
   coverageThresholds,
-} from "../../packages/app-core/scripts/coverage-policy.mjs";
+} from "../../app-core/scripts/coverage-policy.mjs";
 import {
   getAppCoreSourceRoot,
   getAutonomousSourceRoot,
