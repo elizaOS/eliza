@@ -41,8 +41,17 @@ Always-on local wake-word detection for the Eliza-1 voice pipeline. Designed to 
 
 | File | Role | Size |
 |------|------|------|
-| `hey-eliza-int8.onnx` | Primary (INT8) | ~1 MB |
+| `hey-eliza-int8.onnx` | Wake-word head (INT8) | ~616 KB |
+| `melspectrogram.onnx` | openWakeWord mel front-end (FP32) | ~1.0 MB |
+| `embedding_model.onnx` | openWakeWord 96-d feature extractor (FP32) | ~1.3 MB |
+| `hey-eliza.provenance.json` | Training provenance (TTS source, dataset sizes, held-out metrics) | — |
 | `manifest.json` | Machine-readable metadata | — |
+
+## Runtime contract
+
+- `melspectrogram.onnx` input: `(B, samples)` float32 audio at 16 kHz.
+- `embedding_model.onnx` input: `(B, 76, 32, 1)` mel chunks (rescaled `x/10 + 2`); output: `(B, T, 96)`.
+- `hey-eliza-int8.onnx` input: `(B, 16, 96)` sliding window of 96-d features; output: scalar `P(wake) ∈ [0, 1]`.
 
 ## License
 

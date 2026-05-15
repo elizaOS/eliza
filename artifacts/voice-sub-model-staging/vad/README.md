@@ -32,10 +32,21 @@ Speech/silence endpoint detection as the first stage of the Eliza-1 voice pipeli
 
 | File | Role | Size |
 |------|------|------|
-| `silero-vad-int8.onnx` | Primary (ONNX INT8) | ~1 MB |
-| `silero-vad-v5.1.2.ggml.bin` | llama.cpp integrated path | ~2 MB |
+| `silero-vad-int8.onnx` | Primary (ONNX INT8) | 639 KB |
+| `silero-vad-v5.1.2.ggml.bin` | llama.cpp integrated path (GGML) | 885 KB |
 | `manifest.json` | Machine-readable metadata | — |
+
+## Usage
+
+```python
+import numpy as np, onnxruntime as ort
+sess = ort.InferenceSession("silero-vad-int8.onnx", providers=["CPUExecutionProvider"])
+audio = np.random.randn(1, 512).astype(np.float32) * 0.1  # 32 ms @ 16 kHz
+state = np.zeros((2, 1, 128), dtype=np.float32)
+prob, new_state = sess.run(None, {"input": audio, "sr": np.array(16000, dtype=np.int64), "state": state})
+# prob[0, 0] is P(speech) in [0, 1]
+```
 
 ## License
 
-MIT.
+MIT. Upstream attribution: [snakers4/silero-vad](https://github.com/snakers4/silero-vad).

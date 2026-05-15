@@ -57,6 +57,25 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+_EN_TRAINING_BLOCK: Final[str] = """- Dataset: `OpenRL/daily_dialog` (Apache-2.0 mirror of DailyDialog).
+- Prefix augmentation: for each utterance ≥ 3 words, emit a randomly
+  truncated prefix (with trailing punctuation stripped) as a negative.
+  Resulting train ratio: ≈ 50/50 EOU/non-EOU on ≈ 170 k examples."""
+
+_INTL_TRAINING_BLOCK: Final[str] = """- Dataset: `OpenAssistant/oasst1` (Apache-2.0), `role=prompter` rows
+  filtered to the 14 LiveKit v0.4.1-intl locales (en, es, fr, de, it,
+  pt, nl, ru, zh, ja, ko, tr, id, hi).
+- Per-language cap (default 6 000 utterances) so the corpus isn't 70%
+  English. CJK scripts (zh, ja, ko) are character-counted instead of
+  whitespace-counted — see `_utterance_unit_count` / `_cjk_prefix_cut`
+  in `packages/training/scripts/turn_detector/finetune_turn_detector.py`.
+- Prefix augmentation: per utterance, emit a randomly truncated prefix
+  (with trailing punctuation — ASCII + fullwidth — stripped) as a
+  negative. Resulting train ratio: ≈ 50/50 EOU/non-EOU.
+- Eval split: language-stratified (≤ 200 rows per language); per-locale
+  F1 lives in `intl/eval.json` under `f1ByLang`."""
+
+
 def _render_model_card(
     *,
     version: str,
@@ -64,6 +83,7 @@ def _render_model_card(
     base_revision: str,
     eval_en: dict[str, Any] | None,
     eval_intl: dict[str, Any] | None,
+    locale: str = "en",
 ) -> str:
     en_block = (
         json.dumps(eval_en, indent=2)
@@ -75,6 +95,41 @@ def _render_model_card(
         if eval_intl is not None
         else "_(not measured for this release)_"
     )
+    if locale == "intl":
+        arch_note = (
+            "The model is a 24-layer Qwen2-0.5B causal LM, ~500M params "
+            "with a shared 151k-token tokenizer covering 14 languages."
+        )
+        training_block = _INTL_TRAINING_BLOCK
+        files_block = (
+            "- `intl/model_q8.onnx` — INT8 dynamic-quantised multilingual ONNX.\n"
+            "- `intl/turn-detector-intl-q8.gguf` — Q8_0 GGUF (when staged).\n"
+            "- `intl/tokenizer.json`, `intl/tokenizer_config.json`, "
+            "`intl/config.json`, `intl/special_tokens_map.json`, "
+            "`intl/vocab.json`, `intl/merges.txt`, `intl/added_tokens.json` "
+            "— inherited from the LiveKit `v0.4.1-intl` base, required by "
+            "the runtime (`@huggingface/transformers` tokenizer loads "
+            "`local_files_only=true`).\n"
+            "- `intl/eval.json` — held-out F1 + mean inference latency "
+            "(language-stratified `f1ByLang` map for the supported locales)."
+        )
+    else:
+        arch_note = (
+            "The model is a 4-layer SmolLM2-135M LLaMA-style causal LM."
+        )
+        training_block = _EN_TRAINING_BLOCK
+        files_block = (
+            "- `onnx/model_q8.onnx` — INT8 dynamic-quantised English ONNX.\n"
+            "- `onnx/turn-detector-en-q8.gguf` — Q8_0 GGUF (when staged).\n"
+            "- `onnx/tokenizer.json`, `onnx/tokenizer_config.json`, "
+            "`onnx/config.json`, `onnx/special_tokens_map.json`, "
+            "`onnx/vocab.json`, `onnx/merges.txt` — inherited from the "
+            "LiveKit base, required by the runtime "
+            "(`@huggingface/transformers` tokenizer loads "
+            "`local_files_only=true`).\n"
+            "- `onnx/eval.json` — held-out F1 + mean inference latency in "
+            "`eval_turn_detector.gate_report` shape."
+        )
     return f"""---
 license: apache-2.0
 library_name: onnx
@@ -91,11 +146,11 @@ base_model: {base_model}
 
 Semantic end-of-utterance (EOU) classifier for the Eliza-1 voice pipeline.
 Fine-tuned from [`{base_model}`](https://huggingface.co/{base_model}) at
-revision `{base_revision}` on DailyDialog (with on-the-fly prefix
-augmentation: every full utterance contributes a positive (EOU=1) and a
-randomly truncated mid-utterance prefix as a negative (EOU=0)).
+revision `{base_revision}` on a prefix-augmented EOU corpus (every full
+utterance contributes a positive (EOU=1) and a randomly truncated
+mid-utterance prefix as a negative (EOU=0)).
 
-The model is a 4-layer SmolLM2-135M LLaMA-style causal LM. The runtime
+{arch_note} The runtime
 (`plugins/plugin-local-inference/src/services/voice/eot-classifier.ts`)
 scores end-of-turn probability as
 `softmax(logits[:, last_real_pos, :])[<|im_end|>]` — same shape as the
@@ -103,16 +158,11 @@ upstream LiveKit ONNX, drop-in compatible.
 
 ## Files
 
-- `onnx/model_q8.onnx` — INT8 dynamic-quantised English ONNX.
-- `onnx/turn-detector-en-q8.gguf` — Q8_0 GGUF (when staged).
-- `onnx/tokenizer.json`, `onnx/tokenizer_config.json`, `onnx/config.json`,
-  `onnx/special_tokens_map.json`, `onnx/vocab.json`, `onnx/merges.txt` —
-  inherited from the LiveKit base, required by the runtime
-  (`@huggingface/transformers` tokenizer loads `local_files_only=true`).
-- `onnx/eval.json` — held-out F1 + mean inference latency in
-  `eval_turn_detector.gate_report` shape.
+{files_block}
 
-Optional multilingual variant (when shipped) lives under `intl/`.
+The other tier lives under the sibling sub-directory (`onnx/` for the
+English `v1.2.2-en` fine-tune, `intl/` for the multilingual `v0.4.1-intl`
+fine-tune).
 
 ## Training
 
@@ -122,10 +172,7 @@ Optional multilingual variant (when shipped) lives under `intl/`.
 - Loss: binary cross-entropy on
   `(im_end_logit - logsumexp(other_logits))` at the last real token
   position. This is the same quantity the runtime softmax-projects.
-- Dataset: `OpenRL/daily_dialog` (Apache-2.0 mirror of DailyDialog).
-- Prefix augmentation: for each utterance ≥ 3 words, emit a randomly
-  truncated prefix (with trailing punctuation stripped) as a negative.
-  Resulting train ratio: ≈ 50/50 EOU/non-EOU on ≈ 170 k examples.
+{training_block}
 
 ## Eval
 
@@ -150,9 +197,9 @@ validator in `plugins/plugin-local-inference/src/services/manifest/schema.ts`):
 ## License
 
 Apache-2.0 on the fine-tune. The base architecture is LiveKit's
-`turn-detector` (CC-BY-NC-4.0 weights at `v1.2.2-en`); we publish only
-our re-trained weights here, not LiveKit's. Downstream commercial use is
-permitted under Apache-2.0.
+`turn-detector` (CC-BY-NC-4.0 weights at `v1.2.2-en` / `v0.4.1-intl`);
+we publish only our re-trained weights here, not LiveKit's. Downstream
+commercial use is permitted under Apache-2.0.
 
 ## Citation
 

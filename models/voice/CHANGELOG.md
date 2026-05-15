@@ -25,6 +25,31 @@ Stable model ids:
 
 ---
 
+## H4 — 2026-05-15 — voice sub-model weights confirmed live on HuggingFace
+
+H4 verified all 10 `elizaos/eliza-1-voice-*` repos have real ONNX/GGUF
+weights pushed. SHA256 values cross-checked against HF LFS metadata.
+`models/voice/manifest.json` updated: turn-detector promoted to v0.2.0
+(DailyDialog fine-tune, F1=0.9811), hfRevision corrected to the v0.2.0 HEAD.
+
+| Repo | HEAD commit | Weights |
+|------|------------|---------|
+| elizaos/eliza-1-voice-asr | c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f | eliza-1-asr-q8_0.gguf (2.0 GB) + mmproj (340 MB) |
+| elizaos/eliza-1-voice-turn | 9eaff4947ebd87b1d811e27dec939e29362a9e42 | onnx/model_q8.onnx (36 MB) + onnx/turn-detector-en-q8.gguf (39 MB) + tokenizer |
+| elizaos/eliza-1-voice-emotion | da50fd9719dd78857829b144d6f72ce3c4e3464a | wav2small-msp-dim-int8.onnx (504 KB) + fp32 variants |
+| elizaos/eliza-1-voice-speaker | f6a2c964e0f36091e995e69b506bd36e1e645289 | wespeaker-resnet34-lm.onnx (25 MB) |
+| elizaos/eliza-1-voice-diarizer | d3c4974d391d45ac9261221a96f2eeb4750aa2cf | pyannote-segmentation-3.0-int8.onnx (1.5 MB) + fp32 (5.7 MB) |
+| elizaos/eliza-1-voice-vad | 9d8f7eefc72fda18b9d8ae6e8d4cc413a939a7a7 | silero-vad-int8.onnx (624 KB) + ggml.bin (864 KB) |
+| elizaos/eliza-1-voice-wakeword | 85bef810f8bb0ca57e8625ec36abe1c617fd3e39 | hey-eliza-int8.onnx (615 KB) + melspectrogram + embedding_model |
+| elizaos/eliza-1-voice-kokoro | 967f7449f79414d2b49db3b2441ea683630c11ab | kokoro-v1.0-q4.onnx (291 MB) + voices/af_bella.bin + voices/af_same.bin |
+| elizaos/eliza-1-voice-omnivoice | b766eb23d5f6c84d580973c0f2013b6fcbd561c0 | omnivoice-base-q4_k_m.gguf (389 MB) + q8_0 (626 MB) + tokenizer + presets/voice-preset-same.bin |
+| elizaos/eliza-1-voice-embedding | acddce031d74deebe1027382feb143df7dd1500e | eliza-1-embedding-q8_0.gguf (609 MB) |
+
+**turn-detector v0.2.0** (H-turn / I1-turn fine-tune): DailyDialog prefix-augmented
+EOU corpus, APOLLO-Mini scaffold, F1=0.9811 (vs 0.84 baseline). +0.1411 F1 delta.
+
+---
+
 ## G4 — 2026-05-15 — HF publish complete (all 10 voice repos live)
 
 G4 pushed all voice sub-model repos to HuggingFace. Each repo at
