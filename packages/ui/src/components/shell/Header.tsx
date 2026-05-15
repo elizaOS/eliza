@@ -89,6 +89,12 @@ interface HeaderProps {
   hideCloudCredits?: boolean;
   tasksEventsPanelOpen?: boolean;
   onToggleTasksPanel?: () => void;
+  /**
+   * When true, the mobile bottom nav bar is hidden. Used on the chat tab to
+   * create a chat-first experience with no nav visible by default — the nav
+   * reappears when the user navigates to any other tab.
+   */
+  hideNav?: boolean;
 }
 
 function shouldShowMacDesktopTitleBar(): boolean {
@@ -108,6 +114,7 @@ export function Header({
   hideCloudCredits = false,
   tasksEventsPanelOpen = false,
   onToggleTasksPanel,
+  hideNav = false,
 }: HeaderProps) {
   const {
     activeGameRunId,
@@ -185,7 +192,10 @@ export function Header({
       return;
     }
 
-    if (isMobileViewport) {
+    // The eliza-mobile-bottom-nav class drives CSS padding offsets for the
+    // bottom nav bar. Hide it on chat (hideNav=true) so the chat view fills
+    // the full viewport with no bottom nav padding.
+    if (isMobileViewport && !hideNav) {
       document.documentElement.classList.add("eliza-mobile-bottom-nav");
     } else {
       document.documentElement.classList.remove("eliza-mobile-bottom-nav");
@@ -194,7 +204,7 @@ export function Header({
     return () => {
       document.documentElement.classList.remove("eliza-mobile-bottom-nav");
     };
-  }, [isMobileViewport]);
+  }, [isMobileViewport, hideNav]);
 
   useEffect(() => {
     if (typeof document === "undefined") {
@@ -476,7 +486,7 @@ export function Header({
     </Button>
   );
 
-  const mobileBottomNav = isMobileViewport ? (
+  const mobileBottomNav = isMobileViewport && !hideNav ? (
     <nav
       className="fixed inset-x-0 bottom-0 z-40 border-t border-border/55 bg-bg/95 pt-1.5 shadow-[0_-1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl"
       style={{
