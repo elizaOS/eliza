@@ -13,15 +13,15 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { dispatchRoute } from "../api/dispatch-route.ts";
+import { dispatchRoute } from "@elizaos/agent";
 import {
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
   statSync,
-} from "./mobile-fs-proxy.ts";
-import { installMobileFsShim } from "./mobile-fs-shim.ts";
+} from "../shared/fs-proxy.ts";
+import { installMobileFsShim } from "../shared/fs-shim.ts";
 
 interface BridgeRequest {
   id?: unknown;
@@ -356,7 +356,7 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
     process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP || "1";
   process.env.LOG_LEVEL = process.env.LOG_LEVEL || "error";
 
-  const { bootElizaRuntime } = await import("../runtime/index.ts");
+  const { bootElizaRuntime } = await import("@elizaos/agent");
 
   const runtime = await bootElizaRuntime();
   installIosNativeLlamaHandlers(runtime);

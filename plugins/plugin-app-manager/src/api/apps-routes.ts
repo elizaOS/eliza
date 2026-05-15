@@ -42,22 +42,22 @@ import {
   parseAppIsolation,
   parseAppPermissions,
 } from "@elizaos/shared";
-import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
+import { isLegacyAppsWorkspaceDiscoveryEnabled } from "@elizaos/agent/config/feature-flags";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
-} from "../services/app-package-modules.ts";
-import { setOverlayAppPresence } from "../services/overlay-app-presence.ts";
+} from "@elizaos/agent/services/app-package-modules";
+import { setOverlayAppPresence } from "@elizaos/agent/services/overlay-app-presence";
 import type {
   InstallProgressLike,
   PluginManagerLike,
   RegistryPluginInfo,
   RegistrySearchResult,
-} from "../services/plugin-manager-types.ts";
+} from "@elizaos/agent/services/plugin-manager-types";
 import {
   scoreEntries,
   toSearchResults,
-} from "../services/registry-client-queries.ts";
+} from "@elizaos/agent/services/registry-client-queries";
 
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
@@ -1104,7 +1104,7 @@ export async function handleAppsRoutes(
         // ~/.eliza/plugins/installed without depending on a plugin-manager
         // service. The runtime plugin resolver already searches that dir.
         const { installPlugin: installPluginDirect } = await import(
-          /* webpackIgnore: true */ "../services/plugin-installer.js"
+          /* webpackIgnore: true */ "@elizaos/agent/services/plugin-installer"
         );
         result = await installPluginDirect(name, recordProgress, version);
       }

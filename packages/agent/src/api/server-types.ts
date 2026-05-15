@@ -16,7 +16,7 @@ import type {
   StreamEventEnvelope,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
-import type { AppManager } from "../services/app-manager.ts";
+import type { AppManager } from "@elizaos/plugin-app-manager";
 import type { SandboxManager } from "../services/sandbox-manager.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 
