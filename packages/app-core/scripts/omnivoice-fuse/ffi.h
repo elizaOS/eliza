@@ -233,8 +233,8 @@ int eliza_inference_cancel_tts(
  *
  * This is the encode-only half of the TTS pipeline that the freeze CLI
  * (`packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs`) uses to
- * persist a sam-locked preset under
- * `<bundle_dir>/cache/voice-preset-sam.bin`. At runtime the
+ * persist a same-locked preset under
+ * `<bundle_dir>/cache/voice-preset-same.bin`. At runtime the
  * synthesis path reads the preset back and feeds the persisted tokens
  * into `params.ref_audio_tokens` — there is no per-utterance encode
  * cost.
