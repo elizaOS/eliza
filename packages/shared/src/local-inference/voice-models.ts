@@ -366,7 +366,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "voice/voice-emotion/wav2small-cls7-int8.onnx",
+        filename: "voice/emotion/wav2small-cls7-int8.onnx",
         sha256:
           "cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953",
         sizeBytes: 524_750,
