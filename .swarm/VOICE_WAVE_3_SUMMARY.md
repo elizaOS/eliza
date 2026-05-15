@@ -83,7 +83,7 @@
 - `ChatVoiceSpeaker` interface in `chat-types.ts`; `resolveChatVoiceSpeakerLabel` in `chat-source.tsx`
 
 ### W3-11 — Fine-tune Pipelines
-- Kokoro samantha fine-tune: REGRESSION — utmos -7.91 vs 26.4 baseline, WER 0.599 vs 0.065. HF push blocked.
+- Kokoro sam fine-tune: REGRESSION — utmos -7.91 vs 26.4 baseline, WER 0.599 vs 0.065. HF push blocked.
 - OmniVoice Path B pipeline (`finetune_omnivoice.py`): MaskGIT LM training objective, eval via `eval_omnivoice.py`
 - Post-mortem: `.swarm/impl/W3-11-kokoro-post-mortem.md`
 
@@ -91,17 +91,17 @@
 - Canonical HF slug corrected: `elizaos/eliza-1` (not `elizalabs/eliza-1`)
 - Fixed in `catalog.ts`, `model_registry.py`, manifest scripts
 - Audit gaps documented: 27b-1m pending H200, vision mmproj (0_8b/2b) missing, voice sub-model repos not yet created
-- `omnivoice-samantha-preset` shipped in Wave 2 I6
+- `omnivoice-sam-preset` shipped in Wave 2 I6
 
 ---
 
 ## Open Items Carried Forward
 
-1. ~~**kokoro-samantha fine-tune**~~ **CLOSED by F2 2026-05-15** — Full retry exhausted: acoustic augmentation (3.5→18 min) + self-distillation synthesis (30 min af_bella) + mel-fit sweep (6 configs) + full-FT on 48-min merged corpus (5000 steps, RTX 5080). No config beats baseline. Best results: mel-fit SpkSim reaches 0.159 but UTMOS collapses to 2.0; full-FT maintains UTMOS 4.45/WER 0.0 but SpkSim barely moves (+0.007). Root cause: self-distillation used af_bella teacher (not samantha), diluting speaker training signal. **Next valid path: OmniVoice samantha preset as distillation teacher.** Authoritative post-mortem: `.swarm/impl/F2-kokoro.md` (supersedes W3-11 post-mortem). **Shipped samantha path remains: OmniVoice frozen-conditioning preset (W3-4 / I6).**
+1. ~~**kokoro-sam fine-tune**~~ **CLOSED by F2 2026-05-15** — Full retry exhausted: acoustic augmentation (3.5→18 min) + self-distillation synthesis (30 min af_bella) + mel-fit sweep (6 configs) + full-FT on 48-min merged corpus (5000 steps, RTX 5080). No config beats baseline. Best results: mel-fit SpkSim reaches 0.159 but UTMOS collapses to 2.0; full-FT maintains UTMOS 4.45/WER 0.0 but SpkSim barely moves (+0.007). Root cause: self-distillation used af_bella teacher (not sam), diluting speaker training signal. **Next valid path: OmniVoice sam preset as distillation teacher.** Authoritative post-mortem: `.swarm/impl/F2-kokoro.md` (supersedes W3-11 post-mortem). **Shipped sam path remains: OmniVoice frozen-conditioning preset (W3-4 / I6).**
 
-2. ~~**HF voice sub-model repos**: `elizaos/eliza-1-voice-{asr,turn,emotion,speaker,vad,wakeword}` not yet created. Weights need per-tier packaging.~~ **DONE (F3 2026-05-14)** — All 10 staging dirs created (`artifacts/voice-sub-model-staging/<id>/`), `hfRepo` slugs canonicalized in `voice-models.ts`, CHANGELOG updated, `bun run voice-models:publish-all` script landed. Actual HF push gated on `HF_TOKEN` (absent in this env). See `.swarm/impl/F3-voice-hf-repos.md`.
+2. ~~**HF voice sub-model repos**: `elizaos/eliza-1-voice-{asr,turn,emotion,speaker,vad,wakeword}` not yet created. Weights need per-tier packaging.~~ **FULLY DONE (G4 2026-05-15)** — All 10 HF repos created (`elizaos/eliza-1-voice-{asr,turn,emotion,speaker,diarizer,vad,wakeword,kokoro,omnivoice,embedding}`) and staging dirs uploaded. Every repo publicly reachable (verified via huggingface_hub API). Prior state: F3 had staged locally (staging dirs + publish script) but actual push was blocked on credentials. G4 completed the push with HF_TOKEN. See `.swarm/impl/G4-hf-finished.md`.
 
-3. ~~**eliza-1-27b-1m**~~ **STAGED 2026-05-15 by F4** — Qwen3.6-27B converted to GGUF with 1M context override via `--override-kv llama.context_length=int:1048576` on Nebius H200. Full quant ladder (Q3_K_M=13 GB, Q4_K_M=16.5 GB primary, Q5_K_M=18 GB, Q6_K=21 GB, Q8_0=27 GB) uploaded to `elizaos/eliza-1/bundles/27b-1m/`. All bundle assets (ASR, TTS, vision mmproj, dflash drafter, VAD, licenses, evals) staged. `catalog.ts` ELIZA_1_TIER_PUBLISH_STATUS updated (pending removed). Status: `weights-staged`, eval gates pending. See `.swarm/impl/F4-27b-1m-plan.md`.
+3. ~~**eliza-1-27b-1m**~~ **TIER RETIRED + HF DELETED (G1+G4 2026-05-15)** — G1 removed 27b-1m from `ELIZA_1_TIER_IDS` in `catalog.ts` (capped at 27b-256k). G4 deleted the `bundles/27b-1m/` subdir from HuggingFace `elizaos/eliza-1` (54 files, commit `824d6f2cc353feccf421dd71bf0c4ac0d12d7a87`). Prior F4 staged a full quant ladder via a context-override approach but that tier is now retired. Active tiers: 0_8b, 2b, 4b, 9b, 27b, 27b-256k.
 
 4. ~~**Vision mmproj gaps**~~ — **CLOSED 2026-05-14 by F5** — `mmproj-0_8b.gguf` (Q4_K_M, 74.7 MB) and `mmproj-2b.gguf` (Q8_0, 361.5 MB) published to `elizaos/eliza-1:bundles/{0_8b,2b}/vision/`. Manifests updated with `files.vision` + `lineage.vision` entries (Apache-2.0, attributed to `unsloth/Qwen3.5-{0.8B,2B}-GGUF`). GGUF headers verified (`general.architecture=clip`, `general.type=mmproj`, all CLIP keys). Frozen-from-upstream (no fine-tune; per training contract §2, projector stays frozen until text backbone moves). See `.swarm/impl/F5-vision-mmproj.md`.
 
