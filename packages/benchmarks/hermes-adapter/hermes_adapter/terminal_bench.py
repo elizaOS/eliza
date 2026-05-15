@@ -272,6 +272,7 @@ class HermesTerminalAgent:
 
                 response = self._client.send_message(text=last_user, context=context)
                 text = response.text or ""
+                session.model_responses.append(text)
 
                 if _signals_complete(text, response.params):
                     self._record_assistant(text, None)
@@ -302,6 +303,14 @@ class HermesTerminalAgent:
                     continue
 
                 self._record_assistant(text, command)
+                session.tool_calls.append(
+                    {
+                        "type": "command",
+                        "name": "terminal.execute",
+                        "params": {"command": command},
+                        "command": command,
+                    }
+                )
                 cmd_result = await self._environment.execute(command)
                 session.commands.append(cmd_result)
                 feedback = (
@@ -324,6 +333,8 @@ class HermesTerminalAgent:
             )
 
         session.end_time = datetime.now()
+        session.final_test_output = test_output
+        session.final_test_exit_code = test_exit_code
         total_execution_time = sum(c.execution_time_ms for c in session.commands)
 
         return TerminalBenchResult(

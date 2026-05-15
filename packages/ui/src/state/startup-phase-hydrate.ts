@@ -393,8 +393,7 @@ export function bindReadyPhase(
         typeof data.viewPath === "string" ? data.viewPath : undefined;
       const viewLabel =
         typeof data.viewLabel === "string" ? data.viewLabel : undefined;
-      const action =
-        typeof data.action === "string" ? data.action : undefined;
+      const action = typeof data.action === "string" ? data.action : undefined;
       window.dispatchEvent(
         new CustomEvent("eliza:navigate:view", {
           detail: { viewId, viewPath, viewLabel, action },

@@ -180,8 +180,10 @@ class ElizaBridgeTerminalAgent:
                         "iteration": iteration,
                     },
                 )
+                response_text = response.text or ""
+                session.model_responses.append(response_text)
 
-                if _signals_complete(response.text or "", response.params):
+                if _signals_complete(response_text, response.params):
                     test_success, test_output, test_exit_code = await self._environment.run_test(
                         task.test_script
                     )
@@ -195,7 +197,7 @@ class ElizaBridgeTerminalAgent:
                     )
                     continue
 
-                command = _extract_command(response.text or "")
+                command = _extract_command(response_text)
                 if not command:
                     command = _command_from_params(response.params)
 
@@ -206,6 +208,14 @@ class ElizaBridgeTerminalAgent:
                     )
                     continue
 
+                session.tool_calls.append(
+                    {
+                        "type": "command",
+                        "name": "terminal.execute",
+                        "params": {"command": command},
+                        "command": command,
+                    }
+                )
                 cmd_result = await self._environment.execute(command)
                 session.commands.append(cmd_result)
                 last_feedback = (
@@ -227,6 +237,8 @@ class ElizaBridgeTerminalAgent:
             )
 
         session.end_time = datetime.now()
+        session.final_test_output = test_output
+        session.final_test_exit_code = test_exit_code
         total_execution_time = sum(c.execution_time_ms for c in session.commands)
 
         return TerminalBenchResult(

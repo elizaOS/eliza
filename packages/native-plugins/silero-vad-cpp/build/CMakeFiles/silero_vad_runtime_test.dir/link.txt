@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/silero_vad_runtime_test.dir/test/silero_vad_runtime_test.c.o -o silero_vad_runtime_test  libsilero_vad.a -lm

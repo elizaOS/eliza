@@ -114,9 +114,10 @@ interface RawPlannerOutput {
 export async function runPlannerLoop(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
+	const plannerContext = normalizePlannerContext(params.context);
 	const config = mergeChainingLoopConfig(params.config);
 	const trajectory: PlannerTrajectory = {
-		context: params.context,
+		context: plannerContext,
 		steps: [],
 		archivedSteps: [],
 		plannedQueue: [],
@@ -487,6 +488,15 @@ export async function runPlannerLoop(
 
 		trajectory.plannedQueue.length = 0;
 	}
+}
+
+function normalizePlannerContext(context: ContextObject): ContextObject {
+	return Array.isArray(context.events)
+		? context
+		: {
+				...context,
+				events: [],
+			};
 }
 
 function renderPlannerModelInput(params: {

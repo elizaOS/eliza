@@ -9,8 +9,8 @@ set(CMAKE_DEPENDS_LANGUAGES
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_resample.c" "CMakeFiles/silero_vad.dir/src/silero_vad_resample.c.o" "gcc" "CMakeFiles/silero_vad.dir/src/silero_vad_resample.c.o.d"
+  "/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_runtime.c" "CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o" "gcc" "CMakeFiles/silero_vad.dir/src/silero_vad_runtime.c.o.d"
   "/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_state.c" "CMakeFiles/silero_vad.dir/src/silero_vad_state.c.o" "gcc" "CMakeFiles/silero_vad.dir/src/silero_vad_state.c.o.d"
-  "/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/src/silero_vad_stub.c" "CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o" "gcc" "CMakeFiles/silero_vad.dir/src/silero_vad_stub.c.o.d"
   )
 
 # Targets to which this target links which contain Fortran sources.

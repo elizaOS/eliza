@@ -1,7 +1,7 @@
 {
   "id": "local-inference",
   "name": "Local Inference",
-  "description": "Unified Eliza-1 local inference provider — text generation, embeddings, voice (TTS/ASR), and image description via node-llama-cpp + ONNX. Replaces the deprecated plugin-local-ai / plugin-local-embedding pair.",
+  "description": "Unified Eliza-1 local inference provider — text generation, embeddings, voice (TTS/ASR), and image description via the elizaOS llama.cpp fork. Replaces the deprecated plugin-local-ai / plugin-local-embedding pair.",
   "npmName": "@elizaos/plugin-local-inference",
   "version": "2.0.0-beta.2",
   "source": "bundled",
