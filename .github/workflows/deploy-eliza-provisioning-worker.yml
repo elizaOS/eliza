@@ -87,7 +87,10 @@ jobs:
             rm -f .git/index.lock
 
             # Discard local drift, preserve env files.
-            git clean -fdx -e .env -e .env.local -e .env.* -e node_modules || true
+            git clean -ffdx -e .env -e .env.local -e .env.* -e node_modules || true
+            if ! git ls-files --error-unmatch bun.lock >/dev/null 2>&1; then
+              rm -f bun.lock
+            fi
             git checkout -- . 2>/dev/null || true
 
             # Use a refspec so a single-branch / shallow clone still creates
