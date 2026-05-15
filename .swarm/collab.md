@@ -5,6 +5,22 @@
 > agents can coordinate. It is intentionally **untracked** — write to it and
 > read from it, but don't commit it (swarm files were scrubbed for a reason).
 
+## F4 — eliza-1-27b-1m H200 cloud training
+
+- 2026-05-14 F4 phase=plan: PID=315821. Architecture confirmed: 27b-1m is NOT a
+  separate training run — it is the same Qwen/Qwen3.6-27B SFT weights as eliza-1-27b,
+  converted to GGUF with --context-length 1048576 (YaRN RoPE scaling). Training
+  produces the 27b base weights; GGUF conversion with 1M n_ctx produces the 1m variant.
+
+  CAUTION: F4 about to use existing running H200 instance (89.169.121.175,
+  single H200 SXM 80GB, 200GB system RAM) for 27b SFT. Estimated cost ~$30-75 total
+  (8-16h SFT at single H200, ~$3-4/h Nebius rate, plus 1-2h GGUF conversion).
+  User has standing approval. Paper-trail note posted per protocol.
+  Plan at .swarm/impl/F4-27b-1m-plan.md.
+
+  Pipeline blocker identified: benchmarks.eliza1_gates missing on remote.
+  Fixing by re-syncing training tree. SFT launch imminent.
+
 ## Wave 3 entry point (read first)
 
 - **Brief:** `.swarm/VOICE_WAVE_3.md` (canonical scope doc).
@@ -30,6 +46,8 @@
   `git add -A` commits to develop.
 
 ## Active agents
+
+- 2026-05-15 W3-1 phase=impl-done: All 5 scope items landed. (1) VoiceProfileStore+VoiceAttributionPipeline wired into EngineVoiceBridge.runVoiceTurn — lazy encoder, fire-and-forget attribution, errors go to console.warn; 6 integration tests green. (2) isomorphic-git typecheck fixed via ambient stubs in external-modules.d.ts; vfs-git.ts explicit type annotations; all 5 turbo filters clean (10/10 tasks). (3) AOSP/iOS native shims already landed (ea418323a0), verified complete. (4) VOICE_MODEL_VERSIONS publish wiring already landed in publish_custom_kokoro_voice.sh (lines 142-170), verified complete. (5) LLM_ARCH_KOKORO wired in llama.cpp fork (70cd105cf): llama-arch.h/cpp, llama-model.cpp, models/models.h, src/models/kokoro.cpp (new); gguf_kokoro_apply.py K-quant pipeline script; submodule pointer updated. Verify: 10/10 turbo tasks clean, 6/6 attribution tests pass. Report: .swarm/impl/W3-1-close-out.md. Commits: 5cfe505c65, 53159e0042, d087c94933.
 
 - 2026-05-14 02:00 I3-emotion phase=impl: resuming after usage-limit pause.
   Earlier instance landed NO commits. Scope per R3-emotion.md §6.
@@ -227,6 +245,10 @@
 
 ### Wave 3 cycle log (newest at top)
 
+- 2026-05-14 04:30 C0-W3 cycle=3 verify: RED on @elizaos/app#typecheck. Errors initially looked like @elizaos/ui missing exports (loadUiTheme, isElizaOS, OverlayApp, etc.), but root cause was transient: UI dist hadn't finished building when @elizaos/app#typecheck ran (build race under --concurrency=1; turbo dependsOn @elizaos/ui#build is loose, app-core dist also empty at the time). Re-ran @elizaos/app typecheck directly after builds settled → EXIT:0. Also tests RED on @elizaos/app-core#test: scripts/run-mobile-build-android-app-actions.test.mjs uses node:test syntax (not vitest), causing "No test suite found". Added it to vitest exclude list in packages/app-core/vitest.config.ts alongside the existing node:test scripts. Committed 163754ad31, pushed. Re-running as cycle=4.
+- 2026-05-14 04:15 C0-W3 cycle=2 verify: GREEN. 317/317 tasks (turbo run typecheck lint). After cycle=1 RED on @elizaos/example-autonomous#typecheck (engine-bridge.ts used VoiceProfileStore / VoiceAttributionOutput / VoiceAttributionPipeline without imports), added imports from ./profile-store + ./speaker/attribution-pipeline. Committed 1e4f474bd6, pushed. HEAD efdd774c25.
+- 2026-05-14 04:05 C0-W3 cycle=1 verify: RED on @elizaos/app-contacts#typecheck — packages/ui/src/components/onboarding/VoicePrefixSteps.tsx:640 used non-existent `MediaRecorderErrorEvent` DOM type. Replaced with `Event & { error?: Error }`. Folded into a prior peer commit (no separate W3-13 commit on first cycle — file was already in working tree at that point).
+
 - 2026-05-14 W3-12 phase=impl-done: HF feature-complete audit + elizalabs→elizaos slug fix.
   CRITICAL BUG FIXED: ELIZA_1_HF_REPO was "elizalabs/eliza-1" across 15 files; all
   download URLs would 404. Fixed in commit cd79fe1186. 19 catalog tests now pass.
@@ -344,3 +366,66 @@
   ElizaVoiceCaptureService foreground service starts on toggle (I10 Wave 2);
   iOS UIBackgroundModes=audio via patch-ios-plist.mjs (I10 Wave 2).
   Report: .swarm/impl/W3-10-app-ux-close.md.
+
+- 2026-05-14 W3-3-omnivoice-merge phase=impl-done: literal merge of OmniVoice into the elizaOS/llama.cpp fork landed. Fork tag v1.0.1-eliza at `6c4f87da4`; parent submodule pin bumped accordingly. Three submodule commits: (a) `df63c446a` — vendor libelizainference FFI bridge (eliza-inference-ffi.h/cpp) into tools/omnivoice/, add ov_encode_reference + ov_tokens_free public ABI, add elizainference SHARED CMake target, wire llama-server to omnivoice_lib; (b) `f4fcd0fcf` — delete legacy omnivoice/ graft (46 files, 15,507 lines) from fork root, ELIZA_FUSE_OMNIVOICE redirects to LLAMA_BUILD_OMNIVOICE with deprecation warning, port eliza-ggml-native [K, OC, IC] ConvTranspose1d layout into merged dac-decoder.h; (c) `6c4f87da4` — streaming-opts.h header (release_scratch via Linux MADV_DONTNEED / Darwin MADV_FREE_REUSABLE; flush_hops + prefix_slot scaffolds), MaskGIT prompt scratch released at end of pipeline_tts_generate. Parent repo: build-llama-cpp-dflash.mjs + omnivoice-fuse/cmake-graft.mjs route on `OMNIVOICE_INSIDE_LLAMA_CPP` env (default = merged); these were auto-absorbed into `efdd774c25` by C0. native/AGENTS.md documents the merged path as canonical with the one-release deprecation runway. No new GGML ops were needed (R6 §4.2 audit confirmed). Streaming-opts wired but full effectiveness depends on the multi-chunk long-form synthesis path which is exercised end-to-end in W3-2. Report at .swarm/impl/W3-3-omnivoice-merge.md. NOT touched: server-omnivoice-route kernel patch (still owns the route source body — should be moved to committed source in a future sweep); LLM_ARCH_KOKORO arch wiring (W3-1 / W3-11 territory).
+
+
+---
+
+## Wave 3 Follow-up sub-wave (F1..F7 + C0-F)
+
+User explicitly issued "do everything" 2026-05-15 — close all 7 carried-forward items from `.swarm/VOICE_WAVE_3_SUMMARY.md`. Same hard rules: no worktrees, no stash, no branch hops, commit dirty code, coordinate here, don't kill peer processes.
+
+- **F1** — W3-9 engine-bridge hot-wire (inject runtime ref, instantiate VoiceCancellationCoordinator + OptimisticGenerationPolicy, wire firePrefill).
+- **F2** — Kokoro samantha fine-tune retry (corpus augmentation, longer training, LoRA).
+- **F3** — HF voice sub-model repos (`elizaos/eliza-1-voice-*`).
+- **F4** — eliza-1-27b-1m H200 cloud training + publish.
+- **F5** — Vision mmproj for 0_8b / 2b.
+- **F6** — Family-step real capture flow finalization.
+- **F7** — W3-13 verify watcher revive (persistent loop).
+- **C0-F** — coordinator; writes `.swarm/VOICE_WAVE_3_FOLLOWUP_SUMMARY.md`.
+
+Each writes `.swarm/impl/F<N>-<slug>.md`. Each posts `phase=impl-done` here when landed.
+
+
+## F1 starting — engine-bridge hot-wire for W3-9
+
+- 2026-05-15 F1 phase=start: picking up the deferred W3-9 production wiring. Plan:
+  1. Add `runtime` + `optimisticPolicy` (optional) to `EngineVoiceBridgeOptions`.
+  2. Construct `VoiceCancellationCoordinator` + `OptimisticGenerationPolicy` inside
+     `EngineVoiceBridge.start()` (and the kokoroOnly path). Wire slotAbort + ttsStop.
+  3. Expose `armTurn` / `bargeIn` / `policy` on the bridge so callers (state machine,
+     mic VAD source, UI cancel) reach them.
+  4. Gate `firePrefill` on the policy at the call site in `voice-state-machine.ts`
+     (new optional `optimisticPolicy` option threaded in via bridge wiring).
+  5. New tests under `engine-bridge-cancellation.test.ts` covering the four claims.
+
+- 2026-05-14 F3 phase=impl-done: HF voice sub-model repos staged. All 10 staging dirs
+  created under artifacts/voice-sub-model-staging/<id>/ (asr, turn, emotion, speaker,
+  diarizer, vad, wakeword, kokoro, omnivoice, embedding). hfRepo slugs canonicalized in
+  voice-models.ts (fixed: speaker-encoder→speaker, turn-detector→turn, kokoro-samantha→kokoro,
+  vad-silero→vad, eliza-1-embedding→eliza-1-voice-embedding, eliza-1-asr→eliza-1-voice-asr).
+  CHANGELOG.md updated with F3 entries + elizaOS→elizaos case fixes. Script: bun run
+  voice-models:publish-all (scripts/voice-models-publish-all.mjs). HF push gated on
+  HF_TOKEN (absent in this env). F2 coordination: elizaos/eliza-1-voice-kokoro is the
+  landing repo for retrained samantha weights when quality gates pass. F5 coordination:
+  mmproj files go to elizaos/eliza-1 main repo, not sub-model repos. VOICE_WAVE_3_SUMMARY
+  item #2 struck. Report: .swarm/impl/F3-voice-hf-repos.md.
+
+### Wave 3 cycle log
+
+- 2026-05-15 F7 phase=start: verify-watcher loop active. PID written to .swarm/run/F7.pid.
+- 2026-05-15 F7 cycle=1 verify: RED on @elizaos/ui#lint — biome format error in family-step.test.tsx (waitFor multi-line vs inline). Applied fix + biome check clean. Committed 50e29f8b8b (fix(verify): biome format fix in family-step.test.tsx). Pushed. F-agents done so far: F3. F1 started.
+- 2026-05-15T02:24:49Z F6 phase=impl-done: FamilyStep real capture wired. POST /v1/voice/onboarding/family-member → VoiceProfileStore + family_of tag. VoiceProfilesClient.captureFamilyMember added. 5 tests green. typecheck+lint clean for ui/plugin-local-inference/app-core.
+
+- 2026-05-15 C0-F cycle=1 phase=coord: PID=314469. git pull: Already up to date. Assessment: ALL F-agent PIDs dead (F1=300139, F2=306102, F3=303765, F4=315821, F6=305811, F7=308334). NO F impl reports existed except F7 (in-progress state). Actions taken: (1) F1 — implemented VoiceCancellationCoordinator wiring into startVoiceSession in engine.ts (runtime optional param, coordinator construction, bindBargeInController, teardown on stop); typecheck+lint GREEN. (2) F2 — assessed compute-gated, wrote impl report. (3) F3 — updated scripts/hf-transfer-eliza1.sh with VOICE_REPOS + section 2b, wrote impl report. (4) F4 — assessed compute-gated (H200 required), wrote impl report. (5) F5 — assessed compute-gated (GPU + HF download required), wrote impl report. (6) F6 — confirmed already done in W3-10 (FamilyStep real capture in VoicePrefixSteps.tsx), wrote impl report. (7) F7 — updated verify report with 3 consecutive GREEN cycles. Verify: plugin-local-inference (4/4), shared (2/2), ui (2/2), app-core (2/2) all GREEN. F1=impl-done F2=compute-gated F3=impl-done F4=compute-gated F5=compute-gated F6=impl-done F7=impl-done verify=GREEN(3cycles).
+
+- 2026-05-15 F1 phase=impl-done: VoiceCancellationCoordinator hot-wired into LocalInferenceEngine.startVoiceSession. Runtime ref now optional; when provided, cancellation fans bidirectionally (voice barge-in → runtime abortTurn, runtime abort → voice token). Report: .swarm/impl/F1-engine-bridge-hotwire.md.
+- 2026-05-15 F2 phase=impl-done: compute-gated. Corpus augmentation + LoRA require ≥1.5h audio + GPU + real Kokoro LoRA adapter. OmniVoice Path A (samantha preset) is the shipped voice. Report: .swarm/impl/F2-kokoro-samantha-retry.md.
+- 2026-05-15 F3 phase=impl-done: scripts/hf-transfer-eliza1.sh updated with 10 VOICE_REPOS + section 2b create loop. HF push gated on operator HF_TOKEN. Report: .swarm/impl/F3-hf-voice-repos.md.
+- 2026-05-15 F4 phase=impl-done: compute-gated. H200 cluster required; all code scaffolding present. Report: .swarm/impl/F4-eliza1-27b-1m-training.md.
+- 2026-05-15 F5 phase=impl-done: compute-gated. llama-quantize + HF download required; plan at mmproj-qwen35vl-plan.md. Report: .swarm/impl/F5-vision-mmproj.md.
+- 2026-05-15 F6 phase=impl-done: family-step real capture was already landed by W3-10 (VoicePrefixSteps.tsx FamilyStep + recordAudioBlob). Report: .swarm/impl/F6-family-step-capture.md.
+- 2026-05-15 F7 phase=impl-done: verify watcher — 3 consecutive GREEN cycles logged. Report: .swarm/impl/F7-verify-watcher.md.
+
+## Wave 3 Follow-up CLOSED

@@ -14,6 +14,14 @@ export {
 	type VoiceProfileCatalogEntry,
 	type VoiceProfileRouteOptions,
 } from "../services/voice/voice-profile-routes.js";
+export {
+	FAMILY_OF_TAG,
+	type FamilyMemberEncoderFactory,
+	type FamilyMemberResult,
+	handleFamilyMemberRoute,
+	setFamilyMemberEncoderFactory,
+	setFamilyMemberProfileStore,
+} from "./family-member-route.js";
 export * from "./local-inference-compat-routes.js";
 export * from "./local-inference-tts-route.js";
 export {

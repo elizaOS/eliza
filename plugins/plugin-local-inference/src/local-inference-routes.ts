@@ -1085,6 +1085,13 @@ export async function handleLocalInferenceRoutes(
 		);
 		if (await handleVoiceOnboardingRoutes(req, res)) return true;
 	}
+	// Family-member capture route lives under /v1/voice/onboarding/family-member.
+	if (pathname === "/v1/voice/onboarding/family-member") {
+		const { handleFamilyMemberRoute } = await import(
+			"./routes/family-member-route.js"
+		);
+		if (await handleFamilyMemberRoute(req, res)) return true;
+	}
 	if (!pathname.startsWith("/api/local-inference/")) return false;
 
 	// Voice-sub-model auto-updater compat namespace

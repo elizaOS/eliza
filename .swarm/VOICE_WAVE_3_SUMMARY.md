@@ -107,7 +107,9 @@
 
 5. **W3-9 engine bridge adoption**: `VoiceCancellationCoordinator` contract + tests shipped but not yet hot-wired into `EngineVoiceBridge.start()` production path (requires runtime-ref refactor). Tracked in W3-9 contract doc.
 
-6. **W3-11 Kokoro HTTP interrupt**: `/v1/audio/speech` synthesis handler is non-streaming; audio-sink drain cuts user-facing audio but GPU wasted. Tracked R11 §5.3.
+6. ~~**Family-step real capture flow** (W3-10 follow-up)~~: CLOSED by F6 — `POST /v1/voice/onboarding/family-member` wired; real `VoiceProfileStore.createProfile` + `family_of` metadata tag; `VoiceProfilesClient.captureFamilyMember`; FamilyStep now calls the new endpoint; 5 integration tests green. See `.swarm/impl/F6-family-step.md`.
+
+7. **W3-11 Kokoro HTTP interrupt**: `/v1/audio/speech` synthesis handler is non-streaming; audio-sink drain cuts user-facing audio but GPU wasted. Tracked R11 §5.3.
 
 ---
 

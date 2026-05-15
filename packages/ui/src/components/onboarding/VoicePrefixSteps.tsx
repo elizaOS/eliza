@@ -696,41 +696,23 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
 
       const audioBase64 = await blobToBase64(blob);
 
-      // POST to /v1/voice/profiles/capture — the I2 endpoint.
-      // Falls back gracefully (404 → stub profile) so the UI isn't blocked
-      // when I2 hasn't landed yet.
-      let profileId: string | null = null;
-      let entityId: string | null = null;
-      try {
-        const sessionId = `family-${Date.now().toString(36)}`;
-        // Start a capture session first via the profiles client.
-        await props.profilesClient.appendOwnerCapture(sessionId, {
-          promptId: "family-intro",
-          audioBase64,
-          durationMs: DURATION_MS,
-        });
-        // Then finalize to get back a profile + entity.
-        const result = await props.profilesClient.finalizeOwnerCapture(
-          sessionId,
-          {
-            displayName: draftName.trim(),
-          },
-        );
-        profileId = result.profileId;
-        entityId = result.entityId;
-      } catch {
-        // Graceful fallback: endpoint not live yet.
-        profileId = `family-stub-${Date.now().toString(36)}`;
-        entityId = null;
-      }
+      // POST to /v1/voice/onboarding/family-member — creates a non-OWNER
+      // entity with a family_of relationship tag bound to the voice profile.
+      // Falls back gracefully (404/503 → stub) so the UI is never blocked.
+      const result = await props.profilesClient.captureFamilyMember({
+        audioBase64,
+        durationMs: DURATION_MS,
+        displayName: draftName.trim(),
+        relationship: draftRelationship.trim() || "family",
+      });
 
       setCaptured((prev) => [
         ...prev,
         {
-          displayName: draftName.trim(),
-          relationship: draftRelationship.trim() || "family",
-          profileId,
-          entityId,
+          displayName: result.displayName,
+          relationship: result.relationship,
+          profileId: result.profileId,
+          entityId: result.entityId,
         },
       ]);
       setDraftName("");
