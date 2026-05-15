@@ -16,7 +16,8 @@ import type {
   WifiStateResult,
 } from "@elizaos/capacitor-wifi";
 import { WiFi } from "@elizaos/capacitor-wifi";
-import { Button, type OverlayAppContext } from "@elizaos/ui";
+import { Button } from "@elizaos/ui";
+import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
 import {
   ChevronLeft,
   Lock,

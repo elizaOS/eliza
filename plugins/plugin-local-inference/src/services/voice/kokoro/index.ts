@@ -52,6 +52,15 @@ export {
 	selectVoiceBackend,
 } from "./runtime-selection";
 export type {
+	KokoroBackendDecision,
+	KokoroBackendId,
+	KokoroBackendInputs,
+} from "./pick-runtime";
+export {
+	pickKokoroRuntimeBackend,
+	readKokoroBackendFromEnv,
+} from "./pick-runtime";
+export type {
 	KokoroBackendOptions,
 	KokoroModelLayout,
 	KokoroPhonemeSequence,

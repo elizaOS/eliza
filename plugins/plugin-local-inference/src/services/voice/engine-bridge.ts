@@ -33,8 +33,8 @@ import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
 	type KokoroEngineDiscoveryResult,
-	KokoroOnnxRuntime,
 	KokoroTtsBackend,
+	pickKokoroRuntimeBackend,
 	type VoiceCancellationReason,
 } from "@elizaos/shared";
 import { localInferenceRoot } from "../paths";
@@ -1073,13 +1073,32 @@ export class EngineVoiceBridge {
 			bytes: new Uint8Array(0),
 		};
 
-		const runtime = new KokoroOnnxRuntime({
-			layout: kokoro.layout,
-			expectedSha256: null,
+		// J2 (2026-05-15): default to the fork-side llama-server path. The
+		// llama-server URL is read from ELIZA_KOKORO_FORK_URL (falling back to
+		// the standard 127.0.0.1:18789 the rest of the runtime uses), and the
+		// model id from ELIZA_KOKORO_FORK_MODEL_ID. Setting KOKORO_BACKEND=onnx
+		// flips back to the legacy ONNX path during the deprecation runway.
+		const forkUrl = process.env.ELIZA_KOKORO_FORK_URL?.trim()
+			|| process.env.ELIZA_GATEWAY_URL?.trim()
+			|| "http://127.0.0.1:18789";
+		const forkModelId = process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
+		const decision = pickKokoroRuntimeBackend({
+			fork: {
+				serverUrl: forkUrl,
+				modelId: forkModelId,
+				sampleRate: kokoro.layout.sampleRate,
+			},
+			onnx: {
+				layout: kokoro.layout,
+				expectedSha256: null,
+			},
 		});
+		logger.info(
+			`[voice/kokoro] runtime backend=${decision.backend} reason="${decision.reason}"`,
+		);
 		const backend = new KokoroTtsBackend({
 			layout: kokoro.layout,
-			runtime,
+			runtime: decision.runtime,
 			defaultVoiceId: kokoro.defaultVoiceId,
 		});
 
