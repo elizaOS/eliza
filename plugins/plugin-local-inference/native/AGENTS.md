@@ -404,6 +404,29 @@ mic / file → ASR → text tokens
   TTS PCM ring buffer MUST drain immediately, the phrase chunker queue
   MUST flush, and any in-flight TTS forward pass MUST be cancelled at
   the next kernel boundary.
+- **Voice cancellation contract (W3-9).** One `VoiceCancellationToken`
+  per voice turn is the canonical handle. It lives in
+  `@elizaos/shared/voice/voice-cancellation-token`, is owned by the
+  `VoiceCancellationCoordinator` in
+  `plugins/plugin-local-inference/src/services/voice/cancellation-coordinator.ts`,
+  and is the sole legitimate way to fan an abort across these four
+  layers:
+  1. The runtime's `TurnControllerRegistry.abortTurn(roomId, reason)`
+     so the planner-loop / action handlers / streaming `useModel`
+     calls see the abort within one tick.
+  2. The LM slot — via the registered `slotAbort(slotId, reason)`
+     callback (today: HTTP-fetch close on the in-flight stream; on a
+     fork that exposes a slot-cancel REST route, the REST call).
+  3. The TTS pipeline — via the registered `ttsStop(reason)` callback
+     (today: `EngineVoiceBridge.triggerBargeIn` → audio-sink drain +
+     FFI/HTTP synthesis cancel).
+  4. Any fetch / model / FFI consumer of `token.signal` (a standard
+     `AbortSignal`).
+  The token is idempotent (first reason wins) and fires every
+  `onAbort` listener synchronously. Optimistic LM start is gated by
+  `OptimisticGenerationPolicy` — default true on plugged-in /
+  unknown, false on battery, with explicit user override.
+  Full contract: `plugins/plugin-local-inference/docs/voice-cancellation-contract.md`.
 - **Speaker preset caching.** The default voice ships as a precomputed
   speaker embedding in `cache/voice-preset-default.bin`. Loading a
   voice MUST NOT re-extract the embedding from raw audio on every
