@@ -12,7 +12,6 @@ import type {
 import {
 	isVisionFallbackOutcome,
 	type LocalVisionOutcome,
-	type LocalVisionResult,
 	normalizeVisionDescription,
 	type VisionFallbackReason,
 	type WrappedImageDescriptionHandler,
