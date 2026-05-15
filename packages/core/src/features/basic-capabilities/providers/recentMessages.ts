@@ -23,6 +23,11 @@ const INTERNAL_BRIDGE_MESSAGE_SOURCES = new Set([
 	"acpx:sub-agent-router",
 	"swarm_synthesis",
 ]);
+const INTERNAL_TOOL_TRANSCRIPT_MARKERS = [
+	"[tool output:",
+	"[/tool output]",
+	"[sub-agent:",
+];
 
 function isInternalBridgeMessage(memory: Memory): boolean {
 	const source =
@@ -36,6 +41,42 @@ function isInternalBridgeMessage(memory: Memory): boolean {
 	return (
 		INTERNAL_BRIDGE_MESSAGE_SOURCES.has(source) || metadata.subAgent === true
 	);
+}
+
+function isLeakedAssistantToolTranscript(
+	memory: Memory,
+	agentId: UUID | undefined,
+): boolean {
+	if (!agentId || memory.entityId !== agentId) return false;
+	const text =
+		typeof memory.content.text === "string" ? memory.content.text : "";
+	return INTERNAL_TOOL_TRANSCRIPT_MARKERS.some((marker) =>
+		text.includes(marker),
+	);
+}
+
+function isLocalPathLine(line: string): boolean {
+	const trimmed = line.trim();
+	return (
+		(trimmed.startsWith("/") && trimmed.includes("/", 1)) ||
+		/^[A-Za-z]:[\\/]/.test(trimmed)
+	);
+}
+
+function isLeakedAssistantPathDump(
+	memory: Memory,
+	agentId: UUID | undefined,
+): boolean {
+	if (!agentId || memory.entityId !== agentId) return false;
+	const text =
+		typeof memory.content.text === "string" ? memory.content.text : "";
+	const lines = text
+		.split(/\r?\n/)
+		.map((line) => line.trim())
+		.filter(Boolean);
+	if (lines.length < 5) return false;
+	const pathLineCount = lines.filter(isLocalPathLine).length;
+	return pathLineCount >= 5 && pathLineCount / lines.length >= 0.6;
 }
 
 function normalizeDialogueText(memory: Memory): string {
@@ -54,6 +95,29 @@ function dedupeConsecutiveDialogueMessages(messages: Memory[]): Memory[] {
 		) {
 			continue;
 		}
+		deduped.push(message);
+	}
+	return deduped;
+}
+
+function dedupeAssistantRunMessages(
+	messages: Memory[],
+	agentId: UUID | undefined,
+): Memory[] {
+	if (!agentId) return messages;
+	const deduped: Memory[] = [];
+	let assistantRunTexts = new Set<string>();
+	for (const message of messages) {
+		if (message.entityId !== agentId) {
+			assistantRunTexts = new Set<string>();
+			deduped.push(message);
+			continue;
+		}
+		const normalized = normalizeDialogueText(message);
+		if (normalized && assistantRunTexts.has(normalized)) {
+			continue;
+		}
+		if (normalized) assistantRunTexts.add(normalized);
 		deduped.push(message);
 	}
 	return deduped;
@@ -267,15 +331,19 @@ export const recentMessagesProvider: Provider = {
 			// `appendPriorDialogueEvents` and `PLATFORM_CHAT_CONTEXT`. Slice to
 			// the runtime-configured conversation length (or the lookback
 			// ceiling) so the formatted text block is always bounded.
-			const dialogueMessages = dedupeConsecutiveDialogueMessages(
-				recentMessagesData.filter(
+			const rawDialogueMessages = recentMessagesData
+				.filter(
 					(msg) =>
 						!(msg.content && msg.content.type === "action_result") &&
-						!isInternalBridgeMessage(msg),
-				),
-			)
-				.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-				.slice(-conversationLength);
+						!isInternalBridgeMessage(msg) &&
+						!isLeakedAssistantToolTranscript(msg, runtime.agentId) &&
+						!isLeakedAssistantPathDump(msg, runtime.agentId),
+				)
+				.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+			const dialogueMessages = dedupeAssistantRunMessages(
+				dedupeConsecutiveDialogueMessages(rawDialogueMessages),
+				runtime.agentId,
+			).slice(-conversationLength);
 
 			// Room entity lookups only include current participants. Historical room
 			// context can still contain messages from senders who left the room or
