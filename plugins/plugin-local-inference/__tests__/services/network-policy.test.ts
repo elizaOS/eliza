@@ -207,6 +207,73 @@ describe("platform probe factories", () => {
 		);
 	});
 
+	it("Capacitor Android probe reads metered=true from the global shim when installed", async () => {
+		// Stub the `@elizaos/capacitor-network-policy` install — the real
+		// plugin populates `globalThis.ElizaNetworkPolicy` on import.
+		const g = globalThis as unknown as {
+			ElizaNetworkPolicy?: {
+				getMeteredHint?: () => Promise<{ metered: boolean }>;
+			};
+		};
+		const prev = g.ElizaNetworkPolicy;
+		g.ElizaNetworkPolicy = {
+			getMeteredHint: async () => ({ metered: true }),
+		};
+		try {
+			const probe = capacitorAndroidProbe();
+			const state = await probe.probe();
+			expect(state.metered).toBe(true);
+		} finally {
+			if (prev === undefined) delete g.ElizaNetworkPolicy;
+			else g.ElizaNetworkPolicy = prev;
+		}
+	});
+
+	it("Capacitor iOS probe reads isExpensive=true from the global shim when installed", async () => {
+		const g = globalThis as unknown as {
+			ElizaNetworkPolicy?: {
+				getPathHints?: () => Promise<{
+					isExpensive: boolean;
+					isConstrained: boolean;
+				}>;
+			};
+		};
+		const prev = g.ElizaNetworkPolicy;
+		g.ElizaNetworkPolicy = {
+			getPathHints: async () => ({ isExpensive: true, isConstrained: false }),
+		};
+		try {
+			const probe = capacitorIosProbe();
+			const state = await probe.probe();
+			expect(state.metered).toBe(true);
+		} finally {
+			if (prev === undefined) delete g.ElizaNetworkPolicy;
+			else g.ElizaNetworkPolicy = prev;
+		}
+	});
+
+	it("Capacitor Android probe falls back to metered=null when the native shim throws", async () => {
+		const g = globalThis as unknown as {
+			ElizaNetworkPolicy?: {
+				getMeteredHint?: () => Promise<{ metered: boolean }>;
+			};
+		};
+		const prev = g.ElizaNetworkPolicy;
+		g.ElizaNetworkPolicy = {
+			getMeteredHint: async () => {
+				throw new Error("simulated native error");
+			},
+		};
+		try {
+			const probe = capacitorAndroidProbe();
+			const state = await probe.probe();
+			expect(state.metered).toBeNull();
+		} finally {
+			if (prev === undefined) delete g.ElizaNetworkPolicy;
+			else g.ElizaNetworkPolicy = prev;
+		}
+	});
+
 	it("electronDesktopProbe returns unknown without bridge", async () => {
 		const probe = electronDesktopProbe();
 		const state = await probe.probe();
