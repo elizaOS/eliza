@@ -419,6 +419,13 @@ const wechatPlugin: Plugin = {
       }
     };
   },
+  async dispose() {
+    if (channel) {
+      await channel.stop();
+      channel = null;
+      console.log("[wechat] Plugin disposed");
+    }
+  },
 };
 
 export default wechatPlugin;

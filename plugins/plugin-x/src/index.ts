@@ -93,6 +93,10 @@ export const XPlugin: Plugin = {
       await materializeEnvAccountIfMissing(runtime);
     }
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<XService>(XService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default XPlugin;

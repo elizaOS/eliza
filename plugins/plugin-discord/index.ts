@@ -6,6 +6,7 @@ import {
 } from "@elizaos/core";
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
+import { DISCORD_SERVICE_NAME } from "./constants";
 import { discordDataRoutes } from "./data-routes";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
@@ -132,6 +133,10 @@ const discordPlugin: Plugin = {
 				"To enable Discord functionality, provide DISCORD_API_TOKEN or DISCORD_BOT_TOKENS in your .env file",
 			);
 		}
+	},
+	async dispose(runtime: IAgentRuntime) {
+		const svc = runtime.getService<DiscordService>(DISCORD_SERVICE_NAME);
+		await svc?.stop();
 	},
 };
 

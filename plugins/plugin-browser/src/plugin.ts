@@ -216,4 +216,8 @@ export const browserPlugin: Plugin = {
       );
     },
   },
+  async dispose(runtime) {
+    const svc = runtime.getService<BrowserService>(BrowserService.serviceType);
+    await svc?.stop();
+  },
 };
