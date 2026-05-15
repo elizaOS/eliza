@@ -199,9 +199,14 @@ describe("generateChatResponse token streaming", () => {
     });
 
     await expect(
-      generateChatResponse(runtime, createChatMessage("timeout"), "Streaming Agent", {
-        timeoutDuration: 10,
-      }),
+      generateChatResponse(
+        runtime,
+        createChatMessage("timeout"),
+        "Streaming Agent",
+        {
+          timeoutDuration: 10,
+        },
+      ),
     ).rejects.toThrow("Chat generation timed out after 10ms");
 
     await abortObserved;

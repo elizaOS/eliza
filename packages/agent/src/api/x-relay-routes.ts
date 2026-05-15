@@ -64,7 +64,7 @@ function getCloudHelpers(): Promise<CloudHelperModule> {
   return cloudHelpersPromise;
 }
 
-function isCloudAuthApiKeyService(
+function _isCloudAuthApiKeyService(
   value: Service | null | undefined,
 ): value is Service & CloudAuthApiKeyService {
   return (
@@ -74,7 +74,9 @@ function isCloudAuthApiKeyService(
   );
 }
 
-function normalizeCloudApiKey(value: string | null | undefined): string | null {
+function _normalizeCloudApiKey(
+  value: string | null | undefined,
+): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return null;
@@ -87,11 +89,8 @@ async function resolveProxyApiKey(
   const cloudAuth = state.runtime
     ? state.runtime.getService("CLOUD_AUTH")
     : null;
-  const {
-    isCloudAuthApiKeyService,
-    normalizeCloudApiKey,
-    resolveCloudApiKey,
-  } = await getCloudHelpers();
+  const { isCloudAuthApiKeyService, normalizeCloudApiKey, resolveCloudApiKey } =
+    await getCloudHelpers();
   const runtimeApiKey =
     isCloudAuthApiKeyService(cloudAuth) && cloudAuth.isAuthenticated() === true
       ? normalizeCloudApiKey(cloudAuth.getApiKey?.())

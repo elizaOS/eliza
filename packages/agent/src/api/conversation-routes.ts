@@ -287,7 +287,8 @@ function createRequestDisconnectAbortTracker({
     registrations.push({ source, event, listener });
   };
 
-  const onClientGone = () => abort(new Error(`${operation} client disconnected`));
+  const onClientGone = () =>
+    abort(new Error(`${operation} client disconnected`));
   const onResponseClose = () => {
     const ended = Boolean(
       (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
@@ -349,8 +350,9 @@ function createConversationStreamDisconnectTracker({
     : null;
 
   const responseEnded = () =>
-    Boolean((res as http.ServerResponse & { writableEnded?: boolean })
-      .writableEnded);
+    Boolean(
+      (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
+    );
 
   const abort = (reason?: unknown) => {
     if (completed || aborted) return;
@@ -1617,7 +1619,7 @@ export async function handleConversationRoutes(
           );
           if (!streamedText && resolvedText) {
             for (const chunk of chunkVisibleTextForSse(resolvedText)) {
-              if (aborted) break;
+              if (disconnectTracker.isAborted()) break;
               streamedText += chunk;
               writeChatTokenSse(res, chunk, streamedText);
               await new Promise((resolve) => setTimeout(resolve, 60));
