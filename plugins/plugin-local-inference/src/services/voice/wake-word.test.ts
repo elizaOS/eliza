@@ -3,19 +3,31 @@
  *
  *   - `OpenWakeWordDetector`: refractory debounce + threshold gating,
  *     driven by a deterministic scripted `WakeWordModel`.
- *   - `OpenWakeWordModel` / `loadBundledWakeWordModel`: a network-gated
- *     test against the real Apache-2.0 openWakeWord ONNX graphs —
- *     downloaded into a temp dir on first run, skipped offline. This is
- *     the only test that touches `onnxruntime-node` here.
+ *   - `resolveWakeWordModel`: returns null when the bundle has no
+ *     `wake/openwakeword.gguf` (optional asset).
+ *   - `GgmlWakeWordModel`: routes through the `eliza_inference_wakeword_*`
+ *     FFI surface, surfaces a structured `runtime-not-ready` error when
+ *     the fused build does not export the wake-word symbols (the only
+ *     supported "no wake-word backend" path — there is no ONNX
+ *     fallback, see AGENTS.md §3, §8).
+ *
+ * The real on-device pipeline is covered by an integration test in the
+ * fused-build's test suite (one that actually mmaps a bundled
+ * `openwakeword.gguf` and runs frames through it). That test cannot run
+ * in this package without the native library, so the unit suite here
+ * mocks `ElizaInferenceFfi` and asserts the bindings drive the FFI as
+ * advertised.
  */
 
-import { mkdtempSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type {
+	ElizaInferenceContextHandle,
+	ElizaInferenceFfi,
+	NativeWakeWordHandle,
+} from "./ffi-bindings";
 import {
+	GgmlWakeWordModel,
 	OpenWakeWordDetector,
-	OpenWakeWordModel,
 	resolveWakeWordModel,
 	type WakeWordModel,
 	WakeWordUnavailableError,
@@ -116,96 +128,132 @@ describe("OpenWakeWordDetector", () => {
 });
 
 describe("resolveWakeWordModel", () => {
-	it("returns null when the bundle has no wake-word graphs (optional asset)", () => {
+	it("returns null when the bundle has no wake-word GGUF (optional asset)", () => {
 		expect(
 			resolveWakeWordModel({ bundleRoot: "/nonexistent/bundle" }),
 		).toBeNull();
 	});
 });
 
-// --- Network-gated real-model test ----------------------------------------
+// --- Native FFI routing ---------------------------------------------------
 
-const OWW_BASE =
-	"https://github.com/dscripka/openWakeWord/releases/download/v0.5.1";
-const OWW_FILES = [
-	["melspectrogram.onnx", "melspectrogram.onnx"],
-	["embedding_model.onnx", "embedding_model.onnx"],
-	// openWakeWord ships several heads; "hey_jarvis" stands in for the
-	// Eliza-1 default ("hey-eliza") in tests — the pipeline is identical.
-	["hey_jarvis_v0.1.onnx", "hey-eliza.onnx"],
-] as const;
-
-async function tryFetchWakeWordGraphs(): Promise<{
-	melspectrogram: string;
-	embedding: string;
-	head: string;
-} | null> {
-	if (process.env.CI && !process.env.ELIZA_WAKEWORD_ALLOW_NETWORK) return null;
-	try {
-		const dir = mkdtempSync(path.join(tmpdir(), "eliza-oww-"));
-		const out: Record<string, string> = {};
-		for (const [remote, local] of OWW_FILES) {
-			const ctrl = new AbortController();
-			const t = setTimeout(() => ctrl.abort(), 12_000);
-			const res = await fetch(`${OWW_BASE}/${remote}`, { signal: ctrl.signal });
-			clearTimeout(t);
-			if (!res.ok) return null;
-			const bytes = new Uint8Array(await res.arrayBuffer());
-			if (bytes.byteLength < 100_000) return null;
-			const p = path.join(dir, local);
-			writeFileSync(p, bytes);
-			out[local] = p;
-		}
-		return {
-			melspectrogram: out["melspectrogram.onnx"],
-			embedding: out["embedding_model.onnx"],
-			head: out["hey-eliza.onnx"],
-		};
-	} catch {
-		return null;
-	}
+/**
+ * Build a minimal `ElizaInferenceFfi` stand-in that exercises the
+ * wake-word path. `supported` flips the capability probe; the other
+ * methods are spies so the test can assert call shape.
+ */
+function makeMockFfi(supported: boolean): ElizaInferenceFfi {
+	const handle: NativeWakeWordHandle = 0xdeadbeefn;
+	const open = vi.fn(() => handle);
+	const score = vi.fn(() => 0.42);
+	const reset = vi.fn(() => undefined);
+	const close = vi.fn(() => undefined);
+	const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
+	return {
+		libraryPath: "/dev/null",
+		libraryAbiVersion: "5",
+		create: () => ctx,
+		destroy: () => {},
+		mmapAcquire: () => {},
+		mmapEvict: () => {},
+		ttsSynthesize: () => 0,
+		asrTranscribe: () => "",
+		ttsStreamSupported: () => false,
+		ttsSynthesizeStream: () => ({ cancelled: false }),
+		cancelTts: () => {},
+		setVerifierCallback: () => ({ close() {} }),
+		asrStreamSupported: () => false,
+		asrStreamOpen: () => 0n,
+		asrStreamFeed: () => {},
+		asrStreamPartial: () => ({ partial: "" }),
+		asrStreamFinish: () => ({ partial: "" }),
+		asrStreamClose: () => {},
+		wakewordSupported: () => supported,
+		wakewordOpen: supported ? open : undefined,
+		wakewordScore: supported ? score : undefined,
+		wakewordReset: supported ? reset : undefined,
+		wakewordClose: supported ? close : undefined,
+		close: () => {},
+	};
 }
 
-const graphsPromise = tryFetchWakeWordGraphs();
+describe("GgmlWakeWordModel", () => {
+	it("throws runtime-not-ready when the FFI does not export wake-word", async () => {
+		const ffi = makeMockFfi(false);
+		const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
+		await expect(
+			GgmlWakeWordModel.load({ ffi, ctx, headName: "hey-eliza" }),
+		).rejects.toMatchObject({
+			name: "WakeWordUnavailableError",
+			code: "runtime-not-ready",
+		});
+	});
 
-describe("OpenWakeWordModel — real ONNX graphs (network-gated)", () => {
-	it("loads, runs 1280-sample frames, and reads near-zero P(wake) on silence", async () => {
-		const graphs = await graphsPromise;
-		if (!graphs) {
-			console.warn(
-				"[wake-word.test] Skipping real openWakeWord ONNX test — graphs not available offline. Set ELIZA_WAKEWORD_ALLOW_NETWORK=1.",
-			);
-			return;
-		}
-		let model: OpenWakeWordModel;
-		try {
-			model = await OpenWakeWordModel.load(graphs);
-		} catch (err) {
-			if (
-				err instanceof WakeWordUnavailableError &&
-				err.code === "ort-missing"
-			) {
-				console.warn(
-					"[wake-word.test] Skipping — onnxruntime-node not installed.",
-				);
-				return;
-			}
-			throw err;
-		}
-		expect(model.frameSamples).toBe(1280);
-		expect(model.sampleRate).toBe(16_000);
-		// ~2 s of silence; the head only re-runs once enough context accumulates.
-		let maxP = 0;
-		for (let i = 0; i < Math.floor((2 * 16_000) / 1280); i++) {
-			const p = await model.scoreFrame(new Float32Array(1280));
-			maxP = Math.max(maxP, p);
-		}
-		expect(maxP).toBeGreaterThanOrEqual(0);
-		expect(maxP).toBeLessThan(0.3);
-		// Reset must not throw and must let the pipeline run again.
+	it("isSupported() reflects the FFI capability probe", () => {
+		expect(GgmlWakeWordModel.isSupported(null)).toBe(false);
+		expect(GgmlWakeWordModel.isSupported(makeMockFfi(false))).toBe(false);
+		expect(GgmlWakeWordModel.isSupported(makeMockFfi(true))).toBe(true);
+	});
+
+	it("routes scoreFrame through the FFI and surfaces the probability", async () => {
+		const ffi = makeMockFfi(true);
+		const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
+		const model = await GgmlWakeWordModel.load({
+			ffi,
+			ctx,
+			headName: "hey-eliza",
+		});
+		const p = await model.scoreFrame(new Float32Array(FRAME));
+		expect(p).toBe(0.42);
+		expect(ffi.wakewordScore).toHaveBeenCalledTimes(1);
+	});
+
+	it("rejects a wrong-length frame", async () => {
+		const ffi = makeMockFfi(true);
+		const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
+		const model = await GgmlWakeWordModel.load({
+			ffi,
+			ctx,
+			headName: "hey-eliza",
+		});
+		await expect(
+			model.scoreFrame(new Float32Array(FRAME - 1)),
+		).rejects.toThrow(/1280/);
+	});
+
+	it("reset() and close() drive the matching FFI symbols", async () => {
+		const ffi = makeMockFfi(true);
+		const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
+		const model = await GgmlWakeWordModel.load({
+			ffi,
+			ctx,
+			headName: "hey-eliza",
+		});
 		model.reset();
-		const p = await model.scoreFrame(new Float32Array(1280));
-		expect(p).toBeGreaterThanOrEqual(0);
-		expect(p).toBeLessThanOrEqual(1);
-	}, 60_000);
+		expect(ffi.wakewordReset).toHaveBeenCalledTimes(1);
+		model.close();
+		expect(ffi.wakewordClose).toHaveBeenCalledTimes(1);
+		// Idempotent — calling close again is a no-op (no extra FFI call).
+		model.close();
+		expect(ffi.wakewordClose).toHaveBeenCalledTimes(1);
+	});
+
+	it("wraps a head-bind failure as WakeWordUnavailableError(model-load-failed)", async () => {
+		const ffi = makeMockFfi(true);
+		(ffi.wakewordOpen as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+			() => {
+				throw new Error("[ffi-bindings] unknown head 'banana'");
+			},
+		);
+		const ctx: ElizaInferenceContextHandle = 0xcafef00dn;
+		await expect(
+			GgmlWakeWordModel.load({ ffi, ctx, headName: "banana" }),
+		).rejects.toMatchObject({
+			name: "WakeWordUnavailableError",
+			code: "model-load-failed",
+		});
+	});
 });
+
+// Suppress unused-import lints when WakeWordUnavailableError isn't directly referenced.
+void WakeWordUnavailableError;

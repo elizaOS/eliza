@@ -297,7 +297,7 @@ function fixtureManifest(tier: Eliza1Tier = "2b"): Eliza1Manifest {
 			vision: [],
 			dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
-			vad: [{ path: "vad/silero-vad-int8.onnx", sha256: SHA }],
+			vad: [{ path: "vad/silero-vad-v5.1.2.ggml.bin", sha256: SHA }],
 		},
 		kernels: {
 			required: [...REQUIRED_KERNELS_BY_TIER[tier]],

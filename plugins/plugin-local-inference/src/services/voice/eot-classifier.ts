@@ -65,7 +65,12 @@ export interface VoiceTurnSignal {
 	/** Whether the agent should begin a response now. */
 	agentShouldSpeak: boolean | null;
 	/** Implementation/source name for telemetry and trace records. */
-	source: "heuristic" | "livekit-turn-detector" | "remote" | "custom";
+	source:
+		| "heuristic"
+		| "livekit-turn-detector"
+		| "eliza-1-drafter"
+		| "remote"
+		| "custom";
 	/** Optional model/version identifier for telemetry. */
 	model?: string;
 	/** Text actually scored after normalization/template truncation. */
@@ -992,3 +997,54 @@ export const EOT_TENTATIVE_SILENCE_MS = 20;
 
 /** How many ms to add to the pause hangover when P < EOT_MID_CLAUSE_THRESHOLD. */
 export const EOT_HANGOVER_EXTENSION_MS = 50;
+
+// ---------------------------------------------------------------------------
+// Eliza-1 drafter EOT classifier
+// ---------------------------------------------------------------------------
+
+import { Eliza1EotScorer } from "./eliza1-eot-scorer";
+import type {
+	Eliza1EotScoreResult,
+	Eliza1EotScorerOptions,
+} from "./eliza1-eot-scorer";
+
+export type { Eliza1EotScorerOptions, Eliza1EotScoreResult };
+
+/**
+ * Eliza-1 EOT classifier. Reuses the already-loaded text model (typically
+ * the eliza-1 drafter — same model DFlash keeps warm for speculative
+ * decoding) to compute P(`<|im_end|>` | partial transcript). Optionally
+ * loads a fine-tuned EOT LoRA adapter on top of the base weights — see
+ * `packages/training/scripts/turn_detector/` for the training recipe.
+ *
+ * Unlike `LiveKitTurnDetector`, this classifier ships zero additional
+ * model weights — it leans on what's already in RAM.
+ */
+export class Eliza1EotClassifier implements EotClassifier {
+	private readonly scorer: Eliza1EotScorer;
+
+	constructor(options: Eliza1EotScorerOptions | { scorer: Eliza1EotScorer }) {
+		this.scorer =
+			"scorer" in options ? options.scorer : new Eliza1EotScorer(options);
+	}
+
+	async score(partialTranscript: string): Promise<number> {
+		const { probability } = await this.scorer.score(partialTranscript);
+		return probability;
+	}
+
+	async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
+		const result = await this.scorer.score(partialTranscript);
+		return turnSignalFromProbability({
+			probability: result.probability,
+			transcript: partialTranscript,
+			source: "eliza-1-drafter",
+			model: this.scorer.modelLabel,
+			latencyMs: result.latencyMs,
+		});
+	}
+
+	async dispose(): Promise<void> {
+		await this.scorer.dispose();
+	}
+}

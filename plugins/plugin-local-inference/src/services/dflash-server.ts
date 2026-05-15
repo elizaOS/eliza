@@ -3467,7 +3467,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		fs.mkdirSync(path.join(localInferenceRoot(), "logs"), { recursive: true });
 		this.stderrTail = [];
 		const child = spawn(status.binaryPath, args, {
-			env: envWithBinaryLibraryPath(status.binaryPath),
+			env: applyUnsupportedKernelEnv(
+				envWithBinaryLibraryPath(status.binaryPath),
+				optimizations ?? null,
+			),
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 		this.child = child;

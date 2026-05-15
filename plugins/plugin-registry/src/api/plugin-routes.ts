@@ -661,7 +661,7 @@ export async function handlePluginRoutes(
   const resolvePluginsSnapshot = async (
     config: ElizaConfig,
   ): Promise<ResolvedPlugin[]> => {
-    const { resolvePlugins } = await import("../runtime/plugin-resolver.ts");
+    const { resolvePlugins } = await import("@elizaos/agent");
     return resolvePlugins(config, { quiet: true });
   };
 
