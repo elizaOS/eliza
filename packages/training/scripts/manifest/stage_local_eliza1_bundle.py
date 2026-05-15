@@ -82,7 +82,15 @@ DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.gguf",
 )
-VISION_TIERS: Final[set[str]] = {"4b"}
+VISION_TIERS: Final[set[str]] = {
+    "0_8b",
+    "2b",
+    "4b",
+    "9b",
+    "27b",
+    "27b-256k",
+    "27b-1m",
+}
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "0_8b": (2500, 3700),

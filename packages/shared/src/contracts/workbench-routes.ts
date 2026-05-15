@@ -140,6 +140,73 @@ export const PostWorkbenchVfsPromoteToCloudRequestSchema = z
     ...(value.branchName ? { branchName: value.branchName.trim() } : {}),
   }));
 
+const WorkbenchVfsGitAuthSchema = z
+  .object({
+    username: z.string().regex(/\S/).optional(),
+    password: z.string().optional(),
+    token: z.string().regex(/\S/).optional(),
+  })
+  .strict();
+
+export const PostWorkbenchVfsGitRequestSchema = z
+  .object({
+    action: z.enum([
+      "init",
+      "clone",
+      "status",
+      "add",
+      "remove",
+      "commit",
+      "log",
+      "branch",
+      "checkout",
+      "fetch",
+      "pull",
+      "push",
+    ]),
+    url: z.string().url().optional(),
+    remote: z.string().regex(/\S/).optional(),
+    branch: z.string().regex(/\S/).optional(),
+    ref: z.string().regex(/\S/).optional(),
+    message: z.string().regex(/\S/).optional(),
+    authorName: z.string().regex(/\S/).optional(),
+    authorEmail: z.string().email().optional(),
+    paths: z.array(z.string().regex(/\S/)).optional(),
+    filepath: z.string().regex(/\S/).optional(),
+    defaultBranch: z.string().regex(/\S/).optional(),
+    singleBranch: z.boolean().optional(),
+    depth: z.number().int().positive().max(1000).optional(),
+    force: z.boolean().optional(),
+    auth: WorkbenchVfsGitAuthSchema.optional(),
+  })
+  .strict()
+  .transform((value) => ({
+    ...value,
+    ...(value.url ? { url: value.url.trim() } : {}),
+    ...(value.remote ? { remote: value.remote.trim() } : {}),
+    ...(value.branch ? { branch: value.branch.trim() } : {}),
+    ...(value.ref ? { ref: value.ref.trim() } : {}),
+    ...(value.message ? { message: value.message.trim() } : {}),
+    ...(value.authorName ? { authorName: value.authorName.trim() } : {}),
+    ...(value.authorEmail ? { authorEmail: value.authorEmail.trim() } : {}),
+    ...(value.filepath ? { filepath: value.filepath.trim() } : {}),
+    ...(value.defaultBranch
+      ? { defaultBranch: value.defaultBranch.trim() }
+      : {}),
+    ...(value.paths ? { paths: value.paths.map((p) => p.trim()) } : {}),
+    ...(value.auth
+      ? {
+          auth: {
+            ...value.auth,
+            ...(value.auth.username
+              ? { username: value.auth.username.trim() }
+              : {}),
+            ...(value.auth.token ? { token: value.auth.token.trim() } : {}),
+          },
+        }
+      : {}),
+  }));
+
 export type PostWorkbenchVfsProjectRequest = z.infer<
   typeof PostWorkbenchVfsProjectRequestSchema
 >;
@@ -160,4 +227,7 @@ export type PostWorkbenchVfsLoadPluginRequest = z.infer<
 >;
 export type PostWorkbenchVfsPromoteToCloudRequest = z.infer<
   typeof PostWorkbenchVfsPromoteToCloudRequestSchema
+>;
+export type PostWorkbenchVfsGitRequest = z.infer<
+  typeof PostWorkbenchVfsGitRequestSchema
 >;

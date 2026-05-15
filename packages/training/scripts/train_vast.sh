@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision a Vast.ai GPU instance, sync the training tree, and run a
 # full-parameter SFT (APOLLO), DPO warmup, or GRPO RL pipeline on a
-# Qwen3.5 model.
+# Qwen3.5/Qwen3.6 model.
 #
 # Pipeline selection (--pipeline sft|dpo|grpo, default sft):
 #   sft   — run train_local.py with APOLLO + Liger + FSDP (the historical
@@ -80,7 +80,7 @@
 #   VAST_OFFER_ID              # skip search and use this offer id directly
 #   QUANTIZE_AFTER             # default: read from REGISTRY_KEY's
 #                                quantization_after tuple via model_registry.py
-#                                (e.g. polarquant,turboquant,qjl,fp8,gguf-q4_k_m).
+#                                (e.g. polarquant,fused_turboquant,qjl,gguf-q4_k_m).
 #                                Each name resolves to
 #                                scripts/quantization/${name}_apply.py.
 #   BENCHMARK_AFTER            # 1 = run native function-calling benchmark (default 1)
@@ -93,6 +93,8 @@
 #   BENCH_MAX_PER_BUCKET       # default: 200 (auto-lowered to 100 for 27B)
 #   FSDP_WORLD_SIZE            # default: matches num_gpus of selected
 #                                VAST_GPU_TARGET (1 for *-1x, 2 for *-2x)
+#   FSDP_WRAP_CLS              # default: Qwen3_5DecoderLayer for Qwen3.5 tiers,
+#                                Qwen3_6DecoderLayer for qwen3.6-27b
 #   CONFIRM_TEARDOWN           # set to 1 to allow `teardown` to actually
 #                                destroy the instance (or pass --yes).
 #   FORCE_REPROVISION          # set to 1 to allow `provision` to spin up
@@ -302,6 +304,12 @@ case "$VAST_GPU_TARGET" in
   *)    FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_FSDP_WORLD_SIZE}" ;;
 esac
 
+case "$REGISTRY_KEY" in
+  qwen3.6-27b) DEFAULT_FSDP_WRAP_CLS="Qwen3_6DecoderLayer" ;;
+  *)           DEFAULT_FSDP_WRAP_CLS="Qwen3_5DecoderLayer" ;;
+esac
+FSDP_WRAP_CLS="${FSDP_WRAP_CLS:-$DEFAULT_FSDP_WRAP_CLS}"
+
 case "$PIPELINE" in
   # Preserve the legacy SFT run-name suffix so existing checkpoint dirs
   # and HF publish targets that hardcode `${REGISTRY_KEY//./-}-apollo`
@@ -322,7 +330,7 @@ VAST_DISK_GB="${VAST_DISK_GB:-2048}"
 # Fallback is the original literal default if the registry import fails (e.g.
 # when running this script outside `uv run`); the literal still references
 # only quants whose apply.py exists.
-DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.model_registry import get; print(','.join(get('${REGISTRY_KEY}').quantization_after))" 2>/dev/null || echo "polarquant,turboquant,qjl,fp8,gguf-q4_k_m")"
+DEFAULT_QUANTIZE_AFTER="$(cd "$ROOT" && uv run python -c "from scripts.training.model_registry import get; print(','.join(get('${REGISTRY_KEY}').quantization_after))" 2>/dev/null || echo "polarquant,fused_turboquant,qjl,gguf-q4_k_m")"
 QUANTIZE_AFTER="${QUANTIZE_AFTER:-${DEFAULT_QUANTIZE_AFTER}}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 
@@ -681,7 +689,7 @@ run_remote() {
       --fsdp_sync_module_states true \\
       --fsdp_use_orig_params true \\
       --fsdp_auto_wrap_policy TRANSFORMER_BASED_WRAP \\
-      --fsdp_transformer_layer_cls_to_wrap Qwen3_5DecoderLayer \\
+      --fsdp_transformer_layer_cls_to_wrap $FSDP_WRAP_CLS \\
       --fsdp_backward_prefetch BACKWARD_PRE \\
       scripts/train_local.py \\
         --registry-key $REGISTRY_KEY \\

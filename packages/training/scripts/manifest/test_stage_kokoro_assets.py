@@ -147,7 +147,7 @@ def test_voice_remote_template_overrides_default_path(tmp_path: Path) -> None:
     """Per-voice HF repos ship the embedding at a different remote path.
 
     Default template is `voices/{voice}.bin` (matches upstream onnx-community).
-    Per-voice repos like `elizaos/eliza-1-voice-kokoro-samantha-v01` ship
+    Per-voice repos like `elizalabs/eliza-1-voice-kokoro-samantha-v01` ship
     `voice.bin` at the repo root — the template lets the caller override it.
     """
     bundle = _write_bundle(tmp_path)

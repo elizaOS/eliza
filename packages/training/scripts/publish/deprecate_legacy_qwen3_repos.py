@@ -131,7 +131,7 @@ SFT corpus covering `structured_decode`, `voice_emotion`, `tool_use`,
 **legacy** — it predates the 2026-05-12 Qwen3.5-only directive.
 
 Going forward, the canonical SFT-corpus repo for the Eliza-1 line is
-[`elizaos/eliza-1-training`](https://huggingface.co/datasets/elizaos/eliza-1-training)
+[`elizalabs/eliza-1-training`](https://huggingface.co/datasets/elizalabs/eliza-1-training)
 (the broader privacy-filtered SFT corpus that the H200 0_8b / 2b runs train
 against). The new Qwen3.5 tier SFTs land in
 [`elizalabs/eliza-1`](https://huggingface.co/elizalabs/eliza-1)

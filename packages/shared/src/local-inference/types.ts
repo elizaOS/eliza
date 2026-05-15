@@ -144,9 +144,14 @@ export interface OpenVinoHardwareProbe {
 }
 
 /**
- * Specialised llama.cpp kernels shipped by the buun-llama-cpp / DFlash fork.
+ * Runtime kernel/capability handles advertised by llama-server
+ * `CAPABILITIES.json`. Most entries are specialised kernels shipped by the
+ * buun-llama-cpp / DFlash fork. `openvino` is the upstream ggml-openvino
+ * backend capability; it selects CPU/GPU/NPU at runtime via
+ * `GGML_OPENVINO_DEVICE` and does not satisfy the Eliza-1 W4-B kernel set.
+ *
  * Models that declare a `requiresKernel` advertise that they only run
- * correctly under llama-server when the matching kernel is present.
+ * correctly under llama-server when the matching capability is present.
  *
  * The set must stay in sync with `inference/AGENTS.md` §3 mandatory
  * optimizations and with `DflashBinaryCapabilities.kernels` below — the
@@ -158,8 +163,8 @@ export interface OpenVinoHardwareProbe {
  * (`@elizaos/app-core/src/services/local-inference/manifest/schema`):
  * `turboquant_q3↔turbo3`, `turboquant_q4↔turbo4`, `qjl↔qjl_full`, with
  * `polarquant` / `dflash` / `turbo3_tcq` shared by name. The translation is
- * codified there by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL` —
- * route any manifest↔runtime kernel conversion through those.
+ * codified there by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`.
+ * `openvino` intentionally has no manifest-level Eliza-1 kernel equivalent.
  */
 export type LocalRuntimeKernel =
   | "dflash"
@@ -167,7 +172,8 @@ export type LocalRuntimeKernel =
   | "turbo4"
   | "turbo3_tcq"
   | "qjl_full"
-  | "polarquant";
+  | "polarquant"
+  | "openvino";
 
 /**
  * llama.cpp optimization knobs that the dispatcher can wire into a

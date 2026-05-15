@@ -1,4 +1,4 @@
-"""Walk the elizalabs/eliza-1 bundle repo and emit a catalog diff for local inference.
+"""Walk the elizaos/eliza-1 bundle repo and emit a catalog diff for local inference.
 
 The local-inference catalog (`packages/app-core/src/services/local-inference/catalog.ts`)
 is the source of truth for which models the phone offers and where it
@@ -23,7 +23,7 @@ schema is intentionally tiny:
       "entries": [
         {
           "id": "eliza-1-2b",
-          "hfRepo": "elizalabs/eliza-1",
+          "hfRepo": "elizaos/eliza-1",
           "hfPathPrefix": "bundles/2b",
           "ggufFile": "text/eliza-1-2b-q4_k_m.gguf",
           "sha256": "<64-hex>",

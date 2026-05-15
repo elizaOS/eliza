@@ -7,7 +7,7 @@ Tests for AST, Execution, and Relevance evaluators.
 import pytest
 
 from benchmarks.bfcl.evaluators import ASTEvaluator, ExecutionEvaluator, RelevanceEvaluator
-from benchmarks.bfcl.types import FunctionCall
+from benchmarks.bfcl.types import FunctionCall, FunctionDefinition, FunctionParameter
 
 
 class TestASTEvaluator:
@@ -100,6 +100,94 @@ class TestASTEvaluator:
         details = evaluator.get_match_details(predicted, expected)
         assert details["overall_match"] is False
         assert "mismatches" in details
+
+    def test_optional_default_can_be_omitted_when_ground_truth_lists_alternatives(
+        self,
+    ) -> None:
+        evaluator = ASTEvaluator()
+        function = FunctionDefinition(
+            name="measure",
+            description="Measure something.",
+            parameters={
+                "value": FunctionParameter(
+                    name="value",
+                    param_type="integer",
+                    description="Primary value.",
+                    required=True,
+                ),
+                "unit": FunctionParameter(
+                    name="unit",
+                    param_type="string",
+                    description="Unit label.",
+                    required=False,
+                    default="kg/m³",
+                ),
+            },
+            required_params=["value"],
+        )
+        predicted = [
+            FunctionCall(name="measure", arguments={"value": 3}),
+        ]
+        expected = [
+            FunctionCall(
+                name="measure",
+                arguments={"value": 3, "unit": ["kg/m³", "kg/m3"]},
+            ),
+        ]
+
+        assert evaluator.evaluate(predicted, expected, function_defs=[function]) is True
+
+    def test_scalar_prediction_matches_any_ground_truth_alternative(self) -> None:
+        evaluator = ASTEvaluator()
+        function = FunctionDefinition(
+            name="schedule",
+            description="Schedule a reminder.",
+            parameters={
+                "day": FunctionParameter(
+                    name="day",
+                    param_type="string",
+                    description="Day of week.",
+                    required=True,
+                ),
+            },
+            required_params=["day"],
+        )
+        predicted = [
+            FunctionCall(name="schedule", arguments={"day": "Monday"}),
+        ]
+        expected = [
+            FunctionCall(name="schedule", arguments={"day": ["Monday", "Mon"]}),
+        ]
+
+        assert evaluator.evaluate(predicted, expected, function_defs=[function]) is True
+        details = evaluator.get_match_details(predicted, expected, function_defs=[function])
+        assert details["overall_match"] is True
+        assert details["mismatches"] == []
+
+    def test_array_arguments_still_require_array_shape(self) -> None:
+        evaluator = ASTEvaluator()
+        function = FunctionDefinition(
+            name="search",
+            description="Search by columns.",
+            parameters={
+                "columns": FunctionParameter(
+                    name="columns",
+                    param_type="string",
+                    description="Columns to include.",
+                    items={"type": "string"},
+                    required=True,
+                ),
+            },
+            required_params=["columns"],
+        )
+        predicted = [
+            FunctionCall(name="search", arguments={"columns": "title"}),
+        ]
+        expected = [
+            FunctionCall(name="search", arguments={"columns": ["title", "body"]}),
+        ]
+
+        assert evaluator.evaluate(predicted, expected, function_defs=[function]) is False
 
 
 class TestExecutionEvaluator:

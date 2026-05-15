@@ -28,7 +28,7 @@ LifeOps.
 | Mac | Shortcuts/deep link/menu-bar voice entry | Opens the app/runtime; LifeOps mutations are persisted as `ScheduledTask` records. |
 | iOS | Siri/App Shortcuts/App Intents | Uses App Intents or app deep links to hand off to the app/runtime. No cross-app UI driving, and no native-only reminder store. |
 | Android consumer | Static shortcuts + App Actions | `shortcuts.xml` and assistant intents open the app custom scheme; LifeOps scheduling happens after runtime routing. |
-| Android AOSP | `ROLE_ASSISTANT` + privileged system app | Assistant role may wake Eliza more directly, but scheduled behavior still goes through the same `ScheduledTask` runner. |
+| Android AOSP | `ROLE_ASSISTANT` + privileged system app | Assistant role may wake Eliza more directly; AOSP-only accessibility/notification-listener services are available, but scheduled behavior still goes through the same `ScheduledTask` runner. |
 
 Android consumer App Actions coverage:
 
@@ -37,12 +37,19 @@ Android consumer App Actions coverage:
 | Ask/chat | `actions.intent.CREATE_MESSAGE`, `actions.intent.GET_THING`, `eliza_app_action_chat` |
 | Voice chat | `actions.intent.OPEN_APP_FEATURE` inline inventory, `eliza_app_action_voice` |
 | LifeOps daily brief | `actions.intent.OPEN_APP_FEATURE` inline inventory, `eliza_app_action_daily_brief` |
-| LifeOps task creation | `actions.intent.CREATE_THING` |
+| LifeOps task creation | `actions.intent.OPEN_APP_FEATURE` inline inventory, `eliza_app_action_new_task` |
 | LifeOps task list | `actions.intent.OPEN_APP_FEATURE` inline inventory, `eliza_app_action_tasks` |
+
+Each Android App Actions capability keeps a fallback fulfillment without a
+required parameter. Feature-specific requests route through
+`eliza://feature/open?...`; vague requests fall back to the chat route so
+the runtime can disambiguate instead of executing native-only behavior.
 
 The Play/Pixel build does not request `ROLE_ASSISTANT`,
 `ACTION_ASSIST`, `VOICE_COMMAND`, or `BIND_VOICE_INTERACTION`; those are
-reserved for AOSP/system validation builds.
+reserved for AOSP/system validation builds. It also avoids unsupported BIIs
+such as `actions.intent.CREATE_THING`; task creation is modeled as opening
+the LifeOps task feature and letting the app/runtime confirm any mutation.
 
 ## External Assistant Landscape
 
@@ -112,6 +119,9 @@ Checked 2026-05-14 against primary vendor docs:
 - [ ] On the system image, confirm `ROLE_ASSISTANT` resolves to Eliza.
 - [ ] Trigger `android.intent.action.ASSIST` and `VOICE_COMMAND`; both should
   reach Eliza's app/runtime.
+- [ ] Confirm `ElizaAccessibilityService` and
+  `ElizaNotificationListenerService` are present only on the AOSP/system APK,
+  not the Play/Pixel cloud APK.
 - [ ] Confirm privileged capture/input capabilities do not change LifeOps
   persistence: reminders/check-ins/follow-ups still use `ScheduledTask`.
 - [ ] Run the AOSP system-app validation in `AOSP_SYSTEM_APP.md`.
@@ -135,6 +145,9 @@ Implemented static/build coverage:
 - Android assistant-role launch uses the same template deep-link scheme as the
   other Android bridge activities, so white-label builds are rewritten
   consistently.
+- Android AOSP system builds declare `ElizaAccessibilityService` and
+  `ElizaNotificationListenerService`; `android-cloud` strips those services,
+  their Java sources, and the accessibility-service XML resource.
 - Assistant launch payloads with captured text are consumed by the chat surface
   and sent through the normal chat/planner path with source metadata. LifeOps
   task/reminder deep links with text route to chat first so `ScheduledTask`
@@ -142,8 +155,8 @@ Implemented static/build coverage:
 
 Still waiting on live device validation:
 
-- macOS shortcut/voice entry has a checklist but no completed device result in
-  this repo.
+- macOS shortcut/voice entry has installer/verifier scripts, but the final Siri
+  phrase creation and spoken-phrase result are still per-device manual checks.
 - iOS Siri/App Shortcuts must still be installed on a physical device and
   tested with the spoken phrases in `ElizaAppShortcuts.swift`.
 - Android consumer App Actions require a Play/Assistant-capable device or test

@@ -17,16 +17,20 @@ Actions and Android shortcuts only:
 
 - `packages/app-core/platforms/android/app/src/main/res/xml/shortcuts.xml`
   declares `actions.intent.OPEN_APP_FEATURE`, `CREATE_MESSAGE`,
-  `CREATE_THING`, and `GET_THING`.
+  and `GET_THING`.
 - `OPEN_APP_FEATURE` is the static feature surface for chat/ask, voice,
-  LifeOps daily brief, and LifeOps tasks.
+  LifeOps daily brief, LifeOps task creation, and LifeOps tasks.
 - `CREATE_MESSAGE` and `GET_THING` route free-form ask/chat text to the
   app's chat deep link.
-- `CREATE_THING` routes task creation to a LifeOps task deep link. The
-  app must still confirm or edit before mutating user state; the BII only
-  opens the task flow.
 - Static shortcuts use source-tagged deep links and are bound to
   `OPEN_APP_FEATURE` inline inventory.
+- Each App Actions capability keeps a fallback fulfillment without a
+  required parameter. The build validator rejects regressions because
+  Assistant may invoke vague feature/search/message requests.
+Unsupported BIIs such as `actions.intent.CREATE_THING` are intentionally
+not declared; LifeOps task creation is a feature-open flow and any
+mutation must still go through runtime confirmation and the ScheduledTask
+path.
 
 Mapping by flow:
 
@@ -35,7 +39,7 @@ Mapping by flow:
 | Ask/chat | `CREATE_MESSAGE`, `GET_THING`, `eliza_app_action_chat` |
 | Voice chat | `OPEN_APP_FEATURE` inline inventory, `eliza_app_action_voice` |
 | LifeOps daily brief | `OPEN_APP_FEATURE` inline inventory, `eliza_app_action_daily_brief` |
-| Create LifeOps task | `CREATE_THING` |
+| Create LifeOps task | `OPEN_APP_FEATURE` inline inventory, `eliza_app_action_new_task` |
 | View LifeOps tasks | `OPEN_APP_FEATURE` inline inventory, `eliza_app_action_tasks` |
 
 There is no Play-compatible default-assistant handoff for the Pixel build.
@@ -201,10 +205,11 @@ the same account used by the App Actions test tool.
 - [ ] Confirm the launcher activity registers `@xml/shortcuts`:
   `aapt dump xmltree app-release.aab base/manifest/AndroidManifest.xml`.
 - [ ] Confirm `shortcuts.xml` contains `OPEN_APP_FEATURE`,
-  `CREATE_MESSAGE`, `CREATE_THING`, and `GET_THING`.
+  `CREATE_MESSAGE`, and `GET_THING`, with no unsupported
+  `actions.intent.CREATE_THING`.
 - [ ] Confirm generated shortcuts use the app package and URL scheme for
   the current brand; no `ai.elizaos.app`, `app.eliza`, or stale `eliza://`
   value should remain after rewriting.
-- [ ] Trigger chat/ask, voice, daily brief, and tasks from the Assistant
+- [ ] Trigger chat/ask, voice, new task, daily brief, and tasks from the Assistant
   preview. Expected: Eliza opens via a source-tagged deep link and any
   LifeOps mutation goes through the app/runtime `ScheduledTask` path.

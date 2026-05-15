@@ -70,6 +70,7 @@ VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.1.2.ggml.bin",)
 VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
     "vad/silero-vad-int8.onnx",
 )
+VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
 
 COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     tier: (
@@ -79,7 +80,7 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "licenses/LICENSE.vad",
         "licenses/LICENSE.dflash",
         "licenses/LICENSE.eliza-1",
-        *(("licenses/LICENSE.vision",) if tier in {"4b", "9b", "27b", "27b-256k"} else ()),
+        *(("licenses/LICENSE.vision",) if tier in VISION_TIERS else ()),
     )
     for tier in ELIZA_1_TIERS
 }
@@ -193,7 +194,7 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
     dflash_files = (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
     vision_files = (
         (f"vision/mmproj-{tier}.gguf",)
-        if tier in {"4b", "9b", "27b", "27b-256k"}
+        if tier in VISION_TIERS
         else ()
     )
     return (
@@ -382,7 +383,7 @@ def release_status_blockers(
                             )
                             if isinstance(repo, str):
                                 repo_error = canonical_qwen_source_repo_error(
-                                    slot, repo
+                                    slot, repo, tier=tier
                                 )
                                 if repo_error is not None:
                                     tier_blockers.append(
@@ -463,10 +464,10 @@ def render_readiness(
         "",
         "Important caveats:",
         "",
-        "- Text, ASR, DFlash, and OmniVoice TTS payloads are GGUF artifacts. "
-        "Kokoro TTS is the default and only required TTS backend for "
-        "0.8B/2B/4B, and is ONNX by design. 9B carries both Kokoro and "
-        "OmniVoice; 27B-class tiers ship OmniVoice GGUF only.",
+        "- Text, ASR, DFlash, vision mmproj, and OmniVoice TTS payloads are "
+        "GGUF artifacts. 0.8B/2B/4B/9B carry OmniVoice first with Kokoro as "
+        "the bundled fallback; Kokoro is ONNX by design. 27B-class tiers ship "
+        "OmniVoice GGUF only.",
         "- VAD is a native GGML artifact at "
         "`vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. "
         "Legacy bundles may additionally carry the ONNX fallback "
@@ -474,7 +475,7 @@ def render_readiness(
         "readiness path.",
         "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
         "Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`), "
-        "and Qwen3.5 27B (`27b`, "
+        "and Qwen3.6 27B (`27b`, "
         "`27b-256k`, `27b-1m`). ASR and embedding are real Qwen3 upstream "
         "exceptions: use the published Qwen3-ASR "
         "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "

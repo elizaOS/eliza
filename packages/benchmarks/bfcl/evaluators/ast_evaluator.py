@@ -147,12 +147,14 @@ class ASTEvaluator:
         # omitted them — BFCL ground truth often pins optional args to their
         # default value, but a model that follows the schema's "optional"
         # semantics by skipping them shouldn't be penalized.
+        fdef = None
         if defs_by_name:
             fdef = defs_by_name.get(predicted.name) or defs_by_name.get(expected.name)
             if fdef is not None:
                 exp_args = self._prune_default_optionals(exp_args, pred_args, fdef)
 
-        return self._arguments_match(pred_args, exp_args)
+        param_defs = getattr(fdef, "parameters", None) if fdef is not None else None
+        return self._arguments_match(pred_args, exp_args, param_defs)
 
     def _prune_default_optionals(
         self,
@@ -171,14 +173,11 @@ class ASTEvaluator:
                 pruned[key] = value
                 continue
             param = params.get(key)
-            default = getattr(param, "default", None) if param is not None else None
-            unwrapped = value
-            if isinstance(value, list) and len(value) == 1:
-                unwrapped = value[0]
-            if default is None and unwrapped not in (None, "", False, 0, []):
+            default = self._schema_default(param)
+            if default is None:
                 pruned[key] = value
                 continue
-            if self._values_match(unwrapped, default):
+            if self._expected_matches_default(value, default, param):
                 continue  # Drop — model was right to skip this optional.
             pruned[key] = value
         return pruned
@@ -187,6 +186,7 @@ class ASTEvaluator:
         self,
         predicted: dict[str, ArgumentValue],
         expected: dict[str, ArgumentValue],
+        param_defs: dict | None = None,
     ) -> bool:
         """Check if argument dictionaries match."""
         pred_keys = set(predicted.keys())
@@ -211,10 +211,89 @@ class ASTEvaluator:
 
         # Compare values for expected keys
         for key in exp_keys:
-            if not self._values_match(predicted.get(key), expected.get(key)):
+            schema = param_defs.get(key) if isinstance(param_defs, dict) else None
+            if not self._value_matches_with_schema(
+                predicted.get(key),
+                expected.get(key),
+                schema,
+            ):
                 return False
 
         return True
+
+    def _value_matches_with_schema(
+        self,
+        predicted: object,
+        expected: object,
+        schema: object | None,
+    ) -> bool:
+        """Match a single value using schema hints when available."""
+        if self._schema_is_array_like(schema):
+            return self._values_match(predicted, expected)
+
+        if self._schema_type(schema) == "object" and isinstance(predicted, dict) and isinstance(expected, dict):
+            return self._arguments_match(
+                predicted,
+                expected,
+                self._schema_properties(schema),
+            )
+
+        if isinstance(expected, list) and not isinstance(predicted, list):
+            return any(self._values_match(predicted, candidate) for candidate in expected)
+
+        if isinstance(predicted, list) and not isinstance(expected, list):
+            if len(predicted) == 1 and self._values_match(predicted[0], expected):
+                return True
+
+        return self._values_match(predicted, expected)
+
+    def _schema_type(self, schema: object | None) -> Optional[str]:
+        if schema is None:
+            return None
+        if isinstance(schema, dict):
+            type_value = schema.get("type")
+            return str(type_value).lower() if isinstance(type_value, str) else None
+        type_value = getattr(schema, "param_type", None)
+        return str(type_value).lower() if isinstance(type_value, str) else None
+
+    def _schema_is_array_like(self, schema: object | None) -> bool:
+        if schema is None:
+            return False
+        if isinstance(schema, dict):
+            if schema.get("items") is not None:
+                return True
+            return self._schema_type(schema) in {"array", "list", "tuple"}
+        return bool(getattr(schema, "items", None)) or self._schema_type(schema) in {"array", "list", "tuple"}
+
+    def _schema_default(self, schema: object | None) -> object:
+        if schema is None:
+            return None
+        if isinstance(schema, dict):
+            return schema.get("default")
+        return getattr(schema, "default", None)
+
+    def _schema_properties(self, schema: object | None) -> dict[str, object] | None:
+        if schema is None:
+            return None
+        if isinstance(schema, dict):
+            props = schema.get("properties")
+            return props if isinstance(props, dict) else None
+        props = getattr(schema, "properties", None)
+        return props if isinstance(props, dict) else None
+
+    def _expected_matches_default(
+        self,
+        expected: object,
+        default: object,
+        schema: object | None,
+    ) -> bool:
+        if expected is None:
+            return default is None
+        if self._schema_is_array_like(schema):
+            return self._values_match(expected, default)
+        if isinstance(expected, list):
+            return any(self._values_match(candidate, default) for candidate in expected)
+        return self._values_match(expected, default)
 
     def _values_match(
         self,
@@ -402,12 +481,14 @@ class ASTEvaluator:
         self,
         predicted: list[FunctionCall],
         expected: list[FunctionCall],
+        function_defs: list | None = None,
     ) -> ResultDetails:
         """Get detailed information about the match/mismatch."""
+        defs_by_name = self._index_function_defs(function_defs)
         details: ResultDetails = {
             "predicted_count": len(predicted),
             "expected_count": len(expected),
-            "overall_match": self.evaluate(predicted, expected),
+            "overall_match": self.evaluate(predicted, expected, function_defs),
         }
 
         if len(predicted) != len(expected):
@@ -416,17 +497,26 @@ class ASTEvaluator:
 
         mismatches: list[str] = []
         for i, (pred, exp) in enumerate(zip(predicted, expected, strict=True)):
-            if not self._calls_match(pred, exp):
+            if not self._calls_match(pred, exp, defs_by_name):
                 if pred.name.lower() != exp.name.lower():
                     mismatches.append(
                         f"Call {i}: name mismatch ('{pred.name}' vs '{exp.name}')"
                     )
                 else:
-                    # Find argument mismatches
-                    for key in set(pred.arguments.keys()) | set(exp.arguments.keys()):
+                    fdef = defs_by_name.get(pred.name) or defs_by_name.get(exp.name)
+                    param_defs = getattr(fdef, "parameters", None) if fdef is not None else None
+                    exp_args = exp.arguments
+                    if fdef is not None:
+                        exp_args = self._prune_default_optionals(
+                            exp.arguments,
+                            pred.arguments,
+                            fdef,
+                        )
+                    for key in set(pred.arguments.keys()) | set(exp_args.keys()):
                         pred_val = pred.arguments.get(key)
-                        exp_val = exp.arguments.get(key)
-                        if not self._values_match(pred_val, exp_val):
+                        exp_val = exp_args.get(key)
+                        schema = param_defs.get(key) if isinstance(param_defs, dict) else None
+                        if not self._value_matches_with_schema(pred_val, exp_val, schema):
                             mismatches.append(
                                 f"Call {i}, arg '{key}': "
                                 f"'{pred_val}' vs '{exp_val}'"

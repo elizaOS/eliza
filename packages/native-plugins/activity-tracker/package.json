@@ -28,6 +28,9 @@
   "dependencies": {
     "@elizaos/core": "workspace:*"
   },
+  "devDependencies": {
+    "typescript": "^6.0.3"
+  },
   "publishConfig": {
     "access": "public"
   },

@@ -469,7 +469,7 @@ function runtimeForTier(
     },
     kvCache: {
       typeK: "qjl1_256",
-      typeV: "q4_polar",
+      typeV: "tbq3_0",
       requiresFork: "buun-llama-cpp",
     },
     dflash: {

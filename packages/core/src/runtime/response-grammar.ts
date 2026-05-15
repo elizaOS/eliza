@@ -18,14 +18,10 @@
  * Source of truth:
  *   `ResponseHandlerFieldRegistry.composeSchema()`
  *   (`./response-handler-field-registry.ts`) is canonical. Production Stage 1
- *   sends that composed schema as the HANDLE_RESPONSE tool's `parameters`, and
- *   when registered field evaluators are supplied here `buildResponseGrammar`
- *   emits the *same* field-registry envelope in priority order — schema, prompt
- *   slices, and GBNF skeleton all derive from one registered set. The legacy
- *   fixed W3 envelope (`STAGE1_ENVELOPE_KEYS` below, mirroring
- *   `HANDLE_RESPONSE_SCHEMA` in `../actions/to-tool.ts`) remains only as a
- *   compatibility fallback for tests or older callers that do not pass field
- *   evaluators. See the `TODO(consolidate)` block on `HANDLE_RESPONSE_SCHEMA`.
+ *   sends that composed schema as the HANDLE_RESPONSE tool's `parameters`.
+ *   `buildResponseGrammar` emits the same field-registry envelope in priority
+ *   order; when a caller omits fields, this module defaults to the builtin
+ *   field evaluator set.
  *
  * Caching: `buildResponseGrammar` is pure given the runtime registries
  * snapshot. The result is byte-stable across turns when the registries haven't
@@ -47,56 +43,7 @@ import type {
 	SpanSamplerOverride,
 	SpanSamplerPlan,
 } from "../types/model.js";
-
-// ---------------------------------------------------------------------------
-// Stage-1 envelope (FALLBACK ONLY): fixed key order matching the legacy W3
-// `HANDLE_RESPONSE_SCHEMA` in `../actions/to-tool.ts`. Used only when no Stage-1
-// field evaluators are registered (tests / older callers). Production always
-// has the builtin evaluators registered, so the field-registry path below wins.
-// ---------------------------------------------------------------------------
-
-/** `shouldRespond` enum values, in the order the model should try them. */
-const SHOULD_RESPOND_VALUES = ["RESPOND", "IGNORE", "STOP"] as const;
-
-/**
- * Channel types that drop the explicit `shouldRespond` flag (DM / API / SELF).
- * Voice is intentionally excluded: turn-taking can be IGNORE when VAD/STT says
- * the user is mid-utterance or the next speaker is not the agent.
- */
-const DIRECT_CHANNEL_TYPES: ReadonlySet<string> = new Set([
-	"DM",
-	"API",
-	"SELF",
-]);
-
-/**
- * Fixed top-level keys of the W3 flat envelope, in emit order. `shouldRespond`
- * is prepended only on the non-direct path.
- */
-const STAGE1_ENVELOPE_KEYS = [
-	"thought",
-	"replyText",
-	"contexts",
-	"contextSlices",
-	"candidateActions",
-	"parentActionHints",
-	"requiresTool",
-	"extract",
-] as const;
-
-/** Which envelope keys are string-valued (free-string spans). */
-const STAGE1_STRING_KEYS: ReadonlySet<string> = new Set([
-	"thought",
-	"replyText",
-]);
-/** Which envelope keys are array-of-string (free-json arrays). */
-const STAGE1_STRING_ARRAY_KEYS: ReadonlySet<string> = new Set([
-	"contextSlices",
-	"candidateActions",
-	"parentActionHints",
-]);
-/** Which envelope keys are boolean (free-json — `true` / `false`). */
-const STAGE1_BOOLEAN_KEYS: ReadonlySet<string> = new Set(["requiresTool"]);
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./builtin-field-evaluators.js";
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -206,7 +153,8 @@ function gbnfJsonStringLiteral(value: string): string {
 
 /** Shared GBNF rule bodies, inlined so the grammar is self-contained. */
 const GBNF_RULE_BODIES: Record<string, string> = {
-	jsonstring: '"\\"" ( [^"\\\\] | "\\\\" . )* "\\""',
+	jsonstring:
+		'"\\"" ( [^"\\\\\\x00-\\x1F] | "\\\\" ( ["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] ) )* "\\""',
 	jsonvalue:
 		'jsonobject | jsonarray | jsonstring | jsonnumber | "true" | "false" | "null"',
 	jsonobject:
@@ -815,15 +763,6 @@ function normalizeContextIds(contexts: ReadonlyArray<string>): string[] {
 }
 
 /**
- * Skeleton span kind for an envelope key's value.
- */
-function spanKindForKey(key: string): ResponseSkeletonSpan["kind"] {
-	if (STAGE1_STRING_KEYS.has(key)) return "free-string";
-	// Arrays / booleans / objects all sample as a free JSON sub-document.
-	return "free-json";
-}
-
-/**
  * Skeleton span kind for a registered field evaluator's value, derived from its
  * declared JSON schema. Typed primitives (`number` / `integer` / `boolean`) are
  * tagged with their own span kinds so the per-span sampler plan can force
@@ -857,25 +796,6 @@ function stringEnumValuesForFieldSchema(schema: JSONSchema): string[] {
 		enumValues.every((v): v is string => typeof v === "string")
 		? enumValues.map(String)
 		: [];
-}
-
-/** GBNF rule reference for an envelope key's value. */
-function gbnfRefForKey(builder: GbnfBuilder, key: string): string {
-	if (STAGE1_STRING_KEYS.has(key)) {
-		builder.useShared("jsonstring");
-		return "jsonstring";
-	}
-	if (STAGE1_STRING_ARRAY_KEYS.has(key)) {
-		builder.useShared("jsonstringarray");
-		return "jsonstringarray";
-	}
-	if (STAGE1_BOOLEAN_KEYS.has(key)) {
-		builder.useShared("jsonbool");
-		return "jsonbool";
-	}
-	// extract — a free JSON object.
-	builder.useShared("jsonvalue");
-	return "jsonvalue";
 }
 
 /** GBNF rule reference for a registered field evaluator's value. */
@@ -925,33 +845,22 @@ function gbnfRefForFieldSchema(
  *
  * The skeleton's spans, in order:
  *   `{` literal
- * Field-registry path:
  *   [one span per registered field evaluator, priority-ordered]
- *
- * Legacy fallback path (only when no fields are supplied):
- *   [non-direct only] `"shouldRespond":` literal → enum span (RESPOND/IGNORE/STOP)
- *   `,"thought":` (or `{"thought":` when direct) literal → free-string span
- *   `,"replyText":` literal → free-string span
- *   `,"contexts":` literal → free-json span (the grammar pins it to an
- *      array-of-enum; the skeleton can't express that, so it is the looser
- *      free-json there — engines that drive the skeleton get a free JSON array)
- *   `,"contextSlices":` literal → free-json span (string array)
- *   `,"candidateActions":` … `,"parentActionHints":` … `,"requiresTool":` …
- *   `,"extract":` literal → free-json span (object)
  *   `}` literal
  *
  * Single-value enums (e.g. a field evaluator whose schema is a one-element
- * string enum) lower to literal spans here — no tokens spent. The
- * `shouldRespond` enum stays an `enum` span (3 values).
+ * string enum) lower to literal spans here — no tokens spent.
  */
 export function buildResponseGrammar(
 	runtime: ResponseGrammarRuntimeView,
 	options: BuildResponseGrammarOptions,
 ): ResponseGrammarResult {
-	const direct =
-		options.channelType !== undefined &&
-		DIRECT_CHANNEL_TYPES.has(options.channelType);
-	const fields = sortFields(runtime.responseHandlerFields ?? []);
+	const suppliedFields = runtime.responseHandlerFields ?? [];
+	const fields = sortFields(
+		suppliedFields.length > 0
+			? suppliedFields
+			: BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+	);
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(
 		new Set(
@@ -965,7 +874,6 @@ export function buildResponseGrammar(
 
 	const cacheKey = [
 		"stage1",
-		direct ? "direct" : "full",
 		hashStringSet(contextIds),
 		hashStringSet(actionNames),
 		fieldSignature,
@@ -977,114 +885,22 @@ export function buildResponseGrammar(
 	const builder = new GbnfBuilder();
 	const rootParts: string[] = [];
 
-	if (fields.length > 0) {
-		const firstField = fields[0];
-		const open = `{"${firstField.name}":`;
-		spans.push({ kind: "literal", value: open });
-		rootParts.push(gbnfLiteral(open));
-
-		for (let i = 0; i < fields.length; i += 1) {
-			const field = fields[i];
-			if (i > 0) {
-				const glue = `,"${field.name}":`;
-				spans.push({ kind: "literal", value: glue });
-				rootParts.push(gbnfLiteral(glue));
-			}
-			if (field.name === "contexts") {
-				spans.push({
-					kind: "free-json",
-					key: "contexts",
-					rule: "contextsarray",
-				});
-				if (contextIds.length === 0) {
-					builder.useShared("jsonstringarray");
-					rootParts.push("jsonstringarray");
-				} else {
-					const enumRule = "contextid";
-					builder.rule(
-						enumRule,
-						contextIds.map((id) => gbnfJsonStringLiteral(id)).join(" | "),
-					);
-					builder.useShared("ws");
-					builder.rule(
-						"contextsarray",
-						`"[" ws ( ${enumRule} ( ws "," ws ${enumRule} )* )? ws "]"`,
-					);
-					rootParts.push("contextsarray");
-				}
-				continue;
-			}
-			const kind = spanKindForFieldSchema(field.schema);
-			if (kind === "literal") {
-				const enumValues = (field.schema as { enum?: unknown[] }).enum ?? [];
-				const value = JSON.stringify(String(enumValues[0] ?? ""));
-				spans.push({ kind: "literal", key: field.name, value });
-				rootParts.push(gbnfLiteral(value));
-			} else if (kind === "enum") {
-				spans.push({
-					kind,
-					key: field.name,
-					enumValues: stringEnumValuesForFieldSchema(field.schema),
-				});
-				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
-			} else {
-				spans.push({ kind, key: field.name });
-				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
-			}
-		}
-		spans.push({ kind: "literal", value: "}" });
-		rootParts.push(gbnfLiteral("}"));
-		builder.root(rootParts);
-		const grammar = builder.build();
-		const skeleton: ResponseSkeleton = { spans, id: cacheKey };
-		const result: ResponseGrammarResult = {
-			responseSkeleton: skeleton,
-			grammar,
-		};
-		stage1Cache.set(cacheKey, result);
-		return result;
+	const firstField = fields[0];
+	if (!firstField) {
+		throw new Error("buildResponseGrammar requires response-handler fields");
 	}
-
-	// Opening brace + first key glue. The first literal is the "trigger" the
-	// engine uses to start a lazy grammar; we make it the JSON open + the first
-	// key so generation only constrains the envelope, not any prose preceding
-	// it (irrelevant for tool-call args, where the whole turn is JSON, but it
-	// keeps the compiled-skeleton path lazy-friendly).
-	const firstKey = direct ? "thought" : "shouldRespond";
-	const open = `{"${firstKey}":`;
+	const open = `{"${firstField.name}":`;
 	spans.push({ kind: "literal", value: open });
 	rootParts.push(gbnfLiteral(open));
 
-	if (!direct) {
-		// shouldRespond enum span.
-		spans.push({
-			kind: "enum",
-			key: "shouldRespond",
-			enumValues: [...SHOULD_RESPOND_VALUES],
-		});
-		const ruleName = "shouldrespond";
-		builder.rule(
-			ruleName,
-			SHOULD_RESPOND_VALUES.map((v) => gbnfJsonStringLiteral(v)).join(" | "),
-		);
-		rootParts.push(ruleName);
-		// Glue to `thought`.
-		spans.push({ kind: "literal", value: ',"thought":' });
-		rootParts.push(gbnfLiteral(',"thought":'));
-	}
-
-	// Walk the fixed envelope keys. The first one (`thought`) already had its
-	// key glue emitted (either as the trailing part of `open` on the direct
-	// path, or right after the shouldRespond enum on the non-direct path).
-	for (let i = 0; i < STAGE1_ENVELOPE_KEYS.length; i += 1) {
-		const key = STAGE1_ENVELOPE_KEYS[i];
+	for (let i = 0; i < fields.length; i += 1) {
+		const field = fields[i];
 		if (i > 0) {
-			const glue = `,"${key}":`;
+			const glue = `,"${field.name}":`;
 			spans.push({ kind: "literal", value: glue });
 			rootParts.push(gbnfLiteral(glue));
 		}
-		if (key === "contexts") {
-			// Skeleton: free-json (an array). Grammar: array of context-id enum.
+		if (field.name === "contexts") {
 			spans.push({ kind: "free-json", key: "contexts", rule: "contextsarray" });
 			if (contextIds.length === 0) {
 				builder.useShared("jsonstringarray");
@@ -1104,18 +920,8 @@ export function buildResponseGrammar(
 			}
 			continue;
 		}
-		spans.push({ kind: spanKindForKey(key), key });
-		rootParts.push(gbnfRefForKey(builder, key));
-	}
-
-	// Registered field evaluators, priority-ordered, appended after `extract`.
-	for (const field of fields) {
-		const glue = `,"${field.name}":`;
-		spans.push({ kind: "literal", value: glue });
-		rootParts.push(gbnfLiteral(glue));
 		const kind = spanKindForFieldSchema(field.schema);
 		if (kind === "literal") {
-			// Single-value string enum → its JSON-quoted form, no tokens.
 			const enumValues = (field.schema as { enum?: unknown[] }).enum ?? [];
 			const value = JSON.stringify(String(enumValues[0] ?? ""));
 			spans.push({ kind: "literal", key: field.name, value });
@@ -1398,9 +1204,9 @@ export function buildPlannerActionGrammar(
  *
  * The returned `responseSkeleton` is intentionally minimal — the grammar
  * carries the entire structural contract, so the engine's prefill plan has
- * nothing useful to inject statically. Cloud adapters still ignore the
- * skeleton + grammar per the W3 contract; `tools` carries the equivalent
- * unforced contract for them.
+ * nothing useful to inject statically. Adapters that do not honor local
+ * skeleton/grammar hints still receive the equivalent portable `tools`
+ * contract.
  *
  * Returns `null` when no actions are exposed.
  */

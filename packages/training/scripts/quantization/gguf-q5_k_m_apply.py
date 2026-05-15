@@ -11,7 +11,7 @@ Wraps llama.cpp's two-stage GGUF conversion:
 
 Output is written to ``<output>/eliza-1-<size>-Q5_K_M.gguf``, matching the
 sibling K-quant levels (``-Q3_K_M``, ``-Q4_K_M``, ``-Q6_K``) so the publish
-layer can upload them under the single ``elizalabs/eliza-1`` bundle repo.
+layer can upload them under the single ``elizaos/eliza-1`` bundle repo.
 
 The converter + binary come from the in-repo llama.cpp fork submodule at
 ``packages/inference/llama.cpp`` — the single canonical llama.cpp checkout

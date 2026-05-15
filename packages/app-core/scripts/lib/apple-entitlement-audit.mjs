@@ -46,14 +46,8 @@ const MAS_JIT_MEMORY_ENTITLEMENTS = new Set([
 ]);
 
 const MACHO_MAGIC = new Set([
-  0xfeedface,
-  0xfeedfacf,
-  0xcefaedfe,
-  0xcffaedfe,
-  0xcafebabe,
-  0xbebafeca,
-  0xcafed00d,
-  0x0dd0feca,
+  0xfeedface, 0xfeedfacf, 0xcefaedfe, 0xcffaedfe, 0xcafebabe, 0xbebafeca,
+  0xcafed00d, 0x0dd0feca,
 ]);
 
 const JIT_NATIVE_SYMBOL_PATTERNS = [
@@ -101,8 +95,11 @@ export function parseEntitlementsPlist(plistXml, label = "entitlements") {
   const body = extractFirstDictBody(plistXml, label);
   const entitlements = {};
   const keyPattern = /<key>([\s\S]*?)<\/key>/g;
-  let keyMatch;
-  while ((keyMatch = keyPattern.exec(body))) {
+  for (
+    let keyMatch = keyPattern.exec(body);
+    keyMatch;
+    keyMatch = keyPattern.exec(body)
+  ) {
     const key = decodeXmlText(keyMatch[1].trim());
     const valueStart = keyPattern.lastIndex;
     const rest = body.slice(valueStart);
@@ -162,7 +159,8 @@ function valueMatchesPolicy(actual, policy) {
   }
   if (typeof policy.stringPattern === "string") {
     return (
-      typeof actual === "string" && new RegExp(policy.stringPattern).test(actual)
+      typeof actual === "string" &&
+      new RegExp(policy.stringPattern).test(actual)
     );
   }
   if (Array.isArray(policy.arrayStringPatterns)) {
@@ -197,7 +195,10 @@ function validateEvidenceEntry({ target, key, evidence, index, root }) {
   if (!evidence || typeof evidence !== "object") {
     return [`${prefix} must be an object`];
   }
-  if (typeof evidence.summary !== "string" || evidence.summary.trim().length < 16) {
+  if (
+    typeof evidence.summary !== "string" ||
+    evidence.summary.trim().length < 16
+  ) {
     errors.push(`${prefix} needs a concrete summary`);
   }
   if (typeof evidence.path !== "string" || evidence.path.trim() === "") {
@@ -222,7 +223,9 @@ function validateEvidenceEntry({ target, key, evidence, index, root }) {
       typeof evidence.contains === "string" &&
       !text.includes(evidence.contains)
     ) {
-      errors.push(`${prefix} path does not contain ${JSON.stringify(evidence.contains)}`);
+      errors.push(
+        `${prefix} path does not contain ${JSON.stringify(evidence.contains)}`,
+      );
     }
     if (
       typeof evidence.regex === "string" &&
@@ -236,7 +239,10 @@ function validateEvidenceEntry({ target, key, evidence, index, root }) {
 
 function validateTargetPolicy(target, { root = appCoreRoot } = {}) {
   const errors = [];
-  if (!target.allowedEntitlements || typeof target.allowedEntitlements !== "object") {
+  if (
+    !target.allowedEntitlements ||
+    typeof target.allowedEntitlements !== "object"
+  ) {
     errors.push(`${target.id}: allowedEntitlements must be an object`);
     return errors;
   }
@@ -267,7 +273,10 @@ function validateTargetPolicy(target, { root = appCoreRoot } = {}) {
       target.distribution === "mac-app-store" &&
       MAS_RUNTIME_EXCEPTION_ENTITLEMENTS.has(key)
     ) {
-      if (!Array.isArray(policy.currentEvidence) || policy.currentEvidence.length === 0) {
+      if (
+        !Array.isArray(policy.currentEvidence) ||
+        policy.currentEvidence.length === 0
+      ) {
         errors.push(
           `${target.id}: ${key} needs currentEvidence tied to files in this checkout`,
         );
@@ -621,7 +630,9 @@ function main() {
       manifest,
       label: "macOS MAS parent entitlements",
     });
-    const scan = scanAppleAppBundleForNativeRuntimeSignals(path.resolve(args.app));
+    const scan = scanAppleAppBundleForNativeRuntimeSignals(
+      path.resolve(args.app),
+    );
     printScanSummary(scan);
     assertMasEntitlementRuntimeEvidence({
       entitlements,
@@ -631,7 +642,10 @@ function main() {
   }
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   try {
     main();
   } catch (error) {

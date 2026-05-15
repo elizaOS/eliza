@@ -8,7 +8,7 @@ the on-device Eliza-1 downloader can consume the bundle.
 
 The orchestrator is **idempotent**: each step writes its sidecar
 artifact (``polarquant_artifacts.safetensors``,
-``qjl_config.json``, ``turboquant.json``, …) and the final GGUF +
+``qjl_config.json``, ``turboquant.json``, ``fused_turboquant.json``, …) and the final GGUF +
 ``eliza1_manifest.json`` declares the full applied stack so phones can
 load the file without re-deriving anything at runtime.
 
@@ -18,7 +18,7 @@ Usage::
     uv run python scripts/optimize_for_eliza1.py \\
         --base-model Qwen/Qwen3.5-0.8B-Base \\
         --output-dir checkpoints/eliza-1-0_8b \\
-        --apply polarquant qjl turboquant \\
+        --apply polarquant qjl turboquant fused_turboquant \\
         --gguf-target packages/inference \\
         --hf-repo elizalabs/eliza-1 \\
         --dry-run
@@ -30,7 +30,7 @@ Usage::
         uv run python scripts/optimize_for_eliza1.py \\
             --base-model Qwen/Qwen3.5-0.8B-Base \\
             --output-dir checkpoints/eliza-1-0_8b \\
-            --apply polarquant qjl turboquant \\
+            --apply polarquant qjl turboquant fused_turboquant \\
             --hf-repo elizalabs/eliza-1
 
 The downstream ``llama-server`` invocation that the published manifest
@@ -82,11 +82,12 @@ log = logging.getLogger("optimize_for_eliza1")
 # emits the int8 codes sidecar — must run first so the saved checkpoint
 # carries the reconstructed fp16 weights and the codes payload that the
 # fork's ``Q4_POLAR`` GGML type packs at convert time. QJL + TurboQuant
-# write JSON sidecars only (``qjl_config.json`` / ``turboquant.json``)
-# and don't mutate weights, so they can run in any order after PolarQuant
-# but must run before GGUF conversion (the sidecars feed the GGUF metadata
-# block describing K and V cache projection geometry).
-APPLY_ORDER = ("polarquant", "qjl", "turboquant")
+# write JSON sidecars only (``qjl_config.json`` / ``turboquant.json`` /
+# ``fused_turboquant.json``) and don't mutate weights, so they can run in any
+# order after PolarQuant but must run before GGUF conversion/release staging
+# (the sidecars feed GGUF metadata and the release bundle's quantization
+# provenance).
+APPLY_ORDER = ("polarquant", "qjl", "turboquant", "fused_turboquant")
 
 
 @dataclass(frozen=True)
@@ -193,7 +194,7 @@ def _run_apply_stage(
         "polarquant": "polarquant_artifacts.safetensors",
         "qjl": "qjl_config.json",
         "turboquant": "turboquant.json",
-        "fused_turboquant": "turboquant.json",
+        "fused_turboquant": "fused_turboquant.json",
     }.get(stage)
 
     # Skip TurboQuant on CPU-only — Triton + the pure-PyTorch path both
@@ -442,6 +443,56 @@ def _stage_dir(stages: list[StageResult], name: str) -> Path | None:
     return None
 
 
+RECIPE_STAGE_OUTPUTS: dict[str, tuple[str, tuple[str, ...]]] = {
+    "polarquant": ("polar", ("polarquant_config.json", "polarquant_artifacts.safetensors")),
+    "qjl": ("qjl", ("qjl_config.json",)),
+    "turboquant": ("turbo", ("turboquant.json",)),
+    "fused_turboquant": ("fused", ("fused_turboquant.json",)),
+}
+
+
+def _materialize_recipe_sidecars(
+    plan: OptimizationPlan,
+    stages: list[StageResult],
+) -> Path | None:
+    """Collate apply-stage sidecars into the release recipe layout.
+
+    ``stage_real_eliza1_bundle.py`` consumes ``--recipes-dir`` with
+    ``turbo/``, ``fused/``, ``qjl/``, and ``polar/`` subdirectories. Keep that
+    shape here so a successful optimizer run can feed release staging directly.
+    """
+
+    recipes_dir = plan.output_dir / "recipes"
+    if plan.dry_run:
+        log.info("(dry-run) would collate recipe sidecars under %s", recipes_dir)
+        return recipes_dir
+
+    copied = 0
+    for stage in stages:
+        if stage.skipped or stage.exit_code != 0:
+            continue
+        spec = RECIPE_STAGE_OUTPUTS.get(stage.name)
+        if spec is None:
+            continue
+        subdir, filenames = spec
+        dest_dir = recipes_dir / subdir
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        for filename in filenames:
+            src = stage.output_dir / filename
+            if not src.exists():
+                if filename == "polarquant_artifacts.safetensors":
+                    continue
+                raise FileNotFoundError(
+                    f"stage {stage.name!r} succeeded but did not emit {src}"
+                )
+            shutil.copy2(src, dest_dir / filename)
+            copied += 1
+    if copied:
+        log.info("collated %d recipe sidecar(s) under %s", copied, recipes_dir)
+        return recipes_dir
+    return None
+
+
 def _convert_to_gguf(
     plan: OptimizationPlan,
     stages: list[StageResult],
@@ -462,6 +513,7 @@ def _convert_to_gguf(
     polar_dir = _stage_dir(stages, "polarquant")
     qjl_dir = _stage_dir(stages, "qjl")
     tbq_dir = _stage_dir(stages, "turboquant")
+    fused_tbq_dir = _stage_dir(stages, "fused_turboquant")
     apply_script = Path(__file__).resolve().parent / "quantization" / "gguf_eliza1_apply.py"
     cmd = [
         sys.executable, str(apply_script),
@@ -477,6 +529,11 @@ def _convert_to_gguf(
         cmd += ["--qjl-sidecar", str(qjl_dir / "qjl_config.json")]
     if tbq_dir is not None:
         cmd += ["--turboquant-sidecar", str(tbq_dir / "turboquant.json")]
+    if fused_tbq_dir is not None:
+        cmd += [
+            "--fused-turboquant-sidecar",
+            str(fused_tbq_dir / "fused_turboquant.json"),
+        ]
     if plan.dry_run:
         cmd.append("--dry-run")
     return _run(cmd, dry_run=False)
@@ -549,6 +606,8 @@ def execute_plan(plan: OptimizationPlan) -> int:
                 ),
             )
             return result.exit_code
+
+    recipes_dir = _materialize_recipe_sidecars(plan, stages)
 
     # Last successful stage is the input to the GGUF conversion. If
     # nothing succeeded (all skipped), feed the base model directly.
@@ -629,6 +688,7 @@ def execute_plan(plan: OptimizationPlan) -> int:
         "gguf": str(gguf_path),
         "manifest": str(manifest_path),
         "readme": str(readme_path),
+        "recipes_dir": str(recipes_dir) if recipes_dir is not None else None,
         "hf_repo": plan.hf_repo,
         "dry_run": plan.dry_run,
     }

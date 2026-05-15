@@ -550,6 +550,96 @@ def test_executor_accepts_message_draft_manage_and_room_aliases() -> None:
     assert sent["conversation_id"] == "lifeops-bench"
 
 
+def test_message_manage_operation_inferred_from_manage_operation() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    archived = _execute_action(
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "source": "gmail",
+                "manageOperation": "archive",
+                "messageId": "email_000001",
+            },
+        ),
+        world,
+    )
+
+    assert archived["folder"] == "archive"
+    assert world.emails["email_000001"].folder == "archive"
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["manageOperation", "manage_operation", "mailOperation", "mail_operation"],
+)
+def test_message_manage_operation_inferred_from_operation_aliases(field: str) -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    archived = _execute_action(
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "source": "gmail",
+                field: "archive",
+                "messageId": "email_000001",
+            },
+        ),
+        world,
+    )
+
+    assert archived["folder"] == "archive"
+    assert world.emails["email_000001"].folder == "archive"
+
+
+def test_archive_email_thread_alias_matches_message_manage_archive() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    archived = _execute_action(
+        Action(
+            name="ARCHIVE_EMAIL_THREAD",
+            kwargs={"threadId": "thread_00001"},
+        ),
+        world,
+    )
+
+    assert archived["thread_id"] == "thread_00001"
+    assert {"email_000000", "email_000001"}.issubset(set(archived["archived_ids"]))
+    assert world.emails["email_000000"].folder == "archive"
+    assert world.emails["email_000001"].folder == "archive"
+
+
+def test_calendar_check_availability_accepts_time_min_max() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    result = _execute_action(
+        Action(
+            name="CALENDAR",
+            kwargs={
+                "subaction": "check_availability",
+                "timeMin": "2026-05-14T09:00:00Z",
+                "timeMax": "2026-05-14T10:00:00Z",
+            },
+        ),
+        world,
+    )
+
+    assert result["subaction"] == "check_availability"
+    assert result["ok"] is True
+
+
 def test_executor_accepts_reminder_aliases() -> None:
     from eliza_lifeops_bench.__main__ import _build_world_factory
     from eliza_lifeops_bench.runner import _execute_action

@@ -2,14 +2,9 @@
  * Kokoro TTS ORT execution-provider configuration.
  *
  * Tracks elizaOS/eliza#7667 — readiness scaffold for a Tensor TPU / NNAPI
- * delegate on Android. This module is intentionally side-effect free and is
- * NOT yet wired into the Kokoro ORT loader. The Kokoro runtime is currently
- * moving into `packages/shared/src/local-inference/kokoro/` as part of #7666;
- * a follow-up PR will plug `buildKokoroOrtSessionOptions()` into the
- * `InferenceSession.create` call at
- * `packages/shared/src/local-inference/kokoro/kokoro-runtime.ts:240-247`
- * (current line: `executionProviders: ["cpu"]`). See
- * `docs/rfc/7667-npu-kokoro-android.md` for the deferred-wiring plan.
+ * delegate on Android. This module is intentionally side-effect free; Android
+ * callers still must gate any non-CPU provider through the AOSP NNAPI probe
+ * before constructing the Kokoro runtime.
  *
  * The exported `KokoroExecutionProvider` is the public knob, and
  * `KOKORO_EXECUTION_PROVIDER_IDS` is the runtime allowlist used by callers

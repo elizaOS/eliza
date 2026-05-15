@@ -230,11 +230,6 @@ export const actionsProvider: Provider = {
           "ACTIONS_LAST_GOOD_CACHE_TTL_MS",
           120_000,
         );
-        const freshLastGood =
-          lastGoodValidation && Date.now() - lastGoodValidation.createdAt < lastGoodCacheTtlMs
-            ? lastGoodValidation
-            : null;
-
         let actionsData: Action[];
         if (isImageGenerationRequest(message)) {
           // Media/ad turns need a deterministic tiny catalog. Do this before
@@ -242,9 +237,11 @@ export const actionsProvider: Provider = {
           // reply window filtering/formatting hundreds of unrelated actions
           // and then hide the image/ad action behind a provider timeout.
           actionsData = narrowActionsForIntent(runtime.actions, message);
-        } else if (freshLastGood) {
-          actionsData = freshLastGood.actions;
         } else {
+          const freshLastGood =
+            lastGoodValidation && Date.now() - lastGoodValidation.createdAt < lastGoodCacheTtlMs
+              ? lastGoodValidation
+              : null;
           const validation = Promise.all(
             runtime.actions.map((action: Action) =>
               validateActionFast(action, runtime, message, state, actionValidateTimeoutMs),
@@ -259,9 +256,9 @@ export const actionsProvider: Provider = {
           const validationResult = await Promise.race([validation, timed]);
           if (validationResult === "timeout") {
             logger.warn(
-              `[ACTIONS] validation exceeded ${providerValidationBudgetMs}ms; using unvalidated action catalog for this turn`,
+              `[ACTIONS] validation exceeded ${providerValidationBudgetMs}ms; using last-good action catalog for this turn`,
             );
-            actionsData = runtime.actions;
+            actionsData = freshLastGood?.actions ?? runtime.actions;
           } else {
             actionsData = validationResult;
           }

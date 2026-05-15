@@ -29,4 +29,3 @@ export const {
   channelTable,
   channelParticipantsTable,
 } = elizaSchema;
-

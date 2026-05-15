@@ -13,9 +13,9 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "homepage": "https://clawville.world/",
@@ -35,7 +35,6 @@
     "eliza"
   ],
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/ui": "workspace:*"
@@ -86,7 +85,12 @@
   "files": [
     "dist"
   ],
+  "peerDependencies": {
+    "react": "^19.0.0"
+  },
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "@types/node": "^25.0.3",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   }
 }

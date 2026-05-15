@@ -19,9 +19,12 @@ export {
   ASSISTANT_LAUNCH_TEXT_KEYS,
   type AssistantLaunchPayload,
   type AssistantLaunchPayloadClaimOptions,
+  type AssistantLaunchPayloadConsumeOptions,
+  type AssistantLaunchPayloadSendOptions,
   buildAssistantLaunchMetadata,
   claimAssistantLaunchPayloadFromHash,
   clearAssistantLaunchPayloadFromHash,
+  consumeAssistantLaunchPayloadFromHash,
   readAssistantLaunchPayloadFromHash,
 } from "./assistant-launch-payload";
 export {

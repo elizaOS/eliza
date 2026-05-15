@@ -84,9 +84,13 @@ ensure_source_checkout() {
   # a SHA, and the elizaOS fork pins by SHA, not by upstream-style tag.
   ( cd "$SRC_DIR" \
     && git init -q \
-    && git remote add origin "$LLAMA_CPP_REPO" \
-    && git fetch --depth 1 origin "$PINNED_REF" \
-    && git checkout --quiet FETCH_HEAD ) \
+    && if git remote get-url origin >/dev/null 2>&1; then \
+      git remote set-url origin "$LLAMA_CPP_REPO"; \
+    else \
+      git remote add origin "$LLAMA_CPP_REPO"; \
+    fi \
+    && (git fetch --depth 1 origin "$PINNED_REF" || git fetch --depth 200 origin main) \
+    && git checkout --quiet "$PINNED_REF" ) \
     || die "fetch/checkout failed; verify '$PINNED_REF' exists at $LLAMA_CPP_REPO"
 }
 
@@ -152,7 +156,7 @@ build_slice() {
     -DLLAMA_CURL=OFF \
     -DCMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH=NO
 
-  cmake --build . --config Release --target llama --target ggml --target common
+  cmake --build . --config Release --target llama --target ggml --target llama-common
   popd >/dev/null
 
   # Locate produced .a files and fold them into a single libllama.a so

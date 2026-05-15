@@ -397,7 +397,7 @@ describe("canSetAsDefault", () => {
 			sourceModels: {
 				text: { repo: "Qwen/Qwen3.5-9B" },
 				voice: { repo: "Serveurperso/OmniVoice-GGUF" },
-				drafter: { repo: "elizalabs/eliza-1" },
+				drafter: { repo: "elizaos/eliza-1" },
 				asr: { repo: "ggml-org/Qwen3-ASR-GGUF" },
 				embedding: { repo: "Qwen/Qwen3-Embedding-GGUF" },
 				vad: { repo: "onnx-community/silero-vad" },

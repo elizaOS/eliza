@@ -14,10 +14,11 @@
 export interface StartOptions {
   /**
    * Runtime engine selection:
-   * - "auto" (default): use a bundled full Bun engine when present, otherwise
-   *   fall back to the JSContext compatibility bridge.
+   * - "auto" (default): use a bundled full Bun engine when present. The
+   *   JSContext compatibility fallback is for development/sideload builds only;
+   *   iOS store local mode must request "bun" and fail if the engine is missing.
    * - "bun": require ElizaBunEngine.framework and fail if it is missing.
-   * - "compat": force the JSContext compatibility bridge.
+   * - "compat": force the JSContext compatibility bridge for development.
    */
   engine?: "auto" | "bun" | "compat";
   /**

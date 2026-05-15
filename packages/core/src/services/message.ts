@@ -2550,15 +2550,15 @@ function looksLikeMessageHandlerToolArguments(
 		return false;
 	}
 	return (
-		args.plan !== undefined ||
-		args.processMessage !== undefined ||
 		args.shouldRespond !== undefined ||
-		args.action !== undefined ||
 		args.contexts !== undefined ||
-		args.reply !== undefined ||
 		args.replyText !== undefined ||
-		args.thought !== undefined ||
-		args.extract !== undefined
+		args.intents !== undefined ||
+		args.candidateActionNames !== undefined ||
+		args.facts !== undefined ||
+		args.relationships !== undefined ||
+		args.addressedTo !== undefined ||
+		args.emotion !== undefined
 	);
 }
 
@@ -2585,20 +2585,14 @@ function normalizeRawParsedForFieldRegistry(
 	if (normalized.candidateActionNames === undefined) {
 		normalized.candidateActionNames = [];
 	}
-	const extract =
-		raw.extract &&
-		typeof raw.extract === "object" &&
-		!Array.isArray(raw.extract)
-			? (raw.extract as Record<string, unknown>)
-			: undefined;
 	if (normalized.facts === undefined) {
-		normalized.facts = extract?.facts ?? [];
+		normalized.facts = [];
 	}
 	if (normalized.relationships === undefined) {
-		normalized.relationships = extract?.relationships ?? [];
+		normalized.relationships = [];
 	}
 	if (normalized.addressedTo === undefined) {
-		normalized.addressedTo = extract?.addressedTo ?? [];
+		normalized.addressedTo = [];
 	}
 	return normalized;
 }

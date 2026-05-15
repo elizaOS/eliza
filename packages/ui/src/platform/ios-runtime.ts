@@ -34,6 +34,7 @@ export interface IosRuntimeConfig {
 }
 
 type RuntimeEnv = Record<string, string | boolean | undefined>;
+type MobileRuntimePlatform = "ios" | "android";
 
 function readString(env: RuntimeEnv, keys: string[]): string | undefined {
   for (const key of keys) {
@@ -78,6 +79,19 @@ function readBool(env: RuntimeEnv, keys: string[]): boolean {
   return false;
 }
 
+function mobileEnvKeys(
+  platform: MobileRuntimePlatform,
+  suffix: "RUNTIME_MODE" | "API_BASE" | "API_TOKEN",
+): string[] {
+  const platformName = platform === "ios" ? "IOS" : "ANDROID";
+  const legacyPlatformName = platform === "ios" ? "ANDROID" : "IOS";
+  return [
+    `VITE_ELIZA_${platformName}_${suffix}`,
+    `VITE_ELIZA_MOBILE_${suffix}`,
+    `VITE_ELIZA_${legacyPlatformName}_${suffix}`,
+  ];
+}
+
 export function resolveCloudApiBase(env: RuntimeEnv): string {
   return (
     readString(env, ["VITE_ELIZA_CLOUD_BASE", "VITE_CLOUD_BASE"]) ??
@@ -96,19 +110,13 @@ export function apiBaseToDeviceBridgeUrl(apiBase: string): string {
 
 export function resolveIosRuntimeConfig(env: RuntimeEnv): IosRuntimeConfig {
   const mode = normalizeMode(
-    readString(env, [
-      "VITE_ELIZA_IOS_RUNTIME_MODE",
-      "VITE_ELIZA_MOBILE_RUNTIME_MODE",
-    ]),
+    readString(env, mobileEnvKeys("ios", "RUNTIME_MODE")),
   );
-  const apiBase = readString(env, [
-    "VITE_ELIZA_IOS_API_BASE",
-    "VITE_ELIZA_MOBILE_API_BASE",
-  ])?.replace(/\/+$/, "");
-  const apiToken = readString(env, [
-    "VITE_ELIZA_IOS_API_TOKEN",
-    "VITE_ELIZA_MOBILE_API_TOKEN",
-  ]);
+  const apiBase = readString(env, mobileEnvKeys("ios", "API_BASE"))?.replace(
+    /\/+$/,
+    "",
+  );
+  const apiToken = readString(env, mobileEnvKeys("ios", "API_TOKEN"));
   const explicitDeviceBridgeUrl = readString(env, [
     "VITE_ELIZA_DEVICE_BRIDGE_URL",
   ]);

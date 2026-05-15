@@ -18,6 +18,9 @@ export interface NativeAgentRequestResult {
 }
 
 type NativeAgentPlugin = {
+  start?: () => Promise<unknown>;
+  stop?: () => Promise<unknown>;
+  getStatus?: () => Promise<unknown>;
   request?: (
     options: NativeAgentRequestOptions,
   ) => Promise<NativeAgentRequestResult>;
@@ -31,9 +34,13 @@ let nativeTransportPromise: Promise<AgentRequestTransport | null> | null = null;
 function toNativeAgentPlugin(
   plugin: NativeAgentPlugin | null | undefined,
 ): NativeAgentPlugin | null {
-  if (!plugin?.request) return null;
-  const request = plugin.request.bind(plugin);
-  return { request };
+  if (!plugin) return null;
+  const start = plugin.start?.bind(plugin);
+  const stop = plugin.stop?.bind(plugin);
+  const getStatus = plugin.getStatus?.bind(plugin);
+  const request = plugin.request?.bind(plugin);
+  if (!start && !stop && !getStatus && !request) return null;
+  return { start, stop, getStatus, request };
 }
 
 function isNativeAndroid(): boolean {
@@ -136,6 +143,13 @@ export function createAndroidNativeAgentTransport(
       });
     },
   };
+}
+
+export async function androidNativeAgentLifecycleForUrl(
+  url: string | null | undefined,
+): Promise<NativeAgentPlugin | null> {
+  if (!url || !isAndroidLocalAgentUrl(url) || !isNativeAndroid()) return null;
+  return resolveNativeAgentPlugin();
 }
 
 export async function androidNativeAgentTransportForUrl(

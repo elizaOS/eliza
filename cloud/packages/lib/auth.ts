@@ -272,7 +272,6 @@ export async function requireAuthWithOrg(
   };
 }
 
-
 /**
  * Require user to belong to a specific organization.
  */

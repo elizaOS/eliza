@@ -26,11 +26,11 @@
  *      pass once `action` is committed.
  *
  * Why this lives in app-core (not core): the helper is meaningful only to
- * the local-inference layer — cloud adapters ignore `responseSkeleton` /
- * `grammar` per the existing W3 contract. Keeping the wrapper here makes
- * the local-only nature explicit at the import site and pins the test
- * surface (`__tests__/planner-grammar.test.ts`) next to the engine that
- * consumes the output.
+ * the local-inference layer — cloud adapters can satisfy the portable `tools`
+ * contract without honoring `responseSkeleton` / `grammar`. Keeping the
+ * wrapper here makes the local-only nature explicit at the import site and
+ * pins the test surface (`__tests__/planner-grammar.test.ts`) next to the
+ * engine that consumes the output.
  *
  * GBNF compiler limitation: `compileSkeletonToGbnf` cannot express
  * per-action parameter discrimination in a single flat skeleton (the spans

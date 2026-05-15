@@ -117,6 +117,23 @@ if [ "$stdin_url" != "$expected_stdin_url" ]; then
   exit 1
 fi
 
+multiline_url="$(
+  printf '%s' "line one
+it's 100% (done) * now!" | \
+    ELIZA_URL_SCHEME=elizaos \
+    ELIZA_SHORTCUT_SOURCE=macos-shortcuts \
+    ELIZA_SHORTCUT_ACTION=ask \
+    "$helper" --dry-run
+)"
+expected_multiline_url="elizaos://assistant?text=line%20one%0Ait%27s%20100%25%20%28done%29%20%2A%20now%21&source=macos-shortcuts&action=ask"
+
+if [ "$multiline_url" != "$expected_multiline_url" ]; then
+  echo "verify-eliza-shortcuts: multiline stdin built unexpected URL" >&2
+  echo "expected: $expected_multiline_url" >&2
+  echo "actual:   $multiline_url" >&2
+  exit 1
+fi
+
 shortcut_present=0
 if command -v shortcuts >/dev/null 2>&1; then
   if shortcuts list 2>/dev/null | grep -Fx -- "$shortcut_name" >/dev/null 2>&1; then
@@ -148,6 +165,7 @@ fi
 
 echo "PASS helper builds assistant deep links"
 echo "PASS stdin can request action=lifeops.create through the runtime route"
+echo "PASS multiline stdin and punctuation are percent-encoded"
 if [ "$shortcut_present" -eq 1 ]; then
   echo "PASS Shortcut exists: $shortcut_name"
 elif [ "$shortcuts_warning" -eq 1 ]; then

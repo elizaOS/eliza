@@ -33,7 +33,6 @@
   ],
   "author": "elizaOS",
   "license": "MIT",
-  "dependencies": {},
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaOS/eliza"
@@ -50,21 +49,16 @@
     "format:check": "bunx @biomejs/biome format .",
     "swiftlint": "node-swiftlint",
     "docgen": "docgen --api GatewayPlugin --output-readme README.md --output-json dist/docs.json",
-    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
-    "build:docs": "bun run clean && bun run docgen && tsc && bun --bun rollup -c rollup.config.mjs",
+    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
+    "build:docs": "bun run clean && bun run docgen && tsc && rollup -c rollup.config.mjs",
     "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
     "watch": "tsc --watch",
     "prepublishOnly": "bun run build"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
-    "@capacitor/android": "^8.0.0",
-    "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.3.1",
     "@capacitor/docgen": "^0.3.0",
-    "@capacitor/ios": "^8.0.0",
-    "@ionic/swiftlint-config": "^2.0.0",
-    "rimraf": "^6.0.0",
     "rollup": "^4.60.2",
     "swiftlint": "^2.0.0",
     "typescript": "^6.0.3"

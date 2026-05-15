@@ -15,9 +15,10 @@
  *     pre-Hadamarded query (the GQA-share pattern), use_qjl=1.
  *
  * Thread sweep: --threads "1 4 8 16 24" runs each kernel split over T
- * OpenMP threads across the head loop (QJL) / row loop (Polar). The split
- * is over disjoint output rows so there is no reduction and no FP
- * reassociation across threads — bit-identical to T=1.
+ * OpenMP threads, or pthread workers when OpenMP is unavailable, across the
+ * head loop (QJL) / row loop (Polar). The split is over disjoint output rows
+ * so there is no reduction and no FP reassociation across threads —
+ * bit-identical to T=1.
  *
  * Build: make -C verify cpu-simd-bench   (requires the plugin libs built;
  *        the Makefile target builds them via cmake first).
@@ -39,6 +40,9 @@
 #include <time.h>
 #ifdef _OPENMP
 #include <omp.h>
+#elif defined(__APPLE__) || defined(__unix__)
+#include <pthread.h>
+#define ELIZA_CPU_SIMD_PTHREAD 1
 #endif
 
 #define N_HEADS        32
@@ -80,13 +84,102 @@ static block_q4_polar        *g_k_polar;        /* N_HEADS * ntok */
 static float                 *g_q_preht;        /* 128 */
 static float                 *g_polar_scores;   /* N_HEADS * ntok */
 
+#if defined(ELIZA_CPU_SIMD_PTHREAD)
+typedef void (*RangeFn)(long begin, long end, void *user);
+#define MAX_PTHREAD_WORKERS 64
+typedef struct {
+    RangeFn fn;
+    void *user;
+    long begin;
+    long end;
+} Worker;
+
+static void *worker_main(void *arg) {
+    Worker *w = (Worker *)arg;
+    w->fn(w->begin, w->end, w->user);
+    return NULL;
+}
+
+static void parallel_range(long nitems, int nthreads, RangeFn fn, void *user) {
+    if (nthreads <= 1 || nitems <= 1) {
+        fn(0, nitems, user);
+        return;
+    }
+    if (nthreads > MAX_PTHREAD_WORKERS) nthreads = MAX_PTHREAD_WORKERS;
+    if ((long)nthreads > nitems) nthreads = (int)nitems;
+
+    pthread_t tids[MAX_PTHREAD_WORKERS];
+    Worker workers[MAX_PTHREAD_WORKERS];
+    const long chunk = (nitems + nthreads - 1) / nthreads;
+    int launched = 0;
+    for (int t = 0; t < nthreads; t++) {
+        const long begin = (long)t * chunk;
+        long end = begin + chunk;
+        if (begin >= nitems) break;
+        if (end > nitems) end = nitems;
+        workers[launched] = (Worker){ fn, user, begin, end };
+        if (pthread_create(&tids[launched], NULL, worker_main, &workers[launched]) != 0) {
+            fn(begin, end, user);
+        } else {
+            launched++;
+        }
+    }
+    for (int t = 0; t < launched; t++) {
+        pthread_join(tids[t], NULL);
+    }
+}
+
+static void qjl_fp32_range(long begin, long end, void *user) {
+    (void)user;
+    const int gqa = N_HEADS / N_KV_HEADS;
+    for (long hq = begin; hq < end; hq++) {
+        const int hk = (int)hq / gqa;
+        qjl_score_qk(g_q_sketch_f32 + (size_t)hq * QJL_PROJECTION_DIM,
+                     g_k_qjl + (size_t)hk * g_ntok,
+                     1, 1, g_ntok,
+                     g_qjl_scores + (size_t)hq * g_ntok);
+    }
+}
+
+static void qjl_i8_range(long begin, long end, void *user) {
+    (void)user;
+    const int gqa = N_HEADS / N_KV_HEADS;
+    for (long hq = begin; hq < end; hq++) {
+        const int hk = (int)hq / gqa;
+        qjl_score_qk_i8(g_q_sketch_i8 + hq,
+                        g_k_qjl + (size_t)hk * g_ntok,
+                        1, 1, g_ntok,
+                        g_qjl_scores + (size_t)hq * g_ntok);
+    }
+}
+
+static void polar_preht_range(long begin, long end, void *user) {
+    (void)user;
+    for (long r = begin; r < end; r++) {
+        float s;
+        ggml_vec_dot_q4_polar_preht_f32(QK_POLAR, &s, g_k_polar + r, g_q_preht, 1);
+        g_polar_scores[r] = s;
+    }
+}
+#endif
+
 /* QJL fp32 / int8 score split over `nthreads` head ranges. */
 static double run_qjl_fp32(int nthreads) {
     const int gqa = N_HEADS / N_KV_HEADS;
     double t0 = now_us();
 #ifdef _OPENMP
     #pragma omp parallel for num_threads(nthreads) schedule(static)
-#endif
+    for (int hq = 0; hq < N_HEADS; hq++) {
+        const int hk = hq / gqa;
+        qjl_score_qk(g_q_sketch_f32 + (size_t)hq * QJL_PROJECTION_DIM,
+                     g_k_qjl + (size_t)hk * g_ntok,
+                     1, 1, g_ntok,
+                     g_qjl_scores + (size_t)hq * g_ntok);
+    }
+#elif defined(ELIZA_CPU_SIMD_PTHREAD)
+    (void)gqa;
+    parallel_range(N_HEADS, nthreads, qjl_fp32_range, NULL);
+#else
     for (int hq = 0; hq < N_HEADS; hq++) {
         const int hk = hq / gqa;
         qjl_score_qk(g_q_sketch_f32 + (size_t)hq * QJL_PROJECTION_DIM,
@@ -95,6 +188,7 @@ static double run_qjl_fp32(int nthreads) {
                      g_qjl_scores + (size_t)hq * g_ntok);
     }
     (void)nthreads;
+#endif
     return now_us() - t0;
 }
 static double run_qjl_i8(int nthreads) {
@@ -102,7 +196,17 @@ static double run_qjl_i8(int nthreads) {
     double t0 = now_us();
 #ifdef _OPENMP
     #pragma omp parallel for num_threads(nthreads) schedule(static)
-#endif
+    for (int hq = 0; hq < N_HEADS; hq++) {
+        const int hk = hq / gqa;
+        qjl_score_qk_i8(g_q_sketch_i8 + hq,
+                        g_k_qjl + (size_t)hk * g_ntok,
+                        1, 1, g_ntok,
+                        g_qjl_scores + (size_t)hq * g_ntok);
+    }
+#elif defined(ELIZA_CPU_SIMD_PTHREAD)
+    (void)gqa;
+    parallel_range(N_HEADS, nthreads, qjl_i8_range, NULL);
+#else
     for (int hq = 0; hq < N_HEADS; hq++) {
         const int hk = hq / gqa;
         qjl_score_qk_i8(g_q_sketch_i8 + hq,
@@ -111,6 +215,7 @@ static double run_qjl_i8(int nthreads) {
                         g_qjl_scores + (size_t)hq * g_ntok);
     }
     (void)nthreads;
+#endif
     return now_us() - t0;
 }
 /* Polar pre-Hadamard dot over all rows, split over `nthreads`. */
@@ -119,13 +224,21 @@ static double run_polar_preht(int nthreads) {
     double t0 = now_us();
 #ifdef _OPENMP
     #pragma omp parallel for num_threads(nthreads) schedule(static)
-#endif
+    for (long r = 0; r < nrows; r++) {
+        float s;
+        ggml_vec_dot_q4_polar_preht_f32(QK_POLAR, &s, g_k_polar + r, g_q_preht, 1);
+        g_polar_scores[r] = s;
+    }
+#elif defined(ELIZA_CPU_SIMD_PTHREAD)
+    parallel_range(nrows, nthreads, polar_preht_range, NULL);
+#else
     for (long r = 0; r < nrows; r++) {
         float s;
         ggml_vec_dot_q4_polar_preht_f32(QK_POLAR, &s, g_k_polar + r, g_q_preht, 1);
         g_polar_scores[r] = s;
     }
     (void)nthreads;
+#endif
     return now_us() - t0;
 }
 
@@ -216,11 +329,15 @@ int main(int argc, char **argv) {
         }
     }
 #ifndef _OPENMP
+#if defined(ELIZA_CPU_SIMD_PTHREAD)
+    fprintf(stderr, "[cpu_simd_bench] OpenMP unavailable; using pthread worker sweep\n");
+#else
     if (nthreads != 1 || threads[0] != 1) {
         fprintf(stderr, "[cpu_simd_bench] OpenMP unavailable; running single-thread SIMD bench only\n");
     }
     threads[0] = 1;
     nthreads = 1;
+#endif
 #endif
     if (runs < 1) runs = 1;
     if (ntok < 1) ntok = 1;

@@ -78,6 +78,27 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+validate_scheme() {
+  case "$1" in
+    ""|[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz]*|*[!ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+.-]*)
+      echo "eliza-assistant-handoff: invalid URL scheme: $1" >&2
+      exit 2
+      ;;
+  esac
+}
+
+if [ -z "$source" ]; then
+  echo "eliza-assistant-handoff: source must not be empty" >&2
+  exit 2
+fi
+
+if [ -z "$action" ]; then
+  echo "eliza-assistant-handoff: action must not be empty" >&2
+  exit 2
+fi
+
+validate_scheme "$scheme"
+
 if [ "$#" -gt 0 ]; then
   text="$*"
 elif [ -t 0 ]; then
@@ -95,11 +116,11 @@ fi
 urlencode() {
   value="$1"
   if command -v osascript >/dev/null 2>&1; then
-    osascript -l JavaScript -e 'function run(argv) { return encodeURIComponent(argv[0] || ""); }' "$value"
+    osascript -l JavaScript -e 'function run(argv) { var value = argv[0] || ""; return encodeURIComponent(value).replace(/[!*()]/g, function(ch) { return "%" + ch.charCodeAt(0).toString(16).toUpperCase(); }).replace(/\x27/g, "%27"); }' "$value"
   elif command -v node >/dev/null 2>&1; then
-    node -e 'process.stdout.write(encodeURIComponent(process.argv[1] || ""));' "$value"
+    node -e 'const value = process.argv[1] || ""; process.stdout.write(encodeURIComponent(value).replace(/[!*()]/g, (ch) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`).replace(/\x27/g, "%27"));' "$value"
   elif command -v python3 >/dev/null 2>&1; then
-    python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""), end="")' "$value"
+    python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe="-._~"), end="")' "$value"
   else
     echo "eliza-assistant-handoff: need osascript, node, or python3 to URL-encode input" >&2
     exit 2

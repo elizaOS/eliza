@@ -55,7 +55,10 @@ Verification:
   printf 'remind me to stand up in 20 minutes' | "$target_script" --dry-run
   printf 'remind me to stand up in 20 minutes' | "$target_script"
   "$target_verify_script" --helper "$target_script" --require-shortcut
-  shortcuts run "Ask Eliza" --input-path -
+  tmp_input="\$(mktemp "\${TMPDIR:-/tmp}/eliza-shortcuts-input.XXXXXX")"
+  printf 'remind me to stand up in 20 minutes\n' >"\$tmp_input"
+  shortcuts run "Ask Eliza" --input-path "\$tmp_input"
+  rm -f "\$tmp_input"
 
 The Shortcut creation itself remains a macOS UI step because shortcuts(1) can
 run, list, view, and sign shortcuts, but creation/editing is owned by the

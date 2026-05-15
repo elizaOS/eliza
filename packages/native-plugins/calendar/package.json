@@ -35,7 +35,7 @@
     "url": "https://github.com/elizaOS/eliza.git"
   },
   "scripts": {
-    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build"
   },
@@ -46,10 +46,7 @@
     }
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.3.1",
-    "@capacitor/ios": "^8.0.0",
-    "rimraf": "^6.0.0",
     "rollup": "^4.60.2",
     "typescript": "^6.0.3"
   },

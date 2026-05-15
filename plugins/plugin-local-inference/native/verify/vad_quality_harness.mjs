@@ -57,6 +57,19 @@ function parseArgs(argv) {
   return args;
 }
 
+function bundleInfo(bundleDir) {
+  if (!bundleDir) return {};
+  const basename = path.basename(path.resolve(bundleDir));
+  const match = /^eliza-1-(.+)\.bundle$/.exec(basename);
+  return {
+    ...(match ? { tier: match[1] } : {}),
+    bundle: {
+      ...(match ? { tier: match[1] } : {}),
+      dir: path.resolve(bundleDir),
+    },
+  };
+}
+
 function typescriptRunner() {
   if (fs.existsSync(path.join(REPO_ROOT, "node_modules", ".bin", "tsx"))) {
     for (const cmd of [
@@ -102,6 +115,7 @@ function unavailable(args, reason, extra = {}) {
   writeReport(args, {
     generatedAt: new Date().toISOString(),
     harness: path.relative(process.cwd(), __filename),
+    ...bundleInfo(args.bundle),
     available: false,
     reason,
     ...extra,
@@ -328,6 +342,7 @@ function main() {
   writeReport(args, {
     generatedAt: new Date().toISOString(),
     harness: path.relative(process.cwd(), __filename),
+    ...bundleInfo(args.bundle),
     available: true,
     modelPath: payload.modelPath,
     fixtures: payload.fixtures,

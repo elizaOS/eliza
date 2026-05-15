@@ -27,6 +27,25 @@ export interface ElevenLabsConfig {
   outputFormat?: string;
 }
 
+type ElevenLabsEnv = Partial<
+  Record<
+    | "ELEVENLABS_API_KEY"
+    | "ELEVENLABS_VOICE_ID"
+    | "ELEVENLABS_MODEL_ID"
+    | "ELEVENLABS_VOICE_STABILITY"
+    | "ELEVENLABS_VOICE_SIMILARITY_BOOST"
+    | "ELEVENLABS_VOICE_STYLE"
+    | "ELEVENLABS_VOICE_USE_SPEAKER_BOOST"
+    | "ELEVENLABS_OPTIMIZE_STREAMING_LATENCY"
+    | "ELEVENLABS_OUTPUT_FORMAT",
+    string | undefined
+  >
+>;
+
+function envValue(env: ElevenLabsEnv | undefined, key: keyof ElevenLabsEnv): string | undefined {
+  return env?.[key] ?? process.env[key];
+}
+
 /**
  * Options for text-to-speech conversion.
  */
@@ -60,8 +79,8 @@ export class ElevenLabsService {
   /**
    * Initialize service with environment variables (following plugin patterns)
    */
-  static fromEnv(): ElevenLabsService {
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+  static fromEnv(env?: ElevenLabsEnv): ElevenLabsService {
+    const apiKey = envValue(env, "ELEVENLABS_API_KEY");
 
     if (!apiKey) {
       throw new Error("ELEVENLABS_API_KEY environment variable is required");
@@ -69,18 +88,18 @@ export class ElevenLabsService {
 
     const config: ElevenLabsConfig = {
       apiKey,
-      voiceId: process.env.ELEVENLABS_VOICE_ID || "EXAVITQu4vr4xnSDxMaL",
-      modelId: process.env.ELEVENLABS_MODEL_ID || "eleven_flash_v2_5",
-      voiceStability: Number.parseFloat(process.env.ELEVENLABS_VOICE_STABILITY || "0.5"),
+      voiceId: envValue(env, "ELEVENLABS_VOICE_ID") || "EXAVITQu4vr4xnSDxMaL",
+      modelId: envValue(env, "ELEVENLABS_MODEL_ID") || "eleven_flash_v2_5",
+      voiceStability: Number.parseFloat(envValue(env, "ELEVENLABS_VOICE_STABILITY") || "0.5"),
       voiceSimilarityBoost: Number.parseFloat(
-        process.env.ELEVENLABS_VOICE_SIMILARITY_BOOST || "0.75",
+        envValue(env, "ELEVENLABS_VOICE_SIMILARITY_BOOST") || "0.75",
       ),
-      voiceStyle: Number.parseFloat(process.env.ELEVENLABS_VOICE_STYLE || "0"),
-      voiceUseSpeakerBoost: process.env.ELEVENLABS_VOICE_USE_SPEAKER_BOOST !== "false",
+      voiceStyle: Number.parseFloat(envValue(env, "ELEVENLABS_VOICE_STYLE") || "0"),
+      voiceUseSpeakerBoost: envValue(env, "ELEVENLABS_VOICE_USE_SPEAKER_BOOST") !== "false",
       optimizeStreamingLatency: Number.parseInt(
-        process.env.ELEVENLABS_OPTIMIZE_STREAMING_LATENCY || "4",
+        envValue(env, "ELEVENLABS_OPTIMIZE_STREAMING_LATENCY") || "4",
       ),
-      outputFormat: process.env.ELEVENLABS_OUTPUT_FORMAT || "mp3_44100_128",
+      outputFormat: envValue(env, "ELEVENLABS_OUTPUT_FORMAT") || "mp3_44100_128",
     };
 
     return new ElevenLabsService(config);
@@ -262,7 +281,10 @@ export class ElevenLabsService {
 // Export singleton instance
 let serviceInstance: ElevenLabsService | null = null;
 
-export function getElevenLabsService(): ElevenLabsService {
+export function getElevenLabsService(env?: ElevenLabsEnv): ElevenLabsService {
+  if (env) {
+    return ElevenLabsService.fromEnv(env);
+  }
   if (!serviceInstance) {
     serviceInstance = ElevenLabsService.fromEnv();
   }

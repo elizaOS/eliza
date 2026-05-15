@@ -16,7 +16,10 @@
     "allowImportingTsExtensions": true,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/core": ["../../packages/core/dist/node"]
+      "@elizaos/core": ["../../packages/core/dist/node"],
+      "@elizaos/shared/local-inference": [
+        "../../packages/shared/src/local-inference/index.ts"
+      ]
     }
   },
   "include": ["./src/**/*.ts"],

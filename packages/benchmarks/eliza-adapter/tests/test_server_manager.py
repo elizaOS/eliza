@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from eliza_adapter.server_manager import ElizaServerManager
+from eliza_adapter.server_manager import ElizaServerManager, _server_command
 
 
 class _FakeProcess:
@@ -115,3 +115,19 @@ def test_server_manager_respects_explicit_stub_embedding_override(
     manager._proc = None
 
     assert captured["kwargs"]["env"]["ELIZA_BENCH_ALLOW_STUB_EMBEDDING"] == "0"
+
+
+def test_server_manager_prefers_bun_for_typescript_server(monkeypatch, tmp_path: Path) -> None:
+    server = tmp_path / "server.ts"
+    monkeypatch.delenv("ELIZA_BENCH_SERVER_CMD", raising=False)
+    monkeypatch.setattr("eliza_adapter.server_manager.shutil.which", lambda name: "/usr/bin/bun" if name == "bun" else None)
+
+    assert _server_command(server) == ["bun", "run", str(server)]
+
+
+def test_server_manager_falls_back_to_node_tzx(monkeypatch, tmp_path: Path) -> None:
+    server = tmp_path / "server.ts"
+    monkeypatch.delenv("ELIZA_BENCH_SERVER_CMD", raising=False)
+    monkeypatch.setattr("eliza_adapter.server_manager.shutil.which", lambda _name: None)
+
+    assert _server_command(server) == ["node", "--import", "tsx", str(server)]

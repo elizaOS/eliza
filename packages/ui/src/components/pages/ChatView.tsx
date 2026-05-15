@@ -20,10 +20,7 @@ import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
-import {
-  buildAssistantLaunchMetadata,
-  claimAssistantLaunchPayloadFromHash,
-} from "../../platform/assistant-launch-payload";
+import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,
   PtyConsoleBase,
@@ -200,15 +197,12 @@ export function ChatView({
     if (isGameModal || typeof window === "undefined") return;
 
     const consumeLaunchPayload = () => {
-      const payload = claimAssistantLaunchPayloadFromHash(
-        window.location.hash,
-        { allowedRoutes: ["chat"] },
-      );
-      if (!payload) return;
-      void sendChatText(payload.text, {
-        metadata: buildAssistantLaunchMetadata(payload),
-      }).catch(() => {
-        setChatInput(payload.text);
+      void consumeAssistantLaunchPayloadFromHash(window.location.hash, {
+        allowedRoutes: ["chat"],
+        onSendFailure: (payload) => {
+          setChatInput(payload.text);
+        },
+        sendText: sendChatText,
       });
     };
 

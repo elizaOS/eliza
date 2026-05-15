@@ -32,7 +32,6 @@ import {
   type BenchmarkOutboxEntry,
   type BenchmarkSession,
   type BenchmarkTrajectoryStep,
-  type BenchmarkTurnUsage,
   benchmarkTurnMetadata,
   capturedActionsToToolCalls,
   capturedActionToParams,
@@ -46,9 +45,11 @@ import {
   extractTaskId,
   formatUnknownError,
   normalizeBenchmarkContext,
+  normalizeBenchmarkModelUsage,
   resolveHost,
   resolvePort,
   sessionKey,
+  summarizeBenchmarkTurnUsage,
   toPlugin,
 } from "./server-utils.js";
 
@@ -92,6 +93,34 @@ const OPENROUTER_PLUGIN_MODULE: string = "@elizaos/plugin-openrouter";
 function isLocaBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "loca_bench" || normalized === "loca-bench";
+}
+
+function isBfclBenchmarkName(benchmark: string): boolean {
+  return benchmark.trim().toLowerCase() === "bfcl";
+}
+
+function normalizeBfclNativeMessages(
+  text: string,
+  context: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const question =
+    typeof context.question === "string" && context.question.trim()
+      ? context.question.trim()
+      : text;
+  return [
+    {
+      role: "system",
+      content:
+        "You are running BFCL through the Eliza benchmark server. Use native " +
+        "tool calls only. If the query asks for multiple or parallel calls, " +
+        "emit one tool call for each requested operation in the same assistant " +
+        "turn. Preserve schema field names and defaults exactly.",
+    },
+    {
+      role: "user",
+      content: question,
+    },
+  ];
 }
 
 function normalizeLocaNativeMessages(
@@ -276,6 +305,30 @@ function firstLocaBenchmarkActionFromToolCalls(
   return {
     tool_name: first.function.name,
     arguments: args,
+  };
+}
+
+function bfclBenchmarkActionFromToolCalls(
+  toolCalls: Array<{
+    function: { name: string; arguments: string };
+  }>,
+): Record<string, unknown> | null {
+  if (toolCalls.length === 0) return null;
+  const calls = toolCalls.map((call) => {
+    let args: unknown = {};
+    try {
+      args = JSON.parse(call.function.arguments || "{}");
+    } catch {
+      args = { _raw: call.function.arguments };
+    }
+    return {
+      name: call.function.name,
+      arguments: args,
+    };
+  });
+  return {
+    calls,
+    arguments: { calls },
   };
 }
 
@@ -1104,38 +1157,10 @@ export async function startBenchmarkServer() {
     if (typeof registerEvent === "function") {
       registerEvent("MODEL_USED", (payload: unknown) => {
         if (!activeUsageBuffer) return;
-        if (!payload || typeof payload !== "object") return;
-        const p = payload as {
-          type?: unknown;
-          source?: unknown;
-          provider?: unknown;
-          tokens?: {
-            prompt?: unknown;
-            completion?: unknown;
-            total?: unknown;
-            cached?: unknown;
-          };
-        };
-        const tokens = p.tokens ?? {};
-        const promptTokens =
-          typeof tokens.prompt === "number" ? tokens.prompt : 0;
-        const completionTokens =
-          typeof tokens.completion === "number" ? tokens.completion : 0;
-        const totalTokens =
-          typeof tokens.total === "number"
-            ? tokens.total
-            : promptTokens + completionTokens;
-        const cachedTokens =
-          typeof tokens.cached === "number" ? tokens.cached : undefined;
-        activeUsageBuffer.push({
-          modelType: typeof p.type === "string" ? p.type : "unknown",
-          provider: typeof p.provider === "string" ? p.provider : undefined,
-          source: typeof p.source === "string" ? p.source : undefined,
-          promptTokens,
-          completionTokens,
-          totalTokens,
-          ...(cachedTokens !== undefined ? { cachedTokens } : {}),
-        });
+        const normalizedUsage = normalizeBenchmarkModelUsage(payload);
+        if (normalizedUsage) {
+          activeUsageBuffer.push(normalizedUsage);
+        }
       });
       elizaLogger.info(
         "[bench] Registered MODEL_USED listener for trajectory usage capture",
@@ -1150,33 +1175,6 @@ export async function startBenchmarkServer() {
       `[bench] Could not register MODEL_USED listener: ${formatUnknownError(err)}`,
     );
   }
-
-  const summarizeUsage = (
-    calls: BenchmarkLlmCallUsage[],
-  ): BenchmarkTurnUsage => {
-    let promptTokens = 0;
-    let completionTokens = 0;
-    let totalTokens = 0;
-    let cachedTokens = 0;
-    for (const call of calls) {
-      promptTokens += call.promptTokens;
-      completionTokens += call.completionTokens;
-      totalTokens += call.totalTokens;
-      if (typeof call.cachedTokens === "number") {
-        cachedTokens += call.cachedTokens;
-      }
-    }
-    const cacheHitRatio = promptTokens > 0 ? cachedTokens / promptTokens : 0;
-    return {
-      promptTokens,
-      completionTokens,
-      totalTokens,
-      cachedTokens,
-      cacheHitRatio,
-      callCount: calls.length,
-      calls,
-    };
-  };
 
   const roomToSession = new Map<string, string>();
   const entityToSession = new Map<string, string>();
@@ -1446,33 +1444,7 @@ export async function startBenchmarkServer() {
         });
       }
 
-      // Sum the per-call cache-read tokens across every LLM call that fired
-      // during this turn. A call with `cachedTokens === undefined` means the
-      // provider didn't report it — those calls do NOT contribute to the sum
-      // and do NOT collapse the value to 0. If no call in the turn reported
-      // cache info, we pass `undefined` through so the wire shape preserves
-      // "we don't know" (AGENTS.md Cmd #8). Cerebras gpt-oss-120b reports
-      // `prompt_tokens_details.cached_tokens` default-on; Anthropic reports
-      // `cache_read_input_tokens` natively.
-      const anyCacheReported = turnUsageBuffer.some(
-        (c) => typeof c.cachedTokens === "number",
-      );
-      const cacheReadInputTokens = anyCacheReported
-        ? turnUsageBuffer.reduce(
-            (s, c) =>
-              s + (typeof c.cachedTokens === "number" ? c.cachedTokens : 0),
-            0,
-          )
-        : undefined;
-      const usage = {
-        promptTokens: turnUsageBuffer.reduce((s, c) => s + c.promptTokens, 0),
-        completionTokens: turnUsageBuffer.reduce(
-          (s, c) => s + c.completionTokens,
-          0,
-        ),
-        totalTokens: turnUsageBuffer.reduce((s, c) => s + c.totalTokens, 0),
-        ...(cacheReadInputTokens !== undefined ? { cacheReadInputTokens } : {}),
-      };
+      const usage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
 
       return { text: responseText, toolCalls, usage };
     },
@@ -1789,7 +1761,7 @@ export async function startBenchmarkServer() {
             } finally {
               activeUsageBuffer = null;
             }
-            const turnUsage = summarizeUsage(turnUsageBuffer);
+            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
             const nativeRecord =
               nativeResult && typeof nativeResult === "object"
                 ? (nativeResult as Record<string, unknown>)
@@ -1806,6 +1778,100 @@ export async function startBenchmarkServer() {
             const params: Record<string, unknown> = {};
             const benchmarkAction =
               firstLocaBenchmarkActionFromToolCalls(toolCalls);
+            if (benchmarkAction) {
+              params.BENCHMARK_ACTION = benchmarkAction;
+              params.tool_calls = toolCalls;
+            }
+            const actions =
+              toolCalls.length > 0
+                ? ["BENCHMARK_ACTION"]
+                : responseText.trim()
+                  ? ["REPLY"]
+                  : [];
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions,
+              params,
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions,
+                params,
+                captured_actions: [],
+                tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
+
+          if (
+            isBfclBenchmarkName(session.benchmark) &&
+            Array.isArray(benchmarkContext.tools) &&
+            benchmarkContext.tools.length > 0
+          ) {
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            try {
+              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                messages: normalizeBfclNativeMessages(text, benchmarkContext),
+                tools: benchmarkContext.tools,
+                toolChoice:
+                  benchmarkContext.is_relevant === false ? "none" : "required",
+                maxTokens:
+                  typeof benchmarkContext.max_tokens === "number"
+                    ? benchmarkContext.max_tokens
+                    : 2048,
+                temperature:
+                  typeof benchmarkContext.temperature === "number"
+                    ? benchmarkContext.temperature
+                    : 0,
+              });
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const toolCalls = normalizeLocaNativeToolCalls(
+              nativeRecord.toolCalls,
+            );
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const params: Record<string, unknown> = {};
+            const benchmarkAction = bfclBenchmarkActionFromToolCalls(toolCalls);
             if (benchmarkAction) {
               params.BENCHMARK_ACTION = benchmarkAction;
               params.tool_calls = toolCalls;
@@ -1907,7 +1973,7 @@ export async function startBenchmarkServer() {
               activeUsageBuffer = null;
             }
           })();
-          const turnUsage = summarizeUsage(turnUsageBuffer);
+          const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
 
           const capturedAction = getCapturedAction();
           const capturedActions = getCapturedActions();

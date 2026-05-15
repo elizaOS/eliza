@@ -271,7 +271,7 @@ def _card_training() -> str:
         "\n"
         "Active SFT corpus for the elizaOS **eliza-1** Qwen-based model series.\n"
         "All app-facing runtime bundles live in the single model repo\n"
-        "[`elizalabs/eliza-1`](https://huggingface.co/elizalabs/eliza-1) under\n"
+        "[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) under\n"
         "`bundles/<tier>/` paths for the active `eliza-1-0_8b`,\n"
         "`eliza-1-2b`, and `eliza-1-4b` tiers.\n"
         "\n"

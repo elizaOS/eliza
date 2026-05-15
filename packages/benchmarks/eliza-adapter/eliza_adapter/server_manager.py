@@ -6,6 +6,7 @@ import atexit
 import logging
 import os
 import secrets
+import shlex
 import shutil
 import signal
 import socket
@@ -52,6 +53,21 @@ def _find_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def _server_command(server_script: Path) -> list[str]:
+    """Return the benchmark server command.
+
+    Bun can execute the TypeScript server directly and avoids Node-version
+    package-export breakage from `node --import tsx` on newer Node runtimes.
+    Keep the Node/tsx path as a fallback for environments without Bun.
+    """
+    forced = os.environ.get("ELIZA_BENCH_SERVER_CMD", "").strip()
+    if forced:
+        return [*shlex.split(forced), str(server_script)]
+    if shutil.which("bun"):
+        return ["bun", "run", str(server_script)]
+    return ["node", "--import", "tsx", str(server_script)]
 
 
 class ElizaServerManager:
@@ -237,7 +253,7 @@ class ElizaServerManager:
         self._stderr_log = Path(stderr_file.name)
 
         self._proc = subprocess.Popen(
-            ["node", "--import", "tsx", str(server_script)],
+            _server_command(server_script),
             cwd=str(cwd),
             env=env,
             stdout=stdout_file,

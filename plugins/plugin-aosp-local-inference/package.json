@@ -46,7 +46,8 @@
     "test": "echo \"No tests\""
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

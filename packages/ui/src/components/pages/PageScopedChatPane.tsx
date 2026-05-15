@@ -19,10 +19,7 @@ import type {
 } from "../../api/client-types";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
-import {
-  buildAssistantLaunchMetadata,
-  claimAssistantLaunchPayloadFromHash,
-} from "../../platform/assistant-launch-payload";
+import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { useApp } from "../../state";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
 import { ConnectorAccountPicker } from "../chat/ConnectorAccountPicker";
@@ -673,16 +670,16 @@ export function PageScopedChatPane({
     if (!conversation || sending) return;
 
     const consumeLaunchPayload = () => {
-      const payload = claimAssistantLaunchPayloadFromHash(
-        window.location.hash,
-        { allowedRoutes: ["lifeops"] },
-      );
-      if (!payload) return;
-      void handleSend({
-        metadata: buildAssistantLaunchMetadata(payload),
-        text: payload.text,
-      }).catch(() => {
-        setInput(payload.text);
+      void consumeAssistantLaunchPayloadFromHash(window.location.hash, {
+        allowedRoutes: ["lifeops"],
+        onSendFailure: (payload) => {
+          setInput(payload.text);
+        },
+        sendText: (text, options) =>
+          handleSend({
+            metadata: options.metadata,
+            text,
+          }),
       });
     };
 

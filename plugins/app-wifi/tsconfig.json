@@ -32,6 +32,9 @@
       "@elizaos/capacitor-wifi": [
         "../../packages/native-plugins/wifi/src/index.ts"
       ],
+      "@elizaos/capacitor-system": [
+        "../../packages/native-plugins/system/src/index.ts"
+      ],
       "@elizaos/capacitor-bun-runtime": [
         "../../packages/native-plugins/bun-runtime/src/index.ts"
       ],

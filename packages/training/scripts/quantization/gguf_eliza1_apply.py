@@ -51,6 +51,15 @@ import subprocess
 import sys
 from pathlib import Path
 
+_TRAINING_ROOT = Path(__file__).resolve().parents[2]
+if str(_TRAINING_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAINING_ROOT))
+
+from scripts.manifest.eliza1_manifest import (  # noqa: E402
+    Eliza1ManifestError,
+    merge_kernel_manifest_fragments,
+)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -138,6 +147,7 @@ def _build_ext_metadata(
     polar_sidecar: dict[str, object] | None,
     qjl_sidecar: dict[str, object] | None,
     tbq_sidecar: dict[str, object] | None,
+    fused_tbq_sidecar: dict[str, object] | None,
 ) -> dict[str, object]:
     """Compose the extension-JSON metadata block.
 
@@ -191,6 +201,29 @@ def _build_ext_metadata(
             "skip_layers": tbq_sidecar.get("skip_layers", [0]),
             "norm_threshold": tbq_sidecar.get("norm_threshold", 5.0),
         }
+    if fused_tbq_sidecar is not None:
+        recipe = fused_tbq_sidecar.get("recipe")
+        if not isinstance(recipe, dict):
+            recipe = {}
+        out["fused_turboquant"] = {
+            "bits": recipe.get("bits", fused_tbq_sidecar.get("bits", 4)),
+            "compress_v": recipe.get("compress_v", True),
+            "verify": recipe.get("verify", True),
+            "head_dim": fused_tbq_sidecar.get("head_dim"),
+            "n_q_heads": fused_tbq_sidecar.get("n_q_heads"),
+            "n_kv_heads": fused_tbq_sidecar.get("n_kv_heads"),
+            "eligible_layers": fused_tbq_sidecar.get("eligible_layers"),
+            "architecture": fused_tbq_sidecar.get("architecture"),
+        }
+
+    fragments = [
+        sidecar.get("kernel_manifest")
+        for sidecar in (polar_sidecar, qjl_sidecar, tbq_sidecar, fused_tbq_sidecar)
+        if isinstance(sidecar, dict)
+        and isinstance(sidecar.get("kernel_manifest"), dict)
+    ]
+    if fragments:
+        out["recipeManifest"] = merge_kernel_manifest_fragments(fragments)
     return out
 
 
@@ -239,6 +272,15 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help="Path to turboquant.json. Defaults to <checkpoint>/turboquant.json.",
+    )
+    ap.add_argument(
+        "--fused-turboquant-sidecar",
+        type=Path,
+        default=None,
+        help=(
+            "Path to fused_turboquant.json. Defaults to "
+            "<checkpoint>/fused_turboquant.json."
+        ),
     )
     ap.add_argument(
         "--outtype",
@@ -310,10 +352,14 @@ def main(argv: list[str] | None = None) -> int:
     tbq_sidecar_path = args.turboquant_sidecar or (
         args.checkpoint / "turboquant.json"
     )
+    fused_tbq_sidecar_path = args.fused_turboquant_sidecar or (
+        args.checkpoint / "fused_turboquant.json"
+    )
 
     polar_sidecar = _load_sidecar(polar_sidecar_path)
     qjl_sidecar = _load_sidecar(qjl_sidecar_path)
     tbq_sidecar = _load_sidecar(tbq_sidecar_path)
+    fused_tbq_sidecar = _load_sidecar(fused_tbq_sidecar_path)
 
     requested_outtype = args.outtype
     fallback_reason: str | None = None
@@ -368,12 +414,25 @@ def main(argv: list[str] | None = None) -> int:
     elif qjl_sidecar:
         base_model = str(qjl_sidecar.get("source_model") or base_model)
 
-    ext_metadata = _build_ext_metadata(
-        base_model=base_model,
-        polar_sidecar=polar_sidecar,
-        qjl_sidecar=qjl_sidecar,
-        tbq_sidecar=tbq_sidecar,
-    )
+    try:
+        ext_metadata = _build_ext_metadata(
+            base_model=base_model,
+            polar_sidecar=polar_sidecar,
+            qjl_sidecar=qjl_sidecar,
+            tbq_sidecar=tbq_sidecar,
+            fused_tbq_sidecar=fused_tbq_sidecar,
+        )
+    except Eliza1ManifestError as exc:
+        log.error("invalid quantization sidecar kernel manifests: %s", exc)
+        return 2
+    ext_metadata["sidecar_inputs"] = {
+        "polarquant": str(polar_sidecar_path) if polar_sidecar else None,
+        "qjl": str(qjl_sidecar_path) if qjl_sidecar else None,
+        "turboquant": str(tbq_sidecar_path) if tbq_sidecar else None,
+        "fused_turboquant": (
+            str(fused_tbq_sidecar_path) if fused_tbq_sidecar else None
+        ),
+    }
     ext_metadata["weight_quant"] = {
         "requested": requested_outtype,
         "actual": args.outtype,
@@ -392,7 +451,7 @@ def main(argv: list[str] | None = None) -> int:
     source_repo = args.source_repo
     if source_repo is None:
         # Fall back to whatever source_model the recipe sidecars recorded.
-        for sc in (polar_sidecar, qjl_sidecar, tbq_sidecar):
+        for sc in (polar_sidecar, qjl_sidecar, tbq_sidecar, fused_tbq_sidecar):
             if isinstance(sc, dict) and sc.get("source_model"):
                 source_repo = str(sc.get("source_model"))
                 break

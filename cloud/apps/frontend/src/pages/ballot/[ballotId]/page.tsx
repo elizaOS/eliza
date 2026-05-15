@@ -148,9 +148,7 @@ export default function BallotPage() {
         <p className="text-sm text-gray-600">
           {ballot.threshold} of {ballot.participants.length} participants required.
         </p>
-        <p className="text-xs text-gray-500">
-          Expires {formatDate(ballot.expiresAt) ?? "soon"}.
-        </p>
+        <p className="text-xs text-gray-500">Expires {formatDate(ballot.expiresAt) ?? "soon"}.</p>
       </header>
 
       {isClosed ? (

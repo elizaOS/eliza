@@ -380,6 +380,7 @@ class BFCLRunner:
         details = self.ast_evaluator.get_match_details(
             predicted_calls,
             test_case.expected_calls,
+            function_defs=test_case.functions,
         )
 
         if hasattr(self.agent, "update_trajectory_reward"):

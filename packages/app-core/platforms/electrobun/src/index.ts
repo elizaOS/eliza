@@ -28,6 +28,7 @@ import { showBackgroundNoticeOnce } from "./background-notice";
 import { getBrandConfig } from "./brand-config";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
+import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
@@ -1827,11 +1828,19 @@ async function handleDeepLink(url: string): Promise<void> {
 
 async function forwardDeepLinkToRenderer(url: string): Promise<void> {
 	await restoreWindow();
+	// Assistant/Siri/Shortcuts links deliberately stay renderer-owned. LifeOps
+	// requests must go through the normal chat/runtime planner, which persists
+	// ScheduledTask records instead of creating native macOS-only state.
 	sendToActiveRenderer("shareTargetReceived", { url });
 }
 
 function setupDeepLinks(): void {
-	Electrobun.events.on("open-url", (url: string) => {
+	Electrobun.events.on("open-url", (event: unknown) => {
+		const url = readOpenUrlEventUrl(event);
+		if (!url) {
+			logger.warn("[Main] Ignoring open-url event without a URL payload");
+			return;
+		}
 		void handleDeepLink(url);
 	});
 }

@@ -22,7 +22,9 @@ import logging
 import os
 import re
 import time
-from typing import TYPE_CHECKING, Optional
+from copy import deepcopy
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Optional
 
 from eliza_adapter.client import ElizaClient
 
@@ -34,6 +36,149 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_ELIZA_ACTION_CATALOG_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "bfcl"
+    / "elizaos_bfcl"
+    / "eliza_action_catalog.json"
+)
+
+
+class ElizaBFCLFunctionRegistry:
+    """Registry of live eliza actions exposed as BFCL candidate functions."""
+
+    def __init__(self, actions: list[dict[str, Any]]) -> None:
+        self._actions = actions
+        self._by_key: dict[str, dict[str, Any]] = {}
+        for entry in actions:
+            function = entry.get("function")
+            if not isinstance(function, dict):
+                continue
+            name = function.get("name")
+            if not isinstance(name, str) or not name:
+                continue
+            self._by_key[self._key(name)] = entry
+            similes = entry.get("_similes")
+            if isinstance(similes, list):
+                for simile in similes:
+                    if isinstance(simile, str) and simile:
+                        self._by_key[self._key(simile)] = entry
+
+    @classmethod
+    def from_json_file(
+        cls,
+        path: str | Path | None = None,
+    ) -> "ElizaBFCLFunctionRegistry":
+        catalog_path = (
+            Path(path) if path is not None else DEFAULT_ELIZA_ACTION_CATALOG_PATH
+        )
+        with catalog_path.open("r", encoding="utf-8") as fh:
+            doc = json.load(fh)
+        actions_raw = doc.get("actions") if isinstance(doc, dict) else None
+        actions = [
+            entry
+            for entry in actions_raw or []
+            if isinstance(entry, dict)
+            and isinstance(entry.get("function"), dict)
+            and isinstance(entry["function"].get("name"), str)
+        ]
+        return cls(actions)
+
+    @staticmethod
+    def _key(value: str) -> str:
+        return value.strip().lower()
+
+    def __len__(self) -> int:
+        return len(self._actions)
+
+    @property
+    def action_names(self) -> list[str]:
+        return [
+            str(entry["function"]["name"])
+            for entry in self._actions
+            if isinstance(entry.get("function"), dict)
+            and isinstance(entry["function"].get("name"), str)
+        ]
+
+    def match(self, name: str) -> dict[str, Any] | None:
+        if not isinstance(name, str) or not name.strip():
+            return None
+        return self._by_key.get(self._key(name))
+
+    def canonical_name(self, name: str) -> str | None:
+        entry = self.match(name)
+        if entry is None:
+            return None
+        function = entry.get("function")
+        if not isinstance(function, dict):
+            return None
+        canonical = function.get("name")
+        return canonical if isinstance(canonical, str) else None
+
+    def as_bfcl_functions(self) -> list[dict[str, Any]]:
+        functions: list[dict[str, Any]] = []
+        for entry in self._actions:
+            function = entry.get("function")
+            if isinstance(function, dict):
+                functions.append(deepcopy(function))
+        return functions
+
+    def as_openai_tools(self) -> list[dict[str, Any]]:
+        return [
+            {
+                "type": "function",
+                "function": function,
+            }
+            for function in self.as_bfcl_functions()
+        ]
+
+    def translate_arguments(
+        self,
+        name: str,
+        arguments: dict[str, "ArgumentValue"],
+    ) -> dict[str, "ArgumentValue"]:
+        canonical = self.canonical_name(name)
+        if canonical is None:
+            return dict(arguments)
+        aliases: dict[str, str] = {"op": "action"}
+        if canonical == "GITHUB":
+            aliases.update(
+                {
+                    "repository": "repo",
+                    "issue_number": "number",
+                    "pr_number": "number",
+                    "pull_request_number": "number",
+                }
+            )
+        elif canonical == "MCP":
+            aliases.update(
+                {
+                    "tool": "toolName",
+                    "tool_name": "toolName",
+                    "args": "arguments",
+                    "resource": "uri",
+                    "server": "serverName",
+                }
+            )
+
+        translated: dict[str, "ArgumentValue"] = {}
+        for key, value in arguments.items():
+            target = aliases.get(key, key)
+            if key in aliases and target in translated:
+                continue
+            translated[target] = value
+        return translated
+
+
+_DEFAULT_REGISTRY: ElizaBFCLFunctionRegistry | None = None
+
+
+def get_default_registry() -> ElizaBFCLFunctionRegistry:
+    global _DEFAULT_REGISTRY
+    if _DEFAULT_REGISTRY is None:
+        _DEFAULT_REGISTRY = ElizaBFCLFunctionRegistry.from_json_file()
+    return _DEFAULT_REGISTRY
 
 
 def _bfcl_types():
@@ -75,6 +220,7 @@ def _coerce_arguments(raw: object) -> dict[str, "ArgumentValue"]:
 def _extract_calls_from_response(
     text: str,
     params: dict[str, object],
+    registry: ElizaBFCLFunctionRegistry | None = None,
 ) -> list["FunctionCall"]:
     """Pull captured function calls out of an eliza message response.
 
@@ -133,11 +279,17 @@ def _extract_calls_from_response(
         )
 
     if calls:
-        return _unwrap_benchmark_action_calls(calls)
+        return _normalize_registry_calls(
+            _unwrap_benchmark_action_calls(calls),
+            registry,
+        )
 
     # Last resort: hand the raw text to BFCL's parser, which understands
     # several other formats (JSON blob, function-call notation, etc).
-    return _unwrap_benchmark_action_calls(_bfcl_parser()().parse(text or ""))
+    return _normalize_registry_calls(
+        _unwrap_benchmark_action_calls(_bfcl_parser()().parse(text or "")),
+        registry,
+    )
 
 
 def _unwrap_benchmark_action_calls(calls: list["FunctionCall"]) -> list["FunctionCall"]:
@@ -165,6 +317,33 @@ def _unwrap_benchmark_action_calls(calls: list["FunctionCall"]) -> list["Functio
                 )
             )
     return normalized
+
+
+def _normalize_registry_calls(
+    calls: list["FunctionCall"],
+    registry: ElizaBFCLFunctionRegistry | None,
+) -> list["FunctionCall"]:
+    if registry is None:
+        return calls
+    _, _, FunctionCall = _bfcl_types()
+    normalized: list[FunctionCall] = []
+    for call in calls:
+        canonical = registry.canonical_name(call.name)
+        if canonical is None:
+            normalized.append(call)
+            continue
+        normalized.append(
+            FunctionCall(
+                name=canonical,
+                arguments=registry.translate_arguments(call.name, call.arguments),
+            )
+        )
+    return normalized
+
+
+def _is_live_category(category: object) -> bool:
+    value = getattr(category, "value", category)
+    return isinstance(value, str) and value.startswith("live_")
 
 
 class ElizaBFCLAgent:
@@ -224,7 +403,14 @@ class ElizaBFCLAgent:
         except Exception as exc:
             logger.debug("Eliza reset failed (continuing): %s", exc)
 
+        registry: ElizaBFCLFunctionRegistry | None = None
         tools = _bfcl_tools_formatter()(test_case.functions)
+        if _is_live_category(test_case.category):
+            try:
+                registry = get_default_registry()
+                tools = [*tools, *registry.as_openai_tools()]
+            except Exception as exc:
+                logger.debug("Failed to load eliza BFCL action catalog: %s", exc)
         tools_json = json.dumps(tools, ensure_ascii=False)
 
         prompt = (
@@ -254,7 +440,11 @@ class ElizaBFCLAgent:
         )
         latency_ms = (time.time() - start) * 1000
 
-        predicted = _extract_calls_from_response(response.text or "", response.params)
+        predicted = _extract_calls_from_response(
+            response.text or "",
+            response.params,
+            registry=registry,
+        )
         if (
             os.environ.get("ELIZA_BENCH_MOCK") == "true"
             and not predicted

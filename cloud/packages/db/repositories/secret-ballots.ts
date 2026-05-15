@@ -4,16 +4,16 @@ import {
   type NewSecretBallot as NewSecretBallotDbRow,
   type NewSecretBallotEvent as NewSecretBallotEventDbRow,
   type NewSecretBallotVote as NewSecretBallotVoteDbRow,
-  type SecretBallotEventName,
-  type SecretBallotEventRow as SecretBallotEventDbRow,
-  type SecretBallotParticipant,
   type SecretBallotRow as SecretBallotDbRow,
+  type SecretBallotEventRow as SecretBallotEventDbRow,
+  type SecretBallotEventName,
+  type SecretBallotParticipant,
   type SecretBallotStatus,
   type SecretBallotTallyResult,
   type SecretBallotVoteRow as SecretBallotVoteDbRow,
   secretBallotEvents,
-  secretBallotVotes,
   secretBallots,
+  secretBallotVotes,
 } from "@/db/schemas/secret-ballots";
 
 export interface SecretBallotRow {
@@ -140,11 +140,7 @@ export class SecretBallotsRepository {
   }
 
   async getBallot(id: string): Promise<SecretBallotRow | null> {
-    const [row] = await db
-      .select()
-      .from(secretBallots)
-      .where(eq(secretBallots.id, id))
-      .limit(1);
+    const [row] = await db.select().from(secretBallots).where(eq(secretBallots.id, id)).limit(1);
     return row ? toDomain(row) : null;
   }
 
@@ -269,12 +265,7 @@ export class SecretBallotsRepository {
     const rows = await db
       .update(secretBallots)
       .set({ status: "expired", updated_at: now })
-      .where(
-        and(
-          inArray(secretBallots.status, expirable),
-          lt(secretBallots.expires_at, now),
-        ),
-      )
+      .where(and(inArray(secretBallots.status, expirable), lt(secretBallots.expires_at, now)))
       .returning({ id: secretBallots.id });
     return rows.map((r) => r.id);
   }

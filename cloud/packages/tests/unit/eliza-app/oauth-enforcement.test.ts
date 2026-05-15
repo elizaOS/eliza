@@ -21,32 +21,22 @@ import {
   validatePhoneForAPI,
 } from "@/lib/utils/phone-normalization";
 
-function extractMessagesFromWebhook(): {
-  telegramRejection: string;
-  statusNotConnected: string;
+function readTelegramWebhookCode(): string {
+  return readFileSync(join(process.cwd(), "apps/api/eliza-app/webhook/telegram/route.ts"), "utf-8");
+}
+
+function extractWebhookGatewayForwarding(): {
+  forwardsTelegram: boolean;
+  hasInlineGetStartedCopy: boolean;
 } {
   const telegramWebhook = readFileSync(
     join(process.cwd(), "apps/api/eliza-app/webhook/telegram/route.ts"),
     "utf-8",
   );
 
-  const telegramMatch = telegramWebhook.match(
-    /Welcome! To chat with Eliza, please connect your Telegram first[\s\S]*?get-started/,
-  );
-  const hasTelegramEmoji = telegramWebhook.includes("👋") && (telegramMatch?.length ?? 0) > 0;
-
-  const statusMatch = telegramWebhook.match(/Not connected yet[\s\S]*?get-started/);
-
   return {
-    telegramRejection:
-      telegramMatch && hasTelegramEmoji
-        ? "👋 Welcome! To chat with Eliza, please connect your Telegram first:\n\nhttps://eliza.app/get-started"
-        : telegramMatch
-          ? "Welcome! To chat with Eliza, please connect your Telegram first:\n\nhttps://eliza.app/get-started"
-          : "",
-    statusNotConnected: statusMatch
-      ? "*Account Status*\n\n❌ Not connected yet\n\nConnect your Telegram at: https://eliza.app/get-started"
-      : "",
+    forwardsTelegram: /forwardToWebhookGateway\(c,\s*"telegram"\)/.test(telegramWebhook),
+    hasInlineGetStartedCopy: telegramWebhook.includes("get-started"),
   };
 }
 
@@ -198,34 +188,21 @@ describe("Entity ID Generation - ACTUAL generateElizaAppEntityId()", () => {
   });
 });
 
-describe("Rejection Messages - VERIFIED AGAINST ACTUAL WEBHOOK CODE", () => {
-  const messages = extractMessagesFromWebhook();
+describe("Telegram Webhook Gateway Forwarding - VERIFIED AGAINST ACTUAL WEBHOOK CODE", () => {
+  const forwarding = extractWebhookGatewayForwarding();
 
-  test("Telegram rejection message exists in webhook (OAuth enforcement)", () => {
-    expect(messages.telegramRejection).not.toBe("");
-    expect(messages.telegramRejection.toLowerCase()).toContain("connect your telegram");
+  test("Telegram webhook delegates to the shared gateway", () => {
+    expect(forwarding.forwardsTelegram).toBe(true);
   });
 
-  test("Telegram rejection message includes get-started URL", () => {
-    expect(messages.telegramRejection).toContain("get-started");
+  test("Telegram webhook handles both root and nested paths", () => {
+    const webhookCode = readTelegramWebhookCode();
+    expect(webhookCode).toContain('app.all("/", (c) => forwardToWebhookGateway(c, "telegram"))');
+    expect(webhookCode).toContain('app.all("/*", (c) => forwardToWebhookGateway(c, "telegram"))');
   });
 
-  test("Status not connected message exists in webhook", () => {
-    expect(messages.statusNotConnected).not.toBe("");
-    expect(messages.statusNotConnected.toLowerCase()).toContain("not connected");
-  });
-
-  test("Telegram rejection message is welcoming (contains emoji)", () => {
-    expect(messages.telegramRejection).toContain("👋");
-  });
-
-  test("Get Started URL is present in rejection path of webhook code", () => {
-    const webhookCode = readFileSync(
-      join(process.cwd(), "apps/api/eliza-app/webhook/telegram/route.ts"),
-      "utf-8",
-    );
-    expect(webhookCode).toContain("get-started");
-    expect(webhookCode).toContain("connect your Telegram first");
+  test("Telegram webhook no longer carries inline onboarding copy", () => {
+    expect(forwarding.hasInlineGetStartedCopy).toBe(false);
   });
 });
 

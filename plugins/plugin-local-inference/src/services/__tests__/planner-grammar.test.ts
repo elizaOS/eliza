@@ -342,9 +342,8 @@ describe("end-to-end: planner skeleton wired through StructuredGenerateParams", 
 		if (!bundle) throw new Error("expected bundle");
 
 		// The local-inference handler resolves the grammar + prefill from
-		// `elizaSchema`. Cloud adapters get the same `responseSkeleton`/`grammar`
-		// and ignore them per the W3 contract — so the planner can pass both
-		// unconditionally.
+		// `elizaSchema`. Other adapters can ignore those local hints and rely on
+		// the portable tool schema, so the planner can pass both unconditionally.
 		const resolved = resolveGuidedDecodeForParams({
 			elizaSchema: bundle.elizaSchema,
 		});

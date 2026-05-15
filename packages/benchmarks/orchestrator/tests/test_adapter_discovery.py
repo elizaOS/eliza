@@ -14,6 +14,7 @@ from benchmarks.bench_cli_types import ModelSpec
 from benchmarks.orchestrator.adapters import (
     _score_from_app_eval,
     _score_from_compactbench,
+    _score_from_eliza_1,
     _score_from_loca_bench,
     _score_from_woobench,
     discover_adapters,
@@ -168,6 +169,42 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
     assert voiceagentbench.extract_score(
         {"pass_at_1": 1.0, "tasks": [{"task_id": "t1"}]}
     ).score == 1.0
+
+
+def test_eliza_1_score_rejects_all_adapter_errors(tmp_path: Path) -> None:
+    result_path = tmp_path / "eliza-1-results.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "raw_output": "",
+                        "tokens_generated": 24,
+                        "error": "cerebras returned empty output",
+                    },
+                    {
+                        "raw_output": "",
+                        "tokens_generated": 24,
+                        "error": "cerebras returned empty output",
+                    },
+                ],
+                "summaries": [
+                    {
+                        "taskId": "should_respond",
+                        "modeId": "cerebras",
+                        "cases": 2,
+                        "label_match_rate": 0.0,
+                        "parse_success_rate": 0.0,
+                        "schema_valid_rate": 0.0,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="adapter errors"):
+        _score_from_eliza_1(result_path)
 
 
 def test_mmau_legacy_module_shims_find_renamed_audio_package(tmp_path: Path) -> None:

@@ -43,6 +43,63 @@ function hasAssistantLaunchText(params: URLSearchParams): boolean {
   );
 }
 
+function normalizeFeatureName(value: string | null): string {
+  return (value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function resolveAndroidFeatureOpenPath(params: URLSearchParams): string {
+  const feature = normalizeFeatureName(params.get("feature"));
+  if (
+    ["voice", "voice chat", "talk", "eliza app action voice"].includes(feature)
+  ) {
+    return "voice";
+  }
+  if (
+    [
+      "daily brief",
+      "daily briefing",
+      "lifeops daily brief",
+      "briefing",
+      "recap",
+      "eliza app action daily brief",
+    ].includes(feature)
+  ) {
+    return "lifeops/daily-brief";
+  }
+  if (
+    [
+      "new task",
+      "create task",
+      "add task",
+      "lifeops task",
+      "reminder",
+      "eliza app action new task",
+    ].includes(feature)
+  ) {
+    return "lifeops/task/new";
+  }
+  if (
+    [
+      "task",
+      "tasks",
+      "lifeops tasks",
+      "reminders",
+      "to do",
+      "eliza app action tasks",
+    ].includes(feature)
+  ) {
+    return "lifeops/tasks";
+  }
+  if (feature === "ask") {
+    return "ask";
+  }
+  return "chat";
+}
+
 function formatHashRoute(route: string, params: URLSearchParams): string {
   const query = params.toString();
   return query ? `#${route}?${query}` : `#${route}`;
@@ -56,6 +113,12 @@ export function buildAssistantLaunchHashRoute(
   const generateLaunchId = options.generateLaunchId ?? defaultLaunchId;
 
   switch (path) {
+    case "feature/open":
+      return buildAssistantLaunchHashRoute(
+        resolveAndroidFeatureOpenPath(searchParams),
+        searchParams,
+        options,
+      );
     case "ask":
     case "assistant":
     case "chat/ask": {
@@ -101,8 +164,20 @@ export function buildAssistantLaunchHashRoute(
       params.set("lifeops.section", "overview");
       return formatHashRoute("lifeops", params);
     }
+    case "lifeops/tasks": {
+      const params = withDefaultSearchParam(
+        searchParams,
+        "source",
+        ASSISTANT_ENTRY_SOURCE,
+      );
+      params.set("action", params.get("action") ?? "lifeops.tasks");
+      ensureAssistantLaunchId(params, generateLaunchId);
+      params.set("lifeops.section", "reminders");
+      return formatHashRoute("lifeops", params);
+    }
     case "lifeops/create":
     case "lifeops/task":
+    case "lifeops/task/new":
     case "lifeops/reminder": {
       const params = withDefaultSearchParam(
         searchParams,
@@ -111,11 +186,11 @@ export function buildAssistantLaunchHashRoute(
       );
       params.set("action", params.get("action") ?? "lifeops.create");
       ensureAssistantLaunchId(params, generateLaunchId);
+      if (hasAssistantLaunchText(params)) {
+        return formatHashRoute("chat", params);
+      }
       params.set("lifeops.section", "reminders");
-      return formatHashRoute(
-        hasAssistantLaunchText(params) ? "chat" : "lifeops",
-        params,
-      );
+      return formatHashRoute("lifeops", params);
     }
     default:
       return null;

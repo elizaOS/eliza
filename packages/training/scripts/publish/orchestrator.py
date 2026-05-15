@@ -108,7 +108,7 @@ EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
 EXIT_RELEASE_EVIDENCE_FAIL = 16
 
-ELIZA_1_HF_ORG = "elizaos"
+ELIZA_1_HF_ORG = "elizalabs"
 
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2
@@ -162,6 +162,12 @@ REQUIRED_KERNEL_TARGETS_BY_SIDECAR: Mapping[str, tuple[str, ...]] = {
     "fused_turboquant.json": ("turbo3", "turbo4", "turbo3_tcq"),
     "qjl_config.json": ("qjl1_256",),
     "polarquant_config.json": ("polar_q4",),
+}
+REQUIRED_METHOD_BY_SIDECAR: Mapping[str, str] = {
+    "turboquant.json": "turboquant",
+    "fused_turboquant.json": "fused-turboquant",
+    "qjl_config.json": "qjl",
+    "polarquant_config.json": "polarquant",
 }
 
 RELEASE_EVIDENCE_PATH = Path("evidence/release.json")
@@ -331,6 +337,13 @@ def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
                     f"quantization sidecar {sidecar} missing kernel_manifest object",
                     EXIT_BUNDLE_LAYOUT_FAIL,
                 )
+            expected_method = REQUIRED_METHOD_BY_SIDECAR[name]
+            if data.get("method") != expected_method:
+                raise OrchestratorError(
+                    f"quantization sidecar {sidecar} method must be "
+                    f"{expected_method!r}; got {data.get('method')!r}",
+                    EXIT_BUNDLE_LAYOUT_FAIL,
+                )
             missing_keys = [
                 key
                 for key in REQUIRED_KERNEL_MANIFEST_KEYS
@@ -358,6 +371,46 @@ def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
                     f"{missing_targets}",
                     EXIT_BUNDLE_LAYOUT_FAIL,
                 )
+            for field in (
+                "block_layout_version",
+                "codebook_hash",
+                "per_block_tolerance",
+            ):
+                section = kernel_manifest.get(field)
+                if not isinstance(section, dict):
+                    raise OrchestratorError(
+                        f"quantization sidecar {sidecar} kernel_manifest.{field} "
+                        "must be an object",
+                        EXIT_BUNDLE_LAYOUT_FAIL,
+                    )
+                missing_field_targets = sorted(expected_targets - set(section))
+                if missing_field_targets:
+                    raise OrchestratorError(
+                        f"quantization sidecar {sidecar} kernel_manifest.{field} "
+                        f"missing target metadata for {missing_field_targets}",
+                        EXIT_BUNDLE_LAYOUT_FAIL,
+                    )
+                for target in expected_targets:
+                    value = section.get(target)
+                    if field == "per_block_tolerance":
+                        if (
+                            not isinstance(value, (int, float))
+                            or isinstance(value, bool)
+                            or value <= 0
+                        ):
+                            raise OrchestratorError(
+                                f"quantization sidecar {sidecar} "
+                                f"kernel_manifest.{field}.{target} must be a "
+                                "positive number",
+                                EXIT_BUNDLE_LAYOUT_FAIL,
+                            )
+                    elif not isinstance(value, str) or not value:
+                        raise OrchestratorError(
+                            f"quantization sidecar {sidecar} "
+                            f"kernel_manifest.{field}.{target} must be a "
+                            "non-empty string",
+                            EXIT_BUNDLE_LAYOUT_FAIL,
+                        )
             found.append(sidecar)
     return found
 
@@ -368,6 +421,151 @@ def _license_files_for_layout(layout: Mapping[str, Sequence[Path]]) -> tuple[str
         if layout.get(kind):
             names.append(name)
     return tuple(names)
+
+
+def _validate_dflash_release_metadata(
+    ctx: PublishContext,
+    layout: Mapping[str, Sequence[Path]],
+) -> None:
+    """Validate dflash/target-meta.json before any release can be assembled.
+
+    The runtime can fail late with `unknown model architecture: 'dflash-draft'`
+    or silently draft zero tokens when tokenizer metadata differs. Release
+    bundles therefore need a static sidecar proving the drafter belongs to the
+    shipped target bytes, shares tokenizer metadata, and is loadable by the
+    declared runtime shape.
+    """
+
+    meta_path = ctx.bundle_dir / "dflash" / "target-meta.json"
+    if not meta_path.is_file():
+        raise OrchestratorError(
+            "DFlash release metadata: missing dflash/target-meta.json",
+            EXIT_MISSING_FILE,
+        )
+    meta = _read_sidecar(meta_path)
+    errors: list[str] = []
+
+    if meta.get("schemaVersion") != 2:
+        errors.append("schemaVersion must be 2")
+    if meta.get("tier") != ctx.tier:
+        errors.append(f"tier must be {ctx.tier!r}")
+    if meta.get("publishEligible") is not True:
+        errors.append("publishEligible must be true")
+
+    text_paths = {
+        str(path.relative_to(ctx.bundle_dir)): path
+        for path in layout.get("text", [])
+        if path.is_file()
+    }
+    dflash_paths = {
+        str(path.relative_to(ctx.bundle_dir)): path
+        for path in layout.get("dflash", [])
+        if path.is_file()
+    }
+
+    target_text = meta.get("targetText")
+    target_sha: str | None = None
+    if not isinstance(target_text, dict):
+        errors.append("targetText must be an object")
+    else:
+        target_path = target_text.get("path")
+        if not isinstance(target_path, str) or target_path not in text_paths:
+            errors.append("targetText.path must point at a shipped text/*.gguf")
+        else:
+            actual = _sha256_file(text_paths[target_path])
+            recorded = target_text.get("sha256")
+            if recorded != actual:
+                errors.append(
+                    f"targetText.sha256 mismatch for {target_path}: "
+                    f"recorded {recorded!r}, actual {actual}"
+                )
+            else:
+                target_sha = actual
+
+    drafter = meta.get("drafter")
+    drafter_sha: str | None = None
+    if not isinstance(drafter, dict):
+        errors.append("drafter must be an object")
+    else:
+        drafter_path = drafter.get("path")
+        if not isinstance(drafter_path, str) or drafter_path not in dflash_paths:
+            errors.append("drafter.path must point at a shipped dflash/*.gguf")
+        else:
+            actual = _sha256_file(dflash_paths[drafter_path])
+            recorded = drafter.get("sha256")
+            if recorded != actual:
+                errors.append(
+                    f"drafter.sha256 mismatch for {drafter_path}: "
+                    f"recorded {recorded!r}, actual {actual}"
+                )
+            else:
+                drafter_sha = actual
+
+        if target_sha is not None:
+            if drafter.get("targetCheckpointSha256") != target_sha:
+                errors.append(
+                    "drafter.targetCheckpointSha256 must equal targetText.sha256"
+                )
+            if drafter.get("matchesTargetCheckpoint") is not True:
+                errors.append("drafter.matchesTargetCheckpoint must be true")
+        if (
+            drafter_sha is not None
+            and target_sha is not None
+            and drafter_sha == target_sha
+        ):
+            errors.append(
+                "drafter sha256 equals target text sha256; a same-weight drafter "
+                "is not a release-valid DFlash artifact"
+            )
+
+        architecture = drafter.get("architecture")
+        if not isinstance(architecture, str) or not architecture:
+            errors.append("drafter.architecture must be recorded")
+        elif architecture == "dflash-draft":
+            runtime = meta.get("runtime")
+            if (
+                not isinstance(runtime, dict)
+                or runtime.get("supportsDflashDraftArchitecture") is not True
+            ):
+                errors.append(
+                    "drafter.architecture is 'dflash-draft' but "
+                    "runtime.supportsDflashDraftArchitecture is not true"
+                )
+
+    tokenizer = meta.get("tokenizerCompatibility")
+    if not isinstance(tokenizer, dict):
+        errors.append("tokenizerCompatibility must be an object")
+    else:
+        mismatches = tokenizer.get("mismatches")
+        if tokenizer.get("compatible") is not True:
+            errors.append(
+                "tokenizerCompatibility.compatible must be true"
+                + (f"; mismatches={mismatches!r}" if mismatches else "")
+            )
+        if mismatches not in (None, []):
+            errors.append(
+                "tokenizerCompatibility.mismatches must be empty: "
+                f"{mismatches!r}"
+            )
+
+    acceptance_rate = meta.get("acceptanceRate")
+    if not isinstance(acceptance_rate, (int, float)) or isinstance(
+        acceptance_rate, bool
+    ):
+        errors.append("acceptanceRate must be numeric")
+    acceptance_window = meta.get("acceptanceWindow")
+    if (
+        not isinstance(acceptance_window, list)
+        or len(acceptance_window) != 2
+        or not all(isinstance(value, int) for value in acceptance_window)
+    ):
+        errors.append("acceptanceWindow must be [draftMin, draftMax]")
+
+    if errors:
+        raise OrchestratorError(
+            "DFlash release metadata invalid:\n  - " + "\n  - ".join(errors),
+            EXIT_RELEASE_EVIDENCE_FAIL,
+        )
 
 
 def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
@@ -419,6 +617,7 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
             "bundle layout: dflash/ must contain at least one .gguf",
             EXIT_BUNDLE_LAYOUT_FAIL,
         )
+    _validate_dflash_release_metadata(ctx, out)
     if not out["asr"]:
         raise OrchestratorError(
             "bundle layout: asr/ must contain at least one model file",
@@ -745,6 +944,7 @@ def _validate_base_v1_provenance(
     *,
     evidence: Mapping[str, Any],
     layout: Mapping[str, Sequence[Path]],
+    tier: str,
     errors: list[str],
 ) -> None:
     if evidence.get("finetuned") is not False:
@@ -765,7 +965,9 @@ def _validate_base_v1_provenance(
         if not isinstance(source.get("repo"), str) or not source.get("repo"):
             errors.append(f"sourceModels.{slot}.repo must be a non-empty string")
         elif (
-            repo_error := canonical_qwen_source_repo_error(slot, source["repo"])
+            repo_error := canonical_qwen_source_repo_error(
+                slot, source["repo"], tier=tier
+            )
         ) is not None:
             errors.append(f"sourceModels.{slot}.repo {repo_error}")
 
@@ -889,6 +1091,7 @@ def validate_release_evidence(
         _validate_base_v1_provenance(
             evidence=evidence,
             layout=layout,
+            tier=ctx.tier,
             errors=errors,
         )
 

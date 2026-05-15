@@ -2,6 +2,7 @@ import DeviceActivity
 import SwiftUI
 
 @main
+@available(iOS 16.0, *)
 struct ElizaDeviceActivityReportExtension: DeviceActivityReportExtension {
     var body: some DeviceActivityReportScene {
         ElizaDeviceActivityReportScene { configuration in
@@ -15,6 +16,7 @@ private struct ElizaDeviceActivityReportConfiguration {
     let message: String
 }
 
+@available(iOS 16.0, *)
 private struct ElizaDeviceActivityReportScene: DeviceActivityReportScene {
     let context: DeviceActivityReport.Context = .elizaScreenTimeSummary
     let content: (ElizaDeviceActivityReportConfiguration) -> ElizaDeviceActivityReportView
@@ -45,6 +47,7 @@ private struct ElizaDeviceActivityReportView: View {
     }
 }
 
+@available(iOS 16.0, *)
 private extension DeviceActivityReport.Context {
     static let elizaScreenTimeSummary = Self("eliza.screen-time.summary")
 }

@@ -117,9 +117,37 @@ def _build_fixture_bundle(
     _write(bundle / "vad" / "eliza-1-vad.onnx", b"\x00vad\x00")
     _write(bundle / "vision" / f"mmproj-{tier}.gguf", b"\x00mmproj\x00")
     _write(bundle / "dflash" / f"drafter-{tier}.gguf", b"\x00drafter\x00")
+    text_sha = _sha256(bundle / "text" / f"eliza-1-{tier}-64k.gguf")
+    drafter_sha = _sha256(bundle / "dflash" / f"drafter-{tier}.gguf")
     _write(
         bundle / "dflash" / "target-meta.json",
-        json.dumps({"acceptance_window": 4}),
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "tier": tier,
+                "status": "upload-candidate",
+                "publishEligible": True,
+                "targetText": {
+                    "path": f"text/eliza-1-{tier}-64k.gguf",
+                    "sha256": text_sha,
+                    "finalElizaWeights": True,
+                },
+                "drafter": {
+                    "path": f"dflash/drafter-{tier}.gguf",
+                    "sha256": drafter_sha,
+                    "targetCheckpointSha256": text_sha,
+                    "matchesTargetCheckpoint": True,
+                    "architecture": "qwen35",
+                    "finalElizaWeights": True,
+                },
+                "tokenizerCompatibility": {
+                    "compatible": True,
+                    "mismatches": [],
+                },
+                "acceptanceWindow": [2, 6],
+                "acceptanceRate": 0.71,
+            }
+        ),
     )
     _write(bundle / "cache" / "voice-preset-default.bin", b"\x00cache\x00")
 
@@ -296,7 +324,7 @@ def _build_fixture_bundle(
         json.dumps(
             {
                 "text": {"base": "eliza-1-4b", "license": "apache-2.0"},
-                "voice": {"base": "omnivoice-2b", "license": "apache-2.0"},
+                "voice": {"base": "kokoro-82m", "license": "apache-2.0"},
                 "drafter": {
                     "base": "dflash-4b-drafter",
                     "license": "apache-2.0",
@@ -426,6 +454,13 @@ def _write_checksums(bundle: Path) -> None:
     _write(bundle / "checksums" / "SHA256SUMS", "\n".join(entries) + "\n")
 
 
+def _rewrite_dflash_target_meta(bundle: Path, **updates: Any) -> None:
+    path = bundle / "dflash" / "target-meta.json"
+    data = json.loads(path.read_text())
+    data.update(updates)
+    path.write_text(json.dumps(data, indent=2) + "\n")
+
+
 def _metal_report(tmp_path: Path, status: str = "pass") -> Path:
     p = tmp_path / "metal_verify.json"
     p.write_text(
@@ -524,6 +559,55 @@ def test_dflash_eval_can_read_speedup_from_bench_report(tmp_path: Path) -> None:
     }
 
 
+def test_dflash_target_meta_tokenizer_mismatch_fails_release(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    _rewrite_dflash_target_meta(
+        bundle,
+        tokenizerCompatibility={
+            "compatible": False,
+            "mismatches": [{"key": "tokenizer.ggml.tokens"}],
+        },
+    )
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_dflash_target_meta_rejects_unloadable_dflash_draft_architecture(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    data = json.loads((bundle / "dflash" / "target-meta.json").read_text())
+    data["drafter"]["architecture"] = "dflash-draft"
+    (bundle / "dflash" / "target-meta.json").write_text(json.dumps(data) + "\n")
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
+def test_dflash_target_meta_rejects_same_weight_drafter(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    target = bundle / "text" / "eliza-1-4b-64k.gguf"
+    drafter = bundle / "dflash" / "drafter-4b.gguf"
+    drafter.write_bytes(target.read_bytes())
+    data = json.loads((bundle / "dflash" / "target-meta.json").read_text())
+    data["drafter"]["sha256"] = _sha256(drafter)
+    (bundle / "dflash" / "target-meta.json").write_text(json.dumps(data) + "\n")
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_RELEASE_EVIDENCE_FAIL
+
+
 # ---------------------------------------------------------------------------
 # (b) Missing license fails
 # ---------------------------------------------------------------------------
@@ -579,6 +663,34 @@ def test_quantization_sidecar_must_target_expected_kernel_family(
     data["kernel_manifest"]["kernel_target"] = ["turbo3"]
     sidecar.write_text(json.dumps(data))
     _write_checksums(bundle)
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_BUNDLE_LAYOUT_FAIL
+
+
+def test_quantization_sidecar_must_record_metadata_for_every_target(
+    tmp_path: Path,
+) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    sidecar = bundle / "quantization" / "fused_turboquant.json"
+    data = json.loads(sidecar.read_text())
+    del data["kernel_manifest"]["codebook_hash"]["turbo3_tcq"]
+    sidecar.write_text(json.dumps(data))
+    metal = _metal_report(tmp_path)
+
+    rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))
+
+    assert rc == EXIT_BUNDLE_LAYOUT_FAIL
+
+
+def test_quantization_sidecar_method_must_match_filename(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(tmp_path)
+    sidecar = bundle / "quantization" / "qjl_config.json"
+    data = json.loads(sidecar.read_text())
+    data["method"] = "turboquant"
+    sidecar.write_text(json.dumps(data))
     metal = _metal_report(tmp_path)
 
     rc = run(_ctx("4b", bundle, metal=metal, dry_run=True))

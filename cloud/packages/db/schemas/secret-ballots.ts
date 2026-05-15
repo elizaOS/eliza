@@ -1,6 +1,16 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { sql } from "drizzle-orm";
-import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { organizations } from "./organizations";
 
 /**
@@ -15,12 +25,7 @@ import { organizations } from "./organizations";
  * directly. Wave H+ adds Shamir-shared shares stored in the same column with
  * no schema change.
  */
-export const SECRET_BALLOT_STATUSES = [
-  "open",
-  "tallied",
-  "expired",
-  "canceled",
-] as const;
+export const SECRET_BALLOT_STATUSES = ["open", "tallied", "expired", "canceled"] as const;
 export type SecretBallotStatus = (typeof SECRET_BALLOT_STATUSES)[number];
 
 export const SECRET_BALLOT_EVENT_NAMES = [
@@ -60,24 +65,14 @@ export const secretBallots = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     agent_id: uuid("agent_id"),
     purpose: text("purpose").notNull(),
-    participants: jsonb("participants")
-      .$type<SecretBallotParticipant[]>()
-      .notNull()
-      .default([]),
+    participants: jsonb("participants").$type<SecretBallotParticipant[]>().notNull().default([]),
     threshold: integer("threshold").notNull(),
     status: text("status").$type<SecretBallotStatus>().notNull().default("open"),
     tally_result: jsonb("tally_result").$type<SecretBallotTallyResult>(),
     expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
-    created_at: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updated_at: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    metadata: jsonb("metadata")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
+    created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default({}),
   },
   (table) => ({
     org_created_idx: index("secret_ballots_org_created_idx").on(
@@ -89,10 +84,7 @@ export const secretBallots = pgTable(
       table.expires_at,
     ),
     agent_idx: index("secret_ballots_agent_idx").on(table.agent_id),
-    threshold_check: check(
-      "secret_ballots_threshold_positive",
-      sql`${table.threshold} >= 1`,
-    ),
+    threshold_check: check("secret_ballots_threshold_positive", sql`${table.threshold} >= 1`),
   }),
 );
 
@@ -106,17 +98,17 @@ export const secretBallotVotes = pgTable(
     participant_token_hash: text("participant_token_hash").notNull(),
     participant_identity_id: text("participant_identity_id").notNull(),
     value_ciphertext: text("value_ciphertext").notNull(),
-    recorded_at: timestamp("recorded_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    recorded_at: timestamp("recorded_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
-    ballot_identity_unique: uniqueIndex(
-      "secret_ballot_votes_ballot_identity_unique",
-    ).on(table.ballot_id, table.participant_identity_id),
-    ballot_token_unique: uniqueIndex(
-      "secret_ballot_votes_ballot_token_unique",
-    ).on(table.ballot_id, table.participant_token_hash),
+    ballot_identity_unique: uniqueIndex("secret_ballot_votes_ballot_identity_unique").on(
+      table.ballot_id,
+      table.participant_identity_id,
+    ),
+    ballot_token_unique: uniqueIndex("secret_ballot_votes_ballot_token_unique").on(
+      table.ballot_id,
+      table.participant_token_hash,
+    ),
     ballot_idx: index("secret_ballot_votes_ballot_idx").on(table.ballot_id),
   }),
 );
@@ -133,9 +125,7 @@ export const secretBallotEvents = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
-    occurred_at: timestamp("occurred_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    occurred_at: timestamp("occurred_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => ({
     ballot_occurred_idx: index("secret_ballot_events_ballot_occurred_idx").on(

@@ -6,7 +6,7 @@ import { writeStaticAssetManifest } from "./lib/static-asset-manifest.mjs";
 
 const repoRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../../..",
+  "../../..",
 );
 const outputPath = writeStaticAssetManifest(repoRoot);
 

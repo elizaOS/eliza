@@ -34,8 +34,11 @@ public final class HTTPBridge {
             guard let target = URL(string: url) else {
                 return Self.rejectedPromise(in: ctx, error: "http_fetch: invalid url")
             }
-            if Self.isLocalLoopback(target) {
-                return Self.rejectedPromise(in: ctx, error: "http_fetch: loopback/local-agent URLs must use path-only http_request IPC")
+            guard target.scheme == "http" || target.scheme == "https" else {
+                return Self.rejectedPromise(in: ctx, error: "http_fetch: unsupported URL scheme")
+            }
+            if Self.isLocalOrPrivateNetwork(target) {
+                return Self.rejectedPromise(in: ctx, error: "http_fetch: loopback/private URLs must use path-only http_request IPC")
             }
 
             var request = URLRequest(url: target)
@@ -85,12 +88,30 @@ public final class HTTPBridge {
         return promise
     }
 
-    private static func isLocalLoopback(_ url: URL) -> Bool {
+    private static func isLocalOrPrivateNetwork(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return host == "localhost" ||
             host == "127.0.0.1" ||
+            host == "0.0.0.0" ||
             host == "::1" ||
-            host.hasPrefix("127.")
+            host.hasPrefix("127.") ||
+            host.hasPrefix("10.") ||
+            host.hasPrefix("192.168.") ||
+            host.range(of: #"^172\.(1[6-9]|2[0-9]|3[0-1])\."#, options: .regularExpression) != nil ||
+            host.range(of: #"^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\."#, options: .regularExpression) != nil ||
+            host.hasPrefix("169.254.") ||
+            (host.contains(":") &&
+                (host.hasPrefix("fe80:") ||
+                    host.hasPrefix("fc") ||
+                    host.hasPrefix("fd"))) ||
+            host == "local" ||
+            host == "internal" ||
+            host == "lan" ||
+            host == "ts.net" ||
+            host.hasSuffix(".local") ||
+            host.hasSuffix(".internal") ||
+            host.hasSuffix(".lan") ||
+            host.hasSuffix(".ts.net")
     }
 
     private static func buildResultDict(data: Data?, response: URLResponse?, error: Error?, ctx: JSContext) -> [String: Any] {

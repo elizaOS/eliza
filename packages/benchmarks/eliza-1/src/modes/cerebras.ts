@@ -109,7 +109,7 @@ interface ExtractedOutput {
   emptyDiagnostic: string | null;
 }
 
-export class CerebrasAdapterError extends Error {
+class CerebrasAdapterError extends Error {
   readonly attemptErrors: string[];
 
   constructor(message: string, attemptErrors: string[]) {
@@ -170,9 +170,10 @@ export class CerebrasMode implements ModeAdapter {
     const transportErrors: string[] = [];
     const emptyDiagnostics: string[] = [];
     let lastTokens = 0;
+    const effectiveMaxTokens = Math.max(req.maxTokens, 256);
     const attempts = buildAttempts({
       model: this.model,
-      maxTokens: req.maxTokens,
+      maxTokens: effectiveMaxTokens,
       taskId: req.taskId,
       toolName,
       parameters,

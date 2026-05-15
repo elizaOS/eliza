@@ -339,8 +339,10 @@ describe("cerebras mode with mock client", () => {
   }
 
   it("runs through the tool-use path and returns the tool arguments as JSON", async () => {
+    const requests: unknown[] = [];
     const mockClient: CerebrasClient = {
-      async chatCompletions() {
+      async chatCompletions(req) {
+        requests.push(req);
         return {
           choices: [
             {
@@ -375,6 +377,7 @@ describe("cerebras mode with mock client", () => {
     expect(result.error).toBeUndefined();
     const parsed = JSON.parse(result.rawOutput) as { shouldRespond: string };
     expect(parsed.shouldRespond).toBe("RESPOND");
+    expect((requests[0] as { max_tokens: number }).max_tokens).toBe(256);
   });
 
   it("falls back to JSON-schema mode when tool-use returns empty output with tokens", async () => {

@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 describe("buildResponseGrammar — Stage-1 envelope", () => {
-	it("emits fixed envelope key order matching HANDLE_RESPONSE_SCHEMA (non-direct)", () => {
+	it("defaults to the canonical response-handler field envelope", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
 			{ actions: [] },
@@ -70,14 +70,14 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 			.map((s) => s.key);
 		expect(keyOrder).toEqual([
 			"shouldRespond",
-			"thought",
-			"replyText",
 			"contexts",
-			"contextSlices",
-			"candidateActions",
-			"parentActionHints",
-			"requiresTool",
-			"extract",
+			"intents",
+			"replyText",
+			"candidateActionNames",
+			"facts",
+			"relationships",
+			"addressedTo",
+			"emotion",
 		]);
 		// First span opens the JSON object with the first key.
 		expect(responseSkeleton.spans[0]).toEqual({
@@ -102,20 +102,22 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(grammar).toContain("contextsarray ::=");
 	});
 
-	it("drops shouldRespond on non-voice direct channels (DM/API/SELF)", () => {
+	it("keeps the canonical envelope on direct channels", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
 			{ actions: [] },
 			{ contexts: ["general"], channelType: "DM" },
 		);
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
-			false,
+			true,
 		);
 		expect(responseSkeleton.spans[0]).toEqual({
 			kind: "literal",
-			value: '{"thought":',
+			value: '{"shouldRespond":',
 		});
-		expect(grammar).not.toContain("shouldrespond ::=");
+		expect(grammar).toContain(
+			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
+		);
 	});
 
 	it("keeps shouldRespond on voice channels", () => {
@@ -127,7 +129,9 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
 			true,
 		);
-		expect(grammar).toContain("shouldrespond ::=");
+		expect(grammar).toContain(
+			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
+		);
 	});
 
 	it("always merges `simple` and `general` into the contexts element enum", () => {
@@ -1187,8 +1191,8 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 					key: "shouldRespond",
 					enumValues: ["RESPOND", "IGNORE", "STOP"],
 				},
-				{ kind: "literal", value: ',"thought":' },
-				{ kind: "free-string", key: "thought" },
+				{ kind: "literal", value: ',"replyText":' },
+				{ kind: "free-string", key: "replyText" },
 				{ kind: "literal", value: "}" },
 			],
 		};
@@ -1204,8 +1208,8 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 			spans: [
 				{ kind: "literal", value: '{"count":' },
 				{ kind: "number", key: "count" },
-				{ kind: "literal", value: ',"requiresTool":' },
-				{ kind: "boolean", key: "requiresTool" },
+				{ kind: "literal", value: ',"shouldStream":' },
+				{ kind: "boolean", key: "shouldStream" },
 				{ kind: "literal", value: ',"replyText":' },
 				{ kind: "free-string", key: "replyText" },
 				{ kind: "literal", value: "}" },
@@ -1222,10 +1226,10 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 		const skeleton: ResponseSkeleton = {
 			id: "test#all-free",
 			spans: [
-				{ kind: "literal", value: '{"thought":' },
-				{ kind: "free-string", key: "thought" },
-				{ kind: "literal", value: ',"extract":' },
-				{ kind: "free-json", key: "extract" },
+				{ kind: "literal", value: '{"replyText":' },
+				{ kind: "free-string", key: "replyText" },
+				{ kind: "literal", value: ',"facts":' },
+				{ kind: "free-json", key: "facts" },
 				{ kind: "literal", value: "}" },
 			],
 		};
@@ -1247,14 +1251,14 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 		expect(plan.overrides).toEqual([]);
 	});
 
-	it("covers the canonical Stage-1 envelope (shouldRespond enum + requiresTool boolean)", () => {
+	it("covers the canonical Stage-1 envelope enum decisions", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton } = buildResponseGrammar(
 			{ actions: [] },
 			{ contexts: ["general"] },
 		);
 		const plan = buildSpanSamplerPlan(responseSkeleton);
-		// shouldRespond gets an override; replyText / thought / contexts do not.
+		// shouldRespond and emotion get overrides; replyText / contexts do not.
 		const overriddenKinds = plan.overrides.map(
 			(o) => responseSkeleton.spans[o.spanIndex].kind,
 		);
@@ -1263,6 +1267,7 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 		);
 		expect(overriddenKinds).toContain("enum");
 		expect(overriddenKeys).toContain("shouldRespond");
+		expect(overriddenKeys).toContain("emotion");
 		// Every override carries T=0 and topK=1 — the user's explicit rule.
 		for (const o of plan.overrides) {
 			expect(o.temperature).toBe(0);
@@ -1270,8 +1275,7 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 		}
 		// Free-string / free-json spans are not overridden.
 		expect(overriddenKeys).not.toContain("replyText");
-		expect(overriddenKeys).not.toContain("thought");
-		expect(overriddenKeys).not.toContain("extract");
+		expect(overriddenKeys).not.toContain("contexts");
 	});
 
 	it("returns an empty plan (no overrides) for a skeleton with only free spans", () => {

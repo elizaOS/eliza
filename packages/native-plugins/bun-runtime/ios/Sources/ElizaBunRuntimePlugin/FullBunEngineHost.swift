@@ -23,8 +23,8 @@ private let fullBunHostCallCallback: @convention(c) (
 ///
 /// Full-engine/App Store builds link `ElizaBunEngine.xcframework` directly so
 /// the shipped app does not import dynamic loader APIs. Compatibility builds
-/// keep the optional loader path so the JSContext bridge can still run without
-/// embedding the full engine framework.
+/// keep the optional loader path so the JSContext bridge can still run in DEBUG
+/// development builds without embedding the full engine framework.
 ///
 /// IPC security model (full-Bun path):
 /// - Transport: NDJSON over anonymous stdio pipes. No TCP port is opened by the

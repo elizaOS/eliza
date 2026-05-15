@@ -102,17 +102,18 @@ to the corresponding role intents.
 build:
 
 - The framework overlay sets `config_defaultAssistant` to the brand package.
-- The capability manifest declares `ROLE_ASSISTANT`, `ACTION_ASSIST`,
-  `VOICE_COMMAND`, direct boot, usage stats, MediaProjection/screen capture,
-  accessibility, notification-listener availability, foreground services, and
-  privileged/system-app requirements.
+- The capability manifest declares `RoleManager.ROLE_ASSISTANT`,
+  `Intent.ACTION_ASSIST`, `Intent.ACTION_VOICE_COMMAND`, direct boot, usage
+  stats, MediaProjection/screen capture, accessibility, notification-listener
+  availability, foreground services, and privileged/system-app requirements.
 - `privapp-permissions-<package>.xml` whitelists the privileged permissions
   the APK requests: `PACKAGE_USAGE_STATS`, `MANAGE_APP_OPS_MODES`,
   `MANAGE_VIRTUAL_MACHINE`, `READ_FRAME_BUFFER`, `INJECT_EVENTS`, and
   `REAL_GET_TASKS`.
 - The Android cloud/Play build policy strips AOSP-only components,
-  foreground-service permissions, privileged permissions, and native control
-  plugins such as `@elizaos/capacitor-screencapture`.
+  `RECEIVE_BOOT_COMPLETED`, foreground-service permissions, privileged
+  permissions, and native control plugins such as
+  `@elizaos/capacitor-screencapture`.
 
 `boot-validate.mjs` checks the live image after Cuttlefish or a Pixel target
 boots:
@@ -124,7 +125,8 @@ boots:
 - The package is installed from `/system/priv-app/<AppName>/`, has SYSTEM and
   PRIVILEGED flags, and has the default plus privileged permissions granted.
 - `/product/etc/eliza/aosp-assistant-full-control.json` is present on-device
-  with the AOSP-only control path and `android-cloud` strip policy.
+  and parses structurally with the AOSP-only control path and `android-cloud`
+  strip policy.
 - `GET_USAGE_STATS` appop is `allow`.
 
 ### Pending ports (developer tooling, eliza-only for now)

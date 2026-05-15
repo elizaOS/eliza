@@ -79,6 +79,11 @@ _OUTPUT_EQUIVALENTS: dict[str, tuple[str, ...]] = {
         "opening",
         "openings",
     ),
+    "archive": (
+        "archive",
+        "archived",
+        "archiving",
+    ),
 }
 
 _TIME_12H_RE = re.compile(
@@ -104,8 +109,12 @@ _KWARG_ALIASES: dict[str, str] = {
     "daysAhead": "days_ahead",
     "durationMinutes": "duration_minutes",
     "endAt": "end",
+    "timeMax": "end",
     "end_time": "end",
     "listId": "list_id",
+    "mailOperation": "manageOperation",
+    "mail_operation": "manageOperation",
+    "manage_operation": "manageOperation",
     "messageId": "message_id",
     "newEnd": "end",
     "newStart": "start",
@@ -116,6 +125,7 @@ _KWARG_ALIASES: dict[str, str] = {
     "shouldFire": "should_fire",
     "slotCount": "slot_count",
     "startAt": "start",
+    "timeMin": "start",
     "start_time": "start",
     "taskId": "task_id",
     "threadId": "thread_id",
@@ -503,6 +513,8 @@ _DISCRIMINATOR_ACTION_ALIASES: dict[str, tuple[str, dict[str, str], frozenset[st
         {
             "draft_followup": "draft_reply",
             "list_inbox": "search_inbox",
+            "markRead": "manage",
+            "mark_read": "manage",
             "respond": "send",
             "search": "search_inbox",
             "send_draft": "send",
@@ -614,6 +626,23 @@ def _canonicalize_action(action: Action) -> Action:
     # kwargs the agent already provided.
     if name == "PERSONAL_ASSISTANT_BOOK_TRAVEL":
         return Action(name="BOOK_TRAVEL", kwargs=dict(action.kwargs))
+    if name == "ARCHIVE_EMAIL_THREAD":
+        new_kwargs = dict(action.kwargs)
+        new_kwargs.setdefault("source", "gmail")
+        new_kwargs.setdefault("operation", "manage")
+        new_kwargs.setdefault("manageOperation", "archive")
+        return Action(name="MESSAGE", kwargs=new_kwargs)
+    if name == "MESSAGE" and "operation" not in action.kwargs:
+        manage_fields = (
+            "manageOperation",
+            "manage_operation",
+            "mailOperation",
+            "mail_operation",
+        )
+        if any(isinstance(action.kwargs.get(key), str) for key in manage_fields):
+            new_kwargs = dict(action.kwargs)
+            new_kwargs["operation"] = "manage"
+            return Action(name=name, kwargs=new_kwargs)
 
     # Owner-surface aliases: `OWNER_<AREA>_<SUB>` → `<UMBRELLA>(subaction=<sub>)`.
     # Check before the generic umbrella loop so e.g. `OWNER_HEALTH_TODAY` is

@@ -222,8 +222,8 @@ def main(argv: list[str] | None = None) -> int:
             "sha256": drafter_sha,
             "source": args.drafter_source,
             "note": (
-                f"DFlash drafter for the {tier} Qwen3.5 text target. "
-                "It must share the 248320-token Qwen3.5 tokenizer with the target "
+                f"DFlash drafter for the {tier} Qwen3.5/Qwen3.6 text target. "
+                "It must share the 248320-token Qwen3.5-family tokenizer with the target "
                 "so speculative decoding is correct. See the drafter source repo "
                 "for whether this candidate is distilled or a tokenizer-compatible "
                 "smoke artifact."
@@ -465,6 +465,7 @@ def main(argv: list[str] | None = None) -> int:
         recipe_manifest={
             "turbo3": {"blockLayoutVersion": "block_turbo3_0:v1", "codebookHash": "turbo_centroids_3bit:8xfp32:seed42:v1", "perBlockTolerance": 0.05},
             "turbo4": {"blockLayoutVersion": "block_turbo4_0:v1", "codebookHash": "turbo_centroids_4bit:16xfp32:seed42:v1", "perBlockTolerance": 0.01},
+            "turbo3_tcq": {"blockLayoutVersion": "block_turbo3_tcq:v1", "codebookHash": "turbo3_tcq_codebook:512xfp32:seed42:v1", "perBlockTolerance": 0.03},
             "qjl1_256": {"blockLayoutVersion": "block_qjl1_256:v1:34bytes:packed", "codebookHash": "qjl1_256_layout:34bytes:lsb_first:bf16_norm:v1", "perBlockTolerance": 0.05},
             "polar_q4": {"blockLayoutVersion": "block_q4_polar:v1:82bytes:packed", "codebookHash": "polar_q4_centroids:16xfp32:lloyd_max_niter100:v1", "perBlockTolerance": 0.001},
         },

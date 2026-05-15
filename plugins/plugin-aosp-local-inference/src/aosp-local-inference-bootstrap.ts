@@ -49,7 +49,15 @@ import {
   ModelType,
   resolveStateDir,
   type TextEmbeddingParams,
+  type TextToSpeechParams,
 } from "@elizaos/core";
+import {
+  KokoroOnnxRuntime,
+  type KokoroEngineDiscoveryResult,
+  KokoroTtsBackend,
+  type KokoroRuntime,
+  resolveKokoroEngineConfig,
+} from "@elizaos/shared/local-inference";
 import { registerAospLlamaLoader } from "./aosp-llama-adapter.js";
 
 const SERVICE_NAME = "localInferenceLoader";
@@ -99,13 +107,18 @@ type EmbeddingHandler = (
   params: TextEmbeddingParams | string | null,
 ) => Promise<number[]>;
 
+type TextToSpeechHandler = (
+  runtime: IAgentRuntime,
+  params: TextToSpeechParams | string,
+) => Promise<Uint8Array>;
+
 type RuntimeWithModelRegistration = AgentRuntime & {
   getModel: (
     modelType: string | number,
-  ) => GenerateTextHandler | EmbeddingHandler | undefined;
+  ) => GenerateTextHandler | EmbeddingHandler | TextToSpeechHandler | undefined;
   registerModel: (
     modelType: string | number,
-    handler: GenerateTextHandler | EmbeddingHandler,
+    handler: GenerateTextHandler | EmbeddingHandler | TextToSpeechHandler,
     provider: string,
     priority?: number,
   ) => void;
@@ -675,6 +688,179 @@ function makeEmbeddingHandler(
   };
 }
 
+interface AospKokoroTtsHandlerOptions {
+  discover?: () => KokoroEngineDiscoveryResult | null;
+  runtime?: KokoroRuntime;
+  loadOrt?: ConstructorParameters<typeof KokoroOnnxRuntime>[0]["loadOrt"];
+}
+
+type AospKokoroOrtLoader = NonNullable<
+  ConstructorParameters<typeof KokoroOnnxRuntime>[0]["loadOrt"]
+>;
+
+const DEFAULT_AOSP_KOKORO_ORT_MODULE = "onnxruntime-node";
+
+async function loadAospKokoroOrt(): ReturnType<AospKokoroOrtLoader> {
+  const spec =
+    process.env.ELIZA_AOSP_KOKORO_ORT_MODULE?.trim() ||
+    DEFAULT_AOSP_KOKORO_ORT_MODULE;
+  return (await import(spec)) as Awaited<ReturnType<AospKokoroOrtLoader>>;
+}
+
+function extractSpeechText(params: TextToSpeechParams | string): string {
+  if (typeof params === "string") return params;
+  if (params && typeof params === "object" && typeof params.text === "string") {
+    return params.text;
+  }
+  throw new Error(
+    "[aosp-local-inference] TEXT_TO_SPEECH requires a string or { text } input",
+  );
+}
+
+function extractSpeechVoice(params: TextToSpeechParams | string): string | null {
+  return typeof params === "object" && params !== null
+    ? (params.voice ?? null)
+    : null;
+}
+
+function extractSpeechSignal(
+  params: TextToSpeechParams | string,
+): AbortSignal | undefined {
+  return typeof params === "object" && params !== null
+    ? params.signal
+    : undefined;
+}
+
+function encodeWavPcm16(pcm: Float32Array, sampleRate: number): Uint8Array {
+  const bytesPerSample = 2;
+  const dataBytes = pcm.length * bytesPerSample;
+  const out = new Uint8Array(44 + dataBytes);
+  const view = new DataView(out.buffer);
+  const writeAscii = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i++) out[offset + i] = text.charCodeAt(i);
+  };
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + dataBytes, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerSample, true);
+  view.setUint16(32, bytesPerSample, true);
+  view.setUint16(34, bytesPerSample * 8, true);
+  writeAscii(36, "data");
+  view.setUint32(40, dataBytes, true);
+  for (let i = 0; i < pcm.length; i++) {
+    const clamped = Math.max(-1, Math.min(1, pcm[i] ?? 0));
+    view.setInt16(
+      44 + i * bytesPerSample,
+      clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff,
+      true,
+    );
+  }
+  return out;
+}
+
+/**
+ * AOSP Kokoro TEXT_TO_SPEECH handler.
+ *
+ * The Kokoro model/voice discovery and runtime live in
+ * `@elizaos/shared/local-inference`; this package only supplies the Android
+ * registration boundary and returns WAV bytes for the core model contract.
+ */
+export function makeKokoroTextToSpeechHandler(
+  opts: AospKokoroTtsHandlerOptions = {},
+): TextToSpeechHandler {
+  let backendPromise: Promise<{
+    backend: KokoroTtsBackend;
+    config: KokoroEngineDiscoveryResult;
+  }> | null = null;
+
+  async function ensureBackend(): Promise<{
+    backend: KokoroTtsBackend;
+    config: KokoroEngineDiscoveryResult;
+  }> {
+    if (backendPromise) return backendPromise;
+    const promise = Promise.resolve().then(() => {
+      const config = opts.discover
+        ? opts.discover()
+        : resolveKokoroEngineConfig();
+      if (!config) {
+        throw new Error(
+          "[aosp-local-inference] Kokoro TEXT_TO_SPEECH is not available: stage an ONNX Kokoro model plus at least one voice .bin under <state-dir>/local-inference/models/kokoro/.",
+        );
+      }
+      if (config.runtimeKind !== "onnx" && !opts.runtime) {
+        throw new Error(
+          `[aosp-local-inference] Kokoro TEXT_TO_SPEECH discovered ${config.runtimeKind} artifacts, but the AOSP handler currently supports the CPU ONNX runtime path.`,
+        );
+      }
+      const runtime =
+        opts.runtime ??
+        new KokoroOnnxRuntime({
+          layout: config.layout,
+          expectedSha256: process.env.ELIZA_KOKORO_MODEL_SHA256 ?? null,
+          loadOrt: opts.loadOrt ?? loadAospKokoroOrt,
+        });
+      return {
+        config,
+        backend: new KokoroTtsBackend({
+          layout: config.layout,
+          runtime,
+          defaultVoiceId: config.defaultVoiceId,
+        }),
+      };
+    });
+    backendPromise = promise.catch((err) => {
+      backendPromise = null;
+      throw err;
+    });
+    return backendPromise;
+  }
+
+  return async (_runtime, params) => {
+    const text = extractSpeechText(params).trim();
+    if (!text) {
+      throw new Error(
+        "[aosp-local-inference] TEXT_TO_SPEECH requires non-empty text",
+      );
+    }
+
+    const signal = extractSpeechSignal(params);
+    const cancelSignal = { cancelled: Boolean(signal?.aborted) };
+    const abort = () => {
+      cancelSignal.cancelled = true;
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    try {
+      const { backend, config } = await ensureBackend();
+      const audio = await backend.synthesize({
+        phrase: {
+          id: 0,
+          text,
+          fromIndex: 0,
+          toIndex: text.length,
+          terminator: "punctuation",
+        },
+        preset: {
+          voiceId: extractSpeechVoice(params) ?? config.defaultVoiceId,
+          embedding: new Float32Array(0),
+          bytes: new Uint8Array(0),
+        },
+        cancelSignal,
+      });
+      if (cancelSignal.cancelled) {
+        throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
+      }
+      return encodeWavPcm16(audio.pcm, audio.sampleRate);
+    } finally {
+      signal?.removeEventListener("abort", abort);
+    }
+  };
+}
+
 /**
  * Register the AOSP llama.cpp FFI loader and matching ModelType handlers
  * on the runtime.
@@ -756,11 +942,14 @@ export async function ensureAospLocalInferenceHandlers(
     ModelType.TEXT_SMALL,
     ModelType.TEXT_LARGE,
     ModelType.TEXT_EMBEDDING,
+    ModelType.TEXT_TO_SPEECH,
   ];
   for (const modelType of slots) {
     const handler =
       modelType === ModelType.TEXT_EMBEDDING
         ? makeEmbeddingHandler(loader, lifecycle)
+        : modelType === ModelType.TEXT_TO_SPEECH
+          ? makeKokoroTextToSpeechHandler()
         : makeGenerateHandler(loader, lifecycle);
     runtimeWithRegistration.registerModel(
       modelType,
@@ -804,10 +993,10 @@ export async function ensureAospLocalInferenceHandlers(
   });
 
   console.log(
-    `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING (priority ${LOCAL_INFERENCE_PRIORITY})`,
+    `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH (priority ${LOCAL_INFERENCE_PRIORITY})`,
   );
   logger.info(
-    `[aosp-local-inference] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING at priority ${LOCAL_INFERENCE_PRIORITY}`,
+    `[aosp-local-inference] Registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH at priority ${LOCAL_INFERENCE_PRIORITY}`,
   );
   registeredRuntimes.add(runtime);
   return true;

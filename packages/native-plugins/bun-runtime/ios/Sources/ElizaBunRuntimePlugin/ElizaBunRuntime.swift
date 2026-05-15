@@ -275,6 +275,12 @@ public final class ElizaBunRuntime {
             }
         }
 
+        guard IosRuntimePolicy.allowsJSContextCompatibilityFallback else {
+            throw makeError(
+                "JSContext compatibility fallback is disabled outside iOS DEBUG/development builds; request engine=bun"
+            )
+        }
+
         let ctx = JSContext(virtualMachine: virtualMachine)!
         ctx.name = "ElizaBunRuntime"
         ctx.exceptionHandler = { _, exception in
@@ -548,8 +554,13 @@ public final class ElizaBunRuntime {
 }
 
 enum IosRuntimePolicy {
-    static let defaultEngine = "compat"
+    static let defaultEngine = "auto"
     static let safeLocalExecutionMode = "local-safe"
+#if DEBUG
+    static let allowsJSContextCompatibilityFallback = true
+#else
+    static let allowsJSContextCompatibilityFallback = false
+#endif
 
     private static let executionModeKeys = [
         "ELIZA_RUNTIME_MODE",
@@ -561,8 +572,10 @@ enum IosRuntimePolicy {
         switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "bun":
             return "bun"
-        case "compat", "auto", "":
-            return defaultEngine
+        case "auto", "":
+            return "auto"
+        case "compat":
+            return "compat"
         default:
             return defaultEngine
         }

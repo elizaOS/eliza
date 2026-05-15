@@ -3,7 +3,8 @@ import { z } from "zod";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import { type IdentityProvider, usersRepository } from "@/db/repositories/users";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
+import { requireInternalAuth } from "../../_auth";
 
 const identityProviderSchema = z.enum(["steward", "telegram", "discord", "whatsapp", "phone"]);
 
@@ -20,39 +21,6 @@ const resolveIdentitySchema = z
   });
 
 const app = new Hono<AppEnv>();
-
-function getInternalBearer(c: AppContext): string | null {
-  const auth = c.req.header("authorization");
-  if (!auth?.toLowerCase().startsWith("bearer ")) {
-    return null;
-  }
-  return auth.slice(7).trim();
-}
-
-function constantTimeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  const aBytes = new TextEncoder().encode(a);
-  const bBytes = new TextEncoder().encode(b);
-  let diff = 0;
-  for (let i = 0; i < aBytes.length; i++) {
-    diff |= aBytes[i] ^ bBytes[i];
-  }
-  return diff === 0;
-}
-
-function requireInternalSecret(c: AppContext): Response | null {
-  const expected = ((c.env.INTERNAL_SECRET as string | undefined) ?? "").trim();
-  if (!expected) {
-    return jsonError(c, 503, "Internal auth not configured", "internal_error");
-  }
-
-  const provided = getInternalBearer(c) ?? "";
-  if (!constantTimeEqual(provided, expected)) {
-    return jsonError(c, 401, "Unauthorized", "authentication_required");
-  }
-
-  return null;
-}
 
 function providerForPlatform(platform: string | undefined): IdentityProvider | undefined {
   switch (platform) {
@@ -72,8 +40,8 @@ function providerForPlatform(platform: string | undefined): IdentityProvider | u
 
 app.post("/", async (c) => {
   try {
-    const authFailure = requireInternalSecret(c);
-    if (authFailure) return authFailure;
+    const auth = await requireInternalAuth(c);
+    if (auth instanceof Response) return auth;
 
     let rawBody: unknown;
     try {
@@ -95,7 +63,12 @@ app.post("/", async (c) => {
     }
 
     const { user, identity } = result;
-    const [sandbox] = await agentSandboxesRepository.listByOrganization(user.organization_id);
+    const organizationId = user.organization_id;
+    if (!organizationId) {
+      return jsonError(c, 404, "Provisioned agent not found", "resource_not_found");
+    }
+
+    const [sandbox] = await agentSandboxesRepository.listByOrganization(organizationId);
     if (!sandbox) {
       return jsonError(c, 404, "Provisioned agent not found", "resource_not_found");
     }
@@ -103,13 +76,13 @@ app.post("/", async (c) => {
     return c.json({
       success: true,
       userId: user.id,
-      organizationId: user.organization_id,
+      organizationId,
       agentId: sandbox.id,
       data: {
         user: {
           id: user.id,
           email: user.email,
-          organizationId: user.organization_id,
+          organizationId,
           role: user.role,
           walletAddress: user.wallet_address,
           stewardUserId: user.steward_user_id,

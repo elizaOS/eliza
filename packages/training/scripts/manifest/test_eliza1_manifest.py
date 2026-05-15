@@ -24,6 +24,7 @@ from scripts.manifest.eliza1_manifest import (
     validate_manifest,
     write_manifest,
 )
+from scripts.quantization._kernel_manifest import kernel_manifest_fragment
 
 SHA = "0" * 64
 
@@ -33,6 +34,13 @@ def passing_backends() -> dict[str, KernelVerification]:
         b: KernelVerification(status="pass", at_commit="abc1234", report=f"{b}.txt")
         for b in ("metal", "vulkan", "cuda", "rocm", "cpu")
     }
+
+
+def quantization_kernel_fragments() -> list[dict[str, object]]:
+    return [
+        kernel_manifest_fragment(method)
+        for method in ("turboquant", "fused-turboquant", "qjl", "polarquant")
+    ]
 
 
 def base_kwargs(tier: str = "4b") -> dict:
@@ -82,6 +90,7 @@ def base_kwargs(tier: str = "4b") -> dict:
         ram_budget_min_mb=7000,
         ram_budget_recommended_mb=9500,
         default_eligible=True,
+        kernel_manifest_fragments=quantization_kernel_fragments(),
     )
 
 
@@ -196,6 +205,17 @@ def test_missing_required_kernel_rejected():
     with pytest.raises(Eliza1ManifestError) as exc:
         build_manifest(**kwargs)
     assert any("dflash" in e for e in exc.value.errors)
+
+
+def test_default_eligible_requires_recipe_manifest_for_quant_kernels():
+    kwargs = base_kwargs("4b")
+    kwargs["kernel_manifest_fragments"] = None
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("kernels.recipeManifest" in e for e in exc.value.errors)
+    assert any("turboquant_q4->turbo4" in e for e in exc.value.errors)
+    assert any("qjl->qjl1_256" in e for e in exc.value.errors)
+    assert any("polarquant->polar_q4" in e for e in exc.value.errors)
 
 
 def test_default_eligible_with_failing_eval_rejected():
@@ -591,6 +611,21 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
     assert validate_manifest(manifest) == ()
 
 
+def test_base_v1_27b_provenance_requires_qwen36_text_source():
+    kwargs = base_kwargs("27b")
+    prov = _base_v1_provenance()
+    prov["sourceModels"]["text"] = {"repo": "Qwen/Qwen3.6-27B"}
+    kwargs["provenance"] = prov
+    assert validate_manifest(build_manifest(**kwargs)) == ()
+
+    prov = _base_v1_provenance()
+    prov["sourceModels"]["text"] = {"repo": "Qwen/Qwen3.5-27B"}
+    kwargs["provenance"] = prov
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("Qwen/Qwen3.5-27B" in e for e in exc.value.errors)
+
+
 def test_base_v1_provenance_requires_finetuned_false():
     kwargs = base_kwargs("4b")
     prov = _base_v1_provenance()
@@ -673,11 +708,12 @@ def test_voice_quant_ladder_covers_every_tier():
     assert set(VOICE_QUANT_LADDER_BY_TIER.keys()) == set(VOICE_QUANT_BY_TIER.keys())
 
 
-def test_voice_quant_ladder_mobile_tiers_have_narrow_omnivoice_policy():
+def test_voice_quant_ladder_mobile_tiers_has_mobile_omnivoice_policy():
     """Mobile tiers (0_8b / 2b / 4b) publish a narrow OmniVoice ladder and
-    keep Kokoro as fallback."""
+    retain Kokoro as fallback."""
+    expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M")
     for tier in ("0_8b", "2b", "4b"):
-        assert VOICE_QUANT_LADDER_BY_TIER[tier] == ("Q3_K_M", "Q4_K_M", "Q5_K_M")
+        assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
         assert VOICE_BACKENDS_BY_TIER[tier] == ("omnivoice", "kokoro")
 
 

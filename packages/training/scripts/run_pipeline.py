@@ -347,12 +347,11 @@ def main() -> int:
              "pick the latest under the run's out_dir). Forwarded to train_local.py.",
     )
     ap.add_argument(
-        "--quantizers", default="polarquant,fused_turboquant,qjl",
+        "--quantizers", default="polarquant,turboquant,fused_turboquant,qjl",
         help="Comma-separated list of quantizers to apply post-training. "
              "Default = full stack: polarquant (4-bit weights) + "
-             "fused_turboquant (4-bit V cache, Triton kernels) + qjl "
-             "(1-bit K cache). Pass `polarquant,turboquant` for the "
-             "pure-PyTorch path if Triton is unavailable.",
+             "turboquant/fused_turboquant V-cache sidecars + qjl "
+             "(1-bit K cache).",
     )
     mb = ap.add_mutually_exclusive_group()
     mb.add_argument("--eliza1-bundle", dest="eliza1_bundle", action="store_true",
@@ -724,7 +723,7 @@ def main() -> int:
                 "scripts/optimize_for_eliza1.py",
                 "--base-model", str(finetuned_model),
                 "--output-dir", str(opt_dir),
-                "--apply", "polarquant", "qjl", "turboquant",
+                "--apply", "polarquant", "qjl", "turboquant", "fused_turboquant",
                 "--calibration", str(test_file if test_file.exists() else val_file),
                 "--calibration-samples", "128",
                 "--llama-cpp-dir", str(fork_dir),

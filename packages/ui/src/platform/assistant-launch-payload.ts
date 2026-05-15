@@ -34,6 +34,19 @@ export interface AssistantLaunchPayloadClaimOptions {
   allowedRoutes?: readonly string[];
 }
 
+export interface AssistantLaunchPayloadSendOptions {
+  metadata: Record<string, unknown>;
+}
+
+export interface AssistantLaunchPayloadConsumeOptions
+  extends AssistantLaunchPayloadClaimOptions {
+  onSendFailure?: (payload: AssistantLaunchPayload, error: unknown) => void;
+  sendText: (
+    text: string,
+    options: AssistantLaunchPayloadSendOptions,
+  ) => Promise<unknown> | unknown;
+}
+
 const claimedAssistantLaunchIds = new Set<string>();
 
 function trimParam(params: URLSearchParams, key: string): string {
@@ -105,6 +118,24 @@ export function claimAssistantLaunchPayloadFromHash(
   return payload;
 }
 
+export async function consumeAssistantLaunchPayloadFromHash(
+  hash: string,
+  options: AssistantLaunchPayloadConsumeOptions,
+): Promise<AssistantLaunchPayload | null> {
+  const payload = claimAssistantLaunchPayloadFromHash(hash, options);
+  if (!payload) return null;
+
+  try {
+    await options.sendText(payload.text, {
+      metadata: buildAssistantLaunchMetadata(payload),
+    });
+  } catch (error) {
+    options.onSendFailure?.(payload, error);
+  }
+
+  return payload;
+}
+
 export function clearAssistantLaunchPayloadFromHash(): void {
   if (typeof window === "undefined") return;
 
@@ -115,6 +146,9 @@ export function clearAssistantLaunchPayloadFromHash(): void {
   for (const key of ASSISTANT_LAUNCH_PARAM_KEYS) {
     params.delete(key);
   }
+  if (routePart.replace(/^#\/?|\/+$/g, "") === "chat") {
+    params.delete("lifeops.section");
+  }
 
   const nextHash = params.toString() ? `${routePart}?${params}` : routePart;
   if (nextHash === window.location.hash) return;
@@ -122,7 +156,7 @@ export function clearAssistantLaunchPayloadFromHash(): void {
   window.history.replaceState(
     null,
     "",
-    `${window.location.pathname}${window.location.search}${nextHash}`,
+    `${window.location.href.split("#")[0]}${nextHash}`,
   );
 }
 

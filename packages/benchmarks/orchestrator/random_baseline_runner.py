@@ -188,6 +188,7 @@ def _eliza_1_payload(score: float) -> dict[str, Any]:
                 "parse_success": score > 0,
                 "schema_valid": score > 0,
                 "label_match": score > 0,
+                "raw_output": "synthetic calibration output",
                 "first_token_latency_ms": 0,
                 "total_latency_ms": 1,
                 "tokens_generated": 1,

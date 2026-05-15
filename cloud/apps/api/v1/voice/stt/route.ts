@@ -91,7 +91,7 @@ function estimateAudioDurationMinutes(fileSizeBytes: number, mimeType: string): 
  * @param request - Form data with audio file and optional languageCode.
  * @returns Transcript and processing duration.
  */
-async function __hono_POST(request: Request) {
+async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
   let reservation: CreditReservation | undefined;
 
   try {
@@ -201,7 +201,7 @@ async function __hono_POST(request: Request) {
       throw error;
     }
 
-    const elevenlabs = getElevenLabsService();
+    const elevenlabs = getElevenLabsService(env);
 
     const startTime = Date.now();
     const validatedFile = new File([buffer], audioFile.name, {
@@ -338,5 +338,5 @@ async function __hono_POST(request: Request) {
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.post("/", async (c) => __hono_POST(c.req.raw));
+__hono_app.post("/", async (c) => __hono_POST(c.req.raw, c.env));
 export default __hono_app;

@@ -11,6 +11,7 @@ from elizaos_gaia import orchestrated
 from elizaos_gaia.orchestrated import (
     _capability_report,
     _effective_provider_labels,
+    _model_api_base_for_config,
     _model_provider_for_config,
     _parse_required_capabilities,
     _run_provider,
@@ -62,10 +63,26 @@ def test_model_provider_default_preserves_delegate_defaults(
 ) -> None:
     monkeypatch.delenv("BENCHMARK_MODEL_PROVIDER", raising=False)
     monkeypatch.delenv("ELIZA_PROVIDER", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("OPENAI_API_BASE", raising=False)
 
     assert _model_provider_for_config("eliza") == "eliza"
-    assert _model_provider_for_config("hermes") == "cerebras"
-    assert _model_provider_for_config("openclaw") == "cerebras"
+    assert _model_provider_for_config("hermes") == "openai"
+    assert _model_provider_for_config("openclaw") == "openai"
+    assert _model_api_base_for_config("eliza") is None
+    assert _model_api_base_for_config("hermes") == "https://api.cerebras.ai/v1"
+
+
+def test_model_provider_normalizes_cerebras_override_to_openai(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "cerebras")
+    monkeypatch.delenv("ELIZA_PROVIDER", raising=False)
+    monkeypatch.delenv("OPENAI_BASE_URL", raising=False)
+    monkeypatch.delenv("OPENAI_API_BASE", raising=False)
+
+    assert _model_provider_for_config("hermes") == "openai"
+    assert _model_api_base_for_config("hermes") == "https://api.cerebras.ai/v1"
 
 
 @pytest.mark.asyncio
@@ -74,14 +91,19 @@ async def test_run_provider_sets_harness_env_and_telemetry(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     captured: dict[str, object] = {}
-    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "cerebras")
+    monkeypatch.delenv("BENCHMARK_MODEL_PROVIDER", raising=False)
+    monkeypatch.delenv("ELIZA_PROVIDER", raising=False)
 
     async def fake_run_quick_test(config, num_questions: int, hf_token: str | None):
         captured["config_provider"] = config.provider
+        captured["config_api_base"] = config.api_base
         captured["num_questions"] = num_questions
         captured["harness"] = os.environ["ELIZA_BENCH_HARNESS"]
         captured["benchmark_harness"] = os.environ["BENCHMARK_HARNESS"]
         captured["model_name"] = os.environ["BENCHMARK_MODEL_NAME"]
+        captured["benchmark_model_provider"] = os.environ["BENCHMARK_MODEL_PROVIDER"]
+        captured["eliza_provider"] = os.environ["ELIZA_PROVIDER"]
+        captured["openai_base_url"] = os.environ["OPENAI_BASE_URL"]
         Path(os.environ["BENCHMARK_TELEMETRY_JSONL"]).write_text(
             json.dumps({"total_tokens": 17}) + "\n",
             encoding="utf-8",
@@ -105,16 +127,22 @@ async def test_run_provider_sets_harness_env_and_telemetry(
     payload = await _run_provider(_args(tmp_path), "hermes")
 
     assert captured == {
-        "config_provider": "cerebras",
+        "config_provider": "openai",
+        "config_api_base": "https://api.cerebras.ai/v1",
         "num_questions": 1,
         "harness": "hermes",
         "benchmark_harness": "hermes",
         "model_name": "gpt-oss-120b",
+        "benchmark_model_provider": "openai",
+        "eliza_provider": "openai",
+        "openai_base_url": "https://api.cerebras.ai/v1",
     }
     assert payload["harness"] == "hermes"
     assert payload["validation"] == {"ok": True, "failure": None}
     assert payload["telemetry"]["total_tokens"] == 17
     assert payload["metrics"]["observed_total_tokens"] == 17
+    assert payload["metadata"]["model_provider"] == "openai"
+    assert payload["metadata"]["model_api_base"] == "https://api.cerebras.ai/v1"
 
 
 @pytest.mark.asyncio

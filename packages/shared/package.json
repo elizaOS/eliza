@@ -29,7 +29,7 @@
     "build": "bun run build:i18n && bun run build:dist",
     "build:i18n": "node scripts/generate-keywords.mjs --target ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run --config ./vitest.config.ts",
+    "test": "node ../../scripts/run-vitest.mjs run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
@@ -72,6 +72,11 @@
       "import": "./dist/runtime-env.js",
       "default": "./dist/runtime-env.js",
       "types": "./dist/runtime-env.d.ts"
+    },
+    "./local-inference": {
+      "import": "./dist/local-inference/index.js",
+      "default": "./dist/local-inference/index.js",
+      "types": "./dist/local-inference/index.d.ts"
     },
     "./*.css": "./dist/*.css",
     "./*": {

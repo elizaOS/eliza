@@ -8,6 +8,8 @@
  * synthesis call, so adding voices is a cheap (~512KB) extra download.
  */
 
+import type { KokoroExecutionProvider } from "../kokoro-execution-provider.js";
+
 /** Canonical voice-pack id. Convention: `<lang>_<name>` (af_bella, am_michael). */
 export type KokoroVoiceId = string;
 
@@ -43,6 +45,12 @@ export interface KokoroModelLayout {
 export interface KokoroBackendOptions {
   /** Resolved on-disk layout. Required — the backend never guesses paths. */
   layout: KokoroModelLayout;
+  /**
+   * Preferred ORT execution provider for Kokoro runtime construction. The
+   * backend itself receives an already-built runtime, so callers that construct
+   * `KokoroOnnxRuntime` directly must pass this through there as well.
+   */
+  executionProvider?: KokoroExecutionProvider;
   /**
    * Voice id to use when the caller's `SpeakerPreset.voiceId` is not in the
    * voice-pack registry. The named voice MUST be present in `layout.voicesDir`.

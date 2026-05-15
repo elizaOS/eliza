@@ -250,8 +250,16 @@ async function verifyDashboardRender(dashboardUrl?: string) {
       .first()
       .click({ timeout: 30_000 })
       .catch(() => {});
-    await page.locator('[data-alert-severity="critical"]').first().waitFor({ timeout: 30_000 }).catch(() => {});
-    await page.locator('[data-alert-severity="warning"]').first().waitFor({ timeout: 30_000 }).catch(() => {});
+    await page
+      .locator('[data-alert-severity="critical"]')
+      .first()
+      .waitFor({ timeout: 30_000 })
+      .catch(() => {});
+    await page
+      .locator('[data-alert-severity="warning"]')
+      .first()
+      .waitFor({ timeout: 30_000 })
+      .catch(() => {});
     const redStateRendered = (await page.locator('[data-alert-severity="critical"]').count()) > 0;
     const yellowStateRendered = (await page.locator('[data-alert-severity="warning"]').count()) > 0;
     return {

@@ -1,8 +1,5 @@
 import { oauthIntentsRepository } from "@/db/repositories/oauth-intents";
-import {
-  createOAuthIntentsService,
-  type OAuthIntentsService,
-} from "@/lib/services/oauth-intents";
+import { createOAuthIntentsService, type OAuthIntentsService } from "@/lib/services/oauth-intents";
 
 let singleton: OAuthIntentsService | null = null;
 
