@@ -117,6 +117,7 @@ export function shouldUseCloudOnlyBranding(options: {
   injectedApiBase?: string;
   isDev: boolean;
   isNativePlatform: boolean;
+  nativeRuntimeMode?: string | null;
 }): boolean;
 
 // --- Runtime / platform helpers -------------------------------------------

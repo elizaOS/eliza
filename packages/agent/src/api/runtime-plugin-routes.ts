@@ -24,8 +24,6 @@ type X402RoutesModule = {
 };
 type RuntimePluginRouteHandler = NonNullable<Route["handler"]>;
 
-type X402RouteHandler = NonNullable<Route["handler"]>;
-
 let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
 
 function getX402RoutesModule(): Promise<X402RoutesModule> {

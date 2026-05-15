@@ -59,6 +59,14 @@
 			"@elizaos/plugin-local-inference/*": [
 				"../../../../plugins/plugin-local-inference/src/*"
 			],
+			"@elizaos/plugin-workflow": [
+				"../../../../plugins/plugin-workflow/src/index.ts"
+			],
+			"@elizaos/plugin-workflow/*": [
+				"../../../../plugins/plugin-workflow/src/*"
+			],
+			"@elizaos/workflows": ["../../../workflows/src/index.ts"],
+			"@elizaos/workflows/*": ["../../../workflows/src/*"],
 			"@elizaos/plugin-signal": [
 				"../../../../plugins/plugin-signal/src/index.ts"
 			],
