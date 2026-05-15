@@ -1021,17 +1021,26 @@ export default defineConfig({
           "@elizaos/plugin-hyperscape",
           "plugins/plugin-hyperscape/src/ui/index.ts",
         ],
-        ["@elizaos/plugin-2004scape", "plugins/plugin-2004scape/src/ui/index.ts"],
+        [
+          "@elizaos/plugin-2004scape",
+          "plugins/plugin-2004scape/src/ui/index.ts",
+        ],
         [
           "@elizaos/plugin-defense-of-the-agents",
           "plugins/plugin-defense-of-the-agents/src/ui/index.ts",
         ],
-        ["@elizaos/plugin-clawville", "plugins/plugin-clawville/src/ui/index.ts"],
+        [
+          "@elizaos/plugin-clawville",
+          "plugins/plugin-clawville/src/ui/index.ts",
+        ],
         [
           "@elizaos/plugin-trajectory-logger",
           "plugins/plugin-trajectory-logger/src/register.ts",
         ],
-        ["@elizaos/plugin-shopify-ui", "plugins/plugin-shopify-ui/src/register.ts"],
+        [
+          "@elizaos/plugin-shopify-ui",
+          "plugins/plugin-shopify-ui/src/register.ts",
+        ],
         [
           "@elizaos/plugin-hyperliquid-app",
           "plugins/plugin-hyperliquid-app/src/register.ts",
@@ -1040,10 +1049,7 @@ export default defineConfig({
           "@elizaos/plugin-polymarket-app",
           "plugins/plugin-polymarket-app/src/register.ts",
         ],
-        [
-          "@elizaos/plugin-wallet-ui",
-          "plugins/plugin-wallet-ui/src/index.ts",
-        ],
+        ["@elizaos/plugin-wallet-ui", "plugins/plugin-wallet-ui/src/index.ts"],
         [
           "@elizaos/plugin-contacts/register",
           "plugins/plugin-contacts/src/register.ts",
@@ -1056,8 +1062,14 @@ export default defineConfig({
           "@elizaos/plugin-messages/register",
           "plugins/plugin-messages/src/register.ts",
         ],
-        ["@elizaos/plugin-phone/register", "plugins/plugin-phone/src/register.ts"],
-        ["@elizaos/plugin-wifi/register", "plugins/plugin-wifi/src/register.ts"],
+        [
+          "@elizaos/plugin-phone/register",
+          "plugins/plugin-phone/src/register.ts",
+        ],
+        [
+          "@elizaos/plugin-wifi/register",
+          "plugins/plugin-wifi/src/register.ts",
+        ],
       ].map(([pkgName, relativeEntry]) => ({
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),
         replacement: path.resolve(elizaRoot, relativeEntry),
