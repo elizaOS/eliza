@@ -89,7 +89,7 @@ function extractEditTarget(
 		readStringOption(options, "viewId") ??
 		readStringOption(options, "id") ??
 		readStringOption(options, "name") ??
-		extractTargetFromText(message.content?.text ?? "")
+		extractTargetFromText(message.content.text ?? "")
 	);
 }
 
@@ -189,8 +189,8 @@ async function dispatchEditAgent({
 	callback?: HandlerCallback;
 }): Promise<ActionResult> {
 	const createTask =
-		runtime.actions?.find((a) => a.name === "START_CODING_TASK") ??
-		runtime.actions?.find((a) => a.name === "CREATE_TASK");
+		runtime.actions.find((a) => a.name === "START_CODING_TASK") ??
+		runtime.actions.find((a) => a.name === "CREATE_TASK");
 	if (!createTask) {
 		const text =
 			"START_CODING_TASK action not registered; cannot dispatch a coding agent.";
@@ -356,7 +356,7 @@ export async function runViewsEdit({
 	const view = resolution.view;
 	const intent = (
 		readStringOption(options, "intent") ??
-		message.content?.text ??
+		message.content.text ??
 		""
 	).trim();
 	if (!intent) {
