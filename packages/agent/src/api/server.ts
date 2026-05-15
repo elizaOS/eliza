@@ -143,7 +143,7 @@ import {
   exportAgent,
   importAgent,
 } from "../services/agent-export.ts";
-import { AppManager } from "@elizaos/plugin-app-manager";
+import { AppManager } from "../services/app-manager.ts";
 import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
 import {
@@ -178,7 +178,7 @@ import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { handleAgentStatusRoutes } from "./agent-status-routes.ts";
 import { handleAgentTransferRoutes } from "./agent-transfer-routes.ts";
 import { handleAppPackageRoutes } from "./app-package-routes.ts";
-import { handleAppsRoutes } from "@elizaos/plugin-app-manager";
+import { handleAppsRoutes } from "./apps-routes.ts";
 import { handleAuthRoutes } from "./auth-routes.ts";
 import { handleAvatarRoutes } from "./avatar-routes.ts";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes.ts";
@@ -194,12 +194,7 @@ import { ConnectorHealthMonitor } from "./connector-health.ts";
 import { handleConnectorRoutes } from "./connector-routes.ts";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
-// === Phase 4E: skills routes + helpers moved to plugin-agent-skills ===
-import {
-  discoverSkills,
-  handleCuratedSkillsRoutes,
-  handleSkillsRoutes,
-} from "@elizaos/plugin-agent-skills";
+import { handleCuratedSkillsRoutes } from "./curated-skills-routes.ts";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
 import { handleHealthRoutes } from "./health-routes.ts";
 import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
@@ -238,6 +233,8 @@ import {
   handleLifeOpsRuntimePluginRoute,
   handleSandboxRouteGroup,
 } from "./server-route-dispatch.ts";
+import { discoverSkills } from "./skill-discovery-helpers.ts";
+import { handleSkillsRoutes } from "./skills-routes.ts";
 import { handleSubscriptionRoutes } from "./subscription-routes.ts";
 import { handleUpdateRoutes } from "./update-routes.ts";
 import { getWalletAddresses, initStewardWalletCache } from "./wallet.ts";
@@ -246,27 +243,8 @@ import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
-// === Phase 4D: wallet routes extracted to @elizaos/plugin-wallet ===
-import { handleWalletRoutes } from "@elizaos/plugin-wallet";
-import { isCloudWalletEnabled } from "../config/feature-flags.ts";
-import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
-import { persistConfigEnv } from "./config-env.ts";
-import {
-  deriveSolanaAddress,
-  fetchEvmBalances,
-  fetchSolanaBalances,
-  fetchSolanaNativeBalanceViaRpc,
-  generateWalletForChain,
-  importWallet,
-  setSolanaWalletEnv,
-  validatePrivateKey,
-} from "./wallet.ts";
-import {
-  applyWalletRpcConfigUpdate,
-  getStoredWalletRpcSelections,
-  resolveWalletNetworkMode,
-  resolveWalletRpcReadiness,
-} from "./wallet-rpc.ts";
+import { handleWalletRoutes } from "./wallet-routes.ts";
+import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
 import { handleWorkbenchRoutes } from "./workbench-routes.ts";
 
 export {
@@ -2180,28 +2158,6 @@ async function handleRequest(
         json,
         error,
         runtime: state.runtime ?? null,
-        // === Phase 4D: inject agent-internal helpers into the extracted
-        // route handler so `@elizaos/plugin-wallet` stays free of any
-        // `@elizaos/agent` imports.
-        deps: {
-          getWalletAddresses,
-          fetchEvmBalances,
-          fetchSolanaBalances,
-          fetchSolanaNativeBalanceViaRpc,
-          validatePrivateKey,
-          importWallet,
-          generateWalletForChain,
-          deriveSolanaAddress,
-          setSolanaWalletEnv,
-          resolveWalletRpcReadiness,
-          resolveWalletNetworkMode,
-          getStoredWalletRpcSelections,
-          applyWalletRpcConfigUpdate,
-          resolveWalletCapabilityStatus,
-          isCloudWalletEnabled,
-          persistConfigEnv,
-          createIntegrationTelemetrySpan,
-        },
       })
     ) {
       return;
