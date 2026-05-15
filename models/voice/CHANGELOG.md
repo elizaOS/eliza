@@ -113,6 +113,34 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 ## turn-detector
 
+### 0.2.0 — 2026-05-15 (H-turn — DailyDialog fine-tune)
+
+- **What changed:** Fine-tuned `livekit/turn-detector @ v1.2.2-en` on
+  DailyDialog (Apache-2.0 mirror `OpenRL/daily_dialog`) using a
+  prefix-augmented EOU corpus: every utterance ≥ 3 words contributes a
+  positive (full utterance, EOU=1) and a randomly-truncated mid-utterance
+  prefix as a negative (trailing punctuation stripped, EOU=0). Yields
+  ≈ 170 k 50/50 balanced examples.
+- **Parent:** 0.1.0 (LiveKit baseline).
+- **HF repo:** `elizaos/eliza-1-voice-turn` @ rev
+  `9eaff4947ebd87b1d811e27dec939e29362a9e42`.
+- **Assets:** `onnx/model_q8.onnx` (37.7 MB INT8 ONNX), `onnx/turn-detector-en-q8.gguf`
+  (41.3 MB Q8_0 GGUF). Tokenizer + config sidecars co-located. The
+  CC-BY-NC LiveKit / turnsense base weights previously staged at the
+  repo root were removed — only Apache-2.0 fine-tune weights remain.
+- **Training:** APOLLO-Mini, lr=5e-5, 5000 steps at batch=32 on a
+  single RTX 5080 (laptop, sm_120, 12 min wall-clock, 14 GB peak VRAM).
+  Loss: BCE on `(im_end_logit − logsumexp(other_logits))` at the last
+  real-token position — the same quantity the runtime's
+  `probabilityFromOnnxOutput` softmax-projects.
+- **Eval (held-out 2 000-row DailyDialog split):**
+  - bf16 in-training: F1=0.9806, mean_pos_score=0.9773.
+  - Quantised ONNX (`onnx/model_q8.onnx`): F1=0.9811, meanLatencyMs=3.51
+    (CPU inference). Gate: ≥ 0.85 F1, ≤ 30 ms — **passed by 0.131 / 26.5 ms margin**.
+- **Net improvement:** F1 +0.1411 vs LiveKit 0.1.0 baseline (0.84 → 0.9811).
+- **Multilingual:** v0.4.1-intl variant deferred (RTX 5080 VRAM permits but
+  separate publish run; corpus is documented in `finetune_turn_detector.py`).
+
 ### 0.1.1 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
 
 - **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-turn`
