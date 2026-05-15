@@ -2738,6 +2738,99 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	}
 
 	/**
+	 * Path of the multimodal projector GGUF the running server was launched
+	 * with (the `--mmproj <path>` flag), or null when the server was loaded
+	 * without a projector (text-only tier or projector missing on disk).
+	 * Mirrors `loadedDrafterModelPath()` for the vision component.
+	 */
+	currentMmprojPath(): string | null {
+		return this.lastOptimizations?.mmproj ?? null;
+	}
+
+	/**
+	 * Vision describe via the in-process llama.cpp `mtmd` path. Posts to
+	 * the running llama-server's `/completion` endpoint with the
+	 * `image_data: [{ data, id }]` array; the server runs the projector
+	 * (loaded via `--mmproj`) on the encoded image bytes and prefixes the
+	 * decoder context with the projected tokens. Returns the decoded
+	 * description text plus per-call timings.
+	 *
+	 * Throws when no server is running, when no projector was loaded
+	 * (text-only tier), or when the server returns a non-OK status. There
+	 * is no fallback path — Florence-2 / Transformers.js was the only
+	 * alternative and it has been removed (see VISION_MIGRATION.md).
+	 */
+	async describeImage(args: {
+		bytes: Uint8Array;
+		mimeType?: string;
+		prompt?: string;
+		maxTokens?: number;
+		temperature?: number;
+		signal?: AbortSignal;
+	}): Promise<{
+		text: string;
+		projectorMs?: number;
+		decodeMs?: number;
+	}> {
+		const baseUrl = this.baseUrl;
+		if (!baseUrl) {
+			throw new Error("[dflash] llama-server is not running");
+		}
+		if (!this.currentMmprojPath()) {
+			throw new Error(
+				"[dflash] vision describe requires an mmproj-loaded server; " +
+					"the active tier did not declare vision or the mmproj GGUF " +
+					"is not on disk under the bundle root",
+			);
+		}
+		const base64 = Buffer.from(args.bytes).toString("base64");
+		const ask = args.prompt?.trim() || "Describe what is in this image.";
+		// `[img-N]` is the placeholder llama-server's mtmd path replaces
+		// with the encoded image tokens; `N` must match the
+		// `image_data[*].id` we send.
+		const prompt =
+			`<|im_start|>user\n[img-12]\n${ask}<|im_end|>\n` +
+			`<|im_start|>assistant\n`;
+		const body = JSON.stringify({
+			prompt,
+			image_data: [{ data: base64, id: 12 }],
+			n_predict: args.maxTokens ?? 256,
+			temperature: args.temperature ?? 0.2,
+			stream: false,
+			cache_prompt: false,
+		});
+		const res = await fetch(`${baseUrl}/completion`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				...(args.mimeType ? { "x-image-mime": args.mimeType } : {}),
+			},
+			body,
+			signal: args.signal,
+		});
+		if (!res.ok) {
+			const detail = await res.text().catch(() => "<unreadable>");
+			throw new Error(
+				`[dflash] vision /completion returned ${res.status}: ${detail.slice(0, 200)}`,
+			);
+		}
+		const payload = (await res.json()) as {
+			content?: unknown;
+			timings?: { prompt_ms?: number; predicted_ms?: number };
+		};
+		if (typeof payload.content !== "string") {
+			throw new Error(
+				"[dflash] vision /completion response missing string `content`",
+			);
+		}
+		return {
+			text: payload.content,
+			projectorMs: payload.timings?.prompt_ms,
+			decodeMs: payload.timings?.predicted_ms,
+		};
+	}
+
+	/**
 	 * Absolute path of the `llama-server` binary the running process was
 	 * spawned from (the fused build when one is installed), or null when no
 	 * server is up. Used by tests / diagnostics to confirm the fused path
