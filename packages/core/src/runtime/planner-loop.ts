@@ -114,9 +114,10 @@ interface RawPlannerOutput {
 export async function runPlannerLoop(
 	params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
+	const plannerContext = normalizePlannerContext(params.context);
 	const config = mergeChainingLoopConfig(params.config);
 	const trajectory: PlannerTrajectory = {
-		context: params.context,
+		context: plannerContext,
 		steps: [],
 		archivedSteps: [],
 		plannedQueue: [],
@@ -470,6 +471,15 @@ export async function runPlannerLoop(
 
 		trajectory.plannedQueue.length = 0;
 	}
+}
+
+function normalizePlannerContext(context: ContextObject): ContextObject {
+	return Array.isArray(context.events)
+		? context
+		: {
+				...context,
+				events: [],
+			};
 }
 
 function renderPlannerModelInput(params: {
@@ -1812,7 +1822,11 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 	const functionName =
 		typeof record.function === "string" ? record.function : rawFunction?.name;
 	const name = normalizeToolCallName(
-		record.name ?? record.toolName ?? record.tool ?? record.action ?? functionName,
+		record.name ??
+			record.toolName ??
+			record.tool ??
+			record.action ??
+			functionName,
 	);
 	if (!name) {
 		return null;

@@ -183,8 +183,12 @@
       "@elizaos/vault": ["./packages/vault/src/index.ts"],
       "@elizaos/plugin-linear": ["./plugins/plugin-linear/dist/index.d.ts"],
       "@elizaos/plugin-bluesky": ["./plugins/plugin-bluesky/dist/index.d.ts"],
-      "@elizaos/plugin-companion": ["./plugins/plugin-companion/dist/index.d.ts"],
-      "@elizaos/plugin-polymarket-app": ["./plugins/plugin-polymarket-app/dist/index.d.ts"],
+      "@elizaos/plugin-companion": [
+        "./plugins/plugin-companion/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-polymarket-app": [
+        "./plugins/plugin-polymarket-app/dist/index.d.ts"
+      ],
       "@elizaos/plugin-computeruse": [
         "./plugins/plugin-computeruse/dist/index.d.ts"
       ],
@@ -195,12 +199,16 @@
         "./plugins/plugin-farcaster/dist/index.d.ts"
       ],
       "@elizaos/plugin-google": ["./plugins/plugin-google/dist/index.d.ts"],
-      "@elizaos/plugin-hyperscape": ["./plugins/plugin-hyperscape/dist/index.d.ts"],
+      "@elizaos/plugin-hyperscape": [
+        "./plugins/plugin-hyperscape/dist/index.d.ts"
+      ],
       "@elizaos/plugin-babylon": ["./plugins/plugin-babylon/dist/index.d.ts"],
       "@elizaos/plugin-openrouter": [
         "./plugins/plugin-openrouter/dist/index.d.ts"
       ],
-      "@elizaos/plugin-2004scape": ["./plugins/plugin-2004scape/dist/index.d.ts"],
+      "@elizaos/plugin-2004scape": [
+        "./plugins/plugin-2004scape/dist/index.d.ts"
+      ],
       "@elizaos/plugin-coding-tools": [
         "./plugins/plugin-coding-tools/dist/index.d.ts"
       ],
@@ -218,22 +226,32 @@
       "@elizaos/plugin-elizacloud": [
         "./plugins/plugin-elizacloud/dist/node/index.d.ts"
       ],
-      "@elizaos/plugin-documents": ["./plugins/plugin-documents/dist/index.d.ts"],
-      "@elizaos/plugin-elizamaker": ["./plugins/plugin-elizamaker/dist/index.d.ts"],
-      "@elizaos/plugin-shopify-ui": ["./plugins/plugin-shopify-ui/dist/index.d.ts"],
+      "@elizaos/plugin-documents": [
+        "./plugins/plugin-documents/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-elizamaker": [
+        "./plugins/plugin-elizamaker/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-shopify-ui": [
+        "./plugins/plugin-shopify-ui/dist/index.d.ts"
+      ],
       "@elizaos/plugin-app-control": [
         "./plugins/plugin-app-control/dist/index.d.ts"
       ],
       "@elizaos/plugin-app-manager": [
         "./plugins/plugin-app-manager/src/index.ts"
       ],
-      "@elizaos/plugin-hyperliquid-app": ["./plugins/plugin-hyperliquid-app/dist/index.d.ts"],
+      "@elizaos/plugin-hyperliquid-app": [
+        "./plugins/plugin-hyperliquid-app/dist/index.d.ts"
+      ],
       "@elizaos/plugin-rlm": ["./plugins/plugin-rlm/dist/index.d.ts"],
       "@elizaos/plugin-anthropic": [
         "./plugins/plugin-anthropic/dist/index.d.ts"
       ],
       "@elizaos/plugin-nostr": ["./plugins/plugin-nostr/dist/index.d.ts"],
-      "@elizaos/plugin-wallet-ui": ["./plugins/plugin-wallet-ui/dist/index.d.ts"],
+      "@elizaos/plugin-wallet-ui": [
+        "./plugins/plugin-wallet-ui/dist/index.d.ts"
+      ],
       "@elizaos/plugin-inmemorydb": [
         "./plugins/plugin-inmemorydb/dist/index.d.ts"
       ],
@@ -241,7 +259,9 @@
       "@elizaos/plugin-todos": ["./plugins/plugin-todos/dist/index.d.ts"],
       "@elizaos/plugin-line": ["./plugins/plugin-line/dist/index.d.ts"],
       "@elizaos/plugin-lifeops": ["./plugins/plugin-lifeops/dist/index.d.ts"],
-      "@elizaos/plugin-screenshare": ["./plugins/plugin-screenshare/dist/index.d.ts"],
+      "@elizaos/plugin-screenshare": [
+        "./plugins/plugin-screenshare/dist/index.d.ts"
+      ],
       "@elizaos/plugin-feishu": ["./plugins/plugin-feishu/dist/index.d.ts"],
       "@elizaos/plugin-slack": ["./plugins/plugin-slack/dist/index.d.ts"],
       "@elizaos/plugin-roblox": ["./plugins/plugin-roblox/dist/index.d.ts"],
@@ -325,7 +345,9 @@
       "@elizaos/plugin-google-chat": [
         "./plugins/plugin-google-chat/dist/index.d.ts"
       ],
-      "@elizaos/plugin-steward-app": ["./plugins/plugin-steward-app/dist/index.d.ts"],
+      "@elizaos/plugin-steward-app": [
+        "./plugins/plugin-steward-app/dist/index.d.ts"
+      ],
       "@elizaos/plugin-contacts": ["./plugins/plugin-contacts/dist/index.d.ts"],
       "@elizaos/plugin-form": ["./plugins/plugin-form/dist/index.d.ts"],
       "@elizaos/plugin-defense-of-the-agents": [

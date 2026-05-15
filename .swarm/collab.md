@@ -693,3 +693,31 @@ read from `HF_TOKEN` env. Never commit it.
   (`elizaos/eliza-1-voice-omnivoice-same-v01@fd0d04439d`,
   `voice-models.ts` `omnivoice` 0.2.0). Impl report:
   `.swarm/impl/L-kokoro-distill.md`. Commit: `3f505127c1`.
+
+---
+
+## I-wave — single-runtime policy + Kokoro ship + gaps (2026-05-15)
+
+User directive 2026-05-15:
+- **No `node-llama-cpp` anywhere** unless it's the canonical wrapper for our
+  forked llama.cpp. No two versions.
+- **No ONNX. No external model runtimes.** Everything local → our llama.cpp
+  fork. End-to-end migration.
+- **Ship Kokoro sam FT** — don't care about quality. Just push it.
+- **Issue sub-agents for all remaining items / gaps.**
+
+Same hard rules: no worktrees, no stash, no branch hops, commit dirty,
+coordinate here, don't kill peers.
+
+- **I1** (Opus) — Single-runtime policy: remove `node-llama-cpp` dep + all
+  ONNX usage + every external model runtime. Port voice sub-models
+  (Wav2Small, Pyannote-3, WeSpeaker, Silero-VAD, hey-eliza wakeword,
+  Kokoro) into our llama.cpp fork as GGML kernels. Bump submodule pin.
+  Verify end-to-end via existing benches.
+- **I2** — Ship Kokoro sam FT regardless of eval — push the best weights
+  H1 produced to `elizaos/eliza-1-voice-kokoro` as `af_sam.bin`, update
+  manifest, ship. (Overrides H1 no-ship per user directive.)
+- **I3** — Close every remaining gap in `.swarm/impl/*.md` (W3, F, G, H
+  reports) that's not yet resolved. Drive each to DONE or
+  `compute-gated: <reason>` with precise next-step.
+
