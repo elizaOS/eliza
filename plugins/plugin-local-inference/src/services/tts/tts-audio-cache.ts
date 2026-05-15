@@ -128,10 +128,7 @@ export class TtsAudioCache {
 				0,
 				opts.config?.defaultTtlMs ?? DEFAULTS.defaultTtlMs,
 			),
-			maxBytes: Math.max(
-				1024,
-				opts.config?.maxBytes ?? DEFAULTS.maxBytes,
-			),
+			maxBytes: Math.max(1024, opts.config?.maxBytes ?? DEFAULTS.maxBytes),
 		};
 		this.now = opts.now ?? (() => Date.now());
 	}

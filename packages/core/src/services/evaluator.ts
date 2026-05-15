@@ -240,7 +240,9 @@ export class EvaluatorService extends BaseService {
 		return this.runtime.unregisterEvaluator(name);
 	}
 
-	private sortEvaluators(evaluators: RegisteredEvaluator[]): RegisteredEvaluator[] {
+	private sortEvaluators(
+		evaluators: RegisteredEvaluator[],
+	): RegisteredEvaluator[] {
 		return evaluators.sort(
 			(a, b) =>
 				(a.priority ?? 100) - (b.priority ?? 100) ||
@@ -365,7 +367,8 @@ export class EvaluatorService extends BaseService {
 				schema,
 			});
 		} catch (error) {
-			const messageText = error instanceof Error ? error.message : String(error);
+			const messageText =
+				error instanceof Error ? error.message : String(error);
 			await this.emitEvaluatorCompleted(
 				evaluatorId,
 				false,
@@ -377,7 +380,11 @@ export class EvaluatorService extends BaseService {
 		const output = coerceObjectOutput(raw);
 		if (!output) {
 			const messageText = "Evaluator model returned non-object output";
-			await this.emitEvaluatorCompleted(evaluatorId, false, new Error(messageText));
+			await this.emitEvaluatorCompleted(
+				evaluatorId,
+				false,
+				new Error(messageText),
+			);
 			return { output: null, error: messageText };
 		}
 		return { output };
@@ -436,8 +443,16 @@ export class EvaluatorService extends BaseService {
 		results: ActionResult[];
 		errors: EvaluatorRunResult["errors"];
 	}): Promise<void> {
-		const { evaluator, prepared, parsed, message, state, options, results, errors } =
-			params;
+		const {
+			evaluator,
+			prepared,
+			parsed,
+			message,
+			state,
+			options,
+			results,
+			errors,
+		} = params;
 		const processors = (evaluator.processors ?? [])
 			.slice()
 			.sort(
@@ -458,7 +473,8 @@ export class EvaluatorService extends BaseService {
 				});
 				if (result) results.push(result);
 			} catch (error) {
-				const messageText = error instanceof Error ? error.message : String(error);
+				const messageText =
+					error instanceof Error ? error.message : String(error);
 				errors.push({
 					evaluatorName: evaluator.name,
 					processorName: processor.name,
@@ -570,8 +586,8 @@ export class EvaluatorService extends BaseService {
 				evaluatorId,
 				evaluatorName: "post_turn",
 				startTime: Date.now(),
-				})
-				.catch(() => {});
+			})
+			.catch(() => {});
 
 		const prompt = buildPrompt({
 			runtime: this.runtime,

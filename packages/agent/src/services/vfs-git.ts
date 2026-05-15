@@ -120,7 +120,7 @@ class IsomorphicVfsGitService implements VfsGitService {
     return {
       action: "status",
       branch: await currentBranch(this.vfs.filesRoot),
-      clean: matrix.every((row) => isCleanStatus(row)),
+      clean: matrix.every((row: StatusRow) => isCleanStatus(row)),
       files: matrix.map(statusRowView),
     };
   }
@@ -337,7 +337,7 @@ function isCleanStatus(row: StatusRow): boolean {
 async function currentBranch(dir: string): Promise<string | null> {
   return git
     .currentBranch({ fs, dir, fullname: false })
-    .then((branch) => (typeof branch === "string" ? branch : null))
+    .then((branch: unknown) => (typeof branch === "string" ? branch : null))
     .catch(() => null);
 }
 

@@ -17,17 +17,25 @@ import {
   ELIZA_CLOUD_STATUS_UPDATED_EVENT,
   VOICE_CONFIG_UPDATED_EVENT,
 } from "../../events";
+import {
+  type ContinuousChatLatency,
+  type ContinuousChatState,
+  useContinuousChat,
+} from "../../hooks/useContinuousChat";
 import { useDocumentVisibility } from "../../hooks/useDocumentVisibility";
 import { useTimeout } from "../../hooks/useTimeout";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import type { useApp } from "../../state/useApp";
 import { ttsDebug } from "../../utils/tts-debug";
 import { resolveCharacterVoiceConfigFromAppConfig } from "../../voice/character-voice-config";
-import type {
-  VoiceAssistantSpeechTelemetry,
-  VoiceCaptureMode,
-  VoicePlaybackStartEvent,
-  VoiceTranscriptEvent,
+import {
+  DEFAULT_VOICE_CONTINUOUS_MODE,
+  type VoiceAssistantSpeechTelemetry,
+  type VoiceCaptureMode,
+  type VoiceContinuousMode,
+  type VoicePlaybackStartEvent,
+  type VoiceSpeakerMetadata,
+  type VoiceTranscriptEvent,
 } from "../../voice/voice-chat-types";
 import { useCompanionSceneStatus } from "../companion/injected";
 
@@ -211,6 +219,12 @@ export function useChatVoiceController(options: {
   const [voiceLatency, setVoiceLatency] = useState<VoiceLatencyState | null>(
     null,
   );
+  const [voiceSpeaker, setVoiceSpeaker] = useState<VoiceSpeakerMetadata | null>(
+    null,
+  );
+  const [continuousMode, setContinuousMode] = useState<VoiceContinuousMode>(
+    DEFAULT_VOICE_CONTINUOUS_MODE,
+  );
   const pendingVoiceTurnRef = useRef<PendingVoiceTurnState | null>(null);
   const suppressedAssistantSpeechRef = useRef<{
     messageId: string;
@@ -348,6 +362,10 @@ export function useChatVoiceController(options: {
       const speechEndedAtMs = nowMs();
       const voiceTurnId = event?.turn.id ?? makeVoiceTurnId(speechEndedAtMs);
       const voiceTurnSignal = voiceTurnSignalFromTranscriptEvent(event);
+      const turnSpeaker = event?.speaker ?? event?.turn.speaker ?? null;
+      if (turnSpeaker) {
+        setVoiceSpeaker(turnSpeaker);
+      }
       pendingVoiceTurnRef.current = {
         id: voiceTurnId,
         expiresAtMs: speechEndedAtMs + VOICE_TURN_OUTPUT_WINDOW_MS,
@@ -364,6 +382,7 @@ export function useChatVoiceController(options: {
               voiceSpeechEndedAtMs: Math.round(speechEndedAtMs),
               voiceSource: event?.turn.source ?? event?.turn.metadata?.source,
               ...(voiceTurnSignal ? { voiceTurnSignal } : {}),
+              ...(turnSpeaker ? { voiceSpeaker: turnSpeaker } : {}),
             },
           }),
         50,
@@ -373,8 +392,12 @@ export function useChatVoiceController(options: {
   );
 
   const handleVoiceTranscriptPreview = useCallback(
-    (text: string) => {
+    (text: string, event?: { speaker?: VoiceSpeakerMetadata }) => {
       if (isComposerLocked) return;
+      const previewSpeaker = event?.speaker ?? null;
+      if (previewSpeaker) {
+        setVoiceSpeaker(previewSpeaker);
+      }
       setState("chatInput", composeVoiceDraft(text));
     },
     [composeVoiceDraft, isComposerLocked, setState],
@@ -761,16 +784,46 @@ export function useChatVoiceController(options: {
     }));
   }, [chatFirstTokenReceived]);
 
+  const continuousChatLatency = useMemo<ContinuousChatLatency>(
+    () => ({
+      speechEndToFirstTokenMs: voiceLatency?.speechEndToFirstTokenMs ?? null,
+      speechEndToVoiceStartMs: voiceLatency?.speechEndToVoiceStartMs ?? null,
+      assistantStreamToVoiceStartMs:
+        voiceLatency?.assistantStreamToVoiceStartMs ?? null,
+      firstSegmentCached: voiceLatency?.firstSegmentCached ?? null,
+    }),
+    [voiceLatency],
+  );
+
+  const continuous = useContinuousChat({
+    voice,
+    mode: continuousMode,
+    disabled: isComposerLocked,
+    latency: continuousChatLatency,
+    speaker: voiceSpeaker,
+    assistantGenerating: chatSending && !chatFirstTokenReceived,
+  });
+
   return {
     beginVoiceCapture,
     endVoiceCapture,
+    continuous,
+    continuousMode,
+    setContinuousMode,
     handleEditMessage,
     handleSpeakMessage,
     stopSpeaking,
     voice,
     voiceLatency,
+    voiceSpeaker,
   };
 }
+
+export type UseChatVoiceControllerReturn = ReturnType<
+  typeof useChatVoiceController
+>;
+
+export type { ContinuousChatState };
 
 /* ── useGameModalMessages ──────────────────────────────────────────── */
 

@@ -4,6 +4,20 @@ export {
 	VoiceBundleDoesNotFitError,
 } from "./active-model";
 export {
+	type AsrBackend,
+	type AsrBackendLoader,
+	AsrBackendUnavailableError,
+	type AsrLoadArgs,
+	type AsrRequest,
+	type AsrResult,
+	type AsrTranscriptCacheLike,
+	type AsrUnavailableReason,
+	type CreateAsrCapabilityRegistrationOptions,
+	createAsrCapabilityRegistration,
+	hashAsrInput,
+	isAsrBackendUnavailable,
+} from "./asr";
+export {
 	type BackendDecision,
 	BackendDispatcher,
 	type BackendOverride,
@@ -115,20 +129,6 @@ export {
 	setMemoryArbiter,
 	tryGetMemoryArbiter,
 } from "./memory-arbiter";
-export {
-	type AsrBackend,
-	type AsrBackendLoader,
-	AsrBackendUnavailableError,
-	type AsrLoadArgs,
-	type AsrRequest,
-	type AsrResult,
-	type AsrTranscriptCacheLike,
-	type AsrUnavailableReason,
-	createAsrCapabilityRegistration,
-	type CreateAsrCapabilityRegistrationOptions,
-	hashAsrInput,
-	isAsrBackendUnavailable,
-} from "./asr";
 export {
 	type CapacitorPressureSource,
 	capacitorPressureSource,

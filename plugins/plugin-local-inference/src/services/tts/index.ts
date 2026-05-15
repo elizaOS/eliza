@@ -39,7 +39,13 @@
  * re-load.
  */
 
-export { TtsBackendUnavailableError, isTtsUnavailable } from "./errors";
+export { isTtsUnavailable, TtsBackendUnavailableError } from "./errors";
+export {
+	hashTtsRequest,
+	TtsAudioCache,
+	type TtsAudioCacheConfig,
+	type TtsAudioEntry,
+} from "./tts-audio-cache";
 export type {
 	TtsBackend,
 	TtsBackendLoader,
@@ -48,23 +54,13 @@ export type {
 	TtsRequest,
 	TtsResult,
 } from "./types";
-export {
-	hashTtsRequest,
-	TtsAudioCache,
-	type TtsAudioCacheConfig,
-	type TtsAudioEntry,
-} from "./tts-audio-cache";
 
 import type {
 	ArbiterCapability,
 	CapabilityRegistration,
 } from "../memory-arbiter";
 import { TtsBackendUnavailableError } from "./errors";
-import {
-	hashTtsRequest,
-	type TtsAudioCache,
-	type TtsAudioEntry,
-} from "./tts-audio-cache";
+import { hashTtsRequest, type TtsAudioEntry } from "./tts-audio-cache";
 import type {
 	TtsBackend,
 	TtsBackendLoader,
@@ -146,10 +142,7 @@ export function createTtsCapabilityRegistration(
 		async unload(backend: TtsBackend): Promise<void> {
 			await backend.dispose();
 		},
-		async run(
-			backend: TtsBackend,
-			request: TtsRequest,
-		): Promise<TtsResult> {
+		async run(backend: TtsBackend, request: TtsRequest): Promise<TtsResult> {
 			// 1. Reject unsupported requests cleanly — no silent fallback.
 			if (!backend.supports(request)) {
 				throw new TtsBackendUnavailableError(

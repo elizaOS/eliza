@@ -34,7 +34,11 @@ const HASH_FAMILY_DEFAULT = "qwen3-asr";
 export function hashAsrInput(req: AsrRequest, family?: string): string {
 	const hasher = createHash("sha256");
 	const rateBuf = new ArrayBuffer(4);
-	new DataView(rateBuf).setUint32(0, Math.max(0, Math.floor(req.sampleRateHz)), true);
+	new DataView(rateBuf).setUint32(
+		0,
+		Math.max(0, Math.floor(req.sampleRateHz)),
+		true,
+	);
 	hasher.update(new Uint8Array(rateBuf));
 	const pcm = req.pcm;
 	const bytes = new Uint8Array(pcm.buffer, pcm.byteOffset, pcm.byteLength);
