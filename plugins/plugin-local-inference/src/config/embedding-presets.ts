@@ -1,3 +1,4 @@
+// === Phase 4A: extracted from packages/agent ===
 import os from "node:os";
 
 export type EmbeddingTier = "fallback" | "standard" | "performance";
@@ -23,6 +24,7 @@ const COMPACT_ELIZA_1_EMBEDDING = {
 	downloadSizeMB: 512,
 } as const;
 
+/** All available presets, indexed by tier. */
 export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 	fallback: {
 		tier: "fallback",
@@ -64,6 +66,7 @@ export const EMBEDDING_PRESETS: Record<EmbeddingTier, EmbeddingPreset> = {
 
 const BYTES_PER_GB = 1024 ** 3;
 
+/** Detect the best embedding tier for the current hardware. */
 export function detectEmbeddingTier(): EmbeddingTier {
 	const totalRamGB = Math.round(os.totalmem() / BYTES_PER_GB);
 	const isMac = process.platform === "darwin";
@@ -74,6 +77,7 @@ export function detectEmbeddingTier(): EmbeddingTier {
 	return "standard";
 }
 
+/** Get the preset for the current hardware. */
 export function detectEmbeddingPreset(): EmbeddingPreset {
 	return EMBEDDING_PRESETS[detectEmbeddingTier()];
 }

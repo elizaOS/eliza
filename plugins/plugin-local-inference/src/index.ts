@@ -11,6 +11,14 @@ export {
 	generateMediaAction,
 	type MediaKind,
 } from "./actions/generate-media.js";
+// === Phase 4A: extracted from packages/agent ===
+export {
+	detectEmbeddingPreset,
+	detectEmbeddingTier,
+	EMBEDDING_PRESETS,
+	type EmbeddingPreset,
+	type EmbeddingTier,
+} from "./config/embedding-presets.js";
 export {
 	getLocalInferenceActiveModelId,
 	getLocalInferenceActiveSnapshot,

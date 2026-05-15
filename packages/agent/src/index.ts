@@ -186,7 +186,6 @@ export * from "./runtime/agent-event-service.ts";
 export * from "./runtime/core-plugins.ts";
 export * from "./runtime/eliza.ts";
 export * from "./runtime/eliza-plugin.ts";
-export * from "./runtime/embedding-presets.ts";
 export {
   isCloudExecutionMode,
   type LocalExecutionMode,
