@@ -16,7 +16,6 @@ export const defaultVisionConfig: VisionConfig = {
   tileSize: 256,
   tileProcessingOrder: "priority",
   ocrEnabled: true,
-  florence2Enabled: true,
 };
 
 export const VisionConfigSchema = z.object({
@@ -42,13 +41,6 @@ export const VisionConfigSchema = z.object({
   ocrEnabled: z.boolean().default(true),
   ocrLanguage: z.string().default("eng"),
   ocrConfidenceThreshold: z.number().min(0).max(100).default(60),
-  florence2Enabled: z.boolean().default(true),
-  florence2Provider: z
-    .enum(["local", "azure", "huggingface", "replicate"])
-    .optional(),
-  florence2Endpoint: z.string().url().optional(),
-  florence2ApiKey: z.string().optional(),
-  florence2Timeout: z.number().min(1000).max(300000).default(30000),
   enableFaceRecognition: z.boolean().default(false),
   faceMatchThreshold: z.number().min(0).max(1).default(0.6),
   maxFaceProfiles: z.number().min(10).max(10000).default(1000),
@@ -123,18 +115,6 @@ export class ConfigurationManager {
         "OCR_CONFIDENCE_THRESHOLD",
         60,
       ),
-      florence2Enabled: this.getBooleanSetting("FLORENCE2_ENABLED", true),
-      florence2Provider: this.getEnumSetting<
-        "local" | "azure" | "huggingface" | "replicate"
-      >("FLORENCE2_PROVIDER", undefined, [
-        "local",
-        "azure",
-        "huggingface",
-        "replicate",
-      ]),
-      florence2Endpoint: this.getSetting("FLORENCE2_ENDPOINT"),
-      florence2ApiKey: this.getSetting("FLORENCE2_API_KEY"),
-      florence2Timeout: this.getNumberSetting("FLORENCE2_TIMEOUT", 30000),
       enableFaceRecognition: this.getBooleanSetting(
         "ENABLE_FACE_RECOGNITION",
         false,
@@ -271,7 +251,6 @@ export class ConfigurationManager {
       "screen-reader": {
         visionMode: "SCREEN",
         ocrEnabled: true,
-        florence2Enabled: true,
         screenCaptureInterval: 1000,
         tileProcessingOrder: "priority",
       },

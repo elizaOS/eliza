@@ -8,7 +8,6 @@ import {
   type IAgentRuntime,
   logger,
   ModelType,
-  recordLlmCall,
   Service,
   type ServiceTypeName,
   withStandaloneTrajectory,
@@ -21,7 +20,6 @@ import {
 } from "./audio-capture-stream";
 import { EntityTracker } from "./entity-tracker";
 import { FaceRecognition } from "./face-recognition";
-import { Florence2Model } from "./florence2-model";
 import { OCRService } from "./ocr-service";
 import { ScreenCaptureService } from "./screen-capture";
 import { getTestImage } from "./test-input";
@@ -83,7 +81,6 @@ export class VisionService extends Service {
 
   // Screen vision components
   private screenCapture: ScreenCaptureService;
-  private florence2: Florence2Model;
   private ocrService: OCRService;
   private lastScreenCapture: ScreenCapture | null = null;
   private lastEnhancedScene: EnhancedSceneDescription | null = null;
@@ -111,7 +108,6 @@ export class VisionService extends Service {
     tileSize: 256,
     tileProcessingOrder: "priority",
     ocrEnabled: true,
-    florence2Enabled: true,
   };
 
   constructor(runtime: IAgentRuntime) {
@@ -134,9 +130,6 @@ export class VisionService extends Service {
 
     // Initialize screen capture
     this.screenCapture = new ScreenCaptureService(this.visionConfig);
-
-    // Initialize Florence-2
-    this.florence2 = new Florence2Model();
 
     // Initialize OCR service
     this.ocrService = new OCRService();
@@ -217,11 +210,6 @@ export class VisionService extends Service {
         "OCR_ENABLED",
         "VISION_OCR_ENABLED",
         this.DEFAULT_CONFIG.ocrEnabled,
-      ),
-      florence2Enabled: getBooleanSetting(
-        "FLORENCE2_ENABLED",
-        "VISION_FLORENCE2_ENABLED",
-        this.DEFAULT_CONFIG.florence2Enabled,
       ),
     };
   }
@@ -337,12 +325,6 @@ export class VisionService extends Service {
         await this.workerManager.initialize();
         logger.info("[VisionService] Worker threads initialized");
       } else {
-        // Initialize standard components
-        // Initialize Florence-2 if enabled
-        if (this.visionConfig.florence2Enabled) {
-          await this.florence2.initialize();
-        }
-
         // Initialize OCR if enabled
         if (this.visionConfig.ocrEnabled) {
           await this.ocrService.initialize();
@@ -988,136 +970,33 @@ export class VisionService extends Service {
     );
   }
 
-  /**
-   * Detect whether the runtime exposes an eliza-1 native IMAGE_DESCRIPTION
-   * handler (post-WS2). When present we route to it FIRST, before falling
-   * through to local Florence-2 and other fallbacks. The marker we look for
-   * is a runtime setting `ELIZA1_VISION_HANDLER_PRESENT` (set by the WS2
-   * wire) or a service named `eliza1-vision`.
-   */
-  private hasEliza1VisionHandler(): boolean {
-    try {
-      const setting = this.runtime.getSetting?.(
-        "ELIZA1_VISION_HANDLER_PRESENT",
-      );
-      if (setting === true || setting === "true" || setting === "1")
-        return true;
-      const svc = this.runtime.getService?.("eliza1-vision" as ServiceTypeName);
-      return Boolean(svc);
-    } catch {
-      return false;
-    }
-  }
-
   private async describeSceneWithVLMInTrajectory(
     imageUrl: string,
   ): Promise<string> {
     try {
-      // Preferred path: eliza-1 IMAGE_DESCRIPTION when WS2 has wired it.
-      if (this.hasEliza1VisionHandler()) {
-        try {
-          const result = await this.runtime.useModel(
-            ModelType.IMAGE_DESCRIPTION,
-            { imageUrl, prompt: SCENE_DESCRIPTION_PROMPT },
-          );
-          const description = this.extractDescriptionFromUseModel(result);
-          if (description) {
-            logger.debug("[VisionService] eliza-1 IMAGE_DESCRIPTION result");
-            return description;
-          }
-        } catch (error) {
-          logger.warn(
-            "[VisionService] eliza-1 IMAGE_DESCRIPTION failed, falling back:",
-            error,
-          );
-        }
-      }
-
-      // Convert base64 image URL to buffer for Florence-2
-      if (imageUrl.startsWith("data:image/")) {
-        const base64Data = imageUrl.split(",")[1];
-        const imageBuffer = Buffer.from(base64Data, "base64");
-
-        // Use Florence-2 for all image descriptions
-        if (this.florence2.isInitialized()) {
-          try {
-            const result = await recordLlmCall(
-              this.runtime,
-              {
-                model: "florence2-local",
-                systemPrompt: "",
-                userPrompt: JSON.stringify(
-                  {
-                    task: "describe_visual_scene",
-                    image: {
-                      source: "camera_frame",
-                      mimeType: "image/jpeg",
-                      bytes: imageBuffer.byteLength,
-                    },
-                  },
-                  null,
-                  2,
-                ),
-                temperature: 0,
-                maxTokens: 0,
-                purpose: "background",
-                actionType: "florence2.analyzeImage",
-              },
-              () => this.florence2.analyzeImage(imageBuffer),
-            );
-            if (result.caption) {
-              logger.debug(
-                "[VisionService] Florence-2 description:",
-                result.caption,
-              );
-              return result.caption;
-            }
-          } catch (florenceError) {
-            logger.warn(
-              "[VisionService] Florence-2 analysis failed, falling back:",
-              florenceError,
-            );
-          }
-        }
-      }
-
-      // Fallback to runtime model if Florence-2 is not available
+      // Route every VLM call through the runtime IMAGE_DESCRIPTION handler.
+      // When eliza-1 (Qwen3.5-VL) is registered locally it owns this slot;
+      // otherwise the runtime rotates to whichever cloud/remote provider
+      // has registered IMAGE_DESCRIPTION. plugin-vision no longer ships its
+      // own VLM.
       try {
         const result = await this.runtime.useModel(
           ModelType.IMAGE_DESCRIPTION,
-          {
-            imageUrl,
-            prompt: SCENE_DESCRIPTION_PROMPT,
-          },
+          { imageUrl, prompt: SCENE_DESCRIPTION_PROMPT },
         );
-
-        if (result && typeof result === "object" && "description" in result) {
-          const description = (result as { description: string }).description;
-          // Check if we got the unhelpful default response
-          if (
-            !description.includes("I'm unable to analyze images") &&
-            !description.includes("I can't analyze images")
-          ) {
-            return description;
-          }
-        } else if (typeof result === "string") {
-          const stringResult = result as string;
-          if (
-            stringResult.length > 0 &&
-            !stringResult.includes("I'm unable to analyze images") &&
-            !stringResult.includes("I can't analyze images")
-          ) {
-            return stringResult;
-          }
+        const description = this.extractDescriptionFromUseModel(result);
+        if (description) {
+          return description;
         }
       } catch (modelError) {
         logger.warn(
-          "[VisionService] Runtime IMAGE_DESCRIPTION model failed:",
+          "[VisionService] IMAGE_DESCRIPTION call failed:",
           modelError,
         );
       }
 
-      // If we got the unhelpful response or an error, provide a basic description based on detected objects
+      // No usable VLM result — synthesize a description from the latest
+      // detector (YOLO / pose) outputs so callers always get something.
       if (this.lastSceneDescription) {
         const { objects, people } = this.lastSceneDescription;
         let description = "Scene contains";
@@ -1416,26 +1295,10 @@ export class VisionService extends Service {
     };
 
     try {
-      // Run Florence-2 analysis if enabled
-      if (this.visionConfig.florence2Enabled && tile.data) {
-        analysis.florence2 = await this.florence2.analyzeTile(tile);
-        analysis.summary = analysis.florence2.caption;
-      }
-
-      // Run OCR if enabled
+      // Run OCR if enabled — coordinates feed back to the agent for grounding.
       if (this.visionConfig.ocrEnabled && tile.data) {
         analysis.ocr = await this.ocrService.extractFromTile(tile);
         analysis.text = analysis.ocr.fullText;
-      }
-
-      // Extract objects from Florence-2 results
-      if (analysis.florence2?.objects) {
-        analysis.objects = analysis.florence2.objects.map((obj) => ({
-          id: `screen-obj-${Date.now()}-${Math.random()}`,
-          type: obj.label,
-          confidence: obj.confidence,
-          boundingBox: obj.bbox,
-        }));
       }
     } catch (error) {
       logger.error("[VisionService] Error analyzing tile:", error);
@@ -1487,17 +1350,6 @@ export class VisionService extends Service {
         (t) => t.analysis,
       );
       enhancedScene.screenAnalysis.gridSummary = `Screen divided into ${this.lastScreenCapture.tiles.length} tiles, ${tilesWithContent.length} analyzed`;
-    }
-
-    // Detect focused application (heuristic based on UI elements)
-    if (enhancedScene.screenAnalysis?.activeTile?.florence2?.objects) {
-      const windows =
-        enhancedScene.screenAnalysis.activeTile.florence2.objects.filter(
-          (obj) => obj.label === "window",
-        );
-      if (windows.length > 0 && enhancedScene.screenAnalysis) {
-        enhancedScene.screenAnalysis.focusedApp = "Desktop Application";
-      }
     }
 
     this.lastEnhancedScene = enhancedScene;
@@ -1613,7 +1465,7 @@ export class VisionService extends Service {
 
     if (
       (mode === VisionMode.SCREEN || mode === VisionMode.BOTH) &&
-      (!this.florence2.isInitialized() || !this.ocrService.isInitialized())
+      !this.ocrService.isInitialized()
     ) {
       await this.initializeScreenVision();
     }
@@ -1743,7 +1595,6 @@ export class VisionService extends Service {
     this.isProcessingScreen = false;
 
     // Dispose of models
-    await this.florence2.dispose();
     await this.ocrService.dispose();
 
     logger.info("[VisionService] Stopped.");

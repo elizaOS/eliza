@@ -195,11 +195,9 @@ export class VisionWorkerE2ETestSuite {
     },
 
     {
-      name: "Should process Florence-2 and OCR in parallel through service",
+      name: "Should run OCR through the vision service over a complex pattern",
       fn: async (runtime: IAgentRuntime) => {
-        console.log(
-          "Testing parallel processing performance through service...",
-        );
+        console.log("Testing OCR throughput through service...");
 
         const visionService = runtime.getService<VisionService>(
           VisionServiceType.VISION,
@@ -208,7 +206,6 @@ export class VisionWorkerE2ETestSuite {
           throw new Error("Vision service not found");
         }
 
-        // Generate complex pattern
         const pattern = await generateComplexPattern({
           width: 1920,
           height: 1080,
@@ -218,13 +215,11 @@ export class VisionWorkerE2ETestSuite {
         await displayTestPattern(patternPath);
 
         try {
-          // Monitor performance for 10 seconds
-          console.log("Running parallel processing test for 10 seconds...");
+          console.log("Running OCR test for 10 seconds...");
           const startTime = Date.now();
           const stats = {
             frames: 0,
             ocrDetections: 0,
-            florence2Detections: 0,
           };
 
           while (Date.now() - startTime < 10000) {
@@ -236,20 +231,12 @@ export class VisionWorkerE2ETestSuite {
               if (scene.screenAnalysis?.fullScreenOCR) {
                 stats.ocrDetections++;
               }
-
-              if (scene.screenAnalysis?.activeTile?.florence2) {
-                stats.florence2Detections++;
-              }
             }
 
-            // Log every 2 seconds
             if ((Date.now() - startTime) % 2000 < 100) {
               console.log("\nCurrent stats:");
               console.log(`  Frames: ${stats.frames}`);
               console.log(`  OCR detections: ${stats.ocrDetections}`);
-              console.log(
-                `  Florence-2 detections: ${stats.florence2Detections}`,
-              );
             }
 
             await new Promise((resolve) => setTimeout(resolve, 100));
@@ -263,9 +250,6 @@ export class VisionWorkerE2ETestSuite {
           );
           console.log(
             `  OCR success rate: ${((stats.ocrDetections / stats.frames) * 100).toFixed(1)}%`,
-          );
-          console.log(
-            `  Florence-2 success rate: ${((stats.florence2Detections / stats.frames) * 100).toFixed(1)}%`,
           );
 
           await closeTestPattern();

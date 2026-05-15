@@ -28,19 +28,9 @@ async function loadTfModules(): Promise<boolean> {
   }
 }
 
-// Define types that are missing from types.ts
 export interface VisionModelConfig {
   enableObjectDetection?: boolean;
   enablePoseDetection?: boolean;
-  florence2?: {
-    baseUrl: string;
-    apiKey?: string;
-  };
-  vlm?: {
-    model: string;
-    temperature: number;
-    maxTokens: number;
-  };
 }
 
 export type Pose = "sitting" | "standing" | "lying" | "walking" | "unknown";

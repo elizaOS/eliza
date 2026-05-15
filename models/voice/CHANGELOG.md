@@ -27,11 +27,19 @@ Stable model ids:
 
 ## speaker-encoder
 
+### 0.1.1 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
+
+- **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-speaker`
+  (was `elizaos/eliza-1-voice-speaker-encoder`). Staging dir created at
+  `artifacts/voice-sub-model-staging/speaker/`. HF push gated on `HF_TOKEN`
+  (absent in this environment — see F3 impl report). Files: `wespeaker-ecapa-tdnn-256-int8.onnx` (INT8, ~7 MB), `wespeaker-ecapa-tdnn-256-fp32.onnx` (FP32, ~25 MB), `manifest.json`, `README.md`.
+- **Net improvement:** slug fix (no weight change).
+
 ### 0.1.0 — 2026-05-14
 
 - **Initial release.** Ships with the I2 voice-profile system.
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-voice-speaker-encoder` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-speaker` @ rev `TBD`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline (EER 0.72% on VoxCeleb1-O).
 - **Net improvement:** n/a (initial).
@@ -40,11 +48,16 @@ Stable model ids:
 
 ## diarizer
 
+### 0.1.1 — 2026-05-14 (F3 — HF repo staging, canonical slug)
+
+- **What changed:** HF slug confirmed as `elizaos/eliza-1-voice-diarizer`. Staging dir at `artifacts/voice-sub-model-staging/diarizer/`. Files: `pyannote-segmentation-3.0-int8.onnx`, `pyannote-segmentation-3.0-fp32.onnx`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
+- **Net improvement:** slug fix (no weight change).
+
 ### 0.1.0 — 2026-05-14
 
 - **Initial release.** Ships with the I2 voice-profile system.
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-voice-diarizer` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-diarizer` @ rev `TBD`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline (DER 12.4% on AMI-headset).
 - **Net improvement:** n/a (initial).
@@ -53,11 +66,18 @@ Stable model ids:
 
 ## turn-detector
 
+### 0.1.1 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
+
+- **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-turn`
+  (was `elizaos/eliza-1-voice-turn-detector`). Staging dir at
+  `artifacts/voice-sub-model-staging/turn/`. Files: `turn-detector-en-int8.onnx`, `turn-detector-intl-int8.onnx`, `turnsense-fallback-int8.onnx`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
+- **Net improvement:** slug fix (no weight change).
+
 ### 0.1.0 — 2026-05-14
 
 - **Initial release.** Ships with the I1 turn-detection bundling.
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-voice-turn-detector` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-turn` @ rev `TBD`.
 - **GGUF assets:** populated by the publish pipeline (65.7 MB ONNX for
   mobile; 396 MB ONNX for desktop, INT8).
 - **Eval deltas:** baseline (LiveKit eval F1: 0.84 EN, 0.79 multilingual).
@@ -68,11 +88,16 @@ Stable model ids:
 
 ## voice-emotion
 
+### 0.1.1 — 2026-05-14 (F3 — HF repo staging)
+
+- **What changed:** HF repo slug confirmed as `elizaos/eliza-1-voice-emotion`. Staging dir at `artifacts/voice-sub-model-staging/emotion/`. Files: `wav2small-msp-dim-int8.onnx`, `wav2small-msp-dim-fp32.onnx`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
+- **Net improvement:** slug fix (no weight change).
+
 ### 0.1.0 — 2026-05-14
 
 - **Initial release.** Ships with the I3 emotion pipeline.
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-voice-emotion` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-emotion` @ rev `TBD`.
 - **GGUF assets:** populated by the publish pipeline (~120 KB ONNX,
   Wav2Small int8).
 - **Eval deltas:** baseline (CCC: V 0.65 / A 0.71 / D 0.43 on MSP-Podcast).
@@ -82,6 +107,13 @@ Stable model ids:
   output. Apache-2.0 student weights (teacher is CC-BY-NC-SA-4.0 — not shipped).
 
 ## kokoro
+
+### 0.1.2 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
+
+- **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-kokoro`
+  (was `elizaos/eliza-1-voice-kokoro-samantha`). Staging dir at
+  `artifacts/voice-sub-model-staging/kokoro/`. Files: `kokoro-v1.0-q4.onnx`, `voices/af_bella.bin`, `voices/af_samantha.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`. Coordination point: F2 publishes retrained samantha weights here when quality gates pass.
+- **Net improvement:** slug fix (no weight change).
 
 ### 0.1.1 — 2026-05-14 (W3-11 post-mortem — samantha HF push BLOCKED)
 
@@ -110,7 +142,7 @@ Stable model ids:
 - **Initial release.** Ships with the I7 kokoro samantha voice-clone
   infrastructure (plumbing, no quality-passing weights).
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-voice-kokoro-samantha` @ rev `TBD` (pending quality).
+- **HF repo:** `elizaos/eliza-1-voice-kokoro` @ rev `TBD` (pending quality).
 - **GGUF assets:** populated by the publish pipeline (kokoro 82M F16, plus
   per-voice samantha style embedding — BLOCKED on quality gate).
 - **Eval deltas:** baseline (MOS expressive: 4.21 internal; RTF 0.42 M1 Air).
@@ -122,6 +154,11 @@ Stable model ids:
   samantha entry. No quality-passing weights shipped this release.
 
 ## omnivoice
+
+### 0.1.2 — 2026-05-14 (F3 — HF repo staging)
+
+- **What changed:** HF repo slug confirmed as `elizaos/eliza-1-voice-omnivoice`. Staging dir at `artifacts/voice-sub-model-staging/omnivoice/`. Files: `omnivoice-base-q4_k_m.gguf`, `omnivoice-tokenizer-q4_k_m.gguf`, `omnivoice-base-q8_0.gguf`, `presets/voice-preset-samantha.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
+- **Net improvement:** staging only (no weight change).
 
 ### 0.1.1 — 2026-05-14 (samantha preset + FFI wiring)
 
@@ -154,7 +191,7 @@ Stable model ids:
 
 - **Initial release.** Ships with the I6 OmniVoice freeze pipeline.
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-voice-omnivoice` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-omnivoice` @ rev `TBD`.
 - **GGUF assets:** populated by the publish pipeline (omnivoice-frozen
   Q5_K_M and Q4_K_M variants).
 - **Eval deltas:** baseline.
@@ -165,11 +202,18 @@ Stable model ids:
 
 ## vad
 
+### 0.1.1 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
+
+- **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-vad`
+  (was `elizaos/eliza-1-voice-vad-silero`). Staging dir at
+  `artifacts/voice-sub-model-staging/vad/`. Files: `silero-vad-int8.onnx`, `silero-vad-v5.1.2.ggml.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
+- **Net improvement:** slug fix (no weight change).
+
 ### 0.1.0 — 2026-05-14
 
 - **Initial release.** Mirrors the in-tree Silero VAD v5.1.2 weights.
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-voice-vad-silero` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-vad` @ rev `TBD`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline.
 - **Net improvement:** n/a (initial).
@@ -177,11 +221,16 @@ Stable model ids:
 
 ## wakeword
 
+### 0.1.1 — 2026-05-14 (F3 — HF repo staging)
+
+- **What changed:** HF repo slug confirmed as `elizaos/eliza-1-voice-wakeword`. Staging dir at `artifacts/voice-sub-model-staging/wakeword/`. Files: `hey-eliza-int8.onnx`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
+- **Net improvement:** staging only (no weight change).
+
 ### 0.1.0 — 2026-05-14
 
 - **Initial release.** `hey-eliza` head (the renamed `hey_jarvis` ONNX).
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-voice-wakeword` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-wakeword` @ rev `TBD`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline (FAR ≤ 0.5/h on quiet office).
 - **Net improvement:** n/a (initial).
@@ -189,18 +238,32 @@ Stable model ids:
 
 ## embedding
 
+### 0.1.1 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
+
+- **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-embedding`
+  (was `elizaos/eliza-1-embedding`). Staging dir at
+  `artifacts/voice-sub-model-staging/embedding/`. Files: `eliza-1-embedding-q4_k_m.gguf`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`. F5 coordination: F5 publishes mmproj files to the parent `elizaos/eliza-1` repo, not here.
+- **Net improvement:** slug fix (no weight change).
+
 ### 0.1.0 — 2026-05-14
 
 - **Initial release.** Eliza-1 BPE-vocab embedding tier (used by the
   voice-profile + speaker LRU cache for query-text features).
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-embedding` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-embedding` @ rev `TBD`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline.
 - **Net improvement:** n/a (initial).
 - **What changed:** First publish.
 
 ## asr
+
+### 0.1.2 — 2026-05-14 (F3 — HF repo staging, canonical slug update)
+
+- **What changed:** HF repo slug corrected to `elizaos/eliza-1-voice-asr`
+  (was `elizaos/eliza-1-asr`). Staging dir at
+  `artifacts/voice-sub-model-staging/asr/`. Files: `eliza-1-asr-q4_k_m.gguf`, `eliza-1-asr-mmproj.gguf`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
+- **Net improvement:** slug fix (no weight change).
 
 ### 0.1.1 — 2026-05-14 (W3-11 — fine-tune scaffold landed)
 
@@ -222,7 +285,7 @@ Stable model ids:
 
 - **Initial release.** Qwen3-ASR streaming transcriber, GGUF Q4_K_M.
 - **Parent:** none.
-- **HF repo:** `elizaOS/eliza-1-asr` @ rev `TBD`.
+- **HF repo:** `elizaos/eliza-1-voice-asr` @ rev `TBD`.
 - **GGUF assets:** populated by the publish pipeline.
 - **Eval deltas:** baseline (WER 6.8% on LibriSpeech test-clean).
 - **Net improvement:** n/a (initial).
