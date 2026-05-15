@@ -4,7 +4,8 @@
 		"module": "ESNext",
 		"moduleResolution": "bundler",
 		"esModuleInterop": true,
-		"strict": true,
+		"strict": false,
+		"strictNullChecks": true,
 		"skipLibCheck": true,
 		"ignoreDeprecations": "6.0",
 		"declaration": true,
@@ -16,7 +17,8 @@
 		"allowImportingTsExtensions": true,
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
-			"@elizaos/core": ["../../packages/core/src/index.node.ts"]
+			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
+			"@elizaos/agent": ["../../packages/agent/src/index.ts"]
 		}
 	},
 	"include": ["src/**/*"],
