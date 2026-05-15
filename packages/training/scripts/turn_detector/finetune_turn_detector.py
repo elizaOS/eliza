@@ -193,7 +193,7 @@ def stage_data(
 # ---------------------------------------------------------------------------
 
 
-DAILYDIALOG_HF_REPO: Final[str] = "daily_dialog"
+DAILYDIALOG_HF_REPO: Final[str] = "OpenRL/daily_dialog"
 
 
 def build_pretrain_corpus(
@@ -261,7 +261,10 @@ def build_pretrain_corpus(
     # own turn boundary, so EOU = 1 for the last utterance in each dialog,
     # 0 otherwise (a model that predicts EOU=1 on every turn would still
     # score reasonably; the harder negatives come from MultiWOZ + TURNS-2K).
-    ds = load_dataset(DAILYDIALOG_HF_REPO, split="train", trust_remote_code=True)
+    # OpenRL/daily_dialog ships a Parquet snapshot under `data/`. Loading
+    # via the `parquet` builder avoids the legacy loading-script removal
+    # (datasets >= 4.0 refuses script-based datasets).
+    ds = load_dataset(DAILYDIALOG_HF_REPO, split="train")
     written = 0
     with out_path.open("w", encoding="utf-8") as fh:
         for dialogue_idx, row in enumerate(ds):
@@ -352,20 +355,49 @@ def build_sft_corpus(
     return out_path
 
 
+LIVEKIT_IM_END_TOKEN: Final[str] = "<|im_end|>"
+
+
+def _format_livekit_prompt(tokenizer: Any, utterance: str) -> str:
+    """Replicate the runtime LiveKit prompt format.
+
+    Mirrors ``formatLiveKitTurnDetectorPrompt`` in
+    ``plugins/plugin-local-inference/src/services/voice/eot-classifier.ts``:
+    apply the tokenizer's chat template for ``[{role: user, content: ...}]``,
+    then strip the trailing ``<|im_end|>`` so the model's last-position
+    next-token distribution is what the runtime scores.
+    """
+    templated = tokenizer.apply_chat_template(
+        [{"role": "user", "content": utterance}],
+        add_generation_prompt=False,
+        tokenize=False,
+        add_special_tokens=False,
+    )
+    ix = templated.rfind(LIVEKIT_IM_END_TOKEN)
+    if ix >= 0:
+        templated = templated[:ix]
+    return templated
+
+
 def build_examples(
     pretrain_jsonl: Path,
     *,
     base_model: str,
     revision: str | None = None,
     max_length: int = 128,
-) -> "tuple[Any, Any]":
+    text_field: str = "utterance",
+    label_field: str = "eou_label",
+) -> "tuple[Any, Any, Any]":
     """Tokenize + apply chat template against the teacher tokenizer.
 
-    Returns ``(input_ids, labels)`` numpy arrays. ``labels[i] == 1`` means
-    EOU. The text is passed through the LiveKit-style chat template
-    (Qwen-family), truncated to ``max_length`` tokens, with the trailing
-    ``<|im_end|>`` stripped so the model is scoring the next-token
-    probability of end-of-turn.
+    Returns ``(input_ids, attention_mask, labels)`` numpy arrays.
+    ``labels[i] == 1`` means EOU. Text is passed through the LiveKit chat
+    template (mirroring ``formatLiveKitTurnDetectorPrompt``) with the
+    trailing ``<|im_end|>`` stripped. Right-padding (``attention_mask``
+    indicates which positions are real) so the runtime ONNX path
+    (left-truncation, single-sample batch) and our training batch path
+    agree on which logit corresponds to the next-token EOU prediction —
+    we pluck ``logits[i, last_real_pos, im_end_id]``.
     """
     try:
         from transformers import AutoTokenizer  # type: ignore[import-not-found]
@@ -376,35 +408,68 @@ def build_examples(
         ) from exc
 
     tokenizer = AutoTokenizer.from_pretrained(base_model, revision=revision)
-    pad_id = tokenizer.pad_token_id
-    if pad_id is None:
-        pad_id = tokenizer.eos_token_id or 0
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
+    tokenizer.truncation_side = "left"
 
     import numpy as np
 
     input_ids: list[list[int]] = []
+    attention_mask: list[list[int]] = []
     labels: list[int] = []
+    text_keys = (text_field, "transcript", "utterance", "text")
+    label_keys = (label_field, "label", "eou_label")
     with pretrain_jsonl.open("r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
             if not line:
                 continue
             record = json.loads(line)
-            text = f"<|user|> {record['utterance']}"
+            utterance = None
+            for k in text_keys:
+                if k in record and isinstance(record[k], str):
+                    utterance = record[k]
+                    break
+            if utterance is None:
+                continue
+            label = None
+            for k in label_keys:
+                if k in record and record[k] is not None:
+                    label = int(record[k])
+                    break
+            if label is None:
+                continue
+            text = _format_livekit_prompt(tokenizer, utterance)
             encoded = tokenizer(
                 text,
                 max_length=max_length,
                 truncation=True,
                 padding="max_length",
                 add_special_tokens=False,
+                return_attention_mask=True,
             )
             input_ids.append(list(encoded["input_ids"]))
-            labels.append(int(record["eou_label"]))
+            attention_mask.append(list(encoded["attention_mask"]))
+            labels.append(label)
 
     return (
         np.asarray(input_ids, dtype="int64"),
+        np.asarray(attention_mask, dtype="int64"),
         np.asarray(labels, dtype="int64"),
     )
+
+
+def im_end_token_id(tokenizer: Any) -> int:
+    """Resolve the ``<|im_end|>`` token id for the LiveKit tokenizer.
+
+    Matches the runtime resolver: tokenize the literal ``<|im_end|>``
+    sequence with ``add_special_tokens=False`` and take the first id.
+    """
+    ids = tokenizer(LIVEKIT_IM_END_TOKEN, add_special_tokens=False)["input_ids"]
+    if not ids:
+        raise RuntimeError("tokenizer did not produce an <|im_end|> id")
+    return int(ids[0])
 
 
 # ---------------------------------------------------------------------------
@@ -412,38 +477,60 @@ def build_examples(
 # ---------------------------------------------------------------------------
 
 
+def _last_real_position(attention_mask: Any) -> Any:
+    """Index of the last non-pad token per row (clamped to >= 0).
+
+    ``attention_mask`` is ``[batch, seq]`` with 1 for real tokens. Returns
+    a 1-D long tensor of shape ``[batch]``.
+    """
+    import torch
+
+    return torch.clamp(attention_mask.sum(dim=1) - 1, min=0)
+
+
 def train_step(
     *,
     model: Any,
-    batch: "tuple[Any, Any]",
+    batch: "tuple[Any, Any, Any]",
     optimizer: Any,
-    loss_fn: Any,
+    im_end_id: int,
 ) -> float:
-    """One APOLLO training step on a (input_ids, labels) batch.
+    """One APOLLO training step on (input_ids, attention_mask, labels).
 
-    The base model is wrapped with a 2-class classification head (NON_EOU /
-    EOU) at construction time — this function is the inner loop that's
-    called per minibatch. Returns the scalar loss for logging.
+    Predicts EOU as ``softmax(logits[i, last_real_pos, :])[<|im_end|>]``,
+    where ``last_real_pos`` is derived from ``attention_mask``. Loss is
+    binary cross-entropy with logits between that scalar (the im_end
+    logit minus the log-sum-exp of all other vocab logits at that
+    position) and the EOU label. This is the same quantity the runtime
+    scores in ``probabilityFromOnnxOutput``.
 
     APOLLO only — see `packages/training/AGENTS.md §1`. The caller builds
     the optimizer via `build_apollo_optimizer` / `build_apollo_mini_optimizer`
-    from `packages/training/scripts/training/optimizer.py`. AdamW is not
-    accepted at the run-driver level; this function trusts the caller to
-    have done the right thing.
+    from `packages/training/scripts/training/optimizer.py`.
     """
+    import torch
+    import torch.nn.functional as F
 
-    input_ids, labels = batch
-    input_ids = input_ids.to(next(model.parameters()).device)
-    labels = labels.to(next(model.parameters()).device)
+    input_ids, attention_mask, labels = batch
+    device = next(model.parameters()).device
+    input_ids = input_ids.to(device)
+    attention_mask = attention_mask.to(device)
+    labels = labels.to(device).float()
     optimizer.zero_grad(set_to_none=True)
-    outputs = model(input_ids)
+    outputs = model(input_ids=input_ids, attention_mask=attention_mask)
     logits = outputs.logits if hasattr(outputs, "logits") else outputs[0]
-    # If the head emits next-token vocab logits, score on the last position.
-    if logits.dim() == 3:
-        logits = logits[:, -1, :2]  # first two classes act as [NON_EOU, EOU]
-    loss = loss_fn(logits, labels)
+    last_pos = _last_real_position(attention_mask)
+    batch_idx = torch.arange(logits.size(0), device=device)
+    last_logits = logits[batch_idx, last_pos]  # [batch, vocab]
+    # log p(im_end) - log p(other) = im_end_logit - logsumexp(other_logits)
+    im_end_logit = last_logits[:, im_end_id]
+    other_logits = torch.cat(
+        [last_logits[:, :im_end_id], last_logits[:, im_end_id + 1:]], dim=1,
+    )
+    other_lse = torch.logsumexp(other_logits, dim=1)
+    score = im_end_logit - other_lse  # binary logit for P(EOU)
+    loss = F.binary_cross_entropy_with_logits(score, labels)
     loss.backward()
-    # APOLLO does its own gradient projection; we don't clip globally.
     optimizer.step()
     return float(loss.detach().cpu())
 
@@ -471,6 +558,54 @@ def _maintain_top_k(
     return new_top_k, dropped
 
 
+def _eval_loop(
+    *,
+    model: Any,
+    eval_input_ids: Any,
+    eval_attention_mask: Any,
+    eval_labels: Any,
+    im_end_id: int,
+    batch_size: int,
+    decision_threshold: float = 0.5,
+) -> "tuple[float, float]":
+    """Run a forward-only pass on the eval split.
+
+    Returns ``(f1, mean_score)``. ``mean_score`` is the average
+    P(EOU) on positive examples (signal sanity check).
+    """
+    import torch
+
+    device = next(model.parameters()).device
+    preds: list[int] = []
+    golds: list[int] = []
+    pos_score_sum = 0.0
+    pos_count = 0
+    with torch.no_grad():
+        for s in range(0, eval_input_ids.shape[0], batch_size):
+            e = s + batch_size
+            ids = eval_input_ids[s:e].to(device)
+            mask = eval_attention_mask[s:e].to(device)
+            out = model(input_ids=ids, attention_mask=mask)
+            logits = out.logits if hasattr(out, "logits") else out[0]
+            last_pos = _last_real_position(mask)
+            batch_idx = torch.arange(logits.size(0), device=device)
+            last_logits = logits[batch_idx, last_pos]
+            probs = torch.softmax(last_logits.float(), dim=-1)
+            eou_p = probs[:, im_end_id]
+            preds.extend(
+                (eou_p >= decision_threshold).cpu().numpy().astype(int).tolist()
+            )
+            row_golds = eval_labels[s:e].cpu().numpy().astype(int).tolist()
+            golds.extend(row_golds)
+            for p, g in zip(eou_p.cpu().numpy().tolist(), row_golds, strict=True):
+                if g == 1:
+                    pos_score_sum += p
+                    pos_count += 1
+    f1 = _binary_f1(preds, golds)
+    mean_pos_score = pos_score_sum / max(1, pos_count)
+    return f1, mean_pos_score
+
+
 def train_lora(
     *,
     cfg: TurnFinetuneConfig,
@@ -479,19 +614,21 @@ def train_lora(
     out_dir: Path,
     checkpoint_every: int = 500,
     max_steps: int | None = None,
+    batch_size: int = 16,
+    grad_accum_steps: int = 1,
+    decision_threshold: float = 0.5,
 ) -> dict[str, Any]:
     """Real LoRA-or-full fine-tune driven by ``cfg``.
 
     Loads the base model from ``cfg.teacher_repo @ cfg.teacher_revision``,
-    builds the APOLLO optimizer, runs ``cfg.epochs`` epochs (or
+    builds the APOLLO-Mini optimizer, runs ``cfg.epochs`` epochs (or
     ``max_steps`` if set, whichever ends first), evaluates every
-    ``checkpoint_every`` steps, and maintains top-3 by val F1. If the eval
-    gate ``cfg.f1_gate`` is not met at exit, raises ``RuntimeError`` per
-    the spec.
+    ``checkpoint_every`` steps, and maintains top-3 by val F1. If the
+    eval gate ``cfg.f1_gate`` is not met at exit, raises ``RuntimeError``
+    per the spec.
     """
     try:
         import torch
-        from torch import nn
         from transformers import (  # type: ignore[import-not-found]
             AutoModelForCausalLM,
             AutoTokenizer,
@@ -506,96 +643,137 @@ def train_lora(
         from packages.training.scripts.training.optimizer import (
             build_apollo_mini_optimizer,
         )
-    except ImportError as exc:
-        raise RuntimeError(
-            "APOLLO factory not importable; ensure "
-            "packages/training/scripts/training/optimizer.py is on sys.path.",
-        ) from exc
+    except ImportError:
+        # Allow running from a checkout where the parent package isn't
+        # on sys.path — add the repo root manually.
+        repo_root = Path(__file__).resolve().parents[4]
+        if str(repo_root) not in sys.path:
+            sys.path.insert(0, str(repo_root))
+        from packages.training.scripts.training.optimizer import (  # type: ignore[no-redef]
+            build_apollo_mini_optimizer,
+        )
 
     out_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir = out_dir / "checkpoints"
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    dtype = torch.bfloat16 if device == "cuda" else torch.float32
+
     base_model = AutoModelForCausalLM.from_pretrained(
-        cfg.teacher_repo, revision=cfg.teacher_revision,
+        cfg.teacher_repo, revision=cfg.teacher_revision, dtype=dtype,
     )
+    base_model.to(device)
+    base_model.gradient_checkpointing_disable()
     tokenizer = AutoTokenizer.from_pretrained(
         cfg.teacher_repo, revision=cfg.teacher_revision,
     )
     if tokenizer.pad_token_id is None:
         tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = "right"
+    tokenizer.truncation_side = "left"
+    im_end_id = im_end_token_id(tokenizer)
 
-    input_ids, labels = build_examples(
+    input_ids, attention_mask, labels = build_examples(
         pretrain_jsonl,
         base_model=cfg.teacher_repo,
         revision=cfg.teacher_revision,
     )
-    eval_input_ids, eval_labels = build_examples(
+    eval_input_ids, eval_attention_mask, eval_labels = build_examples(
         eval_jsonl,
         base_model=cfg.teacher_repo,
         revision=cfg.teacher_revision,
     )
 
     input_ids_t = torch.from_numpy(input_ids)
+    attention_mask_t = torch.from_numpy(attention_mask)
     labels_t = torch.from_numpy(labels)
     eval_input_ids_t = torch.from_numpy(eval_input_ids)
+    eval_attention_mask_t = torch.from_numpy(eval_attention_mask)
     eval_labels_t = torch.from_numpy(eval_labels)
+
+    # Optional shuffle so subsequent epochs see a fresh ordering.
+    rng = torch.Generator(device="cpu").manual_seed(20260514)
 
     optimizer = build_apollo_mini_optimizer(
         base_model,
         lr=cfg.learning_rate,
         weight_decay=0.01,
     )
-    loss_fn = nn.CrossEntropyLoss()
-    batch_size = 16
     top_k: list[dict[str, Any]] = []
     best_f1 = 0.0
     last_f1 = 0.0
+    last_mean_pos_score = 0.0
     step = 0
+    optimizer.zero_grad(set_to_none=True)
+
+    def _save_checkpoint(step_num: int, f1: float) -> str:
+        ckpt_path = ckpt_dir / f"step-{step_num:06d}.pt"
+        torch.save(
+            {
+                "state_dict": base_model.state_dict(),
+                "step": step_num,
+                "f1": f1,
+                "teacher_repo": cfg.teacher_repo,
+                "teacher_revision": cfg.teacher_revision,
+                "im_end_id": im_end_id,
+            },
+            ckpt_path,
+        )
+        return str(ckpt_path)
+
     base_model.train()
+    n = input_ids_t.shape[0]
+    print(
+        f"[train] dataset={n} examples | batch={batch_size} | accum={grad_accum_steps} | "
+        f"epochs={cfg.epochs} | max_steps={max_steps} | device={device} | dtype={dtype}",
+        flush=True,
+    )
+
+    done = False
     for epoch in range(cfg.epochs):
-        for start in range(0, input_ids_t.shape[0], batch_size):
-            end = start + batch_size
+        if done:
+            break
+        perm = torch.randperm(n, generator=rng)
+        for start in range(0, n, batch_size):
+            sl = perm[start:start + batch_size]
             batch = (
-                input_ids_t[start:end],
-                labels_t[start:end],
+                input_ids_t[sl],
+                attention_mask_t[sl],
+                labels_t[sl],
             )
-            train_step(
+            loss_val = train_step(
                 model=base_model,
                 batch=batch,
                 optimizer=optimizer,
-                loss_fn=loss_fn,
+                im_end_id=im_end_id,
             )
             step += 1
+            if step % 25 == 0:
+                print(f"[train] step={step} loss={loss_val:.4f}", flush=True)
             if step % checkpoint_every == 0:
-                # Eval pass
                 base_model.eval()
-                preds: list[int] = []
-                golds: list[int] = []
-                with torch.no_grad():
-                    for s in range(0, eval_input_ids_t.shape[0], batch_size):
-                        e = s + batch_size
-                        out = base_model(eval_input_ids_t[s:e])
-                        logits = out.logits if hasattr(out, "logits") else out[0]
-                        if logits.dim() == 3:
-                            logits = logits[:, -1, :2]
-                        preds.extend(logits.argmax(dim=-1).cpu().numpy().tolist())
-                        golds.extend(eval_labels_t[s:e].cpu().numpy().tolist())
-                f1 = _binary_f1(preds, golds)
+                f1, mean_pos = _eval_loop(
+                    model=base_model,
+                    eval_input_ids=eval_input_ids_t,
+                    eval_attention_mask=eval_attention_mask_t,
+                    eval_labels=eval_labels_t,
+                    im_end_id=im_end_id,
+                    batch_size=batch_size,
+                    decision_threshold=decision_threshold,
+                )
                 last_f1 = f1
+                last_mean_pos_score = mean_pos
                 if f1 > best_f1:
                     best_f1 = f1
-                ckpt_path = ckpt_dir / f"step-{step:06d}.pt"
-                torch.save(
-                    {
-                        "state_dict": base_model.state_dict(),
-                        "step": step,
-                        "f1": f1,
-                    },
-                    ckpt_path,
+                print(
+                    f"[eval] step={step} f1={f1:.4f} "
+                    f"mean_pos_score={mean_pos:.4f} best_f1={best_f1:.4f}",
+                    flush=True,
                 )
+                ckpt_path_str = _save_checkpoint(step, f1)
                 top_k, dropped = _maintain_top_k(
-                    top_k, step=step, path=str(ckpt_path), f1=f1, keep=3,
+                    top_k, step=step, path=ckpt_path_str, f1=f1, keep=3,
                 )
                 for path in dropped:
                     try:
@@ -604,16 +782,37 @@ def train_lora(
                         pass
                 base_model.train()
             if max_steps is not None and step >= max_steps:
+                done = True
                 break
-        if max_steps is not None and step >= max_steps:
-            break
+
+    # Always save the final checkpoint if we haven't recently.
+    if not top_k:
+        base_model.eval()
+        f1, mean_pos = _eval_loop(
+            model=base_model,
+            eval_input_ids=eval_input_ids_t,
+            eval_attention_mask=eval_attention_mask_t,
+            eval_labels=eval_labels_t,
+            im_end_id=im_end_id,
+            batch_size=batch_size,
+            decision_threshold=decision_threshold,
+        )
+        last_f1 = f1
+        last_mean_pos_score = mean_pos
+        best_f1 = max(best_f1, f1)
+        ckpt_path_str = _save_checkpoint(step, f1)
+        top_k = [{"step": step, "path": ckpt_path_str, "f1": f1}]
 
     summary = {
         "step": step,
         "best_f1": best_f1,
         "last_f1": last_f1,
+        "last_mean_pos_score": last_mean_pos_score,
         "top_k": top_k,
         "f1_gate": cfg.f1_gate,
+        "im_end_id": im_end_id,
+        "teacher_repo": cfg.teacher_repo,
+        "teacher_revision": cfg.teacher_revision,
     }
     (out_dir / "train-summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n",
@@ -641,21 +840,24 @@ def _binary_f1(predictions: list[int], golds: list[int]) -> float:
 
 def export_onnx(
     *,
-    cfg: TurnFinetuneConfig,
+    teacher_repo: str,
+    teacher_revision: str,
     checkpoint_path: Path,
     out_path: Path,
     opset: int = 17,
+    quantize: bool = True,
+    seq_length: int = 128,
 ) -> None:
-    """Export the fine-tuned weights to ``onnx/model_q8.onnx``.
+    """Export the fine-tuned weights to ``model_q8.onnx``.
 
-    Loads the base model from ``cfg.teacher_repo @ cfg.teacher_revision``,
+    Loads the base model from ``teacher_repo @ teacher_revision``,
     restores the checkpoint weights, runs ``torch.onnx.export`` (legacy
-    TorchScript path — no onnxscript dependency), then applies INT8
-    dynamic quantisation via ``onnxruntime.quantization.quantize_dynamic``.
-
-    The output filename intentionally matches the upstream
-    ``onnx/model_q8.onnx`` convention so the bundle stager picks it up
-    without an extra flag.
+    TorchScript path — no onnxscript dependency). When ``quantize=True``
+    (the default) applies INT8 dynamic quantisation via
+    ``onnxruntime.quantization.quantize_dynamic``. Output shape is
+    ``[batch, seq, vocab]`` matching the upstream LiveKit ONNX so the
+    runtime's ``probabilityFromOnnxOutput`` (which extracts
+    ``softmax(logits[:, -1, :])[<|im_end|>]``) drops in.
     """
     try:
         import torch
@@ -671,16 +873,23 @@ def export_onnx(
     fp32_path = out_path.with_suffix(".fp32.onnx")
 
     model = AutoModelForCausalLM.from_pretrained(
-        cfg.teacher_repo, revision=cfg.teacher_revision,
+        teacher_repo, revision=teacher_revision, dtype="float32",
     )
     checkpoint = torch.load(checkpoint_path, weights_only=False, map_location="cpu")
-    model.load_state_dict(checkpoint["state_dict"])
+    state_dict = checkpoint.get("state_dict", checkpoint)
+    # state_dict may be from a bf16 model; cast keys to fp32 to match
+    state_dict = {k: v.to(torch.float32) if hasattr(v, "to") else v
+                  for k, v in state_dict.items()}
+    model.load_state_dict(state_dict, strict=False)
     model.eval()
+    # Disable KV cache during export so the graph has a stable output.
+    if hasattr(model, "config"):
+        model.config.use_cache = False
 
-    dummy = torch.zeros(1, 128, dtype=torch.long)
+    dummy = torch.ones(1, seq_length, dtype=torch.long)
     torch.onnx.export(
         model,
-        dummy,
+        (dummy,),
         str(fp32_path),
         input_names=["input_ids"],
         output_names=["logits"],
@@ -689,27 +898,129 @@ def export_onnx(
             "input_ids": {0: "batch", 1: "seq"},
             "logits": {0: "batch", 1: "seq"},
         },
-        dynamo=False,
+        do_constant_folding=True,
     )
 
-    try:
-        from onnxruntime.quantization import QuantType, quantize_dynamic
-
+    if quantize:
+        try:
+            from onnxruntime.quantization import QuantType, quantize_dynamic
+        except ImportError as exc:
+            raise RuntimeError(
+                "onnxruntime required for INT8 quantisation",
+            ) from exc
         quantize_dynamic(
             model_input=str(fp32_path),
             model_output=str(out_path),
             weight_type=QuantType.QInt8,
         )
+    else:
+        fp32_path.rename(out_path)
+
+
+def export_tokenizer_artifacts(
+    teacher_repo: str, teacher_revision: str, out_dir: Path,
+) -> list[str]:
+    """Snapshot-download the tokenizer + config sidecars next to the ONNX.
+
+    Returns the list of filenames written. The runtime
+    (`createBundledLiveKitTurnDetector`) expects ``tokenizer.json``,
+    ``tokenizer_config.json``, and ``config.json`` to sit alongside
+    ``onnx/model_q8.onnx`` in the bundle.
+    """
+    try:
+        from huggingface_hub import hf_hub_download
     except ImportError as exc:
         raise RuntimeError(
-            "onnxruntime required for INT8 quantisation",
+            "huggingface_hub required for tokenizer snapshot",
         ) from exc
+    wanted = (
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "config.json",
+        "special_tokens_map.json",
+        "vocab.json",
+        "merges.txt",
+        "added_tokens.json",
+        "generation_config.json",
+    )
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[str] = []
+    for name in wanted:
+        try:
+            local = hf_hub_download(teacher_repo, name, revision=teacher_revision)
+            (out_dir / name).write_bytes(Path(local).read_bytes())
+            written.append(name)
+        except Exception:
+            # not every sidecar exists on every revision — that's fine.
+            continue
+    return written
+
+
+# ---------------------------------------------------------------------------
+# DailyDialog auto-staging
+# ---------------------------------------------------------------------------
+
+
+def stage_dailydialog_train_eval(
+    *,
+    out_dir: Path,
+    val_ratio: float = 0.05,
+    eval_max: int = 2000,
+    train_max: int | None = None,
+    seed: int = 20260514,
+) -> "tuple[Path, Path]":
+    """Build and split DailyDialog into train/eval JSONL.
+
+    Returns ``(train_path, eval_path)``. The eval split is the runtime
+    schema (``{"transcript": str, "label": 0|1}``) so ``eval_turn_detector``
+    can consume it directly; the train split is the pretrain schema
+    (``{"utterance": str, "eou_label": 0|1, ...}``) so ``train_lora``
+    consumes it. Both files are deterministically derived from the same
+    DailyDialog snapshot.
+    """
+    import random
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    base = build_pretrain_corpus(out_dir, corpus="dailydialog")
+    train_path = out_dir / "dailydialog.train.jsonl"
+    eval_path = out_dir / "dailydialog.eval.jsonl"
+
+    records: list[dict[str, Any]] = []
+    with base.open("r", encoding="utf-8") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            records.append(json.loads(line))
+
+    rng = random.Random(seed)
+    rng.shuffle(records)
+    n_eval = min(eval_max, max(1, int(len(records) * val_ratio)))
+    eval_rows = records[:n_eval]
+    train_rows = records[n_eval:]
+    if train_max is not None:
+        train_rows = train_rows[:train_max]
+
+    with train_path.open("w", encoding="utf-8") as fh:
+        for r in train_rows:
+            fh.write(json.dumps(r) + "\n")
+    with eval_path.open("w", encoding="utf-8") as fh:
+        for r in eval_rows:
+            fh.write(
+                json.dumps(
+                    {"transcript": r["utterance"], "label": int(r["eou_label"])}
+                )
+                + "\n"
+            )
+    return train_path, eval_path
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--config", required=True, type=Path)
-    ap.add_argument("--out", required=True, type=Path)
+    ap.add_argument("--config", required=False, type=Path)
+    # --out and --run-dir are synonyms (--run-dir is the brief's name).
+    ap.add_argument("--out", required=False, type=Path)
+    ap.add_argument("--run-dir", required=False, type=Path)
     ap.add_argument(
         "--epochs",
         type=int,
@@ -726,6 +1037,22 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     ap.add_argument(
+        "--revision",
+        type=str,
+        default=None,
+        help="Override --config's teacher_revision (e.g. v1.2.2-en).",
+    )
+    ap.add_argument(
+        "--pretrain-corpus",
+        type=str,
+        default=None,
+        choices=("dailydialog",),
+        help=(
+            "Auto-stage DailyDialog as the pretrain + eval JSONL under "
+            "<run-dir>/data/turn/. Overrides --config.train_data / eval_data."
+        ),
+    )
+    ap.add_argument(
         "--checkpoint-every",
         type=int,
         default=500,
@@ -738,6 +1065,18 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Hard cap on training steps (overrides --config epochs).",
     )
     ap.add_argument(
+        "--batch-size",
+        type=int,
+        default=16,
+        help="Microbatch size.",
+    )
+    ap.add_argument(
+        "--decision-threshold",
+        type=float,
+        default=0.5,
+        help="P(EOU) >= threshold ⇒ predict EOU. Matches the runtime default.",
+    )
+    ap.add_argument(
         "--smoke",
         action="store_true",
         help=(
@@ -746,28 +1085,109 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "scaffolded tests."
         ),
     )
+    # Export-only mode: --export-onnx + --checkpoint + --output.
+    ap.add_argument(
+        "--export-onnx",
+        action="store_true",
+        help=(
+            "Skip training; load --checkpoint and write a quantised ONNX "
+            "to --output."
+        ),
+    )
+    ap.add_argument(
+        "--checkpoint",
+        type=Path,
+        default=None,
+        help="Path to a .pt checkpoint for --export-onnx mode.",
+    )
+    ap.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Output ONNX path for --export-onnx mode.",
+    )
     return ap.parse_args(argv)
+
+
+def _resolve_run_dir(args: argparse.Namespace) -> Path:
+    if args.run_dir:
+        return args.run_dir
+    if args.out:
+        return args.out
+    raise SystemExit("--run-dir (or --out) is required")
+
+
+def _run_export_only(args: argparse.Namespace) -> int:
+    if args.checkpoint is None or args.output is None:
+        raise SystemExit("--export-onnx requires --checkpoint and --output")
+    # If --config is provided, use its teacher_repo/revision. Otherwise the
+    # checkpoint metadata is authoritative.
+    teacher_repo: str | None = None
+    teacher_revision: str | None = None
+    if args.config is not None:
+        cfg = load_config(args.config)
+        teacher_repo = args.base_model or cfg.teacher_repo
+        teacher_revision = args.revision or cfg.teacher_revision
+    else:
+        import torch
+        ckpt = torch.load(args.checkpoint, weights_only=False, map_location="cpu")
+        teacher_repo = (
+            args.base_model
+            or ckpt.get("teacher_repo")
+            or DEFAULT_REPO_EN
+        )
+        teacher_revision = (
+            args.revision
+            or ckpt.get("teacher_revision")
+            or DEFAULT_REVISION_EN
+        )
+    export_onnx(
+        teacher_repo=teacher_repo,
+        teacher_revision=teacher_revision,
+        checkpoint_path=args.checkpoint,
+        out_path=args.output,
+    )
+    export_tokenizer_artifacts(
+        teacher_repo, teacher_revision, args.output.parent,
+    )
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
+    if args.export_onnx:
+        return _run_export_only(args)
+    if args.config is None:
+        raise SystemExit("--config is required for training")
     cfg = load_config(args.config)
-    out_dir: Path = args.out
-    out_dir.mkdir(parents=True, exist_ok=True)
-    resolved_revision = cfg.teacher_revision or default_revision_for_tier(cfg.tier)
+    run_dir = _resolve_run_dir(args)
+    run_dir.mkdir(parents=True, exist_ok=True)
+    resolved_revision = (
+        args.revision or cfg.teacher_revision or default_revision_for_tier(cfg.tier)
+    )
     resolved = dataclasses.replace(cfg, teacher_revision=resolved_revision)
     if args.base_model is not None:
         resolved = dataclasses.replace(resolved, teacher_repo=args.base_model)
     if args.epochs is not None:
         resolved = dataclasses.replace(resolved, epochs=args.epochs)
-    (out_dir / "resolved-config.json").write_text(
+
+    if args.pretrain_corpus == "dailydialog":
+        data_dir = run_dir / "data" / "turn"
+        train_path, eval_path = stage_dailydialog_train_eval(out_dir=data_dir)
+        resolved = dataclasses.replace(
+            resolved,
+            train_data=[str(train_path)],
+            eval_data=[str(eval_path)],
+        )
+
+    (run_dir / "resolved-config.json").write_text(
         json.dumps(dataclasses.asdict(resolved), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     stage_manifest = stage_data(
         train_paths=[Path(p) for p in resolved.train_data],
         eval_paths=[Path(p) for p in resolved.eval_data],
-        out_dir=out_dir / "data",
+        out_dir=run_dir / "data",
     )
     if args.smoke:
         print(json.dumps(stage_manifest, indent=2, sort_keys=True))
@@ -775,22 +1195,30 @@ def main(argv: list[str] | None = None) -> int:
     if not resolved.train_data or not resolved.eval_data:
         raise SystemExit(
             "real training requires non-empty train_data + eval_data in "
-            "the config; use --smoke for a config-only dry run.",
+            "the config; pass --pretrain-corpus dailydialog or stage JSONL "
+            "and reference it in the config.",
         )
     summary = train_lora(
         cfg=resolved,
         pretrain_jsonl=Path(resolved.train_data[0]),
         eval_jsonl=Path(resolved.eval_data[0]),
-        out_dir=out_dir,
+        out_dir=run_dir,
         checkpoint_every=args.checkpoint_every,
         max_steps=args.max_steps,
+        batch_size=args.batch_size,
+        decision_threshold=args.decision_threshold,
     )
     if summary["top_k"]:
         best = summary["top_k"][0]
+        onnx_dir = run_dir / "onnx"
         export_onnx(
-            cfg=resolved,
+            teacher_repo=resolved.teacher_repo,
+            teacher_revision=resolved.teacher_revision,
             checkpoint_path=Path(best["path"]),
-            out_path=out_dir / "onnx" / "model_q8.onnx",
+            out_path=onnx_dir / "model_q8.onnx",
+        )
+        export_tokenizer_artifacts(
+            resolved.teacher_repo, resolved.teacher_revision, onnx_dir,
         )
     return 0
 
