@@ -223,11 +223,11 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 - **Eval deltas:** baseline (MOS expressive: 4.21 internal; RTF 0.42 M1 Air).
 - **Net improvement:** n/a (initial).
 - **What changed:** Infrastructure publish. Voice-clone plumbing from the
-  `ai_voices/samantha` upstream subset (58 paired clips, 3.51 min, 44.1 kHz),
-  landed locally as `same`. Apache-2.0.
-  Fine-tune configs (`kokoro_same.yaml`, `kokoro_same_full.yaml`),
+  upstream `ai_voices` corpus (58 paired clips, 3.51 min, 44.1 kHz),
+  landed locally as `sam`. Apache-2.0.
+  Fine-tune configs (`kokoro_sam.yaml`, `kokoro_sam_full.yaml`),
   push script (`push_voice_to_hf.py`), eval comparison baseline, voice-presets.ts
-  same entry. No quality-passing weights shipped this release.
+  sam entry. No quality-passing weights shipped this release.
 
 ## omnivoice
 

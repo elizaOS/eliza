@@ -3,14 +3,14 @@
 # Pre-flight gate for the same voice corpus. Exits non-zero if any
 # check fails. Run before invoking the kokoro pipeline (I7).
 #
-# Audits the upstream `samantha/` clone slice from lalalune/ai_voices —
+# Audits the upstream `sam/` clone slice from lalalune/ai_voices —
 # the corpus is canonically renamed to `same` once landed locally via
 # build_same_manifest.py, but the upstream subset directory is still
-# `samantha` (we don't control upstream naming).
+# `sam` (we don't control upstream naming).
 #
 # Usage:
-#   ./audit_same.sh                            # audits /tmp/ai_voices/samantha
-#   ./audit_same.sh /path/to/samantha     # audits an alternate clone
+#   ./audit_same.sh                            # audits /tmp/ai_voices/sam
+#   ./audit_same.sh /path/to/sam     # audits an alternate clone
 #
 # Verifies:
 #   1. 58 wav + 58 txt files, no extras.
@@ -23,10 +23,10 @@
 
 set -euo pipefail
 
-ROOT="${1:-/tmp/ai_voices/samantha}"
+ROOT="${1:-/tmp/ai_voices/sam}"
 
 if [[ ! -d "$ROOT" ]]; then
-  echo "FAIL: upstream samantha source not found at $ROOT" >&2
+  echo "FAIL: upstream sam source not found at $ROOT" >&2
   echo "      run: python3 packages/training/scripts/voice/build_same_manifest.py --sparse-clone /tmp/ai_voices" >&2
   exit 1
 fi

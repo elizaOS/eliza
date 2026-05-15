@@ -1,7 +1,7 @@
 """Tests for the same voice corpus manifest builder.
 
 These tests avoid all heavy deps (ffmpeg, openai-whisper, librosa) and
-materialize a synthetic upstream-samantha-shaped corpus on disk via the
+materialize a synthetic upstream-sam-shaped corpus on disk via the
 stdlib `wave` module. They exercise `bsm.main` end-to-end
 with `--no-retranscribe --no-normalize --dry-run`, which is the same
 code path CI takes.
@@ -35,7 +35,7 @@ def _materialize_upstream_samantha(
     count: int = bsm.EXPECTED_CLIP_COUNT,
     hallucinated_002: bool = True,
 ) -> Path:
-    """Build a fake upstream samantha/ dir + a parent git repo so commit-sha resolves."""
+    """Build a fake upstream sam/ dir + a parent git repo so commit-sha resolves."""
     root.mkdir(parents=True, exist_ok=True)
     upstream = root / bsm.UPSTREAM_SUBSET
     upstream.mkdir(parents=True, exist_ok=True)

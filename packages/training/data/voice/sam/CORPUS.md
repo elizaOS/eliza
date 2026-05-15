@@ -6,7 +6,7 @@ Updated by F2 (Kokoro same fine-tune retry agent) on 2026-05-15.
 
 | Property | Value |
 |----------|-------|
-| Source | `lalalune/ai_voices` (upstream `samantha` subset, landed locally as `same`) |
+| Source | `lalalune/ai_voices` (upstream `sam` subset, landed locally as `same`) |
 | Clips | 57 (58 raw, 1 excluded: same_002 hallucination) |
 | Duration | ~3.5 min (210 s) |
 | Format | 44.1 kHz mono PCM16 (normalized to 24 kHz, -23 LUFS) |

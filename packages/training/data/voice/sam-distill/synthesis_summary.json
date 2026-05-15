@@ -1,0 +1,13 @@
+{
+  "generatedAt": "2026-05-15T04:26:58.975902+00:00",
+  "totalClips": 826,
+  "totalDurationS": 3604.33,
+  "totalDurationMin": 60.07,
+  "trainLines": 744,
+  "valLines": 82,
+  "targetMinutes": 60.0,
+  "teacher": "sam-melfit-ref_s (NOT af_bella)",
+  "voiceBin": "/tmp/kokoro-f2/melfit-5/af_samantha.bin",
+  "outDir": "/home/shaw/milady/eliza/packages/training/data/voice/sam-distill",
+  "note": "G3 OmniVoice-sam teacher. F2 used af_bella which dominated training signal. G3 uses sam ref_s so model learns sam timbre."
+}
