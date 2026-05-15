@@ -1,4 +1,4 @@
-import type { CodingAgentSession } from "@elizaos/ui/api/client-types-cloud";
+import type { CodingAgentSession } from "@elizaos/ui";
 import { PtyConsoleBase } from "./PtyConsoleBase";
 
 export interface PtyConsoleSidePanelProps {

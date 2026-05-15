@@ -121,9 +121,9 @@ def test_eliza1_tier_ids_are_canonical():
         "dflash",
         "turbo3_tcq",
     )
-    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("omnivoice", "kokoro")
-    assert VOICE_BACKENDS_BY_TIER["2b"] == ("omnivoice", "kokoro")
-    assert VOICE_BACKENDS_BY_TIER["4b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
+    assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
+    assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
     assert VOICE_BACKENDS_BY_TIER["27b-256k"] == ("omnivoice",)
 
@@ -707,13 +707,12 @@ def test_voice_quant_ladder_covers_every_tier():
     assert set(VOICE_QUANT_LADDER_BY_TIER.keys()) == set(VOICE_QUANT_BY_TIER.keys())
 
 
-def test_voice_quant_ladder_mobile_tiers_has_mobile_omnivoice_policy():
-    """Mobile tiers (0_8b / 2b / 4b) publish a narrow OmniVoice ladder and
-    retain Kokoro as fallback."""
-    expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M")
+def test_voice_quant_ladder_mobile_tiers_are_kokoro_only():
+    """Mobile tiers (0_8b / 2b / 4b) are Kokoro-only and publish no
+    OmniVoice ladder."""
     for tier in ("0_8b", "2b", "4b"):
-        assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
-        assert VOICE_BACKENDS_BY_TIER[tier] == ("omnivoice", "kokoro")
+        assert VOICE_QUANT_LADDER_BY_TIER[tier] == ()
+        assert VOICE_BACKENDS_BY_TIER[tier] == ("kokoro",)
 
 
 def test_voice_quant_ladder_large_tiers_have_full_kquant_ladder():

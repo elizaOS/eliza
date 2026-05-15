@@ -3,7 +3,7 @@
  *
  * Default local inference is restricted to the active Eliza-1 line: Qwen3.5
  * bases for 0.8B, 2B, 4B, and 9B, plus Qwen3.6 for the active 27B family
- * (including long-context variants at 256k and 1M). The 2026-05-12 mandate
+ * (including 256k and 1M long-context variants). The 2026-05-12 mandate
  * retired the legacy Qwen3 bases; see
  * packages/training/scripts/training/model_registry.py for the active
  * registry. External Hub search remains custom/opt-in and never enters
@@ -26,9 +26,35 @@ export const ELIZA_1_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
+  "eliza-1-27b-1m",
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
+
+export const ELIZA_1_DFLASH_TIER_IDS = [
+  "eliza-1-2b",
+  "eliza-1-4b",
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
+  "eliza-1-27b-1m",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+export const ELIZA_1_VISION_TIER_IDS = [
+  "eliza-1-4b",
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
+  "eliza-1-27b-1m",
+] as const satisfies ReadonlyArray<Eliza1TierId>;
+
+const ELIZA_1_DFLASH_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+  ELIZA_1_DFLASH_TIER_IDS,
+);
+
+const ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+  ELIZA_1_VISION_TIER_IDS,
+);
 
 export const ELIZA_1_RELEASE_TIER_IDS =
   ELIZA_1_TIER_IDS satisfies ReadonlyArray<Eliza1TierId>;
@@ -123,10 +149,10 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b / 9b) → OmniVoice first with Kokoro
- *     fallback. The fused expressive TTS path stays default, while Kokoro
- *     remains available for low-latency/thermal fallback on constrained hosts.
- *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Those bundles optimize
+ *     for install size, TTFA, and phone thermals.
+ *   - 9B → Kokoro first with OmniVoice bundled for hosts with enough memory.
+ *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
  */
@@ -134,16 +160,16 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["omnivoice", "kokoro"],
-  "eliza-1-2b": ["omnivoice", "kokoro"],
-  "eliza-1-4b": ["omnivoice", "kokoro"],
-  "eliza-1-9b": ["omnivoice", "kokoro"],
+  "eliza-1-0_8b": ["kokoro"],
+  "eliza-1-2b": ["kokoro"],
+  "eliza-1-4b": ["kokoro"],
+  "eliza-1-9b": ["kokoro", "omnivoice"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
+  "eliza-1-27b-1m": ["omnivoice"],
 };
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
-  "dflash",
   "turbo3",
   "turbo4",
   "qjl_full",
@@ -170,7 +196,7 @@ interface TierSpec {
    * WS3: whether this tier ships a default image-gen model in the bundle
    * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). Mobile-class
    * tiers (0_8b/2b/4b) default to SD 1.5 Q5_0 (~1.0 GB); desktop-class
-   * tiers (9b/27b/27b-256k) default to Z-Image-Turbo Q4_K_M
+   * tiers (9b/27b/27b-256k/27b-1m) default to Z-Image-Turbo Q4_K_M
    * (~3.4 GB). The diffusion weights are runtime-downloaded — they are
    * NOT part of the base-v1 bundle.
    */
@@ -190,12 +216,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.5B",
     drafterSizeGb: 0.4,
     drafterMinRamGb: 2,
-    // WS2: vision is enabled on the smallest viable tier. The Q4_K_M
-    // mmproj for 0.8B is ~220 MB (see ELIZA_1_BUNDLE_EXTRAS.json), which
-    // fits even on 2 GB-floor devices when the text model is resident.
-    // Camera + screen analysis remain practical on low-tier phones at this
-    // size — the projector cache short-circuits the per-frame cost.
-    hasVision: true,
     // WS3: image-gen via sd-cpp + SD 1.5 Q5_0 (~1.0 GB). Co-evicts
     // with vision on the WS1 `vision` resident-role slot; only one of
     // (VL describe, diffusion generate) is held at a time.
@@ -213,12 +233,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.8B",
     drafterSizeGb: 0.5,
     drafterMinRamGb: 4,
-    // WS2: vision enabled — the 2B tier is the standard "small-phone"
-    // default for first-run users, so camera-to-reaction and screen
-    // analysis must work here. The mmproj is ~361 MB Q8_0 (actual:
-    // 361,518,784 bytes, published 2026-05-14); the arbiter owns the
-    // swap with the text weights under pressure.
-    hasVision: true,
     // WS3: image-gen on the standard small-phone default uses SD 1.5
     // Q5_0 too; tier-up to Z-Image-Turbo at 9B.
     hasImageGen: true,
@@ -292,6 +306,24 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterSizeGb: 2.6,
     drafterMinRamGb: 96,
     gpuProfile: "rtx-5090",
+    hasEmbedding: true,
+    hasVision: true,
+    hasImageGen: true,
+  },
+  "eliza-1-27b-1m": {
+    id: "eliza-1-27b-1m",
+    params: "27B",
+    parameterLabel: "27B 1M",
+    sizeGb: 16.8,
+    minRamGb: 141,
+    q4MinRamGb: 141,
+    bucket: "large",
+    contextLength: 1048576,
+    textFile: "text/eliza-1-27b-1m.gguf",
+    drafterParams: "4B",
+    drafterSizeGb: 2.6,
+    drafterMinRamGb: 141,
+    gpuProfile: "h200",
     hasEmbedding: true,
     hasVision: true,
     hasImageGen: true,
@@ -388,6 +420,7 @@ const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
+  "eliza-1-27b-1m": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
 };
 
 export function voiceQuantLadderForTier(

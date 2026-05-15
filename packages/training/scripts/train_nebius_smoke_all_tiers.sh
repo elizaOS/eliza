@@ -6,7 +6,7 @@
 # `full` provisions+trains+fetches+tears-down ONE tier per VM lifecycle, this
 # driver loops over EVERY eliza-1 tier on a SINGLE VM lifecycle (~$30-40 on H200
 # at ~10h end-to-end) so a single billing window validates the full
-# 0.8B → 27B-1m chain on a small smoke corpus.
+# 0.8B → 27B-256k chain on a small smoke corpus.
 #
 # CONTROL FLOW (5 lines, matches the EXIT-trap pattern at line 615 of train_nebius.sh):
 #   1) provision (or reuse) ONE Nebius H200 VM
