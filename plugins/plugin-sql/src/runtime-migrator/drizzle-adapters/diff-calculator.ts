@@ -97,7 +97,7 @@ function isIndexChanged(prevIndex: SchemaIndex, currIndex: SchemaIndex): boolean
 }
 
 // Column changes interface
-export interface ColumnChanges {
+interface ColumnChanges {
   typeChanged?: boolean;
   prevType?: string;
   newType?: string;
@@ -112,7 +112,7 @@ export interface ColumnChanges {
 }
 
 // Table changes interface
-export interface TableChanges {
+interface TableChanges {
   columnsAdded: string[];
   columnsDeleted: string[];
   columnsModified: string[];

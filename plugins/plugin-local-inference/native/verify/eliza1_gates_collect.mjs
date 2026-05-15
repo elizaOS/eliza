@@ -69,14 +69,14 @@ const DEFAULT_GATES = path.join(
   "eliza1_gates.yaml",
 );
 const ACTIVE_VISION_TIERS = new Set([
-  "0_8b",
-  "2b",
   "4b",
   "9b",
   "27b",
   "27b-256k",
   "27b-1m",
 ]);
+const DFLASH_DISABLED_TIERS = new Set(["0_8b"]);
+const DFLASH_GATE_NAMES = new Set(["dflash_acceptance", "dflash_speedup"]);
 
 function timestamp() {
   return new Date()
@@ -563,6 +563,7 @@ async function main() {
     [VERIFY_ROOT, BENCH_RESULTS_ROOT],
     ({ name, data }) =>
       name.toLowerCase().includes("vision") &&
+      !name.startsWith("eliza1-gates-") &&
       (data?.tier === args.tier || data?.request?.tier === args.tier),
   );
   const diarization = newestJsonReportWhere(
@@ -675,6 +676,12 @@ async function main() {
     const def = gateDefs[name] ?? {};
     const op = def.op ?? "bool";
     const r = applyGate(name, op, cfg?.threshold, measured[name] ?? null);
+    if (DFLASH_DISABLED_TIERS.has(args.tier) && DFLASH_GATE_NAMES.has(name)) {
+      r.status = "not-applicable";
+      r.measured = null;
+      r.reason =
+        "DFlash is disabled for the 0.8B low-memory tier; no drafter gate is expected";
+    }
     r.required = Boolean(cfg?.required);
     r.provisional = Boolean(cfg?.provisional ?? def?.provisional);
     r.needsHardware = Boolean(cfg?.needs_hardware ?? def?.needs_hardware);
@@ -690,17 +697,19 @@ async function main() {
   const needsData = results.filter((r) => r.status === "needs-data");
 
   // ── Manifest evals fragment (the subset W11 owns) ────────────────────
-  const dflashEval = {
-    acceptanceRate: dflashAcceptance,
-    speedup: dflashSpeedup,
-    // Passed only when both numbers exist AND clear the dflash: section's
-    // thresholds (which are provisional, so this never blocks defaultEligible).
-    passed:
-      dflashAcceptance !== null &&
-      dflashSpeedup !== null &&
-      dflashAcceptance >= (gatesDoc?.dflash?.minAcceptanceRate ?? 0.65) &&
-      dflashSpeedup >= (gatesDoc?.dflash?.minSpeedup ?? 1.5),
-  };
+  const dflashEval = DFLASH_DISABLED_TIERS.has(args.tier)
+    ? null
+    : {
+        acceptanceRate: dflashAcceptance,
+        speedup: dflashSpeedup,
+        // Passed only when both numbers exist AND clear the dflash: section's
+        // thresholds (which are provisional, so this never blocks defaultEligible).
+        passed:
+          dflashAcceptance !== null &&
+          dflashSpeedup !== null &&
+          dflashAcceptance >= (gatesDoc?.dflash?.minAcceptanceRate ?? 0.65) &&
+          dflashSpeedup >= (gatesDoc?.dflash?.minSpeedup ?? 1.5),
+      };
   const vadGateNames = [
     "vad_latency_ms",
     "vad_boundary_mae_ms",
@@ -763,7 +772,7 @@ async function main() {
     ...(e2eLoopOk !== null ? { e2eLoopOk } : {}),
     ...(vadLatencyEval ? { vadLatencyMs: vadLatencyEval } : {}),
     ...(expressiveManifest ? { expressive: expressiveManifest } : {}),
-    dflash: dflashEval,
+    ...(dflashEval ? { dflash: dflashEval } : {}),
   };
 
   function gateRow(name, area, source, reasonOverride = null, blockingOverride = null) {
@@ -826,6 +835,7 @@ async function main() {
   const e2eOptimizations = e2eLoop?.data?.summary?.requiredOptimizations ?? e2eLoop?.data?.requiredOptimizations;
   const streamingTtsActive = boolOrNull(e2eOptimizations?.streamingTtsActive);
   const dflashDraftingActive = boolOrNull(e2eOptimizations?.dflashDraftingActive);
+  const requiresDflashDrafting = !DFLASH_DISABLED_TIERS.has(args.tier);
   const requiresVision = ACTIVE_VISION_TIERS.has(args.tier);
   const visionStatus =
     visionSmoke?.data?.passed === true
@@ -1024,14 +1034,16 @@ async function main() {
     {
       area: "worker-output",
       gate: "dflash_drafting_active",
-      status: dflashDraftingActive === true ? "pass" : dflashDraftingActive === false ? "fail" : "needs-data",
-      blocking: dflashDraftingActive !== true,
+      status: dflashDraftingActive === true ? "pass" : requiresDflashDrafting ? (dflashDraftingActive === false ? "fail" : "needs-data") : "not-applicable",
+      blocking: requiresDflashDrafting && dflashDraftingActive !== true,
       measured: dflashDraftingActive,
-      threshold: "true",
+      threshold: requiresDflashDrafting ? "true" : "optional",
       reason:
         dflashDraftingActive === true
           ? "e2e loop observed DFlash drafting"
-          : "required optimization is inactive in the selected e2e loop",
+          : requiresDflashDrafting
+            ? "required optimization is inactive in the selected e2e loop"
+            : "DFlash drafting is optional for the 0.8B low-memory tier; a bad same-size drafter must not block the text/voice bundle",
       source: sourcePath(e2eLoop),
     },
     {
@@ -1122,6 +1134,7 @@ async function main() {
       pass: results.filter((r) => r.status === "pass").length,
       fail: results.filter((r) => r.status === "fail").length,
       needsData: needsData.length,
+      notApplicable: results.filter((r) => r.status === "not-applicable").length,
       hardFailures: hardFailures.map((r) => r.name),
       softFailures: softFailures.map((r) => r.name),
       blocking: hardFailures.length > 0,

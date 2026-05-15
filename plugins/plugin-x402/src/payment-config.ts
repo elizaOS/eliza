@@ -48,9 +48,6 @@ export type Network = "BASE" | "SOLANA" | "POLYGON" | "BSC";
  */
 export const BUILT_IN_NETWORKS = ["BASE", "SOLANA", "POLYGON", "BSC"] as const;
 
-// Default network configuration
-export const DEFAULT_NETWORK: Network = "SOLANA";
-
 /**
  * Convert our Network type to x402scan-compliant network names
  * @throws {Error} If network is not supported by x402scan
@@ -75,9 +72,9 @@ export function toX402Network(network: Network): X402ScanNetwork {
 }
 
 /** Shipped fallbacks — not your treasury; startup validation warns / errors in production. */
-export const BUNDLED_EXAMPLE_EVM_PAYOUT =
+const BUNDLED_EXAMPLE_EVM_PAYOUT =
   "0x066E94e1200aa765d0A6392777D543Aa6Dea606C";
-export const BUNDLED_EXAMPLE_SOLANA_PAYOUT =
+const BUNDLED_EXAMPLE_SOLANA_PAYOUT =
   "3nMBmufBUBVnk28sTp3NsrSJsdVGTyLZYmsqpMFaUT9J";
 
 export function paymentAddressIsBundledExample(
@@ -139,7 +136,7 @@ export function toResourceUrl(path: string): string {
 /**
  * Token configuration for Solana
  */
-export const SOLANA_TOKENS = {
+const SOLANA_TOKENS = {
   USDC: {
     symbol: "USDC",
     address: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
@@ -165,7 +162,7 @@ export const SOLANA_TOKENS = {
 /**
  * Token configuration for Base (EVM)
  */
-export const BASE_TOKENS = {
+const BASE_TOKENS = {
   USDC: {
     symbol: "USDC",
     address: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
@@ -181,7 +178,7 @@ export const BASE_TOKENS = {
 /**
  * Token configuration for Polygon (EVM)
  */
-export const POLYGON_TOKENS = {
+const POLYGON_TOKENS = {
   USDC: {
     symbol: "USDC",
     address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
@@ -192,56 +189,13 @@ export const POLYGON_TOKENS = {
 /**
  * Token configuration for BNB Smart Chain (EVM)
  */
-export const BSC_TOKENS = {
+const BSC_TOKENS = {
   USDC: {
     symbol: "USDC",
     address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
     decimals: 18,
   },
 } as const;
-
-/**
- * Default asset for each network (used in x402 responses)
- */
-export const NETWORK_ASSETS: Partial<Record<Network, string>> = {
-  BASE: "USDC", // USDC on Base
-  SOLANA: "USDC", // USDC on Solana (default, but also supports ai16z and degenai)
-  POLYGON: "USDC", // USDC on Polygon
-  BSC: "USDC", // Binance-Peg USDC on BNB Smart Chain
-};
-
-/**
- * Get all accepted assets for a network
- * @throws {Error} If network is not supported
- */
-export function getNetworkAssets(network: Network): string[] {
-  if (network === "SOLANA") {
-    return Object.values(SOLANA_TOKENS).map((t) => t.symbol);
-  }
-  if (network === "BASE") {
-    return Object.values(BASE_TOKENS).map((t) => t.symbol);
-  }
-  if (network === "POLYGON") {
-    return Object.values(POLYGON_TOKENS).map((t) => t.symbol);
-  }
-  if (network === "BSC") {
-    return Object.values(BSC_TOKENS).map((t) => t.symbol);
-  }
-
-  const defaultAsset = NETWORK_ASSETS[network];
-  if (!defaultAsset) {
-    throw new Error(
-      `Network '${network}' is not configured. ` +
-        `Supported networks: ${BUILT_IN_NETWORKS.join(", ")}`,
-    );
-  }
-
-  return [defaultAsset];
-}
-
-// Default/legacy wallet address (uses default network)
-export const PAYMENT_RECEIVER_ADDRESS =
-  PAYMENT_ADDRESSES[DEFAULT_NETWORK] || "";
 
 /**
  * Named payment config definition - stores individual fields, CAIP-19 constructed on-demand
@@ -449,16 +403,6 @@ export function listX402Configs(agentId?: string): string[] {
 }
 
 /**
- * Validate payment config name
- */
-export function validatePaymentConfigName(name: string): boolean {
-  return name in PAYMENT_CONFIGS;
-}
-
-// Re-export X402Config from core for convenience
-export type { X402Config } from "@elizaos/core";
-
-/**
  * Get the payment address for a specific network
  * @throws {Error} If network is not configured
  */
@@ -473,45 +417,6 @@ export function getPaymentAddress(network: Network): string {
   }
   return address;
 }
-
-/**
- * Get all network addresses with metadata
- * Only returns networks that have configured addresses
- */
-export function getNetworkAddresses(networks: Network[]): Array<{
-  name: Network;
-  address: string;
-  facilitatorEndpoint?: string;
-}> {
-  return networks
-    .filter(
-      (network) =>
-        PAYMENT_ADDRESSES[network] !== undefined &&
-        PAYMENT_ADDRESSES[network] !== "",
-    )
-    .map((network) => ({
-      name: network,
-      address: PAYMENT_ADDRESSES[network] as string,
-      // Add facilitator endpoint for EVM chains if configured
-      ...((network === "BASE" || network === "POLYGON" || network === "BSC") &&
-        process.env.EVM_FACILITATOR && {
-          facilitatorEndpoint: process.env.EVM_FACILITATOR,
-        }),
-    }));
-}
-
-/**
- * Approximate USD/token map (float) for dashboards or legacy callers.
- * **Atomic amounts** use exact rational math from the same env defaults — see
- * `atomicAmountForPriceInCents` / `getTokenUsdPerTokenRational` in this file.
- */
-export const TOKEN_PRICES_USD: Record<string, number> = {
-  USDC: 1.0,
-  ai16z: Number.parseFloat(process.env.AI16Z_PRICE_USD || "0.5"),
-  degenai: Number.parseFloat(process.env.DEGENAI_PRICE_USD || "0.01"),
-  elizaOS: Number.parseFloat(process.env.ELIZAOS_PRICE_USD || "0.05"),
-  ETH: 2000.0, // Simplified; override via env/oracle in future
-};
 
 /**
  * Get token decimals for an asset
@@ -640,72 +545,6 @@ export function atomicAmountForPriceInCents(
     throw new Error("invalid token USD price (zero denominator)");
   }
   return ((numer + denom - 1n) / denom).toString();
-}
-
-/**
- * Parse price string (e.g., "$0.10") as a USD **dollar** amount and convert to
- * the asset’s smallest units (ceil), using the same rational pricing as
- * `atomicAmountForPriceInCents` / env overrides (`ELIZAOS_PRICE_USD`, etc.).
- */
-export function parsePrice(
-  price: string,
-  asset: string = "USDC",
-  network?: Network,
-): string {
-  const { num: un, den: ud } = usdDecimalStringToRational(price);
-  const { num: p, den: q } = getTokenUsdPerTokenRational(asset, network);
-  const dec = getTokenDecimals(asset, network);
-  if (dec < 0 || dec > 120) {
-    throw new Error("invalid token decimals");
-  }
-  const scale = 10n ** BigInt(dec);
-  const numer = un * q * scale;
-  const denom = ud * p;
-  if (denom === 0n) {
-    throw new Error("invalid token USD price (zero denominator)");
-  }
-  return ((numer + denom - 1n) / denom).toString();
-}
-
-/**
- * Get token address for any network and asset
- */
-export function getTokenAddress(
-  asset: string,
-  network: Network,
-): string | undefined {
-  if (network === "SOLANA") {
-    const token = Object.values(SOLANA_TOKENS).find((t) => t.symbol === asset);
-    return token?.address;
-  }
-  if (network === "BASE") {
-    const token = Object.values(BASE_TOKENS).find((t) => t.symbol === asset);
-    return token?.address;
-  }
-  if (network === "POLYGON") {
-    const token = Object.values(POLYGON_TOKENS).find((t) => t.symbol === asset);
-    return token?.address;
-  }
-  if (network === "BSC") {
-    const token = Object.values(BSC_TOKENS).find((t) => t.symbol === asset);
-    return token?.address;
-  }
-  return undefined;
-}
-
-/**
- * Get the asset for a specific network
- * @throws {Error} If network is not configured
- */
-export function getNetworkAsset(network: Network): string {
-  const asset = NETWORK_ASSETS[network];
-  if (!asset) {
-    throw new Error(
-      `No default asset configured for network '${network}'. ` +
-        `Supported networks: ${BUILT_IN_NETWORKS.join(", ")}`,
-    );
-  }
-  return asset;
 }
 
 /**

@@ -78,8 +78,8 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
         license="apache-2.0",
         status="source-only",
         notes=(
-            "GGUF mirror of the official Qwen/Qwen3.5-0.8B base.",
-            "Final Eliza-1 0.8B still needs training plus Q3_K_M quantization.",
+            "GGUF mirror of the official Qwen/Qwen3.5-0.8B-Base checkpoint.",
+            "Final Eliza-1 0.8B still needs training plus the Q4_K_M/Q6_K/Q8_0 GGUF matrix.",
         ),
     ),
     "2b": SourceArtifact(
@@ -90,7 +90,7 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
         license="apache-2.0",
         status="source-only",
         notes=(
-            "GGUF mirror of the official Qwen/Qwen3.5-2B base.",
+            "GGUF mirror of the official Qwen/Qwen3.5-2B-Base checkpoint.",
             "Final Eliza-1 2B still needs training plus Q4_K_M quantization.",
         ),
     ),
@@ -133,15 +133,6 @@ TEXT_SOURCES: Final[dict[str, SourceArtifact]] = {
         status="source-only",
         notes=("Final Eliza-1 27B-256k uses Qwen3.6 and still needs long-context assembly plus Q4_K_M quantization.",),
     ),
-    "27b-1m": SourceArtifact(
-        kind="text",
-        repo="unsloth/Qwen3.6-27B-GGUF",
-        filename="Qwen3.6-27B-Q8_0.gguf",
-        destination="source/text/qwen3.6-27b-1m-q8_0.gguf",
-        license="apache-2.0",
-        status="source-only",
-        notes=("Final Eliza-1 27B-1m uses Qwen3.6 and still needs long-context assembly plus Q4_K_M quantization.",),
-    ),
 }
 
 DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
@@ -151,7 +142,6 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "9b": None,
     "27b": None,
     "27b-256k": None,
-    "27b-1m": None,
 }
 
 VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
@@ -166,10 +156,33 @@ VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
         status="source-only",
         notes=("Final Eliza-1 4B vision/mmproj release artifact is not produced yet.",),
     ),
-    "9b": None,
-    "27b": None,
-    "27b-256k": None,
-    "27b-1m": None,
+    "9b": SourceArtifact(
+        kind="vision",
+        repo="unsloth/Qwen3.5-9B-GGUF",
+        filename="mmproj-F16.gguf",
+        destination="source/vision/qwen3.5-9b-mmproj-f16.gguf",
+        license="apache-2.0",
+        status="source-only",
+        notes=("Final Eliza-1 9B vision/mmproj release artifact is not produced yet.",),
+    ),
+    "27b": SourceArtifact(
+        kind="vision",
+        repo="batiai/Qwen3.6-27B-GGUF",
+        filename="mmproj-Qwen-Qwen3.6-27B-Q6_K.gguf",
+        destination="source/vision/qwen3.6-27b-mmproj-q6_k.gguf",
+        license="apache-2.0",
+        status="source-only",
+        notes=("Final Eliza-1 27B vision/mmproj release artifact is not produced yet.",),
+    ),
+    "27b-256k": SourceArtifact(
+        kind="vision",
+        repo="batiai/Qwen3.6-27B-GGUF",
+        filename="mmproj-Qwen-Qwen3.6-27B-Q6_K.gguf",
+        destination="source/vision/qwen3.6-27b-mmproj-q6_k.gguf",
+        license="apache-2.0",
+        status="source-only",
+        notes=("Same vision source as 27B; final 256k image eval remains open.",),
+    ),
 }
 
 

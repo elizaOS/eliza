@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent";
 import {
   AgentRuntime,
   type Content,
@@ -44,8 +43,11 @@ import {
   extractRecord,
   extractTaskId,
   formatUnknownError,
+  isBenchmarkServerEntrypoint,
   normalizeBenchmarkContext,
   normalizeBenchmarkModelUsage,
+  normalizeLifeOpsNativeMessages,
+  normalizeLifeOpsNativePlannerResult,
   resolveHost,
   resolvePort,
   sessionKey,
@@ -243,7 +245,7 @@ function normalizeLocaIncomingToolCall(
   };
 }
 
-function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
+export function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
   id: string;
   type: "function";
   function: { name: string; arguments: string };
@@ -621,6 +623,39 @@ export async function startBenchmarkServer() {
   const plugins: Plugin[] = [];
   const loadedPlugins: string[] = [];
   const failedPlugins: string[] = [];
+  type CreateElizaPluginFn = (config?: {
+    workspaceDir?: string;
+    agentId?: string;
+  }) => unknown;
+  let CORE_PLUGINS: readonly string[];
+  let createElizaPlugin: CreateElizaPluginFn;
+  try {
+    const agentModule = (await import("@elizaos/agent")) as {
+      CORE_PLUGINS: readonly string[];
+      createElizaPlugin: CreateElizaPluginFn;
+    };
+    CORE_PLUGINS = agentModule.CORE_PLUGINS;
+    createElizaPlugin = agentModule.createElizaPlugin;
+  } catch (error: unknown) {
+    elizaLogger.debug(
+      `[bench] @elizaos/agent aggregate import failed; falling back to runtime modules (${formatUnknownError(error)})`,
+    );
+    const [corePluginsModule, elizaPluginModule] = await Promise.all([
+      import(
+        new URL("../../../agent/src/runtime/core-plugins.ts", import.meta.url)
+          .href
+      ),
+      import(
+        new URL("../../../agent/src/runtime/eliza-plugin.ts", import.meta.url)
+          .href
+      ),
+    ]);
+    CORE_PLUGINS = (corePluginsModule as { CORE_PLUGINS: readonly string[] })
+      .CORE_PLUGINS;
+    createElizaPlugin = (
+      elizaPluginModule as { createElizaPlugin: CreateElizaPluginFn }
+    ).createElizaPlugin;
+  }
 
   // Plugins to skip in benchmark context — these require external auth or
   // interfere with benchmark operation
@@ -1321,6 +1356,32 @@ export async function startBenchmarkServer() {
       // itself to the user's benchmark instruction and let the provider carry
       // the structured context.
       const composedPrompt = userText.trim();
+
+      if (Array.isArray(toolManifest) && toolManifest.length > 0) {
+        const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+        activeUsageBuffer = turnUsageBuffer;
+        let nativeResult: unknown;
+        try {
+          nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+            messages: normalizeLifeOpsNativeMessages(
+              composedPrompt,
+              benchmarkContext,
+              previousTurns,
+            ),
+            tools: toolManifest,
+            toolChoice: "auto",
+            maxTokens: 2048,
+            temperature: 0,
+          });
+        } finally {
+          activeUsageBuffer = null;
+        }
+
+        return normalizeLifeOpsNativePlannerResult(
+          nativeResult,
+          turnUsageBuffer,
+        );
+      }
 
       const incomingMessage: Memory = {
         id: stringToUuid(`lifeops-msg:${Date.now()}:${Math.random()}`),
@@ -2099,7 +2160,9 @@ export async function startBenchmarkServer() {
   });
 }
 
-startBenchmarkServer().catch((err) => {
-  elizaLogger.error("[bench] Failed to start benchmark server", { err });
-  process.exit(1);
-});
+if (isBenchmarkServerEntrypoint(process.argv[1], import.meta.url)) {
+  startBenchmarkServer().catch((err) => {
+    elizaLogger.error("[bench] Failed to start benchmark server", { err });
+    process.exit(1);
+  });
+}

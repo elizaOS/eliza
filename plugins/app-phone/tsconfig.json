@@ -26,7 +26,6 @@
       "@elizaos/capacitor-phone": [
         "../../packages/native-plugins/phone/src/index.ts"
       ],
-      "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
@@ -35,7 +34,6 @@
       "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/plugin-signal": ["../plugin-signal/src/index.ts"],
       "@elizaos/plugin-signal/*": ["../plugin-signal/src/*"],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],

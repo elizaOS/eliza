@@ -405,11 +405,21 @@ class OpenClawClient:
     def health(self) -> dict[str, object]:
         """Probe the OpenClaw binary by running ``<binary> --version``.
 
-        Single canonical path — there is no "skip the subprocess" mode. If the
-        binary exists, we must invoke it to fail fast on a broken install. The
-        old conditional that returned ``ready`` based purely on file existence
-        masked install corruption until the first benchmark turn.
+        CLI mode invokes the binary to fail fast on a broken install. Direct
+        OpenAI-compatible mode intentionally has no CLI dependency, so readiness
+        is the configured provider path.
         """
+        direct_requested = (
+            self.direct_openai_compatible
+            or os.environ.get("OPENCLAW_DIRECT_OPENAI_COMPAT", "").strip() == "1"
+        )
+        if direct_requested and os.environ.get("OPENCLAW_USE_CLI") != "1":
+            return {
+                "status": "ready",
+                "transport": "direct_openai_compatible",
+                "provider": self.provider,
+                "model": self.model,
+            }
         if not self.binary_path.exists():
             return {
                 "status": "error",

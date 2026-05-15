@@ -11,6 +11,7 @@ import ast
 import json
 import logging
 import math
+import re
 from typing import Optional
 
 from benchmarks.bfcl.types import ArgumentValue, FunctionCall, ResultDetails
@@ -95,6 +96,17 @@ class ASTEvaluator:
                 index[name] = fd
         return index
 
+    def _normalize_function_name(self, name: str) -> str:
+        """Normalize provider-safe aliases for BFCL function names.
+
+        Some OpenAI-compatible providers sanitize native tool names such as
+        ``random.normalvariate`` into ``random_normalvariate`` because their
+        tool-call API only accepts identifier-like names. Treat common
+        namespace separators as non-semantic when case-sensitive matching is
+        disabled.
+        """
+        return re.sub(r"[\W_]+", "", name.lower())
+
     def _match_parallel_calls(
         self,
         predicted: list[FunctionCall],
@@ -130,8 +142,8 @@ class ASTEvaluator:
         pred_name = predicted.name
         exp_name = expected.name
         if not self.case_sensitive_names:
-            pred_name = pred_name.lower().replace("_", "")
-            exp_name = exp_name.lower().replace("_", "")
+            pred_name = self._normalize_function_name(pred_name)
+            exp_name = self._normalize_function_name(exp_name)
 
         if pred_name != exp_name:
             return False
@@ -498,7 +510,14 @@ class ASTEvaluator:
         mismatches: list[str] = []
         for i, (pred, exp) in enumerate(zip(predicted, expected, strict=True)):
             if not self._calls_match(pred, exp, defs_by_name):
-                if pred.name.lower() != exp.name.lower():
+                if self.case_sensitive_names:
+                    names_match = pred.name == exp.name
+                else:
+                    names_match = (
+                        self._normalize_function_name(pred.name)
+                        == self._normalize_function_name(exp.name)
+                    )
+                if not names_match:
                     mismatches.append(
                         f"Call {i}: name mismatch ('{pred.name}' vs '{exp.name}')"
                     )

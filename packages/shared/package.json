@@ -44,50 +44,45 @@
       "default": "./dist/index.js"
     },
     "./config/allowed-hosts": {
+      "types": "./dist/config/allowed-hosts.d.ts",
       "import": "./dist/config/allowed-hosts.js",
-      "default": "./dist/config/allowed-hosts.js",
-      "types": "./dist/config/allowed-hosts.d.ts"
+      "default": "./dist/config/allowed-hosts.js"
     },
     "./dev-settings-banner-style": {
+      "types": "./dist/dev-settings-banner-style.d.ts",
       "import": "./dist/dev-settings-banner-style.js",
-      "default": "./dist/dev-settings-banner-style.js",
-      "types": "./dist/dev-settings-banner-style.d.ts"
+      "default": "./dist/dev-settings-banner-style.js"
     },
     "./dev-settings-figlet-heading": {
+      "types": "./dist/dev-settings-figlet-heading.d.ts",
       "import": "./dist/dev-settings-figlet-heading.js",
-      "default": "./dist/dev-settings-figlet-heading.js",
-      "types": "./dist/dev-settings-figlet-heading.d.ts"
+      "default": "./dist/dev-settings-figlet-heading.js"
     },
     "./dev-settings-table": {
+      "types": "./dist/dev-settings-table.d.ts",
       "import": "./dist/dev-settings-table.js",
-      "default": "./dist/dev-settings-table.js",
-      "types": "./dist/dev-settings-table.d.ts"
+      "default": "./dist/dev-settings-table.js"
     },
     "./local-inference": {
+      "types": "./dist/local-inference/index.d.ts",
       "import": "./dist/local-inference/index.js",
-      "default": "./dist/local-inference/index.js",
-      "types": "./dist/local-inference/index.d.ts"
+      "default": "./dist/local-inference/index.js"
     },
     "./onboarding-presets": {
+      "types": "./dist/onboarding-presets.d.ts",
       "import": "./dist/onboarding-presets.js",
-      "default": "./dist/onboarding-presets.js",
-      "types": "./dist/onboarding-presets.d.ts"
+      "default": "./dist/onboarding-presets.js"
     },
     "./runtime-env": {
+      "types": "./dist/runtime-env.d.ts",
       "import": "./dist/runtime-env.js",
-      "default": "./dist/runtime-env.js",
-      "types": "./dist/runtime-env.d.ts"
-    },
-    "./local-inference": {
-      "import": "./dist/local-inference/index.js",
-      "default": "./dist/local-inference/index.js",
-      "types": "./dist/local-inference/index.d.ts"
+      "default": "./dist/runtime-env.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "publishConfig": {

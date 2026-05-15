@@ -4,7 +4,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { KokoroOnnxRuntime } from "../kokoro-runtime";
-import { KokoroModelMissingError, type KokoroVoicePack } from "../types";
+import {
+	KokoroInputTooLongError,
+	KokoroModelMissingError,
+	type KokoroVoicePack,
+} from "../types";
 
 type StubFeeds = Record<
 	string,
@@ -385,5 +389,16 @@ describe("KokoroOnnxRuntime — ONNX input-name detection", () => {
 				onChunk: () => false,
 			}),
 		).rejects.toThrow("phoneme sequence is too long: 511 > 510");
+		await expect(
+			runtime.synthesize({
+				phonemes: {
+					ids: Int32Array.from(new Array(511).fill(7)),
+					phonemes: "x".repeat(511),
+				},
+				voice: fx.voice,
+				cancelSignal: { cancelled: false },
+				onChunk: () => false,
+			}),
+		).rejects.toBeInstanceOf(KokoroInputTooLongError);
 	});
 });

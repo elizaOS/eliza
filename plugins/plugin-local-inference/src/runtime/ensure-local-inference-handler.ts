@@ -288,6 +288,23 @@ function guidedDecodeRequested(params: GenerateTextParams): boolean {
 	return env === "1" || env === "true";
 }
 
+function localThinkingModeFromProviderOptions(
+	providerOptions: unknown,
+): "auto" | "on" | "off" | undefined {
+	const elizaOpts =
+		providerOptions && typeof providerOptions === "object"
+			? (providerOptions as { eliza?: { thinking?: unknown } }).eliza
+			: undefined;
+	const value =
+		typeof elizaOpts?.thinking === "string"
+			? elizaOpts.thinking.trim().toLowerCase()
+			: "";
+	if (value === "off" || value === "none" || value === "false") return "off";
+	if (value === "on" || value === "true") return "on";
+	if (value === "auto") return "auto";
+	return undefined;
+}
+
 /**
  * Build the {@link ElizaHarnessSchema} for this call — the bundle of the
  * forced skeleton, the pre-built grammar (when the producer supplied one), and
@@ -332,6 +349,7 @@ function engineGenerateArgsFromParams(
 	streamStructured?: boolean;
 	elizaSchema?: ElizaHarnessSchema;
 	spanSamplerPlan?: GenerateTextParams["spanSamplerPlan"];
+	thinking?: "auto" | "on" | "off";
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 	voiceOutput?: "user-visible" | "internal";
 } {
@@ -394,6 +412,7 @@ function engineGenerateArgsFromParams(
 		streamStructured: streamStructured || undefined,
 		elizaSchema: elizaHarnessSchemaFromParams(params),
 		spanSamplerPlan: params.spanSamplerPlan,
+		thinking: localThinkingModeFromProviderOptions(params.providerOptions),
 		onTextChunk,
 		voiceOutput:
 			params.voiceOutput ??

@@ -265,6 +265,7 @@ async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
 
     return Response.json({
       transcript,
+      text: transcript,
       duration_ms: duration,
     });
   } catch (error) {

@@ -67,7 +67,6 @@ ASR_REPO_BY_TIER: Final[dict[str, str]] = {
     "9b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
     "27b": "ggml-org/Qwen3-ASR-1.7B-GGUF",
     "27b-256k": "ggml-org/Qwen3-ASR-1.7B-GGUF",
-    "27b-1m": "ggml-org/Qwen3-ASR-1.7B-GGUF",
 }
 
 # Voice Wave 2 (2026-05-14): semantic end-of-turn detector — `livekit/turn-detector`
@@ -84,7 +83,6 @@ TURN_DETECTOR_LIVEKIT_REVISION_BY_TIER: Final[dict[str, str]] = {
     "9b": "v0.4.1-intl",
     "27b": "v0.4.1-intl",
     "27b-256k": "v0.4.1-intl",
-    "27b-1m": "v0.4.1-intl",
 }
 TURN_DETECTOR_TURNSENSE_REPO: Final[str] = "latishab/turnsense"
 TURN_DETECTOR_LIVEKIT_ONNX_REMOTE: Final[str] = "onnx/model_q8.onnx"

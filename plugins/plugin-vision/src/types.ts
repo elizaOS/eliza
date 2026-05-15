@@ -185,7 +185,7 @@ export interface TrackedEntity {
   roomId?: string;
 }
 
-export interface EntityAppearance {
+interface EntityAppearance {
   timestamp: number;
   boundingBox: BoundingBox;
   confidence: number;

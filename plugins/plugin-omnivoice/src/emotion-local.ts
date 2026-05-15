@@ -45,7 +45,7 @@ const SYNONYMS: Record<string, Emotion> = {
   grossed: "disgusted",
 };
 
-export const DEFAULT_EMOTION: Emotion = "neutral";
+const DEFAULT_EMOTION: Emotion = "neutral";
 
 export function coerceEmotion(input: unknown): Emotion {
   if (typeof input !== "string") return DEFAULT_EMOTION;

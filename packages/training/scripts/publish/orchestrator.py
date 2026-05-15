@@ -2,7 +2,7 @@
 
 End-to-end pipeline that takes a directory containing already-quantized
 weights + sidecars and ships an Eliza-1 bundle to
-``elizalabs/eliza-1`` under ``bundles/<tier>/``. This is the single entry
+``elizaos/eliza-1`` under ``bundles/<tier>/``. This is the single entry
 point referenced by ``packages/training/AGENTS.md`` §6.
 
 Stages, in order, with hard exits on failure:
@@ -35,7 +35,7 @@ Stages, in order, with hard exits on failure:
    manifest as the data context. Same data, no marketing buzzwords, no
    user-visible upstream model-family strings.
 7. **HF push.** Upload weights, manifest, README, licenses, eval blobs
-   to ``elizalabs/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
+   to ``elizaos/eliza-1/bundles/<tier>/`` via ``huggingface_hub``. Tag the
    local training repo with ``eliza-1-<tier>-v<version>`` + the
    training commit hash.
 
@@ -108,7 +108,7 @@ EXIT_MANIFEST_INVALID = 14
 EXIT_HF_PUSH_FAIL = 15
 EXIT_RELEASE_EVIDENCE_FAIL = 16
 
-ELIZA_1_HF_ORG = "elizalabs"
+ELIZA_1_HF_ORG = "elizaos"
 
 # ---------------------------------------------------------------------------
 # Constants — bundle layout per inference/AGENTS.md §2
@@ -196,6 +196,9 @@ TIER_TAGLINES: Mapping[str, str] = {
     "0_8b": "low-RAM phones, CPU fallback",
     "2b": "modern phones",
     "4b": "flagship phones, small desktops",
+    "9b": "workstations, tablets, and high-memory local hosts",
+    "27b": "GPU workstations",
+    "27b-256k": "long-context GPU workstations",
 }
 
 DEFAULT_VOICE_CAPABILITIES: tuple[str, ...] = ("tts", "emotion-tags", "singing")
@@ -210,7 +213,10 @@ EXPRESSIVE_GATE_NAMES: tuple[str, ...] = (
 DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
     "0_8b": (2500, 3700),
     "2b": (4000, 5500),
-    "4b": (6000, 8000),
+    "4b": (10000, 12000),
+    "9b": (12000, 16000),
+    "27b": (32000, 48000),
+    "27b-256k": (96000, 128000),
 }
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -2028,6 +2034,30 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
         for slot, entry in manifest["lineage"].items()
     ]
 
+    provenance = manifest.get("provenance")
+    release_channel = "recommended"
+    provenance_rows: list[dict[str, str | None]] = []
+    if isinstance(provenance, Mapping):
+        release_state = provenance.get("releaseState")
+        if isinstance(release_state, str) and release_state:
+            release_channel = release_state
+        source_models = provenance.get("sourceModels")
+        if isinstance(source_models, Mapping):
+            for slot, source in sorted(source_models.items()):
+                if not isinstance(source, Mapping):
+                    continue
+                repo = source.get("repo")
+                if not isinstance(repo, str) or not repo:
+                    continue
+                file_value = source.get("file")
+                provenance_rows.append(
+                    {
+                        "slot": str(slot),
+                        "repo": repo,
+                        "file": file_value if isinstance(file_value, str) else None,
+                    }
+                )
+
     kernel_rows = [
         {
             "backend": b,
@@ -2040,17 +2070,50 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
 
     file_groups = [
         (kind, manifest["files"][kind])
-        for kind in ("text", "voice", "asr", "vision", "dflash", "cache")
+        for kind in (
+            "text",
+            "voice",
+            "asr",
+            "vad",
+            "vision",
+            "embedding",
+            "dflash",
+            "cache",
+            "wakeword",
+        )
         if manifest["files"].get(kind)
     ]
     voice = manifest.get("voice") or {}
     voice_cache = voice.get("cache") if isinstance(voice.get("cache"), dict) else {}
+    remote_prefix = _bundle_repo_prefix(ctx)
+    manifest_remote_path = _bundle_repo_path(ctx, "eliza-1.manifest.json")
+    checksum_remote_path = _bundle_repo_path(ctx, str(CHECKSUMS_PATH))
+    hf_cli_download_command = (
+        f"hf download {ctx.repo_id} --include '{remote_prefix}/**' "
+        f"--local-dir eliza-1-{ctx.tier}.bundle"
+    )
 
     return template.render(
         manifest=manifest,
         tier=ctx.tier,
         tier_display=ctx.tier,
         tagline=TIER_TAGLINES[ctx.tier],
+        repo_id=ctx.repo_id,
+        remote_prefix=remote_prefix,
+        manifest_remote_path=manifest_remote_path,
+        checksum_remote_path=checksum_remote_path,
+        direct_manifest_url=(
+            f"https://huggingface.co/{ctx.repo_id}/resolve/main/"
+            f"{manifest_remote_path}?download=true"
+        ),
+        direct_checksum_url=(
+            f"https://huggingface.co/{ctx.repo_id}/resolve/main/"
+            f"{checksum_remote_path}?download=true"
+        ),
+        hf_cli_download_command=hf_cli_download_command,
+        release_channel=release_channel,
+        is_base_v1=release_channel == "base-v1",
+        provenance_rows=provenance_rows,
         default_eligible_str="true" if manifest["defaultEligible"] else "false",
         lineage_slots=lineage_slots,
         kernel_rows=kernel_rows,
@@ -2478,7 +2541,7 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         "--repo-id",
         default=None,
         help=(
-            "HF repo id. Must equal elizalabs/eliza-1; accepted only "
+            "HF repo id. Must equal elizaos/eliza-1; accepted only "
             "so wrappers can pass the resolved destination explicitly."
         ),
     )

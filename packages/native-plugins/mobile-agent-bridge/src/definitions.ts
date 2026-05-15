@@ -14,9 +14,10 @@ import type { PluginListenerHandle } from "@capacitor/core";
  *   - Phone connects to `${relayUrl}?deviceId=<id>` and sends a
  *     `register` frame with optional pairing token.
  *   - Relay forwards JSON frames addressed to this device.
- *   - Phone proxies frames into the on-device agent's local HTTP
- *     surface (`http://127.0.0.1:31337` on Android, in-process ITTP on
- *     iOS) and ships responses back over the same WebSocket.
+ *   - Phone proxies frames into the on-device agent's local route
+ *     surface. Android uses the token-protected loopback service
+ *     (`http://127.0.0.1:31337` by default); iOS uses WebView IPC to
+ *     the foreground local-agent bridge.
  *
  * Native iOS and Android implementations open the outbound WebSocket and
  * proxy `http_request` frames to the local agent without exposing an
@@ -41,9 +42,10 @@ export interface MobileAgentBridgeStartOptions {
    */
   pairingToken?: string;
   /**
-   * Optional override for the local agent HTTP base used to satisfy
-   * proxied frames. Defaults to `http://127.0.0.1:31337` on Android and
-   * the in-process ITTP surface on iOS.
+   * Optional Android-only override for the local agent HTTP base used to
+   * satisfy proxied frames. Native Android accepts loopback bases only
+   * (`127.0.0.1`, `localhost`, or emulator `10.0.2.2`). iOS ignores this
+   * and uses the in-process IPC surface.
    */
   localAgentApiBase?: string;
 }
@@ -61,6 +63,8 @@ export interface MobileAgentTunnelStatus {
   relayUrl: string | null;
   /** Stable device identifier from the last `startInboundTunnel` call. */
   deviceId: string | null;
+  /** Android loopback base currently used for local-agent proxying. */
+  localAgentApiBase?: string | null;
   /** Last error message surfaced by the native transport. */
   lastError: string | null;
 }
@@ -74,9 +78,9 @@ export interface MobileAgentTunnelStateEvent {
  * MobileAgentBridge plugin surface.
  *
  * Implementations:
- *   - Web stub: returns `{ available: false }` plus a no-op tunnel.
+ *   - Web stub: returns an honest `error` tunnel state when asked to start.
  *   - iOS: URLSessionWebSocketTask + WebView IPC dispatch into the
- *     in-process local-agent bridge.
+ *     foreground local-agent bridge.
  *   - Android: OkHttp WebSocket + tokenized loopback HTTP proxy to
  *     the foreground local-agent service.
  */

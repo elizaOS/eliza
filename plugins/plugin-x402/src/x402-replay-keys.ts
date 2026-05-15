@@ -7,7 +7,7 @@ function sha256Utf8(s: string): string {
 /**
  * Replay key for facilitator payment IDs (sanitized id → stable hash).
  */
-export function paymentIdReplayKey(paymentId: string): string | null {
+function paymentIdReplayKey(paymentId: string): string | null {
   const cleaned = paymentId.trim();
   if (!/^[a-zA-Z0-9_-]+$/.test(cleaned) || cleaned.length > 128) return null;
   return `fac:${sha256Utf8(cleaned)}`;
@@ -119,7 +119,7 @@ function addEip712StableKey(s: string, into: Set<string>): void {
  * Same on-chain tx / Solana signature / EIP-712 intent maps to the same key regardless
  * of outer encoding (e.g. base64 vs plain).
  */
-export function replayKeysFromProofString(proof: string): string[] {
+function replayKeysFromProofString(proof: string): string[] {
   const keys = new Set<string>();
   const variants = new Set<string>([proof]);
   const decoded = tryBase64Utf8(proof);

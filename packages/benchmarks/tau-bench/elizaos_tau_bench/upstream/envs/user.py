@@ -7,6 +7,29 @@ from litellm import completion
 from typing import Optional, List, Dict, Any, Union
 
 
+_MESSAGE_KEYS = {"role", "content", "name", "tool_calls", "tool_call_id"}
+
+
+def _completion_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Strip provider-specific fields before replaying message history."""
+
+    cleaned: List[Dict[str, Any]] = []
+    for message in messages:
+        item = {key: value for key, value in message.items() if key in _MESSAGE_KEYS}
+        if item.get("content") is None:
+            item["content"] = ""
+        cleaned.append(item)
+    return cleaned
+
+
+def _message_to_history(message: Any) -> Dict[str, Any]:
+    dumped = message.model_dump() if hasattr(message, "model_dump") else dict(message)
+    item = {key: value for key, value in dumped.items() if key in _MESSAGE_KEYS}
+    if item.get("content") is None:
+        item["content"] = ""
+    return item
+
+
 class BaseUserSimulationEnv(abc.ABC):
     metadata = {}
 
@@ -45,10 +68,12 @@ class LLMUserSimulationEnv(BaseUserSimulationEnv):
 
     def generate_next_message(self, messages: List[Dict[str, Any]]) -> str:
         res = completion(
-            model=self.model, custom_llm_provider=self.provider, messages=messages
+            model=self.model,
+            custom_llm_provider=self.provider,
+            messages=_completion_messages(messages),
         )
         message = res.choices[0].message
-        self.messages.append(message.model_dump())
+        self.messages.append(_message_to_history(message))
         self.total_cost = res._hidden_params["response_cost"]
         return message.content
 
@@ -116,10 +141,12 @@ User Response:
 
     def generate_next_message(self, messages: List[Dict[str, Any]]) -> str:
         res = completion(
-            model=self.model, custom_llm_provider=self.provider, messages=messages
+            model=self.model,
+            custom_llm_provider=self.provider,
+            messages=_completion_messages(messages),
         )
         message = res.choices[0].message
-        self.messages.append(message.model_dump())
+        self.messages.append(_message_to_history(message))
         self.total_cost = res._hidden_params["response_cost"]
         return self.parse_response(message.content)
 
@@ -165,12 +192,14 @@ class VerifyUserSimulationEnv(LLMUserSimulationEnv):
         cur_message = None
         while attempts < self.max_attempts:
             res = completion(
-                model=self.model, custom_llm_provider=self.provider, messages=messages
+                model=self.model,
+                custom_llm_provider=self.provider,
+                messages=_completion_messages(messages),
             )
             cur_message = res.choices[0].message
             self.total_cost = res._hidden_params["response_cost"]
             if verify(self.model, self.provider, cur_message, messages):
-                self.messages.append(cur_message.model_dump())
+                self.messages.append(_message_to_history(cur_message))
                 return cur_message.content
             attempts += 1
         assert cur_message is not None

@@ -159,13 +159,26 @@ function cStringBuffer(value: string): Buffer {
   return buffer;
 }
 
+function isIosMobileRuntime(): boolean {
+  if (
+    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios" ||
+    process.env.ELIZA_MOBILE_PLATFORM?.trim().toLowerCase() === "ios"
+  ) {
+    return true;
+  }
+  const capacitor = (
+    globalThis as { Capacitor?: { getPlatform?: () => string } }
+  ).Capacitor;
+  return capacitor?.getPlatform?.() === "ios";
+}
+
 async function loadNativeReminderBridge(): Promise<NativeReminderBridge | null> {
   if (nativeReminderBridgeOverride !== undefined) {
     return nativeReminderBridgeOverride;
   }
   if (nativeReminderBridge !== undefined) return nativeReminderBridge;
   nativeReminderBridge = null;
-  if (process.platform !== "darwin") return null;
+  if (process.platform !== "darwin" || isIosMobileRuntime()) return null;
 
   for (const candidate of nativeDylibCandidates()) {
     const dylibPath = resolveNativeLibraryCandidate(candidate, {

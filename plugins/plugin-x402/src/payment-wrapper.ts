@@ -1942,7 +1942,6 @@ function generateDescription(route: PaymentEnabledRoute): string {
 }
 
 // Re-export types from core
-export type { X402RequestValidator, X402ValidationResult } from "@elizaos/core";
 
 /**
  * Apply payment protection to an array of routes

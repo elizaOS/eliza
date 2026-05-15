@@ -109,7 +109,10 @@ test("Android App Actions shortcuts are rewritten to the configured package and 
   });
 
   assert.match(patched, /android:targetPackage="com\.example\.pixel"/);
-  assert.match(patched, /android:targetClass="com\.example\.pixel\.MainActivity"/);
+  assert.match(
+    patched,
+    /android:targetClass="com\.example\.pixel\.MainActivity"/,
+  );
   assert.match(patched, /example:\/\/feature\/open/);
   assert.match(patched, /example:\/\/chat\?source=android-static-shortcut/);
   assert.doesNotMatch(patched, /ai\.elizaos\.app\.MainActivity/);
@@ -294,7 +297,14 @@ test("Android App Actions template covers ask, chat, voice, daily brief, and tas
     assert.doesNotMatch(shortcuts, new RegExp(escapeRegExp(marker)));
   }
 
-  for (const feature of ["ask", "chat", "voice", "daily brief", "new task", "tasks"]) {
+  for (const feature of [
+    "ask",
+    "chat",
+    "voice",
+    "daily brief",
+    "new task",
+    "tasks",
+  ]) {
     assert.match(appActionStrings, new RegExp(`<item>${feature}</item>`));
   }
 });

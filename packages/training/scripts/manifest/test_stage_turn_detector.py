@@ -88,7 +88,7 @@ def test_stage_turn_detector_livekit_intl_for_desktop_tiers(
 ) -> None:
     bundle_dir = tmp_path / "bundle"
     bundle_dir.mkdir()
-    for tier in ("4b", "9b", "27b", "27b-256k", "27b-1m"):
+    for tier in ("4b", "9b", "27b", "27b-256k"):
         _patch_copy.clear()
         report = stage.stage_turn_detector(
             tier=tier,

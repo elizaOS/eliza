@@ -42,7 +42,7 @@ Android consumer App Actions coverage:
 
 Each Android App Actions capability keeps a fallback fulfillment without a
 required parameter. Feature-specific requests route through
-`eliza://feature/open?...`; vague requests fall back to the chat route so
+`elizaos://feature/open?...`; vague requests fall back to the chat route so
 the runtime can disambiguate instead of executing native-only behavior.
 
 The Play/Pixel build does not request `ROLE_ASSISTANT`,
@@ -53,7 +53,7 @@ the LifeOps task feature and letting the app/runtime confirm any mutation.
 
 ## External Assistant Landscape
 
-Checked 2026-05-14 against primary vendor docs:
+Checked 2026-05-15 against primary vendor docs:
 
 - OpenAI/ChatGPT on Apple platforms is exposed through Apple's ChatGPT
   extension inside Apple Intelligence and Siri settings, not as a third-party
@@ -153,6 +153,21 @@ Implemented static/build coverage:
   task/reminder deep links with text route to chat first so `ScheduledTask`
   creation remains owned by the LifeOps runtime.
 
+Live validation completed:
+
+- iOS simulator smoke and direct deep-link handoff pass for assistant/LifeOps
+  routes. Native `ElizaAppShortcuts.swift` typechecks for the simulator SDK;
+  the full generated iOS app build is still blocked by the missing
+  `LlamaCpp.xcframework` simulator artifact.
+- Android `android-cloud-debug` builds, installs on the emulator, and passes
+  the local chat smoke launcher. Direct `VIEW` intents for
+  `elizaos://assistant`, `elizaos://lifeops/task/new`, and
+  `elizaos://feature/open` resolve to `app.eliza/.MainActivity`.
+- The generated Android cloud APK artifact has `@xml/shortcuts` and
+  `FileProvider`, and does not contain AOSP-only assistant markers such as
+  `ROLE_ASSISTANT`, `ACTION_ASSIST`, `VOICE_COMMAND`, accessibility service,
+  or notification-listener service declarations.
+
 Still waiting on live device validation:
 
 - macOS shortcut/voice entry has installer/verifier scripts, but the final Siri
@@ -160,7 +175,8 @@ Still waiting on live device validation:
 - iOS Siri/App Shortcuts must still be installed on a physical device and
   tested with the spoken phrases in `ElizaAppShortcuts.swift`.
 - Android consumer App Actions require a Play/Assistant-capable device or test
-  environment to confirm Assistant fulfillment, not just static XML validity.
+  environment to confirm Assistant/Gemini fulfillment, not just static XML
+  validity and direct deep-link dispatch.
 - Android AOSP assistant-role behavior still needs a system-image validation
   pass.
 

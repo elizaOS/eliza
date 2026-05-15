@@ -7,7 +7,7 @@ function sha256Utf8(s: string): string {
 }
 
 /** Stored in the runtime cache while verification owns a durable reservation. */
-export type X402ReplayInflightPayload = {
+type X402ReplayInflightPayload = {
   state: "inflight";
   owner: string;
   reservedAt: number;
@@ -15,12 +15,12 @@ export type X402ReplayInflightPayload = {
 };
 
 /** Stored in the runtime cache after a successful payment verification. */
-export type X402ReplayConsumedPayload = {
+type X402ReplayConsumedPayload = {
   state: "consumed";
   consumedAt: number;
 };
 
-export type X402ReplayPayload =
+type X402ReplayPayload =
   | X402ReplayInflightPayload
   | X402ReplayConsumedPayload;
 
@@ -36,7 +36,7 @@ type QueryableDb = {
  * Stable cache key for a replay credential, scoped by agent so two agents never
  * share the same cache row.
  */
-export function durableReplayCacheKey(
+function durableReplayCacheKey(
   agentId: string | undefined,
   replayKey: string,
 ): string {

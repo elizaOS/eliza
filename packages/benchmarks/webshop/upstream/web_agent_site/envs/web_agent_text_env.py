@@ -1,4 +1,13 @@
-import gym
+try:
+    import gym
+except Exception:  # pragma: no cover - gym is optional for text-only runs
+    class _FallbackEnv:
+        pass
+
+    class _FallbackGym:
+        Env = _FallbackEnv
+
+    gym = _FallbackGym()
 import json
 import random
 import string

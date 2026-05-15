@@ -22,10 +22,10 @@ describe("GPU profiles", () => {
 		}
 	});
 
-	it("H200 prefers the maximum-context workstation bundle", () => {
+	it("H200 prefers the maximum native-context workstation bundle", () => {
 		const h200 = GPU_PROFILES.h200;
-		expect(h200.recommendedBundles[0]).toBe("eliza-1-27b-1m");
-		expect(h200.contextSize).toBe(1_048_576);
+		expect(h200.recommendedBundles[0]).toBe("eliza-1-27b-256k");
+		expect(h200.contextSize).toBe(262_144);
 		expect(h200.kvCacheTypeK).toBe("qjl1_256");
 		expect(h200.kvCacheTypeV).toBe("q4_polar");
 		expect(h200.vramGb).toBeGreaterThanOrEqual(140);

@@ -53,7 +53,7 @@ export interface MerkleTreeInfo {
  * Uses `keccak256(abi.encodePacked(address))` — the standard Solidity
  * pattern for OpenZeppelin MerkleProof verification.
  */
-export function hashLeaf(address: string): string {
+function hashLeaf(address: string): string {
   return ethers.solidityPackedKeccak256(
     ["address"],
     [ethers.getAddress(address)], // checksummed
@@ -89,7 +89,7 @@ function hashPair(a: string, b: string): string {
  *
  * Leaves are sorted before building to ensure determinism.
  */
-export function buildTree(leaves: string[]): string[][] {
+function buildTree(leaves: string[]): string[][] {
   if (leaves.length === 0) {
     return [[`0x${"0".repeat(64)}`]]; // empty tree → zero root
   }
@@ -122,7 +122,7 @@ export function buildTree(leaves: string[]): string[][] {
 /**
  * Get the proof (sibling path) for a leaf in the tree.
  */
-export function getProof(tree: string[][], leaf: string): string[] {
+function getProof(tree: string[][], leaf: string): string[] {
   const proof: string[] = [];
   let index = tree[0].indexOf(leaf);
 
@@ -146,7 +146,7 @@ export function getProof(tree: string[][], leaf: string): string[] {
 /**
  * Get the root of the tree.
  */
-export function getRoot(tree: string[][]): string {
+function getRoot(tree: string[][]): string {
   return tree[tree.length - 1][0];
 }
 
@@ -156,7 +156,7 @@ export function getRoot(tree: string[][]): string {
  * Recomputes the root from the leaf + proof path and checks
  * if it matches the expected root.
  */
-export function verifyProof(
+function verifyProof(
   leaf: string,
   proof: string[],
   expectedRoot: string,

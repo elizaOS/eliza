@@ -101,7 +101,7 @@ class LicenseAttestation:
 # The text backbone, the DFlash drafter (distilled from the text
 # backbone) and the embedding model are all Apache-2.0 (Qwen3 family on
 # HuggingFace ships the Apache-2.0 LICENSE). Voice artifacts are tiered:
-# 0_8b/2b/4b/9b ship OmniVoice first with Kokoro fallback, and 27B-class
+# 0_8b/2b/4b ship Kokoro only, 9b ships Kokoro plus OmniVoice, and 27B-class
 # tiers ship OmniVoice only. Kokoro and OmniVoice weights both declare
 # Apache-2.0; omnivoice.cpp C++ glue is MIT but is a code dependency, not a
 # shipped weight. Qwen3-ASR is Apache-2.0. Silero VAD is MIT. openWakeWord
@@ -124,11 +124,12 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         spdx="Apache-2.0",
         text_file=_APACHE,
         upstream_repo=(
-            "Qwen/Qwen3.5-0.8B / Qwen/Qwen3.5-2B / Qwen/Qwen3.5-4B / "
-            "Qwen/Qwen3.5-9B / Qwen/Qwen3.6-27B (lineage recorded per tier "
+            "Qwen/Qwen3.5-0.8B-Base / Qwen/Qwen3.5-2B-Base / "
+            "Qwen/Qwen3.5-4B-Base / Qwen/Qwen3.5-9B-Base / "
+            "Qwen/Qwen3.6-27B (lineage recorded per tier "
             "in the manifest)"
         ),
-        upstream_url="https://huggingface.co/Qwen/Qwen3.5-2B",
+        upstream_url="https://huggingface.co/Qwen/Qwen3.5-2B-Base",
         copyright_holder="Alibaba Cloud (Qwen team) and contributors",
         note=(
             "The text weights in this bundle are derived from the Qwen3.5/Qwen3.6 family "
@@ -154,15 +155,15 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "Qwen-TTS lineage (Alibaba Cloud)"
         ),
         note=(
-            "The active Eliza-1 TTS policy is tiered: 0_8b, 2b, 4b, and 9b "
-            "ship OmniVoice first with Kokoro fallback; 27B-class tiers ship "
-            "OmniVoice only. Kokoro ONNX assets are staged from "
+            "The active Eliza-1 TTS policy is tiered: 0_8b, 2b, and 4b "
+            "ship Kokoro only; 9b ships Kokoro plus OmniVoice; 27B-class "
+            "tiers ship OmniVoice only. Kokoro ONNX assets are staged from "
             "onnx-community/Kokoro-82M-v1.0-ONNX. OmniVoice GGUF assets, when "
             "present, are staged from Serveurperso/OmniVoice-GGUF (Qwen3-TTS "
             "lineage), and omnivoice.cpp is a MIT-licensed code dependency, not "
             "a shipped weight. OmniVoice singing/emotion tag data carries "
-            "CC-BY-NC-SA lineage; active mobile tiers publish only the narrow "
-            "OmniVoice Q3/Q4/Q5 ladder."
+            "CC-BY-NC-SA lineage; only OmniVoice-shipping tiers publish the "
+            "OmniVoice Q3/Q4/Q5/Q6/Q8 ladder."
         ),
     ),
     LicenseAttestation(
@@ -204,8 +205,8 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="DFlash speculative-decode drafter",
         spdx="Apache-2.0",
         text_file=_APACHE,
-        upstream_repo="elizalabs/eliza-1/bundles/<tier> (distilled from the text backbone)",
-        upstream_url="https://huggingface.co/elizalabs/eliza-1",
+        upstream_repo="elizaos/eliza-1/bundles/<tier> (distilled from the text backbone)",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
         copyright_holder="elizaOS / Eliza Labs (drafter); Alibaba Cloud (Qwen team) (text lineage)",
         note=(
             "The DFlash drafter is a small student model aligned to the Eliza-1 "
@@ -247,7 +248,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "vision/mmproj artifact rather than reusing the ASR audio mmproj. "
             "Declared upstream license: Apache-2.0."
         ),
-        tiers=("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"),
+        tiers=("4b", "9b", "27b", "27b-256k"),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.wakeword",
@@ -277,8 +278,8 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
         component="Eliza-1 bundle (umbrella)",
         spdx="CC-BY-NC-SA-4.0",
         text_file=_CC_BY_NC_SA,
-        upstream_repo="elizalabs/eliza-1/bundles/<tier>",
-        upstream_url="https://huggingface.co/elizalabs/eliza-1",
+        upstream_repo="elizaos/eliza-1/bundles/<tier>",
+        upstream_url="https://huggingface.co/elizaos/eliza-1",
         copyright_holder="elizaOS / Eliza Labs and the upstream component authors (see per-component LICENSE.* files)",
         note=(
             "Eliza-1 is a non-commercial open-source on-device model line. This "
@@ -286,9 +287,9 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "and CC-compatible terms; see the per-component LICENSE.* files and the "
             "manifest lineage / provenance blocks for the full breakdown. The "
             "bundle-level term follows the most-restrictive shipped component. "
-            "0_8b/2b/4b mobile bundles include the narrow OmniVoice voice "
-            "ladder; 9b and 27B-class bundles that include OmniVoice singing/"
-            "emotion data carry CC-BY-NC-SA lineage. Individual permissively "
+            "0_8b/2b/4b mobile bundles are Kokoro-only; 9b and 27B-class "
+            "bundles that include OmniVoice singing/emotion data carry "
+            "CC-BY-NC-SA lineage. Individual permissively "
             "licensed components remain usable under their own terms. If the "
             "project pivots to commercial licensing, any CC-BY-NC-SA voice or "
             "wakeword training-data lineage must be re-evaluated and likely "

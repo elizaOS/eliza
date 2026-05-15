@@ -10,7 +10,7 @@ from __future__ import annotations
 import operator
 import re
 import time
-from typing import Protocol, runtime_checkable
+from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
 
 from benchmarks.mint.executor import PythonExecutor
 from benchmarks.mint.feedback import FeedbackGenerator
@@ -234,3 +234,256 @@ class MINTAgent:
         if value.is_integer():
             return str(int(value))
         return str(value)
+
+
+AgentFn = Callable[
+    [list[dict[str, Any]], list[dict[str, Any]]],
+    Awaitable[dict[str, Any]],
+]
+
+
+class AgentFnMINTAgent:
+    """MINT agent wrapper for Hermes/OpenClaw-style async agent functions."""
+
+    def __init__(
+        self,
+        agent_fn: AgentFn,
+        tool_executor: PythonExecutor | None = None,
+        feedback_generator: FeedbackGenerator | None = None,
+        temperature: float = 0.0,
+    ) -> None:
+        self.agent_fn = agent_fn
+        self.tool_executor = tool_executor or PythonExecutor()
+        self.feedback_generator = feedback_generator or FeedbackGenerator(use_llm=False)
+        self._helpers = MINTAgent(
+            runtime=None,
+            tool_executor=self.tool_executor,
+            feedback_generator=self.feedback_generator,
+            temperature=temperature,
+        )
+
+    def reset_session(self) -> None:
+        self._helpers.reset_session()
+
+    async def solve_task(
+        self,
+        task: MINTTask,
+        enable_tools: bool = True,
+        enable_feedback: bool = True,
+    ) -> MINTTrajectory:
+        start = time.time() * 1000
+        trajectory = MINTTrajectory(task_id=task.id, start_time_ms=start)
+        max_turns = max(1, task.max_turns)
+        history: list[dict[str, Any]] = [
+            {"role": "system", "content": self._helpers._build_system_prompt(task)},
+            {"role": "user", "content": task.initial_prompt},
+        ]
+        tools = _mint_tool_schemas(task) if enable_tools else []
+
+        for turn_num in range(max_turns):
+            response = await self.agent_fn(history, tools)
+            response_text = str(response.get("text") or response.get("content") or "")
+            tool_calls = _normalize_agent_fn_tool_calls(response.get("tool_calls"))
+
+            assistant_turn = Turn(
+                turn_type=TurnType.ASSISTANT,
+                content=response_text,
+                turn_number=turn_num + 1,
+                timestamp_ms=time.time() * 1000,
+            )
+            trajectory.turns.append(assistant_turn)
+            assistant_history: dict[str, Any] = {
+                "role": "assistant",
+                "content": response_text,
+            }
+            if tool_calls:
+                assistant_history["tool_calls"] = tool_calls
+            history.append(assistant_history)
+
+            code = None
+            if enable_tools and "python" in task.tools_allowed:
+                code = _code_from_tool_calls(tool_calls)
+                if code is None:
+                    code = self._helpers._extract_code(response_text)
+                    if code is not None:
+                        tool_calls = [_synthetic_python_tool_call(code)]
+                        assistant_history["tool_calls"] = tool_calls
+                        if not assistant_history["content"]:
+                            assistant_history["content"] = None
+            if code:
+                exec_result = await self.tool_executor.execute(code)
+                tool_content = exec_result.output or exec_result.error or ""
+                trajectory.turns.append(
+                    Turn(
+                        turn_type=TurnType.TOOL,
+                        content=tool_content,
+                        turn_number=turn_num + 1,
+                        tool_call=code,
+                        tool_result=exec_result.output,
+                        tool_success=exec_result.success,
+                        timestamp_ms=time.time() * 1000,
+                    )
+                )
+                trajectory.num_tool_uses += 1
+                history.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": _first_tool_call_id(tool_calls),
+                        "name": "python",
+                        "content": tool_content,
+                    }
+                )
+                if turn_num < max_turns - 1:
+                    trajectory.per_turn_answers.append(None)
+                    trajectory.per_turn_success.append(False)
+                    history.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Tool output:\n"
+                                f"{tool_content[:1000]}\n\n"
+                                "Now provide the final answer. End with: "
+                                "Final answer: <answer>."
+                            ),
+                        }
+                    )
+                    continue
+
+            answer = self._helpers._extract_answer(response_text, task)
+            trajectory.per_turn_answers.append(answer)
+            assistant_turn.proposed_solution = answer is not None
+            success = self._helpers._check_answer(answer or "", task) if answer else False
+            trajectory.per_turn_success.append(success)
+            trajectory.final_answer = answer
+            trajectory.success = success
+            if success:
+                break
+
+            if enable_feedback and turn_num < max_turns - 1:
+                feedback = await self.feedback_generator.generate(
+                    task=task,
+                    predicted=answer or "",
+                    turn_num=turn_num,
+                )
+                trajectory.turns.append(
+                    Turn(
+                        turn_type=TurnType.FEEDBACK,
+                        content=feedback,
+                        turn_number=turn_num + 1,
+                        feedback=feedback,
+                        timestamp_ms=time.time() * 1000,
+                    )
+                )
+                trajectory.num_feedback_turns += 1
+                history.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Feedback: {feedback}\n\n"
+                            "Try again and end with: Final answer: <answer>."
+                        ),
+                    }
+                )
+            else:
+                break
+
+        trajectory.end_time_ms = time.time() * 1000
+        return trajectory
+
+
+def _mint_tool_schemas(task: MINTTask) -> list[dict[str, Any]]:
+    if "python" not in task.tools_allowed:
+        return []
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "python",
+                "description": "Execute Python code and return stdout or an error.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "code": {
+                            "type": "string",
+                            "description": "Python code to execute.",
+                        }
+                    },
+                    "required": ["code"],
+                },
+            },
+        }
+    ]
+
+
+def _normalize_agent_fn_tool_calls(raw: object) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        return []
+    calls: list[dict[str, Any]] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            continue
+        function = entry.get("function")
+        if not isinstance(function, dict):
+            function = {
+                "name": entry.get("name"),
+                "arguments": entry.get("arguments", {}),
+            }
+        name = function.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+        arguments = function.get("arguments", {})
+        if isinstance(arguments, str):
+            import json
+
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {}
+        if not isinstance(arguments, dict):
+            arguments = {}
+        calls.append(
+            {
+                "id": str(entry.get("id") or f"call_{len(calls)}"),
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "arguments": arguments,
+                },
+            }
+        )
+    return calls
+
+
+def _code_from_tool_calls(tool_calls: list[dict[str, Any]]) -> str | None:
+    for call in tool_calls:
+        function = call.get("function")
+        if not isinstance(function, dict):
+            continue
+        name = str(function.get("name") or "").lower()
+        if name not in {"python", "python_repl", "execute_python", "run_python"}:
+            continue
+        arguments = function.get("arguments", {})
+        if not isinstance(arguments, dict):
+            continue
+        for key in ("code", "script", "program", "input"):
+            value = arguments.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+def _synthetic_python_tool_call(code: str) -> dict[str, Any]:
+    return {
+        "id": "call_python_text_0",
+        "type": "function",
+        "function": {
+            "name": "python",
+            "arguments": {"code": code},
+        },
+    }
+
+
+def _first_tool_call_id(tool_calls: list[dict[str, Any]]) -> str:
+    if not tool_calls:
+        return "call_0"
+    return str(tool_calls[0].get("id") or "call_0")

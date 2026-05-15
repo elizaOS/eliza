@@ -57,7 +57,7 @@ export interface AgentIdentity {
   createdAt: number;
 }
 
-export interface AgentIdentityOverrides {
+interface AgentIdentityOverrides {
   agentId?: string;
   displayName?: string;
   password?: string;

@@ -84,9 +84,11 @@ The full-engine ABI lives in
 implements the Swift `__ELIZA_BRIDGE__` v1 surface; breaking changes bump the
 version string emitted in `globalThis.__ELIZA_BRIDGE_VERSION__`.
 
-In full Bun mode, the Swift host loads `ElizaBunEngine.framework` with
-`dlopen`, starts `agent-bundle.js ios-bridge --stdio`, and forwards React
+In full Bun/App Store mode, the Swift host links `ElizaBunEngine.framework`
+directly, starts `agent-bundle.js ios-bridge --stdio`, and forwards React
 requests through `ElizaBunRuntime.call({ method: "http_request", args })`.
+The dynamic `dlopen` loader is retained only for development/sideload
+compatibility builds.
 `packages/ui/src/api/ios-local-agent-transport.ts` uses that path first when
 the native plugin is available. The foreground JSContext ITTP kernel is retained
 only for development/sideload compatibility builds; iOS store builds fail closed
@@ -110,7 +112,9 @@ The plugin emits two Capacitor events:
 
 ## Limitations (v1)
 
-- Android requires the host app's `ElizaAgentService` loopback API.
+- Android foreground calls should enter through
+  `@elizaos/capacitor-agent` `Agent.request`; native code may then forward to
+  the host app's tokenized `ElizaAgentService` loopback API.
 - Full Bun is only used when `ElizaBunEngine.framework` is embedded. Outside
   iOS store local mode, `engine: "auto"` can fall back to the compatibility
   JSContext host for development/sideload builds.
@@ -121,5 +125,5 @@ The plugin emits two Capacitor events:
 - No `child_process` — sandboxed out.
 - `http_serve_*` is disabled on iOS. Foreground and route traffic uses
   Capacitor/engine IPC instead of a WebView-visible localhost listener.
-- `bun:ffi.dlopen` is forbidden. The only FFI surface is the llama
-  bridge.
+- `bun:ffi.dlopen` is forbidden. Optional native helpers must be linked
+  directly in Store builds and compiled out when absent.

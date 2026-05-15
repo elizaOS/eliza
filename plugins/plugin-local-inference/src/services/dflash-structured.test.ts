@@ -137,6 +137,22 @@ describe("buildChatCompletionBody", () => {
 		expect(body.messages).toEqual([{ role: "user", content: "say hello" }]);
 		expect(body.continue_final_message).toBeUndefined();
 		expect(body.eliza_prefill_plan).toBeUndefined();
+		expect(body.chat_template_kwargs).toBeUndefined();
+	});
+
+	it("uses per-request chat-template thinking controls", () => {
+		expect(
+			buildChatCompletionBody(makeArgs({ thinking: "off" }), 0, false)
+				.chat_template_kwargs,
+		).toEqual({ enable_thinking: false });
+		expect(
+			buildChatCompletionBody(makeArgs({ thinking: "on" }), 0, false)
+				.chat_template_kwargs,
+		).toEqual({ enable_thinking: true });
+		expect(
+			buildChatCompletionBody(makeArgs({ thinking: "auto" }), 0, false)
+				.chat_template_kwargs,
+		).toBeUndefined();
 	});
 
 	it("does NOT emit a prefill plan for a bare responseSkeleton (guided decode off by default)", () => {

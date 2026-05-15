@@ -1,8 +1,5 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-//import { addHeader, composeActionExamples, formatActionNames, formatActions } from '@elizaos/core';
-//import type { IToken } from '../types';
 import { BIRDEYE_SERVICE_NAME } from "../constants";
-import type { CacheWrapper, GetCacheTimedOptions } from "../types/shared";
 import { formatJsonScalar, formatJsonTable } from "../utils";
 
 const MARKET_ROW_LIMIT = 12;
@@ -24,45 +21,6 @@ type MarketRow = {
   liquidityUsd: string;
 };
 
-export async function getCacheTimed<T>(
-  runtime: IAgentRuntime,
-  key: string,
-  options: GetCacheTimedOptions = {},
-): Promise<T | undefined> {
-  const wrapper = await runtime.getCache<CacheWrapper<T>>(key);
-  if (!wrapper) return;
-  if (options.notOlderThan) {
-    const diff = Date.now() - wrapper.setAt;
-    //console.log('checking notOlderThan', diff + 'ms', 'setAt', wrapper.setAt, 'asking', options.notOlderThan)
-    if (diff > options.notOlderThan) {
-      // no data
-      return;
-    }
-  }
-  // return data
-  return wrapper.data;
-}
-
-/**
- * Provider for Birdeye market data
- *
- * @typedef {import('./Provider').Provider} Provider
- * @typedef {import('./Runtime').IAgentRuntime} IAgentRuntime
- * @typedef {import('./Memory').Memory} Memory
- * @typedef {import('./State').State} State
- * @typedef {import('./Action').Action} Action
- *
- * @type {Provider}
- * @property {string} name - The name of the provider
- * @property {string} description - Description of the provider
- * @property {number} position - The position of the provider
- * @property {Function} get - Asynchronous function to get actions that validate for a given message
- *
- * @param {IAgentRuntime} runtime - The agent runtime
- * @param {Memory} message - The message memory
- * @param {State} state - The state of the agent
- * @returns {Object} Object containing data, values, and text related to actions
- */
 export const marketProvider: Provider = {
   name: "BIRDEYE_CRYPTOCURRENCY_MARKET_DATA",
   description: "Birdeye get latest cryptocurrencies overview",

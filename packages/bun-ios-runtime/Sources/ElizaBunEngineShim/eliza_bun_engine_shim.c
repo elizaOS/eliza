@@ -982,6 +982,16 @@ static int wait_for_ready(int stdout_fd, int timeout_ms) {
       }
       return -1;
     }
+    if (is_host_call_line(line)) {
+      int host_result = service_host_call_line(line);
+      free(line);
+      if (host_result != 0) {
+        set_last_error(
+            "failed to service native host call before ios-bridge readiness");
+        return -1;
+      }
+      continue;
+    }
     char *ready_error = NULL;
     int ready = is_ready_line(line, &ready_error);
     free(line);

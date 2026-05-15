@@ -45,7 +45,8 @@ describe("collectPluginNames AOSP terminal plugins", () => {
   it("excludes shell + coding-tools + orchestrator on stock Android (no ELIZA_LOCAL_LLAMA)", () => {
     process.env.ELIZA_PLATFORM = "android";
     const names = collectPluginNames(emptyConfig);
-    expect(names.has("@elizaos/plugin-background-runner")).toBe(true);
+    expect(names.has("@elizaos/plugin-sql")).toBe(true);
+    expect(names.has("@elizaos/plugin-background-runner")).toBe(false);
     expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("agent-orchestrator")).toBe(false);
@@ -54,7 +55,8 @@ describe("collectPluginNames AOSP terminal plugins", () => {
   it("excludes shell + coding-tools + orchestrator on iOS", () => {
     process.env.ELIZA_PLATFORM = "ios";
     const names = collectPluginNames(emptyConfig);
-    expect(names.has("@elizaos/plugin-background-runner")).toBe(true);
+    expect(names.has("@elizaos/plugin-sql")).toBe(true);
+    expect(names.has("@elizaos/plugin-background-runner")).toBe(false);
     expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("agent-orchestrator")).toBe(false);

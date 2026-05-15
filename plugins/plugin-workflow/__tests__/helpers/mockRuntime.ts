@@ -18,7 +18,7 @@ export interface MockRuntimeOptions {
  * - Text calls (TEXT_SMALL for formatActionResponse) → return the data section from the prompt
  *   so tests can verify that the right data was passed to the LLM
  */
-export function createUseModelMock(schemaResult?: Record<string, unknown>) {
+function createUseModelMock(schemaResult?: Record<string, unknown>) {
   return mock((_type: string, opts: Record<string, unknown>) => {
     // Structured-output calls (intent classification, keyword extraction).
     // Accept both the new `responseSchema` field and the legacy `schema` field
@@ -83,23 +83,4 @@ export function createMockState(overrides?: Partial<State>): State {
     text: '',
     ...overrides,
   } as State;
-}
-
-export function createMockCallback() {
-  return mock((_response: { text: string; success?: boolean }) => Promise.resolve([]));
-}
-
-/**
- * Helper to get the last callback result with both text and success status
- */
-type MockWithCalls = MockFn & {
-  mock: { calls: Array<[{ text: string; success?: boolean }]> };
-};
-
-export function getLastCallbackResult(
-  callback: MockFn
-): { text: string; success?: boolean } | undefined {
-  const calls = (callback as MockWithCalls).mock.calls;
-  if (calls.length === 0) return undefined;
-  return calls[calls.length - 1][0];
 }

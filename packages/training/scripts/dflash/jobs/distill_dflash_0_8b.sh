@@ -1,23 +1,17 @@
 #!/usr/bin/env bash
 # Target catalog tier: eliza-1-0_8b (see packages/shared/src/local-inference/catalog.ts)
-# Distill the DFlash drafter for Eliza-1 tier 0_8b.
+# Emit the DFlash no-drafter release policy for Eliza-1 tier 0_8b.
 #
-# This is the smallest tier. Per distill_dflash_drafter.DEFAULT_STUDENT_BASE,
-# the recommended student base is Qwen/Qwen3.5-0.8B — the only Qwen3.5
-# variant small enough to function as a drafter for the 0.8B target itself.
-# Acceptance gate is 0.40 (tier-baseline; see ACCEPTANCE_GATE).
+# This is the smallest tier. DFlash is disabled here: a 0.8B-class drafter
+# duplicates the target's resident memory, is not smaller than the target in
+# the current smoke, and has poor speedup economics on low-memory devices.
+# Do not train or stamp a fake `drafter-0_8b.gguf`.
 #
-# Hardware (starting-point recipe — TUNE EMPIRICALLY):
-#   1× 24GB GPU (A10 / RTX 4090 / RTX 3090). bf16 student fits comfortably.
-#   Estimated wall time: ~6h for ~50k samples × 3 epochs at batch 16.
+# Run:
+#   ./distill_dflash_0_8b.sh
 #
-# Required env vars (real run):
-#   TARGET_CHECKPOINT  HF dir of the fine-tuned eliza-1-0_8b text model
-#   TARGET_GGUF        out/eliza-1-0_8b/text/eliza-1-0_8b-32k.gguf
-#   DATASET            jsonl from scripts/dflash/prepare_distill_dataset.py
-#
-# Run synthetic-smoke (no GPU, no real models) with:
-#   ./distill_dflash_0_8b.sh --synthetic-smoke
+# Output:
+#   dflash-disabled-0_8b.release-policy.json
 
 set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

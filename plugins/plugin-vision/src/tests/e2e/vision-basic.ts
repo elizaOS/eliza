@@ -9,7 +9,22 @@ import { createUniqueUuid } from "@elizaos/core";
 import { visionAction } from "../../action";
 import type { VisionService } from "../../service";
 
-export class VisionBasicE2ETestSuite {
+type VisionActionResponse = Content & {
+  text: string;
+  thought?: string;
+  actions?: string[];
+  attachments?: Array<{ url?: string; title?: string }>;
+};
+
+function requireVisionResponse(response: Content | null): VisionActionResponse {
+  if (!response?.text) {
+    throw new Error("No response text returned from action");
+  }
+
+  return response as VisionActionResponse;
+}
+
+class VisionBasicE2ETestSuite {
   name = "plugin-vision-basic-e2e";
   description = "Basic end-to-end tests for vision plugin functionality";
 
@@ -67,7 +82,7 @@ export class VisionBasicE2ETestSuite {
         };
 
         let callbackCalled = false;
-        let callbackResponse: Content | null = null;
+        const callbackResponse: { current: Content | null } = { current: null };
 
         const state: State = { values: {}, data: {}, text: "" };
 
@@ -98,7 +113,7 @@ export class VisionBasicE2ETestSuite {
             { parameters: { op: "describe" } },
             async (response) => {
               callbackCalled = true;
-              callbackResponse = response;
+              callbackResponse.current = response;
               return [];
             },
           );
@@ -107,19 +122,17 @@ export class VisionBasicE2ETestSuite {
             throw new Error("Callback was not called - action handler failed");
           }
 
-          if (!callbackResponse?.text) {
-            throw new Error("No response text returned from action");
-          }
+          const response = requireVisionResponse(callbackResponse.current);
 
           console.log(
             "✓ Scene description action handled unavailability correctly",
           );
-          console.log(`  Response: ${callbackResponse.text}`);
+          console.log(`  Response: ${response.text}`);
 
           // Verify it indicates camera not available
           if (
-            !callbackResponse.text.includes("cannot see") &&
-            !callbackResponse.text.includes("no camera")
+            !response.text.includes("cannot see") &&
+            !response.text.includes("no camera")
           ) {
             throw new Error("Response does not indicate camera unavailability");
           }
@@ -139,7 +152,7 @@ export class VisionBasicE2ETestSuite {
             { parameters: { op: "describe" } },
             async (response) => {
               callbackCalled = true;
-              callbackResponse = response;
+              callbackResponse.current = response;
               return [];
             },
           );
@@ -148,19 +161,18 @@ export class VisionBasicE2ETestSuite {
             throw new Error("Callback was not called - action handler failed");
           }
 
-          if (!callbackResponse?.text) {
-            throw new Error("No response text returned from action");
-          }
+          const response = requireVisionResponse(callbackResponse.current);
 
           console.log("✓ Scene description action executed");
-          console.log(`  Response: ${callbackResponse.text}`);
-          if (callbackResponse.thought) {
-            console.log(`  Thought: ${callbackResponse.thought}`);
+          console.log(`  Response: ${response.text}`);
+          if (response.thought) {
+            console.log(`  Thought: ${response.thought}`);
           }
         }
 
         // Verify response contains expected action
-        if (!callbackResponse.actions?.includes("VISION")) {
+        const finalResponse = requireVisionResponse(callbackResponse.current);
+        if (!finalResponse.actions?.includes("VISION")) {
           throw new Error("Response does not include VISION action");
         }
       },
@@ -182,7 +194,7 @@ export class VisionBasicE2ETestSuite {
         };
 
         let callbackCalled = false;
-        let callbackResponse: Content | null = null;
+        const callbackResponse: { current: Content | null } = { current: null };
 
         const state: State = { values: {}, data: {}, text: "" };
 
@@ -213,7 +225,7 @@ export class VisionBasicE2ETestSuite {
             { parameters: { op: "capture" } },
             async (response) => {
               callbackCalled = true;
-              callbackResponse = response;
+              callbackResponse.current = response;
               return [];
             },
           );
@@ -222,19 +234,17 @@ export class VisionBasicE2ETestSuite {
             throw new Error("Callback was not called - action handler failed");
           }
 
-          if (!callbackResponse?.text) {
-            throw new Error("No response text returned from action");
-          }
+          const response = requireVisionResponse(callbackResponse.current);
 
           console.log(
             "✓ Image capture action handled unavailability correctly",
           );
-          console.log(`  Response: ${callbackResponse.text}`);
+          console.log(`  Response: ${response.text}`);
 
           // Verify it indicates camera not available
           if (
-            !callbackResponse.text.includes("cannot capture") &&
-            !callbackResponse.text.includes("no camera")
+            !response.text.includes("cannot capture") &&
+            !response.text.includes("no camera")
           ) {
             throw new Error("Response does not indicate camera unavailability");
           }
@@ -254,7 +264,7 @@ export class VisionBasicE2ETestSuite {
             { parameters: { op: "capture" } },
             async (response) => {
               callbackCalled = true;
-              callbackResponse = response;
+              callbackResponse.current = response;
               return [];
             },
           );
@@ -263,24 +273,19 @@ export class VisionBasicE2ETestSuite {
             throw new Error("Callback was not called - action handler failed");
           }
 
-          if (!callbackResponse?.text) {
-            throw new Error("No response text returned from action");
-          }
+          const response = requireVisionResponse(callbackResponse.current);
 
           console.log("✓ Image capture action executed");
-          console.log(`  Response: ${callbackResponse.text}`);
+          console.log(`  Response: ${response.text}`);
 
           // If camera is active, we should have an attachment
-          if (
-            !callbackResponse.attachments ||
-            callbackResponse.attachments.length === 0
-          ) {
+          if (!response.attachments || response.attachments.length === 0) {
             throw new Error(
               "No image attachment returned despite active camera",
             );
           }
 
-          const attachment = callbackResponse.attachments[0];
+          const attachment = response.attachments[0];
           if (!attachment.url?.startsWith("data:image/")) {
             throw new Error("Invalid image attachment format");
           }
@@ -289,7 +294,8 @@ export class VisionBasicE2ETestSuite {
         }
 
         // Verify response contains expected action
-        if (!callbackResponse.actions?.includes("VISION")) {
+        const finalResponse = requireVisionResponse(callbackResponse.current);
+        if (!finalResponse.actions?.includes("VISION")) {
           throw new Error("Response does not include VISION action");
         }
       },

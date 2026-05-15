@@ -631,24 +631,6 @@ export async function handleTextEmbedding(
   return createEmbedding(runtime, config, text);
 }
 
-export async function listModels(
-  runtime: IAgentRuntime,
-): Promise<Record<string, unknown>[]> {
-  const config = getConfig(runtime);
-
-  const response = await fetch(`${config.baseUrl}/models`, {
-    headers: getAuthHeader(config),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Grok API error (${response.status}): ${error}`);
-  }
-
-  const data = (await response.json()) as { data: Record<string, unknown>[] };
-  return data.data;
-}
-
 export function isGrokConfigured(runtime: IAgentRuntime): boolean {
   return !!runtime.getSetting("XAI_API_KEY");
 }

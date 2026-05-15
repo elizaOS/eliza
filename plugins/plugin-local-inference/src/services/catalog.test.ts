@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
 	buildHuggingFaceResolveUrl,
 	DEFAULT_ELIGIBLE_MODEL_IDS,
+	ELIZA_1_DFLASH_TIER_IDS,
+	ELIZA_1_HF_REPO,
 	ELIZA_1_TIER_IDS,
+	ELIZA_1_VISION_TIER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	findCatalogModel,
 	MODEL_CATALOG,
@@ -44,13 +47,13 @@ describe("local inference catalog", () => {
 		}
 	});
 
-	it("uses the single elizaos HuggingFace repo for every visible Eliza-1 tier", () => {
+	it("uses the single elizalabs HuggingFace repo for every visible Eliza-1 tier", () => {
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
 			const tier = model.id.slice("eliza-1-".length);
-			expect(model.hfRepo).toBe("elizaos/eliza-1");
+			expect(model.hfRepo).toBe(ELIZA_1_HF_REPO);
 			expect(model.hfPathPrefix).toBe(`bundles/${tier}`);
 			expect(buildHuggingFaceResolveUrl(model)).toContain(
-				`/elizaos/eliza-1/resolve/main/bundles/${tier}/`,
+				`/${ELIZA_1_HF_REPO}/resolve/main/bundles/${tier}/`,
 			);
 		}
 	});
@@ -100,7 +103,6 @@ describe("local inference catalog", () => {
 			"eliza-1-9b": 65536,
 			"eliza-1-27b": 131072,
 			"eliza-1-27b-256k": 262144,
-			"eliza-1-27b-1m": 1_048_576,
 		};
 		for (const [id, expectedLength] of Object.entries(expected)) {
 			const model = findCatalogModel(id);
@@ -146,24 +148,35 @@ describe("local inference catalog", () => {
 	});
 
 	it("declares the mandatory local runtime contract for every default tier", () => {
-		const baseKernels = [
-			"dflash",
-			"turbo3",
-			"turbo4",
-			"qjl_full",
-			"polarquant",
-		];
+		const baseKernels = ["turbo3", "turbo4", "qjl_full", "polarquant"];
+		const dflashIds = new Set<string>(ELIZA_1_DFLASH_TIER_IDS);
 		for (const id of ELIZA_1_TIER_IDS) {
 			const model = findCatalogModel(id);
 			expect(model?.runtime?.preferredBackend, `${id} backend`).toBe(
 				"llama-server",
 			);
-			expect(model?.runtime?.dflash?.drafterModelId, `${id} drafter`).toBe(
-				`${id}-drafter`,
-			);
-			expect(model?.companionModelIds, `${id} companions`).toContain(
-				`${id}-drafter`,
-			);
+			if (dflashIds.has(id)) {
+				expect(model?.runtime?.dflash?.drafterModelId, `${id} drafter`).toBe(
+					`${id}-drafter`,
+				);
+				expect(model?.companionModelIds, `${id} companions`).toContain(
+					`${id}-drafter`,
+				);
+				expect(model?.runtime?.optimizations?.requiresKernel).toContain(
+					"dflash",
+				);
+			} else {
+				expect(
+					model?.runtime?.dflash,
+					`${id} should not require DFlash`,
+				).toBeUndefined();
+				expect(model?.companionModelIds, `${id} companions`).not.toContain(
+					`${id}-drafter`,
+				);
+				expect(model?.runtime?.optimizations?.requiresKernel).not.toContain(
+					"dflash",
+				);
+			}
 			for (const kernel of baseKernels) {
 				expect(
 					model?.runtime?.optimizations?.requiresKernel,
@@ -185,7 +198,7 @@ describe("local inference catalog", () => {
 		const drafters = MODEL_CATALOG.filter(
 			(m) => m.runtimeRole === "dflash-drafter",
 		);
-		expect(drafters.length).toBe(ELIZA_1_TIER_IDS.length);
+		expect(drafters.length).toBe(ELIZA_1_DFLASH_TIER_IDS.length);
 		for (const drafter of drafters) {
 			expect(drafter.hiddenFromCatalog).toBe(true);
 			expect(DEFAULT_ELIGIBLE_MODEL_IDS.has(drafter.id)).toBe(false);
@@ -218,28 +231,39 @@ describe("local inference catalog", () => {
 		expect(findCatalogModel("eliza-1-27b-256k")?.voiceBackends).toEqual([
 			"omnivoice",
 		]);
-		expect(findCatalogModel("eliza-1-27b-1m")?.voiceBackends).toEqual([
-			"omnivoice",
-		]);
 	});
 
-	it("records 27b-1m text source provenance with the long-context vision projector (WS2)", () => {
-		const model = findCatalogModel("eliza-1-27b-1m");
+	it("records vision provenance only for tiers with a supportable image mmproj", () => {
+		const visionIds = new Set<string>(ELIZA_1_VISION_TIER_IDS);
+		for (const id of ELIZA_1_TIER_IDS) {
+			const model = findCatalogModel(id);
+			const tier = id.slice("eliza-1-".length);
+			const components = model?.sourceModel?.components;
+			if (visionIds.has(id)) {
+				expect(components?.vision, `${id} vision component`).toEqual({
+					repo: ELIZA_1_HF_REPO,
+					file: `bundles/${tier}/vision/mmproj-${tier}.gguf`,
+				});
+			} else {
+				expect(
+					components?.vision,
+					`${id} should be text/voice-only`,
+				).toBeUndefined();
+			}
+		}
+	});
+
+	it("records 27b-256k text source provenance with the native long-context vision projector (WS2)", () => {
+		const model = findCatalogModel("eliza-1-27b-256k");
 		expect(model?.sourceModel?.finetuned).toBe(false);
 		const components = model?.sourceModel?.components;
 		expect(components?.text).toEqual({
-			repo: "elizaos/eliza-1",
-			file: "bundles/27b-1m/text/eliza-1-27b-1m.gguf",
+			repo: ELIZA_1_HF_REPO,
+			file: "bundles/27b-256k/text/eliza-1-27b-256k.gguf",
 		});
-		// WS2 (vision-describe): vision is enabled on the 1M-context tier
-		// because the bundle plan ships the same Q8_0 mmproj used by 27b /
-		// 27b-256k, and the use case (long-document pipelines where a
-		// screenshot lands inside a million-token context) justifies the
-		// projector cost on server-class hosts. On smaller hosts the
-		// arbiter evicts vision under pressure before the text model.
 		expect(components?.vision).toEqual({
-			repo: "elizaos/eliza-1",
-			file: "bundles/27b-1m/vision/mmproj-27b-1m.gguf",
+			repo: ELIZA_1_HF_REPO,
+			file: "bundles/27b-256k/vision/mmproj-27b-256k.gguf",
 		});
 	});
 

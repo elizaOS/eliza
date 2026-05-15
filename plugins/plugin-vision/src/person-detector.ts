@@ -19,8 +19,6 @@ export interface PersonDetectorConfig extends Omit<YOLOConfig, "classFilter"> {
   scoreThreshold?: number;
 }
 
-export const PERSON_DETECTOR_MEMORY_BYTES = 60 * 1024 * 1024;
-
 export class PersonDetector {
   private yolo: YOLODetector;
   private initialized = false;

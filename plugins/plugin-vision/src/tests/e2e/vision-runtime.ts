@@ -3,7 +3,7 @@ import { logger } from "@elizaos/core";
 import type { VisionService } from "../../service";
 import { VisionMode, VisionServiceType } from "../../types";
 
-export class VisionRuntimeTestSuite {
+class VisionRuntimeTestSuite {
   name = "vision-runtime-tests";
   description = "Real runtime tests for vision plugin functionality";
 

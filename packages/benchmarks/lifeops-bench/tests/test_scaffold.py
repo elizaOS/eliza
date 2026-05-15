@@ -749,6 +749,26 @@ def test_executor_materializes_unseeded_scheduled_task_mutations() -> None:
     )
 
 
+def test_executor_accepts_singular_scheduled_task_state_alias() -> None:
+    from eliza_lifeops_bench.__main__ import _build_world_factory
+    from eliza_lifeops_bench.runner import _execute_action
+    from eliza_lifeops_bench.types import Action
+
+    world = _build_world_factory()(2026, "2026-05-10T12:00:00Z")
+    result = _execute_action(
+        Action(
+            name="SCHEDULED_TASK_ACKNOWLEDGE",
+            kwargs={"taskId": "task_unseeded"},
+        ),
+        world,
+    )
+
+    assert result == {"id": "task_unseeded", "state": "acknowledged"}
+    assert world.scheduled_tasks["task_unseeded"].metadata["materialized_from"] == (
+        "SCHEDULED_TASKS_ACKNOWLEDGE"
+    )
+
+
 @pytest.mark.asyncio
 async def test_runner_threads_tool_manifest_to_agent_fn() -> None:
     from eliza_lifeops_bench import LifeOpsBenchRunner, MessageTurn

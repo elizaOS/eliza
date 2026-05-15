@@ -4,11 +4,6 @@ import { agentTable } from "./agent";
 import { entityTable } from "./entity";
 import { roomTable } from "./room";
 
-/**
- * Defines the schema for the "participants" table in the database.
- *
- * @type {import('knex').TableBuilder}
- */
 export const participantTable = pgTable(
   "participants",
   {

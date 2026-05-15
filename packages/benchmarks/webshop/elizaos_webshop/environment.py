@@ -88,6 +88,25 @@ def _patch_search_engine_for_bm25_fallback() -> None:
             stub.LuceneSearcher = _StubLuceneSearcher  # type: ignore[attr-defined]
             sys.modules["pyserini.search.lucene"] = stub
             sys.modules["pyserini.search"].lucene = stub  # type: ignore[attr-defined]
+        if "rank_bm25" not in sys.modules:
+            try:
+                import rank_bm25  # noqa: F401
+            except Exception:
+                rank_bm25_stub = _types.ModuleType("rank_bm25")
+
+                class _FallbackBM25Okapi:
+                    def __init__(self, corpus: list[list[str]]) -> None:
+                        self._token_sets = [set(tokens) for tokens in corpus]
+
+                    def get_scores(self, query_tokens: list[str]) -> list[float]:
+                        query_set = set(query_tokens)
+                        return [
+                            float(len(tokens & query_set)) / max(1.0, float(len(query_set)))
+                            for tokens in self._token_sets
+                        ]
+
+                rank_bm25_stub.BM25Okapi = _FallbackBM25Okapi  # type: ignore[attr-defined]
+                sys.modules["rank_bm25"] = rank_bm25_stub
 
     from web_agent_site.engine import engine as _engine  # type: ignore[import-not-found]
 
@@ -99,13 +118,8 @@ def _patch_search_engine_for_bm25_fallback() -> None:
 
     try:
         from rank_bm25 import BM25Okapi  # type: ignore[import-not-found]
-    except Exception as exc:
-        raise RuntimeError(
-            "Neither pyserini nor rank_bm25 is available. Install one of:\n"
-            "  pip install rank_bm25       # lightweight, recommended\n"
-            "  pip install pyserini       # requires Java 11+\n"
-            f"(import error: {exc})"
-        ) from exc
+    except Exception:
+        BM25Okapi = None  # type: ignore[assignment]
 
     import json as _json
 
@@ -129,20 +143,30 @@ def _patch_search_engine_for_bm25_fallback() -> None:
         def __init__(self, products: list[dict[str, Any]]) -> None:
             corpus = []
             self._ids: list[str] = []
+            self._token_sets: list[set[str]] = []
             for p in products:
                 title = p.get("name", "") or p.get("Title", "") or ""
                 desc = p.get("full_description", "") or p.get("Description", "") or ""
                 cat = p.get("category", "") or ""
                 tokens = (title + " " + desc + " " + cat).lower().split()
                 corpus.append(tokens)
+                self._token_sets.append(set(tokens))
                 self._ids.append(p["asin"])
-            self._bm25 = BM25Okapi(corpus) if corpus else None
+            self._bm25 = BM25Okapi(corpus) if BM25Okapi is not None and corpus else None
             self._docs = {asin: _BM25Doc(_json.dumps({"id": asin})) for asin in self._ids}
 
         def search(self, query: str, k: int = 50) -> list[_BM25Hit]:
-            if self._bm25 is None:
+            if not self._ids:
                 return []
-            scores = self._bm25.get_scores(query.lower().split())
+            query_tokens = query.lower().split()
+            if self._bm25 is not None:
+                scores = self._bm25.get_scores(query_tokens)
+            else:
+                query_set = set(query_tokens)
+                scores = [
+                    float(len(tokens & query_set)) / max(1.0, float(len(query_set)))
+                    for tokens in self._token_sets
+                ]
             ranked = sorted(
                 zip(self._ids, scores),
                 key=lambda t: t[1],

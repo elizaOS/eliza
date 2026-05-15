@@ -5,6 +5,7 @@ import test from "node:test";
 
 import {
   ANDROID_CLOUD_STRIPPED_COMPONENTS,
+  ANDROID_CLOUD_STRIPPED_JAVA_FILES,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
@@ -14,6 +15,10 @@ import {
   IOS_AGENT_RUNTIME_ASSETS,
   IOS_OFFICIAL_PODS,
   isIosAppStoreBuild,
+  removeAndroidIntentFiltersWithCategory,
+  removeApplicationComponentBlock,
+  removeApplicationComponentClassBlock,
+  repairAndroidManifestApplicationStructure,
   resolveIosAgentRuntimeAssetPlan,
   resolveIosBuildTarget,
   resolveIosCustomPods,
@@ -28,6 +33,18 @@ test("resolveMobileBuildPolicy marks Google Play Android as a store-managed clou
     iosRuntimeMode: null,
     runtimeExecutionMode: "cloud",
     releaseAuthority: "google-play",
+    appControlledOta: false,
+  });
+});
+
+test("resolveMobileBuildPolicy keeps Android cloud debug cloud-gated without store authority", () => {
+  assert.deepEqual(resolveMobileBuildPolicy("android-cloud-debug"), {
+    capacitorTarget: "android",
+    buildVariant: "direct",
+    androidRuntimeMode: "cloud",
+    iosRuntimeMode: null,
+    runtimeExecutionMode: "cloud",
+    releaseAuthority: "developer-debug",
     appControlledOta: false,
   });
 });
@@ -114,12 +131,135 @@ test("Google Play Android strips AOSP assistant/full-control components and perm
     ),
     "android-cloud should strip the MediaProjection screen-capture plugin",
   );
+  for (const pkg of [
+    "@elizaos/capacitor-agent",
+    "@elizaos/capacitor-bun-runtime",
+    "@elizaos/capacitor-mobile-agent-bridge",
+    "llama-cpp-capacitor",
+  ]) {
+    assert.ok(
+      ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.some(
+        ([candidate]) => candidate === pkg,
+      ),
+      `android-cloud should strip ${pkg}`,
+    );
+  }
+  assert.ok(
+    ANDROID_CLOUD_STRIPPED_JAVA_FILES.includes("ElizaAgentService.java"),
+    "android-cloud should remove the local-agent service source",
+  );
   assert.ok(
     ANDROID_CLOUD_STRIPPED_RESOURCE_FILES.includes(
       path.join("xml", "eliza_accessibility_service.xml"),
     ),
     "android-cloud should strip the accessibility-service resource",
   );
+});
+
+test("Android manifest component stripping preserves neighboring application XML", () => {
+  const manifest = `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="@string/app_name">
+        <!-- ElizaVoiceCaptureService owns foreground microphone capture. -->
+        <service
+            android:name="app.eliza.ElizaVoiceCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="\${applicationId}.fileprovider"
+            android:exported="false">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+        <service
+            android:name="app.eliza.ElizaAgentService"
+            android:exported="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="local-agent-runtime" />
+        </service>
+    </application>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>`;
+
+  const strippedByExactName = removeApplicationComponentBlock(
+    manifest,
+    "app.eliza.ElizaVoiceCaptureService",
+  );
+  assert.doesNotMatch(
+    strippedByExactName,
+    /<service\b[^>]*android:name="app\.eliza\.ElizaVoiceCaptureService"/,
+  );
+  assert.ok(strippedByExactName.includes("androidx.core.content.FileProvider"));
+  assert.ok(strippedByExactName.includes("app.eliza.ElizaAgentService"));
+  assert.ok(strippedByExactName.includes("</application>"));
+  assert.ok(
+    strippedByExactName.indexOf("</application>") <
+      strippedByExactName.indexOf("<uses-permission"),
+  );
+
+  const strippedByClassName = removeApplicationComponentClassBlock(
+    manifest,
+    "ElizaVoiceCaptureService",
+  );
+  assert.doesNotMatch(
+    strippedByClassName,
+    /<service\b[^>]*android:name="app\.eliza\.ElizaVoiceCaptureService"/,
+  );
+  assert.ok(strippedByClassName.includes("androidx.core.content.FileProvider"));
+  assert.ok(strippedByClassName.includes("app.eliza.ElizaAgentService"));
+  assert.ok(strippedByClassName.includes("</application>"));
+});
+
+test("Android cloud manifest repair closes application before manifest-level nodes", () => {
+  const malformedCloudManifest = `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="@string/app_name">
+        <activity android:name=".MainActivity">
+        </activity>
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-feature android:name="android.hardware.telephony" android:required="false" />
+</manifest>`;
+
+  const repaired = repairAndroidManifestApplicationStructure(
+    malformedCloudManifest,
+  );
+  assert.ok(repaired.includes("androidx.core.content.FileProvider"));
+  assert.ok(repaired.includes("</application>"));
+  assert.ok(
+    repaired.indexOf("</application>") < repaired.indexOf("<uses-permission"),
+  );
+});
+
+test("Android cloud manifest stripping can remove default launcher HOME filters", () => {
+  const manifest = `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="@string/app_name">
+        <activity android:name=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>`;
+
+  const stripped = removeAndroidIntentFiltersWithCategory(
+    manifest,
+    "android.intent.category.HOME",
+  );
+  assert.ok(!stripped.includes("android.intent.category.HOME"));
+  assert.ok(stripped.includes("android.intent.category.LAUNCHER"));
+  assert.ok(stripped.includes("android.intent.action.VIEW"));
+  assert.ok(stripped.includes("android.intent.category.BROWSABLE"));
 });
 
 test("Android manifest cleartext policy can be stamped per target", () => {

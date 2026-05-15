@@ -1838,7 +1838,7 @@ export class LocalInferenceEngine {
 	 * Build the local-embedding route for an activated Eliza-1 bundle.
 	 * On `0_8b` / `2b` the embedding model is the text backbone with
 	 * `--pooling last` (no separate GGUF); on `4b`/`9b`/`27b`/`27b-256k`/
-	 * `27b-1m` a dedicated 1024-dim Matryoshka `embedding/` region is used.
+	 * a dedicated 1024-dim Matryoshka `embedding/` region is used.
 	 * See AGENTS.md §1. Throws `VoiceStartupError` when a larger tier is
 	 * missing its dedicated region — no fallback to pooled text (which would
 	 * regress the dimension contract).

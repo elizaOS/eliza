@@ -11,21 +11,21 @@
  * external action surface.
  */
 
-export interface ScapeSubactionDefinition {
+interface ScapeSubactionDefinition {
   name: string;
   legacyAction: string;
   params: string;
   description: string;
 }
 
-export interface ScapeRouterDefinition {
+interface ScapeRouterDefinition {
   name: string;
   description: string;
   descriptionCompressed: string;
   subactions: readonly ScapeSubactionDefinition[];
 }
 
-export const SCAPE_ACTION_ROUTER_DEFINITIONS = [
+const SCAPE_ACTION_ROUTER_DEFINITIONS = [
   {
     name: "JOURNAL",
     description:
@@ -75,7 +75,7 @@ export const SCAPE_ACTION_ROUTER_DEFINITIONS = [
   },
 ] as const satisfies readonly ScapeRouterDefinition[];
 
-export type ScapeRouterActionName =
+type ScapeRouterActionName =
   (typeof SCAPE_ACTION_ROUTER_DEFINITIONS)[number]["name"];
 
 export interface ResolvedScapeAction {
@@ -116,7 +116,7 @@ for (const router of SCAPE_ACTION_ROUTER_DEFINITIONS) {
   }
 }
 
-export function isScapeRouterActionName(actionName: unknown): boolean {
+function isScapeRouterActionName(actionName: unknown): boolean {
   const normalized = normalizeActionName(actionName);
   return SCAPE_ACTION_ROUTER_DEFINITIONS.some(
     (router) => router.name === normalized,

@@ -250,7 +250,7 @@ def main() -> int:
         help="Per-device micro-batch size for SFT (forwarded to "
              "train_local.py --batch-size). 0 = use the registry default for "
              "the tier. Per benchmarks/APOLLO_TUNING.md, --micro-batch 2 "
-             "--grad-accum 4 keeps the 0.6B GPU occupied at zero quality cost "
+             "--grad-accum 4 keeps the 0.8B GPU occupied at zero quality cost "
              "(same effective batch); validate VRAM with memory_calc.py first.",
     )
     ap.add_argument(
@@ -809,7 +809,7 @@ def main() -> int:
         log.info("stage 7: publish channel=%s", channel)
         rc = run(cmd, cwd=ROOT)
         summary["stages"]["publish"] = {"exit": rc, "channel": channel}
-        repo_id = getattr(entry, "eliza_repo_id", None) or "elizalabs/eliza-1"
+        repo_id = getattr(entry, "eliza_repo_id", None) or "elizaos/eliza-1"
         if rc == 0:
             log.info("published: https://huggingface.co/%s (channel=%s)", repo_id, channel)
         else:

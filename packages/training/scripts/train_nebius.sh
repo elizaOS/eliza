@@ -11,7 +11,7 @@
 # `"default"`-subnet shape is gone.
 #
 # Flow: provision a Nebius VM (single H200 SXM `gpu-h200-sxm` / `1gpu-16vcpu-200gb`
-# for the 0.6b/1.7b/4b/9b tiers; the 8×H200 `8gpu-128vcpu-1600gb` preset + FSDP
+# for the 0.8b/2b/4b/9b tiers; the 8×H200 `8gpu-128vcpu-1600gb` preset + FSDP
 # for 27b — that preset is expensive, see the note below), boot-disk from the
 # `mk8s-worker-node-v-1-31-ubuntu24.04-cuda12.8` public image (NVIDIA 570.x +
 # CUDA 12.8 preinstalled), rsync `packages/training/` + the training corpus,
@@ -30,8 +30,8 @@
 #   REGISTRY_KEY=qwen3.5-4b   → eliza-1-4b     (single H200)
 #   REGISTRY_KEY=qwen3.5-9b   → eliza-1-9b     (single H200, ~80 GB peak)
 #   REGISTRY_KEY=qwen3.6-27b  → eliza-1-27b    (8× H200 fallback; prefer Vast)
-#   (legacy Qwen3 line: qwen3-0.6b, qwen3-1.7b, qwen3-4b — kept addressable for
-#   compatibility but the eliza-1 fused-kernel stack only validates Qwen3.5.)
+#   (legacy Qwen3 line: qwen3-0.6b, qwen3-1.7b, qwen3-4b — deprecated and not
+#   release targets; the eliza-1 fused-kernel stack validates Qwen3.5/Qwen3.6.)
 #
 # Required env:
 #   NEBIUS_PROJECT_ID          # the project (== parent-id), e.g. project-e00kfz6cpr00q21z892vec
@@ -51,7 +51,7 @@
 #                              #   remote run trains on. Default: data/final/{train,val,test}.jsonl;
 #                              #   set to data/final-eliza1-fullcorpus/{train,val,test}.jsonl
 #                              #   for the combined benchmark-aligned + broad-mix corpus.
-#   SYNC_FULLCORPUS_SOURCES    # 1 = also rsync datasets/eliza1-sft-0_6b/ + rebuild
+#   SYNC_FULLCORPUS_SOURCES    # 1 = also rsync datasets/eliza1-sft-0_8b/ + rebuild
 #                              #   data/final-eliza1-fullcorpus/ on the remote
 #                              #   (instead of rsyncing the prebuilt 940 MB combined
 #                              #   splits). Default 0.
@@ -308,19 +308,19 @@ sync_tree() {
   [ "$rsync_rc" = "24" ] && echo "[train_nebius][sync] main rsync rc=24 (files vanished mid-transfer — harmless, continuing)"
 
   if [ "$SYNC_FULLCORPUS_SOURCES" = "1" ]; then
-    echo "[train_nebius][sync] sending corpus sources (data/final/ + datasets/eliza1-sft-0_6b/) for remote rebuild"
+    echo "[train_nebius][sync] sending corpus sources (data/final/ + datasets/eliza1-sft-0_8b/) for remote rebuild"
     # The main rsync above excludes data/final/ and datasets/, so those dirs
     # don't exist on a fresh VM — rsync won't create 2-deep targets. mkdir first.
-    ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/data/final $REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b"
+    ssh -o StrictHostKeyChecking=no "$target" "mkdir -p $REMOTE_TRAIN_DIR/data/final $REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_8b"
     rsync_rc=0
     rsync -avhz --partial --info=progress2 "$ROOT/data/final/" "$target:$REMOTE_TRAIN_DIR/data/final/" || rsync_rc=$?
     if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 24 ]; then
       echo "[train_nebius][sync] data/final rsync failed rc=$rsync_rc"; return "$rsync_rc"
     fi
     rsync_rc=0
-    rsync -avhz --partial "$ROOT/datasets/eliza1-sft-0_6b/" "$target:$REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_6b/" || rsync_rc=$?
+    rsync -avhz --partial "$ROOT/datasets/eliza1-sft-0_8b/" "$target:$REMOTE_TRAIN_DIR/datasets/eliza1-sft-0_8b/" || rsync_rc=$?
     if [ "$rsync_rc" -ne 0 ] && [ "$rsync_rc" -ne 24 ]; then
-      echo "[train_nebius][sync] datasets/eliza1-sft-0_6b rsync failed rc=$rsync_rc"; return "$rsync_rc"
+      echo "[train_nebius][sync] datasets/eliza1-sft-0_8b rsync failed rc=$rsync_rc"; return "$rsync_rc"
     fi
   else
     # Send exactly the corpus the run trains on (TRAIN/VAL/TEST dirs).
@@ -352,7 +352,7 @@ run_remote() {
   local upsample="${ELIZA1_FULLCORPUS_UPSAMPLE:-1}"
   local hf_tok="${HUGGING_FACE_HUB_TOKEN:-${HF_TOKEN:-}}"
   local log="$REMOTE_TRAIN_DIR/run_${RUN_NAME}.log"
-  # The eliza1-sft-0_6b mix-in rows are ChatML (`{"messages":[...]}`), which
+  # The eliza1-sft-0_8b mix-in rows are ChatML (`{"messages":[...]}`), which
   # validate_corpus.py (a native-record schema validator) cannot parse — so a
   # combined corpus that includes them needs --allow-unvalidated-corpus. The
   # build-time format_for_training.format_record gate already vets every row for
@@ -386,7 +386,7 @@ export CUDA_VISIBLE_DEVICES=0
 # back to CPU placement (the model then trains single-threaded on CPU at ~10
 # s/it with the GPU at 0% util holding only unused optimizer states) — tell
 # train_local.py to skip device_map and .to() the GPU explicitly. (eliza_bench.py
-# still runs on CPU here — see the §11 caveat in the 0_6b report; --skip-base-bench
+# still runs on CPU here — see the §11 caveat in the 0_8b report; --skip-base-bench
 # from BENCHMARK_AFTER=0 avoids the base pass, the finetuned pass is ~3h CPU.)
 export ELIZA_NO_DEVICE_MAP=1
 export HF_HOME=/opt/hf-cache
@@ -484,7 +484,7 @@ fetch() {
 # Env knobs (defaults frugal — a small KD job, not a full pipeline):
 #   DFLASH_TIER              tier the drafter ships for. Active tiers (per
 #                            distill_dflash_drafter.py::ACTIVE_TIERS): 0_8b,
-#                            2b, 4b, 9b, 27b, 27b-256k, 27b-1m. Default: 2b.
+#                            2b, 4b, 9b, 27b, 27b-256k. Default: 2b.
 #   DFLASH_TARGET_CHECKPOINT remote path (relative to $REMOTE_TRAIN_DIR) to the
 #                            SFT'd target text HF checkpoint directory. The
 #                            distiller loads the target via
@@ -498,7 +498,7 @@ fetch() {
 #   DFLASH_TARGET_MODEL_ID   (optional) canonical Eliza-1 target model id.
 #                            Defaults to the tier's entry in
 #                            distill_dflash_drafter.py::DEFAULT_TARGET_MODEL
-#                            (e.g. elizalabs/eliza-1/bundles/2b for tier=2b).
+#                            (e.g. elizaos/eliza-1/bundles/2b for tier=2b).
 #   DFLASH_STUDENT_BASE      HF id of the student base. Defaults to
 #                            Qwen/Qwen3.5-0.8B-Base (the Eliza-1 mandated
 #                            student for every active tier — keep this aligned

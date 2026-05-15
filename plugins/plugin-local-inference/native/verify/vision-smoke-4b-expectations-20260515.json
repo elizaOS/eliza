@@ -1,0 +1,191 @@
+{
+  "schemaVersion": 1,
+  "metric": "vision_smoke",
+  "generatedAt": "2026-05-15T01:26:28.054Z",
+  "bundleDir": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle",
+  "tier": "4b",
+  "expectedVisionTier": true,
+  "textVoiceOnlyTier": false,
+  "supported": true,
+  "passed": true,
+  "status": "pass",
+  "action": "vision-smoke-passed",
+  "smokeConfig": {
+    "image": "/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-vision/test/fixtures/sample-scene.png",
+    "expected": [
+      "\\bhello\\b",
+      "\\bred\\b"
+    ],
+    "prompt": "Look at the image carefully. Answer with the exact visible word and the color of the large square.",
+    "ctxSize": 2048,
+    "batchSize": 2048,
+    "nPredict": 64,
+    "gpuLayers": "auto",
+    "timeoutMs": 600000
+  },
+  "manifest": {
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/eliza-1.manifest.json",
+    "filesText": [
+      {
+        "ctx": 131072,
+        "path": "text/eliza-1-4b-128k.gguf",
+        "sha256": "68c9c6bfeecee13dd3b3c1de7f73b2d86e5feadc100f0f50e5e11fd2388ca66d",
+        "sizeBytes": 2871743520,
+        "sizeGiB": 2.675
+      },
+      {
+        "ctx": 65536,
+        "path": "text/eliza-1-4b-64k.gguf",
+        "sha256": "68c9c6bfeecee13dd3b3c1de7f73b2d86e5feadc100f0f50e5e11fd2388ca66d",
+        "sizeBytes": 2871743520,
+        "sizeGiB": 2.675
+      }
+    ],
+    "filesVision": [
+      {
+        "path": "vision/mmproj-4b.gguf",
+        "sha256": "cd88edcf8d031894960bb0c9c5b9b7e1fea6ebee02b9f7ce925a00d12891f864",
+        "sizeBytes": 672423616,
+        "sizeGiB": 0.626
+      }
+    ],
+    "lineageVisionPresent": true
+  },
+  "mtmdCli": {
+    "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+    "candidates": [
+      {
+        "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+        "exists": true,
+        "executable": true,
+        "helpExitCode": 0,
+        "compatible": true,
+        "helpSignals": {
+          "mmproj": true,
+          "image": true,
+          "mtmd": true,
+          "metal": true
+        },
+        "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0 (Apple M4 Max)\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+      }
+    ],
+    "buildCommands": [
+      "cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build/darwin-arm64-metal-fused -DGGML_METAL=ON -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=ON",
+      "cmake --build packages/inference/llama.cpp/build/darwin-arm64-metal-fused --target llama-mtmd-cli -j \"$(sysctl -n hw.logicalcpu)\""
+    ]
+  },
+  "visionAssetCommands": {
+    "stageSource": "python packages/training/scripts/manifest/stage_eliza1_source_weights.py --tier 4b --bundle-dir /Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle --link-mode hardlink",
+    "consolidateLocalBundle": "python packages/training/scripts/manifest/stage_local_eliza1_bundle.py --tier 4b --bundle-dir /Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle --force"
+  },
+  "inventory": {
+    "visionFiles": [
+      "vision/mmproj-4b.gguf"
+    ],
+    "sourceVisionFiles": [],
+    "asrMmprojFiles": [
+      "asr/eliza-1-asr-mmproj.gguf"
+    ],
+    "borrowedVisionArtifactsSeen": [
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-9b.bundle/vision/mmproj-9b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b.bundle/vision/mmproj-27b.gguf",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-27b-256k.bundle/vision/mmproj-27b-256k.gguf"
+    ]
+  },
+  "appCorePath": {
+    "spawnArg": "--mmproj",
+    "envOverride": "ELIZA_LOCAL_MMPROJ",
+    "optimizationField": "runtime.optimizations.mmproj",
+    "note": "packages/app-core/src/services/local-inference/dflash-server.ts only enables image inputs when a tier-compatible mmproj path is provided."
+  },
+  "memoryImplications": {
+    "largestTextBytes": 2871743520,
+    "largestVisionBytes": 672423616,
+    "largestTextGiB": 2.675,
+    "largestVisionGiB": 0.626,
+    "minimumMappedWeightsGiB": 3.301,
+    "note": "Smoke uses a small --ctx-size, so KV cache allocation is much smaller than the tier's long-context runtime budget. Operational RAM still needs text weights + mmproj + KV cache + Metal/CPU working buffers."
+  },
+  "imageAnalysis": {
+    "attempted": true,
+    "status": "pass",
+    "reason": "process exited 0 and all expected image facts matched",
+    "startedAt": "2026-05-15T01:26:30.361Z",
+    "command": [
+      "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-128k.gguf",
+      "--mmproj",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/vision/mmproj-4b.gguf",
+      "--image",
+      "plugins/plugin-vision/test/fixtures/sample-scene.png",
+      "-c",
+      "2048",
+      "-b",
+      "2048",
+      "--image-min-tokens",
+      "1024",
+      "-p",
+      "Look at the image carefully. Answer with the exact visible word and the color of the large square.",
+      "-n",
+      "64"
+    ],
+    "timeoutMs": 600000,
+    "exitCode": 0,
+    "signal": null,
+    "detection": {
+      "selected": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+      "candidates": [
+        {
+          "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/llama-mtmd-cli",
+          "exists": true,
+          "executable": true,
+          "helpExitCode": 0,
+          "compatible": true,
+          "helpSignals": {
+            "mmproj": true,
+            "image": true,
+            "mtmd": true,
+            "metal": true
+          },
+          "stderrTail": "ggml_metal_device_init: tensor API disabled for pre-M5 and pre-A19 devices\nggml_metal_library_init: loading '/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/default.metallib'\nggml_metal_library_init: loaded in 0.001 sec\nggml_metal_rsets_init: creating a residency set collection (keep_alive = 180 s)\nggml_metal_device_init: GPU name:   MTL0 (Apple M4 Max)\nggml_metal_device_init: GPU family: MTLGPUFamilyApple9  (1009)\nggml_metal_device_init: GPU family: MTLGPUFamilyCommon3 (3003)\nggml_metal_device_init: GPU family: MTLGPUFamilyMetal4  (5002)\nggml_metal_device_init: simdgroup reduction   = true\nggml_metal_device_init: simdgroup matrix mul. = true\nggml_metal_device_init: has unified memory    = true\nggml_metal_device_init: has bfloat            = true\nggml_metal_device_init: has tensor            = false\nggml_metal_device_init: use residency sets    = true\nggml_metal_device_init: use shared buffers    = true\nggml_metal_device_init: recommendedMaxWorkingSetSize  = 115448.73 MB\n"
+        }
+      ],
+      "buildCommands": [
+        "cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build/darwin-arm64-metal-fused -DGGML_METAL=ON -DLLAMA_BUILD_TOOLS=ON -DLLAMA_BUILD_EXAMPLES=ON",
+        "cmake --build packages/inference/llama.cpp/build/darwin-arm64-metal-fused --target llama-mtmd-cli -j \"$(sysctl -n hw.logicalcpu)\""
+      ]
+    },
+    "timings": {
+      "loadMs": 3263.2,
+      "promptEvalMs": 4288.7,
+      "promptTokens": 1054,
+      "promptTokPerSec": 245.76,
+      "evalMs": 202.75,
+      "evalRuns": 6,
+      "evalTokPerSec": 29.59,
+      "totalMs": 6277.57,
+      "imageEncodeMs": 911,
+      "imageDecodeMs": 1883
+    },
+    "expectations": [
+      {
+        "pattern": "\\bhello\\b",
+        "matched": true
+      },
+      {
+        "pattern": "\\bred\\b",
+        "matched": true
+      }
+    ],
+    "stdoutTail": "\n<think>\n\n</think>\n\nhello red\n\n\n",
+    "stderrTail": "he: attn_rot_v = 0, n_embd_head_k_all = 256\nllama_memory_recurrent:       MTL0 RS buffer size =    50.25 MiB\nllama_memory_recurrent: size =   50.25 MiB (     1 cells,  32 layers,  1 seqs), R (f32):    2.25 MiB, S (f32):   48.00 MiB\nsched_reserve: reserving ...\nsched_reserve: Flash Attention was auto, set to enabled\nsched_reserve: resolving fused Gated Delta Net support:\nsched_reserve: fused Gated Delta Net (autoregressive) enabled\nsched_reserve: fused Gated Delta Net (chunked) enabled\nsched_reserve:       MTL0 compute buffer size =   490.00 MiB\nsched_reserve:        CPU compute buffer size =    14.02 MiB\nsched_reserve: graph nodes  = 1833\nsched_reserve: graph splits = 2\nsched_reserve: reserve took 238.98 ms, sched copies = 1\ncommon_init_from_params: warming up the model with an empty run - please wait ... (--no-warmup to disable)\nmtmd_cli_context: chat template example:\n<|im_start|>system\nYou are a helpful assistant<|im_end|>\n<|im_start|>user\nHello<|im_end|>\n<|im_start|>assistant\nHi there<|im_end|>\n<|im_start|>user\nHow are you?<|im_end|>\n<|im_start|>assistant\n\nclip_model_loader: model name:   Qwen3.5-4B\nclip_model_loader: description:  \nclip_model_loader: GGUF version: 3\nclip_model_loader: alignment:    32\nclip_model_loader: n_tensors:    298\nclip_model_loader: n_kv:         32\n\nclip_model_loader: has vision encoder\nggml_metal_init: allocating\nggml_metal_init: found device: Apple M4 Max\nggml_metal_init: picking default device: Apple M4 Max\nggml_metal_init: use fusion         = true\nggml_metal_init: use concurrency    = true\nggml_metal_init: use graph optimize = true\nclip_ctx: CLIP using MTL0 backend\nload_hparams: projector:          qwen3vl_merger\nload_hparams: n_embd:             1024\nload_hparams: n_head:             16\nload_hparams: n_ff:               4096\nload_hparams: n_layer:            24\nload_hparams: ffn_op:             gelu\nload_hparams: projection_dim:     2560\n\n--- vision hparams ---\nload_hparams: image_size:         768\nload_hparams: patch_size:         16\nload_hparams: has_llava_proj:     0\nload_hparams: minicpmv_version:   0\nload_hparams: n_merge:            2\nload_hparams: n_wa_pattern: 0\nload_hparams: image_min_pixels:   1048576 (custom value)\nload_hparams: image_max_pixels:   4194304\n\nload_hparams: model size:         641.26 MiB\nload_hparams: metadata size:      0.12 MiB\nwarmup: warmup with image size = 1472 x 1472\nalloc_compute_meta:       MTL0 compute buffer size =   223.30 MiB\nalloc_compute_meta:        CPU compute buffer size =    24.93 MiB\nalloc_compute_meta: graph splits = 1, nodes = 736\nwarmup: flash attention is enabled\nmain: loading model: /Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-128k.gguf\nWARN: This is an experimental CLI for testing multimodal capability.\n      For normal use cases, please use the standard llama-cli\nencoding image slice...\nimage slice encoded in 911 ms\ndecoding image batch 1/1, n_tokens_batch = 1024\nfind_slot: non-consecutive token position 4 after 3 for sequence 0 with 512 new tokens\nfind_slot: non-consecutive token position 4 after 4 for sequence 0 with 512 new tokens\nfind_slot: non-consecutive token position 4 after 3 for sequence 0 with 512 new tokens\nfind_slot: non-consecutive token position 4 after 4 for sequence 0 with 512 new tokens\nimage decoded (batch 1/1) in 1883 ms\nfind_slot: non-consecutive token position 61 after 4 for sequence 0 with 26 new tokens\nfind_slot: non-consecutive token position 61 after 4 for sequence 0 with 26 new tokens\nllama_perf_context_print:        load time =    3263.20 ms\nllama_perf_context_print: prompt eval time =    4288.70 ms /  1054 tokens (    4.07 ms per token,   245.76 tokens per second)\nllama_perf_context_print:        eval time =     202.75 ms /     6 runs   (   33.79 ms per token,    29.59 tokens per second)\nllama_perf_context_print:       total time =    6277.57 ms /  1060 tokens\nllama_perf_context_print:    graphs reused =          5\nggml_metal_free: deallocating\nggml_metal_free: deallocating\n"
+  },
+  "mmproj": {
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/vision/mmproj-4b.gguf",
+    "sha256": "cd88edcf8d031894960bb0c9c5b9b7e1fea6ebee02b9f7ce925a00d12891f864",
+    "sizeBytes": 672423616
+  },
+  "textModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-128k.gguf",
+  "reason": "tier-compatible mmproj loaded and image analysis command completed"
+}

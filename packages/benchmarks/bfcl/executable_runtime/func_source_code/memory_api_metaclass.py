@@ -4,10 +4,9 @@ from pathlib import Path
 from typing import Optional
 from overrides import final
 
-# Upstream imports replaced with local shims. Memory categories require
-# additional upstream scaffolding (snapshot dirs, memory_prereq_conversation
-# files) that we don't vendor — they are marked SKIPPED_UNSUPPORTED by the
-# runner. These shims keep the module importable for non-memory tests.
+# Upstream imports replaced with local shims. When bfcl-eval is absent we use
+# a deterministic local snapshot layout so vendored memory backends remain
+# executable in unit tests and offline harness runs.
 try:
     from bfcl_eval.utils import (  # type: ignore[import-not-found]
         get_directory_structure_by_id,
@@ -16,10 +15,11 @@ try:
     )
 except ImportError:
     def get_directory_structure_by_id(test_id):  # type: ignore[no-redef]
-        raise NotImplementedError(
-            "Memory categories require upstream bfcl_eval.utils helpers. "
-            "Install `bfcl-eval` to enable."
-        )
+        safe = "".join(
+            ch if ch.isalnum() or ch in {"-", "_"} else "_"
+            for ch in str(test_id)
+        ).strip("_")
+        return safe or "memory"
 
     def is_first_memory_prereq_entry(test_id):  # type: ignore[no-redef]
         return False

@@ -125,3 +125,78 @@ def test_dry_run_merges_all_quantization_recipe_sidecars(
         "turbo4",
         "turbo3_tcq",
     }
+
+
+def test_base_v1_rejects_qwen35_27b_source_for_27b_tier(
+    tmp_path: Path,
+) -> None:
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+
+    rc = main(
+        [
+            "--checkpoint",
+            str(checkpoint),
+            "--output",
+            str(tmp_path / "text" / "eliza-1-27b-128k.gguf"),
+            "--outtype",
+            "q8_0",
+            "--release-state",
+            "base-v1",
+            "--source-repo",
+            "Qwen/Qwen3.5-27B",
+            "--dry-run",
+        ]
+    )
+
+    assert rc == 2
+
+
+def test_base_v1_allows_qwen36_27b_source_for_long_context_tier(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+
+    rc = main(
+        [
+            "--checkpoint",
+            str(checkpoint),
+            "--output",
+            str(tmp_path / "text" / "eliza-1-27b-256k.gguf"),
+            "--outtype",
+            "q8_0",
+            "--release-state",
+            "base-v1",
+            "--source-repo",
+            "Qwen/Qwen3.6-27B",
+            "--dry-run",
+        ]
+    )
+
+    assert rc == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["provenance"]["tier"] == "27b-256k"
+    assert plan["provenance"]["sourceRepo"] == "Qwen/Qwen3.6-27B"
+
+
+def test_base_v1_requires_source_repo_or_source_sidecar(tmp_path: Path) -> None:
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+
+    rc = main(
+        [
+            "--checkpoint",
+            str(checkpoint),
+            "--output",
+            str(tmp_path / "text" / "eliza-1-4b-64k.gguf"),
+            "--outtype",
+            "q8_0",
+            "--release-state",
+            "base-v1",
+            "--dry-run",
+        ]
+    )
+
+    assert rc == 2

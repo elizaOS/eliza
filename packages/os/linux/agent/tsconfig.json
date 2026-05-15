@@ -24,7 +24,12 @@
         "isolatedModules": true,
         "resolveJsonModule": true,
 
-        "types": ["bun"]
+        "types": ["bun"],
+        "paths": {
+            "@elizaos/agent/config/character-schema": [
+                "../../../agent/src/config/character-schema.ts"
+            ]
+        }
     },
     "include": ["src/**/*.ts", "tests/**/*.ts"]
 }

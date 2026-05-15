@@ -15,7 +15,7 @@ const EXTERNAL = ["@elizaos/core", "ai", "@ai-sdk/openai-compatible"];
 
 console.log("Building Node.js ESM bundle...");
 await build({
-  entrypoints: [join(ROOT, "index.node.ts")],
+  entrypoints: [join(ROOT, "index.ts")],
   outdir: join(DIST, "node"),
   target: "node",
   format: "esm",
@@ -30,7 +30,7 @@ await build({
 
 console.log("Building Browser ESM bundle...");
 await build({
-  entrypoints: [join(ROOT, "index.browser.ts")],
+  entrypoints: [join(ROOT, "index.ts")],
   outdir: join(DIST, "browser"),
   target: "browser",
   format: "esm",
@@ -45,7 +45,7 @@ await build({
 
 console.log("Building CJS bundle...");
 await build({
-  entrypoints: [join(ROOT, "index.node.ts")],
+  entrypoints: [join(ROOT, "index.ts")],
   outdir: join(DIST, "cjs"),
   target: "node",
   format: "cjs",
@@ -68,13 +68,7 @@ const tscPath = join(
   process.platform === "win32" ? "tsc.cmd" : "tsc"
 );
 
-try {
-  await $`${tscPath} --project tsconfig.build.json`;
-} catch {
-  console.warn(
-    "Warning: TypeScript declaration generation failed; continuing with bundled JS outputs only."
-  );
-}
+await $`${tscPath} --project tsconfig.build.json`;
 
 await mkdir("dist/node", { recursive: true });
 await mkdir("dist/browser", { recursive: true });

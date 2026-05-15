@@ -39,34 +39,3 @@ export function readOGCode(): string | null {
   if (!fs.existsSync(filePath)) return null;
   return fs.readFileSync(filePath, "utf-8").trim();
 }
-
-/**
- * Generate the set of valid OG codes from a seed.
- * Used in ElizaMaker scripts -- not called in the Eliza app.
- */
-export function generateValidCodes(seed: string, count: number): string[] {
-  const codes: string[] = [];
-  for (let i = 0; i < count; i++) {
-    const hash = crypto
-      .createHash("sha256")
-      .update(`${seed}:og:${i}`)
-      .digest("hex");
-    codes.push(
-      `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`,
-    );
-  }
-  return codes;
-}
-
-/**
- * Check if a given code is in the valid set.
- * Requires the seed to regenerate the valid codes.
- */
-export function isValidOGCode(
-  code: string,
-  seed: string,
-  count: number = 100,
-): boolean {
-  const validCodes = generateValidCodes(seed, count);
-  return validCodes.includes(code);
-}

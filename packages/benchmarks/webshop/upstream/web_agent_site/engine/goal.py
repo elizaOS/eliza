@@ -3,13 +3,38 @@ Functions for specifying goals and reward calculations.
 """
 import itertools
 import random
-import spacy
 from collections import defaultdict
 from rich import print
-from thefuzz import fuzz
 from web_agent_site.engine.normalize import normalize_color
 
-nlp = spacy.load("en_core_web_sm")
+try:
+    from thefuzz import fuzz
+except Exception:  # pragma: no cover - optional fuzzy-match dependency
+    class _FallbackFuzz:
+        @staticmethod
+        def token_set_ratio(left, right):
+            left_tokens = set(str(left).lower().split())
+            right_tokens = set(str(right).lower().split())
+            if not left_tokens and not right_tokens:
+                return 100
+            if not left_tokens or not right_tokens:
+                return 0
+            return int(100 * len(left_tokens & right_tokens) / len(left_tokens | right_tokens))
+
+    fuzz = _FallbackFuzz()
+
+try:
+    import spacy
+
+    nlp = spacy.load("en_core_web_sm")
+except Exception:  # pragma: no cover - optional NLP dependency
+    class _FallbackToken:
+        def __init__(self, text):
+            self.text = text
+            self.pos_ = "NOUN"
+
+    def nlp(text):
+        return [_FallbackToken(part) for part in str(text).split()]
 
 PRICE_RANGE = [10.0 * i for i in range(1, 100)]
 

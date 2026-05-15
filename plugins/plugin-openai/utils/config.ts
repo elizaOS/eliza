@@ -20,23 +20,7 @@ export function getSetting(
   }
   return getEnvValue(key) ?? defaultValue;
 }
-export function getRequiredSetting(
-  runtime: IAgentRuntime,
-  key: string,
-  errorMessage?: string
-): string {
-  const value = getSetting(runtime, key);
-  if (value === undefined || value.trim() === "") {
-    throw new Error(errorMessage ?? `Required setting '${key}' is not configured`);
-  }
-  return value;
-}
-
-export function getNumericSetting(
-  runtime: IAgentRuntime,
-  key: string,
-  defaultValue: number
-): number {
+function getNumericSetting(runtime: IAgentRuntime, key: string, defaultValue: number): number {
   const value = getSetting(runtime, key);
   if (value === undefined) {
     return defaultValue;
@@ -48,11 +32,7 @@ export function getNumericSetting(
   return parsed;
 }
 
-export function getBooleanSetting(
-  runtime: IAgentRuntime,
-  key: string,
-  defaultValue: boolean
-): boolean {
+function getBooleanSetting(runtime: IAgentRuntime, key: string, defaultValue: boolean): boolean {
   const value = getSetting(runtime, key);
   if (value === undefined) {
     return defaultValue;
@@ -104,7 +84,7 @@ export function getApiKey(runtime: IAgentRuntime): string | undefined {
   return getSetting(runtime, "OPENAI_API_KEY");
 }
 
-export function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
+function getEmbeddingApiKey(runtime: IAgentRuntime): string | undefined {
   const embeddingApiKey = getSetting(runtime, "OPENAI_EMBEDDING_API_KEY");
   if (embeddingApiKey) {
     logger.debug("[OpenAI] Using specific embedding API key");

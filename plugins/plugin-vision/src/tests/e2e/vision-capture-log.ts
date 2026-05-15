@@ -28,7 +28,7 @@ interface VisionCaptureEntry {
   error?: string;
 }
 
-export class VisionCaptureLogTestSuite {
+class VisionCaptureLogTestSuite {
   name = "plugin-vision-capture-log";
   description =
     "Captures 30 seconds of vision data and saves to logs for analysis";

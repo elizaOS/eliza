@@ -15,8 +15,6 @@
       "@elizaos/core/*": ["../core/dist/*"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/agent/*": ["../agent/src/*"],
-      "@elizaos/shared": ["../shared/dist/index.d.ts"],
-      "@elizaos/shared/*": ["../shared/dist/*"],
       "@elizaos/ui": ["../ui/dist/index.d.ts"],
       "@elizaos/ui/*": ["../ui/dist/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
@@ -63,10 +61,7 @@
       "@elizaos/app-core/components/pages/PageScopedChatPane": [
         "../app-core/src/components/pages/PageScopedChatPane.tsx"
       ],
-      "@elizaos/app-lifeops": ["./src/shims/eliza-app-lifeops.ts"],
-      "@elizaos/app-lifeops/lifeops/runtime": [
-        "./src/shims/elizaos-app-lifeops-runtime.ts"
-      ]
+      "@elizaos/app-lifeops": ["./src/shims/eliza-app-lifeops.ts"]
     }
   },
   "include": ["src/**/*.ts"],
@@ -74,7 +69,6 @@
     "src/**/*.test.ts",
     "src/__tests__/**/*",
     "src/executor.test.ts",
-    "src/runtime-factory.ts",
     "src/seeds.ts"
   ]
 }

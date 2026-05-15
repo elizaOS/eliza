@@ -314,10 +314,9 @@ const nativeStubs = {
   "react/jsx-dev-runtime": path.join(stubsDir, "react-jsx-runtime.cjs"),
 };
 
-// iOS-specific overrides. The iOS Bun port (see native/ios-bun-port/) forbids
-// `child_process` / `Bun.spawn` (kernel sandbox), restricts `bun:ffi` to
-// statically-linked symbols, and routes `os.homedir()` through env vars set by
-// ElizaBunRuntime.swift. These stubs surface the platform constraints as JS
+// iOS-specific overrides. The App Store iOS runtime forbids `child_process`,
+// `Bun.spawn`, and `bun:ffi`; native integrations go through signed Swift/C
+// bridge APIs instead. These stubs surface the platform constraints as JS
 // runtime errors rather than module-load crashes.
 if (TARGET === "ios" || TARGET === "ios-jsc") {
   nativeStubs["node:child_process"] = path.join(
@@ -326,17 +325,12 @@ if (TARGET === "ios" || TARGET === "ios-jsc") {
   );
   nativeStubs["child_process"] = path.join(stubsDir, "ios-child-process.cjs");
   nativeStubs["node:os"] = path.join(stubsDir, "ios-os.cjs");
-  // Note: `bun:ffi` is provided natively by the iOS Bun runtime; the
-  // ios-ffi.cjs stub only loads in dev/desktop fallbacks where this bundle
-  // is being run outside the iOS port. We do NOT remap `bun:ffi` here so
-  // the native implementation wins on iOS device builds.
+  nativeStubs["bun:ffi"] = path.join(stubsDir, "ios-ffi.cjs");
 }
 
 // ios-jsc adds throw-on-use stubs for Node built-ins not exposed by the
 // JSContext bridge v1 surface, plus a passthrough DNS shim (URLSession
-// resolves DNS for us, so dns.lookup just returns the input). bun:ffi is
-// remapped to the existing ios-ffi.cjs stub here — there is no native
-// bun:ffi inside JSContext, unlike the iOS Bun port target.
+// resolves DNS for us, so dns.lookup just returns the input).
 if (TARGET === "ios-jsc") {
   const throwStub = path.join(stubsDir, "ios-jsc-throw.cjs");
   const dnsStub = path.join(stubsDir, "ios-jsc-dns.cjs");
@@ -354,7 +348,6 @@ if (TARGET === "ios-jsc") {
   nativeStubs["dns"] = dnsStub;
   nativeStubs["node:dns/promises"] = dnsStub;
   nativeStubs["dns/promises"] = dnsStub;
-  nativeStubs["bun:ffi"] = path.join(stubsDir, "ios-ffi.cjs");
 }
 
 // Optional @elizaos plugins that the agent runtime statically references but
@@ -413,6 +406,13 @@ const optionalPluginStubs = {
   // in the mobile bundle — stub it so the runtime skips it gracefully.
   "@elizaos/plugin-device-filesystem": path.join(stubsDir, "null-plugin.cjs"),
 };
+
+if (TARGET === "ios" || TARGET === "ios-jsc") {
+  optionalPluginStubs["@elizaos/plugin-aosp-local-inference"] = path.join(
+    stubsDir,
+    "null-plugin.cjs",
+  );
+}
 
 const stubAliases = { ...nativeStubs, ...optionalPluginStubs };
 
@@ -1387,7 +1387,7 @@ const manifest = {
     "All listed plugins are bundled via static imports in",
     "  eliza/packages/agent/src/runtime/eliza.ts (STATIC_ELIZA_PLUGINS).",
     "The mobile runtime substitutes MOBILE_CORE_PLUGINS for CORE_PLUGINS",
-    "when ELIZA_PLATFORM=android.",
+    "when ELIZA_PLATFORM=android or ios.",
   ],
 };
 await writeFile(

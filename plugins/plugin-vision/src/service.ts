@@ -216,12 +216,12 @@ export class VisionService extends Service {
       ocrEnabled: getBooleanSetting(
         "OCR_ENABLED",
         "VISION_OCR_ENABLED",
-        this.DEFAULT_CONFIG.ocrEnabled,
+        this.DEFAULT_CONFIG.ocrEnabled ?? true,
       ),
       florence2Enabled: getBooleanSetting(
         "FLORENCE2_ENABLED",
         "VISION_FLORENCE2_ENABLED",
-        this.DEFAULT_CONFIG.florence2Enabled,
+        this.DEFAULT_CONFIG.florence2Enabled ?? true,
       ),
     };
   }

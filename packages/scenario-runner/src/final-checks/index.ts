@@ -18,19 +18,19 @@ export interface FinalCheckHandlerContext {
   ctx: ScenarioContext;
 }
 
-export type FinalCheckOutcome =
+type FinalCheckOutcome =
   | { status: "passed"; detail: string }
   | { status: "failed"; detail: string }
   | { status: "skipped-dependency-missing"; detail: string };
 
-export type FinalCheckHandler = (
+type FinalCheckHandler = (
   check: ScenarioFinalCheck,
   ctx: FinalCheckHandlerContext,
 ) => Promise<FinalCheckOutcome> | FinalCheckOutcome;
 
 const HANDLERS = new Map<string, FinalCheckHandler>();
 
-export function registerFinalCheckHandler(
+function registerFinalCheckHandler(
   type: string,
   handler: FinalCheckHandler,
 ): void {

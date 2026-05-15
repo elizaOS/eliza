@@ -2,7 +2,7 @@
 
 Unlike `scripts/publish/orchestrator.py` (which refuses to push unless every
 release-blocking gate is green), this stages a *candidate* bundle: a real
-fine-tuned text GGUF + the frozen `elizalabs/eliza-1-assets` voice/ASR/VAD bytes
+fine-tuned text GGUF + the frozen `elizaos/eliza-1-assets` voice/ASR/VAD bytes
 + an honestly-labelled drafter, with the eval suite run and folded in. The
 resulting bundle is installable on a device whose backend the manifest verified
 `pass` (post-commit `ae7c9e5fcd` to the runtime validator) but is NOT
@@ -52,17 +52,15 @@ RAM_BUDGET_MB = {
     "9b": (12000, 18000),
     "27b": (32000, 48000),
     "27b-256k": (96000, 128000),
-    "27b-1m": (160000, 220000),
 }
 # Per-tier upstream text base used by lineage and README/provenance prose.
 TEXT_BASE_BY_TIER = {
-    "0_8b": "Qwen/Qwen3.5-0.8B",
-    "2b": "Qwen/Qwen3.5-2B",
-    "4b": "Qwen/Qwen3.5-4B",
-    "9b": "Qwen/Qwen3.5-9B",
+    "0_8b": "Qwen/Qwen3.5-0.8B-Base",
+    "2b": "Qwen/Qwen3.5-2B-Base",
+    "4b": "Qwen/Qwen3.5-4B-Base",
+    "9b": "Qwen/Qwen3.5-9B-Base",
     "27b": "Qwen/Qwen3.6-27B",
     "27b-256k": "Qwen/Qwen3.6-27B",
-    "27b-1m": "Qwen/Qwen3.6-27B",
 }
 TEXT_CONTEXT_BY_TIER = {
     tier: PP.CONTEXTS_BY_TIER[tier][0]
@@ -74,8 +72,8 @@ TEXT_CTX_BY_TIER = {
 }
 
 # Frozen eliza-1-assets bytes (tier-agnostic voice/ASR/VAD/cache) from
-# evidence/bundle-assets.json on elizalabs/eliza-1-assets.
-ASSETS_REPO = "elizalabs/eliza-1-assets"
+# evidence/bundle-assets.json on elizaos/eliza-1-assets.
+ASSETS_REPO = "elizaos/eliza-1-assets"
 ASSETS_TIER = "2b"
 
 
@@ -235,8 +233,8 @@ def main(argv: list[str] | None = None) -> int:
     }, indent=2) + "\n")
 
     # --- voice / asr / vad / cache ---
-    # Voice follows eliza1_manifest: OmniVoice is the default backend on every
-    # tier; small/workstation tiers also ship Kokoro as a frozen fallback.
+    # Voice follows eliza1_manifest: 0_8b/2b/4b ship Kokoro only, 9b ships
+    # Kokoro plus OmniVoice, and 27B-class tiers ship OmniVoice only.
     # Native VAD is the release artifact; the ONNX file is a legacy fallback and
     # is intentionally not listed in the manifest.
     asset_map = [
@@ -543,7 +541,7 @@ library_name: gguf
 tags: [eliza, elizaos, eliza-1, gguf, on-device, candidate]
 ---
 
-# elizalabs/eliza-1/bundles/{tier} - base-v1 candidate bundle
+# elizaos/eliza-1/bundles/{tier} - base-v1 candidate bundle
 
 This is the Eliza-1 **{tier}** on-device bundle, published as a
 **`base-v1-candidate`** (`defaultEligible: false`). The runtime can download

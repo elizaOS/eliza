@@ -29,7 +29,7 @@ import { join } from "node:path";
 import process from "node:process";
 import { logger } from "@elizaos/core";
 
-export interface OmnivoiceModelPair {
+interface OmnivoiceModelPair {
   modelPath: string;
   codecPath: string;
 }

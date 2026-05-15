@@ -11,13 +11,19 @@ implementations now hold an outbound WebSocket to the relay. Relay
 requests are proxied into the same local agent route surface used by the
 rest of the mobile app.
 
+The bridge is a direct/local-only native capability. Apple App Store `ios`
+builds omit this tunnel bridge and route foreground local-agent requests through
+`ElizaBunRuntime.call({ method: "http_request", args })` IPC. Google Play
+`android-cloud` and `android-cloud-debug` builds strip this plugin, the
+on-device agent service, and the per-boot local-agent bearer token surface.
+
 ## Status
 
 | Platform | Status |
 | --- | --- |
 | Web    | Stub. Returns `state: "error"` with an explanatory message. |
-| iOS    | Outbound WebSocket tunnel. Proxies path-only requests through the WebView IPC bridge; no listening port is opened. |
-| Android | Outbound WebSocket tunnel. Proxies path-only requests to the token-protected local agent service. |
+| iOS    | Direct/local builds only. Outbound WebSocket tunnel that proxies path-only requests through the WebView IPC bridge; no listening port is opened. |
+| Android | Sideload/AOSP builds only. Outbound WebSocket tunnel that proxies path-only requests to the token-protected local agent service. |
 
 ## Why this exists
 
@@ -32,7 +38,9 @@ Tunnel frames use a path-only HTTP request envelope. The relay never
 sends absolute URLs, and the plugin rejects `//host` and scheme-bearing
 paths before dispatching to the agent. On iOS, dispatch goes through
 `window.__ELIZA_IOS_LOCAL_AGENT_REQUEST__`, which is the same Capacitor
-IPC bridge the UI uses for full-Bun local mode.
+IPC bridge the UI uses for full-Bun local mode. On Android, dispatch is limited
+to local loopback bases and injects the per-boot `ElizaAgentService` bearer
+token when the caller did not already set `Authorization`.
 
 ## Usage
 
@@ -43,10 +51,13 @@ await MobileAgentBridge.startInboundTunnel({
   relayUrl: "wss://relay.elizacloud.ai/v1/agent-tunnel",
   deviceId: "phone-abc123",
   pairingToken: "...",
+  // Android direct builds may override this with another loopback base.
+  // iOS ignores it and uses the in-process IPC path.
+  localAgentApiBase: "http://127.0.0.1:31337",
 });
 
 const status = await MobileAgentBridge.getTunnelStatus();
-// { state: "registered" | "error" | ..., relayUrl, deviceId, lastError }
+// { state: "registered" | "error" | ..., relayUrl, deviceId, localAgentApiBase?, lastError }
 
 await MobileAgentBridge.stopInboundTunnel();
 ```

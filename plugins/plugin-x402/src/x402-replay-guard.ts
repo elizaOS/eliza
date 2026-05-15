@@ -38,7 +38,7 @@ function pruneConsumedMemory(now: number): void {
 }
 
 /** When true (default), use runtime cache for consumed credentials. */
-export function isDurableReplayEnabled(): boolean {
+function isDurableReplayEnabled(): boolean {
   const v = process.env.X402_REPLAY_DURABLE?.trim().toLowerCase();
   if (v === "0" || v === "false" || v === "off") return false;
   return true;
@@ -103,7 +103,7 @@ export async function replayGuardTryBegin(
 }
 
 /** Release reservation after a failed or abandoned verification attempt. */
-export function replayGuardAbort(keys: string[]): void {
+function replayGuardAbort(keys: string[]): void {
   for (const k of keys) {
     inflight.delete(k);
     durableReservationOwners.delete(k);

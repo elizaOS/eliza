@@ -25,6 +25,7 @@ dependencies = [
     "eliza-adapter",
     "pydantic>=2.0.0",
     "httpx>=0.25.0",
+    "litellm>=1.0.0",
 ]
 
 [tool.uv.sources]

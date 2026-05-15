@@ -5,9 +5,6 @@
 		"includes": [
 			"src/**",
 			"build.ts",
-			"index.ts",
-			"index.node.ts",
-			"index.browser.ts",
 			"package.json",
 			"tsconfig.json",
 			"tsconfig.build.json",

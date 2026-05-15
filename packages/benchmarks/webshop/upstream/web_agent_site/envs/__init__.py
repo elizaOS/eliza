@@ -3,7 +3,11 @@
 # selenium / chromedriver install. This is the only file in `upstream/` that
 # we modify; see ../../UPSTREAM.md.
 
-from gym.envs.registration import register
+try:
+    from gym.envs.registration import register
+except Exception:  # pragma: no cover - gym is optional for text-only runs
+    def register(*args, **kwargs):
+        return None
 
 try:
     from web_agent_site.envs.web_agent_site_env import WebAgentSiteEnv  # noqa: F401

@@ -13,7 +13,7 @@ export type Emotion =
   | "fearful"
   | "disgusted";
 
-export type OmnivoiceLang = "" | "en" | "zh" | "English" | "Chinese" | string;
+type OmnivoiceLang = "" | "en" | "zh" | "English" | "Chinese" | string;
 
 /** Voice-design attribute keywords resolved against the bundled VoiceDesign vocabulary. */
 export interface OmnivoiceVoiceDesign {
@@ -25,7 +25,7 @@ export interface OmnivoiceVoiceDesign {
   emotion?: Emotion;
 }
 
-export interface OmnivoiceMaskGitConfig {
+interface OmnivoiceMaskGitConfig {
   numStep?: number;
   guidanceScale?: number;
   tShift?: number;
@@ -35,7 +35,7 @@ export interface OmnivoiceMaskGitConfig {
   seed?: bigint | number;
 }
 
-export interface OmnivoiceVoiceReference {
+interface OmnivoiceVoiceReference {
   /** Raw WAV samples at 24 kHz mono. */
   audio24k?: Float32Array;
   /** Transcript of the reference audio. */

@@ -8,27 +8,40 @@ The Eliza mobile app brings the full dashboard experience to iOS and Android dev
 
 ## Runtime Policy
 
-iOS App Store and Google Play builds are Cloud-backed mobile clients. They do
-not run a local Bun backend, local shell, PTY-spawned Claude/Codex/OpenCode, or
-the privileged AOSP agent service in-app. Local generated applets run through
-the mobile-safe runtime and virtual file system only. JSCore, QuickJS,
-Android isolated-process, and AVF providers are advertised only when an actual
-native boundary is attached; otherwise the app falls back to VFS/WASM-safe
-surfaces and Cloud containers.
+Mobile builds use explicit local/cloud/store targets. The build orchestrator in
+`packages/app-core/scripts/run-mobile-build.mjs` bakes these modes into the web
+bundle and audits the native project before packaging:
+
+| Target | Distribution | Runtime mode | Build gate |
+|--------|--------------|--------------|------------|
+| `ios` | Apple App Store | `cloud-hybrid` + `local-safe` | Keeps the App Store-safe no-JIT Bun engine path, strips local-yolo tunnel/model bridges, and fails closed when the required `ElizaBunEngine.xcframework` is missing. |
+| `ios-local` | Development/sideload | `local` + `local-safe` | Stages the iOS agent payload, defaults to simulator builds, and includes the local execution bridge only for direct builds. |
+| `android-cloud` | Google Play | `cloud` | Produces a thin release AAB and strips the on-device agent service, per-boot local-agent token surface, mobile-agent tunnel bridge, native runtimes, privileged roles, and system-only permissions. |
+| `android-cloud-debug` | Debug APK | `cloud` | Uses the same cloud stripping/audits as `android-cloud`, but is signed/debuggable only for iteration. |
+| `android` | Sideload APK | `local-yolo` | Stages the Android agent runtime and refuses to run when Play/store intent is signaled. |
+| `android-system` | AOSP / ElizaOS image | `local-yolo` | Builds the privileged platform-signed APK for system images and preserves the local agent runtime. |
+
+Store builds never expose a host shell, PTY-spawned Claude/Codex/OpenCode, or
+downloaded native code. Local generated applets run through the mobile-safe
+runtime and virtual file system only. JSCore, QuickJS, Android isolated-process,
+and AVF providers are advertised only when an actual native boundary is
+attached; otherwise the app falls back to VFS/WASM-safe surfaces and Cloud
+containers.
 
 iOS local development and sideload builds are a separate target, not an
-enterprise distribution path. Use `bun run build:ios:local` from
-`packages/app` to bake `runtimeMode=local`, build
+enterprise distribution path. Use `bun run --cwd packages/app build:ios:local`
+to bake `runtimeMode=local`, build
 `packages/agent/dist-mobile-ios/agent-bundle.js`, stage it under
 `App/public/agent/`, and include the native llama bridge. The default local
-target is the iOS simulator; use `bun run build:ios:local:device` or set
+target is the iOS simulator; use
+`bun run --cwd packages/app build:ios:local:device` or set
 `ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS'` plus normal Xcode signing
 when you want a sideload/device build.
 That target still does not imply a host shell or downloaded native code. The
 full Bun engine path is gated by `ELIZA_IOS_FULL_BUN_ENGINE=1` and requires
 `packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework` (or
 `ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK`; external override paths are validated and
-staged into `packages/bun-ios-runtime/artifacts/` before CocoaPods runs. If that
+staged into `packages/bun-ios-runtime/artifacts/`) before CocoaPods runs. If that
 artifact is missing, the build fails instead of falling back to the JSContext
 compatibility host. When the framework is present, the React app routes
 local-agent requests through
@@ -54,12 +67,13 @@ TODO-AOSP-TOOLCHAIN in this page's runtime policy.
 
 Use `bun run build:android:cloud` from the repository root for a Play-store
 style release AAB thin client; `android-cloud-debug` is only for debug APK
-iteration. Use `bun run build:android:system` for the privileged AOSP APK. The
-legacy `packages/app` `build:android` script is sideload-only and embeds the
-on-device agent runtime. The cloud target strips the local agent, privileged
-default-role surfaces, staged runtime assets, native runtime plugin references,
-`ElizaAgentService`, `assets/agent`, disguised `libeliza_` native runtime
-libraries, `MANAGE_APP_OPS_MODES`, `PACKAGE_USAGE_STATS`,
+iteration via `node packages/app-core/scripts/run-mobile-build.mjs
+android-cloud-debug`. Use `bun run build:android:system` for the privileged
+AOSP APK. The `packages/app` `build:android` script is sideload-only and embeds
+the on-device agent runtime. The cloud target strips the local agent,
+privileged default-role surfaces, staged runtime assets, native runtime plugin
+references, `ElizaAgentService`, `assets/agent`, disguised `libeliza_` native
+runtime libraries, `MANAGE_APP_OPS_MODES`, `PACKAGE_USAGE_STATS`,
 `MANAGE_VIRTUAL_MACHINE`, and other system-only permissions, then audits the
 source tree and artifact.
 
@@ -67,7 +81,7 @@ source tree and artifact.
 
 | Platform | Minimum Version | Scheme | Notes |
 |----------|----------------|--------|-------|
-| **iOS** | iOS 14+ (armv7) | HTTPS | Automatic content inset, mobile-preferred content mode, link preview disabled |
+| **iOS** | iOS 16+ | HTTPS | Automatic content inset, mobile-preferred content mode, link preview disabled |
 | **Android** | API 26 (Android 8.0+) | HTTPS | Input capture enabled, mixed content disabled, WebContents debugging off in production |
 
 **App ID:** `com.elizaai.eliza`
@@ -100,16 +114,18 @@ source tree and artifact.
 
 ## Building the App
 
-All mobile build commands run from the **repository root** using `bun run`.
+Mobile builds are driven by `packages/app-core/scripts/run-mobile-build.mjs`.
+Root aliases exist for Google Play and AOSP Android builds; the app package
+owns iOS and sideload Android aliases.
 
 ### Build for iOS
 
 ```bash
 # Build plugins, web assets, and sync to the iOS project
-bun run build:ios
+bun run --cwd packages/app build:ios
 
 # Open the Xcode project
-bun run cap:open:ios
+bun run --cwd packages/app cap:open:ios
 ```
 
 This runs `vite build` to produce the `dist/` web assets, then `capacitor sync ios` to copy them into the native iOS project and update native dependencies.
@@ -120,10 +136,10 @@ The Xcode workspace is at `packages/app/ios/App/App.xcworkspace`.
 
 ```bash
 # Build plugins, web assets, and sync to the Android project
-bun run build:android
+bun run --cwd packages/app build:android
 
 # Open the Android Studio project
-bun run cap:open:android
+bun run --cwd packages/app cap:open:android
 ```
 
 This runs `vite build` followed by `capacitor sync android` to copy web assets and update the Gradle project.
@@ -135,7 +151,7 @@ The Android project is at `packages/app/android/`.
 All custom Capacitor plugins must be built before the web app can bundle them:
 
 ```bash
-bun run plugin:build
+bun run --cwd packages/app plugin:build
 ```
 
 This iterates through each plugin directory (`gateway`, `swabble`, `camera`, `screencapture`, `canvas`, `desktop`, `location`, `talkmode`, `agent`, `appblocker`, `llama`, `mobile-signals`, `websiteblocker`) and runs the build script for each.
@@ -290,10 +306,13 @@ Canvas rendering and web view management. Available on all platforms (HTML Canva
 Agent lifecycle management.
 
 - **Cross-platform:** Uses IPC to the main-process AgentManager on Electrobun.
-  Android/Web use HTTP calls to the API server or bundled loopback agent. iOS
-  uses HTTP for remote/cloud endpoints; full-Bun local mode routes requests
-  through Capacitor/native `bun-host-ipc`, with the in-process ITTP kernel kept
-  as the foreground compatibility path.
+  Android local uses Capacitor `Agent.request` for foreground calls; the native
+  plugin owns the tokenized app-local loopback hop into `ElizaAgentService` so
+  WebView code does not fall back to raw `fetch("http://127.0.0.1:31337")`.
+  Web uses HTTP calls to the configured API server. iOS uses HTTP for
+  remote/cloud endpoints; full-Bun local mode routes requests through
+  Capacitor/native `bun-host-ipc`, with the in-process ITTP kernel kept only as
+  the foreground development compatibility path.
 - **Lifecycle:** Start, stop, and query agent status (`not_started`, `starting`, `running`, `stopped`, `error`).
 - **Chat:** Send text messages and receive agent responses.
 
@@ -568,17 +587,17 @@ The main activity uses `singleTask` launch mode, which ensures only one instance
 
 ### Live Reload (iOS)
 
-For rapid development with live reload (all commands from the repo root):
+For rapid development with live reload:
 
 ```bash
 # Build plugins and web assets
-bun run build:ios
+bun run --cwd packages/app build:ios
 
 # Start Vite dev server in a separate terminal
 bun run dev
 
 # Open Xcode and run on a simulator
-bun run cap:open:ios
+bun run --cwd packages/app cap:open:ios
 ```
 
 Update the Capacitor server config to point to your dev server IP for live reload.
@@ -587,13 +606,13 @@ Update the Capacitor server config to point to your dev server IP for live reloa
 
 ```bash
 # Build plugins and web assets
-bun run build:android
+bun run --cwd packages/app build:android
 
 # Start Vite dev server in a separate terminal
 bun run dev
 
 # Open Android Studio and run on an emulator
-bun run cap:open:android
+bun run --cwd packages/app cap:open:android
 ```
 
 ### Running Tests
@@ -620,10 +639,11 @@ Open the Xcode project, select the App target, go to Signing & Capabilities, and
 
 ### Web assets not updating on device
 
-Run the build command from the repo root, which includes the sync step automatically:
+Run the appropriate app-package build command, which includes the sync step
+automatically:
 
 ```bash
-bun run build:ios   # or build:android
+bun run --cwd packages/app build:ios   # or build:android
 ```
 
 ### Gateway discovery not finding devices

@@ -418,7 +418,7 @@ function resolveNativeProviderOptions(
     return undefined;
   }
 
-  const { agentName: _agentName, eliza: _eliza, ...rest } = raw;
+  const { agentName: _agentName, ...rest } = raw;
   const providerOptions: Record<string, unknown> = { ...rest };
   const promptCacheKey = resolvePromptCacheKey(raw);
 
