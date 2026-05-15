@@ -29,8 +29,8 @@ import { getBrandConfig } from "./brand-config";
 import { startBrowserWorkspaceBridgeServer } from "./browser-workspace-bridge-server";
 import { readNavigationEventUrl } from "./cloud-auth-window";
 import { readOpenUrlEventUrl } from "./desktop-deep-link-events";
-import { shouldCreateDesktopTray } from "./desktop-tray-config";
 import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
+import { shouldCreateDesktopTray } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { getFloatingChatManager } from "./floating-chat-window";
@@ -768,7 +768,10 @@ async function startRendererServer(): Promise<string> {
 			if (apiBase && isRendererApiProxyPath(pathname)) {
 				const target = new URL(pathname + url.search, apiBase);
 				try {
-					const upstreamRequest = createRendererApiProxyRequestInit(req, target);
+					const upstreamRequest = createRendererApiProxyRequestInit(
+						req,
+						target,
+					);
 					const upstream = await fetch(target, upstreamRequest);
 					return new Response(upstream.body, {
 						status: upstream.status,
@@ -862,9 +865,7 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
 		buildInfo,
 	});
 	if (mainWindowPartition) {
-		logger.info(
-			`[Main] Using main window partition ${mainWindowPartition}`,
-		);
+		logger.info(`[Main] Using main window partition ${mainWindowPartition}`);
 	}
 
 	const statePath = path.join(Utils.paths.userData, "window-state.json");
