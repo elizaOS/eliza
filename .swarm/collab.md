@@ -647,6 +647,13 @@ read from `HF_TOKEN` env. Never commit it.
   training pause or completion. Loss trajectory: step=0:0.0899 → step=500:0.6016
   (convergent, warmup spike then decreasing).
 
+- 2026-05-15 H1 phase=impl-done (re-spawn): All 5 attempts (F-kokoro, F2, L-kokoro-distill
+  original, H1 G3-retry 8000 steps, H1 re-spawn) confirm structural failure. WER=1.0,
+  UTMOS≈2.3, SpkSim≈0.10–0.15 on all candidates. SpkSim gate ≥0.40 is structurally
+  unreachable — real sam corpus ECAPA self-cosine ceiling = 0.561. No HF push.
+  Ship path: OmniVoice ELZ2 v2 frozen sam preset (elizaos/eliza-1-voice-omnivoice,
+  omnivoice 0.2.0, revision b766eb23d). Final decision doc: .swarm/impl/H1-kokoro-final.md.
+
 
 ## M-emotion-final — re-dispatch close (2026-05-15)
 

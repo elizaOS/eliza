@@ -94,7 +94,7 @@ function bytesToUint8Array(b: TtsHandlerOutput): Uint8Array {
 }
 
 function extractText(input: TtsHandlerInput): string {
-	return typeof input === "string" ? input : (input.text);
+	return typeof input === "string" ? input : input.text;
 }
 
 function withText(input: TtsHandlerInput, text: string): TtsHandlerInput {

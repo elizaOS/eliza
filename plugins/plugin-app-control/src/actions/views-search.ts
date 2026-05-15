@@ -12,7 +12,7 @@
  */
 
 import type { ActionResult, HandlerCallback } from "@elizaos/core";
-import type { ViewsClient, ViewSummary } from "./views-client.js";
+import type { ViewSummary, ViewsClient } from "./views-client.js";
 
 export interface ScoredView {
 	view: ViewSummary;
@@ -36,7 +36,10 @@ export function scoreView(view: ViewSummary, query: string): number {
 	return 0;
 }
 
-function formatSearchResults(results: readonly ScoredView[], query: string): string {
+function formatSearchResults(
+	results: readonly ScoredView[],
+	query: string,
+): string {
 	if (results.length === 0) {
 		return `No views found matching "${query}".`;
 	}
@@ -61,7 +64,8 @@ export async function runViewsSearch({
 	callback,
 }: RunViewsSearchInput): Promise<ActionResult> {
 	if (!query.trim()) {
-		const text = "Provide a search query to find views. Example: \"search views wallet\".";
+		const text =
+			'Provide a search query to find views. Example: "search views wallet".';
 		await callback?.({ text });
 		return { success: false, text };
 	}

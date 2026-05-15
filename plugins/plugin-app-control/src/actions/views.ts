@@ -17,11 +17,11 @@ import type {
 	State,
 } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { type ViewsClient, createViewsClient } from "./views-client.js";
+import { readStringOption } from "../params.js";
+import { createViewsClient, type ViewsClient } from "./views-client.js";
 import { runViewsList } from "./views-list.js";
 import { runViewsSearch } from "./views-search.js";
 import { runViewsShow } from "./views-show.js";
-import { readStringOption } from "../params.js";
 
 export type ViewsMode = "list" | "show" | "open" | "search" | "manager";
 
@@ -170,7 +170,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 		},
 
 		handler: async (
-			runtime: IAgentRuntime,
+			_runtime: IAgentRuntime,
 			message: Memory,
 			_state?: State,
 			options?: Record<string, unknown>,

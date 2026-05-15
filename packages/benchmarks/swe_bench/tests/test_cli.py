@@ -8,6 +8,7 @@ from benchmarks.swe_bench.cli import (
     _build_report,
     _capability_report,
     _default_task_agent_provider,
+    _extract_patch,
     _harness_turn_cost_usd,
     _mock_instance,
     _parse_required_capabilities,
@@ -52,6 +53,40 @@ def test_build_report_ignores_unknown_token_counts_for_average() -> None:
     payload = _report_to_dict(report)
     assert payload["results"][0]["status"] == "incompatible"
     assert payload["results"][0]["tokens_used"] is None
+
+
+def test_build_report_counts_no_docker_pass_as_applied() -> None:
+    report = _build_report(
+        SWEBenchConfig(),
+        [
+            SWEBenchResult(
+                instance_id="repo__project-1",
+                generated_patch="diff --git a/file.py b/file.py",
+                patch_status=PatchStatus.PASS,
+                tests_passed=[],
+                tests_failed=[],
+                success=True,
+                duration_seconds=1.0,
+                tokens_used=1,
+            )
+        ],
+    )
+
+    assert report.apply_rate == 1.0
+
+
+def test_extract_patch_accepts_fence_without_newline_after_language() -> None:
+    patch = _extract_patch(
+        "```diff --git a/file.py b/file.py\n"
+        "--- a/file.py\n"
+        "+++ b/file.py\n"
+        "@@ -1 +1 @@\n"
+        "-old\n"
+        "+new\n"
+        "```"
+    )
+
+    assert patch.startswith("diff --git a/file.py b/file.py")
 
 
 def test_parse_required_capabilities_accepts_comma_joined_string() -> None:

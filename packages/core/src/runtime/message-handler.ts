@@ -191,7 +191,7 @@ export function routeMessageHandlerOutput(
 		return { type: "stopped", output };
 	}
 
-	const allContexts = [...(output.plan.contexts)];
+	const allContexts = [...output.plan.contexts];
 	const requiresTool = output.plan.requiresTool === true;
 
 	// `simple` is the shortcut marker. If it is the only context (or contexts

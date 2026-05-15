@@ -12,6 +12,7 @@ import logging
 import os
 import platform as _platform
 import re
+import sys
 import tempfile
 import time
 from dataclasses import dataclass
@@ -325,8 +326,9 @@ class SWEBenchEvaluator:
             }
             predictions_path.write_text(json.dumps(record) + "\n", encoding="utf-8")
 
+            python_executable = os.environ.get("SWE_BENCH_PYTHON", "").strip() or sys.executable
             cmd: list[str] = [
-                "python",
+                python_executable,
                 "-m",
                 "swebench.harness.run_evaluation",
                 "--dataset_name",

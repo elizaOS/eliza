@@ -200,7 +200,9 @@ const musicPlugin: Plugin = {
   async dispose(runtime: IAgentRuntime) {
     const musicSvc = runtime.getService<MusicService>(MusicService.serviceType);
     await musicSvc?.stop();
-    const libSvc = runtime.getService<MusicLibraryService>(MusicLibraryService.serviceType);
+    const libSvc = runtime.getService<MusicLibraryService>(
+      MusicLibraryService.serviceType,
+    );
     await libSvc?.stop();
   },
 };

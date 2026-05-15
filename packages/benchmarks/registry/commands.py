@@ -415,6 +415,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
+        task_ids = extra.get("task_ids")
+        if isinstance(task_ids, list) and all(isinstance(x, str) for x in task_ids):
+            args.extend(["--task-ids", *cast(list[str], task_ids)])
+        elif isinstance(task_ids, str) and task_ids.strip():
+            args.extend(["--task-ids", task_ids.strip()])
+        single = extra.get("single")
+        if isinstance(single, str) and single.strip():
+            args.extend(["--single", single.strip()])
         timeout = extra.get("timeout")
         if isinstance(timeout, int) and timeout > 0:
             args.extend(["--timeout", str(timeout)])
