@@ -213,7 +213,7 @@ export async function runAndroidBridgeCli(): Promise<void> {
   if (runtime && process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
     _logToFile("[android-bridge] importing mobile-device-bridge-bootstrap…");
     const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-      "@elizaos/plugin-capacitor-bridge"
+      "../mobile-device-bridge-bootstrap.ts"
     );
     await ensureMobileDeviceBridgeInferenceHandlers(runtime);
   }
