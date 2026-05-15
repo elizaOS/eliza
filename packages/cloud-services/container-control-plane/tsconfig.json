@@ -1,0 +1,26 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["node", "bun-types"],
+    "noEmit": true,
+    "paths": {
+      "@/lib/*": ["../../cloud-shared/src/lib/*"],
+      "@/db/*": ["../../cloud-shared/src/db/*"],
+      "@/types/*": ["../../cloud-shared/src/types/*"],
+      "@elizaos/cloud-shared": ["../../cloud-shared/src/index.ts"],
+      "@elizaos/cloud-shared/*": ["../../cloud-shared/src/*"],
+      "@elizaos/core": ["../../../packages/core/src/index.node.ts"],
+      "@elizaos/core/*": ["../../../packages/core/src/*"],
+      "drizzle-orm": ["../../node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../../node_modules/drizzle-orm/*"],
+      "@/*": ["../../*"]
+    }
+  },
+  "include": ["src/**/*", "../../cloud-shared/src/types/**/*.d.ts"],
+  "exclude": ["node_modules", "dist"]
+}

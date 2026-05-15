@@ -1,5 +1,5 @@
 import { ChevronDown, X } from "lucide-react";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type {
   FieldRenderer,
@@ -442,6 +442,7 @@ function SearchableSelectInner({
   const [filter, setFilter] = useState("");
   const triggerRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [dropdownStyle, setDropdownStyle] = useState<React.CSSProperties>({});
 
   const filtered = filter
@@ -510,6 +511,11 @@ function SearchableSelectInner({
     return () => window.removeEventListener("scroll", handler, true);
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return;
+    searchInputRef.current?.focus();
+  }, [open]);
+
   return (
     <div>
       {/* Trigger button that looks like a select */}
@@ -547,8 +553,7 @@ function SearchableSelectInner({
             {/* Search input */}
             <div className="p-1.5">
               <input
-                // biome-ignore lint/a11y/noAutofocus: dropdown search needs immediate focus
-                autoFocus
+                ref={searchInputRef}
                 className="w-full px-2 py-1.5 border border-border bg-bg text-xs font-[var(--mono)] focus:border-accent focus:outline-none rounded-sm"
                 type="text"
                 value={filter}
@@ -813,6 +818,7 @@ export function renderMultiselectField(props: FieldRenderProps) {
 }
 
 function MultiselectFieldInner({ fp: props }: { fp: FieldRenderProps }) {
+  const fieldId = useId();
   const options: Array<{ value: string; label: string }> =
     ((props.hint as Record<string, unknown>).options as
       | typeof options
@@ -884,13 +890,14 @@ function MultiselectFieldInner({ fp: props }: { fp: FieldRenderProps }) {
       )}
       {/* Checkbox list */}
       <div className="flex flex-col gap-1">
-        {options.map((opt) => (
-          // biome-ignore lint/a11y/noLabelWithoutControl: form control is associated programmatically
+        {options.map((opt, index) => (
           <label
             key={opt.value}
+            htmlFor={`${fieldId}-${index}`}
             className="flex items-center gap-2 cursor-pointer text-sm"
           >
             <Checkbox
+              id={`${fieldId}-${index}`}
               checked={selected.has(opt.value)}
               disabled={props.readonly}
               onCheckedChange={() => {
@@ -1625,6 +1632,7 @@ export const renderMarkdownField: FieldRenderer = (props) => (
 
 function CheckboxGroupInner(props: FieldRenderProps) {
   const { t } = useApp();
+  const fieldId = useId();
   const selected = new Set(
     Array.isArray(props.value)
       ? (props.value as string[])
@@ -1659,10 +1667,10 @@ function CheckboxGroupInner(props: FieldRenderProps) {
       data-config-key={props.key}
       data-field-type="checkbox-group"
     >
-      {options.map((opt) => (
-        // biome-ignore lint/a11y/noLabelWithoutControl: form control is associated programmatically
+      {options.map((opt, index) => (
         <label
           key={opt.value}
+          htmlFor={`${fieldId}-${index}`}
           className={`flex items-start gap-2.5 px-3 py-2 border border-border bg-card cursor-pointer transition-colors hover:bg-bg-hover ${
             selected.has(opt.value)
               ? "border-accent bg-[color-mix(in_srgb,var(--accent)_5%,var(--card))]"
@@ -1670,6 +1678,7 @@ function CheckboxGroupInner(props: FieldRenderProps) {
           } ${opt.disabled ? "opacity-50 pointer-events-none" : ""}`}
         >
           <Checkbox
+            id={`${fieldId}-${index}`}
             checked={selected.has(opt.value)}
             disabled={props.readonly || opt.disabled}
             onCheckedChange={() => toggle(opt.value)}

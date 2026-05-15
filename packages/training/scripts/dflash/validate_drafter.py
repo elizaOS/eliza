@@ -15,8 +15,7 @@ Checks performed:
      "drafter" gives no speed-up).
   4. Optional acceptance-rate rollout: generate N tokens with the target alone
      and with target+drafter, compute the empirical acceptance rate. Gate is
-     0.5 by default, but per-tier gates in distill_dflash_drafter.ACCEPTANCE_GATE
-     are tighter.
+     read from distill_dflash_drafter.ACCEPTANCE_GATE unless overridden.
 
 The acceptance rollout requires `llama-cpp-python` + the in-repo llama.cpp
 fork (for the custom GGML types). With `--synthetic-smoke`, the rollout is
@@ -35,9 +34,19 @@ import argparse
 import hashlib
 import json
 import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+_TRAINING_ROOT = Path(__file__).resolve().parents[2]
+if str(_TRAINING_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAINING_ROOT))
+
+from scripts.distill_dflash_drafter import (  # noqa: E402
+    ACCEPTANCE_GATE,
+    QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("validate_drafter")
@@ -60,19 +69,22 @@ TOKENIZER_METADATA_KEYS: tuple[str, ...] = (
 )
 REQUIRED_TOKENIZER_METADATA_KEYS: tuple[str, ...] = (
     "tokenizer.ggml.model",
+    "tokenizer.ggml.pre",
     "tokenizer.ggml.tokens",
+    "tokenizer.ggml.token_type",
+    "tokenizer.ggml.merges",
+    "tokenizer.ggml.eos_token_id",
+    "tokenizer.ggml.padding_token_id",
 )
-
-# Mirrored from distill_dflash_drafter.ACCEPTANCE_GATE so this script can run
-# standalone (no import of distill_dflash_drafter at validate time).
-ACCEPTANCE_GATE: dict[str, float] = {
-    "0_8b": 0.40,
-    "2b": 0.50,
-    "4b": 0.52,
-    "9b": 0.55,
-    "27b": 0.55,
-    "27b-256k": 0.55,
-}
+TOKENIZER_SCALAR_METADATA_KEYS: tuple[str, ...] = (
+    "tokenizer.ggml.model",
+    "tokenizer.ggml.pre",
+    "tokenizer.ggml.eos_token_id",
+    "tokenizer.ggml.bos_token_id",
+    "tokenizer.ggml.padding_token_id",
+    "tokenizer.ggml.add_bos_token",
+    "tokenizer.ggml.add_eos_token",
+)
 
 
 def _sha256_file(path: Path) -> str:
@@ -104,6 +116,15 @@ def _read_gguf_metadata(gguf_path: Path) -> dict[str, Any]:
             return None
         try:
             return int(field.parts[field.data[0]][0])
+        except Exception:
+            return None
+
+    def _read_bool(key: str) -> bool | None:
+        field = reader.fields.get(key)
+        if field is None or not field.data:
+            return None
+        try:
+            return bool(field.parts[field.data[0]][0])
         except Exception:
             return None
 
@@ -179,6 +200,21 @@ def _read_gguf_metadata(gguf_path: Path) -> dict[str, Any]:
             key: _field_array_length(key)
             for key in TOKENIZER_METADATA_KEYS
         },
+        "values": {
+            "tokenizer.ggml.model": _read_string("tokenizer.ggml.model"),
+            "tokenizer.ggml.pre": _read_string("tokenizer.ggml.pre"),
+            "tokenizer.ggml.eos_token_id": _read_uint("tokenizer.ggml.eos_token_id"),
+            "tokenizer.ggml.bos_token_id": _read_uint("tokenizer.ggml.bos_token_id"),
+            "tokenizer.ggml.padding_token_id": _read_uint(
+                "tokenizer.ggml.padding_token_id"
+            ),
+            "tokenizer.ggml.add_bos_token": _read_bool(
+                "tokenizer.ggml.add_bos_token"
+            ),
+            "tokenizer.ggml.add_eos_token": _read_bool(
+                "tokenizer.ggml.add_eos_token"
+            ),
+        },
     }
 
     out["tensorCount"] = len(reader.tensors)
@@ -214,36 +250,85 @@ def _tokenizer_metadata_check(
 ) -> tuple[bool, str, list[dict[str, Any]]]:
     target_hashes = target_meta.get("tokenizer", {}).get("hashes", {})
     drafter_hashes = drafter_meta.get("tokenizer", {}).get("hashes", {})
+    target_lengths = target_meta.get("tokenizer", {}).get("lengths", {})
+    drafter_lengths = drafter_meta.get("tokenizer", {}).get("lengths", {})
+    target_values = target_meta.get("tokenizer", {}).get("values", {})
+    drafter_values = drafter_meta.get("tokenizer", {}).get("values", {})
     mismatches: list[dict[str, Any]] = []
-    missing_required: list[str] = []
-
-    for key in REQUIRED_TOKENIZER_METADATA_KEYS:
-        if target_hashes.get(key) is None or drafter_hashes.get(key) is None:
-            missing_required.append(key)
+    required_keys = set(REQUIRED_TOKENIZER_METADATA_KEYS)
 
     for key in TOKENIZER_METADATA_KEYS:
         target_hash = target_hashes.get(key)
         drafter_hash = drafter_hashes.get(key)
-        if target_hash != drafter_hash:
-            if target_hash is None and drafter_hash is None:
-                continue
-            mismatches.append(
-                {
-                    "key": key,
-                    "targetHash": target_hash,
-                    "drafterHash": drafter_hash,
-                }
-            )
+        required = key in required_keys
+        missing_sides = [
+            side
+            for side, value in (("target", target_hash), ("drafter", drafter_hash))
+            if value is None
+        ]
+        if target_hash == drafter_hash and not (required and missing_sides):
+            continue
 
+        target_length = target_lengths.get(key)
+        drafter_length = drafter_lengths.get(key)
+        target_value = target_values.get(key)
+        drafter_value = drafter_values.get(key)
+        if missing_sides:
+            reason = (
+                f"{key} missing from " + " and ".join(missing_sides)
+                if required
+                else f"{key} present on only one side"
+            )
+        elif target_length is not None or drafter_length is not None:
+            if target_length != drafter_length:
+                reason = (
+                    f"{key} array length mismatch: "
+                    f"target={target_length}, drafter={drafter_length}"
+                )
+            else:
+                reason = (
+                    f"{key} payload hash mismatch "
+                    f"(length={target_length})"
+                )
+        elif key in TOKENIZER_SCALAR_METADATA_KEYS:
+            reason = (
+                f"{key} value mismatch: "
+                f"target={target_value!r}, drafter={drafter_value!r}"
+            )
+        else:
+            reason = f"{key} payload hash mismatch"
+        mismatches.append(
+            {
+                "key": key,
+                "targetHash": target_hash,
+                "drafterHash": drafter_hash,
+                "targetLength": target_length,
+                "drafterLength": drafter_length,
+                "targetValue": target_value,
+                "drafterValue": drafter_value,
+                "required": required,
+                "blockingReason": reason,
+            }
+        )
+
+    missing_required = [
+        item for item in mismatches
+        if item["required"] and (item["targetHash"] is None or item["drafterHash"] is None)
+    ]
     if missing_required:
         return (
             False,
-            "required tokenizer metadata missing: " + ", ".join(missing_required),
+            "required tokenizer metadata missing: "
+            + "; ".join(item["blockingReason"] for item in missing_required),
             mismatches,
         )
     if mismatches:
-        keys = ", ".join(item["key"] for item in mismatches)
-        return False, f"tokenizer metadata mismatch: {keys}", mismatches
+        return (
+            False,
+            "tokenizer metadata mismatch: "
+            + "; ".join(item["blockingReason"] for item in mismatches),
+            mismatches,
+        )
     return True, "tokenizer metadata ok", []
 
 
@@ -373,12 +458,23 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
         "tier": args.tier,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "synthetic": True,
-        "drafter": {"path": "<synthetic>", "sizeBytes": 0, "vocabSize": 151936},
-        "target": {"path": "<synthetic>", "sizeBytes": 0, "vocabSize": 151936},
+        "drafter": {
+            "path": "<synthetic>",
+            "sizeBytes": 0,
+            "vocabSize": QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE,
+        },
+        "target": {
+            "path": "<synthetic>",
+            "sizeBytes": 0,
+            "vocabSize": QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE,
+        },
         "checks": {
             "hashMatch": {"pass": True, "detail": f"synthetic ({fake_target_sha})"},
             "architectureLoadable": {"pass": True, "detail": "synthetic"},
-            "vocabMatch": {"pass": True, "detail": "synthetic (vocabSize=151936)"},
+            "vocabMatch": {
+                "pass": True,
+                "detail": f"synthetic (vocabSize={QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE})",
+            },
             "tokenizerMetadataMatch": {
                 "pass": True,
                 "detail": "synthetic",
@@ -429,6 +525,17 @@ def _run_real(args: argparse.Namespace) -> int:
     )
     size_pass, size_detail = _size_check(drafter_meta, target_meta)
 
+    preflight_failures = [
+        detail
+        for passed, detail in (
+            (hash_pass, hash_detail),
+            (arch_pass, arch_detail),
+            (vocab_pass, vocab_detail),
+            (tokenizer_pass, tokenizer_detail),
+            (size_pass, size_detail),
+        )
+        if not passed
+    ]
     accept_block: dict[str, Any] = {
         "pass": True,
         "detail": "skipped (--skip-acceptance-rollout or no prompts file)",
@@ -436,36 +543,47 @@ def _run_real(args: argparse.Namespace) -> int:
         "gate": ACCEPTANCE_GATE.get(args.tier),
     }
     if not args.skip_acceptance_rollout:
-        prompts = (
-            Path(args.prompts_file).read_text().splitlines()
-            if args.prompts_file
-            else [
-                "Write a short note to a colleague about tomorrow's meeting.",
-                "Summarize this in two sentences: ",
-                "The quick brown fox ",
-            ]
+        gate = args.acceptance_gate if args.acceptance_gate is not None else (
+            ACCEPTANCE_GATE.get(args.tier, 0.5)
         )
-        prompts = [p for p in prompts if p.strip()]
-        rollout = _run_acceptance_rollout(
-            drafter_path,
-            target_path,
-            n_tokens=args.acceptance_tokens,
-            prompts=prompts,
-        )
-        gate = args.acceptance_gate
-        if gate is None:
-            gate = ACCEPTANCE_GATE.get(args.tier, 0.5)
-        accept_block = {
-            "pass": rollout["acceptanceRate"] >= gate,
-            "detail": (
-                f"acceptance={rollout['acceptanceRate']:.3f} "
-                f"(proposed={rollout['proposed']}, accepted={rollout['accepted']})"
-            ),
-            "acceptanceRate": rollout["acceptanceRate"],
-            "proposed": rollout["proposed"],
-            "accepted": rollout["accepted"],
-            "gate": gate,
-        }
+        if preflight_failures:
+            accept_block = {
+                "pass": False,
+                "detail": (
+                    "skipped because release metadata checks failed: "
+                    + "; ".join(preflight_failures)
+                ),
+                "acceptanceRate": None,
+                "gate": gate,
+            }
+        else:
+            prompts = (
+                Path(args.prompts_file).read_text().splitlines()
+                if args.prompts_file
+                else [
+                    "Write a short note to a colleague about tomorrow's meeting.",
+                    "Summarize this in two sentences: ",
+                    "The quick brown fox ",
+                ]
+            )
+            prompts = [p for p in prompts if p.strip()]
+            rollout = _run_acceptance_rollout(
+                drafter_path,
+                target_path,
+                n_tokens=args.acceptance_tokens,
+                prompts=prompts,
+            )
+            accept_block = {
+                "pass": rollout["acceptanceRate"] >= gate,
+                "detail": (
+                    f"acceptance={rollout['acceptanceRate']:.3f} "
+                    f"(proposed={rollout['proposed']}, accepted={rollout['accepted']})"
+                ),
+                "acceptanceRate": rollout["acceptanceRate"],
+                "proposed": rollout["proposed"],
+                "accepted": rollout["accepted"],
+                "gate": gate,
+            }
 
     overall = (
         hash_pass

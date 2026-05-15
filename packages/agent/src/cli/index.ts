@@ -53,11 +53,9 @@ export async function runAutonomousCli(
   }
 
   if (command === "ios-bridge") {
-    const { runIosBridgeCli } = (await import(
-      "@elizaos/plugin-capacitor-bridge"
-    )) as unknown as {
-      runIosBridgeCli: (argv?: string[]) => Promise<void>;
-    };
+    const { runIosBridgeCli } = await import(
+      "@elizaos/plugin-capacitor-bridge/ios/bridge"
+    );
     await runIosBridgeCli(argv);
     return;
   }
@@ -83,7 +81,7 @@ export async function runAutonomousCli(
       process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"
     ) {
       const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-        "@elizaos/plugin-capacitor-bridge"
+        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     }
@@ -91,11 +89,9 @@ export async function runAutonomousCli(
   }
 
   if (command === "android-bridge") {
-    const { runAndroidBridgeCli } = (await import(
-      "@elizaos/plugin-capacitor-bridge"
-    )) as unknown as {
-      runAndroidBridgeCli: () => Promise<void>;
-    };
+    const { runAndroidBridgeCli } = await import(
+      "@elizaos/plugin-capacitor-bridge/android/bridge"
+    );
     await runAndroidBridgeCli();
     return;
   }

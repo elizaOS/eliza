@@ -41,7 +41,7 @@ const runs = [
       "vitest",
       "run",
       "--config",
-      "eliza/test/vitest/default.config.ts",
+      "eliza/packages/test/vitest/default.config.ts",
     ],
     vitest: true,
     reportFile: path.join(os.tmpdir(), "eliza-vitest-unit-report.json"),

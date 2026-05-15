@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import {
   CAPACITOR_PLUGIN_NAMES,
   NATIVE_PLUGINS_ROOT,
+  nativePluginDir,
 } from "../../app/scripts/capacitor-plugin-names.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 
@@ -67,19 +68,18 @@ function rmNodeModulesCaches() {
 function rmPluginDists() {
   const pluginsRoot = NATIVE_PLUGINS_ROOT;
   if (!existsSync(pluginsRoot)) return;
-  const relPlugins =
-    path.relative(root, pluginsRoot) || "eliza/packages/native-plugins";
   for (const name of CAPACITOR_PLUGIN_NAMES) {
-    rmPath(`${relPlugins}/${name}/dist`, path.join(pluginsRoot, name, "dist"));
+    const dir = nativePluginDir(name);
+    rmPath(path.relative(root, dir) + "/dist", path.join(dir, "dist"));
   }
   // Any extra plugin dirs (not in canonical list) still get dist removed
   try {
     for (const ent of readdirSync(pluginsRoot, { withFileTypes: true })) {
       if (!ent.isDirectory()) continue;
-      if (CAPACITOR_PLUGIN_NAMES.includes(ent.name)) continue;
+      if (!ent.name.startsWith("plugin-native-")) continue;
       const dist = path.join(pluginsRoot, ent.name, "dist");
       if (existsSync(dist)) {
-        rmPath(`${relPlugins}/${ent.name}/dist`, dist);
+        rmPath(`${path.relative(root, pluginsRoot)}/${ent.name}/dist`, dist);
       }
     }
   } catch {

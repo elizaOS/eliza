@@ -23,7 +23,7 @@
   ],
   "scripts": {
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
-    "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "clean": "node ../../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build"
   },
   "license": "MIT",

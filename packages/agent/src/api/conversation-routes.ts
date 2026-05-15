@@ -287,8 +287,12 @@ function createRequestDisconnectAbortTracker({
     registrations.push({ source, event, listener });
   };
 
+<<<<<<< HEAD
   const onClientGone = () =>
     abort(new Error(`${operation} client disconnected`));
+=======
+  const onClientGone = () => abort(new Error(`${operation} client disconnected`));
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
   const onResponseClose = () => {
     const ended = Boolean(
       (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
@@ -350,9 +354,14 @@ function createConversationStreamDisconnectTracker({
     : null;
 
   const responseEnded = () =>
+<<<<<<< HEAD
     Boolean(
       (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
     );
+=======
+    Boolean((res as http.ServerResponse & { writableEnded?: boolean })
+      .writableEnded);
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 
   const abort = (reason?: unknown) => {
     if (completed || aborted) return;
@@ -1199,13 +1208,19 @@ export async function handleConversationRoutes(
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
+          const role = m.entityId === agentId ? "assistant" : "user";
+          const rawText = formatConversationMessageText(
+            (m.content as { text?: string })?.text ?? "",
+            actionCallbackHistory,
+          );
+          const text =
+            role === "assistant"
+              ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
+              : rawText;
           return {
             id: m.id ?? "",
-            role: m.entityId === agentId ? "assistant" : "user",
-            text: formatConversationMessageText(
-              (m.content as { text?: string })?.text ?? "",
-              actionCallbackHistory,
-            ),
+            role,
+            text,
             timestamp: m.createdAt ?? 0,
             source: normalizedSource,
             actionName,
@@ -1583,12 +1598,16 @@ export async function handleConversationRoutes(
           onSnapshot: (text) => {
             if (!text) return;
             if (
+<<<<<<< HEAD
               !streamedText ||
+=======
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
               disconnectTracker.isAborted() ||
               disconnectTracker.checkConnectionClosed()
             ) {
               return;
             }
+<<<<<<< HEAD
             // Structured field extractors can briefly normalize whitespace or
             // closing punctuation while the same visible field is still
             // streaming. Do not shrink the user-visible token stream for
@@ -1600,6 +1619,8 @@ export async function handleConversationRoutes(
             ) {
               return;
             }
+=======
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
             streamedText = text;
             writeChatTokenSse(res, text, streamedText);
           },

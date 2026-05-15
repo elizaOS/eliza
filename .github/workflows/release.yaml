@@ -502,7 +502,7 @@ jobs:
         id: replace_workspace
         run: |
           echo "🔄 Replacing workspace:* references with actual versions..."
-          node scripts/replace-workspace-versions.js
+          node packages/scripts/replace-workspace-versions.js
           echo "✅ Workspace references replaced"
 
       # Publish to NPM (only after git operations succeed)
@@ -642,7 +642,7 @@ jobs:
         if: always() && steps.replace_workspace.outcome == 'success'
         run: |
           echo "🔄 Restoring workspace:* references..."
-          node scripts/restore-workspace-refs.js
+          node packages/scripts/restore-workspace-refs.js
           echo "✅ Workspace references restored"
 
       # Create GitHub Release for beta (not for production, as it already exists)

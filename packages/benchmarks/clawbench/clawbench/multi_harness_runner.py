@@ -40,7 +40,10 @@ import yaml
 # directly (``python multi_harness_runner.py``) without an editable install.
 _REPO_PKG_ROOT = Path(__file__).resolve().parent.parent
 if str(_REPO_PKG_ROOT) not in sys.path:
-    sys.path.insert(0, str(_REPO_PKG_ROOT))
+    # Append rather than prepend: this directory also contains the legacy
+    # ``eliza_adapter.py`` CLI script, which would shadow the shared
+    # ``eliza_adapter`` package used by the multi-harness path.
+    sys.path.append(str(_REPO_PKG_ROOT))
 
 from clawbench.scoring import format_score_summary, score_episode  # noqa: E402
 
@@ -122,6 +125,7 @@ def _build_agent_fn_hermes(
     fixtures: dict[str, Any],
     model_name: str,
 ) -> Any:
+    _prepend_adapter_package("hermes-adapter")
     from hermes_adapter.client import HermesClient
     from hermes_adapter.clawbench import build_clawbench_agent_fn
 
@@ -147,6 +151,7 @@ def _build_agent_fn_openclaw(
     fixtures: dict[str, Any],
     model_name: str,
 ) -> Any:
+    _prepend_adapter_package("openclaw-adapter")
     from openclaw_adapter.client import OpenClawClient
     from openclaw_adapter.clawbench import build_clawbench_agent_fn
 
@@ -174,6 +179,7 @@ def _build_agent_fn_eliza(
     fixtures: dict[str, Any],
     model_name: str,
 ) -> Any:
+    _prepend_adapter_package("eliza-adapter")
     from eliza_adapter.clawbench import build_clawbench_agent_fn
 
     return build_clawbench_agent_fn(
@@ -188,6 +194,31 @@ _HARNESS_BUILDERS = {
     "hermes": _build_agent_fn_hermes,
     "openclaw": _build_agent_fn_openclaw,
 }
+
+
+def _prepend_adapter_package(adapter_dir_name: str) -> None:
+    """Prefer sibling adapter packages over modules in the ClawBench cwd.
+
+    Registry runs execute this module with ``cwd=benchmarks/clawbench``. That
+    directory also contains a legacy ``eliza_adapter.py`` script, which can
+    shadow the real ``benchmarks/eliza-adapter/eliza_adapter`` package unless
+    the package directory is placed before the cwd on ``sys.path``.
+    """
+    adapter_path = CLAWBENCH_DIR.parent / adapter_dir_name
+    if not adapter_path.exists():
+        return
+    adapter_str = str(adapter_path)
+    sys.path[:] = [entry for entry in sys.path if entry != adapter_str]
+    sys.path.insert(0, adapter_str)
+    if adapter_dir_name == "eliza-adapter":
+        loaded = sys.modules.get("eliza_adapter")
+        loaded_file = getattr(loaded, "__file__", None)
+        if loaded_file:
+            try:
+                if Path(loaded_file).resolve() == (CLAWBENCH_DIR / "eliza_adapter.py").resolve():
+                    del sys.modules["eliza_adapter"]
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------

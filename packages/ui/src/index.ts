@@ -37,15 +37,24 @@ export * from "./api";
 // === Phase 3A: barrel-promoted from api/ios-local-agent-transport ===
 export * from "./api/ios-local-agent-transport";
 export * from "./app-shell-components";
+export * from "./avatar-runtime/index";
+export * from "./backgrounds/index";
+export * from "./companion/index";
+export * from "./components/onboarding/states/index";
+export type {
+  ElizaPluginViews,
+  PluginViewProps,
+  PluginViewRegistration,
+} from "./types/plugin-views";
 export * from "./app-shell-registry";
-export * from "./bridge";
+export * from "./bridge/index";
 export * from "./character-catalog";
-export * from "./chat";
+export * from "./chat/index";
 export type {
   DocumentImageCompressionPlatform,
   DocumentImageUploadFile,
 } from "./components";
-export * from "./components";
+export * from "./components/index";
 export {
   autoLabel,
   ENV_KEY_ACRONYMS,
@@ -58,10 +67,10 @@ export {
 } from "./components";
 export * from "./components/apps/overlay-app-api";
 export * from "./components/apps/overlay-app-registry";
-export * from "./components/composites";
-export * from "./components/composites/page-panel";
+export * from "./components/composites/index";
+export * from "./components/composites/page-panel/index";
 export * from "./components/pages/vector-browser-utils";
-export * from "./components/primitives";
+export * from "./components/primitives/index";
 export type {
   ActionConfirm,
   ActionDefinition,
@@ -119,7 +128,7 @@ export type {
   ValidationFunction,
   VisibilityOperator,
 } from "./config";
-export * from "./config";
+export * from "./config/index";
 export {
   appNameInterpolationVars,
   buildPluginConfigUiSpec,
@@ -152,9 +161,9 @@ export {
   toCapacitorAllowNavigation,
   toViteAllowedHosts,
   visibility,
-} from "./config";
-export * from "./content-packs";
-export * from "./desktop-runtime";
+} from "./config/index";
+export * from "./content-packs/index";
+// === Phase 5C: ./desktop-runtime moved to @elizaos/app-core/runtime/desktop ===
 export type {
   AppDocumentEventName,
   AppEmoteEventDetail,
@@ -167,7 +176,7 @@ export type {
   ElizaWindowEventName,
   NetworkStatusChangeDetail,
 } from "./events";
-export * from "./events";
+export * from "./events/index";
 export {
   AGENT_READY_EVENT,
   APP_EMOTE_EVENT,
@@ -192,33 +201,33 @@ export {
   TRAY_ACTION_EVENT,
   VOICE_CONFIG_UPDATED_EVENT,
   VRM_TELEPORT_COMPLETE_EVENT,
-} from "./events";
-export * from "./hooks";
-export * from "./i18n";
+} from "./events/index";
+export * from "./hooks/index";
+export * from "./i18n/index";
 export * from "./i18n/messages";
-export * from "./layouts";
+export * from "./layouts/index";
 export * from "./lib/floating-layers";
 export * from "./lib/utils";
-export * from "./navigation";
+export * from "./navigation/index";
 export {
   installOnboardingDeepLinkListener,
   routeOnboardingDeepLink,
 } from "./onboarding/deep-link-handler";
 export * from "./onboarding/mobile-runtime-mode";
 export * from "./onboarding/pre-seed-local-runtime";
-export * from "./onboarding-config";
-export * from "./platform";
-export * from "./providers";
+// === Phase 5C: ./onboarding-config moved to @elizaos/app-core/onboarding/onboarding-config ===
+export * from "./platform/index";
+export * from "./providers/index";
 export * from "./shell-params";
 export * from "./slots/task-coordinator-slots";
-export * from "./state";
+export * from "./state/index";
 export {
   AGENT_TRANSFER_MIN_PASSWORD_LENGTH,
   computeStreamingDelta,
   mergeStreamingText,
-} from "./state";
-export * from "./themes/apply-theme";
-export * from "./types";
+} from "./state/index";
+export * from "./themes/index.js";
+export * from "./types/index";
 export type {
   BrowserTabKit,
   BrowserTabKitCursorPoint,

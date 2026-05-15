@@ -2,7 +2,7 @@
 // chains that survive in transitive dependencies even though the agent
 // runtime never renders any UI on-device.
 //
-// Some workspace plugins (for example `@elizaos/app-lifeops`) re-export
+// Some workspace plugins (for example `@elizaos/plugin-lifeops`) re-export
 // React component subtrees from their `src/index.ts` for the host app
 // to consume. The agent only loads the runtime plugin object, but
 // Bun.build still has to resolve every import in the dependency closure.

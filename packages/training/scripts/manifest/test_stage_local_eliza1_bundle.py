@@ -76,7 +76,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
             bundle_dir=bundle,
             text_source=text_source,
             drafter_source=drafter_source,
-            context="32k",
+            context="128k",
             all_contexts=False,
             version="0.0.0-local.test",
             generated_at="2026-05-11T12:00:00Z",
@@ -89,7 +89,7 @@ def test_stage_local_bundle_writes_non_publishable_layout(
     assert report["manifestValidation"]["localNonPublishableOk"] is True
     assert report["manifestValidation"]["publishReadyOk"] is False
     assert report["checksumValidation"]["ok"] is True
-    assert (bundle / "text" / "eliza-1-2b-32k.gguf").is_file()
+    assert (bundle / "text" / "eliza-1-2b-128k.gguf").is_file()
     assert (bundle / "dflash" / "drafter-2b.gguf").is_file()
     assert (bundle / "dflash" / "target-meta.json").is_file()
     assert (bundle / "vision").is_dir()

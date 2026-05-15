@@ -31,11 +31,13 @@ import {
 	stringToUuid,
 	type UUID,
 } from "@elizaos/core";
+import { DEFAULT_ACCOUNT_ID, normalizeAccountId } from "./accounts";
 
 const execFileAsync = promisify(execFile);
 
 export const DISCORD_LOCAL_PLUGIN_NAME = "@elizaos/plugin-discord-local";
 export const DISCORD_LOCAL_SERVICE_NAME = "discord-local";
+export const DISCORD_LOCAL_ACCOUNT_ID = DEFAULT_ACCOUNT_ID;
 const DISCORD_OAUTH_TOKEN_URL = "https://discord.com/api/v10/oauth2/token";
 const DISCORD_LOCAL_DEFAULT_SCOPES = [
 	"rpc",
@@ -64,10 +66,6 @@ type DiscordLocalSession = {
 	expiresAt?: number;
 	scopes: string[];
 };
-
-// TODO(plugin-discord multi-account handoff): thread accountId through the
-// browser/CDP auth partition before enabling multiple Discord local bridge
-// accounts. This stream only adds bot-token account routing.
 
 type DiscordLocalUser = {
 	id: string;
@@ -258,6 +256,16 @@ function getRegisteredSendHandlers(
 	return sendHandlers instanceof Map ? sendHandlers : null;
 }
 
+function accountIdFromRecord(value: unknown): string | undefined {
+	if (!value || typeof value !== "object") {
+		return undefined;
+	}
+	const accountId = (value as { accountId?: unknown }).accountId;
+	return typeof accountId === "string" && accountId.trim()
+		? normalizeAccountId(accountId)
+		: undefined;
+}
+
 function contentTypeForMime(
 	mimeType: string | undefined,
 ): ContentType | undefined {
@@ -403,6 +411,12 @@ export class DiscordLocalService extends Service {
 	capabilityDescription =
 		"The agent can read Discord notifications and channel messages from the local Discord desktop app and send replies through macOS UI automation.";
 
+	/**
+	 * The local RPC bridge speaks for one signed-in Discord desktop session.
+	 * Multi-account local sessions need separate auth/session partitioning
+	 * before this can safely vary per request.
+	 */
+	public readonly accountId = DISCORD_LOCAL_ACCOUNT_ID;
 	private readonly sessionPath = resolveSessionPath();
 	private readonly pendingRequests = new Map<string, PendingRpcRequest>();
 	private readonly channelCache = new Map<string, DiscordLocalChannel>();
@@ -448,6 +462,13 @@ export class DiscordLocalService extends Service {
 					return;
 				}
 
+				const targetAccountId = accountIdFromRecord(target);
+				if (targetAccountId && targetAccountId !== service.accountId) {
+					throw new Error(
+						`Discord local connector cannot send for account ${targetAccountId}; it is bound to account ${service.accountId}.`,
+					);
+				}
+
 				const room =
 					target.roomId && typeof runtime.getRoom === "function"
 						? await runtime.getRoom(target.roomId)
@@ -484,6 +505,7 @@ export class DiscordLocalService extends Service {
 				memory.createdAt = Date.now();
 				memory.metadata = {
 					...(memory.metadata ?? {}),
+					accountId: service.accountId,
 					discordChannelId: channelId,
 					...(guildId ? { discordServerId: guildId } : {}),
 				} as MemoryMetadata;
@@ -525,6 +547,7 @@ export class DiscordLocalService extends Service {
 			available: Boolean(this.connectorConfig),
 			connected: this.connected,
 			authenticated: this.authenticated,
+			accountId: this.accountId,
 			currentUser: this.currentUser,
 			subscribedChannelIds: [...this.subscribedChannelIds],
 			configuredChannelIds: this.connectorConfig?.messageChannelIds ?? [],
@@ -1145,6 +1168,7 @@ export class DiscordLocalService extends Service {
 				`discord-local-server:${serverKey}`,
 			) as UUID,
 			metadata: {
+				accountId: this.accountId,
 				discordChannelId: channelId,
 				...(guildId ? { discordServerId: guildId } : {}),
 			},
@@ -1204,6 +1228,7 @@ export class DiscordLocalService extends Service {
 			entityUserName: message.author?.username ?? undefined,
 			entityAvatarUrl: buildDiscordAvatarUrl(message.author),
 			fromId: message.author?.id ?? undefined,
+			accountId: this.accountId,
 			discordChannelId: channelId,
 			discordMessageId: message.id,
 			...(guildId ? { discordServerId: guildId } : {}),

@@ -248,10 +248,10 @@
         "scripts/coverage-policy-drift.test.ts",
         "package.json",
         "vitest.config.ts",
-        "eliza/test/vitest/default.config.ts",
-        "eliza/test/vitest/unit.config.ts",
-        "eliza/test/vitest/e2e.config.ts",
-        "eliza/test/vitest/*.ts"
+        "eliza/packages/test/vitest/default.config.ts",
+        "eliza/packages/test/vitest/unit.config.ts",
+        "eliza/packages/test/vitest/e2e.config.ts",
+        "eliza/packages/test/vitest/*.ts"
       ],
       "workflowSuites": {
         "pr": ["vitest-real"],
@@ -266,8 +266,8 @@
         "test/**",
         "eliza/plugins/app-*/test/**",
         "eliza/packages/app-core/test/**",
-        "eliza/test/vitest/integration.config.ts",
-        "eliza/test/vitest/e2e.config.ts"
+        "eliza/packages/test/vitest/integration.config.ts",
+        "eliza/packages/test/vitest/e2e.config.ts"
       ],
       "workflowSuites": {
         "pr": ["vitest-real", "validation-e2e"],

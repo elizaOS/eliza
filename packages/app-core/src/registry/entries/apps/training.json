@@ -23,7 +23,11 @@
     "type": "server-launch",
     "capabilities": ["training", "trajectories"],
     "routePlugin": {
+<<<<<<< HEAD
       "specifier": "@elizaos/plugin-training",
+=======
+      "specifier": "@elizaos/app-training/setup-routes",
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
       "exportName": "trainingPlugin"
     }
   }

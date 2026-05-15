@@ -43,7 +43,7 @@ env:
   # Live-test keys. Suites gated via describeLive() / requiredEnv skip cleanly
   # with a yellow warning when a key is missing — the workflow stays green.
   # Cerebras is the universal default LLM (gpt-oss-120b); the OPENAI_* aliases
-  # are auto-applied by scripts/run-all-tests.mjs when CEREBRAS_API_KEY is set.
+  # are auto-applied by packages/scripts/run-all-tests.mjs when CEREBRAS_API_KEY is set.
   CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
   OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
   ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
@@ -88,11 +88,6 @@ jobs:
 
       - name: Views system tests
         run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts
-
-      - name: Audit plugin dispose hooks
-        # Non-blocking: warns about missing dispose hooks but doesn't fail CI.
-        # Remove `|| true` once all plugins have dispose hooks.
-        run: node scripts/audit-plugin-dispose.mjs || true
 
       - name: Run server tests
         run: bun run test:server
@@ -268,7 +263,7 @@ jobs:
           set -o pipefail
           log_file="$(mktemp)"
 
-          if bun run --cwd cloud/packages/sdk test:e2e 2>&1 | tee "$log_file"; then
+          if bun run --cwd packages/cloud-sdk test:e2e 2>&1 | tee "$log_file"; then
             exit 0
           fi
 

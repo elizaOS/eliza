@@ -17,7 +17,7 @@ const liveTestPath = path.join(
 );
 const vitestConfigPath = path.join(
   repoRoot,
-  "eliza/test/vitest/live-e2e.config.ts",
+  "eliza/packages/test/vitest/live-e2e.config.ts",
 );
 const runtimePackageBuildPrerequisites = [
   {
@@ -230,7 +230,7 @@ const result = spawnSync(
     "vitest",
     "run",
     "--config",
-    "eliza/test/vitest/live-e2e.config.ts",
+    "eliza/packages/test/vitest/live-e2e.config.ts",
     "eliza/packages/app-core/test/live-agent/plugin-lifecycle.live.e2e.test.ts",
   ],
   {

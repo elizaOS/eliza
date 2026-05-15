@@ -85,7 +85,6 @@ Eliza-1 bundles (Qwen3.5 / 3.6 base):
 | 27B | 32k | QJL+Polar | 32 768 × 62 KiB = **2.0 GiB** |
 | 27B | 128k | QJL+Polar | 131 072 × 62 KiB = **8.0 GiB** |
 | 27B | 256k | QJL+Polar | 262 144 × 62 KiB = **16.0 GiB** |
-| 27B | 1M | QJL+Polar | 1 048 576 × 62 KiB = **64.0 GiB** |
 
 ### Parallel slot derivation
 
@@ -175,7 +174,7 @@ Used by the voice optimistic-rollback path. Mid-prefill snapshots cost
 |---|---|---|
 | 0.8B / 2B | 4 | 4 096 |
 | 4B / 9B | 8 | 8 192 |
-| 27B (incl. 256k / 1m) | 16 | 8 192 |
+| 27B (incl. 256k) | 16 | 8 192 |
 
 ### DFlash draft range
 
@@ -209,10 +208,9 @@ accepted drafts; lower values raise rollback waste.
 - **flash-attn-3** — Hopper only (sm_90). 4090 / 5090 use flash-attn-2.
 - **24 GiB cards at 27B + ≥64k ctx** — fits only with QJL+Polar AND
   single slot AND `--mlock`. Beyond 64k, opt-in `kvSpillToCpu=true`.
-- **H200 1M @ 2 parallel** — radix cache helps when sessions share a
-  long system prefix; otherwise the second slot will OOM on a fresh
-  conversation. Production deployments should plan for one full-context
-  session per card.
+- **H200 256k @ 6 parallel** — radix cache helps when sessions share a
+  long system prefix; otherwise fresh conversations should be scheduled
+  conservatively to avoid KV pressure.
 
 ## Override mechanism
 

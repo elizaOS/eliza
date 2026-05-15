@@ -160,8 +160,10 @@ export async function handleImageDescription(
       throw new Error("ElizaOS Cloud API did not return a response");
     }
 
-    if (!response.ok) {
-      const status = response.status;
+    const finalResponse = response;
+
+    if (!finalResponse.ok) {
+      const status = finalResponse.status;
       if (status === 402) {
         throw new Error(
           "Eliza Cloud credits exhausted — top up at https://www.elizacloud.ai/dashboard/settings?tab=billing"
@@ -187,7 +189,7 @@ export async function handleImageDescription(
       };
     };
 
-    const typedResult = (await response.json()) as OpenAIResponseType;
+    const typedResult = (await finalResponse.json()) as OpenAIResponseType;
     const content = typedResult.choices?.[0]?.message?.content;
 
     if (typedResult.usage) {

@@ -1,12 +1,10 @@
-// TODO(native): Swift / Kotlin implementation pending — this file is the
-// TS-side facade for the eventual `CapacitorQuickJs` Capacitor plugin.
-// Android is the primary target: the Kotlin plugin must spawn a service with
-// `android:isolatedProcess="true"` so the QuickJS interpreter cannot escape
-// into the host process. iOS uses the same plugin as a fallback when JSC is
-// unavailable. Both implementations must implement the methods declared on
-// `CapacitorQuickJsPlugin` below.
+// Native boundary contract for the `CapacitorQuickJs` Capacitor plugin.
+// Android is the primary target: the Kotlin plugin must run QuickJS in a
+// service with `android:isolatedProcess="true"` so interpreter faults and
+// untrusted code stay outside the host process. iOS may register the same
+// plugin only as the fallback runtime when JavaScriptCore is unavailable.
 
-import { registerPlugin } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 
 import {
   type JsValue as AgentJsValue,
@@ -74,6 +72,28 @@ export const CapacitorQuickJs =
 
 /* ── Bridge adapter registration ───────────────────────────────────────── */
 
+interface CapacitorHost {
+  isNativePlatform?: () => boolean;
+  getPlatform?: () => string;
+  isPluginAvailable?: (name: string) => boolean;
+}
+
+function getCapacitorHost(): CapacitorHost {
+  return (
+    (globalThis as { Capacitor?: CapacitorHost }).Capacitor ??
+    (Capacitor as CapacitorHost)
+  );
+}
+
+function isQuickJsPluginAvailable(platform: "android" | "ios"): boolean {
+  const cap = getCapacitorHost();
+  return (
+    cap.isNativePlatform?.() === true &&
+    cap.getPlatform?.() === platform &&
+    cap.isPluginAvailable?.("CapacitorQuickJs") === true
+  );
+}
+
 class CapacitorQuickJsBridge implements JsRuntimeBridge {
   constructor(
     private readonly plugin: CapacitorQuickJsPlugin,
@@ -105,15 +125,7 @@ class CapacitorQuickJsBridge implements JsRuntimeBridge {
 registerJsRuntimeFactory({
   kind: "quickjs-android",
   async create() {
-    const cap = (
-      globalThis as {
-        Capacitor?: {
-          isNativePlatform?: () => boolean;
-          getPlatform?: () => string;
-        };
-      }
-    ).Capacitor;
-    if (!cap?.isNativePlatform?.() || cap.getPlatform?.() !== "android") {
+    if (!isQuickJsPluginAvailable("android")) {
       return null;
     }
     return new CapacitorQuickJsBridge(CapacitorQuickJs, "quickjs-android");
@@ -123,15 +135,7 @@ registerJsRuntimeFactory({
 registerJsRuntimeFactory({
   kind: "quickjs-ios-fallback",
   async create() {
-    const cap = (
-      globalThis as {
-        Capacitor?: {
-          isNativePlatform?: () => boolean;
-          getPlatform?: () => string;
-        };
-      }
-    ).Capacitor;
-    if (!cap?.isNativePlatform?.() || cap.getPlatform?.() !== "ios") {
+    if (!isQuickJsPluginAvailable("ios")) {
       return null;
     }
     return new CapacitorQuickJsBridge(CapacitorQuickJs, "quickjs-ios-fallback");

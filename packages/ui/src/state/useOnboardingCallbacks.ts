@@ -73,7 +73,7 @@ import {
 } from "../onboarding/flow";
 import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-runtime-mode";
 import { isElizaCloudOnboardingTarget } from "../onboarding/server-target";
-import { buildOnboardingRuntimeConfig } from "../onboarding-config";
+import { buildOnboardingRuntimeConfig } from "@elizaos/app-core";
 import { PREMADE_VOICES } from "../voice/types";
 import {
   clearPersistedActiveServer,

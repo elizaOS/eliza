@@ -13,7 +13,7 @@
  * - Starts with an imperative verb, not a stative one (`Helps`, `Allows`,
  *   `It`, `This`, `Should`).
  *
- * Runs as ad-hoc tooling — see `scripts/lint-description-compressed.mjs`. The
+ * Runs as ad-hoc tooling — see `packages/scripts/lint-description-compressed.mjs`. The
  * helper is intentionally pure: caller decides exit-code semantics.
  */
 

@@ -429,12 +429,18 @@ _SAMPLE_ATTRIBUTES: dict[str, dict[str, Any]] = {
 }
 
 # items_human_ins.json schema: per-ASIN list of instruction dicts
+_SAMPLE_INSTRUCTION_OPTIONS: dict[str, dict[str, str]] = {
+    "B000HEADPH": {"color": "black"},
+    "B000WATER1": {"size": "750ml", "color": "silver"},
+    "B000GREENT": {"caffeine": "decaf"},
+}
+
 _SAMPLE_HUMAN_INSTRUCTIONS: dict[str, list[dict[str, Any]]] = {
     asin: [
         {
             "instruction": v["instruction"],
             "instruction_attributes": v["instruction_attributes"],
-            "instruction_options": {},
+            "instruction_options": _SAMPLE_INSTRUCTION_OPTIONS.get(asin, {}),
         }
     ]
     for asin, v in _SAMPLE_ATTRIBUTES.items()

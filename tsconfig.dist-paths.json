@@ -363,7 +363,7 @@
         "./plugins/plugin-bluebubbles/dist/index.d.ts"
       ],
       "@elizaos/plugin-training": ["./plugins/plugin-training/dist/index.d.ts"],
-      "@elizaos/cloud-sdk": ["./cloud/packages/sdk/dist/index.d.ts"]
+      "@elizaos/cloud-sdk": ["./packages/cloud-sdk/dist/index.d.ts"]
     }
   },
   "include": [
@@ -372,7 +372,8 @@
     "plugins/*/*.ts",
     "plugins/*/src/**/*",
     "plugins/*/typescript/**/*.ts",
-    "cloud/packages/*/src/**/*"
+    "packages/cloud-*/src/**/*",
+    "packages/cloud-services/*/src/**/*"
   ],
   "exclude": [
     "**/node_modules/**",

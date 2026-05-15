@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,8 @@ def _seed_run(
     agent: str,
     run_id: str,
     started_at: str,
-    score: float,
+    score: float | None,
+    status: str = "succeeded",
     extra_config: dict[str, Any] | None = None,
     metrics: dict[str, Any] | None = None,
 ) -> None:
@@ -49,7 +51,7 @@ def _seed_run(
     update_run_result(
         conn,
         run_id=run_id,
-        status="succeeded",
+        status=status,
         ended_at=started_at,
         duration_seconds=1.0,
         score=score,
@@ -227,3 +229,158 @@ def test_calibration_report_treats_static_incompatibility_as_unsupported(
     assert report["matrix_summary"]["required_real_cells"] == 2
     assert report["matrix_summary"]["unsupported_real_cells"] == 1
     assert report["matrix_summary"]["complete_benchmarks"] == 1
+
+
+def test_calibration_report_repairs_succeeded_nonzero_return_code(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "benchmarks" / "benchmark_results" / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["woobench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="woobench",
+        agent="eliza",
+        run_id="run_nonzero",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.75,
+        metrics={"returncode": 9},
+    )
+    conn.close()
+
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"woobench"},
+        agent_compatibility={"woobench": ("eliza",)},
+        repair=True,
+    )
+    row = report["rows"][0]
+
+    assert row["real_cells"]["eliza"]["state"] == "failed"
+    assert row["failed_required_real_harnesses"] == ["eliza"]
+    assert row["missing_required_real_harnesses"] == []
+    assert row["real_statuses"]["hermes"] == "unsupported"
+    assert row["real_statuses"]["openclaw"] == "unsupported"
+    assert report["matrix_summary"]["failed_required_real_cells"] == 1
+    assert report["matrix_summary"]["missing_required_real_cells"] == 0
+
+
+def test_calibration_report_reads_published_latest_when_sqlite_is_partial(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "benchmarks" / "benchmark_results" / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_bfcl_eliza",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.5,
+    )
+    conn.close()
+
+    latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    latest_dir.mkdir(parents=True)
+    (latest_dir / "webshop__eliza.json").write_text(
+        json.dumps(
+            {
+                "benchmark_id": "webshop",
+                "benchmark_directory": "webshop",
+                "agent": "eliza",
+                "status": "succeeded",
+                "score": 1.0,
+                "run_id": "run_webshop_published",
+                "run_group_id": "rg_published",
+                "signature": "sig-webshop",
+                "comparison_signature": "cmp-webshop",
+                "updated_at": "2026-05-12T01:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"bfcl", "webshop"},
+        agent_compatibility={"bfcl": ("eliza",), "webshop": ("eliza",)},
+    )
+    rows = {row["benchmark_id"]: row for row in report["rows"]}
+
+    assert rows["bfcl"]["real_cells"]["eliza"]["run_id"] == "run_bfcl_eliza"
+    assert rows["webshop"]["real_cells"]["eliza"]["state"] == "succeeded"
+    assert rows["webshop"]["real_cells"]["eliza"]["run_id"] == "run_webshop_published"
+    assert report["matrix_summary"]["succeeded_required_real_cells"] == 2
+    assert report["matrix_summary"]["missing_required_real_cells"] == 0
+
+
+def test_calibration_report_prefers_published_latest_over_failed_db_attempt(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "benchmarks" / "benchmark_results" / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_failed_newer",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="failed",
+        score=None,
+    )
+    conn.close()
+
+    latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    latest_dir.mkdir(parents=True)
+    (latest_dir / "bfcl__eliza.json").write_text(
+        json.dumps(
+            {
+                "benchmark_id": "bfcl",
+                "benchmark_directory": "bfcl",
+                "agent": "eliza",
+                "status": "succeeded",
+                "score": 0.5,
+                "run_id": "run_published_success",
+                "run_group_id": "rg_published",
+                "signature": "sig-bfcl",
+                "comparison_signature": "cmp-bfcl",
+                "updated_at": "2026-05-12T01:00:00+00:00",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"bfcl"},
+        agent_compatibility={"bfcl": ("eliza",)},
+    )
+    cell = report["rows"][0]["real_cells"]["eliza"]
+
+    assert cell["state"] == "succeeded"
+    assert cell["run_id"] == "run_published_success"
+    assert report["matrix_summary"]["succeeded_required_real_cells"] == 1
+    assert report["matrix_summary"]["failed_required_real_cells"] == 0

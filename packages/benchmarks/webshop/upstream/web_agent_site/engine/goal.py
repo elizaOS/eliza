@@ -12,6 +12,15 @@ from web_agent_site.engine.normalize import normalize_color
 nlp = spacy.load("en_core_web_sm")
 
 PRICE_RANGE = [10.0 * i for i in range(1, 100)]
+NOUN_POS = {"PNOUN", "NOUN", "PROPN", ""}
+
+
+def _noun_tokens(doc):
+    return [
+        t.text.lower()
+        for t in doc
+        if getattr(t, "pos_", "") in NOUN_POS
+    ]
 
 def get_goals(all_products, product_prices, human_goals=True):
     if human_goals:
@@ -143,8 +152,8 @@ def get_type_reward(purchased_product, goal):
     purchased_type_parse = nlp(purchased_type)
     desired_type_parse = nlp(desired_type)
 
-    purchased_type_parse = [t.text.lower() for t in purchased_type_parse if t.pos_ in ('PNOUN', 'NOUN', 'PROPN')]
-    desired_type_parse = [t.text.lower() for t in desired_type_parse if t.pos_ in ('PNOUN', 'NOUN', 'PROPN')]
+    purchased_type_parse = _noun_tokens(purchased_type_parse)
+    desired_type_parse = _noun_tokens(desired_type_parse)
 
     n_intersect_type = len(
         set(purchased_type_parse) & set(desired_type_parse)
@@ -235,11 +244,14 @@ def get_reward(purchased_product, goal, price, options, **kwargs):
 
     r_att, num_attr_matches = get_attribute_reward(purchased_product, goal)
 
-    r_option, num_option_matches = get_option_reward(
-        list(options.values()),
-        goal['goal_options'].items()
+    goal_option_values = (
+        list(goal['goal_options'].values())
         if isinstance(goal['goal_options'], dict)
         else goal['goal_options']
+    )
+    r_option, num_option_matches = get_option_reward(
+        list(options.values()),
+        goal_option_values,
     )
 
     total_reward = (

@@ -1,8 +1,0 @@
-#!/usr/bin/env bash
-# Shim that forwards `opencode` to the vendored elizaOS/opencode source tree.
-# Used by the orchestrator->opencode benchmark wiring so we get the PR #26763
-# Cerebras reasoning fix without needing a compiled binary.
-SHIM_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-OC_DIR="$SHIM_DIR/../vendor/opencode/packages/opencode"
-export PYTHON="${PYTHON:-$SHIM_DIR/../.venv-bench/Scripts/python.exe}"
-exec bun run --cwd "$OC_DIR" --conditions=browser src/index.ts "$@"

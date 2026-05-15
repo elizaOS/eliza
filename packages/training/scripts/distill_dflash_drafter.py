@@ -79,6 +79,15 @@ GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
 
 ACTIVE_TIERS = ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
 
+# DFlash training can produce a 0_8b drafter, but bundle manifests do not
+# require one for the 0_8b target tier. Keep manifest-required policy in the
+# manifest layer; this script is the training support matrix.
+TRAINING_SUPPORTED_TIERS = ACTIVE_TIERS
+
+# Use this only for synthetic smoke fixtures that cannot inspect a tokenizer.
+# Real training and validation derive vocab size from tokenizer/GGUF metadata.
+QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE = 248320
+
 # Recommended student base per active tier. Every active Eliza-1 tier is on the
 # Qwen3.5 tokenizer family; keep this base aligned with model_registry.py.
 DEFAULT_STUDENT_BASE: dict[str, str] = {
@@ -268,8 +277,8 @@ def _git_commit() -> str | None:
 
 def _find_convert_script() -> Path | None:
     """Locate the fork's convert_hf_to_gguf.py. Order: $ELIZA_LLAMACPP_DIR /
-    $LLAMA_CPP_DIR → the in-repo fork submodule (packages/inference/llama.cpp,
-    the single canonical llama.cpp checkout) → the standalone clone at
+    $LLAMA_CPP_DIR → the plugin-local-inference native llama.cpp checkout →
+    legacy packages/inference/llama.cpp fallback → the standalone clone at
     ~/.cache/eliza-dflash/eliza-llama-cpp."""
     candidates: list[Path] = []
     for var in ("ELIZA_LLAMACPP_DIR", "LLAMA_CPP_DIR"):
@@ -277,9 +286,14 @@ def _find_convert_script() -> Path | None:
         if env:
             candidates.append(Path(env) / "convert_hf_to_gguf.py")
     for p in Path(__file__).resolve().parents:
-        cand = p / "packages" / "inference" / "llama.cpp"
-        if cand.is_dir():
-            candidates.append(cand / "convert_hf_to_gguf.py")
+        plugin_cand = p / "plugins" / "plugin-local-inference" / "native" / "llama.cpp"
+        if plugin_cand.is_dir():
+            candidates.append(plugin_cand / "convert_hf_to_gguf.py")
+            break
+    for p in Path(__file__).resolve().parents:
+        legacy_cand = p / "packages" / "inference" / "llama.cpp"
+        if legacy_cand.is_dir():
+            candidates.append(legacy_cand / "convert_hf_to_gguf.py")
             break
     candidates.append(
         Path.home() / ".cache" / "eliza-dflash" / "eliza-llama-cpp" / "convert_hf_to_gguf.py"
@@ -699,7 +713,7 @@ def _run_distillation(args: argparse.Namespace) -> int:
     n_student_params = sum(p.numel() for p in student.parameters())
     student.save_pretrained(hf_out)
     # Always persist the *target's* tokenizer with the student so the GGUF
-    # carries the exact 248320-vocab Qwen3.5 tokenizer the targets verify with.
+    # carries the exact Qwen3.5 tokenizer the targets verify with.
     tgt_tok.save_pretrained(hf_out)
     # Make the saved checkpoint convertible by the fork's convert_hf_to_gguf.py.
     # The fork registers `Qwen3_5ForConditionalGeneration` (multimodal wrapper)

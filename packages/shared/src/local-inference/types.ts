@@ -348,7 +348,7 @@ export interface CatalogModel {
   /**
    * Optional path prefix inside `hfRepo`. Eliza-1 publishes every tier under
    * one Hugging Face model repo, so app downloads resolve bundle-relative
-   * paths like `text/eliza-1-2b-32k.gguf` under `bundles/2b/`.
+   * paths like `text/eliza-1-2b-128k.gguf` under `bundles/2b/`.
    */
   hfPathPrefix?: string;
   /** Exact GGUF filename in the repo. */

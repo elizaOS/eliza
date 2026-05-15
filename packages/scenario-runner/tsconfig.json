@@ -15,6 +15,38 @@
     "types": ["node"],
     "paths": {
       "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/contracts": ["../contracts/src/index.ts"],
+      "@elizaos/vault": ["../vault/src/index.ts"],
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/plugin-browser": [
+        "../../plugins/plugin-browser/dist/index.d.ts"
+      ],
+      "@elizaos/plugin-elizacloud": [
+        "../../plugins/plugin-elizacloud/dist/node/index.d.ts"
+      ],
+      "@elizaos/plugin-agent-skills": [
+        "../../plugins/plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-orchestrator": [
+        "../../plugins/plugin-agent-orchestrator/src/index.ts"
+      ],
+      "@elizaos/plugin-app-manager": [
+        "../../plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
+      "@elizaos/plugin-local-inference": [
+        "../../plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-telegram": [
+        "../../plugins/plugin-telegram/src/index.ts"
+      ],
+      "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-streaming": [
+        "../../plugins/plugin-streaming/dist/index.d.ts"
+      ],
       "@elizaos/capacitor-appblocker": [
         "../native-plugins/appblocker/src/index.ts"
       ],

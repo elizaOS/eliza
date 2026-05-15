@@ -10,6 +10,8 @@ import {
 import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
+const DFLASH_TIERS = new Set<Eliza1Tier>(["2b", "4b", "9b", "27b", "27b-256k"]);
+const VISION_TIERS = new Set<Eliza1Tier>(["4b", "9b", "27b", "27b-256k"]);
 
 function passingBackends() {
 	return {
@@ -29,8 +31,17 @@ function passingBackends() {
 	};
 }
 
+function textFileForTier(tier: Eliza1Tier): { path: string; ctx: number } {
+	if (tier === "27b-256k") {
+		return { path: "text/eliza-1-27b-256k.gguf", ctx: 262144 };
+	}
+	return { path: `text/eliza-1-${tier}-128k.gguf`, ctx: 131072 };
+}
+
 function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
-	return {
+	const hasDflash = DFLASH_TIERS.has(tier);
+	const hasVision = VISION_TIERS.has(tier);
+	const manifest: Eliza1Manifest = {
 		id: `eliza-1-${tier}`,
 		tier,
 		version: "1.0.0",
@@ -38,19 +49,15 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 		lineage: {
 			text: { base: "eliza-1-text-backbone", license: "apache-2.0" },
 			voice: { base: "eliza-1-voice-backbone", license: "apache-2.0" },
-			drafter: { base: "eliza-1-drafter", license: "apache-2.0" },
 			asr: { base: "eliza-1-asr", license: "apache-2.0" },
-			vision: { base: "eliza-1-vision", license: "apache-2.0" },
 			vad: { base: "eliza-1-vad", license: "apache-2.0" },
 		},
 		files: {
-			text: [
-				{ path: `text/eliza-1-${tier}-64k.gguf`, ctx: 65536, sha256: SHA },
-			],
+			text: [{ ...textFileForTier(tier), sha256: SHA }],
 			voice: [{ path: "tts/omnivoice-base-Q4_K_M.gguf", sha256: SHA }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA }],
-			vision: [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }],
-			dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
+			vision: [],
+			dflash: [],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
 			vad: [{ path: "vad/silero-vad-v5.1.2.ggml.bin", sha256: SHA }],
 		},
@@ -70,13 +77,36 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 				falseBargeInRate: 0.01,
 				passed: true,
 			},
-			dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
 			e2eLoopOk: true,
 			thirtyTurnOk: true,
 		},
 		ramBudgetMb: { min: 7000, recommended: 9500 },
 		defaultEligible: true,
 	};
+	if (hasDflash) {
+		manifest.lineage.drafter = {
+			base: "eliza-1-drafter",
+			license: "apache-2.0",
+		};
+		manifest.files.dflash = [
+			{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA },
+		];
+		manifest.evals.dflash = {
+			acceptanceRate: 0.72,
+			speedup: 1.8,
+			passed: true,
+		};
+	}
+	if (hasVision) {
+		manifest.lineage.vision = {
+			base: "eliza-1-vision",
+			license: "apache-2.0",
+		};
+		manifest.files.vision = [
+			{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA },
+		];
+	}
+	return manifest;
 }
 
 describe("Eliza-1 manifest schema constants", () => {
@@ -97,6 +127,9 @@ describe("Eliza-1 manifest schema constants", () => {
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["0_8b", "2b", "4b"]),
 		);
+		for (const tier of ELIZA_1_TIERS) {
+			expect(REQUIRED_KERNELS_BY_TIER[tier]).toContain("turbo3_tcq");
+		}
 	});
 });
 
@@ -150,12 +183,76 @@ describe("validateManifest — valid input", () => {
 		expect(result.ok).toBe(true);
 	});
 
+	it("accepts optional EAGLE3 kernel and eval metadata without requiring it by tier", () => {
+		const m = baseManifest("0_8b");
+		m.kernels.eagle3 = {
+			enabled: true,
+			capability: "eagle3",
+			specType: "draft-eagle3",
+			model: "RedHatAI/Qwen3.5-0.8B-EAGLE3-head",
+			maxDraftTokens: 3,
+		};
+		m.evals.eagle3 = {
+			acceptanceRate: 0.64,
+			speedup: 1.35,
+			passed: true,
+		};
+
+		const result = validateManifest(m);
+		expect([...REQUIRED_KERNELS_BY_TIER["0_8b"]] as string[]).not.toContain(
+			"eagle3",
+		);
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.manifest.kernels.eagle3?.capability).toBe("eagle3");
+			expect(result.manifest.evals.eagle3?.speedup).toBe(1.35);
+		}
+	});
+
+	it("accepts optional EAGLE3 failure metadata without affecting default eligibility", () => {
+		const m = baseManifest("9b");
+		m.kernels.eagle3 = {
+			enabled: false,
+			failure: "not available in this build",
+		};
+		m.evals.eagle3 = {
+			acceptanceRate: null,
+			speedup: null,
+			passed: false,
+			failure: "not run on EAGLE3-capable runtime",
+		};
+
+		const result = validateManifest(m);
+		expect(result.ok).toBe(true);
+	});
+
 	it("accepts every tier with that tier's required kernel set", () => {
 		for (const tier of ELIZA_1_TIERS) {
 			const m = baseManifest(tier);
 			const result = validateManifest(m);
 			const detail = result.ok ? "" : ` errors=${result.errors.join(", ")}`;
 			expect(result.ok, `${tier} should validate.${detail}`).toBe(true);
+		}
+	});
+
+	it("represents vision only on 4B, 9B, and 27B-class tiers", () => {
+		for (const tier of ["0_8b", "2b"] as const) {
+			const m = baseManifest(tier);
+			expect(m.files.vision).toEqual([]);
+			expect(m.lineage.vision).toBeUndefined();
+			expect(validateManifest(m).ok).toBe(true);
+		}
+
+		for (const tier of ["4b", "9b", "27b", "27b-256k"] as const) {
+			const m = baseManifest(tier);
+			expect(m.files.vision).toEqual([
+				{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA },
+			]);
+			expect(m.lineage.vision).toEqual({
+				base: "eliza-1-vision",
+				license: "apache-2.0",
+			});
+			expect(validateManifest(m).ok).toBe(true);
 		}
 	});
 });
@@ -174,6 +271,37 @@ describe("validateManifest — schema-level rejections", () => {
 			median: 16,
 			falseBargeInRate: 1.2,
 			passed: true,
+		};
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+	});
+
+	it("rejects out-of-range EAGLE3 eval metrics", () => {
+		const m = baseManifest() as unknown as Record<string, unknown>;
+		(m.evals as Record<string, unknown>).eagle3 = {
+			acceptanceRate: 1.2,
+			speedup: 1.35,
+			passed: false,
+		};
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+	});
+
+	it("rejects a passing EAGLE3 eval without measured numbers", () => {
+		const m = baseManifest();
+		m.evals.eagle3 = { speedup: null, passed: true };
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.errors.some((e) => e.includes("evals.eagle3"))).toBe(true);
+		}
+	});
+
+	it("rejects invalid known EAGLE3 kernel metadata fields", () => {
+		const m = baseManifest() as unknown as Record<string, unknown>;
+		(m.kernels as Record<string, unknown>).eagle3 = {
+			specType: "",
+			maxDraftTokens: 0,
 		};
 		const result = validateManifest(m);
 		expect(result.ok).toBe(false);
@@ -354,6 +482,18 @@ describe("validateManifest — contract rejections", () => {
 		}
 	});
 
+	it("rejects text GGUFs below the 128k floor", () => {
+		const m = baseManifest("2b");
+		m.files.text = [
+			{ path: "text/eliza-1-2b-64k.gguf", ctx: 65536, sha256: SHA },
+		];
+		const result = validateManifest(m);
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.errors.some((e) => e.includes("128k"))).toBe(true);
+		}
+	});
+
 	it("rejects turbo3_tcq as optional-only when ctx > 64k", () => {
 		const m = baseManifest("9b");
 		m.files.text[0].ctx = 131072;
@@ -374,6 +514,39 @@ describe("validateManifest — contract rejections", () => {
 		m.kernels.optional = [];
 		const result = validateManifest(m);
 		expect(result.ok).toBe(true);
+	});
+
+	it("rejects missing vision artifacts on 4B, 9B, and 27B-class tiers", () => {
+		for (const tier of ["4b", "9b", "27b", "27b-256k"] as const) {
+			const m = baseManifest(tier);
+			m.files.vision = [];
+			m.lineage.vision = undefined;
+			const result = validateManifest(m);
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.errors.some((e) => e.includes("files.vision"))).toBe(
+					true,
+				);
+			}
+		}
+	});
+
+	it("rejects vision artifacts on 0_8B and 2B text/voice-only tiers", () => {
+		for (const tier of ["0_8b", "2b"] as const) {
+			const m = baseManifest(tier);
+			m.files.vision = [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }];
+			m.lineage.vision = {
+				base: "eliza-1-vision",
+				license: "apache-2.0",
+			};
+			const result = validateManifest(m);
+			expect(result.ok).toBe(false);
+			if (!result.ok) {
+				expect(result.errors.some((e) => e.includes("files.vision"))).toBe(
+					true,
+				);
+			}
+		}
 	});
 });
 
@@ -401,7 +574,7 @@ describe("canSetAsDefault", () => {
 			sourceModels: {
 				text: { repo: "Qwen/Qwen3.5-9B" },
 				voice: { repo: "Serveurperso/OmniVoice-GGUF" },
-				drafter: { repo: "elizaos/eliza-1" },
+				drafter: { repo: "elizalabs/eliza-1" },
 				asr: { repo: "ggml-org/Qwen3-ASR-GGUF" },
 				embedding: { repo: "Qwen/Qwen3-Embedding-GGUF" },
 				vad: { repo: "onnx-community/silero-vad" },

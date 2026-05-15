@@ -801,7 +801,9 @@ public class ElizaAgentService extends Service {
             agentEnv.put("ELIZA_UI_PORT", String.valueOf(AGENT_PORT));
             agentEnv.put("ELIZA_STATE_DIR", agentStateDir().getAbsolutePath());
             agentEnv.put("ELIZA_PLATFORM", "android");
+            agentEnv.put("ELIZA_MOBILE_PLATFORM", "android");
             agentEnv.put("ELIZA_RUNTIME_MODE", "local-yolo");
+            agentEnv.put("AGENT_COMMAND", "android-bridge");
             agentEnv.put("ELIZA_DISABLE_DIRECT_RUN", "1");
             // Android loopback is shared across apps. Require the per-boot
             // bearer token; the Capacitor Agent plugin exposes it to the

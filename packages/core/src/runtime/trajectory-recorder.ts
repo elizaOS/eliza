@@ -5,7 +5,7 @@
  * Spec: PLAN.md §18.1 (`RecordedStage` / `RecordedTrajectory` schemas) and
  * §18.2 (`TrajectoryRecorder` interface).
  *
- * Output shape is read by `scripts/trajectory.ts` and `scripts/run-eliza-cerebras.ts`.
+ * Output shape is read by `packages/scripts/trajectory.ts` and `packages/scripts/run-eliza-cerebras.ts`.
  *
  * Persistence model:
  * - One JSON file per trajectory at

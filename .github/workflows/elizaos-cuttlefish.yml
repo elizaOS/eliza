@@ -2,7 +2,7 @@ name: ElizaOS Cuttlefish
 
 # Brand-aware AOSP / Cuttlefish build pipeline.
 #
-# Defaults to the elizaOS brand (scripts/distro-android/brand.eliza.json).
+# Defaults to the elizaOS brand (packages/scripts/distro-android/brand.eliza.json).
 # Downstream brands (e.g. ElizaOS) supply their own brand config + vendor
 # tree via `brand-config` and `vendor-source` inputs and call this workflow
 # either via workflow_dispatch (manual run from this repo) or via
@@ -25,7 +25,7 @@ on:
         description: "Path to brand config JSON (relative to repo root). Default: eliza."
         required: false
         type: string
-        default: "scripts/distro-android/brand.eliza.json"
+        default: "packages/scripts/distro-android/brand.eliza.json"
       vendor-source:
         description: "Override path to the vendor tree (relative to repo root). Defaults to brand.vendorDir."
         required: false
@@ -51,7 +51,7 @@ on:
         description: "Path to brand config JSON (relative to repo root)."
         required: false
         type: string
-        default: "scripts/distro-android/brand.eliza.json"
+        default: "packages/scripts/distro-android/brand.eliza.json"
       vendor-source:
         description: "Override path to the vendor tree."
         required: false
@@ -117,7 +117,7 @@ jobs:
 
       - name: Static brand validation
         run: |
-          node scripts/distro-android/validate.mjs \
+          node packages/scripts/distro-android/validate.mjs \
             --brand-config "${{ steps.brand.outputs.config }}"
 
       - name: Sync, build, and optionally boot
@@ -133,4 +133,4 @@ jobs:
           if [ "${{ inputs.launch }}" = "true" ]; then
             ARGS+=(--launch --boot-validate)
           fi
-          node scripts/distro-android/build-aosp.mjs "${ARGS[@]}"
+          node packages/scripts/distro-android/build-aosp.mjs "${ARGS[@]}"

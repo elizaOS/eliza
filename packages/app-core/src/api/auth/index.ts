@@ -15,13 +15,13 @@ export {
   redactMetadata,
   resolveAuditLogPath,
   resolveAuditLogRotatedPath,
-} from "./audit";
+} from "./audit.js";
 export {
   type AuthContextSource,
   type EnsureSessionOptions,
   ensureSessionForRequest,
   type ResolvedAuthContext,
-} from "./auth-context";
+} from "./auth-context.js";
 export {
   BOOTSTRAP_TOKEN_ALG,
   BOOTSTRAP_TOKEN_SCOPE,
@@ -29,7 +29,7 @@ export {
   type VerifyBootstrapFailureReason,
   type VerifyBootstrapResult,
   verifyBootstrapToken,
-} from "./bootstrap-token";
+} from "./bootstrap-token.js";
 export {
   ARGON2_PARAMS,
   assertPasswordStrong,
@@ -38,14 +38,14 @@ export {
   type PasswordStrengthFailureReason,
   verifyPassword,
   WeakPasswordError,
-} from "./passwords";
+} from "./passwords.js";
 export {
   _resetSensitiveLimiters,
   bootstrapExchangeLimiter,
   getSensitiveLimiter,
   SENSITIVE_RATE_LIMIT_MAX,
   SENSITIVE_RATE_LIMIT_WINDOW_MS,
-} from "./sensitive-rate-limit";
+} from "./sensitive-rate-limit.js";
 export {
   BROWSER_SESSION_REMEMBER_CAP_MS,
   BROWSER_SESSION_TTL_MS,
@@ -69,4 +69,4 @@ export {
   serializeSessionCookie,
   serializeSessionExpiryCookie,
   verifyCsrfToken,
-} from "./sessions";
+} from "./sessions.js";

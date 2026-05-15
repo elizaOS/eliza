@@ -1,0 +1,57 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "types": ["vite/client", "node"],
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "paths": {
+      "@/lib/hooks/*": ["./src/hooks/*"],
+      "@/lib/providers/*": ["./src/providers/*"],
+      "@/lib/*": ["./src/lib/*", "../cloud-shared/src/lib/*"],
+      "@/db/*": ["./src/db/*", "../cloud-shared/src/db/*"],
+      "@/types/*": ["./src/types/*", "../cloud-shared/src/types/*"],
+      "@/hooks/*": ["./src/hooks/*"],
+      "@/stores/*": ["./src/stores/*", "./src/lib/stores/*"],
+      "@/providers/*": ["./src/providers/*"],
+      "@/components/*": [
+        "./src/components/*",
+        "../ui/src/cloud-ui/components/*"
+      ],
+      "@/packages/*": ["../cloud-shared/src/*"],
+      "@elizaos/cloud-shared": ["../cloud-shared/src/index.ts"],
+      "@elizaos/cloud-shared/*": ["../cloud-shared/src/*"],
+      "@elizaos/ui": ["../ui/src/cloud-ui/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
+      "@elizaos/core": ["../core/src/index.node.ts"],
+      "@elizaos/core/*": ["../core/src/*"],
+      "@elizaos/contracts": ["../contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../contracts/src/*"],
+      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
+      "drizzle-orm": ["../cloud-shared/node_modules/drizzle-orm"],
+      "drizzle-orm/*": ["../cloud-shared/node_modules/drizzle-orm/*"],
+      "lucide-react": [
+        "./node_modules/lucide-react",
+        "../cloud-shared/node_modules/lucide-react"
+      ],
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts"],
+  "exclude": ["node_modules", "dist", "src/legacy"]
+}

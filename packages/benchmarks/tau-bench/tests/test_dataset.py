@@ -1,6 +1,6 @@
 """Confirm the vendored upstream task corpus loads correctly."""
 
-from elizaos_tau_bench.dataset import iter_tasks, load_domain_tasks, task_count
+from elizaos_tau_bench.dataset import iter_sample_tasks, iter_tasks, load_domain_tasks, task_count
 from elizaos_tau_bench.types import Task
 
 
@@ -31,6 +31,11 @@ def test_iter_tasks_emits_domain_index_task():
 def test_task_ids_filter_overrides_range():
     items = list(iter_tasks(["airline"], "test", task_ids=[0, 5, 10]))
     assert [i for _, i, _ in items] == [0, 5, 10]
+
+
+def test_iter_sample_tasks_honors_max_per_domain():
+    items = list(iter_sample_tasks(["retail", "airline"], "test", max_per_domain=1))
+    assert [(domain, idx) for domain, idx, _ in items] == [("retail", 0), ("airline", 0)]
 
 
 def test_retail_dev_and_train_splits_load():

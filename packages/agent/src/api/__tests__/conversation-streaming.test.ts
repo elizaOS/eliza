@@ -16,6 +16,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   generateChatResponse,
   generateConversationTitle,
+<<<<<<< HEAD
+  normalizeChatResponseText,
+=======
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 } from "../chat-routes.js";
 
 type RuntimeOverrides = Partial<AgentRuntime> & {
@@ -199,6 +203,7 @@ describe("generateChatResponse token streaming", () => {
     });
 
     await expect(
+<<<<<<< HEAD
       generateChatResponse(
         runtime,
         createChatMessage("timeout"),
@@ -207,6 +212,11 @@ describe("generateChatResponse token streaming", () => {
           timeoutDuration: 10,
         },
       ),
+=======
+      generateChatResponse(runtime, createChatMessage("timeout"), "Streaming Agent", {
+        timeoutDuration: 10,
+      }),
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
     ).rejects.toThrow("Chat generation timed out after 10ms");
 
     await abortObserved;
@@ -214,6 +224,35 @@ describe("generateChatResponse token streaming", () => {
   });
 });
 
+<<<<<<< HEAD
+describe("normalizeChatResponseText", () => {
+  it("persists only replyText when response-handler payload text leaks through", () => {
+    const leakedPayload =
+      '"RESPOND", "contexts": ["simple"], "intents": ["hello"], "replyText": "Hello! How can I help you today?", "threadOps": [], "candidateActionNames": []';
+
+    expect(normalizeChatResponseText(leakedPayload, [])).toBe(
+      "Hello! How can I help you today?",
+    );
+  });
+
+  it("persists only replyText when a boolean response-handler fragment leaks through", () => {
+    const leakedPayload =
+      'true,"contexts":["general"],"intents":["general"],"replyText":"Hello, how are you?"}';
+
+    expect(normalizeChatResponseText(leakedPayload, [])).toBe(
+      "Hello, how are you?",
+    );
+  });
+
+  it("leaves normal assistant text unchanged", () => {
+    expect(normalizeChatResponseText("Plain chat reply.", [])).toBe(
+      "Plain chat reply.",
+    );
+  });
+});
+
+=======
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 describe("generateConversationTitle", () => {
   it("passes caller cancellation into the title model request", async () => {
     const controller = new AbortController();

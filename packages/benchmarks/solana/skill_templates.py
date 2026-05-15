@@ -164,7 +164,6 @@ def system_program_nonce_ops_template(agent_pubkey: str) -> str:
 export async function executeSkill(blockhash: string): Promise<string> {{
     const tx = new Transaction();
     const agentPubkey = new PublicKey('{agent_pubkey}');
-    const connection = new (await import('@solana/web3.js')).Connection('http://localhost:8899');
 
     // Create a fresh nonce account for operations
     const nonceKp = Keypair.generate();
@@ -246,7 +245,7 @@ def token_program_template(agent_pubkey: str) -> str:
     """Token Program: mint + 2 accounts + disc 1, 3-5, 7-8, 12, 18, 20."""
     return f'''import {{ Transaction, SystemProgram, PublicKey, Keypair }} from '@solana/web3.js';
 import {{
-    TOKEN_PROGRAM_ID, MINT_SIZE, getMinimumBalanceForRentExemptMint,
+    TOKEN_PROGRAM_ID, MINT_SIZE,
     createInitializeMint2Instruction, createInitializeAccountInstruction,
     createMintToInstruction, createTransferInstruction, createApproveInstruction,
     createRevokeInstruction, createBurnInstruction, createCloseAccountInstruction,
@@ -261,11 +260,11 @@ import {{
 export async function executeSkill(blockhash: string): Promise<string> {{
     const tx = new Transaction();
     const agentPubkey = new PublicKey('{agent_pubkey}');
-    const connection = new (await import('@solana/web3.js')).Connection('http://localhost:8899');
+    const mintRent = 1461600;
+    const acctRent = 2039280;
 
     // Create mint keypair
     const mintKp = Keypair.generate();
-    const mintRent = await getMinimumBalanceForRentExemptMint(connection);
 
     // Create mint account
     tx.add(SystemProgram.createAccount({{
@@ -284,7 +283,6 @@ export async function executeSkill(blockhash: string): Promise<string> {{
     // Create two token accounts for the mint
     const tokenAcct1 = Keypair.generate();
     const tokenAcct2 = Keypair.generate();
-    const acctRent = await connection.getMinimumBalanceForRentExemption(165);
 
     // Token account 1
     tx.add(SystemProgram.createAccount({{
@@ -365,7 +363,7 @@ def token_program_remaining_template(agent_pubkey: str) -> str:
     """Token Program disc 6, 10-11, 13-16."""
     return f'''import {{ Transaction, SystemProgram, PublicKey, Keypair }} from '@solana/web3.js';
 import {{
-    TOKEN_PROGRAM_ID, MINT_SIZE, getMinimumBalanceForRentExemptMint,
+    TOKEN_PROGRAM_ID, MINT_SIZE,
     createInitializeMint2Instruction, createInitializeAccount3Instruction,
     createMintToInstruction, createSetAuthorityInstruction, AuthorityType,
     createFreezeAccountInstruction, createThawAccountInstruction,
@@ -377,11 +375,11 @@ import {{
 export async function executeSkill(blockhash: string): Promise<string> {{
     const tx = new Transaction();
     const agentPubkey = new PublicKey('{agent_pubkey}');
-    const connection = new (await import('@solana/web3.js')).Connection('http://localhost:8899');
+    const mintRent = 1461600;
+    const acctRent = 2039280;
 
     // Create mint with freeze authority
     const mintKp = Keypair.generate();
-    const mintRent = await getMinimumBalanceForRentExemptMint(connection);
     tx.add(SystemProgram.createAccount({{
         fromPubkey: agentPubkey, newAccountPubkey: mintKp.publicKey,
         lamports: mintRent, space: MINT_SIZE, programId: TOKEN_PROGRAM_ID,
@@ -392,7 +390,6 @@ export async function executeSkill(blockhash: string): Promise<string> {{
 
     // Create token account
     const acctKp = Keypair.generate();
-    const acctRent = await connection.getMinimumBalanceForRentExemption(165);
     tx.add(SystemProgram.createAccount({{
         fromPubkey: agentPubkey, newAccountPubkey: acctKp.publicKey,
         lamports: acctRent, space: 165, programId: TOKEN_PROGRAM_ID,
@@ -480,12 +477,12 @@ import {{
 export async function executeSkill(blockhash: string): Promise<string> {{
     const tx = new Transaction();
     const agentPubkey = new PublicKey('{agent_pubkey}');
-    const connection = new (await import('@solana/web3.js')).Connection('http://localhost:8899');
+    const lamportsPerByte = 12360;
 
     // Token-2022 mint
     const mintKp = Keypair.generate();
     const mintLen = getMintLen([]);
-    const mintRent = await connection.getMinimumBalanceForRentExemption(mintLen);
+    const mintRent = mintLen * lamportsPerByte;
 
     tx.add(SystemProgram.createAccount({{
         fromPubkey: agentPubkey, newAccountPubkey: mintKp.publicKey,
@@ -502,7 +499,7 @@ export async function executeSkill(blockhash: string): Promise<string> {{
     const acctKp2 = Keypair.generate();
     const acctKp3 = Keypair.generate();
     const acctLen = getAccountLen([]);
-    const acctRent = await connection.getMinimumBalanceForRentExemption(acctLen);
+    const acctRent = acctLen * lamportsPerByte;
 
     tx.add(SystemProgram.createAccount({{
         fromPubkey: agentPubkey, newAccountPubkey: acctKp1.publicKey,
@@ -592,7 +589,7 @@ import {{
 export async function executeSkill(blockhash: string): Promise<string> {{
     const tx = new Transaction();
     const agentPubkey = new PublicKey('{agent_pubkey}');
-    const connection = new (await import('@solana/web3.js')).Connection('http://localhost:8899');
+    const lamportsPerByte = 12360;
 
     // MINT 1: CloseAuthority + TransferFee + DefaultAccountState
     const kp1 = Keypair.generate();
@@ -600,7 +597,7 @@ export async function executeSkill(blockhash: string): Promise<string> {{
     const len1 = getMintLen(ext1);
     tx.add(SystemProgram.createAccount({{
         fromPubkey: agentPubkey, newAccountPubkey: kp1.publicKey,
-        lamports: await connection.getMinimumBalanceForRentExemption(len1),
+        lamports: len1 * lamportsPerByte,
         space: len1, programId: TOKEN_2022_PROGRAM_ID,
     }}));
     tx.add(createInitializeMintCloseAuthorityInstruction(kp1.publicKey, agentPubkey, TOKEN_2022_PROGRAM_ID));
@@ -614,7 +611,7 @@ export async function executeSkill(blockhash: string): Promise<string> {{
     const len2 = getMintLen(ext2);
     tx.add(SystemProgram.createAccount({{
         fromPubkey: agentPubkey, newAccountPubkey: kp2.publicKey,
-        lamports: await connection.getMinimumBalanceForRentExemption(len2),
+        lamports: len2 * lamportsPerByte,
         space: len2, programId: TOKEN_2022_PROGRAM_ID,
     }}));
     tx.add(createInitializeNonTransferableMintInstruction(kp2.publicKey, TOKEN_2022_PROGRAM_ID));
@@ -644,14 +641,14 @@ import {{
 export async function executeSkill(blockhash: string): Promise<string> {{
     const tx = new Transaction();
     const agentPubkey = new PublicKey('{agent_pubkey}');
-    const connection = new (await import('@solana/web3.js')).Connection('http://localhost:8899');
+    const lamportsPerByte = 12360;
 
     const kp = Keypair.generate();
     const ext = [ExtensionType.MetadataPointer, ExtensionType.GroupPointer, ExtensionType.GroupMemberPointer];
     const len = getMintLen(ext);
     tx.add(SystemProgram.createAccount({{
         fromPubkey: agentPubkey, newAccountPubkey: kp.publicKey,
-        lamports: await connection.getMinimumBalanceForRentExemption(len),
+        lamports: len * lamportsPerByte,
         space: len, programId: TOKEN_2022_PROGRAM_ID,
     }}));
     tx.add(createInitializeMetadataPointerInstruction(kp.publicKey, agentPubkey, kp.publicKey, TOKEN_2022_PROGRAM_ID));
@@ -680,11 +677,10 @@ import {{
 export async function executeSkill(blockhash: string): Promise<string> {{
     const tx = new Transaction();
     const agentPubkey = new PublicKey('{agent_pubkey}');
-    const connection = new (await import('@solana/web3.js')).Connection('http://localhost:8899');
+    const mintRent = 1461600;
 
     // Create a mint first
     const mintKp = Keypair.generate();
-    const mintRent = await connection.getMinimumBalanceForRentExemption(MINT_SIZE);
 
     tx.add(SystemProgram.createAccount({{
         fromPubkey: agentPubkey, newAccountPubkey: mintKp.publicKey,
@@ -810,10 +806,7 @@ def address_lookup_table_template(agent_pubkey: str) -> str:
 export async function executeSkill(blockhash: string): Promise<string> {{
     const tx = new Transaction();
     const agentPubkey = new PublicKey('{agent_pubkey}');
-    const connection = new (await import('@solana/web3.js')).Connection('http://localhost:8899');
-
-    // Get recent slot for lookup table creation
-    const slot = await connection.getSlot();
+    const slot = 1_000_000;
 
     // Disc 0: CreateLookupTable
     const [createIx, lookupTableAddress] = AddressLookupTableProgram.createLookupTable({{

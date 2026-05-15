@@ -107,6 +107,18 @@ function resolvePackageExportTarget(value: unknown): string | null {
   return null;
 }
 
+function isAppPluginPackage(
+  packageRootName: string,
+  entryName: string,
+  pkg: Record<string, unknown>,
+): boolean {
+  if (packageRootName !== "plugins") return true;
+  if (entryName.startsWith("app-")) return true;
+  const elizaos = pkg.elizaos;
+  if (!elizaos || typeof elizaos !== "object") return false;
+  return "app" in elizaos;
+}
+
 function createWorkspacePackageAliases(packageRoots: string[]) {
   const aliases = [];
   for (const packageRoot of packageRoots) {
@@ -114,16 +126,21 @@ function createWorkspacePackageAliases(packageRoots: string[]) {
     const packageRootName = path.basename(packageRoot);
     for (const entry of fs.readdirSync(packageRoot, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      if (packageRootName === "plugins" && !entry.name.startsWith("app-")) {
-        continue;
-      }
       const pkgPath = path.join(packageRoot, entry.name, "package.json");
       if (!fs.existsSync(pkgPath)) continue;
-      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as Record<
+        string,
+        unknown
+      >;
+      if (!isAppPluginPackage(packageRootName, entry.name, pkg)) continue;
       const pkgName = pkg.name;
-      if (!pkgName) continue;
+      if (typeof pkgName !== "string") continue;
+      const pkgExports =
+        pkg.exports && typeof pkg.exports === "object"
+          ? (pkg.exports as Record<string, unknown>)
+          : {};
       const pkgDir = path.dirname(pkgPath);
-      for (const [key, value] of Object.entries(pkg.exports || {})) {
+      for (const [key, value] of Object.entries(pkgExports)) {
         if (key !== ".") continue;
         const exportTarget = resolvePackageExportTarget(value);
         if (!exportTarget) continue;
@@ -157,13 +174,17 @@ function createAppPluginBrowserAliases() {
   if (!fs.existsSync(pluginsRoot)) return aliases;
 
   for (const entry of fs.readdirSync(pluginsRoot, { withFileTypes: true })) {
-    if (!entry.isDirectory() || !entry.name.startsWith("app-")) continue;
+    if (!entry.isDirectory()) continue;
     const pkgDir = path.join(pluginsRoot, entry.name);
     const pkgPath = path.join(pkgDir, "package.json");
     if (!fs.existsSync(pkgPath)) continue;
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8"));
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    if (!isAppPluginPackage("plugins", entry.name, pkg)) continue;
     const pkgName = pkg.name;
-    if (!pkgName) continue;
+    if (typeof pkgName !== "string") continue;
 
     const browserEntry = resolveAppPluginBrowserEntry(pkgDir);
     if (browserEntry) {

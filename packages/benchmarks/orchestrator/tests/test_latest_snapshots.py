@@ -9,6 +9,7 @@ from benchmarks.orchestrator.db import (
     create_run_group,
     initialize_database,
     insert_run_start,
+    recover_stale_running_runs,
     update_run_result,
 )
 from benchmarks.orchestrator.runner import _rebuild_latest_result_snapshots
@@ -162,6 +163,61 @@ def test_rebuild_latest_prunes_stale_managed_snapshots_when_db_has_rows(
         assert not path.exists()
 
 
+def test_rebuild_latest_preserves_valid_snapshots_missing_from_partial_db(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_eliza",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+
+    preserved = tmp_path / "latest" / "webshop__eliza.json"
+    preserved.parent.mkdir(parents=True, exist_ok=True)
+    preserved.write_text(
+        json.dumps(
+            {
+                "benchmark_id": "webshop",
+                "benchmark_directory": "webshop",
+                "agent": "eliza",
+                "status": "succeeded",
+                "score": 1.0,
+                "run_id": "run_webshop_old",
+                "run_group_id": "rg_old",
+                "signature": "sig-webshop-old",
+                "comparison_signature": "cmp-webshop-old",
+                "updated_at": "2026-05-11T00:00:00+00:00",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"bfcl": _adapter("bfcl"), "webshop": _adapter("webshop", agent_compatibility=("eliza",))},
+    )
+
+    assert (tmp_path / "latest" / "bfcl__eliza.json").exists()
+    assert preserved.exists()
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert set(index["latest"]) == {"bfcl::eliza", "webshop::eliza"}
+    assert index["latest"]["webshop::eliza"]["run_id"] == "run_webshop_old"
+
+
 def test_rebuild_latest_routes_synthetic_to_baselines_and_prunes_stale_latest(
     tmp_path: Path,
 ) -> None:
@@ -206,6 +262,13 @@ def test_rebuild_latest_routes_synthetic_to_baselines_and_prunes_stale_latest(
     assert json.loads(baseline.read_text(encoding="utf-8"))["synthetic"] is True
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert set(index["latest"]) == {"bfcl::eliza"}
+    assert all(
+        "perfect_v1" not in key for key in index["latest_by_signature"]
+    )
+    assert all(
+        "perfect_v1" not in key
+        for key in index["latest_by_comparison_signature"]
+    )
 
 
 def test_rebuild_latest_publishes_estimated_token_rows_with_warning(
@@ -499,6 +562,70 @@ def test_rebuild_latest_ignores_newer_running_rows(tmp_path: Path) -> None:
     assert payload["status"] == "succeeded"
 
 
+def test_recover_stale_running_run_quarantines_without_replacing_latest(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["adhdbench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="adhdbench",
+        agent="eliza",
+        run_id="run_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.8,
+    )
+    insert_run_start(
+        conn,
+        run_id="run_stale",
+        run_group_id="rg_test",
+        benchmark_id="adhdbench",
+        benchmark_directory="adhdbench",
+        signature="sig-run-stale",
+        attempt=1,
+        agent="eliza",
+        provider="test",
+        model="test-model",
+        extra_config={},
+        started_at="2026-05-12T00:05:00+00:00",
+        command=[],
+        cwd=".",
+        stdout_path="",
+        stderr_path="",
+        benchmark_version=None,
+        benchmarks_commit=None,
+        eliza_commit=None,
+        eliza_version=None,
+    )
+
+    recovered = recover_stale_running_runs(
+        conn,
+        stale_before="2026-05-12T00:06:00+00:00",
+        ended_at="2026-05-12T00:10:00+00:00",
+    )
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"adhdbench": _adapter("adhdbench")})
+
+    assert recovered == ["run_stale"]
+    latest_payload = json.loads(
+        (tmp_path / "latest" / "adhdbench__eliza.json").read_text(encoding="utf-8")
+    )
+    assert latest_payload["run_id"] == "run_success"
+    quarantine_payload = json.loads(
+        (tmp_path / "quarantine" / "adhdbench__eliza.json").read_text(encoding="utf-8")
+    )
+    assert quarantine_payload["run_id"] == "run_stale"
+    assert quarantine_payload["status"] == "failed"
+    assert quarantine_payload["quarantine_reason"] == "unsucceeded_run"
+
+
 def test_rebuild_latest_keeps_success_when_newer_failed_row_exists(tmp_path: Path) -> None:
     conn = connect_database(tmp_path / "orchestrator.sqlite")
     initialize_database(conn)
@@ -543,6 +670,113 @@ def test_rebuild_latest_keeps_success_when_newer_failed_row_exists(tmp_path: Pat
     assert latest_payload["status"] == "succeeded"
     assert quarantine_payload["run_id"] == "run_failed"
     assert quarantine_payload["quarantine_reason"] == "unsucceeded_run"
+
+
+def test_rebuild_latest_preserves_snapshot_when_only_failed_db_row_exists(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["woobench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="woobench",
+        agent="eliza",
+        run_id="run_failed",
+        started_at="2026-05-12T00:10:00+00:00",
+        status="failed",
+        score=None,
+        metrics={"reason": "orchestrator_interrupted"},
+        token_metrics={},
+    )
+    latest_dir = tmp_path / "latest"
+    latest_dir.mkdir(parents=True)
+    (latest_dir / "woobench__eliza.json").write_text(
+        json.dumps(
+            {
+                "updated_at": "2026-05-12T00:00:00+00:00",
+                "benchmark_id": "woobench",
+                "benchmark_directory": "woobench",
+                "run_group_id": "rg_old",
+                "run_id": "run_preserved",
+                "signature": "sig-preserved",
+                "comparison_signature": "cmp-preserved",
+                "status": "succeeded",
+                "agent": "eliza",
+                "provider": "test",
+                "model": "test-model",
+                "score": 0.9,
+                "unit": "ratio",
+                "higher_is_better": True,
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"woobench": _adapter("woobench")})
+
+    latest_payload = json.loads(
+        (tmp_path / "latest" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    quarantine_payload = json.loads(
+        (tmp_path / "quarantine" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+
+    assert latest_payload["run_id"] == "run_preserved"
+    assert quarantine_payload["run_id"] == "run_failed"
+    assert index["latest"]["woobench::eliza"]["run_id"] == "run_preserved"
+    assert (
+        index["matrix_contract"]["benchmarks"]["woobench"]["cells"]["eliza"]["state"]
+        == "succeeded"
+    )
+
+
+def test_rebuild_latest_repairs_succeeded_nonzero_return_code(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["woobench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="woobench",
+        agent="eliza",
+        run_id="run_nonzero",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="succeeded",
+        score=0.95,
+        metrics={"return_code": 7},
+    )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"woobench": _adapter("woobench")})
+
+    assert not (tmp_path / "latest" / "woobench__eliza.json").exists()
+    quarantine_payload = json.loads(
+        (tmp_path / "quarantine" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    assert quarantine_payload["status"] == "failed"
+    assert quarantine_payload["quarantine_reason"] == "unsucceeded_run"
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    cell = index["matrix_contract"]["benchmarks"]["woobench"]["cells"]["eliza"]
+    assert cell["state"] == "failed"
+    assert index["matrix_contract"]["summary"]["failed_required_real_cells"] == 1
+    assert index["matrix_contract"]["summary"]["missing_required_real_cells"] == 2
 
 
 def test_rebuild_latest_skips_stale_compatibility_incompatible_rows(
@@ -643,6 +877,51 @@ def test_rebuild_latest_routes_current_incompatible_rows_out_of_latest(
     quarantine = tmp_path / "quarantine" / "loca_bench__openclaw.json"
     assert quarantine.exists()
     payload = json.loads(quarantine.read_text(encoding="utf-8"))
+    assert payload["status"] == "incompatible"
+    assert payload["quarantine_reason"] == "incompatible_harness"
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert index["latest"] == {}
+    assert index["matrix_contract"]["benchmarks"]["loca_bench"]["cells"]["openclaw"] == {
+        "required": False,
+        "state": "unsupported",
+        "status": "unsupported",
+        "score": None,
+        "run_id": None,
+    }
+
+
+def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["loca_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="loca_bench",
+        agent="openclaw",
+        run_id="run_old_success",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"loca_bench": _adapter("loca_bench", agent_compatibility=("eliza", "hermes"))},
+    )
+
+    assert not (tmp_path / "latest" / "loca_bench__openclaw.json").exists()
+    quarantine = tmp_path / "quarantine" / "loca_bench__openclaw.json"
+    assert quarantine.exists()
+    payload = json.loads(quarantine.read_text(encoding="utf-8"))
+    assert payload["run_id"] == "run_old_success"
     assert payload["status"] == "incompatible"
     assert payload["quarantine_reason"] == "incompatible_harness"
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
