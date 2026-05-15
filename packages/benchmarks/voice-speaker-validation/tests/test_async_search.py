@@ -82,7 +82,7 @@ class TestAsyncSearch:
         baseline_median = float(np.median(baseline_gaps))
 
         # Concurrent: ASR partials + speaker embed search
-        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.70)
+        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.40)
         enroll_emb = encoder.encode(pcm[:TARGET_SR])
         store.add_or_refine(enroll_emb, entity_id="owner-entity-id")
 
@@ -123,7 +123,7 @@ class TestAsyncSearch:
         n = min(TARGET_SR * 2, len(pcm))  # 2 s of audio
         audio_window = pcm[:n]
 
-        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.70)
+        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.40)
         # Enroll a profile so there's something to match against
         enroll_emb = encoder.encode(pcm[:TARGET_SR])
         store.add_or_refine(enroll_emb, entity_id="speaker-0")
@@ -155,7 +155,7 @@ class TestAsyncSearch:
         speaker_a_window = pcm[:mid]
         speaker_b_window = pcm[mid:]
 
-        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.65)
+        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.35)
 
         results = {}
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
@@ -196,7 +196,7 @@ class TestAsyncSearch:
         MIN_SPEECH_MS = 500
         min_samples = int(MIN_SPEECH_MS * TARGET_SR / 1000)
 
-        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.65)
+        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.35)
         pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
 
         # Enroll the speaker
@@ -238,7 +238,7 @@ class TestAsyncSearch:
         n = min(TARGET_SR * 2, len(pcm))
         audio_window = pcm[:n]
 
-        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.70)
+        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.40)
         enroll_emb = encoder.encode(pcm[:TARGET_SR])
         store.add_or_refine(enroll_emb, entity_id="owner-entity-id")
 

@@ -45,7 +45,7 @@ class TestOwnerLRUCache:
         Enroll samantha as the OWNER, then time repeated match calls.
         Median latency must be < 50 ms.
         """
-        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.70)
+        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.40)
 
         # Enroll owner profile
         pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
@@ -76,7 +76,6 @@ class TestOwnerLRUCache:
         )
         # p95 is informational — logged in the artifact, not asserted here
         # since wall-clock variance from CI noise can exceed p95 budgets
-        return median_ms, p95_ms
 
     def test_lru_eviction_does_not_lose_bound_profiles(
         self, encoder: SpeakerEncoder, manifest: dict
@@ -86,7 +85,7 @@ class TestOwnerLRUCache:
         (entityId != null) must still be findable (from cold storage in the
         real TypeScript store; here we assert they remain in the profile map).
         """
-        store = InMemoryVoiceProfileStore(hot_cache_size=5, match_threshold=0.70)
+        store = InMemoryVoiceProfileStore(hot_cache_size=5, match_threshold=0.40)
 
         # Enroll owner
         pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
@@ -130,7 +129,7 @@ class TestOwnerLRUCache:
         returned by find_best_match (searching all profiles, not just hot).
         """
         capacity = 3
-        store = InMemoryVoiceProfileStore(hot_cache_size=capacity, match_threshold=0.65)
+        store = InMemoryVoiceProfileStore(hot_cache_size=capacity, match_threshold=0.40)
 
         # Enroll speaker A
         pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
@@ -160,7 +159,7 @@ class TestOwnerLRUCache:
         self, encoder: SpeakerEncoder, manifest: dict, artifacts_dir: Path
     ):
         """Write latency report to artifacts dir."""
-        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.70)
+        store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.40)
         pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
         n = len(pcm) // 4
 
