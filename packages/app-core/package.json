@@ -61,6 +61,31 @@
       "import": "./dist/agent-bridge.js",
       "default": "./dist/agent-bridge.js"
     },
+    "./api/auth": {
+      "types": "./dist/api/auth.d.ts",
+      "import": "./dist/api/auth.js",
+      "default": "./dist/api/auth.js"
+    },
+    "./api/compat-route-shared": {
+      "types": "./dist/api/compat-route-shared.d.ts",
+      "import": "./dist/api/compat-route-shared.js",
+      "default": "./dist/api/compat-route-shared.js"
+    },
+    "./api/response": {
+      "types": "./dist/api/response.d.ts",
+      "import": "./dist/api/response.js",
+      "default": "./dist/api/response.js"
+    },
+    "./registry": {
+      "types": "./dist/registry/index.d.ts",
+      "import": "./dist/registry/index.js",
+      "default": "./dist/registry/index.js"
+    },
+    "./services/vault-mirror": {
+      "types": "./dist/services/vault-mirror.d.ts",
+      "import": "./dist/services/vault-mirror.js",
+      "default": "./dist/services/vault-mirror.js"
+    },
     "./platform/native-plugin-entrypoints": {
       "types": "./dist/platform/native-plugin-entrypoints.d.ts",
       "import": "./dist/platform/native-plugin-entrypoints.js",
@@ -78,6 +103,7 @@
     }
   },
   "peerDependencies": {
+    "@elizaos/agent": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.184.0"
@@ -110,7 +136,6 @@
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.0.0",
     "@clack/prompts": "^1.0.0",
-    "@elizaos/agent": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-anthropic": "workspace:*",
     "@elizaos/plugin-browser": "workspace:*",
@@ -145,6 +170,7 @@
     "directory": "dist"
   },
   "devDependencies": {
+    "@elizaos/agent": "workspace:*",
     "@playwright/test": "^1.59.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

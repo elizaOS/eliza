@@ -9,7 +9,7 @@ import {
   DialogTitle,
   Input,
   Label,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { ArrowRight, Lock, Mail, Sparkles } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";

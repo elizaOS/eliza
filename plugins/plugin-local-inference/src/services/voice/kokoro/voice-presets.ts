@@ -122,5 +122,8 @@ export function findKokoroVoice(id: string): KokoroVoicePack | undefined {
 	return VOICE_BY_ID.get(id);
 }
 
-/** The voice the runtime selects when nothing is configured. */
-export const KOKORO_DEFAULT_VOICE_ID = "af_bella";
+/** The canonical Eliza-1 Kokoro voice when its preset is staged. */
+export const KOKORO_DEFAULT_VOICE_ID = "af_same";
+
+/** Bundled upstream fallback used when the canonical preset is not staged. */
+export const KOKORO_FALLBACK_VOICE_ID = "af_bella";

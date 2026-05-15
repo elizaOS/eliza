@@ -160,6 +160,11 @@
         "@elizaos/plugin-workflow"
       ]
     },
+    "packages/contracts": {
+      "entry": ["src/index.ts"],
+      "project": ["src/**/*.ts", "!src/**/*.d.ts"],
+      "ignore": ["dist/**", ".turbo/**", "src/**/*.d.ts", "src/**/*.d.ts.map"]
+    },
     "packages/app-core/platforms/electrobun": {
       "entry": [
         "src/**/*.{ts,tsx,js}",
@@ -311,6 +316,22 @@
       "project": ["api/**/*.ts", "test-client.ts"],
       "ignore": ["dist/**", ".vercel/**"]
     },
+    "packages/homepage": {
+      "entry": [
+        "src/main.tsx",
+        "src/vite-env.d.ts",
+        "src/types/**/*.d.ts",
+        "vite.config.ts"
+      ],
+      "project": ["src/**/*.{ts,tsx,d.ts}", "vite.config.ts"],
+      "ignore": ["dist/**", ".turbo/**"],
+      "ignoreDependencies": [
+        "@fontsource-variable/geist",
+        "@fontsource-variable/geist-mono",
+        "tailwindcss",
+        "tw-animate-css"
+      ]
+    },
     "packages/examples/aws": {
       "entry": [
         "handler.ts",
@@ -325,7 +346,7 @@
     "packages/examples/browser-extension": {
       "entry": ["package.json"],
       "project": [],
-      "ignore": ["shared/eliza-runtime-full.ts", "shared/types.ts"]
+      "ignore": ["chrome/**", "safari/**", "shared/**"]
     },
     "packages/examples/browser-extension/chrome": {
       "entry": [
@@ -364,7 +385,8 @@
     },
     "packages/agent": {
       "entry": [
-        "src/**/*.{ts,tsx}",
+        "src/index.ts",
+        "src/bin.ts",
         "scripts/**/*.{mjs,ts,cjs}",
         "test/**/*.{ts,tsx}",
         "vitest.config.ts"
@@ -415,6 +437,16 @@
         "src/**/*.d.ts",
         "src/**/*.d.ts.map"
       ]
+    },
+    "packages/os": {
+      "entry": ["package.json"],
+      "project": [],
+      "ignore": ["android/**", "linux/**"]
+    },
+    "packages/os/linux/agent": {
+      "entry": ["src/main.ts", "tests/**/*.ts"],
+      "project": ["src/**/*.ts", "tests/**/*.ts"],
+      "ignore": ["bun.lock"]
     },
     "plugins/plugin-tailscale": {
       "entry": ["src/index.ts"],

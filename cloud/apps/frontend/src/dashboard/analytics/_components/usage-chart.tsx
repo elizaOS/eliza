@@ -15,7 +15,7 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { format } from "date-fns";
 import { useCallback, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";

@@ -17,7 +17,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { formatDistanceToNow } from "date-fns";
 import { /* Sparkles, */ Activity, Info, Users } from "lucide-react";
 import { Link } from "react-router-dom";

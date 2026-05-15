@@ -23,7 +23,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   ArrowUp,
   Check,

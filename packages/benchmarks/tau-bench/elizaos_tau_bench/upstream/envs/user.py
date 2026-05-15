@@ -2,6 +2,7 @@
 
 import abc
 import enum
+import re
 
 from typing import Optional, List, Dict, Any, Union
 
@@ -33,6 +34,118 @@ class HumanUserSimulationEnv(BaseUserSimulationEnv):
 
     def get_total_cost(self) -> float:
         return 0
+
+
+class GroundedUserSimulationEnv(BaseUserSimulationEnv):
+    """Deterministic user simulator for smoke/sample runs.
+
+    Official tau-bench uses an LLM user simulator. The bundled sample mode is a
+    harness smoke check, so it should not fail because the simulator invented
+    facts that are absent from the task. This simulator only repeats facts from
+    the task instruction and explicitly refuses unsupported fields such as a
+    made-up email address.
+    """
+
+    def __init__(self) -> None:
+        self.instruction = ""
+        self.turn = 0
+
+    def reset(self, instruction: Optional[str] = None) -> str:
+        self.instruction = instruction or ""
+        self.turn = 0
+        order_id = self._order_id()
+        user_id = self._user_id()
+        if order_id:
+            return f"Hi, I need help with order {order_id}. {self.instruction}"
+        if user_id:
+            return f"Hi, I need help with my trip. My user id is {user_id}. {self.instruction}"
+        return self.instruction or "Hi, I need help."
+
+    def step(self, content: str) -> str:
+        self.turn += 1
+        text = (content or "").lower()
+        if self._looks_complete(text):
+            return "###STOP###"
+        if "email" in text:
+            identity = self._identity_response()
+            if identity:
+                return f"I do not have an email address handy. {identity}"
+            return "I do not have an email address handy."
+        if any(token in text for token in ("name", "zip", "postal", "address", "account")):
+            identity = self._identity_response()
+            if identity:
+                return identity
+        if "user id" in text or "userid" in text:
+            user_id = self._user_id()
+            if user_id:
+                return f"My user id is {user_id}."
+        if "order" in text:
+            order_id = self._order_id()
+            if order_id:
+                return f"The order id is {order_id}. {self.instruction}"
+        if "reservation" in text:
+            reservation = self._reservation_response()
+            if reservation:
+                return reservation
+        if "birthday" in text or "date of birth" in text or "dob" in text:
+            if "birthday is in your user profile" in self.instruction.lower():
+                return "My birthday is in my user profile, and I prefer not to provide it."
+        if "insurance" in text and "do not want insurance" in self.instruction.lower():
+            return "I do not want insurance."
+        if "jfk" in text and "do not accept jfk" in self.instruction.lower():
+            return "I do not accept JFK, only EWR."
+        if self.turn <= 2:
+            return self.instruction
+        return "Please use the details from my request."
+
+    def get_total_cost(self) -> float:
+        return 0.0
+
+    def _identity_response(self) -> str:
+        match = re.search(
+            r"You are ([A-Z][A-Za-z'_-]+) ([A-Z][A-Za-z'_-]+) in (\d{5})",
+            self.instruction,
+        )
+        if match:
+            first, last, zip_code = match.groups()
+            return f"My name is {first} {last} and my ZIP code is {zip_code}."
+        user_id = self._user_id()
+        if user_id:
+            return f"My user id is {user_id}."
+        return ""
+
+    def _order_id(self) -> str:
+        match = re.search(r"#?[A-Z]\d{7}", self.instruction)
+        if not match:
+            return ""
+        value = match.group(0)
+        return value if value.startswith("#") else f"#{value}"
+
+    def _user_id(self) -> str:
+        match = re.search(r"user id is ([a-z0-9_]+)", self.instruction, re.IGNORECASE)
+        return match.group(1) if match else ""
+
+    def _reservation_response(self) -> str:
+        if "don't remember the reservation id" in self.instruction.lower():
+            return "I do not remember the reservation id. Please look it up from my profile."
+        return ""
+
+    @staticmethod
+    def _looks_complete(text: str) -> bool:
+        completion_phrases = (
+            "anything else",
+            "all set",
+            "completed",
+            "complete",
+            "done",
+            "booked",
+            "cancelled",
+            "canceled",
+            "exchanged",
+            "processed",
+            "submitted",
+        )
+        return any(phrase in text for phrase in completion_phrases)
 
 
 class LLMUserSimulationEnv(BaseUserSimulationEnv):
@@ -312,6 +425,7 @@ class ReflectionUserSimulationEnv(LLMUserSimulationEnv):
 
 class UserStrategy(enum.Enum):
     HUMAN = "human"
+    GROUNDED = "grounded"
     LLM = "llm"
     REACT = "react"
     VERIFY = "verify"
@@ -327,6 +441,8 @@ def load_user(
         user_strategy = UserStrategy(user_strategy)
     if user_strategy == UserStrategy.HUMAN:
         return HumanUserSimulationEnv()
+    elif user_strategy == UserStrategy.GROUNDED:
+        return GroundedUserSimulationEnv()
     elif user_strategy == UserStrategy.LLM:
         if model is None:
             raise ValueError("LLM user strategy requires a model")

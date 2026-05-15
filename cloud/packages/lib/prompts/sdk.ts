@@ -105,7 +105,7 @@ import {
   CreditDisplay,
   LowBalanceWarning,
   useElizaCredits,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 \`\`\`
 
 ### Usage Examples
@@ -153,7 +153,7 @@ function ImageGen() {
 **Protected Dashboard with Auth:**
 \`\`\`tsx
 'use client';
-import { ProtectedRoute, UserMenu, AppCreditDisplay } from "@elizaos/cloud-ui";
+import { ProtectedRoute, UserMenu, AppCreditDisplay } from "@elizaos/ui";
 
 export default function DashboardLayout({ children }) {
   return (

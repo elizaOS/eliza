@@ -26,6 +26,7 @@ from .db import (
     next_attempt_for_signature,
     recover_stale_running_runs,
     repair_nonzero_returncode_statuses,
+    repair_nonpublishable_success_statuses,
     replace_run_trajectories,
     update_run_result,
 )
@@ -67,7 +68,7 @@ OPENAI_COMPAT_BASE_URL: dict[str, str] = {
 PROVIDER_DUMMY_KEY: dict[str, str] = {
     "vllm": "dummy",
 }
-DEFAULT_STALE_RECOVERY_SECONDS = 300
+DEFAULT_STALE_RECOVERY_SECONDS = 6 * 60 * 60
 CANONICAL_REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
 LATEST_SNAPSHOT_AGENTS: set[str] = {
     *CANONICAL_REAL_HARNESSES,
@@ -146,6 +147,27 @@ def _comparison_signature_from_parts(
         "extra_config": normalized_extra,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")).hexdigest()
+
+
+def _comparison_signature_for_row(
+    row: dict[str, Any],
+    *,
+    benchmark_id: str,
+    agent: str,
+) -> str:
+    existing = row.get("comparison_signature")
+    if isinstance(existing, str) and existing.strip():
+        return existing.strip()
+    return _comparison_signature_from_parts(
+        benchmark_id=benchmark_id,
+        benchmark_directory=str(row.get("benchmark_directory") or benchmark_id),
+        agent=agent,
+        provider=str(row.get("provider") or ""),
+        model=str(row.get("model") or ""),
+        extra_config=row.get("extra_config")
+        if isinstance(row.get("extra_config"), dict)
+        else {},
+    )
 
 
 def _effective_request(adapter: BenchmarkAdapter, request: RunRequest) -> RunRequest:
@@ -654,6 +676,7 @@ def _write_latest_result_snapshot(
     reproducibility: dict[str, Any] | None = None,
     signature: str | None = None,
     comparison_signature: str | None = None,
+    adapters: dict[str, BenchmarkAdapter] | None = None,
 ) -> Path:
     """Route a snapshot to ``latest/`` or ``baselines/``.
 
@@ -717,7 +740,12 @@ def _write_latest_result_snapshot(
         payload["publication_warnings"] = publication_warnings
     if is_synthetic:
         payload["synthetic"] = True
-    snapshot_path.write_text(json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
+    snapshot_tmp = snapshot_path.with_suffix(snapshot_path.suffix + ".tmp")
+    snapshot_tmp.write_text(
+        json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    snapshot_tmp.replace(snapshot_path)
 
     # Also prune stale entries from alternate directories. Failed/quarantined
     # real attempts must not delete a prior successful latest snapshot; latest
@@ -748,6 +776,7 @@ def _write_latest_result_snapshot(
         "latest_by_signature": {},
         "latest_by_comparison_signature": {},
     }
+    latest_payloads_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     for path in sorted(latest_dir.glob("*.json")):
         if path.name == "index.json":
             continue
@@ -756,6 +785,9 @@ def _write_latest_result_snapshot(
         except (OSError, json.JSONDecodeError):
             continue
         key = f"{data.get('benchmark_id')}::{data.get('agent')}"
+        latest_payloads_by_key[
+            (str(data.get("benchmark_id") or ""), str(data.get("agent") or ""))
+        ] = data
         index["latest"][key] = {
             "path": str(path),
             "run_id": data.get("run_id"),
@@ -774,8 +806,41 @@ def _write_latest_result_snapshot(
             index["latest_by_comparison_signature"][
                 f"{comparison_signature_key}::{key}"
             ] = index["latest"][key]
+    if adapters is not None:
+        quarantine_payloads_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        quarantine_dir = output_root / "quarantine"
+        quarantine_paths = sorted(quarantine_dir.glob("*.json")) if quarantine_dir.exists() else []
+        for path in quarantine_paths:
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            quarantine_payloads_by_key[
+                (str(data.get("benchmark_id") or ""), str(data.get("agent") or ""))
+            ] = data
+        index["matrix_contract"] = _build_latest_matrix_contract(
+            latest_by_key=latest_payloads_by_key,
+            quarantine_by_key=quarantine_payloads_by_key,
+            adapters=adapters,
+        )
+    else:
+        previous_index_path = latest_dir / "index.json"
+        try:
+            previous = json.loads(previous_index_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            previous = {}
+        if isinstance(previous, dict) and isinstance(previous.get("matrix_contract"), dict):
+            index["matrix_contract"] = previous["matrix_contract"]
     _annotate_latest_index_comparability(index)
-    (latest_dir / "index.json").write_text(json.dumps(index, indent=2, sort_keys=True, ensure_ascii=True), encoding="utf-8")
+    index_path = latest_dir / "index.json"
+    index_tmp = index_path.with_suffix(index_path.suffix + ".tmp")
+    index_tmp.write_text(
+        json.dumps(index, indent=2, sort_keys=True, ensure_ascii=True),
+        encoding="utf-8",
+    )
+    index_tmp.replace(index_path)
     return snapshot_path
 
 
@@ -907,6 +972,10 @@ def _rebuild_latest_result_snapshots(
             file=sys.stderr,
         )
         return
+    repair_nonzero_returncode_statuses(conn)
+    repair_nonpublishable_success_statuses(conn)
+    if adapters is not None:
+        _repair_current_compatibility_statuses(conn, adapters)
 
     for d in (latest_dir, quarantine_dir, baselines_dir):
         d.mkdir(parents=True, exist_ok=True)
@@ -938,32 +1007,58 @@ def _rebuild_latest_result_snapshots(
         key = (benchmark_id, agent)
         if key not in latest_by_key:
             latest_by_key[key] = row
+        if is_synthetic:
+            continue
         signature = str(row.get("signature") or "")
         if signature:
             signature_key = (signature, benchmark_id, agent)
             if signature_key not in latest_by_signature:
                 latest_by_signature[signature_key] = row
-        comparison_signature = _comparison_signature_from_parts(
+        comparison_signature = _comparison_signature_for_row(
+            row,
             benchmark_id=benchmark_id,
-            benchmark_directory=str(row.get("benchmark_directory") or benchmark_id),
             agent=agent,
-            provider=str(row.get("provider") or ""),
-            model=str(row.get("model") or ""),
-            extra_config=row.get("extra_config")
-            if isinstance(row.get("extra_config"), dict)
-            else {},
         )
         comparison_key = (comparison_signature, benchmark_id, agent)
         if comparison_key not in latest_by_comparison_signature:
             latest_by_comparison_signature[comparison_key] = (row, comparison_signature)
+
+    preserved_latest: dict[tuple[str, str], tuple[dict[str, Any], Path]] = {}
+    for path in sorted(latest_dir.glob("*.json")):
+        if path.name == "index.json":
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(payload, dict):
+            continue
+        benchmark_id = str(payload.get("benchmark_id") or "")
+        agent = str(payload.get("agent") or "").strip().lower()
+        if not benchmark_id or not agent:
+            continue
+        if valid_benchmark_ids is not None and benchmark_id not in valid_benchmark_ids:
+            continue
+        if agent not in LATEST_SNAPSHOT_AGENTS or _is_synthetic_agent(agent):
+            continue
+        if str(payload.get("status") or "") != "succeeded":
+            continue
+        key = (benchmark_id, agent)
+        if key in latest_by_key:
+            continue
+        preserved_latest[key] = (payload, path)
 
     expected_by_dir: dict[Path, set[Path]] = {
         latest_dir: set(),
         quarantine_dir: set(),
         baselines_dir: set(),
     }
+    latest_for_contract = dict(latest_by_key)
+    latest_for_contract.update(
+        {key: payload for key, (payload, _path) in preserved_latest.items()}
+    )
     matrix_contract = _build_latest_matrix_contract(
-        latest_by_key=latest_by_key,
+        latest_by_key=latest_for_contract,
         quarantine_by_key=quarantine_by_key,
         adapters=adapters,
     )
@@ -1007,15 +1102,10 @@ def _rebuild_latest_result_snapshots(
             "run_group_id": row.get("run_group_id"),
             "run_id": row.get("run_id"),
             "signature": row.get("signature"),
-            "comparison_signature": _comparison_signature_from_parts(
+            "comparison_signature": _comparison_signature_for_row(
+                row,
                 benchmark_id=benchmark_id,
-                benchmark_directory=str(row.get("benchmark_directory") or benchmark_id),
                 agent=agent,
-                provider=str(row.get("provider") or ""),
-                model=str(row.get("model") or ""),
-                extra_config=row.get("extra_config")
-                if isinstance(row.get("extra_config"), dict)
-                else {},
             ),
             "status": row.get("status"),
             "agent": agent,
@@ -1055,6 +1145,63 @@ def _rebuild_latest_result_snapshots(
                 "updated_at": payload["updated_at"],
             }
 
+    for (benchmark_id, agent), (payload, snapshot_path) in sorted(
+        preserved_latest.items()
+    ):
+        expected_by_dir[latest_dir].add(snapshot_path)
+        comparison_signature = str(payload.get("comparison_signature") or "")
+        if not comparison_signature:
+            comparison_signature = _comparison_signature_from_parts(
+                benchmark_id=benchmark_id,
+                benchmark_directory=str(
+                    payload.get("benchmark_directory") or benchmark_id
+                ),
+                agent=agent,
+                provider=str(payload.get("provider") or ""),
+                model=str(payload.get("model") or ""),
+                extra_config=payload.get("extra_config")
+                if isinstance(payload.get("extra_config"), dict)
+                else {},
+            )
+        index["latest"][f"{benchmark_id}::{agent}"] = {
+            "path": str(snapshot_path),
+            "run_id": payload.get("run_id"),
+            "run_group_id": payload.get("run_group_id"),
+            "signature": payload.get("signature"),
+            "comparison_signature": comparison_signature,
+            "score": payload.get("score"),
+            "status": payload.get("status"),
+            "updated_at": payload.get("updated_at"),
+        }
+        signature = str(payload.get("signature") or "")
+        if signature:
+            index["latest_by_signature"][f"{signature}::{benchmark_id}::{agent}"] = {
+                "run_id": payload.get("run_id"),
+                "run_group_id": payload.get("run_group_id"),
+                "benchmark_id": benchmark_id,
+                "agent": agent,
+                "signature": signature,
+                "score": payload.get("score"),
+                "status": payload.get("status"),
+                "updated_at": payload.get("updated_at"),
+                "result_json_path": payload.get("result_json_path"),
+            }
+        if comparison_signature:
+            index["latest_by_comparison_signature"][
+                f"{comparison_signature}::{benchmark_id}::{agent}"
+            ] = {
+                "run_id": payload.get("run_id"),
+                "run_group_id": payload.get("run_group_id"),
+                "benchmark_id": benchmark_id,
+                "agent": agent,
+                "signature": payload.get("signature"),
+                "comparison_signature": comparison_signature,
+                "score": payload.get("score"),
+                "status": payload.get("status"),
+                "updated_at": payload.get("updated_at"),
+                "result_json_path": payload.get("result_json_path"),
+            }
+
     for (benchmark_id, agent), row in sorted(quarantine_by_key.items()):
         metrics = row.get("metrics") or {}
         token_metrics = row.get("token_metrics") or {}
@@ -1073,15 +1220,10 @@ def _rebuild_latest_result_snapshots(
             "run_group_id": row.get("run_group_id"),
             "run_id": row.get("run_id"),
             "signature": row.get("signature"),
-            "comparison_signature": _comparison_signature_from_parts(
+            "comparison_signature": _comparison_signature_for_row(
+                row,
                 benchmark_id=benchmark_id,
-                benchmark_directory=str(row.get("benchmark_directory") or benchmark_id),
                 agent=agent,
-                provider=str(row.get("provider") or ""),
-                model=str(row.get("model") or ""),
-                extra_config=row.get("extra_config")
-                if isinstance(row.get("extra_config"), dict)
-                else {},
             ),
             "status": row.get("status"),
             "agent": agent,
@@ -1537,6 +1679,7 @@ def run_benchmarks(
                 higher_is_better=None,
                 metrics=outcome.metrics,
                 error=outcome.error,
+                adapters=discovery.adapters,
             )
             continue
 
@@ -1805,6 +1948,7 @@ def run_benchmarks(
                 higher_is_better=None,
                 metrics=outcome.metrics,
                 error=outcome.error,
+                adapters=discovery.adapters,
             )
             continue
 
@@ -2055,6 +2199,7 @@ def run_benchmarks(
             error=error,
             reproducibility=reproducibility,
             signature=signature,
+            adapters=discovery.adapters,
         )
 
     finish_run_group(conn, run_group_id=run_group_id, finished_at=_utc_now())

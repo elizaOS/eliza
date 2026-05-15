@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Input } from "@elizaos/cloud-ui";
+import { Button, Input } from "@elizaos/ui";
 import { formatDistanceToNow } from "date-fns";
 import { FileText, Loader2, RefreshCw, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";

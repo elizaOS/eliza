@@ -4,7 +4,7 @@ import {
   DashboardStatCard,
   DashboardStatGrid,
   DashboardToolbar,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Activity, ChevronDown, Grid3x3, TrendingUp, Users } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { useRequireAuth } from "../../lib/auth-hooks";

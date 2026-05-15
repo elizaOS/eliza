@@ -4,7 +4,7 @@ import {
   BrandCard,
   DashboardErrorState,
   DashboardLoadingState,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { AlertCircle, ArrowLeft, Clock, Cpu, ExternalLink, HardDrive, Server } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link, Navigate, useParams } from "react-router-dom";

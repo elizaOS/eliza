@@ -54,6 +54,7 @@ def test_dflash_required_files_match_bundle_layout() -> None:
     assert "dflash/drafter-4b.gguf" in tier_plan.required_files
     assert "dflash/target-meta.json" in tier_plan.required_files
     assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
+    assert "dflash/drafter-0_8b.gguf" not in build_plan()["0_8b"].required_files
 
 
 def test_context_tier_text_artifacts_do_not_duplicate_context_suffix() -> None:
@@ -177,7 +178,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
-                    "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
+                    "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
                 },
                 "final": {
                     # weights are the upstream base GGUFs by design — not a
@@ -193,15 +194,15 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizaos/eliza-1",
+                    "repoId": "elizalabs/eliza-1",
                     "repoPath": "bundles/2b",
                     "status": "uploaded",
                     "uploadEvidence": {
-                        "repoId": "elizaos/eliza-1",
+                        "repoId": "elizalabs/eliza-1",
                         "pathPrefix": "bundles/2b",
                         "status": "uploaded",
                         "commit": "abc123",
-                        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
+                        "url": "https://huggingface.co/elizalabs/eliza-1/commit/abc123",
                         "uploadedPaths": required_weights,
                     },
                 },
@@ -243,7 +244,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizaos/eliza-1",
+                    "repoId": "elizalabs/eliza-1",
                     "repoPath": "bundles/2b",
                     "status": "pending-upload",
                 },
@@ -284,7 +285,7 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
                 "weights": [],
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizaos/eliza-1",
+                    "repoId": "elizalabs/eliza-1",
                     "status": "pending-upload",
                 },
             }

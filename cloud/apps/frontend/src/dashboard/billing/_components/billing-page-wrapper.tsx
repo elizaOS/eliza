@@ -1,6 +1,6 @@
 "use client";
 
-import { useSetPageHeader } from "@elizaos/cloud-ui";
+import { useSetPageHeader } from "@elizaos/ui";
 import type { BillingUser } from "../../settings/_components/tabs/billing-tab";
 import { BillingTab } from "../../settings/_components/tabs/billing-tab";
 

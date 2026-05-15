@@ -3,16 +3,47 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
+    "jsx": "react-jsx",
     "declaration": true,
     "declarationMap": true,
     "strict": true,
+    "noImplicitAny": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "ignoreDeprecations": "6.0",
     "forceConsistentCasingInFileNames": true,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "types": ["node"],
     "outDir": "./dist",
-    "rootDir": "./src"
+    "rootDir": "../..",
+    "paths": {
+      "@elizaos/agent": ["../../packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["../../packages/agent/src/*"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/contracts": ["../../packages/contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../../packages/contracts/src/*"],
+      "@elizaos/core": ["../../packages/core/src/index.ts"],
+      "@elizaos/core/*": ["../../packages/core/src/*"],
+      "@elizaos/plugin-agent-skills": [
+        "../plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-skills/*": [
+        "../plugin-agent-skills/src/*"
+      ],
+      "@elizaos/plugin-app-manager": [
+        "../plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-commands": ["../plugin-commands/src/index.ts"],
+      "@elizaos/plugin-commands/*": ["../plugin-commands/src/*"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
+      "@elizaos/shared/*": ["../../packages/shared/src/*"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/vault": ["../../packages/vault/src/index.ts"],
+      "@elizaos/vault/*": ["../../packages/vault/src/*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": [

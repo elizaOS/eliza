@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { ArrowUp, Loader2, RotateCcw, SlidersHorizontal, Sparkles } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";

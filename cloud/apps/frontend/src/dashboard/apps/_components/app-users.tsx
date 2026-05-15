@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, AvatarFallback, Button } from "@elizaos/cloud-ui";
+import { Avatar, AvatarFallback, Button } from "@elizaos/ui";
 import { formatDistanceToNow } from "date-fns";
 import { Activity, DollarSign, Globe, Loader2, RefreshCw, Users as UsersIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";

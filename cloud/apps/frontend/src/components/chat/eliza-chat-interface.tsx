@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
   useRenderGuard,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   ArrowUp,
   Check,
@@ -56,7 +56,7 @@ import { useAudioRecorder } from "./hooks/use-audio-recorder";
 import { useModelTier } from "./hooks/use-model-tier";
 import { MemoizedChatMessage } from "./memoized-chat-message";
 import "highlight.js/styles/github-dark.css";
-import type { Voice as CustomVoice } from "@elizaos/cloud-ui";
+import type { Voice as CustomVoice } from "@elizaos/ui";
 import {
   type ChatMediaAttachment,
   ContentType,
@@ -67,7 +67,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   ADDITIONAL_IMAGE_MODELS,
   ADDITIONAL_MODELS,

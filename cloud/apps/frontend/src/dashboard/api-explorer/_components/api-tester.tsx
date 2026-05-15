@@ -28,7 +28,7 @@ import {
   TabsList,
   TabsTrigger,
   Textarea,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   CheckIcon,
   CodeIcon,

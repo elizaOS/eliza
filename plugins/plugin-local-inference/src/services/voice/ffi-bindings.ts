@@ -1257,8 +1257,19 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			try {
 				// Copy out of the library's malloc'ed buffer so we can free it
 				// before returning. Each int32 is 4 bytes.
-				const ab = ffi.toArrayBuffer(tokensRaw, 0, tokenCount * 4);
-				const tokens = new Int32Array(ab.slice(0));
+				const tokenBytes = tokenCount * 4;
+				const tokensPtr =
+					typeof tokensRaw === "bigint" ? Number(tokensRaw) : tokensRaw;
+				const nativeView = ffi.toArrayBuffer(tokensPtr, 0, tokenBytes);
+				const bytes = new Uint8Array(nativeView);
+				if (bytes.byteLength < tokenBytes) {
+					throw new VoiceLifecycleError(
+						"kernel-missing",
+						`[ffi-bindings] encodeReference returned an unreadable token buffer (K=${K}, refT=${refT}, got=${bytes.byteLength}, expected=${tokenBytes}, ctor=${nativeView.constructor.name})`,
+					);
+				}
+				const copied = bytes.slice(0, tokenBytes);
+				const tokens = new Int32Array(copied.buffer);
 				return { K, refT, tokens };
 			} finally {
 				loadedLib.symbols.eliza_inference_free_tokens(tokensRaw);
@@ -1409,9 +1420,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			) {
 				return false;
 			}
-			return (
-				loadedLib.symbols.eliza_inference_wakeword_supported() === 1
-			);
+			return loadedLib.symbols.eliza_inference_wakeword_supported() === 1;
 		},
 
 		wakewordOpen({ ctx, sampleRateHz, headName }) {

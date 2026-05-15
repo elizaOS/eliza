@@ -17,25 +17,19 @@
  * attempt the framework call without it.
  */
 
-import { existsSync, readFileSync } from "node:fs";
-import path from "node:path";
-
 import type { PermissionState, Prober } from "../contracts.js";
-import { buildState, IS_DARWIN, platformUnsupportedState } from "./_bridge.js";
+import {
+  buildState,
+  hasEmbeddedProvisioningEntitlement,
+  IS_DARWIN,
+  platformUnsupportedState,
+} from "./_bridge.js";
 
 const ID = "screentime" as const;
+const FAMILY_CONTROLS_ENTITLEMENT = "com.apple.developer.family-controls";
 
 function hasFamilyControlsEntitlement(): boolean {
-  try {
-    const macOsDir = path.dirname(path.resolve(process.execPath));
-    const contentsDir = path.resolve(macOsDir, "..");
-    const embedded = path.join(contentsDir, "embedded.provisionprofile");
-    if (!existsSync(embedded)) return false;
-    const buf = readFileSync(embedded);
-    return buf.includes(Buffer.from("com.apple.developer.family-controls"));
-  } catch {
-    return false;
-  }
+  return hasEmbeddedProvisioningEntitlement(FAMILY_CONTROLS_ENTITLEMENT);
 }
 
 export const screentimeProber: Prober = {

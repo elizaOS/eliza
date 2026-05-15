@@ -8,7 +8,7 @@
 
 "use client";
 
-import { BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
+import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { Clock, Download, Link2, Loader2, Play, ShieldAlert, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/utils";

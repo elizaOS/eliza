@@ -30,7 +30,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   ArrowUpDown,
   Boxes,

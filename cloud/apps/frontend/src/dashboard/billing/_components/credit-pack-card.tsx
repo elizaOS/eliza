@@ -15,7 +15,7 @@
 
 "use client";
 
-import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
+import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/ui";
 import { Check, Clock, Sparkles } from "lucide-react";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { packSavingsPercent } from "@/lib/constants/agent-pricing-display";

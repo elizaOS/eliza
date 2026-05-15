@@ -47,12 +47,6 @@ import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { Eliza1EotScorer } from "./eliza1-eot-scorer";
-import type {
-	Eliza1EotScoreResult,
-	Eliza1EotScorerOptions,
-} from "./eliza1-eot-scorer";
-
 // ---------------------------------------------------------------------------
 // Interface
 // ---------------------------------------------------------------------------
@@ -1004,47 +998,16 @@ export const EOT_TENTATIVE_SILENCE_MS = 20;
 /** How many ms to add to the pause hangover when P < EOT_MID_CLAUSE_THRESHOLD. */
 export const EOT_HANGOVER_EXTENSION_MS = 50;
 
-// ---------------------------------------------------------------------------
-// Eliza-1 drafter EOT classifier
-// ---------------------------------------------------------------------------
-
-export type { Eliza1EotScorerOptions, Eliza1EotScoreResult };
-
-/**
- * Eliza-1 EOT classifier. Reuses the already-loaded text model (typically
- * the eliza-1 drafter — same model DFlash keeps warm for speculative
- * decoding) to compute P(`<|im_end|>` | partial transcript). Optionally
- * loads a fine-tuned EOT LoRA adapter on top of the base weights — see
- * `packages/training/scripts/turn_detector/` for the training recipe.
- *
- * Unlike `LiveKitTurnDetector`, this classifier ships zero additional
- * model weights — it leans on what's already in RAM.
- */
-export class Eliza1EotClassifier implements EotClassifier {
-	private readonly scorer: Eliza1EotScorer;
-
-	constructor(options: Eliza1EotScorerOptions | { scorer: Eliza1EotScorer }) {
-		this.scorer =
-			"scorer" in options ? options.scorer : new Eliza1EotScorer(options);
-	}
-
-	async score(partialTranscript: string): Promise<number> {
-		const { probability } = await this.scorer.score(partialTranscript);
-		return probability;
-	}
-
-	async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
-		const result = await this.scorer.score(partialTranscript);
-		return turnSignalFromProbability({
-			probability: result.probability,
-			transcript: partialTranscript,
-			source: "eliza-1-drafter",
-			model: this.scorer.modelLabel,
-			latencyMs: result.latencyMs,
-		});
-	}
-
-	async dispose(): Promise<void> {
-		await this.scorer.dispose();
-	}
-}
+export type {
+	Eliza1EotScoreResult,
+	Eliza1EotScorerOptions,
+} from "./eliza1-eot-scorer";
+// Eliza-1 drafter EOT classifier — `Eliza1EotClassifier` lives in
+// `eliza1-eot-scorer.ts` alongside its scorer. It is re-exported here
+// so callers can keep importing from `eot-classifier.ts` alongside the
+// other classifiers (heuristic / livekit / turnsense / remote).
+export {
+	Eliza1EotClassifier,
+	Eliza1EotScorer,
+	formatEotPrompt as formatEliza1EotPrompt,
+} from "./eliza1-eot-scorer";

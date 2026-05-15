@@ -1,27 +1,27 @@
 import * as realPromises from "node:fs/promises";
 import type { AnyFn, FsAccessMode } from "./fs-sandbox.ts";
 import {
-  wrapMobileFsOpen,
-  wrapMobileFsPath,
-  wrapMobileFsTwoPaths,
+	wrapMobileFsOpen,
+	wrapMobileFsPath,
+	wrapMobileFsTwoPaths,
 } from "./fs-sandbox.ts";
 
 const MODULE_NAME = "mobile-fs-promises-proxy";
 
 function wrapPath<T extends AnyFn>(fn: T | undefined, mode: FsAccessMode): T {
-  return wrapMobileFsPath(MODULE_NAME, fn, mode);
+	return wrapMobileFsPath(MODULE_NAME, fn, mode);
 }
 
 function wrapOpen<T extends AnyFn>(fn: T | undefined): T {
-  return wrapMobileFsOpen(MODULE_NAME, fn);
+	return wrapMobileFsOpen(MODULE_NAME, fn);
 }
 
 function wrapTwoPaths<T extends AnyFn>(
-  fn: T | undefined,
-  srcMode: FsAccessMode,
-  dstMode: FsAccessMode,
+	fn: T | undefined,
+	srcMode: FsAccessMode,
+	dstMode: FsAccessMode,
 ): T {
-  return wrapMobileFsTwoPaths(MODULE_NAME, fn, srcMode, dstMode);
+	return wrapMobileFsTwoPaths(MODULE_NAME, fn, srcMode, dstMode);
 }
 
 export const access = wrapPath(realPromises.access, "read");
@@ -55,36 +55,36 @@ export const watch = wrapPath(realPromises.watch, "read");
 export const writeFile = wrapPath(realPromises.writeFile, "write");
 
 const promisesDefault = {
-  ...realPromises,
-  access,
-  appendFile,
-  chmod,
-  chown,
-  copyFile,
-  cp,
-  lchmod,
-  lchown,
-  link,
-  lstat,
-  lutimes,
-  mkdir,
-  mkdtemp,
-  open,
-  opendir,
-  readdir,
-  readFile,
-  readlink,
-  realpath,
-  rename,
-  rm,
-  rmdir,
-  stat,
-  symlink,
-  truncate,
-  unlink,
-  utimes,
-  watch,
-  writeFile,
+	...realPromises,
+	access,
+	appendFile,
+	chmod,
+	chown,
+	copyFile,
+	cp,
+	lchmod,
+	lchown,
+	link,
+	lstat,
+	lutimes,
+	mkdir,
+	mkdtemp,
+	open,
+	opendir,
+	readdir,
+	readFile,
+	readlink,
+	realpath,
+	rename,
+	rm,
+	rmdir,
+	stat,
+	symlink,
+	truncate,
+	unlink,
+	utimes,
+	watch,
+	writeFile,
 };
 
 export default promisesDefault;

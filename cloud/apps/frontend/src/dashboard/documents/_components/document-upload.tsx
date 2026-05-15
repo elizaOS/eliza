@@ -20,7 +20,7 @@ import {
   TabsList,
   TabsTrigger,
   Textarea,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { CheckCircle2, FileText, Loader2, Upload } from "lucide-react";
 import { useState } from "react";
 

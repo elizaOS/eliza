@@ -77,6 +77,8 @@
         "../../plugins/plugin-workflow/src/index.ts"
       ],
       "@elizaos/workflows": ["../workflows/src/index.ts"],
+      "@elizaos/agent/api": ["./src/api/index.ts"],
+      "@elizaos/agent/runtime": ["./src/runtime/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/local-inference": [
@@ -109,6 +111,15 @@
       ],
       "@elizaos/plugin-capacitor-bridge": [
         "../../plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/android/bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/android/bridge.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/ios/bridge": [
+        "../../plugins/plugin-capacitor-bridge/src/ios/bridge.ts"
+      ],
+      "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap": [
+        "../../plugins/plugin-capacitor-bridge/src/mobile-device-bridge-bootstrap.ts"
       ],
       "@elizaos/plugin-discord-local": [
         "../../plugins/plugin-discord-local/src/index.ts"

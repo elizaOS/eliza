@@ -17,7 +17,7 @@
       "@elizaos/core": ["../core/src/index.node.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
-      "@elizaos/ui": ["../ui/dist/index.d.ts"],
+      "@elizaos/contracts": ["../contracts/src/index.ts"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],
       "@elizaos/plugin-browser": [
@@ -32,6 +32,10 @@
       "@elizaos/plugin-agent-orchestrator": [
         "../../plugins/plugin-agent-orchestrator/src/index.ts"
       ],
+      "@elizaos/plugin-app-manager": [
+        "../../plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-commands": ["../../plugins/plugin-commands/index.ts"],
       "@elizaos/plugin-local-inference": [
         "../../plugins/plugin-local-inference/src/index.ts"
       ],

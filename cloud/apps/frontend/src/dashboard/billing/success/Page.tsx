@@ -7,7 +7,7 @@ import {
   CardHeader,
   CardTitle,
   DashboardLoadingState,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { ArrowRight, CheckCircle, XCircle } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Helmet } from "react-helmet-async";

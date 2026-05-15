@@ -22,7 +22,7 @@ import {
   CollapsibleTrigger,
   Input,
   Label,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   Bot,
   CheckCircle,

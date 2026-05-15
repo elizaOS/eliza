@@ -72,20 +72,20 @@ export function LandingPage({ accessError }: LandingPageProps) {
 
   // Web: Show landing page for anonymous users
   return (
-    <div className="relative flex h-screen bg-black">
+    <div className="relative flex h-screen bg-bg">
       {/* <BayerDitheringBackground /> */}
 
       {/* Gradient background - Radial gradient version */}
       <div
         className="fixed inset-0 z-10"
         style={{
-          backgroundColor: "hsla(167,0%,0%,1)",
+          backgroundColor: "var(--bg)",
           backgroundImage: `
-            radial-gradient(at 72% 68%, hsla(6,56%,26%,1) 0px, transparent 50%),
-            radial-gradient(at 50% 48%, hsla(10,60%,43%,0.7) 0px, transparent 50%),
-            radial-gradient(at 98% 99%, hsla(19,48%,57%,1) 0px, transparent 50%),
-            radial-gradient(at 14% 4%, hsla(14,90%,42%,1) 0px, transparent 50%),
-            radial-gradient(at 34% 34%, hsla(15,72%,53%,1) 0px, transparent 50%)
+            radial-gradient(at 72% 68%, rgba(var(--accent-rgb), 0.16) 0px, transparent 46%),
+            radial-gradient(at 50% 48%, rgba(var(--accent-rgb), 0.12) 0px, transparent 42%),
+            radial-gradient(at 98% 99%, rgba(255, 255, 255, 0.08) 0px, transparent 44%),
+            radial-gradient(at 14% 4%, rgba(var(--accent-rgb), 0.2) 0px, transparent 48%),
+            radial-gradient(at 34% 34%, rgba(var(--accent-rgb), 0.1) 0px, transparent 50%)
           `,
         }}
       >
@@ -100,7 +100,7 @@ export function LandingPage({ accessError }: LandingPageProps) {
         />
       </div>
 
-      <div className="relative z-30 flex w-full flex-col overflow-y-scroll sm:scrollbar-thin sm:scrollbar-thumb-brand-orange sm:scrollbar-track-black sm:scrollbar-thumb-rounded-full sm:scrollbar-track-rounded-full">
+      <div className="relative z-30 flex w-full flex-col overflow-y-scroll sm:scrollbar-thin sm:scrollbar-thumb-accent sm:scrollbar-track-bg sm:scrollbar-thumb-rounded-full sm:scrollbar-track-rounded-full">
         <LandingHeader />
 
         {/* Hero Chat Input - fills available viewport space above the footer */}

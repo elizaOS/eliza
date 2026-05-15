@@ -72,6 +72,52 @@ uv run --extra train python -m scripts.turn_detector.eval_turn_detector \
 the publish orchestrator copies it into the manifest `evals.turnDetector`
 slot the runtime validator enforces.
 
+## Eliza-1 drafter target (alternative — runs *on* the live drafter)
+
+`configs/turn_detector_eliza1_drafter.yaml` trains a LoRA adapter on top
+of the eliza-1 drafter (the small model DFlash already keeps warm for
+speculative decoding) instead of a standalone ONNX. The runtime layers
+the adapter onto a dedicated EOT context at voice-session start and
+reads P(`<|im_end|>`) directly off the live model — see
+[`plugins/plugin-local-inference/src/services/voice/eliza1-eot-scorer.ts`](../../../../plugins/plugin-local-inference/src/services/voice/eliza1-eot-scorer.ts).
+
+```bash
+uv run --extra train python -m scripts.turn_detector.finetune_turn_detector \
+    --config packages/training/scripts/turn_detector/configs/turn_detector_eliza1_drafter.yaml \
+    --out artifacts/turn-detector-eliza1-drafter/ \
+    --epochs 3
+
+# Convert the saved torch LoRA to GGUF for the runtime to consume.
+# `convert_lora_to_gguf.py` ships with the llama.cpp checkout — see
+# `EXPORT-NEXT-STEP.txt` written under the run dir.
+python llama.cpp/convert_lora_to_gguf.py \
+    --base elizaos/eliza-1 \
+    --revision bundles/2b/drafter \
+    artifacts/turn-detector-eliza1-drafter/checkpoints/best.pt \
+    --outfile artifacts/turn-detector-eliza1-drafter/eot-lora.gguf
+```
+
+The resulting `.gguf` adapter ships under the manifest slot
+`files.eotLoraAdapter` (see
+[`schema.ts`](../../../../plugins/plugin-local-inference/src/services/manifest/schema.ts))
+and the runtime loads it via `startVoiceSession({ useEliza1Eot: true,
+eliza1EotLoraPath })` — operators can also force this path by setting
+`ELIZA_VOICE_EOT_BACKEND=eliza-1` in the env.
+
+Trade-offs vs the LiveKit/Turnsense ONNX path:
+
+| Aspect                | LiveKit ONNX                | Eliza-1 drafter LoRA            |
+| --------------------- | --------------------------- | ------------------------------- |
+| On-disk weight cost   | 66–396 MB (separate ONNX)   | ~few MB adapter (no base model) |
+| Cold start            | Loads ONNX runtime + ONNX   | Reuses the drafter context      |
+| Calibration baseline  | Distilled SmolLM2 / Qwen2.5 | Vanilla drafter + LoRA          |
+| Multilingual coverage | 14 langs (intl revision)    | Inherits eliza-1 vocab coverage |
+| Backend requirement   | Works with any text backend | `node-llama-cpp` in-process     |
+
+The eliza-1-drafter path is preferred when the in-process backend is
+active. The runtime falls back to LiveKit transparently when the
+drafter is not loaded (e.g. `llama-server` subprocess builds).
+
 ## Cancellation contract (handshake with R11)
 
 Turn detection emits a `VoiceTurnSignal` (data); it **never** aborts a

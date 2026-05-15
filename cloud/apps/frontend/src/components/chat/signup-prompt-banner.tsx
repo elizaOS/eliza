@@ -10,7 +10,7 @@
 
 "use client";
 
-import { BrandButton } from "@elizaos/cloud-ui";
+import { BrandButton } from "@elizaos/ui";
 import { Clock, X, Zap } from "lucide-react";
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";

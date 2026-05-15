@@ -7,7 +7,7 @@
  * @param props.creditBalance - Current credit balance
  */
 
-import { Badge, BrandCard, Progress } from "@elizaos/cloud-ui";
+import { Badge, BrandCard, Progress } from "@elizaos/ui";
 import type { AnalyticsDataDto } from "@/types/cloud-api";
 import { CostAlerts } from "./cost-alerts";
 

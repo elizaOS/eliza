@@ -76,42 +76,42 @@ import { installMobileFsShim } from "../shared/fs-shim.ts";
 //      prefix so any downstream path construction produces matching strings.
 //   3. Set sandbox root = canonical HOME → covers .eliza/, agent/ assets, etc.
 const _rawHome =
-  process.env.HOME ||
-  nodePath.dirname(
-    process.env.ELIZA_STATE_DIR ||
-      process.env.MILADY_STATE_DIR ||
-      "/data/local/tmp/.eliza",
-  );
+	process.env.HOME ||
+	nodePath.dirname(
+		process.env.ELIZA_STATE_DIR ||
+			process.env.MILADY_STATE_DIR ||
+			"/data/local/tmp/.eliza",
+	);
 
 let _canonicalHome: string;
 try {
-  _canonicalHome = nodeFs.realpathSync(_rawHome);
+	_canonicalHome = nodeFs.realpathSync(_rawHome);
 } catch {
-  _canonicalHome = _rawHome;
+	_canonicalHome = _rawHome;
 }
 
 // Remap any env var that starts with the old (symlink) prefix to the
 // canonical (real) prefix so downstream code resolves paths consistently.
 if (_canonicalHome !== _rawHome) {
-  if (process.env.HOME) process.env.HOME = _canonicalHome;
-  for (const key of [
-    "ELIZA_STATE_DIR",
-    "MILADY_STATE_DIR",
-    "ELIZA_WORKSPACE_DIR",
-    "MILADY_WORKSPACE_DIR",
-    "TMPDIR",
-  ] as const) {
-    const val = process.env[key];
-    if (val?.startsWith(_rawHome)) {
-      process.env[key] = _canonicalHome + val.slice(_rawHome.length);
-    }
-  }
+	if (process.env.HOME) process.env.HOME = _canonicalHome;
+	for (const key of [
+		"ELIZA_STATE_DIR",
+		"MILADY_STATE_DIR",
+		"ELIZA_WORKSPACE_DIR",
+		"MILADY_WORKSPACE_DIR",
+		"TMPDIR",
+	] as const) {
+		const val = process.env[key];
+		if (val?.startsWith(_rawHome)) {
+			process.env[key] = _canonicalHome + val.slice(_rawHome.length);
+		}
+	}
 }
 
 const stateDir =
-  process.env.ELIZA_STATE_DIR ||
-  process.env.MILADY_STATE_DIR ||
-  `${_canonicalHome}/.eliza`;
+	process.env.ELIZA_STATE_DIR ||
+	process.env.MILADY_STATE_DIR ||
+	`${_canonicalHome}/.eliza`;
 
 installMobileFsShim(_canonicalHome);
 
@@ -119,111 +119,111 @@ installMobileFsShim(_canonicalHome);
 // Writes to $ELIZA_STATE_DIR/android-bridge.log so we can read via adb run-as.
 const _logPath = `${stateDir}/android-bridge.log`;
 try {
-  nodeFs.mkdirSync(stateDir, { recursive: true });
+	nodeFs.mkdirSync(stateDir, { recursive: true });
 } catch {
-  /* ignore */
+	/* ignore */
 }
 function _logToFile(line: string): void {
-  try {
-    nodeFs.appendFileSync(_logPath, `${new Date().toISOString()} ${line}\n`);
-  } catch {
-    /* ignore */
-  }
+	try {
+		nodeFs.appendFileSync(_logPath, `${new Date().toISOString()} ${line}\n`);
+	} catch {
+		/* ignore */
+	}
 }
 _logToFile(`[android-bridge] process started, stateDir=${stateDir}`);
 
 // ── Step 3: boot the runtime ──────────────────────────────────────────────
 
 export async function runAndroidBridgeCli(): Promise<void> {
-  // Log the process exit code for every exit (including process.exit(N) calls
-  // from deep inside the runtime that bypass our try/catch).
-  process.on("exit", (code) => {
-    _logToFile(`[android-bridge] process.exit code=${code}`);
-  });
+	// Log the process exit code for every exit (including process.exit(N) calls
+	// from deep inside the runtime that bypass our try/catch).
+	process.on("exit", (code) => {
+		_logToFile(`[android-bridge] process.exit code=${code}`);
+	});
 
-  // Intercept console.error so errors logged by the runtime (e.g. the
-  // "Could not start API server" message from eliza.ts) are captured in the
-  // file log even though stdout/stderr are redirected to /dev/null on Android.
-  const _origConsoleError = console.error.bind(console);
-  console.error = (...args: unknown[]) => {
-    _logToFile(`[console.error] ${args.map(String).join(" ")}`);
-    _origConsoleError(...args);
-  };
-  const _origConsoleWarn = console.warn.bind(console);
-  console.warn = (...args: unknown[]) => {
-    const msg = args.map(String).join(" ");
-    if (
-      msg.includes("Error") ||
-      msg.includes("error") ||
-      msg.includes("fail")
-    ) {
-      _logToFile(`[console.warn] ${msg}`);
-    }
-    _origConsoleWarn(...args);
-  };
+	// Intercept console.error so errors logged by the runtime (e.g. the
+	// "Could not start API server" message from eliza.ts) are captured in the
+	// file log even though stdout/stderr are redirected to /dev/null on Android.
+	const _origConsoleError = console.error.bind(console);
+	console.error = (...args: unknown[]) => {
+		_logToFile(`[console.error] ${args.map(String).join(" ")}`);
+		_origConsoleError(...args);
+	};
+	const _origConsoleWarn = console.warn.bind(console);
+	console.warn = (...args: unknown[]) => {
+		const msg = args.map(String).join(" ");
+		if (
+			msg.includes("Error") ||
+			msg.includes("error") ||
+			msg.includes("fail")
+		) {
+			_logToFile(`[console.warn] ${msg}`);
+		}
+		_origConsoleWarn(...args);
+	};
 
-  process.on("unhandledRejection", (reason) => {
-    const msg =
-      reason instanceof Error ? reason.stack || reason.message : String(reason);
-    _logToFile(`[android-bridge] unhandledRejection: ${msg}`);
-    console.error("[android-bridge] unhandled rejection:", msg);
-  });
-  process.on("uncaughtException", (error) => {
-    _logToFile(
-      `[android-bridge] uncaughtException: ${error.stack || error.message}`,
-    );
-    console.error(
-      "[android-bridge] uncaught exception:",
-      error.stack || error.message,
-    );
-  });
+	process.on("unhandledRejection", (reason) => {
+		const msg =
+			reason instanceof Error ? reason.stack || reason.message : String(reason);
+		_logToFile(`[android-bridge] unhandledRejection: ${msg}`);
+		console.error("[android-bridge] unhandled rejection:", msg);
+	});
+	process.on("uncaughtException", (error) => {
+		_logToFile(
+			`[android-bridge] uncaughtException: ${error.stack || error.message}`,
+		);
+		console.error(
+			"[android-bridge] uncaught exception:",
+			error.stack || error.message,
+		);
+	});
 
-  _logToFile("[android-bridge] importing startEliza...");
-  const { startEliza } = await import("@elizaos/agent");
-  _logToFile("[android-bridge] calling startEliza({ serverOnly: true })...");
+	_logToFile("[android-bridge] importing startEliza...");
+	const { startEliza } = await import("@elizaos/agent/runtime");
+	_logToFile("[android-bridge] calling startEliza({ serverOnly: true })...");
 
-  // Heartbeat: log every 10s during startEliza so we can see where it stalls.
-  const _hb = setInterval(() => {
-    _logToFile("[android-bridge] startEliza still running...");
-  }, 10_000);
+	// Heartbeat: log every 10s during startEliza so we can see where it stalls.
+	const _hb = setInterval(() => {
+		_logToFile("[android-bridge] startEliza still running...");
+	}, 10_000);
 
-  let runtime: Awaited<ReturnType<typeof startEliza>>;
-  try {
-    runtime = await startEliza({ serverOnly: true });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.stack || err.message : String(err);
-    _logToFile(`[android-bridge] startEliza THREW: ${msg}`);
-    throw err;
-  } finally {
-    clearInterval(_hb);
-  }
-  _logToFile(
-    `[android-bridge] startEliza returned: ${runtime ? "present" : "null"}`,
-  );
+	let runtime: Awaited<ReturnType<typeof startEliza>>;
+	try {
+		runtime = await startEliza({ serverOnly: true });
+	} catch (err: unknown) {
+		const msg = err instanceof Error ? err.stack || err.message : String(err);
+		_logToFile(`[android-bridge] startEliza THREW: ${msg}`);
+		throw err;
+	} finally {
+		clearInterval(_hb);
+	}
+	_logToFile(
+		`[android-bridge] startEliza returned: ${runtime ? "present" : "null"}`,
+	);
 
-  _logToFile(
-    `[android-bridge] startEliza returned: runtime=${runtime ? "present" : "null"}, ` +
-      `ELIZA_ANDROID_LOCAL_BACKEND=${process.env.ELIZA_ANDROID_LOCAL_BACKEND ?? "(unset)"}`,
-  );
+	_logToFile(
+		`[android-bridge] startEliza returned: runtime=${runtime ? "present" : "null"}, ` +
+			`ELIZA_ANDROID_LOCAL_BACKEND=${process.env.ELIZA_ANDROID_LOCAL_BACKEND ?? "(unset)"}`,
+	);
 
-  // ── Step 4: wire inference delegation if device-bridge enabled ────────────
-  // The Capacitor WebView's llama-cpp plugin connects to the agent's
-  // `/api/local-inference/device-bridge` WebSocket endpoint.  Without
-  // this bootstrap, the bridge handler is never registered.
-  if (runtime && process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
-    _logToFile("[android-bridge] importing mobile-device-bridge-bootstrap…");
-    const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-      "../mobile-device-bridge-bootstrap.ts"
-    );
-    await ensureMobileDeviceBridgeInferenceHandlers(runtime);
-  }
+	// ── Step 4: wire inference delegation if device-bridge enabled ────────────
+	// The Capacitor WebView's llama-cpp plugin connects to the agent's
+	// `/api/local-inference/device-bridge` WebSocket endpoint.  Without
+	// this bootstrap, the bridge handler is never registered.
+	if (runtime && process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1") {
+		_logToFile("[android-bridge] importing mobile-device-bridge-bootstrap…");
+		const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+			"../mobile-device-bridge-bootstrap.ts"
+		);
+		await ensureMobileDeviceBridgeInferenceHandlers(runtime);
+	}
 
-  // Keep the process alive indefinitely — ElizaAgentService will SIGTERM
-  // when the user stops the service or the app is swiped away.
-  await new Promise<void>((resolve) => {
-    process.once("SIGINT", resolve);
-    process.once("SIGTERM", resolve);
-  });
+	// Keep the process alive indefinitely — ElizaAgentService will SIGTERM
+	// when the user stops the service or the app is swiped away.
+	await new Promise<void>((resolve) => {
+		process.once("SIGINT", resolve);
+		process.once("SIGTERM", resolve);
+	});
 
-  _logToFile("[android-bridge] shutdown signal received, exiting.");
+	_logToFile("[android-bridge] shutdown signal received, exiting.");
 }

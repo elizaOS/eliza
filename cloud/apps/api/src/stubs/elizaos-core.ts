@@ -18,6 +18,36 @@ function throwingExport(name: string): (...args: unknown[]) => never {
   return () => unavailable(name);
 }
 
+function readEnvValue(
+  env: Record<string, string | undefined>,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = env[key]?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+export function getElizaNamespace(env: Record<string, string | undefined> = process.env): string {
+  return readEnvValue(env, ["ELIZA_NAMESPACE", "MILADY_NAMESPACE"]) ?? "eliza";
+}
+
+export function resolveUserPath(value: string): string {
+  if (value === "~" || value.startsWith("~/")) {
+    const home = process.env.HOME?.trim() || "/tmp";
+    return value === "~" ? home : `${home}/${value.slice(2)}`;
+  }
+  return value;
+}
+
+export function resolveStateDir(env: Record<string, string | undefined> = process.env): string {
+  const override = readEnvValue(env, ["ELIZA_STATE_DIR", "MILADY_STATE_DIR"]);
+  if (override) return resolveUserPath(override);
+  const home = env.HOME?.trim() || process.env.HOME?.trim() || "/tmp";
+  return `${home}/.${getElizaNamespace(env)}`;
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function bytesToUuid(bytes: Uint8Array): string {

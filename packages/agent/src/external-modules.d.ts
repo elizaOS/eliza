@@ -1,5 +1,4 @@
 declare module "@elizaos/plugin-agent-orchestrator";
-declare module "@elizaos/plugin-agent-skills";
 declare module "@elizaos/plugin-capacitor-bridge" {
   import type { Server } from "node:http";
   import type { AgentRuntime } from "@elizaos/core";
@@ -40,6 +39,8 @@ declare module "@elizaos/plugin-capacitor-bridge" {
   export function ensureMobileDeviceBridgeInferenceHandlers(
     runtime: AgentRuntime,
   ): Promise<boolean>;
+  export function runAndroidBridgeCli(): Promise<void>;
+  export function runIosBridgeCli(argv?: string[]): Promise<void>;
 }
 declare module "qrcode-terminal" {
   export function generate(
@@ -561,8 +562,8 @@ declare module "isomorphic-git" {
     auth: { username?: string; password?: string },
   ) =>
     | { username?: string; password?: string }
-    | void
-    | Promise<{ username?: string; password?: string } | void>;
+    | undefined
+    | Promise<{ username?: string; password?: string } | undefined>;
   // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for optional dep
   const git: any;
   export default git;
@@ -572,6 +573,179 @@ declare module "isomorphic-git/http/node" {
   // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for optional dep
   const http: any;
   export default http;
+}
+
+declare module "@elizaos/plugin-wallet" {
+  import type http from "node:http";
+  import type { AgentRuntime } from "@elizaos/core";
+  import type { WalletAddresses } from "@elizaos/shared";
+
+  // biome-ignore lint/suspicious/noExplicitAny: ambient shim for optional built package
+  type AnyFunction = (...args: any[]) => any;
+
+  export type WalletAddressesSnapshot = WalletAddresses;
+
+  export interface WalletRpcReadinessSnapshot {
+    ready: boolean;
+    reason?: string | null;
+    [key: string]: unknown;
+  }
+
+  export interface WalletCapabilityStatusArgs {
+    // biome-ignore lint/suspicious/noExplicitAny: mirrors external plugin declaration surface
+    config: any;
+    runtime: AgentRuntime | null;
+    getWalletAddresses: () => WalletAddressesSnapshot;
+  }
+
+  export interface WalletRouteDependencies {
+    getWalletAddresses: () => WalletAddressesSnapshot;
+    fetchEvmBalances: AnyFunction;
+    fetchSolanaBalances: AnyFunction;
+    fetchSolanaNativeBalanceViaRpc: AnyFunction;
+    validatePrivateKey: AnyFunction;
+    importWallet: AnyFunction;
+    generateWalletForChain: AnyFunction;
+    deriveSolanaAddress: AnyFunction;
+    setSolanaWalletEnv: AnyFunction;
+    resolveWalletRpcReadiness: AnyFunction;
+    resolveWalletNetworkMode: AnyFunction;
+    getStoredWalletRpcSelections: AnyFunction;
+    applyWalletRpcConfigUpdate: AnyFunction;
+    resolveWalletCapabilityStatus: (
+      args: WalletCapabilityStatusArgs,
+    ) => Record<string, unknown>;
+    isCloudWalletEnabled: () => boolean;
+    persistConfigEnv: (key: string, value: string) => Promise<void>;
+    createIntegrationTelemetrySpan: AnyFunction;
+  }
+
+  export interface WalletRouteContext {
+    req: http.IncomingMessage;
+    res: http.ServerResponse;
+    method: string;
+    pathname: string;
+    // biome-ignore lint/suspicious/noExplicitAny: mirrors external plugin declaration surface
+    config: any;
+    saveConfig: AnyFunction;
+    ensureWalletKeysInEnvAndConfig: AnyFunction;
+    resolveWalletExportRejection: AnyFunction;
+    restartRuntime: AnyFunction;
+    scheduleRuntimeRestart: AnyFunction;
+    readJsonBody: AnyFunction;
+    json: AnyFunction;
+    error: AnyFunction;
+    deps: WalletRouteDependencies;
+    runtime: AgentRuntime | null;
+  }
+
+  export function handleWalletRoutes(
+    context: WalletRouteContext,
+  ): Promise<boolean>;
+  export function _resetForTesting(): void;
+  export function getWalletExportAuditLog(): unknown[];
+}
+
+declare module "@elizaos/ui" {
+  import type { ComponentType } from "react";
+
+  // biome-ignore lint/suspicious/noExplicitAny: server-side ambient UI shim
+  type AnyValue = any;
+  // biome-ignore lint/suspicious/noExplicitAny: server-side ambient UI shim
+  type AnyFunction = (...args: any[]) => any;
+
+  export interface AutomationNodeDescriptor {
+    id: string;
+    label: string;
+    description?: string;
+    class: "action" | "trigger" | "context" | "agent" | string;
+    source?: string;
+    backingCapability?: string;
+    ownerScoped?: boolean;
+    requiresSetup?: boolean;
+    availability?: "enabled" | "disabled" | string;
+    disabledReason?: string;
+    [key: string]: unknown;
+  }
+
+  export interface AutomationNodeCatalogResponse {
+    nodes: AutomationNodeDescriptor[];
+    summary: {
+      total: number;
+      enabled: number;
+      disabled: number;
+    };
+  }
+
+  export type WindowShellRoute = string;
+  export type AppDetailExtensionProps = AnyValue;
+  export type AppOperatorSurfaceProps = AnyValue;
+  export type AppRunSummary = AnyValue;
+  export type AppSessionJsonValue = AnyValue;
+  export type BabylonActivityItem = AnyValue;
+  export type BabylonAgentGoal = AnyValue;
+  export type BabylonAgentStatus = AnyValue;
+  export type BabylonChatMessage = AnyValue;
+  export type BabylonPredictionMarket = AnyValue;
+  export type BabylonTeamAgent = AnyValue;
+  export type BabylonWallet = AnyValue;
+  export type GameOperatorAction = AnyValue;
+  export type GameOperatorEvent = AnyValue;
+  export type OverlayApp = AnyValue;
+  export type OverlayAppContext = AnyValue;
+  export type SurfaceTone = string;
+
+  export interface IosLocalAgentNativeRequestOptions {
+    path: string;
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string | null;
+    timeoutMs?: number;
+  }
+
+  export interface IosLocalAgentNativeRequestResult {
+    status: number;
+    headers?: Record<string, string>;
+    body?: string | null;
+    error?: string;
+  }
+
+  export const Button: ComponentType<AnyValue>;
+  export const GameOperatorShell: ComponentType<AnyValue>;
+  export const Input: ComponentType<AnyValue>;
+  export const PagePanel: ComponentType<AnyValue>;
+  export const Spinner: ComponentType<AnyValue>;
+  export const SurfaceBadge: ComponentType<AnyValue>;
+  export const SurfaceCard: ComponentType<AnyValue>;
+  export const SurfaceEmptyState: ComponentType<AnyValue>;
+  export const SurfaceGrid: ComponentType<AnyValue>;
+  export const SurfaceSection: ComponentType<AnyValue>;
+
+  export const client: AnyValue;
+  export const formatDetailTimestamp: AnyFunction;
+  export const registerDetailExtension: AnyFunction;
+  export const registerOperatorSurface: AnyFunction;
+  export const registerOverlayApp: AnyFunction;
+  export const selectLatestRunForApp: AnyFunction;
+  export const toneForHealthState: AnyFunction;
+  export const toneForStatusText: AnyFunction;
+  export const toneForViewerAttachment: AnyFunction;
+  export const useApp: AnyFunction;
+
+  export const applyForceFreshOnboardingReset: AnyFunction;
+  export const initializeCapacitorBridge: AnyFunction;
+  export const initializeStorageBridge: AnyFunction;
+  export const installDesktopPermissionsClientPatch: AnyFunction;
+  export const installForceFreshOnboardingClientPatch: AnyFunction;
+  export const installLocalProviderCloudPreferencePatch: AnyFunction;
+  export const isElizaOS: AnyFunction;
+  export const preSeedAndroidLocalRuntimeIfFresh: AnyFunction;
+  export const shouldInstallMainWindowOnboardingPatches: AnyFunction;
+  export const primeIosFullBunRuntime: AnyFunction;
+}
+
+declare module "@elizaos/ui/navigation" {
+  export const TAB_PATHS: Record<string, string>;
 }
 
 declare module "@elizaos/plugin-discord" {

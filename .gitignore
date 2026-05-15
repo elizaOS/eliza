@@ -50,6 +50,10 @@ plugins/plugin-discord/**/*.d.ts.map
 packages/core/src/**/*.js
 packages/core/src/**/*.js.map
 
+# Accidental declaration emit next to TS in @elizaos/contracts (build output is dist/)
+packages/contracts/src/**/*.d.ts
+packages/contracts/src/**/*.d.ts.map
+
 *.gguf
 *.onnx
 *.wav
@@ -249,6 +253,10 @@ tasks/
 # Benchmark fixture data is vendored, not generated.
 !packages/benchmarks/qwen-claw-bench/data/
 !packages/benchmarks/qwen-claw-bench/data/**
+!packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/airline/data/
+!packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/airline/data/**
+!packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/retail/data/
+!packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/retail/data/**
 !packages/benchmarks/swe-bench-multilingual/tests/test_data/
 !packages/benchmarks/swe-bench-multilingual/tests/test_data/**
 !packages/benchmarks/swe-bench-pro/helper_code/data/
@@ -571,3 +579,13 @@ plugins/plugin-vision/eng.traineddata
 dev-desktop.pid
 reports/
 docs/
+!docs/
+!docs/product/
+!docs/product/onboarding-reimagined-implementation-plan.md
+!docs/product/onboarding-reimagined-prd.md
+!docs/product/onboarding-reimagined-research-report.md
+!docs/product/onboarding-reimagined-current-screenshots/
+!docs/product/onboarding-reimagined-current-screenshots/**
+!docs/prototypes/
+!docs/prototypes/onboarding-reimagined/
+!docs/prototypes/onboarding-reimagined/**

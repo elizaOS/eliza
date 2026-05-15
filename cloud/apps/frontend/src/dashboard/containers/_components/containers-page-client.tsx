@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, useSetPageHeader } from "@elizaos/cloud-ui";
+import { Badge, useSetPageHeader } from "@elizaos/ui";
 
 export function ContainersPageClient() {
   useSetPageHeader({

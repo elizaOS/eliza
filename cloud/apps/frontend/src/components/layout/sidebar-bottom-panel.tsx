@@ -8,7 +8,7 @@
 
 "use client";
 
-import { CornerBrackets } from "@elizaos/cloud-ui";
+import { CornerBrackets } from "@elizaos/ui";
 import { LogIn, Settings, UserPlus } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";

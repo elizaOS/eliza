@@ -39,6 +39,9 @@ from elizaos_tau_bench.upstream.envs.base import Env
 
 logger = logging.getLogger(__name__)
 
+_TOOL_DESCRIPTION_LIMIT = 280
+_OBSERVATION_LIMIT = 2400
+
 
 _CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
     "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
@@ -77,6 +80,103 @@ def _scrub_history_for_cerebras(messages: list[dict[str, Any]]) -> list[dict[str
         else:
             out.append(m)
     return out
+
+
+def _clip_text(value: Any, limit: int) -> str:
+    text = str(value or "")
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}\n...[truncated {len(text) - limit} chars]"
+
+
+def _compact_tool_schemas_for_eliza(tools_info: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Keep tool-call schemas useful while avoiding repeated huge prompts.
+
+    The Eliza benchmark server persists prior turns in the room and also embeds
+    the current context in each inbound prompt. Sending the full tau-bench tool
+    catalog every turn makes live Cerebras runs hit context limits before a
+    task can finish. Parameter schemas are preserved; only verbose descriptions
+    are clipped.
+    """
+
+    compact: list[dict[str, Any]] = []
+    for tool in tools_info:
+        copied = json.loads(json.dumps(tool))
+        fn = copied.get("function")
+        if isinstance(fn, dict) and isinstance(fn.get("description"), str):
+            fn["description"] = _clip_text(fn["description"], _TOOL_DESCRIPTION_LIMIT)
+        compact.append(copied)
+    return compact
+
+
+def _latest_observation_content(messages: list[dict[str, Any]]) -> str:
+    for m in reversed(messages):
+        role = m.get("role")
+        if role == "tool":
+            name = m.get("name") or "tool"
+            return _clip_text(f"Tool result from {name}:\n{m.get('content')}", _OBSERVATION_LIMIT)
+        if role == "user":
+            return _clip_text(m.get("content"), _OBSERVATION_LIMIT)
+    return ""
+
+
+def _initial_system_content(messages: list[dict[str, Any]]) -> str:
+    for m in messages:
+        if m.get("role") == "system":
+            return str(m.get("content") or "")
+    return ""
+
+
+def _initial_user_content(messages: list[dict[str, Any]]) -> str:
+    for m in messages:
+        if m.get("role") == "user":
+            return _clip_text(m.get("content"), 1600)
+    return ""
+
+
+def _recent_tool_observations(messages: list[dict[str, Any]]) -> str:
+    observations: list[str] = []
+    for m in messages:
+        if m.get("role") != "tool":
+            continue
+        name = m.get("name") or "tool"
+        observations.append(f"- {name}: {_clip_text(m.get('content'), 900)}")
+    if not observations:
+        return ""
+    return "\n".join(observations[-6:])
+
+
+def _build_eliza_turn_text(messages: list[dict[str, Any]]) -> str:
+    """Build the prompt text for Eliza's stateful benchmark endpoint.
+
+    Hermes/OpenClaw are stateless chat-completion adapters, so they need the
+    full transcript. Eliza's server is stateful and stores every benchmark
+    prompt in the room; repeating the full transcript in ``context.messages``
+    causes geometric prompt growth. This text gives the current turn enough
+    information while letting the server's persisted room history carry prior
+    turns.
+    """
+
+    latest = _latest_observation_content(messages)
+    if len(messages) <= 2:
+        system = _initial_system_content(messages)
+        return (
+            "Domain rules:\n"
+            f"{system}\n\n"
+            "Customer message:\n"
+            f"{latest}"
+        ).strip()
+    return (
+        "Continue the same tau-bench customer-service task. Use the domain "
+        "rules, available tools, and prior tool results already present in "
+        "this benchmark session.\n\n"
+        "Original customer request:\n"
+        f"{_initial_user_content(messages)}\n\n"
+        "Known tool observations:\n"
+        f"{_recent_tool_observations(messages)}\n\n"
+        "Latest customer/tool observation:\n"
+        f"{latest}"
+    ).strip()
 
 
 def _message_to_action(message: dict[str, Any]) -> Action:
@@ -284,22 +384,20 @@ class ElizaTauAgent(BaseTauAgent):
         )
 
     def _one_turn(self, messages: list[dict[str, Any]], tools_info: list[dict[str, Any]]):
-        last_user = ""
-        for m in reversed(messages):
-            if m.get("role") == "user":
-                last_user = str(m.get("content") or "")
-                break
         context: dict[str, object] = {
             "benchmark": "tau_bench",
             "task_id": self._session_id,
-            "messages": _scrub_history_for_cerebras(messages),
+            "tau_mode": "stateful_eliza_compact",
         }
         if tools_info:
-            context["tools"] = tools_info
+            context["tools"] = _compact_tool_schemas_for_eliza(tools_info)
             context["tool_choice"] = "auto"
         if self.temperature is not None:
             context["temperature"] = float(self.temperature)
-        return self.client.send_message(last_user, context=context)
+        return self.client.send_message(
+            _build_eliza_turn_text(_scrub_history_for_cerebras(messages)),
+            context=context,
+        )
 
     @staticmethod
     def _response_to_assistant_message(response) -> dict[str, Any]:

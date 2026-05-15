@@ -89,10 +89,23 @@ SAMPLE_TASKS: dict[DomainName, list[int]] = {
 def iter_sample_tasks(
     domains: list[DomainName],
     split: TaskSplit = "test",
+    task_ids: Optional[list[int]] = None,
+    start_index: int = 0,
+    end_index: int = -1,
+    max_per_domain: Optional[int] = None,
 ) -> Iterator[tuple[DomainName, int, Task]]:
     for domain in domains:
         tasks = load_domain_tasks(domain, split)
-        for idx in SAMPLE_TASKS.get(domain, []):
+        indices = [idx for idx in SAMPLE_TASKS.get(domain, []) if idx < len(tasks)]
+        if task_ids is not None:
+            selected = set(task_ids)
+            indices = [idx for idx in indices if idx in selected]
+        else:
+            end = max(indices) + 1 if end_index < 0 and indices else end_index
+            indices = [idx for idx in indices if start_index <= idx < end]
+        if max_per_domain is not None:
+            indices = indices[:max_per_domain]
+        for idx in indices:
             if idx < len(tasks):
                 yield domain, idx, tasks[idx]
 

@@ -82,10 +82,53 @@ import type { ChatImageAttachment } from "./server-types.ts";
 
 export type { ChatImageAttachment, LogEntry };
 
-const { getLocalInferenceChatStatus, handleLocalInferenceChatCommand } =
-  await import("@elizaos/plugin-local-inference");
+type LocalInferenceChatHelpers = {
+  getLocalInferenceChatStatus: (
+    intent: LocalInferenceCommandIntent,
+    error?: unknown,
+  ) => Promise<LocalInferenceChatResult>;
+  handleLocalInferenceChatCommand: (
+    intent: LocalInferenceCommandIntent,
+    text: string,
+  ) => Promise<LocalInferenceChatResult>;
+};
 
-type LocalInferenceChatMetadata = Record<string, unknown>;
+let localInferenceChatHelpersPromise: Promise<LocalInferenceChatHelpers> | null =
+  null;
+
+function getLocalInferenceChatHelpers(): Promise<LocalInferenceChatHelpers> {
+  localInferenceChatHelpersPromise ??= import(
+    "@elizaos/plugin-local-inference"
+  ).then((module) => ({
+    getLocalInferenceChatStatus: module.getLocalInferenceChatStatus,
+    handleLocalInferenceChatCommand: module.handleLocalInferenceChatCommand,
+  }));
+  return localInferenceChatHelpersPromise;
+}
+
+async function getLocalInferenceFailureStatus(err: unknown) {
+  try {
+    const { getLocalInferenceChatStatus } =
+      await getLocalInferenceChatHelpers();
+    return getLocalInferenceChatStatus("status", err);
+  } catch {
+    return {
+      text:
+        err instanceof Error
+          ? err.message
+          : "Local inference is not available right now.",
+      localInference: undefined,
+    };
+  }
+}
+
+type LocalInferenceChatMetadata = Record<string, unknown> & {
+  status?: string;
+};
+type LocalInferenceChatResult = {
+  text: string;
+  localInference?: LocalInferenceChatMetadata;
+};
 type LocalInferenceCommandIntent =
   | "cancel"
   | "download"
@@ -1452,23 +1495,26 @@ export async function generateChatResponse(
               },
             );
             if (localInferenceIntent) {
+              const { handleLocalInferenceChatCommand } =
+                await getLocalInferenceChatHelpers();
               const localResult = await handleLocalInferenceChatCommand(
                 localInferenceIntent,
                 originalUserText,
               );
               emitSnapshot(localResult.text);
+              const localInference = localResult.localInference as
+                | LocalInferenceChatMetadata
+                | undefined;
               result = {
                 didRespond: true,
                 responseContent: {
                   text: localResult.text,
                   source: "client_chat",
                   actions: ["REPLY"],
-                  localInference: localResult.localInference as
-                    | Record<string, unknown>
-                    | undefined,
+                  localInference,
                   failureKind:
-                    localResult.localInference.status === "failed" ||
-                    localResult.localInference.status === "no_space"
+                    localInference?.status === "failed" ||
+                    localInference?.status === "no_space"
                       ? "local_inference"
                       : undefined,
                 } as Content,
@@ -2211,10 +2257,7 @@ export async function handleChatRoutes(
       } catch (err) {
         if (!aborted) {
           if (isLocalInferenceError(err)) {
-            const localFailure = await getLocalInferenceChatStatus(
-              "status",
-              err,
-            );
+            const localFailure = await getLocalInferenceFailureStatus(err);
             writeSseData(
               res,
               JSON.stringify({
@@ -2331,7 +2374,7 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
-        const localFailure = await getLocalInferenceChatStatus("status", err);
+        const localFailure = await getLocalInferenceFailureStatus(err);
         json(
           res,
           {
@@ -2776,7 +2819,7 @@ export async function handleChatRoutes(
       });
     } catch (err) {
       if (isLocalInferenceError(err)) {
-        const localFailure = await getLocalInferenceChatStatus("status", err);
+        const localFailure = await getLocalInferenceFailureStatus(err);
         json(
           res,
           {

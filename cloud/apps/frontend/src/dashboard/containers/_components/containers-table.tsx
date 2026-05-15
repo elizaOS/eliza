@@ -31,7 +31,7 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { ArrowUpDown, Boxes, ExternalLink, FileText, Search, Server, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";

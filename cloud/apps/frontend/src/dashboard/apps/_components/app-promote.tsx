@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, Button, PromoteAppDialog } from "@elizaos/cloud-ui";
+import { Badge, Button, PromoteAppDialog } from "@elizaos/ui";
 import {
   ExternalLink,
   Image as ImageIcon,

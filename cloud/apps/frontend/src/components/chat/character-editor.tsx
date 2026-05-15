@@ -10,7 +10,7 @@
 
 "use client";
 
-import { AnimatedTabs, Button, ScrollArea } from "@elizaos/cloud-ui";
+import { AnimatedTabs, Button, ScrollArea } from "@elizaos/ui";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { ElizaCharacter } from "@/lib/types";

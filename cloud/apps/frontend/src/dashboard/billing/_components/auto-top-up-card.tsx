@@ -11,7 +11,7 @@
 
 "use client";
 
-import { BrandCard, Button, CornerBrackets, Label, Switch } from "@elizaos/cloud-ui";
+import { BrandCard, Button, CornerBrackets, Label, Switch } from "@elizaos/ui";
 import { CreditCard, Info, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";

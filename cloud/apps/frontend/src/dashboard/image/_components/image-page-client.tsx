@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useSetPageHeader } from "@elizaos/cloud-ui";
+import { useSetPageHeader } from "@elizaos/ui";
 import type { GalleryItem } from "@/lib/types/gallery";
 import { ImageGeneratorAdvanced } from "./image-generator-advanced";
 

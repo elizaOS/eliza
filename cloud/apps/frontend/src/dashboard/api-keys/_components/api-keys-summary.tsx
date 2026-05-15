@@ -6,7 +6,7 @@
  * @param props.summary - Summary data including key counts and usage statistics
  */
 
-import { BrandCard } from "@elizaos/cloud-ui";
+import { BrandCard } from "@elizaos/ui";
 import { CalendarClock, KeyRound, ShieldCheck, Signal } from "lucide-react";
 import type { ApiKeysSummaryData } from "./types";
 

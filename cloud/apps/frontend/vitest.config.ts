@@ -12,14 +12,26 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      { find: /^@elizaos\/cloud-ui$/, replacement: r("../../packages/ui/src/index.ts") },
-      { find: /^@elizaos\/cloud-ui\/(.*)$/, replacement: r("../../packages/ui/src") + "/$1" },
+      { find: /^@elizaos\/ui$/, replacement: r("../../../packages/ui/src/cloud-ui/index.ts") },
+      {
+        find: /^@elizaos\/ui\/primitives$/,
+        replacement: r("../../../packages/ui/src/cloud-ui/components/primitives.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/brand$/,
+        replacement: r("../../../packages/ui/src/cloud-ui/components/brand/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/layout$/,
+        replacement: r("../../../packages/ui/src/cloud-ui/components/layout/index.ts"),
+      },
+      { find: /^@elizaos\/ui\/(.*)$/, replacement: r("../../../packages/ui/src") + "/$1" },
       { find: /^@\/lib(\/.*)?$/, replacement: r("../../packages/lib") + "$1" },
       { find: /^@\/db(\/.*)?$/, replacement: r("../../packages/db") + "$1" },
       { find: /^@\/types(\/.*)?$/, replacement: r("../../packages/types") + "$1" },
       {
         find: /^@\/components(\/.*)?$/,
-        replacement: r("../../packages/ui/src/components") + "$1",
+        replacement: r("../../../packages/ui/src/cloud-ui/components") + "$1",
       },
       { find: /^@\/packages(\/.*)?$/, replacement: r("../../packages") + "$1" },
       { find: /^@\/(.*)$/, replacement: r("./src") + "/$1" },

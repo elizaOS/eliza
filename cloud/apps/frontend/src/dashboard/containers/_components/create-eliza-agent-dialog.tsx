@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
   Switch,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Check, ExternalLink, Loader2, Plus, RotateCcw, X } from "lucide-react";
 import { type ReactNode, useEffect, useState } from "react";
 import { toast } from "sonner";

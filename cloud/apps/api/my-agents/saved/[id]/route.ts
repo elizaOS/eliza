@@ -65,8 +65,6 @@ app.delete("/", async (c) => {
       deleted: result.deleted,
     });
 
-    // TODO(cache): /dashboard + /dashboard/my-agents revalidation dropped.
-
     return c.json({
       success: true,
       data: { message: "Saved agent removed successfully", deleted: result.deleted },

@@ -1,6 +1,6 @@
 "use client";
 
-import { EmptyState } from "@elizaos/cloud-ui";
+import { EmptyState } from "@elizaos/ui";
 import type { ReactNode } from "react";
 
 interface AppsEmptyStateProps {

@@ -25,7 +25,7 @@ import {
   SheetTitle,
   Slider,
   Switch,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Bot, CheckCircle, Hash, Loader2, RefreshCw, Send } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";

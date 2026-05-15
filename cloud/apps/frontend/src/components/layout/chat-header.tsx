@@ -15,7 +15,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   Check,
   ChevronDown,

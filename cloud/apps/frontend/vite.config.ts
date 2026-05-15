@@ -125,6 +125,7 @@ export default defineConfig(({ mode }) => {
       ],
     },
     resolve: {
+      dedupe: ["react", "react-dom", "lucide-react"],
       alias: [
         // The upstream `inherits` package's main entry tries
         // `require('util').inherits` first and falls back to
@@ -161,37 +162,37 @@ export default defineConfig(({ mode }) => {
         },
 
         // Order matters: longer prefixes / subpath aliases must precede broader
-        // ones. Use regex/exact `find` values so `@elizaos/cloud-ui/foo` doesn't
+        // ones. Use regex/exact `find` values so `@elizaos/ui/foo` doesn't
         // get rewritten to `…/index.ts/foo`.
         //
         // The named subpath aliases below mirror the `exports` map in
-        // `cloud/packages/ui/package.json` — keep them in sync. They must
-        // precede the catch-all `@elizaos/cloud-ui/<...>` rule because vite
+        // `packages/ui/package.json` — keep them in sync. They must
+        // precede the catch-all `@elizaos/ui/<...>` rule because vite
         // resolves aliases in declaration order.
-        { find: /^@elizaos\/cloud-ui$/, replacement: r("../../packages/ui/src/index.ts") },
+        { find: /^@elizaos\/ui$/, replacement: r("../../../packages/ui/src/cloud-ui/index.ts") },
         {
-          find: /^@elizaos\/cloud-ui\/primitives$/,
-          replacement: r("../../packages/ui/src/components/primitives.ts"),
+          find: /^@elizaos\/ui\/primitives$/,
+          replacement: r("../../../packages/ui/src/cloud-ui/components/primitives.ts"),
         },
         {
-          find: /^@elizaos\/cloud-ui\/brand$/,
-          replacement: r("../../packages/ui/src/components/brand/index.ts"),
+          find: /^@elizaos\/ui\/brand$/,
+          replacement: r("../../../packages/ui/src/cloud-ui/components/brand/index.ts"),
         },
         {
-          find: /^@elizaos\/cloud-ui\/layout$/,
-          replacement: r("../../packages/ui/src/components/layout/index.ts"),
+          find: /^@elizaos\/ui\/layout$/,
+          replacement: r("../../../packages/ui/src/cloud-ui/components/layout/index.ts"),
         },
         {
           find: /^@\/docs\/components$/,
-          replacement: r("../../packages/ui/src/components/docs/mdx-components.tsx"),
+          replacement: r("../../../packages/ui/src/cloud-ui/components/docs/mdx-components.tsx"),
         },
-        { find: /^@elizaos\/cloud-ui\/(.*)$/, replacement: r("../../packages/ui/src") + "/$1" },
+        { find: /^@elizaos\/ui\/(.*)$/, replacement: r("../../../packages/ui/src") + "/$1" },
         { find: /^@\/lib(\/.*)?$/, replacement: r("../../packages/lib") + "$1" },
         { find: /^@\/db(\/.*)?$/, replacement: r("../../packages/db") + "$1" },
         { find: /^@\/types(\/.*)?$/, replacement: r("../../packages/types") + "$1" },
         {
           find: /^@\/components(\/.*)?$/,
-          replacement: r("../../packages/ui/src/components") + "$1",
+          replacement: r("../../../packages/ui/src/cloud-ui/components") + "$1",
         },
         { find: /^@\/packages(\/.*)?$/, replacement: r("../../packages") + "$1" },
         { find: /^@\/(.*)$/, replacement: r("./src") + "/$1" },
@@ -219,13 +220,13 @@ export default defineConfig(({ mode }) => {
       target: "esnext",
     },
     // The SSR build (`vite build --ssr src/entry-server.tsx`) needs to bundle
-    // the workspace `@elizaos/cloud-ui` + `@/lib/*` graph rather than treat
+    // the workspace `@elizaos/ui` + `@/lib/*` graph rather than treat
     // them as externals — they aren't published to npm and resolve via the
     // aliases above. Bundling them keeps the prerender script's `import()` of
     // `dist-ssr/entry-server.js` self-contained.
     ssr: {
       noExternal: [
-        /^@elizaos\/cloud-ui/,
+        /^@elizaos\/ui/,
         /^@\/lib/,
         /^@\/db/,
         /^@\/types/,

@@ -24,7 +24,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { AlertCircle, Loader2, Mail, UserCog } from "lucide-react";
 import { useState } from "react";
 

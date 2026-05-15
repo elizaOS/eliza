@@ -8,7 +8,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { format } from "date-fns";
 import {
   AlertCircle,

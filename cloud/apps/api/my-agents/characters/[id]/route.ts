@@ -9,6 +9,8 @@ import { Hono } from "hono";
 import type { NewUserCharacter } from "@/db/repositories";
 import { failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { cache } from "@/lib/cache/client";
+import { CacheKeys } from "@/lib/cache/keys";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { ElizaCharacter } from "@/lib/types";
 import { logger } from "@/lib/utils/logger";
@@ -70,6 +72,14 @@ app.put("/", async (c) => {
     const character = await charactersService.updateForUser(id, user.id, updates);
     if (!character) throw NotFoundError("Character not found or access denied");
 
+    const invalidations: Promise<void>[] = [
+      cache.del(CacheKeys.org.dashboard(user.organization_id)),
+    ];
+    if (character.is_public) {
+      invalidations.push(cache.delPattern(CacheKeys.discovery.pattern()));
+    }
+    await Promise.all(invalidations);
+
     return c.json(charactersService.toElizaCharacter(character));
   } catch (error) {
     return failureResponse(c, error);
@@ -92,8 +102,9 @@ app.delete("/", async (c) => {
     }
 
     await charactersService.delete(id);
-    // TODO(cache): /dashboard + /dashboard/my-agents revalidation dropped
-    // (no Workers-side equivalent of next/cache revalidatePath).
+    if (character.is_public) {
+      await cache.delPattern(CacheKeys.discovery.pattern());
+    }
     return c.json({ success: true, data: { message: "Character deleted successfully" } });
   } catch (error) {
     return failureResponse(c, error);

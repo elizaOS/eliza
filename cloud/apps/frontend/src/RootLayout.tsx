@@ -1,4 +1,4 @@
-import { NavigationProgress, ThemeProvider } from "@elizaos/cloud-ui";
+import { NavigationProgress, ThemeProvider } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";

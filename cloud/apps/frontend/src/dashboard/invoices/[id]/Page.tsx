@@ -1,4 +1,4 @@
-import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
+import { DashboardErrorState, DashboardLoadingState } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { Navigate, useParams } from "react-router-dom";
 import { ApiError } from "../../../lib/api-client";

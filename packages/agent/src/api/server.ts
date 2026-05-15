@@ -68,18 +68,17 @@ const {
   showBrowserWorkspaceTab,
   snapshotBrowserWorkspaceTab,
 } = await import("@elizaos/plugin-browser");
-const { attachMobileDeviceBridgeToServer } = await import(
-  "@elizaos/plugin-capacitor-bridge"
-);
-const { handleComputerUseRoutes } = await import("@elizaos/plugin-computeruse");
+const { handleComputerUseRoutes } = (await import(
+  "@elizaos/plugin-computeruse"
+)) as unknown as {
+  handleComputerUseRoutes: (...args: unknown[]) => unknown;
+};
 const { handleCloudStatusRoutes, isCloudProvisionedContainer } = await import(
   "@elizaos/plugin-elizacloud"
 );
 const { resolveBlueBubblesWebhookPath } = await import(
   "@elizaos/plugin-imessage"
 );
-const { getLocalInferenceActiveModelId, handleLocalInferenceRoutes } =
-  await import("@elizaos/plugin-local-inference");
 const { handleMcpRoutes } = await import("@elizaos/plugin-mcp");
 const { applySignalQrOverride } = await import("@elizaos/plugin-signal");
 const { handleTtsRoutes, streamManager } = await import(
@@ -93,6 +92,32 @@ const { applyWhatsAppQrOverride } = (await import(
 const { handleTriggerRoutes } = await import("@elizaos/plugin-workflow");
 const { validateX402Startup } = await import("@elizaos/plugin-x402");
 
+let mobileDeviceBridgePromise: Promise<{
+  attachMobileDeviceBridgeToServer: (server: http.Server) => Promise<unknown>;
+}> | null = null;
+
+function loadMobileDeviceBridge() {
+  mobileDeviceBridgePromise ??= import("@elizaos/plugin-capacitor-bridge");
+  return mobileDeviceBridgePromise;
+}
+
+let localInferenceRoutesPromise: Promise<{
+  getLocalInferenceActiveModelId: () => string | undefined;
+  handleLocalInferenceRoutes: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ) => Promise<boolean>;
+}> | null = null;
+
+function loadLocalInferenceRoutes() {
+  localInferenceRoutesPromise ??= import("@elizaos/plugin-local-inference");
+  return localInferenceRoutesPromise;
+}
+
+function getLocalInferenceActiveModelIdSafe(): string | undefined {
+  return undefined;
+}
+
 type BrowserBridgeKind = (typeof BROWSER_BRIDGE_KINDS)[number];
 type BrowserBridgePackagePathTarget =
   (typeof BROWSER_BRIDGE_PACKAGE_PATH_TARGETS)[number];
@@ -103,6 +128,19 @@ type BrowserWorkspaceTabKind = NonNullable<
   Parameters<typeof openBrowserWorkspaceTab>[0]["kind"]
 >;
 
+// === Phase 4E: skills routes + helpers moved to plugin-agent-skills ===
+import {
+  discoverSkills,
+  handleCuratedSkillsRoutes,
+  handleSkillsRoutes,
+} from "@elizaos/plugin-agent-skills";
+import { AppManager, handleAppsRoutes } from "@elizaos/plugin-app-manager";
+// === Phase 4F: plugin routes moved to @elizaos/plugin-registry ===
+import { handlePluginRoutes } from "@elizaos/plugin-registry";
+import {
+  handleWalletRoutes,
+  type WalletRouteDependencies,
+} from "@elizaos/plugin-wallet";
 import { getGlobalAwarenessRegistry } from "../awareness/registry.ts";
 import {
   type ElizaConfig,
@@ -113,7 +151,6 @@ import { isCloudWalletEnabled } from "../config/feature-flags.ts";
 import { resolveModelsCacheDir, resolveStateDir } from "../config/paths.ts";
 import { CharacterSchema } from "../config/zod-schema.ts";
 import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
-import { persistConfigEnv } from "./config-env.ts";
 import {
   type AgentEventServiceLike,
   getAgentEventService,
@@ -146,7 +183,6 @@ import {
   exportAgent,
   importAgent,
 } from "../services/agent-export.ts";
-import { AppManager } from "@elizaos/plugin-app-manager";
 import { registerClientChatSendHandler } from "../services/client-chat-sender.ts";
 import { createConfigPluginManager } from "../services/config-plugin-manager.ts";
 import {
@@ -181,7 +217,6 @@ import { detectRuntimeModel, resolveProviderFromModel } from "./agent-model.ts";
 import { handleAgentStatusRoutes } from "./agent-status-routes.ts";
 import { handleAgentTransferRoutes } from "./agent-transfer-routes.ts";
 import { handleAppPackageRoutes } from "./app-package-routes.ts";
-import { handleAppsRoutes } from "@elizaos/plugin-app-manager";
 import { handleAuthRoutes } from "./auth-routes.ts";
 import { handleAvatarRoutes } from "./avatar-routes.ts";
 import { handleBackgroundTasksRoute } from "./background-tasks-routes.ts";
@@ -192,17 +227,12 @@ import {
   initSse as initSseFromChatRoutes,
   writeSseJson as writeSseJsonFromChatRoutes,
 } from "./chat-routes.ts";
+import { persistConfigEnv } from "./config-env.ts";
 import { handleConfigRoutes } from "./config-routes.ts";
 import { ConnectorHealthMonitor } from "./connector-health.ts";
 import { handleConnectorRoutes } from "./connector-routes.ts";
 import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
 import { wireCoordinatorBridgesWhenReady } from "./coordinator-wiring.ts";
-// === Phase 4E: skills routes + helpers moved to plugin-agent-skills ===
-import {
-  discoverSkills,
-  handleCuratedSkillsRoutes,
-  handleSkillsRoutes,
-} from "@elizaos/plugin-agent-skills";
 import { handleDiagnosticsRoutes } from "./diagnostics-routes.ts";
 import { handleHealthRoutes } from "./health-routes.ts";
 import { tryHandleHonoRuntimeRoute } from "./hono-mount.ts";
@@ -215,8 +245,6 @@ import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallbac
 import { handleOnboardingRoutes } from "./onboarding-routes.ts";
 import { handlePermissionRoutes } from "./permissions-routes.ts";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
-// === Phase 4F: plugin routes moved to @elizaos/plugin-registry ===
-import { handlePluginRoutes } from "@elizaos/plugin-registry";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";
@@ -260,7 +288,6 @@ import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
-import { handleWalletRoutes } from "@elizaos/plugin-wallet";
 import {
   applyWalletRpcConfigUpdate,
   getStoredWalletRpcSelections,
@@ -1589,7 +1616,12 @@ async function handleRequest(
     return;
   }
 
-  if (await handleLocalInferenceRoutes(req, res)) return;
+  const localInferenceRoutes = await loadLocalInferenceRoutes().catch(
+    () => null,
+  );
+  if (localInferenceRoutes?.handleLocalInferenceRoutes) {
+    if (await localInferenceRoutes.handleLocalInferenceRoutes(req, res)) return;
+  }
 
   if (
     await handleBackgroundTasksRoute({
@@ -2050,9 +2082,10 @@ async function handleRequest(
         readJsonBody,
         readBody,
         discoverSkills,
-        saveElizaConfig: coerce<
-          Parameters<typeof handleSkillsRoutes>[0]["saveElizaConfig"]
-        >(saveElizaConfig),
+        saveElizaConfig:
+          coerce<Parameters<typeof handleSkillsRoutes>[0]["saveElizaConfig"]>(
+            saveElizaConfig,
+          ),
       })
     ) {
       return;
@@ -2192,29 +2225,46 @@ async function handleRequest(
           deriveSolanaAddress,
           setSolanaWalletEnv,
           resolveWalletRpcReadiness: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["resolveWalletRpcReadiness"]
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["resolveWalletRpcReadiness"]
           >(resolveWalletRpcReadiness),
           resolveWalletNetworkMode: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["resolveWalletNetworkMode"]
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["resolveWalletNetworkMode"]
           >(resolveWalletNetworkMode),
           getStoredWalletRpcSelections: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["getStoredWalletRpcSelections"]
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["getStoredWalletRpcSelections"]
           >(getStoredWalletRpcSelections),
           applyWalletRpcConfigUpdate: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["applyWalletRpcConfigUpdate"]
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["applyWalletRpcConfigUpdate"]
           >(applyWalletRpcConfigUpdate),
           resolveWalletCapabilityStatus: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["resolveWalletCapabilityStatus"]
-          >((args) =>
-            resolveWalletCapabilityStatus({
-              config: args.config,
-              runtime: args.runtime,
-            }),
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["resolveWalletCapabilityStatus"]
+          >(
+            (
+              args: Parameters<
+                WalletRouteDependencies["resolveWalletCapabilityStatus"]
+              >[0],
+            ) =>
+              resolveWalletCapabilityStatus({
+                config: args.config,
+                runtime: args.runtime,
+              }),
           ),
           isCloudWalletEnabled,
           persistConfigEnv,
           createIntegrationTelemetrySpan: coerce<
-            Parameters<typeof handleWalletRoutes>[0]["deps"]["createIntegrationTelemetrySpan"]
+            Parameters<
+              typeof handleWalletRoutes
+            >[0]["deps"]["createIntegrationTelemetrySpan"]
           >(createIntegrationTelemetrySpan),
         },
         runtime: state.runtime ?? null,
@@ -3228,12 +3278,16 @@ export async function startApiServer(opts?: {
       error(res, msg, 500);
     }
   });
-  void attachMobileDeviceBridgeToServer(server).catch((err: unknown) => {
-    logger.warn(
-      "[eliza-api] Failed to attach mobile device bridge:",
-      err instanceof Error ? err.message : String(err),
-    );
-  });
+  void loadMobileDeviceBridge()
+    .then(({ attachMobileDeviceBridgeToServer }) =>
+      attachMobileDeviceBridgeToServer(server),
+    )
+    .catch((err: unknown) => {
+      logger.warn(
+        "[eliza-api] Failed to attach mobile device bridge:",
+        err instanceof Error ? err.message : String(err),
+      );
+    });
   logger.debug(`[eliza-api] Server created (${Date.now() - apiStartTime}ms)`);
 
   // Node's `http.createServer` defaults are tuned for snappy web traffic:
@@ -3760,7 +3814,7 @@ export async function startApiServer(opts?: {
             type: "status",
             state: state.agentState,
             agentName: state.agentName,
-            model: state.model || getLocalInferenceActiveModelId(),
+            model: state.model || getLocalInferenceActiveModelIdSafe(),
             startedAt: state.startedAt,
             startup: state.startup,
             pendingRestart: state.pendingRestartReasons.length > 0,
@@ -3953,7 +4007,7 @@ export async function startApiServer(opts?: {
       type: "status",
       state: state.agentState,
       agentName: state.agentName,
-      model: state.model || getLocalInferenceActiveModelId(),
+      model: state.model || getLocalInferenceActiveModelIdSafe(),
       startedAt: state.startedAt,
       startup: state.startup,
       pendingRestart: state.pendingRestartReasons.length > 0,

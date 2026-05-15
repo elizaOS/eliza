@@ -21,7 +21,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   StatusBadge,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { formatDistanceToNow } from "date-fns";
 import {
   Activity,

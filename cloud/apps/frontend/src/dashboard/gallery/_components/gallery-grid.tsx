@@ -20,7 +20,7 @@ import {
   DialogTitle,
   Image,
   Skeleton,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { DownloadIcon, TrashIcon } from "@radix-ui/react-icons";
 import { format } from "date-fns";
 import { Eye, X } from "lucide-react";

@@ -7,6 +7,7 @@ declare module "@elizaos/app-clawville";
 declare module "@elizaos/app-trajectory-logger";
 declare module "@elizaos/app-shopify";
 declare module "@elizaos/app-hyperliquid";
+declare module "@elizaos/app-model-tester";
 declare module "@elizaos/app-polymarket";
 declare module "@elizaos/app-wallet";
 declare module "@elizaos/app-contacts/register";

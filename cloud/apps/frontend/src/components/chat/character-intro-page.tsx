@@ -24,7 +24,7 @@ import {
   Button,
   Card,
   CardContent,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { MessageCircle, Sparkles } from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";

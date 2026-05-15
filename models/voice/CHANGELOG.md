@@ -54,9 +54,8 @@ EOU corpus, APOLLO-Mini scaffold, F1=0.9811 (vs 0.84 baseline). +0.1411 F1 delta
 
 G4 pushed all voice sub-model repos to HuggingFace. Each repo at
 `elizaos/eliza-1-voice-<id>` now has a README.md + manifest.json committed.
-The `elizaos/eliza-1` main bundle `bundles/27b-1m/` deleted (54 files) per
-G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
-(text + vision + asr + vad + manifest all reachable, HEAD check ≤500ms each).
+End-to-end install smoke PASS for 0_8b tier (text + vision + asr + vad +
+manifest all reachable, HEAD check ≤500ms each).
 
 | Repo | Commit |
 |------|--------|
@@ -70,7 +69,6 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 | elizaos/eliza-1-voice-kokoro | 967f7449f79414d2b49db3b2441ea683630c11ab |
 | elizaos/eliza-1-voice-omnivoice | b766eb23d5f6c84d580973c0f2013b6fcbd561c0 |
 | elizaos/eliza-1-voice-embedding | acddce031d74deebe1027382feb143df7dd1500e |
-| elizaos/eliza-1 (27b-1m delete) | 824d6f2cc353feccf421dd71bf0c4ac0d12d7a87 |
 
 ---
 

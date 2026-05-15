@@ -13,7 +13,7 @@ import {
   CornerBrackets,
   DashboardPageContainer,
   useSetPageHeader,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";
 import { AccountDetails } from "./account-details";
 import { OrganizationInfo } from "./organization-info";

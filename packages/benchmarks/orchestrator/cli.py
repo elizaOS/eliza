@@ -16,6 +16,7 @@ from .db import (
     initialize_database,
     list_runs_for_comparison,
     recover_stale_running_runs,
+    repair_nonpublishable_success_statuses,
     repair_nonzero_returncode_statuses,
     tag_run_with_comparison,
 )
@@ -236,6 +237,7 @@ def _cmd_export_viewer(args: argparse.Namespace) -> int:
     initialize_database(conn)
     output_root = workspace_root / "benchmarks" / "benchmark_results"
     repair_nonzero_returncode_statuses(conn)
+    repair_nonpublishable_success_statuses(conn)
     discovery = discover_adapters(workspace_root)
     _repair_current_compatibility_statuses(conn, discovery.adapters)
     _rebuild_latest_result_snapshots(conn, output_root, discovery.adapters)
@@ -265,6 +267,7 @@ def _cmd_recover_stale(args: argparse.Namespace) -> int:
     ended_at = datetime.now(UTC).isoformat()
     recovered = recover_stale_running_runs(conn, stale_before=stale_before, ended_at=ended_at)
     repaired = repair_nonzero_returncode_statuses(conn)
+    nonpublishable_repaired = repair_nonpublishable_success_statuses(conn)
     discovery = discover_adapters(workspace_root)
     compatibility_repaired = _repair_current_compatibility_statuses(conn, discovery.adapters)
     _rebuild_latest_result_snapshots(
@@ -277,6 +280,7 @@ def _cmd_recover_stale(args: argparse.Namespace) -> int:
 
     print(f"Recovered runs: {len(recovered)}")
     print(f"Repaired nonzero-return-code statuses: {repaired}")
+    print(f"Repaired nonpublishable success statuses: {nonpublishable_repaired}")
     print(f"Repaired compatibility statuses: {compatibility_repaired}")
     for run_id in recovered:
         print(f"- {run_id}")
@@ -333,7 +337,6 @@ def _cmd_calibration_report(args: argparse.Namespace) -> int:
                 "all_real_one",
                 "all_real_equal",
                 "single_real_zero",
-                "single_real_one",
             }:
                 return 1
             if str(row.get("real_pattern") or "").endswith("_mixed_config"):

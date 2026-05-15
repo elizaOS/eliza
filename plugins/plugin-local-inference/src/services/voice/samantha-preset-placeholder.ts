@@ -2,13 +2,13 @@
  * Samantha-preset placeholder detection + on-the-fly regeneration.
  *
  * Background: the canonical default voice (Samantha, `af_same`) ships with
- * the Eliza-1 bundle as `cache/voice-preset-default.bin` (ELZ1 v2 format).
+ * the Eliza-1 bundle as `cache/voice-preset-default.bin` (ELZ1 format).
  * The first I-wave shipped a 1052-byte zero-filled placeholder before the
  * real preset bytes were produced — the runtime treats this placeholder as
  * "not yet generated" and synthesises a fresh preset on first boot via the
  * fused OmniVoice TTS (Path A).
  *
- * The detection rule is intentionally narrow: only an ELZ1 v2 file whose
+ * The detection rule is intentionally narrow: only an ELZ1 v1/v2 file whose
  * (a) speaker embedding is exactly zero AND (b) ref_audio_tokens / ref_text
  * are empty AND (c) phrase-cache seed is empty counts as a placeholder. Any
  * file that has even one non-zero region is considered real and is left
@@ -31,9 +31,11 @@
 import { readFileSync, statSync } from "node:fs";
 import {
 	readVoicePresetFile,
-	VOICE_PRESET_HEADER_BYTES_V2,
+	VOICE_PRESET_HEADER_BYTES_V1,
 	VOICE_PRESET_MAGIC,
+	VOICE_PRESET_VERSION_V1,
 	VOICE_PRESET_VERSION_V2,
+	type VoicePresetFile,
 	VoicePresetFormatError,
 } from "./voice-preset-format";
 
@@ -79,24 +81,24 @@ export function detectSamanthaPlaceholder(
 		return { kind: "real-preset", reason: "byte-length mismatch" };
 	}
 
-	// Structural path: must parse as ELZ1 v2 with all-zero embedding and
+	// Structural path: must parse as ELZ1 v1/v2 with all-zero embedding and
 	// empty ref/phrase sections.
-	if (bytes.byteLength < VOICE_PRESET_HEADER_BYTES_V2) {
-		return { kind: "real-preset", reason: "too short for v2 header" };
+	if (bytes.byteLength < VOICE_PRESET_HEADER_BYTES_V1) {
+		return { kind: "real-preset", reason: "too short for v1 header" };
 	}
-	const view = new DataView(
-		bytes.buffer,
-		bytes.byteOffset,
-		bytes.byteLength,
-	);
+	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 	if (view.getUint32(0, true) !== VOICE_PRESET_MAGIC) {
 		return { kind: "real-preset", reason: "magic mismatch" };
 	}
-	if (view.getUint32(4, true) !== VOICE_PRESET_VERSION_V2) {
+	const version = view.getUint32(4, true);
+	if (
+		version !== VOICE_PRESET_VERSION_V1 &&
+		version !== VOICE_PRESET_VERSION_V2
+	) {
 		return { kind: "real-preset", reason: "version mismatch" };
 	}
 
-	let parsed;
+	let parsed: VoicePresetFile;
 	try {
 		parsed = readVoicePresetFile(bytes);
 	} catch (err) {

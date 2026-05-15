@@ -1,6 +1,6 @@
 "use client";
 
-import { Input, Label } from "@elizaos/cloud-ui";
+import { Input, Label } from "@elizaos/ui";
 
 interface NumericFieldProps {
   label: string;

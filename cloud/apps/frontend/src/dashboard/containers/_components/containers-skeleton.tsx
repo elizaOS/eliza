@@ -10,7 +10,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 
 export function ContainersSkeleton() {
   return (

@@ -9,7 +9,7 @@
 
 "use client";
 
-import { Badge, BrandCard, Skeleton } from "@elizaos/cloud-ui";
+import { Badge, BrandCard, Skeleton } from "@elizaos/ui";
 import {
   CheckCircle2,
   Clock,

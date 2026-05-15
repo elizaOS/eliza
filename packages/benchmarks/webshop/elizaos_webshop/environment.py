@@ -316,6 +316,7 @@ def _install_optional_dependency_stubs() -> None:
 
         fuzz_mod.ratio = _ratio  # type: ignore[attr-defined]
         fuzz_mod.partial_ratio = _ratio  # type: ignore[attr-defined]
+        fuzz_mod.token_set_ratio = _ratio  # type: ignore[attr-defined]
         pkg = _types.ModuleType("thefuzz")
         pkg.fuzz = fuzz_mod  # type: ignore[attr-defined]
         sys.modules["thefuzz"] = pkg
@@ -328,6 +329,7 @@ def _install_optional_dependency_stubs() -> None:
             def __init__(self, text: str) -> None:
                 self.text = text
                 self.lemma_ = text.lower()
+                self.pos_ = "NOUN"
 
         class _Doc(list[_Token]):
             @property

@@ -11,7 +11,7 @@ import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Info, MessageSquare } from "lucide-react";
 import { Link } from "react-router-dom";
 import type { DashboardAgentStats as AgentStats } from "@/lib/types/dashboard-agent-stats";

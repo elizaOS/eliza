@@ -1,12 +1,12 @@
 // Reads `cloud/packages/content/**/_meta.ts` at build time and turns it
 // into a sidebar tree, plus a map of /docs/<slug> → lazy MDX loader. The
 // MDX sources live in `packages/content/`. Types for the nav tree live in
-// `@elizaos/cloud-ui`; this file is app-local because `import.meta.glob`
+// `@elizaos/ui`; this file is app-local because `import.meta.glob`
 // paths are resolved from the Vite app root.
 
-import type { MdxModule, NavItem } from "@elizaos/cloud-ui";
+import type { MdxModule, NavItem } from "@elizaos/ui";
 
-export type { DocsFrontmatter, MdxModule, NavItem } from "@elizaos/cloud-ui";
+export type { DocsFrontmatter, MdxModule, NavItem } from "@elizaos/ui";
 
 type MetaValue =
   | string

@@ -1,4 +1,4 @@
-import { Badge, DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
+import { Badge, DashboardErrorState, DashboardLoadingState } from "@elizaos/ui";
 import { AlertCircle, ArrowLeft, Cloud, ExternalLink, Server, Terminal } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link, Navigate, useParams } from "react-router-dom";

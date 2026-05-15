@@ -36,9 +36,9 @@
     "build:mobile": "bun run scripts/build-mobile-bundle.mjs",
     "build:ios-bun": "bun run scripts/build-mobile-bundle.mjs --target=ios",
     "build:ios-jsc": "bun run scripts/build-mobile-bundle.mjs --target=ios-jsc",
-    "build:docker-dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/agent --compiled-prefix=packages/agent/src",
+    "build:docker-dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/agent",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "build:dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/agent --compiled-prefix=packages/agent/src",
+    "build:dist": "rm -rf dist && tsc --noCheck -p tsconfig.build.json && node ../../scripts/prepare-package-dist.mjs packages/agent",
     "lint": "bunx @biomejs/biome check ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/config ./src/contracts ./src/diagnostics ./src/hooks ./src/index.ts ./src/providers ./src/runtime ./src/security ./src/services ./src/shared ./src/triggers ./src/utils ./src/version-resolver.ts",
     "lint:check": "bun run lint",
     "lint:fix": "bunx @biomejs/biome check --write ./src/actions ./src/api ./src/auth ./src/awareness ./src/bin.ts ./src/cli ./src/config ./src/contracts ./src/diagnostics ./src/hooks ./src/index.ts ./src/providers ./src/runtime ./src/security ./src/services ./src/shared ./src/triggers ./src/utils ./src/version-resolver.ts",
@@ -50,7 +50,28 @@
   "exports": {
     ".": "./src/index.ts",
     "./package.json": "./package.json",
+    "./api": {
+      "types": "./src/api/index.ts",
+      "bun": {
+        "types": "./src/api/index.ts",
+        "import": "./src/api/index.ts",
+        "default": "./src/api/index.ts"
+      },
+      "import": "./dist/api/index.js",
+      "default": "./dist/api/index.js"
+    },
+    "./config/character-schema": "./src/config/character-schema.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
+    "./runtime": {
+      "types": "./src/runtime/index.ts",
+      "bun": {
+        "types": "./src/runtime/index.ts",
+        "import": "./src/runtime/index.ts",
+        "default": "./src/runtime/index.ts"
+      },
+      "import": "./dist/runtime/index.js",
+      "default": "./dist/runtime/index.js"
+    },
     "./services/app-session-gate": {
       "types": "./src/services/app-session-gate.d.ts",
       "bun": {

@@ -1,9 +1,6 @@
 /**
  * PATCH  /api/organizations/members/[userId]  — update role (owner only)
  * DELETE /api/organizations/members/[userId]  — remove member (owner/admin)
- *
- * `revalidateTag("user-auth")` from Next is dropped — Workers has no
- * route-cache invalidation surface. // TODO(cache)
  */
 
 import { Hono } from "hono";

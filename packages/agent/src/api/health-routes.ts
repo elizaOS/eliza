@@ -6,9 +6,21 @@ import type { ConnectorHealthMonitor } from "./connector-health.ts";
 const { isCloudProvisionedContainer, resolveCloudApiKey } = await import(
   "@elizaos/plugin-elizacloud"
 );
-const { getLocalInferenceActiveSnapshot } = await import(
-  "@elizaos/plugin-local-inference"
-);
+type LocalInferenceActiveSnapshot = {
+  status?: string;
+  modelId?: string | null;
+};
+
+async function getLocalInferenceActiveSnapshotSafe(): Promise<LocalInferenceActiveSnapshot | null> {
+  try {
+    const { getLocalInferenceActiveSnapshot } = await import(
+      "@elizaos/plugin-local-inference"
+    );
+    return await getLocalInferenceActiveSnapshot();
+  } catch {
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -386,9 +398,7 @@ export async function handleHealthRoutes(
   // ── GET /api/status ─────────────────────────────────────────────────────
   if (method === "GET" && pathname === "/api/status") {
     const uptime = state.startedAt ? Date.now() - state.startedAt : undefined;
-    const localInferenceActive = await getLocalInferenceActiveSnapshot().catch(
-      () => null,
-    );
+    const localInferenceActive = await getLocalInferenceActiveSnapshotSafe();
     const activeLocalModel =
       localInferenceActive?.status === "ready" &&
       localInferenceActive.modelId?.trim()

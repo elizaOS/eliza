@@ -15,7 +15,7 @@ import {
   BrandTabsList,
   BrandTabsTrigger,
   CornerBrackets,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Settings, Users } from "lucide-react";
 import { useState } from "react";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";

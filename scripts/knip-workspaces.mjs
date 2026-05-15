@@ -16,11 +16,21 @@ const ROOT_KNIP_CONFIG = existsSync(join(ROOT, "knip.json"))
   : null;
 const DIRECTORY_SCOPED_WORKSPACES = new Set([
   "cloud/packages/sdk",
+  "packages/agent",
   "packages/app-core",
   "packages/app-core/deploy/cloud-agent-template",
   "packages/app-core/platforms/electrobun",
+  "packages/contracts",
   "packages/core",
   "packages/examples/farcaster-miniapp",
+  "packages/prompts",
+]);
+const DIRECTORY_SCOPED_WORKSPACE_PREFIXES = [
+  "packages/examples/",
+  "packages/native-plugins/",
+];
+const WORKSPACE_SCOPED_WORKSPACES = new Set([
+  "packages/examples/browser-extension",
 ]);
 
 function normalizePathForCli(path) {
@@ -333,7 +343,12 @@ console.log(
 
 for (let index = 0; index < packages.length; index += 1) {
   const pkg = packages[index];
-  const isDirectoryScoped = DIRECTORY_SCOPED_WORKSPACES.has(pkg.path);
+  const isDirectoryScoped =
+    !WORKSPACE_SCOPED_WORKSPACES.has(pkg.path) &&
+    (DIRECTORY_SCOPED_WORKSPACES.has(pkg.path) ||
+      DIRECTORY_SCOPED_WORKSPACE_PREFIXES.some((prefix) =>
+        pkg.path.startsWith(prefix),
+      ));
   const scopeArgs =
     pkg.path === "."
       ? ["--directory", "."]

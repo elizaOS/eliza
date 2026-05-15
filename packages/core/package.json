@@ -82,7 +82,7 @@
 		"dist"
 	],
 	"scripts": {
-		"prebuild": "[ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts",
+		"prebuild": "bun run --cwd ../contracts build && ([ -f src/i18n/generated/validation-keyword-data.ts ] || node ../shared/scripts/generate-keywords.mjs --target ts)",
 		"prepublishOnly": "bun run build",
 		"build": "bun run build.ts",
 		"build:node": "bun run build.ts --node-only",
@@ -122,6 +122,7 @@
 		"@ai-sdk/google": "^3.0.8",
 		"@ai-sdk/openai": "^3.0.9",
 		"@bufbuild/protobuf": "^2.12.0",
+		"@elizaos/contracts": "workspace:*",
 		"@elizaos/prompts": "workspace:*",
 		"@noble/ciphers": "2.2.0",
 		"@noble/hashes": "2.2.0",

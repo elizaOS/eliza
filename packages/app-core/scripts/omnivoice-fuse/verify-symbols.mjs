@@ -247,6 +247,9 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_tts_synthesize_stream",
   "eliza_inference_cancel_tts",
   "eliza_inference_set_verifier_callback",
+  // ABI v4 — frozen reference voice profile encoding.
+  "eliza_inference_encode_reference",
+  "eliza_inference_free_tokens",
   // ABI v3 — native Silero VAD backend.
   "eliza_inference_vad_supported",
   "eliza_inference_vad_open",

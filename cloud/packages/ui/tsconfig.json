@@ -15,6 +15,9 @@
     "types": ["node", "vite/client"],
     "paths": {
       "@elizaos/cloud-ui": ["./src/index.ts"],
+      "@elizaos/ui": ["./src/compat-cloud-ui.d.ts"],
+      "@elizaos/ui/*": ["./src/compat-cloud-ui.d.ts"],
+      "@elizaos/ui/cloud-ui": ["./src/compat-cloud-ui.d.ts"],
       "@elizaos/billing": ["../billing/src/index.ts"],
       "@/*": ["./src/*"],
       "@/lib/*": ["../lib/*"],
@@ -22,6 +25,6 @@
       "@/types/*": ["../types/*"]
     }
   },
-  "include": ["src", "../types/**/*.d.ts"],
+  "include": ["src/index.ts", "src/compat-cloud-ui.d.ts", "../types/**/*.d.ts"],
   "exclude": ["node_modules", "dist", "**/*.stories.ts", "**/*.stories.tsx"]
 }

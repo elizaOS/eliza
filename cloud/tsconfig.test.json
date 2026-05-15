@@ -19,13 +19,20 @@
       "@/db/*": ["./packages/db/*"],
       "@/tests/*": ["./packages/tests/*"],
       "@/types/*": ["./packages/types/*"],
-      "@/components/*": ["./packages/ui/src/components/*"],
+      "@/components/*": ["../packages/ui/src/cloud-ui/components/*"],
       "@elizaos/billing": ["./packages/billing/src/index.ts"],
-      "@elizaos/cloud-ui": ["./packages/ui/src/index.ts"],
+      "@elizaos/ui": ["../packages/ui/src/cloud-ui/index.ts"],
+      "@elizaos/ui/*": ["../packages/ui/src/*"],
       "@elizaos/core": ["../packages/core/src/index.node.ts"],
       "@elizaos/core/*": ["../packages/core/src/*"],
+      "@elizaos/contracts": ["../packages/contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../packages/contracts/src/*"],
       "drizzle-orm": ["./node_modules/drizzle-orm"],
       "drizzle-orm/*": ["./node_modules/drizzle-orm/*"],
+      "lucide-react": ["./node_modules/lucide-react"],
+      "react": ["./node_modules/@types/react/index.d.ts"],
+      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
+      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
       "@/*": ["./*"]
     }
   },
@@ -43,7 +50,7 @@
     "out",
     "build",
     "dist",
-    "./packages/ui/src/components/**/*.stories.tsx",
-    "./packages/ui/src/components/**/*.stories.ts"
+    "../packages/ui/src/cloud-ui/components/**/*.stories.tsx",
+    "../packages/ui/src/cloud-ui/components/**/*.stories.ts"
   ]
 }

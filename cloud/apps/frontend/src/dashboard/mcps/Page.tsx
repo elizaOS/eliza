@@ -2,7 +2,7 @@ import {
   DashboardLoadingState,
   DashboardPageContainer,
   DashboardPageStack,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { MCPsPageWrapper } from "./_components/mcps-page-wrapper";

@@ -18,7 +18,7 @@ import {
   Skeleton,
   StatusBadge,
   Switch,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   Copy,
   Globe,

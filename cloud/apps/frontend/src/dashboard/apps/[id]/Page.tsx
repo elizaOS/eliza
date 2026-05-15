@@ -2,7 +2,7 @@ import {
   DashboardErrorState,
   DashboardLoadingState,
   DashboardPageContainer,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";

@@ -25,7 +25,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { CalendarClock, Copy, MoreHorizontal, RefreshCw, ShieldOff, Trash2 } from "lucide-react";
 
 import type { ApiKeyDisplay } from "./types";

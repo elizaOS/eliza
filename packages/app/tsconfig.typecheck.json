@@ -12,6 +12,9 @@
       ],
       "@elizaos/app-companion": ["../../plugins/app-companion/dist/index.d.ts"],
       "@elizaos/app-lifeops": ["../../plugins/app-lifeops/dist/index.d.ts"],
+      "@elizaos/app-model-tester": [
+        "../../plugins/app-model-tester/dist/index.d.ts"
+      ],
       "@elizaos/app-messages/register": [
         "../../plugins/app-messages/src/register.ts"
       ],

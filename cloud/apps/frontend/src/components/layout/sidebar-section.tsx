@@ -9,7 +9,7 @@
 
 "use client";
 
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@elizaos/cloud-ui";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@elizaos/ui";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";

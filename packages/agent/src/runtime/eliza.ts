@@ -170,6 +170,7 @@ async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
   )) as StewardEvmBridgeModule;
 }
 
+import { detectEmbeddingPreset } from "@elizaos/plugin-local-inference";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
@@ -209,7 +210,6 @@ import {
 import { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS } from "./core-plugins.ts";
 import { seedBundledDocuments } from "./default-documents.ts";
 import { createElizaPlugin } from "./eliza-plugin.ts";
-import { detectEmbeddingPreset } from "@elizaos/plugin-local-inference";
 import {
   runtimeDocumentsEnabled,
   runtimeTrajectoriesEnabled,
@@ -340,12 +340,13 @@ async function getPluginLocalEmbedding(): Promise<
   return _pluginLocalEmbeddingPromise;
 }
 
-const _optionalPluginCache = new Map<string, Promise<unknown>>();
+let _optionalPluginCache: Map<string, Promise<unknown>> | null = null;
 function getOptionalPlugin(packageName: string): Promise<unknown> {
-  const cached = _optionalPluginCache.get(packageName);
+  const cache = (_optionalPluginCache ??= new Map());
+  const cached = cache.get(packageName);
   if (cached) return cached;
   const promise = loadOptionalPlugin(packageName);
-  _optionalPluginCache.set(packageName, promise);
+  cache.set(packageName, promise);
   return promise;
 }
 // Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).

@@ -18,6 +18,20 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _write_checksums(bundle: Path) -> None:
+    sums = bundle / "checksums" / "SHA256SUMS"
+    sums.parent.mkdir(parents=True, exist_ok=True)
+    lines: list[str] = []
+    for path in sorted(bundle.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(bundle).as_posix()
+        if rel == "checksums/SHA256SUMS":
+            continue
+        lines.append(f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {rel}")
+    sums.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def _default_voice_paths(tier: str) -> tuple[str, ...]:
     return tuple(f"tts/{rel}" for rel in P.M.required_voice_artifacts_for_tier(tier))
 
@@ -33,15 +47,28 @@ def _write_bundle(
     drafter = b"draft"
     files: list[tuple[str, bytes]] = [
         (f"text/eliza-1-{tier}-32k.gguf", text),
-        (f"dflash/drafter-{tier}.gguf", drafter),
         ("cache/voice-preset-default.bin", b"cache"),
     ]
+    if tier in P.M.ELIZA_1_DFLASH_TIERS:
+        files.append((f"dflash/drafter-{tier}.gguf", drafter))
     for i, voice_path in enumerate(voice_paths or _default_voice_paths(tier)):
         files.append((voice_path, f"voice-{i}".encode("utf-8")))
     for rel, blob in files:
         path = bundle / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(blob)
+    aggregate_path = bundle / "evals" / "aggregate.json"
+    aggregate_path.parent.mkdir(parents=True, exist_ok=True)
+    aggregate_path.write_text(
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "tier": tier,
+                "gateReport": {"tier": tier, "passed": True, "gates": []},
+            }
+        ),
+        encoding="utf-8",
+    )
     voice_entries = [
         {"path": rel, "sha256": _sha(blob)}
         for rel, blob in files
@@ -60,9 +87,11 @@ def _write_bundle(
                 }
             ],
             "voice": voice_entries,
-            "dflash": [
-                {"path": f"dflash/drafter-{tier}.gguf", "sha256": _sha(drafter)}
-            ],
+            "dflash": (
+                [{"path": f"dflash/drafter-{tier}.gguf", "sha256": _sha(drafter)}]
+                if tier in P.M.ELIZA_1_DFLASH_TIERS
+                else []
+            ),
             "cache": [
                 {
                     "path": "cache/voice-preset-default.bin",
@@ -75,9 +104,14 @@ def _write_bundle(
     release = {
         "schemaVersion": 1,
         "tier": tier,
-        "repoId": "elizaos/eliza-1",
+        "repoId": P.DEFAULT_REPO_ID,
         "releaseState": "base-v1",
         "publishEligible": True,
+        "checksumManifest": P.CHECKSUMS_REL,
+        "weights": sorted(
+            rel for rel, _blob in files if rel.split("/", 1)[0] in P.WEIGHT_PAYLOAD_DIRS
+        ),
+        "evalReports": ["evals/aggregate.json"],
         "final": {
             "weights": True,
             "hashes": True,
@@ -88,7 +122,7 @@ def _write_bundle(
             "sizeFirstRepoIds": True,
         },
         "hf": {
-            "repoId": "elizaos/eliza-1",
+            "repoId": P.DEFAULT_REPO_ID,
             "pathPrefix": f"bundles/{tier}",
             "status": "upload-ready",
         },
@@ -99,6 +133,7 @@ def _write_bundle(
         json.dumps(release),
         encoding="utf-8",
     )
+    _write_checksums(bundle)
     return bundle
 
 
@@ -218,6 +253,73 @@ def test_plan_bundle_blocks_uploaded_status_without_hf_evidence(tmp_path: Path):
 
     assert plan.uploadable is False
     assert any("uploadEvidence is missing" in e for e in plan.errors)
+
+
+def test_plan_bundle_reports_release_blocking_reasons(tmp_path: Path):
+    bundle = _write_bundle(tmp_path, "0_8b")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["releaseState"] = "weights-staged"
+    release["publishEligible"] = False
+    release["final"]["evals"] = False
+    release["final"]["kernelDispatchReports"] = False
+    release["hf"]["status"] = "blocked-weights-staged"
+    release["publishBlockingReasons"] = [
+        "eval gates not green for the staged bytes: text_eval failed",
+        "kernel-dispatch not runtimeReady on every supported backend",
+    ]
+    release_path.write_text(json.dumps(release), encoding="utf-8")
+
+    plan = P.plan_bundle(tmp_path, "0_8b")
+
+    assert plan.uploadable is False
+    assert any("text_eval failed" in e for e in plan.errors)
+    assert any("kernel-dispatch" in e for e in plan.errors)
+    assert not any("final.evals" in e for e in plan.errors)
+    assert not any("hf.status" in e for e in plan.errors)
+
+
+def test_plan_bundle_blocks_stale_release_evidence_checksum(tmp_path: Path):
+    bundle = _write_bundle(tmp_path, "0_8b")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["generatedAt"] = "2026-05-15T00:00:00Z"
+    release_path.write_text(json.dumps(release), encoding="utf-8")
+
+    plan = P.plan_bundle(tmp_path, "0_8b")
+
+    assert plan.uploadable is False
+    assert any("checksum mismatch for evidence/release.json" in e for e in plan.errors)
+
+
+def test_plan_bundle_blocks_harness_eval_missing_from_evidence_and_checksums(
+    tmp_path: Path,
+):
+    bundle = _write_bundle(tmp_path, "0_8b")
+    (bundle / "evals" / "android_e2e.json").write_text(
+        json.dumps({"status": "pass"}),
+        encoding="utf-8",
+    )
+
+    plan = P.plan_bundle(tmp_path, "0_8b")
+
+    assert plan.uploadable is False
+    assert any("evalReports missing shipped eval file" in e for e in plan.errors)
+    assert any("checksums/SHA256SUMS missing publishable path" in e for e in plan.errors)
+
+
+def test_plan_bundle_rejects_0_8b_dflash_weight_claim(tmp_path: Path):
+    bundle = _write_bundle(tmp_path, "0_8b")
+    release_path = bundle / "evidence" / "release.json"
+    release = json.loads(release_path.read_text())
+    release["weights"].append("dflash/drafter-0_8b.gguf")
+    release_path.write_text(json.dumps(release), encoding="utf-8")
+    _write_checksums(bundle)
+
+    plan = P.plan_bundle(tmp_path, "0_8b")
+
+    assert plan.uploadable is False
+    assert any("weights lists DFlash path" in e for e in plan.errors)
 
 
 def test_dry_run_allows_missing_with_report(tmp_path: Path, capsys):

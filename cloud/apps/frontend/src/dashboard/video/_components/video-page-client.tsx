@@ -25,7 +25,7 @@ import {
   TabsList,
   TabsTrigger,
   useSetPageHeader,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   BarChart3,
   CheckCircle2,

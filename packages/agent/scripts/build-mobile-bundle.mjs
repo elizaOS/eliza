@@ -509,9 +509,10 @@ const iosFsSandboxPlugin = {
 // the same workspace `src/` entry so the bundle ships exactly one identity.
 const corePackages = [
   "@elizaos/core",
-  "@elizaos/shared",
-  "@elizaos/plugin-sql",
-  "@elizaos/plugin-ollama",
+	"@elizaos/shared",
+	"@elizaos/plugin-sql",
+	"@elizaos/plugin-ollama",
+	"@elizaos/plugin-wallet",
 ];
 
 // Inside the eliza repo the source trees live directly under the repo
@@ -550,12 +551,19 @@ const dedupeTargets = {
     "src",
     "index.node.ts",
   ),
-  "@elizaos/plugin-ollama": path.resolve(
-    repoRoot,
-    "plugins",
-    "plugin-ollama",
-    "index.node.ts",
-  ),
+	"@elizaos/plugin-ollama": path.resolve(
+		repoRoot,
+		"plugins",
+		"plugin-ollama",
+		"index.node.ts",
+	),
+	"@elizaos/plugin-wallet": path.resolve(
+		repoRoot,
+		"plugins",
+		"plugin-wallet",
+		"src",
+		"index.ts",
+	),
 };
 
 for (const [pkg, target] of Object.entries(dedupeTargets)) {
@@ -694,13 +702,59 @@ if (!ethersCommonJsIndex) {
 // ethers through its CommonJS entry so Bun packages the real module object
 // with stable properties instead of relying on fragile ESM namespace lowering.
 const ethersCjsResolverPlugin = {
-  name: "eliza-mobile-ethers-cjs",
-  setup(build) {
-    build.onResolve({ filter: /^ethers$/ }, () => ({
-      path: ethersCommonJsIndex,
-      namespace: "file",
-    }));
-  },
+	name: "eliza-mobile-ethers-cjs",
+	setup(build) {
+		build.onResolve({ filter: /^ethers$/ }, () => ({
+			path: ethersCommonJsIndex,
+			namespace: "file",
+		}));
+	},
+};
+
+function findViemPackageRoot() {
+	const candidates = [
+		path.resolve(repoRoot, "node_modules", "viem"),
+		path.resolve(agentRoot, "node_modules", "viem"),
+	];
+	const bunDirs = [
+		path.resolve(repoRoot, "node_modules", ".bun"),
+		path.resolve(agentRoot, "node_modules", ".bun"),
+	];
+	for (const bunDir of bunDirs) {
+		for (const entry of readdirSyncSafe(bunDir)) {
+			if (!entry.startsWith("viem@")) continue;
+			candidates.push(path.join(bunDir, entry, "node_modules", "viem"));
+		}
+	}
+	return candidates.find((candidate) =>
+		existsSync(path.join(candidate, "_cjs", "chains", "index.js")),
+	);
+}
+
+const viemPackageRoot = findViemPackageRoot();
+if (!viemPackageRoot) {
+	console.error(
+		"[build-mobile] FATAL: could not locate viem/_cjs. Run `bun install` first.",
+	);
+	process.exit(1);
+}
+
+// Bun.build can lower named ESM re-exports from viem/chains to undeclared
+// identifiers (`base2` in AerodromeLpService). Use viem's CJS entrypoints so
+// chain constants stay behind normal namespace properties in the mobile bundle.
+const viemCjsResolverPlugin = {
+	name: "eliza-mobile-viem-cjs",
+	setup(build) {
+		const targets = {
+			viem: path.join(viemPackageRoot, "_cjs", "index.js"),
+			"viem/accounts": path.join(viemPackageRoot, "_cjs", "accounts", "index.js"),
+			"viem/chains": path.join(viemPackageRoot, "_cjs", "chains", "index.js"),
+		};
+		build.onResolve({ filter: /^viem(?:\/(?:accounts|chains))?$/ }, (args) => ({
+			path: targets[args.path],
+			namespace: "file",
+		}));
+	},
 };
 
 // host-specific UI modules and any other workspace UI module that
@@ -1023,6 +1077,7 @@ const buildResult = await Bun.build({
     coreTestingStripPlugin,
     zodCjsResolverPlugin,
     ethersCjsResolverPlugin,
+    viemCjsResolverPlugin,
     stubCssPlugin,
     dedupePlugin,
     nativeCapacitorPlugin,

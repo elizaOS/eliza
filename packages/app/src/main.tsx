@@ -516,6 +516,10 @@ function initializeAppModules(): Promise<void> {
         () => import("@elizaos/app-hyperliquid"),
       ),
       importSideEffectAppModule(
+        "@elizaos/app-model-tester",
+        () => import("@elizaos/app-model-tester"),
+      ),
+      importSideEffectAppModule(
         "@elizaos/app-polymarket",
         () => import("@elizaos/app-polymarket"),
       ),

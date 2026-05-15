@@ -5,7 +5,7 @@
 
 "use client";
 
-import { Button, type ChatMediaAttachment, ContentType, dynamic, Image } from "@elizaos/cloud-ui";
+import { Button, type ChatMediaAttachment, ContentType, dynamic, Image } from "@elizaos/ui";
 import { Check, Copy, Loader2, Square, Volume2 } from "lucide-react";
 import React, { memo, useEffect, useRef, useState } from "react";
 import { ElizaAvatar } from "./eliza-avatar";

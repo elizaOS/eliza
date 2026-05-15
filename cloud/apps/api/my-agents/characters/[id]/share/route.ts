@@ -13,6 +13,8 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
+import { cache } from "@/lib/cache/client";
+import { CacheKeys } from "@/lib/cache/keys";
 import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -85,8 +87,10 @@ app.put("/", async (c) => {
       return c.json({ success: false, error: "Failed to update character" }, 500);
     }
 
-    // TODO(cache): /dashboard and /dashboard/my-agents revalidation
-    // dropped — no Workers-side equivalent of next/cache revalidatePath.
+    await Promise.all([
+      cache.del(CacheKeys.org.dashboard(updated.organization_id)),
+      cache.delPattern(CacheKeys.discovery.pattern()),
+    ]);
 
     const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
     return c.json({

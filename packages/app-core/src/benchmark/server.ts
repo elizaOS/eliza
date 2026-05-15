@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import http from "node:http";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { CORE_PLUGINS, createElizaPlugin } from "@elizaos/agent";
 import {
   AgentRuntime,
   type Content,
@@ -14,6 +13,8 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import dotenv from "dotenv";
+import { CORE_PLUGINS } from "../../../agent/src/runtime/core-plugins.ts";
+import { createElizaPlugin } from "../../../agent/src/runtime/eliza-plugin.ts";
 import { autoWireCerebras } from "./cerebras-autowire.js";
 import {
   LifeOpsBenchHandler,
@@ -97,6 +98,15 @@ function isLocaBenchmarkName(benchmark: string): boolean {
 
 function isBfclBenchmarkName(benchmark: string): boolean {
   return benchmark.trim().toLowerCase() === "bfcl";
+}
+
+function isTauBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "tau_bench" || normalized === "tau-bench";
+}
+
+function isWebShopBenchmarkName(benchmark: string): boolean {
+  return benchmark.trim().toLowerCase() === "webshop";
 }
 
 function normalizeBfclNativeMessages(
@@ -209,6 +219,165 @@ function normalizeLocaNativeMessages(
   return normalized;
 }
 
+function normalizeTauNativeMessages(
+  rawMessages: unknown,
+  fallbackText = "",
+): Array<Record<string, unknown>> {
+  const input = Array.isArray(rawMessages) ? rawMessages : [];
+  const toolNamesById = new Map<string, string>();
+  let hasUserMessage = false;
+  const normalized: Array<Record<string, unknown>> = [
+    {
+      role: "system",
+      content:
+        "You are running tau-bench through the Eliza benchmark server. " +
+        "Use native tool calls for customer-service operations. Only reply " +
+        "to the user after the needed tool calls have been completed.",
+    },
+  ];
+
+  for (const item of input) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const message = item as Record<string, unknown>;
+    const role = typeof message.role === "string" ? message.role : "user";
+    if (role === "assistant") {
+      const rawToolCalls = Array.isArray(message.tool_calls)
+        ? message.tool_calls
+        : Array.isArray(message.toolCalls)
+          ? message.toolCalls
+          : [];
+      const toolCalls = rawToolCalls
+        .map((call) => normalizeLocaIncomingToolCall(call))
+        .filter((call): call is Record<string, unknown> => Boolean(call));
+      for (const call of toolCalls) {
+        const id = typeof call.id === "string" ? call.id : "";
+        const fn =
+          call.function && typeof call.function === "object"
+            ? (call.function as Record<string, unknown>)
+            : {};
+        const name = typeof fn.name === "string" ? fn.name : "";
+        if (id && name) toolNamesById.set(id, name);
+      }
+      normalized.push({
+        role: "assistant",
+        content: typeof message.content === "string" ? message.content : "",
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+      });
+      continue;
+    }
+
+    if (role === "tool") {
+      const toolCallId =
+        typeof message.tool_call_id === "string"
+          ? message.tool_call_id
+          : typeof message.toolCallId === "string"
+            ? message.toolCallId
+            : typeof message.id === "string"
+              ? message.id
+              : "tool-call";
+      const toolName =
+        typeof message.name === "string"
+          ? message.name
+          : typeof message.toolName === "string"
+            ? message.toolName
+            : toolNamesById.get(toolCallId) || "tool";
+      normalized.push({
+        role: "tool",
+        id: toolCallId,
+        name: toolName,
+        content:
+          typeof message.content === "string"
+            ? message.content
+            : JSON.stringify(message.content ?? ""),
+      });
+      continue;
+    }
+
+    normalized.push({
+      role: role === "system" ? "system" : "user",
+      content:
+        typeof message.content === "string"
+          ? message.content
+          : JSON.stringify(message.content ?? ""),
+    });
+    if (role !== "system") hasUserMessage = true;
+  }
+
+  if (!hasUserMessage && fallbackText.trim().length > 0) {
+    normalized.push({ role: "user", content: fallbackText });
+  }
+
+  return normalized;
+}
+
+function normalizeWebShopNativeMessages(
+  text: string,
+  context: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const rawActions = Array.isArray(context.actionSpace)
+    ? context.actionSpace
+    : Array.isArray(context.available_actions)
+      ? context.available_actions
+      : [];
+  const availableActions = rawActions
+    .filter((action): action is string => typeof action === "string")
+    .map((action) => action.trim())
+    .filter(Boolean);
+  return [
+    {
+      role: "system",
+      content:
+        "You are running WebShop through the Eliza benchmark server. " +
+        "Use the BENCHMARK_ACTION tool exactly once. Set command to one " +
+        "of the currently available action strings. Do not describe the action.",
+    },
+    {
+      role: "user",
+      content:
+        text +
+        (availableActions.length > 0
+          ? `\n\nAvailable action strings:\n${availableActions.map((action) => `- ${action}`).join("\n")}`
+          : ""),
+    },
+  ];
+}
+
+function webShopNativeTools(
+  context: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const rawActions = Array.isArray(context.actionSpace)
+    ? context.actionSpace
+    : Array.isArray(context.available_actions)
+      ? context.available_actions
+      : [];
+  const actions = rawActions
+    .filter((action): action is string => typeof action === "string")
+    .map((action) => action.trim())
+    .filter(Boolean);
+  return [
+    {
+      type: "function",
+      function: {
+        name: "BENCHMARK_ACTION",
+        description:
+          "Execute exactly one WebShop command from the current Available Actions list.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description: "The exact WebShop action string to execute.",
+              ...(actions.length > 0 ? { enum: actions } : {}),
+            },
+          },
+          required: ["command"],
+          additionalProperties: false,
+        },
+      },
+    },
+  ];
+}
+
 function normalizeLocaIncomingToolCall(
   raw: unknown,
 ): Record<string, unknown> | null {
@@ -306,6 +475,38 @@ function firstLocaBenchmarkActionFromToolCalls(
     tool_name: first.function.name,
     arguments: args,
   };
+}
+
+function firstWebShopBenchmarkActionFromToolCalls(
+  toolCalls: Array<{
+    function: { name: string; arguments: string };
+  }>,
+): Record<string, unknown> | null {
+  const first = toolCalls[0];
+  if (!first) return null;
+  let args: unknown = {};
+  try {
+    args = JSON.parse(first.function.arguments || "{}");
+  } catch {
+    args = { _raw: first.function.arguments };
+  }
+  if (!args || typeof args !== "object" || Array.isArray(args)) {
+    return null;
+  }
+  const record = args as Record<string, unknown>;
+  const nested =
+    record.BENCHMARK_ACTION &&
+    typeof record.BENCHMARK_ACTION === "object" &&
+    !Array.isArray(record.BENCHMARK_ACTION)
+      ? (record.BENCHMARK_ACTION as Record<string, unknown>)
+      : record;
+  const command =
+    typeof nested.command === "string"
+      ? nested.command
+      : typeof nested.action === "string"
+        ? nested.action
+        : "";
+  return command.trim() ? { command: command.trim() } : null;
 }
 
 function bfclBenchmarkActionFromToolCalls(
@@ -1784,6 +1985,197 @@ export async function startBenchmarkServer() {
             }
             const actions =
               toolCalls.length > 0
+                ? ["BENCHMARK_ACTION"]
+                : responseText.trim()
+                  ? ["REPLY"]
+                  : [];
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions,
+              params,
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions,
+                params,
+                captured_actions: [],
+                tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
+
+          if (
+            isTauBenchmarkName(session.benchmark) &&
+            Array.isArray(benchmarkContext.tools) &&
+            benchmarkContext.tools.length > 0
+          ) {
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            try {
+              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                messages: normalizeTauNativeMessages(
+                  benchmarkContext.messages,
+                  composedPrompt,
+                ),
+                tools: benchmarkContext.tools,
+                toolChoice:
+                  typeof benchmarkContext.tool_choice === "string"
+                    ? benchmarkContext.tool_choice
+                    : "auto",
+                maxTokens:
+                  typeof benchmarkContext.max_tokens === "number"
+                    ? benchmarkContext.max_tokens
+                    : 2048,
+                temperature:
+                  typeof benchmarkContext.temperature === "number"
+                    ? benchmarkContext.temperature
+                    : 0,
+              });
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const toolCalls = normalizeLocaNativeToolCalls(
+              nativeRecord.toolCalls,
+            );
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const params: Record<string, unknown> = {};
+            if (toolCalls.length > 0) {
+              params.tool_calls = toolCalls;
+            }
+            const actions =
+              toolCalls.length > 0
+                ? toolCalls.map((call) => call.function.name)
+                : responseText.trim()
+                  ? ["REPLY"]
+                  : [];
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions,
+              params,
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions,
+                params,
+                captured_actions: [],
+                tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
+
+          if (isWebShopBenchmarkName(session.benchmark)) {
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            const nativeTools = webShopNativeTools(benchmarkContext);
+            try {
+              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                messages: normalizeWebShopNativeMessages(
+                  composedPrompt,
+                  benchmarkContext,
+                ),
+                tools: nativeTools,
+                toolChoice: "required",
+                maxTokens:
+                  typeof benchmarkContext.max_tokens === "number"
+                    ? benchmarkContext.max_tokens
+                    : 512,
+                temperature:
+                  typeof benchmarkContext.temperature === "number"
+                    ? benchmarkContext.temperature
+                    : 0,
+              });
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const toolCalls = normalizeLocaNativeToolCalls(
+              nativeRecord.toolCalls,
+            );
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const params: Record<string, unknown> = {};
+            const benchmarkAction =
+              firstWebShopBenchmarkActionFromToolCalls(toolCalls);
+            if (benchmarkAction) {
+              params.BENCHMARK_ACTION = benchmarkAction;
+              params.tool_calls = toolCalls;
+            }
+            const actions =
+              benchmarkAction !== null
                 ? ["BENCHMARK_ACTION"]
                 : responseText.trim()
                   ? ["REPLY"]

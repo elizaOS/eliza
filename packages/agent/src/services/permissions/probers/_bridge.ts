@@ -17,9 +17,9 @@
 
 import { execFile } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import type {
@@ -204,8 +204,7 @@ export async function queryAppleEventsTccStatus(
 export function resolveBundleId(execPath = process.execPath): string {
   const fallback = "ai.elizaos.app";
   try {
-    const macOsDir = path.dirname(path.resolve(execPath));
-    const contentsDir = path.resolve(macOsDir, "..");
+    const contentsDir = resolveBundleContentsDir(execPath);
     const infoPlistPath = path.join(contentsDir, "Info.plist");
     if (!existsSync(infoPlistPath)) return fallback;
     const text = readFileSync(infoPlistPath, "utf8");
@@ -215,6 +214,31 @@ export function resolveBundleId(execPath = process.execPath): string {
     return m?.[1]?.trim() ?? fallback;
   } catch {
     return fallback;
+  }
+}
+
+function resolveBundleContentsDir(execPath = process.execPath): string {
+  const macOsDir = path.dirname(path.resolve(execPath));
+  return path.resolve(macOsDir, "..");
+}
+
+/**
+ * Best-effort entitlement check against the running app's embedded
+ * provisioning profile. Unsigned dev builds do not have this file.
+ */
+export function hasEmbeddedProvisioningEntitlement(
+  entitlement: string,
+  execPath = process.execPath,
+): boolean {
+  try {
+    const embedded = path.join(
+      resolveBundleContentsDir(execPath),
+      "embedded.provisionprofile",
+    );
+    if (!existsSync(embedded)) return false;
+    return readFileSync(embedded).includes(Buffer.from(entitlement));
+  } catch {
+    return false;
   }
 }
 

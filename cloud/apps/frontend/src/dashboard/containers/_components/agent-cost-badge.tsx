@@ -5,7 +5,7 @@
 
 "use client";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/cloud-ui";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/ui";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import { formatHourlyRate, formatMonthlyEstimate } from "@/lib/constants/agent-pricing-display";
 

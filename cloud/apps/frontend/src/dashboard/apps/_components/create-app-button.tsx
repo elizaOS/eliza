@@ -5,7 +5,7 @@
 
 "use client";
 
-import { Button } from "@elizaos/cloud-ui";
+import { Button } from "@elizaos/ui";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { CreateAppDialog } from "./create-app-dialog";

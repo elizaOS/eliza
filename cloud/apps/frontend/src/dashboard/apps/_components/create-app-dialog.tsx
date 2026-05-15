@@ -31,7 +31,7 @@ import {
   DialogTitle,
   Input,
   Label,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { AlertCircle, Check, Copy, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";

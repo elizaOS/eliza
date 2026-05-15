@@ -15,7 +15,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Button,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Loader2, MessageSquare, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";

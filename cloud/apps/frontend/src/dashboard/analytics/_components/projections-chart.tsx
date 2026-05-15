@@ -20,7 +20,7 @@ import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { format } from "date-fns";
 import { Activity, AlertTriangle, Info, TrendingUp } from "lucide-react";
 import { useMemo } from "react";

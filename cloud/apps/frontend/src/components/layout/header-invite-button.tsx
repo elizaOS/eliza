@@ -14,7 +14,7 @@
  */
 "use client";
 
-import { BrandButton } from "@elizaos/cloud-ui";
+import { BrandButton } from "@elizaos/ui";
 import { Loader2, UserPlus } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { toast } from "sonner";

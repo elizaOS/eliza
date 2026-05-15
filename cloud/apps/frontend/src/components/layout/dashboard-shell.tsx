@@ -1,4 +1,4 @@
-import { DashboardLoadingState, PageHeaderProvider, ScrollArea } from "@elizaos/cloud-ui";
+import { DashboardLoadingState, PageHeaderProvider, ScrollArea } from "@elizaos/ui";
 import { Loader2 } from "lucide-react";
 import { Suspense, useCallback, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";

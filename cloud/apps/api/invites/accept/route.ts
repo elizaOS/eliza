@@ -1,9 +1,6 @@
 /**
  * POST /api/invites/accept
  * Accepts an organization invitation using the invitation token.
- *
- * Note: Next's `revalidateTag("user-auth")` was dropped — Workers has no
- * route-level cache invalidation surface. // TODO(cache)
  */
 
 import { Hono } from "hono";

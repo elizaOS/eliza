@@ -5,7 +5,7 @@
 
 "use client";
 
-import { Button, ElizaCloudLockup } from "@elizaos/cloud-ui";
+import { Button, ElizaCloudLockup } from "@elizaos/ui";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
@@ -22,7 +22,7 @@ export default function LandingHeader() {
   };
 
   return (
-    <motion.header className="fixed top-0 left-0 z-[100] w-full pointer-events-auto bg-black/40 backdrop-blur-md md:bg-transparent md:backdrop-blur-none">
+    <motion.header className="fixed top-0 left-0 z-[100] w-full pointer-events-auto bg-bg/70 backdrop-blur-md md:bg-transparent md:backdrop-blur-none">
       <div className="flex h-16 items-center justify-between w-full px-6 sm:px-8 lg:px-12">
         <Link to="/" className="flex items-center gap-3">
           <ElizaCloudLockup logoClassName="h-5 sm:h-6" />
@@ -32,7 +32,7 @@ export default function LandingHeader() {
           {authenticated ? (
             <>
               {/* Authenticated user - show Dashboard + UserMenu */}
-              <Button size="sm" className="bg-[#FF5800] text-white hover:bg-[#FF5800]/90">
+              <Button size="sm">
                 <Link to="/dashboard">Dashboard</Link>
               </Button>
               <UserMenu />
@@ -44,7 +44,7 @@ export default function LandingHeader() {
                 variant="ghost"
                 size="sm"
                 disabled={!ready}
-                className="text-base text-white hover:text-white hover:bg-white/5 font-[family-name:var(--font-inter)]"
+                className="text-base font-[family-name:var(--font-body)]"
               >
                 <Link to="/login">Log in</Link>
               </Button>
@@ -52,7 +52,7 @@ export default function LandingHeader() {
                 size="sm"
                 onClick={handleGetStarted}
                 disabled={!ready}
-                className="bg-[#FF5800] text-white hover:bg-[#FF5800]/90 font-[family-name:var(--font-inter)]"
+                className="font-[family-name:var(--font-body)]"
               >
                 Get started
               </Button>

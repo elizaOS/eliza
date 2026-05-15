@@ -8,7 +8,7 @@
 
 "use client";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/cloud-ui";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/ui";
 import { Lock } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";

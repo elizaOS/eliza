@@ -42,6 +42,7 @@ export const configureLocalEmbeddingPlugin = noop;
 export const CONFIG_WRITE_ALLOWED_TOP_KEYS = [];
 export const CONNECTOR_ENV_MAP = [];
 export const CORE_PLUGINS = [];
+export const OPTIONAL_CORE_PLUGINS = [];
 export const createElizaPlugin = noop;
 export const CUSTOM_PLUGINS_DIRNAME = [];
 export const detectEmbeddingTier = noop;
@@ -91,6 +92,7 @@ export const readTriggerConfig = noop;
 export const registerJsRuntimeFactory = noop;
 export const __resetCloudBaseUrlCache = noop;
 export const resolveAdvancedCapabilitiesEnabled = noop;
+export const applyAdvancedCapabilitiesConfig = noop;
 export const resolveAppHeroImage = noop;
 export const resolveChannel = noop;
 export const resolveCloudTtsBaseUrl = noop;
@@ -123,6 +125,12 @@ export const typeElizaConfig = noop;
 export const typeStartElizaOptions = noop;
 export const UninstallResult = noop;
 export const validateMcpServerConfig = noop;
+export const getPluginWidgets = () => [];
+export const validatePluginConfig = () => ({
+  ok: true,
+  errors: [],
+  warnings: [],
+});
 
 // ── Extra @elizaos/agent stubs surfaced by plugin dist files ────────
 // Upstream's enumeration only walked app-core/dist; the broader plugin

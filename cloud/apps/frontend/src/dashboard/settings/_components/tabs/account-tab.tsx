@@ -9,7 +9,7 @@
 
 "use client";
 
-import { BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
+import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { ArrowUpRight, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";

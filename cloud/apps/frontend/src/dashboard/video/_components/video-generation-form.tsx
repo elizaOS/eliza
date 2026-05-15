@@ -28,7 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
   Textarea,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Loader2, Timer } from "lucide-react";
 import { useMemo } from "react";
 import type { VideoModelOption } from "./types";

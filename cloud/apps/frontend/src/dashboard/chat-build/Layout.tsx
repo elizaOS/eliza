@@ -1,4 +1,4 @@
-import { useRenderGuard } from "@elizaos/cloud-ui";
+import { useRenderGuard } from "@elizaos/ui";
 import { Menu } from "lucide-react";
 import { useCallback, useState } from "react";
 import { Outlet } from "react-router-dom";

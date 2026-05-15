@@ -313,9 +313,10 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         print(f"\nResults saved to: {args.output}")
         print("=" * 60)
 
-        if config.dry_run and report.total_tasks == 0:
-            return 0
-        return 0 if report.overall_success_rate > 0.3 else 1
+        # A low success rate is a scored model outcome, not a runner failure.
+        # The orchestrator reads the emitted JSON to compare harness quality;
+        # returning nonzero here quarantines valid trajectories as infra errors.
+        return 0
 
     except Exception as e:
         logger.error(f"Benchmark failed: {e}")

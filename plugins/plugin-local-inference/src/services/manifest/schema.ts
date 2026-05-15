@@ -47,7 +47,7 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
-// Tiers — size-ordered and capped at the native 262,144-token context.
+// Tiers — size-ordered across the active Eliza-1 bundles.
 export const ELIZA_1_TIERS = [
 	"0_8b",
 	"2b",
@@ -136,19 +136,22 @@ export const ELIZA_1_BACKENDS = [
 ] as const;
 export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
-// Required-kernel set per tier. Mirrors AGENTS.md §3:
-// - All tiers require turboquant + qjl + polarquant + dflash.
-// - 4B and larger tiers require `turbo3_tcq`. The validator also enforces the
-//   same requirement dynamically for any bundle that declares a >64k text file,
-//   so a future tier cannot publish long-context text without TCQ.
+// Required-kernel set per tier. Mirrors the active Eliza-1 release policy:
+// - All tiers require turboquant + qjl + polarquant.
+// - 2B and larger tiers require DFlash.
+// - All current text GGUFs ship at the 128k half-context floor or the 262k
+//   native tier, so every tier requires `turbo3_tcq`. The validator also
+//   enforces the same requirement dynamically for any bundle that declares
+//   a >64k text file, so a future tier cannot publish long-context text
+//   without TCQ.
 //
 // Q4 is the release text quant baseline. TCQ is required for 4b and above
-// because those tiers ship long-context text variants.
+// because every text tier ships long-context text variants.
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
-	"2b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+	"0_8b": ["turboquant_q4", "qjl", "polarquant", "turbo3_tcq"],
+	"2b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
@@ -183,7 +186,7 @@ const lineageEntry = z.object({
 export const Eliza1LineageSchema = z.object({
 	text: lineageEntry,
 	voice: lineageEntry,
-	drafter: lineageEntry,
+	drafter: lineageEntry.optional(),
 	// Wave-6 (2026-05-10): manifest now records lineage for every shipped
 	// component so license/dataset provenance is auditable per component.
 	// All optional — a tier may omit ASR/embedding/vision/vad/wakeword by
@@ -219,7 +222,7 @@ export const Eliza1FileEntrySchema = z.object({
 	// text files declare their context length so the runtime can pick the
 	// largest variant that fits the device's RAM budget. Other file kinds
 	// never have ctx.
-	ctx: z.number().int().positive().optional(),
+	ctx: z.number().int().min(131072).optional(),
 });
 
 export const Eliza1FilesSchema = z.object({
@@ -227,7 +230,7 @@ export const Eliza1FilesSchema = z.object({
 	voice: z.array(Eliza1FileEntrySchema).min(1),
 	asr: z.array(Eliza1FileEntrySchema),
 	vision: z.array(Eliza1FileEntrySchema),
-	dflash: z.array(Eliza1FileEntrySchema).min(1),
+	dflash: z.array(Eliza1FileEntrySchema),
 	cache: z.array(Eliza1FileEntrySchema).min(1),
 	// Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
 	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers) and
@@ -311,6 +314,17 @@ export const Eliza1RecipeKernelPinsSchema = z.object({
 	perBlockTolerance: z.number().positive(),
 });
 
+export const Eliza1Eagle3KernelSchema = z
+	.object({
+		enabled: z.boolean().optional(),
+		capability: z.string().min(1).optional(),
+		specType: z.string().min(1).optional(),
+		model: z.string().min(1).optional(),
+		maxDraftTokens: z.number().int().positive().optional(),
+		failure: z.string().min(1).optional(),
+	})
+	.passthrough();
+
 export const Eliza1KernelsSchema = z.object({
 	required: z.array(Eliza1KernelEnumSchema).min(1),
 	optional: z.array(Eliza1KernelEnumSchema),
@@ -322,6 +336,9 @@ export const Eliza1KernelsSchema = z.object({
 		cpu: Eliza1VerifiedBackendStatusSchema,
 	}),
 	recipeManifest: z.record(z.string(), Eliza1RecipeKernelPinsSchema).optional(),
+	// Optional EAGLE3 capability metadata. This is intentionally separate from
+	// the DFlash kernel capability and is never added to REQUIRED_KERNELS_BY_TIER.
+	eagle3: Eliza1Eagle3KernelSchema.optional(),
 });
 
 // Wave-6: voice surface declares which expressive features the bundled
@@ -346,6 +363,44 @@ export const Eliza1VoiceSchema = z.object({
 	}),
 	capabilities: z.array(z.enum(ELIZA_1_VOICE_CAPABILITIES)).default(["tts"]),
 });
+
+const Eliza1Eagle3EvalSchema = z
+	.object({
+		/** accepted/drafted; null or absent when not measured. */
+		acceptanceRate: z.number().min(0).max(1).nullable().optional(),
+		/** EAGLE3-on tok/s ÷ baseline tok/s; null or absent when not measured. */
+		speedup: z.number().nonnegative().nullable().optional(),
+		/** Preferred spelling for pass/fail status. */
+		passed: z.boolean().optional(),
+		/** Back-compat spelling accepted for manifest producers that emit `pass`. */
+		pass: z.boolean().optional(),
+		/** Human-readable reason when the EAGLE3 eval was not run or failed. */
+		failure: z.string().min(1).optional(),
+	})
+	.superRefine((eagle3, ctx) => {
+		if (
+			eagle3.pass !== undefined &&
+			eagle3.passed !== undefined &&
+			eagle3.pass !== eagle3.passed
+		) {
+			ctx.addIssue({
+				code: "custom",
+				message: "pass and passed must agree when both are present",
+				path: ["pass"],
+			});
+		}
+		const passed = eagle3.passed ?? eagle3.pass;
+		if (
+			passed === true &&
+			(eagle3.acceptanceRate == null || eagle3.speedup == null)
+		) {
+			ctx.addIssue({
+				code: "custom",
+				message: "passed=true requires measured acceptanceRate and speedup",
+				path: ["passed"],
+			});
+		}
+	});
 
 export const Eliza1EvalsSchema = z.object({
 	textEval: z.object({
@@ -407,6 +462,9 @@ export const Eliza1EvalsSchema = z.object({
 			passed: z.boolean(),
 		})
 		.optional(),
+	// Optional EAGLE3 speculative-decoding bench metadata. This is independent
+	// from DFlash and does not make EAGLE3 required for any tier.
+	eagle3: Eliza1Eagle3EvalSchema.optional(),
 	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector eval gates.
 	// Required when `files.turn` is non-empty (validator enforces). Thresholds
 	// applied by `eval_turn_detector.py` in `packages/training/scripts/turn_detector/`:
@@ -423,9 +481,7 @@ export const Eliza1EvalsSchema = z.object({
 			// Which detector backend the eval was run against. Optional for
 			// back-compat with bundles staged before the eliza-1 EOT path;
 			// when absent, consumers should assume `livekit`.
-			kind: z
-				.enum(["livekit", "turnsense", "eliza-1-drafter"])
-				.optional(),
+			kind: z.enum(["livekit", "turnsense", "eliza-1-drafter"]).optional(),
 		})
 		.optional(),
 	// Voice Wave 2 (2026-05-14): acoustic-emotion classifier eval gates.

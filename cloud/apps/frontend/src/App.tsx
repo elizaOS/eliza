@@ -2,7 +2,7 @@ import {
   DashboardRouteError,
   formatDashboardRouteErrorMessage,
   useRenderGuard,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   Component,
   type ComponentType,

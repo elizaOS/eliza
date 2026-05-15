@@ -8,7 +8,7 @@
 
 "use client";
 
-import { DashboardPageContainer, useSetPageHeader } from "@elizaos/cloud-ui";
+import { DashboardPageContainer, useSetPageHeader } from "@elizaos/ui";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";

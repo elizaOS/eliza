@@ -8,7 +8,7 @@
 
 "use client";
 
-import { BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
+import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { format } from "date-fns";
 import { Calendar } from "lucide-react";
 import type { OrganizationDto } from "@/types/cloud-api";

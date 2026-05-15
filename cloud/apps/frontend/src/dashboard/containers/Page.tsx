@@ -3,7 +3,7 @@ import {
   DashboardPageContainer,
   DashboardStatCard,
   DashboardStatGrid,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Activity, AlertCircle, Server, TrendingUp } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { useRequireAuth } from "../../lib/auth-hooks";

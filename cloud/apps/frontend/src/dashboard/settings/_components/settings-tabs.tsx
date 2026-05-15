@@ -9,7 +9,7 @@
 
 "use client";
 
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/cloud-ui";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@elizaos/ui";
 import { BarChart3, Building2, CreditCard, Key, Link2, PieChart, User } from "lucide-react";
 import * as React from "react";
 import { cn } from "@/lib/utils";

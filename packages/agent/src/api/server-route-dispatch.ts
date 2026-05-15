@@ -8,7 +8,11 @@ import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
 import type { ServerState } from "./server-types.ts";
 import { handleXRelayRoute } from "./x-relay-routes.ts";
 
-const { handleSandboxRoute } = await import("@elizaos/plugin-computeruse");
+const { handleSandboxRoute } = (await import(
+  "@elizaos/plugin-computeruse"
+)) as unknown as {
+  handleSandboxRoute: (...args: unknown[]) => Promise<boolean>;
+};
 const {
   handleCloudBillingRoute,
   handleCloudCompatRoute,

@@ -11,12 +11,12 @@ export default function HeroSection() {
       {/* Hero Heading */}
       <div className="text-center mb-12 sm:mb-16">
         <h1
-          className="text-4xl sm:text-6xl md:text-7xl font-bold text-white leading-tight max-w-4xl mx-auto tracking-tight"
-          style={{ fontFamily: "var(--font-inter)" }}
+          className="text-4xl sm:text-6xl md:text-7xl font-bold text-txt-strong leading-tight max-w-4xl mx-auto tracking-tight"
+          style={{ fontFamily: "var(--font-display)" }}
         >
           Monetize your agents
         </h1>
-        <p className="text-lg sm:text-xl md:text-2xl text-white/70 mt-6 max-w-2xl mx-auto font-light leading-relaxed">
+        <p className="text-lg sm:text-xl md:text-2xl text-muted-strong mt-6 max-w-2xl mx-auto font-light leading-relaxed">
           Eliza Cloud is everything you need to bootstrap and monetize agents and AI apps.
         </p>
 
@@ -24,7 +24,7 @@ export default function HeroSection() {
           <button
             type="button"
             onClick={() => navigate("/login?intent=signup")}
-            className="inline-flex items-center gap-2 rounded-full bg-[#FF5800] px-8 py-4 text-base sm:text-lg font-medium text-white shadow-lg shadow-[#FF5800]/30 transition-all hover:bg-[#e54e00] hover:scale-105 font-[family-name:var(--font-inter)]"
+            className="inline-flex items-center gap-2 rounded-full bg-primary px-8 py-4 text-base sm:text-lg font-medium text-primary-fg shadow-lg shadow-accent/30 transition-all hover:bg-accent-hover hover:scale-105 font-[family-name:var(--font-body)]"
           >
             Get Started Free
             <ArrowRight className="h-5 w-5" />
@@ -50,13 +50,13 @@ export default function HeroSection() {
         ].map((feature, i) => (
           <div
             key={i}
-            className="bg-black/60 backdrop-blur-xl border border-white/10 rounded-2xl p-6 flex flex-col items-center text-center shadow-xl shadow-black/40 transition-all hover:bg-black/70 hover:border-white/20"
+            className="bg-card/88 backdrop-blur-xl border border-border rounded-2xl p-6 flex flex-col items-center text-center shadow-xl shadow-black/40 transition-all hover:bg-bg-hover hover:border-border-strong"
           >
-            <div className="h-12 w-12 rounded-xl bg-white/10 flex items-center justify-center mb-4 text-white/80">
-              <feature.icon className="h-6 w-6 text-[#FF5800]" />
+            <div className="h-12 w-12 rounded-xl bg-accent-subtle flex items-center justify-center mb-4 text-accent">
+              <feature.icon className="h-6 w-6 text-accent" />
             </div>
-            <h3 className="text-white font-medium mb-1">{feature.label}</h3>
-            <p className="text-white/50 text-sm">{feature.desc}</p>
+            <h3 className="text-txt font-medium mb-1">{feature.label}</h3>
+            <p className="text-muted text-sm">{feature.desc}</p>
           </div>
         ))}
       </div>

@@ -20,7 +20,7 @@ import {
   SelectValue,
   Switch,
   Textarea,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { useState } from "react";
 import { toast } from "sonner";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";

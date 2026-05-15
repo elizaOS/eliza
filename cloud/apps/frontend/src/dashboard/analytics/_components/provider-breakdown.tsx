@@ -8,7 +8,7 @@
 
 "use client";
 
-import { Badge, Card, CardContent, CardHeader, CardTitle, Progress } from "@elizaos/cloud-ui";
+import { Badge, Card, CardContent, CardHeader, CardTitle, Progress } from "@elizaos/ui";
 import type { EnhancedAnalyticsDataDto } from "@/types/cloud-api";
 
 interface ProviderBreakdownProps {

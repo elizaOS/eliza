@@ -64,6 +64,8 @@
       "@elizaos/skills/*": ["../skills/src/*"],
       "@elizaos/core": ["../core/src/index.ts"],
       "@elizaos/core/*": ["../core/src/*"],
+      "@elizaos/contracts": ["../contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["../contracts/src/*"],
       "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
       "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
       "@elizaos/ui": ["./src/index.ts"],

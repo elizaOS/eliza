@@ -35,7 +35,7 @@ import {
   SelectValue,
   Textarea,
   useSetPageHeader,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { useQueryClient } from "@tanstack/react-query";
 import { Copy, Plus } from "lucide-react";
 import { useState } from "react";

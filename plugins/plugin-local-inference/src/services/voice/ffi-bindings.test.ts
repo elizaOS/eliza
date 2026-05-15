@@ -75,6 +75,8 @@ const ABI_V3_SYMBOLS = [
 	"eliza_inference_tts_synthesize_stream",
 	"eliza_inference_cancel_tts",
 	"eliza_inference_set_verifier_callback",
+	"eliza_inference_encode_reference",
+	"eliza_inference_free_tokens",
 	"eliza_inference_vad_supported",
 	"eliza_inference_vad_open",
 	"eliza_inference_vad_process",
@@ -152,8 +154,8 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-	it("ELIZA_INFERENCE_ABI_VERSION is 4 for reference-profile freezing", () => {
-		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(4);
+	it("ELIZA_INFERENCE_ABI_VERSION is 5 for reference profiles and wake-word", () => {
+		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(5);
 	});
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {

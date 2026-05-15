@@ -11,7 +11,7 @@
 
 "use client";
 
-import { BrandButton, dynamic, MonacoEditorSkeleton } from "@elizaos/cloud-ui";
+import { BrandButton, dynamic, MonacoEditorSkeleton } from "@elizaos/ui";
 import { AlertCircle, CheckCircle, Save, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";

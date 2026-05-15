@@ -5,7 +5,7 @@
 
 "use client";
 
-import { Badge, BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
+import { Badge, BrandCard, CornerBrackets } from "@elizaos/ui";
 import { Clock, DollarSign, TrendingDown, Zap } from "lucide-react";
 import { AGENT_PRICING } from "@/lib/constants/agent-pricing";
 import {

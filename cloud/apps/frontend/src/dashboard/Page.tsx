@@ -2,7 +2,7 @@ import {
   DashboardLoadingState,
   DashboardPageContainer,
   DashboardPageStack,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";
 import type { DashboardAgentStats } from "@/lib/types/dashboard-agent-stats";

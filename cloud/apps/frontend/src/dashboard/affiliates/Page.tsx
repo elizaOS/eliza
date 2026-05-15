@@ -1,4 +1,4 @@
-import { DashboardLoadingState } from "@elizaos/cloud-ui";
+import { DashboardLoadingState } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { AffiliatesPageWrapper } from "./_components/affiliates-page-wrapper";

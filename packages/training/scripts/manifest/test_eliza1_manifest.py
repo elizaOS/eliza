@@ -130,7 +130,6 @@ def test_eliza1_tier_ids_are_canonical():
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
     )
     assert REQUIRED_KERNELS_BY_TIER["2b"] == (
         "turboquant_q4",
@@ -148,7 +147,7 @@ def test_eliza1_tier_ids_are_canonical():
     assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
     assert VOICE_BACKENDS_BY_TIER["27b-256k"] == ("omnivoice",)
 
 
@@ -211,6 +210,71 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
     assert manifest["voice"]["cache"]["phraseCacheSeed"] == "cache/voice-preset-default.bin"
     assert manifest["voice"]["capabilities"] == ["tts", "emotion-tags"]
     assert validate_manifest(manifest) == ()
+
+
+def test_optional_eagle3_fields_do_not_change_required_tiers():
+    kwargs = base_kwargs("0_8b")
+    kwargs["eagle3_kernel"] = {
+        "enabled": True,
+        "capability": "eagle3",
+        "specType": "draft-eagle3",
+        "model": "RedHatAI/Qwen3.5-0.8B-EAGLE3-head",
+        "maxDraftTokens": 3,
+    }
+    kwargs["eagle3_eval"] = True
+    kwargs["eagle3_acceptance_rate"] = 0.64
+    kwargs["eagle3_speedup"] = 1.35
+    kwargs["eagle3_passed"] = True
+
+    manifest = build_manifest(**kwargs)
+
+    assert "eagle3" not in REQUIRED_KERNELS_BY_TIER["0_8b"]
+    assert manifest["kernels"]["eagle3"]["capability"] == "eagle3"
+    assert manifest["evals"]["eagle3"] == {
+        "acceptanceRate": 0.64,
+        "speedup": 1.35,
+        "passed": True,
+    }
+    assert validate_manifest(manifest) == ()
+
+
+def test_optional_eagle3_failure_eval_validates_without_default_gate():
+    kwargs = base_kwargs("4b")
+    kwargs["eagle3_eval"] = True
+    kwargs["eagle3_passed"] = False
+    kwargs["eagle3_failure"] = "not run on EAGLE3-capable runtime"
+
+    manifest = build_manifest(**kwargs)
+
+    assert manifest["evals"]["eagle3"] == {
+        "acceptanceRate": None,
+        "speedup": None,
+        "passed": False,
+        "failure": "not run on EAGLE3-capable runtime",
+    }
+    assert validate_manifest(manifest) == ()
+
+
+def test_eagle3_eval_rejects_passing_claim_without_measurements():
+    kwargs = base_kwargs("4b")
+    kwargs["eagle3_eval"] = True
+    kwargs["eagle3_passed"] = True
+
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+
+    assert any("evals.eagle3" in e for e in exc.value.errors)
+
+
+def test_eagle3_kernel_rejects_invalid_known_fields():
+    kwargs = base_kwargs("4b")
+    kwargs["eagle3_kernel"] = {"specType": "", "maxDraftTokens": 0}
+
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+
+    assert any("kernels.eagle3.specType" in e for e in exc.value.errors)
+    assert any("kernels.eagle3.maxDraftTokens" in e for e in exc.value.errors)
 
 
 @pytest.mark.parametrize(
@@ -614,7 +678,7 @@ def _base_v1_provenance() -> dict:
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
-            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
+            "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
         },
     }
 

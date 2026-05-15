@@ -22,8 +22,14 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  MessageRef,
 } from "@elizaos/core";
-import { logger, ModelType, runWithTrajectoryContext } from "@elizaos/core";
+import {
+  getDefaultTriageService,
+  logger,
+  ModelType,
+  runWithTrajectoryContext,
+} from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import type {
   LifeOpsBriefing,
@@ -93,14 +99,241 @@ interface BriefActionParameters {
   format?: "narrative" | "json";
 }
 
+const INTERNAL_URL = new URL("http://127.0.0.1/");
+
+interface BriefLifeOpsService {
+  getCalendarFeed(
+    requestUrl: URL,
+    request: { timeMin: string; timeMax: string },
+  ): Promise<{ events?: readonly unknown[] }>;
+  getOverview(): Promise<{
+    occurrences?: readonly unknown[];
+    reminders?: readonly unknown[];
+    goals?: readonly unknown[];
+  }>;
+  getRecurringCharges(request: Record<string, never>): Promise<
+    Array<{
+      merchantNormalized: string;
+      merchantDisplay: string;
+      cadence: unknown;
+      averageAmountUsd: number;
+      nextExpectedAt: string | null;
+    }>
+  >;
+}
+
+async function getBriefLifeOpsService(
+  runtime: IAgentRuntime,
+): Promise<BriefLifeOpsService> {
+  const { LifeOpsService } = await import("../lifeops/service.js");
+  return new LifeOpsService(runtime) as unknown as BriefLifeOpsService;
+}
+
+function periodWindow(period: LifeOpsBriefingPeriod): {
+  readonly start: Date;
+  readonly end: Date;
+} {
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  if (period === "tomorrow") {
+    start.setDate(start.getDate() + 1);
+  }
+  const end = new Date(start);
+  end.setDate(end.getDate() + (period === "this_week" ? 7 : 1));
+  return { start, end };
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readString(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
+}
+
+function messageUrgency(ref: MessageRef): LifeOpsBriefingInboxItem["urgency"] {
+  switch (ref.triageScore?.priority) {
+    case "critical":
+    case "high":
+      return "high";
+    case "medium":
+      return "medium";
+    case "low":
+    case "spam":
+      return "low";
+    default:
+      return "unknown";
+  }
+}
+
+function mapMessageRefToBriefingItem(ref: MessageRef): LifeOpsBriefingInboxItem {
+  return {
+    id: ref.id,
+    channel: ref.source,
+    senderName: ref.from.displayName ?? ref.from.identifier,
+    snippet: ref.snippet,
+    urgency: messageUrgency(ref),
+    classification:
+      ref.triageScore?.suggestedAction ??
+      (ref.isRead ? "read" : "unread"),
+  };
+}
+
+function normalizeLifeKind(
+  value: unknown,
+): LifeOpsBriefingLifeItem["kind"] {
+  return value === "todo" ||
+    value === "reminder" ||
+    value === "habit" ||
+    value === "goal"
+    ? value
+    : "reminder";
+}
+
+function normalizeMoneyCadence(
+  value: unknown,
+): LifeOpsBriefingMoneyItem["cadence"] {
+  switch (value) {
+    case "weekly":
+    case "monthly":
+    case "irregular":
+      return value;
+    case "annual":
+    case "yearly":
+      return "yearly";
+    case "daily":
+      return "daily";
+    default:
+      return "irregular";
+  }
+}
+
+async function loadCalendarFromLifeOps(args: {
+  runtime: IAgentRuntime;
+  period: LifeOpsBriefingPeriod;
+}): Promise<readonly LifeOpsBriefingCalendarItem[]> {
+  try {
+    const service = await getBriefLifeOpsService(args.runtime);
+    const { start, end } = periodWindow(args.period);
+    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+      timeMin: start.toISOString(),
+      timeMax: end.toISOString(),
+    });
+    const events = Array.isArray(feed.events) ? feed.events : [];
+    return events.map((event) => {
+      const record = asRecord(event);
+      return {
+        id: readString(record, "id") ?? "calendar-event",
+        title: readString(record, "title") ?? "Untitled event",
+        startAt:
+          readString(record, "startAt") ??
+          readString(record, "start") ??
+          start.toISOString(),
+        endAt:
+          readString(record, "endAt") ??
+          readString(record, "end") ??
+          end.toISOString(),
+        ...(readString(record, "location")
+          ? { location: readString(record, "location")! }
+          : {}),
+      };
+    });
+  } catch (error) {
+    logger.warn(
+      `[BRIEF] calendar load failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return [];
+  }
+}
+
+async function loadInboxFromTriage(args: {
+  runtime: IAgentRuntime;
+  period: LifeOpsBriefingPeriod;
+}): Promise<readonly LifeOpsBriefingInboxItem[]> {
+  if (typeof args.runtime.getService !== "function") return [];
+  try {
+    const { start } = periodWindow(args.period);
+    const refs = await getDefaultTriageService().triage(args.runtime, {
+      sinceMs: start.getTime(),
+      limit: 25,
+    });
+    return refs.map(mapMessageRefToBriefingItem);
+  } catch (error) {
+    logger.warn(
+      `[BRIEF] inbox load failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return [];
+  }
+}
+
+async function loadLifeFromOverview(args: {
+  runtime: IAgentRuntime;
+}): Promise<readonly LifeOpsBriefingLifeItem[]> {
+  try {
+    const service = await getBriefLifeOpsService(args.runtime);
+    const overview = await service.getOverview();
+    const records = [
+      ...(Array.isArray(overview.occurrences) ? overview.occurrences : []),
+      ...(Array.isArray(overview.reminders) ? overview.reminders : []),
+      ...(Array.isArray(overview.goals) ? overview.goals : []),
+    ];
+    return records.slice(0, 25).map((item) => {
+      const record = asRecord(item);
+      const metadata = asRecord(record.metadata);
+      return {
+        id: readString(record, "id") ?? "life-item",
+        kind: normalizeLifeKind(
+          readString(record, "kind") ??
+            readString(record, "type") ??
+            readString(record, "subjectType") ??
+            metadata.kind,
+        ),
+        title: readString(record, "title") ?? "Untitled item",
+        dueAt:
+          readString(record, "dueAt") ??
+          readString(record, "scheduledFor") ??
+          null,
+      };
+    });
+  } catch (error) {
+    logger.warn(
+      `[BRIEF] life load failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return [];
+  }
+}
+
+async function loadMoneyFromPayments(args: {
+  runtime: IAgentRuntime;
+}): Promise<readonly LifeOpsBriefingMoneyItem[]> {
+  try {
+    const service = await getBriefLifeOpsService(args.runtime);
+    const charges = await service.getRecurringCharges({});
+    return charges.slice(0, 25).map((charge) => ({
+      id: `${charge.merchantNormalized}:${charge.cadence}`,
+      merchant: charge.merchantDisplay,
+      amountUsd: charge.averageAmountUsd,
+      cadence: normalizeMoneyCadence(charge.cadence),
+      nextChargeAt: charge.nextExpectedAt,
+    }));
+  } catch (error) {
+    logger.warn(
+      `[BRIEF] money load failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return [];
+  }
+}
+
 /**
- * Composer hooks — overridable for tests. Each loader returns the structured
- * items the briefing renders; an unavailable source returns an empty array
- * (the narrative compose pass mentions missing sources explicitly).
- *
- * TODO: replace these with real composition of CALENDAR.feed, MESSAGE.triage,
- * OWNER_TODOS/OWNER_REMINDERS due-today, and OWNER_FINANCES.recurring_charges
- * via the umbrella dispatchers rather than direct loaders.
+ * Composer hooks — overridable for tests. Defaults compose from LifeOps'
+ * structural services: calendar feed, MESSAGE triage, overview reminders, and
+ * recurring payments. Unavailable sources degrade to empty arrays.
  */
 export interface BriefComposers {
   loadCalendar: (args: {
@@ -122,10 +355,10 @@ export interface BriefComposers {
 }
 
 const defaultComposers: BriefComposers = {
-  loadCalendar: async () => [],
-  loadInbox: async () => [],
-  loadLife: async () => [],
-  loadMoney: async () => [],
+  loadCalendar: loadCalendarFromLifeOps,
+  loadInbox: loadInboxFromTriage,
+  loadLife: loadLifeFromOverview,
+  loadMoney: loadMoneyFromPayments,
 };
 
 let activeComposers: BriefComposers = defaultComposers;

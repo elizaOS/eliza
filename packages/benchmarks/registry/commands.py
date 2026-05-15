@@ -447,7 +447,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         provider_name = (model.provider or "").strip().lower()
-        agent = extra.get("agent")
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        if agent in {"hermes", "openclaw"}:
+            raise ValueError(f"gaia: native {agent} harness adapter is not implemented")
         # Route LLM-backed providers through the eliza TS bridge.
         bridge_providers = {
             "cerebras",
@@ -495,6 +497,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _gaia_orchestrated_cmd(
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        if agent in {"hermes", "openclaw"}:
+            raise ValueError(f"gaia_orchestrated: native {agent} harness adapter is not implemented")
         args = [
             python,
             "-m",
@@ -548,6 +553,46 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 args.extend(["--agent-model", model.model])
         if model.temperature is not None:
             args.extend(["--agent-temperature", str(model.temperature)])
+        agent_max_turns = extra.get("agent_max_turns")
+        if isinstance(agent_max_turns, int) and agent_max_turns > 0:
+            args.extend(["--agent-max-turns", str(agent_max_turns)])
+        if not (extra.get("mock") is True or provider_name == "mock"):
+            user_provider = extra.get("user_provider")
+            if not isinstance(user_provider, str) or not user_provider.strip():
+                user_provider = model.provider or "openai"
+            user_model = extra.get("user_model")
+            if not isinstance(user_model, str) or not user_model.strip():
+                user_model = model.model or "gpt-4o"
+            args.extend(["--user-provider", user_provider.strip()])
+            args.extend(["--user-model", user_model.strip()])
+
+            if extra.get("no_llm_judge") is not True:
+                judge_provider = extra.get("judge_provider")
+                if not isinstance(judge_provider, str) or not judge_provider.strip():
+                    judge_provider = model.provider or "openai"
+                judge_model = extra.get("judge_model")
+                if not isinstance(judge_model, str) or not judge_model.strip():
+                    judge_model = model.model or "gpt-4o-mini"
+                args.extend(["--judge-provider", judge_provider.strip()])
+                args.extend(["--judge-model", judge_model.strip()])
+        user_strategy = extra.get("user_strategy")
+        if isinstance(user_strategy, str) and user_strategy.strip():
+            args.extend(["--user-strategy", user_strategy.strip()])
+        num_trials = extra.get("num_trials")
+        if isinstance(num_trials, int) and num_trials > 0:
+            args.extend(["--num-trials", str(num_trials)])
+        pass_k_values = extra.get("pass_k_values")
+        if isinstance(pass_k_values, list) and all(isinstance(k, int) and k > 0 for k in pass_k_values):
+            args.extend(["--pass-k-values", *[str(k) for k in pass_k_values]])
+        task_ids = extra.get("task_ids")
+        if isinstance(task_ids, list) and all(isinstance(t, int) and t >= 0 for t in task_ids):
+            args.extend(["--task-ids", *[str(t) for t in task_ids]])
+        start_index = extra.get("start_index")
+        if isinstance(start_index, int) and start_index >= 0:
+            args.extend(["--start-index", str(start_index)])
+        end_index = extra.get("end_index")
+        if isinstance(end_index, int):
+            args.extend(["--end-index", str(end_index)])
         max_tasks = extra.get("max_tasks", extra.get("max_tasks_per_domain"))
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks-per-domain", str(max_tasks)])
@@ -1483,6 +1528,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir),
         ]
+        agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
+        if agent in {"hermes", "openclaw"}:
+            raise ValueError(f"webshop: native {agent} harness adapter is not implemented")
         provider_lower = (model.provider or "").strip().lower()
         if extra.get("mock") is True or provider_lower == "mock":
             args.append("--mock")

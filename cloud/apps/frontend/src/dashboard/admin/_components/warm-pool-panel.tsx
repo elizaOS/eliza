@@ -8,7 +8,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Flame, Loader2, RefreshCw, Snowflake } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 

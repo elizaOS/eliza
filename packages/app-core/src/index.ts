@@ -2,7 +2,11 @@
 // Frontend surfaces live in @elizaos/ui; pure contracts/utilities live in @elizaos/shared.
 
 export * from "./account-pool";
-export * from "./api/auth";
+export * from "./api/auth.js";
+export {
+  ensureCompatSensitiveRouteAuthorized,
+  ensureRouteAuthorized,
+} from "./api/auth.js";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
 export * from "./api/response";

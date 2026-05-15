@@ -11,7 +11,7 @@
 
 "use client";
 
-import type { Voice } from "@elizaos/cloud-ui";
+import type { Voice } from "@elizaos/ui";
 import {
   BrandButton,
   BrandCard,
@@ -22,7 +22,7 @@ import {
   CornerBrackets,
   Input,
   Slider,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   AlertCircle,
   CheckCircle,

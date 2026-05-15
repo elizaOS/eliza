@@ -5,7 +5,7 @@
 
 "use client";
 
-import type { Voice as BaseVoice } from "@elizaos/cloud-ui";
+import type { Voice as BaseVoice } from "@elizaos/ui";
 import {
   Alert,
   AlertDescription,
@@ -33,7 +33,7 @@ import {
   TabsTrigger,
   VoiceAudioPlayer,
   VoiceStatusBadge,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { formatDistanceToNow } from "date-fns";
 import {
   AlertCircle,

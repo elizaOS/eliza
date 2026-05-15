@@ -11,12 +11,12 @@ import {
   CSRF_HEADER_NAME,
   findActiveSession,
   verifyCsrfToken,
-} from "./auth/sessions";
-import { tokenMatches } from "./auth/tokens";
-import { isTrustedLocalRequest } from "./compat-route-shared";
-import { sendJsonError } from "./response";
+} from "./auth/sessions.js";
+import { tokenMatches } from "./auth/tokens.js";
+import { isTrustedLocalRequest } from "./compat-route-shared.js";
+import { sendJsonError } from "./response.js";
 
-export { tokenMatches } from "./auth/tokens";
+export { tokenMatches } from "./auth/tokens.js";
 
 /**
  * Normalise a potentially multi-valued HTTP header into a single string.

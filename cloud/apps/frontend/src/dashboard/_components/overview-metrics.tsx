@@ -9,7 +9,7 @@
 
 "use client";
 
-import { BrandCard } from "@elizaos/cloud-ui";
+import { BrandCard } from "@elizaos/ui";
 import { Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 

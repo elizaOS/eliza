@@ -4,7 +4,7 @@ import {
   CornerBrackets,
   clearStoredAppAuthorizeReturnTo,
   readStoredAppAuthorizeReturnTo,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { useAuth } from "@stwd/react";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";

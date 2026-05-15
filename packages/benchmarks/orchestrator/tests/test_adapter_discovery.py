@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import contextlib
 import json
 import os
 import subprocess
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -16,6 +18,7 @@ from benchmarks.orchestrator.adapters import (
     _score_from_compactbench,
     _score_from_eliza_1,
     _score_from_loca_bench,
+    _score_from_personality_bench,
     _score_from_woobench,
     discover_adapters,
 )
@@ -36,6 +39,9 @@ from benchmarks.registry import (
     _score_from_bfcl_json,
     _score_from_mint_json,
     _score_from_realm_json,
+    _score_from_taubench_json,
+    _score_from_voiceagentbench_json,
+    _score_from_webshop_json,
     get_benchmark_registry,
 )
 
@@ -209,7 +215,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility() -> None:
     )
     cells = {(cell.benchmark_id, cell.harness): cell for cell in report.cells}
 
-    for benchmark_id in ("openclaw_bench", "interrupt_bench"):
+    for benchmark_id in (
+        "openclaw_bench",
+        "interrupt_bench",
+        "scambench",
+    ):
         for harness in ("eliza", "hermes", "openclaw"):
             cell = cells[(benchmark_id, harness)]
             assert cell.compatible is False
@@ -218,11 +228,28 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility() -> None:
                 f"harness '{harness}' not in adapter compatibility (none)"
             )
 
+    for benchmark_id in ("mmlu", "humaneval", "gsm8k", "mt_bench"):
+        for harness in ("eliza", "hermes", "openclaw"):
+            cell = cells[(benchmark_id, harness)]
+            assert cell.compatible is True
+            assert cell.command
+            assert cell.propagated_env["BENCHMARK_HARNESS"] == harness
+            assert cell.propagated_env["ELIZA_BENCH_HARNESS"] == harness
+
+    for benchmark_id in ("gaia", "gaia_orchestrated", "webshop"):
+        eliza_cell = cells[(benchmark_id, "eliza")]
+        assert eliza_cell.compatible is True
+        assert eliza_cell.command
+        for harness in ("hermes", "openclaw"):
+            cell = cells[(benchmark_id, harness)]
+            assert cell.compatible is False
+            assert cell.command is None
+            assert cell.reason == (
+                f"harness '{harness}' not in adapter compatibility (eliza)"
+            )
+
     for benchmark_id in (
-        "hermes_tblite",
-        "hermes_terminalbench_2",
         "hermes_yc_bench",
-        "hermes_swe_env",
     ):
         hermes_cell = cells[(benchmark_id, "hermes")]
         assert hermes_cell.compatible is True
@@ -235,6 +262,21 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility() -> None:
             assert cell.command is None
             assert cell.reason == (
                 f"harness '{harness}' not in adapter compatibility (hermes)"
+            )
+
+    for benchmark_id in (
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_swe_env",
+    ):
+        hermes_cell = cells[(benchmark_id, "hermes")]
+        if hermes_cell.compatible:
+            assert hermes_cell.command
+            assert "hermes-adapter/run_env_cli.py" in hermes_cell.command_display
+        else:
+            assert hermes_cell.command is None
+            assert hermes_cell.reason == (
+                "harness 'hermes' not in adapter compatibility (none)"
             )
 
     compactbench_hermes = cells[("compactbench", "hermes")]
@@ -298,6 +340,46 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
     assert voiceagentbench.extract_score(
         {"pass_at_1": 1.0, "tasks": [{"task_id": "t1"}]}
     ).score == 1.0
+    with pytest.raises(ValueError, match="mock agent result"):
+        _score_from_voiceagentbench_json(
+            {"pass_at_1": 1.0, "model_name": "mock", "tasks": [{"task_id": "t1"}]}
+        )
+
+
+def test_taubench_extracts_pass_hat_k_dict_shape() -> None:
+    score = _score_from_taubench_json(
+        {
+            "num_tasks": 2,
+            "avg_reward": 0.0,
+            "pass_k": {"1": {"k": 1, "num_tasks": 2, "pass_hat_k": 0.25}},
+        }
+    )
+
+    assert score.score == 0.25
+
+
+def test_personality_score_uses_task_pass_rate_not_calibration_score(tmp_path: Path) -> None:
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {
+                "totals": {"scenarios": 87, "pass": 39, "fail": 46, "needsReview": 2},
+                "calibration": {
+                    "score": 1.0,
+                    "agreementRate": 1.0,
+                    "falsePositiveRate": 0.0,
+                    "reviewRate": 2 / 87,
+                    "mismatches": [],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    summary = _score_from_personality_bench(report)
+
+    assert summary.score == pytest.approx(39 / 87)
+    assert summary.metrics["calibration_score"] == 1.0
 
 
 def test_live_gated_domain_benchmarks_have_no_key_smoke_routes(
@@ -412,10 +494,7 @@ def test_hermes_native_envs_are_hermes_only() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
 
     for benchmark_id in (
-        "hermes_tblite",
-        "hermes_terminalbench_2",
         "hermes_yc_bench",
-        "hermes_swe_env",
     ):
         adapter = adapters[benchmark_id]
         assert adapter.directory == "hermes-adapter"
@@ -424,11 +503,30 @@ def test_hermes_native_envs_are_hermes_only() -> None:
         assert _is_harness_compatible(adapter, "eliza") is False
         assert _is_harness_compatible(adapter, "openclaw") is False
 
+    for benchmark_id in (
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_swe_env",
+    ):
+        adapter = adapters[benchmark_id]
+        assert adapter.directory == "hermes-adapter"
+        if adapter.agent_compatibility == ():
+            assert _is_harness_compatible(adapter, "hermes") is False
+        else:
+            assert adapter.agent_compatibility == ("hermes",)
+            assert _is_harness_compatible(adapter, "hermes") is True
+        assert _is_harness_compatible(adapter, "eliza") is False
+        assert _is_harness_compatible(adapter, "openclaw") is False
+
 
 def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
 
-    for benchmark_id in ("openclaw_bench", "interrupt_bench"):
+    for benchmark_id in (
+        "openclaw_bench",
+        "interrupt_bench",
+        "scambench",
+    ):
         adapter = adapters[benchmark_id]
         assert adapter.agent_compatibility == ()
         assert _is_harness_compatible(adapter, "eliza") is False
@@ -436,10 +534,28 @@ def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
         assert _is_harness_compatible(adapter, "openclaw") is False
 
 
+def test_standard_public_benchmarks_publish_real_harness_rows() -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+
+    for benchmark_id in ("mmlu", "humaneval", "gsm8k", "mt_bench"):
+        adapter = adapters[benchmark_id]
+        assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+        assert _is_harness_compatible(adapter, "eliza") is True
+        assert _is_harness_compatible(adapter, "hermes") is True
+        assert _is_harness_compatible(adapter, "openclaw") is True
+
+
 def test_eliza_only_registry_bridges_are_not_published_as_cross_harness_rows() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
 
-    for benchmark_id in ("configbench", "framework", "eliza_1"):
+    for benchmark_id in (
+        "configbench",
+        "framework",
+        "eliza_1",
+        "gaia",
+        "gaia_orchestrated",
+        "webshop",
+    ):
         adapter = adapters[benchmark_id]
         assert adapter.agent_compatibility == ("eliza",)
         assert _is_harness_compatible(adapter, "eliza") is True
@@ -530,6 +646,24 @@ def test_gaia_orchestrated_registry_uses_orchestrated_entrypoint(tmp_path: Path)
     ]
     assert "--strict-capabilities" in command
     assert entry.locate_result(tmp_path) == tmp_path / "gaia-orchestrated-latest.json"
+    with pytest.raises(ValueError, match="native hermes harness adapter"):
+        entry.build_command(
+            tmp_path,
+            ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+            {"agent": "hermes"},
+        )
+
+
+def test_gaia_and_webshop_registry_block_mislabeled_harnesses(tmp_path: Path) -> None:
+    entries = {item.id: item for item in get_benchmark_registry(_workspace_root())}
+
+    for benchmark_id in ("gaia", "webshop"):
+        with pytest.raises(ValueError, match="native openclaw harness adapter"):
+            entries[benchmark_id].build_command(
+                tmp_path,
+                ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+                {"agent": "openclaw"},
+            )
 
 
 def test_mint_registry_distinguishes_harness_bridge_from_direct_provider(
@@ -703,7 +837,7 @@ def test_taubench_adapter_defaults_to_single_sample_task(tmp_path: Path) -> None
             agent="eliza",
             provider="cerebras",
             model="gpt-oss-120b",
-            extra_config={},
+            extra_config={"task_ids": [0], "start_index": 0, "agent_max_turns": 30},
         ),
     )
     ctx = ExecutionContext(
@@ -722,6 +856,15 @@ def test_taubench_adapter_defaults_to_single_sample_task(tmp_path: Path) -> None
     assert command[command.index("--max-tasks-per-domain") + 1] == "1"
     assert "--use-sample-tasks" in command
     assert command[command.index("--agent-harness") + 1] == "eliza"
+    assert command[command.index("--agent-provider") + 1] == "cerebras"
+    assert command[command.index("--agent-model") + 1] == "gpt-oss-120b"
+    assert command[command.index("--user-provider") + 1] == "cerebras"
+    assert command[command.index("--user-model") + 1] == "gpt-oss-120b"
+    assert command[command.index("--judge-provider") + 1] == "cerebras"
+    assert command[command.index("--judge-model") + 1] == "gpt-oss-120b"
+    assert command[command.index("--task-ids") + 1] == "0"
+    assert command[command.index("--start-index") + 1] == "0"
+    assert command.count("--agent-max-turns") == 1
 
 
 def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> None:
@@ -791,6 +934,38 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
     assert mint_command[mint_command.index("--timeout") + 1] == "60"
     assert "--no-ablation" in mint_command
 
+    for benchmark_id in ("hyperliquid_bench", "hyperliquidbench"):
+        adapter = adapters[benchmark_id]
+        effective_hyperliquid = _effective_request(
+            adapter,
+            RunRequest(
+                benchmarks=(benchmark_id,),
+                agent="eliza",
+                provider="cerebras",
+                model="gpt-oss-120b",
+                extra_config={},
+            ),
+        )
+        ctx = ExecutionContext(
+            workspace_root=_workspace_root(),
+            benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+            output_root=tmp_path / benchmark_id,
+            run_root=tmp_path,
+            request=effective_hyperliquid,
+            run_group_id="test",
+            env={},
+            repo_meta={},
+        )
+        command = adapter.command_builder(ctx, adapter)
+        env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
+        assert command[command.index("--max-steps") + 1] == "1"
+        assert command[command.index("--max-iterations") + 1] == "2"
+        assert env["ELIZA_BENCH_HTTP_TIMEOUT"] == "90.0"
+        assert env["HL_BENCH_COMMAND_TIMEOUT_S"] == "60.0"
+        assert env["ELIZA_BENCH_FORCE_TOOL_CALL"] == "0"
+        assert env["BENCHMARK_MODEL_PROVIDER"] == "cerebras"
+        assert env["BENCHMARK_MODEL_NAME"] == "gpt-oss-120b"
+
     evm = adapters["evm"]
     effective_evm = _effective_request(
         evm,
@@ -813,6 +988,30 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
         repo_meta={},
     )
     env = evm.env_builder(ctx, evm) if evm.env_builder else {}
+    assert env["MAX_MESSAGES"] == "2"
+
+    solana = adapters["solana"]
+    effective_solana = _effective_request(
+        solana,
+        RunRequest(
+            benchmarks=("solana",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={"max_tasks": 0},
+        ),
+    )
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "solana",
+        run_root=tmp_path,
+        request=effective_solana,
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+    env = solana.env_builder(ctx, solana) if solana.env_builder else {}
     assert env["MAX_MESSAGES"] == "2"
 
 
@@ -849,6 +1048,18 @@ def test_bfcl_score_rejects_zero_task_results() -> None:
                     "total_tests": 0,
                     "error_analysis": {},
                 }
+            }
+        )
+
+
+def test_webshop_score_rejects_zero_task_results() -> None:
+    with pytest.raises(ValueError, match="zero-task score"):
+        _score_from_webshop_json(
+            {
+                "average_reward": 0.0,
+                "success_rate": 0.0,
+                "total_tasks": 0,
+                "total_trials": 0,
             }
         )
 
@@ -936,6 +1147,33 @@ def test_bfcl_openclaw_env_uses_direct_openai_compatible_transport(tmp_path: Pat
     assert env["OPENCLAW_USE_CLI"] == "0"
 
 
+def test_terminal_and_tau_openclaw_env_use_direct_openai_compatible_transport(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    for benchmark_id in ("terminal_bench", "tau_bench"):
+        adapter = adapters[benchmark_id]
+        ctx = ExecutionContext(
+            workspace_root=_workspace_root(),
+            benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+            output_root=tmp_path / benchmark_id,
+            run_root=tmp_path,
+            request=RunRequest(
+                benchmarks=(benchmark_id,),
+                agent="openclaw",
+                provider="cerebras",
+                model="gpt-oss-120b",
+                extra_config={"agent": "openclaw"},
+            ),
+            run_group_id="test",
+            env={},
+            repo_meta={},
+        )
+
+        env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
+
+        assert env["OPENCLAW_DIRECT_OPENAI_COMPAT"] == "1"
+        assert env["OPENCLAW_USE_CLI"] == "0"
+
+
 def test_registry_adapter_env_uses_normalized_cerebras_model_alias(tmp_path: Path) -> None:
     adapter = discover_adapters(_workspace_root()).adapters["bfcl"]
     ctx = ExecutionContext(
@@ -999,6 +1237,20 @@ def test_clawbench_registry_routes_selected_harness_to_multi_harness_runner(
     assert command[command.index("--output") + 1] == str(
         tmp_path / "trajectory_inbox_triage.json"
     )
+
+
+def test_clawbench_runner_prefers_shared_eliza_adapter_package(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.syspath_prepend(str(_workspace_root() / "benchmarks" / "clawbench"))
+    import clawbench.multi_harness_runner as runner
+
+    legacy = types.ModuleType("eliza_adapter")
+    legacy.__file__ = str(_workspace_root() / "benchmarks" / "clawbench" / "eliza_adapter.py")
+    monkeypatch.setitem(sys.modules, "eliza_adapter", legacy)
+
+    runner._prepend_adapter_package("eliza-adapter")
+    imported = importlib.import_module("eliza_adapter")
+
+    assert "benchmarks/eliza-adapter/eliza_adapter" in str(imported.__file__)
 
 
 def test_configbench_registry_command_forwards_limit(tmp_path: Path) -> None:
@@ -1556,11 +1808,17 @@ def test_action_calling_cli_accepts_tool_choice_none() -> None:
 
 
 def test_clawbench_runner_extracts_native_tool_call_args() -> None:
+    clawbench_root = _workspace_root() / "benchmarks" / "clawbench"
+    sys.path.insert(0, str(clawbench_root))
     module_path = _workspace_root() / "benchmarks" / "clawbench" / "eliza_adapter.py"
     spec = importlib.util.spec_from_file_location("clawbench_eliza_adapter_test", module_path)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        with contextlib.suppress(ValueError):
+            sys.path.remove(str(clawbench_root))
 
     response = type(
         "Response",

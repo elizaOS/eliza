@@ -21,7 +21,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { ChevronDown, Download, Upload } from "lucide-react";
 
 interface ExportButtonProps {

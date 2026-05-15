@@ -7,9 +7,8 @@ import { fileURLToPath } from "node:url";
 // Moved from packages/app-core/src/api/plugins-routes.ts into the
 // @elizaos/plugin-registry plugin. Both agent-internal helpers
 // (@elizaos/agent) and app-core-internal helpers (@elizaos/app-core) are
-// imported through their respective public package surfaces; no more
-// `../registry`, `../services/*`, `./auth`, `./compat-route-shared`, or
-// `./response` cross-package deep imports.
+// imported through their respective public package surfaces. Keep app-core
+// imports on server-only subpaths so the Node API does not load UI modules.
 import {
   type AdvancedCapabilityPluginId,
   applyPluginRuntimeMutation,
@@ -26,20 +25,28 @@ import {
   saveElizaConfig,
 } from "@elizaos/agent";
 import {
-  _resetSharedVaultForTesting,
-  type CompatRuntimeState,
-  type ConfigField,
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
-  loadRegistry,
-  mirrorPluginSensitiveToVault,
+} from "@elizaos/app-core/api/auth";
+import {
+  type CompatRuntimeState,
   readCompatJsonBody,
-  type RegistryEntry,
   scheduleCompatRuntimeRestart,
-  sendJson as sendJsonResponse,
+} from "@elizaos/app-core/api/compat-route-shared";
+import {
   sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
+} from "@elizaos/app-core/api/response";
+import {
+  type ConfigField,
+  loadRegistry,
+  type RegistryEntry,
+} from "@elizaos/app-core/registry";
+import {
+  _resetSharedVaultForTesting,
+  mirrorPluginSensitiveToVault,
   sharedVault,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/services/vault-mirror";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   asRecord,

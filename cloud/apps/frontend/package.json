@@ -17,7 +17,7 @@
     "verify": "bun run lint && bun run typecheck && bun run build"
   },
   "dependencies": {
-    "@elizaos/cloud-ui": "workspace:*",
+    "@elizaos/ui": "workspace:*",
     "@fontsource-variable/inter": "^5.2.8",
     "@fontsource-variable/open-sans": "^5.2.7",
     "@fontsource/dm-mono": "^5.2.7",

@@ -1,4 +1,4 @@
-import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
+import { DashboardErrorState, DashboardLoadingState } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { useUserProfile } from "../../lib/data/user";
 import { SettingsPageClient } from "./_components/settings-page-client";

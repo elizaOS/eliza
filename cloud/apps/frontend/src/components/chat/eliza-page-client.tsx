@@ -11,7 +11,7 @@
 
 "use client";
 
-import { useRenderGuard, useSetPageHeader } from "@elizaos/cloud-ui";
+import { useRenderGuard, useSetPageHeader } from "@elizaos/ui";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { type Character, useChatStore } from "@/lib/stores/chat-store";

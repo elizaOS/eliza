@@ -1,6 +1,6 @@
 "use client";
 
-import { BrandButton, cn } from "@elizaos/cloud-ui";
+import { BrandButton, cn } from "@elizaos/ui";
 import { Check, Copy, Terminal } from "lucide-react";
 import { useState } from "react";
 

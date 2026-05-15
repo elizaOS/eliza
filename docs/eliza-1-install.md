@@ -34,10 +34,6 @@ No `HF_TOKEN` required for the public `elizaos/eliza-1` repo.
 The runtime auto-selects a tier based on your hardware if you skip the picker.
 You can always change tiers in **Settings → Local Model**.
 
-**Note:** The `eliza-1-27b-1m` tier was retired in the Gauntlet sub-wave (2026-05-15).
-The maximum supported context is `27b-256k` (262k tokens natural context). No 1M tier is
-available or planned.
-
 ### Voice sub-model repos (advanced / separate download)
 
 Each voice component is also published as a standalone HuggingFace repo:

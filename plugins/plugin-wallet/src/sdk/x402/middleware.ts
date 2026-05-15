@@ -4,6 +4,16 @@ import type { AgentWallet } from "../wallet-core.js";
 import { X402Client } from "./client.js";
 import type { X402ClientConfig } from "./types.js";
 
+type FetchWithPreconnect = typeof globalThis.fetch & {
+  preconnect?: () => void;
+};
+
+function bindPreconnect(
+  fetchFn: typeof globalThis.fetch,
+): (() => void) | undefined {
+  return (fetchFn as FetchWithPreconnect).preconnect?.bind(fetchFn);
+}
+
 /**
  * [MAX-ADDED] Create an x402-aware HTTP client.
  *
@@ -45,7 +55,7 @@ export function createX402Fetch(
     return client.fetch(url, init);
   };
   return Object.assign(impl, {
-    preconnect: base.preconnect.bind(base),
+    preconnect: bindPreconnect(base),
   }) as typeof globalThis.fetch;
 }
 
@@ -87,6 +97,6 @@ export function wrapWithX402(
   };
   const base = globalThis.fetch;
   return Object.assign(impl, {
-    preconnect: base.preconnect.bind(base),
+    preconnect: bindPreconnect(base),
   }) as typeof globalThis.fetch;
 }

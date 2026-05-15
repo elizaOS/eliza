@@ -4,16 +4,22 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   colorizeDevSettingsStartupBanner,
-  type DevSettingsRow,
-  formatDevSettingsTable,
+} from "@elizaos/shared/dev-settings-banner-style";
+import {
   prependDevSubsystemFigletHeading,
+} from "@elizaos/shared/dev-settings-figlet-heading";
+import {
+  formatDevSettingsTable,
+  type DevSettingsRow,
+} from "@elizaos/shared/dev-settings-table";
+import {
   resolveDesktopApiPort,
   resolveDesktopApiPortPreference,
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
-  syncElizaEnvAliases,
-} from "@elizaos/shared";
-import { resolveAppBranding } from "@elizaos/ui";
+} from "@elizaos/shared/runtime-env";
+import { syncElizaEnvAliases } from "@elizaos/shared/utils/env";
+import { resolveAppBranding } from "@elizaos/shared/config/app-config";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import {

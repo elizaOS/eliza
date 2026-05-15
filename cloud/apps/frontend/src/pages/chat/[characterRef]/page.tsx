@@ -1,4 +1,4 @@
-import { PageHeaderProvider } from "@elizaos/cloud-ui";
+import { PageHeaderProvider } from "@elizaos/ui";
 import { Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";

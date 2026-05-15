@@ -1,4 +1,4 @@
-import { Alert, AlertDescription, DiscordIcon } from "@elizaos/cloud-ui";
+import { Alert, AlertDescription, DiscordIcon } from "@elizaos/ui";
 import type { StewardProviders } from "@stwd/sdk";
 import { StewardAuth } from "@stwd/sdk";
 import { AlertCircle } from "lucide-react";

@@ -20,7 +20,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   BookOpen,
   Coins,

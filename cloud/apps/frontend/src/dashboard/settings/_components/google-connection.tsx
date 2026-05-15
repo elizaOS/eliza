@@ -17,7 +17,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Calendar, CheckCircle, Loader2, Mail, Plus, Users, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";

@@ -1,8 +1,8 @@
-// TODO(native): Native side is provided by `@capacitor-community/sqlite`
-// (real published plugin) — this file is a thin facade so the rest of the
-// app talks to a stable, parameterized API instead of touching the
-// community plugin's wider surface.
+// Boundary facade for `@capacitor-community/sqlite`. The native side is the
+// published community plugin; this module keeps app code on a stable,
+// parameterized API instead of exposing the plugin's wider surface.
 
+import { Capacitor } from "@capacitor/core";
 import {
   CapacitorSQLite,
   type SQLiteDBConnection,
@@ -44,8 +44,6 @@ export interface SqliteDatabase {
   close(): Promise<void>;
 }
 
-const PARAM_PLACEHOLDER = /\?/g;
-
 function rejectStringConcat(sql: string): void {
   // Defensive: the contract is parameterized SQL only. We can't fully detect
   // unsafe concatenation from the call site, but we can refuse calls that
@@ -57,9 +55,26 @@ function rejectStringConcat(sql: string): void {
         "{...}` interpolation",
     );
   }
-  // Cheap plausibility check: count placeholders so callers see a clear
-  // error if they forget to migrate from string concat.
-  void PARAM_PLACEHOLDER;
+}
+
+interface CapacitorHost {
+  isNativePlatform?: () => boolean;
+  isPluginAvailable?: (name: string) => boolean;
+}
+
+function getCapacitorHost(): CapacitorHost {
+  return (
+    (globalThis as { Capacitor?: CapacitorHost }).Capacitor ??
+    (Capacitor as CapacitorHost)
+  );
+}
+
+function isCommunitySqlitePluginRegistered(): boolean {
+  const cap = getCapacitorHost();
+  return (
+    cap.isNativePlatform?.() === true &&
+    cap.isPluginAvailable?.("CapacitorSQLite") === true
+  );
 }
 
 class SqliteDatabaseImpl implements SqliteDatabase {
@@ -108,6 +123,11 @@ class SqliteDatabaseImpl implements SqliteDatabase {
 export async function openDatabase(
   opts: SqliteOpenOptions,
 ): Promise<SqliteDatabase> {
+  if (!isCommunitySqlitePluginRegistered()) {
+    throw new Error(
+      "[capacitor-sqlite] CapacitorSQLite native plugin is not registered",
+    );
+  }
   const encryption = opts.encryption ?? "none";
   await CapacitorSQLite.createConnection({
     database: opts.name,
@@ -130,10 +150,7 @@ export async function openDatabase(
  */
 export async function isSqliteAvailable(): Promise<boolean> {
   try {
-    const cap = (
-      globalThis as { Capacitor?: { isNativePlatform?: () => boolean } }
-    ).Capacitor;
-    if (!cap?.isNativePlatform?.()) return false;
+    if (!isCommunitySqlitePluginRegistered()) return false;
     // `checkConnectionsConsistency` is a no-op on a clean install but
     // confirms the native bridge is wired up.
     await CapacitorSQLite.checkConnectionsConsistency({

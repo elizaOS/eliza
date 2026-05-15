@@ -1,4 +1,4 @@
-import { DashboardErrorState, DashboardLoadingState } from "@elizaos/cloud-ui";
+import { DashboardErrorState, DashboardLoadingState } from "@elizaos/ui";
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useRequireAuth } from "../../lib/auth-hooks";

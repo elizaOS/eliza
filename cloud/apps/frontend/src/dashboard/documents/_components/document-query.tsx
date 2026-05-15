@@ -19,7 +19,7 @@ import {
   Input,
   Label,
   Slider,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { FileText, Loader2, Search } from "lucide-react";
 import { useState } from "react";
 

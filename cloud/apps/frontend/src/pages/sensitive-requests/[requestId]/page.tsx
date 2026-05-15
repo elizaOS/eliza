@@ -1,4 +1,4 @@
-import { Alert, AlertDescription, AlertTitle, Button, Input, Textarea } from "@elizaos/cloud-ui";
+import { Alert, AlertDescription, AlertTitle, Button, Input, Textarea } from "@elizaos/ui";
 import { AlertCircle, CheckCircle2, Loader2, LockKeyhole } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";

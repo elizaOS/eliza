@@ -1,6 +1,6 @@
 "use client";
 
-import { Badge, BrandButton, BrandCard, Skeleton } from "@elizaos/cloud-ui";
+import { Badge, BrandButton, BrandCard, Skeleton } from "@elizaos/ui";
 import { formatDistanceToNowStrict } from "date-fns";
 import {
   AlertTriangle,

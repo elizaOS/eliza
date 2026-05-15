@@ -27,7 +27,7 @@ import {
   Input,
   Label,
   Textarea,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { Copy, Loader2, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";

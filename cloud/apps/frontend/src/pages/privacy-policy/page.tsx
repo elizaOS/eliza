@@ -1,4 +1,4 @@
-import { BrandCard, CornerBrackets, ElizaCloudLockup } from "@elizaos/cloud-ui";
+import { BrandCard, CornerBrackets, ElizaCloudLockup } from "@elizaos/ui";
 import { ArrowLeft } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";

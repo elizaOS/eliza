@@ -3,7 +3,7 @@ import {
   DashboardPageContainer,
   MonacoEditorSkeleton,
   useSetPageHeader,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   ActivityIcon,
   AudioLinesIcon,

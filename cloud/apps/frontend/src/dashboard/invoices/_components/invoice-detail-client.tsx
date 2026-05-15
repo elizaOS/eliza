@@ -8,7 +8,7 @@
 
 "use client";
 
-import { BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
+import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { ArrowLeft, Download, ExternalLink } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { InvoiceDto } from "@/types/cloud-api";

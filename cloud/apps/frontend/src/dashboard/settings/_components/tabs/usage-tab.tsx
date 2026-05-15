@@ -9,7 +9,7 @@
 
 "use client";
 
-import { BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
+import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { DollarSign, Info, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";

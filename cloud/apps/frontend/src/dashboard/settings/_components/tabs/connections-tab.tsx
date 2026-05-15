@@ -1,6 +1,6 @@
 "use client";
 
-import { DashboardSection } from "@elizaos/cloud-ui";
+import { DashboardSection } from "@elizaos/ui";
 import { BlooioConnection } from "../blooio-connection";
 import { DiscordGatewayConnection } from "../discord-gateway-connection";
 import { GoogleConnection } from "../google-connection";

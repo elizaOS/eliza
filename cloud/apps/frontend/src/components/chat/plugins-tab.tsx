@@ -6,7 +6,7 @@
 
 "use client";
 
-import { Button, ScrollArea } from "@elizaos/cloud-ui";
+import { Button, ScrollArea } from "@elizaos/ui";
 import {
   Check,
   ChevronDown,

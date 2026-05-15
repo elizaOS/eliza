@@ -24,7 +24,7 @@ import {
   AlertDialogTitle,
   Badge,
   Button,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { formatDistanceToNow } from "date-fns";
 import {
   Bird,

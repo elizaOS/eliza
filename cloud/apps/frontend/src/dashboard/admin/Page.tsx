@@ -30,7 +30,7 @@ import {
   TabsContent,
   TabsList,
   TabsTrigger,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   AlertTriangle,
   Ban,

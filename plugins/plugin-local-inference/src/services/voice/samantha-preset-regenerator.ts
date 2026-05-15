@@ -213,7 +213,10 @@ export async function regenerateSamanthaPresetFromBundle(
 	const ffi: ElizaInferenceFfi = loadElizaInferenceFfi(libPath);
 	let ctx: ElizaInferenceContextHandle | null = null;
 	try {
-		if (typeof ffi.encodeReferenceSupported !== "function" || !ffi.encodeReferenceSupported()) {
+		if (
+			typeof ffi.encodeReferenceSupported !== "function" ||
+			!ffi.encodeReferenceSupported()
+		) {
 			throw new Error(
 				"[samantha-regen] this OmniVoice build does not export eliza_inference_encode_reference (ABI v4 required). Rebuild with the encode-reference target.",
 			);
@@ -260,7 +263,11 @@ export async function regenerateSamanthaPresetFromBundle(
 		const bytes = writeVoicePresetFileV2({
 			embedding,
 			phrases: [],
-			refAudioTokens: { K: encoded.K, refT: encoded.refT, tokens: encoded.tokens },
+			refAudioTokens: {
+				K: encoded.K,
+				refT: encoded.refT,
+				tokens: encoded.tokens,
+			},
 			refText,
 			instruct,
 			metadata,
@@ -310,11 +317,7 @@ export async function regenerateSamanthaPresetFromBundle(
 export async function ensureSamanthaPresetReady(
 	bundleRoot: string,
 ): Promise<EnsureSamanthaPresetOutcome> {
-	const presetPath = path.join(
-		bundleRoot,
-		"cache",
-		"voice-preset-default.bin",
-	);
+	const presetPath = path.join(bundleRoot, "cache", "voice-preset-default.bin");
 	const state = detectSamanthaPlaceholder(presetPath);
 
 	if (state.kind === "missing") {

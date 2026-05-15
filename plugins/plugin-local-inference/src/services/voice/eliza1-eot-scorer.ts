@@ -131,6 +131,18 @@ export class Eliza1EotScorer {
 	}
 
 	async score(partialTranscript: string): Promise<Eliza1EotScoreResult> {
+		const start = performance.now();
+		// Empty or whitespace-only transcripts carry no EOT signal — short-
+		// circuit at 0.5 so the model is not invoked at all. Avoids paying
+		// any forward-pass cost for VAD blips that produced no ASR words.
+		if (partialTranscript.trim().length === 0) {
+			return {
+				probability: 0.5,
+				latencyMs: performance.now() - start,
+				promptTokens: 0,
+			};
+		}
+
 		await this.ensureReady();
 		const sequence = this.sequence;
 		const imEndId = this.imEndTokenId;
@@ -139,8 +151,9 @@ export class Eliza1EotScorer {
 		}
 
 		const tokens = this.tokenizePrompt(partialTranscript);
-		const start = performance.now();
-		const next = this.inflight.then(() => this.runOnce(sequence, tokens, imEndId));
+		const next = this.inflight.then(() =>
+			this.runOnce(sequence, tokens, imEndId),
+		);
 		this.inflight = next.catch(() => undefined);
 		const probability = await next;
 		return {
@@ -182,7 +195,10 @@ export class Eliza1EotScorer {
 		if (this.loraPath) {
 			contextOptions.lora = {
 				adapters: [
-					{ filePath: this.loraPath, ...(this.loraScale !== undefined ? { scale: this.loraScale } : {}) },
+					{
+						filePath: this.loraPath,
+						...(this.loraScale !== undefined ? { scale: this.loraScale } : {}),
+					},
 				],
 			};
 		}
@@ -234,4 +250,53 @@ export class Eliza1EotScorer {
 export function formatEotPrompt(transcript: string): string {
 	const cleaned = transcript.trim();
 	return `${IM_START_USER_PREFIX}${cleaned}`;
+}
+
+// ---------------------------------------------------------------------------
+// Eliza1EotClassifier — adapts `Eliza1EotScorer` to the EotClassifier
+// interface that `voice-state-machine` + `turn-controller` consume. Lives
+// here (not in `eot-classifier.ts`) so the test path picks up the fresh
+// `.ts` instead of any stale built artifact.
+// ---------------------------------------------------------------------------
+
+import type { EotClassifier, VoiceTurnSignal } from "./eot-classifier";
+import { turnSignalFromProbability } from "./eot-classifier";
+
+/**
+ * Eliza-1 EOT classifier. Reuses the already-loaded text model (typically
+ * the eliza-1 drafter — same model DFlash keeps warm for speculative
+ * decoding) to compute P(`<|im_end|>` | partial transcript). Optionally
+ * loads a fine-tuned EOT LoRA adapter on top of the base weights — see
+ * `packages/training/scripts/turn_detector/` for the training recipe.
+ *
+ * Unlike `LiveKitTurnDetector`, this classifier ships zero additional
+ * model weights — it leans on what's already in RAM.
+ */
+export class Eliza1EotClassifier implements EotClassifier {
+	private readonly scorer: Eliza1EotScorer;
+
+	constructor(options: Eliza1EotScorerOptions | { scorer: Eliza1EotScorer }) {
+		this.scorer =
+			"scorer" in options ? options.scorer : new Eliza1EotScorer(options);
+	}
+
+	async score(partialTranscript: string): Promise<number> {
+		const { probability } = await this.scorer.score(partialTranscript);
+		return probability;
+	}
+
+	async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
+		const result = await this.scorer.score(partialTranscript);
+		return turnSignalFromProbability({
+			probability: result.probability,
+			transcript: partialTranscript,
+			source: "eliza-1-drafter",
+			model: this.scorer.modelLabel,
+			latencyMs: result.latencyMs,
+		});
+	}
+
+	async dispose(): Promise<void> {
+		await this.scorer.dispose();
+	}
 }

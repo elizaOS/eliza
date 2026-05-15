@@ -4,7 +4,7 @@
  */
 "use client";
 
-import { BrandButton, BrandCard } from "@elizaos/cloud-ui";
+import { BrandButton, BrandCard } from "@elizaos/ui";
 import { Camera, ExternalLink, Loader2, Pause, Play, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";

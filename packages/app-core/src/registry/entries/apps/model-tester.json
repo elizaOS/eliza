@@ -1,0 +1,31 @@
+{
+  "id": "model-tester",
+  "name": "Model Tester",
+  "description": "Run end-to-end probes for Eliza-1 text, voice, transcription, VAD, and vision models.",
+  "npmName": "@elizaos/app-model-tester",
+  "source": "bundled",
+  "tags": ["models", "eliza-1", "debug", "voice", "vision"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "hero-card",
+    "icon": "Sparkles",
+    "group": "Curated",
+    "groupOrder": 4,
+    "actions": ["launch", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "tool",
+  "launch": {
+    "type": "server-launch",
+    "capabilities": ["models", "eliza-1", "debug", "voice", "vision"],
+    "curatedSlug": "model-tester",
+    "routePlugin": {
+      "specifier": "@elizaos/app-model-tester",
+      "exportName": "modelTesterPlugin"
+    }
+  }
+}

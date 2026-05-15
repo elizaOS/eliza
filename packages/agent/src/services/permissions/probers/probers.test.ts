@@ -1,8 +1,17 @@
-import { readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import type { Prober } from "../contracts.ts";
 import {
+  hasEmbeddedProvisioningEntitlement,
   IS_DARWIN,
   mapAVAuthStatus,
   mapNativePrivacyAuthStatus,
@@ -71,6 +80,38 @@ describe("permission probers", () => {
     expect(state.status).toBe("not-applicable");
     expect(state.restrictedReason).toBe("platform_unsupported");
     expect(state.canRequest).toBe(false);
+  });
+
+  it("detects entitlements in an embedded provisioning profile", () => {
+    const root = mkdtempSync(
+      path.join(os.tmpdir(), "eliza-permission-prober-"),
+    );
+    try {
+      const contents = path.join(root, "Example.app", "Contents");
+      const macos = path.join(contents, "MacOS");
+      const execPath = path.join(macos, "Example");
+      mkdirSync(macos, { recursive: true });
+      writeFileSync(
+        path.join(contents, "embedded.provisionprofile"),
+        "com.apple.developer.healthkit",
+        "utf8",
+      );
+
+      expect(
+        hasEmbeddedProvisioningEntitlement(
+          "com.apple.developer.healthkit",
+          execPath,
+        ),
+      ).toBe(true);
+      expect(
+        hasEmbeddedProvisioningEntitlement(
+          "com.apple.developer.family-controls",
+          execPath,
+        ),
+      ).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("maps the native dylib camera/microphone status contract", () => {

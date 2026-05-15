@@ -1,6 +1,6 @@
 "use client";
 
-import { BrandCard, CornerBrackets, Image, SectionLabel } from "@elizaos/cloud-ui";
+import { BrandCard, CornerBrackets, Image, SectionLabel } from "@elizaos/ui";
 import { ChevronRight, MessageSquare, MoreVertical } from "lucide-react";
 
 const Agents = () => {

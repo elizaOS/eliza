@@ -1,4 +1,4 @@
-import { DashboardLoadingState } from "@elizaos/cloud-ui";
+import { DashboardLoadingState } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { MyAgentsClient } from "../../components/my-agents/my-agents";
 import { useRequireAuth } from "../../lib/auth-hooks";

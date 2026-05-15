@@ -27,6 +27,7 @@ if str(_TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(_TRAINING_ROOT))
 
 from scripts.publish.orchestrator import (  # noqa: E402
+    ELIZA_1_HF_REPO,
     EXIT_BUNDLE_LAYOUT_FAIL,
     EXIT_EVAL_GATE_FAIL,
     EXIT_KERNEL_VERIFY_FAIL,
@@ -36,6 +37,7 @@ from scripts.publish.orchestrator import (  # noqa: E402
     EXIT_USAGE,
     PublishContext,
     run,
+    validate_bundle_layout,
 )
 
 
@@ -348,7 +350,7 @@ def _source_models() -> dict[str, dict[str, str]]:
         "text": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "text.gguf"},
         "voice": {"repo": "Serveurperso/OmniVoice-GGUF"},
         "drafter": {
-            "repo": "elizaos/eliza-1",
+            "repo": "elizalabs/eliza-1",
             "file": "bundles/4b/dflash/drafter-4b.gguf",
         },
         "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
@@ -370,7 +372,7 @@ def _write_release_evidence(
     evidence: dict[str, Any] = {
         "schemaVersion": 1,
         "tier": tier,
-        "repoId": "elizaos/eliza-1",
+        "repoId": ELIZA_1_HF_REPO,
         "releaseState": release_state,
         "final": {
             "weights": True,
@@ -424,7 +426,7 @@ def _write_release_evidence(
             "windows-arm64-vulkan": "evidence/platform/windows-arm64-vulkan.json",
         },
         "hf": {
-            "repoId": "elizaos/eliza-1",
+            "repoId": ELIZA_1_HF_REPO,
             "status": "pending-upload",
         },
     }
@@ -489,7 +491,7 @@ def _ctx(
         bundle_dir=bundle,
         dry_run=dry_run,
         metal_verification=metal,
-        repo_id="elizaos/eliza-1",
+        repo_id=ELIZA_1_HF_REPO,
         public=False,
         training_repo_root=training_root or _TRAINING_ROOT,
         template_path=(
@@ -498,9 +500,81 @@ def _ctx(
     )
 
 
+def _disable_dflash_for_tier(bundle: Path, tier: str) -> None:
+    from scripts.manifest.eliza1_licenses import write_bundle_licenses
+
+    drafter = bundle / "dflash" / f"drafter-{tier}.gguf"
+    drafter.unlink(missing_ok=True)
+    policy_rel = f"dflash/dflash-disabled-{tier}.release-policy.json"
+    _write(
+        bundle / policy_rel,
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "dflash-release-policy",
+                "tier": tier,
+                "status": "disabled",
+                "releaseMode": "fail-open-no-drafter",
+                "requiresDrafter": False,
+                "releaseEligibleWithoutDrafter": True,
+            }
+        ),
+    )
+    write_bundle_licenses(
+        bundle / "licenses",
+        ["text", "voice", "asr", "vad", "dflash"],
+    )
+    text_rel = f"text/eliza-1-{tier}-64k.gguf"
+    text_sha = _sha256(bundle / text_rel)
+    policy_sha = _sha256(bundle / policy_rel)
+    _write(
+        bundle / "dflash" / "target-meta.json",
+        json.dumps(
+            {
+                "schemaVersion": 2,
+                "tier": tier,
+                "status": "disabled",
+                "dflashEnabled": False,
+                "publishEligible": False,
+                "releaseMode": "fail-open-no-drafter",
+                "reason": "DFlash is disabled for this tier.",
+                "acceptanceRate": None,
+                "acceptanceWindow": None,
+                "drafter": None,
+                "disabledPolicy": {
+                    "path": policy_rel,
+                    "sha256": policy_sha,
+                    "releaseMode": "fail-open-no-drafter",
+                    "requiresDrafter": False,
+                },
+                "targetText": {
+                    "path": text_rel,
+                    "sha256": text_sha,
+                    "finalElizaWeights": True,
+                },
+            },
+            indent=2,
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # (a) Dry-run happy path
 # ---------------------------------------------------------------------------
+
+
+def test_layout_accepts_0_8b_dflash_disabled_policy(tmp_path: Path) -> None:
+    bundle = _build_fixture_bundle(
+        tmp_path,
+        tier="0_8b",
+        eval_blob=_passing_eval_blob("0_8b"),
+    )
+    _disable_dflash_for_tier(bundle, "0_8b")
+
+    layout = validate_bundle_layout(_ctx("0_8b", bundle))
+
+    assert layout["dflash"]
+    assert not any(path.suffix == ".gguf" for path in layout["dflash"])
 
 
 def test_dry_run_succeeds_on_fixture(tmp_path: Path, caplog) -> None:
@@ -926,10 +1000,10 @@ def test_upload_evidence_paths_must_cover_payload_commit(tmp_path: Path) -> None
     release["releaseState"] = "final"
     release["hf"]["status"] = "uploaded"
     release["hf"]["uploadEvidence"] = {
-        "repoId": "elizaos/eliza-1",
+        "repoId": ELIZA_1_HF_REPO,
         "status": "uploaded",
         "commit": "abc123",
-        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
+        "url": f"https://huggingface.co/{ELIZA_1_HF_REPO}/commit/abc123",
         "uploadedPaths": ["eliza-1.manifest.json", "README.md"],
     }
     release_path.write_text(json.dumps(release, indent=2))
@@ -979,7 +1053,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
             "repoId": ctx.repo_id,
             "status": "uploaded",
             "commit": "payload123",
-            "url": "https://huggingface.co/elizaos/eliza-1/commit/payload123",
+            "url": f"https://huggingface.co/{ctx.repo_id}/commit/payload123",
             "uploadedPaths": uploaded_paths,
         }
 
@@ -1009,7 +1083,7 @@ def test_real_publish_finalizes_and_uploads_hf_evidence(
     assert release["releaseState"] == "final"
     assert release["hf"]["status"] == "uploaded"
     assert release["hf"]["uploadEvidence"]["commit"] == "payload123"
-    assert release["hf"]["uploadEvidence"]["repoId"] == "elizaos/eliza-1"
+    assert release["hf"]["uploadEvidence"]["repoId"] == ELIZA_1_HF_REPO
     checksum_lines = (bundle / "checksums" / "SHA256SUMS").read_text().splitlines()
     release_line = next(
         line for line in checksum_lines if "  evidence/release.json" in line
@@ -1035,7 +1109,7 @@ def test_real_base_v1_publish_preserves_release_state(
             "repoId": ctx.repo_id,
             "status": "uploaded",
             "commit": "basev1",
-            "url": "https://huggingface.co/elizaos/eliza-1/commit/basev1",
+            "url": f"https://huggingface.co/{ctx.repo_id}/commit/basev1",
             "uploadedPaths": [
                 "bundles/4b/eliza-1.manifest.json",
                 "bundles/4b/README.md",

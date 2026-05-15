@@ -17,7 +17,7 @@ import {
   DropdownMenuTrigger,
   ElizaCloudLockup,
   Switch,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import {
   Globe,
   Link as LinkIcon,

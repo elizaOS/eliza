@@ -4,7 +4,7 @@
  */
 "use client";
 
-import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/cloud-ui";
+import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/ui";
 import { Bell, ExternalLink, Key, Lock, Shield } from "lucide-react";
 import { Link } from "react-router-dom";
 

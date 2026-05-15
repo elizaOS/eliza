@@ -18,7 +18,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@elizaos/cloud-ui";
+} from "@elizaos/ui";
 import { formatDistanceToNowStrict } from "date-fns";
 import type { AnalyticsDataDto } from "@/types/cloud-api";
 

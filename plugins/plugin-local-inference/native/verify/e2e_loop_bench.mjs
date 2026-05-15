@@ -293,6 +293,10 @@ function bundleFiles(bundleDir, tier) {
   };
 }
 
+function tierUsesOmniVoice(tier) {
+  return tier === "9b" || tier === "27b" || tier === "27b-256k";
+}
+
 function isRealGguf(p, minBytes = 1_000_000) {
   if (!p || !fs.existsSync(p)) return false;
   try {
@@ -1031,6 +1035,24 @@ async function main() {
   }
   if (!engine.lib) {
     const out = { ...baseReport, status: "needs-build", reason: `fused build at ${engine.dir} has no ${libName()} (ASR FFI library missing)`, e2eLoopOk: false };
+    return finish(out, args, logFn);
+  }
+  if (!tierUsesOmniVoice(tier)) {
+    const kokoroModel = path.join(bundleDir, "tts", "kokoro", "model_q4.onnx");
+    const out = {
+      ...baseReport,
+      status: "needs-harness",
+      reason: "this tier is Kokoro-only for TTS; the fused OmniVoice+DFlash e2e harness is not applicable and the app-core Kokoro voice-loop harness must drive the full ASR->text->Kokoro path",
+      bundleArtifacts: {
+        text: !!isRealGguf(files.text),
+        drafter: files.drafter ? !!isRealGguf(files.drafter, 10_000_000) : null,
+        kokoroModel: fs.existsSync(kokoroModel),
+        ttsModel: null,
+        ttsCodec: null,
+        asr: !!isRealGguf(files.asr, 1_000_000),
+      },
+      e2eLoopOk: null,
+    };
     return finish(out, args, logFn);
   }
   if (!isRealGguf(files.text) || !isRealGguf(files.drafter, 10_000_000) || !isRealGguf(files.ttsModel) || !isRealGguf(files.ttsCodec) || !isRealGguf(files.asr, 1_000_000)) {

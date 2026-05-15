@@ -8,7 +8,11 @@ import {
 } from "./catalog.js";
 
 const SMALL_TIERS = ["eliza-1-0_8b", "eliza-1-2b", "eliza-1-4b"] as const;
-const LARGE_TIERS = ["eliza-1-9b", "eliza-1-27b", "eliza-1-27b-256k"] as const;
+const LARGE_TIERS = [
+  "eliza-1-9b",
+  "eliza-1-27b",
+  "eliza-1-27b-256k",
+] as const;
 const OMNIVOICE_TIERS = LARGE_TIERS;
 
 describe("voiceQuantLadderForTier", () => {
@@ -67,6 +71,23 @@ describe("defaultVoiceQuantForTier", () => {
 });
 
 describe("Eliza-1 runtime quant metadata", () => {
+  it("ships every text tier at least at the 128k half-context floor", () => {
+    for (const id of ELIZA_1_TIER_IDS) {
+      const entry = MODEL_CATALOG.find((model) => model.id === id);
+      expect(entry?.contextLength).toBeGreaterThanOrEqual(131072);
+      expect(entry?.ggufFile).not.toMatch(/-(32k|64k)\.gguf$/);
+      if (id === "eliza-1-27b-256k") {
+        expect(entry?.contextLength).toBe(262144);
+        expect(entry?.ggufFile).toBe("text/eliza-1-27b-256k.gguf");
+      } else {
+        expect(entry?.contextLength).toBe(131072);
+        expect(entry?.ggufFile).toBe(
+          `text/${id.replace("eliza-1-", "eliza-1-")}-128k.gguf`,
+        );
+      }
+    }
+  });
+
   it("uses QJL K-cache and TurboQuant V-cache for every chat tier", () => {
     for (const id of ELIZA_1_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);

@@ -5,7 +5,7 @@
 
 "use client";
 
-import { Button } from "@elizaos/cloud-ui";
+import { Button } from "@elizaos/ui";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
