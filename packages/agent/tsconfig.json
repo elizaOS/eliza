@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": false,
+    "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun", "react", "react-dom"],
     "typeRoots": [
@@ -34,6 +35,7 @@
       "@elizaos/capacitor-contacts": [
         "../native-plugins/contacts/src/index.ts"
       ],
+      "@elizaos/capacitor-*": ["../native-plugins/*/src/index.ts"],
       "@elizaos/capacitor-llama": ["../native-plugins/llama/src/index.ts"],
       "@elizaos/capacitor-phone": ["../native-plugins/phone/src/index.ts"],
       "@elizaos/app-lifeops": ["../../plugins/app-lifeops/src/index.ts"],
@@ -71,15 +73,17 @@
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/plugin-google": ["../../plugins/plugin-google/src/index.ts"],
-      "@elizaos/plugin-telegram": [
-        "../../plugins/plugin-telegram/src/index.ts"
-      ],
       "@elizaos/plugin-workflow": [
         "../../plugins/plugin-workflow/src/index.ts"
       ],
       "@elizaos/workflows": ["../workflows/src/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/local-inference": [
+        "../shared/src/local-inference/index.ts"
+      ],
+      "@elizaos/shared/*": ["../shared/src/*"],
+      "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],
       "react": ["../app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [

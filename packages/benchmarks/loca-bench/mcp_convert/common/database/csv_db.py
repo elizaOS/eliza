@@ -5,7 +5,7 @@ Handles CSV file operations with pandas integration.
 """
 
 import pandas as pd
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 from .base import BaseDatabase
 
 

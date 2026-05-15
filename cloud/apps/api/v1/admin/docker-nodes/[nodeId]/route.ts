@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -20,13 +21,11 @@ import { agentSandboxes } from "@/db/schemas/agent-sandboxes";
 import { requireAdmin } from "@/lib/auth";
 import { logger } from "@/lib/utils/logger";
 
-type RouteParams = { params: Promise<{ nodeId: string }> };
-
 // ---------------------------------------------------------------------------
 // GET — Get single node details
 // ---------------------------------------------------------------------------
 
-async function __hono_GET(request: Request, { params }: RouteParams) {
+async function __hono_GET(request: Request, { params }: RouteContext<{ nodeId: string }>) {
   try {
     const { role } = await requireAdmin(request);
     if (role !== "super_admin") {
@@ -114,7 +113,7 @@ const updateNodeSchema = z
     message: "At least one field must be provided for update",
   });
 
-async function __hono_PATCH(request: Request, { params }: RouteParams) {
+async function __hono_PATCH(request: Request, { params }: RouteContext<{ nodeId: string }>) {
   try {
     const { role } = await requireAdmin(request);
     if (role !== "super_admin") {
@@ -212,7 +211,7 @@ async function __hono_PATCH(request: Request, { params }: RouteParams) {
 // DELETE — Remove node (only if no containers are running on it)
 // ---------------------------------------------------------------------------
 
-async function __hono_DELETE(request: Request, { params }: RouteParams) {
+async function __hono_DELETE(request: Request, { params }: RouteContext<{ nodeId: string }>) {
   try {
     const { role } = await requireAdmin(request);
     if (role !== "super_admin") {

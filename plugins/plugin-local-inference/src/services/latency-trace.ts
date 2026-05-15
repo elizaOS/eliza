@@ -37,7 +37,7 @@
  *   - `llm-first-token`          — the engine generate path's first
  *                                   `onTextChunk` (W4).
  *   - `llm-first-replytext-char` — `StructuredFieldStreamExtractor`'s
- *                                   `onFieldStart("replyText")` (W3).
+ *                                   `onFieldStart("replyText")`.
  *   - `replyText-first-emotion-tag` — the field extractor / `parseExpressiveTags`
  *                                   on the first inline expressive tag (`[happy]`
  *                                   …) in `replyText` — emotion-markup overhead,

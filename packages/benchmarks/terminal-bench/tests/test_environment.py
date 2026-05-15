@@ -1,13 +1,11 @@
 """Tests for Terminal-Bench environment."""
 
 import pytest
-from datetime import datetime
 
 from elizaos_terminal_bench.environment import (
     LocalTerminalEnvironment,
     MockTerminalEnvironment,
     TerminalEnvironment,
-    TerminalEnvironmentError,
 )
 from elizaos_terminal_bench.types import (
     CommandStatus,

@@ -38,6 +38,7 @@ log = logging.getLogger("benchmarks.standard.mmlu")
 BENCHMARK_ID = "mmlu"
 DATASET_VERSION = "cais/mmlu@2023-09-15"
 DATASET_NAME = "cais/mmlu"
+DEFAULT_MAX_TOKENS = 256
 
 
 SYSTEM_PROMPT = (
@@ -144,7 +145,7 @@ class MMLURunner:
         self,
         *,
         examples: Iterable[dict[str, object]] | None = None,
-        max_tokens: int = 8,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
     ) -> None:
         self._examples = list(examples) if examples is not None else None
         self._max_tokens = max_tokens
@@ -166,6 +167,7 @@ class MMLURunner:
         config = GenerationConfig(model=model, max_tokens=self._max_tokens, temperature=0.0)
 
         correct = 0
+        empty_outputs = 0
         per_subject: dict[str, list[int]] = {}
         failures: list[dict[str, object]] = []
 
@@ -182,7 +184,12 @@ class MMLURunner:
             except Exception as exc:  # noqa: BLE001
                 log.warning("generation failed (idx=%d): %s", i, exc)
                 continue
-            predicted = _extract_letter(gen.text)
+            empty_output = not gen.text.strip()
+            if empty_output:
+                empty_outputs += 1
+                predicted = None
+            else:
+                predicted = _extract_letter(gen.text)
             is_correct = predicted == expected_letter
             if is_correct:
                 correct += 1
@@ -196,13 +203,19 @@ class MMLURunner:
                         "subject": subject,
                         "question": item.get("question"),
                         "expected": expected_letter,
-                        "predicted": predicted or gen.text[:120],
+                        "predicted": "<empty>" if empty_output else predicted or gen.text[:120],
+                        "empty_visible_output": empty_output,
                     }
                 )
 
         n = sum(c[1] for c in per_subject.values())
         if n == 0:
             raise RuntimeError("MMLU evaluated zero examples — model returned no output")
+        if empty_outputs == n:
+            raise RuntimeError(
+                f"MMLU generated empty visible output for all {n} evaluated examples; "
+                "treating this as a harness/model transport error rather than accuracy=0"
+            )
 
         accuracy = correct / n
         subject_accuracy: dict[str, float] = {
@@ -221,7 +234,10 @@ class MMLURunner:
                 "correct": float(correct),
                 "n": float(n),
             },
-            raw_json={"subject_accuracy": subject_accuracy},
+            raw_json={
+                "subject_accuracy": subject_accuracy,
+                "empty_outputs": empty_outputs,
+            },
             failures=failures,
             elapsed_s=stats.elapsed(),
         )
@@ -235,8 +251,8 @@ class _MMLUFactory(RunnerFactory):
         parser.add_argument(
             "--max-tokens",
             type=int,
-            default=8,
-            help="Cap on generated tokens per question (single letter is enough)",
+            default=DEFAULT_MAX_TOKENS,
+            help="Cap on generated tokens per question",
         )
 
     def build(self, args: argparse.Namespace) -> tuple[MMLURunner, Sequence[str] | None]:

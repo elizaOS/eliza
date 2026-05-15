@@ -12,7 +12,7 @@
 //      ggml-vulkan-shaders.hpp) is handled by the patch in
 //      vulkan-dispatch-patches/01-vulkan-shaders-gen.patch.
 //
-//   2. Applies the two unified-anchor staging patches under
+//   2. Applies the two shared-anchor staging patches under
 //      vulkan-dispatch-patches/:
 //        - 01-vulkan-shaders-gen.patch — adds 9 string_to_spv() registrations
 //          at the bottom of process_shaders().

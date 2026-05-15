@@ -1,0 +1,185 @@
+{
+  "schemaVersion": 1,
+  "packageName": "ai.elizaos.app",
+  "buildTarget": "aosp-system-privileged",
+  "roleDefaults": {
+    "android.app.role.ASSISTANT": "ai.elizaos.app",
+    "android.app.role.DIALER": "ai.elizaos.app",
+    "android.app.role.SMS": "ai.elizaos.app",
+    "android.app.role.BROWSER": "ai.elizaos.app"
+  },
+  "apiConstants": {
+    "assistantRole": {
+      "symbol": "RoleManager.ROLE_ASSISTANT",
+      "value": "android.app.role.ASSISTANT"
+    },
+    "assistAction": {
+      "symbol": "Intent.ACTION_ASSIST",
+      "value": "android.intent.action.ASSIST"
+    },
+    "voiceCommandAction": {
+      "symbol": "Intent.ACTION_VOICE_COMMAND",
+      "value": "android.intent.action.VOICE_COMMAND"
+    }
+  },
+  "assistantEntryPoints": [
+    "android.intent.action.ASSIST",
+    "android.intent.action.VOICE_COMMAND"
+  ],
+  "assistantResolution": {
+    "role": "android.app.role.ASSISTANT",
+    "defaultHolderResource": "config_defaultAssistant",
+    "defaultHolder": "ai.elizaos.app",
+    "activity": "ai.elizaos.app.ElizaAssistActivity",
+    "intentActions": [
+      "android.intent.action.ASSIST",
+      "android.intent.action.VOICE_COMMAND"
+    ],
+    "stockAssistantPackagesStripped": [
+      "QuickSearchBox",
+      "SetupWizard"
+    ]
+  },
+  "directBoot": {
+    "receiver": "ElizaBootReceiver",
+    "directBootAware": true,
+    "actions": [
+      "android.intent.action.LOCKED_BOOT_COMPLETED",
+      "android.intent.action.BOOT_COMPLETED",
+      "android.intent.action.MY_PACKAGE_REPLACED"
+    ]
+  },
+  "foregroundServices": [
+    {
+      "component": "ElizaAgentService",
+      "type": "specialUse",
+      "subtype": "local-agent-runtime"
+    },
+    {
+      "component": "GatewayConnectionService",
+      "type": "dataSync"
+    },
+    {
+      "component": "ElizaVoiceCaptureService",
+      "type": "microphone"
+    },
+    {
+      "component": "ScreenCapture",
+      "type": "mediaProjection",
+      "source": "@elizaos/capacitor-screencapture"
+    }
+  ],
+  "privilegedPermissions": [
+    "android.permission.PACKAGE_USAGE_STATS",
+    "android.permission.MANAGE_APP_OPS_MODES",
+    "android.permission.MANAGE_VIRTUAL_MACHINE",
+    "android.permission.READ_FRAME_BUFFER",
+    "android.permission.INJECT_EVENTS",
+    "android.permission.REAL_GET_TASKS"
+  ],
+  "runtimeAndNormalPermissions": [
+    "android.permission.RECORD_AUDIO",
+    "android.permission.CAMERA",
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+    "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+    "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+    "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.WAKE_LOCK"
+  ],
+  "appOps": [
+    {
+      "op": "android:get_usage_stats",
+      "grantPath": "ElizaBootReceiver via MANAGE_APP_OPS_MODES"
+    }
+  ],
+  "capabilityDeclarations": {
+    "accessibility": {
+      "status": "declared-aosp-system-service",
+      "component": "ElizaAccessibilityService",
+      "intentAction": "android.accessibilityservice.AccessibilityService",
+      "permission": "android.permission.BIND_ACCESSIBILITY_SERVICE",
+      "metadata": "@xml/eliza_accessibility_service",
+      "componentPolicy": "Declare only in the AOSP/system build; Play/cloud builds must strip the service, Java source, and accessibility-service XML resource.",
+      "notes": "Used for accessibility tree observation and user-consented gesture dispatch on non-privileged paths; privileged AOSP input uses INJECT_EVENTS."
+    },
+    "notificationListener": {
+      "status": "declared-aosp-system-service",
+      "component": "ElizaNotificationListenerService",
+      "intentAction": "android.service.notification.NotificationListenerService",
+      "permission": "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+      "componentPolicy": "Declare only in the AOSP/system build; cloud/Play builds must strip the service and Java source.",
+      "notes": "Used by the privileged assistant image to observe notification lifecycle events for the local agent."
+    },
+    "screenCapture": {
+      "consumerPath": "MediaProjection with foreground-service notification and user consent",
+      "systemPath": "SurfaceControl.captureDisplay with READ_FRAME_BUFFER",
+      "plugin": "@elizaos/capacitor-screencapture",
+      "foregroundServiceType": "mediaProjection",
+      "playPolicy": "strip plugin and FOREGROUND_SERVICE_MEDIA_PROJECTION from android-cloud"
+    },
+    "inputControl": {
+      "consumerPath": "Accessibility gesture dispatch when the user enables the service",
+      "systemPath": "InputManager.injectInputEvent with INJECT_EVENTS"
+    },
+    "appInventory": {
+      "consumerPath": "UsageStatsManager when Usage Access is granted",
+      "systemPath": "REAL_GET_TASKS and GET_USAGE_STATS appop granted at boot"
+    },
+    "voiceCommand": {
+      "entryPoint": "android.intent.action.VOICE_COMMAND",
+      "activity": "ElizaAssistActivity",
+      "foregroundService": "ElizaVoiceCaptureService",
+      "foregroundServiceType": "microphone",
+      "playPolicy": "strip background microphone foreground service from android-cloud"
+    }
+  },
+  "systemImageRequirements": {
+    "installPath": "/system/priv-app/Eliza/Eliza.apk",
+    "soong": {
+      "moduleType": "android_app_import",
+      "privileged": true,
+      "certificate": "platform"
+    },
+    "permissionXml": [
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml",
+      "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml"
+    ],
+    "artifactPath": "/product/etc/eliza/aosp-assistant-full-control.json"
+  },
+  "playStorePolicy": {
+    "allowed": false,
+    "stripTarget": "android-cloud",
+    "mustStripComponents": [
+      "ElizaAgentService",
+      "ElizaAccessibilityService",
+      "ElizaAssistActivity",
+      "ElizaBootReceiver",
+      "ElizaNotificationListenerService",
+      "ElizaVoiceCaptureService"
+    ],
+    "mustStripPermissions": [
+      "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+      "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+      "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+      "android.permission.RECEIVE_BOOT_COMPLETED",
+      "android.permission.PACKAGE_USAGE_STATS",
+      "android.permission.MANAGE_APP_OPS_MODES",
+      "android.permission.MANAGE_VIRTUAL_MACHINE",
+      "android.permission.READ_FRAME_BUFFER",
+      "android.permission.INJECT_EVENTS",
+      "android.permission.REAL_GET_TASKS",
+      "android.permission.BIND_ACCESSIBILITY_SERVICE",
+      "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+    ],
+    "mustStripPlugins": [
+      "@elizaos/capacitor-agent",
+      "@elizaos/capacitor-bun-runtime",
+      "@elizaos/capacitor-screencapture",
+      "@elizaos/capacitor-system"
+    ],
+    "reason": "ROLE_ASSISTANT/default-role components, privileged permissions, screen capture, boot receivers, foreground local-agent/voice services, and local agent services are AOSP/system-image only."
+  }
+}

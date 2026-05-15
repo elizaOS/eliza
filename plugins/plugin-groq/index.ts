@@ -38,7 +38,7 @@ type RuntimeBufferConstructor = {
   isBuffer(value: unknown): boolean;
 };
 
-const _globalThis = globalThis as typeof globalThis & {
+const _globalThis = globalThis as {
   AI_SDK_LOG_WARNINGS?: boolean;
   process?: RuntimeProcess;
   Buffer?: RuntimeBufferConstructor;

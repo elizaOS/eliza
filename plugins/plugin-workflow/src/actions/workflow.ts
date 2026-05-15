@@ -356,7 +356,7 @@ export const workflowAction: Action = {
     '  create, modify, activate, deactivate, toggle_active, delete, executions.\n' +
     'For creating/updating scheduled triggers (including promoting a task to a workflow), use the TRIGGER action.',
   descriptionCompressed:
-    'manage workflows; action-based dispatch (create modify activate deactivate toggle_active delete executions)',
+    'workflow create|modify|activate|deactivate|toggle_active|delete|executions',
   parameters: [
     {
       name: 'action',

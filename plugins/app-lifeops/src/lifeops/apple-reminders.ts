@@ -1,7 +1,10 @@
 /// <reference types="bun-types" />
-import { existsSync } from "node:fs";
-import path from "node:path";
+import {
+  type NativeLibraryCandidate,
+  resolveNativeLibraryCandidate,
+} from "@elizaos/app-core/platform/native-library-policy";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
 
 export const NATIVE_APPLE_REMINDER_METADATA_KEY = "nativeAppleReminder";
@@ -126,10 +129,28 @@ type NativeReminderBridge = {
 let nativeReminderBridge: NativeReminderBridge | null | undefined;
 let nativeReminderBridgeOverride: NativeReminderBridge | null | undefined;
 
-const NATIVE_DYLIB_CANDIDATES = [
-  process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
-  "../../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
-].filter(Boolean);
+const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib";
+
+function nativeDylibCandidates(): NativeLibraryCandidate[] {
+  return [
+    {
+      label: "ELIZA_NATIVE_PERMISSIONS_DYLIB",
+      path: process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "",
+    },
+    {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../../${NATIVE_DYLIB_BASENAME}`,
+    },
+    {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../${NATIVE_DYLIB_BASENAME}`,
+    },
+    {
+      label: "local Apple permissions bridge",
+      path: `../../../../packages/app-core/platforms/electrobun/src/${NATIVE_DYLIB_BASENAME}`,
+    },
+  ].filter((candidate) => candidate.path.trim().length > 0);
+}
 
 function cStringBuffer(value: string): Buffer {
   const bytes = Buffer.from(value, "utf8");
@@ -146,11 +167,13 @@ async function loadNativeReminderBridge(): Promise<NativeReminderBridge | null> 
   nativeReminderBridge = null;
   if (process.platform !== "darwin") return null;
 
-  for (const candidate of NATIVE_DYLIB_CANDIDATES) {
-    const dylibPath = path.isAbsolute(candidate)
-      ? candidate
-      : path.resolve(import.meta.dir, candidate);
-    if (!existsSync(dylibPath)) continue;
+  for (const candidate of nativeDylibCandidates()) {
+    const dylibPath = resolveNativeLibraryCandidate(candidate, {
+      expectedBasename: NATIVE_DYLIB_BASENAME,
+      moduleDir: import.meta.dir,
+      warn: (message) => logger.warn(`[AppleReminders] ${message}`),
+    });
+    if (!dylibPath) continue;
     try {
       const { CString, FFIType, dlopen, ptr } = await import("bun:ffi");
       const lib = dlopen(dylibPath, {
@@ -496,4 +519,5 @@ export const __testing = {
   setNativeReminderBridgeForTest(bridge: NativeReminderBridge | null): void {
     nativeReminderBridgeOverride = bridge;
   },
+  nativeDylibCandidates,
 };

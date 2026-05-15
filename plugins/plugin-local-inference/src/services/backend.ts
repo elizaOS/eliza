@@ -1,5 +1,5 @@
 /**
- * Unified local-inference backend interface and dispatcher.
+ * Local-inference backend interface and dispatcher.
  *
  * Two real implementations live behind this interface:
  *
@@ -199,11 +199,7 @@ function envFlag(name: string): boolean {
  * and `defaultEligible` bundles still require the verified kernels.
  */
 export function localAllowStockKv(): boolean {
-	// Canonical `ELIZA_LOCAL_ALLOW_STOCK_KV`; the legacy `MILADY_LOCAL_ALLOW_STOCK_KV` is still honored.
-	return (
-		envFlag("ELIZA_LOCAL_ALLOW_STOCK_KV") ||
-		envFlag("MILADY_LOCAL_ALLOW_STOCK_KV")
-	);
+	return envFlag("ELIZA_LOCAL_ALLOW_STOCK_KV");
 }
 
 let reducedModeWarned = false;

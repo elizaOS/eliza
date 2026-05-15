@@ -132,12 +132,11 @@ interface NativeGenerateTextResult {
 
 type NativeTextModelResult = string & NativeGenerateTextResult;
 
-const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as ModelTypeName;
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeName;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
-  "RESPONSE_HANDLER") as ModelTypeName;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as ModelTypeName;
+const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as ModelTypeName;
+const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as ModelTypeName;
+const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as ModelTypeName;
+const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as ModelTypeName;
 
 function buildUserContent(params: GenerateTextParamsWithOpenAIOptions): UserContent {
   const content: Array<
@@ -148,7 +147,7 @@ function buildUserContent(params: GenerateTextParamsWithOpenAIOptions): UserCont
         mediaType: string;
         filename?: string;
       }
-  > = [{ type: "text", text: params.prompt }];
+  > = [{ type: "text", text: params.prompt ?? "" }];
 
   for (const attachment of params.attachments ?? []) {
     content.push({
@@ -235,6 +234,40 @@ function resolvePromptCacheOptions(params: GenerateTextParams): OpenAIPromptCach
   };
 }
 
+/**
+ * Forward `OPENAI_REASONING_EFFORT` (runtime setting / process.env) as
+ * `reasoning_effort` on the outbound chat completions request. This is
+ * the OpenAI-spec knob for reasoning-capable models (`o1-*`, `o3-*`,
+ * `gpt-oss-*`, `deepseek-r1`, `qwen-3-thinking`, etc.) — including
+ * Cerebras and OpenRouter, which honor the same field. `"low"` keeps
+ * reasoning short enough that visible content always fits inside
+ * `max_tokens`, which is the failure mode on Cerebras gpt-oss-120b when
+ * left unset.
+ *
+ * Returns `undefined` when the setting is unset or invalid, so non-
+ * reasoning models pay no overhead and the wire stays clean.
+ *
+ * Valid values follow the OpenAI spec exactly: `minimal`, `low`,
+ * `medium`, `high`. Anything else is logged and ignored.
+ */
+type ReasoningEffort = "minimal" | "low" | "medium" | "high";
+
+const VALID_REASONING_EFFORTS: readonly ReasoningEffort[] = ["minimal", "low", "medium", "high"];
+
+function resolveReasoningEffort(runtime: IAgentRuntime): ReasoningEffort | undefined {
+  const raw = runtime.getSetting("OPENAI_REASONING_EFFORT");
+  if (typeof raw !== "string") return undefined;
+  const normalized = raw.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if ((VALID_REASONING_EFFORTS as readonly string[]).includes(normalized)) {
+    return normalized as ReasoningEffort;
+  }
+  logger.warn(
+    `[OpenAI] OPENAI_REASONING_EFFORT=${raw} is not a valid reasoning effort; ignoring. Expected one of: ${VALID_REASONING_EFFORTS.join(", ")}.`
+  );
+  return undefined;
+}
+
 function resolveProviderOptions(
   params: GenerateTextParams,
   runtime: IAgentRuntime
@@ -242,11 +275,13 @@ function resolveProviderOptions(
   const withOpenAIOptions = params as GenerateTextParamsWithOpenAIOptions;
   const rawProviderOptions = withOpenAIOptions.providerOptions;
   const promptCacheOptions = resolvePromptCacheOptions(params);
+  const reasoningEffortFromEnv = resolveReasoningEffort(runtime);
 
   if (
     !rawProviderOptions &&
     !promptCacheOptions.promptCacheKey &&
-    !promptCacheOptions.promptCacheRetention
+    !promptCacheOptions.promptCacheRetention &&
+    !reasoningEffortFromEnv
   ) {
     return undefined;
   }
@@ -277,6 +312,12 @@ function resolveProviderOptions(
       : {}),
     ...(!skipCacheRetention && promptCacheOptions.promptCacheRetention
       ? { promptCacheRetention: promptCacheOptions.promptCacheRetention }
+      : {}),
+    // The caller's explicit `reasoningEffort` wins over the env-var default
+    // — this matches the precedence pattern used for promptCacheKey above.
+    ...((sanitizedRawOpenAIOptions as { reasoningEffort?: unknown } | undefined)
+      ?.reasoningEffort === undefined && reasoningEffortFromEnv
+      ? { reasoningEffort: reasoningEffortFromEnv }
       : {}),
   };
 
@@ -349,7 +390,9 @@ function normalizeNativeTools(
       // User-supplied schemas may still contain empty-properties subobjects
       // even after sanitizeJsonSchema. Apply Cerebras-specific normalization
       // recursively so deep schemas are accepted by the grammar compiler.
-      inputSchema = normalizeSchemaForCerebras(inputSchema) as JSONSchema7;
+      // Pass isRoot: true so the top-level invariant is enforced (must be
+      // type:"object" with no root oneOf/anyOf/enum/not).
+      inputSchema = normalizeSchemaForCerebras(inputSchema, true) as JSONSchema7;
     }
 
     // Cerebras's grammar compiler rejects function names containing characters
@@ -412,11 +455,40 @@ function normalizeNativeMessage(message: unknown): ModelMessage {
   } as ModelMessage;
 }
 
+/**
+ * Strip reasoning-only parts from outbound assistant content.
+ *
+ * OpenAI-spec reasoning models (Cerebras gpt-oss-120b, OpenAI o1/o3,
+ * DeepSeek R1, Qwen-3-thinking, etc.) return reasoning in the assistant
+ * response — either as a separate `reasoning` / `reasoning_content`
+ * field, or as content parts with `type: "reasoning"`. Echoing those
+ * back to the next turn is wrong on both ends:
+ *   - Cerebras returns HTTP 400 (`messages.X.assistant.reasoning_content:
+ *     property is unsupported`).
+ *   - OpenAI silently drops them, which wastes prompt tokens.
+ *
+ * The AI SDK upstream of this normalizer surfaces those reasoning blocks
+ * as `{ type: "reasoning", ... }` content parts. We drop them here so
+ * the wire stays spec-clean for the next turn. The reasoning itself
+ * remains usable as a single-turn signal (still on the response object);
+ * we only refuse to round-trip it.
+ */
+function stripReasoningParts(content: unknown[]): unknown[] {
+  return content.filter((part) => {
+    if (!part || typeof part !== "object") return true;
+    const type = (part as { type?: unknown }).type;
+    return type !== "reasoning" && type !== "thinking";
+  });
+}
+
 function normalizeAssistantContent(message: Record<string, unknown>): unknown {
   const toolCalls = Array.isArray(message.toolCalls) ? message.toolCalls : [];
 
   if (toolCalls.length === 0) {
-    if (Array.isArray(message.content) || typeof message.content === "string") {
+    if (Array.isArray(message.content)) {
+      return stripReasoningParts(message.content);
+    }
+    if (typeof message.content === "string") {
       return message.content;
     }
     return "";
@@ -426,7 +498,7 @@ function normalizeAssistantContent(message: Record<string, unknown>): unknown {
   if (typeof message.content === "string" && message.content.length > 0) {
     parts.push({ type: "text", text: message.content });
   } else if (Array.isArray(message.content)) {
-    parts.push(...message.content);
+    parts.push(...stripReasoningParts(message.content));
   }
 
   for (const toolCall of toolCalls) {
@@ -549,6 +621,19 @@ function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | undefin
   return toolChoice as ToolChoice<ToolSet>;
 }
 
+function hasIllegalStrictRoot(node: Record<string, unknown>): boolean {
+  // Strict-mode JSON schema validators on OpenAI-compatible providers (Groq,
+  // Cerebras, OpenAI strict tools) reject tool-parameters whose top level is
+  // not `type: "object"` or carries `oneOf`/`anyOf`/`enum`/`not` at the root.
+  // The error wording varies by provider but the constraint is uniform.
+  if (node.type !== "object") return true;
+  if (Array.isArray(node.oneOf) && node.oneOf.length > 0) return true;
+  if (Array.isArray(node.anyOf) && node.anyOf.length > 0) return true;
+  if (Array.isArray(node.enum)) return true;
+  if (node.not !== undefined) return true;
+  return false;
+}
+
 function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
   if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
     // Permissive fallback: no `properties: {}`/`additionalProperties: false`
@@ -558,13 +643,25 @@ function sanitizeJsonSchema(schema: unknown, isRoot = false): JSONSchema7 {
   }
 
   const record = schema as Record<string, unknown>;
-  const sanitized: Record<string, unknown> = { ...record };
+  let sanitized: Record<string, unknown> = { ...record };
 
   if (typeof sanitized.type !== "string") {
     const inferredType = inferJsonSchemaType(sanitized, isRoot);
     if (inferredType) {
       sanitized.type = inferredType;
     }
+  }
+
+  if (isRoot && hasIllegalStrictRoot(sanitized)) {
+    // Wrap the original schema under properties.value. Strict-tool callers
+    // that unwrap arguments will see `{ value: <original> }`. The recursion
+    // below normalises the wrapped child like any other property.
+    sanitized = {
+      type: "object",
+      properties: { value: { ...record } },
+      required: ["value"],
+      additionalProperties: false,
+    };
   }
 
   if (
@@ -842,6 +939,27 @@ async function generateTextByModelType(
       : userContent
         ? { messages: [{ role: "user" as const, content: userContent }] }
         : { prompt: promptText };
+  // elizaOS callers pass `responseFormat: { type: "json_object" | "text" }`
+  // (see `GenerateTextParams` in @elizaos/core). The AI SDK's equivalent
+  // is `responseFormat: { type: "json" }` (which translates to
+  // `response_format: { type: "json_object" }` at the OpenAI wire layer).
+  // Translate the shape so the param actually reaches the API call —
+  // before this, callers asking for json_object were silently ignored
+  // and Cerebras returned plain text, dropping us into the simple-reply
+  // fallback every turn.
+  const callerResponseFormat = (paramsWithAttachments as { responseFormat?: unknown })
+    .responseFormat;
+  const wireResponseFormat: { type: "json" } | { type: "text" } | undefined =
+    callerResponseFormat &&
+    typeof callerResponseFormat === "object" &&
+    "type" in callerResponseFormat
+      ? (callerResponseFormat as { type: string }).type === "json_object"
+        ? { type: "json" }
+        : (callerResponseFormat as { type: string }).type === "text"
+          ? { type: "text" }
+          : undefined
+      : undefined;
+
   const generateParams: NativeTextParams = {
     model,
     ...promptOrMessages,
@@ -859,6 +977,7 @@ async function generateTextByModelType(
     ...(paramsWithAttachments.responseSchema && !isCerebrasMode(runtime)
       ? { output: buildStructuredOutput(paramsWithAttachments.responseSchema) }
       : {}),
+    ...(wireResponseFormat ? { responseFormat: wireResponseFormat } : {}),
     ...(providerOptions ? { providerOptions: providerOptions as NativeProviderOptions } : {}),
   };
 
@@ -898,7 +1017,7 @@ async function generateTextByModelType(
   const result = await recordLlmCall(runtime, details, async () => {
     const result = await generateText(generateParams);
     details.response = result.text;
-    details.toolCalls = result.toolCalls ?? [];
+    details.toolCalls = result.toolCalls;
     details.finishReason = result.finishReason as string | undefined;
     details.providerMetadata = result.providerMetadata;
     applyUsageToDetails(details, result.usage);
@@ -991,3 +1110,14 @@ export async function handleActionPlanner(
 ): Promise<string | TextStreamResult> {
   return generateTextByModelType(runtime, params, ACTION_PLANNER_MODEL_TYPE, getActionPlannerModel);
 }
+
+// ─── Test-only exports ──────────────────────────────────────────────────────
+// These are exported for the shape tests in `__tests__/reasoning-effort.shape.test.ts`.
+// Not part of the public API; do not import outside tests.
+
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_resolveProviderOptions = resolveProviderOptions;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_normalizeNativeMessages = normalizeNativeMessages;
+/** @internal — exported for unit tests only. */
+export const __INTERNAL_stripReasoningParts = stripReasoningParts;

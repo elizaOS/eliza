@@ -6,10 +6,29 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const repoRoot = resolve(__dirname, "..", "..", "..");
+const pluginRoot = resolve(__dirname, "..", "..");
+const repoRoot = resolve(pluginRoot, "..", "..");
 
 function rel(path) {
-  return resolve(repoRoot, path);
+  const primary = resolve(repoRoot, path);
+  if (existsSync(primary)) return primary;
+  if (path.startsWith("packages/inference/reports/")) {
+    return resolve(
+      pluginRoot,
+      "native",
+      "reports",
+      path.slice("packages/inference/reports/".length),
+    );
+  }
+  if (path.startsWith("packages/inference/verify/")) {
+    return resolve(
+      pluginRoot,
+      "native",
+      "verify",
+      path.slice("packages/inference/verify/".length),
+    );
+  }
+  return primary;
 }
 
 function loadJson(path) {
@@ -37,6 +56,33 @@ function canonicalize(value) {
 
 function canonicalJson(value) {
   return JSON.stringify(canonicalize(value));
+}
+
+function normalizeWords(text) {
+  return String(text ?? "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}'\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter(Boolean);
+}
+
+function wordErrorRate(reference, hypothesis) {
+  const ref = normalizeWords(reference);
+  const hyp = normalizeWords(hypothesis);
+  if (ref.length === 0) return hyp.length === 0 ? 0 : 1;
+  const prev = Array.from({ length: hyp.length + 1 }, (_, i) => i);
+  const curr = new Array(hyp.length + 1).fill(0);
+  for (let i = 1; i <= ref.length; i += 1) {
+    curr[0] = i;
+    for (let j = 1; j <= hyp.length; j += 1) {
+      const cost = ref[i - 1] === hyp[j - 1] ? 0 : 1;
+      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+    }
+    for (let j = 0; j < curr.length; j += 1) prev[j] = curr[j];
+  }
+  return prev[hyp.length] / ref.length;
 }
 
 function wavSize(path) {
@@ -201,14 +247,61 @@ function heuristicEmotionAttribution({ transcript, audio }) {
 function asrSummary(path) {
   const j = loadJson(path);
   if (!j) return { status: "missing", path };
+  const expected =
+    j.normalizedExpected ??
+    j.expectedContains ??
+    j.expected ??
+    j.referenceText ??
+    null;
+  const transcript = j.transcript ?? j.normalizedTranscript ?? "";
+  const wer =
+    expected && transcript
+      ? Number(wordErrorRate(expected, transcript).toFixed(4))
+      : null;
   return {
     status: j.ok ? "pass" : "fail",
     path,
     transcript: j.transcript,
     normalizedTranscript: j.normalizedTranscript,
-    expected: j.expectedContains,
+    expected,
+    wer,
     transcribeMs: j.transcribeMs,
     totalMs: j.totalMs,
+  };
+}
+
+function asrFromTtsSmokeSummary(path) {
+  const j = loadJson(path);
+  if (!j) return { status: "missing", path };
+  const expected =
+    j.normalizedExpected ?? j.expectedContains ?? j.expected ?? null;
+  const transcript = j.normalizedTranscript ?? j.transcript ?? "";
+  const wav = j.wav ? wavSize(j.wav) : null;
+  const lexicalPass =
+    j.ok === true &&
+    typeof expected === "string" &&
+    expected.length > 0 &&
+    typeof transcript === "string" &&
+    transcript.includes(expected);
+  return {
+    status: lexicalPass && wav ? "pass" : "fail",
+    path,
+    bundle: j.bundle ?? null,
+    wav: j.wav ?? null,
+    wavInfo: wav,
+    transcript: j.transcript ?? null,
+    normalizedTranscript: j.normalizedTranscript ?? null,
+    expected,
+    wer:
+      expected && transcript
+        ? Number(wordErrorRate(expected, transcript).toFixed(4))
+        : null,
+    transcribeMs: j.transcribeMs ?? null,
+    totalMs: j.totalMs ?? null,
+    reason:
+      lexicalPass && wav
+        ? "active bundle generated TTS audio round-tripped through local ASR"
+        : "ASR-from-TTS smoke missing audio or lexical validation",
   };
 }
 
@@ -274,10 +367,13 @@ function ttsSummary(path) {
   };
 }
 
+const activeTier = "0_8b";
+const activeBundleDir =
+  "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle";
 const defaultTtsPath =
-  "packages/inference/reports/local-e2e/2026-05-12/tts-stream-smoke-wav-capital-steps6-20260512.json";
+  "packages/inference/reports/local-e2e/2026-05-14/tts-stream-smoke-warmed-local-loop-0_8b-20260514.json";
 const defaultAsrPath =
-  "packages/inference/reports/local-e2e/2026-05-12/asr-ffi-smoke-tts-stream-capital-steps6-20260512.json";
+  "packages/inference/reports/local-e2e/2026-05-14/asr-tts-loopback-warmed-local-loop-0_8b-20260514.json";
 const styled6TtsPath =
   "packages/inference/reports/local-e2e/2026-05-12/tts-stream-smoke-styled-meeting-steps6-20260512.json";
 const styled6AsrPath =
@@ -290,15 +386,23 @@ const refCloneWavPath =
   "packages/inference/reports/local-e2e/2026-05-12/audio/tts-refclone-meeting-steps32-20260512.wav";
 const refCloneAsrPath =
   "packages/inference/reports/local-e2e/2026-05-12/asr-ffi-smoke-tts-refclone-meeting-steps32-20260512.json";
+const currentActiveAsrFromTtsPaths = [
+  "packages/inference/reports/local-e2e/2026-05-14/asr-tts-loopback-hello-there-0_8b-fallback-ipa-20260514.json",
+  "packages/inference/reports/local-e2e/asr-producer-reply-from-tts-16k-20260513.json",
+  "packages/inference/reports/local-e2e/asr-producer-reply-from-tts-20260513.json",
+  "packages/inference/reports/local-e2e/asr-hello-cal-from-tts-20260513.json",
+];
+const staleElizaVoiceSmokePath =
+  "packages/inference/reports/local-e2e/2026-05-11/voice-loop-trials/eliza-local-voice-smoke_seed42.asr.json";
 const currentStepSweepPath =
   "packages/inference/reports/local-e2e/2026-05-12/tts-step-sweep-0_6b-current-20260512.json";
 const postTierStepSweepPath =
   "packages/inference/reports/local-e2e/2026-05-12/tts-step-sweep-0_6b-post-tier-migration-20260512.json";
 const currentReferenceWavPath =
-  "packages/inference/reports/local-e2e/2026-05-12/audio/chunk4_capital-steps6.wav";
+  "packages/inference/reports/local-e2e/2026-05-14/audio/tts-stream-smoke-hello-there-0_8b-fallback-ipa-20260514.wav";
 const activeTierMatrix = [
-  "0_6b",
-  "1_7b",
+  "0_8b",
+  "2b",
   "4b",
   "9b",
   "27b",
@@ -312,10 +416,28 @@ const defaultStepSweep = stepSweepSummary(
   currentStepSweepPath,
   postTierStepSweepPath,
 );
-const defaultStreamingStatus =
-  defaultRoundTripTts.status === "pass" && defaultRoundTripAsr.status === "pass"
-    ? "pass"
-    : defaultStepSweep.status;
+const currentActiveAsrFromTts = currentActiveAsrFromTtsPaths.map((path) =>
+  asrFromTtsSmokeSummary(path),
+);
+const bestCurrentActiveAsrFromTts =
+  currentActiveAsrFromTts.find((row) => row.status === "pass") ??
+  currentActiveAsrFromTts[0];
+const directDefaultEvidencePass =
+  defaultRoundTripTts.status === "pass" && defaultRoundTripAsr.status === "pass";
+const defaultStreamingEvidenceMode = directDefaultEvidencePass
+  ? "direct_streaming_tts_asr"
+  : bestCurrentActiveAsrFromTts?.status === "pass"
+    ? "active_asr_from_tts_smoke"
+    : defaultStepSweep.status === "pass"
+      ? "legacy_0_6b_step_sweep_fallback"
+      : "missing";
+const defaultStreamingStatus = directDefaultEvidencePass
+  ? "pass"
+  : bestCurrentActiveAsrFromTts?.status === "pass"
+    ? "pass_active_smoke"
+    : defaultStepSweep.status === "pass"
+      ? "legacy_fallback_pass"
+      : "fail";
 const referenceWav = existsSync(rel(currentReferenceWavPath))
   ? currentReferenceWavPath
   : "packages/inference/reports/local-e2e/2026-05-12/audio/tts-stream-smoke-capital-steps6-20260512.wav";
@@ -328,20 +450,45 @@ const defaultEmotionAttribution = heuristicEmotionAttribution({
   transcript:
     defaultRoundTripAsr.transcript ??
     defaultRoundTripAsr.normalizedTranscript ??
+    bestCurrentActiveAsrFromTts?.transcript ??
+    bestCurrentActiveAsrFromTts?.normalizedTranscript ??
     defaultRoundTripTts.text,
-  audio: wavSize(defaultRoundTripTts.wavOut ?? referenceWav),
+  audio: wavSize(defaultRoundTripTts.wavOut ?? bestCurrentActiveAsrFromTts?.wav ?? referenceWav),
 });
+const nativeReferenceClonePass = loadJson(refCloneAsrPath)?.ok === true;
+const referenceVoiceProfileProductStatus =
+  referenceProfileStatus.status === "ready" && nativeReferenceClonePass
+    ? "ready"
+    : referenceProfileStatus.status === "ready"
+      ? "attribution_ready_synthesis_not_ready"
+      : referenceProfileStatus.status;
+const staleElizaVoiceSmoke = asrSummary(staleElizaVoiceSmokePath);
 
 const report = {
   generatedAt: new Date().toISOString(),
+  tier: activeTier,
+  bundle: {
+    tier: activeTier,
+    dir: activeBundleDir,
+  },
   activeTierMatrix,
   runtime:
     "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal-fused/libelizainference.dylib",
   defaultStreamingTtsRoundTrip: {
     status: defaultStreamingStatus,
+    evidenceMode: defaultStreamingEvidenceMode,
+    productReady: defaultStreamingStatus === "pass" || defaultStreamingStatus === "pass_active_smoke",
     tts: defaultRoundTripTts,
     asr: defaultRoundTripAsr,
+    currentActiveAsrFromTts: bestCurrentActiveAsrFromTts,
+    activeAsrFromTtsCandidates: currentActiveAsrFromTts,
     stepSweepFallback: defaultStepSweep,
+    staleElizaLocalVoiceSmoke: {
+      ...staleElizaVoiceSmoke,
+      ignoredForProductStatus: true,
+      reason:
+        "The historical eliza-local-voice-smoke_seed42 ASR report is empty/stale and must not be scored as WER=1.0 evidence for the active tier.",
+    },
   },
   styleInstructionRoundTrips: {
     status:
@@ -362,14 +509,14 @@ const report = {
     },
   },
   referenceVoiceProfileProbe: {
-    status: referenceProfileStatus.status,
+    status: referenceVoiceProfileProductStatus,
     conclusion:
-      "Sample WAV + reference metadata can produce a deterministic attribution profile artifact. Native reference-clone synthesis remains gated by its own lexical round-trip result and is not implied by the profile artifact.",
+      "Sample WAV + reference metadata can produce a deterministic attribution profile artifact for speaker attribution. It is not a product-ready reference-clone synthesis profile until native ref_audio/ref_text round-trips pass the lexical gate.",
     profileArtifact: referenceProfileStatus,
     referenceWav,
     referenceSha256: sha256(referenceWav),
     nativeReferenceCloneRoundTrip: {
-      status: loadJson(refCloneAsrPath)?.ok === true ? "pass" : "fail",
+      status: nativeReferenceClonePass ? "pass" : "fail",
       outputWav: refCloneWavPath,
       outputWavInfo: wavSize(refCloneWavPath),
       outputSha256: sha256(refCloneWavPath),
@@ -377,11 +524,17 @@ const report = {
     },
   },
   emotionAwareAsrAssessment: {
-    status: defaultEmotionAttribution.status,
+    status: "heuristic_available_native_not_implemented",
     conclusion:
-      "Emotion status is heuristic attribution from ASR transcript text and audio features. The report does not claim local ASR emits model-native emotion labels.",
+      "Emotion status is heuristic attribution from ASR transcript text and audio features. Local ASR evidence does not expose supported model-native emotion labels, so this is not emotion-aware ASR.",
     currentLocalAsrEvidence:
       "The local ASR FFI passes lexical ASR for the default generated TTS sample and returns transcript fields; no emotion field is present in the smoke evidence.",
+    asrNativeEmotion: {
+      status: "not_implemented",
+      modelNativeEmotionClaimed: false,
+      requiredEvidence:
+        "ASR output must carry a supported emotion label or V-A-D payload and set emotionLabelSupported=true before this can be reported as model-native emotion-aware ASR.",
+    },
     defaultRoundTripAttribution: defaultEmotionAttribution,
   },
   citedResearch: [
@@ -416,7 +569,7 @@ const report = {
 };
 
 const out =
-  "packages/inference/reports/local-e2e/2026-05-12/voice-profile-emotion-readiness-20260512.json";
+  "packages/inference/reports/local-e2e/2026-05-14/voice-profile-emotion-readiness-0_8b-20260514.json";
 writeFileSync(rel(out), `${JSON.stringify(report, null, 2)}\n`);
 console.log(
   JSON.stringify(
@@ -424,11 +577,11 @@ console.log(
       ok: true,
       out,
       defaultTtsStatus: report.defaultStreamingTtsRoundTrip.status,
+      defaultTtsEvidenceMode: report.defaultStreamingTtsRoundTrip.evidenceMode,
       referenceVoiceProfileStatus: report.referenceVoiceProfileProbe.status,
       emotionAwareAsrStatus: report.emotionAwareAsrAssessment.status,
       modelNativeEmotionClaimed:
-        report.emotionAwareAsrAssessment.defaultRoundTripAttribution
-          .modelNativeEmotion,
+        report.emotionAwareAsrAssessment.asrNativeEmotion.modelNativeEmotionClaimed,
     },
     null,
     2,

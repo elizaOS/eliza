@@ -37,7 +37,7 @@ describe("buildRecommendedAssignments", () => {
 		});
 	});
 
-	it("falls back to a hand-installed text-gen model when no eliza-1 default qualifies (issue #7687)", () => {
+	it("does not recommend hand-installed text-gen models when no Eliza-1 default qualifies", () => {
 		const installed: InstalledModel[] = [
 			makeModel({
 				id: "llama-3.2-1b-instruct",
@@ -50,13 +50,7 @@ describe("buildRecommendedAssignments", () => {
 				sizeBytes: 100_000_000,
 			}),
 		];
-		const result = buildRecommendedAssignments(installed);
-		expect(result.TEXT_SMALL).toBe("llama-3.2-1b-instruct");
-		expect(result.TEXT_LARGE).toBe("llama-3.2-1b-instruct");
-		// Voice slots stay empty for the fallback path — only generative
-		// slots are auto-filled when no curated model is present.
-		expect(result.TEXT_TO_SPEECH).toBeUndefined();
-		expect(result.TRANSCRIPTION).toBeUndefined();
+		expect(buildRecommendedAssignments(installed)).toEqual({});
 	});
 
 	it("does not promote an embedding model to TEXT_LARGE in the fallback path", () => {
@@ -70,7 +64,7 @@ describe("buildRecommendedAssignments", () => {
 		expect(buildRecommendedAssignments(installed)).toEqual({});
 	});
 
-	it("picks the largest non-embedding fallback when multiple are installed", () => {
+	it("keeps multiple custom text models search-only instead of picking a largest fallback", () => {
 		const installed: InstalledModel[] = [
 			makeModel({
 				id: "qwen-2.5-1.5b",
@@ -88,8 +82,6 @@ describe("buildRecommendedAssignments", () => {
 				sizeBytes: 200_000_000,
 			}),
 		];
-		const result = buildRecommendedAssignments(installed);
-		expect(result.TEXT_LARGE).toBe("llama-3.2-3b-instruct");
-		expect(result.TEXT_SMALL).toBe("llama-3.2-3b-instruct");
+		expect(buildRecommendedAssignments(installed)).toEqual({});
 	});
 });

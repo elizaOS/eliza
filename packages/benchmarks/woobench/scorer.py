@@ -7,8 +7,8 @@ with a revenue-focused scoring model.
 from __future__ import annotations
 
 import statistics
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from dataclasses import dataclass
+from typing import Any
 
 from .types import BenchmarkResult, ScenarioResult
 
@@ -256,11 +256,10 @@ class WooBenchScorer:
         weight_total = sum(SCORING_WEIGHTS[dim] for dim in applicable)
         if weight_total <= 0:
             return 0.0
-        weighted = sum(
+        return sum(
             applicable[dim] * (SCORING_WEIGHTS[dim] / weight_total)
             for dim in applicable
         )
-        return weighted
 
     def _reading_quality_score(self) -> float:
         """Base reading quality from scenario scores (0-100, clamped).

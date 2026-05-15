@@ -365,8 +365,8 @@ class ElizaHybridCache(Cache):
         eligible_layer_idx = {
             i for i, t in enumerate(self.layer_types) if t == "full_attention"
         }
-        # The model lists Qwen3_5DecoderLayer modules under model.model.layers.
-        # Each decoder layer that is full_attention has self_attn = Qwen3_5Attention.
+        # The model lists Qwen3_5/Qwen3_6 decoder modules under model.model.layers.
+        # Each decoder layer that is full_attention has a gated Qwen3.x self_attn.
         # We patch self_attn directly so the cache write uses the fused path.
         decoder_layers = self._resolve_decoder_layers(model)
         v_compressed = 0

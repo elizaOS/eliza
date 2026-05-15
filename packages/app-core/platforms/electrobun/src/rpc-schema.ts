@@ -18,17 +18,53 @@ import type {
 	CarrotStoreSnapshot,
 	InstalledCarrotSnapshot,
 } from "@elizaos/electrobun-carrots";
-import type {
-	BrowserWorkspaceSnapshot,
-	BrowserWorkspaceTab,
-	NavigateBrowserWorkspaceTabRequest,
-	OpenBrowserWorkspaceTabRequest,
-} from "@elizaos/plugin-browser";
 import type { RPCSchema } from "electrobun/bun";
 
 // ============================================================================
 // Shared Types
 // ============================================================================
+
+type BrowserWorkspaceMode = "cloud" | "desktop" | "web";
+type BrowserWorkspaceTabKind = "internal" | "standard";
+
+export interface BrowserWorkspaceTab {
+	id: string;
+	title: string;
+	url: string;
+	partition: string;
+	kind?: BrowserWorkspaceTabKind;
+	visible: boolean;
+	createdAt: string;
+	updatedAt: string;
+	lastFocusedAt: string | null;
+	liveViewUrl?: string | null;
+	interactiveLiveViewUrl?: string | null;
+	provider?: string | null;
+	status?: string | null;
+}
+
+export interface BrowserWorkspaceSnapshot {
+	mode: BrowserWorkspaceMode;
+	tabs: BrowserWorkspaceTab[];
+}
+
+export interface OpenBrowserWorkspaceTabRequest {
+	url?: string;
+	title?: string;
+	show?: boolean;
+	partition?: string;
+	connectorProvider?: string;
+	connectorAccountId?: string;
+	kind?: BrowserWorkspaceTabKind;
+	width?: number;
+	height?: number;
+}
+
+export interface NavigateBrowserWorkspaceTabRequest {
+	id: string;
+	url: string;
+	partition?: string;
+}
 
 // -- Desktop --
 export type ExistingElizaInstallSource =
@@ -265,6 +301,9 @@ export type {
 import type {
 	PermissionId,
 	PermissionState,
+	AgentAutomationMode as SharedAgentAutomationMode,
+	TradePermissionMode as SharedTradePermissionMode,
+	TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
 	SubscriptionStatusResponse,
 } from "@elizaos/shared";
 
@@ -541,12 +580,8 @@ export interface AgentStatusSnapshot {
 	cloud?: AgentCloudStatusSnapshot;
 }
 
-export type AgentAutomationMode = "connectors-only" | "full";
-export type TradePermissionMode =
-	| "user-sign-only"
-	| "manual-local-key"
-	| "agent-auto"
-	| "disabled";
+export type AgentAutomationMode = SharedAgentAutomationMode;
+export type TradePermissionMode = SharedTradePermissionMode;
 
 export type SettingsConfigSnapshot = Record<string, unknown>;
 
@@ -697,15 +732,7 @@ export interface RuntimeDebugSnapshot {
 	};
 }
 
-export interface TriggerHealthSnapshot {
-	triggersEnabled: boolean;
-	activeTriggers: number;
-	disabledTriggers: number;
-	totalExecutions: number;
-	totalFailures: number;
-	totalSkipped: number;
-	lastExecutionAt?: number;
-}
+export type TriggerHealthSnapshot = SharedTriggerHealthSnapshot;
 
 export interface CorePluginEntry {
 	npmName: string;

@@ -1,6 +1,81 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 import appConfig from "./app.config";
 
+function isIosStoreBuild(): boolean {
+  return (
+    process.env.ELIZA_CAPACITOR_BUILD_TARGET === "ios" &&
+    (process.env.ELIZA_BUILD_VARIANT === "store" ||
+      process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store")
+  );
+}
+
+function normalizeHost(host: string): string {
+  return host
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
+}
+
+function isPrivateOrLoopbackHost(host: string): boolean {
+  const normalized = normalizeHost(host);
+  return (
+    normalized === "localhost" ||
+    normalized === "::1" ||
+    normalized === "0.0.0.0" ||
+    normalized.startsWith("127.") ||
+    normalized.startsWith("10.") ||
+    normalized.startsWith("192.168.") ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(normalized) ||
+    /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(normalized) ||
+    normalized.startsWith("169.254.") ||
+    (normalized.includes(":") &&
+      (normalized.startsWith("fe80:") ||
+        normalized.startsWith("fc") ||
+        normalized.startsWith("fd"))) ||
+    normalized === "local" ||
+    normalized === "internal" ||
+    normalized === "lan" ||
+    normalized === "ts.net" ||
+    normalized.endsWith(".local") ||
+    normalized.endsWith(".internal") ||
+    normalized.endsWith(".lan") ||
+    normalized.endsWith(".ts.net")
+  );
+}
+
+function storeSafeAgentApiBase(
+  value: string | undefined,
+  runtimeMode: string | undefined,
+): string {
+  const trimmed = value?.trim() ?? "";
+  if (!trimmed || !isIosStoreBuild()) return trimmed;
+  if (
+    runtimeMode?.trim() === "local" &&
+    trimmed === "eliza-local-agent://ipc"
+  ) {
+    return trimmed;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== "https:") return "";
+    return isPrivateOrLoopbackHost(parsed.hostname) ? "" : trimmed;
+  } catch {
+    return "";
+  }
+}
+
+const localNavigationHosts = isIosStoreBuild()
+  ? []
+  : ["localhost", "127.0.0.1"];
+const iosRuntimeMode =
+  process.env.VITE_ELIZA_IOS_RUNTIME_MODE ??
+  process.env.VITE_ELIZA_MOBILE_RUNTIME_MODE ??
+  "";
+const iosApiBase = storeSafeAgentApiBase(
+  process.env.VITE_ELIZA_IOS_API_BASE ?? process.env.VITE_ELIZA_MOBILE_API_BASE,
+  iosRuntimeMode,
+);
+
 const config: CapacitorConfig = {
   appId: appConfig.appId,
   appName: appConfig.appName,
@@ -10,8 +85,7 @@ const config: CapacitorConfig = {
     iosScheme: "https",
     // Allow the webview to connect to the embedded API server and game servers
     allowNavigation: [
-      "localhost",
-      "127.0.0.1",
+      ...localNavigationHosts,
       "*.elizacloud.ai",
       "app.eliza.how",
       "cloud.eliza.how",
@@ -43,14 +117,12 @@ const config: CapacitorConfig = {
       autoStart: true,
     },
     Agent: {
-      runtimeMode:
-        process.env.VITE_ELIZA_IOS_RUNTIME_MODE ??
-        process.env.VITE_ELIZA_MOBILE_RUNTIME_MODE ??
+      runtimeMode: iosRuntimeMode,
+      fullBunAvailable:
+        process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE ??
+        process.env.VITE_ELIZA_IOS_FULL_BUN_STRICT ??
         "",
-      apiBase:
-        process.env.VITE_ELIZA_IOS_API_BASE ??
-        process.env.VITE_ELIZA_MOBILE_API_BASE ??
-        "",
+      apiBase: iosApiBase,
     },
   },
   ios: {

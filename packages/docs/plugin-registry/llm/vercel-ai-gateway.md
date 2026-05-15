@@ -1,10 +1,10 @@
 ---
 title: "Vercel AI Gateway Plugin"
 sidebarTitle: "Vercel AI Gateway"
-description: "Vercel AI Gateway provider for Eliza — unified multi-provider access via Vercel's AI SDK with automatic fallbacks and observability."
+description: "Vercel AI Gateway provider for Eliza — canonical multi-provider access via Vercel's AI SDK with automatic fallbacks and observability."
 ---
 
-The Vercel AI Gateway plugin connects Eliza agents to Vercel's AI Gateway, providing unified access to multiple model providers through a single endpoint. This is useful for teams that want centralized API key management, provider fallbacks, and usage observability.
+The Vercel AI Gateway plugin connects Eliza agents to Vercel's AI Gateway, providing canonical access to multiple model providers through a single endpoint. This is useful for teams that want centralized API key management, provider fallbacks, and usage observability.
 
 **Package:** `@elizaos/plugin-vercel-ai-gateway`
 
@@ -61,7 +61,7 @@ The Vercel AI Gateway acts as a proxy between your agent and multiple LLM provid
 
 ## Features
 
-- Unified API for multiple model providers
+- Canonical API for multiple model providers
 - Automatic provider fallbacks on errors
 - Centralized API key management
 - Request/response logging and observability

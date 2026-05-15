@@ -631,11 +631,11 @@ export const scheduledTaskAction: Action & {
     "surface:internal",
   ],
   description:
-    "Manage the owner's scheduled-task spine: reminders, check-ins, follow-ups, approvals, recaps, watchers, outputs, and custom tasks. Actions: list, get, create, update, snooze, skip, complete, acknowledge, dismiss, cancel, reopen, history.",
+    "Owner ScheduledTask spine. Kinds: reminder, checkin, followup, approval, recap, watcher, output, custom. Ops: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
   descriptionCompressed:
-    "scheduled tasks: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history; kinds reminder|checkin|followup|approval|recap|watcher|output|custom",
+    "ScheduledTask list|get|create|update|snooze|skip|complete|ack|dismiss|cancel|history",
   routingHint:
-    'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that", "what follow-ups today", "complete the check-in", "show task history") -> SCHEDULED_TASKS; per-occurrence owner reminder verbs (complete/skip/snooze a definition\'s next occurrence) stay on OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
+    'reminder/checkin/followup/approval/recap/watcher/output state ("snooze that", "follow-ups today", "complete check-in", "task history") -> SCHEDULED_TASKS; per-occurrence complete/skip/snooze next occurrence -> OWNER_REMINDERS/OWNER_TODOS/OWNER_ROUTINES',
   contexts: ["tasks", "reminders", "followups", "calendar"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -644,31 +644,31 @@ export const scheduledTaskAction: Action & {
     {
       name: "action",
       description:
-        "Which scheduled-task operation to run: list | get | create | update | snooze | skip | complete | acknowledge | dismiss | cancel | reopen | history.",
+        "ScheduledTask op: list|get|create|update|snooze|skip|complete|acknowledge|dismiss|cancel|reopen|history.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
       name: "taskId",
       description:
-        "Target taskId for get / update / snooze / skip / complete / acknowledge / dismiss / cancel / reopen / history.",
+        "Target taskId for get/update/snooze/skip/complete/acknowledge/dismiss/cancel/reopen/history.",
       schema: { type: "string" as const },
     },
     {
       name: "kind",
       description:
-        "ScheduledTaskKind for create + filter for list. One of reminder, checkin, followup, approval, recap, watcher, output, custom.",
+        "ScheduledTaskKind create/filter: reminder|checkin|followup|approval|recap|watcher|output|custom.",
       schema: { type: "string" as const },
     },
     {
       name: "status",
       description:
-        "Status filter for list (string or string[]). One of scheduled, fired, acknowledged, completed, skipped, expired, failed, dismissed.",
+        "List status filter string|string[]: scheduled|fired|acknowledged|completed|skipped|expired|failed|dismissed.",
       schema: { type: "string" as const } as ActionParameterSchema,
     },
     {
       name: "subjectKind",
       description:
-        "ScheduledTaskSubject.kind: entity | relationship | thread | document | calendar_event | self.",
+        "ScheduledTaskSubject.kind: entity|relationship|thread|document|calendar_event|self.",
       schema: { type: "string" as const },
     },
     {
@@ -678,53 +678,53 @@ export const scheduledTaskAction: Action & {
     },
     {
       name: "ownerVisibleOnly",
-      description: "When true, list returns only ownerVisible tasks.",
+      description: "true: list ownerVisible tasks only.",
       schema: { type: "boolean" as const },
     },
     {
       name: "promptInstructions",
-      description: "create-only: prompt instructions stored on the task.",
+      description: "create-only: promptInstructions stored on ScheduledTask.",
       schema: { type: "string" as const },
     },
     {
       name: "trigger",
       description:
-        "create-only: ScheduledTaskTrigger object (once / cron / interval / relative_to_anchor / during_window / event / manual / after_task).",
+        "create-only: ScheduledTaskTrigger once/cron/interval/relative_to_anchor/during_window/event/manual/after_task.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "contextRequest",
       description:
-        "create-only: structured context request for owner facts, entities, relationships, recent task states, or event payload.",
+        "create-only: contextRequest facts/entities/relationships/recent task states/event payload.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "shouldFire",
       description:
-        "create-only: structural gate composition; use gate refs rather than prompt text conditions.",
+        "create-only: structural shouldFire gates; gate refs, no prompt text conditions.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "completionCheck",
       description:
-        "create-only: structural completion check such as user_replied_within, user_acknowledged, subject_updated, or health_signal_observed.",
+        "create-only: structural completionCheck: user_replied_within|user_acknowledged|subject_updated|health_signal_observed.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "output",
       description:
-        "create-only: output destination/target, e.g. { destination: 'channel', target: 'in_app:<roomId>' }.",
+        "create-only: output destination/target, e.g. channel -> in_app:<roomId>.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "pipeline",
       description:
-        "create-only: child ScheduledTask refs for onComplete/onSkip/onFail.",
+        "create-only: pipeline child ScheduledTask refs: onComplete|onSkip|onFail.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "escalation",
-      description: "create-only: escalation ladder or explicit channel steps.",
+      description: "create-only: escalation ladder/channel steps.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
@@ -734,67 +734,65 @@ export const scheduledTaskAction: Action & {
     },
     {
       name: "idempotencyKey",
-      description: "create-only: stable key for deduping repeated schedules.",
+      description: "create-only: stable dedupe key for repeated schedules.",
       schema: { type: "string" as const },
     },
     {
       name: "priority",
-      description: "create-only: low | medium | high (default medium).",
+      description: "create-only: low|medium|high; default medium.",
       schema: { type: "string" as const, enum: ["low", "medium", "high"] },
     },
     {
       name: "respectsGlobalPause",
-      description:
-        "create-only: when true, the task skips during global pause.",
+      description: "create-only: true skips during global pause.",
       schema: { type: "boolean" as const },
     },
     {
       name: "ownerVisible",
-      description: "create-only: when true, the task surfaces in owner views.",
+      description: "create-only: true shows in owner views.",
       schema: { type: "boolean" as const },
     },
     {
       name: "source",
       description:
-        "create-only: task source (default_pack | user_chat | first_run | plugin).",
+        "create-only: source default_pack|user_chat|first_run|plugin.",
       schema: { type: "string" as const },
     },
     {
       name: "minutes",
-      description: "snooze-only: minutes to defer next fire.",
+      description: "snooze-only: defer next fire N minutes.",
       schema: { type: "number" as const },
     },
     {
       name: "untilIso",
-      description: "snooze-only: ISO-8601 timestamp to defer next fire to.",
+      description: "snooze-only: defer next fire until ISO-8601 timestamp.",
       schema: { type: "string" as const },
     },
     {
       name: "reason",
       description:
-        "skip / complete / acknowledge / dismiss / reopen: free-form reason recorded on the state log.",
+        "skip/complete/acknowledge/dismiss/reopen: reason on state log.",
       schema: { type: "string" as const },
     },
     {
       name: "patch",
-      description:
-        "update-only: shallow patch of editable ScheduledTask fields.",
+      description: "update-only: shallow patch editable ScheduledTask fields.",
       schema: { type: "object" as const, additionalProperties: true },
     },
     {
       name: "sinceIso",
-      description: "history-only: ISO-8601 lower bound on log occurredAtIso.",
+      description: "history-only: occurredAtIso >= ISO-8601.",
       schema: { type: "string" as const },
     },
     {
       name: "untilHistoryIso",
-      description: "history-only: ISO-8601 upper bound on log occurredAtIso.",
+      description: "history-only: occurredAtIso <= ISO-8601.",
       schema: { type: "string" as const },
     },
     {
       name: "includeRollups",
       description:
-        "history-only: include rolled-up daily summary log rows (default false; raw rows only).",
+        "history-only: include daily rollups; default false/raw only.",
       schema: { type: "boolean" as const },
     },
     {

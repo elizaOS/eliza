@@ -5,11 +5,11 @@
  * Path: vendor/opencode
  * Remote: https://github.com/elizaOS/opencode.git (branch: dev)
  *
- * plugin-agent-orchestrator spawns opencode as a sub-agent binary.
- * hasBinaryOnPath("opencode") in task-agent-frameworks.ts gates its use;
- * the OPENCODE_CONFIG_CONTENT env var is injected at spawn time by the
- * orchestrator. If this submodule is absent the coding-agent surface still
- * works (Claude / Codex paths remain), but the opencode path is unavailable.
+ * plugin-agent-orchestrator runs opencode through the ACP path. The
+ * bench-shim/opencode wrapper points acpx at this vendored source tree, and
+ * OPENCODE_CONFIG_CONTENT is injected by AcpService when the selected agent is
+ * opencode. If this submodule is absent the coding-agent surface still works
+ * (Claude / Codex paths remain), but the vendored opencode path is unavailable.
  *
  * Behavior:
  *   - Submodule already initialized + package.json present → exit 0.

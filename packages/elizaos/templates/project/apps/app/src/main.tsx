@@ -45,7 +45,7 @@ import {
 } from "@elizaos/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { ELIZA_ENV_ALIASES } from "./brand-env";
+import { APP_ENV_ALIASES } from "./brand-env";
 import { ELIZA_CHARACTER_CATALOG } from "./character-catalog";
 
 const ELIZA_BRANDING: Partial<BrandingConfig> = {
@@ -157,7 +157,7 @@ const elizaBootConfig: AppBootConfig = {
   onboardingStyles: ELIZA_STYLE_PRESETS,
   characterEditor: CharacterEditor,
   characterCatalog: ELIZA_CHARACTER_CATALOG,
-  envAliases: ELIZA_ENV_ALIASES,
+  envAliases: APP_ENV_ALIASES,
   clientMiddleware: {
     forceFreshOnboarding:
       shouldInstallMainWindowOnboardingPatches(windowShellRoute),

@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import re
 import shlex
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -43,7 +45,8 @@ IGNORED_BENCHMARK_DIRS = {
     ".pytest_cache",
     "benchmark_results",
     "claw-eval",
-    # Distribution-name shim for benchmarks.mmau, not a separate benchmark.
+    # Legacy compatibility shim for benchmarks.mmau, not a separate benchmark.
+    "mmau",
     "elizaos_mmau",
     "eliza-adapter",
     "hermes-adapter",
@@ -62,6 +65,8 @@ IGNORED_BENCHMARK_DIRS = {
     "swe-bench-workspace",
     "tests",
     "viewer",
+    # Standalone package; not yet wired as an orchestrator adapter.
+    "voice-emotion",
 }
 
 
@@ -114,7 +119,40 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    if benchmark_id == "voicebench" and not os.environ.get("GROQ_API_KEY"):
+        return ()
+    if benchmark_id == "hermes_swe_env":
+        return ()
+    if benchmark_id in {"hermes_tblite", "hermes_terminalbench_2"} and not _has_hermes_sandbox_backend():
+        return ()
     return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
+
+
+_HERMES_SANDBOX_BACKEND_AVAILABLE: bool | None = None
+
+
+def _has_hermes_sandbox_backend() -> bool:
+    global _HERMES_SANDBOX_BACKEND_AVAILABLE
+    if _HERMES_SANDBOX_BACKEND_AVAILABLE is not None:
+        return _HERMES_SANDBOX_BACKEND_AVAILABLE
+    if os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET"):
+        _HERMES_SANDBOX_BACKEND_AVAILABLE = True
+        return True
+    if shutil.which("docker"):
+        try:
+            completed = subprocess.run(
+                ["docker", "info"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+                check=False,
+            )
+            _HERMES_SANDBOX_BACKEND_AVAILABLE = completed.returncode == 0
+            return _HERMES_SANDBOX_BACKEND_AVAILABLE
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+    _HERMES_SANDBOX_BACKEND_AVAILABLE = False
+    return False
 
 
 def _is_benchmark_directory(path: Path) -> bool:
@@ -173,6 +211,8 @@ def _make_registry_adapter(
         adapter_python_paths.append(str(lifeops_bench_path.resolve()))
     if benchmark_id == "gauntlet":
         adapter_python_paths.append(str((benchmarks_root / "gauntlet" / "src").resolve()))
+    if benchmark_id == "mmau":
+        adapter_python_paths.append(str((benchmarks_root / "mmau-audio").resolve()))
 
     def env_builder(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
         existing = ctx.env.get("PYTHONPATH", "")
@@ -892,7 +932,7 @@ def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
     capture_glob = str(
         ctx.request.extra_config.get("capture_glob", "*.replay.json"),
     ).strip()
-    args = [
+    return [
         sys.executable,
         "-m",
         "eliza_adapter.replay_eval",
@@ -903,7 +943,6 @@ def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         "--output",
         str(ctx.output_root / "eliza-replay-results.json"),
     ]
-    return args
 
 
 def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
@@ -939,6 +978,19 @@ def _score_from_eliza_1(path: Path) -> ScoreSummary:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         return ScoreSummary(score=None, unit=None, higher_is_better=True, metrics={})
+    raw_cases = data.get("cases")
+    if isinstance(raw_cases, list) and raw_cases:
+        case_dicts = [case for case in raw_cases if isinstance(case, dict)]
+        if case_dicts and all(case.get("error") for case in case_dicts):
+            raise ValueError("eliza_1: all cases failed with adapter errors")
+        if case_dicts and all(
+            not str(case.get("raw_output") or "").strip()
+            and case.get("tokens_generated") not in (None, 0)
+            for case in case_dicts
+        ):
+            raise ValueError(
+                "eliza_1: all cases produced empty outputs despite token usage"
+            )
     summaries = data.get("summaries")
     if not isinstance(summaries, list) or not summaries:
         return ScoreSummary(
@@ -1735,6 +1787,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "bfcl": {
             "sample": 2,
+            "seed": 0,
         },
         "context_bench": {
             "quick": True,
@@ -1798,7 +1851,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mmlu": {
             "limit": 2,
-            "max_tokens": 8,
+            "max_tokens": 256,
         },
         "mt_bench": {
             "limit": 1,
@@ -1903,6 +1956,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "humaneval": "standard",
         "gsm8k": "standard",
         "mt_bench": "standard",
+        "mmau": "mmau-audio",
     }
     hermes_env_benchmark_ids = {
         "hermes_tblite",
@@ -2257,7 +2311,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         _make_extra_adapter(
             adapter_id="eliza_replay",
             directory="eliza-adapter",
-            description="Replay benchmark over normalized Eliza PARALLAX captures",
+            description="Replay benchmark over normalized Eliza ELIZA captures",
             cwd=str((benchmarks_root / "eliza-adapter").resolve()),
             command_builder=_command_eliza_replay,
             result_patterns=["eliza-replay-results.json", "*.json"],

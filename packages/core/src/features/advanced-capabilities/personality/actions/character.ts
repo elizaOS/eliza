@@ -13,6 +13,7 @@ import type {
 import { MemoryType } from "../../../../types/memory.ts";
 import { ModelType } from "../../../../types/model.ts";
 import { hasActionContext } from "../../../../utils/action-validation.ts";
+import { isObjectRecord as isRecord } from "../../../../utils/type-guards.ts";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
 import {
@@ -806,10 +807,6 @@ async function runModify(
 			success: false,
 		};
 	}
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function parseStructuredRecord(

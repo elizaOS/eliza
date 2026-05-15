@@ -26,7 +26,7 @@ export function createMlxClient(runtime: IAgentRuntime): MlxProvider {
     name: "mlx",
     baseURL,
     ...(apiKey ? { apiKey } : {}),
-    fetch: runtime.fetch ?? undefined,
+    ...(runtime.fetch ? { fetch: runtime.fetch } : {}),
     includeUsage: true,
   });
 }

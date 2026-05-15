@@ -67,6 +67,12 @@ import * as nodeFsPromises from "node:fs/promises";
 import { createRequire } from "node:module";
 import * as nodePath from "node:path";
 import { fileURLToPath } from "node:url";
+import type {
+  AnyFn,
+  FsAccessMode,
+  MobileFsGlobals,
+} from "./mobile-fs-sandbox.ts";
+import { modeForMobileFsOpenFlags } from "./mobile-fs-sandbox.ts";
 
 // ---------------------------------------------------------------------------
 // Internal state
@@ -77,15 +83,8 @@ let _workspaceRoot = "";
 let _workspaceRootReal = "";
 let _readOnlyRoots: string[] = [];
 let _readOnlyRootReals: string[] = [];
-type FsAccessMode = "read" | "write";
 const rawExistsSync = nodeFs.existsSync.bind(nodeFs);
 const rawRealpathSync = nodeFs.realpathSync.bind(nodeFs);
-type MobileFsGlobals = typeof globalThis & {
-  __ELIZA_MOBILE_FS_RESOLVE__?: (
-    inputPath: string,
-    mode?: FsAccessMode,
-  ) => string;
-};
 
 // Paths that are unconditionally blocked, regardless of whether they appear to
 // live under the workspace root.  These are OS-level paths that can never be
@@ -391,7 +390,6 @@ function installRequireGuard(): void {
 // fs sync API patch helpers
 // ---------------------------------------------------------------------------
 
-type AnyFn = (...args: unknown[]) => unknown;
 type MutableModule = Record<string, unknown>;
 
 const mobileRequire = createRequire(import.meta.url);
@@ -456,27 +454,13 @@ function wrapFsPath<T extends AnyFn>(
   } as T;
 }
 
-function modeForOpenFlags(flags: unknown): FsAccessMode {
-  if (typeof flags === "number") {
-    const writeBits =
-      nodeFs.constants.O_WRONLY |
-      nodeFs.constants.O_RDWR |
-      nodeFs.constants.O_APPEND |
-      nodeFs.constants.O_CREAT |
-      nodeFs.constants.O_TRUNC;
-    return (flags & writeBits) !== 0 ? "write" : "read";
-  }
-  if (typeof flags !== "string" || flags.length === 0) return "read";
-  return /[wa+]/.test(flags) ? "write" : "read";
-}
-
 function wrapFsOpenPath<T extends AnyFn>(original: T): T {
   return function sandboxedOpenCall(this: unknown, ...args: unknown[]) {
     const raw = args[0];
     const pathStr = pathLikeToString(raw);
 
     if (pathStr !== null) {
-      const mode = modeForOpenFlags(args[1]);
+      const mode = modeForMobileFsOpenFlags(args[1]);
       const resolved = resolveSandboxed(pathStr, mode);
       if (mode === "write") guardWritePath(resolved, pathStr);
       args[0] = resolved;

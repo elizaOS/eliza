@@ -152,8 +152,8 @@ function bunOnPath(): string | null {
 }
 
 describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
-	it("ELIZA_INFERENCE_ABI_VERSION is 3 (matches ffi.h)", () => {
-		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(3);
+	it("ELIZA_INFERENCE_ABI_VERSION is 4 for reference-profile freezing", () => {
+		expect(ELIZA_INFERENCE_ABI_VERSION).toBe(4);
 	});
 
 	it("loadElizaInferenceFfi throws VoiceLifecycleError when FFI is unavailable", () => {
@@ -196,13 +196,14 @@ describe("ffi-bindings — pure unit (no Bun, no dylib)", () => {
 	});
 });
 
-describe("ffi-bindings — ABI v3 surface (fake FFI)", () => {
-	it("the test-helper fakeFfi exposes every ABI v3 method", () => {
+describe("ffi-bindings — ABI v3-compatible surface (fake FFI)", () => {
+	it("the test-helper fakeFfi exposes every required v3 method and disables reference encode", () => {
 		const ffi = fakeFfi("hello");
 		for (const method of ELIZA_FFI_METHODS) {
 			expect(typeof ffi[method]).toBe("function");
 		}
-		expect(ffi.libraryAbiVersion).toBe(String(ELIZA_INFERENCE_ABI_VERSION));
+		expect(ffi.libraryAbiVersion).toBe("3");
+		expect(ffi.encodeReferenceSupported?.()).toBe(false);
 	});
 
 	it("ttsSynthesizeStream delivers a body chunk then a final tail", () => {

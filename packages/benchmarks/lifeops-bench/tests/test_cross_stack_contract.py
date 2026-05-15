@@ -51,7 +51,6 @@ import json
 import os
 import re
 import sys
-import textwrap
 from pathlib import Path
 from typing import Any
 
@@ -493,7 +492,7 @@ def _update_contract_in_place(
     src = this_file.read_text(encoding="utf-8")
 
     # Compute ts_python_only_gaps from the live data
-    ts_umbrella_names = {c for c in ts_cases if not c[0].islower()}
+    {c for c in ts_cases if not c[0].islower()}
     # Runner umbrella actions minus those in TS cases = Python-only gaps
     python_only = sorted(set(runner_actions) - set(ts_cases))
 

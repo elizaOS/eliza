@@ -8,6 +8,7 @@
 import { platform } from "node:os";
 import { getConnectorAccountManager, type IAgentRuntime, logger, type Plugin } from "@elizaos/core";
 import { createIMessageConnectorAccountProvider } from "./connector-account-provider.js";
+import { imessageDataRoutes } from "./data-routes.js";
 // The former iMessage-specific send action duplicated the MessageConnector
 // path. The connector registered by IMessageService.registerSendHandlers is
 // now the canonical delivery path through MESSAGE operation=send. This plugin
@@ -105,7 +106,7 @@ const imessagePlugin: Plugin = {
   services: [IMessageService],
   actions: [],
   providers: [],
-  routes: imessageSetupRoutes,
+  routes: [...imessageSetupRoutes, ...imessageDataRoutes],
   tests: [],
 
   // Self-declared auto-enable: activate when the "imessage" connector is
@@ -158,12 +159,15 @@ const imessagePlugin: Plugin = {
 
 export default imessagePlugin;
 
+export type {
+  RouteHelpers as IMessageRouteHelpers,
+  RouteRequestMeta as IMessageRouteRequestMeta,
+} from "@elizaos/core";
 export {
   type BlueBubblesRouteState,
   handleBlueBubblesRoute,
   resolveBlueBubblesWebhookPath,
 } from "./api/bluebubbles-routes.js";
-
 // Legacy HTTP route handlers (mounted by the agent's raw HTTP router).
 // These are the moved counterparts of the agent's old api/imessage-routes.ts
 // and api/bluebubbles-routes.ts files. Per the audit, BlueBubbles is treated
@@ -172,8 +176,6 @@ export {
   handleIMessageRoute,
   type IMessageRouteState,
   type ReadJsonBodyOptions as IMessageRouteReadJsonBodyOptions,
-  type RouteHelpers as IMessageRouteHelpers,
-  type RouteRequestMeta as IMessageRouteRequestMeta,
 } from "./api/imessage-routes.js";
 // Channel configuration types
 export type {

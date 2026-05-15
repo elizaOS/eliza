@@ -18,6 +18,7 @@ import type {
 	World,
 } from "../../../types/index.ts";
 import { ChannelType, ModelType } from "../../../types/index.ts";
+import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import type { SecretsService } from "../services/secrets.ts";
 import type { SecretContext } from "../types.ts";
 import { validateSecret } from "../validation.ts";
@@ -29,10 +30,6 @@ import type { OnboardingSetting } from "./config.ts";
 interface SettingUpdate {
 	key: string;
 	value: string | boolean;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeSettingValue(value: unknown): string | boolean | null {

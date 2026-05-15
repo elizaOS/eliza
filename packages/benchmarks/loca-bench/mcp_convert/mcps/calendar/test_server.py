@@ -6,12 +6,9 @@ Tests all tools and database functionality using the common testing framework.
 """
 
 import pytest
-import asyncio
 import json
 import os
 import sys
-from typing import Dict, Any
-from datetime import datetime, timedelta
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,7 +17,6 @@ sys.path.insert(0, project_root)
 from common.testing import BaseMCPTest, BaseDataTest, MCPServerTester
 from mcps.calendar.server import CalendarMCPServer
 from mcps.calendar.database_utils import CalendarDatabase
-import mcp.types as types
 
 
 class TestCalendarDatabase(BaseDataTest):

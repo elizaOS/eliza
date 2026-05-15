@@ -44,6 +44,24 @@ log = logging.getLogger("validate_drafter")
 
 # Must match the writer in scripts/distill_dflash_drafter.py.
 GGUF_TARGET_CHECKPOINT_KEY = "dflash-draft.target_checkpoint_sha256"
+DFLASH_DRAFT_ARCHITECTURE = "dflash-draft"
+
+TOKENIZER_METADATA_KEYS: tuple[str, ...] = (
+    "tokenizer.ggml.model",
+    "tokenizer.ggml.pre",
+    "tokenizer.ggml.tokens",
+    "tokenizer.ggml.token_type",
+    "tokenizer.ggml.merges",
+    "tokenizer.ggml.eos_token_id",
+    "tokenizer.ggml.bos_token_id",
+    "tokenizer.ggml.padding_token_id",
+    "tokenizer.ggml.add_bos_token",
+    "tokenizer.ggml.add_eos_token",
+)
+REQUIRED_TOKENIZER_METADATA_KEYS: tuple[str, ...] = (
+    "tokenizer.ggml.model",
+    "tokenizer.ggml.tokens",
+)
 
 # Mirrored from distill_dflash_drafter.ACCEPTANCE_GATE so this script can run
 # standalone (no import of distill_dflash_drafter at validate time).
@@ -90,6 +108,32 @@ def _read_gguf_metadata(gguf_path: Path) -> dict[str, Any]:
         except Exception:
             return None
 
+    def _field_payload_sha256(key: str) -> str | None:
+        field = reader.fields.get(key)
+        if field is None:
+            return None
+        h = hashlib.sha256()
+        h.update(repr(getattr(field, "types", ())).encode("utf-8"))
+        for part_index in getattr(field, "data", ()):
+            try:
+                part = field.parts[part_index]
+            except Exception:
+                continue
+            try:
+                h.update(part.tobytes())
+            except AttributeError:
+                h.update(bytes(part))
+        return h.hexdigest()
+
+    def _field_array_length(key: str) -> int | None:
+        field = reader.fields.get(key)
+        if field is None:
+            return None
+        try:
+            return len(field.data)
+        except Exception:
+            return None
+
     arch_field = reader.fields.get(gguf.Keys.General.ARCHITECTURE)
     arch: str | None = None
     if arch_field is not None and arch_field.data:
@@ -125,6 +169,18 @@ def _read_gguf_metadata(gguf_path: Path) -> dict[str, Any]:
         if tokens_field is not None:
             vocab_size = len(tokens_field.data)
     out["vocabSize"] = vocab_size
+    out["tokenizer"] = {
+        "model": _read_string("tokenizer.ggml.model"),
+        "pre": _read_string("tokenizer.ggml.pre"),
+        "hashes": {
+            key: _field_payload_sha256(key)
+            for key in TOKENIZER_METADATA_KEYS
+        },
+        "lengths": {
+            key: _field_array_length(key)
+            for key in TOKENIZER_METADATA_KEYS
+        },
+    }
 
     out["tensorCount"] = len(reader.tensors)
     out["sizeBytes"] = gguf_path.stat().st_size
@@ -151,6 +207,75 @@ def _vocab_check(drafter_meta: dict[str, Any], target_meta: dict[str, Any]) -> t
     if d != t:
         return False, f"vocab size mismatch: drafter={d}, target={t}"
     return True, f"vocab size ok ({d})"
+
+
+def _tokenizer_metadata_check(
+    drafter_meta: dict[str, Any],
+    target_meta: dict[str, Any],
+) -> tuple[bool, str, list[dict[str, Any]]]:
+    target_hashes = target_meta.get("tokenizer", {}).get("hashes", {})
+    drafter_hashes = drafter_meta.get("tokenizer", {}).get("hashes", {})
+    mismatches: list[dict[str, Any]] = []
+    missing_required: list[str] = []
+
+    for key in REQUIRED_TOKENIZER_METADATA_KEYS:
+        if target_hashes.get(key) is None or drafter_hashes.get(key) is None:
+            missing_required.append(key)
+
+    for key in TOKENIZER_METADATA_KEYS:
+        target_hash = target_hashes.get(key)
+        drafter_hash = drafter_hashes.get(key)
+        if target_hash != drafter_hash:
+            if target_hash is None and drafter_hash is None:
+                continue
+            mismatches.append(
+                {
+                    "key": key,
+                    "targetHash": target_hash,
+                    "drafterHash": drafter_hash,
+                }
+            )
+
+    if missing_required:
+        return (
+            False,
+            "required tokenizer metadata missing: " + ", ".join(missing_required),
+            mismatches,
+        )
+    if mismatches:
+        keys = ", ".join(item["key"] for item in mismatches)
+        return False, f"tokenizer metadata mismatch: {keys}", mismatches
+    return True, "tokenizer metadata ok", []
+
+
+def _architecture_check(
+    drafter_meta: dict[str, Any],
+    target_meta: dict[str, Any],
+    *,
+    allow_dflash_draft_architecture: bool,
+) -> tuple[bool, str]:
+    target_arch = target_meta.get("arch")
+    drafter_arch = drafter_meta.get("arch")
+    failures: list[str] = []
+    if not target_arch:
+        failures.append("target GGUF is missing general.architecture")
+    if not drafter_arch:
+        failures.append("drafter GGUF is missing general.architecture")
+    if target_arch == DFLASH_DRAFT_ARCHITECTURE:
+        failures.append("target GGUF must not use architecture 'dflash-draft'")
+    if (
+        drafter_arch == DFLASH_DRAFT_ARCHITECTURE
+        and not allow_dflash_draft_architecture
+    ):
+        failures.append(
+            "drafter GGUF architecture is 'dflash-draft'; this trips "
+            "llama-cli/llama-server builds that do not advertise the "
+            "dflash-draft loader. Pass --allow-dflash-draft-architecture "
+            "only with CAPABILITIES evidence from the exact runtime binary."
+        )
+    if failures:
+        return False, "; ".join(failures)
+    return True, f"architecture ok (target={target_arch}, drafter={drafter_arch})"
 
 
 def _size_check(drafter_meta: dict[str, Any], target_meta: dict[str, Any]) -> tuple[bool, str]:
@@ -253,7 +378,13 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
         "target": {"path": "<synthetic>", "sizeBytes": 0, "vocabSize": 151936},
         "checks": {
             "hashMatch": {"pass": True, "detail": f"synthetic ({fake_target_sha})"},
+            "architectureLoadable": {"pass": True, "detail": "synthetic"},
             "vocabMatch": {"pass": True, "detail": "synthetic (vocabSize=151936)"},
+            "tokenizerMetadataMatch": {
+                "pass": True,
+                "detail": "synthetic",
+                "mismatches": [],
+            },
             "drafterSmaller": {"pass": True, "detail": "synthetic"},
             "acceptanceRollout": {
                 "pass": True,
@@ -287,7 +418,16 @@ def _run_real(args: argparse.Namespace) -> int:
     target_meta = _read_gguf_metadata(target_path)
 
     hash_pass, hash_detail = _hash_or_metadata_check(drafter_meta, target_path)
+    arch_pass, arch_detail = _architecture_check(
+        drafter_meta,
+        target_meta,
+        allow_dflash_draft_architecture=args.allow_dflash_draft_architecture,
+    )
     vocab_pass, vocab_detail = _vocab_check(drafter_meta, target_meta)
+    tokenizer_pass, tokenizer_detail, tokenizer_mismatches = _tokenizer_metadata_check(
+        drafter_meta,
+        target_meta,
+    )
     size_pass, size_detail = _size_check(drafter_meta, target_meta)
 
     accept_block: dict[str, Any] = {
@@ -328,7 +468,14 @@ def _run_real(args: argparse.Namespace) -> int:
             "gate": gate,
         }
 
-    overall = hash_pass and vocab_pass and size_pass and accept_block["pass"]
+    overall = (
+        hash_pass
+        and arch_pass
+        and vocab_pass
+        and tokenizer_pass
+        and size_pass
+        and accept_block["pass"]
+    )
     report = {
         "schemaVersion": 1,
         "kind": "dflash-drafter-validation",
@@ -339,7 +486,13 @@ def _run_real(args: argparse.Namespace) -> int:
         "target": target_meta,
         "checks": {
             "hashMatch": {"pass": hash_pass, "detail": hash_detail},
+            "architectureLoadable": {"pass": arch_pass, "detail": arch_detail},
             "vocabMatch": {"pass": vocab_pass, "detail": vocab_detail},
+            "tokenizerMetadataMatch": {
+                "pass": tokenizer_pass,
+                "detail": tokenizer_detail,
+                "mismatches": tokenizer_mismatches,
+            },
             "drafterSmaller": {"pass": size_pass, "detail": size_detail},
             "acceptanceRollout": accept_block,
         },
@@ -348,7 +501,7 @@ def _run_real(args: argparse.Namespace) -> int:
     out_path = Path(args.report_out) if args.report_out else None
     _emit_report(report, out_path)
 
-    if not (hash_pass and vocab_pass and size_pass):
+    if not (hash_pass and arch_pass and vocab_pass and tokenizer_pass and size_pass):
         return 3
     if not accept_block["pass"]:
         return 4
@@ -379,6 +532,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-acceptance-rollout",
         action="store_true",
         help="Static checks only (hash + vocab + size). No GPU/inference required.",
+    )
+    p.add_argument(
+        "--allow-dflash-draft-architecture",
+        action="store_true",
+        help=(
+            "Allow a drafter GGUF with general.architecture=dflash-draft. "
+            "Use only when the exact runtime binary's CAPABILITIES.json "
+            "proves dflash-draft loader support."
+        ),
     )
     p.add_argument(
         "--report-out",

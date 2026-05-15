@@ -49,6 +49,17 @@ describe("local inference assignments", () => {
 		});
 	});
 
+	it("keeps custom-only installs out of recommended assignments", () => {
+		const assignments = buildRecommendedAssignments([
+			installed("llama-3.2-3b-instruct", 3_000, {
+				source: "external-scan",
+			}),
+			installed("hf:some-org/custom-model::model.Q4_K_M.gguf", 2_000),
+		]);
+
+		expect(assignments).toEqual({});
+	});
+
 	it("does not auto-recommend unverified Eliza-1 downloads", () => {
 		const assignments = buildRecommendedAssignments([
 			installed("eliza-1-2b", 1_000),

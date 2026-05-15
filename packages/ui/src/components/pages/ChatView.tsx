@@ -20,6 +20,7 @@ import { useChatAvatarVoiceBridge } from "../../hooks/useChatAvatarVoiceBridge";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useIntervalWhenDocumentVisible } from "../../hooks/useDocumentVisibility";
 import { readPersistedMobileRuntimeMode } from "../../onboarding/mobile-runtime-mode";
+import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import {
   CodingAgentControlChip,
   PtyConsoleBase,
@@ -153,6 +154,7 @@ export function ChatView({
     chatInput: rawChatInput,
     chatSending,
     chatPendingImages: rawChatPendingImages,
+    setChatInput,
     setChatPendingImages,
   } = useChatComposer();
   const droppedFiles = Array.isArray(rawDroppedFiles) ? rawDroppedFiles : [];
@@ -190,6 +192,26 @@ export function ChatView({
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const [imageDragOver, setImageDragOver] = useState(false);
+
+  useEffect(() => {
+    if (isGameModal || typeof window === "undefined") return;
+
+    const consumeLaunchPayload = () => {
+      void consumeAssistantLaunchPayloadFromHash(window.location.hash, {
+        allowedRoutes: ["chat"],
+        onSendFailure: (payload) => {
+          setChatInput(payload.text);
+        },
+        sendText: sendChatText,
+      });
+    };
+
+    consumeLaunchPayload();
+    window.addEventListener("hashchange", consumeLaunchPayload);
+    return () => {
+      window.removeEventListener("hashchange", consumeLaunchPayload);
+    };
+  }, [isGameModal, sendChatText, setChatInput]);
 
   const focusTerminalSession = useCallback(
     (sessionId: string) => {

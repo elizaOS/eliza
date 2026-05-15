@@ -41,13 +41,11 @@ export function _resetSharedVaultForTesting(next: Vault | null = null): void {
  *
  * Returns the list of keys that failed to write. The PUT handler
  * surfaces them under `vaultMirrorFailures` in the response so the UI
- * can warn the user that their secret was saved to legacy config but
- * not mirrored to the vault. Per-key try/catch keeps one failed key
- * from aborting the rest of the loop.
+ * can warn the user that the vault mirror did not take. Per-key
+ * try/catch keeps one failed key from aborting the rest of the loop.
  *
- * Vault key shape: the env-var name itself (e.g.
- * `OPENROUTER_API_KEY`). Stable, matches what the legacy code uses,
- * and lets the read-side hydration round-trip cleanly.
+ * Vault key shape: the env-var name itself (e.g. `OPENROUTER_API_KEY`),
+ * matching the read-side hydration path.
  */
 export async function mirrorPluginSensitiveToVault(
   plugin: { parameters: Array<{ key: string; sensitive: boolean }> },

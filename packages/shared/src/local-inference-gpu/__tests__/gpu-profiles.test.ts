@@ -342,8 +342,13 @@ describe("profile data integrity", () => {
   });
 
   it("rtx-5090 has a higher speculative_window than rtx-3090", () => {
-    const w3090 = getGpuProfile("rtx-3090")?.dflash.speculative_window;
-    const w5090 = getGpuProfile("rtx-5090")?.dflash.speculative_window;
+    const rtx3090 = getGpuProfile("rtx-3090");
+    const rtx5090 = getGpuProfile("rtx-5090");
+    if (!rtx3090 || !rtx5090) {
+      throw new Error("expected RTX 3090 and RTX 5090 GPU profiles to exist");
+    }
+    const w3090 = rtx3090.dflash.speculative_window;
+    const w5090 = rtx5090.dflash.speculative_window;
     expect(w5090).toBeGreaterThan(w3090);
   });
 });

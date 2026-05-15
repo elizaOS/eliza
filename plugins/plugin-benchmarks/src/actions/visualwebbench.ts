@@ -53,7 +53,7 @@ export const visualWebBenchTaskAction: Action = {
   description:
     "VisualWebBench task router. action selects the sub-task (web_caption, webqa, heading_ocr, element_ocr, element_ground, action_prediction, action_ground).",
   descriptionCompressed:
-    "VisualWebBench tasks: web_caption, webqa, heading/element_ocr, element_ground, action_prediction, action_ground.",
+    "VisualWebBench web_caption|webqa|heading_ocr|element_ocr|ground|action_predict",
 
   parameters: [
     {

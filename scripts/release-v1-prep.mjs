@@ -5,9 +5,8 @@
  * (and which hardware each remaining step needs).
  *
  * This is the "to ship v1, here's what's already green and here's what's still
- * blocked" command. It is the runnable companion to RELEASE_V1.md (the runbook)
- * and ELIZA_1_TESTING_TODO.md (the QA checklist) — every `[hw]` line there
- * shows up here as a "remaining (needs <host>)" entry.
+ * blocked" command. It is the runnable companion to the tracked Eliza-1
+ * pipeline docs under docs/eliza-1-pipeline/.
  *
  * What it runs (each must exit 0):
  *   1. build-llama-cpp-dflash.mjs --target <host-cpu/metal> --dry-run  (build plumbing sane)
@@ -16,7 +15,7 @@
  *   4. python -m py_compile on the release-pipeline scripts           (no syntax rot)
  *   5. each quant recipe --dry-run (turboquant/fused_turboquant/qjl/polarquant) (CLI + recipe params)
  *   6. distill_dflash_drafter.py --tier 2b --synthetic-smoke          (DFlash distill pipeline + GGUF metadata write, no torch)
- *   7. eliza1_platform_plan.py regenerates ELIZA_1_GGUF_{PLATFORM_PLAN.json,READINESS.md} idempotently
+ *   7. eliza1_platform_plan.py regenerates docs/ELIZA_1_GGUF_PLATFORM_PLAN.json idempotently
  *   8. eliza1_gates_collect.mjs --tier <each> --json                  (gate-collect with needs-data placeholders, no eval bytes)
  *   9. make -C plugins/plugin-local-inference/native/verify reference-test kernel-contract  (CPU C reference + kernel-contract sync) — only if `make`/`cc` present
  *
@@ -139,11 +138,38 @@ function hostBuildTarget() {
   return null;
 }
 
+function resolvePython() {
+  const candidates = [
+    process.env.PYTHON,
+    process.env.PYTHON3,
+    "/opt/miniconda3/bin/python3",
+    "python3.13",
+    "python3.12",
+    "python3.11",
+    "python3.10",
+    "python3",
+  ].filter(Boolean);
+  for (const candidate of candidates) {
+    const probe = spawnSync(
+      candidate,
+      [
+        "-c",
+        "import sys; import torch; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)",
+      ],
+      { stdio: "ignore" },
+    );
+    if (probe.status === 0) return candidate;
+  }
+  return "python3";
+}
+
+const PYTHON = resolvePython();
+
 if (!JSON_OUT) {
   console.log("=== Eliza-1 v1 release prep — no-hardware steps ===\n");
-  console.log("Runbook: RELEASE_V1.md   QA checklist: ELIZA_1_TESTING_TODO.md");
+  console.log("Runbook: docs/eliza-1-pipeline/06-test-matrix.md");
   console.log(
-    "HW catalog: plugins/plugin-local-inference/native/reports/porting/2026-05-11/needs-hardware-ledger.md\n",
+    "Bundle plan: docs/ELIZA_1_GGUF_PLATFORM_PLAN.json\n",
   );
 }
 
@@ -164,7 +190,7 @@ if (buildTarget) {
 }
 
 // --- 2. Manifest / bundle / platform-plan / source-staging / evidence tests ----
-step("pytest packages/training/scripts/manifest/", "python3", [
+step("pytest packages/training/scripts/manifest/", PYTHON, [
   "-m",
   "pytest",
   "packages/training/scripts/manifest/",
@@ -173,7 +199,7 @@ step("pytest packages/training/scripts/manifest/", "python3", [
 
 // --- 3. Quant recipe parity + codebook-hash pins (slower) ----------------------
 if (!QUICK) {
-  step("quantization/test_recipes_smoke.py", "python3", [
+  step("quantization/test_recipes_smoke.py", PYTHON, [
     "packages/training/scripts/quantization/test_recipes_smoke.py",
   ]);
 }
@@ -200,7 +226,7 @@ const PY_SCRIPTS = [
   "packages/training/scripts/manifest/eliza1_platform_plan.py",
   "packages/training/scripts/manifest/finalize_eliza1_evidence.py",
 ];
-step("py_compile release-pipeline scripts", "python3", [
+step("py_compile release-pipeline scripts", PYTHON, [
   "-m",
   "py_compile",
   ...PY_SCRIPTS,
@@ -212,7 +238,7 @@ for (const [label, script, extra] of [
   ["fused_turboquant_apply --dry-run", "fused_turboquant_apply.py", []],
   ["qjl_apply --dry-run", "qjl_apply.py", []],
 ]) {
-  step(label, "python3", [
+  step(label, PYTHON, [
     `packages/training/scripts/quantization/${script}`,
     "--model",
     "Qwen/Qwen3.5-0.8B",
@@ -224,7 +250,7 @@ for (const [label, script, extra] of [
     ...extra,
   ]);
 }
-step("polarquant_apply --dry-run", "python3", [
+step("polarquant_apply --dry-run", PYTHON, [
   "packages/training/scripts/quantization/polarquant_apply.py",
   "--model",
   "Qwen/Qwen3.5-0.8B",
@@ -236,7 +262,7 @@ step("polarquant_apply --dry-run", "python3", [
 ]);
 
 // --- 6. DFlash distill synthetic smoke (no torch / GPU) ------------------------
-step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", "python3", [
+step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", PYTHON, [
   "packages/training/scripts/distill_dflash_drafter.py",
   "--tier",
   "2b",
@@ -247,35 +273,34 @@ step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", "python3", [
 
 // --- 7. Platform plan regenerates idempotently --------------------------------
 {
-  const planPath = path.join(REPO_ROOT, "ELIZA_1_GGUF_PLATFORM_PLAN.json");
-  const mdPath = path.join(REPO_ROOT, "ELIZA_1_GGUF_READINESS.md");
-  const before = [planPath, mdPath].map((p) =>
-    fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "",
+  const planPath = path.join(REPO_ROOT, "docs", "ELIZA_1_GGUF_PLATFORM_PLAN.json");
+  const readinessPath = path.join(
+    fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "eliza1-prep-readiness-")),
+    "ELIZA_1_GGUF_READINESS.md",
   );
+  const before = fs.existsSync(planPath) ? fs.readFileSync(planPath, "utf8") : "";
   step(
-    "eliza1_platform_plan.py regenerates ELIZA_1_GGUF_{PLATFORM_PLAN.json,READINESS.md}",
-    "python3",
+    "eliza1_platform_plan.py regenerates docs/ELIZA_1_GGUF_PLATFORM_PLAN.json and readiness markdown",
+    PYTHON,
     [
       "packages/training/scripts/manifest/eliza1_platform_plan.py",
       "--out",
-      "ELIZA_1_GGUF_PLATFORM_PLAN.json",
+      "docs/ELIZA_1_GGUF_PLATFORM_PLAN.json",
       "--readiness-md",
-      "ELIZA_1_GGUF_READINESS.md",
+      readinessPath,
     ],
   );
-  const after = [planPath, mdPath].map((p) =>
-    fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "",
-  );
-  if (before[0] !== after[0] || before[1] !== after[1]) {
+  const after = fs.existsSync(planPath) ? fs.readFileSync(planPath, "utf8") : "";
+  if (before !== after) {
     results.push({
       name: "eliza1_platform_plan.py idempotency",
       status: "fail",
       detail:
-        "regenerating ELIZA_1_GGUF_PLATFORM_PLAN.json / ELIZA_1_GGUF_READINESS.md changed them — commit the regenerated files",
+        "regenerating docs/ELIZA_1_GGUF_PLATFORM_PLAN.json changed it — commit the regenerated file",
     });
     if (!JSON_OUT)
       console.log(
-        "  FAIL  eliza1_platform_plan.py idempotency — regenerated files differ; commit them",
+        "  FAIL  eliza1_platform_plan.py idempotency — regenerated plan differs; commit it",
       );
   } else {
     results.push({ name: "eliza1_platform_plan.py idempotency", status: "ok" });
@@ -394,7 +419,7 @@ if (JSON_OUT) {
   }
   console.log("\n=== Remaining: needs hardware / network / HF credentials ===");
   console.log(
-    "(also in ELIZA_1_TESTING_TODO.md as [hw] lines, with per-backend detail in needs-hardware-ledger.md)\n",
+    "(see docs/eliza-1-pipeline/06-test-matrix.md and docs/ELIZA_1_GGUF_PLATFORM_PLAN.json)\n",
   );
   for (const [what, host, cmd] of REMAINING_HW) {
     console.log(`  [ ] ${what}`);

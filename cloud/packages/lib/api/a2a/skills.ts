@@ -18,7 +18,7 @@ import {
   resolveAnthropicThinkingBudgetTokens,
 } from "@/lib/providers/anthropic-thinking";
 import { getLanguageModel } from "@/lib/providers/language-model";
-import { agentService } from "@/lib/services/agents/agents";
+import { agentsService } from "@/lib/services/agents/agents";
 import { calculateImageGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
   createHostedBrowserSession,
@@ -502,9 +502,9 @@ export async function executeSkillChatWithAgent(
   if (!agentId && !roomId) throw new Error("agentId or roomId required");
 
   // If we have a roomId, use it directly; otherwise create/get a room for the agent
-  const actualRoomId = roomId || (await agentService.getOrCreateRoom(entityId, agentId!));
+  const actualRoomId = roomId || (await agentsService.getOrCreateRoom(entityId, agentId!));
 
-  const response = await agentService.sendMessage({
+  const response = await agentsService.sendMessage({
     roomId: actualRoomId,
     entityId,
     message,

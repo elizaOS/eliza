@@ -18,7 +18,6 @@ Coverage:
 from __future__ import annotations
 
 import asyncio
-from typing import Iterable
 
 import pytest
 
@@ -39,7 +38,6 @@ from eliza_lifeops_bench.scenarios import ALL_SCENARIOS
 from eliza_lifeops_bench.types import (
     Action,
     Domain,
-    FirstQuestionFallback,
     Persona,
     Scenario,
     ScenarioMode,

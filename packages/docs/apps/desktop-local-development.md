@@ -88,7 +88,7 @@ After cloning the repo, or whenever you change `native/macos/window-effects.mm`,
 cd packages/app/electrobun && bun run build:native-effects
 ```
 
-More detail: [Electrobun shell package](https://github.com/eliza-ai/eliza/tree/main/packages/app/electrobun) (README: *macOS window chrome*), and [Electrobun macOS window chrome](../guides/electrobun-mac-window-chrome.md).
+More detail: [Electrobun shell package](https://github.com/eliza-ai/eliza/tree/main/packages/app/electrobun) (README: *macOS window chrome*), and [Electrobun macOS window chrome](../apps/desktop-local-development.md).
 
 ## macOS: Local Network permission (gateway discovery)
 
@@ -169,7 +169,7 @@ Prefixed **vite / api / electrobun** lines are mirrored to **`.eliza/desktop-dev
 
 ## UI E2E (Playwright)
 
-Browser smoke tests target the **same renderer URL** Electrobun loads in watch mode (`http://localhost:<ELIZA_PORT>`, default **2138**). They do **not** drive the native Electrobun webview; tray, native menus, and packaged-only behaviors stay covered by **`bun run test:desktop:packaged`** (where applicable) and the [release regression checklist](/apps/release-regression-checklist).
+Browser smoke tests target the **same renderer URL** Electrobun loads in watch mode (`http://localhost:<ELIZA_PORT>`, default **2138**). They do **not** drive the native Electrobun webview; tray, native menus, and packaged-only behaviors stay covered by **`bun run test:desktop:packaged`** (where applicable) and the [release regression checklist](/build-and-release).
 
 **Why Playwright:** the app already ships Playwright for renderer and packaged checks, so the browser smoke flows now use the same supported stack instead of a separate TestCafe toolchain. This removes the vulnerable `replicator` dependency entirely and keeps the UI E2E surface on one runner.
 
@@ -179,13 +179,13 @@ Browser smoke tests target the **same renderer URL** Electrobun loads in watch m
 
 | Command | Purpose |
 |---------|---------|
-| `bun run test:ui:playwright` | Run [`packages/app/test/ui-smoke/ui-smoke.spec.ts`](../../packages/app/test/ui-smoke/ui-smoke.spec.ts); auto-starts the Vite renderer on **:2138** when needed. |
-| `bun run test:ui:playwright:settings-chat` | Run [`packages/app/test/ui-smoke/settings-chat-companion.spec.ts`](../../packages/app/test/ui-smoke/settings-chat-companion.spec.ts) for companion media settings persistence. |
-| `bun run test:ui:playwright:packaged` | Run [`packages/app/test/ui-smoke/packaged-hash.spec.ts`](../../packages/app/test/ui-smoke/packaged-hash.spec.ts) against `packages/app/dist/index.html`; skips if `dist` is missing. |
+| `bun run test:ui:playwright` | Run [`packages/app/test/ui-smoke/ui-smoke.spec.ts`](../../../packages/app/test/ui-smoke/ui-smoke.spec.ts); auto-starts the Vite renderer on **:2138** when needed. |
+| `bun run test:ui:playwright:settings-chat` | Runs the companion media settings persistence smoke when that spec is present. |
+| `bun run test:ui:playwright:packaged` | Runs the packaged renderer smoke against `packages/app/dist/index.html`; skips if `dist` is missing. |
 
 **Full test matrix:** `bun run test` does **not** run Playwright UI smoke by default. Set **`ELIZA_TEST_UI_PLAYWRIGHT=1`** to append the UI suite to `test/scripts/test-parallel.mjs` (serial, after Vitest e2e). `ELIZA_TEST_UI_TESTCAFE=1` is still accepted as a legacy alias.
 
-**Path A vs native webview (Phase B):** These specs still target the renderer URL, not the embedded Electrobun webview. Packaged/native behaviors remain covered by **`bun run test:desktop:packaged`**, **`bun run test:desktop:playwright`**, and the [release regression checklist](/apps/release-regression-checklist).
+**Path A vs native webview (Phase B):** These specs still target the renderer URL, not the embedded Electrobun webview. Packaged/native behaviors remain covered by **`bun run test:desktop:packaged`**, **`bun run test:desktop:playwright`**, and the [release regression checklist](/build-and-release).
 
 ## Related source
 

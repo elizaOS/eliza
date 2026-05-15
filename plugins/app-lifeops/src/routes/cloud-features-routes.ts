@@ -9,6 +9,8 @@ import {
   sendJsonError,
 } from "@elizaos/core";
 import {
+  type CloudAuthApiKeyService,
+  normalizeCloudApiKey,
   normalizeCloudSiteUrl,
   resolveCloudApiKey,
   validateCloudBaseUrl,
@@ -33,11 +35,6 @@ export interface CloudFeaturesRouteState {
 
 const PROXY_TIMEOUT_MS = 15_000;
 
-interface CloudAuthApiKeyService {
-  isAuthenticated: () => boolean;
-  getApiKey?: () => string | undefined;
-}
-
 interface CloudFeatureRow {
   readonly featureKey: LifeOpsFeatureKey;
   readonly enabled: boolean;
@@ -50,13 +47,6 @@ interface CloudFeaturesUpstream {
     readonly enabled?: unknown;
     readonly packageId?: unknown;
   }>;
-}
-
-function normalizeCloudApiKey(value: string | null | undefined): string | null {
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return null;
-  return trimmed;
 }
 
 function resolveProxyApiKey(state: CloudFeaturesRouteState): string | null {

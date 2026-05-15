@@ -19,9 +19,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 
 @dataclass
@@ -53,7 +53,7 @@ def build_benchmark_command(
 ) -> list[str]:
     """Build the CLI command to run a benchmark task against the app agent."""
     root = Path(config.app_root)
-    cmd = [
+    return [
         "bun",
         "run",
         str(root / "packages" / "agent" / "src" / "bin.ts"),
@@ -63,7 +63,6 @@ def build_benchmark_command(
         "--timeout",
         str(config.timeout_seconds * 1000),
     ]
-    return cmd
 
 
 def _build_env(config: AppBenchmarkConfig) -> dict[str, str]:

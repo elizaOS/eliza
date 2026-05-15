@@ -62,7 +62,7 @@ export function serializeSceneForPrompt(
     const aw = a.windows.length;
     const bw = b.windows.length;
     if (aw !== bw) return bw - aw;
-    return (a.name ?? "").localeCompare(b.name ?? "");
+    return a.name.localeCompare(b.name);
   });
   const trimmedApps = appsByPriority.slice(0, appMax);
   const compactApps = trimmedApps.map((app) => ({

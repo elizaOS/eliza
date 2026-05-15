@@ -213,13 +213,15 @@ export class Cascade {
     }
     // Strategy 2: fine grounding on the first ROI via the registered actor.
     if (this.deps.actor && brainOut.roi.length > 0) {
-      const roi = brainOut.roi.slice(0, BRAIN_MAX_ROIS)[0]!;
+      const roi = brainOut.roi.slice(0, BRAIN_MAX_ROIS)[0];
+      if (!roi) return null;
       const grounded = await this.groundRoi(input, brainOut, roi);
       if (grounded) return grounded;
     }
     // Strategy 3: ROI center fallback (deterministic).
     if (brainOut.roi.length > 0) {
-      const roi = brainOut.roi[0]!;
+      const roi = brainOut.roi[0];
+      if (!roi) return null;
       const [x, y, w, h] = roi.bbox;
       return {
         displayId: roi.displayId,

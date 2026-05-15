@@ -1,7 +1,10 @@
 /// <reference types="bun-types" />
-import { existsSync } from "node:fs";
-import path from "node:path";
+import {
+  type NativeLibraryCandidate,
+  resolveNativeLibraryCandidate,
+} from "@elizaos/app-core/platform/native-library-policy";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
 import type {
   CreateLifeOpsCalendarEventAttendee,
@@ -107,15 +110,31 @@ let macCalendarBridge: MacCalendarBridge | null | undefined;
 let macCalendarBridgeOverride: MacCalendarBridge | null | undefined;
 let nativeBridgeOverride: NativeCalendarBridge | null | undefined;
 
-const NATIVE_DYLIB_ENV =
-  typeof process !== "undefined"
-    ? (process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "")
-    : "";
+const NATIVE_DYLIB_BASENAME = "libMacWindowEffects.dylib";
 
-const NATIVE_DYLIB_CANDIDATES = [
-  NATIVE_DYLIB_ENV,
-  "../../../../packages/app-core/platforms/electrobun/src/libMacWindowEffects.dylib",
-].filter(Boolean);
+function nativeDylibCandidates(): NativeLibraryCandidate[] {
+  return [
+    {
+      label: "ELIZA_NATIVE_PERMISSIONS_DYLIB",
+      path:
+        typeof process !== "undefined"
+          ? (process.env.ELIZA_NATIVE_PERMISSIONS_DYLIB ?? "")
+          : "",
+    },
+    {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../../${NATIVE_DYLIB_BASENAME}`,
+    },
+    {
+      label: "packaged Apple permissions bridge",
+      path: `../../../../../../${NATIVE_DYLIB_BASENAME}`,
+    },
+    {
+      label: "local Apple permissions bridge",
+      path: `../../../../packages/app-core/platforms/electrobun/src/${NATIVE_DYLIB_BASENAME}`,
+    },
+  ].filter((candidate) => candidate.path.trim().length > 0);
+}
 
 function hasNodeDarwinProcess(): boolean {
   return typeof process !== "undefined" && process.platform === "darwin";
@@ -147,11 +166,14 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
   macCalendarBridge = null;
   if (!hasNodeDarwinProcess()) return null;
 
-  for (const candidate of NATIVE_DYLIB_CANDIDATES) {
-    const dylibPath = path.isAbsolute(candidate)
-      ? candidate
-      : path.resolve(import.meta.dir, candidate);
-    if (!existsSync(dylibPath)) continue;
+  for (const candidate of nativeDylibCandidates()) {
+    const dylibPath = resolveNativeLibraryCandidate(candidate, {
+      expectedBasename: NATIVE_DYLIB_BASENAME,
+      moduleDir: import.meta.dir,
+      warn: (message) => logger.warn(`[AppleCalendar] ${message}`),
+    });
+    if (!dylibPath) continue;
+
     try {
       const { CString, FFIType, dlopen, ptr } = await import("bun:ffi");
       const lib = dlopen(dylibPath, {
@@ -219,8 +241,8 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
         },
       };
       return macCalendarBridge;
-    } catch {
-      // Try the next dylib candidate.
+    } catch (err) {
+      logger.warn({ err }, "[AppleCalendar] Failed to load native bridge");
     }
   }
   return null;
@@ -643,4 +665,5 @@ export const __testing = {
   setMacCalendarBridgeForTest(bridge: MacCalendarBridge | null): void {
     macCalendarBridgeOverride = bridge;
   },
+  nativeDylibCandidates,
 };

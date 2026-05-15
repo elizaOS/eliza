@@ -135,7 +135,7 @@ describe("local inference provider", () => {
 		expect(transcribePcm).toHaveBeenCalledWith({ pcm, sampleRate: 16_000 });
 	});
 
-	it("delegates image description to the unified local backend", async () => {
+	it("delegates image description to the local backend", async () => {
 		const describeImage = vi.fn(async () => ({
 			title: "A chart",
 			description: "A chart on a laptop screen.",

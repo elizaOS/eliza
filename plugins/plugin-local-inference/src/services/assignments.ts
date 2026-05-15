@@ -58,9 +58,9 @@ function pickLargestInstalledModel(
  * Build slot recommendations from currently-installed models.
  *
  * Only default-eligible Eliza-1 downloads are auto-recommended.
- * External-scan blobs and ad-hoc Hugging Face downloads are surfaced in
- * the Model Hub for explicit opt-in, but they are NOT auto-assigned to
- * TEXT_SMALL / TEXT_LARGE.
+ * External-scan blobs and ad-hoc Hugging Face downloads are surfaced only
+ * through explicit search/manual selection; they are NOT auto-assigned to
+ * any agent slot.
  *
  * Why: external blobs may use newer architectures or quant formats
  * the bundled `node-llama-cpp` binding does not yet support. Auto-loading
@@ -88,28 +88,7 @@ export function buildRecommendedAssignments(
 		};
 	}
 
-	// Fallback: no curated Eliza-1 default is installed, but the user may
-	// have hand-installed a generic text-gen GGUF (e.g. a Llama / Qwen /
-	// Mistral instruct quant). Auto-assign the largest non-embedding model
-	// to TEXT_SMALL / TEXT_LARGE so the slot isn't left empty — empty slots
-	// cause `ensureAssignedModelLoaded()` to fall through and chat
-	// completions silently run against whichever model is currently loaded
-	// (typically the embedding model on Android, producing `[unused{N}]`
-	// garbage). The strict "recommended for the UI" filter still excludes
-	// non-eliza-1 models from the curated download surface; this only
-	// guarantees `TEXT_SMALL` / `TEXT_LARGE` resolve to something usable.
-	const generativeFallbacks = installed.filter(
-		(model) =>
-			typeof model.id === "string" &&
-			model.id.length > 0 &&
-			!isEmbeddingModelId(model.id),
-	);
-	const fallbackBest = pickLargestInstalledModel(generativeFallbacks);
-	if (!fallbackBest) return {};
-	return {
-		TEXT_SMALL: fallbackBest.id,
-		TEXT_LARGE: fallbackBest.id,
-	};
+	return {};
 }
 
 export async function readEffectiveAssignments(): Promise<ModelAssignments> {

@@ -99,6 +99,7 @@ describe("carrot permissions", () => {
     expect(parseCarrotPermissionTag("isolation:shared-worker")).toBe(
       "isolation:shared-worker",
     );
+    expect(parseCarrotPermissionTag("host:tray:extra")).toBeNull();
     expect(parseCarrotPermissionTag("host:camera")).toBeNull();
     expect(isCarrotPermissionTag("bun:worker")).toBe(true);
     expect(isCarrotPermissionTag("bun:network")).toBe(false);

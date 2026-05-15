@@ -129,7 +129,7 @@ interface DiscordMusicBridgeService {
 const musicPlugin: Plugin = {
   name: "music",
   description:
-    "Music library, discovery, playlists, analytics, playback engine, queue, routing API, and streaming routes — unified under the MUSIC action.",
+    "Music library, discovery, playlists, analytics, playback engine, queue, routing API, and streaming routes — routed through the MUSIC action.",
   services: [MusicLibraryService, MusicService],
   actions: [musicAction],
   providers: [

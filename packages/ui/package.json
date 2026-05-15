@@ -28,7 +28,7 @@
     "prepublishOnly": "bun run build:dist",
     "build": "bun run build:dist",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage\" vitest run --config ./vitest.config.ts",
+    "test": "NODE_OPTIONS=\"${NODE_OPTIONS:-} --no-experimental-webstorage --disable-warning=ExperimentalWarning\" vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write src",
     "format": "bunx @biomejs/biome format src",
@@ -47,106 +47,106 @@
     "./config/app-config": "./dist/config/app-config.js",
     "./onboarding-config": "./dist/onboarding-config.js",
     "./api": {
+      "types": "./dist/api/index.d.ts",
       "import": "./dist/api/index.js",
-      "default": "./dist/api/index.js",
-      "types": "./dist/api/index.d.ts"
+      "default": "./dist/api/index.js"
     },
     "./bridge": {
+      "types": "./dist/bridge/index.d.ts",
       "import": "./dist/bridge/index.js",
-      "default": "./dist/bridge/index.js",
-      "types": "./dist/bridge/index.d.ts"
+      "default": "./dist/bridge/index.js"
     },
     "./chat": {
+      "types": "./dist/chat/index.d.ts",
       "import": "./dist/chat/index.js",
-      "default": "./dist/chat/index.js",
-      "types": "./dist/chat/index.d.ts"
+      "default": "./dist/chat/index.js"
     },
     "./components": {
+      "types": "./dist/components/index.d.ts",
       "import": "./dist/components/index.js",
-      "default": "./dist/components/index.js",
-      "types": "./dist/components/index.d.ts"
+      "default": "./dist/components/index.js"
     },
     "./config": {
+      "types": "./dist/config/index.d.ts",
       "import": "./dist/config/index.js",
-      "default": "./dist/config/index.js",
-      "types": "./dist/config/index.d.ts"
+      "default": "./dist/config/index.js"
     },
     "./content-packs": {
+      "types": "./dist/content-packs/index.d.ts",
       "import": "./dist/content-packs/index.js",
-      "default": "./dist/content-packs/index.js",
-      "types": "./dist/content-packs/index.d.ts"
+      "default": "./dist/content-packs/index.js"
     },
     "./desktop-runtime": {
+      "types": "./dist/desktop-runtime/index.d.ts",
       "import": "./dist/desktop-runtime/index.js",
-      "default": "./dist/desktop-runtime/index.js",
-      "types": "./dist/desktop-runtime/index.d.ts"
+      "default": "./dist/desktop-runtime/index.js"
     },
     "./events": {
+      "types": "./dist/events/index.d.ts",
       "import": "./dist/events/index.js",
-      "default": "./dist/events/index.js",
-      "types": "./dist/events/index.d.ts"
+      "default": "./dist/events/index.js"
     },
     "./hooks": {
+      "types": "./dist/hooks/index.d.ts",
       "import": "./dist/hooks/index.js",
-      "default": "./dist/hooks/index.js",
-      "types": "./dist/hooks/index.d.ts"
+      "default": "./dist/hooks/index.js"
     },
     "./i18n": {
+      "types": "./dist/i18n/index.d.ts",
       "import": "./dist/i18n/index.js",
-      "default": "./dist/i18n/index.js",
-      "types": "./dist/i18n/index.d.ts"
+      "default": "./dist/i18n/index.js"
     },
     "./layouts": {
+      "types": "./dist/layouts/index.d.ts",
       "import": "./dist/layouts/index.js",
-      "default": "./dist/layouts/index.js",
-      "types": "./dist/layouts/index.d.ts"
+      "default": "./dist/layouts/index.js"
     },
     "./navigation": {
+      "types": "./dist/navigation/index.d.ts",
       "import": "./dist/navigation/index.js",
-      "default": "./dist/navigation/index.js",
-      "types": "./dist/navigation/index.d.ts"
+      "default": "./dist/navigation/index.js"
     },
     "./platform": {
+      "types": "./dist/platform/index.d.ts",
       "import": "./dist/platform/index.js",
-      "default": "./dist/platform/index.js",
-      "types": "./dist/platform/index.d.ts"
+      "default": "./dist/platform/index.js"
     },
     "./providers": {
+      "types": "./dist/providers/index.d.ts",
       "import": "./dist/providers/index.js",
-      "default": "./dist/providers/index.js",
-      "types": "./dist/providers/index.d.ts"
+      "default": "./dist/providers/index.js"
     },
     "./state": {
+      "types": "./dist/state/index.d.ts",
       "import": "./dist/state/index.js",
-      "default": "./dist/state/index.js",
-      "types": "./dist/state/index.d.ts"
+      "default": "./dist/state/index.js"
     },
     "./types": {
+      "types": "./dist/types/index.d.ts",
       "import": "./dist/types/index.js",
-      "default": "./dist/types/index.js",
-      "types": "./dist/types/index.d.ts"
+      "default": "./dist/types/index.js"
     },
     "./utils": {
+      "types": "./dist/utils/index.d.ts",
       "import": "./dist/utils/index.js",
-      "default": "./dist/utils/index.js",
-      "types": "./dist/utils/index.d.ts"
+      "default": "./dist/utils/index.js"
     },
     "./voice": {
+      "types": "./dist/voice/index.d.ts",
       "import": "./dist/voice/index.js",
-      "default": "./dist/voice/index.js",
-      "types": "./dist/voice/index.d.ts"
+      "default": "./dist/voice/index.js"
     },
     "./widgets": {
+      "types": "./dist/widgets/index.d.ts",
       "import": "./dist/widgets/index.js",
-      "default": "./dist/widgets/index.js",
-      "types": "./dist/widgets/index.d.ts"
+      "default": "./dist/widgets/index.js"
     },
     "./dist/styles/*.css": "./dist/styles/*.css",
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "peerDependencies": {

@@ -26,11 +26,18 @@ import {
   type TokenUsage,
   type UUID,
 } from "@elizaos/core";
-import localEmbeddingPlugin from "@elizaos/plugin-local-inference";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import { plugin as sqlPlugin } from "@elizaos/plugin-sql";
 import { v4 as uuidv4 } from "uuid";
 import { type ActionScanSort, scanRepoActions } from "./action-scanner";
+
+const [
+  { default: localEmbeddingPlugin },
+  { openaiPlugin },
+  { plugin: sqlPlugin },
+] = await Promise.all([
+  import("@elizaos/plugin-local-inference"),
+  import("@elizaos/plugin-openai"),
+  import("@elizaos/plugin-sql"),
+]);
 
 // ---------- provider detection ----------
 

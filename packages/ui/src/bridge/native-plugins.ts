@@ -432,6 +432,7 @@ export interface SystemPluginLike extends NativePlugin {
     role: AndroidRoleStatus["role"];
   }): Promise<AndroidRoleRequestResult>;
   openSettings(): Promise<void>;
+  openNetworkSettings(): Promise<void>;
 }
 
 export interface MobileSignalsPluginLike extends NativePlugin {

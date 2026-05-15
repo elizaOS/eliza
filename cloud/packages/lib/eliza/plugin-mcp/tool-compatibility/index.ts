@@ -66,6 +66,3 @@ export function createMcpToolCompatibilitySync(runtime: IAgentRuntime) {
       return null;
   }
 }
-
-// Async alias for API compatibility
-export const createMcpToolCompatibility = createMcpToolCompatibilitySync;

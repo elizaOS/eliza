@@ -5,7 +5,7 @@ import type {
   Memory,
 } from "@elizaos/core";
 import { readConfigCloudKey, readConfigEnvKey } from "./config-env.js";
-import type { SessionInfo } from "./pty-types.js";
+import type { SessionInfo } from "./types.js";
 
 const LOG_PREFIX = "[ParentAgentBroker]";
 const REQUEST_MAX_CHARS = 4000;

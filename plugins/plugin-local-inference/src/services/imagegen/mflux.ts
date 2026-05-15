@@ -59,20 +59,22 @@
  *   to warm up the cache.
  */
 
-import { spawn } from "node:child_process";
 import { existsSync, promises as fs, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { ImageGenBackendUnavailableError } from "./errors";
-import type { SdCppSpawnLike } from "./sd-cpp";
+import {
+	assertPngOutput,
+	defaultSpawn,
+	resolveSeed,
+	type SdCppSpawnLike,
+} from "./sd-cpp";
 import type {
 	ImageGenBackend,
 	ImageGenLoadArgs,
 	ImageGenRequest,
 	ImageGenResult,
 } from "./types";
-
-const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 
 export interface MfluxBackendOptions {
 	loadArgs: ImageGenLoadArgs;
@@ -127,10 +129,7 @@ export async function loadMfluxImageGenBackend(
 					"[imagegen/mflux] prompt is empty",
 				);
 			}
-			const seed =
-				typeof req.seed === "number" && req.seed >= 0
-					? req.seed
-					: Math.floor(Math.random() * 0x7fffffff);
+			const seed = resolveSeed(req.seed);
 			const width = req.width ?? 1024;
 			const height = req.height ?? 1024;
 			// FLUX schnell / Z-Image-Turbo are 4-step turbo models; default
@@ -197,7 +196,7 @@ export async function loadMfluxImageGenBackend(
 			});
 
 			const bytes = new Uint8Array(await fs.readFile(outputPath));
-			assertPng(bytes);
+			assertPngOutput(bytes, "mflux", "subprocess_failed");
 			const elapsed = Math.max(1, now() - startMs);
 			return {
 				image: bytes,
@@ -233,9 +232,7 @@ async function assertBinaryAvailable(
 ): Promise<void> {
 	try {
 		const code = await new Promise<number | null>((resolve, reject) => {
-			const proc = (spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(binary, [
-				"--help",
-			]);
+			const proc = defaultSpawn(spawnImpl)(binary, ["--help"]);
 			proc.on("error", (err: Error) => reject(err));
 			proc.on("exit", (c: number | null) => resolve(c));
 		});
@@ -271,11 +268,9 @@ async function runMflux(
 	},
 ): Promise<void> {
 	await new Promise<void>((resolve, reject) => {
-		const proc = (opts.spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(
-			binary,
-			args,
-			{ signal: opts.signal },
-		);
+		const proc = defaultSpawn(opts.spawnImpl)(binary, args, {
+			signal: opts.signal,
+		});
 		const stderr = proc.stderr;
 		if (
 			opts.onProgressChunk &&
@@ -315,23 +310,4 @@ async function runMflux(
 			);
 		});
 	});
-}
-
-function assertPng(bytes: Uint8Array): void {
-	if (bytes.length < PNG_SIGNATURE.length) {
-		throw new ImageGenBackendUnavailableError(
-			"mflux",
-			"subprocess_failed",
-			`[imagegen/mflux] output too short (${bytes.length} bytes); not a PNG`,
-		);
-	}
-	for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
-		if (bytes[i] !== PNG_SIGNATURE[i]) {
-			throw new ImageGenBackendUnavailableError(
-				"mflux",
-				"subprocess_failed",
-				"[imagegen/mflux] output missing PNG signature",
-			);
-		}
-	}
 }

@@ -38,14 +38,13 @@
     "directory": "packages/native-plugins/agent"
   },
   "scripts": {
-    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
     "prepublishOnly": "bun run build",
     "watch": "tsc --watch"
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rimraf": "^6.0.0",
     "rollup": "^4.60.2",
     "typescript": "^6.0.3"
   },

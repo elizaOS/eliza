@@ -18,6 +18,7 @@ import {
 } from "react";
 import { client } from "../../api";
 import { CONNECT_EVENT } from "../../events";
+import { ensureStoreBuildWorkspaceFolder } from "../../onboarding/ensure-store-build-workspace-folder";
 import { persistMobileRuntimeModeForServerTarget } from "../../onboarding/mobile-runtime-mode";
 import { applyLaunchConnection } from "../../platform";
 import { useApp } from "../../state";
@@ -152,6 +153,15 @@ export function StartupShell() {
     document.addEventListener(CONNECT_EVENT, handleConnect);
     return () => document.removeEventListener(CONNECT_EVENT, handleConnect);
   }, [retryStartup, setActionNotice, setState]);
+
+  // Boot-time workspace-folder bookmark re-resolve. Idempotent helper
+  // re-resolves the macOS security-scoped bookmark every launch under
+  // store builds (so the agent runtime can write inside the
+  // user-granted folder) and short-circuits to no-op on direct builds
+  // or non-Electrobun renderers.
+  useEffect(() => {
+    void ensureStoreBuildWorkspaceFolder();
+  }, []);
 
   useEffect(() => {
     if (phase !== "onboarding-required") {

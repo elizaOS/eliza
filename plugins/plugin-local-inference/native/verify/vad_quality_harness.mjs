@@ -19,7 +19,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 const DEFAULT_REPORT = path.join(
   __dirname,
   "..",
@@ -55,6 +55,19 @@ function parseArgs(argv) {
     }
   }
   return args;
+}
+
+function bundleInfo(bundleDir) {
+  if (!bundleDir) return {};
+  const basename = path.basename(path.resolve(bundleDir));
+  const match = /^eliza-1-(.+)\.bundle$/.exec(basename);
+  return {
+    ...(match ? { tier: match[1] } : {}),
+    bundle: {
+      ...(match ? { tier: match[1] } : {}),
+      dir: path.resolve(bundleDir),
+    },
+  };
 }
 
 function typescriptRunner() {
@@ -102,6 +115,7 @@ function unavailable(args, reason, extra = {}) {
   writeReport(args, {
     generatedAt: new Date().toISOString(),
     harness: path.relative(process.cwd(), __filename),
+    ...bundleInfo(args.bundle),
     available: false,
     reason,
     ...extra,
@@ -119,11 +133,10 @@ function makeRunnerSource(bundleRoot) {
   const vadUrl = pathToFileURL(
     path.join(
       REPO_ROOT,
-      "packages",
-      "app-core",
+      "plugins",
+      "plugin-local-inference",
       "src",
       "services",
-      "local-inference",
       "voice",
       "vad.ts",
     ),
@@ -131,11 +144,10 @@ function makeRunnerSource(bundleRoot) {
   const fixtureUrl = pathToFileURL(
     path.join(
       REPO_ROOT,
-      "packages",
-      "app-core",
+      "plugins",
+      "plugin-local-inference",
       "src",
       "services",
-      "local-inference",
       "voice",
       "__test-helpers__",
       "synthetic-speech.ts",
@@ -330,6 +342,7 @@ function main() {
   writeReport(args, {
     generatedAt: new Date().toISOString(),
     harness: path.relative(process.cwd(), __filename),
+    ...bundleInfo(args.bundle),
     available: true,
     modelPath: payload.modelPath,
     fixtures: payload.fixtures,

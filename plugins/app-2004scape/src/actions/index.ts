@@ -13,6 +13,4 @@ import type { Action } from "@elizaos/core";
 
 import { rs2004Action } from "./rs2004.js";
 
-export { rs2004Action } from "./rs2004.js";
-
 export const rsSdkActions: Action[] = [rs2004Action];

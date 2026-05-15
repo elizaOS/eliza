@@ -19,16 +19,12 @@ export function loadManifest(): TemplatesManifest {
     return cachedManifest;
   }
 
-  const packageRoot = getPackageRoot();
-  const candidates = [path.join(packageRoot, "templates-manifest.json")];
-
-  for (const candidate of candidates) {
-    if (fs.existsSync(candidate)) {
-      cachedManifest = JSON.parse(
-        fs.readFileSync(candidate, "utf-8"),
-      ) as TemplatesManifest;
-      return cachedManifest;
-    }
+  const manifestPath = path.join(getPackageRoot(), "templates-manifest.json");
+  if (fs.existsSync(manifestPath)) {
+    cachedManifest = JSON.parse(
+      fs.readFileSync(manifestPath, "utf-8"),
+    ) as TemplatesManifest;
+    return cachedManifest;
   }
 
   throw new Error(

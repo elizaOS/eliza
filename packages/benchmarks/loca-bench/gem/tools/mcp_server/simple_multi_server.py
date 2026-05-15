@@ -265,7 +265,7 @@ wrapped_env = ToolEnvWrapper(env, tools=[tool])
 
 ✓ Tool names: canvas_health_check, memory_create_entities (prefixed)
 ✓ Single tool to manage
-✓ Unified configuration
+✓ Configuration
 ✓ Clear server origin
     """)
 

@@ -11,6 +11,7 @@ import {
 } from "./types";
 import * as utils from "./utils";
 import { stableStringify } from "./utils/deterministic";
+import { isObjectRecord as isRecord } from "./utils/type-guards";
 
 type EntityDetailsRecord = Pick<Entity, "id" | "names"> & {
 	name?: string;
@@ -34,10 +35,6 @@ interface ParsedResolution {
 	matches?: {
 		match?: EntityMatch | EntityMatch[];
 	};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeEntityMatch(value: unknown): EntityMatch | null {

@@ -1,6 +1,6 @@
-import { calculateTwilioSmsBilling, resolveTwilioSmsCostPerSegment } from "@elizaos/billing";
 import crypto from "crypto";
 import { z } from "zod";
+import { calculateTwilioSmsBilling, resolveTwilioSmsCostPerSegment } from "../billing";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 

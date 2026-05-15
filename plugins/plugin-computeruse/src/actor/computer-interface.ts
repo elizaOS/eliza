@@ -2,7 +2,7 @@
  * WS7 — BaseComputerInterface (TypeScript port).
  *
  * Shape ported from trycua/cua's `BaseComputerInterface` (MIT). The original
- * provides one unified API surface for screenshot + mouse + keyboard + screen
+ * provides one standard API surface for screenshot + mouse + keyboard + screen
  * geometry that the Brain/Actor cascade can call without knowing what OS or
  * driver is underneath.
  *
@@ -29,7 +29,6 @@
  */
 
 import { logger } from "@elizaos/core";
-import { localToGlobal } from "../platform/coords.js";
 import { captureDisplay, type DisplayCapture } from "../platform/capture.js";
 import {
   findDisplay,
@@ -290,8 +289,13 @@ export class DefaultComputerInterface implements ComputerInterface {
       );
     }
     // Driver doesn't expose multi-segment polylines; fall back to start→end.
-    const start = args.path[0]!;
-    const end = args.path[args.path.length - 1]!;
+    const start = args.path[0];
+    const end = args.path[args.path.length - 1];
+    if (!start || !end) {
+      throw new Error(
+        "[computeruse/actor] drag path requires concrete start and end points",
+      );
+    }
     const startG = this.toGlobalChecked({ displayId: args.displayId, x: start.x, y: start.y });
     const endG = this.toGlobalChecked({ displayId: args.displayId, x: end.x, y: end.y });
     const fn = this.deps.driver?.drag ?? driverDrag;
@@ -434,15 +438,19 @@ export class DefaultComputerInterface implements ComputerInterface {
   }
 
   private toGlobalChecked(point: DisplayPoint): { x: number; y: number } {
-    this.requireDisplay(point.displayId);
+    const display = this.requireDisplay(point.displayId);
     if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) {
       throw new Error(
         `[computeruse/actor] non-finite coords (${point.x}, ${point.y})`,
       );
     }
-    // Resolve via the central coords module so the same translation rules
-    // (DPI/backing-store, retina divide-by-scale) apply everywhere.
-    return localToGlobal({ displayId: point.displayId, x: point.x, y: point.y });
+    // Translate using the injected display list so tests with fake displays
+    // work correctly. `localToGlobal` from platform/coords uses the real OS
+    // display list and would break test isolation.
+    return {
+      x: Math.round(display.bounds[0] + point.x),
+      y: Math.round(display.bounds[1] + point.y),
+    };
   }
 }
 

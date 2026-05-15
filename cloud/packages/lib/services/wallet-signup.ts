@@ -12,6 +12,7 @@ import { usersRepository } from "@/db/repositories/users";
 import { creditsService } from "@/lib/services/credits";
 import { organizationsService } from "@/lib/services/organizations";
 import { usersService } from "@/lib/services/users";
+import { logger } from "@/lib/utils/logger";
 
 const INITIAL_FREE_CREDITS = ((): number => {
   const v = process.env.INITIAL_FREE_CREDITS;
@@ -66,7 +67,7 @@ export async function findOrCreateUserByWalletAddress(
           });
         } catch (err) {
           // Log but don't fail if credit grant fails - org is still usable
-          console.error("Failed to grant initial credits:", err);
+          logger.error("[WalletSignup] Failed to grant initial credits:", err);
         }
       }
     } catch (e) {

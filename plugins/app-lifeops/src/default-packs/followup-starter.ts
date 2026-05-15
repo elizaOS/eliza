@@ -12,11 +12,14 @@
  * Cadence lives on the relationship edge, not the entity.
  */
 
-import type {
-  RelationshipStoreStub,
-  ScheduledTaskSeed,
-} from "./contract-stubs.js";
+import type { RelationshipStoreStub } from "./contract-stubs.js";
 import type { DefaultPack } from "./registry-types.js";
+import {
+  compileTaskDefinition,
+  type CompiledTaskDefinition,
+  type FollowUpTaskDefinition,
+  type WatcherTaskDefinition,
+} from "./task-definitions.js";
 
 export const FOLLOWUP_STARTER_PACK_KEY = "followup-starter";
 
@@ -34,8 +37,8 @@ export const FOLLOWUP_STARTER_RECORD_IDS = {
  */
 export const DEFAULT_FOLLOWUP_CADENCE_DAYS = 14;
 
-const watcherRecord: ScheduledTaskSeed = {
-  kind: "watcher",
+const watcherDefinition: WatcherTaskDefinition = {
+  definitionKind: "watcher",
   promptInstructions:
     "Scan RelationshipStore for cadence-overdue edges (relationships whose last interaction is older than the edge's metadata.cadenceDays). For each overdue edge, create a child followup ScheduledTask with subject={kind:'relationship',id} and completionCheck.kind='subject_updated' so any new interaction on the edge resolves it. Do not surface anything to the owner directly — the morning brief consolidation will fold the new followup tasks in.",
   contextRequest: {
@@ -60,6 +63,8 @@ const watcherRecord: ScheduledTaskSeed = {
   },
 };
 
+const watcherRecord = compileTaskDefinition(watcherDefinition);
+
 /**
  * Template for the child followup task created per overdue relationship.
  * Returned by the watcher's helper (see `buildFollowupTaskForRelationship`)
@@ -70,9 +75,9 @@ export function buildFollowupTaskForRelationship(args: {
   fromEntityId: string;
   toEntityId: string;
   cadenceDays: number;
-}): ScheduledTaskSeed {
-  return {
-    kind: "followup",
+}): CompiledTaskDefinition {
+  const definition: FollowUpTaskDefinition = {
+    definitionKind: "followup",
     promptInstructions:
       "Surface a gentle follow-up nudge for an overdue relationship cadence. Reference the person by their preferred name from EntityStore; do not invent context. One sentence; the owner can dismiss or act.",
     contextRequest: {
@@ -105,6 +110,7 @@ export function buildFollowupTaskForRelationship(args: {
       cadenceDays: args.cadenceDays,
     },
   };
+  return compileTaskDefinition(definition);
 }
 
 export const followupStarterPack: DefaultPack = {
@@ -113,6 +119,7 @@ export const followupStarterPack: DefaultPack = {
   description:
     "Daily watcher reads RelationshipStore for overdue cadence edges and emits a follow-up task per overdue edge. Default cadence is 14 days; per-edge overrides via Relationship.metadata.cadenceDays let closer relationships carry tighter cadences. The morning brief folds emissions in. Resolves automatically when any new interaction is observed on the edge.",
   defaultEnabled: true,
+  requiredCapabilities: [],
   records: [watcherRecord],
   uiHints: {
     summaryOnDayOne:
@@ -128,7 +135,7 @@ export const followupStarterPack: DefaultPack = {
 export async function deriveOverdueFollowupTasks(
   store: RelationshipStoreStub,
   options: { now?: Date } = {},
-): Promise<ScheduledTaskSeed[]> {
+): Promise<CompiledTaskDefinition[]> {
   const now = options.now ?? new Date();
   const overdue = await store.list({ cadenceOverdueAsOf: now.toISOString() });
   return overdue.map((edge) => {

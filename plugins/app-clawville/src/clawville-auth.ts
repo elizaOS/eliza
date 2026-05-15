@@ -4,10 +4,6 @@ const FETCH_TIMEOUT_MS = 8_000;
 const DEFAULT_API_BASE = "https://api.clawville.world";
 const DEFAULT_VIEWER_URL = "https://clawville.world/game";
 
-// ---------------------------------------------------------------------------
-// Runtime ducktyping — same pattern as app-babylon's babylon-auth
-// ---------------------------------------------------------------------------
-
 interface RuntimeLike {
   agentId?: string;
   character?: {
@@ -23,8 +19,7 @@ export function asRuntimeLike(value: unknown): RuntimeLike | null {
   return value && typeof value === "object" ? (value as RuntimeLike) : null;
 }
 
-/** Read a setting from the runtime, falling back to process.env. */
-export function resolveSettingLike(
+function resolveSettingLike(
   runtime: IAgentRuntime | RuntimeLike | null | undefined,
   key: string,
 ): string | undefined {

@@ -3,12 +3,13 @@
 Asserts on a staged/published Eliza-1 bundle dir (or the raw
 ``eliza1-optimized/`` output from ``optimize_for_eliza1.py``):
 
-  * ``eliza1_manifest.json.applied.{polarquant,qjl,turboquant}.applied`` is true
-    (or honestly recorded as skipped + reason).
+  * ``eliza1_manifest.json.applied.{polarquant,qjl,turboquant,fused_turboquant}.applied``
+    is true (or honestly recorded as skipped + reason).
   * The matching GGUF ``.eliza1.json`` sidecar carries the recipe
     block_layout_version / codebook_hash / per_block_tolerance pins under
-    ``polarquant.*`` / ``qjl.*`` / ``turboquant.*`` (mirrored from
-    ``recipeManifest`` in the bundle manifest schema).
+    ``polarquant.*`` / ``qjl.*`` / ``turboquant.*`` /
+    ``fused_turboquant.*`` (mirrored from ``recipeManifest`` in the bundle
+    manifest schema).
   * The stage sidecar files exist and the recorded SHA matches the
     safetensors blob.
   * ``qjl_config.json`` + ``turboquant.json`` shape against the model arch
@@ -120,10 +121,15 @@ def verify_opt_dir(opt_dir: Path) -> Report:
     polar = _read_json(opt_dir / "stage-polarquant" / "polarquant_config.json")
     qjl = _read_json(opt_dir / "stage-qjl" / "qjl_config.json")
     tbq = _read_json(opt_dir / "stage-turboquant" / "turboquant.json")
+    fused_tbq = _read_json(
+        opt_dir / "stage-fused_turboquant" / "fused_turboquant.json"
+    )
 
     _verify_recipe_pins(rep, polar, "polarquant", "polar_q4")
     _verify_recipe_pins(rep, qjl, "qjl", "qjl1_256")
-    _verify_recipe_pins(rep, tbq, "turboquant", "turbo4")
+    for target in ("turbo3", "turbo4", "turbo3_tcq"):
+        _verify_recipe_pins(rep, tbq, "turboquant", target)
+        _verify_recipe_pins(rep, fused_tbq, "fused_turboquant", target)
 
     # polarquant_artifacts.safetensors must exist next to the polar sidecar
     polar_art = opt_dir / "stage-polarquant" / "polarquant_artifacts.safetensors"
@@ -135,7 +141,7 @@ def verify_opt_dir(opt_dir: Path) -> Report:
 
     if manifest is not None:
         applied = manifest.get("applied") or {}
-        for stage in ("polarquant", "qjl", "turboquant"):
+        for stage in ("polarquant", "qjl", "turboquant", "fused_turboquant"):
             block = applied.get(stage) or {}
             rep.check(
                 f"manifest.applied.{stage}",
@@ -206,11 +212,14 @@ def verify_bundle_dir(bundle_dir: Path) -> Report:
         # back to the textQuant block in the manifest — it carries the same
         # fields the sidecar would.
         if isinstance(tq, dict) and optimized:
-            eliza1 = {k: tq.get(k) for k in ("polarquant", "qjl", "turboquant")}
+            eliza1 = {
+                k: tq.get(k)
+                for k in ("polarquant", "qjl", "turboquant", "fused_turboquant")
+            }
     if eliza1 is None:
         return rep
 
-    for stage in ("polarquant", "qjl", "turboquant"):
+    for stage in ("polarquant", "qjl", "turboquant", "fused_turboquant"):
         rep.check(
             f"eliza1.{stage} block present",
             isinstance(eliza1.get(stage), dict),
@@ -220,7 +229,7 @@ def verify_bundle_dir(bundle_dir: Path) -> Report:
     # If the manifest declares recipe pins (`recipeManifest`), cross-check
     # against the canonical kernel manifest values.
     rm = (bundle_manifest.get("kernels") or {}).get("recipeManifest") or {}
-    for tgt in ("turbo4", "qjl1_256", "polar_q4"):
+    for tgt in ("turbo3", "turbo4", "turbo3_tcq", "qjl1_256", "polar_q4"):
         if tgt in rm:
             pins = rm[tgt]
             rep.check(
@@ -248,7 +257,7 @@ def main(argv: list[str] | None = None) -> int:
     g.add_argument(
         "--bundle-dir",
         type=Path,
-        help="Staged Eliza-1 bundle dir (the dir uploaded to elizaos/eliza-1-<tier>).",
+        help="Staged Eliza-1 bundle dir (the dir uploaded under elizalabs/eliza-1/bundles/<tier>).",
     )
     ap.add_argument(
         "--json", action="store_true",

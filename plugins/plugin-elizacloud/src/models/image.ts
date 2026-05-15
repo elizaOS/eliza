@@ -55,11 +55,10 @@ export async function handleImageDescription(
   // every other caller (agent-orchestrator's task validator, vision, lifeops,
   // farcaster, telegram) free to spend the rate-limit budget.
   const disableSetting = getSetting(runtime, "DISABLE_IMAGE_DESCRIPTION", "");
-  const disabled =
-    disableSetting === "true" ||
-    disableSetting === "1" ||
-    process.env.DISABLE_IMAGE_DESCRIPTION === "true" ||
-    process.env.DISABLE_IMAGE_DESCRIPTION === "1";
+  const disabled = [disableSetting, process.env.DISABLE_IMAGE_DESCRIPTION].some((value) => {
+    const normalized = value?.trim().toLowerCase();
+    return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
+  });
   if (disabled) {
     logger.debug("[ELIZAOS_CLOUD] IMAGE_DESCRIPTION skipped — DISABLE_IMAGE_DESCRIPTION is set");
     return {

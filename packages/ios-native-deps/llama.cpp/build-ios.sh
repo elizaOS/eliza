@@ -36,6 +36,11 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 0
 fi
 
+if ! xcodebuild -version >/dev/null 2>&1 || ! xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
+  printf '\033[33m[build-ios]\033[0m skipping iOS xcframework build: requires full Xcode with the iOS SDK; active developer tools are insufficient.\n'
+  exit 0
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 SRC_DIR="$ROOT_DIR/src"
@@ -84,8 +89,15 @@ ensure_source_checkout() {
   # a SHA, and the elizaOS fork pins by SHA, not by upstream-style tag.
   ( cd "$SRC_DIR" \
     && git init -q \
-    && git remote add origin "$LLAMA_CPP_REPO" \
-    && git fetch --depth 1 origin "$PINNED_REF" \
+    && if git remote get-url origin >/dev/null 2>&1; then \
+      git remote set-url origin "$LLAMA_CPP_REPO"; \
+    else \
+      git remote add origin "$LLAMA_CPP_REPO"; \
+    fi \
+    && (git fetch --depth 1 origin "$PINNED_REF" \
+      || { matched_ref="$(git ls-remote origin | awk -v ref="$PINNED_REF" 'index($1, ref) == 1 { print $2; exit }')" \
+        && [[ -n "$matched_ref" ]] \
+        && git fetch --depth 1 origin "$matched_ref"; }) \
     && git checkout --quiet FETCH_HEAD ) \
     || die "fetch/checkout failed; verify '$PINNED_REF' exists at $LLAMA_CPP_REPO"
 }
@@ -152,7 +164,7 @@ build_slice() {
     -DLLAMA_CURL=OFF \
     -DCMAKE_XCODE_ATTRIBUTE_ONLY_ACTIVE_ARCH=NO
 
-  cmake --build . --config Release --target llama --target ggml --target common
+  cmake --build . --config Release --target llama --target ggml --target llama-common
   popd >/dev/null
 
   # Locate produced .a files and fold them into a single libllama.a so
@@ -162,7 +174,7 @@ build_slice() {
   local archives=()
   while IFS= read -r -d '' a; do
     archives+=("$a")
-  done < <(find "$search_root" -name "libllama.a" -o -name "libggml*.a" -o -name "libcommon.a" -print0)
+  done < <(find "$search_root" \( -name "libllama.a" -o -name "libggml*.a" -o -name "libcommon.a" \) -print0)
 
   if [[ ${#archives[@]} -eq 0 ]]; then
     die "no .a files produced in $build_dir — build likely failed"

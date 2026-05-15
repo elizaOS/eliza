@@ -6,38 +6,56 @@ export {
   sendJson,
   sendJsonError,
 } from "@elizaos/core";
-export type { CloudConfigLike } from "@elizaos/plugin-elizacloud";
-// ── Compat re-exports for the published `@elizaos/app-core` alpha bundle ──
-//
-// `@elizaos/app-core@2.0.0-alpha.537` (the version embedded in
-// `eliza-dist` for packaged Electrobun and the AOSP installer) imports
-// these names from `@elizaos/agent`. The agent's API surface was reorganised
-// in commit 334a6ea2 — the symbols moved out into
-// `@elizaos/plugin-elizacloud`, `./api/provider-switch-config`,
-// `./config/config`, `./config/paths`, `./api/wallet`, and
-// `./shared/workspace-resolution` without the corresponding agent-side
-// re-exports. Until app-core is republished against the new surface the
-// embedded runtime fails to start with `SyntaxError: Export named ...`,
-// so we restore them here as a thin compat layer.
-//
-// New code should import each from its real home:
-//   • cloud helpers → `@elizaos/plugin-elizacloud`
-//   • provider/onboarding config helpers → `./api/provider-switch-config`
-//   • elizaConfig file IO → `./config/config`
-//   • wallet helpers → `./api/wallet`
-//   • workspace resolution → `./shared/workspace-resolution`
-//   • user path resolution → `./config/paths`
-export {
-  handleCloudBillingRoute,
-  handleCloudCompatRoute,
-  handleCloudRoute,
-  normalizeCloudSiteUrl,
-  resolveCloudApiBaseUrl,
-  validateCloudBaseUrl,
-} from "@elizaos/plugin-elizacloud";
+export interface CloudConfigLike {
+  apiKey?: string | null;
+  baseUrl?: string | null;
+  [key: string]: unknown;
+}
+
+type CloudRouteHandler = (...args: unknown[]) => Promise<boolean>;
+type CloudUrlValidator = (value: string) => Promise<string | null>;
+type ElizaCloudRoutesModule = {
+  handleCloudBillingRoute: CloudRouteHandler;
+  handleCloudCompatRoute: CloudRouteHandler;
+  handleCloudRoute: CloudRouteHandler;
+  validateCloudBaseUrl: CloudUrlValidator;
+};
+
+async function loadElizaCloudRoutes(): Promise<ElizaCloudRoutesModule> {
+  return import(
+    "@elizaos/plugin-elizacloud"
+  ) as unknown as Promise<ElizaCloudRoutesModule>;
+}
+
+export async function handleCloudBillingRoute(
+  ...args: unknown[]
+): Promise<boolean> {
+  const { handleCloudBillingRoute } = await loadElizaCloudRoutes();
+  return handleCloudBillingRoute(...args);
+}
+
+export async function handleCloudCompatRoute(
+  ...args: unknown[]
+): Promise<boolean> {
+  const { handleCloudCompatRoute } = await loadElizaCloudRoutes();
+  return handleCloudCompatRoute(...args);
+}
+
+export async function handleCloudRoute(...args: unknown[]): Promise<boolean> {
+  const { handleCloudRoute } = await loadElizaCloudRoutes();
+  return handleCloudRoute(...args);
+}
+
+export async function validateCloudBaseUrl(
+  value: string,
+): Promise<string | null> {
+  const { validateCloudBaseUrl } = await loadElizaCloudRoutes();
+  return validateCloudBaseUrl(value);
+}
 export type { ElizaConfig, ReleaseChannel, RolesConfig } from "@elizaos/shared";
 export {
   CONNECTOR_PLUGINS,
+  normalizeCloudSiteUrl,
   type ParseClampedIntegerOptions,
   type ParseClampedNumberOptions,
   type ParsePositiveNumberOptions,
@@ -45,6 +63,7 @@ export {
   parseClampedInteger,
   parsePositiveFloat,
   parsePositiveInteger,
+  resolveCloudApiBaseUrl,
   STREAMING_PLUGINS,
 } from "@elizaos/shared";
 export {

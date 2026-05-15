@@ -479,7 +479,24 @@ function createEmbeddingHandler() {
 		runtime: IAgentRuntime,
 		params: TextEmbeddingParams | string | null,
 	): Promise<number[]> => {
-		const service = requireService(runtime, ModelType.TEXT_EMBEDDING);
+		const service = serviceFromRuntime(runtime);
+		if (!service) {
+			// Fail-soft: when no local backend is loaded (no Eliza-1 bundle yet,
+			// running cloud-only, etc.), return a zero-vector so the agent
+			// bootstrap and memory pipeline can complete. Semantic search /
+			// RAG will return matches based on this all-zero vector (i.e.
+			// effectively degraded ordering), but the runtime stays online
+			// instead of crashing on every memory write. Surface a one-time
+			// warning so operators know to install a backend or wire a cloud
+			// embedding provider.
+			if (!emitZeroVectorWarning.warned) {
+				emitZeroVectorWarning.warned = true;
+				logger.warn(
+					"[local-inference] TEXT_EMBEDDING requested with no active Eliza-1 backend — returning zero-vectors so the runtime can boot. To restore semantic search install/activate an Eliza-1 bundle, set ELIZAOS_CLOUD_USE_EMBEDDINGS=1 with a Cloud login, or set ELIZA_DISABLE_LOCAL_EMBEDDINGS=true to stop auto-loading this plugin.",
+				);
+			}
+			return new Array(LOCAL_EMBEDDING_FALLBACK_DIMS).fill(0);
+		}
 		if (typeof service.embed !== "function") {
 			throw unavailable(
 				ModelType.TEXT_EMBEDDING,
@@ -494,6 +511,15 @@ function createEmbeddingHandler() {
 		return normalizeEmbeddingResult(await service.embed({ input }));
 	};
 }
+
+// Dimensions match `bundles/0_8b/text/eliza-1-0_8b-32k.gguf` (and most current
+// embedding models we ship). When operators wire a different-dimension model
+// later, the agent re-indexes anyway, so this constant is for the boot path
+// only — never persisted as real data.
+const LOCAL_EMBEDDING_FALLBACK_DIMS = 1024;
+
+// Module-level flag to ensure the warning fires once per process, not per call.
+const emitZeroVectorWarning: { warned: boolean } = { warned: false };
 
 function createTextToSpeechHandler() {
 	return async (
@@ -937,7 +963,7 @@ function resolveImageGenModelKeyFromRuntime(runtime: IAgentRuntime): string {
  * Inlined tier → default image-gen model id map. Duplicates the
  * `TIER_TO_DEFAULT_IMAGE_MODEL` entries in `backend-selector.ts` —
  * provider.ts intentionally avoids importing the imagegen subpackage
- * so the unified provider stays loadable on runtimes that don't ship
+ * so the provider stays loadable on runtimes that don't ship
  * the WS3 capability. The two maps are kept in sync by the WS3
  * routing test (`imagegen-routing.test.ts`).
  */
@@ -968,7 +994,7 @@ export function createLocalInferenceModelHandlers(): NonNullable<
 export const localInferencePlugin: Plugin = {
 	name: LOCAL_INFERENCE_PROVIDER_ID,
 	description:
-		"Unified Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
+		"Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
 	actions: [generateMediaAction],
 	models: createLocalInferenceModelHandlers(),
@@ -976,7 +1002,7 @@ export const localInferencePlugin: Plugin = {
 		const service = serviceFromRuntime(runtime);
 		if (!service) {
 			logger.info(
-				"[local-inference] Unified provider registered; no active backend service is exposed yet. Model calls will return LOCAL_INFERENCE_UNAVAILABLE until an Eliza-1 backend is activated.",
+				"[local-inference] Provider registered; no active backend service is exposed yet. Model calls will return LOCAL_INFERENCE_UNAVAILABLE until an Eliza-1 backend is activated.",
 			);
 			return;
 		}
@@ -994,7 +1020,7 @@ export const localInferencePlugin: Plugin = {
 					typeof service.transcribe === "function" ||
 					typeof service.transcribePcm === "function",
 			},
-			"[local-inference] Unified provider connected to runtime backend service",
+			"[local-inference] Provider connected to runtime backend service",
 		);
 	},
 };

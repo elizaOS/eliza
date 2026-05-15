@@ -66,6 +66,7 @@
  */
 
 import { ImageGenBackendUnavailableError } from "./errors";
+import { PNG_SIGNATURE, resolveSeed } from "./sd-cpp";
 import type {
 	ImageGenBackend,
 	ImageGenLoadArgs,
@@ -157,10 +158,7 @@ export async function loadCoreMlImageGenBackend(
 					"[imagegen/coreml] prompt is empty",
 				);
 			}
-			const seed =
-				typeof req.seed === "number" && req.seed >= 0
-					? req.seed
-					: Math.floor(Math.random() * 0x7fffffff);
+			const seed = resolveSeed(req.seed);
 			const width = req.width ?? 512;
 			const height = req.height ?? 512;
 			const steps = req.steps ?? 20;
@@ -219,16 +217,15 @@ function decodeBase64Png(base64: string): Uint8Array {
 		);
 	}
 	const buf = Buffer.from(base64, "base64");
-	if (buf.length < 8) {
+	if (buf.length < PNG_SIGNATURE.length) {
 		throw new ImageGenBackendUnavailableError(
 			"coreml",
 			"unsupported_request",
 			`[imagegen/coreml] base64 payload too short (${buf.length} bytes); not a PNG`,
 		);
 	}
-	const sig = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-	for (let i = 0; i < sig.length; i += 1) {
-		if (buf[i] !== sig[i]) {
+	for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
+		if (buf[i] !== PNG_SIGNATURE[i]) {
 			throw new ImageGenBackendUnavailableError(
 				"coreml",
 				"unsupported_request",

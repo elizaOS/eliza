@@ -210,7 +210,7 @@ export const attachmentImageAnalysisEvaluator: Evaluator<
 	},
 
 	prompt({ prepared }) {
-		return `${prepared.analyses.length} inbound image attachment(s) were analyzed and persisted by the runtime. Return {"processed": true} to acknowledge.`;
+		return `Runtime analyzed/persisted ${prepared.analyses.length} image attachment(s). Return {"processed":true}.`;
 	},
 
 	parse(output) {

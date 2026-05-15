@@ -1,8 +1,6 @@
 
 import logging
 import base64
-import json
-import time
 import os
 import sys
 
@@ -10,7 +8,6 @@ import sys
 sys.path.append(os.path.dirname(__file__))
 
 from eliza_adapter.server_manager import ElizaServerManager
-from eliza_adapter.client import ElizaClient
 # We import our new adapter logic manually since we aren't using the full OSWorld suite here
 # But we can use the class we just wrote if we fix imports in it
 # For the mock, we can just use ElizaClient directly to simulate the agent loop
@@ -35,10 +32,10 @@ def run_mock_benchmark():
     logger = logging.getLogger("mock_bench")
     
     # Configure env to enable computer use plugin if needed
-    env = os.environ.copy()
+    os.environ.copy()
     
     # Set env vars globally so ElizaServerManager picks them up
-    os.environ["ELIZA_ENABLE_COMPUTERUSE"] = "true"
+    os.environ["COMPUTER_USE_ENABLED"] = "1"
     os.environ["ELIZA_BENCH_PORT"] = "3939"
     os.environ["PGLITE_DATA_DIR"] = ":memory:" # Force in-memory DB for plugin-sql
     # os.environ["ELIZA_BENCH_MOCK"] = "true" # Disable mock for real test  

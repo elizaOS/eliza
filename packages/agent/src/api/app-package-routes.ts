@@ -1,15 +1,11 @@
-import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
+import type {
+  AppPackageRouteContext,
+  AppPackageRouteDispatchContext,
+} from "@elizaos/core";
 import {
   type AppRouteModule,
   importAppRouteModule,
 } from "../services/app-package-modules.ts";
-
-export interface AppPackageRouteContext
-  extends RouteRequestMeta,
-    Pick<RouteHelpers, "error" | "json" | "readJsonBody"> {
-  url: URL;
-  runtime: unknown | null;
-}
 
 const RESERVED_APP_ROUTE_SLUGS = new Set([
   "",
@@ -59,7 +55,7 @@ function resolveAppRouteHandler(
 }
 
 export async function handleAppPackageRoutes(
-  ctx: AppPackageRouteContext,
+  ctx: AppPackageRouteDispatchContext,
 ): Promise<boolean> {
   const slug = extractAppSlug(ctx.pathname);
   if (!slug) return false;
@@ -75,8 +71,12 @@ export async function handleAppPackageRoutes(
   // handlers can call readJsonBody() with no arguments.
   const boundCtx: AppPackageRouteContext = {
     ...ctx,
-    readJsonBody: (() =>
-      ctx.readJsonBody(ctx.req, ctx.res)) as typeof ctx.readJsonBody,
+    readJsonBody: ((options) =>
+      ctx.readJsonBody(
+        ctx.req,
+        ctx.res,
+        options,
+      )) as AppPackageRouteContext["readJsonBody"],
   };
 
   return handler(boundCtx);

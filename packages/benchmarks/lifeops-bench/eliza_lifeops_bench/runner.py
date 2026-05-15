@@ -172,6 +172,9 @@ _PROMOTED_ACTION_DEFAULTS: dict[str, tuple[str, str, str]] = {
     "CALENDAR_CHECK_AVAILABILITY": ("CALENDAR", "subaction", "check_availability"),
     "CALENDAR_NEXT_EVENT": ("CALENDAR", "subaction", "next_event"),
     "CALENDAR_UPDATE_PREFERENCES": ("CALENDAR", "subaction", "update_preferences"),
+    "CALENDAR_FEED": ("CALENDAR", "subaction", "search_events"),
+    "CALENDAR_TRIP_WINDOW": ("CALENDAR", "subaction", "search_events"),
+    "CALENDAR_BULK_RESCHEDULE": ("CALENDAR", "subaction", "bulk_reschedule"),
     # P1-5: contact-create aliases. Agents emit ENTITY_CREATE_CONTACT,
     # CONTACT_CREATE, or contact_create interchangeably with ENTITY/create.
     # Normalise all of them into ENTITY(subaction=create) before dispatch.
@@ -223,6 +226,12 @@ def _normalize_action(action: Action) -> Action:
         return _normalize_action(Action(name=aliased_name, kwargs=action.kwargs))
     if action.name in {"REPLY", "RESPOND"}:
         return Action(name="REPLY", kwargs=action.kwargs)
+    if action.name == "ARCHIVE_EMAIL_THREAD":
+        kwargs = dict(action.kwargs)
+        kwargs.setdefault("source", "gmail")
+        kwargs.setdefault("operation", "manage")
+        kwargs.setdefault("manageOperation", "archive")
+        return Action(name="MESSAGE", kwargs=kwargs)
     promoted = _PROMOTED_ACTION_DEFAULTS.get(action.name)
     if promoted is None:
         return _normalize_umbrella_discriminator(action)
@@ -267,6 +276,22 @@ def _with_discriminator_alias(
 ) -> Action:
     kwargs = dict(action.kwargs)
     if target_field not in kwargs:
+        if (
+            action.name == "MESSAGE"
+            and target_field == "operation"
+            and "manage" in allowed
+            and any(
+                isinstance(kwargs.get(key), str) and kwargs.get(key)
+                for key in (
+                    "manageOperation",
+                    "manage_operation",
+                    "mailOperation",
+                    "mail_operation",
+                )
+            )
+        ):
+            kwargs[target_field] = "manage"
+            return Action(name=action.name, kwargs=kwargs)
         raw = kwargs.get("action")
         if isinstance(raw, str):
             candidate = aliases.get(raw, raw)
@@ -956,8 +981,30 @@ def _h_mail_send(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, 
 
 
 def _h_mail_archive(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
-    msg = world.archive_email(kw["message_id"])
+    msg_id = kw.get("message_id") or kw.get("messageId") or kw.get("id")
+    if msg_id is None:
+        thread_id = kw.get("thread_id") or kw.get("threadId")
+        if thread_id is not None:
+            return _h_mail_archive_thread(world, {"thread_id": thread_id}, _name)
+        raise KeyError("MAIL.archive needs message_id or thread_id")
+    msg = world.archive_email(msg_id)
     return {"id": msg.id, "folder": msg.folder}
+
+
+def _h_mail_archive_thread(
+    world: LifeWorld,
+    kw: dict[str, Any],
+    _name: str,
+) -> dict[str, Any]:
+    thread_id = kw.get("thread_id") or kw.get("threadId")
+    if not isinstance(thread_id, str) or not thread_id:
+        raise KeyError("MAIL.archive_thread needs thread_id")
+    archived: list[str] = []
+    for eid, em in list(world.emails.items()):
+        if em.thread_id == thread_id and em.folder != "archive":
+            world.archive_email(eid)
+            archived.append(eid)
+    return {"thread_id": thread_id, "archived_ids": archived}
 
 
 def _h_mail_mark_read(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[str, Any]:
@@ -1334,6 +1381,13 @@ def _u_calendar(world: LifeWorld, kw: dict[str, Any], name: str) -> dict[str, An
         return {
             "subaction": sub,
             "ok": True,
+            "events": _search_calendar_events(world, kw, details),
+        }
+    if sub == "bulk_reschedule":
+        return {
+            "subaction": sub,
+            "ok": True,
+            "noop": True,
             "events": _search_calendar_events(world, kw, details),
         }
     if sub in {"propose_times", "update_preferences"}:
@@ -2165,7 +2219,7 @@ def _u_money_readonly(world: LifeWorld, kw: dict[str, Any], _name: str) -> dict[
 
     # Resolve window_days into a start_date when no explicit start_date given.
     if window_days is not None and start_date is None:
-        from datetime import datetime, timedelta, timezone as _tz
+        from datetime import datetime, timedelta
         now_dt = datetime.fromisoformat(world.now_iso.replace("Z", "+00:00"))
         start_dt = now_dt - timedelta(days=window_days)
         start_date = start_dt.isoformat()
@@ -2664,6 +2718,7 @@ _ACTION_HANDLERS: dict[
     "CALENDAR.cancel": _h_calendar_cancel,
     "MAIL.send": _h_mail_send,
     "MAIL.archive": _h_mail_archive,
+    "MAIL.archive_thread": _h_mail_archive_thread,
     "MAIL.mark_read": _h_mail_mark_read,
     "MAIL.star": _h_mail_star,
     "MAIL.trash": _h_mail_trash,
@@ -2742,6 +2797,9 @@ _ACTION_HANDLERS: dict[
     "CALENDAR_CHECK_AVAILABILITY": _u_calendar,
     "CALENDAR_NEXT_EVENT": _u_calendar,
     "CALENDAR_UPDATE_PREFERENCES": _u_calendar,
+    "CALENDAR_FEED": _u_calendar,
+    "CALENDAR_TRIP_WINDOW": _u_calendar,
+    "CALENDAR_BULK_RESCHEDULE": _u_calendar,
     # P1-5: contact-create promoted aliases. _normalize_action already injects
     # subaction=create before dispatch, so routing to _u_entity is sufficient.
     "ENTITY_CREATE_CONTACT": _u_entity,

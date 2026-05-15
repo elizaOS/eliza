@@ -6,6 +6,7 @@ import {
 } from "@elizaos/core";
 import { printBanner } from "./banner";
 import { createDiscordConnectorAccountProvider } from "./connector-account-provider";
+import { discordDataRoutes } from "./data-routes";
 import { DiscordOwnerPairingServiceImpl } from "./owner-pairing-service";
 import { getPermissionValues } from "./permissions";
 import { registerDiscordDmSensitiveRequestAdapter } from "./sensitive-request-adapter";
@@ -23,7 +24,7 @@ const discordPlugin: Plugin = {
 		DiscordOwnerPairingServiceImpl,
 		DiscordUserAccountScraperImpl,
 	],
-	routes: discordSetupRoutes,
+	routes: [...discordSetupRoutes, ...discordDataRoutes],
 	actions: [],
 	providers: [],
 	tests: [new DiscordTestSuite()],
@@ -192,6 +193,7 @@ export type {
 	DiscordReactionNotificationMode,
 } from "./config";
 export { DISCORD_SERVICE_NAME } from "./constants";
+export { discordDataRoutes } from "./data-routes";
 export {
 	buildDiscordAvatarCacheFileName,
 	cacheDiscordAvatarUrl,

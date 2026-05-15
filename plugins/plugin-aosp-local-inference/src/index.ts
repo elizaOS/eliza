@@ -41,5 +41,7 @@ import { ensureAospLocalInferenceHandlers as _bs_10_ensureAospLocalInferenceHand
 // collide on a shared `__BUNDLE_SAFETY__` name.
 // biome-ignore lint/correctness/noUnusedVariables: bundle-safety sink.
 const __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = [_bs_1___resetForTests, _bs_2_kvCacheTypeNameToEnum, _bs_3_readEnvKvCacheType, _bs_4_registerAospLlamaLoader, _bs_5_resolveKvCacheType, _bs_6_resolveLibllamaPath, _bs_7_resolveLlamaShimPath, _bs_8_resolveThreads, _bs_10_ensureAospLocalInferenceHandlers];
-// biome-ignore lint/suspicious/noExplicitAny: bundle-safety sink.
-(globalThis as any).__bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__;
+const bundleSafetyGlobal = globalThis as typeof globalThis & {
+  __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__?: typeof __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__;
+};
+bundleSafetyGlobal.__bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__;

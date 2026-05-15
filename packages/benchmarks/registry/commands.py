@@ -143,6 +143,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         sample = extra.get("sample", extra.get("max_tasks"))
         if isinstance(sample, int) and sample > 0:
             args.extend(["--sample", str(sample)])
+        seed = extra.get("seed")
+        if isinstance(seed, int):
+            args.extend(["--seed", str(seed)])
+        elif isinstance(sample, int) and sample > 0:
+            args.extend(["--seed", "0"])
         max_per_category = extra.get("max_per_category")
         if isinstance(max_per_category, int) and max_per_category > 0:
             args.extend(["--max-per-category", str(max_per_category)])
@@ -171,7 +176,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(categories, list) and all(isinstance(x, str) for x in categories):
             args.extend(["--categories", *cast(list[str], categories)])
         elif extra.get("max_tasks") == 1:
-            args.extend(["--categories", "sequential"])
+            args.append("--use-sample-tasks")
+        execution_model = extra.get("execution_model")
+        if isinstance(execution_model, str) and execution_model.strip():
+            args.extend(["--execution-model", execution_model.strip()])
+        elif extra.get("max_tasks") == 1:
+            args.extend(["--execution-model", "sequential"])
         max_tasks = extra.get("max_tasks")
         if isinstance(max_tasks, int) and max_tasks > 0:
             args.extend(["--max-tasks", str(max_tasks)])
@@ -970,7 +980,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = extra.get("agent")
-        provider_name = (model.provider or "").strip().lower()
+        (model.provider or "").strip().lower()
         if agent in {"deterministic", "python"}:
             args.extend(["--mode", "deterministic"])
         else:
@@ -1178,19 +1188,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         provider_name = (model.provider or "").strip().lower()
         if isinstance(profile_raw, str) and profile_raw.strip():
             profile = profile_raw.strip().lower()
-        elif provider_name == "mock":
-            profile = "mock"
-        elif provider_name not in {"groq", "elevenlabs"}:
-            profile = "mock"
-        elif not os.getenv("VOICEBENCH_AUDIO_PATH") and not (
-            Path("benchmarks/voicebench/shared/audio/default.wav").exists()
-            or Path("agent-town/public/assets/background.mp3").exists()
-        ):
-            profile = "mock"
+        elif provider_name == "elevenlabs":
+            profile = "elevenlabs"
         else:
             profile = "groq"
-        if profile not in {"groq", "elevenlabs", "mock"}:
-            raise ValueError(f"voicebench: unsupported profile '{profile}' (expected groq, elevenlabs, or mock)")
+        if profile not in {"groq", "elevenlabs"}:
+            raise ValueError(f"voicebench: unsupported profile '{profile}' (expected groq or elevenlabs)")
         args.append(f"--profile={profile}")
         iterations = extra.get("iterations")
         if isinstance(iterations, int) and iterations > 0:
@@ -1216,7 +1219,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         args = [
             python,
             "-m",
-            "benchmarks.mmau",
+            "elizaos_mmau_audio",
             "--output",
             str(output_dir),
             "--no-traces",
@@ -2359,7 +2362,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 env_vars=(),
                 paths=("benchmarks/voicebench/run.sh", "benchmarks/voicebench/typescript/src/bench.ts"),
                 notes=(
-                    "Bun runtime via run.sh. Profiles: mock (no credentials), groq (needs GROQ_API_KEY), "
+                    "Bun runtime via run.sh. Profiles: groq (needs GROQ_API_KEY), "
                     "elevenlabs (needs GROQ_API_KEY and ELEVENLABS_API_KEY). Audio fixture resolved from "
                     "VOICEBENCH_AUDIO_PATH or repo defaults. "
                     "Reports avg/p95/p99 end-to-end latency; lower is better."
@@ -2377,12 +2380,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 "ICLR 2025) — 10k audio MCQs across speech/sound/music and 27 "
                 "reasoning skills. Not the Salesforce agent MMAU (arXiv:2407.18961)."
             ),
-            cwd_rel="packages/benchmarks/mmau",
+            cwd_rel="packages/benchmarks/mmau-audio",
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(
-                    "packages/benchmarks/mmau",
-                    "packages/benchmarks/mmau/fixtures/smoke.jsonl",
+                    "packages/benchmarks/mmau-audio",
+                    "packages/benchmarks/mmau-audio/fixtures/smoke.jsonl",
                 ),
                 notes=(
                     "Pure MCQ — deterministic exact-match scoring, no LLM-judge. "

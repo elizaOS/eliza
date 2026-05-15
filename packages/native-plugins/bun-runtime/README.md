@@ -1,20 +1,22 @@
 # @elizaos/capacitor-bun-runtime
 
-Native host package for the iOS local agent runtime work. The current Swift
-implementation can run in two modes:
+Native host package for the local agent runtime. The iOS Swift implementation
+can run in two modes:
 
 - `engine: "auto"` / `engine: "bun"`: dynamically loads the full
   `ElizaBunEngine.framework` from `@elizaos/bun-ios-runtime` when the app was
-  built with `ELIZA_IOS_FULL_BUN_ENGINE=1`.
+  built with `ELIZA_IOS_FULL_BUN_ENGINE=1`. Store-distributed iOS local mode
+  must use `engine: "bun"` and fail closed if the framework is missing.
 - `engine: "compat"`: hosts a `JSContext` compatibility bridge on a dedicated
   worker thread, installs the `__ELIZA_BRIDGE__` host functions, and loads the
-  staged iOS agent payload from `public/agent/agent-bundle.js`.
+  staged iOS agent payload from `public/agent/agent-bundle.js`. This path is
+  development/sideload-only.
 
 The full Bun engine artifact is produced outside this package by the
 `packages/bun-ios-runtime` build harness and an `elizaos/bun` fork.
 
-The Android side is parked for now — the iOS path lands first; a JNI-backed
-implementation will follow under the same JS surface.
+The Android implementation delegates lifecycle and RPC calls to the host app's
+`ElizaAgentService` over its loopback API.
 
 ## Install
 
@@ -22,11 +24,11 @@ implementation will follow under the same JS surface.
 bun add @elizaos/capacitor-bun-runtime
 ```
 
-Capacitor 8 auto-discovers the plugin via the `capacitor.ios` block in
-`package.json`. Re-run `pod install` after adding it so the
-`ElizaosCapacitorBunRuntime` pod links into your iOS workspace. The pod links
-`JavaScriptCore.framework` and `Network.framework`, depends on `Capacitor`, and
-uses `LlamaCppCapacitor` for the native llama.cpp symbols in local builds.
+Capacitor 8 auto-discovers the plugin via the package metadata. Re-run
+`pod install` after adding it so the `ElizaosCapacitorBunRuntime` pod links
+into your iOS workspace. The pod links `JavaScriptCore.framework` and
+`Network.framework`, depends on `Capacitor`, and uses `LlamaCppCapacitor` for
+the native llama.cpp symbols in local builds.
 
 ## Bundle layout
 
@@ -47,12 +49,12 @@ copied into the app bundle by Capacitor's `public` folder resource:
 ```ts
 import { ElizaBunRuntime } from "@elizaos/capacitor-bun-runtime";
 
-// Auto-selects the full Bun engine when ElizaBunEngine.framework is embedded,
-// otherwise falls back to the JSContext compatibility bridge.
+// Development/sideload only: auto-selects the full Bun engine when embedded,
+// otherwise falls back to the JSContext compatibility bridge in DEBUG builds.
 await ElizaBunRuntime.start({ engine: "auto" });
 
-// Require the full Bun engine. This returns { ok: false } if the framework is
-// not embedded in the app bundle.
+// Store iOS local mode: require the full Bun engine. This returns { ok: false }
+// if the framework is not embedded in the app bundle.
 await ElizaBunRuntime.start({
   engine: "bun",
   argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
@@ -86,8 +88,9 @@ In full Bun mode, the Swift host loads `ElizaBunEngine.framework` with
 `dlopen`, starts `agent-bundle.js ios-bridge --stdio`, and forwards React
 requests through `ElizaBunRuntime.call({ method: "http_request", args })`.
 `packages/ui/src/api/ios-local-agent-transport.ts` uses that path first when
-the native plugin is available, then falls back to the foreground JSContext
-ITTP kernel for compatibility builds.
+the native plugin is available. The foreground JSContext ITTP kernel is retained
+only for development/sideload compatibility builds; iOS store builds fail closed
+instead of falling back to ITTP.
 
 ## Llama backend
 
@@ -107,9 +110,10 @@ The plugin emits two Capacitor events:
 
 ## Limitations (v1)
 
-- iOS-only. Android falls back to the `WebPlugin` stub.
-- Full Bun is only used when `ElizaBunEngine.framework` is embedded. Otherwise
-  `engine: "auto"` falls back to the compatibility JSContext host.
+- Android requires the host app's `ElizaAgentService` loopback API.
+- Full Bun is only used when `ElizaBunEngine.framework` is embedded. Outside
+  iOS store local mode, `engine: "auto"` can fall back to the compatibility
+  JSContext host for development/sideload builds.
 - The full Bun bridge currently buffers HTTP response bodies over stdio. It is
   correct for API calls, but token-by-token streaming needs a follow-up stream
   envelope.

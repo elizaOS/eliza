@@ -1,14 +1,14 @@
 import type {
+  ProcessEnvLike,
   DetokenizeTextParams,
   IAgentRuntime,
   ModelTypeName,
   TokenizeTextParams,
+
 } from "@elizaos/core";
 import { ModelType } from "@elizaos/core";
 import { DEFAULT_ELIZA_CLOUD_TEXT_MODEL } from "@elizaos/core";
 import { encodingForModel, type TiktokenModel } from "js-tiktoken";
-
-type ProcessEnvLike = Record<string, string | undefined>;
 
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {

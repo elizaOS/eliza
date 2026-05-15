@@ -16,7 +16,6 @@ import math
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from pathlib import Path
-from typing import Literal
 
 # ---------------------------------------------------------------------------
 # Constants / Thresholds
@@ -228,7 +227,7 @@ def _classify_rec_type(sentiment: str) -> str:
 def _classify_difficulty(content: str, sentiment: str, certainty: str) -> str:
     """Estimate extraction difficulty based on message characteristics."""
     content_lower = content.lower()
-    word_count = len(content.split())
+    len(content.split())
 
     # Easy: explicit buy/sell language, ticker mentioned with $
     explicit_signals = ["buy", "sell", "moon", "pump", "dump", "scam", "rug",

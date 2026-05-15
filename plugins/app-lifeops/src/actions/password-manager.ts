@@ -139,9 +139,8 @@ function failure(error: string, extra?: Record<string, unknown>): ActionResult {
  * Handler function backing the CREDENTIALS umbrella's password-manager
  * subactions (`search`, `list`, `inject_username`, `inject_password`).
  *
- * Folded out of the legacy `PASSWORD_MANAGER` action surface — Audit B Defer
- * #5. The umbrella in `./credentials.ts` is the only caller; no Action object
- * is registered for this handler anymore.
+ * Called from `./credentials.ts`; no Action object is registered for this
+ * handler directly.
  */
 export async function runPasswordManagerHandler(
   runtime: IAgentRuntime,

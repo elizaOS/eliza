@@ -12,7 +12,7 @@ describe("music plugin compression", () => {
     ]);
   });
 
-  it("registers only the unified MUSIC action", () => {
+  it("registers only the MUSIC action", () => {
     expect(musicPlugin.actions?.map((action) => action.name)).toEqual([
       "MUSIC",
     ]);

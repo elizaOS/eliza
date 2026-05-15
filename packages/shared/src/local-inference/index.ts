@@ -37,6 +37,15 @@ export {
   matchGpuProfile,
   reservedHeadroomGb,
 } from "./gpu-profiles.js";
+export * from "./kokoro/index.js";
+export {
+  buildKokoroOrtSessionOptions,
+  DEFAULT_KOKORO_EXECUTION_PROVIDER,
+  KOKORO_EXECUTION_PROVIDER_IDS,
+  type KokoroExecutionProvider,
+  type KokoroOrtSessionOptionsPatch,
+  parseKokoroExecutionProvider,
+} from "./kokoro-execution-provider.js";
 export {
   type Ed25519PublicKey,
   ManifestSignatureError,
@@ -104,6 +113,8 @@ export {
   type ModelBucket,
   type ModelCategory,
   type ModelHubSnapshot,
+  type OpenVinoDeviceKind,
+  type OpenVinoHardwareProbe,
   TEXT_GENERATION_SLOTS,
   type TextGenerationSlot,
   type TokenizerFamily,

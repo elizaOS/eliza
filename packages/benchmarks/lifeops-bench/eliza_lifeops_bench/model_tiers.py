@@ -12,7 +12,7 @@ requested model as the standard benchmark adapters.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Literal, Mapping, Optional
 
 ModelTier = Literal["small", "mid", "large", "frontier"]

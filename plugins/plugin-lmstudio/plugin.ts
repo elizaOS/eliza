@@ -13,6 +13,7 @@ import type {
   GenerateTextParams,
   IAgentRuntime,
   Plugin,
+  ProcessEnvLike,
   TextEmbeddingParams,
   TextStreamResult,
 } from "@elizaos/core";
@@ -30,8 +31,6 @@ import {
 import { getApiKey, getBaseURL, shouldAutoDetect } from "./utils/config";
 import { detectLMStudio } from "./utils/detect";
 
-type ProcessEnvLike = Record<string, string | undefined>;
-
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined" || !process.env) {
     return {};
@@ -40,11 +39,11 @@ function getProcessEnv(): ProcessEnvLike {
 }
 
 const env = getProcessEnv();
-const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as string;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
+const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as string;
+const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
+const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;
+const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as string;
+const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as string;
 
 export const lmStudioPlugin: Plugin = {
   name: "lmstudio",
@@ -81,10 +80,11 @@ export const lmStudioPlugin: Plugin = {
       return;
     }
 
+    const apiKey = getApiKey(runtime);
     const result = await detectLMStudio({
       baseURL,
-      apiKey: getApiKey(runtime),
-      fetcher: runtime.fetch ?? undefined,
+      ...(apiKey ? { apiKey } : {}),
+      ...(runtime.fetch ? { fetcher: runtime.fetch } : {}),
       timeoutMs: 2000,
     });
 
@@ -167,10 +167,11 @@ export const lmStudioPlugin: Plugin = {
         {
           name: "lmstudio_test_models_endpoint",
           fn: async (runtime: IAgentRuntime) => {
+            const apiKey = getApiKey(runtime);
             const result = await detectLMStudio({
               baseURL: getBaseURL(runtime),
-              apiKey: getApiKey(runtime),
-              fetcher: runtime.fetch ?? undefined,
+              ...(apiKey ? { apiKey } : {}),
+              ...(runtime.fetch ? { fetcher: runtime.fetch } : {}),
             });
             if (!result.available) {
               logger.error({ result }, "[LMStudio] /v1/models probe failed");

@@ -6,9 +6,7 @@ export function parseDurationMs(
   raw: string,
   opts?: DurationMsParseOptions,
 ): number {
-  const trimmed = String(raw ?? "")
-    .trim()
-    .toLowerCase();
+  const trimmed = String(raw).trim().toLowerCase();
   if (!trimmed) {
     throw new Error("invalid duration (empty)");
   }

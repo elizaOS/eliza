@@ -39,7 +39,7 @@ const KNOWN_GAME_ACTIONS: GameActionConfig[] = [
       /(?:move|walk)\s+(?:the\s+)?(?:npc|bot|agent)?\s*(?:to|towards)\s+(?:the\s+)?(\w+)/i,
       /(?:move|walk)\s+to\s+\(?(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\)?/i,
     ],
-    extractParams: (match) => {
+    extractParams: (match): RobloxActionParameters => {
       if (match.length >= 4 && match[1] && match[2] && match[3]) {
         return {
           x: Number.parseFloat(match[1]),
@@ -47,7 +47,7 @@ const KNOWN_GAME_ACTIONS: GameActionConfig[] = [
           z: Number.parseFloat(match[3]),
         };
       }
-      return { waypoint: match[1] || "" };
+      return { waypoint: match[1] ?? "" };
     },
   },
   {

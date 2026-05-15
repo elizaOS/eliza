@@ -25,9 +25,18 @@ function readConfig(): Record<string, unknown> | undefined {
 }
 
 export function readConfigEnvKey(key: string): string | undefined {
+  // Prefer the config file's env section: the UI writes settings there and
+  // changes take effect without a process restart. Fall back to process.env
+  // so operators who set values via a systemd EnvironmentFile (service.env)
+  // or shell export are honoured — these paths were silently ignored before,
+  // causing `ELIZA_OPENCODE_*` overrides to be dropped on the floor.
   const config = readConfig();
   const val = (config?.env as Record<string, unknown> | undefined)?.[key];
-  return typeof val === "string" ? val : undefined;
+  if (typeof val === "string" && val.length > 0) return val;
+  const fromProcessEnv = process.env[key];
+  return typeof fromProcessEnv === "string" && fromProcessEnv.length > 0
+    ? fromProcessEnv
+    : undefined;
 }
 
 /** Read a key from the cloud section of the config (e.g. "apiKey"). */
@@ -35,34 +44,4 @@ export function readConfigCloudKey(key: string): string | undefined {
   const config = readConfig();
   const val = (config?.cloud as Record<string, unknown> | undefined)?.[key];
   return typeof val === "string" ? val : undefined;
-}
-
-/**
- * Read the `agents.defaults.orchestrator.codexSubscriptionRestrictedToCodexFramework`
- * flag from Eliza's config. Returns false when the flag is unset or the
- * config file is missing/malformed.
- *
- * When true, Codex (ChatGPT Plus/Pro) subscription tokens are only usable when
- * the orchestrator targets the `codex` framework — other frameworks
- * (claude/gemini/aider) must fall back to API keys instead.
- */
-export function readConfigCodexSubscriptionRestrictedToCodexFramework(): boolean {
-  const config = readConfig();
-  if (!config || typeof config !== "object") return false;
-  const agents = (config as Record<string, unknown>).agents;
-  if (!agents || typeof agents !== "object" || Array.isArray(agents))
-    return false;
-  const defaults = (agents as Record<string, unknown>).defaults;
-  if (!defaults || typeof defaults !== "object" || Array.isArray(defaults))
-    return false;
-  const orchestrator = (defaults as Record<string, unknown>).orchestrator;
-  if (
-    !orchestrator ||
-    typeof orchestrator !== "object" ||
-    Array.isArray(orchestrator)
-  )
-    return false;
-  const flag = (orchestrator as Record<string, unknown>)
-    .codexSubscriptionRestrictedToCodexFramework;
-  return flag === true;
 }

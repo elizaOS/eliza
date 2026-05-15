@@ -28,11 +28,13 @@ import type {
   StreamEventEnvelope as SharedStreamEventEnvelope,
   StreamEventType as SharedStreamEventType,
   TableInfo as SharedTableInfo,
+  TradePermissionMode as SharedTradePermissionMode,
   TriggerHealthSnapshot as SharedTriggerHealthSnapshot,
   TriggerSummary as SharedTriggerSummary,
   TriggerTaskMetadata as SharedTriggerTaskMetadata,
   UpdateTriggerRequest as SharedUpdateTriggerRequest,
 } from "@elizaos/shared";
+import type { BrowserBridgeCompanionReleaseManifest } from "./browser-contracts";
 
 export type {
   CustomActionDef,
@@ -68,11 +70,7 @@ export type QueryResult = SharedQueryResult;
 export type RuntimeOrderItem = SharedRuntimeOrderItem;
 export type RuntimeServiceOrderItem = SharedRuntimeServiceOrderItem;
 
-export type TradePermissionMode =
-  | "user-sign-only"
-  | "agent-auto"
-  | "manual-local-key"
-  | "disabled";
+export type TradePermissionMode = SharedTradePermissionMode;
 
 export type SignalPairingStatus =
   | "idle"
@@ -388,9 +386,7 @@ export interface ExtensionStatus {
   safariWebExtensionPath?: string | null;
   safariAppPath?: string | null;
   safariPackagePath?: string | null;
-  releaseManifest?:
-    | import("@elizaos/plugin-browser").BrowserBridgeCompanionReleaseManifest
-    | null;
+  releaseManifest?: BrowserBridgeCompanionReleaseManifest | null;
 }
 
 // WebSocket

@@ -931,6 +931,29 @@ export async function withProviderStep<T>(
 	);
 }
 
+/**
+ * Same as {@link withActionStep} but for evaluator turns. Closes M14:
+ * every evaluator invocation emits a child trajectory step whose model
+ * call(s) attach to it. The child step's `kind` is set to `"evaluator"`
+ * downstream by the agent persistence layer when the LLM call carries
+ * `purpose === "evaluation"` (see `appendLlmCall`).
+ */
+export async function withEvaluatorStep<T>(
+	runtime: IAgentRuntime | null | undefined,
+	evaluatorName: string,
+	fn: () => Promise<T> | T,
+): Promise<T> {
+	return withChildTrajectoryStep(
+		runtime,
+		{
+			stepIdPrefix: "evaluator",
+			purpose: "evaluation",
+			actionName: evaluatorName,
+		},
+		fn,
+	);
+}
+
 export type SpawnTrajectoryHandle = {
 	/** The currently-active step id at spawn time, if any. */
 	parentStepId: string | undefined;

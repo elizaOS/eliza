@@ -34,7 +34,6 @@ import os
 import re
 import subprocess
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from eliza_adapter.client import ElizaClient

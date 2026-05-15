@@ -260,6 +260,16 @@ const IS_CAPACITOR_MOBILE_BUILD =
   CAPACITOR_BUILD_TARGET === "ios" || CAPACITOR_BUILD_TARGET === "android";
 
 function appShellMetadataPlugin(): Plugin {
+  const isIosStoreBuild =
+    CAPACITOR_BUILD_TARGET === "ios" &&
+    (process.env.ELIZA_BUILD_VARIANT === "store" ||
+      process.env.ELIZA_RELEASE_AUTHORITY === "apple-app-store");
+  const localHttpSources = isIosStoreBuild
+    ? ""
+    : " http://localhost:* http://127.0.0.1:*";
+  const localConnectSources = isIosStoreBuild
+    ? ""
+    : " http://localhost:* ws://localhost:* wss://localhost:* http://127.0.0.1:* ws://127.0.0.1:* wss://127.0.0.1:*";
   const manifest = `${JSON.stringify(
     {
       name: APP_SHELL_METADATA.appName,
@@ -290,6 +300,8 @@ function appShellMetadataPlugin(): Plugin {
     ["__APP_URL__", APP_SHELL_METADATA.appUrl],
     ["__APP_SHARE_IMAGE__", APP_SHELL_METADATA.shareImageUrl],
     ["__APP_THEME_COLOR__", APP_SHELL_METADATA.themeColor],
+    ["__APP_CSP_LOCAL_HTTP__", localHttpSources],
+    ["__APP_CSP_LOCAL_CONNECT__", localConnectSources],
   ]);
 
   return {

@@ -4,9 +4,9 @@ sidebarTitle: "Build Guide"
 description: "Compile, sign, and distribute the Eliza mobile app for iOS and Android."
 ---
 
-The Eliza mobile app (`apps/app`) is a Capacitor project that wraps the shared web UI in a native shell. Building it requires three steps: compiling the nine custom Capacitor plugins, bundling the Vite web assets, and syncing them into the native iOS or Android project. Distribution builds additionally require code signing — Apple certificates and provisioning profiles for iOS, a keystore for Android.
+The Eliza mobile app (`packages/app`) is a Capacitor project that wraps the shared web UI in a native shell. Building it requires three steps: compiling the workspace Capacitor plugins, bundling the Vite web assets, and syncing them into the native iOS or Android project. Distribution builds additionally require code signing — Apple certificates and provisioning profiles for iOS, a keystore for Android.
 
-All build commands are invoked via `bun run` from inside the `apps/app` directory.
+All build commands are invoked via `bun run` from inside the `packages/app` directory.
 
 ## Features
 
@@ -38,7 +38,7 @@ bun run build:ios
 # Build everything and sync to Android
 bun run build:android
 
-# Build all nine custom Capacitor plugins only
+# Build custom Capacitor plugins only
 bun run plugin:build
 
 # Push already-built web assets to both native projects
@@ -49,9 +49,9 @@ bun run cap:open:ios      # Xcode
 bun run cap:open:android  # Android Studio
 ```
 
-**iOS signing:** Open `packages/app/ios/App/App.xcworkspace` in Xcode, select the App target, go to Signing & Capabilities, and choose your development team. For App Store distribution, select a distribution certificate and a matching provisioning profile.
+**iOS signing:** Open `packages/app-core/platforms/ios/App/App.xcworkspace` in Xcode, select the App target, go to Signing & Capabilities, and choose your development team. For App Store distribution, select a distribution certificate and a matching provisioning profile.
 
-**Android signing:** Create a release keystore and configure it in `packages/app/android/app/build.gradle` under `signingConfigs`. Use `./gradlew bundleRelease` (AAB for Play Store) or `./gradlew assembleRelease` (APK for direct distribution) from the `android/` directory.
+**Android signing:** Create a release keystore and configure it in `packages/app-core/platforms/android/app/build.gradle` under `signingConfigs`. Use `./gradlew bundleRelease` (AAB for Play Store) or `./gradlew assembleRelease` (APK for direct distribution) from the Android platform directory.
 
 ## iOS Runtime Modes
 
@@ -162,7 +162,7 @@ bun run build:ios
 2. Open the workspace in Xcode:
 
 ```bash
-open packages/app/ios/App/App.xcworkspace
+open packages/app-core/platforms/ios/App/App.xcworkspace
 ```
 
 3. In Xcode, select the **App** target, go to **Signing & Capabilities**, and choose your development team.
@@ -211,13 +211,13 @@ bun run cap:open:android
 For Google Play Store distribution (AAB format):
 
 ```bash
-cd packages/app/android && ./gradlew bundleRelease
+cd packages/app-core/platforms/android && ./gradlew bundleRelease
 ```
 
 For direct distribution (APK format):
 
 ```bash
-cd packages/app/android && ./gradlew assembleRelease
+cd packages/app-core/platforms/android && ./gradlew assembleRelease
 ```
 
 **Release signing setup:**
@@ -228,7 +228,7 @@ cd packages/app/android && ./gradlew assembleRelease
 keytool -genkey -v -keystore release.keystore -alias eliza -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-2. Configure the keystore in `packages/app/android/app/build.gradle` under `signingConfigs`:
+2. Configure the keystore in `packages/app-core/platforms/android/app/build.gradle` under `signingConfigs`:
 
 ```groovy
 android {
@@ -271,7 +271,7 @@ Export the archive with an `ExportOptions.plist` that specifies your distributio
 **Android:**
 
 ```bash
-cd packages/app/android && ./gradlew bundleRelease --no-daemon
+cd packages/app-core/platforms/android && ./gradlew bundleRelease --no-daemon
 ```
 
 The `--no-daemon` flag ensures Gradle does not leave background processes on ephemeral CI runners.
@@ -289,7 +289,7 @@ The `--no-daemon` flag ensures Gradle does not leave background processes on eph
 CocoaPods cannot resolve dependencies, often due to a stale spec repo. Run:
 
 ```bash
-cd packages/app/ios/App && pod install --repo-update
+cd packages/app-core/platforms/ios/App && pod install --repo-update
 ```
 
 If the issue persists, delete `Podfile.lock` and the `Pods/` directory, then run `pod install` again.
@@ -308,7 +308,7 @@ Then restart your terminal and retry the build.
 
 **"Plugin build failed"**
 
-One or more of the nine custom Capacitor plugin TypeScript sources failed to compile. Isolate the error by building plugins separately:
+One or more custom Capacitor plugin TypeScript sources failed to compile. Isolate the error by building plugins separately:
 
 ```bash
 bun run plugin:build
@@ -331,7 +331,7 @@ Then rebuild and re-run from the IDE. Also verify that the `server` override in 
 macOS quarantine flags can prevent Xcode from accessing iOS project files downloaded or generated by tools. Clear them:
 
 ```bash
-xattr -cr packages/app/ios/
+xattr -cr packages/app-core/platforms/ios/
 ```
 
 Then re-open the workspace in Xcode.

@@ -10,8 +10,7 @@
  * TODO: Wire to R2-backed upload service. Until this gateway is pointed at
  * the Worker R2 upload endpoint (or given direct S3-compatible R2
  * credentials), `processVoiceMessage` returns the Discord CDN URL directly
- * and `cleanupExpiredAudio` is a no-op. Both branches are gated by
- * `VOICE_BLOB_ENABLED=1`.
+ * and `cleanupExpiredAudio` is a no-op.
  */
 
 import { type Attachment, MessageFlags } from "discord.js";
@@ -39,8 +38,6 @@ const MAX_VOICE_FILE_SIZE = 25 * 1024 * 1024; // 25MB Discord limit
 
 /** Timeout for Discord CDN fetch operations */
 const DISCORD_CDN_TIMEOUT_MS = 30_000; // 30 seconds
-
-const VOICE_BLOB_ENABLED = process.env.VOICE_BLOB_ENABLED === "1";
 
 export interface VoiceAttachmentResult {
   audioUrl: string;
@@ -95,9 +92,8 @@ export class VoiceMessageHandler {
   /**
    * Process a voice message attachment.
    * Downloads the audio file and (when blob upload is wired) uploads it.
-   * While `VOICE_BLOB_ENABLED` is unset the attachment is downloaded and
-   * size-validated but no blob is persisted — the original Discord CDN URL
-   * is returned in the result.
+   * Until then, the attachment is downloaded and size-validated, but no blob
+   * is persisted; the original Discord CDN URL is returned in the result.
    */
   async processVoiceMessage(
     attachment: Attachment,
@@ -156,26 +152,17 @@ export class VoiceMessageHandler {
       downloadDurationMs: downloadDuration,
     });
 
-    if (!VOICE_BLOB_ENABLED) {
-      logger.warn("Voice blob upload disabled (VOICE_BLOB_ENABLED!=1); returning Discord CDN URL", {
-        connectionId,
-        messageId,
-        attachmentId: attachment.id,
-      });
-      return {
-        audioUrl: attachment.url,
-        expiresAt: new Date(Date.now() + VOICE_AUDIO_TTL_SECONDS * 1000),
-        size: audioBuffer.length,
-        contentType: attachment.contentType ?? "audio/ogg; codecs=opus",
-      };
-    }
-
-    // TODO: Wire to R2-backed upload service. Until then this branch is
-    // unreachable in practice and exists only as a placeholder for the
-    // future R2 client integration.
-    throw new Error(
-      "Voice blob upload is enabled but no upload backend is wired. Implement R2 upload before setting VOICE_BLOB_ENABLED=1.",
-    );
+    logger.warn("Voice blob upload unavailable; returning Discord CDN URL", {
+      connectionId,
+      messageId,
+      attachmentId: attachment.id,
+    });
+    return {
+      audioUrl: attachment.url,
+      expiresAt: new Date(Date.now() + VOICE_AUDIO_TTL_SECONDS * 1000),
+      size: audioBuffer.length,
+      contentType: attachment.contentType ?? "audio/ogg; codecs=opus",
+    };
   }
 
   /**
@@ -259,14 +246,7 @@ export class VoiceMessageHandler {
    * No-op until the R2-backed upload backend is wired up.
    */
   async cleanupExpiredAudio(): Promise<number> {
-    if (!VOICE_BLOB_ENABLED) {
-      logger.debug("Voice blob upload disabled; skipping cleanup");
-      return 0;
-    }
-
-    // TODO: Wire to R2-backed cleanup. Needs list-by-prefix + delete on the
-    // managed R2 bucket (or a backend-side cron driving the same).
-    logger.warn("Voice blob cleanup is enabled but no backend is wired; skipping.");
+    logger.debug("Voice blob cleanup unavailable; skipping");
     return 0;
   }
 

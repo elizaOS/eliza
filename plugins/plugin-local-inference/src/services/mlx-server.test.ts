@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+	type GenerateArgs,
 	isAppleSilicon,
 	looksLikeMlxModelDir,
 	MLX_BACKEND_ID,
@@ -31,6 +32,22 @@ function withEnv(vars: Record<string, string | undefined>, fn: () => void) {
 
 type FetchInput = Parameters<typeof fetch>[0];
 type FetchInit = Parameters<typeof fetch>[1];
+
+function attachMlxTestState(
+	server: MlxLocalServer,
+	state: {
+		baseUrl: string;
+		servedModelName: string;
+		modelDir: string;
+	},
+): void {
+	Object.assign(server, {
+		baseUrl: state.baseUrl,
+		servedModelName: state.servedModelName,
+		child: { killed: false, pid: 1 },
+		modelDir: state.modelDir,
+	});
+}
 
 function readFetchBody(init: FetchInit): string {
 	const body = init?.body;
@@ -181,25 +198,17 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
 		});
 
 		// Drive the adapter against the mock HTTP server directly (no spawn): the
-		// class exposes the route/health logic, so we point baseUrl at the mock by
-		// calling the private fields through a tiny subclass shim.
-		class TestMlx extends MlxLocalServer {
-			attach(baseUrl: string, modelName: string) {
-				// @ts-expect-error — test-only access to private route state
-				this.baseUrl = baseUrl;
-				// @ts-expect-error
-				this.servedModelName = modelName;
-				// @ts-expect-error — a fake child so hasLoadedModel() returns true
-				this.child = { killed: false, pid: 1 } as never;
-				// @ts-expect-error
-				this.modelDir = "/fake/mlx/model";
-			}
-		}
-		const t = new TestMlx();
+		// class exposes the route/health logic, so the test installs the private
+		// runtime state that a successful load would normally populate.
+		const t = new MlxLocalServer();
 		svc = t;
-		t.attach("http://mlx.test", "eliza-1-0_8b-mlx");
+		attachMlxTestState(t, {
+			baseUrl: "http://mlx.test",
+			servedModelName: "eliza-1-0_8b-mlx",
+			modelDir: "/fake/mlx/model",
+		});
 		expect(t.hasLoadedModel()).toBe(true);
-		const out = await t.generate({ prompt: "hello" } as never);
+		const out = await t.generate({ prompt: "hello" } satisfies GenerateArgs);
 		expect(out).toBe("world");
 	});
 
@@ -210,28 +219,20 @@ describe("MlxLocalServer: spawn-and-route (mocked mlx_lm.server)", () => {
 			}
 			return new Response(null, { status: 404 });
 		});
-		class TestMlx extends MlxLocalServer {
-			attach(baseUrl: string) {
-				// @ts-expect-error
-				this.baseUrl = baseUrl;
-				// @ts-expect-error
-				this.servedModelName = "m";
-				// @ts-expect-error
-				this.child = { killed: false, pid: 1 } as never;
-				// @ts-expect-error
-				this.modelDir = "/fake";
-			}
-		}
-		const t = new TestMlx();
+		const t = new MlxLocalServer();
 		svc = t;
-		t.attach("http://mlx.test");
+		attachMlxTestState(t, {
+			baseUrl: "http://mlx.test",
+			servedModelName: "m",
+			modelDir: "/fake",
+		});
 		const chunks: string[] = [];
 		const out = await t.generate({
 			prompt: "x",
 			onTextChunk: (c: string) => {
 				chunks.push(c);
 			},
-		} as never);
+		} satisfies GenerateArgs);
 		expect(chunks).toEqual(["foo", " bar"]);
 		expect(out).toBe("foo bar");
 	});

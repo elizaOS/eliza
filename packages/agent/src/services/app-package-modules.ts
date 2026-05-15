@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Plugin } from "@elizaos/core";
+import type { AppPackageRouteContext, Plugin } from "@elizaos/core";
 import { logger, resolveStateDir } from "@elizaos/core";
 import {
   type AppLaunchDiagnostic,
@@ -13,6 +13,7 @@ import {
   hasAppInterface,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
+import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import { readJsonFile } from "../utils/atomic-json.ts";
 import { getPluginInfo } from "./registry-client.ts";
 
@@ -38,7 +39,7 @@ export type AppRunSessionRefresher = (
 ) => Promise<AppSessionState | null>;
 
 export type AppRouteModule = {
-  handleAppRoutes?: (ctx: unknown) => Promise<boolean>;
+  handleAppRoutes?: (ctx: AppPackageRouteContext) => Promise<boolean>;
   prepareLaunch?: AppLaunchPreparationResolver;
   resolveViewerAuthMessage?: AppViewerAuthMessageResolver;
   ensureRuntimeReady?: (ctx: AppLaunchSessionContext) => Promise<void>;
@@ -84,13 +85,6 @@ function resolveWorkspaceRoots(): string[] {
     path.resolve(cwd, ".."),
     path.resolve(cwd, "..", ".."),
   ]);
-}
-
-function legacyAppsWorkspaceDiscoveryEnabled(): boolean {
-  const raw = process.env.ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY;
-  if (!raw) return false;
-  const normalized = raw.trim().toLowerCase();
-  return normalized === "1" || normalized === "true" || normalized === "yes";
 }
 
 function packageNameToDirName(packageName: string): string {
@@ -147,9 +141,9 @@ async function resolveWorkspacePackageDirs(
       path.join(workspaceRoot, "plugins", dirName),
       path.join(workspaceRoot, "packages", dirName),
     );
-    if (legacyAppsWorkspaceDiscoveryEnabled()) {
-      // Temporary opt-in for older external workspaces. Current Eliza app
-      // plugins live under plugins/app-* and keep @elizaos/app-* names.
+    if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
+      // Opt-in for older external workspaces; current Eliza app plugins live
+      // under plugins/app-* and keep @elizaos/app-* names.
       candidateDirs.push(path.join(workspaceRoot, "apps", dirName));
     }
 
@@ -170,7 +164,7 @@ async function resolveWorkspacePackageDirs(
         path.join(workspaceRoot, entry.name, "plugins", dirName),
         path.join(workspaceRoot, entry.name, "packages", dirName),
       );
-      if (legacyAppsWorkspaceDiscoveryEnabled()) {
+      if (isLegacyAppsWorkspaceDiscoveryEnabled()) {
         candidateDirs.push(
           path.join(workspaceRoot, entry.name, "apps", dirName),
         );

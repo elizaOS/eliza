@@ -398,8 +398,8 @@ cpu_bench: cpu_bench.c $(REF_OBJ) $(QJL_POLAR_OBJ)
 # libraries and times their dispatched SIMD entrypoints (AVX-VNNI / AVX2
 # / NEON-dotprod) at the production attention workload, with a thread
 # sweep. Requires the plugin libs — built here via cmake first.
-QJL_CPU_DIR     = ../../native-plugins/qjl-cpu
-POLAR_CPU_DIR   = ../../native-plugins/polarquant-cpu
+QJL_CPU_DIR     = ../../../../packages/native-plugins/qjl-cpu
+POLAR_CPU_DIR   = ../../../../packages/native-plugins/polarquant-cpu
 QJL_CPU_LIB     = $(QJL_CPU_DIR)/build/libqjl.a
 POLAR_CPU_LIB   = $(POLAR_CPU_DIR)/build/libpolarquant.a
 
@@ -412,9 +412,10 @@ $(POLAR_CPU_LIB):
 
 cpu-simd-bench: cpu_simd_bench
 OPENMP_FLAGS ?= $(shell printf '' | $(CC) -x c -fopenmp -E - >/dev/null 2>&1 && printf '%s' '-fopenmp')
+THREAD_FLAGS ?= $(if $(OPENMP_FLAGS),$(OPENMP_FLAGS),-pthread)
 
 cpu_simd_bench: cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB)
-	$(CC) -O3 -march=native $(OPENMP_FLAGS) -std=c11 \
+	$(CC) -O3 -march=native $(THREAD_FLAGS) -std=c11 \
 	    -I$(QJL_CPU_DIR)/include -I$(QJL_CPU_DIR)/src -I$(POLAR_CPU_DIR)/include \
 	    cpu_simd_bench.c $(QJL_CPU_LIB) $(POLAR_CPU_LIB) -lm -o cpu_simd_bench
 
@@ -750,6 +751,15 @@ ELIZA_DFLASH_VULKAN_BIN_DIR := $(ELIZA_DFLASH_VULKAN_BUILD_BIN_DIR)
 endif
 endif
 
+DISPATCH_SMOKE_GGML_HEADERS := $(wildcard \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml.h \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-alloc.h \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-backend.h \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-metal.h \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/include/ggml-vulkan.h \
+    $(ELIZA_DFLASH_LLAMA_DIR)/ggml/src/ggml-common.h)
+DISPATCH_SMOKE_REF_HEADERS := ../reference/turbo_kernels.h qjl_polar_ref.h
+
 dispatch-smoke: dispatch_smoke
 	@echo "[dispatch-smoke] running against $(ELIZA_DFLASH_METAL_BIN_DIR)"
 	GGML_METAL_PATH_RESOURCES=$(ELIZA_DFLASH_METAL_BIN_DIR) \
@@ -775,7 +785,7 @@ metal-upscale-probe-require: metal_upscale_probe
 	  DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_METAL_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./metal_upscale_probe --require-metal-support
 
-dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ)
+dispatch_smoke: dispatch_smoke.mm $(REF_OBJ) $(QJL_POLAR_OBJ) $(DISPATCH_SMOKE_GGML_HEADERS) $(DISPATCH_SMOKE_REF_HEADERS)
 	@which xcrun >/dev/null 2>&1 || { echo "xcrun not found — Metal dispatch-smoke needs macOS Xcode tools."; exit 1; }
 	@if [ ! -f "$(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib" ]; then \
 	    echo "[dispatch-smoke] missing $(ELIZA_DFLASH_METAL_BIN_DIR)/libggml-metal.dylib"; \
@@ -829,7 +839,7 @@ vulkan-dispatch-smoke: vulkan_dispatch_smoke
 	DYLD_LIBRARY_PATH=$(ELIZA_DFLASH_VULKAN_BIN_DIR):$$DYLD_LIBRARY_PATH \
 	  ./vulkan_dispatch_smoke
 
-vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ)
+vulkan_dispatch_smoke: vulkan_dispatch_smoke.cpp $(REF_OBJ) $(QJL_POLAR_OBJ) $(DISPATCH_SMOKE_GGML_HEADERS) $(DISPATCH_SMOKE_REF_HEADERS)
 	@if [ "$$(uname -s)" != "Linux" ] && [ "$${ELIZA_ALLOW_MOLTENVK_VULKAN_DISPATCH_SMOKE:-0}" != "1" ]; then \
 	    echo "[vulkan-dispatch-smoke] native Linux required for recordable Vulkan graph dispatch evidence."; \
 	    echo "[vulkan-dispatch-smoke] macOS/MoltenVK can validate standalone SPIR-V only; it cannot flip runtime-ready Vulkan capability bits."; \

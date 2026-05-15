@@ -20,6 +20,7 @@ import {
 	projectVadToExpressiveEmotion,
 	VoiceEmotionClassifier,
 	VoiceEmotionClassifierError,
+	type VoiceEmotionClassifierOutput,
 	WAV2SMALL_INT8_MODEL_ID,
 	WAV2SMALL_MIN_SAMPLES,
 	WAV2SMALL_SAMPLE_RATE,
@@ -148,9 +149,11 @@ describe("VoiceEmotionClassifier construction", () => {
 
 	it("classify rejects a non-Float32Array PCM input", async () => {
 		const c = new VoiceEmotionClassifier({ modelPath: "/tmp/nope.onnx" });
-		// @ts-expect-error — deliberate runtime type-check coverage.
+		const classifyInvalidPcm = c.classify.bind(c) as (
+			pcm: Uint8Array,
+		) => Promise<VoiceEmotionClassifierOutput>;
 		await expect(
-			c.classify(new Uint8Array(WAV2SMALL_SAMPLE_RATE)),
+			classifyInvalidPcm(new Uint8Array(WAV2SMALL_SAMPLE_RATE)),
 		).rejects.toBeInstanceOf(VoiceEmotionClassifierError);
 	});
 });

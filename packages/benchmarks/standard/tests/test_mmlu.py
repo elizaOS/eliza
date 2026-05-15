@@ -11,6 +11,7 @@ from benchmarks.standard._base import MockClient
 from benchmarks.standard._cli import main_entry
 from benchmarks.standard.mmlu import (
     BENCHMARK_ID,
+    DEFAULT_MAX_TOKENS,
     SMOKE_FIXTURES,
     MMLURunner,
     _extract_letter,
@@ -80,6 +81,39 @@ def test_mmlu_runner_records_failures(tmp_path: Path) -> None:
     # First fixture's correct answer is C (index 2), so "A" is wrong.
     assert result.metrics["score"] == 0.0
     assert result.failures, "wrong answers must surface in failures"
+
+
+def test_mmlu_runner_scores_non_empty_invalid_answers_as_misses(tmp_path: Path) -> None:
+    client = MockClient(["I don't know."])
+    runner = MMLURunner(examples=list(SMOKE_FIXTURES))
+    result = runner.run(
+        client=client,
+        model="mock-model",
+        endpoint="http://mock",
+        output_dir=tmp_path,
+        limit=None,
+    )
+
+    assert result.n == len(SMOKE_FIXTURES)
+    assert result.metrics["score"] == 0.0
+    assert result.raw_json["empty_outputs"] == 0
+
+
+def test_mmlu_runner_raises_when_all_visible_outputs_empty(tmp_path: Path) -> None:
+    runner = MMLURunner(examples=list(SMOKE_FIXTURES))
+
+    with pytest.raises(RuntimeError, match="empty visible output for all"):
+        runner.run(
+            client=MockClient([""]),
+            model="mock-model",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+
+def test_mmlu_default_token_budget_allows_reasoning_models() -> None:
+    assert DEFAULT_MAX_TOKENS >= 256
 
 
 def test_mmlu_runner_writes_results_file(tmp_path: Path) -> None:

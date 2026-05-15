@@ -75,7 +75,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     const managerWithInit = this.manager as PGliteClientManager & {
       initialize?: () => Promise<void>;
     };
-    await managerWithInit.initialize?.();
+    await managerWithInit.initialize();
     if (this.manager.isShuttingDown()) {
       const error = new Error("Database is shutting down - operation rejected");
       logger.info(
@@ -91,7 +91,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     const managerWithInit = this.manager as PGliteClientManager & {
       initialize?: () => Promise<void>;
     };
-    await managerWithInit.initialize?.();
+    await managerWithInit.initialize();
     logger.debug({ src: "plugin:sql" }, "PGliteDatabaseAdapter initialized");
   }
 
@@ -99,7 +99,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     const managerWithState = this.manager as PGliteClientManager & {
       isInitialized?: () => boolean;
     };
-    return !this.manager.isShuttingDown() && managerWithState.isInitialized?.() === true;
+    return !this.manager.isShuttingDown() && managerWithState.isInitialized() === true;
   }
 
   async close() {
@@ -110,7 +110,7 @@ export class PgliteDatabaseAdapter extends BaseDrizzleAdapter {
     const managerWithInit = this.manager as PGliteClientManager & {
       initialize?: () => Promise<void>;
     };
-    await managerWithInit.initialize?.();
+    await managerWithInit.initialize();
     return this.db as PgliteDatabase;
   }
 

@@ -2,10 +2,7 @@
  * Built-in `ResponseHandlerFieldEvaluator`s — the canonical core fields the
  * Stage-1 response handler extracts from every turn.
  *
- * Replaces the legacy nested `HANDLE_RESPONSE_SCHEMA` (processMessage +
- * plan.{contexts, candidateActions, parentActionHints, reply, requiresTool,
- * simple, contextSlices} + thought + extract.{facts, relationships,
- * addressedTo}) with a flat list of typed fields. Each field is an
+ * The model-facing schema is a flat list of typed fields. Each field is an
  * independent registered evaluator with:
  *
  *   - description: verbatim in the system prompt
@@ -62,6 +59,12 @@ function isExpressiveEmotionEnumValue(
 	return (EXPRESSIVE_EMOTION_ENUM_VALUES as readonly string[]).includes(value);
 }
 
+function stripJsonStructuralJunkReply(value: string): string {
+	const trimmed = value.trim();
+	if (!trimmed) return "";
+	return /^[\s{}[\]":,]+$/.test(trimmed) ? "" : trimmed;
+}
+
 // ---------------------------------------------------------------------------
 // shouldRespond — priority 5 (always first)
 // ---------------------------------------------------------------------------
@@ -71,13 +74,13 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "shouldRespond",
 	description:
-		"Decide whether to respond to this message. RESPOND when the message is addressed to you, asks a question you can help with, or continues an active conversation. IGNORE when the message is between other people, is small-talk you were not addressed in, or is otherwise not yours to handle. STOP only when the user explicitly asks you to stop/terminate this interaction without further work. In a DM channel this is effectively always RESPOND unless the user asks you to stop.",
+		"RESPOND if addressed to you, helpful question, or active conversation. IGNORE if others talking, unaddressed small-talk, not yours. STOP only explicit stop/terminate/no more work. DM usually RESPOND unless explicit stop.",
 	priority: 5,
 	schema: {
 		type: "string",
 		enum: ["RESPOND", "IGNORE", "STOP"],
 		description:
-			"RESPOND = engage this turn (compose reply or run actions). IGNORE = stay silent and let the conversation continue without you. STOP = terminate because the user explicitly asked you to stop.",
+			"RESPOND=reply/run actions. IGNORE=silent. STOP=explicit user stop.",
 	},
 	parse(value) {
 		const normalized =
@@ -102,13 +105,13 @@ export const shouldRespondFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "contexts",
 	description:
-		'Routing tags for this turn. Pick from the available_contexts catalog earlier in this prompt. Use ["simple"] for trivial replies that don\'t need any action / tool / provider / sub-agent (just put the reply text in replyText). Use one or more context tags otherwise — the planner will engage the matching providers and actions. Empty array is invalid when shouldRespond=RESPOND — pick at least one.',
+		'Routing tags. Pick from available_contexts. Use ["simple"] only for trivial direct replies needing no action/tool/provider/sub-agent; replyText is answer. Otherwise choose relevant context ids; planner engages providers/actions. Empty invalid when shouldRespond=RESPOND.',
 	priority: 10,
 	schema: {
 		type: "array",
 		items: { type: "string" },
 		description:
-			"Context tags. Must match available_contexts. The pseudo-context 'simple' means direct-reply (no planner needed).",
+			"Context ids from available_contexts. 'simple'=direct reply, no planner.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -133,13 +136,12 @@ export const contextsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "intents",
 	description:
-		'Short verb phrases describing what the user is asking for this turn. Use 1-4 phrases like ["schedule meeting", "draft email", "research X"]. Useful for action retrieval and routing classification. Empty array when there is no actionable intent (e.g. simple acknowledgement).',
+		'Short verb phrases for this turn: ["schedule meeting", "draft email", "research X"]. Use 1-4. Helps action retrieval/routing. Empty for no actionable intent.',
 	priority: 15,
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description:
-			"Verb-led intent phrases. Lowercase. No punctuation. Max ~6 words each.",
+		description: "Verb-led intents. Lowercase. No punctuation. ~6 words max.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -162,7 +164,7 @@ export const intentsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 
 // ---------------------------------------------------------------------------
 // candidateActionNames — priority 50.
-// Merges legacy candidateActions + parentActionHints into one flat field.
+// One flat model-facing hint list; downstream retrieval can fan it back out.
 // ---------------------------------------------------------------------------
 
 export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
@@ -170,13 +172,13 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "candidateActionNames",
 	description:
-		"Action names you would likely use this turn. Match values to the available_actions list earlier in this prompt — but it is fine to emit a name you are confident about even if it is not listed (the planner will resolve via similes). Use UPPER_SNAKE_CASE for canonical action names. Empty array when no actions are likely needed (e.g. simple chitchat).",
+		"Likely action names for this turn. Prefer available_actions; confident unlisted names ok (planner resolves similes). Use UPPER_SNAKE_CASE canonical names. Empty when no action likely.",
 	priority: 50,
 	schema: {
 		type: "array",
 		items: { type: "string" },
 		description:
-			"Action names. UPPER_SNAKE_CASE. The planner uses this for retrieval; high-precision hits land in the planner's exposed action surface.",
+			"Action names. UPPER_SNAKE_CASE. Retrieval hints; high-precision hits expose planner actions.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -203,16 +205,16 @@ export const candidateActionNamesFieldEvaluator: ResponseHandlerFieldEvaluator<
 export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 	name: "replyText",
 	description:
-		'The user-facing reply text. Always populate it when shouldRespond=RESPOND. When contexts contains "simple", this is the whole answer. When planning/tool work is needed, make this a brief acknowledgement ("On it.", "Spawning the sub-agent now.", "Looking into it.") that can be sent immediately; the planner will send any grounded follow-up later. Leave empty for IGNORE. Do NOT put thinking or reasoning here; keep it user-facing.\n\nNEVER refuse the request in replyText. If you populated `contexts` or `candidateActionNames` with anything other than "simple", the planner stage will handle the actual work — your job here is acknowledgement only, not capability gatekeeping. Refusal openings ("I cannot...", "I am unable to...", "I don\'t have the ability to...", "Sorry, I can\'t...") are explicitly disallowed when planning is happening: the agent has the tools (FILE, BASH, TASKS_SPAWN_AGENT, etc.) and the planner will invoke them. If you genuinely think no tool can attempt the request, return shouldRespond=RESPOND with `contexts: ["simple"]` and explain in replyText — not a refusal as a planning-path ack.',
+		'User-facing reply. Populate when shouldRespond=RESPOND. contexts includes "simple" => whole answer. Planning/tool path => brief ack only ("On it.", "Spawning the sub-agent now.", "Looking into it."); planner sends grounded follow-up. IGNORE => empty. No thinking/reasoning.\n\nNEVER refuse in replyText on planning path. If `contexts` or `candidateActionNames` != "simple", planner handles work; ack only, no capability gatekeeping. Ban refusal openings: "I cannot...", "I am unable to...", "I don\'t have the ability to...", "Sorry, I can\'t...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, etc.). If no tool can attempt, use shouldRespond=RESPOND, `contexts: ["simple"]`, explain.',
 	priority: 20,
 	schema: {
 		type: "string",
 		description:
-			'User-facing reply text. Whole answer for simple turns; brief immediate acknowledgement for planning turns (e.g. "On it.", "Working on it.", "Spawning a sub-agent now."). Never refuse on the planning path — the planner will run the action. Plain text, not markdown unless the channel supports it.',
+			'User-facing reply. Simple=whole answer. Planning=brief ack ("On it.", "Working on it.", "Spawning a sub-agent now."). Never refuse on planning path. Plain text unless channel supports markdown.',
 	},
 	parse(value) {
 		if (typeof value !== "string") return "";
-		return value.trim();
+		return stripJsonStructuralJunkReply(value);
 	},
 };
 
@@ -223,13 +225,13 @@ export const replyTextFieldEvaluator: ResponseHandlerFieldEvaluator<string> = {
 export const factsFieldEvaluator: ResponseHandlerFieldEvaluator<string[]> = {
 	name: "facts",
 	description:
-		'Durable facts about the user, the world, or named entities that the user has explicitly stated in this message and that should be remembered going forward. Examples: "user lives in Brooklyn", "user prefers email over phone", "Bob is alice\'s coworker at Acme". Skip transient state (current location, today\'s mood) — only durable. Empty array if nothing memorable.',
+		'Durable facts explicitly stated in this message about user/world/entities, worth remembering. Examples: "user lives in Brooklyn", "user prefers email over phone", "Bob is Alice\'s coworker at Acme". Skip transient state/current mood. Empty if none.',
 	priority: 80,
 	schema: {
 		type: "array",
 		items: { type: "string" },
 		description:
-			"Plain-English fact statements. One fact per array item. Subject-predicate-object structure preferred but not required.",
+			"Plain-English facts. One per item. Prefer subject-predicate-object.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -263,12 +265,12 @@ const relationshipsSchema: JSONSchema = {
 			subject: {
 				type: "string",
 				description:
-					"The entity the relationship is about. Use the user's name, an entity name, or 'user' / 'agent'.",
+					"Relationship subject: user name, entity name, 'user', or 'agent'.",
 			},
 			predicate: {
 				type: "string",
 				description:
-					"The relation type. Lowercase verb phrase like 'works_with', 'is_friend_of', 'owns', 'lives_in'.",
+					"Relation type. Lowercase verb phrase: works_with, is_friend_of, owns, lives_in.",
 			},
 			object: {
 				type: "string",
@@ -286,7 +288,7 @@ export const relationshipsFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "relationships",
 	description:
-		'Subject-predicate-object triples the user stated about entities and their relationships. Example: {"subject":"alice","predicate":"works_with","object":"bob"}. Drives the relationship graph. Empty array if nothing relational is stated.',
+		'Subject-predicate-object triples user stated. Example {"subject":"alice","predicate":"works_with","object":"bob"}. Drives relationship graph. Empty if none.',
 	priority: 85,
 	schema: relationshipsSchema,
 	parse(value) {
@@ -315,12 +317,12 @@ export const addressedToFieldEvaluator: ResponseHandlerFieldEvaluator<
 > = {
 	name: "addressedTo",
 	description:
-		"Entity UUIDs or participant names this message is directed at. Drives the addressed-to relationship graph. Empty array when the message is broadcast or you are unsure.",
+		"Entity UUIDs or participant names addressed by this message. Drives addressed-to graph. Empty when broadcast/unsure.",
 	priority: 90,
 	schema: {
 		type: "array",
 		items: { type: "string" },
-		description: "Entity UUIDs (preferred) or display names of the addressees.",
+		description: "Addressee entity UUIDs preferred; display names ok.",
 	},
 	parse(value) {
 		if (!Array.isArray(value)) return [];
@@ -355,13 +357,13 @@ export const emotionFieldEvaluator: ResponseHandlerFieldEvaluator<ExpressiveEmot
 	{
 		name: "emotion",
 		description:
-			'The user\'s expressed emotion in this turn, as a single tag from a fixed seven-class set plus "none". Pick "none" when no strong affective cue is present (the default — bias toward this when ambiguous). Otherwise pick the single best match: happy / sad / angry / nervous / calm / excited / whisper. Read the text content + transcript metadata only; do NOT guess from prior turns. This is a *user-side* read; the assistant\'s own emotion is expressed inline via [happy] / [sad] / [excited] etc. tags in replyText when the active TTS bundle supports them.',
+			"User expressed emotion this turn. Single tag: none/happy/sad/angry/nervous/calm/excited/whisper. Default none; use none when ambiguous/no strong cue. Read text + transcript metadata only; do NOT use prior turns. User-side read; assistant emotion uses inline [happy]/[sad]/[excited] tags in replyText when TTS supports.",
 		priority: 95,
 		schema: {
 			type: "string",
 			enum: [...EXPRESSIVE_EMOTION_ENUM_VALUES],
 			description:
-				'User\'s expressed emotion. "none" = no strong cue (default). The other seven values map to the inline expressive-tag vocabulary used by the omnivoice/omnivoice-singing TTS.',
+				'User emotion. "none"=no strong cue/default. Other values map to omnivoice expressive tags.',
 		},
 		parse(value) {
 			const normalized =

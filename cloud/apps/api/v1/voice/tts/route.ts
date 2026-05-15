@@ -26,8 +26,11 @@ import type { AppEnv } from "@/types/cloud-worker-env";
  * The legacy `/api/elevenlabs/tts` endpoint remains active for existing integrations.
  */
 
+import {
+  FIRST_SENTENCE_SNIP_VERSION,
+  firstSentenceSnip,
+} from "@elizaos/shared/voice/first-sentence-snip";
 import { z } from "zod";
-import { firstSentenceSnip, FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
 import { userVoicesRepository } from "@/db/repositories/user-voices";
 import { ApiError } from "@/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
@@ -82,7 +85,7 @@ const TtsBody = z.object({
  * @param request - Request body with text, voiceId, and optional modelId.
  * @returns Streaming audio response (audio/mpeg).
  */
-async function __hono_POST(request: Request) {
+async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
   let reservation: CreditReservation | undefined;
 
   try {
@@ -238,7 +241,7 @@ async function __hono_POST(request: Request) {
       throw error;
     }
 
-    const elevenlabs = getElevenLabsService();
+    const elevenlabs = getElevenLabsService(env);
 
     const startTime = Date.now();
     const audioStream = await elevenlabs.textToSpeech({
@@ -323,10 +326,7 @@ async function __hono_POST(request: Request) {
             algoVersion: FIRST_SENTENCE_SNIP_VERSION,
             provider: "elevenlabs",
             voiceId: resolvedVoiceId,
-            voiceRevision: resolveElevenLabsVoiceRevision(
-              resolvedVoiceId,
-              resolvedModelId,
-            ),
+            voiceRevision: resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId),
             sampleRate: 44100,
             codec: "mp3" as const,
             voiceSettingsFingerprint,
@@ -451,5 +451,5 @@ async function __hono_POST(request: Request) {
 }
 
 const __hono_app = new Hono<AppEnv>();
-__hono_app.post("/", async (c) => __hono_POST(c.req.raw));
+__hono_app.post("/", async (c) => __hono_POST(c.req.raw, c.env));
 export default __hono_app;

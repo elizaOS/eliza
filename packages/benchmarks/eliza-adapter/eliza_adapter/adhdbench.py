@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import logging
 import time
-import uuid
 from typing import TYPE_CHECKING
 
 from eliza_adapter.client import ElizaClient

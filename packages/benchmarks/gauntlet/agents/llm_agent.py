@@ -16,7 +16,7 @@ import json
 import os
 from openai import OpenAI
 
-from gauntlet.sdk.types import AgentResponse, ScenarioContext, Task, TaskType
+from gauntlet.sdk.types import AgentResponse, ScenarioContext, Task
 
 
 # Load API key from environment

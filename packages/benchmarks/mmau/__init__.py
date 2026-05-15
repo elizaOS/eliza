@@ -1,6 +1,10 @@
-"""MMAU benchmark scaffold."""
+"""Compatibility shim for the renamed Audio MMAU package."""
 
-from benchmarks.mmau.agent import (
+from ._compat import ensure_mmau_audio_path
+
+ensure_mmau_audio_path()
+
+from elizaos_mmau_audio.agent import (
     AgentFn,
     CascadedSTTAgent,
     MMAUAgentProtocol,
@@ -8,15 +12,15 @@ from benchmarks.mmau.agent import (
     SttFn,
     format_mcq_prompt,
 )
-from benchmarks.mmau.dataset import MMAUDataset
-from benchmarks.mmau.evaluator import (
+from elizaos_mmau_audio.dataset import MMAUDataset
+from elizaos_mmau_audio.evaluator import (
     MMAUEvaluator,
     choice_letters,
     extract_answer_letter,
     extract_letter_from_option,
 )
-from benchmarks.mmau.runner import MMAURunner
-from benchmarks.mmau.types import (
+from elizaos_mmau_audio.runner import MMAURunner
+from elizaos_mmau_audio.types import (
     MMAU_CATEGORIES,
     MMAUCategory,
     MMAUConfig,

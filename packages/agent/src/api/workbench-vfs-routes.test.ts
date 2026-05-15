@@ -145,6 +145,77 @@ describe("workbench VFS routes", () => {
     }
   });
 
+  it("runs pure JS git operations inside the VFS project", async () => {
+    await callRoute("POST", "/api/workbench/vfs/projects", {
+      projectId: "git-vfs",
+    });
+    await callRoute("PUT", "/api/workbench/vfs/projects/git-vfs/file", {
+      path: "src/plugin.ts",
+      content: "export default { name: 'git-vfs' };",
+    });
+
+    const init = await callRoute(
+      "POST",
+      "/api/workbench/vfs/projects/git-vfs/git",
+      { action: "init", defaultBranch: "main" },
+    );
+    expect(init.status).toBe(200);
+    expect(init.body).toMatchObject({
+      git: { action: "init", branch: "main" },
+    });
+
+    const add = await callRoute(
+      "POST",
+      "/api/workbench/vfs/projects/git-vfs/git",
+      { action: "add", paths: ["src/plugin.ts"] },
+    );
+    expect(add.body).toMatchObject({
+      git: { action: "add", paths: ["src/plugin.ts"] },
+    });
+
+    const commit = await callRoute(
+      "POST",
+      "/api/workbench/vfs/projects/git-vfs/git",
+      {
+        action: "commit",
+        message: "Add VFS plugin",
+        authorName: "Eliza",
+        authorEmail: "eliza@example.local",
+      },
+    );
+    expect(commit.status).toBe(200);
+    expect((commit.body.git as { oid?: string }).oid).toMatch(/^[a-f0-9]+$/);
+
+    const status = await callRoute(
+      "POST",
+      "/api/workbench/vfs/projects/git-vfs/git",
+      { action: "status" },
+    );
+    expect(status.body).toMatchObject({
+      git: {
+        action: "status",
+        branch: "main",
+        clean: true,
+      },
+    });
+
+    const log = await callRoute(
+      "POST",
+      "/api/workbench/vfs/projects/git-vfs/git",
+      { action: "log", depth: 1 },
+    );
+    expect(log.body).toMatchObject({
+      git: {
+        action: "log",
+        commits: [
+          {
+            message: "Add VFS plugin\n",
+          },
+        ],
+      },
+    });
+  });
+
   it("blocks host plugin compilation and loading in store builds", async () => {
     process.env.ELIZA_BUILD_VARIANT = "store";
     _resetBuildVariantForTests();

@@ -10,7 +10,6 @@ from elizaos_adhdbench.types import (
     Turn,
     TurnResult,
     ScalingCurvePoint,
-    BenchmarkResults,
 )
 
 

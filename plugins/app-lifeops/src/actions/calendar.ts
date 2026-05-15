@@ -169,63 +169,61 @@ function normalizeSubaction(value: unknown): OwnerCalendarSubaction | null {
 
 const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
   feed: {
-    description:
-      "List calendar events over a time window (today, this week, etc).",
+    description: "List events. Time window: today, this week.",
     descriptionCompressed: "list events time-window",
     required: [],
     optional: ["intent", "details"],
   },
   next_event: {
-    description: "Show the single next upcoming event.",
+    description: "Next upcoming event.",
     descriptionCompressed: "next upcoming event",
     required: [],
     optional: ["intent", "details"],
   },
   search_events: {
-    description:
-      "Search calendar events by title, attendee, location, or date.",
+    description: "Search events: title, attendee, location, date.",
     descriptionCompressed: "search events title|attendee|location|date",
     required: [],
     optional: ["intent", "query", "queries", "details"],
   },
   create_event: {
-    description: "Create a new calendar event.",
+    description: "Create event.",
     descriptionCompressed: "create calendar event",
     required: [],
     optional: ["title", "intent", "details"],
   },
   update_event: {
-    description: "Update an existing calendar event.",
+    description: "Update event.",
     descriptionCompressed: "update calendar event",
     required: [],
     optional: ["title", "intent", "details"],
   },
   delete_event: {
-    description: "Delete a calendar event.",
+    description: "Delete event.",
     descriptionCompressed: "delete calendar event",
     required: [],
     optional: ["intent", "details"],
   },
   trip_window: {
-    description: "List events occurring during a trip or while in a place.",
+    description: "List events during trip/place.",
     descriptionCompressed: "events trip-window place",
     required: [],
     optional: ["intent", "query", "details"],
   },
   bulk_reschedule: {
-    description: "Preview a cohort of meetings to push into a future window.",
+    description: "Preview bulk reschedule. Push cohort to future window.",
     descriptionCompressed: "preview bulk reschedule cohort future-window",
     required: [],
     optional: ["timeZone", "intent"],
   },
   check_availability: {
-    description: "Check whether the owner is free in an ISO start/end window.",
+    description: "Check owner free/busy. ISO start/end.",
     descriptionCompressed: "check free|busy ISO-window",
     required: [],
     optional: ["startAt", "endAt", "intent"],
   },
   propose_times: {
-    description: "Propose candidate meeting slots within a window.",
+    description: "Propose meeting slots. Window.",
     descriptionCompressed: "propose candidate meeting slots window",
     required: [],
     optional: [
@@ -239,8 +237,7 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     ],
   },
   update_preferences: {
-    description:
-      "Update meeting preferences (preferred hours, blackouts, travel buffer).",
+    description: "Update meeting prefs: hours, blackouts, travel buffer.",
     descriptionCompressed: "update meeting prefs hours blackouts travel-buffer",
     required: [],
     optional: [
@@ -588,12 +585,12 @@ export const calendarAction: Action & {
     "surface:internal",
   ],
   description:
-    "Manage live calendar events plus availability and meeting preferences. Subactions: " +
+    "Live calendar: event CRUD, availability, meeting prefs. Subactions: " +
     "feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, " +
     "check_availability, propose_times, update_preferences. " +
-    "Use CALENDLY for calendly.com URLs and PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response flows.",
+    "Use CALENDLY for calendly.com URLs. Use PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response.",
   descriptionCompressed:
-    "calendar event CRUD + availability + prefs; subactions create_event|update_event|delete_event|search_events|propose_times|check_availability|next_event|feed",
+    "calendar feed|next|search|create|update|delete|trip_window|reschedule|availability|propose",
   // "general" included so messageHandler can route direct owner calendar
   // most user-facing event/scheduling requests to "general" rather than
   // "calendar", so retrieval would otherwise filter CALENDAR out before
@@ -678,7 +675,7 @@ export const calendarAction: Action & {
     {
       name: "action",
       description:
-        "Which calendar operation to run. Calendar: feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule. Availability: check_availability, propose_times. Preferences: update_preferences.",
+        "Calendar op. feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times, update_preferences.",
       required: false,
       schema: {
         type: "string" as const,
@@ -688,51 +685,44 @@ export const calendarAction: Action & {
     {
       name: "intent",
       description:
-        'Natural-language description of the calendar request (e.g. "what is on my calendar today", "do i have any flights this week", "create a meeting tomorrow at 3pm").',
+        'Natural-language request. Examples: "calendar today", "flights this week", "create meeting tomorrow 3pm".',
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "title",
       description:
-        "Event title when creating a calendar event. TOP-LEVEL (flat) field — " +
-        "NEVER place `title` inside `details`. " +
+        "Event title for create_event. TOP-LEVEL flat. " +
+        "NEVER inside `details`. " +
         "Example: `{ subaction: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`.",
       descriptionCompressed:
-        "Event title, TOP-LEVEL flat field (NOT inside details). Example: { subaction: 'create_event', title: 'Dentist', details: { start, end } }",
+        "title TOP-LEVEL; NOT details. create_event needs title + details.start/end",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "query",
       description:
-        "Search phrase for search_events / travel_itinerary (e.g. flight, dentist, Denver).",
+        "Search phrase for search_events/travel_itinerary: flight, dentist, Denver.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "queries",
-      description:
-        "Optional array of search phrases for search_events. Combined and deduped.",
+      description: "Optional search_events phrases array. Combined/deduped.",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
     {
       name: "details",
       description:
-        "Structured calendar fields for create_event / update_event / delete_event. " +
-        "Use ISO-8601 strings for `start` and `end` (e.g. '2026-05-15T14:00:00Z'). " +
-        "Example create_event shape: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
-        "Example update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
-        "Use `start`/`end` (aliases `startAt`/`endAt` are also accepted). " +
-        "For check_availability and propose_times, put time-window fields at the TOP LEVEL — not inside `details`.",
+        "Structured fields for create_event/update_event/delete_event. " +
+        "`start`/`end` ISO-8601; aliases `startAt`/`endAt` accepted. " +
+        "create_event: `{ subaction: 'create_event', title: 'Dentist', details: { calendarId: 'cal_primary', start: '...', end: '...', location: '...' } }`. " +
+        "update_event: `{ subaction: 'update_event', details: { eventId: 'event_00040', calendarId: 'cal_primary', start: '...', end: '...' } }`. " +
+        "check_availability/propose_times time-window fields TOP LEVEL, not `details`.",
       descriptionCompressed:
-        "details (for create/update/delete_event ONLY): { calendarId, start (ISO-8601), end (ISO-8601), eventId, newTitle, location, attendees, description }. " +
-        "`title` is FLAT/TOP-LEVEL — never put it inside details. " +
-        "Time fields use `start`/`end` (aliases startAt/endAt). " +
-        "Example create_event: { subaction:'create_event', title:'Dentist', details:{ calendarId:'cal_primary', start:'2026-05-15T14:00:00Z', end:'2026-05-15T15:00:00Z', location:'Bright Smile Dental' } }. " +
-        "Example update_event: { subaction:'update_event', details:{ eventId:'event_00040', start:'...', end:'...' } }. " +
-        "For check_availability / propose_times / update_preferences, use TOP-LEVEL fields (startAt/endAt/durationMinutes/...), NOT details.",
+        "details create|update|delete: calendarId,start/end,eventId,location; title/window TOP",
       required: false,
       schema: {
         type: "object" as const,
@@ -764,94 +754,91 @@ export const calendarAction: Action & {
     {
       name: "durationMinutes",
       description:
-        "Top-level flat field. Meeting length in minutes for propose_times. " +
+        "TOP-LEVEL flat. propose_times length minutes. " +
         "Example: `{ subaction: 'propose_times', durationMinutes: 30, slotCount: 3, windowStart: '...', windowEnd: '...' }`. " +
-        "Do NOT wrap propose_times args inside a `details` object.",
+        "Do NOT wrap propose_times args in `details`.",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "daysAhead",
       description:
-        "Days ahead for propose_times search window (defaults to 7, ignored when windowStart/windowEnd are supplied).",
+        "propose_times days ahead. Default 7. Ignored with windowStart/windowEnd.",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "slotCount",
-      description:
-        "Number of candidate slots for propose_times (defaults to 3).",
+      description: "propose_times slot count. Default 3.",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "windowStart",
-      description:
-        "ISO-8601 earliest start of the propose_times search window.",
+      description: "propose_times window earliest start. ISO-8601.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "windowEnd",
-      description: "ISO-8601 latest end of the propose_times search window.",
+      description: "propose_times window latest end. ISO-8601.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "startAt",
       description:
-        "Top-level flat field. ISO-8601 start time for check_availability. " +
+        "TOP-LEVEL flat. check_availability start. ISO-8601. " +
         "Example: `{ subaction: 'check_availability', startAt: '2026-05-14T09:00:00Z', endAt: '2026-05-14T10:00:00Z' }`. " +
-        "Do NOT wrap check_availability args inside a `details` object.",
+        "Do NOT wrap check_availability args in `details`.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "endAt",
       description:
-        "Top-level flat field. ISO-8601 end time for check_availability. See `startAt`.",
+        "TOP-LEVEL flat. check_availability end. ISO-8601. See `startAt`.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "timeZone",
-      description:
-        "IANA time zone for update_preferences (interprets preferred hours).",
+      description: "IANA timeZone for update_preferences hours.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "preferredStartLocal",
       description:
-        "Top-level flat field for update_preferences. Earliest preferred meeting start time-of-day (local HH:MM, 24h). " +
+        "TOP-LEVEL flat for update_preferences. Earliest start local HH:MM 24h. " +
         "Example: `{ subaction: 'update_preferences', preferredStartLocal: '09:00', preferredEndLocal: '17:00', blackoutWindows: [...] }`. " +
-        "Do NOT wrap update_preferences args inside a `details` object.",
+        "Do NOT wrap update_preferences args in `details`.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "preferredEndLocal",
       description:
-        "Top-level flat field for update_preferences. Latest preferred meeting end time-of-day (local HH:MM, 24h). See `preferredStartLocal`.",
+        "TOP-LEVEL flat for update_preferences. Latest end local HH:MM 24h. See `preferredStartLocal`.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "defaultDurationMinutes",
-      description: "Default meeting duration in minutes (5–480).",
+      description: "Default duration minutes (5–480).",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "travelBufferMinutes",
-      description: "Minutes to reserve before/after each meeting (0–240).",
+      description: "Buffer minutes before/after meetings (0–240).",
       required: false,
       schema: { type: "number" as const },
     },
     {
       name: "blackoutWindows",
       description:
-        "Array of { label, startLocal (HH:MM), endLocal (HH:MM), daysOfWeek? (0=Sun..6=Sat) }.",
+        "Array: { label, startLocal HH:MM, endLocal HH:MM, daysOfWeek? 0=Sun..6=Sat }.",
       descriptionCompressed:
         "blackoutWindows[]: label startLocal HH:MM endLocal HH:MM daysOfWeek?[0..6]",
       required: false,

@@ -8,7 +8,7 @@ import { requireAuthWithOrg } from "@/lib/auth";
 import {
   getCostTrending,
   getUsageByUser,
-  getUsageStatsSafe,
+  getUsageStats,
   getUsageTimeSeries,
   type TimeGranularity,
 } from "@/lib/services/analytics";
@@ -41,7 +41,7 @@ export async function getAnalyticsData(request: Request, filters: AnalyticsFilte
   } = filters;
 
   const [overallStats, timeSeriesData, userBreakdown, costTrending] = await Promise.all([
-    getUsageStatsSafe(organizationId, { startDate, endDate }),
+    getUsageStats(organizationId, { startDate, endDate }),
     getUsageTimeSeries(organizationId, { startDate, endDate, granularity }),
     getUsageByUser(organizationId, { startDate, endDate, limit: 10 }),
     getCostTrending(organizationId),

@@ -1,5 +1,5 @@
 /**
- * Stripe payment provider adapter for the unified payment_requests flow.
+ * Stripe payment provider adapter for the payment_requests flow.
  *
  * `createIntent` opens a Stripe Checkout session and returns the hosted URL.
  * `parseWebhook` verifies a Stripe webhook signature and extracts the
@@ -203,7 +203,7 @@ export function createStripePaymentAdapter(): PaymentProviderAdapter {
         }
         default:
           throw new IgnoredWebhookEvent(
-            `Stripe event type ${event.type} is not handled by the unified payment adapter`,
+            `Stripe event type ${event.type} is not handled by the payment adapter`,
           );
       }
     },

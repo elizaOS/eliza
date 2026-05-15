@@ -1,11 +1,11 @@
+import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
+import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import type {
   BrowserWorkspaceSnapshot,
   BrowserWorkspaceTab,
   NavigateBrowserWorkspaceTabRequest,
   OpenBrowserWorkspaceTabRequest,
-} from "@elizaos/plugin-browser";
-import { invokeDesktopBridgeRequest } from "../bridge/electrobun-rpc";
-import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
+} from "./browser-contracts";
 import { ElizaClient } from "./client-base";
 
 declare module "./client-base" {

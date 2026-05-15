@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getErrorStatusCode, nextJsonFromCaughtError } from "@/lib/api/errors";
-import { nextStyleParams } from "@/lib/api/hono-next-style-params";
+import { nextStyleParams, type RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appEarningsService } from "@/lib/services/app-earnings";
@@ -28,10 +28,6 @@ const WithdrawRequestSchema = z.object({
     .optional(),
 });
 
-interface RouteContext {
-  params: Promise<{ id: string }>;
-}
-
 /**
  * POST /api/v1/apps/[id]/earnings/withdraw
  * Request a withdrawal of app earnings.
@@ -48,7 +44,7 @@ interface RouteContext {
  *
  * @returns Success status, transaction ID, and new balance
  */
-async function handlePOST(request: Request, context: RouteContext) {
+async function handlePOST(request: Request, context: RouteContext<{ id: string }>) {
   try {
     if (!context?.params) {
       return Response.json({ success: false, error: "Missing route parameters" }, { status: 400 });

@@ -24,16 +24,8 @@ from benchmarks.evm.contract_catalog import (
     ALL_CONTRACTS,
     GENERAL_CONTRACTS,
     HYPERLIQUID_CONTRACTS,
-    CONTRACT_BY_ADDRESS,
     ERC20_CONTRACT,
     ERC721_CONTRACT,
-    WETH_CONTRACT,
-    ERC1155_CONTRACT,
-    MULTICALL3_CONTRACT,
-    NATIVE_ETH,
-    PRECOMPILE_IDENTITY,
-    PRECOMPILE_SHA256,
-    PRECOMPILE_ECRECOVER,
     HL_READ_POSITIONS,
     HL_READ_ORACLE,
     HL_CORE_WRITER,
@@ -549,7 +541,7 @@ class TestAnvilEnv:
             "error": None,
         })
 
-        step_result = asyncio.run(env.step(result_json))
+        asyncio.run(env.step(result_json))
         assert "0xnewcontract" in env._deployed_contracts
 
 

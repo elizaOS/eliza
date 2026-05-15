@@ -22,14 +22,12 @@ from eliza_lifeops_bench.scorer import (
     _is_read_with_side_effects_action,
     _kwargs_match,
     compare_actions,
-    compile_benchmark_result,
     output_substring_match,
     score_scenario,
 )
 from eliza_lifeops_bench.types import (
     Action,
     Domain,
-    FirstQuestionFallback,
     MessageTurn,
     Persona,
     Scenario,
@@ -353,6 +351,113 @@ def test_output_substring_match_accepts_calendar_confirmation_synonym() -> None:
     )
 
     assert matches == [True, True]
+
+
+def test_archive_email_thread_alias_scores_like_message_manage_archive() -> None:
+    predicted = [
+        Action(
+            name="ARCHIVE_EMAIL_THREAD",
+            kwargs={"threadId": "thread_00001"},
+        )
+    ]
+    ground_truth = [
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "source": "gmail",
+                "operation": "manage",
+                "manageOperation": "archive",
+                "threadId": "thread_00001",
+            },
+        )
+    ]
+
+    assert compare_actions(predicted, ground_truth) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["manageOperation", "manage_operation", "mailOperation", "mail_operation"],
+)
+def test_message_manage_operation_inferred_by_scorer(field: str) -> None:
+    predicted = [
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "source": "gmail",
+                field: "archive",
+                "threadId": "thread_00001",
+            },
+        )
+    ]
+    ground_truth = [
+        Action(
+            name="MESSAGE",
+            kwargs={
+                "source": "gmail",
+                "operation": "manage",
+                "manageOperation": "archive",
+                "threadId": "thread_00001",
+            },
+        )
+    ]
+
+    assert compare_actions(predicted, ground_truth) == pytest.approx(1.0)
+
+
+def test_calendar_time_min_max_aliases_score_like_start_end() -> None:
+    predicted = [
+        Action(
+            name="CALENDAR",
+            kwargs={
+                "subaction": "check_availability",
+                "timeMin": "2026-05-14T09:00:00Z",
+                "timeMax": "2026-05-14T10:00:00Z",
+            },
+        )
+    ]
+    ground_truth = [
+        Action(
+            name="CALENDAR",
+            kwargs={
+                "subaction": "check_availability",
+                "start": "2026-05-14T09:00:00Z",
+                "end": "2026-05-14T10:00:00Z",
+            },
+        )
+    ]
+
+    assert compare_actions(predicted, ground_truth) == pytest.approx(1.0)
+
+
+def test_output_substring_match_accepts_archived_for_archive() -> None:
+    matches = output_substring_match(
+        [MessageTurn(role="assistant", content="The thread has been archived.")],
+        ["archive"],
+    )
+
+    assert matches == [True]
+
+
+@pytest.mark.parametrize(
+    ("required", "content"),
+    [
+        ("rescheduled", "I moved your roadmap sync to 15:00 UTC."),
+        ("rescheduled", "The meeting was updated."),
+        ("cancel", "I cancelled the old appointment."),
+        ("cancel", "The stale hold was removed."),
+    ],
+)
+def test_output_substring_match_accepts_action_surface_equivalents(
+    required: str,
+    content: str,
+) -> None:
+    matches = output_substring_match(
+        [MessageTurn(role="assistant", content=content)],
+        [required],
+    )
+
+    assert matches == [True]
 
 
 def test_output_substring_match_accepts_slot_plural() -> None:

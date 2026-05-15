@@ -26,8 +26,6 @@ from eliza_adapter.client import ElizaClient
 if TYPE_CHECKING:
     from benchmarks.realm.types import (
         ExecutionModel,
-        PlanningAction,
-        PlanningStep,
         PlanningTrajectory,
         REALMTask,
         REALMTestCase,

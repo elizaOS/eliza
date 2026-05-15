@@ -1,7 +1,3 @@
-/**
- * elizaOS CLI - Public API
- */
-
 export {
   create,
   info,

@@ -13,6 +13,18 @@ export class AppBlockerWeb extends WebPlugin {
     return {
       status: "not-applicable",
       canRequest: false,
+      canOpenSettings: false,
+      settingsTarget: null,
+      engine: "none",
+      capabilities: {
+        canSelectApps: false,
+        canBlockApps: false,
+        canScheduleTimedBlocks: false,
+        canUnblockEarly: false,
+        requiresFamilyControls: false,
+        requiresUsageAccess: false,
+        requiresOverlay: false,
+      },
       reason: "App blocking is only available on mobile devices.",
     };
   }
@@ -21,6 +33,18 @@ export class AppBlockerWeb extends WebPlugin {
     return {
       status: "not-applicable",
       canRequest: false,
+      canOpenSettings: false,
+      settingsTarget: null,
+      engine: "none",
+      capabilities: {
+        canSelectApps: false,
+        canBlockApps: false,
+        canScheduleTimedBlocks: false,
+        canUnblockEarly: false,
+        requiresFamilyControls: false,
+        requiresUsageAccess: false,
+        requiresOverlay: false,
+      },
       reason: "App blocking is only available on mobile devices.",
     };
   }
@@ -51,14 +75,27 @@ export class AppBlockerWeb extends WebPlugin {
 
   async getStatus(): Promise<AppBlockerStatus> {
     return {
+      status: "unavailable",
       available: false,
       active: false,
       platform: "web",
       engine: "none",
+      capabilities: {
+        canSelectApps: false,
+        canBlockApps: false,
+        canScheduleTimedBlocks: false,
+        canUnblockEarly: false,
+        requiresFamilyControls: false,
+        requiresUsageAccess: false,
+        requiresOverlay: false,
+      },
       blockedCount: 0,
       blockedPackageNames: [],
       endsAt: null,
       permissionStatus: "not-applicable",
+      canRequest: false,
+      canOpenSettings: false,
+      settingsTarget: null,
       reason: "App blocking is only available on mobile devices.",
     };
   }

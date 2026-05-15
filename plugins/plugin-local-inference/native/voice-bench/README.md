@@ -166,7 +166,7 @@ evidence.
 ## Known limitations
 
 - **Synthetic audio is not real speech.** Per
-  [`docs/audits/lifeops-2026-05-11/ELIZA_1_GGUF_READINESS.md`](../../docs/audits/lifeops-2026-05-11/ELIZA_1_GGUF_READINESS.md),
+  [`docs/eliza-1-pipeline/06-test-matrix.md`](../../../../docs/eliza-1-pipeline/06-test-matrix.md),
   release-blocking latency gates still require a real-recorded WAV
   corpus.
 - **GPU utilization is not yet sampled.** The Metal/Vulkan counter hooks

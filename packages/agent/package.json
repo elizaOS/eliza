@@ -83,9 +83,9 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "publishConfig": {
@@ -121,7 +121,6 @@
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
     "@elizaos/plugin-streaming": "workspace:*",
-    "@elizaos/plugin-telegram": "workspace:*",
     "@elizaos/plugin-video": "workspace:*",
     "@elizaos/plugin-whatsapp": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
@@ -136,10 +135,10 @@
     "ethers": "^6.16.0",
     "git-workspace-service": "0.4.5",
     "hono": "^4.12.18",
+    "isomorphic-git": "^1.35.0",
     "jsdom": "^29.0.0",
     "json5": "^2.2.3",
     "pg": "^8.16.3",
-    "pty-manager": "1.11.0",
     "ws": "^8.19.0",
     "zod": "^4.4.3"
   },

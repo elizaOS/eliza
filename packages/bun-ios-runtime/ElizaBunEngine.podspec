@@ -19,7 +19,7 @@ Pod::Spec.new do |s|
   s.name = 'ElizaBunEngine'
   s.version = package['version']
   s.summary = package['description']
-  s.license = package['license'] || { :type => 'MIT' }
+  s.license = package['license']
   s.homepage = 'https://github.com/elizaOS'
   s.authors = { 'elizaOS' => 'shaw@elizalabs.ai' }
   s.source = { :git => 'https://github.com/elizaOS/eliza.git', :tag => s.version.to_s }

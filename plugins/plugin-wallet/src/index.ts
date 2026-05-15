@@ -3,7 +3,7 @@ import "./core-augmentation.js";
 export * from "./actions/index.js";
 export { BirdeyeService } from "./analytics/birdeye/service.js";
 export { DexScreenerService } from "./analytics/dexscreener/index.js";
-// Consolidated analytics surface (formerly @elizaos/plugin-{lpinfo,dexscreener,defi-news,birdeye}).
+// Analytics surface (formerly @elizaos/plugin-{lpinfo,dexscreener,defi-news,birdeye}).
 export {
   kaminoPlugin,
   lpinfoPlugin,
@@ -30,7 +30,7 @@ export {
   _resetForTesting,
   getWalletExportAuditLog,
 } from "./lib/wallet-export-guard.js";
-// Consolidated LP management surface (formerly @elizaos/plugin-lp-manager).
+// LP management surface (formerly @elizaos/plugin-lp-manager).
 // Includes Solana DEX adapters (Raydium / Orca / Meteora) under
 // chains/solana/dex/* and EVM DEX adapters (Uniswap / PancakeSwap / Aerodrome)
 // under chains/evm/dex/*.
@@ -56,7 +56,7 @@ export * from "./lp/types.js";
 export { default, walletPlugin } from "./plugin.js";
 export * from "./policy/policy.js";
 export * from "./providers/canonical-provider.js";
-export { unifiedWalletProvider } from "./providers/unified-wallet-provider.js";
+export { walletProvider } from "./providers/wallet-provider.js";
 export * from "./register-routes.js";
 export * from "./routes/plugin.js";
 /** ERC-6551 / x402 / CCTP / swaps are available from the package barrel. */

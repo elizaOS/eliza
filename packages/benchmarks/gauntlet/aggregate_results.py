@@ -5,7 +5,6 @@ Produces a summary JSON and Markdown comparison table.
 """
 
 import json
-import os
 import sys
 from dataclasses import dataclass, asdict
 from pathlib import Path

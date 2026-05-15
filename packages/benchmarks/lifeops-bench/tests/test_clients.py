@@ -541,7 +541,7 @@ async def test_anthropic_rejects_malformed_tool_arguments() -> None:
 
 @pytest.mark.asyncio
 async def test_anthropic_retries_once_on_429() -> None:
-    import anthropic as _anthropic_sdk
+    _anthropic_sdk = pytest.importorskip("anthropic")
 
     class _Failing429:
         async def create(self, **_: Any) -> Any:

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "registry-v2",
-  "lastUpdatedAt": "2026-05-11T13:58:00.202Z",
+  "lastUpdatedAt": "2026-05-14T11:58:58.830Z",
   "generatedFrom": {
     "builtinRepo": "github:elizaos/eliza",
     "builtinBranch": "main",
@@ -8,12 +8,12 @@
     "thirdPartyDirectory": "entries/third-party"
   },
   "counts": {
-    "total": 104,
-    "builtin": 104,
+    "total": 107,
+    "builtin": 107,
     "thirdParty": 0,
-    "app": 23,
+    "app": 25,
     "connector": 17,
-    "plugin": 64
+    "plugin": 65
   },
   "registry": {
     "@elizaos/app-2004scape": {
@@ -38,7 +38,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -46,10 +46,10 @@
         "repo": "@elizaos/app-2004scape",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -58,7 +58,13 @@
       },
       "description": "2004scape game service — autonomous RS agent with SDK WebSocket layer",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-2004scape#readme",
-      "topics": ["game", "app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "game",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -119,7 +125,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -127,10 +133,10 @@
         "repo": "@elizaos/app-babylon",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -181,7 +187,12 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": ["commands", "telemetry", "pause", "resume"]
+          "features": [
+            "commands",
+            "telemetry",
+            "pause",
+            "resume"
+          ]
         },
         "visibleInAppStore": true
       }
@@ -208,7 +219,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -216,10 +227,10 @@
         "repo": "@elizaos/app-clawville",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -270,7 +281,11 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": ["commands", "telemetry", "suggestions"]
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
         },
         "visibleInAppStore": true
       }
@@ -297,7 +312,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -305,10 +320,10 @@
         "repo": "@elizaos/app-companion",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -317,7 +332,13 @@
       },
       "description": "Companion app package with the VRM scene runtime and avatar utilities.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-companion#readme",
-      "topics": ["shell", "app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "shell",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -356,7 +377,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -364,10 +385,10 @@
         "repo": "@elizaos/app-contacts",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -376,7 +397,12 @@
       },
       "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-contacts#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -415,7 +441,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -423,10 +449,10 @@
         "repo": "@elizaos/app-defense-of-the-agents",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -454,7 +480,11 @@
         "launchUrl": "https://www.defenseoftheagents.com/",
         "icon": "Gamepad",
         "heroImage": "assets/hero.png",
-        "capabilities": ["strategy", "telemetry", "lane-control"],
+        "capabilities": [
+          "strategy",
+          "telemetry",
+          "lane-control"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/app-defense-of-the-agents",
@@ -467,8 +497,76 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": ["commands", "telemetry", "suggestions"]
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
         },
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-device-settings": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-device-settings",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.2",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-device-settings",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.2",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "workspace:*"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Android Device Settings overlay app for ElizaOS — brightness, volume, Android roles, and system settings shortcuts.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-device-settings#readme",
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Device Settings",
+        "category": "system",
+        "launchType": "local",
+        "launchUrl": null,
+        "icon": null,
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-device-settings",
         "visibleInAppStore": true
       }
     },
@@ -494,7 +592,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -502,10 +600,10 @@
         "repo": "@elizaos/app-documents",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -531,7 +629,9 @@
         "launchUrl": null,
         "icon": "BookOpen",
         "heroImage": "assets/hero.png",
-        "capabilities": ["documents"],
+        "capabilities": [
+          "documents"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/app-documents",
@@ -561,7 +661,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -569,10 +669,10 @@
         "repo": "@elizaos/app-elizamaker",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -581,7 +681,12 @@
       },
       "description": "ElizaMaker: ERC-8041 NFT drop/mint/whitelist routes, Twitter-verified Merkle proofs, and OG code tracking.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-elizamaker#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -620,7 +725,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -628,10 +733,10 @@
         "repo": "@elizaos/app-hyperliquid",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -659,7 +764,12 @@
         "launchUrl": null,
         "icon": "ChartCandlestick",
         "heroImage": "assets/hero.png",
-        "capabilities": ["hyperliquid", "trading", "wallet", "perps"],
+        "capabilities": [
+          "hyperliquid",
+          "trading",
+          "wallet",
+          "perps"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/app-hyperliquid",
@@ -689,7 +799,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -697,10 +807,10 @@
         "repo": "@elizaos/app-hyperscape",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -709,7 +819,13 @@
       },
       "description": "Hyperscape game session resolvers — spectate-and-steer agent sessions with live data from the Hyperscape API",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-hyperscape#readme",
-      "topics": ["game", "app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "game",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -761,7 +877,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -769,10 +885,10 @@
         "repo": "@elizaos/app-lifeops",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -801,11 +917,80 @@
         "launchUrl": null,
         "icon": "Calendar",
         "heroImage": "assets/hero.png",
-        "capabilities": ["lifeops", "tasks", "calendar", "gmail"],
+        "capabilities": [
+          "lifeops",
+          "tasks",
+          "calendar",
+          "gmail"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/app-lifeops",
         "bridgeExport": "lifeopsPlugin",
+        "visibleInAppStore": true
+      }
+    },
+    "@elizaos/app-messages": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "app",
+      "registryKind": "app",
+      "directory": "plugins/app-messages",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.2",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/app-messages",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.2",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "workspace:*"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Android Messages overlay app for ElizaOS — SMS inbox and compose surface backed by @elizaos/capacitor-messages.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-messages#readme",
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript",
+      "app": {
+        "displayName": "Messages",
+        "category": "system",
+        "launchType": "local",
+        "launchUrl": null,
+        "icon": null,
+        "heroImage": "assets/hero.png",
+        "capabilities": [],
+        "minPlayers": null,
+        "maxPlayers": null,
+        "runtimePlugin": "@elizaos/app-messages",
         "visibleInAppStore": true
       }
     },
@@ -831,7 +1016,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -839,10 +1024,10 @@
         "repo": "@elizaos/app-phone",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -851,7 +1036,12 @@
       },
       "description": "Phone app for Eliza — Android dialer/call-log overlay (@elizaos/capacitor-phone) and the iOS Phone Companion (pairing, chat-mirror, remote-session).",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-phone#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -890,7 +1080,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -898,10 +1088,10 @@
         "repo": "@elizaos/app-polymarket",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -964,7 +1154,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -972,10 +1162,10 @@
         "repo": "@elizaos/app-scape",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1030,7 +1220,11 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": ["commands", "telemetry", "suggestions"]
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
         },
         "visibleInAppStore": true
       }
@@ -1057,7 +1251,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1065,10 +1259,10 @@
         "repo": "@elizaos/app-screenshare",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1077,7 +1271,12 @@
       },
       "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-screenshare#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1107,7 +1306,11 @@
         },
         "session": {
           "mode": "spectate-and-steer",
-          "features": ["commands", "telemetry", "suggestions"]
+          "features": [
+            "commands",
+            "telemetry",
+            "suggestions"
+          ]
         },
         "visibleInAppStore": true
       }
@@ -1134,7 +1337,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1142,10 +1345,10 @@
         "repo": "@elizaos/app-shopify",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1154,7 +1357,13 @@
       },
       "description": "Storefront and admin tools for agent-driven commerce.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-shopify#readme",
-      "topics": ["marketplace", "app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "marketplace",
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1194,7 +1403,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1202,10 +1411,10 @@
         "repo": "@elizaos/app-steward",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1231,7 +1440,10 @@
         "launchUrl": null,
         "icon": "Wallet",
         "heroImage": "assets/hero.png",
-        "capabilities": ["wallet", "trading"],
+        "capabilities": [
+          "wallet",
+          "trading"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/app-steward",
@@ -1261,7 +1473,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1269,10 +1481,10 @@
         "repo": "@elizaos/app-task-coordinator",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1281,7 +1493,12 @@
       },
       "description": "Task Coordinator",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-task-coordinator#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1320,7 +1537,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1328,10 +1545,10 @@
         "repo": "@elizaos/app-training",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1358,7 +1575,10 @@
         "launchUrl": null,
         "icon": "Zap",
         "heroImage": "assets/hero.png",
-        "capabilities": ["training", "trajectories"],
+        "capabilities": [
+          "training",
+          "trajectories"
+        ],
         "minPlayers": null,
         "maxPlayers": null,
         "runtimePlugin": "@elizaos/app-training",
@@ -1388,7 +1608,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1396,10 +1616,10 @@
         "repo": "@elizaos/app-trajectory-logger",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1408,7 +1628,12 @@
       },
       "description": "Realtime trajectory inspector overlay app — surfaces the last completed and the in-flight trajectory with HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-trajectory-logger#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1447,7 +1672,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1455,10 +1680,10 @@
         "repo": "@elizaos/app-vincent",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1524,7 +1749,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1532,10 +1757,10 @@
         "repo": "@elizaos/app-wallet",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1544,7 +1769,12 @@
       },
       "description": "Wallet",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-wallet#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1583,7 +1813,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1591,10 +1821,10 @@
         "repo": "@elizaos/app-wifi",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1603,7 +1833,12 @@
       },
       "description": "Wi-Fi overlay app for the Eliza Android build — scan, inspect, and connect to nearby networks via @elizaos/capacitor-wifi.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/app-wifi#readme",
-      "topics": ["app", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "app",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript",
       "app": {
@@ -1642,7 +1877,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1650,10 +1885,10 @@
         "repo": "@elizaos/plugin-agent-orchestrator",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1698,7 +1933,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1706,10 +1941,10 @@
         "repo": "@elizaos/plugin-agent-skills",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1756,7 +1991,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1764,10 +1999,10 @@
         "repo": "@elizaos/plugin-anthropic",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1814,7 +2049,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1822,10 +2057,10 @@
         "repo": "@elizaos/plugin-aosp-local-inference",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1870,7 +2105,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1878,10 +2113,10 @@
         "repo": "@elizaos/plugin-app-control",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1925,7 +2160,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1933,10 +2168,10 @@
         "repo": "@elizaos/plugin-background-runner",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -1956,6 +2191,63 @@
         "android",
         "mobile",
         "automation",
+        "built-in",
+        "first-party"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-benchmarks": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-benchmarks",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.0",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-benchmarks",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.0",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "workspace:*"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Canonical eliza Action wrappers for benchmark tool vocabularies (vending-bench, webshop, OSWorld, tau-bench, visualwebbench).",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-benchmarks#readme",
+      "topics": [
+        "plugin",
+        "elizaos",
+        "benchmarks",
+        "vending-bench",
+        "webshop",
+        "osworld",
+        "tau-bench",
+        "visualwebbench",
         "built-in",
         "first-party"
       ],
@@ -1984,7 +2276,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -1992,10 +2284,10 @@
         "repo": "@elizaos/plugin-bluebubbles",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2039,7 +2331,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2047,10 +2339,10 @@
         "repo": "@elizaos/plugin-bluesky",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2094,7 +2386,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2102,17 +2394,17 @@
         "repo": "@elizaos/plugin-browser",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
         "v1": false,
         "v2": true
       },
-      "description": "Browser plugin: unified BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
+      "description": "Browser plugin: BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-browser#readme",
       "topics": [
         "browser-automation",
@@ -2152,7 +2444,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2160,10 +2452,10 @@
         "repo": "@elizaos/plugin-calendly",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2172,7 +2464,12 @@
       },
       "description": "Calendly integration plugin for elizaOS agents — event types, scheduled events, cancellations, and booking-link handoff via Calendly v2 API",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-calendly#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -2198,7 +2495,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2206,10 +2503,10 @@
         "repo": "@elizaos/plugin-capacitor-bridge",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2218,7 +2515,12 @@
       },
       "description": "Capacitor WebSocket bridge to device llama for stock mobile (non-AOSP) Eliza builds.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-capacitor-bridge#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -2244,7 +2546,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2252,10 +2554,10 @@
         "repo": "@elizaos/plugin-cli",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2300,7 +2602,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2308,10 +2610,10 @@
         "repo": "@elizaos/plugin-codex-cli",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2354,7 +2656,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2362,10 +2664,10 @@
         "repo": "@elizaos/plugin-coding-tools",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2416,7 +2718,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2424,10 +2726,10 @@
         "repo": "@elizaos/plugin-commands",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2470,7 +2772,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2478,10 +2780,10 @@
         "repo": "@elizaos/plugin-computeruse",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2498,6 +2800,63 @@
         "mcp",
         "devtools",
         "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-device-filesystem": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-device-filesystem",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.2",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-device-filesystem",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.2",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "workspace:*"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Mobile-safe filesystem bridge for canonical FILE target=device operations on iOS/Android and desktop/AOSP.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-device-filesystem#readme",
+      "topics": [
+        "eliza",
+        "plugin",
+        "filesystem",
+        "capacitor",
+        "mobile",
+        "ios",
+        "android",
         "built-in",
         "first-party",
         "elizaos"
@@ -2538,7 +2897,7 @@
         "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2582,7 +2941,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2590,10 +2949,10 @@
         "repo": "@elizaos/plugin-discord-local",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2636,7 +2995,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2644,10 +3003,10 @@
         "repo": "@elizaos/plugin-edge-tts",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2691,7 +3050,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2699,10 +3058,10 @@
         "repo": "@elizaos/plugin-elevenlabs",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2746,7 +3105,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2754,10 +3113,10 @@
         "repo": "@elizaos/plugin-eliza-classic",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2766,7 +3125,12 @@
       },
       "description": "Deterministic ELIZA-style pattern matching (browser + Node); ships compiled ESM in dist/.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-eliza-classic#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -2792,7 +3156,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2800,10 +3164,10 @@
         "repo": "@elizaos/plugin-elizacloud",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2851,7 +3215,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2859,10 +3223,10 @@
         "repo": "@elizaos/plugin-farcaster",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2907,7 +3271,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2915,10 +3279,10 @@
         "repo": "@elizaos/plugin-feishu",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -2963,7 +3327,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -2971,10 +3335,10 @@
         "repo": "@elizaos/plugin-form",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3019,7 +3383,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3027,10 +3391,10 @@
         "repo": "@elizaos/plugin-github",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3072,7 +3436,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3080,10 +3444,10 @@
         "repo": "@elizaos/plugin-google",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3092,7 +3456,12 @@
       },
       "description": "Google",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-google#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -3118,7 +3487,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3126,10 +3495,10 @@
         "repo": "@elizaos/plugin-google-chat",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3176,7 +3545,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3184,10 +3553,10 @@
         "repo": "@elizaos/plugin-google-genai",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3237,7 +3606,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3245,10 +3614,10 @@
         "repo": "@elizaos/plugin-groq",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3296,7 +3665,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3304,10 +3673,10 @@
         "repo": "@elizaos/plugin-health",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3316,7 +3685,12 @@
       },
       "description": "Health, sleep, circadian and screen-time domain plugin for elizaOS — extracted from app-lifeops in Wave 1 (W1-B). Owns connectors (Apple Health, Google Fit, Strava, Fitbit, Withings, Oura), sleep/circadian/regularity engines, screen-time aggregation, and the wake/bedtime/nap anchor contributions consumed by app-lifeops via the W1-F connector / channel / signal-bus contracts.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-health#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -3342,7 +3716,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3350,10 +3724,10 @@
         "repo": "@elizaos/plugin-imessage",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3399,7 +3773,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3407,10 +3781,10 @@
         "repo": "@elizaos/plugin-inmemorydb",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3453,7 +3827,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3461,10 +3835,10 @@
         "repo": "@elizaos/plugin-instagram",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3508,7 +3882,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3516,10 +3890,10 @@
         "repo": "@elizaos/plugin-line",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3563,7 +3937,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3571,10 +3945,10 @@
         "repo": "@elizaos/plugin-linear",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3619,7 +3993,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3627,10 +4001,10 @@
         "repo": "@elizaos/plugin-lmstudio",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3643,118 +4017,6 @@
         "text-large",
         "text-small",
         "embedding",
-        "plugin",
-        "built-in",
-        "first-party",
-        "elizaos"
-      ],
-      "stargazers_count": 0,
-      "language": "TypeScript"
-    },
-    "@elizaos/plugin-local-ai": {
-      "origin": "builtin",
-      "source": "builtin",
-      "support": "first-party",
-      "builtIn": true,
-      "firstParty": true,
-      "thirdParty": false,
-      "status": "active",
-      "kind": "plugin",
-      "registryKind": "plugin",
-      "directory": "plugins/plugin-local-ai",
-      "git": {
-        "repo": "elizaos/eliza",
-        "v0": {
-          "version": null,
-          "branch": null
-        },
-        "v1": {
-          "version": null,
-          "branch": null
-        },
-        "v2": {
-          "version": "2.0.0-beta.1",
-          "branch": "main"
-        }
-      },
-      "npm": {
-        "repo": "@elizaos/plugin-local-ai",
-        "v0": null,
-        "v1": null,
-        "v2": "2.0.0-beta.1",
-        "v0CoreRange": null,
-        "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
-      },
-      "supports": {
-        "v0": false,
-        "v1": false,
-        "v2": true
-      },
-      "description": "LocalAI provider for self-hosted, OpenAI-compatible local model inference.",
-      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-local-ai#readme",
-      "topics": [
-        "ai-provider",
-        "llm",
-        "local-models",
-        "self-hosted",
-        "local-ai",
-        "local",
-        "plugin",
-        "built-in",
-        "first-party",
-        "elizaos"
-      ],
-      "stargazers_count": 0,
-      "language": "TypeScript"
-    },
-    "@elizaos/plugin-local-embedding": {
-      "origin": "builtin",
-      "source": "builtin",
-      "support": "first-party",
-      "builtIn": true,
-      "firstParty": true,
-      "thirdParty": false,
-      "status": "active",
-      "kind": "plugin",
-      "registryKind": "plugin",
-      "directory": "plugins/plugin-local-embedding",
-      "git": {
-        "repo": "elizaos/eliza",
-        "v0": {
-          "version": null,
-          "branch": null
-        },
-        "v1": {
-          "version": null,
-          "branch": null
-        },
-        "v2": {
-          "version": "2.0.0-beta.1",
-          "branch": "main"
-        }
-      },
-      "npm": {
-        "repo": "@elizaos/plugin-local-embedding",
-        "v0": null,
-        "v1": null,
-        "v2": "2.0.0-beta.1",
-        "v0CoreRange": null,
-        "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
-      },
-      "supports": {
-        "v0": false,
-        "v1": false,
-        "v2": true
-      },
-      "description": "Local AI model embedding and inference plugin for ElizaOS",
-      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-local-embedding#readme",
-      "topics": [
-        "local-embedding",
-        "local",
-        "embedding",
-        "documents",
         "plugin",
         "built-in",
         "first-party",
@@ -3785,7 +4047,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3793,19 +4055,34 @@
         "repo": "@elizaos/plugin-local-inference",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
         "v1": false,
         "v2": true
       },
-      "description": "Local inference HTTP routes for the Eliza agent: model catalog, downloads, hardware detection, and chat-command surface.",
+      "description": "Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-local-inference#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "ai-provider",
+        "llm",
+        "local-models",
+        "self-hosted",
+        "local",
+        "embedding",
+        "voice",
+        "tts",
+        "transcription",
+        "eliza-1",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -3831,7 +4108,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3839,10 +4116,10 @@
         "repo": "@elizaos/plugin-local-storage",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3885,7 +4162,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3893,10 +4170,10 @@
         "repo": "@elizaos/plugin-localdb",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3939,7 +4216,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -3947,10 +4224,10 @@
         "repo": "@elizaos/plugin-matrix",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -3995,7 +4272,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4003,10 +4280,10 @@
         "repo": "@elizaos/plugin-mcp",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4048,7 +4325,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4056,10 +4333,10 @@
         "repo": "@elizaos/plugin-minecraft",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4105,7 +4382,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4113,22 +4390,27 @@
         "repo": "@elizaos/plugin-mlx",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
         "v1": false,
         "v2": true
       },
-      "description": "Mlx",
+      "description": "MLX provider for local LLM inference on Apple Silicon via mlx_lm.server's OpenAI-compatible API.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-mlx#readme",
       "topics": [
         "text-large",
         "text-small",
         "embedding",
+        "ai-provider",
+        "llm",
+        "mlx",
+        "local-models",
+        "apple-silicon",
         "plugin",
         "built-in",
         "first-party",
@@ -4159,7 +4441,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4167,17 +4449,17 @@
         "repo": "@elizaos/plugin-music",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
         "v1": false,
         "v2": true
       },
-      "description": "Unified music plugin: library & playlists, metadata APIs, playback engine, queue, HTTP streaming routes, and optional Discord voice.",
+      "description": "Music plugin: library & playlists, metadata APIs, playback engine, queue, HTTP streaming routes, and optional Discord voice.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-music#readme",
       "topics": [
         "music",
@@ -4220,7 +4502,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4228,10 +4510,10 @@
         "repo": "@elizaos/plugin-mysticism",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4277,7 +4559,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4285,10 +4567,10 @@
         "repo": "@elizaos/plugin-ngrok",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4332,7 +4614,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4340,10 +4622,10 @@
         "repo": "@elizaos/plugin-nostr",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4389,7 +4671,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4397,10 +4679,10 @@
         "repo": "@elizaos/plugin-ollama",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4417,6 +4699,67 @@
         "llm",
         "ollama",
         "local-models",
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
+      "stargazers_count": 0,
+      "language": "TypeScript"
+    },
+    "@elizaos/plugin-omnivoice": {
+      "origin": "builtin",
+      "source": "builtin",
+      "support": "first-party",
+      "builtIn": true,
+      "firstParty": true,
+      "thirdParty": false,
+      "status": "active",
+      "kind": "plugin",
+      "registryKind": "plugin",
+      "directory": "plugins/plugin-omnivoice",
+      "git": {
+        "repo": "elizaos/eliza",
+        "v0": {
+          "version": null,
+          "branch": null
+        },
+        "v1": {
+          "version": null,
+          "branch": null
+        },
+        "v2": {
+          "version": "2.0.0-beta.2",
+          "branch": "main"
+        }
+      },
+      "npm": {
+        "repo": "@elizaos/plugin-omnivoice",
+        "v0": null,
+        "v1": null,
+        "v2": "2.0.0-beta.2",
+        "v0CoreRange": null,
+        "v1CoreRange": null,
+        "v2CoreRange": "workspace:*"
+      },
+      "supports": {
+        "v0": false,
+        "v1": false,
+        "v2": true
+      },
+      "description": "Local TTS via omnivoice.cpp (k2-fsa OmniVoice) — voice cloning, voice design, and emotion-aware synthesis on CPU/Metal/CUDA/Vulkan.",
+      "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-omnivoice#readme",
+      "topics": [
+        "text-to-speech",
+        "voice-cloning",
+        "voice-design",
+        "emotion-aware-tts",
+        "singing",
+        "omnivoice",
+        "local-tts",
+        "emotion",
+        "ggml",
+        "voice",
         "plugin",
         "built-in",
         "first-party",
@@ -4447,7 +4790,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4455,10 +4798,10 @@
         "repo": "@elizaos/plugin-openai",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4507,7 +4850,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4515,10 +4858,10 @@
         "repo": "@elizaos/plugin-openrouter",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4568,7 +4911,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4576,10 +4919,10 @@
         "repo": "@elizaos/plugin-pdf",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4621,7 +4964,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4629,10 +4972,10 @@
         "repo": "@elizaos/plugin-rlm",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4679,7 +5022,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4687,10 +5030,10 @@
         "repo": "@elizaos/plugin-roblox",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4735,7 +5078,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4743,10 +5086,10 @@
         "repo": "@elizaos/plugin-shell",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4793,7 +5136,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4801,10 +5144,10 @@
         "repo": "@elizaos/plugin-shopify",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4813,7 +5156,12 @@
       },
       "description": "Shopify Admin API plugin for elizaOS agents -- manage products, orders, inventory, and customers.",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-shopify#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -4839,7 +5187,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4847,10 +5195,10 @@
         "repo": "@elizaos/plugin-signal",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4897,7 +5245,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4905,10 +5253,10 @@
         "repo": "@elizaos/plugin-slack",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -4954,7 +5302,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -4962,10 +5310,10 @@
         "repo": "@elizaos/plugin-social-alpha",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5011,7 +5359,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5019,10 +5367,10 @@
         "repo": "@elizaos/plugin-sql",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5031,7 +5379,12 @@
       },
       "description": "Sql",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-sql#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -5057,7 +5410,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5065,17 +5418,17 @@
         "repo": "@elizaos/plugin-streaming",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
         "v1": false,
         "v2": true
       },
-      "description": "Unified RTMP streaming for elizaOS (Twitch, YouTube, X, pump.fun, custom and named ingest URLs)",
+      "description": "RTMP streaming for elizaOS (Twitch, YouTube, X, pump.fun, custom and named ingest URLs)",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-streaming#readme",
       "topics": [
         "elizaos",
@@ -5111,7 +5464,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5119,10 +5472,10 @@
         "repo": "@elizaos/plugin-suno",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5163,7 +5516,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5171,10 +5524,10 @@
         "repo": "@elizaos/plugin-tailscale",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5218,7 +5571,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5226,10 +5579,10 @@
         "repo": "@elizaos/plugin-tee",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5272,7 +5625,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5280,10 +5633,10 @@
         "repo": "@elizaos/plugin-telegram",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5328,7 +5681,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5336,10 +5689,10 @@
         "repo": "@elizaos/plugin-todos",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5387,7 +5740,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5395,10 +5748,10 @@
         "repo": "@elizaos/plugin-tunnel",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5442,7 +5795,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5450,10 +5803,10 @@
         "repo": "@elizaos/plugin-twitch",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5500,7 +5853,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5508,10 +5861,10 @@
         "repo": "@elizaos/plugin-video",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5555,7 +5908,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5563,10 +5916,10 @@
         "repo": "@elizaos/plugin-vision",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5611,7 +5964,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5619,17 +5972,17 @@
         "repo": "@elizaos/plugin-wallet",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
         "v1": false,
         "v2": true
       },
-      "description": "Unified non-custodial wallet for elizaOS agents — EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
+      "description": "Non-custodial wallet for elizaOS agents — EVM + Solana, ERC-6551 token-bound accounts, on-chain spend policies, x402 micropayments, CCTP bridge, Li.Fi swap routing, Jupiter routing, multi-DEX LP management (Raydium/Orca/Meteora on Solana, Uniswap/Aerodrome on EVM), Hyperliquid perps, Polymarket, Aave/Morpho lending, and Clanker token launches. Replaces plugin-evm + plugin-solana + plugin-raydium + plugin-orca + plugin-meteora + plugin-jupiter + plugin-lp-manager + plugin-clanker behind one canonical action+provider surface.",
       "homepage": "https://github.com/eliza-ai/eliza/tree/main/eliza/plugins/plugin-wallet",
       "topics": [
         "plugin",
@@ -5684,7 +6037,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5692,10 +6045,10 @@
         "repo": "@elizaos/plugin-web-search",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5704,7 +6057,12 @@
       },
       "description": "Web Search",
       "homepage": "https://github.com/elizaos/eliza/tree/main/plugins/plugin-web-search#readme",
-      "topics": ["plugin", "built-in", "first-party", "elizaos"],
+      "topics": [
+        "plugin",
+        "built-in",
+        "first-party",
+        "elizaos"
+      ],
       "stargazers_count": 0,
       "language": "TypeScript"
     },
@@ -5730,7 +6088,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5738,10 +6096,10 @@
         "repo": "@elizaos/plugin-wechat",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5784,7 +6142,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5792,10 +6150,10 @@
         "repo": "@elizaos/plugin-whatsapp",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5840,7 +6198,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5848,10 +6206,10 @@
         "repo": "@elizaos/plugin-workflow",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5896,7 +6254,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5904,10 +6262,10 @@
         "repo": "@elizaos/plugin-x",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -5955,7 +6313,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -5963,10 +6321,10 @@
         "repo": "@elizaos/plugin-x402",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -6010,7 +6368,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -6018,10 +6376,10 @@
         "repo": "@elizaos/plugin-xai",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,
@@ -6069,7 +6427,7 @@
           "branch": null
         },
         "v2": {
-          "version": "2.0.0-beta.1",
+          "version": "2.0.0-beta.2",
           "branch": "main"
         }
       },
@@ -6077,10 +6435,10 @@
         "repo": "@elizaos/plugin-zai",
         "v0": null,
         "v1": null,
-        "v2": "2.0.0-beta.1",
+        "v2": "2.0.0-beta.2",
         "v0CoreRange": null,
         "v1CoreRange": null,
-        "v2CoreRange": "2.0.0-beta.1"
+        "v2CoreRange": "workspace:*"
       },
       "supports": {
         "v0": false,

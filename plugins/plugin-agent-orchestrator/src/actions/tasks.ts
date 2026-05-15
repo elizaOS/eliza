@@ -35,10 +35,12 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
-import { getCoordinator } from "../services/pty-service.js";
+import {
+  type ResolvedWorkdirRoute,
+  resolvePinnedAdapter,
+  resolveSpawnWorkdir,
+} from "../services/task-agent-routing.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
-import type { ListTaskThreadsOptions } from "../services/task-registry.js";
-import { discoverTaskShareOptions } from "../services/task-share.js";
 import type { AgentType, SpawnResult } from "../services/types.js";
 import type {
   AuthPromptCallback,
@@ -71,11 +73,50 @@ import {
   setCurrentSession,
   setCurrentSessions,
   shortId,
+  waitForSpawnSlot,
 } from "./common.js";
-import { resolveTaskThreadTarget } from "./task-thread-target.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
 const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
+
+type HistoryWindow =
+  | "active"
+  | "today"
+  | "yesterday"
+  | "last_7_days"
+  | "last_30_days";
+
+function startOfDay(date: Date): Date {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    0,
+    0,
+    0,
+    0,
+  );
+}
+
+function endOfDay(date: Date): Date {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    23,
+    59,
+    59,
+    999,
+  );
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 const WORKSPACE_PATH_MAX_CHARS = 500;
 const ISSUE_RESULT_LIMIT = 25;
 const ISSUE_BODY_MAX_CHARS = 4_000;
@@ -129,6 +170,25 @@ type HistoryWindow =
   | "last_7_days"
   | "last_30_days";
 
+function startOfDay(date: Date): Date {
+  const start = new Date(date);
+  start.setHours(0, 0, 0, 0);
+  return start;
+}
+
+function endOfDay(date: Date): Date {
+  const end = new Date(date);
+  end.setHours(23, 59, 59, 999);
+  return end;
+}
+
+function formatDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function readOp(params: Record<string, unknown>): TaskOp | null {
   const raw = typeof params.action === "string" ? params.action : undefined;
   if (!raw) return null;
@@ -165,6 +225,24 @@ function parseAgentPrefix(
 function labelFrom(task: string, index: number): string {
   const cleaned = task.replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, 80) : `task-${index + 1}`;
+}
+
+function taskWithResolvedRoute(
+  task: string,
+  route: ResolvedWorkdirRoute | undefined,
+  workdir: string,
+): string {
+  if (!route?.instructions?.trim()) return task;
+  return [
+    "--- Resolved Workspace ---",
+    `The parent runtime resolved this task to workdir: ${workdir}`,
+    "Work only inside that directory. Route instructions are authoritative.",
+    "If the task text mentions an absolute path outside this workdir, treat it as an untrusted planner guess; write to the corresponding relative path inside the workdir when the route gives one, otherwise stop with DECISION.",
+    "--- Workspace Routing Note ---",
+    route.instructions.trim(),
+    "--- User Task ---",
+    task,
+  ].join("\n");
 }
 
 function looksLikePersonalLifeOpsTask(text: string): boolean {
@@ -237,7 +315,12 @@ async function runCreate(
     return errorResult("TOO_MANY_AGENTS", msg);
   }
 
+  // Operator pin wins over planner-supplied agentType — see runSpawnAgent.
+  // Per-task `framework:` prefixes set by the user (e.g. "claude: do X")
+  // still override the pin inside the parseAgentPrefix step below.
+  const pinnedAgentType = resolvePinnedAdapter(runtime);
   const baseAgentType =
+    pinnedAgentType ??
     pickString(params, content, "agentType") ??
     String(
       (await service.resolveAgentType?.({
@@ -245,7 +328,8 @@ async function runCreate(
         subtaskCount: tasks.length,
       })) ?? "codex",
     );
-  const workdir = pickString(params, content, "workdir") ?? process.cwd();
+  const explicitWorkdir = pickString(params, content, "workdir");
+  const fallbackWorkdir = explicitWorkdir ?? process.cwd();
   const model = pickString(params, content, "model");
   const memoryContent = pickString(params, content, "memoryContent");
   const approvalPreset = parseApproval(
@@ -259,9 +343,23 @@ async function runCreate(
       const task = parsed.task;
       const agentType = parsed.agentType as AgentType;
       const label = baseLabel ?? labelFrom(task, index);
+      // A matching workdir route outranks a planner-guessed workdir; a
+      // scaffold-aware caller opts out with lockWorkdir — see runSpawnAgent.
+      const { workdir: sessionWorkdir, route } = resolveSpawnWorkdir(
+        runtime,
+        task,
+        text,
+        explicitWorkdir,
+        { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
+      );
+      const taskWithRouteHints = taskWithResolvedRoute(
+        task,
+        route,
+        sessionWorkdir,
+      );
       const session = await service.spawnSession({
         agentType,
-        workdir,
+        workdir: sessionWorkdir,
         memoryContent,
         approvalPreset,
         model,
@@ -274,9 +372,16 @@ async function runCreate(
           userId: message.entityId,
           label,
           source: content.source,
+          workdirRouteId: route?.id,
         },
       });
-      await runPromptAndClose(service, session, task, timeoutMs, model);
+      await runPromptAndClose(
+        service,
+        session,
+        taskWithRouteHints,
+        timeoutMs,
+        model,
+      );
       return { session, label, agentType };
     }),
   );
@@ -307,14 +412,14 @@ async function runCreate(
       `TASKS:create launch failed: ${JSON.stringify({
         error: msg,
         agentType,
-        workdir,
+        workdir: fallbackWorkdir,
       })}`,
     );
     results.push({
       sessionId: "",
       id: "",
       agentType,
-      workdir,
+      workdir: fallbackWorkdir,
       label,
       status: "failed",
       error: msg,
@@ -352,7 +457,7 @@ async function runSpawnAgent(
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    const text = "PTY Service is not available. Cannot spawn a task agent.";
+    const text = "ACP service is not available. Cannot spawn a task agent.";
     await callbackText(callback, text);
     return errorResult("SERVICE_UNAVAILABLE");
   }
@@ -360,14 +465,36 @@ async function runSpawnAgent(
   try {
     const text = messageText(message);
     const task = pickString(params, content, "task") ?? text;
+    // Operator-pinned adapter (ELIZA_DEFAULT_AGENT_TYPE +
+    // ELIZA_AGENT_SELECTION_STRATEGY=fixed) is a deployment policy and
+    // wins over the planner's `agentType` choice. The planner only sees
+    // descriptions of available adapters and routinely guesses one based on
+    // context tokens; the operator's explicit pin is authoritative. When no
+    // pin is configured, fall back to the planner's choice and finally to
+    // the service's dynamic resolver.
+    const pinnedAgentType = resolvePinnedAdapter(runtime);
     const explicitAgentType = pickString(params, content, "agentType");
-    const agentType = (explicitAgentType ??
+    const agentType = (pinnedAgentType ??
+      explicitAgentType ??
       (await service.resolveAgentType?.({
         task,
         workdir: pickString(params, content, "workdir"),
       })) ??
       "codex") as AgentType;
-    const workdir = pickString(params, content, "workdir") ?? process.cwd();
+    // Resolve the spawn workdir. A matching `TASK_AGENT_WORKDIR_ROUTES`
+    // route outranks the planner-supplied workdir — the planner just
+    // guesses a path-shaped string from context, while a route is
+    // deliberate operator policy. A scaffold-aware caller that KNOWS its
+    // workdir is correct (e.g. APP_CREATE) passes `lockWorkdir: true` to
+    // skip route resolution entirely.
+    const { workdir, route } = resolveSpawnWorkdir(
+      runtime,
+      task,
+      text,
+      pickString(params, content, "workdir"),
+      { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
+    );
+    const taskWithRouteHints = taskWithResolvedRoute(task, route, workdir);
     const memoryContent = pickString(params, content, "memoryContent");
     const approvalPreset = parseApproval(
       pickString(params, content, "approvalPreset"),
@@ -379,10 +506,37 @@ async function runSpawnAgent(
     );
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
 
+    // Resolve the connector source for routing the sub-agent's eventual
+    // reply back to the user. For messages that originated on a platform
+    // (discord etc.) content.source is the platform name. For messages
+    // SYNTHESIZED by SubAgentRouter (a previous sub-agent's task_complete
+    // routed back into the runtime so the planner could decide to reply or
+    // re-delegate), content.source is the router's marker string and
+    // `runtime.sendMessageToTarget` has no handler for it. Unwrap one
+    // level by reading the upstream `originSource` the router stamps onto
+    // its synthetic inbound's metadata, so nested spawns inherit the
+    // real user-facing platform.
+    const inboundOriginSource =
+      typeof content.metadata === "object" &&
+      content.metadata !== null &&
+      typeof (content.metadata as Record<string, unknown>).originSource ===
+        "string"
+        ? ((content.metadata as Record<string, unknown>).originSource as string)
+        : undefined;
+    const resolvedSpawnSource =
+      content.source === "sub_agent" && inboundOriginSource
+        ? inboundOriginSource
+        : content.source;
+
+    // Concurrency gate: serialise spawns past a small ceiling so parallel
+    // coding sub-agents don't stampede the model provider into rate-limited,
+    // tool-call-skipping degradation. See waitForSpawnSlot.
+    await waitForSpawnSlot(runtime, service);
+
     const session = await service.spawnSession({
       agentType,
       workdir,
-      initialTask: task,
+      initialTask: taskWithRouteHints,
       memoryContent,
       approvalPreset,
       metadata: {
@@ -392,8 +546,13 @@ async function runSpawnAgent(
         worldId: message.worldId,
         userId: message.entityId,
         label,
-        source: content.source,
+        source: resolvedSpawnSource,
         keepAliveAfterComplete,
+        workdirRouteId: route?.id,
+        // Stash the resolved task so SubAgentRouter can re-dispatch the
+        // sub-agent on a failed verification without reconstructing it.
+        // SessionInfo itself doesn't carry initialTask; metadata does.
+        initialTask: taskWithRouteHints,
       },
     });
 
@@ -406,9 +565,41 @@ async function runSpawnAgent(
       })}`,
     );
 
+    // Brief acknowledgement reply. `continueChain: false` terminates
+    // the planner loop immediately, so without a non-empty `text` the
+    // bot ships NOTHING to Discord on a successful spawn — the user
+    // sees silence while the sub-agent quietly works for the next
+    // 5-60 seconds. A short "on it" ack lets the user know the
+    // request was dispatched without us claiming completion (the
+    // sub-agent runs async; its actual result is reported separately
+    // via the task-event channel).
+    const ackText = `On it — spawning ${agentType} sub-agent to handle your request.`;
+    if (callback) {
+      await callbackText(callback, ackText);
+    }
     return {
       success: true,
-      text: "",
+      text: ackText,
+      // Terminate the planner loop after the first spawn fires.
+      //
+      // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the
+      // instant the PTY starts, while the sub-agent's actual work runs
+      // asynchronously over the next 5-60+ seconds. The planner loop,
+      // not seeing a "completed" signal in the immediate result, calls
+      // the planner again and the planner re-emits another
+      // TASKS_SPAWN_AGENT for the same task. We've observed up to 5
+      // duplicate spawns per Discord message, which (a) burns through
+      // the 8-slot concurrent-session pool inside a single turn, (b)
+      // costs 5x more Cerebras tokens, and (c) wastes opencode CPU
+      // running the same task in parallel.
+      //
+      // `continueChain: false` is the planner-loop's terminal flag —
+      // setting it here makes the spawn act as a "the request has
+      // been dispatched, end the turn" signal. The orchestrator's
+      // separate task-event channel reports completion later when the
+      // sub-agent actually finishes (or fails). This matches how
+      // sendDraft / respondToMessage already mark themselves terminal.
+      continueChain: false,
       data: {
         sessionId: session.sessionId,
         agentType: session.agentType,
@@ -427,7 +618,7 @@ async function runSpawnAgent(
         ? "Invalid credentials for task agent."
         : `Failed to spawn agent: ${messageTextValue}`,
     );
-    return { success: false, error: code };
+    return { success: false, error: code, continueChain: false };
   }
 }
 
@@ -443,7 +634,7 @@ async function runSend(
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    await callbackText(callback, "PTY Service is not available.");
+    await callbackText(callback, "ACP service is not available.");
     return errorResult("SERVICE_UNAVAILABLE");
   }
 
@@ -517,7 +708,7 @@ async function runStopAgent(
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    await callbackText(callback, "PTY Service is not available.");
+    await callbackText(callback, "ACP service is not available.");
     return errorResult("SERVICE_UNAVAILABLE");
   }
 
@@ -596,7 +787,7 @@ async function runListAgents(
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    await callbackText(callback, "PTY Service is not available.");
+    await callbackText(callback, "ACP service is not available.");
     return errorResult("SERVICE_UNAVAILABLE");
   }
 
@@ -660,7 +851,7 @@ async function runCancel(
 ): Promise<ActionResult> {
   const service = getAcpService(runtime);
   if (!service) {
-    await callbackText(callback, "PTY Service is not available.");
+    await callbackText(callback, "ACP service is not available.");
     return errorResult("SERVICE_UNAVAILABLE");
   }
 
@@ -739,26 +930,6 @@ function textValue(value: unknown): string | undefined {
     : undefined;
 }
 
-function startOfDay(date: Date): Date {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
-
-function endOfDay(date: Date): Date {
-  const copy = new Date(date);
-  copy.setHours(23, 59, 59, 999);
-  return copy;
-}
-
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
-}
-
 function inferMetric(text: string, value?: string): HistoryMetric {
   const normalized = value?.trim().toLowerCase();
   if (
@@ -774,7 +945,7 @@ function inferMetric(text: string, value?: string): HistoryMetric {
   return "detail";
 }
 
-function inferStatuses(
+function _inferStatuses(
   text: string,
   rawStatuses?: string[],
 ): string[] | undefined {
@@ -800,7 +971,7 @@ function inferStatuses(
   return statuses.size > 0 ? Array.from(statuses) : undefined;
 }
 
-function inferWindow(text: string, raw?: string): HistoryWindow | undefined {
+function _inferWindow(text: string, raw?: string): HistoryWindow | undefined {
   const normalized = raw?.trim().toLowerCase();
   if (
     normalized === "active" ||
@@ -821,7 +992,7 @@ function inferWindow(text: string, raw?: string): HistoryWindow | undefined {
   return undefined;
 }
 
-function inferSearch(text: string, raw?: string): string | undefined {
+function _inferSearch(text: string, raw?: string): string | undefined {
   if (raw?.trim()) return raw.trim();
   const quoted =
     text.match(/"([^"]{3,120})"/)?.[1] ?? text.match(/'([^']{3,120})'/)?.[1];
@@ -834,7 +1005,7 @@ function inferSearch(text: string, raw?: string): string | undefined {
   return topical?.trim();
 }
 
-function buildWindowFilters(window: HistoryWindow | undefined): {
+function _buildWindowFilters(window: HistoryWindow | undefined): {
   latestActivityAfter?: number;
   latestActivityBefore?: number;
   label?: string;
@@ -882,7 +1053,7 @@ function buildWindowFilters(window: HistoryWindow | undefined): {
   return {};
 }
 
-function renderThreadLine(entry: {
+function _renderThreadLine(entry: {
   title: string;
   status: string;
   latestActivityAt?: number | null;
@@ -929,110 +1100,49 @@ async function runHistory(
     });
   }
 
-  const coordinator = getCoordinator(runtime);
-  if (!coordinator) {
-    if (callback) await callback({ text: "Coordinator is not available." });
-    return failureResult(
-      "TASKS:history",
-      "SERVICE_UNAVAILABLE",
-      "Coordinator is not available.",
-      { reason: "coordinator_unavailable" },
-    );
-  }
-
   const text = typeof content.text === "string" ? content.text : "";
-
   const metric = inferMetric(
     text,
     textValue(params.metric) ?? textValue(content.metric),
-  );
-  const statuses = inferStatuses(
-    text,
-    Array.isArray(params.statuses)
-      ? params.statuses.filter(
-          (value): value is string => typeof value === "string",
-        )
-      : Array.isArray(content.statuses)
-        ? content.statuses.filter(
-            (value): value is string => typeof value === "string",
-          )
-        : undefined,
-  );
-  const window = inferWindow(
-    text,
-    textValue(params.window) ?? textValue(content.window),
-  );
-  const search = inferSearch(
-    text,
-    textValue(params.search) ?? textValue(content.search),
   );
   const limitRaw = Number(
     params.limit ?? content.limit ?? (metric === "detail" ? 1 : 10),
   );
   const limit =
     Number.isFinite(limitRaw) && limitRaw > 0 ? Math.trunc(limitRaw) : 10;
-  const includeArchived =
-    (params.includeArchived as boolean | undefined) ??
-    (content.includeArchived as boolean | undefined) ??
-    false;
-  const windowFilters = buildWindowFilters(window);
-
-  const threadFilters: ListTaskThreadsOptions = {
-    includeArchived,
-    ...(statuses && statuses.length > 0
-      ? { statuses: statuses as ListTaskThreadsOptions["statuses"] }
-      : {}),
-    ...(windowFilters.latestActivityAfter
-      ? { latestActivityAfter: windowFilters.latestActivityAfter }
-      : {}),
-    ...(windowFilters.latestActivityBefore
-      ? { latestActivityBefore: windowFilters.latestActivityBefore }
-      : {}),
-    ...(search ? { search } : {}),
-    ...(window === "active" ? { hasActiveSession: true } : {}),
-    limit,
-  };
-
-  const [count, threads] = await Promise.all([
-    coordinator.countTaskThreads(threadFilters),
-    coordinator.listTaskThreads(threadFilters),
-  ]);
-
-  const summaryWindow =
-    windowFilters.label ??
-    (window === "active"
-      ? "right now"
-      : includeArchived
-        ? "all recorded time"
-        : "recent task history");
-  const summaryTopic = search ? ` for "${search}"` : "";
-  const summaryStatus =
-    statuses && statuses.length > 0
-      ? ` with status ${statuses.join(", ")}`
-      : "";
+  const service = getAcpService(runtime);
+  if (!service) {
+    const msg = "ACP service is not available.";
+    if (callback) await callback({ text: msg });
+    return failureResult("TASKS:history", "SERVICE_UNAVAILABLE", msg, {
+      reason: "acp_unavailable",
+    });
+  }
+  const sessions = (await listSessionsWithin(service, 2000)).slice(0, limit);
+  const count = sessions.length;
 
   let responseText = "";
   if (metric === "count") {
-    responseText = `I found ${count} task${count === 1 ? "" : "s"} ${summaryWindow}${summaryTopic}${summaryStatus}.`;
-  } else if (threads.length === 0) {
-    responseText = `I did not find any tasks ${summaryWindow}${summaryTopic}${summaryStatus}.`;
-  } else if (metric === "detail" && threads[0]) {
-    const thread = await coordinator.getTaskThread(threads[0].id);
+    responseText = `I found ${count} active ACP session${count === 1 ? "" : "s"}.`;
+  } else if (sessions.length === 0) {
+    responseText = "I did not find any active ACP task-agent sessions.";
+  } else if (metric === "detail" && sessions[0]) {
+    const session = sessions[0];
     responseText = [
-      `The most relevant task is "${threads[0].title}" [${threads[0].status}].`,
-      thread?.summary ? `Summary: ${thread.summary}` : "",
-      thread?.latestWorkdir ? `Workspace: ${thread.latestWorkdir}` : "",
-      thread?.latestRepo ? `Repository: ${thread.latestRepo}` : "",
-      typeof thread?.latestActivityAt === "number"
-        ? `Latest activity: ${new Date(thread.latestActivityAt).toLocaleString("en-US")}`
-        : "",
+      `The most recent ACP session is "${labelFor(session)}" [${session.status}].`,
+      `Agent: ${session.agentType}`,
+      `Workspace: ${session.workdir}`,
+      `Latest activity: ${dateString(session.lastActivityAt)}`,
     ]
       .filter(Boolean)
       .join("\n");
   } else {
     responseText = [
-      `I found ${count} task${count === 1 ? "" : "s"} ${summaryWindow}${summaryTopic}${summaryStatus}.`,
-      ...threads.slice(0, limit).map(renderThreadLine),
+      `I found ${count} active ACP session${count === 1 ? "" : "s"}.`,
+      ...sessions.map(
+        (session) =>
+          `- ${labelFor(session)} [${session.status}] (${dateString(session.lastActivityAt)}): ${session.agentType} in ${session.workdir}`,
+      ),
     ].join("\n");
   }
 
@@ -1042,10 +1152,8 @@ async function runHistory(
     text: responseText,
     data: {
       actionName: "TASKS:history",
-      filters: threadFilters,
-      window,
       count,
-      threadIds: threads.map((thread) => thread.id),
+      sessionIds: sessions.map((session) => session.id),
     },
   };
 }
@@ -1095,14 +1203,14 @@ async function runControl(
     });
   }
 
-  const coordinator = getCoordinator(runtime);
-  if (!coordinator) {
-    if (callback) await callback({ text: "Coordinator is not available." });
+  const service = getAcpService(runtime);
+  if (!service) {
+    if (callback) await callback({ text: "ACP service is not available." });
     return failureResult(
       "TASKS:control",
       "SERVICE_UNAVAILABLE",
-      "Coordinator is not available.",
-      { reason: "coordinator_unavailable" },
+      "ACP service is not available.",
+      { reason: "acp_unavailable" },
     );
   }
 
@@ -1131,76 +1239,52 @@ async function runControl(
     });
   }
 
-  const thread = await resolveTaskThreadTarget({
-    coordinator,
-    message,
-    state,
-    options: params,
-    includeArchived: action === "reopen" || action === "archive",
-  });
-  if (!thread) {
-    const msg = "I could not find a matching task thread.";
+  if (action === "archive" || action === "reopen" || action === "pause") {
+    const msg =
+      "Task thread archive/pause controls are unavailable in ACP-only mode. Use ACP session stop, send, or spawn operations.";
     if (callback) await callback({ text: msg });
-    return failureResult("TASKS:control", "THREAD_NOT_FOUND", msg, {
-      reason: "thread_not_found",
+    return failureResult("TASKS:control", "UNSUPPORTED_OPERATION", msg, {
+      reason: "acp_only",
       action,
     });
   }
 
-  const note =
-    textValue(params.note) ??
-    textValue(content.note) ??
-    (text.length > 0 ? text : undefined);
   const instruction =
     textValue(params.instruction) ??
     textValue(content.instruction) ??
     (action === "continue" || action === "resume" ? text : undefined);
-  const requestedAgentType =
-    textValue(params.agentType) ?? textValue(content.agentType);
+  const target = await resolveSession(
+    service,
+    pickString(params, content, "sessionId"),
+    state,
+  );
+  if (!target.session) {
+    const msg = target.missingId
+      ? `Session ${target.missingId} not found.`
+      : "No active ACP session found.";
+    if (callback) await callback({ text: msg });
+    return failureResult("TASKS:control", "SESSION_NOT_FOUND", msg, {
+      reason: "session_not_found",
+      action,
+    });
+  }
 
-  let responseText = "";
   let data: Record<string, unknown> = {
     actionName: "TASKS:control",
-    threadId: thread.id,
+    sessionId: target.session.id,
     action,
   };
 
-  if (action === "pause") {
-    const result = await coordinator.pauseTaskThread(thread.id, note);
-    responseText = `Paused "${thread.title}" and preserved the thread for follow-up discussion.`;
-    data = { ...data, ...result };
-  } else if (action === "stop") {
-    const result = await coordinator.stopTaskThread(thread.id, note);
-    responseText = `Stopped "${thread.title}" and kept the thread history intact.`;
-    data = { ...data, ...result };
-  } else if (action === "archive") {
-    await coordinator.archiveTaskThread(thread.id);
-    responseText = `Archived "${thread.title}".`;
-  } else if (action === "reopen") {
-    await coordinator.reopenTaskThread(thread.id);
-    responseText = `Reopened "${thread.title}".`;
-  } else if (action === "continue") {
-    const nextInstruction =
-      instruction?.trim() || `Continue the task "${thread.title}".`;
-    const result = await coordinator.continueTaskThread(
-      thread.id,
-      nextInstruction,
-      requestedAgentType,
-    );
-    responseText = result.reusedSession
-      ? `Sent follow-up instructions to "${thread.title}" on the existing task session.`
-      : `Resumed "${thread.title}" on a new task session.`;
-    data = { ...data, ...result };
+  let responseText = "";
+  if (action === "stop") {
+    await service.stopSession(target.session.id);
+    responseText = `Stopped ACP session ${target.session.id}.`;
   } else {
-    const result = await coordinator.resumeTaskThread(
-      thread.id,
-      instruction?.trim() || undefined,
-      requestedAgentType,
-    );
-    responseText = result.reusedSession
-      ? `Resumed "${thread.title}" on the current task session.`
-      : `Resumed "${thread.title}" on a new task session.`;
-    data = { ...data, ...result };
+    const nextInstruction =
+      instruction?.trim() || "Continue with the current task.";
+    await service.sendToSession(target.session.id, nextInstruction);
+    responseText = `Sent follow-up instructions to ACP session ${target.session.id}.`;
+    data = { ...data, instruction: nextInstruction };
   }
 
   if (callback) await callback({ text: responseText });
@@ -1212,12 +1296,6 @@ async function runControl(
 }
 
 // ── action: share (TASK_SHARE) ──────────────────────────────────────────────
-
-function artifactTypeForTarget(type: string): string {
-  if (type === "preview_url" || type === "artifact_uri") return "share_link";
-  if (type === "artifact_path") return "share_path";
-  return "workspace";
-}
 
 async function runShare(
   runtime: IAgentRuntime,
@@ -1234,94 +1312,37 @@ async function runShare(
     return { success: false, error: "FORBIDDEN", text: reason };
   }
 
-  const coordinator = getCoordinator(runtime);
-  if (!coordinator) {
-    if (callback) await callback({ text: "Coordinator is not available." });
+  const service = getAcpService(runtime);
+  if (!service) {
+    if (callback) await callback({ text: "ACP service is not available." });
     return { success: false, error: "SERVICE_UNAVAILABLE" };
   }
 
-  const thread = await resolveTaskThreadTarget({
-    coordinator,
-    message,
+  const target = await resolveSession(
+    service,
+    pickString(params, _content, "sessionId"),
     state,
-    options: params,
-    includeArchived: true,
-  });
-  if (!thread) {
-    if (callback)
-      await callback({ text: "I could not find a task thread to share." });
-    return { success: false, error: "THREAD_NOT_FOUND" };
-  }
-
-  const discovery = await discoverTaskShareOptions(coordinator, thread.id);
-  if (!discovery || discovery.targets.length === 0) {
-    const fallback = `I found the task thread "${thread.title}", but I did not find a preview URL or shareable artifact yet.`;
-    if (callback) await callback({ text: fallback });
-    return {
-      success: false,
-      error: "NO_SHARE_TARGET",
-      text: fallback,
-      data: {
-        threadId: thread.id,
-        shareCapabilities: discovery?.shareCapabilities ?? [],
-      },
-    };
-  }
-
-  const detail = await coordinator.getTaskThread(thread.id);
-  const existingKeys = new Set(
-    (detail?.artifacts ?? []).map(
-      (artifact) =>
-        artifact.uri?.trim() ||
-        artifact.path?.trim() ||
-        `${artifact.artifactType}:${artifact.title}`,
-    ),
   );
-  for (const target of discovery.targets) {
-    const key = target.value.trim();
-    if (!key || existingKeys.has(key)) continue;
-    await coordinator.taskRegistry.recordArtifact({
-      threadId: thread.id,
-      artifactType: artifactTypeForTarget(target.type),
-      title: target.label,
-      ...(target.type === "artifact_path" || target.type === "workspace"
-        ? { path: target.value }
-        : { uri: target.value }),
-      metadata: {
-        source: target.source,
-        remoteAccessible: target.remoteAccessible,
-        discoveredVia: "tasks-share-action",
-      },
-    });
-    existingKeys.add(key);
+  if (!target.session) {
+    const text = "I could not find an active ACP session to share.";
+    if (callback) await callback({ text });
+    return { success: false, error: "SESSION_NOT_FOUND", text };
   }
 
-  const preferred = discovery.preferredTarget;
-  const lines = [
-    preferred
-      ? `Best available view for "${thread.title}": ${preferred.value}`
-      : `I found share options for "${thread.title}".`,
-    ...discovery.targets
-      .slice(0, 5)
-      .map(
-        (target) =>
-          `- ${target.label}: ${target.value}${target.remoteAccessible ? " (remote-ready)" : ""}`,
-      ),
-    discovery.shareCapabilities.length > 0
-      ? `Environment share capabilities: ${discovery.shareCapabilities.join(", ")}`
-      : "No explicit remote-share capability is configured, so local artifact paths and preview URLs are the only confirmed options right now.",
-  ].filter(Boolean);
-  const responseText = lines.join("\n");
+  const responseText = [
+    `ACP session ${target.session.id}`,
+    `Agent: ${target.session.agentType}`,
+    `Status: ${target.session.status}`,
+    `Workspace: ${target.session.workdir}`,
+  ].join("\n");
 
   if (callback) await callback({ text: responseText });
   return {
     success: true,
     text: responseText,
     data: {
-      threadId: thread.id,
-      preferredTarget: preferred,
-      shareCapabilities: discovery.shareCapabilities,
-      targetCount: discovery.targets.length,
+      sessionId: target.session.id,
+      workdir: target.session.workdir,
     },
   };
 }
@@ -1889,17 +1910,10 @@ async function runManageIssues(
 
   workspaceService.setAuthPromptCallback(
     (prompt: Parameters<AuthPromptCallback>[0]) => {
-      const delivered =
-        getCoordinator(runtime)?.sendChatMessage(
-          formatGitHubAuthPrompt(prompt),
-          "github-auth",
-        ) === true;
-      if (!delivered) {
-        coreLogger.warn(
-          "[TASKS:manage_issues] GitHub OAuth prompt requires immediate delivery, but the coordinator chat bridge is not wired",
-        );
-      }
-      return delivered;
+      coreLogger.warn(
+        `[TASKS:manage_issues] GitHub OAuth prompt could not be delivered automatically in ACP-only mode: ${formatGitHubAuthPrompt(prompt)}`,
+      );
+      return false;
     },
   );
 
@@ -1958,20 +1972,13 @@ async function runManageIssues(
 // ── action: archive / reopen (ARCHIVE_CODING_TASK / REOPEN_CODING_TASK) ────
 
 async function runArchive(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   _message: Memory,
   _state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  const coordinator = getCoordinator(runtime);
-  if (!coordinator) {
-    const msg = "Coordinator is not available.";
-    await callbackText(callback, msg);
-    return { success: false, error: "SERVICE_UNAVAILABLE", text: msg };
-  }
-
   const taskId =
     pickString(params, content, "taskId") ??
     pickString(params, content, "threadId");
@@ -1986,15 +1993,9 @@ async function runArchive(
   }
 
   try {
-    await coordinator.archiveTaskThread(taskId);
-    const msg = `Archived coding task ${taskId}.`;
+    const msg = "Task thread archives are unavailable in ACP-only mode.";
     await callbackText(callback, msg);
-    return {
-      success: true,
-      text: msg,
-      values: { taskId, archived: true },
-      data: { actionName: "TASKS:archive", taskId },
-    };
+    return { success: false, text: msg, error: "UNSUPPORTED_OPERATION" };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     coreLogger.warn(`[TASKS:archive] failed: ${errMsg}`);
@@ -2005,20 +2006,13 @@ async function runArchive(
 }
 
 async function runReopen(
-  runtime: IAgentRuntime,
+  _runtime: IAgentRuntime,
   _message: Memory,
   _state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
-  const coordinator = getCoordinator(runtime);
-  if (!coordinator) {
-    const msg = "Coordinator is not available.";
-    await callbackText(callback, msg);
-    return { success: false, error: "SERVICE_UNAVAILABLE", text: msg };
-  }
-
   const taskId =
     pickString(params, content, "taskId") ??
     pickString(params, content, "threadId");
@@ -2033,15 +2027,9 @@ async function runReopen(
   }
 
   try {
-    await coordinator.reopenTaskThread(taskId);
-    const msg = `Reopened coding task ${taskId}.`;
+    const msg = "Task thread reopen is unavailable in ACP-only mode.";
     await callbackText(callback, msg);
-    return {
-      success: true,
-      text: msg,
-      values: { taskId, reopened: true },
-      data: { actionName: "TASKS:reopen", taskId },
-    };
+    return { success: false, text: msg, error: "UNSUPPORTED_OPERATION" };
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     coreLogger.warn(`[TASKS:reopen] failed: ${errMsg}`);
@@ -2053,7 +2041,10 @@ async function runReopen(
 
 // ── parent action ──────────────────────────────────────────────────────
 
-export const tasksAction: Action & { suppressPostActionContinuation: true } = {
+export const tasksAction: Action & {
+  suppressPostActionContinuation: true;
+  suppressEarlyReply: true;
+} = {
   name: "TASKS",
   contexts: ["tasks", "code", "automation", "agent_internal", "connectors"],
   roleGate: { minRole: "USER" },
@@ -2166,13 +2157,19 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     "RESUME_CODING_TASK",
   ],
   description:
-    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated coding sub-agents (claude / codex / opencode / gemini / aider). " +
+    "Planner surface for orchestrator workspace operations and coding task delegation to dedicated ACP coding sub-agents (claude / codex / opencode). " +
     "Available operations (pick via `action`): create or spawn_agent (delegate new coding work), send (forward a message to an existing coding sub-agent), list_agents / history (read state), " +
     "control (pause | resume | continue | archive | reopen a task), share (surface task output), provision_workspace / submit_workspace (workspace setup and PR submission), manage_issues (GitHub issue operations), cancel / stop_agent (end a coding sub-agent run when the user asks to). " +
     "Choose this when the user asks to delegate coding work, use a coding adapter by name, or run multi-step development work — it is the canonical path for coding sub-agents and is preferred over inline FILE / BASH for delegated work.",
   descriptionCompressed:
-    "delegate coding work to a coding sub-agent (claude/codex/opencode/gemini/aider). action=spawn_agent for new work, send to talk to one, control to pause/resume, list_agents/history to read state",
+    "ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
   suppressPostActionContinuation: true,
+  // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
+  // suppress the response-handler's draft reply: the action's own callback
+  // emits the canonical ack ("On it — spawning…") and the sub-agent's real
+  // answer comes back asynchronously via the router. Shipping the draft
+  // alongside the ack duplicates the bot's voice and confuses the user.
+  suppressEarlyReply: true,
   parameters: [
     {
       name: "action",
@@ -2191,7 +2188,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
     {
       name: "agentType",
       description:
-        "Agent type (codex, claude, etc.) for create / spawn_agent / control.resume.",
+        "Agent type (codex, claude, or opencode) for create / spawn_agent / control.resume.",
       required: false,
       schema: { type: "string" as const },
     },
@@ -2213,6 +2210,17 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
       description: "Working directory for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "lockWorkdir",
+      description:
+        "When true, the supplied `workdir` is used verbatim and operator " +
+        "workdir routes (TASK_AGENT_WORKDIR_ROUTES) are NOT consulted. Set " +
+        "this only from scaffold-aware callers that have already created " +
+        "the exact target directory (e.g. APP_CREATE). Leave unset for " +
+        "normal planner spawns so routes can correct guessed paths.",
+      required: false,
+      schema: { type: "boolean" as const },
     },
     {
       name: "memoryContent",
@@ -2487,7 +2495,17 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   ],
   validate: async (runtime, message) => {
     // Always allow when ACP service is available — action switch handles dispatch.
-    if (!getAcpService(runtime) && !getCoordinator(runtime)) return false;
+    if (!getAcpService(runtime)) return false;
+    // Sub-agent task_complete events are routed back through the runtime as
+    // synthetic inbound messages so the parent agent can compose the
+    // user-facing reply. The parent should NOT re-spawn from those echoes;
+    // it should just summarise the result. Gating TASKS out of the candidate
+    // surface for sub-agent-sourced inbounds is the structural fix for the
+    // duplicate-spawn / "On it × N" loop observed when a single user
+    // request kicks off an asynchronous spawn whose completion event the
+    // planner would otherwise interpret as a fresh delegation request.
+    const source = (message.content as { source?: unknown })?.source;
+    if (source === "sub_agent") return false;
     if (
       hasExplicitPayload(message, [
         "action",
@@ -2590,6 +2608,16 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   },
 
   examples: [
+    // ── delegation / sub-agent spawn (action=spawn_agent) ─────────────
+    // These few-shots are the canonical signal that maps "spawn a sub-
+    // agent / delegate this / fire up a coding agent" → TASKS with
+    // action=spawn_agent. Without them, weaker planner LLMs (e.g.
+    // gpt-oss-120b on Cerebras at high prompt sizes) sometimes pick
+    // inline FILE.write or hallucinate a refusal. The cluster covers
+    // explicit verbs (spawn / delegate / fire up), explicit nouns
+    // (sub-agent / coding agent / sub-process), and the
+    // user-naming-the-adapter case (opencode / claude / codex) so the
+    // few-shot matches whatever provider the user has wired.
     [
       {
         name: "{{name1}}",
@@ -2641,6 +2669,60 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
           actions: ["TASKS"],
           thought:
             "User explicitly named the coding adapter (opencode). TASKS action=spawn_agent with agentType=opencode hands off to the configured opencode provider (cerebras / openrouter / etc. via auto-detected key).",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "fire up a coding agent to investigate why the migration is hanging",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Spawning a coding sub-agent to investigate the migration.",
+          actions: ["TASKS"],
+          thought:
+            "Investigation / debugging tasks benefit from sub-agent process isolation (own workspace, own tool loop). TASKS action=spawn_agent.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Spawn a coding sub-agent to refactor the auth module.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Spinning up a coding sub-agent for the auth refactor.",
+          actions: ["TASKS"],
+          thought:
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (claude / codex / opencode).",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Delegate this to a sub-agent: build a small python CLI at /tmp/oc-todo with main.py + tests.py.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Delegating the multi-file CLI build to a coding sub-agent.",
+          actions: ["TASKS"],
+          thought:
+            "Explicit delegation request → TASKS action=spawn_agent. Multi-file project work is exactly what sub-agent isolation is for; do NOT use inline FILE.write for delegated work.",
         },
       },
     ],
@@ -2737,7 +2819,7 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   ],
 };
 
-// Operation-specific handles resolve to the consolidated TASKS action.
+// Operation-specific handles resolve to the TASKS action.
 export const createTaskAction = tasksAction;
 export const startCodingTaskAction = tasksAction;
 export const spawnAgentAction = tasksAction;

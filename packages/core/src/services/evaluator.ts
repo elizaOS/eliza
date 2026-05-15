@@ -16,6 +16,7 @@ import type {
 } from "../types/index.ts";
 import { EventType, ModelType } from "../types/index.ts";
 import { Service as BaseService } from "../types/service.ts";
+import { isObjectRecord as isRecord } from "../utils/type-guards.ts";
 
 type PreparedEntry = {
 	evaluator: RegisteredEvaluator;
@@ -27,10 +28,6 @@ const EMPTY_STATE: State = {
 	data: {},
 	text: "",
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function stringifyForPrompt(value: unknown): string {
 	if (typeof value === "string") return value;
@@ -125,17 +122,17 @@ function buildPrompt(params: {
 				"",
 				section,
 				"",
-				`Output this evaluator's result under property "${evaluator.name}".`,
+				`Put result under "${evaluator.name}".`,
 			].join("\n");
 		})
 		.join("\n\n");
 
 	return `# Task: Post-turn evaluation
 
-You are evaluating the just-finished message turn for ${agentName}.
+Evaluate just-finished turn for ${agentName}.
 
-Return exactly one JSON object. Do not include prose, markdown fences, XML, or hidden reasoning.
-Populate one top-level property for each active evaluator listed below. Use only the provided context. If an evaluator has nothing to record, return its empty shape.
+Return exactly one JSON object. No prose, markdown fences, XML, hidden reasoning.
+One top-level property per active evaluator. Use only provided context. Nothing to record => empty shape.
 
 ## Shared Turn Context
 
@@ -164,6 +161,60 @@ ${evaluatorSections}
 `;
 }
 
+function schemaRequestLooksUnsupported(error: unknown): boolean {
+	const message = (error instanceof Error ? error.message : String(error ?? ""))
+		.toLowerCase()
+		.trim();
+	if (!message) return false;
+	return (
+		message.includes("bad request") ||
+		message.includes("response schema") ||
+		message.includes("responseschema") ||
+		message.includes("json_schema") ||
+		message.includes("structured output")
+	);
+}
+
+async function generateEvaluationOutput(params: {
+	runtime: IAgentRuntime;
+	prompt: string;
+	schema: JSONSchema;
+}): Promise<unknown> {
+	const { runtime, prompt, schema } = params;
+	const messages = [{ role: "user" as const, content: prompt }];
+	try {
+		return await runtime.useModel(ModelType.TEXT_LARGE, {
+			messages,
+			responseSchema: schema,
+			responseFormat: { type: "json_object" },
+			temperature: 0,
+		});
+	} catch (error) {
+		if (!schemaRequestLooksUnsupported(error)) throw error;
+		runtime.logger.debug(
+			{ src: "service:evaluator" },
+			"Post-turn evaluator schema request rejected; retrying JSON-object fallback",
+		);
+		try {
+			return await runtime.useModel(ModelType.TEXT_LARGE, {
+				messages,
+				responseFormat: { type: "json_object" },
+				temperature: 0,
+			});
+		} catch (fallbackError) {
+			if (!schemaRequestLooksUnsupported(fallbackError)) throw fallbackError;
+			runtime.logger.debug(
+				{ src: "service:evaluator" },
+				"Post-turn evaluator JSON-object fallback rejected; retrying plain JSON prompt",
+			);
+			return await runtime.useModel(ModelType.TEXT_LARGE, {
+				messages,
+				temperature: 0,
+			});
+		}
+	}
+}
+
 export class EvaluatorService extends BaseService {
 	static serviceType = "evaluator" as const;
 	capabilityDescription =
@@ -189,76 +240,48 @@ export class EvaluatorService extends BaseService {
 		return this.runtime.unregisterEvaluator(name);
 	}
 
-	async run(
-		message: Memory,
-		state?: State,
-		options: EvaluatorRunOptions = {},
-	): Promise<EvaluatorRunResult> {
-		setTrajectoryPurpose("evaluation");
+	private sortEvaluators(evaluators: RegisteredEvaluator[]): RegisteredEvaluator[] {
+		return evaluators.sort(
+			(a, b) =>
+				(a.priority ?? 100) - (b.priority ?? 100) ||
+				a.name.localeCompare(b.name),
+		);
+	}
 
-		const context: EvaluatorRunContext = {
-			runtime: this.runtime,
-			message,
-			state,
-			options,
-		};
-
-		const candidates = this.runtime.evaluators
-			.slice()
-			.sort(
-				(a, b) =>
-					(a.priority ?? 100) - (b.priority ?? 100) ||
-					a.name.localeCompare(b.name),
-			);
-		if (candidates.length === 0) {
-			return {
-				skipped: true,
-				activeEvaluators: [],
-				processedEvaluators: [],
-				results: [],
-				errors: [],
-			};
-		}
-
+	private async collectActiveEvaluators(
+		candidates: RegisteredEvaluator[],
+		context: EvaluatorRunContext,
+		errors: EvaluatorRunResult["errors"],
+	): Promise<RegisteredEvaluator[]> {
 		const active: RegisteredEvaluator[] = [];
-		const errors: EvaluatorRunResult["errors"] = [];
 		await Promise.all(
 			candidates.map(async (evaluator) => {
 				try {
 					if (await evaluator.shouldRun(context)) active.push(evaluator);
 				} catch (error) {
-					errors.push({
-						evaluatorName: evaluator.name,
-						error: error instanceof Error ? error.message : String(error),
-					});
+					const messageText =
+						error instanceof Error ? error.message : String(error);
+					errors.push({ evaluatorName: evaluator.name, error: messageText });
 					this.runtime.logger.warn(
 						{
 							src: "service:evaluator",
 							agentId: this.runtime.agentId,
 							evaluator: evaluator.name,
-							err: error instanceof Error ? error.message : String(error),
+							err: messageText,
 						},
 						"Evaluator shouldRun failed",
 					);
 				}
 			}),
 		);
+		return this.sortEvaluators(active);
+	}
 
-		active.sort(
-			(a, b) =>
-				(a.priority ?? 100) - (b.priority ?? 100) ||
-				a.name.localeCompare(b.name),
-		);
-		if (active.length === 0) {
-			return {
-				skipped: true,
-				activeEvaluators: [],
-				processedEvaluators: [],
-				results: [],
-				errors,
-			};
-		}
-
+	private async composeEvaluatorState(
+		message: Memory,
+		state: State | undefined,
+		active: RegisteredEvaluator[],
+	): Promise<State> {
 		const providerNames = Array.from(
 			new Set(active.flatMap((evaluator) => evaluator.providers ?? [])),
 		);
@@ -266,8 +289,16 @@ export class EvaluatorService extends BaseService {
 			providerNames.length > 0
 				? await this.runtime.composeState(message, providerNames, true, true)
 				: EMPTY_STATE;
-		const composedState = mergeStates(state, providerState);
+		return mergeStates(state, providerState);
+	}
 
+	private async collectPreparedEntries(
+		active: RegisteredEvaluator[],
+		message: Memory,
+		state: State,
+		options: EvaluatorRunOptions,
+		errors: EvaluatorRunResult["errors"],
+	): Promise<PreparedEntry[]> {
 		const preparedEntries: PreparedEntry[] = [];
 		await Promise.all(
 			active.map(async (evaluator) => {
@@ -276,96 +307,94 @@ export class EvaluatorService extends BaseService {
 						? await evaluator.prepare({
 								runtime: this.runtime,
 								message,
-								state: composedState,
+								state,
 								options,
 							})
 						: undefined;
 					preparedEntries.push({ evaluator, prepared });
 				} catch (error) {
-					errors.push({
-						evaluatorName: evaluator.name,
-						error: error instanceof Error ? error.message : String(error),
-					});
+					const messageText =
+						error instanceof Error ? error.message : String(error);
+					errors.push({ evaluatorName: evaluator.name, error: messageText });
 					this.runtime.logger.warn(
 						{
 							src: "service:evaluator",
 							agentId: this.runtime.agentId,
 							evaluator: evaluator.name,
-							err: error instanceof Error ? error.message : String(error),
+							err: messageText,
 						},
 						"Evaluator prepare failed",
 					);
 				}
 			}),
 		);
-		preparedEntries.sort(
+		return preparedEntries.sort(
 			(a, b) =>
 				(a.evaluator.priority ?? 100) - (b.evaluator.priority ?? 100) ||
 				a.evaluator.name.localeCompare(b.evaluator.name),
 		);
-		if (preparedEntries.length === 0) {
-			return {
-				skipped: true,
-				activeEvaluators: active.map((evaluator) => evaluator.name),
-				processedEvaluators: [],
-				results: [],
-				errors,
-			};
-		}
+	}
 
-		const evaluatorId =
-			uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
+	private async emitEvaluatorCompleted(
+		evaluatorId: string,
+		completed: boolean,
+		error?: Error,
+	): Promise<void> {
 		await this.runtime
-			.emitEvent(EventType.EVALUATOR_STARTED, {
+			.emitEvent(EventType.EVALUATOR_COMPLETED, {
 				runtime: this.runtime,
 				evaluatorId,
 				evaluatorName: "post_turn",
-				startTime: Date.now(),
+				completed,
+				...(error ? { error } : {}),
 			})
 			.catch(() => {});
+	}
 
-		const prompt = buildPrompt({
-			runtime: this.runtime,
-			message,
-			state: composedState,
-			active: preparedEntries,
-			options,
-		});
-		const schema = buildMergedSchema(preparedEntries);
-		const raw = await this.runtime.useModel(ModelType.TEXT_LARGE, {
-			prompt,
-			responseSchema: schema,
-			responseFormat: { type: "json_object" },
-			temperature: 0,
-		});
-		const output = coerceObjectOutput(raw);
-		if (!output) {
-			await this.runtime
-				.emitEvent(EventType.EVALUATOR_COMPLETED, {
-					runtime: this.runtime,
-					evaluatorId,
-					evaluatorName: "post_turn",
-					completed: false,
-					error: new Error("Evaluator model returned non-object output"),
-				})
-				.catch(() => {});
-			return {
-				skipped: false,
-				activeEvaluators: preparedEntries.map(
-					({ evaluator }) => evaluator.name,
-				),
-				processedEvaluators: [],
-				results: [],
-				errors: [
-					...errors,
-					{
-						evaluatorName: "post_turn",
-						error: "Evaluator model returned non-object output",
-					},
-				],
-			};
+	private async readEvaluatorOutput(params: {
+		evaluatorId: string;
+		prompt: string;
+		schema: JSONSchema;
+	}): Promise<{ output: Record<string, unknown> | null; error?: string }> {
+		const { evaluatorId, prompt, schema } = params;
+		let raw: unknown;
+		try {
+			raw = await generateEvaluationOutput({
+				runtime: this.runtime,
+				prompt,
+				schema,
+			});
+		} catch (error) {
+			const messageText = error instanceof Error ? error.message : String(error);
+			await this.emitEvaluatorCompleted(
+				evaluatorId,
+				false,
+				error instanceof Error ? error : new Error(messageText),
+			);
+			return { output: null, error: messageText };
 		}
 
+		const output = coerceObjectOutput(raw);
+		if (!output) {
+			const messageText = "Evaluator model returned non-object output";
+			await this.emitEvaluatorCompleted(evaluatorId, false, new Error(messageText));
+			return { output: null, error: messageText };
+		}
+		return { output };
+	}
+
+	private async processPreparedEntries(params: {
+		preparedEntries: PreparedEntry[];
+		output: Record<string, unknown>;
+		message: Memory;
+		state: State;
+		options: EvaluatorRunOptions;
+		errors: EvaluatorRunResult["errors"];
+	}): Promise<{
+		processedEvaluators: string[];
+		results: ActionResult[];
+	}> {
+		const { preparedEntries, output, message, state, options, errors } = params;
 		const results: ActionResult[] = [];
 		const processedEvaluators: string[] = [];
 		for (const entry of preparedEntries) {
@@ -382,56 +411,199 @@ export class EvaluatorService extends BaseService {
 				});
 				continue;
 			}
-			const processors = (evaluator.processors ?? [])
-				.slice()
-				.sort(
-					(a, b) =>
-						(a.priority ?? 100) - (b.priority ?? 100) ||
-						(a.name ?? "").localeCompare(b.name ?? ""),
-				);
-			for (const processor of processors) {
-				try {
-					const result = await processor.process({
-						runtime: this.runtime,
-						message,
-						state: composedState,
-						options,
-						prepared,
-						output: parsed,
-						evaluatorName: evaluator.name,
-					});
-					if (result) results.push(result);
-				} catch (error) {
-					const messageText =
-						error instanceof Error ? error.message : String(error);
-					errors.push({
-						evaluatorName: evaluator.name,
-						processorName: processor.name,
-						error: messageText,
-					});
-					this.runtime.logger.warn(
-						{
-							src: "service:evaluator",
-							agentId: this.runtime.agentId,
-							evaluator: evaluator.name,
-							processor: processor.name,
-							err: messageText,
-						},
-						"Evaluator processor failed",
-					);
-				}
-			}
+			await this.runEntryProcessors({
+				evaluator,
+				prepared,
+				parsed: parsed as JsonValue,
+				message,
+				state,
+				options,
+				results,
+				errors,
+			});
 			processedEvaluators.push(evaluator.name);
 		}
+		return { processedEvaluators, results };
+	}
 
+	private async runEntryProcessors(params: {
+		evaluator: RegisteredEvaluator;
+		prepared: unknown;
+		parsed: JsonValue;
+		message: Memory;
+		state: State;
+		options: EvaluatorRunOptions;
+		results: ActionResult[];
+		errors: EvaluatorRunResult["errors"];
+	}): Promise<void> {
+		const { evaluator, prepared, parsed, message, state, options, results, errors } =
+			params;
+		const processors = (evaluator.processors ?? [])
+			.slice()
+			.sort(
+				(a, b) =>
+					(a.priority ?? 100) - (b.priority ?? 100) ||
+					(a.name ?? "").localeCompare(b.name ?? ""),
+			);
+		for (const processor of processors) {
+			try {
+				const result = await processor.process({
+					runtime: this.runtime,
+					message,
+					state,
+					options,
+					prepared,
+					output: parsed,
+					evaluatorName: evaluator.name,
+				});
+				if (result) results.push(result);
+			} catch (error) {
+				const messageText = error instanceof Error ? error.message : String(error);
+				errors.push({
+					evaluatorName: evaluator.name,
+					processorName: processor.name,
+					error: messageText,
+				});
+				this.runtime.logger.warn(
+					{
+						src: "service:evaluator",
+						agentId: this.runtime.agentId,
+						evaluator: evaluator.name,
+						processor: processor.name,
+						err: messageText,
+					},
+					"Evaluator processor failed",
+				);
+			}
+		}
+	}
+
+	private skippedResult(params?: {
+		activeEvaluators?: string[];
+		processedEvaluators?: string[];
+		errors?: EvaluatorRunResult["errors"];
+	}): EvaluatorRunResult {
+		return {
+			skipped: true,
+			activeEvaluators: params?.activeEvaluators ?? [],
+			processedEvaluators: params?.processedEvaluators ?? [],
+			results: [],
+			errors: params?.errors ?? [],
+		};
+	}
+
+	private failedResult(params: {
+		preparedEntries: PreparedEntry[];
+		errors: EvaluatorRunResult["errors"];
+		error: string;
+	}): EvaluatorRunResult {
+		return {
+			skipped: false,
+			activeEvaluators: params.preparedEntries.map(
+				({ evaluator }) => evaluator.name,
+			),
+			processedEvaluators: [],
+			results: [],
+			errors: [
+				...params.errors,
+				{
+					evaluatorName: "post_turn",
+					error: params.error,
+				},
+			],
+		};
+	}
+
+	async run(
+		message: Memory,
+		state?: State,
+		options: EvaluatorRunOptions = {},
+	): Promise<EvaluatorRunResult> {
+		setTrajectoryPurpose("evaluation");
+
+		const context: EvaluatorRunContext = {
+			runtime: this.runtime,
+			message,
+			state,
+			options,
+		};
+
+		const candidates = this.sortEvaluators(this.runtime.evaluators.slice());
+		if (candidates.length === 0) {
+			return this.skippedResult();
+		}
+
+		const errors: EvaluatorRunResult["errors"] = [];
+		const active = await this.collectActiveEvaluators(
+			candidates,
+			context,
+			errors,
+		);
+		if (active.length === 0) {
+			return this.skippedResult({ errors });
+		}
+
+		const composedState = await this.composeEvaluatorState(
+			message,
+			state,
+			active,
+		);
+		const preparedEntries = await this.collectPreparedEntries(
+			active,
+			message,
+			composedState,
+			options,
+			errors,
+		);
+		if (preparedEntries.length === 0) {
+			return this.skippedResult({
+				activeEvaluators: active.map((evaluator) => evaluator.name),
+				errors,
+			});
+		}
+
+		const evaluatorId =
+			uuidv4() as `${string}-${string}-${string}-${string}-${string}`;
 		await this.runtime
-			.emitEvent(EventType.EVALUATOR_COMPLETED, {
+			.emitEvent(EventType.EVALUATOR_STARTED, {
 				runtime: this.runtime,
 				evaluatorId,
 				evaluatorName: "post_turn",
-				completed: true,
-			})
-			.catch(() => {});
+				startTime: Date.now(),
+				})
+				.catch(() => {});
+
+		const prompt = buildPrompt({
+			runtime: this.runtime,
+			message,
+			state: composedState,
+			active: preparedEntries,
+			options,
+		});
+		const schema = buildMergedSchema(preparedEntries);
+		const { output, error } = await this.readEvaluatorOutput({
+			evaluatorId,
+			prompt,
+			schema,
+		});
+		if (!output) {
+			return this.failedResult({
+				preparedEntries,
+				errors,
+				error: error ?? "Evaluator model returned no output",
+			});
+		}
+
+		const { processedEvaluators, results } = await this.processPreparedEntries({
+			preparedEntries,
+			output,
+			message,
+			state: composedState,
+			options,
+			errors,
+		});
+
+		await this.emitEvaluatorCompleted(evaluatorId, true);
 
 		return {
 			skipped: false,

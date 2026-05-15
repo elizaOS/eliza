@@ -135,7 +135,7 @@ export const planAction: Action = {
 	contexts: ["tasks", "automation", "code", "agent_internal"],
 	roleGate: { minRole: "ADMIN" },
 	description:
-		"Project planning router. action=create generates a multi-phase plan; update/finalize/review are reserved for future use.",
+		"Project plan router. action=create makes multi-phase plan; update/finalize/review reserved.",
 	similes: [
 		"CREATE_PLAN",
 		"PLAN_PROJECT",
@@ -148,7 +148,7 @@ export const planAction: Action = {
 		{
 			name: "action",
 			description:
-				"Operation: create | update | finalize | review. Defaults to create when omitted.",
+				"Operation: create | update | finalize | review. Default create.",
 			required: false,
 			schema: {
 				type: "string",
@@ -157,13 +157,13 @@ export const planAction: Action = {
 		},
 		{
 			name: "goal",
-			description: "Optional goal or project outcome for the generated plan.",
+			description: "Goal or project outcome.",
 			required: false,
 			schema: { type: "string" },
 		},
 		{
 			name: "phaseCount",
-			description: "Optional requested number of plan phases.",
+			description: "Requested phase count.",
 			required: false,
 			schema: { type: "number" },
 		},

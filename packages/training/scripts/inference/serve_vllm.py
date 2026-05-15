@@ -214,13 +214,13 @@ def _build_speculative_config(
     return None
 
 
-_HYBRID_QWEN_PREFIXES = ("Qwen/Qwen3.5", "elizaos/eliza-1")
+_HYBRID_QWEN_PREFIXES = ("Qwen/Qwen3.5", "Qwen/Qwen3.6", "elizaos/eliza-1")
 
 
 def _is_hybrid_qwen(model_id: str) -> bool:
-    """Qwen3.5 ships the 3-GDN-:-1-GA hybrid attention pattern, and our
-    eliza-1 series is a fine-tune of those bases. omlx#825 is gated to this
-    arch family."""
+    """Qwen3.5/Qwen3.6 ship the 3-GDN-:-1-GA hybrid attention pattern, and
+    our eliza-1 series is a fine-tune of those bases. omlx#825 is gated to
+    this arch family."""
     return any(model_id.startswith(p) for p in _HYBRID_QWEN_PREFIXES)
 
 
@@ -234,7 +234,7 @@ def build_command(args, *, entry) -> list[str]:
     kv_dtype = args.kv_cache_dtype or target["default_kv_cache_dtype"]
     max_model_len = args.max_model_len or (entry.infer_max_in + entry.infer_max_out)
 
-    # Safety gate against omlx#825: DFlash drafter + APC + Qwen3.5 hybrid
+    # Safety gate against omlx#825: DFlash drafter + APC + Qwen3.5/Qwen3.6 hybrid
     # attention is a known failure surface (linear-attn conv_state/ssm_state
     # don't replay correctly on prefix-cache hits, breaks tool calling). If
     # all three are set without an explicit acknowledgement that A/B parity
@@ -247,7 +247,7 @@ def build_command(args, *, entry) -> list[str]:
         and os.environ.get("ELIZA_APC_DRAFTER_VERIFIED") not in ("1", "true", "yes")
     ):
         log.warning(
-            "APC + drafter on a Qwen3.5 hybrid model is gated by "
+            "APC + drafter on a Qwen3.5/Qwen3.6 hybrid model is gated by "
             "omlx#825 — disabling --enable-prefix-caching for this serve. "
             "Run scripts/inference/test_apc_dflash_tool_calls.py against "
             "this build, then set ELIZA_APC_DRAFTER_VERIFIED=1 to re-enable."
@@ -383,7 +383,7 @@ def main() -> int:
     )
     ap.add_argument("--registry-key", required=True,
                     help="Pull defaults from training/model_registry.py "
-                         "(e.g. qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b).")
+                         "(e.g. qwen3.5-0.8b, qwen3.5-2b, qwen3.5-4b, qwen3.6-27b).")
     ap.add_argument("--model", default=None,
                     help="Override model id (default: registry hf_id).")
     ap.add_argument("--gpu-target", default=_detect_default_target(),

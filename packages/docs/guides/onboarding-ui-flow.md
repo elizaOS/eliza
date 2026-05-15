@@ -21,8 +21,7 @@ Eliza now has two layers before the first chat:
    - use Eliza Cloud when cloud credentials are available
 
 2. **Onboarding wizard**
-   Once a server target is selected, the app runs the four-step wizard defined in
-   [`eliza/packages/app-core/src/state/types.ts`](../../eliza/packages/app-core/src/state/types.ts):
+   Once a server target is selected, the app runs a four-step wizard:
    - `deployment`
    - `identity`
    - `providers`
@@ -83,11 +82,8 @@ Relevant files:
 
 | File | Role |
 |------|------|
-| [`eliza/packages/app-core/src/onboarding/server-target.ts`](../../eliza/packages/app-core/src/onboarding/server-target.ts) | Canonical mapping between onboarding server target and the temporary compatibility fields still used at the onboarding API boundary. |
-| [`eliza/packages/app-core/src/onboarding/types.ts`](../../eliza/packages/app-core/src/onboarding/types.ts) | Types for the nested connection flow snapshots, patches, screens, and events. |
-| [`eliza/packages/app-core/src/onboarding/connection-flow.ts`](../../eliza/packages/app-core/src/onboarding/connection-flow.ts) | Pure routing logic for the nested deployment/provider panels inside the providers step. No React, no API calls. |
-| [`eliza/packages/app-core/src/components/onboarding/ConnectionStep.tsx`](../../eliza/packages/app-core/src/components/onboarding/ConnectionStep.tsx) | React shell that renders the pure flow and performs effectful actions. |
-| [`eliza/packages/app-core/src/onboarding/tests/connection-flow.test.ts`](../../eliza/packages/app-core/src/onboarding/tests/connection-flow.test.ts) | Table-driven coverage for the nested deployment/provider decisions. |
+| [`packages/app-core/src/api/onboarding-routes.ts`](../../../packages/app-core/src/api/onboarding-routes.ts) | API boundary for onboarding state and actions. |
+| [`packages/app-core/src/api/server-onboarding-helpers.ts`](../../../packages/app-core/src/api/server-onboarding-helpers.ts) | Shared helpers for server-side onboarding setup. |
 
 **Why this split still exists:** the providers step has richer nested UI than the outer wizard, and the pure module keeps that behavior deterministic and testable.
 
@@ -109,8 +105,7 @@ Those answers belong to the provider section of onboarding, where the app writes
 
 ## Back/next behavior
 
-The outer wizard navigation still comes from pure flow helpers in
-[`eliza/packages/app-core/src/onboarding/flow.ts`](../../eliza/packages/app-core/src/onboarding/flow.ts), while effectful transitions stay in AppContext and onboarding callbacks.
+The outer wizard navigation stays in the app shell, while effectful transitions stay in AppContext and onboarding callbacks.
 
 Use:
 

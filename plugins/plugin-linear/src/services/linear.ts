@@ -479,7 +479,7 @@ export class LinearService extends Service {
       "all",
       {
         count: projectList.length,
-        teamId,
+        ...(teamId ? { teamId } : {}),
         accountId: state.accountId,
       },
       true
@@ -580,7 +580,7 @@ export class LinearService extends Service {
       "all",
       {
         count: labelList.length,
-        teamId,
+        ...(teamId ? { teamId } : {}),
         accountId: state.accountId,
       },
       true

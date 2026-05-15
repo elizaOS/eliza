@@ -265,7 +265,7 @@ level: global|world|user
 description: short_description
 type: api_key|secret|credential|url|config
 
-Omit unknown optional fields. No XML or JSON.
+Omit unknown optional fields. No XML wrappers or markdown.
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -288,7 +288,7 @@ Use:
 key: OPENAI_API_KEY
 reason: why it is needed
 
-If no specific secret requested, leave key empty. No XML or JSON.
+If no specific secret requested, leave key empty. No XML wrappers or markdown.
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;
@@ -318,9 +318,9 @@ Use:
 secrets[n]{key,value,description,type}:
 level: global|world|user
 
-Omit description/type/level when unknown. No XML or JSON.
+Omit description/type/level when unknown. No XML wrappers or markdown.
 
-JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
+JSON only. Return one JSON array. No prose, fences, thinking, or markdown.
 `;
 
 export const EXTRACT_SECRETS_TEMPLATE = extractSecretsTemplate;
@@ -672,73 +672,73 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 
 export const MEMORY_CONTEXT_QA_TEMPLATE = memoryContextQaTemplate;
 
-export const messageHandlerTemplate = `task: {{#if directMessage}}Decide the plan for this direct message{{else}}Decide shouldRespond and the plan for this message{{/if}}.
+export const messageHandlerTemplate = `task: {{#if directMessage}}Plan this direct message{{else}}Decide shouldRespond + plan{{/if}}.
 
 available_contexts:
 {{availableContexts}}
 
-{{#if directMessage}}- this is a direct/private message; when the schema includes shouldRespond, set RESPOND for real user speech/message, IGNORE only for empty/noise/ambient transcript that is not asking you to engage, and STOP only when the user explicitly asks you to stop. If the schema omits shouldRespond, do not invent it.
+{{#if directMessage}}direct/private: if schema has shouldRespond, RESPOND for real user speech/message; IGNORE only empty/noise/ambient no-engage transcript; STOP only explicit stop. If schema omits shouldRespond, do not invent it.
 {{else}}shouldRespond:
 - RESPOND: agent should answer or do work
 - IGNORE: skip this message
 - STOP: user asked agent to disengage
 {{/if}}
-replyText: the user-facing reply text. Always write it. On the simple path it is the whole answer; on the planning path it is a brief acknowledgement ("On it.", "Spawning the sub-agent now.", "Looking into it.") and the planner produces the final message. NEVER refuse the user's request in replyText: if you populated contexts/candidateActions with anything other than "simple", the planner stage will run the tools and your job here is acknowledgement only. Refusal phrasings ("I cannot...", "I am unable to...", "I don't have the ability...", "Sorry, I can't...") are explicitly disallowed on the planning path — the agent has the tools (FILE, BASH, TASKS_SPAWN_AGENT, ...) and the planner will invoke them. If you truly think nothing can attempt the request, route to contexts=["simple"] and explain in replyText.
+replyText: user-facing text. Always write. Simple path = whole answer. Planning path = brief ack ("On it.", "Spawning the sub-agent now.", "Looking into it."); planner gives final. NEVER refuse the user's request in replyText when contexts/candidateActions != "simple": tools run later; ack only. Ban planning-path refusal openings: "I cannot...", "I am unable...", "I don't have the ability...", "Sorry, I can't...". Tools exist (FILE, BASH, TASKS_SPAWN_AGENT, ...). If truly no tool can attempt, use contexts=["simple"] and explain.
 
-contexts (directly after replyText): list of ids drawn from available_contexts (calendar, email, ...). Never invent ids. ["simple"] or [] = direct reply, no planner.
+contexts (directly after replyText): ids from available_contexts. Never invent. ["simple"] or [] = direct reply, no planner.
 
-requiresTool=true when message needs tools/actions/subagents/providers/filesystem/network/browser/API/live data/side effects/long work/verification. Otherwise false.
+requiresTool=true for tools/actions/subagents/providers/filesystem/network/browser/API/live data/side effects/long work/verification. Else false.
 
-simple shortcut — choose contexts=["simple"] only when ALL hold:
-- purely conversational, greeting, or factual question answerable from training
-- no external data, state, person, document, file, schedule, calendar, email, memory, or provider mentioned or implied
-- no action verbs (search/find/get/fetch/save/send/create/update/delete/run/execute/call)
-- answer would not change if checked against up-to-date info, world state, or memory
-- when uncertain: prefer planning over simple
+simple shortcut: choose contexts=["simple"] only when ALL true:
+- conversational/greeting/training-only fact
+- no external data, state, person, document, file, schedule, calendar, email, memory, provider
+- no action verbs: search/find/get/fetch/save/send/create/update/delete/run/execute/call
+- answer unchanged by checking current info/world state/memory
+- uncertain => planning
 
-A platform mention, reply target, channel, room, or connector context alone does NOT disqualify simple — use simple when only a direct conversational reply is needed.
+Platform mention/reply target/channel/room/connector alone can still be simple when only chat reply needed.
 
-Never choose simple when the message:
-- needs any tool/action/subagent/provider/filesystem/network/API/live data/side effect/verification
-- names a person, place, file, document, data source, or asks about schedules or past interactions ("what did I say earlier", "what's on my calendar", "how many X")
-- searches, browses, looks up current facts; runs shell commands; inspects files/logs/repos/services/disk; builds or deploys apps; creates PRs; spawns coding/task agents; sends messages; schedules tasks
-- would benefit from a tool call even if the agent could fabricate a plausible answer
-- is owner life-management (todos/habits/routines/goals/reminders/alarms/check-ins/blocks/calls/travel/device delivery/desktop actions/approvals) — route to the owning context so its action can ask any missing detail
-- changes/persists/updates/remembers agent or user settings, preferences, identity, persona, response style, or future behavior — select settings (and any relevant context)
+Never simple when message:
+- needs tool/action/subagent/provider/filesystem/network/API/live data/side effect/verification
+- names person/place/file/document/data source, or asks schedules/past interactions ("what did I say earlier", "what's on my calendar", "how many X")
+- searches/browses/current facts; runs shell; inspects files/logs/repos/services/disk; builds/deploys apps; creates PRs; spawns coding/task agents; sends messages; schedules tasks
+- benefits from tool call even if plausible answer exists
+- owner life-management: todos/habits/routines/goals/reminders/alarms/check-ins/blocks/calls/travel/device delivery/desktop actions/approvals; route owner context, action asks missing detail
+- changes/persists/updates/remembers settings/preferences/identity/persona/response style/future behavior; select settings + relevant context
 
 Domain routing (when context is available):
-- morning/night/daily check-ins -> tasks; only include automation if user asks to schedule/change cadence
-- relationship cadence ("follow up with David", "last talked to Alice", "how long since I spoke with Sam") -> contacts; one-off dated todos to call/text -> tasks
-- explicit phone/call/dial a third party -> phone + contacts; do NOT include calendar just because the call is about an appointment
-- device-targeted or broadcast reminders ("to my phone", "all devices", "broadcast") -> automation + connectors (not simple chat); tasks may be secondary
-- owner password/saved-login lookup ("look up my GitHub password") -> settings + secrets so CREDENTIALS handles it; never answer with the raw secret in Stage 1
-- website/social-site focus blocking -> automation + settings; app blocking -> automation + settings (not screen_time unless reporting)
-- real flight/hotel/trip booking -> browser + calendar + payments + tasks so PERSONAL_ASSISTANT action=book_travel owns the workflow
-- Calendly availability + single-use booking links -> calendar + connectors, even when the message contains a Calendly API URL
+- morning/night/daily check-ins -> tasks; add automation only schedule/cadence asked
+- relationship cadence ("follow up with David", "last talked to Alice", "how long since I spoke with Sam") -> contacts; one-off dated call/text todo -> tasks
+- explicit phone/call/dial third party -> phone + contacts; not calendar just because appointment mentioned
+- device/broadcast reminders ("to my phone", "all devices", "broadcast") -> automation + connectors; tasks secondary
+- owner password/saved-login lookup -> settings + secrets; CREDENTIALS handles; never raw secret in Stage 1
+- website/social focus block -> automation + settings; app block -> automation + settings; screen_time only reports
+- real flight/hotel/trip booking -> browser + calendar + payments + tasks; PERSONAL_ASSISTANT action=book_travel owns
+- Calendly availability/single-use booking links -> calendar + connectors, even with Calendly API URL
 - health/wearable reads (steps/sleep/heart rate/workouts) -> health
-- X/Twitter DMs -> messaging + connectors; X/Twitter timeline/feed/mentions/post search -> social_posting + connectors (not generic web browsing)
-- desktop/native-app/browser/Finder/window screenshots or control -> browser or automation (not media alone)
-- LifeOps browser bridge/companion/extension/tab/settings -> browser; settings/connectors as secondary when configuration/connection state is asked
-- durable owner facts and stable personal preferences, especially travel/booking preferences ("remember that I prefer aisle seats", "save my hotel preferences") -> memory + settings; do not route these to documents unless the user explicitly asks to create/search/edit a document or file
+- X/Twitter DMs -> messaging + connectors; X/Twitter timeline/feed/mentions/post search -> social_posting + connectors
+- desktop/native-app/browser/Finder/window screenshots/control -> browser or automation
+- LifeOps browser bridge/companion/extension/tab/settings -> browser; add settings/connectors for config/connection
+- durable owner facts/preferences, esp travel/booking ("remember aisle seats") -> memory + settings; documents only create/search/edit document/file
 
-Otherwise: list every relevant context id; planning will run and tools will be selected from those contexts. If only general is available and a tool is still needed, use contexts=["general"].
+Otherwise: list relevant context ids. If only general exists and tool needed, use contexts=["general"].
 
 Optional fields:
-- candidateActions: up to 12 action-like retrieval hints inferred from the request ("send_email", "calendar_create_event", "search_documents", "play_music"). Speculative BM25/regex hints, not tool calls.
-- parentActionHints: up to 6 parent action names only when explicit or highly likely. Omit over guess.
-- contextSlices: up to 12 stable retrieval slice ids visible in the provided context. Never invent slice ids.
+- candidateActions: <=12 action-like retrieval hints ("send_email", "calendar_create_event", "search_documents", "play_music"). Hints, not tool calls.
+- parentActionHints: <=6 parent action names when explicit/high-confidence. Omit over guess.
+- contextSlices: <=12 visible stable retrieval slice ids. Never invent.
 
 thought is internal rationale, not shown to user.
 
-extract is OPTIONAL. Populate ONLY when the user states a durable fact about themselves, a person they know, or a relationship.
+extract OPTIONAL. Populate ONLY durable fact about user/person/relationship.
 - worth extracting: "my birthday is March 5", "Alice is my manager", "I live in Brooklyn"
 - skip: questions, requests, ephemeral state, agent self-talk, anything obvious from agent persona
-- extract.facts: short factual statements in the user's voice ("the user's birthday is 1990-03-05"), under ~120 chars each, self-contained
-- extract.relationships: subject-predicate-object triples; short entity names ("user", "Alice", "Acme Corp"); snake_case predicate ("works_with", "lives_in", "manages")
-- extract.addressedTo: OPTIONAL entity UUIDs (preferred) or participant names this message is directed at. Agent's id/name when user talks to the agent; another participant's id/name when addressed by name or @-mention. Empty/omit when broadcast or unclear. Do not guess.
-- omit extract entirely when nothing durable was stated and no addressee identified. Never invent.
+- extract.facts: self-contained facts, user voice, ~120 chars max
+- extract.relationships: subject-predicate-object; short entities; snake_case predicate
+- extract.addressedTo: UUIDs preferred or participant names addressed. Agent id/name when user talks to agent; other participant by name/@mention. Empty/omit if broadcast/unclear. Do not guess.
+- omit extract when no durable fact/addressee. Never invent.
 
-Call {{handleResponseToolName}} exactly once with the envelope. Do not answer in plain text.
+Call {{handleResponseToolName}} exactly once. No plain-text answer.
 
 return:
 Use the {{handleResponseToolName}} tool. Do not return JSON as message text.
@@ -792,7 +792,7 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 
 export const OPTION_EXTRACTION_TEMPLATE = optionExtractionTemplate;
 
-export const plannerTemplate = `task: Plan the next native tool calls for the current ContextObject.
+export const plannerTemplate = `task: Plan next native tool calls for current ContextObject.
 
 context_object:
 {{contextObject}}
@@ -801,11 +801,11 @@ trajectory:
 {{trajectory}}
 
 rules:
-- use only tools exposed in the current context object
-- plan smallest grounded queue of useful tool calls
-- include arguments only when grounded in user request or prior tool results
-- if task is complete or only next step is speaking to user, return no toolCalls and set messageToUser
-- do not invent tool names, connector names, providers, ids, or benchmark ids
+- use only tools in current context object
+- smallest grounded useful tool queue
+- args only from user request or prior tool results
+- task complete or next step is user speech => no toolCalls, set messageToUser
+- never invent tool names, connector names, providers, ids, benchmark ids
 
 return:
 JSON object only. No markdown, prose, XML, or legacy formats.

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { runBenchmark } from "../src/runner.js";
+import { setupIncompatible } from "../src/setup-incompatible.js";
 import type { Handler, Scenario } from "../src/types.js";
 
 function scenario(id: string): Scenario {
@@ -47,5 +48,43 @@ describe("runBenchmark", () => {
     expect(teardownCalled).toBe(true);
     expect(scored?.passed).toBe(false);
     expect(scored?.traces[0]).toContain("scenario exploded");
+  });
+
+  it("excludes setup-incompatible handlers from scored results", async () => {
+    let runCalled = false;
+    let teardownCalled = false;
+    const incompatibleHandler: Handler = {
+      name: "Eliza (LLM Agent)",
+      async setup() {
+        throw setupIncompatible(
+          "Eliza setup incompatible: TEXT_EMBEDDING probe failed",
+        );
+      },
+      async run() {
+        runCalled = true;
+        throw new Error("should not run");
+      },
+      async teardown() {
+        teardownCalled = true;
+      },
+    };
+
+    const results = await runBenchmark(
+      incompatibleHandler ? [incompatibleHandler] : [],
+      [scenario("s1")],
+    );
+
+    expect(runCalled).toBe(false);
+    expect(teardownCalled).toBe(true);
+    expect(results.handlers).toHaveLength(0);
+    expect(results.setupIncompatibleHandlers).toEqual([
+      {
+        handlerName: "Eliza (LLM Agent)",
+        reason: "Eliza setup incompatible: TEXT_EMBEDDING probe failed",
+        traces: [
+          "SETUP_INCOMPATIBLE: Eliza setup incompatible: TEXT_EMBEDDING probe failed",
+        ],
+      },
+    ]);
   });
 });

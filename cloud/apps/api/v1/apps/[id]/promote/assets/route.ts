@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import {
   AD_COPY_GENERATION_COST,
@@ -16,10 +17,6 @@ import { creditsService } from "@/lib/services/credits";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
-
 const GenerateAssetsSchema = z.object({
   sizes: z.array(z.enum(Object.keys(AD_SIZES) as [AdSize, ...AdSize[]])).optional(),
   includeCopy: z.boolean().optional(),
@@ -28,7 +25,7 @@ const GenerateAssetsSchema = z.object({
   customPrompt: z.string().max(1000).optional(),
 });
 
-async function __hono_POST(request: Request, { params }: RouteParams) {
+async function __hono_POST(request: Request, { params }: RouteContext<{ id: string }>) {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
@@ -143,7 +140,7 @@ async function __hono_POST(request: Request, { params }: RouteParams) {
   }
 }
 
-async function __hono_GET(request: Request, { params }: RouteParams) {
+async function __hono_GET(request: Request, { params }: RouteContext<{ id: string }>) {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 

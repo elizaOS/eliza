@@ -1252,6 +1252,7 @@ function main() {
     drafterShape: report.metadata.drafterShape,
     upstreamDflashShapeOk: upstreamShapeOk,
     plainArShapeOk,
+    drafterSmallerThanTarget: parsed.sizeBytes < parsedTarget.sizeBytes,
     hasTargetCheckpointSha256: targetCheckpointSha256 !== null,
     targetDrafterTokenizerCompatible: tokenizerCompatibility.compatible,
     gpt2TokenizerHasMerges: tokenizerModel !== "gpt2" || hasTokenizerMerges,
@@ -1273,9 +1274,31 @@ function main() {
       "tokenizer.ggml.model is gpt2 but tokenizer.ggml.merges is absent",
     );
   }
-  if (requiresTrueDflashDrafting && !tokenizerCompatibility.compatible) {
+  if (!report.checks.drafterSmallerThanTarget) {
     failedMetadata.push(
-      "DFlash drafter tokenizer does not match target tokenizer; speculative drafting must fail closed until a drafter distilled against this target is provided",
+      `DFlash drafter is not smaller than the target (drafter=${parsed.sizeBytes} bytes, target=${parsedTarget.sizeBytes} bytes)`,
+    );
+  }
+  if (!targetCheckpointSha256) {
+    failedMetadata.push(
+      "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint",
+    );
+  }
+  if (targetMeta.status === "loaded") {
+    const matchesTarget =
+      targetMeta.data?.drafter?.matchesTargetCheckpoint === true;
+    if (!matchesTarget) {
+      failedMetadata.push(
+        "dflash/target-meta.json does not prove drafter.matchesTargetCheckpoint=true",
+      );
+    }
+  }
+  if (!tokenizerCompatibility.compatible) {
+    const keys = tokenizerCompatibility.mismatches
+      .map((mismatch) => mismatch.key)
+      .join(", ");
+    failedMetadata.push(
+      `target/drafter tokenizer metadata mismatch (${keys}); speculative drafting must fail closed until a drafter distilled against this target is provided`,
     );
   }
   report.metadataStatus =

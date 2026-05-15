@@ -1,7 +1,7 @@
 /**
- * Type stubs that mirror the canonical `ScheduledTask` / `TerminalState` /
- * `ScheduledTaskRunner` types under `src/lifeops/scheduled-task/`. Importers
- * may migrate to the real module path; the shapes here are byte-identical.
+ * Scheduled-task types used by the `first-run` module. These predating the
+ * canonical `scheduled-task/types.ts` module and have diverged slightly;
+ * `ScheduledTaskInput` is not exported from the canonical path.
  *
  * Types only — no runtime behaviour.
  */

@@ -70,6 +70,6 @@ export const DEFAULT_BRANDING: BrandingConfig = {
 export function appNameInterpolationVars(branding: BrandingConfig): {
   appName: string;
 } {
-  const name = branding.appName?.trim();
+  const name = branding.appName.trim();
   return { appName: name || DEFAULT_APP_DISPLAY_NAME };
 }

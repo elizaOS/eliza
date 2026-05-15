@@ -230,7 +230,7 @@ export async function handleUpdateIssue(
 
     const updatedIssue = await linearService.updateIssue(issueId, updates, accountId);
 
-    const updateSummary = [];
+    const updateSummary: string[] = [];
     if (updates.title) updateSummary.push(`title: "${updates.title}"`);
     if (updates.priority)
       updateSummary.push(`priority: ${["", "urgent", "high", "normal", "low"][updates.priority]}`);

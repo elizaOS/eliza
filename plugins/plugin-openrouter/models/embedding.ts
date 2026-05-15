@@ -89,19 +89,18 @@ export async function handleTextEmbedding(
     }
 
     const data = (await response.json()) as {
-      data: [{ embedding: number[] }];
+      data?: Array<{ embedding?: number[] }>;
       usage?: { prompt_tokens: number; total_tokens: number };
     };
 
-    if (!data?.data?.[0]?.embedding) {
+    const embedding = data.data?.[0]?.embedding;
+    if (!embedding) {
       logger.error("API returned invalid structure");
       throw new Error("API returned invalid structure");
     }
 
-    const embedding = data.data[0].embedding;
-
     if (!Array.isArray(embedding) || embedding.length !== embeddingDimension) {
-      const errorMsg = `Embedding length ${embedding?.length ?? 0} does not match configured dimension ${embeddingDimension}`;
+      const errorMsg = `Embedding length ${embedding.length} does not match configured dimension ${embeddingDimension}`;
       logger.error(errorMsg);
       const fallbackVector = Array(embeddingDimension).fill(0) as number[];
       fallbackVector[0] = 0.4;

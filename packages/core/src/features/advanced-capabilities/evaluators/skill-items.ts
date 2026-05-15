@@ -393,7 +393,7 @@ export const skillProposalEvaluator: Evaluator<
 > = {
 	name: "skillProposal",
 	description:
-		"Proposes a new SKILL.md when a successful trajectory contains a reusable procedure.",
+		"Proposes SKILL.md when a successful trajectory has reusable procedure.",
 	priority: EvaluatorPriority.SKILL_PROPOSAL,
 	schema: skillProposalSchema,
 	async shouldRun({ runtime, message }) {
@@ -412,13 +412,13 @@ export const skillProposalEvaluator: Evaluator<
 		};
 	},
 	prompt({ prepared }) {
-		return `Evaluate whether this completed trajectory contains a reusable repeatable procedure worth saving as a SKILL.md.
+		return `Decide if this completed trajectory has reusable procedure worth SKILL.md.
 
-Return extract=false if the run is too narrow, one-off, private, or not procedural.
-If extract=true, provide:
-- name: lowercase letters, digits, and hyphens only, up to 64 characters.
-- description: one sentence, up to 200 characters.
-- body: markdown body for the skill, without frontmatter.
+extract=false if too narrow, one-off, private, or not procedural.
+If extract=true:
+- name: lowercase letters/digits/hyphens, max 64 chars.
+- description: one sentence, max 200 chars.
+- body: markdown body, no frontmatter.
 
 Trajectory:
 ${prepared.trajectoryDigest}`;
@@ -474,8 +474,7 @@ export const skillRefinementEvaluator: Evaluator<
 	RefinementPrepared
 > = {
 	name: "skillRefinement",
-	description:
-		"Refines active skills that participated in a failed or retried trajectory.",
+	description: "Refines active skills after failed/retried trajectory.",
 	priority: EvaluatorPriority.SKILL_REFINEMENT,
 	schema: skillRefinementSchema,
 	async shouldRun({ runtime, message }) {
@@ -517,11 +516,11 @@ export const skillRefinementEvaluator: Evaluator<
 ${skill.body}`,
 			)
 			.join("\n\n");
-		return `Evaluate whether the active skills should be refined because this trajectory failed or retried while using them.
+		return `Decide whether active skills need refinement after failed/retried trajectory.
 
-Return one refinement object per skill. Set refine=false when no update is warranted.
-When refine=true, newBody must be the complete replacement markdown body without frontmatter.
-Do not invent capabilities. Tighten steps, add guardrails for the failure mode, and remove ambiguity.
+Return one object per skill. refine=false if no update.
+If refine=true, newBody is complete replacement markdown body, no frontmatter.
+Do not invent capabilities. Tighten steps, add failure guardrails, remove ambiguity.
 
 Active skills:
 ${skillSections || "(none)"}

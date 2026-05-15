@@ -77,7 +77,7 @@ import type {
 	InstalledModel,
 	LocalRuntimeOptimizations,
 } from "./types";
-import type { VerifierStreamEvent } from "./voice/types";
+import type { TextToken, VerifierStreamEvent } from "./voice/types";
 
 export interface DflashServerPlan {
 	targetModelPath: string;
@@ -642,6 +642,7 @@ export interface DflashBinaryCapabilities {
 		turbo3_tcq: boolean;
 		qjl_full: boolean;
 		polarquant: boolean;
+		openvino?: boolean;
 		lookahead: boolean;
 		ngramDraft: boolean;
 	};
@@ -1349,7 +1350,7 @@ export async function resolveKvSpillPlan(args: {
 	);
 	const hasDiscreteGpu = hardware.gpu !== null && !hardware.appleSilicon;
 	// CPU spill is available when the host has appreciable RAM headroom over
-	// the resident budget. Apple Silicon always has unified RAM; x86 needs the
+	// the resident budget. Apple Silicon always has shared RAM; x86 needs the
 	// total to comfortably exceed the resident slice.
 	const cpuSpillAvailable =
 		hardware.appleSilicon ||
@@ -2186,7 +2187,7 @@ async function fetchStreamingChatCompletion(
 			if (rejectRange) {
 				const [from, to] = rejectRange;
 				if (callbacks.onVerifierEvent) {
-					const tokens = [];
+					const tokens: TextToken[] = [];
 					for (let i = from; i <= to; i += 1)
 						tokens.push({ index: i, text: "" });
 					await callbacks.onVerifierEvent({ kind: "reject", tokens });
@@ -2962,7 +2963,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	}
 
 	/**
-	 * Unified backend contract entry point. Resolves the catalog entry from
+	 * Backend contract entry point. Resolves the catalog entry from
 	 * the plan and delegates to `start()` if a DFlash plan is configured.
 	 * For non-DFlash llama-server use (e.g. `requiresKernel` for turbo3
 	 * without spec decoding), the catalog can declare an `optimizations`

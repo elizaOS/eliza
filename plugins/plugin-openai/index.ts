@@ -7,6 +7,7 @@ import type {
   ImageDescriptionParams,
   ImageGenerationParams,
   Plugin,
+  ProcessEnvLike,
   ResearchParams,
   ResearchResult,
   TextEmbeddingParams,
@@ -34,8 +35,6 @@ import {
 import type { ImageGenerationResult, OpenAIPluginConfig, TextStreamResult } from "./types";
 import { getAuthHeader, getBaseURL } from "./utils/config";
 
-type ProcessEnvLike = Record<string, string | undefined>;
-
 function getProcessEnv(): ProcessEnvLike {
   if (typeof process === "undefined") {
     return {};
@@ -44,11 +43,11 @@ function getProcessEnv(): ProcessEnvLike {
 }
 
 const env = getProcessEnv();
-const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as string;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as string;
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as string;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ?? "RESPONSE_HANDLER") as string;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as string;
+const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as string;
+const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
+const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;
+const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as string;
+const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as string;
 
 export const openaiPlugin: Plugin = {
   name: "openai",
@@ -416,7 +415,7 @@ export const openaiPlugin: Plugin = {
             }
 
             logger.info(
-              `[OpenAI Test] Research completed. Text length: ${result.text.length}, Annotations: ${result.annotations?.length ?? 0}`
+              `[OpenAI Test] Research completed. Text length: ${result.text.length}, Annotations: ${result.annotations.length}`
             );
           },
         },

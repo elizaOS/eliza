@@ -226,7 +226,7 @@ const electrobunRpc = {
 
 declare global {
 	interface Window {
-		__ELIZA_API_BASE__: string;
+		__ELIZA_API_BASE__?: string;
 		__ELIZA_API_TOKEN__: string;
 		__ELIZA_ELECTROBUN_RPC__?: typeof electrobunRpc;
 	}

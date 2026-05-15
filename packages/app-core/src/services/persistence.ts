@@ -10,9 +10,8 @@
  * Preferences when it isn't (e.g. older mobile shells that haven't shipped
  * the SQLite plugin yet, or web preview).
  *
- * Token storage MUST go through Keychain on iOS — handled by a separate
- * follow-up identified in the prior security review and intentionally NOT
- * touched here.
+ * Token storage MUST go through Keychain on iOS — handled separately by
+ * `platform-secure-store-node.ts`.
  */
 
 import {

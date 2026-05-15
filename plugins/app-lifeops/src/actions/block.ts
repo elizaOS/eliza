@@ -1,12 +1,9 @@
 /**
- * BLOCK umbrella — Audit B Defer #1.
+ * BLOCK umbrella — folds phone-app blocking and desktop website blocking into
+ * a single umbrella keyed by `target: "app" | "website"`. Each target
+ * dispatches into its own backend handler.
  *
- * Folds phone-app blocking and desktop website blocking into a single
- * umbrella keyed by
- * `target: "app" | "website"`. The runtime backends stay untouched: each
- * action value dispatches into the existing backend handlers.
- *
- * Actions (union of both legacy surfaces):
+ * Actions (union of both surfaces):
  *   block | unblock | status | request_permission | release | list_active
  *
  * Target/action support matrix:
@@ -301,15 +298,13 @@ export const blockAction: Action & {
     "risk:irreversible",
   ],
   description:
-    "Block or unblock specific phone apps (Family Controls / Usage Access) and " +
-    "desktop websites (hosts file / SelfControl). Scope: phone apps and websites only. " +
-    "NOT for blocking out time on the calendar / focus blocks / deep-work blocks / " +
-    "carving out hours — those route to CALENDAR (subaction=create_event). " +
-    "Pick `target: app` for phone-app blocking or `target: website` for desktop website blocking. " +
-    "Actions: block, unblock, status (all targets); request_permission, release, list_active (website only). " +
-    "Website blocks always draft first and require confirmed:true; release also requires confirmed:true.",
+    "Block/unblock phone apps or desktop websites. " +
+    "Scope phone apps, websites only; NOT calendar/focus/deep-work blocks -> CALENDAR subaction=create_event. " +
+    "target=app phone apps; target=website desktop websites. " +
+    "Actions block|unblock|status all targets; request_permission|release|list_active website-only. " +
+    "Website block drafts first; confirmed:true for website block + release.",
   descriptionCompressed:
-    "block/unblock phone apps + desktop websites only (NOT calendar time-blocks/focus-blocks — those go to CALENDAR create_event); actions block|unblock|status|request_permission|release|list_active; web requires confirmed:true",
+    "BLOCK apps+websites only; NOT calendar/focus; block|unblock|status|permission|release",
   contexts: ["screen_time", "browser", "automation", "tasks", "settings"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -329,16 +324,14 @@ export const blockAction: Action & {
     {
       name: "target",
       description:
-        "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). " +
-        "Inferred from `action` (request_permission/release/list_active -> website), from app/website-only param shape, or from the user's text when omitted.",
+        "app phone apps | website desktop hosts-file/SelfControl. Omit ok: infer request_permission|release|list_active -> website, params, user text.",
       required: false,
       schema: { type: "string" as const, enum: [...ALL_TARGETS] },
     },
     {
       name: "action",
       description:
-        "One of: block, unblock, status, request_permission, release, list_active. " +
-        "request_permission, release, and list_active are website-only.",
+        "block | unblock | status | request_permission | release | list_active. request_permission|release|list_active website-only.",
       required: true,
       schema: { type: "string" as const, enum: [...ALL_SUBACTIONS] },
     },
@@ -346,66 +339,61 @@ export const blockAction: Action & {
     // permissive: each backend reads only the keys it understands.
     {
       name: "intent",
-      description:
-        "Free-form description of what the owner wants. Used by the block action to extract apps/hostnames + duration.",
+      description: "Owner intent text; extract apps/hostnames + duration.",
       required: false,
       schema: { type: "string" as const },
     },
     // Website-specific.
     {
       name: "hostnames",
-      description:
-        "(target=website) Public hostnames or URLs to block, e.g. ['x.com','twitter.com'].",
+      description: "(target=website) Public hostnames/URLs.",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
     {
       name: "confirmed",
       description:
-        "(target=website) Set true only when the owner has explicitly confirmed the block. Without it, block returns a draft confirmation request. Required by release.",
+        "(target=website) true after owner confirmed. Without: block drafts. Required by release.",
       required: false,
       schema: { type: "boolean" as const },
     },
     {
       name: "ruleId",
-      description:
-        "(target=website, action=release) ID of the managed block rule to release.",
+      description: "(target=website action=release) Managed block rule id.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "reason",
       description:
-        "(target=website, action=release) Optional reason recorded on the rule when released.",
+        "(target=website action=release) Optional release reason; audit record.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "includeLiveStatus",
       description:
-        "(target=website, action=list_active) Include the current hosts-file/SelfControl live block state. Default true.",
+        "(target=website action=list_active) Include hosts-file/SelfControl live state. Default true.",
       required: false,
       schema: { type: "boolean" as const },
     },
     {
       name: "includeManagedRules",
       description:
-        "(target=website, action=list_active) Include managed owner block rules. Default true.",
+        "(target=website action=list_active) Include managed rules. Default true.",
       required: false,
       schema: { type: "boolean" as const },
     },
     // App-specific.
     {
       name: "packageNames",
-      description:
-        "(target=app, Android) Package names to block, e.g. ['com.twitter.android'].",
+      description: "(target=app Android) Package names.",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
     {
       name: "appTokens",
-      description:
-        "(target=app, iOS) iPhone app tokens from a previous selectApps() call.",
+      description: "(target=app iOS) iPhone app tokens from selectApps().",
       required: false,
       schema: { type: "array" as const, items: { type: "string" as const } },
     },
@@ -413,7 +401,7 @@ export const blockAction: Action & {
     {
       name: "durationMinutes",
       description:
-        "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed.",
+        "Block duration minutes. Omit/null = indefinite until manual removal.",
       required: false,
       schema: { type: "number" as const },
     },

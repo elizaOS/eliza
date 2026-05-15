@@ -347,12 +347,11 @@ def main() -> int:
              "pick the latest under the run's out_dir). Forwarded to train_local.py.",
     )
     ap.add_argument(
-        "--quantizers", default="polarquant,fused_turboquant,qjl",
+        "--quantizers", default="polarquant,turboquant,fused_turboquant,qjl",
         help="Comma-separated list of quantizers to apply post-training. "
              "Default = full stack: polarquant (4-bit weights) + "
-             "fused_turboquant (4-bit V cache, Triton kernels) + qjl "
-             "(1-bit K cache). Pass `polarquant,turboquant` for the "
-             "pure-PyTorch path if Triton is unavailable.",
+             "turboquant/fused_turboquant V-cache sidecars + qjl "
+             "(1-bit K cache).",
     )
     mb = ap.add_mutually_exclusive_group()
     mb.add_argument("--eliza1-bundle", dest="eliza1_bundle", action="store_true",
@@ -724,7 +723,7 @@ def main() -> int:
                 "scripts/optimize_for_eliza1.py",
                 "--base-model", str(finetuned_model),
                 "--output-dir", str(opt_dir),
-                "--apply", "polarquant", "qjl", "turboquant",
+                "--apply", "polarquant", "qjl", "turboquant", "fused_turboquant",
                 "--calibration", str(test_file if test_file.exists() else val_file),
                 "--calibration-samples", "128",
                 "--llama-cpp-dir", str(fork_dir),
@@ -810,7 +809,7 @@ def main() -> int:
         log.info("stage 7: publish channel=%s", channel)
         rc = run(cmd, cwd=ROOT)
         summary["stages"]["publish"] = {"exit": rc, "channel": channel}
-        repo_id = getattr(entry, "eliza_repo_id", None) or "elizaos/eliza-1"
+        repo_id = getattr(entry, "eliza_repo_id", None) or "elizalabs/eliza-1"
         if rc == 0:
             log.info("published: https://huggingface.co/%s (channel=%s)", repo_id, channel)
         else:

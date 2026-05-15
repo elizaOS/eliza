@@ -5,7 +5,8 @@ import {
 	createUniqueUuid,
 	type Entity,
 	type IAgentRuntime,
-	logger,
+	type JsonValue,
+	logger as coreLogger,
 	type Memory,
 	ModelType,
 	Service,
@@ -15,6 +16,27 @@ import {
 
 /** Alias for the Component.data field type. */
 type ComponentData = Component["data"];
+
+function toJsonRecord(value: unknown): { [key: string]: JsonValue } {
+	return JSON.parse(JSON.stringify(value ?? {})) as { [key: string]: JsonValue };
+}
+
+function logValue(value: unknown): string {
+	if (typeof value === "string") return value;
+	if (value instanceof Error) return value.stack ?? value.message;
+	try {
+		return JSON.stringify(value);
+	} catch {
+		return String(value);
+	}
+}
+
+const logger = {
+	debug: (...args: unknown[]) => coreLogger.debug(args.map(logValue).join(" ")),
+	info: (...args: unknown[]) => coreLogger.info(args.map(logValue).join(" ")),
+	warn: (...args: unknown[]) => coreLogger.warn(args.map(logValue).join(" ")),
+	error: (...args: unknown[]) => coreLogger.error(args.map(logValue).join(" ")),
+};
 
 import { v4 as uuidv4 } from "uuid";
 import { BirdeyeClient, DexscreenerClient, HeliusClient } from "./clients";
@@ -134,7 +156,7 @@ export type TradingEvent =
 	| { type: "token_performance_updated"; performance: TokenPerformance };
 
 /**
- * Unified Trading Service that centralizes all trading operations
+ * Trading Service that centralizes all trading operations
  */
 /**
  * CommunityInvestorService class representing a service for trading on the Solana blockchain.
@@ -180,8 +202,12 @@ export class CommunityInvestorService
 	public readonly componentWorldId: UUID;
 	public readonly componentRoomId: UUID; // This will be the same as componentWorldId
 
-	constructor(protected override runtime: IAgentRuntime) {
+	constructor(runtime?: IAgentRuntime) {
+		if (!runtime) {
+			throw new Error("CommunityInvestorService requires an agent runtime");
+		}
 		super(runtime);
+		this.runtime = runtime;
 
 		// Initialize the balanced trust calculator
 		this.balancedTrustCalculator = new BalancedTrustScoreCalculator();
@@ -1678,7 +1704,7 @@ export class CommunityInvestorService
 				tableName: "transactions",
 				embedding,
 				match_threshold: 0.7,
-				count: 20,
+					limit: 20,
 			});
 
 			const transactions: Transaction[] = [];
@@ -1686,9 +1712,9 @@ export class CommunityInvestorService
 			for (const memory of memories) {
 				if (
 					memory.content.transaction &&
-					(memory.content.transaction as Transaction).positionId === positionId
+					(memory.content.transaction as unknown as Transaction).positionId === positionId
 				) {
-					transactions.push(memory.content.transaction as Transaction);
+					transactions.push(memory.content.transaction as unknown as Transaction);
 				}
 			}
 
@@ -1716,7 +1742,7 @@ export class CommunityInvestorService
 				tableName: "transactions",
 				embedding,
 				match_threshold: 0.7,
-				count: 50,
+					limit: 50,
 			});
 
 			const transactions: Transaction[] = [];
@@ -1724,10 +1750,10 @@ export class CommunityInvestorService
 			for (const memory of memories) {
 				if (
 					memory.content.transaction &&
-					(memory.content.transaction as Transaction).tokenAddress ===
+					(memory.content.transaction as unknown as Transaction).tokenAddress ===
 						tokenAddress
 				) {
-					transactions.push(memory.content.transaction as Transaction);
+					transactions.push(memory.content.transaction as unknown as Transaction);
 				}
 			}
 
@@ -1763,11 +1789,11 @@ export class CommunityInvestorService
 				tableName: "positions",
 				embedding,
 				match_threshold: 0.7,
-				count: 1,
+					limit: 1,
 			});
 
 			if (memories.length > 0 && memories[0].content.position) {
-				const position = memories[0].content.position as Position;
+				const position = memories[0].content.position as unknown as Position;
 
 				// Cache the position
 				await this.runtime.setCache<Position>(cacheKey, position); // Cache for 5 minutes
@@ -1801,7 +1827,7 @@ export class CommunityInvestorService
 				tableName: "recommendations",
 				embedding,
 				match_threshold: 0.7,
-				count: 50,
+					limit: 50,
 			});
 
 			const recommendations: TokenRecommendation[] = [];
@@ -1903,24 +1929,25 @@ export class CommunityInvestorService
 	private async storeTokenPerformance(token: TokenPerformance): Promise<void> {
 		logger.debug("storing token performance", token);
 		try {
+			const text = `Token performance data for ${token.symbol || token.address} on ${token.chain}`;
 			// Create memory object
 			const memory: Memory = {
 				id: uuidv4() as UUID,
 				entityId: this.runtime.agentId,
 				roomId: "global" as UUID,
 				content: {
-					text: `Token performance data for ${token.symbol || token.address} on ${token.chain}`,
-					token,
+					text,
+					token: toJsonRecord(token),
 				},
 				createdAt: Date.now(),
 			};
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelType.TEXT_EMBEDDING,
-				memory.content.text,
-			);
-			const memoryWithEmbedding = { ...memory, embedding };
+					"TEXT_EMBEDDING",
+					text,
+				);
+			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
 			await this.runtime.createMemory(memoryWithEmbedding, "tokens", true);
@@ -1942,24 +1969,25 @@ export class CommunityInvestorService
 	private async storePosition(position: Position): Promise<void> {
 		logger.debug("storing position", position);
 		try {
+			const text = `Position data for token ${position.tokenAddress} by entity ${position.entityId}`;
 			// Create memory object
 			const memory: Memory = {
 				id: uuidv4() as UUID,
 				entityId: this.runtime.agentId,
 				roomId: "global" as UUID,
 				content: {
-					text: `Position data for token ${position.tokenAddress} by entity ${position.entityId}`,
-					position,
+					text,
+					position: toJsonRecord(position),
 				},
 				createdAt: Date.now(),
 			};
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelType.TEXT_EMBEDDING,
-				memory.content.text,
-			);
-			const memoryWithEmbedding = { ...memory, embedding };
+					"TEXT_EMBEDDING",
+					text,
+				);
+			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
 			await this.runtime.createMemory(memoryWithEmbedding, "positions", true);
@@ -1981,24 +2009,25 @@ export class CommunityInvestorService
 	private async storeTransaction(transaction: Transaction): Promise<void> {
 		logger.debug("storing transaction", transaction);
 		try {
+			const text = `Transaction data for position ${transaction.positionId} token ${transaction.tokenAddress} ${transaction.type}`;
 			// Create memory object
 			const memory: Memory = {
 				id: uuidv4() as UUID,
 				entityId: this.runtime.agentId,
 				roomId: "global" as UUID,
 				content: {
-					text: `Transaction data for position ${transaction.positionId} token ${transaction.tokenAddress} ${transaction.type}`,
-					transaction,
+					text,
+					transaction: toJsonRecord(transaction),
 				},
 				createdAt: Date.now(),
 			};
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelType.TEXT_EMBEDDING,
-				memory.content.text,
-			);
-			const memoryWithEmbedding = { ...memory, embedding };
+					"TEXT_EMBEDDING",
+					text,
+				);
+			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
 			await this.runtime.createMemory(
@@ -2034,24 +2063,25 @@ export class CommunityInvestorService
 	): Promise<void> {
 		logger.debug("storing token recommendation", recommendation);
 		try {
+			const text = `Token recommendation for ${recommendation.tokenAddress} by entity ${recommendation.entityId}`;
 			// Create memory object
 			const memory: Memory = {
 				id: uuidv4() as UUID,
 				entityId: this.runtime.agentId,
 				roomId: "global" as UUID,
 				content: {
-					text: `Token recommendation for ${recommendation.tokenAddress} by entity ${recommendation.entityId}`,
-					recommendation,
+					text,
+					recommendation: toJsonRecord(recommendation),
 				},
 				createdAt: Date.now(),
 			};
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelType.TEXT_EMBEDDING,
-				memory.content.text,
-			);
-			const memoryWithEmbedding = { ...memory, embedding };
+					"TEXT_EMBEDDING",
+					text,
+				);
+			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
 			await this.runtime.createMemory(
@@ -2082,24 +2112,25 @@ export class CommunityInvestorService
 	): Promise<void> {
 		logger.debug("storing recommender metrics", metrics);
 		try {
+			const text = `Recommender metrics for ${metrics.entityId}`;
 			// Create memory object
 			const memory: Memory = {
 				id: uuidv4() as UUID,
 				entityId: this.runtime.agentId,
 				roomId: "global" as UUID,
 				content: {
-					text: `Recommender metrics for ${metrics.entityId}`,
-					metrics,
+					text,
+					metrics: toJsonRecord(metrics),
 				},
 				createdAt: Date.now(),
 			};
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelType.TEXT_EMBEDDING,
-				memory.content.text,
-			);
-			const memoryWithEmbedding = { ...memory, embedding };
+					"TEXT_EMBEDDING",
+					text,
+				);
+			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
 			await this.runtime.createMemory(
@@ -2127,24 +2158,25 @@ export class CommunityInvestorService
 	): Promise<void> {
 		logger.debug("storing recommender metrics history", history);
 		try {
+			const text = `Recommender metrics history for ${history.entityId}`;
 			// Create memory object
 			const memory: Memory = {
 				id: uuidv4() as UUID,
 				entityId: this.runtime.agentId,
 				roomId: "global" as UUID,
 				content: {
-					text: `Recommender metrics history for ${history.entityId}`,
-					history,
+					text,
+					history: toJsonRecord(history),
 				},
 				createdAt: Date.now(),
 			};
 
 			// Add embedding to memory
 			const embedding = await this.runtime.useModel(
-				ModelType.TEXT_EMBEDDING,
-				memory.content.text,
-			);
-			const memoryWithEmbedding = { ...memory, embedding };
+					"TEXT_EMBEDDING",
+					text,
+				);
+			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
 			await this.runtime.createMemory(
@@ -2210,11 +2242,11 @@ export class CommunityInvestorService
 				tableName: "recommender_metrics",
 				embedding,
 				match_threshold: 0.7,
-				count: 1,
+					limit: 1,
 			});
 
 			if (memories.length > 0 && memories[0].content.metrics) {
-				const metrics = memories[0].content.metrics as RecommenderMetrics;
+				const metrics = memories[0].content.metrics as unknown as RecommenderMetrics;
 
 				// Cache the metrics
 				await this.runtime.setCache<RecommenderMetrics>(cacheKey, metrics); // Cache for 5 minutes
@@ -2257,7 +2289,7 @@ export class CommunityInvestorService
 				tableName: "recommender_metrics_history",
 				embedding,
 				match_threshold: 0.7,
-				count: 10,
+					limit: 10,
 			});
 
 			const historyEntries: RecommenderMetricsHistory[] = [];
@@ -2265,11 +2297,11 @@ export class CommunityInvestorService
 			for (const memory of memories) {
 				if (
 					memory.content.history &&
-					(memory.content.history as RecommenderMetricsHistory).entityId ===
+					(memory.content.history as unknown as RecommenderMetricsHistory).entityId ===
 						entityId
 				) {
 					historyEntries.push(
-						memory.content.history as RecommenderMetricsHistory,
+						memory.content.history as unknown as RecommenderMetricsHistory,
 					);
 				}
 			}
@@ -2362,7 +2394,7 @@ export class CommunityInvestorService
 				tableName: "tokens",
 				embedding,
 				match_threshold: 0.7,
-				count: 1,
+					limit: 1,
 			});
 
 			if (memories.length > 0 && memories[0].content.token) {
@@ -2410,14 +2442,14 @@ export class CommunityInvestorService
 				tableName: "positions",
 				embedding,
 				match_threshold: 0.7,
-				count: 50,
+					limit: 50,
 			});
 
 			const positions: PositionWithBalance[] = [];
 
 			for (const memory of memories) {
 				if (memory.content.position) {
-					const position = memory.content.position as Position;
+					const position = memory.content.position as unknown as Position;
 
 					// Check if position is open
 					if (position.status === "OPEN") {
@@ -3585,14 +3617,16 @@ ${report.tokenReports.join("\n")}
 	}
 
 	private registerTaskWorkers(runtime: IAgentRuntime): void {
-		runtime.registerTaskWorker({
-			name: "PROCESS_TRADE_DECISION",
-			execute: async (_runtime, options, task) =>
-				this.executeProcessTradeDecision(
-					options as { recommendationId: UUID; userId: UUID },
-					task,
-				),
-		});
+			runtime.registerTaskWorker({
+				name: "PROCESS_TRADE_DECISION",
+				execute: async (_runtime, options, task) => {
+					await this.executeProcessTradeDecision(
+						options as { recommendationId: UUID; userId: UUID },
+						task,
+					);
+					return undefined;
+				},
+			});
 		logger.info(
 			"[CommunityInvestorService] Registered PROCESS_TRADE_DECISION task worker.",
 		);
@@ -3730,8 +3764,7 @@ ${report.tokenReports.join("\n")}
 				id: this.componentWorldId,
 				name: `Social Alpha Global World (Agent: ${this.runtime.agentId})`,
 				agentId: this.runtime.agentId,
-				serverId: TRUST_LEADERBOARD_WORLD_SEED,
-				metadata: {
+					metadata: {
 					plugin_managed: true,
 					description: "World context for CommunityInvestor plugin components",
 				},

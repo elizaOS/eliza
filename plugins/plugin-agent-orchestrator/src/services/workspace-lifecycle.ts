@@ -1,19 +1,8 @@
-/**
- * Workspace lifecycle utilities — garbage collection and scratch directory cleanup.
- *
- * Extracted from workspace-service.ts to reduce module size.
- *
- * @module services/workspace-lifecycle
- */
-
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-/**
- * Remove a scratch directory (non-git workspace used for ad-hoc tasks).
- * Safe to call for any path under the workspaces base dir.
- */
+/** Remove a scratch directory safely — only if under baseDir or one of allowedDirs. */
 export async function removeScratchDir(
   dirPath: string,
   baseDir: string,
@@ -35,7 +24,7 @@ export async function removeScratchDir(
   });
 
   if (!isAllowed) {
-    console.warn(
+    log(
       `[CodingWorkspaceService] Refusing to remove dir outside allowed paths: ${resolved}`,
     );
     return;
@@ -44,17 +33,13 @@ export async function removeScratchDir(
     await fs.promises.rm(resolved, { recursive: true, force: true });
     log(`Removed scratch dir ${resolved}`);
   } catch (err) {
-    console.warn(
-      `[CodingWorkspaceService] Failed to remove scratch dir ${resolved}:`,
-      err,
+    log(
+      `[CodingWorkspaceService] Failed to remove scratch dir ${resolved}: ${err}`,
     );
   }
 }
 
-/**
- * Garbage-collect orphaned workspace directories.
- * Removes directories older than the given TTL that aren't tracked by the current session.
- */
+/** Garbage-collect orphaned workspace directories older than workspaceTtlMs. */
 export async function gcOrphanedWorkspaces(
   baseDir: string,
   workspaceTtlMs: number,
@@ -81,7 +66,6 @@ export async function gcOrphanedWorkspaces(
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
 
-    // Skip directories tracked by the current session
     if (trackedWorkspaceIds.has(entry.name)) {
       skipped++;
       continue;
@@ -106,8 +90,8 @@ export async function gcOrphanedWorkspaces(
   }
 
   if (removed > 0 || skipped > 0) {
-    console.log(
-      `[CodingWorkspaceService] Startup GC: removed ${removed} orphaned workspace(s), kept ${skipped}`,
+    log(
+      `Startup GC: removed ${removed} orphaned workspace(s), kept ${skipped}`,
     );
   }
 }

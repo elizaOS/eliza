@@ -5,6 +5,7 @@
     "jsx": "react-jsx",
     "moduleResolution": "bundler",
     "strict": false,
+    "strictNullChecks": true,
     "skipLibCheck": true,
     "types": ["node", "bun"],
     "typeRoots": [
@@ -30,6 +31,9 @@
       "@elizaos/shared/*": ["../../packages/shared/src/*"],
       "@elizaos/capacitor-wifi": [
         "../../packages/native-plugins/wifi/src/index.ts"
+      ],
+      "@elizaos/capacitor-system": [
+        "../../packages/native-plugins/system/src/index.ts"
       ],
       "@elizaos/capacitor-bun-runtime": [
         "../../packages/native-plugins/bun-runtime/src/index.ts"

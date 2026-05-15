@@ -20,10 +20,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from subprocess import run as _subprocess_run
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -168,13 +170,14 @@ def run_hermes_env(
         else os.environ.get("CEREBRAS_BASE_URL", "https://api.cerebras.ai/v1")
     )
 
+    terminal_backend = _select_terminal_backend(env_id)
     config_env_overrides: dict[str, Any] = {
-        "terminal_backend": "local",
+        "terminal_backend": terminal_backend,
         "use_wandb": False,
     }
     forwarded_args: list[str] = list(extra_args or [])
     if not _has_forwarded_arg(forwarded_args, "--env.terminal_backend"):
-        forwarded_args.append("--env.terminal_backend=local")
+        forwarded_args.append(f"--env.terminal_backend={terminal_backend}")
     if max_tasks is not None:
         # The hermes-agent env CLIs do not expose a single generic
         # max_eval_samples flag. Use each env's supported filter knobs for
@@ -184,7 +187,7 @@ def run_hermes_env(
         elif env_id == "terminalbench_2" and task_filter is None:
             task_filter = "fix-git"
         elif env_id == "yc_bench":
-            config_env_overrides.setdefault("presets", ["fast_test"])
+            config_env_overrides.setdefault("presets", [_select_yc_preset(repo)])
             config_env_overrides.setdefault("seeds", [1])
     if task_filter is not None:
         forwarded_args.append(f"--env.task_filter={task_filter}")
@@ -212,10 +215,7 @@ def run_hermes_env(
     env["OPENAI_API_KEY"] = resolved_api_key
     env["OPENAI_BASE_URL"] = resolved_base_url
     env["OPENAI_MODEL"] = model
-    # Always force local backend — we never want a casual evaluate() to spawn
-    # Modal or Docker workloads silently. Callers who want a different backend
-    # must pass --env.terminal_backend=... in extra_args.
-    env["TERMINAL_ENV"] = "local"
+    env["TERMINAL_ENV"] = terminal_backend
     env["PATH"] = f"{venv_python.parent}{os.pathsep}{env.get('PATH', '')}"
     env.setdefault("PYTHONUNBUFFERED", "1")
 
@@ -256,6 +256,44 @@ def run_hermes_env(
         evals_root=output_dir / "evals" / env_id,
         duration_s=duration,
     )
+
+
+def _select_terminal_backend(env_id: str) -> str:
+    override = os.environ.get("HERMES_BENCH_TERMINAL_BACKEND", "").strip().lower()
+    if override:
+        return override
+    if env_id in {"tblite", "terminalbench_2"}:
+        if _docker_daemon_available():
+            return "docker"
+        if os.environ.get("MODAL_TOKEN_ID") and os.environ.get("MODAL_TOKEN_SECRET"):
+            return "modal"
+    return "local"
+
+
+def _docker_daemon_available() -> bool:
+    if not shutil.which("docker"):
+        return False
+    try:
+        completed = _subprocess_run(
+            ["docker", "info"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=2,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
+
+
+def _select_yc_preset(repo: Path) -> str:
+    candidates = list(
+        (repo / ".venv" / "lib").glob(
+            "python*/site-packages/yc_bench/config/presets/fast_test.toml"
+        )
+    )
+    candidates.append(repo / "environments" / "benchmarks" / "yc_bench" / "fast_test.toml")
+    return "fast_test" if any(path.exists() for path in candidates) else "default"
 
 
 def _has_forwarded_arg(args: list[str], key: str) -> bool:

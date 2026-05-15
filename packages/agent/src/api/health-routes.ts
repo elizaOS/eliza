@@ -1,12 +1,14 @@
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
-import {
-  isCloudProvisionedContainer,
-  resolveCloudApiKey,
-} from "@elizaos/plugin-elizacloud";
-import { getLocalInferenceActiveSnapshot } from "@elizaos/plugin-local-inference";
 import type { ElizaConfig } from "../config/config.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
+
+const { isCloudProvisionedContainer, resolveCloudApiKey } = await import(
+  "@elizaos/plugin-elizacloud"
+);
+const { getLocalInferenceActiveSnapshot } = await import(
+  "@elizaos/plugin-local-inference"
+);
 
 // ---------------------------------------------------------------------------
 // Types

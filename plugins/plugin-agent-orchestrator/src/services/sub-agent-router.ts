@@ -1,11 +1,189 @@
 import { createHash, randomUUID } from "node:crypto";
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  Content,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 
 const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 const DEFAULT_ROUND_TRIP_CAP = 32;
+
+// Matches an http(s) URL embedded in free text. Excludes whitespace,
+// quotes, brackets, parens, backticks AND `*` — so a markdown-bolded link
+// (`**https://...**`) doesn't capture the trailing `**` into the URL.
+const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
+
+// Unicode dash code points weak models substitute for an ASCII hyphen:
+// hyphen U+2010, non-breaking hyphen U+2011, figure dash U+2012, en dash
+// U+2013, em dash U+2014, horizontal bar U+2015, minus sign U+2212.
+const UNICODE_DASHES_RE = /[\u2010-\u2015\u2212]/g;
+
+// A URL (mentioned by a sub-agent, or a page sub-resource) that did not
+// verify as reachable. Shared by the verification pass and the retry path.
+interface DeadUrl {
+  url: string;
+  status: string;
+  /** Set when this URL was discovered as a sub-resource of another page. */
+  via?: string;
+}
+
+function collectVerifiableUrlCandidates(
+  text: string,
+  ignoredUrls?: ReadonlySet<string>,
+): string[] {
+  const seen = new Set<string>();
+  const candidates: string[] = [];
+  for (const match of text.matchAll(URL_IN_TEXT_RE)) {
+    const raw = match[0];
+    const index = match.index ?? -1;
+    const suffix =
+      index >= 0 ? text.slice(index + raw.length, index + raw.length + 4) : "";
+    // Route instructions and docs often contain URL templates such as
+    // `https://host/apps/<slug>/`. The regexp stops before `<slug>`, so the
+    // raw match looks like a real collection URL (`/apps/`). Do not verify
+    // the template stem as if the sub-agent claimed that directory is live.
+    if (suffix.startsWith("<") || suffix.startsWith("&lt;")) continue;
+
+    const url = raw.replace(/[.,;:]+$/, "");
+    // Raw `curl -i` output includes CDN reporting endpoints in `report-to`
+    // headers. They are not part of the built app, and letting them into the
+    // bounded verifier list crowds out real page/assets.
+    if (isTelemetryReportUrl(url)) continue;
+    if (ignoredUrls?.has(url)) continue;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    candidates.push(url);
+  }
+  return candidates;
+}
+
+function extractVerifiableUrls(
+  text: string,
+  limit = 5,
+  referenceText?: string,
+  ignoredUrls?: ReadonlySet<string>,
+): string[] {
+  const candidates = collectVerifiableUrlCandidates(text, ignoredUrls);
+  const filtered = candidates.filter((url) => {
+    const prefix = url.endsWith("/") ? url : `${url}/`;
+    return !candidates.some(
+      (other) => other !== url && other.startsWith(prefix),
+    );
+  });
+  const referenceUrls = referenceText
+    ? new Set(collectVerifiableUrlCandidates(referenceText))
+    : undefined;
+  const routeFocused = referenceUrls?.size
+    ? filterToReferencedAppRoute(filtered, referenceUrls)
+    : filtered;
+  const aliasFiltered = referenceUrls?.size
+    ? filterModelIntroducedUrlAliases(routeFocused, referenceUrls)
+    : routeFocused;
+  return aliasFiltered.slice(0, limit);
+}
+
+function filterModelIntroducedUrlAliases(
+  urls: string[],
+  referenceUrls: Set<string>,
+): string[] {
+  const groups = new Map<string, string[]>();
+  for (const url of urls) {
+    const key = comparableUrlTarget(url);
+    if (!key) continue;
+    const group = groups.get(key) ?? [];
+    group.push(url);
+    groups.set(key, group);
+  }
+
+  const targetsWithReferencedUrl = new Set<string>();
+  for (const [target, group] of groups) {
+    if (group.length > 1 && group.some((url) => referenceUrls.has(url))) {
+      targetsWithReferencedUrl.add(target);
+    }
+  }
+  if (targetsWithReferencedUrl.size === 0) return urls;
+
+  return urls.filter((url) => {
+    const target = comparableUrlTarget(url);
+    if (!target || !targetsWithReferencedUrl.has(target)) return true;
+    if (referenceUrls.has(url)) return true;
+    // Keep loopback aliases: local and public checks often share the same
+    // route path, and both are useful evidence. Drop only model-introduced
+    // external aliases such as a misspelled public hostname.
+    return isLoopbackUrl(url);
+  });
+}
+
+function comparableUrlTarget(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    const pathname = parsed.pathname.replace(/\/+$/, "") || "/";
+    return `${pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function isLoopbackUrl(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === "localhost" || host === "::1" || host.startsWith("127.");
+  } catch {
+    return false;
+  }
+}
+
+function isTelemetryReportUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    return (
+      (host === "a.nel.cloudflare.com" ||
+        host.endsWith(".nel.cloudflare.com")) &&
+      parsed.pathname.startsWith("/report/")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function filterToReferencedAppRoute(
+  urls: string[],
+  referenceUrls: Set<string>,
+): string[] {
+  const routePrefixes = new Set<string>();
+  for (const url of referenceUrls) {
+    const prefix = appRoutePathPrefix(url);
+    if (prefix) routePrefixes.add(prefix);
+  }
+  if (routePrefixes.size === 0) return urls;
+
+  const routeUrls = urls.filter((url) => {
+    try {
+      const pathname = new URL(url).pathname;
+      return [...routePrefixes].some((prefix) => pathname.startsWith(prefix));
+    } catch {
+      return false;
+    }
+  });
+  return routeUrls.length > 0 ? routeUrls : urls;
+}
+
+function appRoutePathPrefix(url: string): string | undefined {
+  try {
+    const pathname = new URL(url).pathname;
+    const match = pathname.match(/^\/apps\/[^/]+(?:\/|$)/);
+    if (!match) return undefined;
+    return match[0].endsWith("/") ? match[0] : `${match[0]}/`;
+  } catch {
+    return undefined;
+  }
+}
 
 /**
  * SubAgentRouter takes terminal-significant ACPX session events
@@ -39,6 +217,8 @@ export class SubAgentRouter {
   private readonly capExceededSessions = new Set<string>();
   private started = false;
   private roundTripCap = DEFAULT_ROUND_TRIP_CAP;
+  private bindRetryTimer: ReturnType<typeof setTimeout> | undefined;
+  private stopped = false;
 
   constructor(runtime: IAgentRuntime) {
     this.runtime = runtime;
@@ -64,27 +244,57 @@ export class SubAgentRouter {
     const capRaw = readSetting(this.runtime, "ACPX_SUB_AGENT_ROUND_TRIP_CAP");
     const parsed = capRaw ? Number.parseInt(capRaw, 10) : NaN;
     if (Number.isFinite(parsed) && parsed > 0) this.roundTripCap = parsed;
-    const acp = this.runtime.getService(
-      "ACP_SUBPROCESS_SERVICE",
-    ) as unknown as AcpService | null;
-    if (!acp || typeof acp.onSessionEvent !== "function") {
+    // Service registration runs in parallel — when router.start() executes,
+    // AcpService may not yet be registered with the runtime, so getService
+    // returns null. Static `dependencies` is not enough to order startup.
+    // Retry binding on a short backoff (or give up after ~10s and stay idle).
+    this.tryBindSources(0);
+  }
+
+  private tryBindSources(attempt: number): void {
+    if (this.stopped) return;
+    const needsAcp = !this.unsubscribe;
+    if (!needsAcp) return;
+
+    if (needsAcp) {
+      const acp = this.runtime.getService(
+        "ACP_SUBPROCESS_SERVICE",
+      ) as AcpService | null;
+      if (acp && typeof acp.onSessionEvent === "function") {
+        this.acp = acp;
+        this.unsubscribe = acp.onSessionEvent((sid, event, data) => {
+          this.handleEvent(sid, event, data).catch((err) => {
+            this.log("error", "router event failed", {
+              sessionId: sid,
+              event,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+        });
+      }
+    }
+    const acpBound = !!this.unsubscribe;
+    if (acpBound) {
+      this.log("info", "router bound to AcpService");
+      return;
+    }
+    // Give up after ~10s of polling and log what we got.
+    if (attempt >= 50) {
       this.log("debug", "AcpService unavailable; router idle");
       return;
     }
-    this.acp = acp;
-    this.unsubscribe = acp.onSessionEvent((sid, event, data) => {
-      this.handleEvent(sid, event, data).catch((err) => {
-        this.log("error", "router event failed", {
-          sessionId: sid,
-          event,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      });
-    });
-    this.log("info", "router bound to AcpService");
+    this.bindRetryTimer = setTimeout(
+      () => this.tryBindSources(attempt + 1),
+      200,
+    );
   }
 
   async stop(): Promise<void> {
+    this.stopped = true;
+    if (this.bindRetryTimer) {
+      clearTimeout(this.bindRetryTimer);
+      this.bindRetryTimer = undefined;
+    }
     this.unsubscribe?.();
     this.unsubscribe = undefined;
     this.acp = null;
@@ -102,7 +312,7 @@ export class SubAgentRouter {
     if (!shouldInject(event)) return;
     const acp = this.acp;
     if (!acp) return;
-    const session = await acp.getSession(sessionId);
+    const session = (await acp.getSession(sessionId)) ?? undefined;
     if (!session) return;
 
     const dedupKey = computeDedupKey(sessionId, event, session, data);
@@ -152,9 +362,88 @@ export class SubAgentRouter {
     const subAgentEntityId = deriveUuidFromString(
       `${this.runtime.agentId}:${SUB_AGENT_ENTITY_NAMESPACE}:${sessionId}`,
     );
-    const text = capExceeded
-      ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
-      : composeNarration(event, origin.label, session, data);
+    // The synthetic sub-agent entityId is a deterministic UUID for the
+    // session — but it doesn't exist in the entities table yet, so the
+    // FK on memories.entity_id rejects the insert and the router post
+    // dies before the planner ever sees it.
+    //
+    // Create just the entity, NOT a full ensureConnection. ensureConnection
+    // upserts the room with `channelId: c.channelId ?? c.roomId` — we don't
+    // have the source channelId snowflake here, so it would overwrite the
+    // Discord plugin's `channelId = snowflake` with `channelId = UUID` and
+    // break outbound delivery via runtime.sendMessageToTarget. The room
+    // already exists (the user's inbound Discord message created it); we
+    // only need the entity + room participation.
+    await this.runtime
+      .createEntity({
+        id: subAgentEntityId,
+        agentId: this.runtime.agentId,
+        names: [`sub-agent: ${origin.label}`],
+        metadata: {
+          [ACPX_ROUTER_SOURCE]: {
+            subAgentSessionId: sessionId,
+            subAgentAgentType: session.agentType,
+          },
+        },
+      })
+      .catch((err) => {
+        this.log("warn", "createEntity for sub-agent failed", {
+          sessionId,
+          event,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    await this.runtime
+      .addParticipant(subAgentEntityId, origin.roomId)
+      .catch((err) => {
+        this.log("warn", "addParticipant for sub-agent failed", {
+          sessionId,
+          event,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    // Normalize URLs in the sub-agent's narration before anything else
+    // reads it. Weak coding models (gpt-oss-class) emit Unicode look-alike
+    // dashes (non-breaking hyphen U+2011, en/em dashes) inside URLs, so the
+    // link 404s even though the directory exists under the ASCII-hyphen
+    // name — breaking it for both the verification probe AND the user.
+    const baseText = normalizeUrlsInText(
+      capExceeded
+        ? `[sub-agent: ${origin.label} (${session.agentType}) — round-trip cap exceeded]\nThis session reached ${nextCount} round-trips (cap=${this.roundTripCap}) and was force-stopped to prevent a runaway loop. Decide whether to spawn a fresh session, escalate to the user, or drop the task.`
+        : composeNarration(event, origin.label, session, data),
+    );
+    // Fact-check any URLs the sub-agent claimed. Weak coding models
+    // routinely report "the app is live at <url>" without writing the
+    // files (or the deps the page references). Independently probing each
+    // claimed URL — and following an HTML page's own sub-resources —
+    // turns the parent's reply from a hallucinated success into an
+    // accurate status report.
+    let text = baseText;
+    let deadUrls: DeadUrl[] = [];
+    if (event === "task_complete") {
+      const meta = session.metadata as Record<string, unknown> | undefined;
+      const verificationReferenceText =
+        typeof meta?.initialTask === "string" ? meta.initialTask : undefined;
+      const ignoredVerifyUrls = pickStringSet(meta?.cachedStaleMissUrls);
+      const verified = await annotateUnverifiedUrls(
+        baseText,
+        (m) => this.log("debug", m),
+        verificationReferenceText,
+        ignoredVerifyUrls,
+        this.runtime,
+      );
+      text = verified.text;
+      deadUrls = verified.dead;
+    }
+    // Verify-retry: the sub-agent reported done but referenced URLs that
+    // are unreachable — the build is incomplete (missing or empty files).
+    // Re-dispatch a fresh sub-agent with the verification failures fed
+    // back in, before surfacing the failure to the user. When a retry is
+    // spawned, suppress this post — the retry's own task_complete reports.
+    if (event === "task_complete" && deadUrls.length > 0) {
+      const retried = await this.retryIncompleteBuild(session, deadUrls);
+      if (retried) return;
+    }
     const memory: Memory = {
       id: randomUUID() as UUID,
       entityId: subAgentEntityId,
@@ -187,17 +476,24 @@ export class SubAgentRouter {
       createdAt: Date.now(),
     };
 
-    await this.runtime.createMemory(memory, "messages").catch((err) => {
-      this.log("warn", "createMemory for sub-agent post failed", {
-        sessionId,
-        event,
-        error: err instanceof Error ? err.message : String(err),
-      });
-    });
-
+    // The Discord plugin wires a callback bound to the originating channel
+    // when it calls handleMessage; without that callback, the planner has
+    // nowhere to deliver its reply and the bot's answer to the sub-agent
+    // narration is dropped silently (the user sees only "On it…" and never
+    // the actual result). For synthetic router posts we build the same
+    // callback from `runtime.sendMessageToTarget`, scoped to the origin
+    // source/room. If the connector isn't registered, fall through to
+    // handleMessage without a callback — the planner will still update
+    // state but no message reaches the user.
+    const replyCallback = this.buildReplyCallback(origin, sessionId);
+    // messageService.handleMessage saves the memory itself ("Saving message
+    // to memory" inside SERVICE:MESSAGE). When that path is available, skip
+    // the explicit createMemory — otherwise we double-save with the same
+    // primary key and the second insert dies on a unique-constraint
+    // violation, killing the planner trip and dropping the sub-agent answer.
     if (this.runtime.messageService?.handleMessage) {
       await this.runtime.messageService
-        .handleMessage(this.runtime, memory, undefined)
+        .handleMessage(this.runtime, memory, replyCallback)
         .catch((err) => {
           this.log("error", "handleMessage for sub-agent post failed", {
             sessionId,
@@ -214,6 +510,13 @@ export class SubAgentRouter {
           event,
         },
       );
+      await this.runtime.createMemory(memory, "messages").catch((err) => {
+        this.log("warn", "createMemory for sub-agent post failed", {
+          sessionId,
+          event,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
       const emit = this.runtime.emitEvent.bind(this.runtime) as (
         name: string,
         payload: { source: string; message: Memory; runtime: IAgentRuntime },
@@ -223,6 +526,166 @@ export class SubAgentRouter {
         message: memory,
         source: ACPX_ROUTER_SOURCE,
       });
+    }
+  }
+
+  private buildReplyCallback(
+    origin: OriginInfo,
+    sessionId: string,
+  ): HandlerCallback | undefined {
+    const sendToTarget = (
+      this.runtime as unknown as {
+        sendMessageToTarget?: (
+          target: { source: string; roomId?: UUID; accountId?: string },
+          content: Content,
+        ) => Promise<Memory | undefined>;
+      }
+    ).sendMessageToTarget?.bind(this.runtime);
+    if (!sendToTarget) return undefined;
+    const source = origin.source;
+    if (!source) return undefined;
+    return async (response: Content): Promise<Memory[]> => {
+      const text =
+        typeof response?.text === "string" ? response.text.trim() : "";
+      if (!text) return [];
+      const delivered = await sendToTarget(
+        {
+          source,
+          roomId: origin.roomId,
+        },
+        response,
+      ).catch((err) => {
+        this.log("warn", "sub-agent reply delivery failed", {
+          sessionId,
+          source,
+          roomId: origin.roomId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+        return undefined;
+      });
+      return delivered ? [delivered] : [];
+    };
+  }
+
+  /**
+   * Re-dispatch a sub-agent when its claimed URLs verify as unreachable —
+   * an incomplete build (missing or empty files). Returns true if a retry
+   * was spawned (the caller suppresses the parent post and lets the
+   * retry's own task_complete report the outcome). Returns false when
+   * retries are disabled, the budget is exhausted, the original task is
+   * unavailable, or no spawn service is registered — in which case the
+   * caller posts the honest "build incomplete" report instead.
+   *
+   * Bounded by ELIZA_BUILD_VERIFY_MAX_RETRIES (default 2; 0 disables).
+   * The retry count rides on the spawned session's metadata so a whole
+   * lineage of retries shares one budget. Mirrors the APP-create
+   * verification-retry pattern.
+   */
+  private async retryIncompleteBuild(
+    session: SessionInfo,
+    dead: DeadUrl[],
+  ): Promise<boolean> {
+    const maxRetriesRaw =
+      readSetting(this.runtime, "ELIZA_BUILD_VERIFY_MAX_RETRIES") ?? "2";
+    const maxRetries = Number.parseInt(maxRetriesRaw, 10);
+    if (!Number.isFinite(maxRetries) || maxRetries <= 0) return false;
+
+    const meta = (session.metadata ?? {}) as Record<string, unknown>;
+    const priorRetries =
+      typeof meta.buildVerifyRetryCount === "number"
+        ? meta.buildVerifyRetryCount
+        : 0;
+    if (priorRetries >= maxRetries) {
+      this.log(
+        "info",
+        "build still incomplete after verify-retry budget exhausted",
+        { sessionId: session.id, retries: priorRetries, maxRetries },
+      );
+      return false;
+    }
+
+    // The original task is stashed on metadata by TASKS op=spawn_agent —
+    // SessionInfo itself doesn't carry it.
+    const originalTask =
+      typeof meta.initialTask === "string" ? meta.initialTask.trim() : "";
+    if (!originalTask) return false;
+
+    const service =
+      this.acp ??
+      (this.runtime.getService("ACP_SUBPROCESS_SERVICE") as AcpService | null);
+    if (!service?.spawnSession) return false;
+
+    const nextRetry = priorRetries + 1;
+    const cachedStaleMissUrls = mergeCachedStaleMissUrls(
+      pickStringSet(meta.cachedStaleMissUrls),
+      dead,
+    );
+    const cachedDead = dead.filter((entry) =>
+      entry.status.includes("cached stale miss"),
+    );
+    const missingDead = dead.filter(
+      (entry) => !entry.status.includes("cached stale miss"),
+    );
+    const formatDeadLines = (entries: DeadUrl[]) =>
+      entries
+        .map((d) =>
+          d.via
+            ? `  - ${d.url} (referenced by ${d.via}) → ${d.status}`
+            : `  - ${d.url} → ${d.status}`,
+        )
+        .join("\n");
+    const cachedFeedback =
+      cachedDead.length > 0
+        ? `\nThese URL(s) are stale cached 404s. Their exact filenames are unavailable for this retry; do not recreate them and do not leave any HTML reference pointing to them. Create fresh asset filenames in the same app directory (for example, add a version suffix), update every HTML reference to the fresh filenames, then verify the fresh public URLs:\n${formatDeadLines(cachedDead)}\n`
+        : "";
+    const missingFeedback =
+      missingDead.length > 0
+        ? `\nThese URL(s) are not reachable, which means the corresponding files are missing, empty, or served from the wrong path. Create or fix every one of these files in the location the task specifies, then verify each file exists and is non-empty:\n${formatDeadLines(missingDead)}\n`
+        : "";
+    const retryTask = `--- VERIFICATION FEEDBACK (retry ${nextRetry}/${maxRetries}) ---
+The previous attempt reported the task complete, but verification failed. This feedback overrides conflicting filename or URL instructions in the original task.${cachedFeedback}${missingFeedback}
+Original task for context:
+${originalTask}
+
+Do not report done until every referenced URL in the final page resolves without verification errors.`;
+
+    try {
+      const result = await service.spawnSession({
+        agentType: session.agentType,
+        workdir: session.workdir,
+        initialTask: retryTask,
+        approvalPreset: session.approvalPreset,
+        // Carry the original metadata forward — origin routing keys
+        // (roomId/source/...) plus the unchanged `initialTask` — and bump
+        // the shared retry counter so the lineage stays bounded.
+        metadata: {
+          ...meta,
+          buildVerifyRetryCount: nextRetry,
+          keepAliveAfterComplete: false,
+          retryOfSessionId: session.id,
+          ...(cachedStaleMissUrls.size > 0
+            ? { cachedStaleMissUrls: [...cachedStaleMissUrls] }
+            : {}),
+        },
+      });
+      this.log("info", "re-dispatched sub-agent after failed verification", {
+        sessionId: session.id,
+        retrySessionId: result.sessionId,
+        retry: nextRetry,
+        maxRetries,
+        deadCount: dead.length,
+      });
+      return true;
+    } catch (err) {
+      this.log(
+        "warn",
+        "verify-retry spawn failed; surfacing the failure instead",
+        {
+          sessionId: session.id,
+          error: err instanceof Error ? err.message : String(err),
+        },
+      );
+      return false;
     }
   }
 
@@ -285,6 +748,26 @@ function pickLabel(meta: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
+function pickStringSet(value: unknown): Set<string> {
+  if (!Array.isArray(value)) return new Set();
+  return new Set(
+    value.filter((v): v is string => typeof v === "string" && v.length > 0),
+  );
+}
+
+function mergeCachedStaleMissUrls(
+  prior: Set<string>,
+  dead: DeadUrl[],
+): Set<string> {
+  const merged = new Set(prior);
+  for (const entry of dead) {
+    if (entry.status.includes("cached stale miss")) {
+      merged.add(entry.url);
+    }
+  }
+  return merged;
+}
+
 function pickPayloadString(data: unknown, key: string): string | undefined {
   if (!data || typeof data !== "object") return undefined;
   const v = (data as Record<string, unknown>)[key];
@@ -316,6 +799,244 @@ function composeNarration(
     pickPayloadString(data, "finalText") ??
     "sub-agent reports task complete (no captured output).";
   return `${header}\n${response}`;
+}
+
+/**
+ * GET-check every http(s) URL a sub-agent claimed in its completion text —
+ * and, for any that return HTML, follow the page's own declared
+ * sub-resources (`<link href>` / `<script src>`) and check those too.
+ * The sub-agent's claim ("the app is live at X") is treated as a
+ * hypothesis, not a fact — the parent agent should see ground truth.
+ *
+ * Why follow sub-resources: a weak coding model routinely writes the
+ * entry `index.html` but drops the `style.css` / `app.js` it references.
+ * The index URL then returns 200 while the app is visibly broken — only
+ * probing the mentioned URL would pass it as "live". Following the page's
+ * declared dependencies catches the partial build.
+ *
+ * Conservative by design:
+ *  - only runs on `task_complete` text (not errors/blocked)
+ *  - caps at the first 5 distinct mentioned URLs + their sub-resources
+ *  - 4s per-request timeout, failures (DNS, timeout, refused) count as
+ *    unverified rather than throwing
+ *  - one short settle-retry before declaring a URL dead, covering a
+ *    transient network blip on the checker side
+ *  - never strips the original text — it only appends an annotation, so a
+ *    transient network blip on the checker side degrades to "couldn't
+ *    verify" rather than hiding a real success
+ *
+ * Callers should pass text that has already been through
+ * {@link normalizeUrlsInText} so Unicode-dash-corrupted URLs are probed in
+ * their intended form.
+ */
+async function annotateUnverifiedUrls(
+  text: string,
+  log?: (message: string) => void,
+  referenceText?: string,
+  ignoredUrls?: ReadonlySet<string>,
+  runtime?: IAgentRuntime,
+): Promise<{ text: string; dead: DeadUrl[] }> {
+  const urls = extractVerifiableUrls(text, 5, referenceText, ignoredUrls);
+  if (urls.length === 0) return { text, dead: [] };
+  log?.(
+    `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,
+  );
+  // GET-probe a URL with a 4s timeout. On a 2xx HTML response also returns
+  // the body so the caller can follow the page's sub-resources. (GET, not
+  // HEAD: we need the body for HTML, and many static hosts reject HEAD.)
+  const probeOnce = async (
+    url: string,
+  ): Promise<{ status: string | null; html?: string }> => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    try {
+      const res = await fetch(url, {
+        method: "GET",
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      // 405/501 mean the server IS reachable — it just won't serve a GET.
+      // Sub-agents routinely dump raw HTTP headers into their narration
+      // (a `curl -i`), and those headers carry incidental URLs — CDN
+      // telemetry endpoints (`report-to`/NEL), POST-only APIs — that 405 a
+      // GET. For a liveness check that URL exists, so it is NOT dead;
+      // flagging it would trigger a pointless retry of a build that
+      // actually succeeded.
+      if (res.status === 405 || res.status === 501) {
+        log?.(
+          `[verify] probe ${url} → HTTP ${res.status} (reachable; GET not allowed) @ ${new Date().toISOString()}`,
+        );
+        return { status: null };
+      }
+      if (res.status < 200 || res.status >= 300) {
+        const cachedMiss = await detectCachedMiss(url, res, controller.signal);
+        if (cachedMiss) {
+          log?.(
+            `[verify] probe ${url} → HTTP ${res.status} (cached stale miss; cache-busting probe returned ${cachedMiss.status}) @ ${new Date().toISOString()}`,
+          );
+          return {
+            status: `HTTP ${res.status} (cached stale miss; cache-busting probe returned ${cachedMiss.status})`,
+          };
+        }
+        log?.(
+          `[verify] probe ${url} → HTTP ${res.status} @ ${new Date().toISOString()}`,
+        );
+        return { status: `HTTP ${res.status}` };
+      }
+      const contentType = res.headers.get("content-type") ?? "";
+      log?.(
+        `[verify] probe ${url} → ${res.status} (${contentType.split(";")[0] || "?"}) @ ${new Date().toISOString()}`,
+      );
+      if (contentType.includes("text/html")) {
+        return { status: null, html: await res.text() };
+      }
+      return { status: null };
+    } catch (err) {
+      const reason = err instanceof Error ? err.name : "unreachable";
+      log?.(`[verify] probe ${url} → ${reason} @ ${new Date().toISOString()}`);
+      return { status: reason };
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+  // One short settle-retry. `task_complete` fires after the sub-agent's
+  // file writes have landed (verified against real timelines), and the
+  // static host serves from disk with no cache lag — so a single retry is
+  // only there to ride out a transient network blip on the checker side,
+  // not a write→serve race. Tunable via ELIZA_URL_VERIFY_SETTLE_MS
+  // (default 2500ms); 0 disables the retry (single probe).
+  const settleRaw = runtime
+    ? readSetting(runtime, "ELIZA_URL_VERIFY_SETTLE_MS")
+    : process.env.ELIZA_URL_VERIFY_SETTLE_MS;
+  const settleParsed = settleRaw ? Number.parseInt(settleRaw, 10) : 2500;
+  const settleMs =
+    Number.isFinite(settleParsed) && settleParsed >= 0 ? settleParsed : 2500;
+  const probe = async (
+    url: string,
+  ): Promise<{ status: string | null; html?: string }> => {
+    let result = await probeOnce(url);
+    if (result.status !== null && settleMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, settleMs));
+      result = await probeOnce(url);
+    }
+    return result;
+  };
+  const dead: DeadUrl[] = [];
+  await Promise.all(
+    urls.map(async (url) => {
+      const result = await probe(url);
+      if (result.status !== null) {
+        dead.push({ url, status: result.status });
+        return;
+      }
+      // Follow the page's own declared dependencies — a 200 index.html
+      // that <link>s a missing style.css is still a broken app.
+      if (result.html) {
+        const subResources = extractSubResources(result.html, url);
+        await Promise.all(
+          subResources.map(async (subUrl) => {
+            const subResult = await probe(subUrl);
+            if (subResult.status !== null) {
+              dead.push({ url: subUrl, status: subResult.status, via: url });
+            }
+          }),
+        );
+      }
+    }),
+  );
+  log?.(
+    `[verify] done @ ${new Date().toISOString()} — ${dead.length} dead of ${urls.length} mentioned`,
+  );
+  if (dead.length === 0) return { text, dead };
+  const lines = dead
+    .map((d) =>
+      d.via
+        ? `  - ${d.url} → ${d.status} (referenced by ${d.via})`
+        : `  - ${d.url} → ${d.status}`,
+    )
+    .join("\n");
+  return {
+    text: `${text}\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live; report the real status and that the build likely did not complete]\n${lines}`,
+    dead,
+  };
+}
+
+async function detectCachedMiss(
+  url: string,
+  res: Response,
+  signal: AbortSignal,
+): Promise<{ status: number } | null> {
+  if (res.status !== 404) return null;
+  let busted: URL;
+  try {
+    busted = new URL(url);
+  } catch {
+    return null;
+  }
+  // Some static hosts/CDNs serve a stale cached 404 without useful cache
+  // headers. A same-URL cache-bust probe distinguishes that case from a real
+  // missing file without treating arbitrary non-404 failures as cache issues.
+  busted.searchParams.set("__eliza_verify", Date.now().toString(36));
+  const bustedRes = await fetch(busted, {
+    method: "GET",
+    redirect: "follow",
+    signal,
+  }).catch(() => null);
+  if (!bustedRes) return null;
+  return bustedRes.status >= 200 && bustedRes.status < 300
+    ? { status: bustedRes.status }
+    : null;
+}
+
+/**
+ * Extract the sub-resource URLs an HTML document declares via
+ * `<link href>` and `<script src>`, resolved absolute against the page
+ * URL. Mechanical extraction from a structured document — not intent
+ * classification. Skips in-page anchors and data:/mailto: refs, and caps
+ * the result so a pathological page can't fan out unbounded probes.
+ */
+export function extractSubResources(html: string, pageUrl: string): string[] {
+  const refs = new Set<string>();
+  const attrRe =
+    /<(?:link|script)\b[^>]*?\b(?:href|src)\s*=\s*["']([^"']+)["']/gi;
+  let match: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: standard regex-exec loop
+  while ((match = attrRe.exec(html)) !== null) {
+    const ref = match[1]?.trim();
+    if (
+      !ref ||
+      ref.startsWith("#") ||
+      ref.startsWith("data:") ||
+      ref.startsWith("mailto:")
+    ) {
+      continue;
+    }
+    try {
+      const resolved = new URL(ref, pageUrl);
+      if (resolved.protocol === "http:" || resolved.protocol === "https:") {
+        refs.add(resolved.toString());
+      }
+    } catch {
+      // unparseable ref — skip
+    }
+    if (refs.size >= 10) break;
+  }
+  return [...refs];
+}
+
+/**
+ * Normalize http(s) URLs embedded in free text: replace Unicode look-alike
+ * dashes (non-breaking hyphen, en/em dash, …) with an ASCII hyphen. Weak
+ * coding models emit these inside URLs, which makes the link 404 even
+ * though the target exists under the ASCII-hyphen name — broken for both
+ * the verification probe and the user clicking it. Only dash characters
+ * inside a URL are touched; surrounding prose (where an em dash is
+ * legitimate punctuation) is left untouched.
+ */
+export function normalizeUrlsInText(text: string): string {
+  return text.replace(URL_IN_TEXT_RE, (url) =>
+    url.replace(UNICODE_DASHES_RE, "-"),
+  );
 }
 
 function computeDedupKey(

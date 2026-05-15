@@ -7,7 +7,7 @@ Manages local JSON data files for the simplified Email MCP server.
 import json
 import os
 import sys
-from typing import Dict, List, Optional, Any
+from typing import List, Optional
 from datetime import datetime, timezone
 
 
@@ -791,7 +791,6 @@ class EmailDatabase:
             # Extract filename from path
             filename = os.path.basename(path)
             file_size = os.path.getsize(path)
-            content_base64 = None
 
             # For files smaller than 10MB, include base64 content
             # This allows the attachment to be accessed even if the original file is moved
@@ -799,7 +798,7 @@ class EmailDatabase:
                 try:
                     with open(path, 'rb') as f:
                         file_content = f.read()
-                        content_base64 = base64.b64encode(file_content).decode('utf-8')
+                        base64.b64encode(file_content).decode('utf-8')
                 except Exception as e:
                     print(f"Warning: Could not read attachment content from {path}: {e}", file=sys.stderr)
 

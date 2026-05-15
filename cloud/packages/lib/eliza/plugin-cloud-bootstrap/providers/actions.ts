@@ -101,11 +101,7 @@ type ValidationCacheEntry = {
 
 const validationCache = new Map<string, ValidationCacheEntry>();
 
-function numberSetting(
-  runtime: IAgentRuntime,
-  key: string,
-  fallback: number,
-): number {
+function numberSetting(runtime: IAgentRuntime, key: string, fallback: number): number {
   const env =
     typeof globalThis === "object" && "process" in globalThis
       ? (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env
@@ -224,13 +220,16 @@ export const actionsProvider: Provider = {
 
       if (!cached) {
         const actionValidateTimeoutMs = numberSetting(runtime, "ACTIONS_VALIDATE_TIMEOUT_MS", 250);
-        const providerValidationBudgetMs = numberSetting(runtime, "ACTIONS_PROVIDER_VALIDATION_BUDGET_MS", 1200);
-        const lastGoodCacheTtlMs = numberSetting(runtime, "ACTIONS_LAST_GOOD_CACHE_TTL_MS", 120_000);
-        const freshLastGood =
-          lastGoodValidation && Date.now() - lastGoodValidation.createdAt < lastGoodCacheTtlMs
-            ? lastGoodValidation
-            : null;
-
+        const providerValidationBudgetMs = numberSetting(
+          runtime,
+          "ACTIONS_PROVIDER_VALIDATION_BUDGET_MS",
+          1200,
+        );
+        const lastGoodCacheTtlMs = numberSetting(
+          runtime,
+          "ACTIONS_LAST_GOOD_CACHE_TTL_MS",
+          120_000,
+        );
         let actionsData: Action[];
         if (isImageGenerationRequest(message)) {
           // Media/ad turns need a deterministic tiny catalog. Do this before
@@ -238,9 +237,11 @@ export const actionsProvider: Provider = {
           // reply window filtering/formatting hundreds of unrelated actions
           // and then hide the image/ad action behind a provider timeout.
           actionsData = narrowActionsForIntent(runtime.actions, message);
-        } else if (freshLastGood) {
-          actionsData = freshLastGood.actions;
         } else {
+          const freshLastGood =
+            lastGoodValidation && Date.now() - lastGoodValidation.createdAt < lastGoodCacheTtlMs
+              ? lastGoodValidation
+              : null;
           const validation = Promise.all(
             runtime.actions.map((action: Action) =>
               validateActionFast(action, runtime, message, state, actionValidateTimeoutMs),
@@ -255,9 +256,9 @@ export const actionsProvider: Provider = {
           const validationResult = await Promise.race([validation, timed]);
           if (validationResult === "timeout") {
             logger.warn(
-              `[ACTIONS] validation exceeded ${providerValidationBudgetMs}ms; using unvalidated action catalog for this turn`,
+              `[ACTIONS] validation exceeded ${providerValidationBudgetMs}ms; using last-good action catalog for this turn`,
             );
-            actionsData = runtime.actions;
+            actionsData = freshLastGood?.actions ?? runtime.actions;
           } else {
             actionsData = validationResult;
           }

@@ -1,6 +1,7 @@
 import { CString, dlopen, FFIType, type Pointer, ptr } from "bun:ffi";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { resolveNativeLibraryCandidate } from "@elizaos/app-core/platform/native-library-policy";
+import { assertDlopenPathAllowed } from "@elizaos/core";
 
 /**
  * Typed interface for the symbols loaded from libMacWindowEffects.dylib.
@@ -25,16 +26,33 @@ type MacEffectsSymbols = {
 type LoadedMacEffectsLib = { symbols: MacEffectsSymbols; close(): void };
 type MacEffectsLib = LoadedMacEffectsLib | null;
 
+const MAC_EFFECTS_DYLIB = "libMacWindowEffects.dylib";
+
 let _lib: MacEffectsLib | undefined;
 
 function loadLib(): MacEffectsLib {
-	const dylibPath = join(import.meta.dir, "../libMacWindowEffects.dylib");
-	if (!existsSync(dylibPath)) {
+	const defaultDylibPath = join(import.meta.dir, "../", MAC_EFFECTS_DYLIB);
+	const dylibPath = resolveNativeLibraryCandidate(
+		{ label: "bundled Mac window effects library", path: defaultDylibPath },
+		{
+			expectedBasename: MAC_EFFECTS_DYLIB,
+			moduleDir: import.meta.dir,
+			warn: (message) => console.warn(`[MacEffects] ${message}`),
+		},
+	);
+	if (!dylibPath) {
 		console.warn(
-			`[MacEffects] Dylib not found at ${dylibPath}. Run 'bun run build:native-effects'.`,
+			`[MacEffects] Dylib not found at ${defaultDylibPath}. Run 'bun run build:native-effects'.`,
 		);
 		return null;
 	}
+	// Store-build invariant: every bun:ffi dlopen path must resolve inside the
+	// app bundle. Direct builds and non-darwin platforms short-circuit. Throws
+	// on a path that escapes the .app/Contents/ root before reaching the OS
+	// loader so failures are diagnosable at the JS layer instead of via opaque
+	// dyld errors.
+	assertDlopenPathAllowed(dylibPath);
+
 	try {
 		// Cast to MacEffectsLib: bun:ffi does not infer symbol signatures from
 		// FFIType descriptors at the TypeScript level.

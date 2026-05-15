@@ -8,6 +8,7 @@
       "DOM"
     ],
     "strict": false,
+    "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
@@ -26,7 +27,7 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": false
+    "noUncheckedIndexedAccess": true
   },
   "include": [
     "./**/*.ts"

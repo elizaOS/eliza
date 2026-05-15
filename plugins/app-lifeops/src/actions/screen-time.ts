@@ -265,7 +265,7 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
     description:
       "One of: summary, today, weekly, weekly_average_by_app, by_app, by_website, activity_report, time_on_app, time_on_site, browser_activity.",
     descriptionCompressed:
-      "screen-time op: summary|today|weekly|weekly_average_by_app|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+      "screen-time summary|today|weekly|avg_app|by_app|by_website|activity|time_app|time_site",
     required: false,
     schema: {
       type: "string" as const,
@@ -356,9 +356,7 @@ export const SCREEN_TIME_PARAMETERS: readonly ActionParameter[] = [
 /**
  * Handler function backing the OWNER_SCREENTIME umbrella.
  *
- * Folded out of the legacy `SCREEN_TIME` action surface — Audit F. The
- * umbrella in `./owner-surfaces.ts` is the only caller; no `SCREEN_TIME`-named
- * action is registered.
+ * Called from `./owner-surfaces.ts`; no `SCREEN_TIME`-named action is registered.
  */
 export async function runScreenTimeHandler(
   runtime: IAgentRuntime,

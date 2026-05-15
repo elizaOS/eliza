@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Transaction } from "./types";
+import type { Transaction, TransactionType as DomainTransactionType } from "./types";
 
 /**
  * Core schema definitions for community-trader plugin
@@ -74,7 +74,7 @@ function toTransaction(output: TransactionSchemaOutput): Transaction {
 		chain: output.chain,
 		tokenAddress: output.tokenAddress,
 		transactionHash: output.transactionHash,
-		type: output.type,
+		type: output.type as DomainTransactionType,
 		amount: output.amount.toString(),
 		price: output.price?.toString() ?? "0",
 		isSimulation: output.isSimulation,

@@ -1216,27 +1216,8 @@ const CHANNEL_ENV_MAP = CONNECTOR_ENV_MAP;
 
 export { CORE_PLUGINS, OPTIONAL_CORE_PLUGINS };
 
-/**
- * Optional plugins that require native binaries or specific config.
- * These are only loaded when explicitly enabled via features config,
- * NOT by default — they crash if their prerequisites are missing.
- */
-const _OPTIONAL_NATIVE_PLUGINS: readonly string[] = [
-  "@elizaos/plugin-browser", // requires browser server binary
-  "@elizaos/plugin-vision", // requires @tensorflow/tfjs-node native addon
-  "@elizaos/plugin-computeruse", // requires platform-specific binaries
-];
-
 // CHANNEL_PLUGIN_MAP, PROVIDER_PLUGIN_MAP, and OPTIONAL_PLUGIN_MAP live in
 // ./plugin-collector.ts and are re-exported from this module for backward compatibility.
-
-// ---------------------------------------------------------------------------
-// Custom / drop-in plugin discovery (moved to plugin-types.ts)
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Plugin resolution
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Browser server pre-flight
@@ -1317,9 +1298,6 @@ function isElizaCloudManagedProcessEnvKey(key: string): boolean {
     upper === "ELIZAOS_CLOUD_PLANNER_MODEL"
   );
 }
-
-// findPluginBrowserStagehandDir, ensureBrowserServerLink,
-// repairBrokenInstallRecord, resolvePackageEntry — moved to plugin-types.ts
 
 // ---------------------------------------------------------------------------
 // Config → Character mapping
@@ -2836,10 +2814,8 @@ export async function startEliza(
   // 2d. Propagate database config into process.env for plugin-sql
   applyDatabaseConfigToEnv(config);
 
-  // 2e. Boot-time vault hydration. Migrate plaintext sensitive values from
-  // eliza.json + config.env + sensitive process.env keys into the OS-keychain
-  // vault, then resolve any vault://KEY sentinels in `config.env` so the
-  // legacy hydration loop below sees real values.
+  // Boot-time vault hydration: migrate plaintext sensitive values into the
+  // OS-keychain vault and resolve vault://KEY sentinels in config.env.
   //
   // Skipped on mobile. `hydrateWalletKeysFromNodePlatformSecureStore` and
   // `runVaultBootstrap` both reach for the OS keychain through
@@ -4282,6 +4258,7 @@ export async function startEliza(
     // Log to both stderr (visible to Electrobun agent.ts) and the in-memory
     // logger so the error is never silently swallowed in packaged builds.
     const apiErrMsg = `[eliza] Could not start API server: ${formatError(apiErr)}`;
+    console.error(apiErrMsg);
     logger.error(apiErrMsg);
 
     // In server-only mode (Electrobun desktop), a missing API server is fatal

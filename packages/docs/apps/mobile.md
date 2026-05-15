@@ -50,8 +50,7 @@ plugin, agent orchestrator, and optional AVF/Microdroid boundary when the
 device image exposes those APIs. The Android template includes a reflection-only
 AVF probe, but the Microdroid payload/RPC lifecycle is still AOSP-only follow-up
 work. Claims about AOSP terminal behavior remain tracked as TODO-AOSP-PTY and
-TODO-AOSP-TOOLCHAIN in
-[`docs/mobile-agentic-ide-platform-plan.md`](../../../docs/mobile-agentic-ide-platform-plan.md).
+TODO-AOSP-TOOLCHAIN in this page's runtime policy.
 
 Use `bun run build:android:cloud` from the repository root for a Play-store
 style release AAB thin client; `android-cloud-debug` is only for debug APK
@@ -348,7 +347,7 @@ Native haptic feedback for touch interactions (core Capacitor plugin, not custom
 
 ## Plugin Bridge Layer
 
-The plugin bridge provides a unified interface to all plugins with automatic platform detection and error handling.
+The plugin bridge provides a canonical interface to all plugins with automatic platform detection and error handling.
 
 ### Capability Detection
 
@@ -474,7 +473,7 @@ isStorageBridgeInitialized(); // boolean
 
 ## Capacitor Bridge
 
-The global bridge object is exposed on `window.Eliza` and provides a unified API for all native capabilities.
+The global bridge object is exposed on `window.Eliza` and provides a canonical API for all native capabilities.
 
 ### Properties
 

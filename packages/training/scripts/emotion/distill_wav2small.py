@@ -15,7 +15,7 @@ License + redistribution contract (R3-emotion §6 — risks):
     CC-BY-NC-SA-4.0. We **only use the teacher to generate V-A-D pseudo-labels
     on user-provided audio**. We **never redistribute the teacher weights**.
   - Student weights produced by this script ship under Apache-2.0 alongside
-    the eliza-1 voice bundle (consistent with the rest of `elizaos/eliza-1-*`).
+    the eliza-1 voice bundle (consistent with the rest of `elizaos/eliza-1`).
   - The `audeering` teacher cannot be embedded in any shipped artifact; this
     script downloads it on the training box only, into the user's HF cache.
 

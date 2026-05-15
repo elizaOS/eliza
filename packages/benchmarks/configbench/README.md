@@ -9,7 +9,7 @@ A comprehensive benchmark for testing ElizaOS **built-in secrets** (`@elizaos/co
 cd benchmarks/configbench
 bun run src/index.ts
 
-# Run with Eliza LLM agent (requires GROQ_API_KEY or OPENAI_API_KEY)
+# Run with Eliza LLM agent (requires a configured LLM provider key)
 bun run src/index.ts --eliza
 
 # Verbose output with per-scenario traces
@@ -36,6 +36,12 @@ bun run src/index.ts --verbose
 | **Failing (Anti-Oracle)** | No | Deliberately fails everything, leaks secrets | ~0% |
 | **Random (Coin Flip)** | No | 50/50 correct/incorrect at each decision point | ~25-50% |
 | **Eliza (LLM Agent)** | Yes | Real ElizaOS runtime with both plugins + LLM inference | Measured |
+
+If the Eliza runtime cannot complete adapter setup (for example, the configured
+OpenAI-compatible provider lacks a usable `TEXT_EMBEDDING` backend), ConfigBench
+marks the Eliza handler as setup-incompatible and excludes it from scored
+handler results. This prevents setup failures from being published as a real
+0% benchmark score.
 
 ### Scoring
 
@@ -101,6 +107,7 @@ Results are written to `results/`:
 | 1 | Eliza handler had security violations |
 | 2 | Validation failed (Perfect handler < 100%) |
 | 3 | Fatal error |
+| 4 | Eliza handler setup-incompatible (non-publishable result) |
 
 ## Security Fixes Applied
 

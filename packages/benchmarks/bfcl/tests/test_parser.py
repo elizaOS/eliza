@@ -4,7 +4,9 @@ Tests for BFCL Function Call Parser
 
 import pytest
 
+from benchmarks.bfcl.dataset import BFCLDataset, _infer_default_from_description
 from benchmarks.bfcl.parser import FunctionCallParser
+from benchmarks.bfcl.types import BFCLConfig
 
 
 class TestFunctionCallParser:
@@ -177,3 +179,36 @@ I've called the function above.'''
 
         assert len(calls) == 1
         assert calls[0].name == "get_info"
+
+    def test_ground_truth_lists_are_preserved_for_scoring(self) -> None:
+        dataset = BFCLDataset(BFCLConfig(use_huggingface=False))
+        calls = dataset._parse_ground_truth_calls(
+            [
+                {
+                    "schedule": {
+                        "day": ["Monday", "Mon"],
+                        "fetch_limit": [0, 10],
+                    }
+                }
+            ]
+        )
+
+        assert len(calls) == 1
+        assert calls[0].arguments["day"] == ["Monday", "Mon"]
+        assert calls[0].arguments["fetch_limit"] == [0, 10]
+
+    def test_parameter_defaults_are_inferred_from_bfcl_descriptions(self) -> None:
+        assert (
+            _infer_default_from_description(
+                "Limits records to fetch. Default is 0, which means no limit.",
+                "integer",
+            )
+            == 0
+        )
+        assert (
+            _infer_default_from_description(
+                "Specific day of the week. Default is 'Monday'",
+                "string",
+            )
+            == "Monday"
+        )

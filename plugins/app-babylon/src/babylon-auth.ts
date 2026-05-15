@@ -162,9 +162,7 @@ async function authenticate(config: BabylonConfig): Promise<string> {
   return token;
 }
 
-export async function getSessionToken(
-  config: BabylonConfig,
-): Promise<string | null> {
+async function getSessionToken(config: BabylonConfig): Promise<string | null> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) {
     return cachedToken.token;
   }
@@ -176,7 +174,7 @@ export async function getSessionToken(
   return authenticate(config);
 }
 
-export function clearCachedToken(): void {
+function clearCachedToken(): void {
   cachedToken = null;
 }
 

@@ -3,7 +3,11 @@ import { promises as fs } from "node:fs";
 import type http from "node:http";
 import { ServerResponse } from "node:http";
 import path from "node:path";
-import type { IAgentRuntime, RouteRequestMeta } from "@elizaos/core";
+import type {
+  AppPackageRouteContext,
+  IAgentRuntime,
+  RouteRequestMeta,
+} from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
 import {
   type AppLaunchResult,
@@ -38,6 +42,7 @@ import {
   parseAppIsolation,
   parseAppPermissions,
 } from "@elizaos/shared";
+import { isLegacyAppsWorkspaceDiscoveryEnabled } from "../config/feature-flags.ts";
 import {
   importAppRouteModule,
   resolveWorkspacePackageDir,
@@ -186,12 +191,7 @@ async function resolveWorkspaceAppDirBySlug(
     ]),
   );
   const candidateDirs: string[] = [];
-  const legacyAppsDiscovery = (() => {
-    const raw = process.env.ELIZA_ENABLE_LEGACY_APPS_WORKSPACE_DISCOVERY;
-    if (!raw) return false;
-    const normalized = raw.trim().toLowerCase();
-    return normalized === "1" || normalized === "true" || normalized === "yes";
-  })();
+  const legacyAppsDiscovery = isLegacyAppsWorkspaceDiscoveryEnabled();
 
   for (const root of roots) {
     candidateDirs.push(
@@ -218,7 +218,7 @@ async function resolveWorkspaceAppDirBySlug(
         path.join(root, entry.name, "packages", `app-${slug}`),
       );
       if (legacyAppsDiscovery) {
-        // Temporary opt-in for older external workspaces. Current Eliza app
+        // Opt-in for older external workspaces. Current Eliza app
         // plugin packages live under plugins/app-*.
         candidateDirs.push(path.join(root, entry.name, "apps", `app-${slug}`));
       }
@@ -619,7 +619,7 @@ function buildSyntheticSteeringContext(
   ctx: AppsRouteContext,
   targetPathname: string,
   body: Record<string, unknown> | null,
-): { ctx: AppsRouteContext; captured: CapturedResponse } {
+): { ctx: AppPackageRouteContext; captured: CapturedResponse } {
   const captured = createCapturedResponse();
   const syntheticResponse = Object.assign(
     Object.create(ServerResponse.prototype) as http.ServerResponse,
@@ -627,7 +627,7 @@ function buildSyntheticSteeringContext(
   );
   const syntheticUrl = new URL(ctx.url.toString());
   syntheticUrl.pathname = targetPathname;
-  const syntheticCtx: AppsRouteContext = {
+  const syntheticCtx: AppPackageRouteContext = {
     ...ctx,
     pathname: targetPathname,
     url: syntheticUrl,

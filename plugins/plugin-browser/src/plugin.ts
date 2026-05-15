@@ -10,6 +10,7 @@ import type http from "node:http";
 import { TLSSocket } from "node:tls";
 import type {
   AgentRuntime,
+  LegacyRouteHandler,
   Plugin,
   Route,
   ServiceClass,
@@ -150,9 +151,7 @@ const DYNAMIC_ROUTES: Array<{ type: string; path: string; public?: boolean }> =
     { type: "GET", path: "/api/browser-bridge/packages/:browser/download" },
   ];
 
-type PluginRouteHandler = NonNullable<Route["handler"]>;
-
-function routeHandler(): PluginRouteHandler {
+function routeHandler(): LegacyRouteHandler {
   return async (
     req: unknown,
     res: unknown,

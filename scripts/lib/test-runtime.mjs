@@ -114,8 +114,8 @@ export function resolveExternalNode({
   const candidates = [
     env.ELIZA_VITEST_NODE,
     env.ELIZA_TEST_NODE,
-    ...pathNodeCandidates(env),
     ...nvmNodeCandidates(homeDir, repoRoot),
+    ...pathNodeCandidates(env),
     "/opt/homebrew/bin/node",
     "/usr/local/bin/node",
   ].filter(Boolean);

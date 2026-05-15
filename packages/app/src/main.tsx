@@ -1,28 +1,33 @@
 import { ErrorBoundary } from "@elizaos/ui";
 import "@elizaos/ui/styles";
-import "@elizaos/app-core";
 
 import { App as CapacitorApp } from "@capacitor/app";
 import { BackgroundRunner } from "@capacitor/background-runner";
 import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
-import {
-  CompanionShell,
-  createVectorBrowserRenderer,
-  GlobalEmoteOverlay,
-  InferenceCloudAlertButton,
-  registerCompanionApp,
-  resolveCompanionInferenceNotice,
-  THREE,
-  useCompanionSceneStatus,
-} from "@elizaos/app-companion";
-import { PhoneCompanionApp } from "@elizaos/app-phone";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
+import type {
+  AppBlockerSettingsCardProps,
+  WebsiteBlockerSettingsCardProps,
+} from "@elizaos/shared";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/shared";
-import type { BrandingConfig } from "@elizaos/ui";
+import type {
+  BrandingConfig,
+  CodingAgentTasksPanelProps,
+  CompanionInferenceNotice,
+  CompanionSceneStatus,
+  CompanionShellComponentProps,
+  FineTuningViewProps,
+  ResolveCompanionInferenceNoticeArgs,
+  StewardApprovalQueueProps,
+  StewardLogoProps,
+  StewardTransactionHistoryProps,
+  VincentStateHookArgs,
+  VincentStateHookResult,
+} from "@elizaos/ui";
 import {
   AGENT_READY_EVENT,
   APP_PAUSE_EVENT,
@@ -46,6 +51,7 @@ import {
   dispatchAppEvent,
   getBootConfig,
   getWindowNavigationPath,
+  IOS_LOCAL_AGENT_IPC_BASE,
   initializeCapacitorBridge,
   initializeStorageBridge,
   installDesktopPermissionsClientPatch,
@@ -69,71 +75,11 @@ import {
   type ShareTargetPayload,
   setBootConfig,
   shouldInstallMainWindowOnboardingPatches,
+  shouldUseCloudOnlyBranding,
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui";
-import { StrictMode } from "react";
-import { createRoot } from "react-dom/client";
-// Side-effect: register LifeOps sidebar widgets + client methods on ElizaClient.
-import "@elizaos/app-lifeops";
-// Side-effect: register coding-agent (task-coordinator) slots so app-core
-// slot wrappers (CodingAgentControlChip, PtyConsoleBase, etc.) render the
-// real components instead of nulls.
-import "@elizaos/app-task-coordinator";
-// Side-effect: register game operator surfaces + detail extensions.
-import "@elizaos/app-babylon";
-import "@elizaos/app-scape";
-import "@elizaos/app-hyperscape";
-import "@elizaos/app-2004scape";
-import "@elizaos/app-defense-of-the-agents";
-import "@elizaos/app-clawville";
-import {
-  AppBlockerSettingsCard,
-  LifeOpsBrowserSetupPanel as BrowserBridgeSetupPanel,
-  dispatchQueuedLifeOpsGithubCallbackFromUrl as dispatchQueuedLifeOpsGithubCallback,
-  LifeOpsActivitySignalsEffect,
-  LifeOpsPageView,
-  WebsiteBlockerSettingsCard,
-} from "@elizaos/app-lifeops";
-import {
-  ApprovalQueue,
-  StewardLogo,
-  TransactionHistory,
-} from "@elizaos/app-steward";
-import {
-  CodingAgentControlChip,
-  CodingAgentSettingsSection,
-  CodingAgentTasksPanel,
-  PtyConsoleDrawer,
-} from "@elizaos/app-task-coordinator";
-import { FineTuningView } from "@elizaos/app-training";
-import "@elizaos/app-trajectory-logger";
-import "@elizaos/app-shopify";
-import "@elizaos/app-vincent";
-import { useVincentState } from "@elizaos/app-vincent";
-import "@elizaos/app-hyperliquid";
-import "@elizaos/app-polymarket";
-// Side-effect: register the wallet UI plugin (route loader, /inventory shell
-// page, and chat sidebar wallet-status widget) with the app shell registries.
-// Must precede the first shell render.
-import "@elizaos/app-wallet";
-// Side-effect: register the AOSP-only Phone / Contacts / Messages / Device
-// Settings / WiFi overlay apps.
-// Each `register` module gates itself on `isElizaOS()` so stock Android, iOS,
-// desktop, and web bundles bring the modules in without registering anything.
-// On Eliza-derived AOSP images (ElizaOS or a white-label fork) the corresponding
-// overlay app shows up in the apps catalog and is launchable as a system
-// surface. `@elizaos/app-phone` already side-effect-registers via the
-// `PhoneCompanionApp` named import above, but the explicit imports here keep
-// these apps symmetric and survive a future barrel cleanup that drops
-// `register.js` from the package index.
-import "@elizaos/app-contacts/register";
-import "@elizaos/app-device-settings/register";
-import "@elizaos/app-messages/register";
-import "@elizaos/app-phone/register";
-import "@elizaos/app-wifi/register";
-import { shouldUseCloudOnlyBranding } from "@elizaos/ui";
 import type {
   IosLocalAgentNativeRequestOptions,
   IosLocalAgentNativeRequestResult,
@@ -143,6 +89,8 @@ import {
   installIosLocalAgentNativeRequestBridge,
   primeIosFullBunRuntime,
 } from "@elizaos/ui/api/ios-local-agent-transport";
+import { type ComponentType, lazy, StrictMode, Suspense } from "react";
+import { createRoot } from "react-dom/client";
 import {
   APP_BRANDING_BASE,
   APP_CONFIG,
@@ -152,11 +100,14 @@ import {
 } from "./app-config";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 import {
   apiBaseToDeviceBridgeUrl,
   type IosRuntimeConfig,
   resolveIosRuntimeConfig,
 } from "./ios-runtime";
+
+declare const __ELIZA_BUILD_VARIANT__: string | undefined;
 
 declare global {
   interface Window {
@@ -168,6 +119,164 @@ declare global {
     ) => Promise<IosLocalAgentNativeRequestResult>;
     __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
   }
+}
+
+const appModuleCache = new Map<string, Promise<unknown>>();
+
+function cachedDynamicImport<T>(
+  key: string,
+  loader: () => Promise<T>,
+): Promise<T> {
+  const existing = appModuleCache.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+  const promise = loader();
+  appModuleCache.set(key, promise);
+  return promise;
+}
+
+function importAppCore() {
+  return cachedDynamicImport(
+    "@elizaos/app-core",
+    () => import("@elizaos/app-core"),
+  );
+}
+
+function importAppCompanion() {
+  return cachedDynamicImport(
+    "@elizaos/app-companion",
+    () => import("@elizaos/app-companion"),
+  );
+}
+
+function importAppLifeOps() {
+  return cachedDynamicImport(
+    "@elizaos/app-lifeops",
+    () => import("@elizaos/app-lifeops"),
+  );
+}
+
+function importAppPhone() {
+  return cachedDynamicImport(
+    "@elizaos/app-phone",
+    () => import("@elizaos/app-phone"),
+  );
+}
+
+function importAppSteward() {
+  return cachedDynamicImport(
+    "@elizaos/app-steward",
+    () => import("@elizaos/app-steward"),
+  );
+}
+
+function importAppTaskCoordinator() {
+  return cachedDynamicImport(
+    "@elizaos/app-task-coordinator",
+    () => import("@elizaos/app-task-coordinator"),
+  );
+}
+
+function importAppTraining() {
+  return cachedDynamicImport(
+    "@elizaos/app-training",
+    () => import("@elizaos/app-training"),
+  );
+}
+
+function importAppVincent() {
+  return cachedDynamicImport(
+    "@elizaos/app-vincent",
+    () => import("@elizaos/app-vincent"),
+  );
+}
+
+function lazyNamedComponent<TProps>(
+  load: () => Promise<ComponentType<TProps>>,
+): ComponentType<TProps> {
+  return lazy(async () => ({ default: await load() })) as ComponentType<TProps>;
+}
+
+const CompanionShell = lazyNamedComponent<CompanionShellComponentProps>(
+  async () => (await importAppCompanion()).CompanionShell,
+);
+const GlobalEmoteOverlay = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppCompanion()).GlobalEmoteOverlay,
+);
+const InferenceCloudAlertButton = lazyNamedComponent<{
+  notice: CompanionInferenceNotice;
+  onClick: () => void;
+  onPointerDown?: (...args: unknown[]) => unknown;
+}>(async () => (await importAppCompanion()).InferenceCloudAlertButton);
+const PhoneCompanionApp = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppPhone()).PhoneCompanionApp,
+);
+const LifeOpsPageView = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppLifeOps()).LifeOpsPageView,
+);
+const BrowserBridgeSetupPanel = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppLifeOps()).LifeOpsBrowserSetupPanel,
+);
+const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppLifeOps()).LifeOpsActivitySignalsEffect,
+);
+const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
+  async () => (await importAppLifeOps()).AppBlockerSettingsCard,
+);
+const WebsiteBlockerSettingsCard =
+  lazyNamedComponent<WebsiteBlockerSettingsCardProps>(
+    async () => (await importAppLifeOps()).WebsiteBlockerSettingsCard,
+  );
+const StewardLogo = lazyNamedComponent<StewardLogoProps>(
+  async () => (await importAppSteward()).StewardLogo,
+);
+const ApprovalQueue = lazyNamedComponent<StewardApprovalQueueProps>(
+  async () => (await importAppSteward()).ApprovalQueue,
+);
+const TransactionHistory = lazyNamedComponent<StewardTransactionHistoryProps>(
+  async () => (await importAppSteward()).TransactionHistory,
+);
+const CodingAgentControlChip = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppTaskCoordinator()).CodingAgentControlChip,
+);
+const CodingAgentSettingsSection = lazyNamedComponent<Record<string, never>>(
+  async () => (await importAppTaskCoordinator()).CodingAgentSettingsSection,
+);
+const CodingAgentTasksPanel = lazyNamedComponent<CodingAgentTasksPanelProps>(
+  async () => (await importAppTaskCoordinator()).CodingAgentTasksPanel,
+);
+const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
+  async () => (await importAppTraining()).FineTuningView,
+);
+
+const DEFAULT_LAZY_VINCENT_STATE: VincentStateHookResult = {
+  vincentConnected: false,
+  vincentLoginBusy: false,
+  vincentLoginError: null,
+  vincentConnectedAt: null,
+  handleVincentLogin: async () => {},
+  handleVincentDisconnect: async () => {},
+  pollVincentStatus: async () => false,
+};
+
+let loadedCompanionSceneStatusHook: (() => CompanionSceneStatus) | null = null;
+let loadedVincentStateHook:
+  | ((args: VincentStateHookArgs) => VincentStateHookResult)
+  | null = null;
+let dispatchQueuedLifeOpsGithubCallback: ((url: string) => void) | null = null;
+
+function useLoadedCompanionSceneStatus(): CompanionSceneStatus {
+  return (
+    loadedCompanionSceneStatusHook?.() ?? {
+      avatarReady: false,
+      teleportKey: "",
+    }
+  );
+}
+
+function useLoadedVincentState(
+  args: VincentStateHookArgs,
+): VincentStateHookResult {
+  return loadedVincentStateHook?.(args) ?? DEFAULT_LAZY_VINCENT_STATE;
 }
 
 const BRANDED_WINDOW_KEYS = {
@@ -205,8 +314,6 @@ const APP_BRANDING: Partial<BrandingConfig> = {
   }),
 };
 
-registerCompanionApp();
-
 /**
  * Platform detection utilities
  */
@@ -214,6 +321,9 @@ const platform = Capacitor.getPlatform();
 const isNative = Capacitor.isNativePlatform();
 const isIOS = platform === "ios";
 const isAndroid = platform === "android";
+const isStoreBuild =
+  typeof __ELIZA_BUILD_VARIANT__ === "string" &&
+  __ELIZA_BUILD_VARIANT__ === "store";
 const IOS_RUNTIME_ENV_CONFIG = resolveIosRuntimeConfig(import.meta.env);
 const DEVICE_BRIDGE_ID_KEY = `${APP_NAMESPACE}_device_bridge_id`;
 const BACKGROUND_RUNNER_LABEL = "eliza-tasks";
@@ -304,49 +414,162 @@ const APP_VRM_ASSETS = APP_STYLE_PRESETS.slice()
   // branded shell; keep the boot roster aligned with files in dist/vrms.
   .map((p) => ({ title: p.name, slug: `eliza-${p.avatarIndex}` }));
 
-const appBootConfig: AppBootConfig = {
-  branding: APP_BRANDING,
-  defaultApps: APP_CONFIG.defaultApps,
-  assetBaseUrl:
-    (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
-    undefined,
-  cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
-  vrmAssets: APP_VRM_ASSETS,
-  onboardingStyles: APP_STYLE_PRESETS,
-  characterEditor: CharacterEditor,
-  companionShell: CompanionShell,
-  resolveCompanionInferenceNotice,
-  companionInferenceAlertButton: InferenceCloudAlertButton,
-  companionGlobalOverlay: GlobalEmoteOverlay,
-  useCompanionSceneStatus,
-  companionVectorBrowser: {
-    THREE,
-    createVectorBrowserRenderer,
-  },
-  codingAgentTasksPanel: CodingAgentTasksPanel,
-  codingAgentSettingsSection: CodingAgentSettingsSection,
-  codingAgentControlChip: CodingAgentControlChip,
-  ptyConsoleDrawer: PtyConsoleDrawer,
-  fineTuningView: FineTuningView,
-  useVincentState,
-  stewardLogo: StewardLogo,
-  stewardApprovalQueue: ApprovalQueue,
-  stewardTransactionHistory: TransactionHistory,
-  characterCatalog: APP_CHARACTER_CATALOG,
-  envAliases: APP_ENV_ALIASES,
-  lifeOpsPageView: LifeOpsPageView,
-  lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
-  appBlockerSettingsCard: AppBlockerSettingsCard,
-  websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
-  clientMiddleware: {
-    forceFreshOnboarding:
-      shouldInstallMainWindowOnboardingPatches(windowShellRoute),
-    preferLocalProvider: true,
-    desktopPermissions: isDesktopPlatform(),
-  },
-};
+let appModulesInitialized: Promise<void> | null = null;
 
-setBootConfig(appBootConfig);
+function importSideEffectAppModule(
+  key: string,
+  loader: () => Promise<unknown>,
+) {
+  return cachedDynamicImport(key, loader);
+}
+
+function buildAppBootConfig({
+  companionVectorRuntime,
+  resolveCompanionInferenceNotice,
+}: {
+  companionVectorRuntime: AppBootConfig["companionVectorBrowser"];
+  resolveCompanionInferenceNotice: (
+    args: ResolveCompanionInferenceNoticeArgs,
+  ) => CompanionInferenceNotice | null;
+}): AppBootConfig {
+  return {
+    branding: APP_BRANDING,
+    defaultApps: APP_CONFIG.defaultApps,
+    assetBaseUrl:
+      (import.meta.env.VITE_ASSET_BASE_URL as string | undefined)?.trim() ||
+      undefined,
+    cloudApiBase: IOS_RUNTIME_ENV_CONFIG.cloudApiBase,
+    vrmAssets: APP_VRM_ASSETS,
+    onboardingStyles: APP_STYLE_PRESETS,
+    characterEditor: CharacterEditor,
+    companionShell: CompanionShell,
+    resolveCompanionInferenceNotice,
+    companionInferenceAlertButton: InferenceCloudAlertButton,
+    companionGlobalOverlay: GlobalEmoteOverlay,
+    useCompanionSceneStatus: useLoadedCompanionSceneStatus,
+    companionVectorBrowser: companionVectorRuntime,
+    codingAgentTasksPanel: CodingAgentTasksPanel,
+    codingAgentSettingsSection: CodingAgentSettingsSection,
+    codingAgentControlChip: CodingAgentControlChip,
+    fineTuningView: FineTuningView,
+    useVincentState: useLoadedVincentState,
+    stewardLogo: StewardLogo,
+    stewardApprovalQueue: ApprovalQueue,
+    stewardTransactionHistory: TransactionHistory,
+    characterCatalog: APP_CHARACTER_CATALOG,
+    envAliases: APP_ENV_ALIASES,
+    lifeOpsPageView: LifeOpsPageView,
+    lifeOpsBrowserSetupPanel: BrowserBridgeSetupPanel,
+    appBlockerSettingsCard: AppBlockerSettingsCard,
+    websiteBlockerSettingsCard: WebsiteBlockerSettingsCard,
+    clientMiddleware: {
+      forceFreshOnboarding:
+        shouldInstallMainWindowOnboardingPatches(windowShellRoute),
+      preferLocalProvider: true,
+      desktopPermissions: isDesktopPlatform(),
+    },
+  };
+}
+
+function initializeAppModules(): Promise<void> {
+  appModulesInitialized ??= (async () => {
+    await importAppCore();
+
+    const [companionModule, lifeOpsModule, vincentModule] = await Promise.all([
+      importAppCompanion(),
+      importAppLifeOps(),
+      importAppVincent(),
+      importAppTaskCoordinator(),
+      importAppPhone(),
+      importAppSteward(),
+      importAppTraining(),
+      importSideEffectAppModule(
+        "@elizaos/app-babylon",
+        () => import("@elizaos/app-babylon"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-scape",
+        () => import("@elizaos/app-scape"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-hyperscape",
+        () => import("@elizaos/app-hyperscape"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-2004scape",
+        () => import("@elizaos/app-2004scape"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-defense-of-the-agents",
+        () => import("@elizaos/app-defense-of-the-agents"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-clawville",
+        () => import("@elizaos/app-clawville"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-trajectory-logger",
+        () => import("@elizaos/app-trajectory-logger"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-shopify",
+        () => import("@elizaos/app-shopify"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-hyperliquid",
+        () => import("@elizaos/app-hyperliquid"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-polymarket",
+        () => import("@elizaos/app-polymarket"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-wallet",
+        () => import("@elizaos/app-wallet"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-contacts/register",
+        () => import("@elizaos/app-contacts/register"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-device-settings/register",
+        () => import("@elizaos/app-device-settings/register"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-messages/register",
+        () => import("@elizaos/app-messages/register"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-phone/register",
+        () => import("@elizaos/app-phone/register"),
+      ),
+      importSideEffectAppModule(
+        "@elizaos/app-wifi/register",
+        () => import("@elizaos/app-wifi/register"),
+      ),
+    ]);
+
+    companionModule.registerCompanionApp();
+    loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
+    loadedVincentStateHook = vincentModule.useVincentState;
+    dispatchQueuedLifeOpsGithubCallback =
+      lifeOpsModule.dispatchQueuedLifeOpsGithubCallbackFromUrl;
+
+    setBootConfig(
+      buildAppBootConfig({
+        companionVectorRuntime: {
+          THREE: companionModule.THREE,
+          createVectorBrowserRenderer:
+            companionModule.createVectorBrowserRenderer,
+        },
+        resolveCompanionInferenceNotice:
+          companionModule.resolveCompanionInferenceNotice,
+      }),
+    );
+  })();
+
+  return appModulesInitialized;
+}
 
 function getShareQueue(): ShareTargetPayload[] {
   const brandedQueue: unknown = Reflect.get(
@@ -830,37 +1053,36 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       );
     }
 
-    let activatedModel: Record<string, unknown> | null = null;
-    if (hubInstalled.length > 0) {
-      const firstInstalled = assertSmokeObject(
-        hubInstalled[0],
-        "local-inference installed model",
-      );
-      if (typeof firstInstalled.id !== "string" || !firstInstalled.id) {
-        throw new Error("local-inference installed model was missing id");
-      }
-      activatedModel = await fetchIosFullBunSmokeJson<Record<string, unknown>>(
-        "WebView fetch bridge POST /api/local-inference/active",
-        "/api/local-inference/active",
-        {
-          method: "POST",
-          headers: {
-            accept: "application/json",
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({ modelId: firstInstalled.id }),
+    const firstInstalled = assertSmokeObject(
+      hubInstalled[0],
+      "local-inference installed model",
+    );
+    if (typeof firstInstalled.id !== "string" || !firstInstalled.id) {
+      throw new Error("local-inference installed model was missing id");
+    }
+    const activatedModel = await fetchIosFullBunSmokeJson<
+      Record<string, unknown>
+    >(
+      "WebView fetch bridge POST /api/local-inference/active",
+      "/api/local-inference/active",
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
         },
-        IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
+        body: JSON.stringify({ modelId: firstInstalled.id }),
+      },
+      IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS,
+    );
+    if (
+      activatedModel.status !== "ready" ||
+      typeof activatedModel.modelPath !== "string" ||
+      !activatedModel.modelPath
+    ) {
+      throw new Error(
+        `local-inference active model did not become ready: ${JSON.stringify(activatedModel)}`,
       );
-      if (
-        activatedModel.status !== "ready" ||
-        typeof activatedModel.modelPath !== "string" ||
-        !activatedModel.modelPath
-      ) {
-        throw new Error(
-          `local-inference active model did not become ready: ${JSON.stringify(activatedModel)}`,
-        );
-      }
     }
 
     const [
@@ -1200,16 +1422,21 @@ function handleDeepLink(url: string): void {
   // eliza://settings/connectors/<provider> — open Settings → Connectors.
   // The new Connectors section renders one inline expansion per connector;
   // we no longer scroll/highlight a specific provider panel.
-  const connectorMatch = path.match(/^settings\/connectors\/([a-z0-9-]+)$/i);
-  if (connectorMatch) {
+  if (/^settings\/connectors\/[a-z0-9-]+$/i.test(path)) {
     window.location.hash = "#connectors";
     return;
   }
 
+  const assistantLaunchHashRoute = buildAssistantLaunchHashRoute(
+    path,
+    parsed.searchParams,
+  );
+  if (assistantLaunchHashRoute) {
+    window.location.hash = assistantLaunchHashRoute;
+    return;
+  }
+
   switch (path) {
-    case "chat":
-      window.location.hash = "#chat";
-      break;
     case "phone":
     case "phone/call":
       setHashRoute("phone", parsed.searchParams);
@@ -1230,11 +1457,11 @@ function handleDeepLink(url: string): void {
       break;
     case "lifeops":
       window.location.hash = "#lifeops";
-      dispatchQueuedLifeOpsGithubCallback(url);
+      dispatchQueuedLifeOpsGithubCallback?.(url);
       break;
     case "settings":
       window.location.hash = "#settings";
-      dispatchQueuedLifeOpsGithubCallback(url);
+      dispatchQueuedLifeOpsGithubCallback?.(url);
       break;
     case "connect": {
       const gatewayUrl = parsed.searchParams.get("url");
@@ -1313,6 +1540,9 @@ function handleDeepLink(url: string): void {
 function getDeepLinkPath(parsed: URL): string {
   const host = parsed.host.replace(/^\/+|\/+$/g, "");
   const pathname = parsed.pathname.replace(/^\/+|\/+$/g, "");
+  if (host === APP_CONFIG.appId || host === APP_CONFIG.desktop?.bundleId) {
+    return pathname;
+  }
   return [host, pathname].filter(Boolean).join("/");
 }
 
@@ -1336,10 +1566,20 @@ async function initializeDesktopShell(): Promise<void> {
     accelerator: "CommandOrControl+K",
   });
 
-  await Desktop.addListener("shortcutPressed", (event: { id: string }) => {
-    if (event.id === "command-palette") {
-      dispatchAppEvent(COMMAND_PALETTE_EVENT);
-    }
+  // Global shortcuts are pushed from the Electrobun host as
+  // `desktopShortcutPressed` over the RPC bridge. The Capacitor `Desktop`
+  // plugin's `addListener` web impl never fires those events, so we subscribe
+  // through the bridge directly. The canonical Cmd+K fallback for the focused
+  // renderer lives in CommandPalette.tsx (window keydown listener).
+  subscribeDesktopBridgeEvent({
+    rpcMessage: "desktopShortcutPressed",
+    ipcChannel: "desktop:shortcutPressed",
+    listener: (payload) => {
+      const id = (payload as { id?: string } | null | undefined)?.id;
+      if (id === "command-palette") {
+        dispatchAppEvent(COMMAND_PALETTE_EVENT);
+      }
+    },
   });
 
   await Desktop.setTrayMenu({
@@ -1417,26 +1657,28 @@ function mountReactApp(): void {
   createRoot(rootEl).render(
     <ErrorBoundary>
       <StrictMode>
-        <AppProvider branding={APP_BRANDING}>
-          {phoneCompanion ? (
-            <PhoneCompanionApp />
-          ) : detachedShell ? (
-            <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
-              <DetachedShellRoot route={windowShellRoute} />
-            </div>
-          ) : appWindowSlug ? (
-            <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
-              <AppWindowRenderer slug={appWindowSlug} />
-            </div>
-          ) : (
-            <>
-              <DesktopSurfaceNavigationRuntime />
-              <DesktopTrayRuntime />
-              <LifeOpsActivitySignalsEffect />
-              <App />
-            </>
-          )}
-        </AppProvider>
+        <Suspense fallback={null}>
+          <AppProvider branding={APP_BRANDING}>
+            {phoneCompanion ? (
+              <PhoneCompanionApp />
+            ) : detachedShell ? (
+              <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
+                <DetachedShellRoot route={windowShellRoute} />
+              </div>
+            ) : appWindowSlug ? (
+              <div className="flex h-[100dvh] min-h-0 w-full max-w-full flex-col overflow-hidden">
+                <AppWindowRenderer slug={appWindowSlug} />
+              </div>
+            ) : (
+              <>
+                <DesktopSurfaceNavigationRuntime />
+                <DesktopTrayRuntime />
+                <LifeOpsActivitySignalsEffect />
+                <App />
+              </>
+            )}
+          </AppProvider>
+        </Suspense>
       </StrictMode>
     </ErrorBoundary>,
   );
@@ -1449,11 +1691,18 @@ function isPopoutWindow(): boolean {
 
 function isTrustedPrivateHttpHost(host: string): boolean {
   return (
+    host === "0.0.0.0" ||
     /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host) ||
     /^192\.168\.\d{1,3}\.\d{1,3}$/.test(host) ||
     /^172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}$/.test(host) ||
     /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    /^169\.254\.\d{1,3}\.\d{1,3}$/.test(host) ||
+    host === "local" ||
+    host === "internal" ||
+    host === "lan" ||
+    host === "ts.net" ||
     host.endsWith(".local") ||
+    host.endsWith(".lan") ||
     host.endsWith(".internal") ||
     host.endsWith(".ts.net")
   );
@@ -1466,6 +1715,40 @@ function isLoopbackApiHost(host: string): boolean {
     host === "[::1]" ||
     host === "::1"
   );
+}
+
+function isNativeIosStoreBuild(): boolean {
+  return isNative && isIOS && isStoreBuild;
+}
+
+function isIosLocalAgentIpcUrl(parsed: URL): boolean {
+  return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
+}
+
+function isPrivateOrLoopbackApiHost(host: string): boolean {
+  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
+  return (
+    isLoopbackApiHost(normalized) ||
+    (normalized.includes(":") &&
+      (normalized.startsWith("fc") ||
+        normalized.startsWith("fd") ||
+        normalized.startsWith("fe80:"))) ||
+    isTrustedPrivateHttpHost(normalized)
+  );
+}
+
+function isNativeIosCloudRuntimeMode(): boolean {
+  if (!isNative || !isIOS) return false;
+  const mode = getCurrentIosRuntimeConfig().mode;
+  return mode === "cloud" || mode === "cloud-hybrid";
+}
+
+function usesStrictIosNetworkPolicy(): boolean {
+  return isNativeIosStoreBuild() || isNativeIosCloudRuntimeMode();
+}
+
+function canUseIosLocalAgentIpc(): boolean {
+  return isNative && isIOS && getCurrentIosRuntimeConfig().mode === "local";
 }
 
 function isCurrentOriginHost(host: string): boolean {
@@ -1483,8 +1766,15 @@ function isConfiguredCloudApiHost(host: string): boolean {
 }
 
 function isTrustedApiBaseUrl(parsed: URL): boolean {
+  if (isIosLocalAgentIpcUrl(parsed)) return canUseIosLocalAgentIpc();
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   const host = parsed.hostname;
+  if (usesStrictIosNetworkPolicy()) {
+    if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
+      return false;
+    }
+    return isCurrentOriginHost(host) || isConfiguredCloudApiHost(host);
+  }
   if (isPopoutWindow() && parsed.protocol === "https:") return true;
   return (
     isLoopbackApiHost(host) ||
@@ -1495,8 +1785,18 @@ function isTrustedApiBaseUrl(parsed: URL): boolean {
 }
 
 function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
+  if (isIosLocalAgentIpcUrl(parsed)) return canUseIosLocalAgentIpc();
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
   const host = parsed.hostname;
+  if (usesStrictIosNetworkPolicy()) {
+    if (parsed.protocol !== "https:" || isPrivateOrLoopbackApiHost(host)) {
+      return false;
+    }
+    return (
+      isCurrentOriginHost(host) ||
+      (parsed.protocol === "https:" && isConfiguredCloudApiHost(host))
+    );
+  }
   return (
     isLoopbackApiHost(host) ||
     isCurrentOriginHost(host) ||
@@ -1505,9 +1805,23 @@ function isTrustedDeepLinkApiBaseUrl(parsed: URL): boolean {
   );
 }
 
+function isTrustedNativeWebSocketUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") return false;
+    if (!usesStrictIosNetworkPolicy()) return true;
+    return (
+      parsed.protocol === "wss:" && !isPrivateOrLoopbackApiHost(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Validates an apiBase string and applies it to the boot config.
- * Allows localhost, loopback, configured cloud, current-origin, and private-network hosts.
+ * Allows local dev hosts outside store iOS, configured cloud/current-origin
+ * HTTPS, and the iOS in-app local-agent IPC identity.
  */
 function validateAndSetApiBase(apiBase: string): void {
   try {
@@ -1557,17 +1871,22 @@ function getCurrentIosRuntimeConfig(): IosRuntimeConfig {
 
 function applyBuildTimeIosConnection(): void {
   if (!isNative) return;
-  if (!IOS_RUNTIME_ENV_CONFIG.apiBase && !IOS_RUNTIME_ENV_CONFIG.apiToken)
-    return;
 
   const current = getBootConfig();
   const next: AppBootConfig = {
     ...current,
+    ...(isIOS && IOS_RUNTIME_ENV_CONFIG.mode === "local"
+      ? { apiBase: IOS_LOCAL_AGENT_IPC_BASE }
+      : {}),
     ...(IOS_RUNTIME_ENV_CONFIG.apiToken
       ? { apiToken: IOS_RUNTIME_ENV_CONFIG.apiToken }
       : {}),
   };
   setBootConfig(next);
+
+  if (isIOS && IOS_RUNTIME_ENV_CONFIG.mode === "local") return;
+  if (!IOS_RUNTIME_ENV_CONFIG.apiBase && !IOS_RUNTIME_ENV_CONFIG.apiToken)
+    return;
 
   if (IOS_RUNTIME_ENV_CONFIG.apiBase) {
     validateAndSetApiBase(IOS_RUNTIME_ENV_CONFIG.apiBase);
@@ -1588,7 +1907,9 @@ async function getOrCreateDeviceBridgeId(): Promise<string> {
 
 function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
   if (config.deviceBridgeUrl) {
-    return config.deviceBridgeUrl;
+    return isTrustedNativeWebSocketUrl(config.deviceBridgeUrl)
+      ? config.deviceBridgeUrl
+      : null;
   }
   // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
   // Android local: the foreground agent service owns the loopback API and the
@@ -1604,7 +1925,8 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
   const apiBase = getBootConfig().apiBase?.trim();
   if (!apiBase) return null;
   try {
-    return apiBaseToDeviceBridgeUrl(apiBase);
+    const bridgeUrl = apiBaseToDeviceBridgeUrl(apiBase);
+    return isTrustedNativeWebSocketUrl(bridgeUrl) ? bridgeUrl : null;
   } catch {
     return null;
   }
@@ -1645,7 +1967,11 @@ async function configureMobileBackgroundRunner(retry = 0): Promise<void> {
     details.localApiBase = MOBILE_LOCAL_AGENT_API_BASE;
   }
   if (isIOS && runtimeConfig.mode === "local") {
-    details.localRouteKernel = runtimeConfig.fullBun ? "bun-host-ipc" : "ittp";
+    details.localApiBase = IOS_LOCAL_AGENT_IPC_BASE;
+    details.localRouteKernel =
+      runtimeConfig.fullBun || isNativeIosStoreBuild()
+        ? "bun-host-ipc"
+        : "ittp";
   }
 
   try {
@@ -1689,11 +2015,21 @@ async function initializeMobileDeviceBridge(): Promise<void> {
         import("@elizaos/capacitor-llama"),
         getOrCreateDeviceBridgeId(),
       ]);
+      const pairingToken =
+        runtimeConfig.deviceBridgeToken?.trim() ||
+        (isAndroid && runtimeConfig.mode === "local"
+          ? await readAndroidLocalAgentToken()
+          : undefined);
+      if (isAndroid && runtimeConfig.mode === "local" && !pairingToken) {
+        window.setTimeout(
+          () => void initializeMobileDeviceBridge(),
+          BACKGROUND_RUNNER_CONFIG_RETRY_MS,
+        );
+        return;
+      }
       mobileDeviceBridgeClient = startDeviceBridgeClient({
         agentUrl,
-        ...(runtimeConfig.deviceBridgeToken
-          ? { pairingToken: runtimeConfig.deviceBridgeToken }
-          : {}),
+        ...(pairingToken ? { pairingToken } : {}),
         deviceId,
         onStateChange: (state, detail) => {
           console.info(
@@ -1730,6 +2066,10 @@ async function initializeMobileAgentTunnel(): Promise<void> {
     console.warn(
       `${APP_LOG_PREFIX} tunnel-to-mobile mode requires VITE_ELIZA_TUNNEL_RELAY_URL`,
     );
+    return;
+  }
+  if (!isTrustedNativeWebSocketUrl(relayUrl)) {
+    console.warn(`${APP_LOG_PREFIX} Rejected unsafe mobile tunnel relay URL`);
     return;
   }
 
@@ -1829,6 +2169,7 @@ function applyStoredDetachedShellTheme(): void {
 }
 
 async function main(): Promise<void> {
+  await initializeAppModules();
   setupPlatformStyles();
   applyBuildTimeIosConnection();
 

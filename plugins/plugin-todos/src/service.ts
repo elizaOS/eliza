@@ -197,11 +197,14 @@ export class TodosService extends Service {
     }>;
   }): Promise<{ before: Todo[]; after: Todo[] }> {
     const db = this.getDb();
-    const before = await this.list({
+    const filter: TodoFilter = {
       entityId: args.entityId,
       agentId: args.agentId,
-      roomId: args.roomId ?? undefined,
-    });
+    };
+    if (args.roomId !== null) {
+      filter.roomId = args.roomId;
+    }
+    const before = await this.list(filter);
     const beforeById = new Map(before.map((t) => [t.id, t]));
 
     const keepIds = new Set<string>();

@@ -120,7 +120,7 @@ class ObservationWrapper(EnvWrapper):
             else:
                 wrapped_obs = ""
                 for (o, use_tool), a in zip(obs_list, act_list):
-                    # We may need a unified way to format tool's output,
+                    # We may need a consistent way to format tool's output,
                     # but the formatting might have been done at the tool side.
                     wrapped_obs += maybe_add_new_line(o)
                     wrapped_obs += maybe_add_new_line(a)

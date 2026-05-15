@@ -1,4 +1,4 @@
-/** Real ElizaOS agent handler. Requires GROQ_API_KEY or OPENAI_API_KEY. */
+/** Real ElizaOS agent handler. Requires a configured LLM provider API key. */
 
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -17,11 +17,16 @@ import {
   ChannelType,
   createUniqueUuid,
   EventType,
+  ModelType,
 } from "@elizaos/core";
 import {
   getNewlyActivatedPlugin,
   getNewlyDeactivatedPlugin,
 } from "../plugins/index.js";
+import {
+  isSetupIncompatibleError,
+  setupIncompatible,
+} from "../setup-incompatible.js";
 import type { Handler, Scenario, ScenarioOutcome } from "../types.js";
 
 type Constructor<TInstance, TArgs extends unknown[] = unknown[]> = new (
@@ -45,6 +50,49 @@ const HANDLER_DIR = dirname(fileURLToPath(import.meta.url));
 const WORKSPACE_ROOT = resolve(HANDLER_DIR, "../../../..");
 const REPO_ROOT = resolve(WORKSPACE_ROOT, "..");
 
+const OPENAI_COMPAT_PROVIDER_ALIASES = new Set([
+  "cerebras",
+  "openrouter",
+  "vllm",
+  "openai-compatible",
+  "openai_compatible",
+  "openai-compat",
+  "openai_compat",
+]);
+
+const OPENAI_SETTING_KEYS = [
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OPENAI_NANO_MODEL",
+  "OPENAI_MEDIUM_MODEL",
+  "OPENAI_SMALL_MODEL",
+  "OPENAI_LARGE_MODEL",
+  "OPENAI_MEGA_MODEL",
+  "OPENAI_RESPONSE_HANDLER_MODEL",
+  "OPENAI_SHOULD_RESPOND_MODEL",
+  "OPENAI_ACTION_PLANNER_MODEL",
+  "OPENAI_PLANNER_MODEL",
+  "OPENAI_EMBEDDING_MODEL",
+  "OPENAI_EMBEDDING_API_KEY",
+  "OPENAI_EMBEDDING_URL",
+  "OPENAI_EMBEDDING_DIMENSIONS",
+  "CEREBRAS_API_KEY",
+  "CEREBRAS_BASE_URL",
+  "OPENROUTER_API_KEY",
+  "VLLM_API_KEY",
+  "ELIZA_PROVIDER",
+] as const;
+
+const PROVIDER_SETTING_KEYS: Record<string, readonly string[]> = {
+  openai: OPENAI_SETTING_KEYS,
+  anthropic: [
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_SMALL_MODEL",
+    "ANTHROPIC_LARGE_MODEL",
+  ],
+  groq: ["GROQ_API_KEY", "GROQ_SMALL_MODEL", "GROQ_LARGE_MODEL"],
+};
+
 function hasConstructSignature(value: unknown): value is Constructor<unknown> {
   if (typeof value !== "function") return false;
 
@@ -66,6 +114,119 @@ function isInMemoryDatabaseAdapterConstructor(
   value: unknown,
 ): value is InMemoryDatabaseAdapterConstructor {
   return hasConstructSignature(value);
+}
+
+export function normalizeConfigBenchProviderName(provider: string): string {
+  const normalized = provider.trim().toLowerCase();
+  return OPENAI_COMPAT_PROVIDER_ALIASES.has(normalized) ? "openai" : normalized;
+}
+
+function rawConfiguredProvider(): string {
+  return (
+    process.env.CONFIGBENCH_AGENT_PROVIDER ??
+    process.env.BENCHMARK_MODEL_PROVIDER ??
+    process.env.ELIZA_PROVIDER ??
+    ""
+  );
+}
+
+export function isCerebrasBaseUrl(baseUrl: string | undefined): boolean {
+  return /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl?.trim() ?? "");
+}
+
+function applyOpenAICompatibleEnvAliases(providerRaw: string): void {
+  const provider = providerRaw.trim().toLowerCase();
+
+  if (!process.env.OPENAI_BASE_URL?.trim()) {
+    if (provider === "cerebras") {
+      process.env.OPENAI_BASE_URL =
+        process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
+    } else if (provider === "openrouter") {
+      process.env.OPENAI_BASE_URL = "https://openrouter.ai/api/v1";
+    } else if (provider === "vllm" && process.env.VLLM_BASE_URL?.trim()) {
+      process.env.OPENAI_BASE_URL = process.env.VLLM_BASE_URL.trim();
+    }
+  }
+
+  if (process.env.OPENAI_API_KEY?.trim()) return;
+
+  const baseUrl = process.env.OPENAI_BASE_URL?.trim() ?? "";
+  if (isCerebrasBaseUrl(baseUrl) && process.env.CEREBRAS_API_KEY?.trim()) {
+    process.env.OPENAI_API_KEY = process.env.CEREBRAS_API_KEY.trim();
+  } else if (
+    provider === "openrouter" &&
+    process.env.OPENROUTER_API_KEY?.trim()
+  ) {
+    process.env.OPENAI_API_KEY = process.env.OPENROUTER_API_KEY.trim();
+  } else if (provider === "vllm" && process.env.VLLM_API_KEY?.trim()) {
+    process.env.OPENAI_API_KEY = process.env.VLLM_API_KEY.trim();
+  }
+}
+
+function hasOpenAICompatibleCredential(): boolean {
+  return (
+    !!process.env.OPENAI_API_KEY?.trim() ||
+    (isCerebrasBaseUrl(process.env.OPENAI_BASE_URL) &&
+      !!process.env.CEREBRAS_API_KEY?.trim())
+  );
+}
+
+export function collectConfigBenchProviderSettings(
+  providerRaw: string,
+  env: NodeJS.ProcessEnv = process.env,
+): Record<string, string> {
+  const provider = normalizeConfigBenchProviderName(providerRaw);
+  const keys = PROVIDER_SETTING_KEYS[provider] ?? PROVIDER_SETTING_KEYS.groq;
+  const providerSettings: Record<string, string> = {};
+  for (const key of keys) {
+    const value = env[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      providerSettings[key] = value;
+    }
+  }
+  return providerSettings;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function isTextEmbeddingSetupFailure(error: unknown): boolean {
+  const message = errorMessage(error);
+  return (
+    /TEXT_EMBEDDING/i.test(message) ||
+    /\bembedding\b/i.test(message) ||
+    /LOCAL_INFERENCE_UNAVAILABLE/i.test(message) ||
+    /local-inference/i.test(message) ||
+    /\/embeddings\b/i.test(message)
+  );
+}
+
+async function assertTextEmbeddingUsable(rt: IAgentRuntime): Promise<void> {
+  if (!rt.getModel(ModelType.TEXT_EMBEDDING)) {
+    throw setupIncompatible(
+      "Eliza setup incompatible: no TEXT_EMBEDDING model is registered",
+    );
+  }
+
+  try {
+    const embedding = await rt.useModel(ModelType.TEXT_EMBEDDING, {
+      text: "configbench setup embedding probe",
+    });
+    if (
+      !Array.isArray(embedding) ||
+      embedding.length === 0 ||
+      embedding.some((value) => typeof value !== "number")
+    ) {
+      throw new Error("TEXT_EMBEDDING returned an invalid vector");
+    }
+  } catch (err) {
+    if (isSetupIncompatibleError(err)) throw err;
+    throw setupIncompatible(
+      `Eliza setup incompatible: TEXT_EMBEDDING probe failed: ${errorMessage(err)}`,
+      { cause: err },
+    );
+  }
 }
 
 interface SecretsServiceApi {
@@ -171,13 +332,15 @@ async function tryImportDeps(): Promise<boolean> {
  * model provider plugin the runtime cannot generate responses and the
  * sendMessage callback never fires.
  */
-async function loadModelProviderPlugin(): Promise<Plugin | null> {
-  const explicit = (process.env.CONFIGBENCH_AGENT_PROVIDER ?? "")
-    .trim()
-    .toLowerCase();
+export async function loadModelProviderPlugin(): Promise<Plugin | null> {
+  applyOpenAICompatibleEnvAliases(rawConfiguredProvider());
+
+  const explicit = normalizeConfigBenchProviderName(
+    process.env.CONFIGBENCH_AGENT_PROVIDER ?? "",
+  );
   const hasGroq = !!process.env.GROQ_API_KEY;
   const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
-  const hasOpenAI = !!process.env.OPENAI_API_KEY;
+  const hasOpenAI = hasOpenAICompatibleCredential();
 
   let order: string[];
   if (explicit) {
@@ -236,31 +399,6 @@ async function loadModelProviderPlugin(): Promise<Plugin | null> {
           mod.default ??
           null) as Plugin | null;
         if (plugin) {
-          // Cerebras (api.cerebras.ai) has no /v1/embeddings endpoint.
-          // The openai plugin's TEXT_EMBEDDING handler 404s and blocks
-          // memory writes. Strip TEXT_EMBEDDING when the base URL points
-          // at cerebras so the local-embedding fallback can take over.
-          const baseUrl = process.env.OPENAI_BASE_URL?.trim() ?? "";
-          const isCerebras = /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl);
-          if (
-            isCerebras &&
-            plugin.models &&
-            "TEXT_EMBEDDING" in plugin.models
-          ) {
-            const filteredModels = { ...plugin.models } as Record<
-              string,
-              unknown
-            >;
-            delete filteredModels.TEXT_EMBEDDING;
-            const filteredPlugin: Plugin = {
-              ...plugin,
-              models: filteredModels as typeof plugin.models,
-            };
-            console.log(
-              "[ElizaHandler] Loaded model provider plugin: openai (TEXT_EMBEDDING stripped — cerebras base URL detected)",
-            );
-            return filteredPlugin;
-          }
           console.log("[ElizaHandler] Loaded model provider plugin: openai");
           return plugin;
         }
@@ -533,6 +671,8 @@ export const elizaHandler: Handler = {
   name: "Eliza (LLM Agent)",
 
   async setup(): Promise<void> {
+    applyOpenAICompatibleEnvAliases(rawConfiguredProvider());
+
     depsAvailable = await tryImportDeps().catch((err) => {
       console.error(
         `[ElizaHandler] Failed to import dependencies: ${err instanceof Error ? err.message : String(err)}`,
@@ -542,23 +682,27 @@ export const elizaHandler: Handler = {
 
     if (!depsAvailable || !AgentRuntimeCtor) {
       console.warn(
-        "[ElizaHandler] Dependencies not available. Eliza handler will skip all scenarios.",
+        "[ElizaHandler] Dependencies not available. Eliza handler setup is incompatible.",
       );
       depsAvailable = false;
-      return;
+      throw setupIncompatible(
+        "Eliza setup incompatible: @elizaos/core AgentRuntime dependencies are not available",
+      );
     }
 
     // Check for model provider API key
     const hasGroq = !!process.env.GROQ_API_KEY;
-    const hasOpenAI = !!process.env.OPENAI_API_KEY;
+    const hasOpenAI = hasOpenAICompatibleCredential();
     const hasAnthropic = !!process.env.ANTHROPIC_API_KEY;
 
     if (!hasGroq && !hasOpenAI && !hasAnthropic) {
       console.warn(
-        "[ElizaHandler] No model provider API key found (GROQ_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY). Eliza handler will skip.",
+        "[ElizaHandler] No model provider API key found. Eliza handler setup is incompatible.",
       );
       depsAvailable = false;
-      return;
+      throw setupIncompatible(
+        "Eliza setup incompatible: no model provider API key found (GROQ_API_KEY, OPENAI_API_KEY/CEREBRAS_API_KEY, or ANTHROPIC_API_KEY)",
+      );
     }
 
     // Model plugins read API keys through runtime.getSetting(), but ConfigBench
@@ -568,26 +712,14 @@ export const elizaHandler: Handler = {
     // plugin-sql reads these through runtime settings/process.env during init.
     process.env.PGLITE_DATA_DIR = "memory://";
     process.env.POSTGRES_URL = "";
-    const explicitProvider = (process.env.CONFIGBENCH_AGENT_PROVIDER ?? "")
-      .trim()
-      .toLowerCase();
-    const modelSettingKeys =
-      explicitProvider === "openai"
-        ? ["OPENAI_API_KEY", "OPENAI_SMALL_MODEL", "OPENAI_LARGE_MODEL"]
-        : explicitProvider === "anthropic"
-          ? [
-              "ANTHROPIC_API_KEY",
-              "ANTHROPIC_SMALL_MODEL",
-              "ANTHROPIC_LARGE_MODEL",
-            ]
-          : ["GROQ_API_KEY", "GROQ_SMALL_MODEL", "GROQ_LARGE_MODEL"];
-    const providerSettings: Record<string, string> = {};
-    for (const key of modelSettingKeys) {
-      const value = process.env[key];
-      if (typeof value === "string" && value.trim().length > 0) {
-        providerSettings[key] = value;
-      }
-    }
+    const explicitProvider = normalizeConfigBenchProviderName(
+      process.env.CONFIGBENCH_AGENT_PROVIDER ?? "",
+    );
+    const selectedProvider =
+      explicitProvider ||
+      (hasGroq ? "groq" : hasAnthropic ? "anthropic" : "openai");
+    const providerSettings =
+      collectConfigBenchProviderSettings(selectedProvider);
 
     const character: Character = {
       name: "ConfigBench Agent",
@@ -616,39 +748,14 @@ export const elizaHandler: Handler = {
     const modelProviderPlugin = await loadModelProviderPlugin();
     if (!modelProviderPlugin) {
       console.warn(
-        "[ElizaHandler] No model provider plugin could be loaded. Eliza handler will skip.",
+        "[ElizaHandler] No model provider plugin could be loaded. Eliza handler setup is incompatible.",
       );
       depsAvailable = false;
-      return;
+      throw setupIncompatible(
+        `Eliza setup incompatible: no model provider plugin could be loaded for ${selectedProvider}`,
+      );
     }
     plugins.push(modelProviderPlugin);
-
-    // When the model provider is openai-compat against cerebras (no /v1/embeddings),
-    // load plugin-local-embedding so TEXT_EMBEDDING resolves. Without this,
-    // memory writes 404 and Stage 1 of the message pipeline stalls.
-    const baseUrl = process.env.OPENAI_BASE_URL?.trim() ?? "";
-    const isCerebrasBase = /(^|\.)cerebras\.ai(\/|$)/i.test(baseUrl);
-    if (isCerebrasBase) {
-      try {
-        const mod = (await import("@elizaos/plugin-local-inference")) as Record<
-          string,
-          unknown
-        >;
-        const localEmbeddingPlugin = (mod.default ?? null) as Plugin | null;
-        if (localEmbeddingPlugin) {
-          plugins.push(localEmbeddingPlugin);
-          console.log(
-            "[ElizaHandler] Loaded @elizaos/plugin-local-inference for TEXT_EMBEDDING (cerebras has no /v1/embeddings)",
-          );
-        }
-      } catch (err) {
-        console.warn(
-          `[ElizaHandler] @elizaos/plugin-local-inference not available: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
 
     const agentId = crypto.randomUUID();
     runtime = new AgentRuntimeCtor({
@@ -671,8 +778,20 @@ export const elizaHandler: Handler = {
     const initializableRuntime = runtime as typeof runtime & {
       initialize?: (opts?: Record<string, unknown>) => Promise<void>;
     };
-    if (typeof initializableRuntime.initialize === "function") {
-      await initializableRuntime.initialize({ allowNoDatabase: true });
+    try {
+      if (typeof initializableRuntime.initialize === "function") {
+        await initializableRuntime.initialize({ allowNoDatabase: true });
+      }
+      await assertTextEmbeddingUsable(runtime);
+    } catch (err) {
+      if (isSetupIncompatibleError(err)) throw err;
+      if (isTextEmbeddingSetupFailure(err)) {
+        throw setupIncompatible(
+          `Eliza setup incompatible: embedding setup failed: ${errorMessage(err)}`,
+          { cause: err },
+        );
+      }
+      throw err;
     }
     console.log(
       "[ElizaHandler] Runtime initialized with plugins:",

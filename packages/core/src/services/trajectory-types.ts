@@ -137,7 +137,7 @@ export interface TrajectoryProviderAccessRecord {
 	createdAt?: string;
 }
 
-export type TrajectoryStepKind = "llm" | "action";
+export type TrajectoryStepKind = "llm" | "action" | "evaluator";
 
 export type TrajectoryStepId = string;
 
@@ -211,6 +211,13 @@ export interface TrajectoryStepRecord {
 	 * re-running the action.
 	 */
 	skillInvocations?: TrajectorySkillInvocationRecord[];
+	/**
+	 * Name of the evaluator that produced this step. Only set when
+	 * `kind === "evaluator"`. Closes M14: every evaluator turn emits an
+	 * EVALUATOR step wrapping its model call as a child so reviewers and
+	 * training pipelines can isolate the evaluator seam.
+	 */
+	evaluatorName?: string;
 }
 
 export const TRAJECTORY_STEP_SCRIPT_MAX_CHARS = 4096;

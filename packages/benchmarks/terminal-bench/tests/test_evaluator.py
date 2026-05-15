@@ -1,6 +1,5 @@
 """Tests for Terminal-Bench evaluator."""
 
-import pytest
 
 from elizaos_terminal_bench.evaluator import (
     TerminalBenchEvaluator,
@@ -8,13 +7,11 @@ from elizaos_terminal_bench.evaluator import (
 )
 from elizaos_terminal_bench.types import (
     CategoryMetrics,
-    DifficultyMetrics,
     LeaderboardComparison,
     TaskCategory,
     TaskDifficulty,
     TerminalBenchReport,
     TerminalBenchResult,
-    LEADERBOARD_SCORES,
 )
 
 

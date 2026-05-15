@@ -94,7 +94,7 @@ export async function getSpiderState(
 
 		const stateMemoryContent = stateMemory?.content;
 		if (stateMemoryContent?.text) {
-			const state = JSON.parse(stateMemory.content.text) as ChannelSpiderState;
+			const state = JSON.parse(stateMemoryContent.text) as ChannelSpiderState;
 			service.runtime.logger.debug(
 				{
 					src: "plugin:discord",
@@ -388,8 +388,8 @@ export async function buildMemoryFromMessage(
 		optionsProcessedContent !== undefined ||
 		optionsProcessedAttachments !== undefined
 	) {
-		textContent = options.processedContent || " ";
-		attachments = options.processedAttachments || [];
+		textContent = optionsProcessedContent || " ";
+		attachments = optionsProcessedAttachments || [];
 	} else {
 		const processed = service.messageManager
 			? await service.messageManager.processMessage(message)
