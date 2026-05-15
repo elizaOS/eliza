@@ -278,3 +278,69 @@
   doc. Pushed to origin/develop.
 
 - 2026-05-15 W3-2 phase=impl-done: Three-agent dialogue harness complete. Three Eliza agents (Alice/Bob/Cleo) each with distinct TTS voice (zoey/theo/autumn via Groq Orpheus; sine-wave fallback at C4/G3/E4). Shared in-process AudioBus mixes per-turn WAV into mix.wav. Scripted canonical.json scenario (10 turns, smokeSubset=[0..3] for CI). Per-run artifacts: transcripts.json, emotion.json, turn-events.json, verification.json, turns/*.wav, mix.wav — all landing under artifacts/three-agent-dialogue/<run-id>/. Fresh full run (2026-05-15T01-43-23-612Z): 10 turns, 20.96s, 3 distinct speakers, emotion fraction 1.0, pass=true. Smoke tests: 13/14 pass (1 skipped without GROQ_API_KEY), runs in ~6s with synthetic fallback. bun run bench:three-agent + bench:three-agent:smoke in root package.json. Report: .swarm/impl/W3-2-three-agent.md.
+
+- 2026-05-14 W3-11 phase=impl-done: Fine-tune pipelines (kokoro + omnivoice + ASR) complete. (1) Kokoro samantha: both paths attempted — mel-fit voice clone (I7: WER 0.60, SpkSim 0.26 vs baseline 0.065/0.46) and full-FT pivot (N2/finetune_kokoro_full.py: cannot converge on 3.5-min corpus, 20-60x below 1-3h community minimum). Decision per brief: shipped samantha path switched to OmniVoice frozen-conditioning preset (I6 Path A). Post-mortem at .swarm/impl/W3-11-kokoro-post-mortem.md. Kokoro infra retained as developer option (52/52 tests pass). (2) OmniVoice: Path A (preset-based freeze) SHIPPED via freeze-voice.mjs + ELZ2 v2 voice-preset-samantha.bin (I6). Path B (LM weight fine-tune) scaffold landed at packages/training/scripts/omnivoice/ — real training deferred (GGUF-to-HF conversion tooling unavailable). 9/9 tests pass. (3) ASR fine-tune scaffold: packages/training/scripts/asr/ — 15/15 tests pass, synthetic-smoke CI <1s, real training behind --real-train, conditional HF push gated on beatsBaseline+operatorSignedOff. (4) CHANGELOG: models/voice/CHANGELOG.md updated with kokoro 0.1.1 post-mortem, asr 0.1.1 scaffold, omnivoice-fine-tune 0.1.0. Total: 76 tests passing across all three pipelines. HF push blocked (kokoro: quality regression + license; OmniVoice Path B: tooling; ASR: compute). Report at .swarm/impl/W3-11-finetune.md.
+
+## Coordination handoff — W3-9 → W3-1
+
+- 2026-05-15 W3-9 phase=impl-done left ONE follow-up:
+  `EngineVoiceBridge.start()` does not construct the
+  `VoiceCancellationCoordinator` because the engine bridge has no runtime
+  ref. **W3-1 is already wiring VoiceProfileStore through engine
+  bootstrap → please pick up the cancellation-coordinator wiring in the
+  same pass.** Touch points (per W3-9 impl report):
+    - `plugins/plugin-local-inference/src/services/voice/engine-bridge.ts`
+      — add `runtime` to the constructor / start signature.
+    - `plugins/plugin-local-inference/src/services/voice/engine.ts`
+      — instantiate `VoiceCancellationCoordinator` near where VAD/EOT/
+      turnControllers come up; pass `slotAbort` + `ttsStop` callbacks.
+    - state machine `firePrefill` site — read `OptimisticGenerationPolicy`
+      gate before starting the LM.
+  Per Wave 3 hard rules (no "leaving for follow-up"), this MUST land in
+  W3-1 before W3-1 posts phase=impl-done. C0-W3 — please confirm.
+
+
+- 2026-05-14 C-train-phases phase=impl-done: Heavy training-phase
+  implementations landed. (1) distill_wav2small.py: real
+  teacher_pseudo_labels (audeering license-checked, 8s window / 4s hop,
+  V/A/D + 7-class softmax, parquet+JSONL emit), train_student (APOLLO-Mini,
+  MSE V-A-D + 0.5*CE 7-class, best-by-MELD-F1 checkpoint), export_student_onnx
+  (legacy TorchScript exporter dynamo=False, INT8 dynamic quant, metadata
+  bake, onnxruntime smoke roundtrip). Student arch sized to 71,666 params
+  (within 5% of 72,256 target, LogMel front-end frozen). (2)
+  finetune_turn_detector.py: build_pretrain_corpus (DailyDialog via HF
+  datasets), build_sft_corpus (50/50 task-conditional pairs), train_step
+  (APOLLO inner loop), train_lora (top-3 by val F1, F1-gate enforcement),
+  export_onnx (INT8 q8). Configs added at configs/turn_detector_{en,intl}.yaml.
+  (3) finetune_kokoro_full.py: smoke verified clean (12/12 tests). All 58
+  tests across the three suites green. Most implementation work landed
+  via parallel W3 agents (d43ba149cf, 2736928899, e11c0ea825) — this
+  batch verified, exercised, and documented. Reports updated at
+  .swarm/impl/I3-emotion.md (Heavy phases landed), I1-turn.md (Heavy
+  phases landed), I7-kokoro.md (Heavy phases landed). Operator-run
+  examples + third-party deps documented per script. No GPU runs
+  dispatched from this session per task brief §C4.
+
+- 2026-05-14 W3-10 phase=impl-done: All four I10 follow-ups closed.
+  (1) ContinuousChatToggle compact variant mounted in ChatView.tsx
+  (before slot, gated on voice.supported, continuousMode threaded into
+  useChatVoiceController) + PageScopedChatPane.tsx (useContinuousChat +
+  ContinuousChatToggle + ChatVoiceStatusBar). (2) OwnerBadge mounted in
+  Header.tsx rightDesktopControls, gated on ownerName != null from
+  useApp(), tooltip="OWNER: ${ownerName}". (3) VoicePrefixGate.tsx new
+  component wrapping VoicePrefixSteps, wired into StartupShell.tsx
+  before RuntimeGate in onboarding-required branch; localStorage gating
+  via loadVoicePrefixDone/saveVoicePrefixDone (key eliza:voice:prefix-done);
+  safe for existing users (flag already set → skipped). (4) Real
+  MediaRecorder capture: UserSpeaksStep (step 5) — getUserMedia +
+  MediaRecorder chunking + stopRecordingAndAppend → blobToBase64 →
+  profilesClient.appendOwnerCapture; FamilyStep (step 7) — 5s countdown
+  timer + recordAudioBlob + appendOwnerCapture + finalizeOwnerCapture;
+  both with graceful 404 fallbacks when I2 endpoints not live.
+  persistence.ts: loadContinuousChatMode/saveContinuousChatMode
+  (eliza:voice:continuous-chat-mode) + loadVoicePrefixDone/saveVoicePrefixDone.
+  Verify: bun x turbo run typecheck lint --filter @elizaos/ui → 2/2
+  successful; --filter @elizaos/app → 27/27 successful. Mobile: Android
+  ElizaVoiceCaptureService foreground service starts on toggle (I10 Wave 2);
+  iOS UIBackgroundModes=audio via patch-ios-plist.mjs (I10 Wave 2).
+  Report: .swarm/impl/W3-10-app-ux-close.md.
