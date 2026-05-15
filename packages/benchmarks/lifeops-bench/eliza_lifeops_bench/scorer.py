@@ -653,6 +653,19 @@ def _canonicalize_action(action: Action) -> Action:
             new_kwargs = dict(action.kwargs)
             new_kwargs["operation"] = "manage"
             return Action(name=name, kwargs=new_kwargs)
+    if name == "SCHEDULED_TASK" and "subaction" not in action.kwargs:
+        raw_op = action.kwargs.get("action") or action.kwargs.get("operation")
+        if isinstance(raw_op, str):
+            candidate = {
+                "ack": "acknowledge",
+                "create_task": "create",
+                "list_tasks": "list",
+            }.get(raw_op, raw_op)
+            _, subactions = _UMBRELLA_SUBACTIONS[name]
+            if candidate in subactions:
+                new_kwargs = dict(action.kwargs)
+                new_kwargs["subaction"] = candidate
+                return Action(name=name, kwargs=new_kwargs)
 
     # Owner-surface aliases: `OWNER_<AREA>_<SUB>` → `<UMBRELLA>(subaction=<sub>)`.
     # Check before the generic umbrella loop so e.g. `OWNER_HEALTH_TODAY` is

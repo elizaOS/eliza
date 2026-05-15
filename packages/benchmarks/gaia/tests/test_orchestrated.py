@@ -44,8 +44,8 @@ def test_canonical_harness_labels_have_default_research_capabilities() -> None:
     required = ["research.web_search", "research.web_browse", "research.docs_lookup"]
 
     assert _capability_report("eliza", required)["satisfied"] is True
-    assert _capability_report("hermes", required)["satisfied"] is True
-    assert _capability_report("openclaw", required)["satisfied"] is True
+    assert _capability_report("hermes", required)["satisfied"] is False
+    assert _capability_report("openclaw", required)["satisfied"] is False
 
 
 def test_legacy_default_providers_collapse_to_inherited_harness(
@@ -53,9 +53,13 @@ def test_legacy_default_providers_collapse_to_inherited_harness(
 ) -> None:
     monkeypatch.setenv("ELIZA_BENCH_HARNESS", "hermes")
 
-    providers = _effective_provider_labels(["claude-code", "swe-agent", "codex"])
+    with pytest.raises(ValueError, match="native hermes harness routing"):
+        _effective_provider_labels(["claude-code", "swe-agent", "codex"])
 
-    assert providers == ["hermes"]
+
+def test_explicit_non_eliza_harness_labels_are_rejected() -> None:
+    with pytest.raises(ValueError, match="native openclaw harness routing"):
+        _effective_provider_labels(["openclaw"])
 
 
 def test_model_provider_default_preserves_delegate_defaults(
@@ -103,7 +107,7 @@ async def test_run_provider_sets_harness_env_and_telemetry(
         captured["model_name"] = os.environ["BENCHMARK_MODEL_NAME"]
         captured["benchmark_model_provider"] = os.environ["BENCHMARK_MODEL_PROVIDER"]
         captured["eliza_provider"] = os.environ["ELIZA_PROVIDER"]
-        captured["openai_base_url"] = os.environ["OPENAI_BASE_URL"]
+        captured["openai_base_url"] = os.environ.get("OPENAI_BASE_URL")
         Path(os.environ["BENCHMARK_TELEMETRY_JSONL"]).write_text(
             json.dumps({"total_tokens": 17}) + "\n",
             encoding="utf-8",
@@ -124,27 +128,27 @@ async def test_run_provider_sets_harness_env_and_telemetry(
 
     monkeypatch.setattr(orchestrated, "run_quick_test", fake_run_quick_test)
 
-    payload = await _run_provider(_args(tmp_path), "hermes")
+    payload = await _run_provider(_args(tmp_path), "eliza")
 
     assert captured == {
-        "config_provider": "openai",
-        "config_api_base": "https://api.cerebras.ai/v1",
+        "config_provider": "eliza",
+        "config_api_base": None,
         "num_questions": 1,
-        "harness": "hermes",
-        "benchmark_harness": "hermes",
+        "harness": "eliza",
+        "benchmark_harness": "eliza",
         "model_name": "gpt-oss-120b",
-        "benchmark_model_provider": "openai",
-        "eliza_provider": "openai",
-        "openai_base_url": "https://api.cerebras.ai/v1",
+        "benchmark_model_provider": "eliza",
+        "eliza_provider": "eliza",
+        "openai_base_url": None,
     }
-    assert payload["harness"] == "hermes"
+    assert payload["harness"] == "eliza"
     assert payload["validation"] == {"ok": True, "failure": None}
     assert payload["telemetry"]["total_tokens"] == 17
     assert payload["metrics"]["observed_total_tokens"] == 17
-    assert payload["metadata"]["model_provider"] == "openai"
-    assert payload["metadata"]["model_api_base"] == "https://api.cerebras.ai/v1"
-    assert payload["metadata"]["benchmark_harness"] == "hermes"
-    assert payload["metadata"]["harness_backend"] == "hermes_adapter_via_eliza_client"
+    assert payload["metadata"]["model_provider"] == "eliza"
+    assert payload["metadata"]["model_api_base"] is None
+    assert payload["metadata"]["benchmark_harness"] == "eliza"
+    assert payload["metadata"]["harness_backend"] == "eliza_ts_bridge"
     assert payload["trajectory_artifacts"]["canonical_latest"].endswith(
         "gaia_orchestrated-trajectories-latest.jsonl"
     )
@@ -176,7 +180,7 @@ async def test_run_provider_rejects_zero_token_runs(
 
     monkeypatch.setattr(orchestrated, "run_quick_test", fake_run_quick_test)
 
-    payload = await _run_provider(_args(tmp_path), "openclaw")
+    payload = await _run_provider(_args(tmp_path), "eliza")
 
     assert payload["validation"] == {"ok": False, "failure": "zero_tokens"}
     assert "zero_tokens" in str(payload["error"])
@@ -210,7 +214,7 @@ async def test_run_provider_rejects_all_timeout_runs(
 
     monkeypatch.setattr(orchestrated, "run_quick_test", fake_run_quick_test)
 
-    payload = await _run_provider(_args(tmp_path), "hermes")
+    payload = await _run_provider(_args(tmp_path), "eliza")
 
     assert payload["validation"] == {"ok": False, "failure": "all_timeout"}
     assert "all_timeout" in str(payload["error"])
