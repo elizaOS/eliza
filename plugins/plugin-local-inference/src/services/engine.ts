@@ -1701,7 +1701,10 @@ export class LocalInferenceEngine {
 		);
 		const eliza1EotClassifier =
 			eliza1EotSelected !== "off" && opts.turnDetector !== false
-				? this.tryBuildEliza1EotClassifier(eliza1EotSelected, opts.eliza1EotLoraPath)
+				? this.tryBuildEliza1EotClassifier(
+						eliza1EotSelected,
+						opts.eliza1EotLoraPath,
+					)
 				: null;
 		if (eliza1EotSelected === "force" && !eliza1EotClassifier) {
 			throw new VoiceStartupError(
@@ -2448,6 +2451,57 @@ export class LocalInferenceEngine {
 			disableThinking: dflash.disableThinking,
 		};
 	}
+
+	/**
+	 * Build the eliza-1 EOT classifier when the in-process backend is
+	 * active and a text model is loaded. Returns `null` when the
+	 * preconditions aren't met (e.g. the active backend is llama-server,
+	 * or no model is loaded yet). Callers fall back to the LiveKit /
+	 * heuristic chain when null.
+	 */
+	private tryBuildEliza1EotClassifier(
+		_mode: "prefer" | "force",
+		loraPath: string | undefined,
+	): import("./voice/eot-classifier").Eliza1EotClassifier | null {
+		if (this.dispatcher.activeBackendId() !== "node-llama-cpp") return null;
+		const model = this.nodeBackend.getLoadedLlamaModel();
+		if (!model) return null;
+		const eotMod =
+			require("./voice/eot-classifier") as typeof import("./voice/eot-classifier");
+		return new eotMod.Eliza1EotClassifier({
+			model,
+			...(loraPath ? { loraPath } : {}),
+			modelLabel: `eliza-1${loraPath ? "+eot-lora" : ""}:${this.nodeBackend.currentModelPath() ?? "loaded"}`,
+		});
+	}
+}
+
+/**
+ * Resolve which EOT classifier to build for a voice session. Precedence:
+ *   1. Explicit `opts.useEliza1Eot` (`true` → `"force"`; `false` → `"off"`;
+ *      `"auto"` or unset → step 2).
+ *   2. `ELIZA_VOICE_EOT_BACKEND` env var (`eliza-1` → `"force"`, anything
+ *      else like `livekit`/`turnsense`/`heuristic` → `"off"`; unset →
+ *      step 3).
+ *   3. Default `"prefer"` — we try eliza-1 first when available and fall
+ *      back to LiveKit/Heuristic when the in-process backend is unavailable.
+ *
+ * Returns:
+ *   - `"force"`  — must build; throw if preconditions fail.
+ *   - `"prefer"` — try; on null, fall through to the LiveKit chain.
+ *   - `"off"`    — skip eliza-1 entirely.
+ */
+function resolveEliza1EotSelection(
+	optsValue: boolean | "auto" | undefined,
+	_loraPath: string | undefined,
+): "force" | "prefer" | "off" {
+	if (optsValue === true) return "force";
+	if (optsValue === false) return "off";
+	const envValue = process.env.ELIZA_VOICE_EOT_BACKEND?.trim().toLowerCase();
+	if (envValue === "eliza-1" || envValue === "eliza1") return "force";
+	if (envValue === "livekit" || envValue === "turnsense" || envValue === "heuristic")
+		return "off";
+	return "prefer";
 }
 
 export const localInferenceEngine = new LocalInferenceEngine();
