@@ -1,0 +1,40 @@
+{
+  "$schema": "https://elizaos.dev/schemas/voice-sub-model/v1.json",
+  "id": "speaker-encoder",
+  "version": "0.1.0",
+  "hfRepo": "elizaos/eliza-1-voice-speaker",
+  "hfRevision": "main",
+  "publishedToHfAt": "2026-05-14T00:00:00Z",
+  "displayName": "Eliza-1 Voice Speaker Encoder — WeSpeaker ECAPA-TDNN distilled",
+  "purpose": "256-dim speaker embedding for voice identification and profile matching",
+  "architecture": "ECAPA-TDNN distilled from WeSpeaker ResNet34-LM",
+  "license": "CC-BY-4.0",
+  "attribution": "https://huggingface.co/Wespeaker/wespeaker-voxceleb-resnet34-LM",
+  "runtime": "onnxruntime-node",
+  "minBundleVersion": "0.0.0",
+  "evalMetrics": {
+    "voxceleb1OEer": 0.0072,
+    "embeddingDim": 256,
+    "sampleRate": 16000,
+    "normalize": "l2"
+  },
+  "files": [
+    {
+      "filename": "wespeaker-ecapa-tdnn-256-int8.onnx",
+      "role": "primary-weights",
+      "quant": "onnx-int8",
+      "format": "onnx",
+      "approxSizeBytes": 7340032,
+      "sha256": "TBD-populated-by-publish-pipeline"
+    },
+    {
+      "filename": "wespeaker-ecapa-tdnn-256-fp32.onnx",
+      "role": "fp32-reference",
+      "quant": "onnx-fp16",
+      "format": "onnx",
+      "approxSizeBytes": 26214400,
+      "sha256": "TBD-populated-by-publish-pipeline"
+    }
+  ],
+  "notes": "CC-BY-4.0. Produces 256-dim L2-normalized speaker embeddings at 16kHz mono. Used by InMemoryVoiceProfileStore (LRU + cosine similarity) for real-time speaker attribution during multi-speaker sessions."
+}

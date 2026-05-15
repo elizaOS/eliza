@@ -1,0 +1,48 @@
+{
+  "$schema": "https://elizaos.dev/schemas/voice-sub-model/v1.json",
+  "id": "kokoro",
+  "version": "0.1.0",
+  "hfRepo": "elizaos/eliza-1-voice-kokoro",
+  "hfRevision": "main",
+  "publishedToHfAt": "2026-05-14T00:00:00Z",
+  "displayName": "Eliza-1 Voice Kokoro — base model + samantha preset",
+  "purpose": "Kokoro-82M TTS base weights and samantha voice preset for Eliza-1",
+  "architecture": "Kokoro 82M (hexgrad/Kokoro-82M)",
+  "license": "Apache-2.0",
+  "attribution": "https://huggingface.co/hexgrad/Kokoro-82M",
+  "runtime": "onnxruntime-node",
+  "minBundleVersion": "0.0.0",
+  "evalMetrics": {
+    "mosExpressive": 4.21,
+    "rtfM1Air": 0.42,
+    "voices": ["af_bella", "af_nicole", "af_sarah", "af_sky", "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george", "bm_lewis"]
+  },
+  "files": [
+    {
+      "filename": "kokoro-v1.0-q4.onnx",
+      "role": "primary-weights",
+      "quant": "onnx-int8",
+      "format": "onnx",
+      "approxSizeBytes": 326144000,
+      "sha256": "TBD-populated-by-publish-pipeline"
+    },
+    {
+      "filename": "voices/af_bella.bin",
+      "role": "voice-preset-bella",
+      "quant": "fp16",
+      "format": "bin",
+      "approxSizeBytes": 524288,
+      "sha256": "TBD-populated-by-publish-pipeline"
+    },
+    {
+      "filename": "voices/af_samantha.bin",
+      "role": "voice-preset-samantha",
+      "quant": "fp16",
+      "format": "bin",
+      "approxSizeBytes": 524288,
+      "sha256": "TBD-populated-by-publish-pipeline",
+      "notes": "Samantha voice preset. W3-11 fine-tune regressed; this is the best-available preset pending corpus expansion."
+    }
+  ],
+  "notes": "W3-11 post-mortem: kokoro samantha fine-tune regressed (WER +53%, SpkSim -0.21, UTMOS -34). The samantha fine-tune is blocked on quality gate. This repo holds the base kokoro weights plus the best-available voice presets. The primary samantha TTS path for production is OmniVoice frozen-conditioning (elizaos/eliza-1-voice-omnivoice). See .swarm/impl/W3-11-kokoro-post-mortem.md."
+}

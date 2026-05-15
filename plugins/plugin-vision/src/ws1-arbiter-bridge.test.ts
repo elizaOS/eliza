@@ -172,7 +172,7 @@ describe("plugin-vision ↔ WS1 MemoryArbiter bridge", () => {
     mgr.attachArbiter(adapted);
     const yoloUnload = vi.fn();
     const ocrUnload = vi.fn();
-    const florenceUnload = vi.fn();
+    const faceUnload = vi.fn();
     mgr.register({
       id: "vision:yolo",
       memoryBytes: 60 * 1024 * 1024,
@@ -184,9 +184,9 @@ describe("plugin-vision ↔ WS1 MemoryArbiter bridge", () => {
       unload: ocrUnload,
     });
     mgr.register({
-      id: "vision:florence2",
+      id: "vision:face",
       memoryBytes: 200 * 1024 * 1024,
-      unload: florenceUnload,
+      unload: faceUnload,
     });
 
     fire({ type: "memory_pressure", level: "critical" });
@@ -194,7 +194,7 @@ describe("plugin-vision ↔ WS1 MemoryArbiter bridge", () => {
 
     expect(yoloUnload).toHaveBeenCalledTimes(1);
     expect(ocrUnload).toHaveBeenCalledTimes(1);
-    expect(florenceUnload).toHaveBeenCalledTimes(1);
+    expect(faceUnload).toHaveBeenCalledTimes(1);
     await mgr.stop();
   });
 });

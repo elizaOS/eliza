@@ -234,9 +234,9 @@ export class VisionRuntimeTestSuite {
     },
 
     {
-      name: "Florence-2 model initialization",
+      name: "Screen capture availability in screen mode",
       fn: async (runtime: IAgentRuntime) => {
-        logger.info("[Test] Testing Florence-2 model...");
+        logger.info("[Test] Testing screen-mode capture...");
 
         const visionService = runtime.getService<VisionService>(
           VisionServiceType.VISION,
@@ -245,20 +245,8 @@ export class VisionRuntimeTestSuite {
           throw new Error("Vision service not found");
         }
 
-        // Check if Florence-2 is enabled
-        const florence2Enabled =
-          runtime.getSetting("FLORENCE2_ENABLED") === "true" ||
-          runtime.getSetting("VISION_FLORENCE2_ENABLED") === "true";
-
-        if (!florence2Enabled) {
-          logger.info("[Test] Florence-2 is disabled, skipping test");
-          return;
-        }
-
-        // If screen mode is enabled, Florence-2 should be initialized
         const mode = visionService.getVisionMode();
         if (mode === VisionMode.SCREEN || mode === VisionMode.BOTH) {
-          // Try to get screen capture
           const screenCapture = await visionService.getScreenCapture();
           if (screenCapture) {
             logger.info("[Test] Screen capture available");
@@ -269,7 +257,7 @@ export class VisionRuntimeTestSuite {
           }
         }
 
-        logger.info("[Test] ✅ Florence-2 model test passed");
+        logger.info("[Test] ✅ Screen capture test passed");
       },
     },
 

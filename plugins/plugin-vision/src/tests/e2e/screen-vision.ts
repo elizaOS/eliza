@@ -7,7 +7,7 @@ import { VisionMode } from "../../types";
 export class ScreenVisionE2ETestSuite {
   name = "plugin-vision-screen-e2e";
   description =
-    "E2E tests for screen vision functionality including Florence-2 and OCR";
+    "E2E tests for screen vision functionality including OCR + eliza-1 IMAGE_DESCRIPTION";
 
   tests = [
     {
@@ -100,7 +100,7 @@ export class ScreenVisionE2ETestSuite {
     },
 
     {
-      name: "Should analyze screen content with Florence-2 and OCR",
+      name: "Should analyze screen content with OCR",
       fn: async (runtime: IAgentRuntime) => {
         console.log("Testing screen content analysis...");
 
@@ -109,10 +109,8 @@ export class ScreenVisionE2ETestSuite {
           throw new Error("Vision service not available");
         }
 
-        // Ensure screen mode is active
         await visionService.setVisionMode(VisionMode.SCREEN);
 
-        // Wait for analysis
         await new Promise((resolve) => setTimeout(resolve, 5000));
 
         const enhancedScene = await visionService.getEnhancedSceneDescription();
@@ -125,21 +123,8 @@ export class ScreenVisionE2ETestSuite {
 
         const screenAnalysis = enhancedScene.screenAnalysis;
 
-        // Check active tile analysis
         if (screenAnalysis.activeTile) {
           console.log("✓ Active tile analyzed");
-
-          if (screenAnalysis.activeTile.florence2) {
-            console.log(
-              `  Florence-2 caption: ${screenAnalysis.activeTile.florence2.caption}`,
-            );
-            console.log(
-              `  Objects detected: ${screenAnalysis.activeTile.florence2.objects?.length || 0}`,
-            );
-            console.log(
-              `  Tags: ${screenAnalysis.activeTile.florence2.tags?.join(", ") || "none"}`,
-            );
-          }
 
           if (screenAnalysis.activeTile.ocr) {
             console.log(

@@ -89,25 +89,10 @@ export interface ScreenTile {
 
 export interface TileAnalysis {
   timestamp: number;
-  florence2?: Florence2Result;
   ocr?: OCRResult;
   objects?: DetectedObject[];
   text?: string;
   summary?: string;
-}
-
-export interface Florence2Result {
-  caption?: string;
-  objects?: Array<{
-    label: string;
-    bbox: BoundingBox;
-    confidence: number;
-  }>;
-  regions?: Array<{
-    description: string;
-    bbox: BoundingBox;
-  }>;
-  tags?: string[];
 }
 
 export interface OCRResult {
@@ -155,7 +140,6 @@ export interface VisionConfig {
   tileSize?: number;
   tileProcessingOrder?: "sequential" | "priority" | "random";
   ocrEnabled?: boolean;
-  florence2Enabled?: boolean;
   screenRegion?: {
     x: number;
     y: number;

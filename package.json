@@ -65,6 +65,7 @@
     "voice:interactive": "bun packages/app-core/scripts/voice-interactive.mjs",
     "voice:duet": "bun packages/app-core/scripts/voice-duet.mjs",
     "voice:create-profile": "bun packages/app-core/scripts/voice-create-profile.mjs",
+    "voice-models:publish-all": "node scripts/voice-models-publish-all.mjs",
     "voice:bargein-bench": "node plugins/plugin-local-inference/native/verify/bargein_latency_harness.mjs",
     "voice:endurance": "node plugins/plugin-local-inference/native/verify/thirty_turn_endurance_harness.mjs",
     "voice:mobile-rss": "node plugins/plugin-local-inference/native/verify/mobile_peak_rss_harness.mjs",

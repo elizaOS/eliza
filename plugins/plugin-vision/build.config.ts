@@ -45,7 +45,6 @@ export const buildConfig: BuildConfig = {
 export const workersConfig: BuildConfig = {
   entrypoints: [
     "./src/workers/screen-capture-worker.ts",
-    "./src/workers/florence2-worker.ts",
     "./src/workers/ocr-worker.ts",
   ],
   outdir: "./dist/workers",
