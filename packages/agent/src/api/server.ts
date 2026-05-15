@@ -242,7 +242,7 @@ import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
-import { handleWalletRoutes } from "./wallet-routes.ts";
+import { handleWalletRoutes } from "@elizaos/plugin-wallet";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
 import { handleWorkbenchRoutes } from "./workbench-routes.ts";
 
