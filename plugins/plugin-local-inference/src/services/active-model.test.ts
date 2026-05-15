@@ -194,7 +194,10 @@ describe("assertModelFitsHost (RAM-budget admission control)", () => {
 	it("names the largest fitting context variant when one exists", () => {
 		// 40 GB host: 27b (32 GB) fits, 27b-256k (96 GB) does not.
 		// The fit hint stays inside the 27B context-variant line.
-		const m = makeInstalledModel("eliza-1-27b-256k", "/tmp/eliza-1-27b-256k.gguf");
+		const m = makeInstalledModel(
+			"eliza-1-27b-256k",
+			"/tmp/eliza-1-27b-256k.gguf",
+		);
 		let caught: unknown;
 		try {
 			assertModelFitsHost(m, 40 * 1024, {

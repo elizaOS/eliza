@@ -17,7 +17,10 @@ const agentPluginName = "Agent";
 const agentPluginId = "@elizaos/capacitor-agent";
 
 function normalizeLocalAgentHost(hostname: string): string {
-  return hostname.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  return hostname
+    .trim()
+    .toLowerCase()
+    .replace(/^\[|\]$/g, "");
 }
 
 export function isMobileLocalAgentUrl(value: string): boolean {

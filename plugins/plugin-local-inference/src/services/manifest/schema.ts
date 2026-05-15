@@ -48,7 +48,7 @@ export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). Enum stays size-ordered.
-// The active 27B long-context cap is `27b-256k` (262k native context).
+// The active 27B long-context caps are `27b-256k` and `27b-1m`.
 export const ELIZA_1_TIERS = [
 	"0_8b",
 	"2b",
@@ -56,6 +56,7 @@ export const ELIZA_1_TIERS = [
 	"9b",
 	"27b",
 	"27b-256k",
+	"27b-1m",
 ] as const;
 export type Eliza1Tier = (typeof ELIZA_1_TIERS)[number];
 
@@ -138,7 +139,8 @@ export const ELIZA_1_BACKENDS = [
 export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors AGENTS.md §3:
-// - All tiers require turboquant + qjl + polarquant + dflash.
+// - 0_8b requires turboquant + qjl + polarquant only.
+// - 2B and larger tiers add DFlash.
 // - 4B and larger tiers require `turbo3_tcq`. The validator also enforces the
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.
@@ -148,12 +150,13 @@ export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 export const REQUIRED_KERNELS_BY_TIER: Readonly<
 	Record<Eliza1Tier, ReadonlyArray<Eliza1Kernel>>
 > = {
-	"0_8b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+	"0_8b": ["turboquant_q4", "qjl", "polarquant"],
 	"2b": ["turboquant_q4", "qjl", "polarquant", "dflash"],
 	"4b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"9b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 	"27b-256k": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
+	"27b-1m": ["turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"],
 };
 
 // Backends each tier is expected to support on shipped hardware.
@@ -166,6 +169,7 @@ export const SUPPORTED_BACKENDS_BY_TIER: Readonly<
 	"9b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"27b": ["metal", "vulkan", "cuda", "rocm", "cpu"],
 	"27b-256k": ["metal", "vulkan", "cuda", "rocm", "cpu"],
+	"27b-1m": ["cuda"],
 };
 
 // ---------------------------------------------------------------------------
@@ -184,7 +188,7 @@ const lineageEntry = z.object({
 export const Eliza1LineageSchema = z.object({
 	text: lineageEntry,
 	voice: lineageEntry,
-	drafter: lineageEntry,
+	drafter: lineageEntry.optional(),
 	// Wave-6 (2026-05-10): manifest now records lineage for every shipped
 	// component so license/dataset provenance is auditable per component.
 	// All optional — a tier may omit ASR/embedding/vision/vad/wakeword by
@@ -228,7 +232,7 @@ export const Eliza1FilesSchema = z.object({
 	voice: z.array(Eliza1FileEntrySchema).min(1),
 	asr: z.array(Eliza1FileEntrySchema),
 	vision: z.array(Eliza1FileEntrySchema),
-	dflash: z.array(Eliza1FileEntrySchema).min(1),
+	dflash: z.array(Eliza1FileEntrySchema).default([]),
 	cache: z.array(Eliza1FileEntrySchema).min(1),
 	// Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
 	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers) and
