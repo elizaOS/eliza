@@ -1118,7 +1118,9 @@ export function appendBackendSafeStartupFlags(
 }
 
 const RUNTIME_COMPRESSED_KV_FALLBACK = "q8_0";
-const RUNTIME_COMPRESSED_KV_UNSUPPORTED = new Set(["qjl1_256", "q4_polar"]);
+const RUNTIME_COMPRESSED_KV_UNSAFE = new Set(
+	Object.keys(CACHE_TYPE_REQUIRED_KERNEL),
+);
 const compressedKvGraphUnsafeBackends = new Set(["metal", "vulkan"]);
 const runtimeCompressedKvWarnings = new Set<string>();
 
@@ -1169,8 +1171,8 @@ export function resolveRuntimeCacheTypes(opts: {
 	const kLower = k?.toLowerCase();
 	const vLower = v?.toLowerCase();
 	const usesUnsafeCompressedKv =
-		(kLower !== undefined && RUNTIME_COMPRESSED_KV_UNSUPPORTED.has(kLower)) ||
-		(vLower !== undefined && RUNTIME_COMPRESSED_KV_UNSUPPORTED.has(vLower));
+		(kLower !== undefined && RUNTIME_COMPRESSED_KV_UNSAFE.has(kLower)) ||
+		(vLower !== undefined && RUNTIME_COMPRESSED_KV_UNSAFE.has(vLower));
 
 	if (
 		backend === null ||
@@ -1187,11 +1189,11 @@ export function resolveRuntimeCacheTypes(opts: {
 	}
 
 	const cacheTypeK =
-		kLower !== undefined && RUNTIME_COMPRESSED_KV_UNSUPPORTED.has(kLower)
+		kLower !== undefined && RUNTIME_COMPRESSED_KV_UNSAFE.has(kLower)
 			? RUNTIME_COMPRESSED_KV_FALLBACK
 			: k;
 	const cacheTypeV =
-		vLower !== undefined && RUNTIME_COMPRESSED_KV_UNSUPPORTED.has(vLower)
+		vLower !== undefined && RUNTIME_COMPRESSED_KV_UNSAFE.has(vLower)
 			? RUNTIME_COMPRESSED_KV_FALLBACK
 			: v;
 	const reason = compressedKvGraphFallbackReason(backend);
@@ -2075,9 +2077,19 @@ async function fetchJson(
 	const abort = () => controller.abort(externalSignal?.reason);
 	if (externalSignal?.aborted) abort();
 	externalSignal?.addEventListener("abort", abort, { once: true });
-	const timer = setTimeout(() => controller.abort(), timeoutMs);
+	const timer = setTimeout(
+		() =>
+			controller.abort(
+				new DOMException(
+					`DFlash request timed out after ${timeoutMs}ms`,
+					"TimeoutError",
+				),
+			),
+		timeoutMs,
+	);
+	let res: Response | null = null;
 	try {
-		const res = await fetch(url, { ...init, signal: controller.signal });
+		res = await fetch(url, { ...init, signal: controller.signal });
 		if (!res.ok) {
 			const body = await res.text().catch(() => "");
 			throw new Error(
@@ -2088,6 +2100,9 @@ async function fetchJson(
 	} finally {
 		clearTimeout(timer);
 		externalSignal?.removeEventListener("abort", abort);
+		if (controller.signal.aborted) {
+			await res?.body?.cancel(controller.signal.reason).catch(() => undefined);
+		}
 	}
 }
 
@@ -2233,6 +2248,7 @@ async function fetchStreamingChatCompletion(
 	// queue + first SSE chunk).
 	const t0 = performance.now();
 	let firstTokenMs: number | null = null;
+	let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 	try {
 		const res = await fetch(url, { ...init, signal: controller.signal });
 		if (!res.ok) {
@@ -2246,7 +2262,7 @@ async function fetchStreamingChatCompletion(
 		}
 
 		const decoder = new TextDecoder();
-		const reader = res.body.getReader();
+		reader = res.body.getReader();
 		let buffer = "";
 		let text = "";
 		let nextIndex = startIndex;
@@ -2406,6 +2422,9 @@ async function fetchStreamingChatCompletion(
 	} finally {
 		clearTimeout(timer);
 		externalSignal?.removeEventListener("abort", abort);
+		if (controller.signal.aborted) {
+			await reader?.cancel(controller.signal.reason).catch(() => undefined);
+		}
 	}
 }
 
