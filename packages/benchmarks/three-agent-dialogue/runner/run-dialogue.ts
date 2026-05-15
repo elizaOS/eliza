@@ -25,7 +25,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   AgentRuntime,
-  ChannelType,
   type Character,
   InMemoryDatabaseAdapter,
   ModelType,
@@ -800,8 +799,7 @@ if (
   ((import.meta as { main?: boolean }).main === true ||
     (typeof process !== "undefined" &&
       process.argv[1] &&
-      import.meta.url &&
-      import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))))
+      import.meta.url?.endsWith(process.argv[1].replace(/\\/g, "/"))))
 ) {
   main().catch((err) => {
     console.error("[three-agent-dialogue] Fatal error:", err);

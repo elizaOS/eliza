@@ -169,8 +169,7 @@ if (
     // Node fallback: check process.argv[1]
     (typeof process !== "undefined" &&
       process.argv[1] &&
-      import.meta.url &&
-      import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))))
+      import.meta.url?.endsWith(process.argv[1].replace(/\\/g, "/"))))
 ) {
   main().catch((err) => {
     console.error("[verify-run] Fatal:", err);
