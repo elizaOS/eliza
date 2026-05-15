@@ -104,6 +104,11 @@ function clampHistoryLimit(value: number | undefined): number {
   return Math.max(1, Math.min(100, Math.floor(value)));
 }
 
+function isMissingPathError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
 function formatStreams(stdout: string, stderr: string): string {
   const sOut = truncate(stdout, STREAM_CAP_CHARS);
   const sErr = truncate(stderr, STREAM_CAP_CHARS);
@@ -280,7 +285,7 @@ export const shellAction: Action = {
       });
     }
 
-    let cwd: string;
+    let cwd = "";
     if (cwdParam) {
       const v = await sandbox.validatePath(conversationId, cwdParam);
       if (v.ok === false) {
@@ -298,12 +303,18 @@ export const shellAction: Action = {
           });
         }
       } catch (err) {
-        return failureToActionResult({
-          reason: "io_error",
-          message: `cwd stat failed: ${(err as Error).message}`,
-        });
+        if (!isMissingPathError(err)) {
+          return failureToActionResult({
+            reason: "io_error",
+            message: `cwd stat failed: ${(err as Error).message}`,
+          });
+        }
+        cwd = session.getCwd(conversationId);
+        coreLogger.warn(
+          `${CODING_TOOLS_LOG_PREFIX} SHELL cwd not found; using session cwd (requested=${cwdParam}, fallback=${cwd})`,
+        );
       }
-      cwd = v.resolved;
+      if (!cwd) cwd = v.resolved;
     } else {
       cwd = session.getCwd(conversationId);
     }
@@ -432,7 +443,7 @@ export const shellAction: Action = {
       {
         name: "{{agentName}}",
         content: {
-          text: "$ df -h / /home; du -x -h --max-depth=1 /home 2>/dev/null | sort -hr | head -n 5; du -x -h --max-depth=2 \"$HOME\" 2>/dev/null | sort -hr | head -n 8\n[exit 0]",
+          text: '$ df -h / /home; du -x -h --max-depth=1 /home 2>/dev/null | sort -hr | head -n 5; du -x -h --max-depth=2 "$HOME" 2>/dev/null | sort -hr | head -n 8\n[exit 0]',
           actions: ["SHELL"],
           thought:
             "Disk checks should use df for mount usage, then bounded du probes that still run after permission-denied paths and inspect the largest readable directory one level deeper before ranking cleanup candidates.",
