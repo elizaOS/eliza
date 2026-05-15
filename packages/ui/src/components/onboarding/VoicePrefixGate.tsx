@@ -14,7 +14,7 @@
 import * as React from "react";
 import { client } from "../../api/client";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
-import { type VoicePrefixStep } from "../../onboarding/voice-prefix";
+import type { VoicePrefixStep } from "../../onboarding/voice-prefix";
 import { VoicePrefixSteps } from "./VoicePrefixSteps";
 
 export interface VoicePrefixGateProps {

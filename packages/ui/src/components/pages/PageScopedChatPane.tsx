@@ -39,10 +39,10 @@ import {
   isLikelyAccountRequiredError,
   mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
-import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
-import { ChatComposer } from "../composites/chat/chat-composer";
 import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
 import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
+import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
+import { ChatComposer } from "../composites/chat/chat-composer";
 import { Spinner } from "../ui/spinner";
 import {
   buildPageScopedConversationMetadata,
@@ -643,9 +643,11 @@ export function PageScopedChatPane({
       app.elizaCloudVoiceProxyAvailable || app.elizaCloudConnected || false,
     interruptOnSpeech: false,
     lang: resolveSpeechLocale(app.uiLanguage),
-    onTranscript: (text) => {
+    onTranscript: (text, event) => {
       const transcript = text.trim();
       if (!transcript) return;
+      const speaker = event?.speaker ?? event?.turn.speaker ?? null;
+      if (speaker) setVoiceSpeaker(speaker);
       setVoicePreview("");
       void handleSend({
         channelType: "VOICE_DM",
@@ -653,9 +655,19 @@ export function PageScopedChatPane({
         text: transcript,
       });
     },
-    onTranscriptPreview: (text) => {
+    onTranscriptPreview: (text, event) => {
+      const speaker = event?.speaker ?? null;
+      if (speaker) setVoiceSpeaker(speaker);
       setVoicePreview(text);
     },
+  });
+
+  const continuous = useContinuousChat({
+    voice,
+    mode: continuousChatMode,
+    disabled: disabled || sending,
+    speaker: voiceSpeaker,
+    assistantGenerating: sending && !firstTokenReceived,
   });
 
   const hasClearableContent =
@@ -984,6 +996,33 @@ export function PageScopedChatPane({
             onReconnectAccount={handleReconnectSendAsAccount}
             onSelectAccount={handleSelectSendAsAccount}
           />
+        ) : null}
+        {voice.supported &&
+        (continuousChatMode !== "off" ||
+          voice.isListening ||
+          voice.isSpeaking ||
+          Boolean(voiceSpeaker) ||
+          Boolean(continuous.interimTranscript)) ? (
+          <ChatVoiceStatusBar
+            status={continuous.status}
+            interimTranscript={continuous.interimTranscript}
+            speaker={voiceSpeaker}
+            latency={continuous.latency}
+            visible
+            className="mb-1"
+            data-testid={`page-scoped-chat-voice-status-bar-${scope}`}
+          />
+        ) : null}
+        {voice.supported ? (
+          <div className="mb-1 flex justify-end px-1">
+            <ContinuousChatToggle
+              compact
+              value={continuousChatMode}
+              onChange={handleContinuousChatModeChange}
+              disabled={disabled || sending}
+              data-testid={`page-scoped-chat-continuous-toggle-${scope}`}
+            />
+          </div>
         ) : null}
         <div data-testid={`page-scoped-chat-composer-${scope}`}>
           <ChatComposer
