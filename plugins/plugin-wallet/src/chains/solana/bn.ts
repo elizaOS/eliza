@@ -1,5 +1,8 @@
-import BigNumberLib from "bignumber.js";
+import { createRequire } from "node:module";
 import type { default as BigNumberType } from "bignumber.js";
+
+const require = createRequire(import.meta.url);
+const BigNumberLib = require("bignumber.js") as typeof BigNumberType;
 
 export const BN = BigNumberLib;
 export default BigNumberLib;

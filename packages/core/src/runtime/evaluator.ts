@@ -14,7 +14,7 @@ import {
 	renderContextObject,
 } from "./context-renderer";
 import { computeCallCostUsd } from "./cost-table";
-import { parseJsonObject } from "./json-output";
+import { extractJsonObjects, parseJsonObject } from "./json-output";
 import {
 	buildModelInputBudget,
 	withModelInputBudgetProviderOptions,
@@ -106,7 +106,21 @@ export async function runEvaluator(
 	);
 	const endedAt = Date.now();
 	const output = sanitizeOutputMessage(
-		repairMissingEvaluatorSuccess(parseEvaluatorOutput(raw), params.trajectory),
+		repairFinishedToolTurnWithoutUserMessage(
+			repairMissingEvaluatorMessage(
+				repairMissingEvaluatorSuccess(
+					recoverEvaluatorTextOutput(
+						parseEvaluatorOutput(raw),
+						raw,
+						params.trajectory,
+					),
+					params.trajectory,
+				),
+				params.context,
+				params.trajectory,
+			),
+			params.trajectory,
+		),
 	);
 	const streamingContext = getStreamingContext();
 	await emitStreamingHook(streamingContext, "onEvaluation", {
@@ -422,6 +436,213 @@ function repairMissingEvaluatorSuccess(
 	};
 }
 
+function repairMissingEvaluatorMessage(
+	output: EvaluatorOutput,
+	context: ContextObject,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (typeof output.messageToUser === "string") return output;
+	if (output.success !== true || output.decision !== "FINISH") return output;
+	const command = latestSafeCommandForUser(context, trajectory);
+	if (hasSuccessfulToolResult(trajectory) && !command) return output;
+	const thought = output.thought.trim();
+	if (!looksLikeUserFacingAnswer(thought)) return output;
+
+	const messageToUser =
+		command && !thought.includes(command)
+			? `Command run: \`${command}\`\n\n${thought}`
+			: thought;
+	return {
+		...output,
+		messageToUser,
+	};
+}
+
+function repairFinishedToolTurnWithoutUserMessage(
+	output: EvaluatorOutput,
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (typeof output.messageToUser === "string") return output;
+	if (output.success !== true || output.decision !== "FINISH") return output;
+	const latestStep = [...trajectory.steps]
+		.reverse()
+		.find((step) => step.toolCall && step.result);
+	if (!latestStep?.result || latestStep.result.success !== true) return output;
+	if (latestStep.result.userFacingText?.trim()) return output;
+	return {
+		...output,
+		success: false,
+		decision: "CONTINUE",
+		thought:
+			"Evaluator finished without a user-facing message; replanning from recorded tool results.",
+	};
+}
+
+function recoverEvaluatorTextOutput(
+	output: EvaluatorOutput,
+	raw: string | { text?: string; object?: unknown },
+	trajectory: PlannerTrajectory,
+): EvaluatorOutput {
+	if (!output.parseError) return output;
+	const text = rawText(raw).trim();
+	if (!text) return output;
+
+	if (containsToolAttemptObject(text)) {
+		return {
+			success: false,
+			decision: "CONTINUE",
+			thought:
+				"Evaluator emitted tool/action syntax instead of evaluator JSON; replanning from recorded tool results.",
+			raw: { recoverySource: "tool_attempt_text" },
+		};
+	}
+
+	if (!hasSuccessfulToolResult(trajectory)) return output;
+	if (!looksLikeUserFacingAnswer(text)) return output;
+
+	return {
+		success: true,
+		decision: "FINISH",
+		thought:
+			"Recovered user-facing evaluator prose after a successful tool result.",
+		messageToUser: text,
+		raw: { recoverySource: "prose_after_successful_tool" },
+	};
+}
+
+function rawText(raw: string | { text?: string; object?: unknown }): string {
+	if (typeof raw === "string") return raw;
+	if (typeof raw.text === "string") return raw.text;
+	return "";
+}
+
+function hasSuccessfulToolResult(trajectory: PlannerTrajectory): boolean {
+	return trajectory.steps.some((step) => step.result?.success === true);
+}
+
+function containsToolAttemptObject(text: string): boolean {
+	for (const objectText of extractJsonObjects(text)) {
+		try {
+			const parsed = JSON.parse(objectText);
+			if (isToolAttemptObject(parsed)) return true;
+		} catch {}
+	}
+	return false;
+}
+
+function isToolAttemptObject(value: unknown): boolean {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return false;
+	}
+	const record = value as Record<string, unknown>;
+	const name = record.name ?? record.tool ?? record.action;
+	if (typeof name !== "string" || name.trim().length === 0) {
+		return false;
+	}
+	if (isEvaluatorShapedObject(record)) {
+		return false;
+	}
+	return (
+		"parameters" in record ||
+		"params" in record ||
+		"args" in record ||
+		"command" in record ||
+		"arguments" in record
+	);
+}
+
+function looksLikeUserFacingAnswer(text: string): boolean {
+	if (text.length < 8 || text.length > 4000) return false;
+	if (looksLikeRawToolTranscript(text)) return false;
+	if (/\{\s*"(?:action|tool|name|parameters|command)"\s*:/i.test(text)) {
+		return false;
+	}
+	if (
+		/\b(?:need|needs|should|must|will)\s+(?:to\s+)?(?:run|call|use|invoke|execute)\b/i.test(
+			text,
+		)
+	) {
+		return false;
+	}
+	if (/\b(?:cannot|can't)\s+(?:answer|finish|complete)\b/i.test(text)) {
+		return false;
+	}
+	return true;
+}
+
+function looksLikeRawToolTranscript(text: string): boolean {
+	return /\[(?:exit\s+\d+|timeout\s+\d+ms)\]|\(cwd=|---\s+(?:stdout|stderr)\s+---/i.test(
+		text,
+	);
+}
+
+function latestSafeCommandForUser(
+	context: ContextObject,
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	if (!latestUserAskedForCommandEcho(context)) return undefined;
+	for (const step of [...trajectory.steps].reverse()) {
+		const command = step.toolCall?.params?.command;
+		if (typeof command !== "string") continue;
+		const trimmed = command.trim();
+		if (isSafeCommandEcho(trimmed)) return trimmed;
+	}
+	return undefined;
+}
+
+function latestUserAskedForCommandEcho(context: ContextObject): boolean {
+	const latestUserText = [...context.events]
+		.reverse()
+		.map((event) => messageEventContent(event))
+		.find((content) => typeof content !== "undefined");
+	const text = messageContentText(latestUserText).toLowerCase();
+	if (!text.includes("command")) return false;
+	return (
+		text.includes("exact command") ||
+		text.includes("command you ran") ||
+		text.includes("command ran") ||
+		text.includes("what command") ||
+		text.includes("which command") ||
+		text.includes("show the command") ||
+		text.includes("include the command")
+	);
+}
+
+function messageEventContent(event: unknown): unknown {
+	if (!event || typeof event !== "object") return undefined;
+	const record = event as Record<string, unknown>;
+	if (record.type !== "message") return undefined;
+	const message = record.message;
+	if (!message || typeof message !== "object") return undefined;
+	const messageRecord = message as Record<string, unknown>;
+	if (messageRecord.role !== "user") return undefined;
+	return messageRecord.content;
+}
+
+function messageContentText(content: unknown): string {
+	if (typeof content === "string") return content;
+	if (!content || typeof content !== "object") return "";
+	const text = (content as Record<string, unknown>).text;
+	return typeof text === "string" ? text : "";
+}
+
+function isSafeCommandEcho(command: string): boolean {
+	if (command.length === 0 || command.length > 240) return false;
+	if (command.includes("\n") || command.includes("\r")) return false;
+	const lower = command.toLowerCase();
+	return ![
+		"authorization",
+		"bearer",
+		"password",
+		"passwd",
+		"secret",
+		"token",
+		"api_key",
+		"apikey",
+		"vault://",
+	].some((needle) => lower.includes(needle));
+}
+
 export async function applyEvaluatorEffects(
 	output: EvaluatorOutput,
 	effects?: EvaluatorEffects,
@@ -498,6 +719,10 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
 					"response contains extra text or multiple JSON objects around evaluator JSON",
 			};
 		}
+		const labeled = parseLabeledEvaluatorText(candidate);
+		if (labeled) {
+			return { object: labeled };
+		}
 		return { object: null, parseError: "response is not a single JSON object" };
 	}
 }
@@ -507,6 +732,131 @@ function unwrapJsonFence(text: string): string {
 	const firstLineEnd = text.indexOf("\n");
 	if (firstLineEnd < 0 || !text.endsWith("```")) return text;
 	return text.slice(firstLineEnd + 1, -3).trim();
+}
+
+function parseLabeledEvaluatorText(text: string): RawEvaluatorOutput | null {
+	const sections: Array<{ label: string; value: string }> = [];
+	let current: { label: string; lines: string[] } | null = null;
+	for (const line of text.split(/\r?\n/)) {
+		const labeledLine = parseEvaluatorLabelLine(line);
+		if (labeledLine) {
+			if (current) {
+				sections.push({
+					label: current.label,
+					value: current.lines.join("\n").trim(),
+				});
+			}
+			current = { label: labeledLine.label, lines: [labeledLine.value] };
+			continue;
+		}
+		if (current) current.lines.push(line);
+	}
+	if (current) {
+		sections.push({
+			label: current.label,
+			value: current.lines.join("\n").trim(),
+		});
+	}
+	if (sections.length === 0) return null;
+
+	const output: RawEvaluatorOutput = {};
+	for (const section of sections) {
+		if (section.label === "success") {
+			const success = parseBooleanLabelValue(section.value);
+			if (typeof success === "boolean") output.success = success;
+			continue;
+		}
+		if (section.label === "decision" || section.label === "route") {
+			output.decision = firstLabelToken(section.value);
+			continue;
+		}
+		if (section.label === "thought") {
+			output.thought = section.value;
+			continue;
+		}
+		if (section.label === "messagetouser" || section.label === "message") {
+			output.messageToUser = section.value;
+		}
+	}
+
+	if (!isEvaluatorShapedObject(output)) return null;
+	deriveMessageFromLabeledFinalThought(output);
+	return output;
+}
+
+function parseEvaluatorLabelLine(
+	line: string,
+): { label: string; value: string } | null {
+	const colon = line.indexOf(":");
+	if (colon <= 0) return null;
+	const label = normalizeEvaluatorLabel(line.slice(0, colon));
+	if (!isKnownEvaluatorTextLabel(label)) return null;
+	return {
+		label,
+		value: line.slice(colon + 1).trimStart(),
+	};
+}
+
+function normalizeEvaluatorLabel(label: string): string {
+	return label
+		.trim()
+		.toLowerCase()
+		.replaceAll(" ", "")
+		.replaceAll("_", "")
+		.replaceAll("-", "");
+}
+
+function isKnownEvaluatorTextLabel(label: string): boolean {
+	return (
+		label === "success" ||
+		label === "decision" ||
+		label === "route" ||
+		label === "thought" ||
+		label === "messagetouser" ||
+		label === "message"
+	);
+}
+
+function parseBooleanLabelValue(value: string): boolean | undefined {
+	const normalized = value.trim().toLowerCase();
+	if (normalized.startsWith("true") || normalized.startsWith("yes"))
+		return true;
+	if (normalized.startsWith("false") || normalized.startsWith("no"))
+		return false;
+	return undefined;
+}
+
+function firstLabelToken(value: string): string {
+	return (
+		value
+			.trim()
+			.split(/\s+/)[0]
+			?.replace(/[.,;:]+$/g, "") ?? ""
+	);
+}
+
+function deriveMessageFromLabeledFinalThought(
+	output: RawEvaluatorOutput,
+): void {
+	if (typeof output.messageToUser === "string") return;
+	if (output.success !== true) return;
+	if (normalizeEvaluatorRoute(output.decision) !== "FINISH") return;
+	if (typeof output.thought !== "string") return;
+	const thought = output.thought.trim();
+	if (!looksLikeMultilineFinalAnswer(thought)) return;
+	output.messageToUser = thought;
+	output.thought = "Recovered evaluator-labeled final answer.";
+}
+
+function looksLikeMultilineFinalAnswer(text: string): boolean {
+	if (!text.includes("\n")) return false;
+	return (
+		text.includes("```") ||
+		text.includes("\n- ") ||
+		text.includes("\n* ") ||
+		text.includes("\n1. ") ||
+		text.includes("**")
+	);
 }
 
 function normalizeNextTool(value: unknown): PlannerToolCall | undefined {

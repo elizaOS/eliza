@@ -40,7 +40,10 @@ function makeAction(name: string): Action {
 }
 
 const TASKS_SPAWN_AGENT = makeAction("TASKS_SPAWN_AGENT");
-const REAL_ACTIONS: Action[] = [TASKS_SPAWN_AGENT];
+const SHELL = makeAction("SHELL");
+const SEARCH = makeAction("SEARCH");
+const BROWSER = makeAction("BROWSER");
+const REAL_ACTIONS: Action[] = [TASKS_SPAWN_AGENT, SHELL, SEARCH];
 
 describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 	it("does not promote a `[simple]` route to planning when ALL candidateActionNames are bogus", () => {
@@ -206,5 +209,169 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.simple).toBe(true);
 		expect(handler.plan.requiresTool).toBe(false);
 		expect(handler.plan.reply).toBe("I can't help with that.");
+	});
+
+	it("promotes ack-only actionable intents to the planner", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "On it.",
+				intents: ["check disk space"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: REAL_ACTIONS },
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.reply).toBe("On it.");
+	});
+
+	it("infers SHELL as the candidate action for ack-only local shell intents", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "On it.",
+				intents: ["check disk space"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: [SHELL] },
+		);
+
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
+	});
+
+	it("promotes progress-only shell replies to the planner", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "Running shell commands to gather disk usage...",
+				intents: ["check disk usage"],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{ actions: [SHELL] },
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
+	});
+
+	it("uses current message text when progress-only replies omit intents", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "Running shell commands to gather disk usage...",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [SHELL],
+				messageText: "Check this VPS disk usage with the shell.",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
+	});
+
+	it("promotes current market-data requests to search even when Stage 1 underclaims browsing", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: ["simple"],
+				candidateActionNames: [],
+				replyText: "I don't have the ability to look up live market data here.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: REAL_ACTIONS,
+				messageText:
+					"What is the current Bitcoin price in USD right now? Use web or market data if available.",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["SEARCH"]);
+		expect(handler.plan.reply).toBe("");
+	});
+
+	it("infers TASKS for direct app-build requests without explicit sub-agent wording", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [TASKS_SPAWN_AGENT],
+				messageText: "build an app that generates a random tweet",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["TASKS_SPAWN_AGENT"]);
+	});
+
+	it("adds a real lookup action when Stage 1 emits only a synthetic current-price candidate", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: ["GET_CRYPTO_PRICE"],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [BROWSER, SHELL],
+				messageText: "what is btc at rn?",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual([
+			"GET_CRYPTO_PRICE",
+			"SHELL",
+		]);
+		expect(handler.plan.reply).toBe("On it.");
 	});
 });

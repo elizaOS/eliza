@@ -1061,6 +1061,7 @@ if (uiOnly) {
 
   const apiCmd = [
     "node",
+    "--conditions=eliza-source",
     "--import",
     "tsx",
     ...nodeStealthImports.flatMap((filePath) => ["--import", filePath]),

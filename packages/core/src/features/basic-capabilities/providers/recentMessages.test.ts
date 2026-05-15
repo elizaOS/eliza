@@ -32,12 +32,13 @@ function makeRuntime(
 	room: {
 		type?: (typeof ChannelType)[keyof typeof ChannelType];
 		metadata?: Record<string, unknown>;
+		conversationLength?: number;
 	} = {},
 ): IAgentRuntime {
 	return {
 		agentId: AGENT_ID,
 		character: { name: "Agent" },
-		getConversationLength: vi.fn(() => 10),
+		getConversationLength: vi.fn(() => room.conversationLength ?? 10),
 		getRoom: vi.fn(async () => ({
 			id: ROOM_ID,
 			type: room.type ?? ChannelType.GROUP,
@@ -139,5 +140,33 @@ describe("recentMessagesProvider", () => {
 		);
 		expect(result.text).toContain("BLUE-77");
 		expect(result.text).toContain("# Posts in Thread");
+	});
+
+	it("sorts memories by timestamp before applying the conversation window", async () => {
+		const memories = Array.from({ length: 12 }, (_, index) => {
+			const n = 12 - index;
+			return makeMemory(
+				`msg-${n}`,
+				USER_ID,
+				`message ${n}`,
+				"discord",
+				n * 1000,
+			);
+		});
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories, { conversationLength: 3 }),
+			makeMemory("current", USER_ID, "status", "discord", 13_000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		const recentMessages = result.data?.recentMessages as Memory[];
+		expect(recentMessages.map((memory) => memory.id)).toEqual([
+			"msg-10",
+			"msg-11",
+			"msg-12",
+		]);
+		expect(result.text).toContain("User: message 12");
+		expect(result.text).not.toContain("User: message 9");
 	});
 });
