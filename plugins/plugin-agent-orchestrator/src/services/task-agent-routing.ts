@@ -68,7 +68,7 @@ export function resolveSpawnWorkdir(
   const expandedExplicit = explicitWorkdir
     ? expandHomePath(explicitWorkdir)
     : undefined;
-  if (opts.lockWorkdir && expandedExplicit) {
+  if (opts.lockWorkdir && expandedExplicit && fs.existsSync(expandedExplicit)) {
     return { workdir: expandedExplicit };
   }
   const route = resolveWorkdirRoute(runtime, task, userRequest);

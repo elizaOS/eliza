@@ -824,6 +824,7 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"ATTACHMENTS",
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
+	"RUNTIME_MODEL_CONTEXT",
 	// CURRENT_TIME is dynamic and would otherwise be filtered out before
 	// reaching the response handler. The wall-clock time is a baseline
 	// signal for nearly every routing decision (scheduling, freshness of
@@ -1707,6 +1708,7 @@ function getRecentConversationSearchText(
 			if (memory.id && currentMessage.id && memory.id === currentMessage.id) {
 				return false;
 			}
+			if (isSubAgentCompletionArtifact(memory)) return false;
 			return typeof memory.content?.text === "string";
 		})
 		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
@@ -2178,16 +2180,22 @@ async function createV5MessageContextObject(args: {
 	];
 	appendStateProviderEvents(events, args.state, renderExclusions);
 
-	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
-	if (events.some((event) => event.id.startsWith("history:"))) {
+	if (hasStructuredRecentMessagesProvider(args.state)) {
 		events.push({
 			id: "prior-dialogue-policy",
-			type: "provider",
-			source: "message-runtime",
-			name: "PRIOR_DIALOGUE_POLICY",
-			text: "prior_dialogue_policy: prior assistant/tool outputs are historical context only; satisfy the current user request with current tool calls when tools are required.",
+			type: "segment",
+			source: "message-service",
+			segment: {
+				id: "prior-dialogue-policy",
+				label: "system",
+				content:
+					"prior_dialogue_policy: Prior chat is context only. For current, latest, live, filesystem, runtime, build, deploy, or verification requests, use the current turn's tools/context instead of answering from prior tool results or stale sub-agent transcripts.",
+				stable: true,
+			},
 		});
 	}
+
+	appendPriorDialogueEvents(events, args.runtime, args.state, args.message);
 
 	events.push({
 		id: String(args.message.id ?? "current-message"),
@@ -2822,8 +2830,12 @@ export function messageHandlerFromFieldResult(
 	const replyTextRaw =
 		typeof result.replyText === "string" ? result.replyText : "";
 	const currentMessageText = runtimeContext?.messageText ?? "";
+	const hasRunnableCandidateAction = candidateActionsContainRunnableAction(
+		candidateActions,
+		runtimeContext,
+	);
 	const inferredAckCandidateActions =
-		candidateActions.length === 0 &&
+		!hasRunnableCandidateAction &&
 		hasAckOnlyActionableIntent(result, replyTextRaw, currentMessageText)
 			? inferAckIntentCandidateActions(
 					result,
@@ -2962,6 +2974,25 @@ export function messageHandlerFromFieldResult(
 	};
 }
 
+function candidateActionsContainRunnableAction(
+	candidateActions: readonly string[],
+	runtimeContext:
+		| {
+				actions: ReadonlyArray<Pick<Action, "name">>;
+		  }
+		| undefined,
+): boolean {
+	if (candidateActions.length === 0) return false;
+	if (!runtimeContext) return true;
+	return candidateActions.some((name) => {
+		const normalized = normalizeActionIdentifier(name);
+		if (canonicalPlannerControlActionName(normalized) !== null) return true;
+		return runtimeContext.actions.some(
+			(action) => normalizeActionIdentifier(action.name) === normalized,
+		);
+	});
+}
+
 const PLANNING_ACK_REPLIES = new Set([
 	"got it.",
 	"looking into it.",
@@ -2997,7 +3028,7 @@ function hasAckOnlyActionableIntent(
 	return (
 		looksLikeLocalShellRequest(actionText) ||
 		looksLikeWebSearchRequest(actionText) ||
-		looksLikeCodingDelegationRequest(actionText)
+		looksLikeCodingWorkRequest(actionText)
 	);
 }
 
@@ -3029,7 +3060,7 @@ function inferAckIntentCandidateActions(
 		const lookupAction = findWebLookupActionName(actions);
 		if (lookupAction) return [lookupAction];
 	}
-	if (looksLikeCodingDelegationRequest(actionText)) {
+	if (looksLikeCodingWorkRequest(actionText)) {
 		const codingAction = findAvailableActionName(actions, [
 			"TASKS",
 			"TASKS_SPAWN_AGENT",
@@ -3063,7 +3094,7 @@ function inferDirectCurrentRequestCandidateActions(
 		const lookupAction = findWebLookupActionName(actions);
 		if (lookupAction) return [lookupAction];
 	}
-	if (looksLikeCodingDelegationRequest(messageText)) {
+	if (looksLikeCodingWorkRequest(messageText)) {
 		const codingAction = findAvailableActionName(actions, [
 			"TASKS",
 			"TASKS_SPAWN_AGENT",
@@ -5758,7 +5789,7 @@ function looksLikeWebSearchRequest(text: string): boolean {
 	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
 }
 
-function looksLikeCodingDelegationRequest(text: string): boolean {
+function looksLikeCodingWorkRequest(text: string): boolean {
 	const normalized = text.toLowerCase();
 	if (!normalized.trim()) {
 		return false;

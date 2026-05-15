@@ -550,9 +550,12 @@ describe("runV5MessageRuntimeStage1", () => {
 
 	it("executes an umbrella action directly when the planner supplies its dispatcher enum", async () => {
 		const runtime = makeRuntime([
-			"",
-			"",
-			"",
+			stage1Response({
+				thought: "A coding task should be delegated.",
+				contexts: ["general"],
+				candidateActionNames: ["TASKS"],
+				extra: { requiresTool: true },
+			}),
 			{
 				thought: "A coding task should be delegated.",
 				toolCalls: [
@@ -643,8 +646,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		expect(parentHandler).toHaveBeenCalledTimes(1);
 		expect(childHandler).not.toHaveBeenCalled();
 		expect(useModelCalls(runtime).map((call) => call[0])).toEqual([
-			ModelType.RESPONSE_HANDLER,
-			ModelType.RESPONSE_HANDLER,
 			ModelType.RESPONSE_HANDLER,
 			ModelType.ACTION_PLANNER,
 		]);

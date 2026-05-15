@@ -855,6 +855,64 @@ function routeVerificationForSession(
   };
 }
 
+function expandRouteUrlAliases(
+  urls: readonly string[],
+  routeVerification: RouteUrlVerification | undefined,
+): string[] {
+  if (!routeVerification) return [...urls];
+  const expanded = new Set(urls);
+  for (const url of urls) {
+    const relativePath = routeRelativePathForUrl(
+      url,
+      routeVerification.mappings,
+    );
+    if (!relativePath) continue;
+    for (const mapping of routeVerification.mappings) {
+      const alias = urlForRouteMapping(mapping, relativePath);
+      if (alias) expanded.add(alias);
+    }
+  }
+  return [...expanded];
+}
+
+function routeRelativePathForUrl(
+  url: string,
+  mappings: readonly RouteUrlMapping[],
+): string | undefined {
+  for (const mapping of mappings) {
+    let parsed: URL;
+    let prefix: URL;
+    try {
+      parsed = new URL(url);
+      prefix = new URL(mapping.urlPrefix);
+    } catch {
+      continue;
+    }
+    if (parsed.origin !== prefix.origin) continue;
+    const prefixPath = prefix.pathname.endsWith("/")
+      ? prefix.pathname
+      : `${prefix.pathname}/`;
+    if (!parsed.pathname.startsWith(prefixPath)) continue;
+    const relativePath = parsed.pathname.slice(prefixPath.length);
+    if (relativePath) return relativePath;
+  }
+  return undefined;
+}
+
+function urlForRouteMapping(
+  mapping: RouteUrlMapping,
+  relativePath: string,
+): string | undefined {
+  try {
+    const prefix = mapping.urlPrefix.endsWith("/")
+      ? mapping.urlPrefix
+      : `${mapping.urlPrefix}/`;
+    return new URL(relativePath, prefix).toString();
+  } catch {
+    return undefined;
+  }
+}
+
 function mergeCachedStaleMissUrls(
   prior: Set<string>,
   dead: DeadUrl[],
@@ -937,7 +995,10 @@ async function annotateUnverifiedUrls(
   runtime?: IAgentRuntime,
   routeVerification?: RouteUrlVerification,
 ): Promise<{ text: string; dead: DeadUrl[]; verifiedUrls: string[] }> {
-  const urls = extractVerifiableUrls(text, 5, referenceText, ignoredUrls);
+  const urls = expandRouteUrlAliases(
+    extractVerifiableUrls(text, 5, referenceText, ignoredUrls),
+    routeVerification,
+  );
   if (urls.length === 0) return { text, dead: [], verifiedUrls: [] };
   log?.(
     `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,
