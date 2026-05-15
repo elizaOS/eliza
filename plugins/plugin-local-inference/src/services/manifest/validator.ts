@@ -181,7 +181,6 @@ const _DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 	"9b",
 	"27b",
 	"27b-256k",
-	"27b-1m",
 ]);
 
 const _VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
@@ -189,7 +188,6 @@ const _VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 	"9b",
 	"27b",
 	"27b-256k",
-	"27b-1m",
 ]);
 
 function collectContractErrors(m: Eliza1Manifest): string[] {

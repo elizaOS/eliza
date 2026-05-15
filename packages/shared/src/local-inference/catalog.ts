@@ -26,7 +26,6 @@ export const ELIZA_1_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
@@ -37,7 +36,6 @@ export const ELIZA_1_DFLASH_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 export const ELIZA_1_VISION_TIER_IDS = [
@@ -45,7 +43,6 @@ export const ELIZA_1_VISION_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
 const ELIZA_1_DFLASH_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
@@ -149,8 +146,8 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b) → OmniVoice first with Kokoro bundled as
- *     the low-latency fallback.
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Those bundles optimize
+ *     for install size, TTFA, and phone thermals.
  *   - 9B → OmniVoice first with Kokoro bundled for hosts with enough memory.
  *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
@@ -160,16 +157,17 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["omnivoice", "kokoro"],
-  "eliza-1-2b": ["omnivoice", "kokoro"],
-  "eliza-1-4b": ["omnivoice", "kokoro"],
-  "eliza-1-9b": ["kokoro", "omnivoice"],
+  "eliza-1-0_8b": ["kokoro"],
+  "eliza-1-2b": ["kokoro"],
+  "eliza-1-4b": ["kokoro"],
+  "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],
 };
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
+  "dflash",
   "turbo3",
   "turbo4",
   "qjl_full",
@@ -312,24 +310,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     hasVision: true,
     hasImageGen: true,
   },
-  "eliza-1-27b-1m": {
-    id: "eliza-1-27b-1m",
-    params: "27B",
-    parameterLabel: "27B 1M",
-    sizeGb: 16.8,
-    minRamGb: 141,
-    q4MinRamGb: 141,
-    bucket: "large",
-    contextLength: 1048576,
-    textFile: "text/eliza-1-27b-1m.gguf",
-    drafterParams: "4B",
-    drafterSizeGb: 2.6,
-    drafterMinRamGb: 141,
-    gpuProfile: "h200",
-    hasEmbedding: true,
-    hasVision: true,
-    hasImageGen: true,
-  },
 };
 
 function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
@@ -416,9 +396,9 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
-  "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
-  "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-0_8b": [],
+  "eliza-1-2b": [],
+  "eliza-1-4b": [],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
@@ -482,11 +462,10 @@ function runtimeForTier(
   contextLength: number,
 ): CatalogModel["runtime"] {
   const hasDflash = ELIZA_1_DFLASH_TIER_ID_SET.has(id);
-  const dflashKernels: LocalRuntimeKernel[] = hasDflash ? ["dflash"] : [];
   const requiresKernel: LocalRuntimeKernel[] =
     contextLength >= 65536
-      ? [...BASE_REQUIRED_KERNELS, ...dflashKernels, "turbo3_tcq"]
-      : [...BASE_REQUIRED_KERNELS, ...dflashKernels];
+      ? [...BASE_REQUIRED_KERNELS, "turbo3_tcq"]
+      : [...BASE_REQUIRED_KERNELS];
   const runtime: CatalogModel["runtime"] = {
     preferredBackend: "llama-server",
     optimizations: {
