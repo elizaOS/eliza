@@ -214,8 +214,9 @@ def load_teacher(repo: str, *, cache_dir: pathlib.Path | None = None) -> Any:
         # Imports are lazy so the script's smoke test can run without GPU /
         # transformers installed; the real run needs them.
         import torch
+        from huggingface_hub import hf_hub_download
         from torch import nn
-        from transformers import Wav2Vec2Processor
+        from transformers import Wav2Vec2Config, Wav2Vec2FeatureExtractor
         from transformers.models.wav2vec2.modeling_wav2vec2 import (
             Wav2Vec2Model,
             Wav2Vec2PreTrainedModel,
@@ -261,6 +262,11 @@ def load_teacher(repo: str, *, cache_dir: pathlib.Path | None = None) -> Any:
         `[B, 3]` for arousal/dominance/valence in [0, 1].
         """
 
+        # transformers >=5 checks `all_tied_weights_keys` during from_pretrained
+        # finalisation; the audeering model ties nothing.
+        all_tied_weights_keys: "dict[str, str]" = {}
+        _tied_weights_keys: "list[str]" = []
+
         def __init__(self, config: Any) -> None:
             super().__init__(config)
             self.config = config
@@ -275,8 +281,24 @@ def load_teacher(repo: str, *, cache_dir: pathlib.Path | None = None) -> Any:
             logits = self.classifier(hidden_states)
             return hidden_states, logits
 
-    processor = Wav2Vec2Processor.from_pretrained(repo, cache_dir=cache_dir)
-    model = EmotionModel.from_pretrained(repo, cache_dir=cache_dir)
+    # audeering ships a regression model with an empty vocab.json; the full
+    # `Wav2Vec2Processor` build fails under transformers 5.x strict validation
+    # ("vocab_size: None"). Use the feature extractor directly — that's all
+    # the regression head needs.
+    processor = Wav2Vec2FeatureExtractor.from_pretrained(repo, cache_dir=cache_dir)
+    # transformers 5.x's strict Wav2Vec2Config also rejects `vocab_size: null`
+    # from the audeering config.json. Pull the raw config JSON via the hub
+    # API, patch vocab_size in-memory, then materialise the config from the
+    # cleaned dict. The regression head ignores vocab_size; we just need a
+    # legal int so strict validation passes.
+    config_path = hf_hub_download(
+        repo_id=repo, filename="config.json", cache_dir=cache_dir,
+    )
+    config_dict = json.loads(pathlib.Path(config_path).read_text("utf-8"))
+    if config_dict.get("vocab_size") is None:
+        config_dict["vocab_size"] = 32
+    config = Wav2Vec2Config(**config_dict)
+    model = EmotionModel.from_pretrained(repo, config=config, cache_dir=cache_dir)
     model.eval()
     return {
         "model": model,
