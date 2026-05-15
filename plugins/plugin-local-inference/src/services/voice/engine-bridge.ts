@@ -30,6 +30,7 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
+import { logger } from "@elizaos/core";
 import type { VoiceCancellationReason } from "@elizaos/shared";
 import {
 	type KokoroEngineDiscoveryResult,
@@ -1539,9 +1540,12 @@ export class EngineVoiceBridge {
 				.then(onAttribution)
 				.catch((err: unknown) => {
 					// Attribution failures must not crash the turn. Log and continue.
-					console.warn(
-						`[voice-bridge] speaker attribution failed for turn ${turnId}:`,
-						err instanceof Error ? err.message : String(err),
+					logger.warn(
+						{
+							turnId,
+							error: err instanceof Error ? err.message : String(err),
+						},
+						"[voice-bridge] speaker attribution failed",
 					);
 				});
 		}
