@@ -535,17 +535,7 @@ _ACTION_NAME_ALIASES: dict[str, str] = {
     # Retired action names → canonical replacements.
     "DEVICE_INTENT": "BLOCK",
     "LIFEOPS": "LIFE",
-    "SCHEDULED_TASKS": "SCHEDULED_TASK",
-    "SCHEDULED_TASKS_ACKNOWLEDGE": "SCHEDULED_TASK_ACKNOWLEDGE",
-    "SCHEDULED_TASKS_CANCEL": "SCHEDULED_TASK_CANCEL",
-    "SCHEDULED_TASKS_COMPLETE": "SCHEDULED_TASK_COMPLETE",
     "SCHEDULED_TASKS_CREATE": "SCHEDULED_TASK_CREATE",
-    "SCHEDULED_TASKS_DISMISS": "SCHEDULED_TASK_DISMISS",
-    "SCHEDULED_TASKS_GET": "SCHEDULED_TASK_GET",
-    "SCHEDULED_TASKS_HISTORY": "SCHEDULED_TASK_HISTORY",
-    "SCHEDULED_TASKS_LIST": "SCHEDULED_TASK_LIST",
-    "SCHEDULED_TASKS_REOPEN": "SCHEDULED_TASK_REOPEN",
-    "SCHEDULED_TASKS_SKIP": "SCHEDULED_TASK_SKIP",
     "SCHEDULED_TASKS_SNOOZE": "SCHEDULED_TASK_SNOOZE",
     "SCHEDULED_TASKS_UPDATE": "SCHEDULED_TASK_UPDATE",
 }
@@ -653,6 +643,19 @@ def _canonicalize_action(action: Action) -> Action:
             new_kwargs = dict(action.kwargs)
             new_kwargs["operation"] = "manage"
             return Action(name=name, kwargs=new_kwargs)
+    if name == "SCHEDULED_TASK" and "subaction" not in action.kwargs:
+        raw_op = action.kwargs.get("action") or action.kwargs.get("operation")
+        if isinstance(raw_op, str):
+            candidate = {
+                "ack": "acknowledge",
+                "create_task": "create",
+                "list_tasks": "list",
+            }.get(raw_op, raw_op)
+            _, subactions = _UMBRELLA_SUBACTIONS[name]
+            if candidate in subactions:
+                new_kwargs = dict(action.kwargs)
+                new_kwargs["subaction"] = candidate
+                return Action(name=name, kwargs=new_kwargs)
 
     # Owner-surface aliases: `OWNER_<AREA>_<SUB>` → `<UMBRELLA>(subaction=<sub>)`.
     # Check before the generic umbrella loop so e.g. `OWNER_HEALTH_TODAY` is
