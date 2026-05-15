@@ -28,8 +28,6 @@ import { StateTutorialSettings } from "./StateTutorialSettings";
 import { StateTutorialSubscriptions } from "./StateTutorialSubscriptions";
 import { StateTutorialViews } from "./StateTutorialViews";
 
-import "./onboarding.css";
-
 export interface OnboardingRootProps {
   deviceProfile?: DeviceProfile;
   localDownloadProgress?: LocalDownloadProgress;
