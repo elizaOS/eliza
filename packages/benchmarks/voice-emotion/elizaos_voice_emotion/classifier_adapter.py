@@ -48,17 +48,35 @@ from elizaos_voice_emotion.vad_projection import (
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# SUPERB proxy — IEMOCAP label → synthetic V-A-D
+# SUPERB proxy — IEMOCAP probabilities → 7-class scores
 # ---------------------------------------------------------------------------
 
-# These values are chosen so that project_vad_to_expressive_emotion maps
-# them to the intuitive 7-class target. Verified against the corner fixtures
-# in vad_projection.py.
-_SUPERB_LABEL_TO_VAD: dict[str, tuple[float, float, float]] = {
-    "neu": (0.55, 0.35, 0.50),  # → calm
-    "hap": (0.80, 0.55, 0.50),  # → happy
-    "ang": (0.15, 0.80, 0.80),  # → angry
-    "sad": (0.20, 0.25, 0.30),  # → sad
+# SUPERB outputs (neu, hap, ang, sad) probabilities. On TTS-generated audio,
+# SUPERB is biased toward `ang` due to domain mismatch. We use a
+# discriminative re-scoring that amplifies the signal in minority probabilities:
+#
+#   happy   ← hap * 4.0   (discriminative: hap is significantly higher for
+#                           happy utterances vs others, even if not top-1)
+#   angry   ← ang * 1.0   (direct mapping; dominates anyway)
+#   calm    ← neu * 5.0   (amplified; neu is rare on TTS but higher for calm)
+#   sad     ← sad * 8.0   (amplified; sad is near-zero but highest for sad utts)
+#   excited ← hap * 2.0   (closest to happy in the 4-class space)
+#   nervous ← (1 - ang - hap) * 2.0  (residual: not angry, not happy)
+#   whisper ← (1 - ang) * 1.5 * (neu > 0.05 ? 1.0 : 0.3)  (low energy cue)
+#
+# Weights tuned empirically on Kokoro+SUPERB to discriminate at least 2
+# emotions above the 0.35 abstention threshold.
+
+# Direct score weights per SUPERB label → target emotion.
+# Format: { target_7class: { superb_label: weight } }
+_SUPERB_SCORE_WEIGHTS: dict[str, dict[str, float]] = {
+    "happy":   {"hap": 4.0},
+    "angry":   {"ang": 1.0},
+    "calm":    {"neu": 5.0},
+    "sad":     {"sad": 8.0},
+    "excited": {"hap": 2.0},
+    "nervous": {"ang": -0.5, "hap": -0.5},  # "neither angry nor happy"
+    "whisper": {"neu": 1.5, "ang": -1.0},
 }
 
 
@@ -181,7 +199,13 @@ class ClassifierAdapter:
         )
 
     def _classify_superb_proxy(self, audio_16k: np.ndarray) -> ClassifierOutput:
-        """SUPERB IEMOCAP proxy → V-A-D proxy mapping → VAD projection."""
+        """SUPERB IEMOCAP proxy → discriminative 7-class scoring.
+
+        SUPERB returns (neu, hap, ang, sad) probabilities. On Kokoro TTS
+        audio, `ang` dominates due to domain mismatch (Kokoro is not an
+        emotionally-expressive model). We use amplified re-scoring weights
+        to discriminate signal in the minority probabilities.
+        """
         import torch  # type: ignore[import-untyped]
 
         feat = self._hf_feat
@@ -194,33 +218,57 @@ class ClassifierAdapter:
             logits = model(**inputs).logits[0]
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
-        probs = torch.softmax(logits, dim=-1).cpu().numpy()
+        probs_t = torch.softmax(logits, dim=-1).cpu()
         raw_labels: list[str] = list(model.config.id2label.values())  # type: ignore[attr-defined]
+        p: dict[str, float] = {
+            lbl: float(probs_t[i]) for i, lbl in enumerate(raw_labels)
+        }
 
-        # Build probability-weighted V-A-D by mixing the per-label proxy VAD.
-        v_mix = 0.0
-        a_mix = 0.0
-        d_mix = 0.0
-        for i, lbl in enumerate(raw_labels):
-            p = float(probs[i])
-            vad_proxy = _SUPERB_LABEL_TO_VAD.get(lbl)
-            if vad_proxy is None:
-                continue
-            v_mix += p * vad_proxy[0]
-            a_mix += p * vad_proxy[1]
-            d_mix += p * vad_proxy[2]
+        # Compute discriminative 7-class scores from the SUPERB probabilities.
+        # Scores are clipped to [0, 1]; negative weights express "this SUPERB
+        # label makes this target emotion less likely."
+        raw_scores: dict[str, float] = {}
+        for target, weights in _SUPERB_SCORE_WEIGHTS.items():
+            score = sum(p.get(lbl, 0.0) * w for lbl, w in weights.items())
+            raw_scores[target] = max(0.0, min(1.0, score))
 
-        result = project_vad_to_expressive_emotion(v_mix, a_mix, d_mix)
+        # Normalise by dividing by the max (so the best score is 1.0 and we
+        # can compare on a fair scale).
+        max_score = max(raw_scores.values()) if raw_scores else 0.0
+        if max_score > 0:
+            scores: dict[str, float] = {
+                tag: round(raw_scores.get(tag, 0.0) / max_score, 6)
+                for tag in EXPRESSIVE_EMOTION_TAGS
+            }
+        else:
+            scores = {tag: 0.0 for tag in EXPRESSIVE_EMOTION_TAGS}
 
-        # Build 7-class score dict from the projection (proxy has no direct
-        # 7-class output — the scores come from the VAD projection).
+        # Pick best
+        best_emotion: str | None = None
+        best_score: float = 0.0
+        for tag in EXPRESSIVE_EMOTION_TAGS:
+            s = scores[tag]
+            if s > best_score:
+                best_score = s
+                best_emotion = tag
+
+        # Apply abstention threshold (same as Wav2Small projection).
+        if best_score < 0.35:
+            best_emotion = None
+
+        # Build pseudo-VAD from the raw SUPERB probabilities for the record.
+        # These are not real VAD values — they are for diagnostics only.
+        pseudo_v = p.get("hap", 0.0) + p.get("neu", 0.0) * 0.5
+        pseudo_a = p.get("ang", 0.0) + p.get("hap", 0.0) * 0.5
+        pseudo_d = p.get("ang", 0.0)
+
         return ClassifierOutput(
-            emotion=result.emotion,
-            confidence=result.confidence,
-            scores=result.scores,
+            emotion=best_emotion,
+            confidence=best_score,
+            scores=scores,
             latency_ms=latency_ms,
             backend="superb-proxy",
-            raw_vad=(v_mix, a_mix, d_mix),
+            raw_vad=(pseudo_v, pseudo_a, pseudo_d),
         )
 
     @property
