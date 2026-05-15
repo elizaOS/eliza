@@ -22,10 +22,13 @@ function makeMessage(
 }
 
 describe("ChatMessage voice speaker surfacing", () => {
-  it("renders the voice speaker badge when voiceSpeaker has a name", () => {
+  it("renders the voice speaker badge when voiceSpeaker has a different name from the sender", () => {
+    // When `from` is set the sender header shows that label; the voice badge
+    // surfaces the captured speaker so a multi-speaker room stays legible.
     render(
       <ChatMessage
         message={makeMessage({
+          from: "Owner Device",
           voiceSpeaker: { name: "Alex", isOwner: false },
         })}
       />,
@@ -39,6 +42,7 @@ describe("ChatMessage voice speaker surfacing", () => {
     render(
       <ChatMessage
         message={makeMessage({
+          from: "Owner Device",
           voiceSpeaker: { name: "Shaw", isOwner: true },
         })}
       />,
