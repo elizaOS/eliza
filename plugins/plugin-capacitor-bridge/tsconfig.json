@@ -42,7 +42,9 @@
 			],
 			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
 			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
-			"@elizaos/plugin-commands": ["../../plugins/plugin-commands/src/index.ts"],
+			"@elizaos/plugin-commands": [
+				"../../plugins/plugin-commands/src/index.ts"
+			],
 			"@elizaos/plugin-local-inference": [
 				"../../plugins/plugin-local-inference/src/index.ts"
 			],
