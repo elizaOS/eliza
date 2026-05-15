@@ -469,6 +469,38 @@ voice-id resolves to a kokoro voice with an emotion request.
 - [x] `bun run typecheck` in `plugins/plugin-local-inference` green
   (no diagnostics; new `af_samantha` voice-presets entry typechecks).
 
+## Heavy phases landed (C-train-phases, 2026-05-14)
+
+`packages/training/scripts/kokoro/finetune_kokoro_full.py` already had
+the `_forward_with_grad` core path landed in the N2 work; the
+C-train-phases re-verification was about confirming the smoke test runs
+end-to-end on this branch.
+
+- **`pytest packages/training/scripts/kokoro/__tests__/test_finetune_kokoro_full.py
+  -v`** — 12 tests green (synthetic-smoke pipeline shape, eval-gate
+  decision logic `_decide_continue` / `_update_top_k`, CLI surface +
+  config loading, manifest stability across LoRA + full FT paths).
+  No changes were needed in this batch.
+- The `configs/kokoro_samantha_full.yaml` shipped with `mode=full`,
+  `learning_rate=5e-5`, `max_steps=1500`, `optimizer=apollo_mini`, and
+  the relaxed SpkSim gate (`speaker_similarity_min=0.55`). All matches
+  the test contract.
+
+Operator-run example (real GPU run, not smoke)::
+
+    python3 packages/training/scripts/kokoro/finetune_kokoro_full.py \
+        --run-dir /data/kokoro-runs/samantha-$(date +%Y%m%d-%H%M%S) \
+        --config kokoro_samantha_full.yaml \
+        --init-from-voice af_bella
+
+Third-party packages an operator needs:
+
+- `torch`, `transformers` — Kokoro PyTorch path.
+- `kokoro>=0.9.4` (PyPI) — KModel + KPipeline. The smoke path
+  `pytest.skip` cleanly when missing.
+- `apollo-torch` — APOLLO/APOLLO-Mini optimizer (repo policy).
+- `librosa`, `soundfile` — audio I/O.
+
 ### What's left for a publishable voice (out of I7 scope)
 
 The plumbing is end-to-end. The remaining is a model-quality problem

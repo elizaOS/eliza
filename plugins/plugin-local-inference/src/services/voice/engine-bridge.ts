@@ -65,11 +65,16 @@ import {
 	LlamaServerTargetVerifier,
 	MissingAsrTranscriber,
 } from "./pipeline-impls";
+import type { VoiceProfileStore } from "./profile-store";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
 import {
 	type MmapRegionHandle,
 	SharedResourceRegistry,
 } from "./shared-resources";
+import {
+	type VoiceAttributionOutput,
+	VoiceAttributionPipeline,
+} from "./speaker/attribution-pipeline";
 import {
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
@@ -88,11 +93,6 @@ import type {
 	TranscriptionAudio,
 	VadEventSource,
 } from "./types";
-import { VoiceProfileStore } from "./profile-store";
-import {
-	type VoiceAttributionOutput,
-	VoiceAttributionPipeline,
-} from "./speaker/attribution-pipeline";
 
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
@@ -826,25 +826,45 @@ export class EngineVoiceBridge {
 
 		// Wire speaker-attribution when a profile store is provided.
 		// The attribution pipeline wraps the encoder + diarizer + profile-store;
-		// all three degrade gracefully when their ONNX models are absent (they
-		// throw structured *UnavailableError rather than crashing). The bridge
-		// is responsible for running attribution in parallel with ASR each turn.
+		// encoder errors (SpeakerEncoderUnavailableError) are caught at the
+		// runVoiceTurn level and treated as attribution-miss rather than turn
+		// failure (AGENTS.md §3: attribution is best-effort, voice turn is not).
+		// The real WespeakerEncoder is loaded lazily on first encode() call.
 		let attributionPipeline: VoiceAttributionPipeline | null = null;
 		if (opts.profileStore) {
+			const bundleRootForEncoder = opts.bundleRoot;
+			// Lazy encoder: resolves on first encode() call so the sync start()
+			// path doesn't block on ORT initialization.
+			let resolvedEncoder: import("./speaker/encoder").SpeakerEncoder | null =
+				null;
+			let encoderLoadError: Error | null = null;
+			const lazyEncoder: import("./speaker/encoder").SpeakerEncoder = {
+				// Constants matching WespeakerEncoder static values.
+				modelId:
+					"wespeaker/resnet34-lm-int8" as import("./speaker/encoder").WespeakerModelId,
+				embeddingDim: 256,
+				sampleRate: 16_000,
+				async encode(pcm: Float32Array): Promise<Float32Array> {
+					if (encoderLoadError) throw encoderLoadError;
+					if (!resolvedEncoder) {
+						const { WespeakerEncoder } = await import("./speaker/encoder");
+						const modelPath = `${bundleRootForEncoder}/speaker/encoder.onnx`;
+						try {
+							resolvedEncoder = await WespeakerEncoder.load(modelPath);
+						} catch (err) {
+							encoderLoadError =
+								err instanceof Error ? err : new Error(String(err));
+							throw encoderLoadError;
+						}
+					}
+					return resolvedEncoder.encode(pcm);
+				},
+				async dispose(): Promise<void> {
+					await resolvedEncoder?.dispose();
+				},
+			};
 			attributionPipeline = new VoiceAttributionPipeline({
-				// Encoder and diarizer are optional — the pipeline loads them lazily
-				// from the bundle root. When the models are absent it logs a warning
-				// and continues without segment-level attribution.
-				encoder: {
-					encode: async (_pcm: Float32Array, _sr: number) => {
-						// Deferred: the real WespeakerEncoder is loaded lazily via
-						// createBundledSpeakerEncoder (if available). For now the
-						// encoder slot is a no-op that returns null — the attribution
-						// pipeline handles null embeddings by emitting a
-						// profile-match=miss result and still produces turn metadata.
-						return null;
-					},
-				} as never,
+				encoder: lazyEncoder,
 				profileStore: opts.profileStore,
 			});
 		}

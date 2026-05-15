@@ -61,6 +61,7 @@ export {
 	encodeMonoPcm16Wav,
 	FfiOmniVoiceBackend,
 	StubOmniVoiceBackend,
+	type VoiceTurnEvents,
 } from "./engine-bridge";
 export {
 	createBundledLiveKitTurnDetector,
