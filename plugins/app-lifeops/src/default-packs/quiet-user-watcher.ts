@@ -16,9 +16,12 @@
 import type {
   RecentTaskStatesProvider,
   RecentTaskStatesSummary,
-  ScheduledTaskSeed,
 } from "./contract-stubs.js";
 import type { DefaultPack } from "./registry-types.js";
+import {
+  compileTaskDefinition,
+  type WatcherTaskDefinition,
+} from "./task-definitions.js";
 
 export const QUIET_USER_WATCHER_PACK_KEY = "quiet-user-watcher";
 
@@ -33,8 +36,8 @@ export const QUIET_USER_WATCHER_RECORD_IDS = {
  */
 export const QUIET_THRESHOLD_DAYS = 3;
 
-const watcherRecord: ScheduledTaskSeed = {
-  kind: "watcher",
+const watcherDefinition: WatcherTaskDefinition = {
+  definitionKind: "watcher",
   promptInstructions:
     "Consult RecentTaskStatesProvider.summarize for owner activity over the last week. If the owner has been quiet for the configured threshold, surface a quiet-user observation. If yesterday's check-in expired without reply, surface a missed-check-in observation. Emit observations for the morning-brief consolidation; do not send a separate notification.",
   contextRequest: {
@@ -62,6 +65,8 @@ const watcherRecord: ScheduledTaskSeed = {
     quietThresholdDays: QUIET_THRESHOLD_DAYS,
   },
 };
+
+const watcherRecord = compileTaskDefinition(watcherDefinition);
 
 export const quietUserWatcherPack: DefaultPack = {
   key: QUIET_USER_WATCHER_PACK_KEY,

@@ -91,12 +91,15 @@ export function parseCommand(
 	// Parse arguments
 	const args = parseArgs(rawArgs, definition);
 
-	return {
+	const parsed: ParsedCommand = {
 		key: definition.key,
 		canonical: definition.textAliases[0] ?? `/${definition.key}`,
 		args,
-		rawArgs: rawArgs || undefined,
 	};
+	if (rawArgs) {
+		parsed.rawArgs = rawArgs;
+	}
+	return parsed;
 }
 
 /**
@@ -121,7 +124,7 @@ function parseArgs(rawArgs: string, definition: CommandDefinition): string[] {
 	// Split by whitespace, respecting quotes
 	const tokens = tokenize(rawArgs);
 
-	for (let i = 0; i < tokens.length; i++) {
+	for (const [i, token] of tokens.entries()) {
 		const argDef = argDefs[i];
 
 		// If this arg captures remaining, join all remaining tokens
@@ -130,7 +133,7 @@ function parseArgs(rawArgs: string, definition: CommandDefinition): string[] {
 			break;
 		}
 
-		args.push(tokens[i]);
+		args.push(token);
 	}
 
 	return args;
@@ -145,9 +148,7 @@ function tokenize(input: string): string[] {
 	let inQuote = false;
 	let quoteChar = "";
 
-	for (let i = 0; i < input.length; i++) {
-		const char = input[i];
-
+	for (const char of input) {
 		if (inQuote) {
 			if (char === quoteChar) {
 				inQuote = false;

@@ -4,7 +4,10 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { buildOpencodeAcpEnv } from "./opencode-config.js";
+import {
+  buildOpencodeAcpEnv,
+  resolveVendoredOpencodeAcpCommand,
+} from "./opencode-config.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
@@ -193,7 +196,9 @@ export class AcpService {
       timeoutMs: opts.timeoutMs,
       model: opts.model,
     });
-    args.push(agentType, "sessions", "new", "--name", name);
+    args.push(
+      ...this.agentCommandArgs(agentType, ["sessions", "new", "--name", name]),
+    );
     const result = await this.runAcpx({
       sessionId: id,
       sessionName: name,
@@ -233,18 +238,26 @@ export class AcpService {
     });
 
     if (opts.initialTask?.trim()) {
+      const keepAliveAfterComplete =
+        (opts.metadata as Record<string, unknown> | undefined)
+          ?.keepAliveAfterComplete === true;
       void this.sendPrompt(id, opts.initialTask, {
         timeoutMs: opts.timeoutMs,
         model: opts.model,
-      }).catch((err: unknown) => {
-        this.log("error", "initial prompt failed", {
-          sessionId: id,
-          agentType,
-          promptLength: opts.initialTask?.length ?? 0,
-          promptPreview: preview(opts.initialTask ?? ""),
-          error: errorMessage(err),
+      })
+        .catch((err: unknown) => {
+          this.log("error", "initial prompt failed", {
+            sessionId: id,
+            agentType,
+            promptLength: opts.initialTask?.length ?? 0,
+            promptPreview: preview(opts.initialTask ?? ""),
+            error: errorMessage(err),
+          });
+        })
+        .finally(() => {
+          if (keepAliveAfterComplete) return;
+          void this.closeInitialTaskSession(id);
         });
-      });
     }
 
     const updated = await this.store.get(id);
@@ -268,11 +281,13 @@ export class AcpService {
       model: opts.model,
     });
     args.push(
-      session.agentType,
-      "prompt",
-      "-s",
-      session.name ?? session.id,
-      text,
+      ...this.agentCommandArgs(session.agentType, [
+        "prompt",
+        "-s",
+        session.name ?? session.id,
+        "--",
+        text,
+      ]),
     );
 
     const result = await this.runAcpx({
@@ -339,12 +354,11 @@ export class AcpService {
       active.cancelled = true;
       this.terminateProcess(sessionId, active);
     } else {
-      const args = [
-        session.agentType,
+      const args = this.agentCommandArgs(session.agentType, [
         "cancel",
         "-s",
         session.name ?? session.id,
-      ];
+      ]);
       await this.runAcpx({
         sessionId,
         agentType: session.agentType,
@@ -363,10 +377,11 @@ export class AcpService {
       "json",
       "--cwd",
       session.workdir,
-      session.agentType,
-      "sessions",
-      "close",
-      session.name ?? session.id,
+      ...this.agentCommandArgs(session.agentType, [
+        "sessions",
+        "close",
+        session.name ?? session.id,
+      ]),
     ];
     await this.runAcpx({
       sessionId,
@@ -473,6 +488,22 @@ export class AcpService {
     await this.closeSession(sessionId);
   }
 
+  private async closeInitialTaskSession(sessionId: string): Promise<void> {
+    const session = await this.store.get(sessionId);
+    if (!session) return;
+    if (
+      ["stopped", "errored", "completed", "cancelled"].includes(session.status)
+    ) {
+      return;
+    }
+    await this.closeSession(sessionId).catch((err: unknown) => {
+      this.log("warn", "initial task session close failed", {
+        sessionId,
+        error: errorMessage(err),
+      });
+    });
+  }
+
   subscribeToOutput(
     sessionId: string,
     callback: (data: string) => void,
@@ -506,6 +537,19 @@ export class AcpService {
       args.push("--timeout", String(timeoutMs / 1000));
     if (opts.model) args.push("--model", opts.model);
     return args;
+  }
+
+  private opencodeAgentCommand(): string | undefined {
+    const configured = this.setting("ELIZA_OPENCODE_ACP_COMMAND")?.trim();
+    if (configured) return configured;
+    return resolveVendoredOpencodeAcpCommand();
+  }
+
+  private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
+    if (agentType !== "opencode") return [agentType, ...args];
+    const command = this.opencodeAgentCommand();
+    if (!command) return [agentType, ...args];
+    return ["--agent", command, ...args];
   }
 
   private runAcpx(opts: RunOptions): Promise<RunResult> {
@@ -543,6 +587,7 @@ export class AcpService {
                 opts.sessionId,
                 finalText,
                 startedAt,
+                opts.activeForSession === true,
               );
               finalText = handled.finalText;
               stopReason = handled.stopReason ?? stopReason;
@@ -582,6 +627,7 @@ export class AcpService {
               opts.sessionId,
               finalText,
               startedAt,
+              opts.activeForSession === true,
             );
             finalText = handled.finalText;
             stopReason = handled.stopReason ?? stopReason;
@@ -653,6 +699,7 @@ export class AcpService {
     localSessionId: string | undefined,
     currentFinalText: string,
     startedAt: number,
+    emitPromptTerminalEvents: boolean,
   ): { finalText: string; stopReason?: string } {
     const protocolSessionId = extractSessionId(event);
     const sessionId = localSessionId ?? protocolSessionId;
@@ -703,6 +750,9 @@ export class AcpService {
     if (sessionId && method === "session/update") {
       // agent_message_chunk: content.text streams
       const content = asRecord(updateBlock?.content);
+      const role = stringifyMaybe(
+        updateBlock?.role ?? params?.role ?? asRecord(params?.message)?.role,
+      );
       if (
         sessionUpdate === "agent_message_chunk" &&
         content?.type === "text" &&
@@ -715,6 +765,7 @@ export class AcpService {
       // Some adapters put text directly at content level.
       else if (
         !sessionUpdate &&
+        role === "assistant" &&
         content?.type === "text" &&
         typeof content.text === "string"
       ) {
@@ -747,13 +798,13 @@ export class AcpService {
 
     if (sessionId && result && typeof result.stopReason === "string") {
       stopReason = result.stopReason;
-      if (stopReason === "end_turn") {
+      if (emitPromptTerminalEvents && stopReason === "end_turn") {
         this.emitSessionEvent(sessionId, "task_complete", {
           response: finalText,
           durationMs: Date.now() - startedAt,
           stopReason,
         });
-      } else if (stopReason === "error") {
+      } else if (emitPromptTerminalEvents && stopReason === "error") {
         this.emitSessionEvent(sessionId, "error", {
           message: "acpx prompt ended with stopReason error",
           stopReason,

@@ -257,7 +257,7 @@ export async function migrateToEntityRLS(adapter: IDatabaseAdapter): Promise<voi
                 `SELECT COUNT(*) as count FROM "${tableName}" WHERE "message_server_id" IS NULL`
               )
             );
-            const nullCount = nullCountResult.rows?.[0]?.count as string | undefined;
+            const nullCount = nullCountResult.rows[0]?.count as string | undefined;
             if (nullCount && parseInt(nullCount, 10) > 0) {
               logger.warn(
                 `[Migration] ⚠️ ${tableName} has ${nullCount} rows with NULL message_server_id - these will be deleted`

@@ -27,7 +27,7 @@
     "noUnusedParameters": false,
     "noImplicitReturns": false,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": false
+    "noUncheckedIndexedAccess": true
   },
   "include": [
     "./**/*.ts"

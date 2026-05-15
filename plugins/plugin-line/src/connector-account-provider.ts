@@ -33,7 +33,7 @@ function purposeForAccount(_account: ResolvedLineAccount): string[] {
 }
 
 function accessGateForAccount(account: ResolvedLineAccount): string {
-  const dmPolicy = account.config?.dmPolicy;
+  const dmPolicy = account.config.dmPolicy;
   if (dmPolicy === "pairing") return "pairing";
   if (dmPolicy === "disabled") return "disabled";
   return "open";
@@ -58,8 +58,8 @@ function toConnectorAccount(account: ResolvedLineAccount): ConnectorAccount {
     updatedAt: now,
     metadata: {
       tokenSource: account.tokenSource,
-      dmPolicy: account.config?.dmPolicy ?? "open",
-      groupPolicy: account.config?.groupPolicy ?? "allowlist",
+      dmPolicy: account.config.dmPolicy ?? "open",
+      groupPolicy: account.config.groupPolicy ?? "allowlist",
     },
   };
 }

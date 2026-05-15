@@ -159,12 +159,15 @@ const imessagePlugin: Plugin = {
 
 export default imessagePlugin;
 
+export type {
+  RouteHelpers as IMessageRouteHelpers,
+  RouteRequestMeta as IMessageRouteRequestMeta,
+} from "@elizaos/core";
 export {
   type BlueBubblesRouteState,
   handleBlueBubblesRoute,
   resolveBlueBubblesWebhookPath,
 } from "./api/bluebubbles-routes.js";
-
 // Legacy HTTP route handlers (mounted by the agent's raw HTTP router).
 // These are the moved counterparts of the agent's old api/imessage-routes.ts
 // and api/bluebubbles-routes.ts files. Per the audit, BlueBubbles is treated
@@ -173,8 +176,6 @@ export {
   handleIMessageRoute,
   type IMessageRouteState,
   type ReadJsonBodyOptions as IMessageRouteReadJsonBodyOptions,
-  type RouteHelpers as IMessageRouteHelpers,
-  type RouteRequestMeta as IMessageRouteRequestMeta,
 } from "./api/imessage-routes.js";
 // Channel configuration types
 export type {

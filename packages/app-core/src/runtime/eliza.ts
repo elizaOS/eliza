@@ -51,7 +51,10 @@ import {
   listAppRoutePluginLoaders,
 } from "./app-route-plugin-registry.js";
 
-type EmbeddingProgressCallback = (phase: string, detail?: unknown) => void;
+type EmbeddingProgressCallback = (
+  phase: EmbeddingWarmupPhase,
+  detail?: string,
+) => void;
 
 // plugin-local-inference loaded lazily to avoid static plugin boundary violations.
 let _localInferenceRuntime:
@@ -70,7 +73,10 @@ import {
   ensureTextToSpeechHandler,
   isEdgeTtsDisabled as isTextToSpeechEdgeTtsDisabled,
 } from "./ensure-text-to-speech-handler.js";
-import { updateStartupEmbeddingProgress } from "./startup-overlay.js";
+import {
+  type EmbeddingWarmupPhase,
+  updateStartupEmbeddingProgress,
+} from "./startup-overlay.js";
 import { handleTelegramStandaloneMessage } from "./telegram-standalone-handler.js";
 import { shouldStartTelegramStandaloneBot } from "./telegram-standalone-policy.js";
 

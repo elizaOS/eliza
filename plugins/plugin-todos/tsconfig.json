@@ -19,7 +19,8 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true,
-    "exactOptionalPropertyTypes": false,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
     "types": ["node", "bun-types"]
   },
   "include": ["./**/*"],

@@ -111,8 +111,8 @@ export class DatabaseIntrospector {
           schemaTo: fk.foreign_table_schema || "public",
           columnsFrom: [fk.column_name],
           columnsTo: [fk.foreign_column_name],
-          onDelete: fk.delete_rule?.toLowerCase() || "no action",
-          onUpdate: fk.update_rule?.toLowerCase() || "no action",
+          onDelete: fk.delete_rule.toLowerCase() || "no action",
+          onUpdate: fk.update_rule.toLowerCase() || "no action",
         };
       }
 
@@ -476,7 +476,7 @@ export class DatabaseIntrospector {
             AND table_type = 'BASE TABLE'`
     );
 
-    const firstRow = result.rows?.[0];
+    const firstRow = result.rows[0];
     const count = parseInt((firstRow && (firstRow.count as string)) || "0", 10);
     return count > 0;
   }

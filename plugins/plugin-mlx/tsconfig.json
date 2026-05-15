@@ -17,7 +17,7 @@
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
-    "exactOptionalPropertyTypes": false,
+    "exactOptionalPropertyTypes": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,

@@ -98,7 +98,7 @@ function hasCalendlyContext(message: Memory, state?: State): boolean {
 
 function hasCalendlyIntent(message: Memory, state?: State): boolean {
   const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof message.content.text === "string" ? message.content.text : "",
     typeof state?.values?.recentMessages === "string"
       ? state.values.recentMessages
       : "",
@@ -380,7 +380,7 @@ export const calendlyOpAction: Action = {
     callback?: HandlerCallback,
   ): Promise<CalendlyActionResult<BookData | CancelData>> => {
     const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+      typeof message.content.text === "string" ? message.content.text : "";
     const params = mergedOptions(options);
     const accountId = resolveCalendlyAccountId(runtime, params);
     const op = readOp(params);

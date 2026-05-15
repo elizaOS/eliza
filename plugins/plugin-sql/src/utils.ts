@@ -3,7 +3,7 @@ import path from "node:path";
 import dotenv from "dotenv";
 
 export function expandTildePath(filepath: string): string {
-  if (filepath?.startsWith("~")) {
+  if (filepath.startsWith("~")) {
     return path.join(process.cwd(), filepath.slice(1));
   }
   return filepath;

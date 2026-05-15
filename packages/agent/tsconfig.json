@@ -79,6 +79,9 @@
       "@elizaos/workflows": ["../workflows/src/index.ts"],
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/local-inference": [
+        "../shared/src/local-inference/index.ts"
+      ],
       "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/skills": ["../skills/src/index.ts"],

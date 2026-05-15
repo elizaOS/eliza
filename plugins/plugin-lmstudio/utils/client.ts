@@ -25,7 +25,7 @@ export function createLMStudioClient(runtime: IAgentRuntime): LMStudioProvider {
     name: "lmstudio",
     baseURL,
     ...(apiKey ? { apiKey } : {}),
-    fetch: runtime.fetch ?? undefined,
+    ...(runtime.fetch ? { fetch: runtime.fetch } : {}),
     includeUsage: true,
   });
 }

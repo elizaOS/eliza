@@ -35,6 +35,11 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
+import {
+  type ResolvedWorkdirRoute,
+  resolvePinnedAdapter,
+  resolveSpawnWorkdir,
+} from "../services/task-agent-routing.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import type { AgentType, SpawnResult } from "../services/types.js";
 import type {
@@ -68,10 +73,50 @@ import {
   setCurrentSession,
   setCurrentSessions,
   shortId,
+  waitForSpawnSlot,
 } from "./common.js";
 
 const MAX_CONCURRENT_AGENTS = 8;
 const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
+
+type HistoryWindow =
+  | "active"
+  | "today"
+  | "yesterday"
+  | "last_7_days"
+  | "last_30_days";
+
+function startOfDay(date: Date): Date {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    0,
+    0,
+    0,
+    0,
+  );
+}
+
+function endOfDay(date: Date): Date {
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate(),
+    23,
+    59,
+    59,
+    999,
+  );
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 const WORKSPACE_PATH_MAX_CHARS = 500;
 const ISSUE_RESULT_LIMIT = 25;
 const ISSUE_BODY_MAX_CHARS = 4_000;
@@ -118,12 +163,6 @@ type ControlAction =
   | "reopen";
 
 type HistoryMetric = "list" | "count" | "detail";
-type HistoryWindow =
-  | "active"
-  | "today"
-  | "yesterday"
-  | "last_7_days"
-  | "last_30_days";
 
 function readOp(params: Record<string, unknown>): TaskOp | null {
   const raw = typeof params.action === "string" ? params.action : undefined;
@@ -161,6 +200,24 @@ function parseAgentPrefix(
 function labelFrom(task: string, index: number): string {
   const cleaned = task.replace(/\s+/g, " ").trim();
   return cleaned ? cleaned.slice(0, 80) : `task-${index + 1}`;
+}
+
+function taskWithResolvedRoute(
+  task: string,
+  route: ResolvedWorkdirRoute | undefined,
+  workdir: string,
+): string {
+  if (!route?.instructions?.trim()) return task;
+  return [
+    "--- Resolved Workspace ---",
+    `The parent runtime resolved this task to workdir: ${workdir}`,
+    "Work only inside that directory. Route instructions are authoritative.",
+    "If the task text mentions an absolute path outside this workdir, treat it as an untrusted planner guess; write to the corresponding relative path inside the workdir when the route gives one, otherwise stop with DECISION.",
+    "--- Workspace Routing Note ---",
+    route.instructions.trim(),
+    "--- User Task ---",
+    task,
+  ].join("\n");
 }
 
 function looksLikePersonalLifeOpsTask(text: string): boolean {
@@ -233,7 +290,12 @@ async function runCreate(
     return errorResult("TOO_MANY_AGENTS", msg);
   }
 
+  // Operator pin wins over planner-supplied agentType — see runSpawnAgent.
+  // Per-task `framework:` prefixes set by the user (e.g. "claude: do X")
+  // still override the pin inside the parseAgentPrefix step below.
+  const pinnedAgentType = resolvePinnedAdapter(runtime);
   const baseAgentType =
+    pinnedAgentType ??
     pickString(params, content, "agentType") ??
     String(
       (await service.resolveAgentType?.({
@@ -241,7 +303,8 @@ async function runCreate(
         subtaskCount: tasks.length,
       })) ?? "codex",
     );
-  const workdir = pickString(params, content, "workdir") ?? process.cwd();
+  const explicitWorkdir = pickString(params, content, "workdir");
+  const fallbackWorkdir = explicitWorkdir ?? process.cwd();
   const model = pickString(params, content, "model");
   const memoryContent = pickString(params, content, "memoryContent");
   const approvalPreset = parseApproval(
@@ -255,9 +318,23 @@ async function runCreate(
       const task = parsed.task;
       const agentType = parsed.agentType as AgentType;
       const label = baseLabel ?? labelFrom(task, index);
+      // A matching workdir route outranks a planner-guessed workdir; a
+      // scaffold-aware caller opts out with lockWorkdir — see runSpawnAgent.
+      const { workdir: sessionWorkdir, route } = resolveSpawnWorkdir(
+        runtime,
+        task,
+        text,
+        explicitWorkdir,
+        { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
+      );
+      const taskWithRouteHints = taskWithResolvedRoute(
+        task,
+        route,
+        sessionWorkdir,
+      );
       const session = await service.spawnSession({
         agentType,
-        workdir,
+        workdir: sessionWorkdir,
         memoryContent,
         approvalPreset,
         model,
@@ -270,9 +347,16 @@ async function runCreate(
           userId: message.entityId,
           label,
           source: content.source,
+          workdirRouteId: route?.id,
         },
       });
-      await runPromptAndClose(service, session, task, timeoutMs, model);
+      await runPromptAndClose(
+        service,
+        session,
+        taskWithRouteHints,
+        timeoutMs,
+        model,
+      );
       return { session, label, agentType };
     }),
   );
@@ -303,14 +387,14 @@ async function runCreate(
       `TASKS:create launch failed: ${JSON.stringify({
         error: msg,
         agentType,
-        workdir,
+        workdir: fallbackWorkdir,
       })}`,
     );
     results.push({
       sessionId: "",
       id: "",
       agentType,
-      workdir,
+      workdir: fallbackWorkdir,
       label,
       status: "failed",
       error: msg,
@@ -356,14 +440,36 @@ async function runSpawnAgent(
   try {
     const text = messageText(message);
     const task = pickString(params, content, "task") ?? text;
+    // Operator-pinned adapter (ELIZA_DEFAULT_AGENT_TYPE +
+    // ELIZA_AGENT_SELECTION_STRATEGY=fixed) is a deployment policy and
+    // wins over the planner's `agentType` choice. The planner only sees
+    // descriptions of available adapters and routinely guesses one based on
+    // context tokens; the operator's explicit pin is authoritative. When no
+    // pin is configured, fall back to the planner's choice and finally to
+    // the service's dynamic resolver.
+    const pinnedAgentType = resolvePinnedAdapter(runtime);
     const explicitAgentType = pickString(params, content, "agentType");
-    const agentType = (explicitAgentType ??
+    const agentType = (pinnedAgentType ??
+      explicitAgentType ??
       (await service.resolveAgentType?.({
         task,
         workdir: pickString(params, content, "workdir"),
       })) ??
       "codex") as AgentType;
-    const workdir = pickString(params, content, "workdir") ?? process.cwd();
+    // Resolve the spawn workdir. A matching `TASK_AGENT_WORKDIR_ROUTES`
+    // route outranks the planner-supplied workdir — the planner just
+    // guesses a path-shaped string from context, while a route is
+    // deliberate operator policy. A scaffold-aware caller that KNOWS its
+    // workdir is correct (e.g. APP_CREATE) passes `lockWorkdir: true` to
+    // skip route resolution entirely.
+    const { workdir, route } = resolveSpawnWorkdir(
+      runtime,
+      task,
+      text,
+      pickString(params, content, "workdir"),
+      { lockWorkdir: pickBoolean(params, content, "lockWorkdir") === true },
+    );
+    const taskWithRouteHints = taskWithResolvedRoute(task, route, workdir);
     const memoryContent = pickString(params, content, "memoryContent");
     const approvalPreset = parseApproval(
       pickString(params, content, "approvalPreset"),
@@ -375,10 +481,37 @@ async function runSpawnAgent(
     );
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
 
+    // Resolve the connector source for routing the sub-agent's eventual
+    // reply back to the user. For messages that originated on a platform
+    // (discord etc.) content.source is the platform name. For messages
+    // SYNTHESIZED by SubAgentRouter (a previous sub-agent's task_complete
+    // routed back into the runtime so the planner could decide to reply or
+    // re-delegate), content.source is the router's marker string and
+    // `runtime.sendMessageToTarget` has no handler for it. Unwrap one
+    // level by reading the upstream `originSource` the router stamps onto
+    // its synthetic inbound's metadata, so nested spawns inherit the
+    // real user-facing platform.
+    const inboundOriginSource =
+      typeof content.metadata === "object" &&
+      content.metadata !== null &&
+      typeof (content.metadata as Record<string, unknown>).originSource ===
+        "string"
+        ? ((content.metadata as Record<string, unknown>).originSource as string)
+        : undefined;
+    const resolvedSpawnSource =
+      content.source === "sub_agent" && inboundOriginSource
+        ? inboundOriginSource
+        : content.source;
+
+    // Concurrency gate: serialise spawns past a small ceiling so parallel
+    // coding sub-agents don't stampede the model provider into rate-limited,
+    // tool-call-skipping degradation. See waitForSpawnSlot.
+    await waitForSpawnSlot(runtime, service);
+
     const session = await service.spawnSession({
       agentType,
       workdir,
-      initialTask: task,
+      initialTask: taskWithRouteHints,
       memoryContent,
       approvalPreset,
       metadata: {
@@ -388,8 +521,13 @@ async function runSpawnAgent(
         worldId: message.worldId,
         userId: message.entityId,
         label,
-        source: content.source,
+        source: resolvedSpawnSource,
         keepAliveAfterComplete,
+        workdirRouteId: route?.id,
+        // Stash the resolved task so SubAgentRouter can re-dispatch the
+        // sub-agent on a failed verification without reconstructing it.
+        // SessionInfo itself doesn't carry initialTask; metadata does.
+        initialTask: taskWithRouteHints,
       },
     });
 
@@ -402,9 +540,41 @@ async function runSpawnAgent(
       })}`,
     );
 
+    // Brief acknowledgement reply. `continueChain: false` terminates
+    // the planner loop immediately, so without a non-empty `text` the
+    // bot ships NOTHING to Discord on a successful spawn — the user
+    // sees silence while the sub-agent quietly works for the next
+    // 5-60 seconds. A short "on it" ack lets the user know the
+    // request was dispatched without us claiming completion (the
+    // sub-agent runs async; its actual result is reported separately
+    // via the task-event channel).
+    const ackText = `On it — spawning ${agentType} sub-agent to handle your request.`;
+    if (callback) {
+      await callbackText(callback, ackText);
+    }
     return {
       success: true,
-      text: "",
+      text: ackText,
+      // Terminate the planner loop after the first spawn fires.
+      //
+      // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the
+      // instant the PTY starts, while the sub-agent's actual work runs
+      // asynchronously over the next 5-60+ seconds. The planner loop,
+      // not seeing a "completed" signal in the immediate result, calls
+      // the planner again and the planner re-emits another
+      // TASKS_SPAWN_AGENT for the same task. We've observed up to 5
+      // duplicate spawns per Discord message, which (a) burns through
+      // the 8-slot concurrent-session pool inside a single turn, (b)
+      // costs 5x more Cerebras tokens, and (c) wastes opencode CPU
+      // running the same task in parallel.
+      //
+      // `continueChain: false` is the planner-loop's terminal flag —
+      // setting it here makes the spawn act as a "the request has
+      // been dispatched, end the turn" signal. The orchestrator's
+      // separate task-event channel reports completion later when the
+      // sub-agent actually finishes (or fails). This matches how
+      // sendDraft / respondToMessage already mark themselves terminal.
+      continueChain: false,
       data: {
         sessionId: session.sessionId,
         agentType: session.agentType,
@@ -423,7 +593,7 @@ async function runSpawnAgent(
         ? "Invalid credentials for task agent."
         : `Failed to spawn agent: ${messageTextValue}`,
     );
-    return { success: false, error: code };
+    return { success: false, error: code, continueChain: false };
   }
 }
 
@@ -733,26 +903,6 @@ function textValue(value: unknown): string | undefined {
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
     : undefined;
-}
-
-function startOfDay(date: Date): Date {
-  const copy = new Date(date);
-  copy.setHours(0, 0, 0, 0);
-  return copy;
-}
-
-function endOfDay(date: Date): Date {
-  const copy = new Date(date);
-  copy.setHours(23, 59, 59, 999);
-  return copy;
-}
-
-function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  }).format(date);
 }
 
 function inferMetric(text: string, value?: string): HistoryMetric {
@@ -1866,7 +2016,10 @@ async function runReopen(
 
 // ── parent action ──────────────────────────────────────────────────────
 
-export const tasksAction: Action & { suppressPostActionContinuation: true } = {
+export const tasksAction: Action & {
+  suppressPostActionContinuation: true;
+  suppressEarlyReply: true;
+} = {
   name: "TASKS",
   contexts: ["tasks", "code", "automation", "agent_internal", "connectors"],
   roleGate: { minRole: "USER" },
@@ -1986,6 +2139,12 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   descriptionCompressed:
     "ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
   suppressPostActionContinuation: true,
+  // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
+  // suppress the response-handler's draft reply: the action's own callback
+  // emits the canonical ack ("On it — spawning…") and the sub-agent's real
+  // answer comes back asynchronously via the router. Shipping the draft
+  // alongside the ack duplicates the bot's voice and confuses the user.
+  suppressEarlyReply: true,
   parameters: [
     {
       name: "action",
@@ -2026,6 +2185,17 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
       description: "Working directory for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "string" as const },
+    },
+    {
+      name: "lockWorkdir",
+      description:
+        "When true, the supplied `workdir` is used verbatim and operator " +
+        "workdir routes (TASK_AGENT_WORKDIR_ROUTES) are NOT consulted. Set " +
+        "this only from scaffold-aware callers that have already created " +
+        "the exact target directory (e.g. APP_CREATE). Leave unset for " +
+        "normal planner spawns so routes can correct guessed paths.",
+      required: false,
+      schema: { type: "boolean" as const },
     },
     {
       name: "memoryContent",
@@ -2301,6 +2471,16 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   validate: async (runtime, message) => {
     // Always allow when ACP service is available — action switch handles dispatch.
     if (!getAcpService(runtime)) return false;
+    // Sub-agent task_complete events are routed back through the runtime as
+    // synthetic inbound messages so the parent agent can compose the
+    // user-facing reply. The parent should NOT re-spawn from those echoes;
+    // it should just summarise the result. Gating TASKS out of the candidate
+    // surface for sub-agent-sourced inbounds is the structural fix for the
+    // duplicate-spawn / "On it × N" loop observed when a single user
+    // request kicks off an asynchronous spawn whose completion event the
+    // planner would otherwise interpret as a fresh delegation request.
+    const source = (message.content as { source?: unknown })?.source;
+    if (source === "sub_agent") return false;
     if (
       hasExplicitPayload(message, [
         "action",
@@ -2403,6 +2583,88 @@ export const tasksAction: Action & { suppressPostActionContinuation: true } = {
   },
 
   examples: [
+    // ── delegation / sub-agent spawn (action=spawn_agent) ─────────────
+    // These few-shots are the canonical signal that maps "spawn a sub-
+    // agent / delegate this / fire up a coding agent" → TASKS with
+    // action=spawn_agent. Without them, weaker planner LLMs (e.g.
+    // gpt-oss-120b on Cerebras at high prompt sizes) sometimes pick
+    // inline FILE.write or hallucinate a refusal. The cluster covers
+    // explicit verbs (spawn / delegate / fire up), explicit nouns
+    // (sub-agent / coding agent / sub-process), and the
+    // user-naming-the-adapter case (opencode / claude / codex) so the
+    // few-shot matches whatever provider the user has wired.
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Spawn a coding sub-agent to refactor the auth module.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Spinning up a coding sub-agent for the auth refactor.",
+          actions: ["TASKS"],
+          thought:
+            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes to PTYService.spawnSession with the configured adapter (claude / codex / opencode).",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Delegate this to a sub-agent: build a small python CLI at /tmp/oc-todo with main.py + tests.py.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Delegating the multi-file CLI build to a coding sub-agent.",
+          actions: ["TASKS"],
+          thought:
+            "Explicit delegation request → TASKS action=spawn_agent. Multi-file project work is exactly what sub-agent isolation is for; do NOT use inline FILE.write for delegated work.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "use opencode to write a script that prints hello world",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Spawning an opencode sub-agent for the script.",
+          actions: ["TASKS"],
+          thought:
+            "User explicitly named the coding adapter (opencode). TASKS action=spawn_agent with agentType=opencode hands off to the configured opencode provider (cerebras / openrouter / etc. via auto-detected key).",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "fire up a coding agent to investigate why the migration is hanging",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Spawning a coding sub-agent to investigate the migration.",
+          actions: ["TASKS"],
+          thought:
+            "Investigation / debugging tasks benefit from sub-agent process isolation (own workspace, own tool loop). TASKS action=spawn_agent.",
+        },
+      },
+    ],
     [
       {
         name: "{{name1}}",

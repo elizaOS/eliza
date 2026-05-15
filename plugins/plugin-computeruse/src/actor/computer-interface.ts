@@ -289,8 +289,13 @@ export class DefaultComputerInterface implements ComputerInterface {
       );
     }
     // Driver doesn't expose multi-segment polylines; fall back to start→end.
-    const start = args.path[0]!;
-    const end = args.path[args.path.length - 1]!;
+    const start = args.path[0];
+    const end = args.path[args.path.length - 1];
+    if (!start || !end) {
+      throw new Error(
+        "[computeruse/actor] drag path requires concrete start and end points",
+      );
+    }
     const startG = this.toGlobalChecked({ displayId: args.displayId, x: start.x, y: start.y });
     const endG = this.toGlobalChecked({ displayId: args.displayId, x: end.x, y: end.y });
     const fn = this.deps.driver?.drag ?? driverDrag;

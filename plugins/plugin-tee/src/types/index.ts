@@ -88,4 +88,5 @@ export function parseTeeVendor(vendor: string): TeeVendor {
       throw new Error(`Invalid TEE_VENDOR: ${vendor}. Must be one of: phala`);
   }
 }
+
 import type { ProviderDataRecord, ProviderValue } from "@elizaos/core";

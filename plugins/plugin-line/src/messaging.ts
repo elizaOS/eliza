@@ -356,7 +356,7 @@ function splitAtBreakPoint(text: string, limit: number): { chunk: string; remain
 export function chunkLineText(text: string, opts: ChunkLineTextOpts = {}): string[] {
   const limit = opts.limit ?? LINE_TEXT_CHUNK_LIMIT;
 
-  if (!text?.trim()) {
+  if (!text.trim()) {
     return [];
   }
 

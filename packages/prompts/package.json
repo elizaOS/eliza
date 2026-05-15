@@ -26,7 +26,8 @@
     "clean": "rm -rf dist",
     "lint": "bunx @biomejs/biome check --write .",
     "lint:check": "bunx @biomejs/biome check .",
-    "typecheck": "echo 'No TypeScript source files to check'"
+    "typecheck": "echo 'No TypeScript source files to check'",
+    "test": "bun test ./test"
   },
   "files": [
     "src/",

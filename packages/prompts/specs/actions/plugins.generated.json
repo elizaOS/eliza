@@ -4089,6 +4089,14 @@
           }
         },
         {
+          "name": "lockWorkdir",
+          "description": "When true, the supplied `workdir` is used verbatim and operator ",
+          "required": false,
+          "schema": {
+            "type": "boolean"
+          }
+        },
+        {
           "name": "memoryContent",
           "description": "Additional memory/context for action=create / action=spawn_agent.",
           "required": false,
@@ -4523,6 +4531,7 @@
               "agents": "example",
               "repo": "example",
               "workdir": "example",
+              "lockWorkdir": false,
               "memoryContent": "example",
               "label": "example",
               "approvalPreset": "readonly",
