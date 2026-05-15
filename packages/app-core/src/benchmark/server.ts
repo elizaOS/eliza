@@ -102,6 +102,10 @@ function isBfclBenchmarkName(benchmark: string): boolean {
   return benchmark.trim().toLowerCase() === "bfcl";
 }
 
+function isWebshopBenchmarkName(benchmark: string): boolean {
+  return benchmark.trim().toLowerCase() === "webshop";
+}
+
 function normalizeBfclNativeMessages(
   text: string,
   context: Record<string, unknown>,
@@ -122,6 +126,59 @@ function normalizeBfclNativeMessages(
     {
       role: "user",
       content: question,
+    },
+  ];
+}
+
+function normalizeWebshopNativeMessages(
+  text: string,
+  context: Record<string, unknown>,
+): Array<Record<string, unknown>> {
+  const actionSpace = Array.isArray(context.actionSpace)
+    ? context.actionSpace.filter((entry): entry is string => typeof entry === "string")
+    : [];
+  return [
+    {
+      role: "system",
+      content:
+        "You are running WebShop through the Eliza benchmark server. " +
+        "Choose exactly one next store action and call BENCHMARK_ACTION with " +
+        'a JSON argument object containing {"command":"..."}. Do not reply in prose. ' +
+        "Use search[query] on the search page, click[PRODUCT_ID] on result pages, " +
+        "select_option[option_name, value] on product pages, and buy only when the selected item satisfies the user's goal.",
+    },
+    {
+      role: "user",
+      content:
+        text +
+        (actionSpace.length
+          ? `\n\nAvailable WebShop actions:\n${actionSpace.map((a) => `- ${a}`).join("\n")}`
+          : ""),
+    },
+  ];
+}
+
+function webshopBenchmarkTools(): Array<Record<string, unknown>> {
+  return [
+    {
+      type: "function",
+      function: {
+        name: "BENCHMARK_ACTION",
+        description:
+          "Execute one WebShop environment action. The command must be a single WebShop action string.",
+        parameters: {
+          type: "object",
+          properties: {
+            command: {
+              type: "string",
+              description:
+                "One action string such as search[wireless headphones], click[B000123], select_option[color, black], back, or buy.",
+            },
+          },
+          required: ["command"],
+          additionalProperties: false,
+        },
+      },
     },
   ];
 }
@@ -333,6 +390,31 @@ function bfclBenchmarkActionFromToolCalls(
     calls,
     arguments: { calls },
   };
+}
+
+function webshopBenchmarkActionFromToolCalls(
+  toolCalls: Array<{
+    function: { name: string; arguments: string };
+  }>,
+): Record<string, unknown> | null {
+  const first = toolCalls[0];
+  if (!first) return null;
+  let args: unknown = {};
+  try {
+    args = JSON.parse(first.function.arguments || "{}");
+  } catch {
+    args = { command: first.function.arguments };
+  }
+  if (!args || typeof args !== "object" || Array.isArray(args)) return null;
+  const record = args as Record<string, unknown>;
+  const command =
+    typeof record.command === "string"
+      ? record.command
+      : typeof record.action === "string"
+        ? record.action
+        : "";
+  if (!command.trim()) return null;
+  return { command: command.trim() };
 }
 
 // ---------------------------------------------------------------------------
@@ -1961,6 +2043,107 @@ export async function startBenchmarkServer() {
                 actions,
                 params,
                 captured_actions: [],
+                tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
+
+          if (
+            isWebshopBenchmarkName(session.benchmark) &&
+            Array.isArray(benchmarkContext.actionSpace) &&
+            benchmarkContext.actionSpace.length > 0
+          ) {
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            try {
+              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                messages: normalizeWebshopNativeMessages(text, benchmarkContext),
+                tools: webshopBenchmarkTools(),
+                toolChoice: "required",
+                maxTokens:
+                  typeof benchmarkContext.max_tokens === "number"
+                    ? benchmarkContext.max_tokens
+                    : 512,
+                temperature:
+                  typeof benchmarkContext.temperature === "number"
+                    ? benchmarkContext.temperature
+                    : 0,
+              });
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const toolCalls = normalizeLocaNativeToolCalls(
+              nativeRecord.toolCalls,
+            );
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const params: Record<string, unknown> = {};
+            const benchmarkAction =
+              webshopBenchmarkActionFromToolCalls(toolCalls);
+            if (benchmarkAction) {
+              params.BENCHMARK_ACTION = benchmarkAction;
+              params.tool_calls = toolCalls;
+            }
+            const actions =
+              benchmarkAction !== null
+                ? ["BENCHMARK_ACTION"]
+                : responseText.trim()
+                  ? ["REPLY"]
+                  : [];
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions,
+              params,
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions,
+                params,
+                captured_actions: benchmarkAction
+                  ? [
+                      {
+                        command: benchmarkAction.command,
+                        params: benchmarkAction,
+                      },
+                    ]
+                  : [],
                 tool_calls: toolCalls,
                 usage: turnUsage,
                 metadata,

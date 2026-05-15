@@ -8,8 +8,10 @@ from pathlib import Path
 import pytest
 
 from scripts.manifest.eliza1_manifest import (
+    ELIZA_1_DFLASH_TIERS,
     ELIZA_1_MANIFEST_SCHEMA_VERSION,
     ELIZA_1_TIERS,
+    ELIZA_1_VISION_TIERS,
     REQUIRED_KERNELS_BY_TIER,
     VOICE_BACKENDS_BY_TIER,
     VOICE_QUANT_BY_TIER,
@@ -41,7 +43,7 @@ def quantization_kernel_fragments() -> list[dict[str, object]]:
     ]
 
 def base_kwargs(tier: str = "4b") -> dict:
-    return dict(
+    kwargs = dict(
         tier=tier,
         version="1.0.0",
         published_at="2026-05-10T00:00:00Z",
@@ -89,6 +91,17 @@ def base_kwargs(tier: str = "4b") -> dict:
         default_eligible=True,
         kernel_manifest_fragments=quantization_kernel_fragments(),
     )
+    if tier not in ELIZA_1_DFLASH_TIERS:
+        kwargs["lineage"].pop("drafter", None)
+        kwargs["files"]["dflash"] = []
+        kwargs["dflash_eval"] = False
+        kwargs["dflash_acceptance_rate"] = None
+        kwargs["dflash_speedup"] = None
+        kwargs["dflash_passed"] = None
+    if tier not in ELIZA_1_VISION_TIERS:
+        kwargs["lineage"].pop("vision", None)
+        kwargs["files"]["vision"] = []
+    return kwargs
 
 def test_schema_version_constant():
     assert ELIZA_1_MANIFEST_SCHEMA_VERSION == "1"
@@ -101,6 +114,7 @@ def test_eliza1_tier_ids_are_canonical():
         "9b",
         "27b",
         "27b-256k",
+        "27b-1m",
     )
     assert REQUIRED_KERNELS_BY_TIER["0_8b"] == (
         "turboquant_q4",
@@ -120,10 +134,10 @@ def test_eliza1_tier_ids_are_canonical():
         "dflash",
         "turbo3_tcq",
     )
-    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("omnivoice", "kokoro")
-    assert VOICE_BACKENDS_BY_TIER["2b"] == ("omnivoice", "kokoro")
-    assert VOICE_BACKENDS_BY_TIER["4b"] == ("omnivoice", "kokoro")
-    assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
+    assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
+    assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
+    assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
 
 def test_build_manifest_happy_path():
     manifest = build_manifest(**base_kwargs())
@@ -657,20 +671,18 @@ def test_voice_quant_ladder_covers_every_tier():
     stage_eliza1_bundle_assets.py ladder loop."""
     assert set(VOICE_QUANT_LADDER_BY_TIER.keys()) == set(VOICE_QUANT_BY_TIER.keys())
 
-def test_voice_quant_ladder_mobile_tiers_has_mobile_omnivoice_policy():
-    """Mobile tiers (0_8b / 2b / 4b) publish a narrow OmniVoice ladder and
-    retain Kokoro as fallback."""
-    expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M")
+def test_voice_quant_ladder_small_tiers_are_kokoro_only():
+    """Small tiers (0_8b / 2b / 4b) publish no OmniVoice ladder."""
     for tier in ("0_8b", "2b", "4b"):
-        assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
-        assert VOICE_BACKENDS_BY_TIER[tier] == ("omnivoice", "kokoro")
+        assert VOICE_QUANT_LADDER_BY_TIER[tier] == ()
+        assert VOICE_BACKENDS_BY_TIER[tier] == ("kokoro",)
 
 def test_voice_quant_ladder_large_tiers_have_full_kquant_ladder():
-    """Large tiers (9b / 27b / 27b-256k) ship OmniVoice and must
+    """Large tiers (9b / 27b / 27b-256k / 27b-1m) ship OmniVoice and must
     publish the full Q3..Q8 ladder so the downloader can pick the level
     matching the host's RAM/SoC class at install time."""
     expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0")
-    for tier in ("9b", "27b", "27b-256k"):
+    for tier in ("9b", "27b", "27b-256k", "27b-1m"):
         assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
         assert "omnivoice" in VOICE_BACKENDS_BY_TIER[tier]
 
