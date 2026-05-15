@@ -431,7 +431,6 @@ def train_step(
     accepted at the run-driver level; this function trusts the caller to
     have done the right thing.
     """
-    import torch
 
     input_ids, labels = batch
     input_ids = input_ids.to(next(model.parameters()).device)
@@ -561,7 +560,7 @@ def train_lora(
                 input_ids_t[start:end],
                 labels_t[start:end],
             )
-            loss = train_step(
+            train_step(
                 model=base_model,
                 batch=batch,
                 optimizer=optimizer,

@@ -378,28 +378,28 @@ def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
                     f"{missing_targets}",
                     EXIT_BUNDLE_LAYOUT_FAIL,
                 )
-            for field in (
+            for manifest_field in (
                 "block_layout_version",
                 "codebook_hash",
                 "per_block_tolerance",
             ):
-                section = kernel_manifest.get(field)
+                section = kernel_manifest.get(manifest_field)
                 if not isinstance(section, dict):
                     raise OrchestratorError(
-                        f"quantization sidecar {sidecar} kernel_manifest.{field} "
+                        f"quantization sidecar {sidecar} kernel_manifest.{manifest_field} "
                         "must be an object",
                         EXIT_BUNDLE_LAYOUT_FAIL,
                     )
                 missing_field_targets = sorted(expected_targets - set(section))
                 if missing_field_targets:
                     raise OrchestratorError(
-                        f"quantization sidecar {sidecar} kernel_manifest.{field} "
+                        f"quantization sidecar {sidecar} kernel_manifest.{manifest_field} "
                         f"missing target metadata for {missing_field_targets}",
                         EXIT_BUNDLE_LAYOUT_FAIL,
                     )
                 for target in expected_targets:
                     value = section.get(target)
-                    if field == "per_block_tolerance":
+                    if manifest_field == "per_block_tolerance":
                         if (
                             not isinstance(value, (int, float))
                             or isinstance(value, bool)
@@ -407,14 +407,14 @@ def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
                         ):
                             raise OrchestratorError(
                                 f"quantization sidecar {sidecar} "
-                                f"kernel_manifest.{field}.{target} must be a "
+                                f"kernel_manifest.{manifest_field}.{target} must be a "
                                 "positive number",
                                 EXIT_BUNDLE_LAYOUT_FAIL,
                             )
                     elif not isinstance(value, str) or not value:
                         raise OrchestratorError(
                             f"quantization sidecar {sidecar} "
-                            f"kernel_manifest.{field}.{target} must be a "
+                            f"kernel_manifest.{manifest_field}.{target} must be a "
                             "non-empty string",
                             EXIT_BUNDLE_LAYOUT_FAIL,
                         )

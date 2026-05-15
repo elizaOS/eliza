@@ -23,7 +23,7 @@ describe("parseMessageHandlerOutput — refusal suppression on the planning path
 		const wire = JSON.stringify({
 			shouldRespond: "RESPOND",
 			contexts: ["tasks"],
-			candidateActions: ["TASKS_SPAWN_AGENT"],
+			candidateActionNames: ["TASKS_SPAWN_AGENT"],
 			replyText:
 				"I'm unable to spawn a sub-agent in this context. I can create /tmp/foo.py directly with the line: print('hello')",
 		});
@@ -35,11 +35,11 @@ describe("parseMessageHandlerOutput — refusal suppression on the planning path
 		expect(result?.plan.reply).toBe("");
 	});
 
-	it("blanks plan.reply when refusal text rides on candidateActions even with empty contexts", () => {
+	it("blanks plan.reply when refusal text rides on candidateActionNames even with empty contexts", () => {
 		const wire = JSON.stringify({
 			shouldRespond: "RESPOND",
 			contexts: [],
-			candidateActions: ["TASKS_SPAWN_AGENT"],
+			candidateActionNames: ["TASKS_SPAWN_AGENT"],
 			replyText: "I cannot delegate that in this session.",
 		});
 		const result = parseMessageHandlerOutput(wire);
@@ -72,7 +72,7 @@ describe("parseMessageHandlerOutput — refusal suppression on the planning path
 		const wire = JSON.stringify({
 			shouldRespond: "RESPOND",
 			contexts: ["tasks"],
-			candidateActions: ["TASKS_SPAWN_AGENT"],
+			candidateActionNames: ["TASKS_SPAWN_AGENT"],
 			replyText: "On it — spawning a coding sub-agent.",
 		});
 		const result = parseMessageHandlerOutput(wire);
