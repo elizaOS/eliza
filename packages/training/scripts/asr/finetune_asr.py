@@ -42,26 +42,26 @@ Usage
 
     # Smoke (CI):
     python3 finetune_asr.py \\
-        --run-dir /tmp/asr-runs/sam \\
+        --run-dir /tmp/asr-runs/same \\
         --config asr_same.yaml \\
         --synthetic-smoke
 
     # Real training (requires GPU + transformers + datasets):
     python3 finetune_asr.py \\
-        --run-dir /tmp/asr-runs/sam \\
+        --run-dir /tmp/asr-runs/same \\
         --config asr_same.yaml \\
         --data-dir packages/training/data/voice/same \\
         --real-train
 
     # With eval + HF push:
     python3 finetune_asr.py \\
-        --run-dir /tmp/asr-runs/sam \\
+        --run-dir /tmp/asr-runs/same \\
         --config asr_same.yaml \\
         --data-dir packages/training/data/voice/same \\
         --real-train \\
         --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json \\
         --hf-push-if beats-baseline \\
-        --hf-repo elizaos/eliza-1-asr-sam-v01 \\
+        --hf-repo elizaos/eliza-1-asr-same-v01 \\
         --operator-sign-off
 
 Outputs
@@ -410,7 +410,7 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
 
 def _load_corpus(data_dir: Path, cfg: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Load WAV+transcript pairs from the sam corpus format.
+    """Load WAV+transcript pairs from the same corpus format.
 
     Corpus layout expected (matches packages/training/data/voice/same/):
 
@@ -920,7 +920,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo id to push to (e.g. elizaos/eliza-1-asr-sam-v01).",
+        help="HuggingFace repo id to push to (e.g. elizaos/eliza-1-asr-same-v01).",
     )
     parser.add_argument(
         "--hf-push-if",

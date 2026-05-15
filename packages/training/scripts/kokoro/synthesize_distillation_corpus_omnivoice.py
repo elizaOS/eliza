@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""G3 OmniVoice-samee distillation corpus synthesis.
+"""G3 OmniVoice-same distillation corpus synthesis.
 
 Uses Kokoro KPipeline conditioned on the **same voice ref_s** (either a
 precomputed .bin from extract_voice_embedding.py or from HF
@@ -54,7 +54,7 @@ TARGET_LUFS = -23.0
 
 # ---------------------------------------------------------------------------
 # Expanded text corpus — conversational English, varied length.
-# Matches the register of the Her/samee corpus.
+# Matches the register of the Her/same corpus.
 # Expanded vs F2's corpus to yield more unique clips for 60 min target.
 # ---------------------------------------------------------------------------
 
@@ -329,7 +329,7 @@ def synthesize_corpus(
             "norm_text": norm_text,
             "duration_s": round(duration_s, 3),
             "rtf": round(rtf, 2),
-            "source": "synth-omnivoice-samee",
+            "source": "synth-omnivoice-same",
             "teacher": "same-melfit-ref_s",
             "voice": str(voice_bin) if voice_bin else voice_id,
         })
@@ -376,7 +376,7 @@ def synthesize_corpus(
         "teacher": "same-melfit-ref_s (NOT af_bella)",
         "voiceBin": str(voice_bin) if voice_bin else voice_id,
         "outDir": str(out_dir),
-        "note": "G3 OmniVoice-samee teacher. F2 used af_bella which dominated training signal. G3 uses same ref_s so model learns same timbre.",
+        "note": "G3 OmniVoice-same teacher. F2 used af_bella which dominated training signal. G3 uses same ref_s so model learns same timbre.",
     }
     (out_dir / "synthesis_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary

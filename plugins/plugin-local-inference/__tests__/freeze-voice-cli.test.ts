@@ -106,12 +106,12 @@ describe("freeze-voice.mjs CLI", () => {
 		outDir = mkdtempSync(path.join(tmpdir(), "freeze-voice-out-"));
 		mkdirSync(path.join(corpusDir, "audio"), { recursive: true });
 		// Two clips: a 3-second sample and a 5-second sample, both at 44.1 kHz.
-		writeSineWav(path.join(corpusDir, "audio", "samantha_001.wav"), 3.0, 44100);
-		writeSineWav(path.join(corpusDir, "audio", "samantha_003.wav"), 5.0, 44100);
+		writeSineWav(path.join(corpusDir, "audio", "same_001.wav"), 3.0, 44100);
+		writeSineWav(path.join(corpusDir, "audio", "same_003.wav"), 5.0, 44100);
 		const manifest = [
 			JSON.stringify({
-				id: "samantha_001",
-				audio_path: "audio/samantha_001.wav",
+				id: "same_001",
+				audio_path: "audio/same_001.wav",
 				duration_s: 3.0,
 				sample_rate: 44100,
 				channels: 1,
@@ -120,8 +120,8 @@ describe("freeze-voice.mjs CLI", () => {
 				excluded: false,
 			}),
 			JSON.stringify({
-				id: "samantha_003",
-				audio_path: "audio/samantha_003.wav",
+				id: "same_003",
+				audio_path: "audio/same_003.wav",
 				duration_s: 5.0,
 				sample_rate: 44100,
 				channels: 1,

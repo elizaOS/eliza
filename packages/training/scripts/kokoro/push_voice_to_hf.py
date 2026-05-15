@@ -28,8 +28,8 @@ AGENTS.md §6 — but the script logs the override loudly and records it in
 the model-card preamble.
 
 The HF push is `private=True` by default. Per the R12 license inventory
-the sam source corpus has no upstream LICENSE and is a derivative of
-*Her* (2013); the first push of any sam-derived voice MUST stay
+the same source corpus has no upstream LICENSE and is a derivative of
+*Her* (2013); the first push of any same-derived voice MUST stay
 private until the user explicitly OKs a public release. Pass
 `--public` to override (this script does not infer from voice name).
 
@@ -161,7 +161,7 @@ def _model_card(
         "- eliza-1",
         "- voice-clone",
     ]
-    if "sam" in voice_name.lower() or "sam" in [t.lower() for t in tags]:
+    if "same" in voice_name.lower() or "same" in [t.lower() for t in tags]:
         lines.append("- research-only")
     lines.extend(
         [
@@ -179,15 +179,15 @@ def _model_card(
             "",
         ]
     )
-    if "sam" in voice_name.lower():
+    if "same" in voice_name.lower():
         lines.extend(
             [
                 "## License & data provenance",
                 "",
-                "This voice pack derives from the `sam` clips in",
+                "This voice pack derives from the `same` clips in",
                 "[`lalalune/ai_voices`](https://github.com/lalalune/ai_voices). The upstream",
                 "README states the corpus is *for fun and research only* — there is no",
-                "LICENSE file. The sam voice itself is a derivative of the 2013 film",
+                "LICENSE file. The same voice itself is a derivative of the 2013 film",
                 "*Her* (Warner Bros). This artifact is therefore distributed for",
                 "**non-commercial research and personal use only**. Do not redistribute the",
                 "raw audio. The fine-tuned voice embedding + ONNX delta are published here",

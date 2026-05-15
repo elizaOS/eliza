@@ -60,7 +60,7 @@ describe("voice-preset-format v2", () => {
 		const metadata = {
 			voiceId: "sam",
 			generator: "freeze-voice.mjs",
-			referenceClipIds: ["samantha_001", "samantha_003"],
+			referenceClipIds: ["same_001", "same_003"],
 			referenceSeconds: 13.48,
 		};
 		const bytes = writeVoicePresetFileV2({
