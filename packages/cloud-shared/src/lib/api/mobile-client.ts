@@ -170,7 +170,7 @@ class MobileApiClient {
     let data: T;
 
     if (contentType?.includes("application/json")) {
-      data = await response.json();
+      data = (await response.json()) as T;
     } else {
       data = (await response.text()) as T;
     }

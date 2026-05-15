@@ -210,6 +210,7 @@
     "knip": "^6.13.1",
     "lerna": "9.0.7",
     "playwright": "^1.59.1",
+    "pg": "^8.20.0",
     "react-test-renderer": "^19.0.0",
     "secp256k1": "^5.0.1",
     "tsdown": "^0.22.0",

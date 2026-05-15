@@ -72,7 +72,7 @@ export async function discordBotApiRequest<T>(
     );
   }
 
-  return response.json();
+  return (await response.json()) as T;
 }
 
 /**
@@ -96,5 +96,5 @@ export async function discordBearerApiRequest<T>(
     throw new Error(`Discord API error: ${response.status} - ${error.message || "Unknown error"}`);
   }
 
-  return response.json();
+  return (await response.json()) as T;
 }

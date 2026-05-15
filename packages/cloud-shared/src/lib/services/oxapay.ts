@@ -68,7 +68,7 @@ async function oxaPayFetch<T>(url: string, options: RequestInit): Promise<T> {
 
   let data: T;
   try {
-    data = await response.json();
+    data = (await response.json()) as T;
   } catch (error) {
     logger.error("[OxaPay] Invalid JSON response", { url, error });
     throw new OxaPayApiError("OxaPay returned invalid JSON response");

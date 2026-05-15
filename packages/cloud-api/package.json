@@ -16,6 +16,7 @@
     "test:e2e:foundation": "TEST_SERVER_SCRIPT=dev bun test --preload test/e2e/preload.ts test/e2e/agent-token-flow.test.ts --timeout 120000"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.54",
     "@ai-sdk/gateway": "^3.0.37",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@elizaos/cloud-rtmp-relay": "workspace:*",
@@ -25,15 +26,24 @@
     "@modelcontextprotocol/sdk": "1.26.0",
     "@neondatabase/serverless": "^1.1.0",
     "@upstash/redis": "^1.37.0",
+    "ai": "^6.0.170",
     "drizzle-orm": "^0.45.1",
+    "file-type": "^22.0.0",
     "hono": "4.12.18",
     "jose": "^6.0.0",
     "mcp-handler": "^1.0.7",
+    "music-metadata": "^11.12.3",
+    "nanoid": "^5.1.9",
+    "pg": "^8.20.0",
     "stripe": "^22.0.0",
+    "telegraf": "^4.16.3",
+    "uuid": "^14.0.0",
+    "viem": "^2.48.8",
     "wrangler": "^4.0.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/pg": "^8.20.0",
     "typescript": "^6.0.3"
   }
 }

@@ -108,7 +108,14 @@ async function uploadBlob(
     throw new Error(`Blob upload failed: ${response.status}`);
   }
 
-  return response.json();
+  return (await response.json()) as {
+    blob: {
+      $type: string;
+      ref: { $link: string };
+      mimeType: string;
+      size: number;
+    };
+  };
 }
 
 function detectFacets(text: string): BskyFacet[] {

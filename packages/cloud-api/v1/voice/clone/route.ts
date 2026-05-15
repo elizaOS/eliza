@@ -107,6 +107,8 @@ app.post("/", async (c) => {
   try {
     const auth = await requireUserOrApiKeyWithOrg(c);
     user = { id: auth.id, organization_id: auth.organization_id };
+    const userId = user.id;
+    const organizationId = user.organization_id;
     apiKeyId = await getRequestApiKeyId(c);
 
     const apiKey = c.env.ELEVENLABS_API_KEY;
@@ -201,8 +203,8 @@ app.post("/", async (c) => {
     logger.info(
       `[Voice Clone API] Creating ${cloneType} voice clone: ${voiceName}`,
       {
-        userId: user.id,
-        organizationId: user.organization_id,
+        userId,
+        organizationId,
         fileCount,
         totalSize,
       },
@@ -212,9 +214,9 @@ app.post("/", async (c) => {
 
     try {
       reservation = await creditsService.reserve({
-        organizationId: user.organization_id,
+        organizationId,
         amount: cloneCost.totalCost,
-        userId: user.id,
+        userId,
         description: `Voice cloning (${cloneType}): ${voiceName}`,
       });
     } catch (error) {
@@ -233,8 +235,8 @@ app.post("/", async (c) => {
     }
 
     const newJob: NewVoiceCloningJob = {
-      organizationId: user.organization_id,
-      userId: user.id,
+      organizationId,
+      userId,
       jobType: cloneType,
       voiceName,
       voiceDescription: description,
@@ -253,15 +255,15 @@ app.post("/", async (c) => {
       files.map(async (file) => {
         const safeName =
           file.name.replace(/[^A-Za-z0-9._-]+/g, "_") || "sample";
-        const key = `voice-samples/${user?.organization_id}/${createdJob.id}/${crypto.randomUUID()}-${safeName}`;
+        const key = `voice-samples/${organizationId}/${createdJob.id}/${crypto.randomUUID()}-${safeName}`;
         const body = await file.arrayBuffer();
         await c.env.BLOB.put(key, body, {
           httpMetadata: {
             contentType: file.type || "application/octet-stream",
           },
           customMetadata: {
-            userId: user?.id,
-            organizationId: user?.organization_id,
+            userId,
+            organizationId,
             jobId: createdJob.id,
             originalName: file.name,
           },
@@ -272,8 +274,8 @@ app.post("/", async (c) => {
           file,
           record: {
             jobId: createdJob.id,
-            organizationId: user?.organization_id,
-            userId: user?.id,
+            organizationId,
+            userId,
             fileName: file.name,
             fileSize: file.size,
             fileType: file.type || "application/octet-stream",

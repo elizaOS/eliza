@@ -240,7 +240,7 @@ export function hasAffiliateTheme(affiliateId: string): boolean {
  * @param theme - The affiliate theme
  * @returns CSS properties object
  */
-export function getThemeCSSVariables(theme: AffiliateTheme): React.CSSProperties {
+export function getThemeCSSVariables(theme: AffiliateTheme): Record<string, string> {
   return {
     "--theme-primary": theme.colors.primary,
     "--theme-primary-light": theme.colors.primaryLight,
@@ -248,7 +248,7 @@ export function getThemeCSSVariables(theme: AffiliateTheme): React.CSSProperties
     "--theme-background": theme.colors.background,
     "--theme-gradient-from": theme.colors.gradientFrom,
     "--theme-gradient-to": theme.colors.gradientTo,
-  } as React.CSSProperties;
+  };
 }
 
 /**

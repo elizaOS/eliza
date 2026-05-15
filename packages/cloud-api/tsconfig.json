@@ -10,6 +10,9 @@
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "isolatedModules": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
     "esModuleInterop": true,
     "strict": true,
     "resolveJsonModule": true,
@@ -30,21 +33,23 @@
       "@elizaos/cloud-shared/types": ["../cloud-shared/src/types/index.ts"],
       "@elizaos/cloud-shared/types/*": ["../cloud-shared/src/types/*"],
       "@elizaos/cloud-shared/routing": ["../cloud-shared/src/routing/index.ts"],
-      "@elizaos/core": ["../../packages/core/src/index.node.ts"],
-      "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
-      "@elizaos/shared/*": ["../../packages/shared/src/*"],
-      "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.ts"],
-      "drizzle-orm": ["../../plugins/plugin-sql/node_modules/drizzle-orm"],
-      "drizzle-orm/*": ["../../plugins/plugin-sql/node_modules/drizzle-orm/*"],
       "@/*": ["../cloud-shared/*"]
     }
   },
   "include": [
+    ".well-known/**/*.ts",
     "./**/*.ts",
     "./**/*.tsx",
+    "../cloud-shared/src/**/*.ts",
     "../cloud-shared/src/db/**/*.ts",
     "../cloud-shared/src/types/**/*"
   ],
-  "exclude": ["node_modules", "../../node_modules"]
+  "exclude": [
+    "node_modules",
+    "../../node_modules",
+    "__tests__",
+    "test",
+    "../cloud-shared/src/**/__tests__",
+    "../cloud-shared/src/**/*.test.ts"
+  ]
 }

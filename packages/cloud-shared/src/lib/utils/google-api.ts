@@ -167,7 +167,7 @@ export async function exchangeGoogleCode(params: {
     throw new Error(`Google token exchange failed: ${error}`);
   }
 
-  return response.json();
+  return (await response.json()) as GoogleTokenResponse;
 }
 
 /**
@@ -199,7 +199,7 @@ export async function refreshGoogleToken(params: {
     throw new Error(`Google token refresh failed: ${error}`);
   }
 
-  return response.json();
+  return (await response.json()) as GoogleTokenResponse;
 }
 
 /**
@@ -218,7 +218,7 @@ export async function getGoogleUserInfo(accessToken: string): Promise<GoogleUser
     throw new Error(`Failed to get Google user info: ${error}`);
   }
 
-  return response.json();
+  return (await response.json()) as GoogleUserInfo;
 }
 
 /**
@@ -244,7 +244,7 @@ export async function googleApiRequest<T>(
     throw new Error(`Google API error (${response.status}): ${error}`);
   }
 
-  return response.json();
+  return (await response.json()) as T;
 }
 
 /**

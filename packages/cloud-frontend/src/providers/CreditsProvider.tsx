@@ -19,7 +19,7 @@ import {
 } from "react";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import { logger } from "@/lib/utils/logger";
-import { usePathname } from "../../ui/src/runtime/navigation";
+import { usePathname } from "../../../ui/src/cloud-ui/runtime/navigation";
 
 interface CreditsContextValue {
   creditBalance: number | null;

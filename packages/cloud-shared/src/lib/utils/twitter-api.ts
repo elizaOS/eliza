@@ -37,5 +37,5 @@ export async function twitterApiRequest<T>(
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  return (await response.json()) as T;
 }

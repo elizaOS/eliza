@@ -148,7 +148,7 @@ export function createHandler(
       let body: ProxyRequestBody = null;
       if (request.method === "POST") {
         try {
-          body = await request.json();
+          body = (await request.json()) as ProxyRequestBody;
         } catch {
           return Response.json({ error: "Invalid JSON" }, { status: 400 });
         }

@@ -23,7 +23,7 @@ import {
   type CloudFirstLineCachePutInput,
   fingerprintCloudVoiceSettings,
   hashCloudCacheKey,
-} from "../../../packages/lib/services/tts-first-line-cache";
+} from "../../cloud-shared/src/lib/services/tts-first-line-cache";
 
 // ---------------------------------------------------------------------------
 // In-memory R2 stub
