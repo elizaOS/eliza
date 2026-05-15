@@ -136,7 +136,7 @@ function makeVersion(overrides: Partial<VoiceModelVersion>): VoiceModelVersion {
 		id: "kokoro",
 		version: "0.2.0",
 		publishedToHfAt: "2026-05-14T00:00:00Z",
-		hfRepo: "elizaOS/eliza-1-voice-kokoro-sam",
+		hfRepo: "elizaOS/eliza-1-voice-kokoro-same",
 		hfRevision: "main",
 		ggufAssets: [
 			{

@@ -9,7 +9,7 @@ and patches the local voice manifests with real ``sha256`` / ``sizeBytes``.
 Custom Eliza-only assets remain explicit gaps until their build pipelines
 produce files:
 
-* ``voices/af_sam.bin`` (Kokoro sam preset)
+* ``voices/af_same.bin`` (Kokoro same preset)
 * ``presets/voice-preset-same.bin`` (OmniVoice same-voice preset)
 * ``hey-eliza-int8.onnx`` (trained wake-word head)
 * ``voice-emotion`` ONNX exports

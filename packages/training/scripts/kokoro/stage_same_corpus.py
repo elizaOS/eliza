@@ -259,7 +259,7 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
         clip_id = f"samantha_{i:03d}"
         wav_path = raw_dir / f"{clip_id}.wav"
         # 0.5 s of digital silence at 44.1 kHz mono 16-bit — matches the
-        # upstream sam format and lets the downstream `wave` probe work.
+        # upstream samantha format and lets the downstream `wave` probe work.
         with wave.open(str(wav_path), "wb") as w:
             w.setnchannels(1)
             w.setsampwidth(2)

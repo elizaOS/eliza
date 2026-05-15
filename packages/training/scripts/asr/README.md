@@ -31,27 +31,27 @@ python3 packages/training/scripts/asr/finetune_asr.py \
 
 # Real training (RTX 5080 / H200):
 python3 packages/training/scripts/asr/finetune_asr.py \
-    --run-dir /tmp/asr-runs/sam \
+    --run-dir /tmp/asr-runs/same \
     --config packages/training/scripts/asr/configs/asr_same.yaml \
     --data-dir packages/training/data/voice/same \
     --real-train
 
 # Eval (real checkpoint):
 python3 packages/training/scripts/asr/eval_asr.py \
-    --run-dir /tmp/asr-runs/sam \
-    --checkpoint /tmp/asr-runs/sam/checkpoints/best.pt \
+    --run-dir /tmp/asr-runs/same \
+    --checkpoint /tmp/asr-runs/same/checkpoints/best.pt \
     --data-dir packages/training/data/voice/same \
     --config packages/training/scripts/asr/configs/asr_same.yaml \
     --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json
 
 # HF push (gated on beats-baseline + operator sign-off):
 python3 packages/training/scripts/asr/finetune_asr.py \
-    --run-dir /tmp/asr-runs/sam \
+    --run-dir /tmp/asr-runs/same \
     --config packages/training/scripts/asr/configs/asr_same.yaml \
     --data-dir packages/training/data/voice/same \
     --real-train \
     --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json \
-    --hf-repo elizaos/eliza-1-asr-sam-v01 \
+    --hf-repo elizaos/eliza-1-asr-same-v01 \
     --hf-push-if beats-baseline \
     --operator-sign-off
 ```

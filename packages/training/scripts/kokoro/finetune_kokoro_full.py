@@ -34,7 +34,7 @@ voice clone).
 Hyperparameters defaulted for tiny-corpus full FT
 -------------------------------------------------
 
-The sam corpus is 58 clips / 3.5 minutes. Per repo policy (
+The same corpus is 58 clips / 3.5 minutes. Per repo policy (
 ``packages/training/AGENTS.md``) and the user prompt:
 
 - ``--lr 5e-5`` (smaller than the LoRA default 1e-4 to avoid catastrophic

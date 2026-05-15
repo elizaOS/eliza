@@ -137,8 +137,8 @@ def test_config_defaults() -> None:
 def test_config_sam_yaml() -> None:
     """Load asr_same.yaml — overrides should be applied."""
     cfg = finetune_asr._load_config(str(ASR_DIR / "configs" / "asr_same.yaml"))
-    assert cfg["voice_name"] == "sam"
-    assert cfg["learning_rate"] < 2e-5, "sam config should lower LR vs base"
+    assert cfg["voice_name"] == "same"
+    assert cfg["learning_rate"] < 2e-5, "same config should lower LR vs base"
 
 
 def test_gate_pass() -> None:

@@ -96,7 +96,7 @@ def test_config_sam_yaml() -> None:
     cfg = finetune_omnivoice._load_config(
         str(OMNIVOICE_DIR / "configs" / "omnivoice_same.yaml")
     )
-    assert cfg["voice_name"] == "sam"
+    assert cfg["voice_name"] == "same"
     assert cfg["max_steps"] == 500
 
 

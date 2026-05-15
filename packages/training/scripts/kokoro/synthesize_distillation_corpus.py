@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Self-distillation corpus synthesis for Kokoro sam fine-tune.
+"""Self-distillation corpus synthesis for Kokoro same fine-tune.
 
-Uses the Kokoro TTS engine with the best available sam voice embedding
+Uses the Kokoro TTS engine with the best available same voice embedding
 (mel-fit ref_s from extract_voice_embedding.py) to synthesize 30-60 min of
 diverse text. This is teacher-student distillation: the teacher is the
-frozen Kokoro model with sam ref_s; the student is the fine-tuned model.
+frozen Kokoro model with same ref_s; the student is the fine-tuned model.
 
 Text corpus: diverse English sentences from built-in COCO captions-style +
 LibriTTS-style short paragraphs. The emphasis is on:
   - Varied sentence lengths (5-25 words)
-  - Conversational register (like the *Her* sam corpus)
+  - Conversational register (like the *Her* same corpus)
   - Emotional variety (question, statement, exclamation)
   - No domain-specific jargon
 
@@ -312,7 +312,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--voice-bin",
         type=Path,
         default=None,
-        help="Path to sam voice.bin (mel-fit ref_s). If absent, uses --voice-id stock voice.",
+        help="Path to same voice.bin (mel-fit ref_s). If absent, uses --voice-id stock voice.",
     )
     p.add_argument("--voice-id", type=str, default="af_bella")
     p.add_argument(

@@ -39,7 +39,7 @@ def _materialize_release(
                 "voiceId": voice_name,
                 "displayName": "Sam (Test)",
                 "lang": "a",
-                "tags": ["female", "sam", "research-only"],
+                "tags": ["female", "same", "research-only"],
                 "dim": 256,
                 "buckets": 510,
                 "engine": {"kind": "kokoro", "baseModel": "hexgrad/Kokoro-82M"},
@@ -98,7 +98,7 @@ def test_dry_run_writes_receipt_and_passes_gate(tmp_path: Path) -> None:
     body = json.loads(receipt.read_text())
     assert body["kind"] == "kokoro-voice-hf-push-plan"
     assert body["dryRun"] is True
-    assert body["private"] is True  # default per the sam license decision
+    assert body["private"] is True  # default per the same license decision
     assert body["hfRepo"] == "elizalabs/eliza-1-voice-kokoro-same-v01"
     remotes = {entry["remote"] for entry in body["files"]}
     # README is rendered + included alongside the five required artifacts.

@@ -38,10 +38,10 @@ the optimizer a sane prior and converges faster.
 
 Usage:
 
-    # Voice-clone path (mel-fit) — what Voice Wave 2 / I7 uses for sam:
+    # Voice-clone path (mel-fit) — what Voice Wave 2 / I7 uses for same:
     python3 scripts/kokoro/extract_voice_embedding.py \\
         --clips-dir packages/training/data/voice/same/audio \\
-        --transcripts-dir /tmp/ai_voices/sam \\
+        --transcripts-dir /tmp/ai_voices/same \\
         --base-model hexgrad/Kokoro-82M \\
         --init-from-voice af_bella \\
         --steps 200 \\

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""F2 Kokoro sam fine-tune retry pipeline.
+"""F2 Kokoro same fine-tune retry pipeline.
 
 Orchestrates:
   1. Acoustic augmentation (3.5 min → ~20 min)
-  2. Self-distillation synthesis (30 min sam-voiced audio from Kokoro)
+  2. Self-distillation synthesis (30 min same-voiced audio from Kokoro)
   3. Merge corpora
   4. Mel-fit voice clone with hyperparameter sweep
   5. Full-FT training (best hparam config)
@@ -42,7 +42,7 @@ log = logging.getLogger("kokoro.f2_pipeline")
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[3]
 
-CORPUS_DIR = REPO_ROOT / "packages/training/data/voice/sam"
+CORPUS_DIR = REPO_ROOT / "packages/training/data/voice/same"
 HF_REPO = "elizaos/eliza-1-voice-kokoro-same-v01"
 
 # Mel-fit hyperparameter sweep grid (based on Q1 re-eval diagnosis)
@@ -435,7 +435,7 @@ def run_pipeline(args: argparse.Namespace) -> int:  # noqa: C901
 def _write_f2_config(path: Path) -> None:
     """Write the F2 full-FT config with settings tuned for larger augmented corpus."""
     content = """\
-# F2 Kokoro sam full fine-tune config.
+# F2 Kokoro same full fine-tune config.
 # Tuned for augmented+distilled corpus (~50+ min vs original 3.5 min).
 extends: base.yaml
 
@@ -444,7 +444,7 @@ voice_display_name: Sam (AI Voices) — F2 Full FT
 voice_lang: a
 voice_tags:
   - female
-  - sam
+  - same
   - eliza-1-voice
   - ai-voices-derived
   - research-only

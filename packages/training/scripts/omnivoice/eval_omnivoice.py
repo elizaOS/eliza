@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Evaluate the OmniVoice sam preset quality.
+"""Evaluate the OmniVoice same preset quality.
 
 Runs the frozen-conditioning path (Path A from I6/R6) and measures:
 - **WER**: round-trip WER via Whisper-large-v3 (CUDA) / small (CPU).
 - **RTF**: synthesized audio seconds / wall seconds.
-- **Speaker similarity**: ECAPA-TDNN cosine vs sam reference clips.
+- **Speaker similarity**: ECAPA-TDNN cosine vs same reference clips.
 
 The eval covers the shipped Path A (preset-based freeze, no weight training).
 It is used by ``finetune_omnivoice.py`` to gate the HF push.
@@ -17,7 +17,7 @@ Usage
 ::
 
     python3 eval_omnivoice.py \\
-        --run-dir /tmp/omnivoice-runs/sam \\
+        --run-dir /tmp/omnivoice-runs/same \\
         --config omnivoice_same.yaml \\
         --data-dir packages/training/data/voice/same \\
         --preset-path ~/.eliza/local-inference/models/eliza-1-1_7b.bundle/cache/voice-preset-same.bin \\
@@ -98,7 +98,7 @@ def _eval_with_preset(
     ffi: Any | None,
     preset_path: Path | None,
 ) -> dict[str, float]:
-    """Evaluate WER + RTF + speaker similarity using OmniVoice + sam preset.
+    """Evaluate WER + RTF + speaker similarity using OmniVoice + same preset.
 
     When ``ffi`` is None or ``preset_path`` is None, returns placeholder metrics.
     This is the expected state in CI (no fused build).
@@ -111,9 +111,9 @@ def _eval_with_preset(
         return {"wer": 0.999, "rtf": 0.0, "speaker_similarity": 0.0}
 
     # Real eval would:
-    # 1. For each val clip: call ffi.ttsSynthesize(text, speakerPresetId="sam")
+    # 1. For each val clip: call ffi.ttsSynthesize(text, speakerPresetId="same")
     # 2. Run Whisper on the output → WER vs reference transcript.
-    # 3. Compute ECAPA cosine vs sam reference clips.
+    # 3. Compute ECAPA cosine vs same reference clips.
     # 4. Time the synthesis → RTF.
     #
     # This is deferred to post-Wave-3 when the full FFI eval harness is ready.
@@ -168,7 +168,7 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Evaluate OmniVoice sam preset quality.",
+        description="Evaluate OmniVoice same preset quality.",
     )
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--config", default="")
