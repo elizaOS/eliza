@@ -89,6 +89,68 @@ export async function handleViewsRoutes(
     return true;
   }
 
+  // ── GET /api/views/search?q=<query>&limit=<n> ─────────────────────────────
+  // Hybrid keyword + semantic search over registered views.
+  if (method === "GET" && pathname === `${PREFIX}/search`) {
+    const query = url.searchParams.get("q") ?? "";
+    const limitParam = url.searchParams.get("limit");
+    const topK = limitParam
+      ? Math.min(Math.max(parseInt(limitParam, 10) || 5, 1), 20)
+      : 5;
+
+    if (!query.trim()) {
+      json(res, { results: [], query });
+      return true;
+    }
+
+    const allViews = listViews({ developerMode: ctx.developerMode ?? false });
+    const q = query.trim().toLowerCase();
+
+    // Keyword scoring (40% weight).
+    const keywordMap = new Map<string, number>();
+    for (const v of allViews) {
+      let score = 0;
+      const label = v.label.toLowerCase();
+      if (label === q) score = 100;
+      else if (label.includes(q)) score = 80;
+      else if ((v.tags ?? []).some((t) => t.toLowerCase() === q)) score = 60;
+      else if ((v.description ?? "").toLowerCase().includes(q)) score = 40;
+      keywordMap.set(v.id, score);
+    }
+
+    // Semantic scoring (60% weight) — falls back gracefully when unavailable.
+    const semanticMap = new Map<string, number>();
+    if (ctx.runtime) {
+      try {
+        const semResults = await viewSearchIndex.search(query, ctx.runtime, topK * 2);
+        for (const { viewId, score } of semResults) {
+          // Cosine similarity in [−1, 1]; normalise to [0, 100].
+          semanticMap.set(viewId, ((score + 1) / 2) * 100);
+        }
+      } catch (err) {
+        logger.debug(
+          { src: "ViewsRoutes", err },
+          "[ViewsRoutes] Semantic search unavailable — using keyword only",
+        );
+      }
+    }
+
+    const combined = allViews.map((v) => {
+      const kw = keywordMap.get(v.id) ?? 0;
+      const sem = semanticMap.get(v.id) ?? 0;
+      return { view: v, score: kw * 0.4 + sem * 0.6 };
+    });
+
+    const results = combined
+      .filter((r) => r.score > 5)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, topK)
+      .map(({ view, score }) => ({ ...view, _score: Math.round(score) }));
+
+    json(res, { results, query, semanticEnabled: ctx.runtime != null });
+    return true;
+  }
+
   // ── GET /api/views ────────────────────────────────────────────────────────
   if (method === "GET" && (pathname === PREFIX || pathname === `${PREFIX}/`)) {
     const developerMode =
