@@ -1572,7 +1572,7 @@ function AppProviderInner({
         activeGameRunId: setActiveGameRunId,
         gameOverlayEnabled: setGameOverlayEnabled,
         companionAppRunning: (v: boolean) =>
-          setActiveOverlayApp(v ? "@elizaos/app-companion" : null),
+          setActiveOverlayApp(v ? "@elizaos/plugin-companion" : null),
         activeOverlayApp: setActiveOverlayApp,
         activeInboxChat: setActiveInboxChat,
         activeTerminalSessionId: setActiveTerminalSessionId,

@@ -1,9 +1,9 @@
 /**
  * Slots for task-coordinator (coding-agent) UI surfaces rendered by app-core.
  *
- * app-core deliberately does not import from @elizaos/app-task-coordinator —
+ * app-core deliberately does not import from @elizaos/plugin-task-coordinator —
  * that would create a package -> app-plugin dependency (coding-agent
- * components live under plugins/app-task-coordinator) and a circular edge
+ * components live under plugins/plugin-task-coordinator) and a circular edge
  * (task-coordinator already imports app-core for its hooks/types). Instead,
  * app plugins that want coding-agent surfaces call
  * `registerTaskCoordinatorSlots` with their component implementations at

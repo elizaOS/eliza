@@ -132,7 +132,16 @@ function walk(dirPath, visit) {
     const entryPath = path.join(dirPath, entry.name);
     if (entry.isDirectory()) {
       if (
-        ["node_modules", "dist", ".git", "android", "ios"].includes(entry.name)
+        [
+          "node_modules",
+          "dist",
+          ".git",
+          ".venv",
+          "venv",
+          "__pycache__",
+          "android",
+          "ios",
+        ].includes(entry.name)
       ) {
         continue;
       }

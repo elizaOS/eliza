@@ -611,7 +611,7 @@ function buildSteeringDisposition(
     return upstreamStatus >= 500 ? "unsupported" : "rejected";
   }
 
-  if (run.appName === "@elizaos/app-2004scape" && subroute === "message") {
+  if (run.appName === "@elizaos/plugin-2004scape" && subroute === "message") {
     return "queued";
   }
 

@@ -4,8 +4,8 @@
  * Single class consumed by all Cerebras-as-judge call sites in the repo:
  *
  *   - packages/scenario-runner/src/judge.ts                 (scenario judge)
- *   - plugins/app-lifeops/test/helpers/lifeops-live-judge.ts (lifeops live judge)
- *   - plugins/app-training/src/core/cerebras-eval-model.ts  (training judge)
+ *   - plugins/plugin-lifeops/test/helpers/lifeops-live-judge.ts (lifeops live judge)
+ *   - plugins/plugin-training/src/core/cerebras-eval-model.ts  (training judge)
  *   - packages/benchmarks/personality-bench/src/judge/checks/llm-judge.ts
  *                                                           (personality multi-pass judge)
  *

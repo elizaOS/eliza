@@ -7,7 +7,7 @@
  * `health-oauth.ts` owns the per-provider OAuth dance and pendingsession state.
  * `service-normalize-health.ts` normalises inbound health-signal payloads.
  *
- * All four were moved verbatim from `eliza/plugins/app-lifeops/src/lifeops/`
+ * All four were moved verbatim from `eliza/plugins/plugin-lifeops/src/lifeops/`
  * in Wave-1 (W1-B). The dependency on app-lifeops' SQL repository was
  * inverted: plugin-health owns the `createLifeOpsHealth*` factories, and
  * app-lifeops re-exports them from its repository module for backward

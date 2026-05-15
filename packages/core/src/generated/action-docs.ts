@@ -1,5 +1,5 @@
 /**
- * Auto-generated canonical action/provider docs.
+ * Auto-generated action/provider docs.
  * DO NOT EDIT - Generated from packages/prompts/specs/**.
  */
 
@@ -159,7 +159,7 @@ export const coreActionsSpec = {
 					{
 						name: "{{name1}}",
 						content: {
-							text: "Go screw yourself",
+							text: "Leave me alone",
 						},
 					},
 					{
@@ -174,7 +174,7 @@ export const coreActionsSpec = {
 					{
 						name: "{{name1}}",
 						content: {
-							text: "Shut up, bot",
+							text: "Stop talking, bot",
 						},
 					},
 					{
@@ -237,7 +237,7 @@ export const coreActionsSpec = {
 					{
 						name: "{{name1}}",
 						content: {
-							text: "wanna cyber",
+							text: "send me something inappropriate",
 						},
 					},
 					{
@@ -300,7 +300,7 @@ export const coreActionsSpec = {
 					{
 						name: "{{name2}}",
 						content: {
-							text: "ya obviously",
+							text: "Yes, probably.",
 							actions: ["NONE"],
 						},
 					},
@@ -316,7 +316,7 @@ export const coreActionsSpec = {
 					{
 						name: "{{name2}}",
 						content: {
-							text: "why dont scientists trust atoms cuz they make up everything lmao",
+							text: "Why don't scientists trust atoms? Because they make up everything.",
 							actions: ["NONE"],
 						},
 					},
@@ -1555,7 +1555,7 @@ export const allActionsSpec = {
 					{
 						name: "{{name1}}",
 						content: {
-							text: "Go screw yourself",
+							text: "Leave me alone",
 						},
 					},
 					{
@@ -1570,7 +1570,7 @@ export const allActionsSpec = {
 					{
 						name: "{{name1}}",
 						content: {
-							text: "Shut up, bot",
+							text: "Stop talking, bot",
 						},
 					},
 					{
@@ -1633,7 +1633,7 @@ export const allActionsSpec = {
 					{
 						name: "{{name1}}",
 						content: {
-							text: "wanna cyber",
+							text: "send me something inappropriate",
 						},
 					},
 					{
@@ -1696,7 +1696,7 @@ export const allActionsSpec = {
 					{
 						name: "{{name2}}",
 						content: {
-							text: "ya obviously",
+							text: "Yes, probably.",
 							actions: ["NONE"],
 						},
 					},
@@ -1712,7 +1712,7 @@ export const allActionsSpec = {
 					{
 						name: "{{name2}}",
 						content: {
-							text: "why dont scientists trust atoms cuz they make up everything lmao",
+							text: "Why don't scientists trust atoms? Because they make up everything.",
 							actions: ["NONE"],
 						},
 					},

@@ -423,9 +423,7 @@ export const Eliza1EvalsSchema = z.object({
 			// Which detector backend the eval was run against. Optional for
 			// back-compat with bundles staged before the eliza-1 EOT path;
 			// when absent, consumers should assume `livekit`.
-			kind: z
-				.enum(["livekit", "turnsense", "eliza-1-drafter"])
-				.optional(),
+			kind: z.enum(["livekit", "turnsense", "eliza-1-drafter"]).optional(),
 		})
 		.optional(),
 	// Voice Wave 2 (2026-05-14): acoustic-emotion classifier eval gates.

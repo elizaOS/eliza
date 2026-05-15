@@ -181,10 +181,10 @@ manifest's `EMOTION_CLASSIFIER_MELD_F1_THRESHOLD = 0.35` and
 
 Voice emotion data is biometric-adjacent. Every write path that carries
 `Memory.metadata.voice.emotion` must pass through the privacy filter
-(`plugins/app-training/src/core/privacy-filter.ts`) before export. The
+(`plugins/plugin-training/src/core/privacy-filter.ts`) before export. The
 filter preserves the structural emotion metadata block for non-private users
 and redacts only string PII in sibling fields. This is pinned by a test in
-`plugins/app-training/test/privacy-filter.test.ts`.
+`plugins/plugin-training/test/privacy-filter.test.ts`.
 
 ---
 

@@ -152,18 +152,18 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.2.0",
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-15T05:17:55Z",
-    hfRepo: "elizaos/eliza-1-voice-turn",
-    hfRevision: "9eaff4947ebd87b1d811e27dec939e29362a9e42",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "onnx/model_q8.onnx",
+        filename: "voice/turn-detector/onnx/model_q8.onnx",
         sha256:
           "52a132ed9c53fe41381cd97a800a9d36b7494d5ea608183de03adfc0723662f8",
         sizeBytes: 37736316,
         quant: "onnx-int8",
       },
       {
-        filename: "onnx/turn-detector-en-q8.gguf",
+        filename: "voice/turn-detector/onnx/turn-detector-en-q8.gguf",
         sha256:
           "04bc18aeec5f59a94ae338aa66a48e204fc02785a6217d9055145f95d2192980",
         sizeBytes: 41275296,
@@ -180,32 +180,32 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.2.0",
     parentVersion: "0.1.0",
     publishedToHfAt: "2026-05-15T04:50:24Z",
-    hfRepo: "elizaos/eliza-1-voice-omnivoice",
-    hfRevision: "b766eb23d5f6c84d580973c0f2013b6fcbd561c0",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "omnivoice-base-q4_k_m.gguf",
+        filename: "voice/omnivoice/omnivoice-base-q4_k_m.gguf",
         sha256:
           "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6",
         sizeBytes: 407_485_216,
         quant: "q4_k_m",
       },
       {
-        filename: "omnivoice-tokenizer-q4_k_m.gguf",
+        filename: "voice/omnivoice/omnivoice-tokenizer-q4_k_m.gguf",
         sha256:
           "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d",
         sizeBytes: 252_474_112,
         quant: "q4_k_m",
       },
       {
-        filename: "omnivoice-base-q8_0.gguf",
+        filename: "voice/omnivoice/omnivoice-base-q8_0.gguf",
         sha256:
           "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
         sizeBytes: 656_395_008,
         quant: "q8_0",
       },
       {
-        filename: "presets/voice-preset-same.bin",
+        filename: "voice/omnivoice/presets/voice-preset-same.bin",
         sha256:
           "efb3ab57f6e3884a2414a9cf9dcdb77a66b61bb43713df9ff1632e7539191be6",
         sizeBytes: 716,
@@ -221,11 +221,11 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "speaker-encoder",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
-    hfRepo: "elizaos/eliza-1-voice-speaker",
-    hfRevision: "3d882d6dfb00c9eed49f89bb7cc2e45ac3497159",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "wespeaker-resnet34-lm.onnx",
+        filename: "voice/speaker-encoder/wespeaker-resnet34-lm.onnx",
         sha256:
           "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
         sizeBytes: 26_530_309,
@@ -240,18 +240,18 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "diarizer",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
-    hfRepo: "elizaos/eliza-1-voice-diarizer",
-    hfRevision: "7a8d059b770aeab08e6eabcf9dcbfc051e5bafef",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "pyannote-segmentation-3.0-int8.onnx",
+        filename: "voice/diarizer/pyannote-segmentation-3.0-int8.onnx",
         sha256:
           "465d0975bf70fbf14fb77c0589a5d346a9c07c2170345f529cf774678446db76",
         sizeBytes: 1_542_304,
         quant: "onnx-int8",
       },
       {
-        filename: "pyannote-segmentation-3.0-fp32.onnx",
+        filename: "voice/diarizer/pyannote-segmentation-3.0-fp32.onnx",
         sha256:
           "057ee564753071c0b09b5b611648b50ac188d50846bff5f01e9f7bbf1591ea25",
         sizeBytes: 5_986_908,
@@ -266,25 +266,25 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "turn-detector",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
-    hfRepo: "elizaos/eliza-1-voice-turn",
-    hfRevision: "6fb5a2ef8942c857904d78ca10ab91a22dba1e06",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "turn-detector-en-int8.onnx",
+        filename: "voice/turn-detector/turn-detector-en-int8.onnx",
         sha256:
           "fdd695a99bda01155fb0b5ce71d34cb9fd3902c62496db7a6c2c7bdeac310ac7",
         sizeBytes: 65_712_276,
         quant: "onnx-int8",
       },
       {
-        filename: "turn-detector-intl-int8.onnx",
+        filename: "voice/turn-detector/turn-detector-intl-int8.onnx",
         sha256:
           "bd2c30776882138a1d95a07faddc13756fe1a35bef6323505f1124fca349bc9c",
         sizeBytes: 396_316_457,
         quant: "onnx-int8",
       },
       {
-        filename: "turnsense-fallback-int8.onnx",
+        filename: "voice/turn-detector/turnsense-fallback-int8.onnx",
         sha256:
           "a423adf55f5f33cf4ee9e3fe73ec133d0106affae3aa14693417b4a1c79e2df8",
         sizeBytes: 176_072_860,
@@ -299,32 +299,32 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "voice-emotion",
     version: "0.2.0",
     publishedToHfAt: "2026-05-15T07:20:39Z",
-    hfRepo: "elizaos/eliza-1-voice-emotion",
-    hfRevision: "85c56b6f5aa4bdef801aa6d5ea082eb92f90b463",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "wav2small-cls7-int8.onnx",
+        filename: "voice/voice-emotion/wav2small-cls7-int8.onnx",
         sha256:
           "cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953",
         sizeBytes: 524_750,
         quant: "onnx-int8",
       },
       {
-        filename: "wav2small-msp-dim-int8.onnx",
+        filename: "voice/voice-emotion/wav2small-msp-dim-int8.onnx",
         sha256:
           "2fcde4aa2a6881b0e7407a3a706fab1889b69233139ee10b8669795b02b06efc",
         sizeBytes: 516_877,
         quant: "onnx-int8",
       },
       {
-        filename: "wav2small-msp-dim-fp32.onnx",
+        filename: "voice/voice-emotion/wav2small-msp-dim-fp32.onnx",
         sha256:
           "3f5a8bf8f035132798b170c57ab61b90d52bb0cb0dd1ef95fd40a97f466f65f7",
         sizeBytes: 1_211_917,
         quant: "onnx-fp32",
       },
       {
-        filename: "wav2small-msp-dim-fp32.onnx.data",
+        filename: "voice/voice-emotion/wav2small-msp-dim-fp32.onnx.data",
         sha256:
           "5a3a84e879c786317570b551ee6240294c8deded27856a52d872c03b12c63d01",
         sizeBytes: 989_472,
@@ -340,25 +340,25 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "kokoro",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
-    hfRepo: "elizaos/eliza-1-voice-kokoro",
-    hfRevision: "967f7449f79414d2b49db3b2441ea683630c11ab",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "kokoro-v1.0-q4.onnx",
+        filename: "voice/kokoro/kokoro-v1.0-q4.onnx",
         sha256:
           "04cf570cf9c4153694f76347ed4b9a48c1b59ff1de0999e6605d123966b197c7",
         sizeBytes: 305_215_966,
         quant: "onnx-int8",
       },
       {
-        filename: "voices/af_bella.bin",
+        filename: "voice/kokoro/voices/af_bella.bin",
         sha256:
           "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b",
         sizeBytes: 522_240,
         quant: "fp16",
       },
       {
-        filename: "voices/af_same.bin",
+        filename: "voice/kokoro/voices/af_same.bin",
         sha256:
           "cf2810d3eb73cdcff22e285b0c51711773acb99b6d7606656f3c63ee414c628e",
         sizeBytes: 522_240,
@@ -373,30 +373,30 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "omnivoice",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
-    hfRepo: "elizaos/eliza-1-voice-omnivoice",
-    hfRevision: "cc5e5d856fc5f05c1a01b787d3e8602d2f05ba9c",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [],
     missingAssets: [
       {
-        filename: "omnivoice-base-q4_k_m.gguf",
+        filename: "voice/omnivoice/omnivoice-base-q4_k_m.gguf",
         quant: "q4_k_m",
         expectedSizeBytes: 388_000_000,
         reason: "missing-from-local-staging",
       },
       {
-        filename: "omnivoice-tokenizer-q4_k_m.gguf",
+        filename: "voice/omnivoice/omnivoice-tokenizer-q4_k_m.gguf",
         quant: "q4_k_m",
         expectedSizeBytes: 51_200_000,
         reason: "missing-from-local-staging",
       },
       {
-        filename: "omnivoice-base-q8_0.gguf",
+        filename: "voice/omnivoice/omnivoice-base-q8_0.gguf",
         quant: "q8_0",
         expectedSizeBytes: 620_000_000,
         reason: "missing-from-local-staging",
       },
       {
-        filename: "presets/voice-preset-same.bin",
+        filename: "voice/omnivoice/presets/voice-preset-same.bin",
         quant: "fp16",
         expectedSizeBytes: 8_192,
         reason: "missing-from-local-staging",
@@ -410,18 +410,18 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "vad",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
-    hfRepo: "elizaos/eliza-1-voice-vad",
-    hfRevision: "7fc2359bbc0ee1e0dd7de2acb126f6872a4fb4c2",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "silero-vad-int8.onnx",
+        filename: "voice/vad/silero-vad-int8.onnx",
         sha256:
           "90b026c95f054d59d7bf79387b0ed93c8950f35a4d8b741cd78d4bb23a7d2776",
         sizeBytes: 639_383,
         quant: "onnx-int8",
       },
       {
-        filename: "silero-vad-v5.1.2.ggml.bin",
+        filename: "voice/vad/silero-vad-v5.1.2.ggml.bin",
         sha256:
           "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
         sizeBytes: 885_098,
@@ -436,25 +436,25 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "wakeword",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
-    hfRepo: "elizaos/eliza-1-voice-wakeword",
-    hfRevision: "bcd866bc070a649dfd2dfbf7aadbd01b3cc68c4b",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "melspectrogram.onnx",
+        filename: "voice/wakeword/melspectrogram.onnx",
         sha256:
           "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
         sizeBytes: 1_087_958,
         quant: "onnx-fp32",
       },
       {
-        filename: "embedding_model.onnx",
+        filename: "voice/wakeword/embedding_model.onnx",
         sha256:
           "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
         sizeBytes: 1_326_578,
         quant: "onnx-fp32",
       },
       {
-        filename: "hey-eliza-int8.onnx",
+        filename: "voice/wakeword/hey-eliza-int8.onnx",
         sha256:
           "e565952901cd4203baacef7cb8700891c9bee4e6f42fc9bc0aa03b9c39a2da92",
         sizeBytes: 630_032,
@@ -469,11 +469,11 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "embedding",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
-    hfRepo: "elizaos/eliza-1-voice-embedding",
-    hfRevision: "bf6afa907c83ec98e487f018cfb4e29ec3cb7c03",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "eliza-1-embedding-q8_0.gguf",
+        filename: "voice/embedding/eliza-1-embedding-q8_0.gguf",
         sha256:
           "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
         sizeBytes: 639_150_592,
@@ -488,18 +488,18 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     id: "asr",
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
-    hfRepo: "elizaos/eliza-1-voice-asr",
-    hfRevision: "c5b2f3b358fb0b0c0713d7290e2eed61b0fb174f",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     ggufAssets: [
       {
-        filename: "eliza-1-asr-q8_0.gguf",
+        filename: "voice/asr/eliza-1-asr-q8_0.gguf",
         sha256:
           "58e22d0532d4eacaf034cfac17a6fed159f37c41390c710186783be439d1fc57",
         sizeBytes: 2_165_034_944,
         quant: "q8_0",
       },
       {
-        filename: "eliza-1-asr-mmproj.gguf",
+        filename: "voice/asr/eliza-1-asr-mmproj.gguf",
         sha256:
           "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
         sizeBytes: 355_709_344,

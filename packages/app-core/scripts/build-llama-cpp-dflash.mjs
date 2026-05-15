@@ -50,6 +50,16 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import {
+  fusedCmakeBuildTargets,
+  fusedExtraCmakeFlags,
+} from "./build-helpers/omnivoice-merged.mjs";
+// H2.c collapsed the W3-3 deprecation runway: OmniVoice is now built
+// exclusively from the in-fork merged tree at
+// `plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/`. The
+// legacy graft path (`OMNIVOICE_INSIDE_LLAMA_CPP=0` +
+// `omnivoice-fuse/{prepare,cmake-graft}.mjs`) has been removed.
+import { verifyFusedSymbols } from "./build-helpers/verify-fused-symbols.mjs";
 import { patchCpuPolarKernels as patchCpuPolarKernelsImpl } from "./kernel-patches/cpu-polar-kernels.mjs";
 import {
   patchCpuSimdKernels as patchCpuSimdKernelsImpl,
@@ -70,43 +80,8 @@ import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/met
 // the production route without any runtime patching.
 import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
 import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
-import {
-  appendCmakeGraft,
-  appendKokoroCmakeGraft,
-  fusedCmakeBuildTargets,
-  fusedExtraCmakeFlags,
-} from "./omnivoice-fuse/cmake-graft.mjs";
-// Source-level omnivoice.cpp fusion (text + TTS sharing one llama.cpp
-// build, one ggml pin, one kernel set). Helpers live alongside this
-// script under omnivoice-fuse/; see omnivoice-fuse/README.md for the
-// GGML pin reconciliation strategy.
-import {
-  OMNIVOICE_GGML_REF,
-  OMNIVOICE_REF,
-  prepareOmnivoiceFusion,
-} from "./omnivoice-fuse/prepare.mjs";
-import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
-// The native inference tree (llama.cpp submodule + standalone kernel sources +
-// verify evidence) moved from packages/inference/ to
-// plugins/plugin-local-inference/native/ in the f51c36f0c1 restructure. Older
-// checkouts still carry the legacy layout, so resolve against whichever exists.
-function resolveNativeDir(...segments) {
-  const legacy = path.resolve(__dirname, "..", "..", "inference", ...segments);
-  if (fs.existsSync(legacy)) return legacy;
-  return path.resolve(
-    __dirname,
-    "..",
-    "..",
-    "..",
-    "plugins",
-    "plugin-local-inference",
-    "native",
-    ...segments,
-  );
-}
-
-// elizaOS/llama.cpp @ 6f3b50425 — the unified fork that
+// elizaOS/llama.cpp @ 33c888a7b — the unified fork that
 // composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
 // GGML_OP_ATTN_SCORE_QJL, GGML_OP_FUSED_ATTN_QJL_TBQ) + Q4_POLAR (Q4_POLAR=47)
 // + the eliza Metal/Vulkan/CUDA kernels + DFlash spec-decode (--spec-type
@@ -116,9 +91,9 @@ function resolveNativeDir(...segments) {
 // lineage as compile-libllama.mjs (AOSP cross-compile path) so both build
 // paths land on identical kernels.
 //
-// The fork ships in-tree as a git submodule under the native inference tree
-// (currently plugins/plugin-local-inference/native/llama.cpp; older checkouts
-// used packages/inference/llama.cpp).
+// The fork ships in-tree as a git submodule at
+// plugins/plugin-local-inference/native/llama.cpp (next to the kernel sources
+// under plugins/plugin-local-inference/native/{metal,vulkan,cuda}).
 // `bun install` runs `git submodule update --init --recursive` so a fresh
 // checkout has it. The build defaults to that submodule checkout; set
 // ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF (or pass --cache-dir / --ref) to build
@@ -127,11 +102,20 @@ function resolveNativeDir(...segments) {
 const REMOTE =
   process.env.ELIZA_DFLASH_LLAMA_CPP_REMOTE ||
   "https://github.com/elizaOS/llama.cpp.git";
-const DEFAULT_REF = "6f3b5042594ea63b78bf7e594a958d2f4a43bc4a";
+const DEFAULT_REF = "33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e";
 const REF = process.env.ELIZA_DFLASH_LLAMA_CPP_REF || DEFAULT_REF;
 // The in-repo submodule checkout of the fork. When it is initialized this is
 // the default build source (no clone needed); see resolveSourceCheckout().
-const SUBMODULE_DIR = resolveNativeDir("llama.cpp");
+const SUBMODULE_DIR = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "plugins",
+  "plugin-local-inference",
+  "native",
+  "llama.cpp",
+);
 // The fork is wired as a submodule unless the operator forces a standalone
 // clone via ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF or an explicit --cache-dir.
 const USING_FORK_OVERRIDE = Boolean(
@@ -155,11 +139,19 @@ const MIN_COMMIT = "7c7818aafc7599996268226e2e56099f4f38e972";
 // disable `--spec-type dflash` at load time.
 const SWA_SPEC_DECODE_FALLBACK_COMMIT =
   "2fdfa49b95f1e39f3c208a9d6d5bdfd7d1bf527d";
-const METAL_RUNTIME_DISPATCH_EVIDENCE = resolveNativeDir(
+const METAL_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "inference",
   "verify",
   "metal-runtime-dispatch-evidence.json",
 );
-const VULKAN_RUNTIME_DISPATCH_EVIDENCE = resolveNativeDir(
+const VULKAN_RUNTIME_DISPATCH_EVIDENCE = path.resolve(
+  __dirname,
+  "..",
+  "..",
+  "inference",
   "verify",
   "vulkan-runtime-dispatch-evidence.json",
 );
@@ -239,13 +231,11 @@ const SUPPORTED_TARGETS = [
   // mingw arm64 cross-toolchain wiring here.
   "windows-arm64-cpu",
   "windows-arm64-vulkan",
-  // Fused text+TTS targets — source-level fusion of
-  // github.com/ServeurpersoCom/omnivoice.cpp into the same llama.cpp
-  // build. Produce one shared library (libelizainference) and one
-  // fused server binary that exposes both `llama_*` and `omnivoice_*`
-  // symbols. See packages/app-core/scripts/omnivoice-fuse/README.md
-  // for the GGML pin reconciliation strategy. The non-fused targets
-  // above remain unchanged; fused is purely additive.
+  // Fused text+TTS targets — the merged in-fork OmniVoice tree at
+  // plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/
+  // produces one shared library (libelizainference) and one fused server
+  // binary that exposes both `llama_*` and `omnivoice_*` symbols. The
+  // non-fused targets above remain unchanged; fused is purely additive.
   "linux-x64-cpu-fused",
   "linux-x64-cuda-fused",
   "linux-x64-vulkan-fused",
@@ -516,13 +506,11 @@ function findAndroidVulkanInclude(ndk) {
   return null;
 }
 
-// Locate glslc. Native desktop Vulkan builds should prefer the host shaderc
-// package so they don't inherit old Android NDK shader optimizer bugs; Android
-// cross-builds should prefer the NDK's matching shader-tools binary.
-function findGlslc(ndk, { preferNdk = false } = {}) {
+// Locate a glslc usable for the host. The Android NDK ships its own glslc
+// under shader-tools/<host>/glslc.
+function findGlslc(ndk) {
   const explicit = process.env.GLSLC?.trim();
   if (explicit && fs.existsSync(explicit)) return explicit;
-  let ndkGlslc = null;
   if (ndk) {
     const hostDirs = [
       "linux-x86_64",
@@ -532,20 +520,16 @@ function findGlslc(ndk, { preferNdk = false } = {}) {
     ];
     for (const host of hostDirs) {
       const candidate = path.join(ndk, "shader-tools", host, "glslc");
-      if (fs.existsSync(candidate)) {
-        ndkGlslc = candidate;
-        break;
-      }
+      if (fs.existsSync(candidate)) return candidate;
     }
   }
-  let hostGlslc = null;
   if (has("glslc")) {
     const out = spawnSync("which", ["glslc"], {
       encoding: "utf8",
     }).stdout?.trim();
-    hostGlslc = out || "glslc";
+    return out || "glslc";
   }
-  return preferNdk ? ndkGlslc || hostGlslc : hostGlslc || ndkGlslc;
+  return null;
 }
 
 // Find a usable x86_64-w64-mingw32 cross-toolchain on the host.
@@ -1030,6 +1014,66 @@ function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
   );
 }
 
+function patchSpeculativeIncompatibleDraftFallback(
+  cacheDir,
+  { dryRun = false } = {},
+) {
+  const specPath = path.join(cacheDir, "common", "speculative.cpp");
+  if (!fs.existsSync(specPath)) {
+    throw new Error(
+      `[dflash-build] patchSpeculativeIncompatibleDraftFallback: ${specPath} missing — fork layout broken`,
+    );
+  }
+  let content = fs.readFileSync(specPath, "utf8");
+  if (content.includes("disabling speculative implementation")) {
+    return;
+  }
+  const original = content;
+  content = content.replace(
+    `        LOG_INF("%s: adding speculative implementation '%s'\\n", __func__, common_speculative_type_to_str(config.type).c_str());
+        switch (config.type) {
+`,
+    `        LOG_INF("%s: adding speculative implementation '%s'\\n", __func__, common_speculative_type_to_str(config.type).c_str());
+        try {
+            switch (config.type) {
+`,
+  );
+  content = content.replace(
+    `            default:
+                break;
+        }
+    }
+
+    if (impls.empty()) {
+`,
+    `                default:
+                    break;
+            }
+        } catch (const std::exception & e) {
+            LOG_ERR("%s: disabling speculative implementation '%s': %s\\n",
+                    __func__, common_speculative_type_to_str(config.type).c_str(), e.what());
+        }
+    }
+
+    if (impls.empty()) {
+`,
+  );
+  if (content === original) {
+    return;
+  }
+  if (!content.includes("disabling speculative implementation")) {
+    throw new Error(
+      `[dflash-build] patchSpeculativeIncompatibleDraftFallback: patch verification failed for ${specPath}`,
+    );
+  }
+  if (!dryRun) {
+    fs.writeFileSync(specPath, content, "utf8");
+  }
+  console.log(
+    "[dflash-build] patched speculative.cpp to disable incompatible draft implementations without terminating",
+  );
+}
+
 // Patch `ggml/src/ggml-cuda/CMakeLists.txt` so the staged fused-attn TU
 // (fused-attn-qjl-tbq.cu, copied in by patchCudaKernels) compiles its body
 // when `-DGGML_CUDA_FUSED_ATTN_QJL=ON` is passed. The fork's ggml-cuda
@@ -1133,67 +1177,6 @@ function fetchHeadersRepo({ name, repo, ref, sentinelRel }) {
   return includeDir;
 }
 
-function ensureSpirvHeadersPackage(spirvInclude) {
-  const explicitDir = process.env.ELIZA_DFLASH_SPIRV_HEADERS_CMAKE_DIR?.trim();
-  if (explicitDir) {
-    const configPath = path.join(explicitDir, "SPIRV-HeadersConfig.cmake");
-    if (!fs.existsSync(configPath)) {
-      throw new Error(
-        `ELIZA_DFLASH_SPIRV_HEADERS_CMAKE_DIR=${explicitDir} is missing SPIRV-HeadersConfig.cmake`,
-      );
-    }
-    return {
-      spirvHeadersDir: explicitDir,
-      spirvPrefix: path.resolve(explicitDir, "..", "..", ".."),
-    };
-  }
-
-  const sourceRoot =
-    path.basename(spirvInclude) === "include"
-      ? path.dirname(spirvInclude)
-      : null;
-  if (
-    !sourceRoot ||
-    !fs.existsSync(path.join(sourceRoot, "CMakeLists.txt"))
-  ) {
-    throw new Error(
-      `SPIRV-Headers CMake package is required by llama.cpp Vulkan builds; ` +
-        `set ELIZA_DFLASH_SPIRV_HEADERS_CMAKE_DIR or point ` +
-        `ELIZA_DFLASH_SPIRV_HEADERS_DIR at a Khronos SPIRV-Headers checkout`,
-    );
-  }
-
-  const installPrefix = path.join(sourceRoot, ".eliza-cmake-install");
-  const buildDir = path.join(sourceRoot, ".eliza-cmake-build");
-  const spirvHeadersDir = path.join(
-    installPrefix,
-    "share",
-    "cmake",
-    "SPIRV-Headers",
-  );
-  const configPath = path.join(spirvHeadersDir, "SPIRV-HeadersConfig.cmake");
-  const installedHeader = path.join(
-    installPrefix,
-    "include",
-    "spirv",
-    "unified1",
-    "spirv.hpp",
-  );
-  if (!fs.existsSync(configPath) || !fs.existsSync(installedHeader)) {
-    run("cmake", [
-      "-S",
-      sourceRoot,
-      "-B",
-      buildDir,
-      `-DCMAKE_INSTALL_PREFIX=${installPrefix}`,
-      "-DSPIRV_HEADERS_ENABLE_TESTS=OFF",
-      "-DSPIRV_HEADERS_ENABLE_INSTALL=ON",
-    ]);
-    run("cmake", ["--install", buildDir]);
-  }
-  return { spirvHeadersDir, spirvPrefix: installPrefix };
-}
-
 function prepareVulkanHeaders() {
   let vulkanInclude;
   const explicitVulkan = process.env.ELIZA_DFLASH_VULKAN_HEADERS_DIR?.trim();
@@ -1225,9 +1208,7 @@ function prepareVulkanHeaders() {
       sentinelRel: path.join("spirv", "unified1", "spirv.hpp"),
     });
   }
-  const { spirvHeadersDir, spirvPrefix } =
-    ensureSpirvHeadersPackage(spirvInclude);
-  return { vulkanInclude, spirvInclude, spirvHeadersDir, spirvPrefix };
+  return { vulkanInclude, spirvInclude };
 }
 
 // Resolve the system libvulkan.so.1 on Linux when libvulkan-dev isn't
@@ -1331,17 +1312,6 @@ function cmakeFlagsForTarget(target, ctx) {
   const isCross =
     platform === "android" || platform === "windows" || platform === "ios";
   flags.push(`-DGGML_NATIVE=${isCross ? "OFF" : "ON"}`);
-  if (platform === "linux") {
-    // The build script copies executables and shared libraries out of the
-    // CMake build tree into the managed runtime directory. Keep Linux
-    // artifacts self-contained after that copy by resolving llama/ggml
-    // sidecar libraries next to the executable or shared object itself.
-    flags.push(
-      "-DCMAKE_BUILD_RPATH=$ORIGIN",
-      "-DCMAKE_INSTALL_RPATH=$ORIGIN",
-      "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
-    );
-  }
 
   // Disable backends we don't want by default; flip the chosen one back on.
   const offByDefault = [
@@ -1465,13 +1435,11 @@ function cmakeFlagsForTarget(target, ctx) {
     }
   } else if (backend === "vulkan") {
     flags[flags.indexOf("-DGGML_VULKAN=OFF")] = "-DGGML_VULKAN=ON";
-    const glslc = platform === "android" ? ctx.androidGlslc : ctx.hostGlslc;
-    if (glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${glslc}`);
+    if (ctx.glslc) flags.push(`-DVulkan_GLSLC_EXECUTABLE=${ctx.glslc}`);
     // The fork includes vulkan.hpp + spirv/unified1/spirv.hpp, neither of
     // which ships in the NDK *or* in Linux libvulkan-runtime-only installs.
     // ctx.vulkanHpp is the result of safelyPrepareVulkanHeaders() —
-    // { vulkanInclude, spirvInclude, spirvHeadersDir } pointing at fetched
-    // Khronos checkouts plus the installed SPIRV-Headers CMake package.
+    // { vulkanInclude, spirvInclude } pointing at fetched Khronos checkouts.
     if (ctx.vulkanHpp) {
       const isystem = [ctx.vulkanHpp.vulkanInclude, ctx.vulkanHpp.spirvInclude]
         .filter(Boolean)
@@ -1490,12 +1458,6 @@ function cmakeFlagsForTarget(target, ctx) {
           flags.push(`-DVulkan_INCLUDE_DIR=${ctx.vulkanHpp.vulkanInclude}`);
           flags.push(`-DVulkan_LIBRARY=${libVulkan}`);
         }
-      }
-      if (ctx.vulkanHpp.spirvHeadersDir) {
-        flags.push(`-DSPIRV-Headers_DIR=${ctx.vulkanHpp.spirvHeadersDir}`);
-      }
-      if (ctx.vulkanHpp.spirvPrefix) {
-        flags.push(`-DCMAKE_PREFIX_PATH=${ctx.vulkanHpp.spirvPrefix}`);
       }
     }
   }
@@ -1736,10 +1698,7 @@ function targetCompatibility(target, ctx) {
       reason: "OpenVINO_DIR or INTEL_OPENVINO_DIR is required",
     };
   }
-  if (
-    backend === "vulkan" &&
-    !(platform === "android" ? ctx.androidGlslc : ctx.hostGlslc)
-  ) {
+  if (backend === "vulkan" && !ctx.glslc) {
     return { ok: false, reason: "no glslc (Vulkan shader compiler)" };
   }
   if (backend === "sycl" && !(has("icpx") && has("icx"))) {
@@ -1870,12 +1829,10 @@ function parseArgs(argv) {
               `  ${t}${FUSED_TARGETS.has(t) ? "  (fused: text + omnivoice TTS in one build)" : ""}`,
           ),
           "",
-          "Fused targets perform source-level fusion of",
-          "github.com/ServeurpersoCom/omnivoice.cpp into the elizaOS/llama.cpp",
-          "build, sharing one ggml pin and one kernel set.",
-          `Pinned omnivoice commit: ${OMNIVOICE_REF}`,
-          `Reconciled-out omnivoice ggml submodule: ${OMNIVOICE_GGML_REF}`,
-          "See packages/app-core/scripts/omnivoice-fuse/README.md.",
+          "Fused targets build the merged in-fork OmniVoice tree at",
+          "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/.",
+          "Text + TTS share one llama.cpp build, one ggml pin, one kernel set.",
+          "See plugins/plugin-local-inference/native/AGENTS.md.",
           "",
           "Source: by default the in-repo submodule plugins/plugin-local-inference/native/llama.cpp",
           `(elizaOS/llama.cpp @ ${REF}). Pass --ref / --cache-dir or set`,
@@ -2052,6 +2009,7 @@ function ensureCheckout(cacheDir, ref) {
 //     smoke on native Vulkan hardware before QJL/Polar/Turbo capability bits
 //     can flip true.
 function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
+  patchOmnivoiceCmakeConflictArtifact(cacheDir, { dryRun });
   patchGgmlQ1G32Quantizer(cacheDir, { dryRun });
   patchGgmlTypeTraitDrift(cacheDir, { dryRun });
   patchSpeculativeReplacementsField(cacheDir, { dryRun });
@@ -2065,6 +2023,7 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   } else {
     patchDflashSpeculativeDispatch(cacheDir, { dryRun });
   }
+  patchSpeculativeIncompatibleDraftFallback(cacheDir, { dryRun });
   if (envFlag("ELIZA_DFLASH_SKIP_DRAFTER_ARCH_PATCH")) {
     console.warn(
       `[dflash-build] skipping DFlash drafter architecture patch for target=${target}; ` +
@@ -2173,6 +2132,39 @@ function applyForkPatches(cacheDir, backend, target, { dryRun = false } = {}) {
   ) {
     patchGgmlBaseForWindowsQjl(cacheDir);
   }
+}
+
+function patchOmnivoiceCmakeConflictArtifact(root, { dryRun = false } = {}) {
+  const cmakePath = path.join(root, "CMakeLists.txt");
+  if (!fs.existsSync(cmakePath)) return;
+  const source = fs.readFileSync(cmakePath, "utf8");
+  const begin = source.indexOf(
+    "<<<<<<< HEAD\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1",
+  );
+  const divider = source.indexOf(
+    "=======\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1 (REMOVED",
+    begin,
+  );
+  const end = source.indexOf(">>>>>>>", divider);
+  if (begin === -1 || divider === -1 || end === -1) return;
+  const endLine = source.indexOf("\n", end);
+  const replacement =
+    "# ELIZA-OMNIVOICE-FUSION-GRAFT-V1 (REMOVED — W3-3 merged path is canonical)\n" +
+    "# The pre-W3-3 legacy graft block lived here. The merged build is now\n" +
+    "# self-contained inside `tools/omnivoice/CMakeLists.txt`. The\n" +
+    "# `ELIZA_FUSE_OMNIVOICE` deprecation redirect lives near the top of\n" +
+    "# this file (next to the LLAMA_BUILD_OMNIVOICE option declaration) so\n" +
+    "# the option ON state is visible when add_subdirectory(tools) runs.\n";
+  const after =
+    source.slice(0, begin) +
+    replacement +
+    source.slice(endLine === -1 ? source.length : endLine + 1);
+  if (!dryRun) {
+    fs.writeFileSync(cmakePath, after, "utf8");
+  }
+  console.log(
+    "[dflash-build] repaired stale OmniVoice CMake conflict artifact",
+  );
 }
 
 function isRuntimeLibrary(name) {
@@ -2290,8 +2282,8 @@ function sourceContainsDflashDraft(root) {
   const specPath = path.join(root, "common", "speculative.cpp");
   const argPath = path.join(root, "common", "arg.cpp");
   const dflashModelPaths = [
-    path.join(root, "src", "models", "dflash-draft.cpp"),
     path.join(root, "src", "models", "dflash_draft.cpp"),
+    path.join(root, "src", "models", "dflash-draft.cpp"),
   ];
   if (
     !dflashModelPaths.some((candidate) => fs.existsSync(candidate)) ||
@@ -3042,22 +3034,13 @@ function readVulkanRuntimeDispatchEvidence() {
 function vulkanEvidencePayloadForTarget(evidence, target) {
   const data = evidence?.data;
   if (!data || typeof data !== "object") return null;
-  const targetCandidates = [
-    target,
-    target ? baseTargetTriple(target) : null,
-  ].filter(
-    (candidate, index, all) => candidate && all.indexOf(candidate) === index,
-  );
   if (target && data.targets && typeof data.targets === "object") {
-    for (const candidate of targetCandidates) {
-      const targetPayload = data.targets[candidate];
-      if (targetPayload && typeof targetPayload === "object") {
-        return targetPayload;
-      }
+    const targetPayload = data.targets[target];
+    if (targetPayload && typeof targetPayload === "object") {
+      return targetPayload;
     }
   }
-  if (!target) return data;
-  if (data.target && targetCandidates.includes(data.target)) return data;
+  if (!target || !data.target || data.target === target) return data;
   return null;
 }
 
@@ -3378,14 +3361,13 @@ function targetOutDir(target, override) {
 function cmakeBuildTargetsFor(target) {
   const { platform, backend, fused } = parseTarget(target);
   const isIos = platform === "ios";
-  // W3-3: resolve fused target list against the layout in use. The
-  // merged path (default) produces `omnivoice_lib` + `omnivoice-tts/codec`;
-  // the legacy graft path produces `omnivoice-core` + `llama-omnivoice-server`.
-  const legacyOmnivoiceGraft = process.env.OMNIVOICE_INSIDE_LLAMA_CPP === "0";
+  // H2.c: only the merged in-fork path remains. `tools/omnivoice/` produces
+  // `omnivoice_lib` + `omnivoice-tts/codec` + `elizainference` and patches
+  // `/v1/audio/speech` onto `llama-server` directly.
   const targets = isIos
     ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
     : fused
-      ? fusedCmakeBuildTargets({ legacy: legacyOmnivoiceGraft })
+      ? fusedCmakeBuildTargets()
       : [
           "llama-server",
           "llama-cli",
@@ -3422,86 +3404,21 @@ function buildTarget({ target, args, ctx }) {
   }
   const flags = cmakeFlagsForTarget(target, ctx);
 
-  // W3-3 OmniVoice → llama.cpp literal merge:
-  //
-  //   * `OMNIVOICE_INSIDE_LLAMA_CPP=1` (default in this script as of
-  //     v1.0.1-eliza) drives the canonical merged path. OmniVoice
-  //     sources live INSIDE the fork at `tools/omnivoice/`; the build
-  //     just sets `-DLLAMA_BUILD_OMNIVOICE=ON -DOMNIVOICE_SHARED=ON`
-  //     and the merged tree's CMakeLists produces libelizainference,
-  //     omnivoice-tts, omnivoice-codec, and wires the
-  //     /v1/audio/speech route into llama-server.
-  //
-  //   * The pre-W3-3 fallback (legacy graft) still works for ONE
-  //     release as a deprecation runway. Set
-  //     `OMNIVOICE_INSIDE_LLAMA_CPP=0` to opt back into the legacy
-  //     `prepareOmnivoiceFusion()` clone-and-graft path. The legacy
-  //     path will be removed in v1.0.2-eliza.
-  const omnivoiceInsideLlamaCpp =
-    process.env.OMNIVOICE_INSIDE_LLAMA_CPP !== "0";
-  let omnivoiceInfo = null;
+  // H2.c — only the merged in-fork OmniVoice path remains. The pre-W3-3
+  // clone-and-graft fallback (gated on `OMNIVOICE_INSIDE_LLAMA_CPP=0`) was
+  // a one-release deprecation runway and has been removed; setting that
+  // env var now no-ops.
   if (fused) {
-    if (omnivoiceInsideLlamaCpp) {
-      if (args.dryRun) {
-        console.log(
-          `[dflash-build] (dry-run) target=${target} fused=true (W3-3 merged path; OMNIVOICE_INSIDE_LLAMA_CPP=1)`,
-        );
-      } else {
-        console.log(
-          `[dflash-build] omnivoice merged path: building tools/omnivoice/ in-fork (W3-3 v1.0.1-eliza)`,
-        );
-      }
-      // Merged path: turn on the in-fork CMake option. The fork's
-      // `tools/omnivoice/CMakeLists.txt` declares omnivoice_lib,
-      // libelizainference, omnivoice-tts, omnivoice-codec, and the
-      // llama-server audio route wiring. The fused extras keep the legacy
-      // source-level ELIZA_FUSE_* guards enabled for one release while the
-      // runtime migrates to the canonical LLAMA_BUILD_OMNIVOICE path.
-      flags.push(
-        "-DLLAMA_BUILD_OMNIVOICE=ON",
-        "-DOMNIVOICE_SHARED=ON",
-        "-DBUILD_SHARED_LIBS=ON",
-        ...fusedExtraCmakeFlags(),
+    if (args.dryRun) {
+      console.log(
+        `[dflash-build] (dry-run) target=${target} fused=true (merged path)`,
       );
     } else {
-      // Legacy graft path (deprecated; one-release runway).
-      if (args.dryRun) {
-        console.log(
-          `[dflash-build] (dry-run) target=${target} fused=true legacy-graft=true (OMNIVOICE_INSIDE_LLAMA_CPP=0)`,
-        );
-        console.log(
-          `  prepareOmnivoiceFusion ref=${OMNIVOICE_REF} llamaCppRoot=${args.cacheDir}`,
-        );
-        console.log(
-          `  appendCmakeGraft -> ${path.join(args.cacheDir, "CMakeLists.txt")}`,
-        );
-      } else {
-        console.warn(
-          `[dflash-build] OMNIVOICE_INSIDE_LLAMA_CPP=0 — using DEPRECATED legacy graft. ` +
-            `Switch to the merged path (unset OMNIVOICE_INSIDE_LLAMA_CPP) before v1.0.2-eliza.`,
-        );
-        omnivoiceInfo = prepareOmnivoiceFusion({
-          cacheRoot: path.dirname(args.cacheDir),
-          llamaCppRoot: args.cacheDir,
-        });
-        const grafted = appendCmakeGraft({ llamaCppRoot: args.cacheDir });
-        let kokoroGrafted = false;
-        if ((omnivoiceInfo.kokoroSourceCount ?? 0) > 0) {
-          kokoroGrafted = appendKokoroCmakeGraft({
-            llamaCppRoot: args.cacheDir,
-          });
-        }
-        console.log(
-          `[dflash-build] omnivoice-fuse (legacy): pin=${omnivoiceInfo.commit} ` +
-            `ggmlSubmodule=${omnivoiceInfo.ggmlSubmoduleCommit} ` +
-            `sources=${omnivoiceInfo.sourceCount} ` +
-            `cmakeGraftAppended=${grafted} ` +
-            `kokoroSources=${omnivoiceInfo.kokoroSourceCount ?? 0} ` +
-            `kokoroGraftAppended=${kokoroGrafted}`,
-        );
-      }
-      flags.push(...fusedExtraCmakeFlags());
+      console.log(
+        `[dflash-build] omnivoice merged path: building tools/omnivoice/ in-fork`,
+      );
     }
+    flags.push(...fusedExtraCmakeFlags());
   }
 
   if (args.dryRun) {
@@ -3626,9 +3543,7 @@ function buildTarget({ target, args, ctx }) {
       // Stub fused server emitted only when target is in FUSED_TARGETS.
       // Adding it unconditionally is harmless: the install loop only
       // copies a binary when it actually exists in binDir.
-      ...(fused
-        ? ["llama-omnivoice-server", "omnivoice-tts", "omnivoice-codec"]
-        : []),
+      ...(fused ? ["llama-omnivoice-server"] : []),
     ];
     // Cross-compiled binaries can have a host-specific suffix (.exe). Match
     // by base name so Windows builds still install the right files.
@@ -3694,7 +3609,7 @@ function buildTarget({ target, args, ctx }) {
   if (fused) {
     omnivoiceVerification = verifyFusedSymbols({ outDir, target });
     console.log(
-      `[dflash-build] omnivoice-fuse symbol-verify: ` +
+      `[dflash-build] omnivoice symbol-verify: ` +
         `library=${omnivoiceVerification.library} ` +
         `llama=${omnivoiceVerification.llamaSymbolCount} ` +
         `omnivoice=${omnivoiceVerification.omnivoiceSymbolCount} ` +
@@ -3710,26 +3625,12 @@ function buildTarget({ target, args, ctx }) {
     forkCommit: ctx.forkCommit,
     binaries: installedBaseNames,
     omnivoice: fused
-      ? omnivoiceInfo
-        ? {
-            mode: "legacy-graft",
-            ref: omnivoiceInfo.ref,
-            commit: omnivoiceInfo.commit,
-            ggmlSubmoduleCommit: omnivoiceInfo.ggmlSubmoduleCommit,
-            ggmlReconciliation: "graft-strip-submodule",
-            sourceCount: omnivoiceInfo.sourceCount,
-            appliedPatches: omnivoiceInfo.appliedPatches,
-            verification: omnivoiceVerification,
-          }
-        : {
-            mode: "merged-tools/omnivoice",
-            commit: ctx.forkCommit,
-            cmake: {
-              LLAMA_BUILD_OMNIVOICE: true,
-              OMNIVOICE_SHARED: true,
-            },
-            verification: omnivoiceVerification,
-          }
+      ? {
+          mode: "merged",
+          source:
+            "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice",
+          verification: omnivoiceVerification,
+        }
       : null,
   });
   console.log(
@@ -3777,8 +3678,7 @@ function build(args) {
   const ctx = {
     androidNdk,
     androidVulkanInclude: findAndroidVulkanInclude(androidNdk),
-    hostGlslc: findGlslc(androidNdk),
-    androidGlslc: findGlslc(androidNdk, { preferNdk: true }),
+    glslc: findGlslc(androidNdk),
     vulkanHpp: willBuildVulkan ? safelyPrepareVulkanHeaders() : null,
     mingw,
     mingwToolchainFile: mingw ? writeMingwToolchainFile({ mingw }) : null,

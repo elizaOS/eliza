@@ -2,7 +2,7 @@
   "id": "steward",
   "name": "Steward",
   "description": "Wallet management, browser wallet bridge, and trade approval routes.",
-  "npmName": "@elizaos/app-steward",
+  "npmName": "@elizaos/plugin-steward-app",
   "source": "bundled",
   "tags": ["wallet", "trading"],
   "config": {},
@@ -24,7 +24,7 @@
     "capabilities": ["wallet", "trading"],
     "curatedSlug": "steward",
     "routePlugin": {
-      "specifier": "@elizaos/app-steward",
+      "specifier": "@elizaos/plugin-steward-app",
       "exportName": "stewardPlugin"
     }
   }

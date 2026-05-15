@@ -684,82 +684,82 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
   [
     {
       slug: "companion",
-      canonicalName: "@elizaos/app-companion",
+      canonicalName: "@elizaos/plugin-companion",
       aliases: [],
     },
     {
       slug: "contacts",
-      canonicalName: "@elizaos/app-contacts",
+      canonicalName: "@elizaos/plugin-contacts",
       aliases: [],
     },
     {
       slug: "phone",
-      canonicalName: "@elizaos/app-phone",
+      canonicalName: "@elizaos/plugin-phone",
       aliases: [],
     },
     {
       slug: "wifi",
-      canonicalName: "@elizaos/app-wifi",
+      canonicalName: "@elizaos/plugin-wifi",
       aliases: [],
     },
     {
       slug: "hyperscape",
       canonicalName: "@hyperscape/plugin-hyperscape",
-      aliases: ["@elizaos/app-hyperscape"],
+      aliases: ["@elizaos/plugin-hyperscape"],
     },
     {
       slug: "babylon",
-      canonicalName: "@elizaos/app-babylon",
+      canonicalName: "@elizaos/plugin-babylon",
       aliases: [],
     },
     {
       slug: "2004scape",
-      canonicalName: "@elizaos/app-2004scape",
+      canonicalName: "@elizaos/plugin-2004scape",
       aliases: [],
     },
     {
       slug: "scape",
-      canonicalName: "@elizaos/app-scape",
+      canonicalName: "@elizaos/plugin-scape",
       aliases: [],
     },
     {
       slug: "defense-of-the-agents",
-      canonicalName: "@elizaos/app-defense-of-the-agents",
+      canonicalName: "@elizaos/plugin-defense-of-the-agents",
       aliases: [],
     },
     {
       slug: "vincent",
-      canonicalName: "@elizaos/app-vincent",
+      canonicalName: "@elizaos/plugin-vincent",
       aliases: [],
     },
     {
       slug: "hyperliquid",
-      canonicalName: "@elizaos/app-hyperliquid",
+      canonicalName: "@elizaos/plugin-hyperliquid-app",
       aliases: [],
     },
     {
       slug: "polymarket",
-      canonicalName: "@elizaos/app-polymarket",
+      canonicalName: "@elizaos/plugin-polymarket-app",
       aliases: [],
     },
     {
       slug: "shopify",
-      canonicalName: "@elizaos/app-shopify",
+      canonicalName: "@elizaos/plugin-shopify-ui",
       aliases: ["@elizaos/plugin-shopify"],
     },
     {
       slug: "screenshare",
-      canonicalName: "@elizaos/app-screenshare",
+      canonicalName: "@elizaos/plugin-screenshare",
       aliases: [],
     },
     {
       slug: "clawville",
-      canonicalName: "@elizaos/app-clawville",
+      canonicalName: "@elizaos/plugin-clawville",
       aliases: [],
     },
     {
       slug: "trajectory-logger",
-      canonicalName: "@elizaos/app-trajectory-logger",
+      canonicalName: "@elizaos/plugin-trajectory-logger",
       aliases: [],
     },
   ] as const;

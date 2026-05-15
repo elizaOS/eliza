@@ -173,12 +173,9 @@ function resolveTierOverridesFromEnv():
 	| { topK: number; stageWeights: Partial<Record<RetrievalStageName, number>> }
 	| undefined {
 	const raw =
-		typeof process !== "undefined"
-			? process.env.MODEL_TIER?.trim()
-			: undefined;
+		typeof process !== "undefined" ? process.env.MODEL_TIER?.trim() : undefined;
 	const compress =
-		typeof process !== "undefined" &&
-		process.env.ELIZA_PROMPT_COMPRESS === "1";
+		typeof process !== "undefined" && process.env.ELIZA_PROMPT_COMPRESS === "1";
 	if (
 		raw !== "small" &&
 		raw !== "mid" &&

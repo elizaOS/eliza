@@ -199,7 +199,7 @@ if (useMockoon) {
 const verify = run(
   "verify-cerebras-wiring",
   "bun",
-  ["--bun", "plugins/app-lifeops/scripts/verify-cerebras-wiring.ts"],
+  ["--bun", "plugins/plugin-lifeops/scripts/verify-cerebras-wiring.ts"],
   { allowFail: false },
 );
 if (verify.status !== 0) {
@@ -279,7 +279,7 @@ if (!skipJsScenarios) {
   mkdirSync(jsDir, { recursive: true });
 
   const jsTargets = [
-    "plugins/app-lifeops/test/scenarios",
+    "plugins/plugin-lifeops/test/scenarios",
     "test/scenarios/lifeops.habits",
     "test/scenarios/lifeops.workflow-events",
   ];

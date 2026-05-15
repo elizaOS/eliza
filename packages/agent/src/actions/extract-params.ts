@@ -123,9 +123,7 @@ export async function extractActionParamsViaLlm<
   }
 
   const currentMessageText =
-    typeof message.content.text === "string"
-      ? message.content.text.trim()
-      : "";
+    typeof message.content.text === "string" ? message.content.text.trim() : "";
   const recentConversation = collectRecentConversation(
     state,
     recentMessagesLimit,

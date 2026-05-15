@@ -37,7 +37,7 @@ that project workspace.
 
 **An app plugin** is a runtime plugin that also contributes an app surface inside
 Eliza. First-party app plugins live under [`plugins/app-*`](plugins), keep npm
-names like `@elizaos/app-companion`, and are loaded by package name. They are
+names like `@elizaos/plugin-companion`, and are loaded by package name. They are
 plugins, not top-level repo applications.
 
 The same split shows up in the directory tree:
@@ -130,13 +130,13 @@ The project template lays out a full workspace with a local eliza checkout, defa
 
 For first-party app plugin references, browse [`plugins/app-*`](plugins). A few starting points by complexity:
 
-- [`app-companion`](plugins/app-companion) — chat-first companion with a custom React UI.
+- [`app-companion`](plugins/plugin-companion) — chat-first companion with a custom React UI.
 - [`app-browser`](plugins/app-browser) — agent-driven browser automation.
-- [`app-documents`](plugins/app-documents) — RAG over user documents (scoped global / owner-private / user-private / agent-private).
-- [`app-phone`](plugins/app-phone) — voice + telephony surface.
+- [`app-documents`](plugins/plugin-documents) — RAG over user documents (scoped global / owner-private / user-private / agent-private).
+- [`app-phone`](plugins/plugin-phone) — voice + telephony surface.
 - [`plugin-form`](plugins/plugin-form) — form-driven data collection.
-- [`app-task-coordinator`](plugins/app-task-coordinator) — multi-agent orchestration.
-- [`app-training`](plugins/app-training) — trajectory capture + native prompt optimization.
+- [`app-task-coordinator`](plugins/plugin-task-coordinator) — multi-agent orchestration.
+- [`app-training`](plugins/plugin-training) — trajectory capture + native prompt optimization.
 
 ## Create a new plugin
 

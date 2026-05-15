@@ -87,7 +87,7 @@ export default defineConfig({
         find: /^@capacitor\/app$/,
         replacement: resolve(packageRoot, "test/stubs/capacitor-app.ts"),
       },
-      // `@elizaos/capacitor-llama` and `@elizaos/app-wallet` are workspace packages
+      // `@elizaos/capacitor-llama` and `@elizaos/plugin-wallet-ui` are workspace packages
       // built to dist/ only; UI tests `vi.mock` them, so alias to stubs so the
       // import resolves in CI where their dist/ isn't built.
       {
@@ -95,6 +95,13 @@ export default defineConfig({
         replacement: resolve(
           packageRoot,
           "test/stubs/elizaos-capacitor-llama.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/capacitor-agent$/,
+        replacement: resolve(
+          packageRoot,
+          "test/stubs/elizaos-capacitor-agent.ts",
         ),
       },
       {

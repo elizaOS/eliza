@@ -6,9 +6,9 @@
  * shapes here are the frozen contract.
  *
  * Cross-references:
- *  - `eliza/plugins/app-lifeops/src/lifeops/wave1-types.ts` — W1-A's stub
+ *  - `eliza/plugins/plugin-lifeops/src/lifeops/wave1-types.ts` — W1-A's stub
  *    of the same `ScheduledTask` shape, kept in sync with this one.
- *  - `eliza/plugins/app-lifeops/src/default-packs/contract-stubs.ts` —
+ *  - `eliza/plugins/plugin-lifeops/src/default-packs/contract-stubs.ts` —
  *    W1-D's stub of the same shape, kept in sync with this one.
  *
  * No runtime behaviour lives here — types only.

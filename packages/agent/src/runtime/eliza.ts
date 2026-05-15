@@ -60,7 +60,7 @@ export {
 
 // resolvePlugins is re-exported via index.ts from ./plugin-resolver
 
-// `@elizaos/app-lifeops` and `@elizaos/app-companion` are NOT eagerly imported
+// `@elizaos/plugin-lifeops` and `@elizaos/plugin-companion` are NOT eagerly imported
 // here. Both packages transitively import from `@elizaos/agent` (e.g.
 // `hasOwnerAccess` from this package's barrel) — a top-level static import
 // would form a module-init cycle that leaves named exports of the app-lifeops
@@ -146,8 +146,8 @@ import {
   resolvePrimaryModel,
 } from "./model-resolution.ts";
 
-const ELIZAMAKER_MODULE: string = "@elizaos/app-elizamaker";
-const STEWARD_EVM_BRIDGE_MODULE: string = "@elizaos/app-steward";
+const ELIZAMAKER_MODULE: string = "@elizaos/plugin-elizamaker";
+const STEWARD_EVM_BRIDGE_MODULE: string = "@elizaos/plugin-steward-app";
 
 type ElizaMakerModule = {
   initializeOGCode?: () => void;
@@ -170,9 +170,31 @@ async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
   )) as StewardEvmBridgeModule;
 }
 
-const { detectEmbeddingPreset } = await import(
-  "@elizaos/plugin-local-inference"
-);
+function detectEmbeddingPreset() {
+  const model = "bundles/0_8b/text/eliza-1-0_8b-32k.gguf";
+  const modelRepo = "elizaos/eliza-1";
+  const dimensions = 1024;
+  const contextSize = 32768;
+  const downloadSizeMB = 512;
+  const totalRamGB = Math.round(os.totalmem() / 1024 ** 3);
+  const isAppleSilicon =
+    process.platform === "darwin" && process.arch === "arm64";
+  const tier =
+    !isAppleSilicon || totalRamGB <= 8
+      ? "fallback"
+      : totalRamGB >= 128
+        ? "performance"
+        : "standard";
+  return {
+    tier,
+    model,
+    modelRepo,
+    dimensions,
+    gpuLayers: tier === "fallback" ? 0 : "auto",
+    contextSize,
+    downloadSizeMB,
+  };
+}
 
 import {
   debugLogResolvedContext,
@@ -283,13 +305,15 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
       return await import("@elizaos/plugin-commands");
     }
     if (packageName === "@elizaos/plugin-video") {
-      return await import("@elizaos/plugin-video");
+      const pluginVideoSpecifier = "@elizaos/plugin-video";
+      return await import(pluginVideoSpecifier);
     }
     if (packageName === "@elizaos/plugin-background-runner") {
       return await import("@elizaos/plugin-background-runner");
     }
     if (packageName === "@elizaos/plugin-mlx") {
-      return await import("@elizaos/plugin-mlx");
+      const pluginMlxSpecifier = "@elizaos/plugin-mlx";
+      return await import(pluginMlxSpecifier);
     }
     if (packageName === "@elizaos/plugin-anthropic") {
       return await import("@elizaos/plugin-anthropic");
@@ -435,7 +459,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
         ? { "@elizaos/plugin-elizacloud": pluginElizacloud }
         : {}),
       // trust: now built-in core capability (ENABLE_TRUST)
-      // `@elizaos/app-lifeops` and `@elizaos/app-companion` are intentionally
+      // `@elizaos/plugin-lifeops` and `@elizaos/plugin-companion` are intentionally
       // omitted from the static map — see the comment near the top of this file.
       // They resolve via headless dynamic-import entrypoints in plugin-resolver.ts.
       // personality: now built-in advanced capability (advancedCapabilities: true)

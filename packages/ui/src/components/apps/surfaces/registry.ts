@@ -17,7 +17,7 @@ const OPERATOR_SURFACE_COMPONENTS = new Map<
  * Call this once per app at module load time (e.g. from the app's UI entry).
  *
  * @example
- *   registerOperatorSurface("@elizaos/app-babylon", BabylonOperatorSurface);
+ *   registerOperatorSurface("@elizaos/plugin-babylon", BabylonOperatorSurface);
  */
 export function registerOperatorSurface(
   appName: string,

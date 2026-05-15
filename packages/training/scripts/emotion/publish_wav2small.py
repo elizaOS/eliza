@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Publish the trained Wav2Small student to `elizaos/eliza-1-voice-emotion`.
+"""Publish the trained Wav2Small student to `elizaos/eliza-1`.
 
 Inputs (defaults match `run_distill_ravdess.py`):
 
   --run-dir   the training output directory (must contain
               `wav2small-msp-dim-int8.onnx` and `wav2small-msp-dim-int8.json`).
-  --hf-repo   target HF repo (default `elizaos/eliza-1-voice-emotion`).
+  --hf-repo   target HF repo (default `elizaos/eliza-1`).
   --version   semver tag for this release (default `0.1.0`).
   --dry-run   print the upload plan without touching the HF repo.
 
@@ -37,7 +37,8 @@ import sys
 
 LOG = logging.getLogger("publish_wav2small")
 
-DEFAULT_REPO = "elizaos/eliza-1-voice-emotion"
+DEFAULT_REPO = "elizaos/eliza-1"
+DEFAULT_PATH_PREFIX = "voice/voice-emotion"
 DEFAULT_RUN_DIR = pathlib.Path("packages/training/out/emotion-wav2small-final")
 
 # Files to upload — relative paths in the HF repo. Defaults match the
@@ -286,6 +287,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--run-dir", type=pathlib.Path, default=DEFAULT_RUN_DIR)
     parser.add_argument("--hf-repo", default=DEFAULT_REPO)
+    parser.add_argument("--path-prefix", default=DEFAULT_PATH_PREFIX)
     parser.add_argument("--version", default="0.2.0")
     parser.add_argument(
         "--head", choices=("vad", "cls7"), default="cls7",
@@ -364,14 +366,18 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8",
     )
 
+    path_prefix = args.path_prefix.strip("/")
+    def remote_path(name: str) -> str:
+        return f"{path_prefix}/{name}" if path_prefix else name
+
     upload_plan = [
-        (str(args.run_dir / "README.md"), "README.md"),
-        (str(args.run_dir / "manifest.json"), "manifest.json"),
-        (str(onnx_path), artifact_onnx),
-        (str(prov_path), artifact_prov),
+        (str(args.run_dir / "README.md"), remote_path("README.md")),
+        (str(args.run_dir / "manifest.json"), remote_path("manifest.json")),
+        (str(onnx_path), remote_path(artifact_onnx)),
+        (str(prov_path), remote_path(artifact_prov)),
     ]
     if eval_path.is_file():
-        upload_plan.append((str(eval_path), "eval.json"))
+        upload_plan.append((str(eval_path), remote_path("eval.json")))
     LOG.info("upload plan to %s:", args.hf_repo)
     for local, remote in upload_plan:
         LOG.info("  %s  →  %s", local, remote)

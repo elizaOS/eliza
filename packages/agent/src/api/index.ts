@@ -81,7 +81,7 @@ export * from "./rate-limiter.ts";
 export * from "./registry-routes.ts";
 export * from "./registry-service.ts";
 // `runtime-plugin-routes.ts` exports `matchPluginRoutePath` (used by plugin
-// authors and their tests, e.g. plugins/app-vincent/src/vincent-plugin-dispatch.test.ts)
+// authors and their tests, e.g. plugins/plugin-vincent/src/vincent-plugin-dispatch.test.ts)
 // and the request-handling helper `tryHandleRuntimePluginRoute` (used by
 // agent runtime wiring). Both are part of the public agent surface.
 export {

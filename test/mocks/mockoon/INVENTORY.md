@@ -15,7 +15,7 @@ This document maps each connector's:
 
 Activate the mock layer at runtime with `LIFEOPS_USE_MOCKOON=1`. The redirect
 helper at
-`eliza/plugins/app-lifeops/src/lifeops/connectors/mockoon-redirect.ts`
+`eliza/plugins/plugin-lifeops/src/lifeops/connectors/mockoon-redirect.ts`
 returns `http://localhost:<port>` for each known connector when that flag is
 set. Each connector's existing base-URL resolver consults the helper before
 falling back to the real upstream.
@@ -174,7 +174,7 @@ Mockoon "rules" select the response. The default response is the happy path.
 
 ### 8. twilio (port 18808, file `twilio.json`)
 
-- Source: `eliza/plugins/app-lifeops/src/lifeops/twilio.ts` — already supports
+- Source: `eliza/plugins/plugin-lifeops/src/lifeops/twilio.ts` — already supports
   `ELIZA_MOCK_TWILIO_BASE`. The redirect helper sets it to
   `http://localhost:18808` when `LIFEOPS_USE_MOCKOON=1`.
 - Endpoints exercised:
@@ -183,7 +183,7 @@ Mockoon "rules" select the response. The default response is the happy path.
 
 ### 9. plaid (port 18809, file `plaid.json`)
 
-- Source: `eliza/plugins/app-lifeops/src/lifeops/plaid-managed-client.ts`. The
+- Source: `eliza/plugins/plugin-lifeops/src/lifeops/plaid-managed-client.ts`. The
   client hits the local Eliza Cloud relay at
   `${apiBaseUrl}/v1/eliza/plaid/...`, NOT the public Plaid REST API directly.
   The redirect helper sets `ELIZAOS_CLOUD_BASE_URL` to
@@ -220,7 +220,7 @@ Mockoon "rules" select the response. The default response is the happy path.
 
 ### 12. ntfy (port 18812, file `ntfy.json`)
 
-- Source: `eliza/plugins/app-lifeops/src/lifeops/notifications-push.ts` reads
+- Source: `eliza/plugins/plugin-lifeops/src/lifeops/notifications-push.ts` reads
   `NTFY_BASE_URL`. The redirect helper sets it to
   `http://localhost:18812`.
 - Endpoints exercised:
@@ -228,7 +228,7 @@ Mockoon "rules" select the response. The default response is the happy path.
 
 ### 13. duffel (port 18813, file `duffel.json`)
 
-- Source: `eliza/plugins/app-lifeops/src/lifeops/travel-adapters/duffel.ts`.
+- Source: `eliza/plugins/plugin-lifeops/src/lifeops/travel-adapters/duffel.ts`.
   The `DUFFEL_API_BASE` is a `const`, but the resolver picks between cloud
   relay mode and direct mode. We add a one-line patch (see the wiring file)
   so direct mode honours `LIFEOPS_DUFFEL_API_BASE` from the redirect helper.
@@ -280,7 +280,7 @@ Mockoon "rules" select the response. The default response is the happy path.
 
 ### 18. signal (port 18818, file `signal.json`)
 
-- Source: `eliza/plugins/app-lifeops/src/lifeops/signal-local-client.ts`
+- Source: `eliza/plugins/plugin-lifeops/src/lifeops/signal-local-client.ts`
   reads `SIGNAL_HTTP_URL` (default `http://127.0.0.1:8080`). Redirect helper
   points it at `http://localhost:18818` when mockoon is active.
 - Endpoints exercised:
@@ -362,7 +362,7 @@ update the port table.
 
 ## Wiring summary (Phase 3)
 
-`eliza/plugins/app-lifeops/src/lifeops/connectors/mockoon-redirect.ts`
+`eliza/plugins/plugin-lifeops/src/lifeops/connectors/mockoon-redirect.ts`
 exports a single `applyMockoonEnvOverrides()` function. The lifeops plugin
 calls it at module load when `LIFEOPS_USE_MOCKOON=1`. The function sets:
 

@@ -48,6 +48,7 @@ export interface Plugin {
     config: Record<string, unknown>,
     runtime: unknown,
   ) => Promise<void | (() => Promise<void>)>;
+  dispose?: () => Promise<void> | void;
   /**
    * Declarative auto-enable conditions consumed by the runtime's
    * plugin-auto-enable engine. Mirrors the shape on `@elizaos/core` Plugin.

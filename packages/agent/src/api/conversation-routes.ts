@@ -1587,6 +1587,17 @@ export async function handleConversationRoutes(
             ) {
               return;
             }
+            // Structured field extractors can briefly normalize whitespace or
+            // closing punctuation while the same visible field is still
+            // streaming. Do not shrink the user-visible token stream for
+            // prefix-equivalent snapshots; later longer snapshots/deltas still
+            // advance normally.
+            if (
+              text.length < streamedText.length &&
+              streamedText.startsWith(text)
+            ) {
+              return;
+            }
             streamedText = text;
             writeChatTokenSse(res, text, streamedText);
           },

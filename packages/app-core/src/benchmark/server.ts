@@ -99,6 +99,26 @@ function isBfclBenchmarkName(benchmark: string): boolean {
   return benchmark.trim().toLowerCase() === "bfcl";
 }
 
+function isTerminalBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "terminal-bench" || normalized === "terminal_bench";
+}
+
+function isSweBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "swe-bench" || normalized === "swe_bench";
+}
+
+function isVisualWebBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "visualwebbench" || normalized === "visual-web-bench";
+}
+
+function isOsworldBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "osworld" || normalized === "os-world";
+}
+
 function normalizeBfclNativeMessages(
   text: string,
   context: Record<string, unknown>,
@@ -1919,6 +1939,83 @@ export async function startBenchmarkServer() {
                 params,
                 captured_actions: [],
                 tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
+
+          if (
+            isTerminalBenchmarkName(session.benchmark) ||
+            isSweBenchmarkName(session.benchmark) ||
+            isVisualWebBenchmarkName(session.benchmark) ||
+            isOsworldBenchmarkName(session.benchmark)
+          ) {
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            try {
+              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                prompt: composedPrompt,
+                maxTokens:
+                  typeof benchmarkContext.max_tokens === "number"
+                    ? benchmarkContext.max_tokens
+                    : 4096,
+                temperature:
+                  typeof benchmarkContext.temperature === "number"
+                    ? benchmarkContext.temperature
+                    : 0,
+              });
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions: responseText.trim() ? ["REPLY"] : [],
+              params: {},
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions: responseText.trim() ? ["REPLY"] : [],
+                params: {},
+                captured_actions: [],
+                tool_calls: [],
                 usage: turnUsage,
                 metadata,
                 benchmark: session.benchmark,

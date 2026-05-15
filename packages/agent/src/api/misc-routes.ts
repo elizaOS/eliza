@@ -77,7 +77,7 @@ type CompanionEmote = {
   [key: string]: unknown;
 };
 
-const COMPANION_EMOTES_MODULE: string = "@elizaos/app-companion";
+const COMPANION_EMOTES_MODULE: string = "@elizaos/plugin-companion";
 let companionEmotesPromise: Promise<{
   catalog: CompanionEmote[];
   byId: Map<string, CompanionEmote>;
@@ -787,7 +787,7 @@ export async function handleMiscRoutes(
   }
 
   // Privy wallet routes (/api/privy/*) are now provided by the
-  // @elizaos/app-steward plugin via the runtime route registry.
+  // @elizaos/plugin-steward-app plugin via the runtime route registry.
 
   return false;
 }

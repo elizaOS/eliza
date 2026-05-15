@@ -252,6 +252,27 @@ def test_build_openai_body_includes_generation_options(fake_binary: Path) -> Non
     assert body["tools"] == [{"type": "function", "function": {"name": "LOOKUP"}}]
 
 
+def test_build_openai_body_embeds_benchmark_context(fake_binary: Path) -> None:
+    c = OpenClawClient(binary_path=fake_binary, direct_openai_compatible=True)
+    body = c.build_openai_compatible_body(
+        "choose the best option",
+        {
+            "benchmark": "visualwebbench",
+            "task_id": "action_prediction_1",
+            "options": ["A page", "B page"],
+            "elem_desc": "Search button",
+            "bbox": [0.1, 0.2, 0.3, 0.4],
+        },
+    )
+
+    messages = body["messages"]
+    assert isinstance(messages, list)
+    assert messages[0]["role"] == "system"
+    assert "Benchmark context:" in messages[0]["content"]
+    assert "Search button" in messages[0]["content"]
+    assert messages[-1] == {"role": "user", "content": "choose the best option"}
+
+
 def test_build_openai_body_preserves_messages_and_tool_pairs(fake_binary: Path) -> None:
     c = OpenClawClient(binary_path=fake_binary, direct_openai_compatible=True)
     body = c.build_openai_compatible_body(

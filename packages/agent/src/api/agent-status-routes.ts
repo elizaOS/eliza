@@ -39,7 +39,7 @@ interface ElizaMakerRegistryService {
   getChainId(): Promise<number>;
 }
 
-const ELIZAMAKER_REGISTRY_MODULE: string = "@elizaos/app-elizamaker";
+const ELIZAMAKER_REGISTRY_MODULE: string = "@elizaos/plugin-elizamaker";
 
 async function getElizaMakerRegistryServiceIfAvailable(): Promise<ElizaMakerRegistryService | null> {
   try {

@@ -199,7 +199,7 @@ async function appendLlmCall(
   trajectory.updatedAt = new Date(now).toISOString();
 
   if (insights.length > 0) {
-    const meta = (trajectory.metadata) as Record<string, unknown>;
+    const meta = trajectory.metadata as Record<string, unknown>;
     const existing = Array.isArray(meta.insights)
       ? (meta.insights as string[])
       : [];
@@ -222,7 +222,7 @@ async function appendLlmCall(
 
   if (orchestratorCtx) {
     trajectory.source = "orchestrator";
-    const meta = (trajectory.metadata) as Record<string, unknown>;
+    const meta = trajectory.metadata as Record<string, unknown>;
     meta.orchestrator = {
       decisionType: orchestratorCtx.decisionType,
       ...(orchestratorCtx.sessionId && {
@@ -311,7 +311,7 @@ interface TrainingTriggerEntry {
 /**
  * Fire-and-forget notification to the optional TrainingTriggerService.
  *
- * Registered by `@elizaos/app-core` when `@elizaos/app-training` is installed
+ * Registered by `@elizaos/app-core` when `@elizaos/plugin-training` is installed
  * (see `runtime/eliza.ts` → `registerTrackCTrainingCrons`). Slim installs
  * never register the service and this resolves to a no-op.
  *

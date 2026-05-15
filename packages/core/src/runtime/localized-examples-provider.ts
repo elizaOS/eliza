@@ -1,5 +1,5 @@
 /**
- * Runtime-level hook a host plugin (e.g. `@elizaos/app-lifeops`) registers so
+ * Runtime-level hook a host plugin (e.g. `@elizaos/plugin-lifeops`) registers so
  * the planner can swap English `ActionExample` pairs for localized variants
  * at catalog-build time without core needing to import plugin-side symbols.
  *

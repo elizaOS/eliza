@@ -34,10 +34,10 @@ describe("overlay-app-registry AOSP gating", () => {
     (globalThis as { [OVERLAY_REGISTRY_KEY]?: Map<string, OverlayApp> })[
       OVERLAY_REGISTRY_KEY
     ] = new Map();
-    registerOverlayApp(makeOverlayApp("@elizaos/app-phone", true));
-    registerOverlayApp(makeOverlayApp("@elizaos/app-contacts", true));
-    registerOverlayApp(makeOverlayApp("@elizaos/app-wifi", true));
-    registerOverlayApp(makeOverlayApp("@elizaos/app-companion", false));
+    registerOverlayApp(makeOverlayApp("@elizaos/plugin-phone", true));
+    registerOverlayApp(makeOverlayApp("@elizaos/plugin-contacts", true));
+    registerOverlayApp(makeOverlayApp("@elizaos/plugin-wifi", true));
+    registerOverlayApp(makeOverlayApp("@elizaos/plugin-companion", false));
   });
 
   afterEach(() => {
@@ -51,7 +51,7 @@ describe("overlay-app-registry AOSP gating", () => {
       platform: "android",
       userAgent: STOCK_ANDROID_UA,
     });
-    expect(apps.map((a) => a.name)).toEqual(["@elizaos/app-companion"]);
+    expect(apps.map((a) => a.name)).toEqual(["@elizaos/plugin-companion"]);
   });
 
   it("hides androidOnly apps on iOS even if a phantom AOSP marker leaks in", () => {
@@ -59,7 +59,7 @@ describe("overlay-app-registry AOSP gating", () => {
       platform: "ios",
       userAgent: ELIZAOS_AOSP_UA,
     });
-    expect(apps.map((a) => a.name)).toEqual(["@elizaos/app-companion"]);
+    expect(apps.map((a) => a.name)).toEqual(["@elizaos/plugin-companion"]);
   });
 
   it("hides androidOnly apps on desktop Linux", () => {
@@ -67,7 +67,7 @@ describe("overlay-app-registry AOSP gating", () => {
       platform: "web",
       userAgent: DESKTOP_LINUX_UA,
     });
-    expect(apps.map((a) => a.name)).toEqual(["@elizaos/app-companion"]);
+    expect(apps.map((a) => a.name)).toEqual(["@elizaos/plugin-companion"]);
   });
 
   it("shows androidOnly apps on AOSP elizaOS Android", () => {
@@ -76,10 +76,10 @@ describe("overlay-app-registry AOSP gating", () => {
       userAgent: ELIZAOS_AOSP_UA,
     });
     expect(apps.map((a) => a.name).sort()).toEqual([
-      "@elizaos/app-companion",
-      "@elizaos/app-contacts",
-      "@elizaos/app-phone",
-      "@elizaos/app-wifi",
+      "@elizaos/plugin-companion",
+      "@elizaos/plugin-contacts",
+      "@elizaos/plugin-phone",
+      "@elizaos/plugin-wifi",
     ]);
   });
 
@@ -89,16 +89,16 @@ describe("overlay-app-registry AOSP gating", () => {
       userAgent: WHITE_LABEL_AOSP_UA,
     });
     expect(apps.map((a) => a.name).sort()).toEqual([
-      "@elizaos/app-companion",
-      "@elizaos/app-contacts",
-      "@elizaos/app-phone",
-      "@elizaos/app-wifi",
+      "@elizaos/plugin-companion",
+      "@elizaos/plugin-contacts",
+      "@elizaos/plugin-phone",
+      "@elizaos/plugin-wifi",
     ]);
   });
 
   it("legacy string-context API hides androidOnly apps without explicit AOSP flag", () => {
     const apps = getAvailableOverlayApps("android");
-    expect(apps.map((a) => a.name)).toEqual(["@elizaos/app-companion"]);
+    expect(apps.map((a) => a.name)).toEqual(["@elizaos/plugin-companion"]);
   });
 
   it("isAospAndroid agrees with the gate semantics", () => {

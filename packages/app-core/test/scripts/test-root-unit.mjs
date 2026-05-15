@@ -93,13 +93,13 @@ function chunkFiles(label, files, chunkSize = 20) {
 
 const appTestFiles = collectAppPluginTestFiles();
 const lifeOpsSourceTestFiles = collectTestFiles(
-  "eliza/plugins/app-lifeops/src",
+  "eliza/plugins/plugin-lifeops/src",
 );
 const appsAndPluginsSourceTestFiles = [
   ...collectTestFiles(
-    "eliza/plugins/app-vincent/src",
-    "eliza/plugins/app-shopify/src",
-    "eliza/plugins/app-steward/src",
+    "eliza/plugins/plugin-vincent/src",
+    "eliza/plugins/plugin-shopify-ui/src",
+    "eliza/plugins/plugin-steward-app/src",
     "packages/plugin-wechat/src",
   ),
   ...[

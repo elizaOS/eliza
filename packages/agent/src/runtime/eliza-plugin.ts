@@ -12,6 +12,7 @@ import {
   logger,
   promoteSubactionsToActions,
 } from "@elizaos/core";
+import type { CommandDefinition } from "@elizaos/plugin-commands";
 import { compactConversationAction } from "../actions/compact-conversation.ts";
 import { contactAction } from "../actions/contact.ts";
 import { databaseAction } from "../actions/database.ts";
@@ -98,7 +99,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
     createOngoingTasksProvider(),
   ];
 
-  // PLAY_EMOTE lives in @elizaos/app-companion (emote catalog + action).
+  // PLAY_EMOTE lives in @elizaos/plugin-companion (emote catalog + action).
 
   const plugin: Plugin = {
     name: "eliza",
@@ -122,7 +123,7 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
           const skills = skillsService.getLoadedSkills();
           if (skills.length === 0) return false;
 
-          let registerCommand: (cmd: Record<string, unknown>) => void;
+          let registerCommand: (command: CommandDefinition) => void;
           let initForRuntime: (agentId: string) => void;
           try {
             const cmds = await import("@elizaos/plugin-commands");
@@ -209,6 +210,25 @@ export function createElizaPlugin(config?: ElizaPluginConfig): Plugin {
       // parent in @elizaos/plugin-agent-orchestrator (also surfaced via the
       // CODE umbrella).
     ],
+
+    async dispose(runtime) {
+      await runtime
+        .getService<PermissionRegistry>(PermissionRegistry.serviceType)
+        ?.stop();
+      await runtime
+        .getService<AgentMediaGenerationService>(
+          AgentMediaGenerationService.serviceType,
+        )
+        ?.stop();
+      await runtime
+        .getService<ElizaCharacterPersistenceService>(
+          ElizaCharacterPersistenceService.serviceType,
+        )
+        ?.stop();
+      await runtime
+        .getService<AgentEventService>(AgentEventService.serviceType)
+        ?.stop();
+    },
   };
 
   return plugin;

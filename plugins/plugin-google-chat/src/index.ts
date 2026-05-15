@@ -43,7 +43,11 @@ const googleChatPlugin: Plugin = {
 
   async dispose(runtime: IAgentRuntime) {
     await runtime.getService<GoogleChatService>(GoogleChatService.serviceType)?.stop();
-    await runtime.getService<GoogleChatWorkflowCredentialProvider>(GoogleChatWorkflowCredentialProvider.serviceType)?.stop();
+    await runtime
+      .getService<GoogleChatWorkflowCredentialProvider>(
+        GoogleChatWorkflowCredentialProvider.serviceType
+      )
+      ?.stop();
   },
 
   /**

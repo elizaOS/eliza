@@ -4,7 +4,7 @@
 Sibling to `publish_custom_kokoro_voice.sh` (which stages a release-dir into
 a per-tier Eliza-1 bundle on local disk). This script handles the OTHER half
 of the publish path: uploading the same release-dir to a HuggingFace repo
-under the `elizaos/eliza-1-voice-kokoro-<voice>-vNN` naming convention.
+under the unified `elizaos/eliza-1` repo at `voice/kokoro/voices/<voice>/`.
 
 The release-dir is the output of `package_voice_for_release.py`:
 
@@ -37,13 +37,13 @@ Usage:
 
     python3 push_voice_to_hf.py \\
         --release-dir /tmp/kokoro-runs/same/release/af_same \\
-        --hf-repo elizaos/eliza-1-voice-kokoro-same-v01
+        --hf-repo elizaos/eliza-1
 
     # Dry run — exercises every gate + assembles the upload plan but does
     # not call the HF API.
     python3 push_voice_to_hf.py \\
         --release-dir /tmp/kokoro-runs/same/release/af_same \\
-        --hf-repo elizaos/eliza-1-voice-kokoro-same-v01 \\
+        --hf-repo elizaos/eliza-1 \\
         --dry-run
 """
 
@@ -274,16 +274,23 @@ def _push(
     *,
     release_dir: Path,
     hf_repo: str,
+    path_prefix: str,
     private: bool,
     model_card: str,
     dry_run: bool,
 ) -> dict[str, Any]:
     """Drive the HF API. In dry-run mode, return a plan without calling the API."""
     plan = _build_upload_plan(release_dir)
+    path_prefix = path_prefix.strip("/")
+    def remote_path(name: str) -> str:
+        return f"{path_prefix}/{name}" if path_prefix else name
+
+    for item in plan:
+        item["remote"] = remote_path(str(item["remote"]))
     plan.append(
         {
             "path": "<rendered>",
-            "remote": "README.md",
+            "remote": remote_path("README.md"),
             "sizeBytes": len(model_card.encode("utf-8")),
             "sha256": hashlib.sha256(model_card.encode("utf-8")).hexdigest(),
         }
@@ -323,14 +330,14 @@ def _push(
     try:
         api.upload_file(
             path_or_fileobj=str(rendered),
-            path_in_repo="README.md",
+            path_in_repo=remote_path("README.md"),
             repo_id=hf_repo,
             repo_type="model",
         )
         for name in REQUIRED_ARTIFACTS:
             api.upload_file(
                 path_or_fileobj=str(release_dir / name),
-                path_in_repo=name,
+                path_in_repo=remote_path(name),
                 repo_id=hf_repo,
                 repo_type="model",
             )
@@ -355,7 +362,8 @@ def build_parser() -> argparse.ArgumentParser:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     p.add_argument("--release-dir", type=Path, required=True)
-    p.add_argument("--hf-repo", required=True)
+    p.add_argument("--hf-repo", default="elizaos/eliza-1")
+    p.add_argument("--path-prefix", default="voice/kokoro/voices")
     p.add_argument(
         "--public",
         action="store_true",
@@ -413,6 +421,7 @@ def main(argv: list[str] | None = None) -> int:
     receipt = _push(
         release_dir=release_dir,
         hf_repo=args.hf_repo,
+        path_prefix=f"{args.path_prefix.rstrip('/')}/{release_dir.name}",
         private=not args.public,
         model_card=model_card,
         dry_run=args.dry_run,

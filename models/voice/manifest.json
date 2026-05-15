@@ -4,10 +4,15 @@
   "generatedAt": "2026-05-15T00:00:00Z",
   "assetAudit": {
     "auditedAt": "2026-05-15T13:00:00Z",
-    "status": "all-10-voice-repos-live-on-hf-with-real-weights",
+    "status": "unified-eliza-1-verified",
+    "unifiedRepo": "elizaos/eliza-1",
+    "unifiedRevision": "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     "notes": [
-      "All 10 elizaos/eliza-1-voice-* HF repos confirmed live with real ONNX/GGUF weights.",
+      "All 10 legacy elizaos/eliza-1-voice-* HF repos were confirmed live with real ONNX/GGUF weights before consolidation.",
       "SHA256 and sizeBytes verified against HF LFS metadata for every binary asset.",
+      "Canonical destination elizaos/eliza-1/voice/<model-id>/ verified at 20b291b5820937e8a1e1ca9f2927f5bc64aefe7e; scripts/hf_consolidate_eliza1_voice.py verifies source and destination before legacy split repo deletion.",
+      "Legacy elizaos/eliza-1-voice-* repos were deleted after destination verification passed; runtime registry entries now resolve to elizaos/eliza-1.",
+      "GGUF-only migration is not complete: speaker, diarizer, turn-detector, voice-emotion, kokoro, VAD, and wakeword still include ONNX payloads tracked by the ONNX-to-GGML migration audit.",
       "turn-detector updated to v0.2.0 (DailyDialog fine-tune, F1=0.9811); hfRevision updated to 9eaff4947ebd87b1d811e27dec939e29362a9e42.",
       "Kokoro same voice and voice-emotion remain quality-gate=false; staged and published as-is per spec.",
       "OmniVoice same preset (716 bytes frozen conditioning) live on HF at b766eb23d5f6c84d580973c0f2013b6fcbd561c0."

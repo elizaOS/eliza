@@ -1001,14 +1001,14 @@ function watchWorkspacePackagesPlugin(): Plugin {
 }
 
 /**
- * Serve @elizaos/app-companion's public/ assets alongside the app's own
+ * Serve @elizaos/plugin-companion's public/ assets alongside the app's own
  * public/ directory. In dev the companion dir is served as a fallback
  * middleware; in build the files are copied into the output.
  */
 function companionAssetsPlugin(): Plugin {
   const companionPublic = path.resolve(
     elizaRoot,
-    "plugins/app-companion/public",
+    "plugins/plugin-companion/public",
   );
   return {
     name: "companion-assets",

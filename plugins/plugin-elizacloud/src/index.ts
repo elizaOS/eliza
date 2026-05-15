@@ -324,6 +324,18 @@ export const elizaOSCloudPlugin: Plugin = {
       ],
     },
   ],
+
+  async dispose(runtime) {
+    // Stop in reverse dependency order (auth last since others depend on it).
+    await runtime.getService(CloudCredentialProvider.serviceType)?.stop();
+    await runtime.getService(CloudBackupService.serviceType)?.stop();
+    await runtime.getService(CloudBridgeService.serviceType)?.stop();
+    await runtime.getService(CloudContainerService.serviceType)?.stop();
+    await runtime.getService(CloudModelRegistryService.serviceType)?.stop();
+    await runtime.getService(CloudManagedGatewayRelayService.serviceType)?.stop();
+    await runtime.getService(CloudBootstrapServiceImpl.serviceType)?.stop();
+    await runtime.getService(CloudAuthService.serviceType)?.stop();
+  },
 };
 
 export default elizaOSCloudPlugin;

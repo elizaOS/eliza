@@ -1052,7 +1052,7 @@ export function createMobileSafeVirtualFileSystemAdapter(
       }
       if (vfs.list) {
         const entries = await vfs.list(".", { recursive: true });
-        const files = (entries).filter(
+        const files = entries.filter(
           (entry) => (entry.kind ?? entry.type) === "file",
         );
         return {

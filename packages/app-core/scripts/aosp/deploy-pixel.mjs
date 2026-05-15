@@ -5,7 +5,7 @@
 // Sequence:
 //   1. Build the fused libllama + libelizainference for the target ABI
 //      (arm64-v8a by default — `android-arm64-vulkan-fused`), via
-//      compile-libllama.mjs (which carries the omnivoice-fuse graft + the
+//      compile-libllama.mjs (which carries the omnivoice-merged graft + the
 //      DFlash drafter-arch + the metal/vulkan/cpu kernel patches). x86_64 for
 //      a cvd target.
 //   2. Stage them + the bundled models into the AOSP vendor tree

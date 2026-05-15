@@ -225,6 +225,9 @@ export const starterPlugin: Plugin = {
   providers: [helloWorldProvider],
   services: [StarterService],
   tests: [StarterPluginTestSuite],
+  async dispose(runtime) {
+    await runtime.getService<StarterService>(StarterService.serviceType)?.stop();
+  },
 };
 
 export default starterPlugin;

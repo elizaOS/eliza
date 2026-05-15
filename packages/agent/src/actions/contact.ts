@@ -870,7 +870,7 @@ async function handleUpdate(
   if (explicitName) {
     updated.names = [
       explicitName,
-      ...(existing.names).filter((n) => n !== explicitName),
+      ...existing.names.filter((n) => n !== explicitName),
     ];
   }
 
@@ -1008,10 +1008,7 @@ async function handleUpdateContactInfo(
       ? readRecord(params.customFields)
       : (params.customFields as Record<string, string> | undefined);
   if (newCustom) {
-    const existingCustom = (contact.customFields) as Record<
-      string,
-      unknown
-    >;
+    const existingCustom = contact.customFields as Record<string, unknown>;
     if (operation === "add_to") {
       updateData.customFields = { ...existingCustom, ...newCustom };
     } else if (operation === "remove_from") {

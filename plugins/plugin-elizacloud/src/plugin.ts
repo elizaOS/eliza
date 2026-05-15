@@ -256,6 +256,8 @@ export const elizaCloudRoutePlugin: Plugin = {
   description:
     "Eliza Cloud connection, login, status, credit, and relay routes (extracted from app-core/server.ts)",
   routes: cloudRoutes,
+  // Routes-only plugin — no services or persistent resources to dispose.
+  dispose: async (_runtime) => {},
 };
 
 export default elizaCloudRoutePlugin;

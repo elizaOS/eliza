@@ -300,8 +300,8 @@ const nativeStubs = {
   // `ELIZA_VAULT_PASSPHRASE` / in-memory keys; ElizaAgentService can mint
   // a per-boot passphrase if needed. Stub keeps the bundle building.
   "@napi-rs/keyring": path.join(stubsDir, "null-plugin.cjs"),
-  // React + react-dom stubs: workspace plugins (`@elizaos/app-lifeops`,
-  // `@elizaos/app-companion`, etc.) re-export their UI subtree from
+  // React + react-dom stubs: workspace plugins (`@elizaos/plugin-lifeops`,
+  // `@elizaos/plugin-companion`, etc.) re-export their UI subtree from
   // `src/index.ts` for the host app to consume. The agent only loads each
   // package's runtime plugin object, but Bun.build still has to resolve
   // every import in the dependency closure. Without these stubs Bun follows
@@ -365,8 +365,8 @@ if (TARGET === "ios-jsc") {
 // boot). The narrow list below is exactly the packages whose dependency
 // closure pulls in `@elizaos/core@2.0.0-alpha.3` or `2.0.0-alpha.223`.
 //
-// Other packages — including `@elizaos/app-task-coordinator`,
-// `@elizaos/app-companion`, `@elizaos/app-lifeops`, `@elizaos/app-training`
+// Other packages — including `@elizaos/plugin-task-coordinator`,
+// `@elizaos/plugin-companion`, `@elizaos/plugin-lifeops`, `@elizaos/plugin-training`
 // — are imported by `api/server.ts` as named functions (e.g.
 // `wireCoordinatorBridgesWhenReady`). Stubbing them with a Proxy doesn't
 // satisfy Bun's `__toESM` namespace builder (it iterates `ownKeys`), so we
@@ -719,7 +719,7 @@ const stubCssPlugin = {
   },
 };
 
-// Workspace plugins like `@elizaos/app-wallet` ship both a `.tsx` source
+// Workspace plugins like `@elizaos/plugin-wallet-ui` ship both a `.tsx` source
 // file and a stale `.js` artifact (committed by accident from an earlier
 // build) at the same path inside `src/`. Bun's default resolver picks the
 // `.js` file when both exist, even though the `.tsx` source is the truth.
@@ -737,8 +737,8 @@ const stripStaleJsArtifactsPlugin = {
       // Only rewrite imports originating inside a workspace package source
       // tree. Symlinked node_modules paths (Bun's hoisted layout for
       // workspace deps) also count, so the regex covers both
-      // `<repo>/plugins/app-wallet/src/...` and
-      // `<repo>/node_modules/@elizaos/app-wallet/src/...`.
+      // `<repo>/plugins/plugin-wallet-ui/src/...` and
+      // `<repo>/node_modules/@elizaos/plugin-wallet-ui/src/...`.
       if (
         !/[/\\](packages|plugins|cloud)[/\\][^/\\]+([/\\][^/\\]+)?[/\\]src[/\\]/.test(
           importer,
@@ -1365,9 +1365,9 @@ const manifest = {
   plugins: {
     core: ["@elizaos/plugin-sql", "@elizaos/plugin-background-runner"],
     aospOnly: [
-      "@elizaos/app-wifi",
-      "@elizaos/app-contacts",
-      "@elizaos/app-phone",
+      "@elizaos/plugin-wifi",
+      "@elizaos/plugin-contacts",
+      "@elizaos/plugin-phone",
       "@elizaos/plugin-shell",
       "@elizaos/plugin-coding-tools",
       "agent-orchestrator",

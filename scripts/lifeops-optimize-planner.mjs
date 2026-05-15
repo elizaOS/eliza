@@ -17,7 +17,7 @@
  *     --run-dir ~/.eliza/runs/lifeops/<id> \
  *     [--optimizer instruction-search]   # also: prompt-evolution, bootstrap-fewshot
  *     [--task action_planner]
- *     [--baseline plugins/app-lifeops/src/lifeops/prompt/planner-baseline.txt]
+ *     [--baseline plugins/plugin-lifeops/src/lifeops/prompt/planner-baseline.txt]
  *
  * Required env (sourced from eliza/.env automatically):
  *   - CEREBRAS_API_KEY       (judge / teacher)

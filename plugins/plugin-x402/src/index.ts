@@ -107,6 +107,8 @@ const x402Plugin: Plugin = {
   providers: [],
   evaluators: [],
   services: [],
+  // Middleware-only plugin — no service instances or persistent resources to dispose.
+  dispose: async (_runtime) => {},
 };
 
 export default x402Plugin;

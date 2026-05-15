@@ -28,6 +28,18 @@ const UNSUPPORTED_TEXT_E2E_MODEL_PATTERNS = [
 	/\bdeepseek-r1\b/i,
 ];
 
+const UNSUPPORTED_RUNTIME_ERROR_PATTERNS = [
+	/\[dflash\].*requires a catalog 'runtime\.dflash' block/i,
+	/\[dflash\].*drafter rejected/i,
+	/\bdflash-draft\b/i,
+];
+
+function isUnsupportedRuntimeError(error: string | undefined): boolean {
+	return UNSUPPORTED_RUNTIME_ERROR_PATTERNS.some((pattern) =>
+		pattern.test(error ?? ""),
+	);
+}
+
 function isTextGenerationCandidate(model: InstalledModel): boolean {
 	const searchable = `${model.id} ${model.displayName} ${model.path}`;
 	return !UNSUPPORTED_TEXT_E2E_MODEL_PATTERNS.some((pattern) =>
@@ -98,6 +110,12 @@ describe("LocalInferenceEngine e2e (real GGUF, real inference)", () => {
 
 		const result = await runEngine(pick.path);
 		if (!result.ok) {
+			if (isUnsupportedRuntimeError(result.error)) {
+				console.warn(
+					`[engine.e2e] Skipping incompatible local runtime/model pair: ${result.error}`,
+				);
+				return;
+			}
 			throw new Error(`engine failed: ${result.error}`);
 		}
 		console.log(

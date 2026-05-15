@@ -21,7 +21,7 @@
 > `packages/core/src/{runtime/trajectory-recorder.ts,
 > features/trajectories/TrajectoriesService.ts,
 > services/trajectory-export.ts}`,
-> `plugins/app-training/src/core/privacy-filter.ts`,
+> `plugins/plugin-training/src/core/privacy-filter.ts`,
 > `.swarm/STATUS.md`.
 
 ---
@@ -488,7 +488,7 @@ exporter**. The pieces:
   (the closest is `prepare_eliza1_trajectory_dataset.py`, but it reads
   pre-exported files, not live DB rows).
 - The HTTP route `/api/training/trajectories/export` exists (per
-  `plugins/app-training/src/setup-routes.ts`) but the per-call query
+  `plugins/plugin-training/src/setup-routes.ts`) but the per-call query
   options I could verify in this audit window are `runId`/`scenarioId`
   not `days`/`since`. Adding a `--days N` flag to the export route is
   a small TypeScript patch; adding a `collect_recent_scenarios.mjs`
@@ -497,7 +497,7 @@ exporter**. The pieces:
 
 ### 5.4 Privacy filter
 
-`plugins/app-training/src/core/privacy-filter.ts` and the duplicate
+`plugins/plugin-training/src/core/privacy-filter.ts` and the duplicate
 Python port in
 `packages/training/scripts/privacy_filter_trajectories.py`. Both detect
 + redact / anonymize:
@@ -513,10 +513,10 @@ Application points:
 
 - `prepare_eliza1_trajectory_dataset.py:75-94` — every record on the
   on-demand SFT path (the active training orchestrator).
-- `plugins/app-training/src/...` nightly export cron — every record
+- `plugins/plugin-training/src/...` nightly export cron — every record
   written to the export JSONL.
 
-Per repo `CLAUDE.md`: "The privacy filter (`eliza/plugins/app-training/src/core/privacy-filter.ts`)
+Per repo `CLAUDE.md`: "The privacy filter (`eliza/plugins/plugin-training/src/core/privacy-filter.ts`)
 is mandatory on every write path that touches real user trajectories
 — both the nightly export cron and the on-demand training orchestrator
 run it before any JSONL is written." Audit confirms both paths apply
@@ -540,7 +540,7 @@ Three options, ordered by effort:
    args that filter input rows in-process. Keeps the existing
    privacy-filter routing.
 3. **Most invasive (~2h)**: add `/api/training/trajectories/export?days=N&source=...`
-   to `plugins/app-training/src/setup-routes.ts`, wire `runFineTuning`
+   to `plugins/plugin-training/src/setup-routes.ts`, wire `runFineTuning`
    to call it. Requires a running runtime; useful for ongoing training
    rather than the one-shot smoke.
 
@@ -832,7 +832,7 @@ H200 SXM: **~$18–$24** for the full smoke sequence.
 - `teardown` function: `train_nebius.sh:561-578`.
 - Trajectories DB schema: `TrajectoriesService.ts:1083-1140`.
 - `listTrajectories` filter API: `TrajectoriesService.ts:2111-2172`.
-- Privacy filter source: `plugins/app-training/src/core/privacy-filter.ts`.
+- Privacy filter source: `plugins/plugin-training/src/core/privacy-filter.ts`.
 - Privacy filter Python port: `prepare_eliza1_trajectory_dataset.py:75-194`.
 - Trajectory recorder dir resolution: `trajectory-recorder.ts:355-372`.
 - Postmortem (chat-template TypeError + PIPESTATUS bug): `packages/training/reports/eliza1-h200-postmortem-2026-05-12.md`.

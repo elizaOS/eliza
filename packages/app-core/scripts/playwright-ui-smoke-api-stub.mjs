@@ -1,5 +1,6 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
+import { gunzipSync } from "node:zlib";
 import { WebSocketServer } from "ws";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
@@ -14,12 +15,28 @@ const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
   "base64",
 );
-const SMOKE_VRM = readFileSync(
-  new URL(
-    "../../../plugins/app-companion/public_src/vrms/eliza-1.vrm",
-    import.meta.url,
-  ),
-);
+function readSmokeVrm() {
+  const candidates = [
+    new URL(
+      "../../../plugins/plugin-companion/public/vrms/eliza-1.vrm.gz",
+      import.meta.url,
+    ),
+    new URL(
+      "../../../plugins/plugin-companion/public_src/vrms/eliza-1.vrm",
+      import.meta.url,
+    ),
+  ];
+
+  for (const candidate of candidates) {
+    if (!existsSync(candidate)) continue;
+    const body = readFileSync(candidate);
+    return candidate.pathname.endsWith(".gz") ? gunzipSync(body) : body;
+  }
+
+  return Buffer.alloc(4);
+}
+
+const SMOKE_VRM = readSmokeVrm();
 
 const stubPlugins = [
   {
@@ -104,7 +121,7 @@ function stubCatalogApp({
 
 const stubCatalogApps = [
   stubCatalogApp({
-    name: "@elizaos/app-lifeops",
+    name: "@elizaos/plugin-lifeops",
     displayName: "LifeOps",
     description:
       "Run tasks, reminders, calendar, inbox, and connected workflows.",
@@ -127,7 +144,7 @@ const stubCatalogApps = [
     heroImage: "/app-heroes/skills-viewer.png",
   }),
   stubCatalogApp({
-    name: "@elizaos/app-training",
+    name: "@elizaos/plugin-training",
     displayName: "Fine Tuning",
     description:
       "Build datasets, inspect trajectories, and activate tuned models.",
@@ -177,44 +194,44 @@ const stubCatalogApps = [
     heroImage: "/app-heroes/log-viewer.png",
   }),
   stubCatalogApp({
-    name: "@elizaos/app-companion",
+    name: "@elizaos/plugin-companion",
     displayName: "Companion",
     description: "The companion overlay shell for ambient agent presence.",
     category: "social",
   }),
   stubCatalogApp({
-    name: "@elizaos/app-steward",
+    name: "@elizaos/plugin-steward-app",
     displayName: "Steward",
     description: "Review wallet approvals and inventory status.",
     capabilities: ["wallet", "approvals", "inventory"],
   }),
   stubCatalogApp({
-    name: "@elizaos/app-elizamaker",
+    name: "@elizaos/plugin-elizamaker",
     displayName: "ElizaMaker",
     description: "Run drop, mint, whitelist, and verification workflows.",
     capabilities: ["drops", "minting", "whitelist"],
   }),
   stubCatalogApp({
-    name: "@elizaos/app-shopify",
+    name: "@elizaos/plugin-shopify-ui",
     displayName: "Shopify",
     description: "Manage Shopify store operations from the agent workspace.",
     category: "platform",
   }),
   stubCatalogApp({
-    name: "@elizaos/app-vincent",
+    name: "@elizaos/plugin-vincent",
     displayName: "Vincent",
     description: "Manage Vincent DeFi account access and trading context.",
     category: "platform",
   }),
   stubCatalogApp({
-    name: "@elizaos/app-hyperliquid",
+    name: "@elizaos/plugin-hyperliquid-app",
     displayName: "Hyperliquid",
     description: "Inspect Hyperliquid markets, positions, and order status.",
     category: "platform",
     capabilities: ["hyperliquid", "trading", "wallet"],
   }),
   stubCatalogApp({
-    name: "@elizaos/app-polymarket",
+    name: "@elizaos/plugin-polymarket-app",
     displayName: "Polymarket",
     description: "Browse prediction markets and native trading readiness.",
     category: "platform",

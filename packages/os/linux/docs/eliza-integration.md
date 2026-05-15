@@ -178,7 +178,7 @@ coexist; the priority resolver picks whichever has the higher priority
 `@elizaos/agent`'s public-API export of `PROVIDER_PLUGIN_MAP` is the
 right primitive to use. But the moment you `import * from "@elizaos/agent"`
 you also pull in its transitive module graph —
-`@elizaos/plugin-browser-bridge`, `@elizaos/app-training`, the SQL/vault
+`@elizaos/plugin-browser-bridge`, `@elizaos/plugin-training`, the SQL/vault
 boot chain, and more. Those packages exist in the elizaOS monorepo
 workspace but not in our agent's `node_modules` (we ship a minimal
 dep tree).

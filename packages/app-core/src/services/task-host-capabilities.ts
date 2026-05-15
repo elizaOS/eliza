@@ -2,7 +2,7 @@
  * Runtime probe for the set of `TaskExecutionProfile` values the current
  * host can satisfy.
  *
- * Consumed by `plugins/app-lifeops/src/lifeops/scheduled-task/runtime-
+ * Consumed by `plugins/plugin-lifeops/src/lifeops/scheduled-task/runtime-
  * wiring.ts` when constructing the `ScheduledTaskRunner`. The runner uses
  * the result post-fire-claim to substitute incapable profiles to
  * `notify-only` (a local notification the user taps to resume the work
@@ -34,10 +34,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
 
 /**
- * Mirrors `TaskExecutionProfile` from `plugins/app-lifeops/src/lifeops/
+ * Mirrors `TaskExecutionProfile` from `plugins/plugin-lifeops/src/lifeops/
  * scheduled-task/types.ts`. Re-declared here to avoid an import inversion
  * (app-core must not depend on app-lifeops). Kept in sync via the test at
- * `plugins/app-lifeops/src/lifeops/scheduled-task/runner.test.ts` which
+ * `plugins/plugin-lifeops/src/lifeops/scheduled-task/runner.test.ts` which
  * imports both and asserts structural compatibility.
  */
 export type TaskExecutionProfileForHost =

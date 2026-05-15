@@ -2,7 +2,7 @@
   "id": "hyperliquid",
   "name": "Hyperliquid",
   "description": "Native Hyperliquid market, position, and order status for wallet trading.",
-  "npmName": "@elizaos/app-hyperliquid",
+  "npmName": "@elizaos/plugin-hyperliquid-app",
   "source": "bundled",
   "tags": ["trading", "hyperliquid", "perps", "wallet"],
   "config": {},
@@ -24,7 +24,7 @@
     "capabilities": ["hyperliquid", "trading", "wallet"],
     "curatedSlug": "hyperliquid",
     "routePlugin": {
-      "specifier": "@elizaos/app-hyperliquid",
+      "specifier": "@elizaos/plugin-hyperliquid-app",
       "exportName": "hyperliquidPlugin"
     }
   }

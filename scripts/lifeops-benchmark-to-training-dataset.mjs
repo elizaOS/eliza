@@ -10,13 +10,13 @@
  * Usage:
  *   node scripts/lifeops-benchmark-to-training-dataset.mjs \
  *     --run-dir <runDir> \
- *     [--output plugins/app-training/datasets/lifeops_action_planner.jsonl]
+ *     [--output plugins/plugin-training/datasets/lifeops_action_planner.jsonl]
  *
  * The output path defaults to:
- *   plugins/app-training/datasets/lifeops_action_planner_from_benchmark.jsonl
+ *   plugins/plugin-training/datasets/lifeops_action_planner_from_benchmark.jsonl
  *
  * Output row shape (matches `parseJsonlDataset` in
- * plugins/app-training/src/backends/native.ts):
+ * plugins/plugin-training/src/backends/native.ts):
  *   {
  *     "messages": [
  *       { "role": "system", "content": "<planner instruction>" },
@@ -172,7 +172,7 @@ for (const file of walkJson(trajectoryDir)) {
     continue;
   }
 
-  // eliza_native_v1 shape (matches plugins/app-training/src/backends/native.ts:parseJsonlDataset)
+  // eliza_native_v1 shape (matches plugins/plugin-training/src/backends/native.ts:parseJsonlDataset)
   const row = {
     format: "eliza_native_v1",
     boundary: "vercel_ai_sdk.generateText",

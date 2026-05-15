@@ -43,7 +43,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parents[3]
 
 CORPUS_DIR = REPO_ROOT / "packages/training/data/voice/same"
-HF_REPO = "elizaos/eliza-1-voice-kokoro-same-v01"
+HF_REPO = "elizaos/eliza-1"
 
 # Mel-fit hyperparameter sweep grid (based on Q1 re-eval diagnosis)
 MELFIT_SWEEP = [

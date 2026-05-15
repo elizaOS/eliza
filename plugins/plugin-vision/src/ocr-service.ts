@@ -1,8 +1,5 @@
 import { logger } from "@elizaos/core";
-import {
-  DoctrOCRService,
-  shouldPreferAppleVision,
-} from "./ocr-service-doctr";
+import { DoctrOCRService, shouldPreferAppleVision } from "./ocr-service-doctr";
 import type { BoundingBox, OCRResult, ScreenTile } from "./types";
 
 export type OCRBackendName = "doctr" | "apple-vision";

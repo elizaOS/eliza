@@ -31,7 +31,7 @@ type SelfControlApi = {
   openSelfControlPermissionLocation: () => Promise<boolean>;
 };
 
-const SELFCONTROL_MODULE: string = "@elizaos/app-lifeops";
+const SELFCONTROL_MODULE: string = "@elizaos/plugin-lifeops";
 
 async function loadSelfControlApi(): Promise<SelfControlApi | null> {
   try {

@@ -1300,7 +1300,7 @@ async function recordPlannerStage(args: {
 
 	try {
 		const responseText =
-			typeof args.raw === "string" ? args.raw : (args.raw.text);
+			typeof args.raw === "string" ? args.raw : args.raw.text;
 		const usage = extractUsage(args.raw);
 		const finishReason = extractFinishReason(args.raw);
 		const modelName = extractModelName(args.raw);

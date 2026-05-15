@@ -488,7 +488,7 @@ async function doReadConfig(params: PluginParams): Promise<ActionResult> {
         configured: plugin.configured,
         version: plugin.version ?? null,
         loadError: plugin.loadError ?? null,
-        parameters: (plugin.parameters).map((p) => ({
+        parameters: plugin.parameters.map((p) => ({
           key: p.key,
           required: p.required ?? false,
           sensitive: p.sensitive ?? false,

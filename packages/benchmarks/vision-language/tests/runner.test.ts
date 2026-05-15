@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { runOneBenchmark, lookupBaseline } from "../src/runner.ts";
+import { lookupBaseline, runOneBenchmark } from "../src/runner.ts";
 import { createStubRuntime } from "../src/runtime-resolver.ts";
 
 describe("runOneBenchmark", () => {

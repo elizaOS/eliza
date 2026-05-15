@@ -20,7 +20,7 @@ type GameFixture = {
 
 const FIXTURES: GameFixture[] = [
   {
-    appName: "@elizaos/app-defense-of-the-agents",
+    appName: "@elizaos/plugin-defense-of-the-agents",
     displayName: "Defense of the Agents",
     slug: "defense-of-the-agents",
     viewerPath: "/api/apps/defense-of-the-agents/viewer",
@@ -35,7 +35,7 @@ const FIXTURES: GameFixture[] = [
     chatContent: "Reinforce mid after the next wave",
   },
   {
-    appName: "@elizaos/app-clawville",
+    appName: "@elizaos/plugin-clawville",
     displayName: "ClawVille",
     slug: "clawville",
     viewerPath: "/api/apps/clawville/viewer",

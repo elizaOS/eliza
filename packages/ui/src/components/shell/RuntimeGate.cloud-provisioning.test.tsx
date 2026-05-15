@@ -152,7 +152,7 @@ vi.mock("../shared/LanguageDropdown", () => ({
   LanguageDropdown: () => null,
 }));
 
-vi.mock("@elizaos/app-wallet", () => {
+vi.mock("@elizaos/plugin-wallet-ui", () => {
   const noop = vi.fn();
   return {
     InventoryView: () => null,

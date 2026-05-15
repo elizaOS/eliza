@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { existsSync } from "node:fs";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const externalDeps = [
@@ -19,7 +19,7 @@ async function build() {
 
   // Clean dist directory
   if (existsSync(distDir)) {
-    await Bun.$`rm -rf ${distDir}`;
+    await rm(distDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 
   await mkdir(distDir, { recursive: true });

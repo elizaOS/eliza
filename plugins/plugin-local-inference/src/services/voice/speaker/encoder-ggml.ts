@@ -105,10 +105,7 @@ export class SpeakerEncoderGgmlImpl implements SpeakerEncoderGgml {
 	private disposed = false;
 
 	constructor(options: SpeakerEncoderGgmlOptions) {
-		if (
-			typeof options.ggufPath !== "string" ||
-			options.ggufPath.length === 0
-		) {
+		if (typeof options.ggufPath !== "string" || options.ggufPath.length === 0) {
 			throw new SpeakerEncoderGgmlUnavailableError(
 				"invalid-input",
 				"[speaker-ggml] ggufPath is required",
@@ -179,10 +176,7 @@ export class SpeakerEncoderGgmlImpl implements SpeakerEncoderGgml {
  * Phase 1 TS implementation; Phase 2 wires into the native helper for
  * bit-parity with the C-side dispatch.
  */
-export function voiceSpeakerDistance(
-	a: Float32Array,
-	b: Float32Array,
-): number {
+export function voiceSpeakerDistance(a: Float32Array, b: Float32Array): number {
 	if (a.length !== SPEAKER_GGML_EMBEDDING_DIM) {
 		throw new SpeakerEncoderGgmlUnavailableError(
 			"invalid-input",

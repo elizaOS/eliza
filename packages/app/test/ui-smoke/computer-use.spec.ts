@@ -42,11 +42,15 @@ test("onboarding starts with setup choices before capability settings", async ({
 
   await page.goto("/chat", { waitUntil: "domcontentloaded" });
 
+  await expect(page.getByTestId("voice-prefix-gate")).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: /^Welcome to / }),
+    page.getByTestId("voice-prefix-step-name").getByText("Welcome"),
   ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Get started" })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "I want to run it myself" }),
+    page.getByRole("button", { name: "Grant microphone access" }),
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible();
+  await expect(
+    page.getByRole("switch", { name: "Enable Computer Use" }),
+  ).toHaveCount(0);
 });

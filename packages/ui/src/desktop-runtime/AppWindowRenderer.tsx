@@ -487,7 +487,7 @@ function resolveInternalToolTabFromSlug(slug: string): Tab | null {
 /**
  * Reverse-lookup an overlay app name from its slug.
  *
- * Overlay apps register by package name (e.g. `@elizaos/app-companion`); the
+ * Overlay apps register by package name (e.g. `@elizaos/plugin-companion`); the
  * slug is `getAppSlug(name)`. We iterate the registry to find a match.
  */
 function resolveOverlayAppNameFromSlug(slug: string): string | null {

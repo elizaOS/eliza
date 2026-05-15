@@ -1629,7 +1629,7 @@ X-GNOME-Autostart-enabled=true
 		}
 
 		return {
-			visible: Utils.isDockIconVisible?.(),
+			visible: Utils.isDockIconVisible(),
 		};
 	}
 
@@ -1842,7 +1842,7 @@ X-GNOME-Autostart-enabled=true
 	}
 
 	async clipboardAvailableFormats(): Promise<{ formats: string[] }> {
-		const formats = Utils.clipboardAvailableFormats?.();
+		const formats = Utils.clipboardAvailableFormats();
 		return { formats: Array.isArray(formats) ? formats : [] };
 	}
 

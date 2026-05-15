@@ -2,7 +2,7 @@
   "id": "vincent",
   "name": "Vincent",
   "description": "Connect Vincent to trade on Hyperliquid and Polymarket through Vincent's agent.",
-  "npmName": "@elizaos/app-vincent",
+  "npmName": "@elizaos/plugin-vincent",
   "source": "bundled",
   "tags": ["trading", "hyperliquid", "polymarket", "prediction-markets"],
   "config": {},
@@ -24,7 +24,7 @@
     "capabilities": ["vincent", "delegated-trading", "wallet"],
     "curatedSlug": "vincent",
     "routePlugin": {
-      "specifier": "@elizaos/app-vincent",
+      "specifier": "@elizaos/plugin-vincent",
       "exportName": "vincentPlugin"
     }
   }

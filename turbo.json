@@ -296,11 +296,11 @@
       "outputs": []
     },
     "typecheck": {
-      "dependsOn": [],
+      "dependsOn": ["@elizaos/core#build", "@elizaos/shared#build", "^build"],
       "outputs": []
     },
     "@elizaos/app#typecheck": {
-      "dependsOn": ["@elizaos/app-lifeops#build", "@elizaos/ui#build"],
+      "dependsOn": ["@elizaos/plugin-lifeops#build", "@elizaos/ui#build"],
       "outputs": []
     },
     "@elizaos/example-telegram#typecheck": {

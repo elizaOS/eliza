@@ -166,9 +166,9 @@ describe("readPngDimensions", () => {
   });
 
   it("rejects non-PNG inputs", async () => {
-    await expect(
-      readPngDimensions(new Uint8Array(64)),
-    ).rejects.toThrow(/PNG signature/);
+    await expect(readPngDimensions(new Uint8Array(64))).rejects.toThrow(
+      /PNG signature/,
+    );
   });
 });
 
@@ -195,8 +195,10 @@ describe("RapidOcrCoordAdapter.describe", () => {
       pngBytes: new Uint8Array(0),
     });
     expect(result.blocks).toEqual([]);
-    expect((inner as unknown as { extractText: ReturnType<typeof vi.fn> }).extractText)
-      .not.toHaveBeenCalled();
+    expect(
+      (inner as unknown as { extractText: ReturnType<typeof vi.fn> })
+        .extractText,
+    ).not.toHaveBeenCalled();
   });
 
   it("shifts bboxes into source-display absolute coords and labels semantic_position against the tile", async () => {

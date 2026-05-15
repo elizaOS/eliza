@@ -89,6 +89,14 @@ function stubAgentResponse(userMessage: string): string {
     );
   }
 
+  if (
+    lower.includes("configure") ||
+    lower.includes("configuration") ||
+    lower.includes("account")
+  ) {
+    return "Open Settings from the sidebar, then choose Account or Connected Accounts to configure your account and connection details.";
+  }
+
   if (lower.includes("open the wallet") || lower.includes("wallet")) {
     return "I've opened the Wallet view for you. You can now manage your crypto assets.";
   }
@@ -101,8 +109,12 @@ function stubAgentResponse(userMessage: string): string {
     return "Switching to the Chat view.";
   }
 
-  if (lower.includes("trading") || lower.includes("dashboard")) {
+  if (lower.includes("trading")) {
     return "Opening the Trading Dashboard.";
+  }
+
+  if (lower.includes("dashboard")) {
+    return "There are multiple dashboard-style views. Did you mean Trading, Wallet, or the View Manager?";
   }
 
   if (lower.includes("view manager") || lower.includes("grid")) {

@@ -1,5 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { LifeOpsService } from "../../../plugins/app-lifeops/src/lifeops/service.ts";
+import { LifeOpsService } from "../../../plugins/plugin-lifeops/src/lifeops/service.ts";
 import { ensureLifeOpsSchema } from "./seed-grants.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
