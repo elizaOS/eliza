@@ -21,9 +21,13 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("returns an empty OmniVoice ladder for Kokoro-only small tiers", () => {
+  it("returns the mobile OmniVoice ladder for small tiers", () => {
     for (const id of SMALL_TIERS) {
-      expect(voiceQuantLadderForTier(id)).toEqual([]);
+      expect(voiceQuantLadderForTier(id)).toEqual([
+        "Q3_K_M",
+        "Q4_K_M",
+        "Q5_K_M",
+      ]);
     }
   });
 

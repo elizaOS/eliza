@@ -147,8 +147,8 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Those bundles optimize
- *     for install size, TTFA, and phone thermals.
+ *   - Small tiers (0_8b / 2b / 4b) → OmniVoice first with Kokoro bundled as
+ *     the low-latency fallback.
  *   - 9B → OmniVoice first with Kokoro bundled for hosts with enough memory.
  *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
@@ -158,9 +158,9 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
-  "eliza-1-2b": ["kokoro"],
-  "eliza-1-4b": ["kokoro"],
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
+  "eliza-1-4b": ["omnivoice", "kokoro"],
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
@@ -406,9 +406,9 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": [],
-  "eliza-1-2b": [],
-  "eliza-1-4b": [],
+  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
@@ -497,10 +497,8 @@ function runtimeForTier(
 }
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
-  q3_k_m: "q3_k_m",
   q4_0: "Q4_0",
   q4_k_m: "q4_k_m",
-  q5_k_m: "q5_k_m",
   q6_k: "q6_k",
   q8_0: "q8_0",
 };
@@ -532,11 +530,9 @@ function textQuantizationMatrix(args: {
   return {
     defaultVariantId: "q4_k_m",
     variants: [
-      mk("q3_k_m", "3-bit", 0.78, 0.8, "published"),
       mk("q4_k_m", "4-bit", 1, 1, "published"),
-      mk("q5_k_m", "5-bit", 1.24, 1.18, "published"),
-      mk("q6_k", "6-bit", 1.45, 1.35, "published"),
-      mk("q8_0", "8-bit", 1.95, 1.8, "published"),
+      mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
+      mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
     ],
   };
 }
