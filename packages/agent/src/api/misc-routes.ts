@@ -273,10 +273,32 @@ export async function handleMiscRoutes(
   }
 
   // ── POST /api/agent/event ──────────────────────────────────────────────
-  if (method === "POST" && pathname === "/api/agent/event") {
+  if (
+    method === "POST" &&
+    (pathname === "/api/agent/event" ||
+      /^\/api\/agents\/[^/]+\/event$/.test(pathname))
+  ) {
     const rawEvent = await readJsonBody<Record<string, unknown>>(req, res);
     if (rawEvent === null) return true;
-    const parsedEvent = PostAgentEventRequestSchema.safeParse(rawEvent);
+    const agentEventMatch = pathname.match(/^\/api\/agents\/([^/]+)\/event$/);
+    if (agentEventMatch) {
+      const routeAgentId = decodeURIComponent(agentEventMatch[1] ?? "").trim();
+      if (state.runtime?.agentId && state.runtime.agentId !== routeAgentId) {
+        json(res, { error: "Agent not found" }, 404);
+        return true;
+      }
+    }
+    const normalizedEvent = agentEventMatch
+      ? {
+          stream: "system",
+          data: {
+            gatewayType: rawEvent.type,
+            userId: rawEvent.userId,
+            payload: rawEvent.payload,
+          },
+        }
+      : rawEvent;
+    const parsedEvent = PostAgentEventRequestSchema.safeParse(normalizedEvent);
     if (!parsedEvent.success) {
       error(
         res,

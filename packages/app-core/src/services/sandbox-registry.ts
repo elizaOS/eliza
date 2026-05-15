@@ -6,8 +6,9 @@
  *
  * Two Redis keys are written with a short TTL; a periodic heartbeat refreshes
  * the TTL while the sandbox is alive, and `unregister()` deletes them on
- * graceful shutdown. If the container crashes, the keys expire naturally and
- * the gateways stop routing to a dead address.
+ * graceful shutdown if they still point at this sandbox. If the container
+ * crashes, the keys expire naturally and the gateways stop routing to a dead
+ * address.
  *
  *   server:<serverName>:url = <serverUrl>   (resolver address)
  *   agent:<agentId>:server  = <serverName>  (agent → server pointer)
@@ -26,7 +27,7 @@ export interface SandboxRegistryConfig {
   agentId: string;
   serverName: string;
   serverUrl: string;
-  /** TTL for both Redis keys in seconds. The heartbeat must refresh at half this interval (or sooner) to avoid windows where the keys expire while the sandbox is healthy. */
+  /** TTL for both Redis keys in seconds. Keep this at least 3x the heartbeat interval so one missed tick does not expire a healthy sandbox. */
   ttlSeconds: number;
 }
 
@@ -50,8 +51,19 @@ export class SandboxRegistry {
   }
 
   async unregister(): Promise<void> {
-    const { serverName, agentId } = this.config;
-    await this.redis.del(`server:${serverName}:url`, `agent:${agentId}:server`);
+    const { serverName, serverUrl, agentId } = this.config;
+    const serverUrlKey = `server:${serverName}:url`;
+    const agentServerKey = `agent:${agentId}:server`;
+    const [registeredUrl, registeredServer] = await Promise.all([
+      this.redis.get<string>(serverUrlKey),
+      this.redis.get<string>(agentServerKey),
+    ]);
+    const keysToDelete: string[] = [];
+    if (registeredUrl === serverUrl) keysToDelete.push(serverUrlKey);
+    if (registeredServer === serverName) keysToDelete.push(agentServerKey);
+    if (keysToDelete.length > 0) {
+      await this.redis.del(...keysToDelete);
+    }
     logger.info(
       `[sandbox-registry] Unregistered ${serverName} (agent ${agentId})`,
     );
@@ -107,7 +119,7 @@ export class SandboxRegistry {
  */
 export function buildSandboxRegistryFromEnv(
   env: NodeJS.ProcessEnv = process.env,
-  ttlSeconds = 60,
+  ttlSeconds = 90,
 ): SandboxRegistry | null {
   const redisUrl = env.SANDBOX_REGISTRY_REDIS_URL?.trim();
   const redisToken = env.SANDBOX_REGISTRY_REDIS_TOKEN?.trim();

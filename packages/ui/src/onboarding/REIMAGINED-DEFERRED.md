@@ -94,3 +94,36 @@ The new `packages/os/linux/desktop-shell/` and `packages/os/android/system-ui/` 
 - Vendor-partition placement and SELinux policy.
 
 Both are multi-engineer-month efforts. Treat the scaffolds as the JS surface a future OS integrator will mount.
+
+## OS native bridges progress (this session)
+
+Scaffolded the JS↔native IPC contracts that sit between the React
+surfaces and the (still-to-be-written) privileged native hosts:
+
+- `packages/os/linux/desktop-shell/src/bridge/` — typed
+  `BridgeTransport`, `LINUX_BRIDGE_CHANNELS`, `LinuxBridgeClient`.
+  `LinuxSystemProvider` now consults `getBridgeTransport()` and
+  subscribes to wifi/audio/battery/time channels when the host has
+  installed `window.__elizaLinuxBridge`; otherwise it still falls back
+  to `MockSystemProvider`.
+- `packages/os/linux/desktop-shell/native/` — Rust crate skeleton
+  (`eliza-linux-desktop-bridge`) with `lib.rs` modules per channel
+  group. Every native function is `unimplemented!()` with an `// IMPL:`
+  marker pointing at the upstream crate (`zbus`, `pipewire-rs`, etc.).
+  `main.rs` exits with `not implemented`.
+- `packages/os/android/system-ui/src/bridge/` — typed
+  `BridgeTransport`, `ANDROID_BRIDGE_CHANNELS`, `AndroidBridgeClient`
+  covering wifi / cell / audio / battery / time / connectivity /
+  lockscreen / power / settings.
+  `AndroidSystemProvider` mirrors the Linux wiring.
+- `packages/os/android/system-ui/native/` — Android library skeleton
+  (`ai.elizaos.system.bridge`) with `SystemBridge.kt` stubs and a
+  manifest that declares (but cannot grant) the signature permissions.
+
+Still needs native engineering:
+- Real D-Bus / PipeWire / login1 wiring on Linux + a Polkit policy.
+- Real AudioManager / ConnectivityManager / TelephonyManager /
+  PowerManager wiring on Android + AOSP fork APK build slot, vendor
+  privapp allowlist, SELinux policy, signing under the platform key.
+- Lock-screen / keyguard replacement on Android; replaceable
+  compositor / layer-shell surface on Linux.

@@ -1241,12 +1241,12 @@ export async function startEliza(
       if (sandboxRegistry) {
         try {
           await sandboxRegistry.register();
-          sandboxRegistry.startHeartbeat(30_000);
         } catch (err) {
           logger.error(
             `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next heartbeat succeeds): ${err instanceof Error ? err.message : String(err)}`,
           );
         }
+        sandboxRegistry.startHeartbeat(30_000);
       }
 
       const keepAlive = setInterval(() => {}, 1 << 30);

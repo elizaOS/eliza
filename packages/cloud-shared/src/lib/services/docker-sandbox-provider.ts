@@ -559,8 +559,8 @@ export class DockerSandboxProvider implements SandboxProvider {
               SANDBOX_REGISTRY_REDIS_URL: registryRedisUrl,
               SANDBOX_REGISTRY_REDIS_TOKEN: registryRedisToken,
               SANDBOX_AGENT_ID: agentId,
-              SANDBOX_SERVER_NAME: `sandbox-${agentId}`,
-              SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}`,
+              SANDBOX_SERVER_NAME: `sandbox-${agentId}-${crypto.randomUUID()}`,
+              SANDBOX_PUBLIC_URL: `http://${hostname}:${bridgePort}/api`,
             }
           : {}),
       };

@@ -23,6 +23,7 @@ type RedisCall = PipelineCall | DelCall;
 
 const mocks = vi.hoisted(() => ({
   calls: [] as RedisCall[],
+  values: new Map<string, string>(),
   nextPipelineFails: false,
 }));
 
@@ -35,6 +36,7 @@ vi.mock("@upstash/redis", () => {
     set(key: string, value: string, opts?: { ex?: number }): this {
       if (!this.willThrow) {
         mocks.calls.push({ type: "set", key, value, opts });
+        mocks.values.set(key, value);
       }
       return this;
     }
@@ -55,7 +57,13 @@ vi.mock("@upstash/redis", () => {
     }
     async del(...keys: string[]): Promise<number> {
       mocks.calls.push({ type: "del", keys });
+      for (const key of keys) {
+        mocks.values.delete(key);
+      }
       return keys.length;
+    }
+    async get(key: string): Promise<string | null> {
+      return mocks.values.get(key) ?? null;
     }
   }
 
@@ -88,6 +96,7 @@ const CONFIG = {
 describe("SandboxRegistry", () => {
   beforeEach(() => {
     mocks.calls.length = 0;
+    mocks.values.clear();
     mocks.nextPipelineFails = false;
   });
 
@@ -131,19 +140,17 @@ describe("SandboxRegistry", () => {
     expect(sets.every((s) => s.opts?.ex === 60)).toBe(true);
   });
 
-  it("unregister() deletes both routing keys", async () => {
+  it("unregister() deletes only keys that still point at this sandbox", async () => {
     const registry = new SandboxRegistry(CONFIG);
     await registry.register();
+    mocks.values.set("agent:agent-42:server", "sandbox-agent-42-replacement");
     mocks.calls.length = 0;
 
     await registry.unregister();
 
     const dels = mocks.calls.filter((c) => c.type === "del") as DelCall[];
     expect(dels).toHaveLength(1);
-    expect(dels[0]?.keys).toEqual([
-      "server:sandbox-agent-42:url",
-      "agent:agent-42:server",
-    ]);
+    expect(dels[0]?.keys).toEqual(["server:sandbox-agent-42:url"]);
   });
 
   it("startHeartbeat() refreshes on the interval; errors do not kill the timer", async () => {

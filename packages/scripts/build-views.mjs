@@ -1,16 +1,19 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, rename } from "node:fs/promises";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const args = process.argv.slice(2);
-const filterArg = args.find((arg) => arg === "--filter" || arg.startsWith("--filter="));
+const filterArg = args.find(
+  (arg) => arg === "--filter" || arg.startsWith("--filter="),
+);
 const filter =
   filterArg === "--filter"
     ? args[args.indexOf(filterArg) + 1]
     : filterArg?.slice("--filter=".length);
+const hostViewExternals = ["react", "react/jsx-dev-runtime", "lucide-react"];
 
 async function findViewConfigs() {
   const pluginsDir = path.join(repoRoot, "plugins");
@@ -40,10 +43,14 @@ for (const configPath of configs) {
   const config = await readViewConfig(configPath);
   const entry = path.resolve(cwd, config.entry);
   const outDir = path.resolve(cwd, config.outDir ?? "dist/views");
-  const externals = [
-    config.packageName,
-    ...(config.additionalExternals ?? []),
-  ].filter(Boolean);
+  const externals = uniqueStrings(
+    [
+      config.packageName,
+      ...hostViewExternals,
+      ...(await readPackageDependencyExternals(cwd)),
+      ...(config.additionalExternals ?? []),
+    ].filter(Boolean),
+  );
 
   await mkdir(outDir, { recursive: true });
   const buildArgs = [
@@ -113,4 +120,19 @@ function readStringArrayProperty(source, name) {
   );
   if (!match) return [];
   return [...match[1].matchAll(/["']([^"']+)["']/g)].map((item) => item[1]);
+}
+
+async function readPackageDependencyExternals(pluginDir) {
+  const packageJsonPath = path.join(pluginDir, "package.json");
+  if (!existsSync(packageJsonPath)) return [];
+
+  const packageJson = JSON.parse(await readFile(packageJsonPath, "utf8"));
+  return [
+    ...Object.keys(packageJson.dependencies ?? {}),
+    ...Object.keys(packageJson.peerDependencies ?? {}),
+  ];
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values)];
 }

@@ -1400,7 +1400,7 @@ function assertStaticAssetManifestIsCurrent() {
   }
 
   console.error(
-    `release-check: static asset manifest is ${result.reason}. Run node scripts/generate-static-asset-manifest.mjs.`,
+    `release-check: static asset manifest is ${result.reason}. Run node packages/app-core/scripts/generate-static-asset-manifest.mjs.`,
   );
   console.error(`  - ${result.manifestPath}`);
   process.exit(1);
