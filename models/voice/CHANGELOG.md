@@ -25,6 +25,41 @@ Stable model ids:
 
 ---
 
+## M-emotion-final — 2026-05-15 — voice-emotion v0.2.0 gate cleared + standalone HF mirror
+
+Voice-emotion v0.2.0 (Wav2Small cls7 head, distilled from
+`audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim`) cleared the
+`macro_f1 >= 0.35` eval gate via **Path B** (the G-emotion `best.pt`
+re-exported with the aux 7-class head as the ONNX output):
+
+| Metric                 | Value      | Gate              |
+|------------------------|------------|-------------------|
+| Macro-F1 (cls7 head)   | **0.3550** | `>= 0.35` (pass)  |
+| Accuracy (cls7 head)   | 0.4841     | n/a               |
+| MSE (V-A-D)            | 0.1350     | n/a               |
+| Macro-F1 (V-A-D proj.) | 0.3192     | n/a (informative) |
+
+Test split: 126 held-out RAVDESS clips, 7 expressive-tag classes
+(`happy, sad, angry, nervous, calm, excited, whisper`). Runtime adapter
+at `plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts`
+auto-detects the head by ONNX output dim (3 → V-A-D projection,
+7 → direct argmax over `EXPRESSIVE_EMOTION_TAGS`).
+
+In addition to the consolidated `elizaos/eliza-1` repo (see H5 below),
+v0.2.0 was **also re-published to the standalone public mirror
+`elizaos/eliza-1-voice-emotion`** at revision
+`384e896725da9358b2f3bb9b31e30a3565998ecd` so the model card is
+discoverable on its own page. Both repos carry identical
+`wav2small-cls7-int8.onnx` (sha256
+`cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953`,
+524,750 bytes). Path A (RAVDESS + CREMA-D combined corpus retrain) was
+attempted but did not exceed Path B's aux-head F1 within the training
+budget, so Path B remains the published artifact.
+
+Implementation details and evidence at `.swarm/impl/M-emotion-final.md`.
+
+---
+
 ## H5 — 2026-05-15 — unified eliza-1 voice repo migration gate
 
 Voice payload publishing now targets the single canonical repo
