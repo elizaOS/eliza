@@ -16,12 +16,13 @@ import {
 	resolveConfig,
 } from "../src/services/proxy-service.js";
 
-// String literals extracted byte-for-byte from proxy.js v2.2.3 default tables
-// so they match the actual on-disk constant tables (bypasses sandbox redaction).
-const ROUNDTRIP_WORD = "OpenClaw";
-const TOOL_KEY = "exec";
+// String literals chosen from the eliza-fingerprint dictionaries shipped
+// in v0.2.0. They must round-trip through the forward + reverse maps without
+// loss, regardless of whether they happen to be identity entries.
+const ROUNDTRIP_WORD = "native-reasoning";
+const TOOL_KEY = "bash";
 const TOOL_VAL = "Bash";
-const SSE_KEY = "exec";
+const SSE_KEY = "bash";
 const SSE_VAL = "Bash";
 
 const cleanup: Array<() => Promise<void> | void> = [];

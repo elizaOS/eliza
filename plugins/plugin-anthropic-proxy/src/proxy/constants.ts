@@ -1,13 +1,35 @@
 /**
- * Constants ported byte-for-byte from
- * /home/shad0w/ocplatform-routing-layer/proxy.js v2.2.3
+ * Plugin constants — algorithm parameters + default fingerprint dictionaries.
  *
- * DO NOT change these values. They are part of the upstream-detection-bypass
- * surface and the algorithm's behavior depends on identical hashing inputs,
- * indices, and string lists.
+ * The 7-layer transformation algorithm itself was ported byte-for-byte from
+ * Shadow's `openclaw-routing-layer/proxy.js` v2.2.3. The constants in this
+ * file split into two groups:
+ *
+ *   1. **Algorithm parameters** (BILLING_HASH_*, REQUIRED_BETAS, CC_TOOL_STUBS,
+ *      CC_VERSION, etc.) — these are upstream-detection-bypass surface and
+ *      MUST NOT change. They produce the byte-stable identity that makes the
+ *      proxy look like a real Claude Code session to Anthropic.
+ *
+ *   2. **Fingerprint dictionaries** (DEFAULT_REPLACEMENTS, DEFAULT_TOOL_RENAMES,
+ *      DEFAULT_PROP_RENAMES, DEFAULT_REVERSE_MAP, SYSTEM_CONFIG_PARAPHRASE) —
+ *      these are *framework-shaped*. v0.2.0 ships eliza defaults derived from
+ *      profiling `@elizaos/native-reasoning` outbound calls. Non-eliza users
+ *      override via `config.json` (see config.json.example).
+ *
+ * The OpenClaw-specific dictionary that v0.1.0 inherited from proxy.js was
+ * removed in v0.2.0 — it leaked OC-specific tool names like `sessions_spawn`
+ * mapping to `TaskCreate` for the wrong reasons.
  */
 
-export const VERSION = "2.2.3";
+import {
+	ELIZA_PROP_RENAMES,
+	ELIZA_REPLACEMENTS,
+	ELIZA_REVERSE_MAP,
+	ELIZA_SYSTEM_CONFIG_PARAPHRASE,
+	ELIZA_TOOL_RENAMES,
+} from "./eliza-fingerprint.js";
+
+export const VERSION = "0.2.0";
 export const UPSTREAM_HOST = "api.anthropic.com";
 export const DEFAULT_PORT = 18801;
 
@@ -45,133 +67,16 @@ export const CC_TOOL_STUBS: readonly string[] = [
 	'{"name":"TodoRead","description":"Read current task list","input_schema":{"type":"object","properties":{}}}',
 ];
 
-// ─── Layer 2: String Trigger Replacements ───────────────────────────────────
-// Applied globally via split/join on the entire request body.
+// ─── Default Fingerprint Dictionaries (eliza) ──────────────────────────────
 //
-// NOTE: Many entries appear as identity (find === replace) because the upstream
-// service treated them as identity-preserving in the production proxy.js. They
-// are kept here verbatim for parity. Future tuning can change the right-side.
-export const DEFAULT_REPLACEMENTS: ReadonlyArray<readonly [string, string]> = [
-	["OpenClaw", "OCPlatform"],
-	["openclaw", "ocplatform"],
-	["sessions_spawn", "create_task"],
-	["sessions_list", "list_tasks"],
-	["sessions_history", "get_history"],
-	["sessions_send", "send_to_task"],
-	["sessions_yield_interrupt", "task_yield_interrupt"],
-	["sessions_yield", "yield_task"],
-	["sessions_store", "task_store"],
-	["HEARTBEAT_OK", "HB_ACK"],
-	["HEARTBEAT", "HB_SIGNAL"],
-	["heartbeat", "hb_signal"],
-	["running inside", "operating from"],
-	["Prometheus", "PAssistant"],
-	["prometheus", "passistant"],
-	["clawhub.com", "skillhub.example.com"],
-	["clawhub", "skillhub"],
-	["clawd", "agentd"],
-	["lossless-claw", "lossless-ctx"],
-	["third-party", "external"],
-	["billing proxy", "routing layer"],
-	["billing-proxy", "routing-layer"],
-	["x-anthropic-billing-header", "x-routing-config"],
-	["x-anthropic-billing", "x-routing-cfg"],
-	["cch=00000", "cfg=00000"],
-	["cc_version", "rt_version"],
-	["cc_entrypoint", "rt_entrypoint"],
-	["billing header", "routing config"],
-	["extra usage", "usage quota"],
-	["assistant platform", "ocplatform"],
-];
+// These are the dictionaries the AnthropicProxyService boots with when no
+// explicit override is supplied. Eliza-shaped by default; bring-your-own via
+// `config.json` for any other framework.
+//
+// See ./eliza-fingerprint.ts for the full enumeration with rationale.
 
-// ─── Layer 3: Tool Name Renames ─────────────────────────────────────────────
-// Applied as "quoted" replacements ("name" -> "Name") throughout the body.
-// ORDERING NOTE: lcm_expand_query MUST come before lcm_expand to avoid partial
-// match (preserved from proxy.js).
-export const DEFAULT_TOOL_RENAMES: ReadonlyArray<readonly [string, string]> = [
-	["exec", "Bash"],
-	["process", "BashSession"],
-	["browser", "BrowserControl"],
-	["canvas", "CanvasView"],
-	["nodes", "DeviceControl"],
-	["cron", "Scheduler"],
-	["message", "SendMessage"],
-	["tts", "Speech"],
-	["gateway", "SystemCtl"],
-	["agents_list", "AgentList"],
-	["list_tasks", "TaskList"],
-	["get_history", "TaskHistory"],
-	["send_to_task", "TaskSend"],
-	["create_task", "TaskCreate"],
-	["subagents", "AgentControl"],
-	["session_status", "StatusCheck"],
-	["web_search", "WebSearch"],
-	["web_fetch", "WebFetch"],
-	["pdf", "PdfParse"],
-	["image_generate", "ImageCreate"],
-	["music_generate", "MusicCreate"],
-	["video_generate", "VideoCreate"],
-	["memory_search", "KnowledgeSearch"],
-	["memory_get", "KnowledgeGet"],
-	["lcm_expand_query", "ContextQuery"],
-	["lcm_grep", "ContextGrep"],
-	["lcm_describe", "ContextDescribe"],
-	["lcm_expand", "ContextExpand"],
-	["yield_task", "TaskYield"],
-	["task_store", "TaskStore"],
-	["task_yield_interrupt", "TaskYieldInterrupt"],
-];
-
-// ─── Layer 6: Property Name Renames ─────────────────────────────────────────
-export const DEFAULT_PROP_RENAMES: ReadonlyArray<readonly [string, string]> = [
-	["session_id", "thread_id"],
-	["conversation_id", "thread_ref"],
-	["summaryIds", "chunk_ids"],
-	["summary_id", "chunk_id"],
-	["system_event", "event_text"],
-	["agent_id", "worker_id"],
-	["wake_at", "trigger_at"],
-	["wake_event", "trigger_event"],
-];
-
-// ─── Reverse Mappings ───────────────────────────────────────────────────────
-export const DEFAULT_REVERSE_MAP: ReadonlyArray<readonly [string, string]> = [
-	["OCPlatform", "OpenClaw"],
-	["ocplatform", "openclaw"],
-	["create_task", "sessions_spawn"],
-	["list_tasks", "sessions_list"],
-	["get_history", "sessions_history"],
-	["send_to_task", "sessions_send"],
-	["task_yield_interrupt", "sessions_yield_interrupt"],
-	["yield_task", "sessions_yield"],
-	["task_store", "sessions_store"],
-	["HB_ACK", "HEARTBEAT_OK"],
-	["HB_SIGNAL", "HEARTBEAT"],
-	["hb_signal", "heartbeat"],
-	["PAssistant", "Prometheus"],
-	["passistant", "prometheus"],
-	["skillhub.example.com", "clawhub.com"],
-	["skillhub", "clawhub"],
-	["agentd", "clawd"],
-	["lossless-ctx", "lossless-claw"],
-	["external", "third-party"],
-	["routing layer", "billing proxy"],
-	["routing-layer", "billing-proxy"],
-	["x-routing-config", "x-anthropic-billing-header"],
-	["x-routing-cfg", "x-anthropic-billing"],
-	["cfg=00000", "cch=00000"],
-	["rt_version", "cc_version"],
-	["rt_entrypoint", "cc_entrypoint"],
-	["routing config", "billing header"],
-	["usage quota", "extra usage"],
-];
-
-/** Layer 4 paraphrase replacement for stripped system config block */
-export const SYSTEM_CONFIG_PARAPHRASE =
-	"\\nYou are an AI operations assistant with access to all tools listed in this request " +
-	"for file operations, command execution, web search, browser control, scheduling, " +
-	"messaging, and session management. Tool names are case-sensitive and must be called " +
-	"exactly as listed. Your responses route to the active channel automatically. " +
-	"For cross-session communication, use the task messaging tools. " +
-	"Skills defined in your workspace should be invoked when they match user requests. " +
-	"Consult your workspace reference files for detailed operational configuration.\\n";
+export const DEFAULT_REPLACEMENTS = ELIZA_REPLACEMENTS;
+export const DEFAULT_TOOL_RENAMES = ELIZA_TOOL_RENAMES;
+export const DEFAULT_PROP_RENAMES = ELIZA_PROP_RENAMES;
+export const DEFAULT_REVERSE_MAP = ELIZA_REVERSE_MAP;
+export const SYSTEM_CONFIG_PARAPHRASE = ELIZA_SYSTEM_CONFIG_PARAPHRASE;

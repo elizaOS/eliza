@@ -2,7 +2,10 @@
 
 Routes Anthropic API traffic from your eliza agent through a **Claude Max / Pro subscription** instead of paying per-token Extra Usage rates.
 
-This plugin is a port of the standalone Anthropic billing proxy that has been running in production for ~6 weeks. The algorithm is byte-identical to the original `proxy.js v2.2.3` — only the packaging changed (Node http server wrapped in an eliza `Service` lifecycle).
+This plugin is a port of the standalone Anthropic routing layer that has been running in production for ~6 weeks. The 7-layer transformation algorithm is byte-identical to the original `proxy.js v2.2.3`. The fingerprint dictionaries, however, are framework-specific:
+
+- **v0.2.0+** ships **eliza-default dictionaries** derived by profiling `@elizaos/native-reasoning`'s outbound `/v1/messages` calls. They map eliza tool names (`bash`, `read_file`, `spawn_agent`, ...) onto Claude-Code-shaped names (`Bash`, `Read`, `Agent`, ...) and strip eliza-distinctive system-prompt blocks (the `CHANNEL_GAG_HARD_RULE`).
+- **For non-eliza agents**, supply your own dictionaries via `config.json` (see `config.json.example`).
 
 ## Why this exists
 
@@ -17,6 +20,12 @@ In April 2026 Anthropic upgraded their detection beyond simple string matching t
 7. Full bidirectional reverse mapping on SSE + JSON responses
 
 Plus assistant-prefill stripping and thinking-block stripping for replay/session bugs.
+
+## Custom fingerprint dictionaries
+
+The defaults make this plugin a one-line drop-in for any eliza agent. If you're running a non-eliza agent (LangChain, LlamaIndex, your own runtime, etc.) the eliza tool-name dictionary won't match your tool surface and you'll want to supply your own.
+
+Drop a `config.json` next to your eliza root with the shape shown in `config.json.example`. The plugin merges it over the defaults at startup. Any of the four dictionaries (`replacements`, `toolRenames`, `propRenames`, `reverseMap`) can be overridden independently — the rest fall back to the eliza defaults.
 
 ## You own the subscription
 
