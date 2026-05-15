@@ -43,6 +43,9 @@ export const APP_REGISTRY_SERVICE_TYPE = "app-registry";
 export type { AppIsolation, AppPermissionsView, AppTrust };
 
 export interface AppRegistryEntry extends ElizaCuratedAppDefinition {
+	slug: string;
+	canonicalName: string;
+	aliases: string[];
 	directory: string;
 	displayName: string;
 	/**
