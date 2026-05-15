@@ -252,6 +252,11 @@ export interface LocalRuntimeOptimizations {
    * provide these kernels.
    */
   requiresKernel?: LocalRuntimeKernel[];
+  /**
+   * Runtime kernels this model must not be routed through. OpenVINO is ASR-only
+   * for current Eliza-1 bundles; text tiers keep using the DFlash/W4-B path.
+   */
+  unsupportedKernels?: LocalRuntimeKernel[];
 }
 
 export interface LocalRuntimeAcceleration {
