@@ -8,6 +8,7 @@ export default createViewBundleConfig({
   componentExport: "LifeOpsPageView",
   additionalExternals: [
     "@elizaos/plugin-lifeops",
+    "@elizaos/capacitor-mobile-signals",
     "@elizaos/vault",
     "@napi-rs/keyring",
     "@elizaos/plugin-browser",

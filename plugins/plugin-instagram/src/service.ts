@@ -405,7 +405,7 @@ export class InstagramService extends Service {
 
   private getAccountService(accountId = this.defaultAccountId): InstagramService {
     const normalized = normalizeInstagramAccountId(accountId);
-    const services = this.accountServices;
+    const services = this.accountServices ?? new Map<string, InstagramService>();
     return (
       services.get(normalized) ?? (normalized === this.getAccountId() ? this : undefined) ?? this
     );
