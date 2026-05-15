@@ -248,7 +248,7 @@ declare module "@elizaos/plugin-video" {
   const plugin: Plugin;
   export default plugin;
 }
-declare module "@elizaos/plugin-commands";
+// @elizaos/plugin-commands is a workspace package with full types — no stub needed.
 declare module "@elizaos/plugin-signal" {
   export type SignalPairingStatus =
     | "idle"

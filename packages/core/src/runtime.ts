@@ -4521,7 +4521,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const msgId = streamingCtx?.messageId;
 		const abortSignal = streamingCtx?.abortSignal;
 		const explicitStream = paramsAsStreaming?.stream;
-		const resolvedProviderName = resolvedModel.provider;
+		const resolvedProviderName = resolvedModel?.provider;
 		const streamStructuredOnNonLocalProvider =
 			paramsAsStreaming?.streamStructured === true &&
 			explicitStream !== true &&

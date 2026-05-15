@@ -19,7 +19,7 @@
  *
  * Per the brief (§1Q3-Q4), the entry path is:
  *
- *   bun packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs \
+ *   bun packages/app-core/scripts/voice/freeze-voice.mjs \
  *     --voice same \
  *     --ai-voices-dir packages/training/data/voice/same/audio/ \
  *     --out <bundle>/cache/voice-preset-same.bin \
@@ -81,7 +81,7 @@ const DEFAULT_MAX_SECONDS = 15;
 function usage(code = 0) {
   console.log(
     [
-      "Usage: bun packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs [flags]",
+      "Usage: bun packages/app-core/scripts/voice/freeze-voice.mjs [flags]",
       "",
       "Flags:",
       "  --voice <id>           Voice id (default: same)",

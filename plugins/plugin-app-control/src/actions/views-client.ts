@@ -7,8 +7,8 @@
  * the full AppControlClient (different concern, different surface).
  */
 
-import { resolveServerOnlyPort } from "@elizaos/core";
 import type { ViewCapability } from "@elizaos/core";
+import { resolveServerOnlyPort } from "@elizaos/core";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 
@@ -122,9 +122,7 @@ export function createViewsClient(): ViewsClient {
 				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
 			});
 			if (!response.ok) {
-				throw new Error(
-					`Failed to list views: HTTP ${response.status}`,
-				);
+				throw new Error(`Failed to list views: HTTP ${response.status}`);
 			}
 			const body: unknown = await response.json();
 			return parseViewList(body);

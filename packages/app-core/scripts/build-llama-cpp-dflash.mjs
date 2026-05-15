@@ -231,13 +231,11 @@ const SUPPORTED_TARGETS = [
   // mingw arm64 cross-toolchain wiring here.
   "windows-arm64-cpu",
   "windows-arm64-vulkan",
-  // Fused text+TTS targets — source-level fusion of
-  // github.com/ServeurpersoCom/omnivoice.cpp into the same llama.cpp
-  // build. Produce one shared library (libelizainference) and one
-  // fused server binary that exposes both `llama_*` and `omnivoice_*`
-  // symbols. See packages/app-core/scripts/omnivoice-fuse/README.md
-  // for the GGML pin reconciliation strategy. The non-fused targets
-  // above remain unchanged; fused is purely additive.
+  // Fused text+TTS targets — the merged in-fork OmniVoice tree at
+  // plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/
+  // produces one shared library (libelizainference) and one fused server
+  // binary that exposes both `llama_*` and `omnivoice_*` symbols. The
+  // non-fused targets above remain unchanged; fused is purely additive.
   "linux-x64-cpu-fused",
   "linux-x64-cuda-fused",
   "linux-x64-vulkan-fused",
@@ -1016,7 +1014,10 @@ function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
   );
 }
 
-function patchSpeculativeIncompatibleDraftFallback(cacheDir, { dryRun = false } = {}) {
+function patchSpeculativeIncompatibleDraftFallback(
+  cacheDir,
+  { dryRun = false } = {},
+) {
   const specPath = path.join(cacheDir, "common", "speculative.cpp");
   if (!fs.existsSync(specPath)) {
     throw new Error(
@@ -2137,7 +2138,9 @@ function patchOmnivoiceCmakeConflictArtifact(root, { dryRun = false } = {}) {
   const cmakePath = path.join(root, "CMakeLists.txt");
   if (!fs.existsSync(cmakePath)) return;
   const source = fs.readFileSync(cmakePath, "utf8");
-  const begin = source.indexOf("<<<<<<< HEAD\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1");
+  const begin = source.indexOf(
+    "<<<<<<< HEAD\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1",
+  );
   const divider = source.indexOf(
     "=======\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1 (REMOVED",
     begin,
@@ -3606,7 +3609,7 @@ function buildTarget({ target, args, ctx }) {
   if (fused) {
     omnivoiceVerification = verifyFusedSymbols({ outDir, target });
     console.log(
-      `[dflash-build] omnivoice-fuse symbol-verify: ` +
+      `[dflash-build] omnivoice symbol-verify: ` +
         `library=${omnivoiceVerification.library} ` +
         `llama=${omnivoiceVerification.llamaSymbolCount} ` +
         `omnivoice=${omnivoiceVerification.omnivoiceSymbolCount} ` +

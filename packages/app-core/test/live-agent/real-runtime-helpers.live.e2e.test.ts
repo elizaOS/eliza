@@ -26,7 +26,7 @@ describe("Real Runtime Helper Regressions", () => {
   }, 120_000);
 
   afterAll(async () => {
-    await runtimeResult.cleanup();
+    await runtimeResult?.cleanup();
   }, 120_000);
 
   it("preserves world ownership metadata during harness setup", async () => {
