@@ -557,11 +557,8 @@ export function normalizeLifeOpsNativeMessages(
   }
 
   const lastTurn = previousTurns[previousTurns.length - 1];
-  if (
-    !lastTurn ||
-    lastTurn.userText !== text ||
-    lastTurn.toolCalls.length === 0
-  ) {
+  const sameUserText = lastTurn?.userText.trim() === text.trim();
+  if (!lastTurn || !sameUserText || lastTurn.toolCalls.length === 0) {
     messages.push({ role: "user", content: text });
   }
 
@@ -570,7 +567,19 @@ export function normalizeLifeOpsNativeMessages(
 
 export function chooseLifeOpsNativeToolChoice(
   previousTurns: LifeOpsBenchTurnRecord[] = [],
+  currentUserText?: string,
 ): "required" | "auto" {
+  const lastTurn = previousTurns[previousTurns.length - 1];
+  if (!lastTurn || lastTurn.toolCalls.length === 0) {
+    return "required";
+  }
+
+  if (typeof currentUserText === "string" && currentUserText.trim()) {
+    return lastTurn.userText.trim() === currentUserText.trim()
+      ? "auto"
+      : "required";
+  }
+
   return previousTurns.some((turn) => turn.toolCalls.length > 0)
     ? "auto"
     : "required";

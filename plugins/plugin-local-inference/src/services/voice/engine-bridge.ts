@@ -30,12 +30,12 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import type { VoiceCancellationReason } from "@elizaos/shared";
 import {
 	type KokoroEngineDiscoveryResult,
 	KokoroOnnxRuntime,
 	KokoroTtsBackend,
-} from "@elizaos/shared/local-inference";
+	type VoiceCancellationReason,
+} from "@elizaos/shared";
 import { localInferenceRoot } from "../paths";
 import {
 	type CoordinatorRuntime,

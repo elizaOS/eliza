@@ -37,12 +37,12 @@ except ImportError:
 from elizaos_vending_bench import (
     LEADERBOARD_SCORES,
     CoherenceEvaluator,
-    MockLLMProvider,
     VendingAgent,
     VendingBenchConfig,
     VendingBenchRunner,
     VendingEnvironment,
 )
+from elizaos_vending_bench._testing import MockLLMProvider
 
 
 class TestResults:

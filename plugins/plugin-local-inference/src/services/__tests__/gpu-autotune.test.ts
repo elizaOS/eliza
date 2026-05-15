@@ -15,8 +15,8 @@ import {
 
 const fileDir = path.dirname(fileURLToPath(import.meta.url));
 // __tests__/ -> local-inference/ -> services/ -> src/ -> app-core/ -> packages/
-const monorepoRoot = path.resolve(fileDir, "../../../../../..");
-const configsDir = path.join(monorepoRoot, "packages/inference/configs/gpu");
+const _monorepoRoot = path.resolve(fileDir, "../../../../../..");
+const configsDir = path.resolve(fileDir, "../../../native/configs/gpu");
 
 const ALL_IDS = ["rtx-3090", "rtx-4090", "rtx-5090", "h200"] as const;
 

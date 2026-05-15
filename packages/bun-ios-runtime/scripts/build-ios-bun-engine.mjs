@@ -947,16 +947,47 @@ function linkFramework({ buildDir, webkitPath, info }) {
   return frameworkDir;
 }
 
+function existingXcframeworkFrameworkDirs(replacingLibraryIdentifier) {
+  if (!fs.existsSync(artifact)) return [];
+  const infoPlist = path.join(artifact, "Info.plist");
+  if (!fs.existsSync(infoPlist)) return [];
+  const plist = parsePlistJson(infoPlist);
+  const libraries = Array.isArray(plist.AvailableLibraries)
+    ? plist.AvailableLibraries
+    : [];
+  return libraries
+    .filter(
+      (library) =>
+        library?.LibraryIdentifier &&
+        library.LibraryIdentifier !== replacingLibraryIdentifier,
+    )
+    .map((library) => {
+      const libraryPath =
+        typeof library.LibraryPath === "string"
+          ? library.LibraryPath
+          : `${frameworkName}.framework`;
+      return path.join(artifact, library.LibraryIdentifier, libraryPath);
+    })
+    .filter((candidate) =>
+      fs.existsSync(path.join(candidate, frameworkName)),
+    );
+}
+
 function createXcframework(frameworkDir) {
-  fs.rmSync(artifact, { recursive: true, force: true });
+  const existingFrameworkDirs = existingXcframeworkFrameworkDirs(
+    info.xcframeworkLibraryIdentifier,
+  );
+  const tempArtifact = `${artifact}.tmp-${process.pid}`;
+  fs.rmSync(tempArtifact, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(artifact), { recursive: true });
-  run("xcodebuild", [
-    "-create-xcframework",
-    "-framework",
-    frameworkDir,
-    "-output",
-    artifact,
-  ]);
+  const args = ["-create-xcframework"];
+  for (const existingFrameworkDir of existingFrameworkDirs) {
+    args.push("-framework", existingFrameworkDir);
+  }
+  args.push("-framework", frameworkDir, "-output", tempArtifact);
+  run("xcodebuild", args);
+  fs.rmSync(artifact, { recursive: true, force: true });
+  fs.renameSync(tempArtifact, artifact);
   validateXcframework(artifact);
 }
 

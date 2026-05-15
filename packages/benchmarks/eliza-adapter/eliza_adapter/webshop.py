@@ -43,15 +43,16 @@ _SYSTEM_PROMPT = (
     "You are an AI shopping agent being evaluated on the WebShop benchmark. "
     "You must navigate a simulated webstore to purchase the product matching "
     "the user's instruction.\n\n"
-    "On every turn, choose exactly ONE currently available WebShop action. "
+    "On every turn, choose exactly ONE action from the current Available actions list. "
     "Use the BENCHMARK_ACTION action with params.BENCHMARK_ACTION.command set "
-    "to that exact action string.\n\n"
-    "Available actions:\n"
-    "  search[query string]\n"
-    "  click[PRODUCT_ID]\n"
-    "  select_option[option_name, value]\n"
-    "  back\n"
-    "  buy\n\n"
+    "to that exact action string, preserving its spelling and brackets.\n\n"
+    "On product pages, select every visible option value required by the "
+    "instruction, such as size, color, style, or caffeine, before choosing "
+    "click[buy now]. Only choose click[buy now] after the currently selected "
+    "product and selected options satisfy the instruction.\n\n"
+    "Do not invent generic actions when an exact click[...] action is shown. "
+    "For example, use click[buy now] rather than buy, and click[750ml] rather "
+    "than select_option[size, 750ml], when those exact actions are visible.\n\n"
     "If action calling is unavailable, return JSON only:\n"
     '{"actions":["BENCHMARK_ACTION"],"params":{"BENCHMARK_ACTION":{"command":"search[wireless bluetooth headphones under $100]"}}}\n\n'
     "Once you have purchased the correct product, the episode ends "
@@ -179,6 +180,36 @@ def _looks_like_webshop_action(action_line: str) -> bool:
     )
 
 
+def _normalize_action_for_environment(
+    action_line: str,
+    available_actions: list[str],
+) -> str:
+    """Map common action aliases to exact upstream action strings."""
+    stripped = action_line.strip()
+    available_by_lower = {action.lower(): action for action in available_actions}
+    exact = available_by_lower.get(stripped.lower())
+    if exact:
+        return exact
+
+    lower = stripped.lower()
+    if lower == "buy" and "click[buy now]" in available_by_lower:
+        return available_by_lower["click[buy now]"]
+    if lower == "back" and "click[back to search]" in available_by_lower:
+        return available_by_lower["click[back to search]"]
+
+    select_match = re.match(
+        r"select_option\[[^,\]]+,\s*([^\]]+)\]$",
+        stripped,
+        re.IGNORECASE,
+    )
+    if select_match:
+        click_value = f"click[{select_match.group(1).strip().lower()}]"
+        if click_value in available_by_lower:
+            return available_by_lower[click_value]
+
+    return stripped
+
+
 class ElizaBridgeWebShopAgent:
     """WebShop agent driven by the eliza TS bridge (no Python AgentRuntime)."""
 
@@ -302,6 +333,10 @@ class ElizaBridgeWebShopAgent:
                 action_history.append("[invalid action]")
                 continue
 
+            action_line = _normalize_action_for_environment(
+                action_line,
+                list(observation.available_actions),
+            )
             if not _looks_like_webshop_action(action_line):
                 logger.warning(
                     "[webshop-bridge] turn %d: scoring invalid action %r",

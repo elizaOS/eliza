@@ -41,6 +41,7 @@ try:
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import ELIZA_1_TIERS
 
+SOURCE_WEIGHT_TIERS: Final[tuple[str, ...]] = tuple(ELIZA_1_TIERS)
 HF_RETRY_ATTEMPTS: Final[int] = 4
 HF_RETRY_BASE_DELAY_SEC: Final[float] = 2.0
 
@@ -149,9 +150,10 @@ DRAFTER_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "27b-256k": None,
 }
 
-# mmproj-F16 sources per tier. Every Qwen3.5 base (0.8B/2B/4B/9B/27B) ships
-# its own `mmproj-F16.gguf` in the matching unsloth repo. The 27B projector
-# is shared verbatim across the 27b / 27b-256k text-context variants
+# mmproj-F16 sources per tier. Every Qwen3.5 lower tier ships its own
+# `mmproj-F16.gguf` in the matching unsloth repo. The 27B projector comes
+# from the Qwen3.6 GGUF mirror and is shared verbatim across the 27b /
+# 27b-256k text-context variants
 # (per the catalog comment at packages/shared/src/local-inference/catalog.ts
 # and `plugins/plugin-local-inference/native/reports/porting/2026-05-14/mmproj-qwen35vl-plan.md`),
 # so the long-context tiers reuse the 27B source byte-for-byte.
@@ -180,13 +182,29 @@ def _vision_source(tier: str, size: str) -> SourceArtifact:
         ),
     )
 
+
+def _qwen36_vision_source(tier: str) -> SourceArtifact:
+    return SourceArtifact(
+        kind="vision",
+        repo="unsloth/Qwen3.6-27B-GGUF",
+        filename="mmproj-F16.gguf",
+        destination=f"source/vision/qwen3.6-{tier}-mmproj-f16.gguf",
+        license="apache-2.0",
+        status="source-only",
+        notes=(
+            "Qwen3.6 27B projector shared across 27B context variants; "
+            "quantized to Q8_0 during Phase 2 staging.",
+        ),
+    )
+
+
 VISION_SOURCES: Final[dict[str, SourceArtifact | None]] = {
     "0_8b": _vision_source("0_8b", "0.8B"),
     "2b": _vision_source("2b", "2B"),
     "4b": _vision_source("4b", "4B"),
     "9b": _vision_source("9b", "9B"),
-    "27b": _vision_source("27b", "27B"),
-    "27b-256k": _vision_source("27b-256k", "27B"),
+    "27b": _qwen36_vision_source("27b"),
+    "27b-256k": _qwen36_vision_source("27b-256k"),
 }
 
 # Per-tier mmproj quantization target. Authoritative source: the live
@@ -455,7 +473,7 @@ def stage_sources(args: argparse.Namespace) -> dict[str, Any]:
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--tier", required=True, choices=ELIZA_1_TIERS)
+    ap.add_argument("--tier", required=True, choices=SOURCE_WEIGHT_TIERS)
     ap.add_argument("--bundle-dir", required=True, type=Path)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument(

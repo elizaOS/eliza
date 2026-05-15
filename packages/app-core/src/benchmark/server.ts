@@ -135,7 +135,9 @@ function normalizeWebshopNativeMessages(
   context: Record<string, unknown>,
 ): Array<Record<string, unknown>> {
   const actionSpace = Array.isArray(context.actionSpace)
-    ? context.actionSpace.filter((entry): entry is string => typeof entry === "string")
+    ? context.actionSpace.filter(
+        (entry): entry is string => typeof entry === "string",
+      )
     : [];
   return [
     {
@@ -427,6 +429,15 @@ const MAX_BODY_BYTES =
   Number.isFinite(configuredMaxBodyBytes) && configuredMaxBodyBytes > 0
     ? Math.floor(configuredMaxBodyBytes)
     : DEFAULT_MAX_BODY_BYTES;
+
+function writeRequestTooLarge(res: http.ServerResponse): void {
+  res.writeHead(413, { "Content-Type": "application/json" });
+  res.end(
+    JSON.stringify({
+      error: `Request body exceeded max size ${MAX_BODY_BYTES} bytes`,
+    }),
+  );
+}
 
 /** Allowed CORS origins — only localhost variants. */
 const LOCALHOST_ORIGINS = new Set(["http://localhost", "https://localhost"]);
@@ -1439,7 +1450,10 @@ export async function startBenchmarkServer() {
               previousTurns,
             ),
             tools: toolManifest,
-            toolChoice: chooseLifeOpsNativeToolChoice(previousTurns),
+            toolChoice: chooseLifeOpsNativeToolChoice(
+              previousTurns,
+              composedPrompt,
+            ),
             maxTokens: 2048,
             temperature: 0,
           });
@@ -1633,22 +1647,39 @@ export async function startBenchmarkServer() {
       if (!checkBenchAuth(req, res)) return;
       let body = "";
       let bodyBytes = 0;
+      let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
+        if (bodyTooLarge) return;
         bodyBytes += chunk.length;
         if (bodyBytes > MAX_BODY_BYTES) {
-          req.destroy();
+          bodyTooLarge = true;
+          writeRequestTooLarge(res);
+          req.resume();
           return;
         }
         body += chunk;
       });
       req.on("end", async () => {
+        if (bodyTooLarge) return;
         try {
-          const parsed = body.trim()
-            ? (JSON.parse(body) as {
-                task_id?: unknown;
-                benchmark?: unknown;
-              })
-            : {};
+          let parsed: {
+            task_id?: unknown;
+            benchmark?: unknown;
+          };
+          try {
+            parsed = body.trim()
+              ? (JSON.parse(body) as {
+                  task_id?: unknown;
+                  benchmark?: unknown;
+                })
+              : {};
+          } catch {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({ error: "Malformed JSON in request body" }),
+            );
+            return;
+          }
           const taskId =
             typeof parsed.task_id === "string" &&
             parsed.task_id.trim().length > 0
@@ -1805,15 +1836,20 @@ export async function startBenchmarkServer() {
       if (!checkBenchAuth(req, res)) return;
       let body = "";
       let bodyBytes = 0;
+      let bodyTooLarge = false;
       req.on("data", (chunk: Buffer) => {
+        if (bodyTooLarge) return;
         bodyBytes += chunk.length;
         if (bodyBytes > MAX_BODY_BYTES) {
-          req.destroy();
+          bodyTooLarge = true;
+          writeRequestTooLarge(res);
+          req.resume();
           return;
         }
         body += chunk;
       });
       req.on("end", async () => {
+        if (bodyTooLarge) return;
         try {
           let parsed: {
             text?: unknown;
@@ -2065,7 +2101,10 @@ export async function startBenchmarkServer() {
             let nativeResult: unknown;
             try {
               nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                messages: normalizeWebshopNativeMessages(text, benchmarkContext),
+                messages: normalizeWebshopNativeMessages(
+                  text,
+                  benchmarkContext,
+                ),
                 tools: webshopBenchmarkTools(),
                 toolChoice: "required",
                 maxTokens:

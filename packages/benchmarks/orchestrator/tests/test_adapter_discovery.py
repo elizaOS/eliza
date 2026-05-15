@@ -290,12 +290,21 @@ def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
 def test_eliza_only_registry_bridges_are_not_published_as_cross_harness_rows() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
 
-    for benchmark_id in ("mint", "realm", "gaia", "gaia_orchestrated", "webshop"):
+    for benchmark_id in ("realm", "gaia", "gaia_orchestrated", "webshop"):
         adapter = adapters[benchmark_id]
         assert adapter.agent_compatibility == ("eliza",)
         assert _is_harness_compatible(adapter, "eliza") is True
         assert _is_harness_compatible(adapter, "hermes") is False
         assert _is_harness_compatible(adapter, "openclaw") is False
+
+
+def test_mint_routes_all_three_harnesses() -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["mint"]
+
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert _is_harness_compatible(adapter, "eliza") is True
+    assert _is_harness_compatible(adapter, "hermes") is True
+    assert _is_harness_compatible(adapter, "openclaw") is True
 
 
 def test_gaia_orchestrated_registry_uses_orchestrated_entrypoint(tmp_path: Path) -> None:
@@ -366,9 +375,15 @@ def test_clawbench_registry_routes_selected_harness_to_multi_harness_runner(
 def test_mint_registry_distinguishes_harness_bridge_from_direct_provider(
     tmp_path: Path,
 ) -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["mint"]
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "mint"
     ]
+
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert _is_harness_compatible(adapter, "eliza") is True
+    assert _is_harness_compatible(adapter, "hermes") is True
+    assert _is_harness_compatible(adapter, "openclaw") is True
 
     harness_command = entry.build_command(
         tmp_path,
@@ -383,12 +398,18 @@ def test_mint_registry_distinguishes_harness_bridge_from_direct_provider(
 
     assert harness_command[harness_command.index("--provider") + 1] == "eliza"
     assert direct_command[direct_command.index("--provider") + 1] == "cerebras"
-    with pytest.raises(ValueError, match="native hermes harness adapter"):
-        entry.build_command(
-            tmp_path,
-            ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-            {"agent": "hermes"},
-        )
+    hermes_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "hermes"},
+    )
+    openclaw_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "openclaw"},
+    )
+    assert hermes_command[hermes_command.index("--provider") + 1] == "hermes"
+    assert openclaw_command[openclaw_command.index("--provider") + 1] == "openclaw"
 
 
 def test_realm_registry_smoke_bounds_and_blocks_mislabeled_harness(
@@ -618,7 +639,8 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
         repo_meta={},
     )
     mint_command = mint.command_builder(ctx, mint)
-    assert mint_command[mint_command.index("--categories") + 1] == "reasoning"
+    assert "--categories" not in mint_command
+    assert mint_command[mint_command.index("--subtasks") + 1] == "gsm8k"
     assert mint_command[mint_command.index("--max-turns") + 1] == "3"
     assert mint_command[mint_command.index("--timeout") + 1] == "60"
     assert "--no-ablation" in mint_command
@@ -752,6 +774,35 @@ def test_bfcl_openclaw_env_uses_direct_openai_compatible_transport(tmp_path: Pat
         run_root=tmp_path,
         request=RunRequest(
             benchmarks=("bfcl",),
+            agent="openclaw",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={"agent": "openclaw", "sample": 1},
+        ),
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
+
+    assert env["OPENCLAW_DIRECT_OPENAI_COMPAT"] == "1"
+    assert env["OPENCLAW_USE_CLI"] == "0"
+
+
+@pytest.mark.parametrize("benchmark_id", ["lifeops_bench", "mint"])
+def test_openclaw_tool_payload_benches_use_direct_transport(
+    benchmark_id: str,
+    tmp_path: Path,
+) -> None:
+    adapter = discover_adapters(_workspace_root()).adapters[benchmark_id]
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=RunRequest(
+            benchmarks=(benchmark_id,),
             agent="openclaw",
             provider="cerebras",
             model="gpt-oss-120b",

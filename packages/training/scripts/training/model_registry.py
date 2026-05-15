@@ -23,7 +23,7 @@ by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
   - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B-Base``   → ``eliza-1-2b``    (mid local tier; full-param SFT on a 16-24 GB GPU)
   - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B-Base``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24-28 GB GPU)
   - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
-  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2; also serves the ``eliza-1-27b-256k`` alias)
+  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2; also serves ``eliza-1-27b-256k``)
 
 All active bases are published on the Hub. The 9b/27b tiers need workstation /
 cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's DFlash
@@ -42,10 +42,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
+
 class Tier(str, Enum):
     LOCAL = "local"
     WORKSTATION = "workstation"
     CLOUD = "cloud"
+
 
 @dataclass(frozen=True)
 class ModelEntry:
@@ -145,9 +147,8 @@ class ModelEntry:
 
     APOLLO is important for this pipeline because it keeps optimizer memory
     small on commodity GPUs. Do not swap this registry to AdamW/Muon-style
-    training recipes; the release flow expects APOLLO plus the full GGUF
-    K-quant ladder (q3/q4/q5/q6/q8) and the Eliza-specific runtime
-    optimization sidecars.
+    training recipes; the release flow expects APOLLO plus GGUF q4/q6/q8
+    outputs and the Eliza-specific runtime optimization sidecars.
     """
 
     unverified_base: bool = False
@@ -185,6 +186,7 @@ class ModelEntry:
         """
         return self.eliza_short_name or self.short_name
 
+
 def _compute_inference_mem(
     *, params_billion: float, kv_layers: int, kv_heads: int,
     kv_head_dim: int, total_ctx: int,
@@ -210,6 +212,7 @@ def _compute_inference_mem(
         (weight_bytes_q4 + kv_bytes_q4) / 1024**3,
     )
 
+
 def _entry(**kw) -> ModelEntry:
     """Build a ModelEntry and back-fill the computed inference budgets."""
     bf16, q4 = _compute_inference_mem(
@@ -222,6 +225,7 @@ def _entry(**kw) -> ModelEntry:
     kw["infer_mem_gb_bf16_fullkv"] = round(bf16, 2)
     kw["infer_mem_gb_quantized"] = round(q4, 2)
     return ModelEntry(**kw)
+
 
 # Layer counts / head shapes come straight from the HF `config.json` of each
 # base model. Active entries are Qwen3.5/Qwen3.6 hybrid linear-attn VLMs
@@ -252,7 +256,6 @@ DFLASH_DRAFTER_BASE: dict[str, str] = {
 
 ELIZA1_REQUIRED_QUANTIZATION_AFTER: tuple[str, ...] = (
     "polarquant",
-    "turboquant",
     "fused_turboquant",
     "qjl",
     "gguf-q3_k_m",
@@ -390,10 +393,12 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_layers=16, infer_kv_heads=4, infer_kv_head_dim=256,
         quantization_after=ELIZA1_REQUIRED_QUANTIZATION_AFTER,
         notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
-              "27B backbone. Use this for the 27B and 27B-256k release families.",
+              "27B backbone. Use this for the 27B, 27B-256k, "
+              "release families.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
     ),
 }
+
 
 ELIZA_1_27B_VARIANT_ALIASES: dict[str, str] = {
     "27b": "qwen3.6-27b",
@@ -431,6 +436,7 @@ QWEN36_LOWER_TIER_FALLBACK_ALIASES: dict[str, str] = {
     "qwen/qwen3.6-9b": "qwen3.5-9b",
 }
 
+
 def get(name: str) -> ModelEntry:
     raw = name.strip()
     lowered = raw.lower()
@@ -456,12 +462,14 @@ def get(name: str) -> ModelEntry:
             return entry
     raise KeyError(f"unknown model {name!r}; known: {sorted(REGISTRY)}")
 
+
 def by_tier(tier: Tier, include_legacy: bool = False) -> list[ModelEntry]:
     return [
         e
         for e in REGISTRY.values()
         if e.tier == tier and (include_legacy or e.extra.get("legacy") != "true")
     ]
+
 
 def summary_table() -> str:
     cols = ("name", "params B", "tier", "train seq", "train mem",
@@ -484,6 +492,7 @@ def summary_table() -> str:
     widths = [max(len(r[i]) for r in rows) for i in range(len(cols))]
     fmt = "  ".join(f"{{:<{w}}}" for w in widths)
     return "\n".join(fmt.format(*r) for r in rows)
+
 
 if __name__ == "__main__":
     print(summary_table())

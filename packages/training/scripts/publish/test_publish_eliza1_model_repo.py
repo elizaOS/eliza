@@ -192,6 +192,7 @@ def test_tier_choices_cover_full_eliza1_matrix() -> None:
         "9b",
         "27b",
         "27b-256k",
+        "27b-1m",
     )
 
 def test_plan_bundle_blocks_non_publishable_release_evidence(tmp_path: Path):

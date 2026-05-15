@@ -51,7 +51,8 @@ def _latest_by_benchmark_agent(
     *,
     compatibility: dict[str, tuple[str, ...]],
 ) -> dict[tuple[str, str], dict[str, Any]]:
-    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    latest_terminal: dict[tuple[str, str], dict[str, Any]] = {}
+    latest_success: dict[tuple[str, str], dict[str, Any]] = {}
     for row in list_runs(conn, limit=None):
         benchmark_id = str(row.get("benchmark_id") or "")
         agent = str(row.get("agent") or "")
@@ -62,9 +63,18 @@ def _latest_by_benchmark_agent(
         if not benchmark_id or not agent:
             continue
         key = (benchmark_id, agent)
-        if key not in latest:
-            latest[key] = row
-    return latest
+        if key not in latest_terminal:
+            latest_terminal[key] = row
+        if (
+            key not in latest_success
+            and row.get("status") == "succeeded"
+            and isinstance(row.get("score"), (int, float))
+        ):
+            latest_success[key] = row
+    return {
+        key: latest_success.get(key, row)
+        for key, row in latest_terminal.items()
+    }
 
 
 def _is_close(a: float | None, b: float | None, tolerance: float) -> bool:
@@ -235,7 +245,10 @@ def build_calibration_report(
                 math.isfinite(v) and _is_close(v, flat_scores[0], tolerance)
                 for v in flat_scores
             ):
-                calibration_status = "flat"
+                if _is_close(flat_scores[0], 0.5, tolerance):
+                    calibration_status = "half_right"
+                else:
+                    calibration_status = "flat"
             else:
                 calibration_status = "mismatch"
         counts[calibration_status] += 1

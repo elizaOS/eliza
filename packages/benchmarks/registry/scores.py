@@ -771,17 +771,21 @@ def _score_from_trust_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_webshop_json(data: JSONValue) -> ScoreExtraction:
     """Extract scores from WebShop benchmark results."""
     root = expect_dict(data, ctx="webshop:root")
+    average_reward = expect_float(
+        get_required(root, "average_reward", ctx="webshop:root"),
+        ctx="webshop:average_reward",
+    )
     success_rate = expect_float(
         get_required(root, "success_rate", ctx="webshop:root"),
         ctx="webshop:success_rate",
     )
     return ScoreExtraction(
-        score=success_rate,
+        score=average_reward,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "success_rate": success_rate,
-            "average_reward": root.get("average_reward") or 0,
+            "average_reward": average_reward,
             "average_turns": root.get("average_turns") or 0,
             "average_steps": root.get("average_steps") or 0,
             "average_duration_ms": root.get("average_duration_ms") or 0,

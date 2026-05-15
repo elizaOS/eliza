@@ -82,6 +82,7 @@
     "dist"
   ],
   "devDependencies": {
+    "bun-types": "1.3.14",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3"
   }

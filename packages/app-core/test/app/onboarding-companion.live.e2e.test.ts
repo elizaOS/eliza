@@ -11,7 +11,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { buildOnboardingRuntimeConfig } from "@elizaos/ui/onboarding-config";
+import { buildOnboardingRuntimeConfig } from "@elizaos/ui";
 import {
   type Browser,
   type BrowserContext,

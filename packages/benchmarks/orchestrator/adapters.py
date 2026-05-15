@@ -92,9 +92,6 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # REALM currently has a real Eliza bridge adapter only. Hermes/OpenClaw
     # rows previously used the Eliza bridge under different labels.
     "realm": ("eliza",),
-    # MINT currently supports the Eliza TS bridge or direct provider calls, but
-    # not native Hermes/OpenClaw agent loops.
-    "mint": ("eliza",),
     # FrameworkBench measures the local elizaOS TypeScript runtime with a mock
     # LLM. It does not invoke Hermes/OpenClaw, so tri-harness labels are
     # misleading until real per-harness framework drivers exist.
@@ -247,7 +244,7 @@ def _make_registry_adapter(
             or ctx.request.extra_config.get("harness")
             or ctx.request.agent
         ).strip().lower()
-        if benchmark_id == "bfcl" and harness == "openclaw":
+        if benchmark_id in {"bfcl", "lifeops_bench", "mint"} and harness == "openclaw":
             env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
             env["OPENCLAW_USE_CLI"] = "0"
         return env
@@ -1835,7 +1832,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mint": {
             "agent": "eliza",
-            "categories": ["reasoning"],
+            "subtasks": ["gsm8k"],
             "max_tasks": 1,
             "max_turns": 3,
             "timeout": 60,

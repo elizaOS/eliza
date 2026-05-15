@@ -47,7 +47,7 @@ export const ELIZA_1_MANIFEST_SCHEMA_URL =
 export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
-// Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). the active 27B line tops out at the native 256k context variant. Enum stays size-ordered.
+// Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). Enum stays size-ordered.
 export const ELIZA_1_TIERS = [
 	"0_8b",
 	"2b",
@@ -137,9 +137,7 @@ export const ELIZA_1_BACKENDS = [
 export type Eliza1Backend = (typeof ELIZA_1_BACKENDS)[number];
 
 // Required-kernel set per tier. Mirrors AGENTS.md §3:
-// - All active tiers require TurboQuant, QJL, PolarQuant, and DFlash. Missing
-//   any member is a release blocker; the runtime must hard-fail instead of
-//   falling back to unoptimized cache paths.
+// - Every active tier requires DFlash.
 // - 4B and larger tiers require `turbo3_tcq`. The validator also enforces the
 //   same requirement dynamically for any bundle that declares a >64k text file,
 //   so a future tier cannot publish long-context text without TCQ.

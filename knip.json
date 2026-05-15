@@ -435,6 +435,16 @@
         "src/**/*.d.ts.map"
       ]
     },
+    "packages/os": {
+      "entry": ["package.json"],
+      "project": [],
+      "ignore": ["android/**", "linux/**"]
+    },
+    "packages/os/linux/agent": {
+      "entry": ["src/main.ts", "tests/**/*.ts"],
+      "project": ["src/**/*.ts", "tests/**/*.ts"],
+      "ignore": ["bun.lock"]
+    },
     "plugins/plugin-tailscale": {
       "entry": ["src/index.ts"],
       "project": ["src/**/*.ts"]

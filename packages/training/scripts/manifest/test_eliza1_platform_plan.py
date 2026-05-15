@@ -59,15 +59,16 @@ def test_context_tier_text_artifacts_do_not_duplicate_context_suffix() -> None:
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
     plan = build_plan()
     assert "tts/kokoro/model_q4.onnx" in plan["0_8b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["0_8b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["0_8b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["2b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["2b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["2b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["4b"].required_files
-    assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["4b"].required_files
+    assert "tts/omnivoice-base-Q4_K_M.gguf" not in plan["4b"].required_files
     assert "tts/kokoro/model_q4.onnx" in plan["9b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["9b"].required_files
     assert "tts/kokoro/model_q4.onnx" not in plan["27b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["27b"].required_files
+    assert "tts/omnivoice-base-Q8_0.gguf" in plan["27b-1m"].required_files
 
 def test_missing_files_reports_required_paths(tmp_path: Path) -> None:
     plan = build_plan()
@@ -89,6 +90,7 @@ def test_readiness_mentions_vad_native_ggml_caveat() -> None:
     assert "Qwen3.5 0.8B (`0_8b`)" in text
     assert "Qwen3.5 2B (`2b`)" in text
     assert "Qwen3.5 4B (`4b`)" in text
+    assert "`27b-1m`" in text
     assert "published Qwen3-ASR 0.6B / 1.7B GGUF repos" in text
     assert "Qwen3-Embedding 0.6B / 4B / 8B GGUF repos" in text
     assert "not evaluated in plan-only mode" in text
@@ -166,7 +168,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                     "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
                     "vad": {"repo": "ggml-org/whisper-vad"},
                     "embedding": {"repo": "Qwen/Qwen3-Embedding-0.6B-GGUF"},
-                    "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
+                    "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/2b/dflash/drafter-2b.gguf"},
                 },
                 "final": {
                     # weights are the upstream base GGUFs by design — not a
@@ -182,15 +184,15 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizaos/eliza-1",
+                    "repoId": "elizalabs/eliza-1",
                     "repoPath": "bundles/2b",
                     "status": "uploaded",
                     "uploadEvidence": {
-                        "repoId": "elizaos/eliza-1",
+                        "repoId": "elizalabs/eliza-1",
                         "pathPrefix": "bundles/2b",
                         "status": "uploaded",
                         "commit": "abc123",
-                        "url": "https://huggingface.co/elizaos/eliza-1/commit/abc123",
+                        "url": "https://huggingface.co/elizalabs/eliza-1/commit/abc123",
                         "uploadedPaths": required_weights,
                     },
                 },
@@ -231,7 +233,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
                 "weights": required_weights,
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizaos/eliza-1",
+                    "repoId": "elizalabs/eliza-1",
                     "repoPath": "bundles/2b",
                     "status": "pending-upload",
                 },
@@ -271,7 +273,7 @@ def test_release_status_blockers_base_v1_rejects_fake_qwen_component_repos(
                 "weights": [],
                 "checksumManifest": "checksums/SHA256SUMS",
                 "hf": {
-                    "repoId": "elizaos/eliza-1",
+                    "repoId": "elizalabs/eliza-1",
                     "status": "pending-upload",
                 },
             }

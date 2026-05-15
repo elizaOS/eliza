@@ -211,6 +211,45 @@ describe("LifeOps native tool-call bridge", () => {
       ]),
     ).toBe("auto");
   });
+
+  it("requires a fresh tool call when a new LifeOps user request follows an older tool result", () => {
+    const previousTurns = [
+      {
+        userText: "archive thread_01464",
+        assistantText: "",
+        toolCalls: [
+          {
+            id: "call-message",
+            name: "MESSAGE",
+            arguments: { operation: "manage" },
+            ok: true,
+            result: {},
+          },
+        ],
+      },
+    ];
+
+    expect(
+      chooseLifeOpsNativeToolChoice(previousTurns, "archive thread_01464"),
+    ).toBe("auto");
+    expect(
+      chooseLifeOpsNativeToolChoice(previousTurns, "Schedule deep work."),
+    ).toBe("required");
+
+    const messages = normalizeLifeOpsNativeMessages(
+      " Schedule deep work. ",
+      {
+        lifeops: {
+          nowIso: "2026-05-10T12:00:00Z",
+        },
+      },
+      previousTurns,
+    );
+    expect(messages.at(-1)).toEqual({
+      role: "user",
+      content: " Schedule deep work. ",
+    });
+  });
 });
 
 describe("benchmark server startup guard", () => {

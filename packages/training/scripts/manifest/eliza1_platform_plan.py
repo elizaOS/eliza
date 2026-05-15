@@ -50,6 +50,7 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
     "27b-256k": "Q4_K_M",
+    "27b-1m": "Q4_K_M",
 }
 
 TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = (
@@ -67,6 +68,7 @@ CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("64k", "128k"),
     "27b": ("128k",),
     "27b-256k": ("256k",),
+    "27b-1m": ("1m",),
 }
 
 ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -155,6 +157,9 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "linux-x64-cuda",
         "linux-x64-rocm",
         "windows-x64-cuda",
+    ),
+    "27b-1m": (
+        "linux-x64-cuda",
     ),
 }
 
@@ -462,9 +467,9 @@ def render_readiness(
         "Important caveats:",
         "",
         "- Text, ASR, DFlash, vision mmproj, and OmniVoice TTS payloads are "
-        "GGUF artifacts. 0.8B/2B/4B/9B carry OmniVoice first with Kokoro as "
-        "the bundled fallback; Kokoro is ONNX by design. 27B-class tiers ship "
-        "OmniVoice GGUF only.",
+        "GGUF artifacts. 0.8B/2B/4B carry Kokoro only; 9B carries Kokoro plus "
+        "OmniVoice; Kokoro is ONNX by design. 27B-class tiers ship OmniVoice "
+        "GGUF only.",
         "- VAD is a native GGML artifact at "
         "`vad/silero-vad-v5.1.2.ggml.bin`. It is not GGUF. "
         "Legacy bundles may additionally carry the ONNX fallback "
@@ -473,7 +478,7 @@ def render_readiness(
         "- Canonical active text tiers are Qwen3.5 0.8B (`0_8b`), "
         "Qwen3.5 2B (`2b`), Qwen3.5 4B (`4b`), Qwen3.5 9B (`9b`), "
         "and Qwen3.6 27B (`27b`, "
-        "`27b-256k`). ASR and embedding are real Qwen3 upstream "
+        "`27b-256k`, `27b-1m`). ASR and embedding are real Qwen3 upstream "
         "exceptions: use the published Qwen3-ASR "
         "0.6B / 1.7B GGUF repos and Qwen3-Embedding 0.6B / 4B / 8B GGUF "
         "repos; do not invent Qwen3.5-ASR, Qwen3.5-Embedding, "

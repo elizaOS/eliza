@@ -23,8 +23,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import random
 import tempfile
+import importlib.util
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -34,6 +36,7 @@ from elizaos_webshop.types import WebShopTask
 logger = logging.getLogger(__name__)
 
 REPO_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+FETCH_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "fetch_data.py"
 
 
 @dataclass
@@ -72,6 +75,58 @@ def resolve_paths(
     if not items.exists() or not attrs.exists():
         return None
     return WebShopDataPaths(items=items, attributes=attrs, human_instructions=human)
+
+
+def _required_files(profile: str, data_dir: Path) -> tuple[Path, ...]:
+    if profile == "small":
+        return (
+            data_dir / "items_shuffle_1000.json",
+            data_dir / "items_ins_v2_1000.json",
+            data_dir / "items_human_ins.json",
+        )
+    if profile == "full":
+        return (
+            data_dir / "items_shuffle.json",
+            data_dir / "items_ins_v2.json",
+            data_dir / "items_human_ins.json",
+        )
+    raise ValueError(f"Unknown profile {profile!r}; use 'small' or 'full'.")
+
+
+def _load_fetch_module() -> object:
+    spec = importlib.util.spec_from_file_location("elizaos_webshop_fetch_data", FETCH_SCRIPT)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load WebShop fetch script at {FETCH_SCRIPT}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def ensure_profile_downloaded(profile: str, data_dir: Path) -> None:
+    """Ensure the requested WebShop profile files exist, fetching if allowed."""
+    data_dir.mkdir(parents=True, exist_ok=True)
+    required = _required_files(profile, data_dir)
+    if all(path.exists() and path.stat().st_size > 0 for path in required):
+        return
+
+    if os.environ.get("WEBSHOP_NO_AUTOFETCH"):
+        raise FileNotFoundError(
+            "WebShop data is missing and WEBSHOP_NO_AUTOFETCH is set. "
+            f"Populate {data_dir} manually or run "
+            f"`python scripts/fetch_data.py --profile {profile}`."
+        )
+
+    fetch_module = _load_fetch_module()
+    download_profile = getattr(fetch_module, "download_profile", None)
+    if not callable(download_profile):
+        raise RuntimeError(f"{FETCH_SCRIPT} does not expose download_profile(profile, dest)")
+    download_profile(profile, data_dir)
+
+    missing = [path.name for path in required if not path.exists() or path.stat().st_size == 0]
+    if missing:
+        raise FileNotFoundError(
+            f"WebShop data fetch for profile {profile!r} did not create: {missing}"
+        )
 
 
 class WebShopDataset:
@@ -135,6 +190,7 @@ class WebShopDataset:
             )
             return
 
+        ensure_profile_downloaded(self.profile, self.data_dir)
         paths = resolve_paths(data_dir=self.data_dir, profile=self.profile)
         if paths is None:
             raise FileNotFoundError(
@@ -396,12 +452,18 @@ _SAMPLE_ATTRIBUTES: dict[str, dict[str, Any]] = {
 }
 
 # items_human_ins.json schema: per-ASIN list of instruction dicts
+_SAMPLE_INSTRUCTION_OPTIONS: dict[str, dict[str, str]] = {
+    "B000HEADPH": {"color": "black"},
+    "B000WATER1": {"size": "750ml", "color": "silver"},
+    "B000GREENT": {"caffeine": "decaf"},
+}
+
 _SAMPLE_HUMAN_INSTRUCTIONS: dict[str, list[dict[str, Any]]] = {
     asin: [
         {
             "instruction": v["instruction"],
             "instruction_attributes": v["instruction_attributes"],
-            "instruction_options": {},
+            "instruction_options": _SAMPLE_INSTRUCTION_OPTIONS.get(asin, {}),
         }
     ]
     for asin, v in _SAMPLE_ATTRIBUTES.items()

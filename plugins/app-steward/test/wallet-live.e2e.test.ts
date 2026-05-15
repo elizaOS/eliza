@@ -44,7 +44,9 @@ describeIf(CAN_RUN)("Wallet live E2E — real RPCs and real wallets", () => {
       savedExportToken = process.env.ELIZA_WALLET_EXPORT_TOKEN;
       process.env.ELIZA_WALLET_EXPORT_TOKEN = WALLET_EXPORT_TOKEN;
 
-      const { startApiServer } = await import("../src/api/server");
+      const { startApiServer } = await import(
+        "../../../packages/app-core/src/api/server"
+      );
       const server = await startApiServer({
         port: 0,
         skipDeferredStartupWork: true,

@@ -633,7 +633,6 @@ const TIER_TO_DEFAULT_IMAGE_MODEL_KEY = {
 	"eliza-1-9b": "imagegen-z-image-turbo-q4_k_m",
 	"eliza-1-27b": "imagegen-z-image-turbo-q4_k_m",
 	"eliza-1-27b-256k": "imagegen-z-image-turbo-q4_k_m",
-	"eliza-1-27b-1m": "imagegen-z-image-turbo-q4_k_m",
 };
 export function createLocalInferenceModelHandlers() {
 	return {
