@@ -5,8 +5,11 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { apiKeysService } from "@/lib/services/api-keys";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import { ApiKeysService, apiKeysService } from "@/lib/services/api-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -25,8 +28,21 @@ app.post("/", async (c) => {
     if (existingKey.organization_id !== user.organization_id) {
       return c.json({ error: "Forbidden" }, 403);
     }
+    if (ApiKeysService.isAgentSandboxKey(existingKey)) {
+      return c.json(
+        {
+          error:
+            "This API key is managed by an agent sandbox and cannot be regenerated from the dashboard. Restart the agent to rotate its key.",
+        },
+        403,
+      );
+    }
 
-    const { key: newKey, hash: newHash, prefix: newPrefix } = apiKeysService.generateApiKey();
+    const {
+      key: newKey,
+      hash: newHash,
+      prefix: newPrefix,
+    } = apiKeysService.generateApiKey();
 
     const updatedKey = await apiKeysService.update(id, {
       key: newKey,
@@ -34,7 +50,8 @@ app.post("/", async (c) => {
       key_prefix: newPrefix,
       updated_at: new Date(),
     });
-    if (!updatedKey) return c.json({ error: "Failed to regenerate API key" }, 500);
+    if (!updatedKey)
+      return c.json({ error: "Failed to regenerate API key" }, 500);
 
     return c.json({
       apiKey: {

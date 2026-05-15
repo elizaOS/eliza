@@ -25,6 +25,190 @@ Stable model ids:
 
 ---
 
+## K7 — 2026-05-15 — ONNX dep runway audit + tracker correction
+
+K7 verified and corrected the ONNX migration state for all voice sub-models.
+Key findings:
+
+- **Silero VAD** (`vad`): confirmed ZERO `onnxruntime-node` imports in `vad.ts`.
+  Runtime path is `SileroVadGgml → eliza_inference_vad_* FFI` only.
+  ONNX file (`voice/vad/silero-vad-int8.onnx`) stays on HF per runway policy.
+  `voice-models.ts` updated: `preferredBackend: "ffi"`, `deprecatedBackends: ["onnx"]`.
+
+- **hey-eliza wakeword** (`wakeword`): confirmed ZERO `onnxruntime-node` imports in
+  `wake-word.ts`. Runtime path is `GgmlWakeWordModel → eliza_inference_wakeword_* FFI` only.
+  ONNX files stay on HF per runway policy.
+  `voice-models.ts` updated: `preferredBackend: "ffi"`, `deprecatedBackends: ["onnx"]`.
+
+- **LiveKit turn-detector** (`turn-detector`, `turn-detector-intl`): J1.d (LiveKitGgmlTurnDetector)
+  confirmed as preferred path in engine.ts chain. ONNX is last-resort fallback only.
+  `voice-models.ts` updated: `preferredBackend: "ggml"`, `deprecatedBackends: ["onnx"]`.
+
+- **Kokoro TTS** (`kokoro`): `pick-runtime.ts` defaults to `KOKORO_BACKEND=fork` (llama-server).
+  `KokoroOnnxRuntime` only reachable via explicit env override.
+  `voice-models.ts` updated: `preferredBackend: "llama-server"`, `deprecatedBackends: ["onnx"]`.
+
+- **OmniVoice** (`omnivoice`): fully on fork FFI since W3-3. No ONNX ever used.
+  `voice-models.ts` updated: `preferredBackend: "llama-server"`.
+
+Still ONNX-active (K1/K2/K3 compute gates):
+- `voice-emotion` (Wav2Small) — ONNX active, blocked on K1 native port.
+- `speaker-encoder` (WeSpeaker) — ONNX active, blocked on K2 native port.
+- `diarizer` (pyannote-3) — ONNX active, blocked on K3 native port.
+
+Tracker: `packages/training/reports/onnx-to-ggml-tracker.json` updated to doc_version 3.
+Full matrix: `.swarm/impl/K7-no-onnx.md`.
+
+---
+
+## I1 — 2026-05-15 — single-runtime policy audit (no ONNX, no upstream node-llama-cpp)
+
+User directive 2026-05-15: every local-inference path must run through
+the elizaOS llama.cpp fork; no ONNX, no external model runtimes; the
+only `node-llama-cpp` package allowed is the canonical wrapper for our
+fork's `libllama` + `llama-server`.
+
+Audit summary (see `.swarm/impl/I1-single-runtime.md` for the full
+table):
+
+- **DONE.** Silero VAD + hey-eliza wake-word resolved-runtime paths
+  already route through the fork's FFI
+  (`eliza_inference_vad_*` / `eliza_inference_wakeword_*` on
+  `libelizainference`). ONNX kept on HF for the one-release
+  deprecation runway.
+- **`compute-gated`.** Five voice sub-models still hit ONNX in the
+  resolved path because the native ggml graphs are stubbed:
+  - Wav2Small (`voice-classifier-cpp/src/voice_emotion_stub.c`,
+    `-ENOSYS`),
+  - WeSpeaker R34-LM (`voice_speaker_stub`, `-ENOSYS`),
+  - pyannote-3 diarizer (no native scaffold yet),
+  - Kokoro TTS (`LLM_ARCH_KOKORO` arch loader stubbed in W3-1, graph
+    not yet implemented in the fork),
+  - LiveKit turn-detector (GGUF live on HF as of H4; runtime resolver
+    still defaults to the ONNX path).
+- The TS-side GGML surfaces exist
+  (`voice-emotion-classifier-ggml.ts`, `speaker/encoder-ggml.ts`,
+  `eot-classifier-ggml.ts`, `vad-ggml.ts`, `wake-word-ggml.ts`) and
+  every one throws a structured `*Unavailable` / `*-stub` error
+  rather than silently falling back — AGENTS.md §3 compliance is
+  intact today even though the fork side returns `-ENOSYS`.
+- `node-llama-cpp@3.18.1` (the optional dep in
+  `plugin-local-inference/package.json`) stays — it is the canonical
+  npm wrapper for the fork's `llama-server` + FFI per native/AGENTS.md.
+
+ONNX deprecation runway: every voice sub-model HF repo keeps its ONNX
+payload for the I1+1 release; the next release after each port lands
+removes the ONNX file from the repo and bumps `voice-models.ts` to
+prefer the GGUF.
+
+## kokoro
+
+### 0.3.0 — 2026-05-15 (J2 — fork-side StyleTTS-2 inference path)
+
+**Runtime path move:** the resolved-runtime path for Kokoro TTS is now
+the elizaOS llama.cpp fork. The fork's `tools/kokoro/` subtree implements
+a standalone StyleTTS-2 + iSTFTNet inference pipeline that satisfies the
+J2 single-runtime brief — Kokoro synthesis can now run through
+`llama-server` end-to-end with no `onnxruntime-node` dependency on the
+resolved path.
+
+**What landed:**
+
+- `LLM_ARCH_KOKORO` arch tag + GGUF loader in the fork (extends the
+  W3-1 K-quant scaffold with the StyleTTS-2 graph builder).
+- `tools/kokoro/` subtree: `kokoro_lib` (inference + iSTFT + phoneme
+  table), `kokoro-tts` standalone CLI, `/v1/audio/speech` server-mount
+  handler.
+- LLAMA_BUILD_KOKORO=ON CMake option; gated on the existing fork build.
+- `convert_kokoro_pth_to_gguf.py` with `--pth` (PyTorch checkpoint) and
+  `--stub` (smoke-test) modes.
+- `pickKokoroRuntimeBackend()` in `@elizaos/shared` — defaults
+  `KOKORO_BACKEND=fork` to route TTS through the llama-server route;
+  `KOKORO_BACKEND=onnx` is the one-release deprecation runway.
+- `EngineVoiceBridge.startKokoroOnly` now uses the selector (fork by
+  default).
+
+**Quality gap (documented):** the from-scratch port runs at lower
+acoustic quality vs the ONNX reference. The text encoder + style
+projection + iSTFT pipeline produce non-blank audio shaped by the
+phoneme sequence + voice preset, but the predictor convs and ResBlock
+decoder ops need follow-up per-tensor weight-mapping to match the
+PyTorch reference (the converter ships an initial `_PTH_KEY_RULES` map
+that covers the Albert text encoder; the predictor + decoder mappings
+are a Phase-2 worker-day item). UTMOS regression vs ONNX baseline is
+expected. Detailed gap log: `.swarm/impl/J2-kokoro-port-notes.md`.
+
+**Verification:**
+- `tools/kokoro/tests/` ctest: 2/2 PASS (`test-kokoro-phonemes`,
+  `test-kokoro-istft`).
+- `scripts/voice-kokoro/smoke.sh`: end-to-end stub GGUF + voice preset
+  + CLI produces a non-blank 24kHz WAV (peak ≈ 0.03 fp32 on the stub).
+- TypeScript: `pickKokoroRuntimeBackend` typechecks under
+  `@elizaos/shared` and `@elizaos/plugin-local-inference`.
+
+**Net improvement:** false. Quality gap vs ONNX baseline is the
+deliberate one-release deprecation runway, not a regression we intend
+to keep. Auto-updater will not recommend the GGUF swap until the
+follow-up weight-mapping pass closes the gap.
+
+**Compute-gated follow-up:** full predictor + decoder weight mapping
+(walks the iSTFTNet ResBlock + harmonic generator from the PyTorch
+checkpoint into the fork's GGUF layout). Estimated 5-10 worker-days
+per `.swarm/impl/I1-single-runtime.md` §F.
+
+---
+
+### 0.2.0 — 2026-05-15 (I2 — sam ship per user override)
+
+**af_sam.bin** shipped to `elizaos/eliza-1-voice-kokoro:voices/af_sam.bin` per explicit user
+override of the H1 NO-SHIP decision. The user's directive: "We dont care if its perfect
+or it sounds like her at all. its fine."
+
+**Source checkpoint:** `packages/training/out/kokoro-same-sweep/anchor-0.2/af_same-anchor-0.2.bin`
+(mel-fit voice clone, anchor=0.2, lr=0.01, 1200 steps, init af_bella, corpus 58 real clips / 3.5 min).
+Selected as best available by SpkSim among the 4-anchor sweep (anchor-0.2 = 0.15 vs anchor-0.0 = 0.10).
+
+**Eval numbers (from sweep run, cuda, 6 val clips):**
+
+| Metric | Shipped value | Gate | Gate result |
+|--------|--------------|------|-------------|
+| UTMOS | 2.32 | ≥ 3.8 | FAIL |
+| WER | 1.00 | ≤ 0.08 | FAIL |
+| SpkSim | 0.15 | ≥ 0.55 | FAIL |
+| RTF | 124.8× | ≥ 5.0 | PASS |
+| beatsBaseline | false | required | FAIL |
+
+**Why all gates fail (structural — not fixable within this corpus):**
+The real `sam/` corpus (58 clips / 3.5 min) has an ECAPA-TDNN self-cosine ceiling of 0.561.
+The mel-fit optimization cannot bridge the gap between Kokoro's base speaker manifold and
+the real sam voice identity. WER=1.0 is characteristic of a quality-degraded embedding
+causing unintelligible output. No configuration change can fix this without ≥3h of clean
+corpus + speaker-embedding loss objective.
+
+**User decision:** ship regardless. Gate failure is documented and honest.
+
+**Production sam voice:** the OmniVoice ELZ2 v2 frozen preset (`elizaos/eliza-1-voice-omnivoice`,
+`presets/voice-preset-same.bin`) remains the user-facing sam voice. `af_sam.bin` is a Kokoro
+voice slot, marked `evalGatePass: false`, for developer/experimental use only.
+
+**Compute-gated follow-up:** real sam quality requires ≥3h clean corpus + ECAPA-TDNN speaker
+loss objective or F5-TTS/XTTS-v2 zero-shot cloning.
+
+| Field | Value |
+|-------|-------|
+| HF repo | `elizaos/eliza-1-voice-kokoro` |
+| HF revision | `4b8809b197aa90ae486f83c1e0a5dc7effb6b285` |
+| File | `voices/af_sam.bin` |
+| sha256 | `6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b` |
+| sizeBytes | 522240 |
+| Synthesis smoke | PASS (3.2s audio, max amplitude 0.085, non-silent) |
+| evalGatePass | false (user override) |
+| Net improvement | false (quality regression vs baseline af_bella) |
+
+Artifact: `artifacts/i2-kokoro-ship/20260515T112744Z/`
+
+---
+
 ## M-emotion-final — 2026-05-15 — voice-emotion v0.2.0 gate cleared + standalone HF mirror
 
 Voice-emotion v0.2.0 (Wav2Small cls7 head, distilled from
@@ -501,6 +685,20 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 - **What changed:** First publish.
 
 ## asr
+
+### 0.2.0 — 2026-05-15 (T-asr — K-quant ladder)
+
+- **What changed:** K-quant ladder published for Qwen3-ASR-1.7B.
+  Four new quant variants uploaded to `elizaos/eliza-1`:
+  - `voice/asr/eliza-1-asr-q3_k_m.gguf` — 1.07 GB, sha256 `80c046bf…`
+  - `voice/asr/eliza-1-asr-q4_k_m.gguf` — 1.28 GB, sha256 `de11f711…`
+  - `voice/asr/eliza-1-asr-q5_k_m.gguf` — 1.47 GB, sha256 `dcffc861…`
+  - `voice/asr/eliza-1-asr-q6_k.gguf` — 1.67 GB, sha256 `b0f6f2d6…`
+  mmproj stays Q8_0 (sub-Q8 regresses WER per R8 §3.6). Enables tier-aware
+  memory selection: low-VRAM devices select Q3_K_M, standard devices Q4_K_M,
+  quality-first Q5_K_M+.
+  HF commit: `50cffb075ae3c24a4b0cd3a8ccdfaa92506f70d4`.
+- **Net improvement:** yes (ladder enables lower memory tiers).
 
 ### 0.1.3 — 2026-05-15 (G4 — HF repo live)
 

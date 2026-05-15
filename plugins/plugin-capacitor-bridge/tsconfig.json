@@ -18,7 +18,43 @@
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
 			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
-			"@elizaos/agent": ["../../packages/agent/src/index.ts"]
+			"@elizaos/agent": ["../../packages/agent/src/index.ts"],
+			"@elizaos/agent/*": ["../../packages/agent/src/*"],
+			"@elizaos/shared": ["../../packages/shared/src/index.ts"],
+			"@elizaos/shared/*": ["../../packages/shared/src/*"],
+			"@elizaos/plugin-agent-skills": [
+				"../../plugins/plugin-agent-skills/src/index.ts"
+			],
+			"@elizaos/plugin-agent-skills/*": [
+				"../../plugins/plugin-agent-skills/src/*"
+			],
+			"@elizaos/plugin-app-manager": [
+				"../../plugins/plugin-app-manager/src/index.ts"
+			],
+			"@elizaos/plugin-app-manager/*": [
+				"../../plugins/plugin-app-manager/src/*"
+			],
+			"@elizaos/plugin-aosp-local-inference": [
+				"../../plugins/plugin-aosp-local-inference/src/index.ts"
+			],
+			"@elizaos/plugin-aosp-local-inference/*": [
+				"../../plugins/plugin-aosp-local-inference/src/*"
+			],
+			"@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
+			"@elizaos/plugin-browser/*": ["../../plugins/plugin-browser/src/*"],
+			"@elizaos/plugin-commands": [
+				"../../plugins/plugin-commands/src/index.ts"
+			],
+			"@elizaos/plugin-local-inference": [
+				"../../plugins/plugin-local-inference/src/index.ts"
+			],
+			"@elizaos/plugin-local-inference/*": [
+				"../../plugins/plugin-local-inference/src/*"
+			],
+			"@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
+			"@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
+			"@elizaos/plugin-x402": ["../../plugins/plugin-x402/src/index.ts"],
+			"@elizaos/plugin-x402/*": ["../../plugins/plugin-x402/src/*"]
 		}
 	},
 	"include": ["src/**/*"],

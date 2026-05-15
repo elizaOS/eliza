@@ -21,12 +21,20 @@ export interface WorkdirRoute {
   matchAny?: string[];
   excludeAny?: string[];
   instructions?: string;
+  urlMappings?: WorkdirRouteUrlMapping[];
+}
+
+export interface WorkdirRouteUrlMapping {
+  urlPrefix: string;
+  localPath: string;
+  requireFresh?: boolean;
 }
 
 export interface ResolvedWorkdirRoute {
   id: string;
   workdir: string;
   instructions?: string;
+  urlMappings?: WorkdirRouteUrlMapping[];
 }
 
 export function resolvePinnedAdapter(
@@ -108,6 +116,7 @@ export function resolveWorkdirRoute(
       id: route.id,
       workdir: expanded,
       instructions: route.instructions,
+      urlMappings: route.urlMappings,
     };
   }
   return undefined;

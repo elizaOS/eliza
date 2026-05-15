@@ -39,24 +39,39 @@ without changing the ABI.
 
 ## Upstream pins
 
-- BlazeFace front model
-  - Repo: https://github.com/google/mediapipe
-  - Canonical weights:
+- **BlazeFace front model** (PINNED)
+  - Source: https://github.com/hollance/BlazeFace-PyTorch
+  - Commit: `master @ 2c5b59d` (current `blazeface.pth` +
+    `anchors.npy` shipping in that repo). The `.pth` is a 1:1 PyTorch
+    re-export of the canonical
     `mediapipe/modules/face_detection/face_detection_front.tflite`
-  - Python ports we'll address weights against:
-    https://github.com/hollance/BlazeFace-PyTorch
-  - Commit: **TODO — pin at conversion time and record in
-    `face.upstream_commit` (see `scripts/blazeface_to_gguf.py`).**
+    (BN already folded into the conv weights).
+  - Architecture: BlazeBlocks (depthwise 3x3 + pointwise 1x1 + ReLU)
+    with two output strides 8 and 16, classifier_8 / classifier_16,
+    regressor_8 / regressor_16. 896 anchors (16x16x2 + 8x8x6) on a
+    128x128 input.
+  - Encoded as `face.upstream_commit` =
+    `"hollance/BlazeFace-PyTorch@2c5b59d"` in the GGUF.
+  - Recorded in `scripts/blazeface_to_gguf.py` as
+    `BLAZEFACE_UPSTREAM_COMMIT`.
 
-- Face embedding network (pick one per build)
-  - `arcface_mini_128`:
-    https://github.com/deepinsight/insightface — `buffalo_s` pack.
-    Backbone: MobileFaceNet (`w600k_mbf.onnx`). Trained on MS1M-V3,
-    L2-normalized 128-d output, ~5 MB at fp16.
-  - `facenet_128`:
-    https://github.com/timesler/facenet-pytorch — InceptionResnetV1
-    re-headed to 128-d output. Larger (~25 MB at fp16) but available
-    in PyTorch out of the box.
+- **Face embedding network** (PINNED, single supported variant for
+  ABI stability)
+  - Family: `facenet_128`
+  - Source: https://github.com/timesler/facenet-pytorch
+  - Pin: `facenet-pytorch==2.5.3` (PyPI) — InceptionResnetV1 trained
+    on `vggface2` with the standard 512-d head, projected down to
+    128-d via a fixed random orthonormal projection captured into the
+    GGUF (so two builds with the same pin produce comparable
+    embeddings). The 128-d projection matrix is regenerated only when
+    `--regenerate-projection` is passed.
+  - Encoded as `face.upstream_commit` =
+    `"facenet-pytorch==2.5.3"` in the GGUF.
+  - Recorded in `scripts/face_embed_to_gguf.py` as
+    `EMBED_UPSTREAM_COMMIT`.
+
+  (`arcface_mini_128` is reserved as a future variant; the C ABI
+  accepts both names but only `facenet_128` is shipped today.)
 
 ## C ABI (frozen by `include/face/face.h`)
 

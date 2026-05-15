@@ -825,6 +825,80 @@ describe("v5 planner loop — evaluator gate", () => {
 		expect(evalStage.model).toBeUndefined();
 	});
 
+	it("records a FINISH evaluation when a terminal REPLY ends a continued tool loop", async () => {
+		let plannerCallCount = 0;
+		const runtime = {
+			useModel: vi.fn(async () => {
+				plannerCallCount++;
+				if (plannerCallCount === 1) {
+					return {
+						text: "",
+						toolCalls: [
+							{ id: "call-1", name: "LOOKUP", arguments: { q: "disk" } },
+						],
+					};
+				}
+				return {
+					text: "",
+					toolCalls: [
+						{
+							id: "call-final",
+							name: "REPLY",
+							arguments: { text: "Disk usage checked." },
+						},
+					],
+				};
+			}),
+		};
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "CONTINUE" as const,
+			thought: "Need the planner to produce the final reply.",
+		}));
+		const recordedStages: RecordedStage[] = [];
+		const recorder: TrajectoryRecorder = {
+			startTrajectory: vi.fn(() => "trajectory-terminal"),
+			recordStage: vi.fn(
+				async (_trajectoryId: string, stage: RecordedStage) => {
+					recordedStages.push(stage);
+				},
+			),
+			endTrajectory: vi.fn(async () => undefined),
+			load: vi.fn(async () => null),
+			list: vi.fn(async () => []),
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx-terminal" },
+			executeToolCall: vi.fn(async () => ({
+				success: true,
+				text: "df output",
+			})),
+			evaluate,
+			recorder,
+			trajectoryId: "trajectory-terminal",
+		});
+
+		expect(evaluate).toHaveBeenCalledTimes(1);
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe("Disk usage checked.");
+		expect(result.evaluator?.decision).toBe("FINISH");
+		expect(
+			result.trajectory.evaluatorOutputs.map((item) => item.decision),
+		).toEqual(["CONTINUE", "FINISH"]);
+		const evalStages = recordedStages.filter(
+			(stage) => stage.kind === "evaluation",
+		);
+		expect(evalStages.at(-1)?.evaluation).toMatchObject({
+			decision: "FINISH",
+			messageToUser: "Disk usage checked.",
+			gated: true,
+			llmCallSkipped: true,
+			reason: "terminal_tool_call",
+		});
+	});
+
 	it("WITHHOLDS in native-mode (text fallback, no explicit messageToUser) — evaluator IS called", async () => {
 		// Native tool-call returns infer messageToUser from `text`. That path is
 		// ambiguous (thought vs final answer), so the gate must withhold.

@@ -561,8 +561,8 @@ function nowStamp(): string {
  * Until then, calling this throws — the README documents the swap.
  */
 export async function runRealPipeline(
-  _opts: RunPipelineOptions,
-): Promise<never> {
+  _opts: RunRealPipelineOptions,
+): Promise<RunPipelineResult> {
   throw new Error(
     "runRealPipeline: not yet wired. Set ELIZA_VISION_CUA_E2E_REAL=1 only after wiring " +
       "runtime.useModel(IMAGE_DESCRIPTION) and performDesktopClick — see README.md.",

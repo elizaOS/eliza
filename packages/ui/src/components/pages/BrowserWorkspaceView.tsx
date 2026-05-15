@@ -11,7 +11,7 @@ import {
   X,
 } from "lucide-react";
 import {
-  type JSX,
+  type JSX as ReactJSX,
   useCallback,
   useEffect,
   useMemo,
@@ -143,45 +143,46 @@ function _isWebviewTagElement(
   );
 }
 
-// JSX intrinsic for the Electrobun custom element. Augments the React module
-// so the modern `react-jsx` transform picks it up without app-core's
-// ambient-modules.d.ts being on every consumer's include list.
-declare module "react" {
+type ElectrobunWebviewProps = React.DetailedHTMLProps<
+  React.HTMLAttributes<WebviewTagElement> & {
+    src?: string;
+    partition?: string;
+    preload?: string;
+    sandbox?: boolean | "";
+    transparent?: boolean | "";
+    hidden?: boolean;
+    /**
+     * "cef" (bundled Chromium) or "native" (system WKWebView on macOS).
+     * Set explicitly per-tag rather than relying on the
+     * `defaultRenderer` config: CEF is what supports the OOPIF model
+     * + RPC + preload script the agent automation kit depends on.
+     */
+    renderer?: "cef" | "native";
+    /**
+     * Comma-separated CSS selectors. Any element matching is treated
+     * as a punch-out rect — the native OOPIF will not paint over it
+     * and will not capture clicks within it. Required so React
+     * overlays (modals, dropdowns, toasts) render above the webview
+     * surface and remain interactive.
+     */
+    masks?: string;
+    /**
+     * Initial passthrough state. When present the OOPIF starts in
+     * pointer-events: none mode. Set on inactive tabs so the gap
+     * between mount and the first selection effect doesn't leak
+     * clicks into the wrong tab.
+     */
+    passthrough?: boolean | "";
+  },
+  WebviewTagElement
+>;
+
+// JSX intrinsic for the Electrobun custom element. Kept local so packages that
+// consume ui source do not need app-core's ambient module declarations.
+declare module "react/jsx-runtime" {
   namespace JSX {
     interface IntrinsicElements {
-      "electrobun-webview": React.DetailedHTMLProps<
-        React.HTMLAttributes<HTMLElement> & {
-          src?: string;
-          partition?: string;
-          preload?: string;
-          sandbox?: boolean | "";
-          transparent?: boolean | "";
-          hidden?: boolean;
-          /**
-           * "cef" (bundled Chromium) or "native" (system WKWebView on macOS).
-           * Set explicitly per-tag rather than relying on the
-           * `defaultRenderer` config: CEF is what supports the OOPIF model
-           * + RPC + preload script the agent automation kit depends on.
-           */
-          renderer?: "cef" | "native";
-          /**
-           * Comma-separated CSS selectors. Any element matching is treated
-           * as a punch-out rect — the native OOPIF will not paint over it
-           * and will not capture clicks within it. Required so React
-           * overlays (modals, dropdowns, toasts) render above the webview
-           * surface and remain interactive.
-           */
-          masks?: string;
-          /**
-           * Initial passthrough state. When present the OOPIF starts in
-           * pointer-events: none mode. Set on inactive tabs so the gap
-           * between mount and the first selection effect doesn't leak
-           * clicks into the wrong tab.
-           */
-          passthrough?: boolean | "";
-        },
-        HTMLElement
-      >;
+      "electrobun-webview": ElectrobunWebviewProps;
     }
   }
 }
@@ -416,7 +417,7 @@ function resolveSolanaCluster(
   return undefined;
 }
 
-export function BrowserWorkspaceView(): JSX.Element {
+export function BrowserWorkspaceView(): ReactJSX.Element {
   useRenderGuard("BrowserWorkspaceView");
   const {
     getStewardPending,
@@ -2058,7 +2059,9 @@ export function BrowserWorkspaceView(): JSX.Element {
     defaultValue: "Go",
   });
 
-  function renderBrowserWorkspaceTabRow(tab: BrowserWorkspaceTab): JSX.Element {
+  function renderBrowserWorkspaceTabRow(
+    tab: BrowserWorkspaceTab,
+  ): ReactJSX.Element {
     const active = tab.id === selectedTabId;
     const tabHasSessionFocus = workspace.mode === "web" ? tab.visible : active;
     const label = getBrowserWorkspaceTabLabel(tab, t);

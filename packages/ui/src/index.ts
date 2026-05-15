@@ -56,6 +56,8 @@ export {
   MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
   maybeCompressDocumentUploadImage,
 } from "./components";
+export * from "./components/apps/overlay-app-api";
+export * from "./components/apps/overlay-app-registry";
 export * from "./components/composites";
 export * from "./components/composites/page-panel";
 export * from "./components/pages/vector-browser-utils";

@@ -1,15 +1,19 @@
-// Shared DLMM module export to avoid bundler issues
-import DLMMDefault, { autoFillYByStrategy, StrategyType } from "@meteora-ag/dlmm";
+// Shared DLMM module export to avoid ESM/CJS interop issues in the SDK.
+import { createRequire } from "node:module";
+import type DLMMDefault from "@meteora-ag/dlmm";
 
 export type { LbPosition } from "@meteora-ag/dlmm";
-export { autoFillYByStrategy, StrategyType };
 
 type DLMMConstructor = typeof DLMMDefault;
-type DLMMModule = DLMMConstructor | { default: DLMMConstructor };
+type DLMMModule = {
+  default?: DLMMConstructor;
+  autoFillYByStrategy: typeof import("@meteora-ag/dlmm").autoFillYByStrategy;
+  StrategyType: typeof import("@meteora-ag/dlmm").StrategyType;
+};
 
-// Handle both ESM and CommonJS default exports
-const dlmmModule = DLMMDefault as DLMMModule;
-const DLMM: DLMMConstructor = "default" in dlmmModule ? dlmmModule.default : dlmmModule;
+const require = createRequire(import.meta.url);
+const dlmmModule = require("@meteora-ag/dlmm") as DLMMModule;
+const DLMM = (dlmmModule.default ?? dlmmModule) as DLMMConstructor;
+const { autoFillYByStrategy, StrategyType } = dlmmModule;
 
-// Re-export the default as DLMM
-export { DLMM };
+export { autoFillYByStrategy, DLMM, StrategyType };

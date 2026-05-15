@@ -5,7 +5,8 @@
   "version": "0.1.0",
   "engine": "omnivoice",
   "presetFormat": "ELZ2-v2",
-  "hfRepo": "elizaos/eliza-1-voice-omnivoice-same-v01",
+  "hfRepo": "elizaos/eliza-1",
+  "hfPath": "voice/omnivoice/presets/voice-preset-same.bin",
   "assets": [
     {
       "filename": "voice-preset.elz2",

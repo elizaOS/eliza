@@ -1,5 +1,61 @@
 # Swarm collaboration notes — Voice Waves 2+3
 
+## J1 — Native ports phase=impl-done (J1.d real; J1.a/b/c infrastructure landed)
+
+2026-05-15 J1 phase=impl-done.
+- **J1.d (turn-detector): END-TO-END REAL.** New
+  `LiveKitGgmlTurnDetector` in `eot-classifier-ggml.ts` loads the
+  published GGUF (`elizaos/eliza-1:voice/turn-detector/onnx/turn-detector-en-q8.gguf`)
+  via the canonical fork wrapper `node-llama-cpp`. Reads
+  `P(<|im_end|>)` via `LlamaContext.controlledEvaluate`. The
+  `@huggingface/transformers` lazy-import is gone from this path.
+  Resolver in `engine.ts` prefers GGUF before ONNX.
+- **J1.a/b/c infrastructure landed.** `voice-classifier-cpp` library
+  refactor: STATIC-only → SHARED + STATIC so `bun:ffi` can dlopen it
+  (17 public symbols exported). Single stub TU split into per-head
+  TUs (`voice_emotion.c`, `voice_speaker.c`, `voice_eot.c`,
+  `voice_diarizer.c`). Real GGUF metadata reader (`voice_gguf_loader.{c,h}`,
+  no libllama dep) parses header + KV block. New `voice_diarizer_*`
+  C ABI (7-class powerset). TS GGML surfaces (voice-emotion-classifier-ggml,
+  speaker/encoder-ggml, NEW speaker/diarizer-ggml) all switched from
+  `throw native-stub` to real `bun:ffi` dlopen with five-way structured
+  error split. 5/5 ctests green (incl. new voice_gguf_loader_test).
+  19/19 plugin typecheck green.
+- **Forward graphs compute-gated.** Wav2Small, ResNet34+stats-pool,
+  SincNet+LSTM+powerset to ggml are per-head follow-ups (~5/6/7d
+  realistic estimates). Infrastructure is in; the forward TU
+  replacement is the only remaining step per head.
+- **SincNet "custom op" concern resolved**: precompute the sinc
+  filterbank at GGUF-conversion time, no fork-side custom op needed.
+- **No fork changes this session.** Submodule pin unchanged
+  (`5da0f068a`); J1 didn't require fork edits (J1.d uses the existing
+  LLM_ARCH_QWEN2; J1.a/b/c's forward graphs deferred).
+- Impl report: `.swarm/impl/J1-native-ports.md`.
+- Commits: `62dae12c88` (J1.c new files + impl report).
+  J1.d + J1.a/b/c infrastructure landed across peer chore commits
+  (`256592be32`, `136840b9b8`, `0693bb735a`) as the verify watcher
+  swept up dirty working-tree state.
+
+## J3 — Single-runtime finalizer phase=impl-done
+
+2026-05-15 J3 phase=impl-done (partial — 3 ONNX paths remain compute-gated; Kokoro C++ done).
+- J1.d (GGUF turn-detector): `eot-classifier-ggml.ts` LiveKitGgmlTurnDetector committed.
+  Production EOT chain: Eliza1Eot → GgmlTurnDetector → ONNX (last resort) → Heuristic.
+- J2 (Kokoro C++ port): committed to fork at `97b258922`; submodule bumped.
+  tools/kokoro/ subtree: 974 lines (kokoro.cpp + istft + phonemes + server-mount).
+  LLAMA_BUILD_KOKORO=ON builds kokoro_lib + /v1/audio/speech handler. Default OFF.
+  GGUF conversion + HF publish + TS runtime wiring pending (K2 wave).
+- 3 ONNX-active paths remain: Wav2Small, WeSpeaker, pyannote-3 (C stubs -ENOSYS).
+- Kokoro ONNX remains active (C++ done; no GGUF on HF; TS not switched yet).
+- AGENTS.md: `plugins/plugin-local-inference/native/AGENTS.md` §11 +
+  `packages/native-plugins/voice-classifier-cpp/AGENTS.md` header.
+- Submodule pin bumped to `97b258922` (Kokoro C++ port commit).
+- No-ONNX lsof proof deferred: Wav2Small+WeSpeaker+pyannote+Kokoro still ONNX-active.
+- Next wave (K2): (a) produce convert_kokoro_to_gguf.py + Q4_K_M on HF + TS GGUF wiring;
+  (b) J1 ports: Wav2Small+WeSpeaker ggml graph + pyannote diarizer.
+  When all done: remove onnxruntime-node from package.json, lsof proof, dep cleanup.
+- Report: `.swarm/impl/J3-finalize.md`
+
 ## W3-5 — Emotion roundtrip validation phase=impl-done
 
 2026-05-15 W3-5 phase=impl-done. 21/21 tests green on real audio (Kokoro + SUPERB proxy).
@@ -67,6 +123,13 @@
   `git add -A` commits to develop.
 
 ## Active agents
+
+- 2026-05-15 I2 phase=impl-done: af_sam.bin shipped to elizaos/eliza-1-voice-kokoro:voices/af_sam.bin
+  per user override (H1 NO-SHIP overridden). HF revision 4b8809b197aa90ae486f83c1e0a5dc7effb6b285.
+  Eval: WER=1.0/UTMOS=2.32/SpkSim=0.15 (all gate-fail, documented honestly). Synthesis smoke PASS
+  (3.2s non-silent). Registry: manifest.json kokoro v0.2.0, CHANGELOG.md updated, voice-models.ts
+  kokoro v0.2.0 entry added (netImprovement=false). af_same.bin was not present in HF repo (no deletion
+  needed). Report: .swarm/impl/I2-kokoro-ship.md.
 
 - 2026-05-15 H3 phase=impl-done: @elizaos/agent and @elizaos/plugin-local-inference
   typecheck both GREEN (EXIT:0). Four fixes: (1) plugin-compiler.ts bunGlobal.Bun?.Transpiler
@@ -775,3 +838,173 @@ coordinate here, don't kill peers.
     @elizaos/plugin-local-inference --filter @elizaos/shared` →
     20/20 tasks success (1m32s).
   - Impl report: .swarm/impl/H2-cleanup.md.
+
+- 2026-05-15 I1-single-runtime phase=impl-audit-done: comprehensive audit
+  of every `node-llama-cpp` + ONNX + external-runtime touchpoint landed at
+  .swarm/impl/I1-single-runtime.md. Findings: (1) VAD + wakeword
+  resolved-runtime paths are already on the fork's FFI
+  (`eliza_inference_vad_*` / `eliza_inference_wakeword_*` on
+  libelizainference) — DONE; (2) five voice sub-models still hit ONNX in
+  the resolved path (Wav2Small, WeSpeaker, pyannote-3 diarizer, Kokoro
+  TTS, LiveKit turn-detector) — each compute-gated with a precise
+  next-step + worker-day estimate (1d Wav2Small, 2d WeSpeaker, 1d
+  pyannote, 5-10d Kokoro, 1d turn-detector); (3) `node-llama-cpp@3.18.1`
+  npm dep stays — it IS the canonical wrapper for the fork's libllama +
+  llama-server per native/AGENTS.md; (4) `voice-classifier-cpp` C ABI
+  exists with `-ENOSYS` model heads — Phase-2 worker unblocked to land
+  the ggml graphs without touching the fork. Hard policy enforceable
+  end-to-end once those stubs become real. Bookkeeping landed:
+  registry description ("no more ONNX"), CHANGELOG I1 section,
+  manifest assetAudit note. NO source deletions this wave —
+  removing the ONNX paths today would crash voice (AGENTS.md §3
+  "no silent fallback" is intact). Commits: 2e8eab3d87
+  (docs(I1): drop "+ ONNX" from local-inference registry description).
+  Manifest + CHANGELOG bookkeeping picked up by peer auto-commits prior
+  to my commit (already in HEAD). Report:
+  .swarm/impl/I1-single-runtime.md.
+
+
+## H2.f — CUDA fused build green (2026-05-15)
+
+- 2026-05-15 04:44 H2 (respawn) phase=h2f-done. Local RTX 5080 CUDA fused
+  build of merged-OmniVoice llama.cpp went `[100%] Built target llama-server`
+  after the `static`→`extern` fix on `audio_speech_handler()` (commit
+  `5da0f068a` on fork, `a8bf079685` parent). Artefacts:
+  - `build-h2f-cuda/bin/llama-server` (8.3 MB, version 9879 / d0c714786)
+  - `build-h2f-cuda/tools/omnivoice/libomnivoice_lib.a` (614 KB)
+  - 23 `eliza_omnivoice::*` symbols resolved: `audio_speech_handler()`,
+    `g_model_path`/`g_codec_path`, `route_voice_preset::~dtor`,
+    `cli_or_env`, `json_int_clamped`/`json_float_positive`.
+  All H2.c committed-source surfaces link clean. H2.f Linux/CUDA DONE.
+  Metal stays compute-gated (no Mac). H2.e can now run per-tier eval
+  rounds against the green binary; that's a separate operator workstream
+  (~30 min/tier for text_eval + voice_rtf + e2e_loop + finalize).
+
+## I3 — gap close (2026-05-15)
+
+- 2026-05-15 I3 phase=impl: PID written to .swarm/run/I3.pid.
+  Gaps swept and dispositioned.
+
+  **T-asr DONE**: K-quant ladder (Q3_K_M/Q4_K_M/Q5_K_M/Q6_K) for
+  Qwen3-ASR-1.7B pushed to elizaos/eliza-1 (commit 50cffb075ae3c24a).
+  voice-models.ts updated with asr v0.2.0 entry. CHANGELOG updated.
+  Commit: c933c2bf0a.
+
+  **stale 1_7b bundle default DONE**: freeze-voice.mjs + voice-create-profile.mjs
+  both updated to use eliza-1-2b.bundle. Commit: 7afb8ce504.
+
+  **Q1-utmos DONE**: utmos>=0.1.0 added to kokoro/requirements.txt.
+  Commit: 967cb62163.
+
+  **H2.f CUDA fused build DONE**: Retried build after submodule bump
+  (5da0f068a — drop static on audio_speech_handler). llama-server binary
+  produced at build-h2f-cuda/bin/llama-server (8.4 MB, CUDA, OmniVoice
+  audio_speech_handler linked). Commit: 4ffeb5cdf8.
+
+  **T-asr phase=impl-done**: K-quant ladder complete.
+  **H2.f phase=impl-done**: CUDA fused build verified GREEN.
+  **W3-3 follow-up 1 DONE** (preset-aware logic in committed source): H2.c.
+  **W3-3 follow-up 2 DONE** (slot-KV-pool real LRU impl): H2.c.
+  **W3-3 follow-up 3** (stale verify-symbols.mjs): removed by H2.c.
+
+
+## V-verify-final (re-dispatch) — verify watcher (2026-05-15 04:57)
+
+Resuming as the verify watcher after rate-limit. Wave 2 was already
+closed by K-verify on 2026-05-14 (.swarm/voice-finish/WAVE_2_FINAL_SUMMARY.md
+remains canonical). The 5-parallel-agent wave noted in the brief
+(L-kokoro-distill / M-emotion-final / O-turn-intl / S-static-models / T-asr)
+appears to have already landed — no PIDs found, no active swarm dirs.
+
+Current Wave 3 Gauntlet / H/I-wave is still actively running. So my
+re-dispatched role is: keep `develop` green while peer agents
+push, fix transient lint/typecheck breakage, and write a final
+WAVE_2_GRIND_FINAL.md summarizing the post-Wave-2 grind state.
+
+Session fixes so far (all `fix(V-verify-final): ...`):
+- biome format fixes: packages/agent, packages/app-core/platforms/electrobun, packages/benchmarks/eliza-1
+- ui DynamicViewLoader biome-ignore for reloadKey hook dep
+- e2e.config.ts merge resolution (app-lifeops → plugin-lifeops rename + local-inference voice paths union)
+- packages/core/src/connectors/account-manager.ts: default accessGate/status in normalizeAccount
+- packages/agent/tsconfig.json: bump module ES2022 → ESNext (for `with { type: "json" }` import attributes in @elizaos/ui i18n)
+- packages/agent/src/api/conversation-routes.ts: replace bare `aborted` with `disconnectTracker.isAborted()` in stream handler
+- gitignore *.pt (after accidentally tracking yolov8n.pt in a peer-state checkpoint; untracked + ignored)
+
+
+---
+
+## K-wave — final forward-graph ports + ONNX removal (2026-05-15)
+
+User: "issue sub agents to do all remaining". Sweep of remaining open items
+from J1.a/b/c (forward graphs deferred), J2 quality gap (predictor MLPs +
+decoder weight mapping), J3 ONNX dep removal (gated on K1..K4), H2.e
+per-tier eval, plus GGML_OP_ISTFT native op.
+
+Same hard rules: no worktrees, no stash, no branch hops, commit dirty,
+coordinate here, don't kill peers. **HF_TOKEN handling:** read from env.
+Never commit.
+
+- **K1** (Opus) — J1.a Wav2Small CNN+Transformer real forward + parity.
+- **K2** (Opus) — J1.b WeSpeaker ResNet34-LM real forward + parity.
+- **K3** (Opus) — J1.c pyannote-3 SincNet+LSTM+powerset real forward.
+- **K4** (Opus) — J2 Kokoro predictor + iSTFTNet decoder weight mapping.
+- **K5** — GGML_OP_ISTFT Vulkan + CUDA kernels.
+- **K6** — H2.e per-tier eval round → flip `publishEligible`.
+- **K7** — Final ONNX dep removal after K1..K4 done (waits via grep loop).
+- **K8** — Persistent verify watcher.
+- **C0-K** — coordinator; writes `VOICE_WAVE_3_K_SUMMARY.md`.
+
+## K7 phase=impl-done
+
+2026-05-15 K7 phase=impl-done (partial — K1/K2/K3 compute-gated; K4 GGUF pending).
+
+**Wait-loop outcome:** K1/K2/K3/K4 did not post phase=impl-done within the 4-hour
+grace period. K7 proceeded and documented all ONNX-dependent items.
+
+**What landed (already committed in V-verify-final a9125b1e41 + K3 04a301d3fc):**
+
+1. **ONNX tracker corrected** (`packages/training/reports/onnx-to-ggml-tracker.json`,
+   doc_version 2→3 — file is gitignored/local but updated):
+   - `vad-silero` status → `migrated-source` (vad.ts imports zero onnxruntime-node).
+   - `wake-word` status → `migrated-source` (wake-word.ts imports zero onnxruntime-node).
+   - `eot-classifier` updated: ONNX is last-resort fallback only (J1.d).
+   - `kokoro-tts` updated: default=fork; ONNX is env-override deprecation runway only.
+   - Added `speaker-diarizer` as separate entry (was missing from tracker).
+   - `package_summary` corrected: removed vad/wake-word from onnxruntime-node `needed_by`.
+
+2. **`voice-models.ts` updated** (`packages/shared/src/local-inference/voice-models.ts`):
+   - Added `VoiceModelBackend` type + `preferredBackend` / `deprecatedBackends` fields.
+   - `turn-detector` 0.2.0: `preferredBackend: "ggml"`, `deprecatedBackends: ["onnx"]`.
+   - `turn-detector-intl` 0.1.0: same.
+   - `kokoro` 0.3.0: `preferredBackend: "llama-server"`, `deprecatedBackends: ["onnx"]`.
+   - `omnivoice` 0.2.0: `preferredBackend: "llama-server"`.
+   - `vad` 0.1.0: `preferredBackend: "ffi"`, `deprecatedBackends: ["onnx"]`.
+   - `wakeword` 0.1.0: `preferredBackend: "ffi"`, `deprecatedBackends: ["onnx"]`.
+
+3. **AGENTS.md updated:**
+   - `plugins/plugin-local-inference/native/AGENTS.md` §11: updated ONNX status table.
+   - `packages/native-plugins/voice-classifier-cpp/AGENTS.md`: corrected header with K7 audit.
+
+4. **models/voice/CHANGELOG.md**: K7 section added (ONNX runway audit + tracker corrections).
+
+5. **docs/eliza-1-install.md**: corrected VAD install check (ggml.bin, not .onnx).
+
+**Typecheck:** `@elizaos/shared` + `@elizaos/plugin-local-inference` both green.
+
+**What remains (compute-gated, NOT done):**
+
+- `onnxruntime-node` dep in `plugin-local-inference/package.json`: CANNOT remove yet.
+  Still needed by: voice-emotion (K1), speaker-encoder (K2), diarizer (K3), eot ONNX fallback.
+- `@huggingface/transformers` dep: CANNOT remove yet.
+  Still needed by: eot-classifier ONNX path, NLC adapter.
+- `lsof` zero-ONNX proof: NOT available (K1/K2/K3 still ONNX-active in resolved runtime).
+- Full bench/verify gates: not run (require native builds + running llama-server).
+
+**What K3 also accomplished (posted after K7 started, concurrent):**
+K3 committed `feat(K3): pyannote-3 forward graph in voice-classifier-cpp; 100% ONNX parity`
+which means `speaker/diarizer.ts` can now switch to `diarizer-ggml.ts` — the C side
+is no longer -ENOSYS for pyannote. The switch itself (rename files, update manifest) is
+the K7 follow-up once K3 is confirmed stable. See `.swarm/impl/K7-no-onnx.md §D`.
+
+**Full matrix:** `.swarm/impl/K7-no-onnx.md`.
+

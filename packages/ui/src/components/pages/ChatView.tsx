@@ -592,6 +592,8 @@ export function ChatView({
       voice.isSpeaking ||
       Boolean(voiceSpeaker) ||
       Boolean(continuous.interimTranscript));
+  const continuousChatToggleVisible =
+    voice.supported && continuousChatMode !== "off";
 
   const auxiliaryNode = (
     <>
@@ -683,7 +685,7 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          {voice.supported ? (
+          {continuousChatToggleVisible ? (
             <div className="flex justify-end px-1 pb-0.5">
               <ContinuousChatToggle
                 compact
@@ -745,7 +747,7 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
-          {voice.supported ? (
+          {continuousChatToggleVisible ? (
             <div className="flex justify-end px-1 pb-0.5">
               <ContinuousChatToggle
                 compact

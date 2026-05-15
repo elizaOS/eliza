@@ -41,6 +41,10 @@ import type {
 	ElizaInferenceFfi,
 	NativeWakeWordHandle,
 } from "./ffi-bindings";
+import {
+	OpenWakeWordGgmlModel,
+	WakeWordGgmlUnavailableError,
+} from "./wake-word-ggml";
 
 /** Directory holding the bundled openWakeWord GGUF inside a bundle. */
 export const OPENWAKEWORD_DIR_REL_PATH = "wake";
@@ -300,21 +304,164 @@ export function resolveWakeWordModel(opts: {
 }
 
 /**
- * Convenience: resolve the bundled GGUF and open a native wake-word
- * session against it. Returns null when the bundle has no wake-word
- * GGUF (optional asset). Throws `WakeWordUnavailableError` when the
- * GGUF is present but the native runtime is missing or rejects the
- * head.
+ * Resolve the standalone wakeword-cpp library + three-GGUF bundle.
+ * Returns `null` when any of the four files is missing — that means
+ * "use a different provider", not "broken bundle".
+ *
+ * Search order for the shared library:
+ *   1. `$ELIZA_WAKEWORD_LIB` (operator override)
+ *   2. `<bundleRoot>/wake/libwakeword.{so,dylib,dll}`
+ *   3. `<state-dir>/local-inference/wake/libwakeword.{so,dylib,dll}`
+ *   4. `packages/native-plugins/wakeword-cpp/build/libwakeword.{so,dylib,dll}`
+ *      (developer build tree)
+ *
+ * Search order for the three GGUFs (per kind in
+ * {melspec, embedding, classifier}):
+ *   1. `<bundleRoot>/wake/<head>.<kind>.gguf`
+ *   2. `<state-dir>/local-inference/wake/<head>.<kind>.gguf`
+ *   3. `packages/native-plugins/wakeword-cpp/build/wakeword/<head>.<kind>.gguf`
+ */
+function libExtCandidates(): readonly string[] {
+	switch (process.platform) {
+		case "darwin":
+			return [".dylib", ".so"] as const;
+		case "win32":
+			return [".dll"] as const;
+		default:
+			return [".so", ".dylib"] as const;
+	}
+}
+
+function firstExisting(paths: readonly string[]): string | null {
+	for (const p of paths) if (existsSync(p)) return path.resolve(p);
+	return null;
+}
+
+/** Resolved triple of standalone wakeword-cpp paths (library + 3 GGUFs). */
+export interface WakeWordStandalonePaths {
+	libraryPath: string;
+	melspec: string;
+	embedding: string;
+	classifier: string;
+	head: string;
+}
+
+export function resolveWakeWordStandalonePaths(opts: {
+	bundleRoot?: string;
+	head?: string;
+}): WakeWordStandalonePaths | null {
+	const head = opts.head?.trim() || OPENWAKEWORD_DEFAULT_HEAD;
+	const root = localInferenceRoot();
+
+	const libCandidates: string[] = [];
+	const envLib = process.env.ELIZA_WAKEWORD_LIB;
+	if (envLib && envLib.length > 0) libCandidates.push(envLib);
+	for (const ext of libExtCandidates()) {
+		if (opts.bundleRoot)
+			libCandidates.push(
+				path.join(opts.bundleRoot, "wake", `libwakeword${ext}`),
+			);
+		libCandidates.push(path.join(root, "wake", `libwakeword${ext}`));
+		libCandidates.push(
+			path.join(
+				__dirname,
+				"..",
+				"..",
+				"..",
+				"..",
+				"..",
+				"packages/native-plugins/wakeword-cpp/build",
+				`libwakeword${ext}`,
+			),
+		);
+	}
+	const libraryPath = firstExisting(libCandidates);
+	if (!libraryPath) return null;
+
+	const ggufCandidates = (
+		kind: "melspec" | "embedding" | "classifier",
+	): string[] => {
+		const fname = `${head}.${kind}.gguf`;
+		const cs: string[] = [];
+		if (opts.bundleRoot) cs.push(path.join(opts.bundleRoot, "wake", fname));
+		cs.push(path.join(root, "wake", fname));
+		cs.push(
+			path.join(
+				__dirname,
+				"..",
+				"..",
+				"..",
+				"..",
+				"..",
+				"packages/native-plugins/wakeword-cpp/build/wakeword",
+				fname,
+			),
+		);
+		return cs;
+	};
+	const melspec = firstExisting(ggufCandidates("melspec"));
+	const embedding = firstExisting(ggufCandidates("embedding"));
+	const classifier = firstExisting(ggufCandidates("classifier"));
+	if (!melspec || !embedding || !classifier) return null;
+
+	return { libraryPath, melspec, embedding, classifier, head };
+}
+
+/**
+ * Open a wake-word session, preferring the standalone `wakeword-cpp`
+ * build when its library + three GGUFs are present. Falls back to the
+ * fused `libelizainference` wake-word path bundled with the
+ * local-inference engine. Returns `null` when neither provider can
+ * serve a session (no GGUFs anywhere, no fallback runtime).
+ *
+ * Provider order (Phase 2):
+ *   1. `OpenWakeWordGgmlModel` from `./wake-word-ggml.ts` — the
+ *      standalone `packages/native-plugins/wakeword-cpp` build, three
+ *      GGUFs converted via `scripts/wakeword_to_gguf.py`. Tried first.
+ *   2. `GgmlWakeWordModel` (this file) — the older fused-`libelizainference`
+ *      path that consumes `wake/openwakeword.gguf` from the bundle
+ *      cache. Used when the standalone build is not on disk, or when
+ *      it raises a recoverable load error (e.g. running under Node
+ *      where `bun:ffi` is not available).
  *
  * `ffi` and `ctx` come from the voice lifecycle — they are the same
- * `ElizaInferenceFfi` handle and context the VAD / TTS / ASR paths use.
+ * `ElizaInferenceFfi` handle and context the VAD / TTS / ASR paths
+ * use, and are required for the fused fallback. The standalone path
+ * uses neither.
  */
 export async function loadBundledWakeWordModel(opts: {
 	ffi: ElizaInferenceFfi;
 	ctx: ElizaInferenceContextHandle | (() => ElizaInferenceContextHandle);
 	bundleRoot?: string;
 	head?: string;
-}): Promise<GgmlWakeWordModel | null> {
+}): Promise<WakeWordModel | null> {
+	const standalone = resolveWakeWordStandalonePaths({
+		...(opts.bundleRoot !== undefined ? { bundleRoot: opts.bundleRoot } : {}),
+		...(opts.head !== undefined ? { head: opts.head } : {}),
+	});
+	if (standalone) {
+		try {
+			return await OpenWakeWordGgmlModel.load({
+				libraryPath: standalone.libraryPath,
+				paths: {
+					melspec: standalone.melspec,
+					embedding: standalone.embedding,
+					classifier: standalone.classifier,
+				},
+			});
+		} catch (err) {
+			if (
+				err instanceof WakeWordGgmlUnavailableError &&
+				err.code === "not-bun"
+			) {
+				/* The standalone path needs Bun for `bun:ffi`; under
+				 * Node we silently fall through to the fused path. */
+			} else {
+				throw err;
+			}
+		}
+	}
+
 	const paths = resolveWakeWordModel({
 		...(opts.bundleRoot !== undefined ? { bundleRoot: opts.bundleRoot } : {}),
 		...(opts.head !== undefined ? { head: opts.head } : {}),

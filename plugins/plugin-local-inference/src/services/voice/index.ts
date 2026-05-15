@@ -106,6 +106,18 @@ export {
 	type VoiceNextSpeaker,
 	type VoiceTurnSignal,
 } from "./eot-classifier";
+export {
+	applyQwenUserTemplate,
+	createBundledLiveKitGgmlTurnDetector,
+	DEFAULT_LIVEKIT_TURN_DETECTOR_GGML_DIR,
+	DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_EN,
+	DEFAULT_LIVEKIT_TURN_DETECTOR_GGUF_INTL,
+	EotGgmlUnavailableError,
+	LIVEKIT_IM_END_TOKEN,
+	LiveKitGgmlTurnDetector,
+	type LiveKitGgmlTurnDetectorOptions,
+	turnDetectorGgufForTier,
+} from "./eot-classifier-ggml";
 export { VoiceStartupError } from "./errors";
 export * from "./ffi-bindings";
 export {

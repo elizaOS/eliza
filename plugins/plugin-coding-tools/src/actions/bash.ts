@@ -33,6 +33,8 @@ const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const STREAM_CAP_CHARS = 30_000;
 const SHELL_HISTORY_DEFAULT_LIMIT = 20;
+const URL_PREFIXES = ["https://", "http://"] as const;
+const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
 
 type ShellActionSubaction = "run" | "clear_history" | "view_history";
 
@@ -104,17 +106,105 @@ function clampHistoryLimit(value: number | undefined): number {
   return Math.max(1, Math.min(100, Math.floor(value)));
 }
 
-function formatStreams(stdout: string, stderr: string): string {
+function isMissingPathError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
+function hasUnescapedShellUrlMetachar(token: string): boolean {
+  let escaped = false;
+  for (const char of token) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (SHELL_URL_METACHARS.has(char)) return true;
+  }
+  return false;
+}
+
+function shellSingleQuote(token: string): string {
+  return `'${token.replace(/'/g, "'\\''")}'`;
+}
+
+function quoteBareUrlsWithShellMetacharacters(command: string): string {
+  let out = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  let index = 0;
+
+  while (index < command.length) {
+    const char = command[index];
+    if (escaped) {
+      out += char;
+      escaped = false;
+      index += 1;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      out += char;
+      escaped = true;
+      index += 1;
+      continue;
+    }
+    if (quote) {
+      out += char;
+      if (char === quote) quote = null;
+      index += 1;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      out += char;
+      index += 1;
+      continue;
+    }
+
+    const prefix = URL_PREFIXES.find((candidate) =>
+      command.startsWith(candidate, index),
+    );
+    if (!prefix) {
+      out += char;
+      index += 1;
+      continue;
+    }
+
+    let end = index + prefix.length;
+    while (end < command.length) {
+      const next = command[end];
+      if (/\s/.test(next) || next === "'" || next === '"') break;
+      end += 1;
+    }
+
+    const token = command.slice(index, end);
+    out += hasUnescapedShellUrlMetachar(token)
+      ? shellSingleQuote(token)
+      : token;
+    index = end;
+  }
+
+  return out;
+}
+
+function formatStreams(
+  stdout: string,
+  stderr: string,
+  options: { showEmptyStreams?: boolean } = {},
+): string {
   const sOut = truncate(stdout, STREAM_CAP_CHARS);
   const sErr = truncate(stderr, STREAM_CAP_CHARS);
   const lines: string[] = [];
-  if (sOut.text.length > 0) {
+  if (sOut.text.length > 0 || options.showEmptyStreams) {
     lines.push("--- stdout ---");
-    lines.push(sOut.text);
+    lines.push(sOut.text.length > 0 ? sOut.text : "(empty)");
   }
-  if (sErr.text.length > 0) {
+  if (sErr.text.length > 0 || options.showEmptyStreams) {
     lines.push("--- stderr ---");
-    lines.push(sErr.text);
+    lines.push(sErr.text.length > 0 ? sErr.text : "(empty)");
   }
   return lines.join("\n");
 }
@@ -124,9 +214,9 @@ export const shellAction: Action = {
   contexts: [...CODING_TOOLS_CONTEXTS],
   roleGate: { minRole: "OWNER" },
   contextGate: { anyOf: ["code", "terminal", "automation"] },
-  similes: ["EXEC", "RUN_COMMAND"],
+  similes: ["BASH", "EXEC", "RUN_COMMAND"],
   description:
-    "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Blocklisted paths off-limits as cwd.",
+    "Shell action. action=run executes command via local shell. action=clear_history clears conversation command history. action=view_history returns recent commands. command required only for run. Prefer bounded commands; avoid recursive whole-filesystem scans unless explicitly requested. For JSON API inspection, prefer jq or node; if Python is needed, call python3 rather than assuming a python alias exists. If a command exits 0 with empty stdout/stderr, the command produced no output; try another source or parser when data is still needed instead of claiming the shell did not return output. For disk checks, use df for every requested mount/path (for root plus home: df -h / /home) plus targeted du on likely cleanup directories; when asked for cleanup candidates, inspect one readable largest directory one level deeper before ranking candidates. Use separators that still allow later inspection commands to run when du hits expected permission-denied paths.",
   descriptionCompressed: "Run shell commands; clear/view shell history.",
   parameters: [
     {
@@ -140,7 +230,8 @@ export const shellAction: Action = {
     },
     {
       name: "command",
-      description: "For action=run: shell command, executed via /bin/bash -c.",
+      description:
+        "For action=run: shell command, executed via /bin/bash -c. Keep routine inspection commands bounded; avoid broad scans like du -sh /* when a targeted path is enough. For JSON API data, prefer jq or node; use python3, not python, unless the environment explicitly shows python exists. If stdout/stderr are marked empty, the command produced no output; try a different command/source when the user still needs a value. Include every requested path in df, e.g. df -h / /home. For cleanup candidates, follow the first bounded du result with a targeted du on the largest readable directory before answering; avoid && between du probes when permission-denied paths are expected.",
       required: false,
       schema: { type: "string" },
     },
@@ -249,12 +340,18 @@ export const shellAction: Action = {
       });
     }
 
-    const command = readStringParam(options, "command");
-    if (!command || command.trim().length === 0) {
+    const rawCommand = readStringParam(options, "command");
+    if (!rawCommand || rawCommand.trim().length === 0) {
       return failureToActionResult({
         reason: "missing_param",
         message: "SHELL requires 'command' (string)",
       });
+    }
+    const command = quoteBareUrlsWithShellMetacharacters(rawCommand);
+    if (command !== rawCommand) {
+      coreLogger.debug(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL quoted bare URL metacharacters before execution`,
+      );
     }
     const cwdParam = readStringParam(options, "cwd");
 
@@ -279,7 +376,7 @@ export const shellAction: Action = {
       });
     }
 
-    let cwd: string;
+    let cwd = "";
     if (cwdParam) {
       const v = await sandbox.validatePath(conversationId, cwdParam);
       if (v.ok === false) {
@@ -297,12 +394,18 @@ export const shellAction: Action = {
           });
         }
       } catch (err) {
-        return failureToActionResult({
-          reason: "io_error",
-          message: `cwd stat failed: ${(err as Error).message}`,
-        });
+        if (!isMissingPathError(err)) {
+          return failureToActionResult({
+            reason: "io_error",
+            message: `cwd stat failed: ${(err as Error).message}`,
+          });
+        }
+        cwd = session.getCwd(conversationId);
+        coreLogger.warn(
+          `${CODING_TOOLS_LOG_PREFIX} SHELL cwd not found; using session cwd (requested=${cwdParam}, fallback=${cwd})`,
+        );
       }
-      cwd = v.resolved;
+      if (!cwd) cwd = v.resolved;
     } else {
       cwd = session.getCwd(conversationId);
     }
@@ -355,7 +458,9 @@ export const shellAction: Action = {
     const head = timedOut
       ? `$ ${command}\n[timeout ${timeout}ms] (cwd=${cwd}, took=${took}ms)`
       : `$ ${command}\n[exit ${result.exitCode}] (cwd=${cwd}, took=${took}ms)`;
-    const streams = formatStreams(result.stdout, result.stderr);
+    const streams = formatStreams(result.stdout, result.stderr, {
+      showEmptyStreams: !result.stdout && !result.stderr,
+    });
     const text = streams.length > 0 ? `${head}\n${streams}` : head;
 
     if (callback) await callback({ text, source: "coding-tools" });
@@ -417,6 +522,42 @@ export const shellAction: Action = {
           actions: ["SHELL"],
           thought:
             "Long-running build maps to SHELL with command and timeout=300000 to fit the 5-minute window.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Check disk space and safe cleanup candidates.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: '$ df -h / /home; du -x -h --max-depth=1 /home 2>/dev/null | sort -hr | head -n 5; du -x -h --max-depth=2 "$HOME" 2>/dev/null | sort -hr | head -n 8\n[exit 0]',
+          actions: ["SHELL"],
+          thought:
+            "Disk checks should use df for mount usage, then bounded du probes that still run after permission-denied paths and inspect the largest readable directory one level deeper before ranking cleanup candidates.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "Fetch a current JSON API value.",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "$ curl -s \"https://api.example.com/status?format=json\" | jq -r '.status'\n[exit 0]",
+          actions: ["SHELL"],
+          thought:
+            "Current JSON API checks should keep the URL quoted and parse with jq or node; do not assume a python binary exists when python3 is the portable Python command.",
         },
       },
     ],

@@ -6,6 +6,35 @@ import {
   shortId,
 } from "../actions/common.js";
 import { getTaskAgentFrameworkState } from "../services/task-agent-frameworks.js";
+import type { SessionInfo } from "../services/types.js";
+
+const MAX_RENDERED_ACTIVE_SESSIONS = 8;
+const TERMINAL_SESSION_STATUSES = new Set([
+  "completed",
+  "stopped",
+  "errored",
+  "cancelled",
+]);
+
+function sessionSortTime(session: SessionInfo): number {
+  return new Date(session.lastActivityAt ?? session.createdAt).getTime();
+}
+
+function sessionIsActive(session: SessionInfo): boolean {
+  return !TERMINAL_SESSION_STATUSES.has(String(session.status));
+}
+
+function summarizeSessionsForPrompt(sessions: SessionInfo[]): SessionInfo[] {
+  return sessions
+    .slice()
+    .sort((a, b) => {
+      const activeDelta =
+        Number(sessionIsActive(b)) - Number(sessionIsActive(a));
+      if (activeDelta !== 0) return activeDelta;
+      return sessionSortTime(b) - sessionSortTime(a);
+    })
+    .slice(0, MAX_RENDERED_ACTIVE_SESSIONS);
+}
 
 export const availableAgentsProvider: Provider = {
   name: "AVAILABLE_AGENTS",
@@ -77,10 +106,15 @@ export const availableAgentsProvider: Provider = {
 
     if (sessions.length > 0) {
       lines.push("", `## Active sessions (${sessions.length})`);
-      for (const session of sessions) {
+      const renderedSessions = summarizeSessionsForPrompt(sessions);
+      for (const session of renderedSessions) {
         lines.push(
           `- ${labelFor(session)} [${shortId(session.id)}] ${session.agentType} ${session.status} in ${session.workdir}`,
         );
+      }
+      const omitted = sessions.length - renderedSessions.length;
+      if (omitted > 0) {
+        lines.push(`... (+${omitted} older sessions omitted)`);
       }
     } else {
       lines.push("", "No active task-agent sessions.");

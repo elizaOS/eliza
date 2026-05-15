@@ -155,7 +155,7 @@ async function loadBindings(): Promise<FaceDetectBindings | null> {
       return null;
     }
 
-    const { dlopen, FFIType, ptr, CString } = bunFFI;
+    const { dlopen, FFIType, ptr } = bunFFI;
 
     let lib;
     try {
@@ -205,10 +205,15 @@ async function loadBindings(): Promise<FaceDetectBindings | null> {
         ) as number;
         if (rc !== 0) {
           throw new Error(
-            `face_detect_open failed (rc=${rc}) — GGUF likely missing or model entries still ENOSYS.`,
+            `face_detect_open failed (rc=${rc}) — GGUF likely missing or invalid.`,
           );
         }
-        return handleSlot[0];
+        const handle = handleSlot[0];
+        if (handle === 0n) {
+          throw new Error(`face_detect_open returned NULL handle`);
+        }
+        // bun:ffi pointer-typed args expect a Number, not a BigInt.
+        return Number(handle);
       },
       detect(handle, rgb, w, h, stride, conf, cap) {
         // face_detection layout: 5 + 12 floats = 17 floats per record. We
@@ -239,7 +244,11 @@ async function loadBindings(): Promise<FaceDetectBindings | null> {
       },
       activeBackend() {
         const raw = lib.symbols.face_active_backend();
-        return new CString(raw as never).toString();
+        if (raw == null) return "unknown";
+        // bun:ffi cstring returns stringify cleanly via String(); the
+        // CString constructor expects a numeric pointer and throws on
+        // an already-decoded value.
+        return String(raw);
       },
     };
     return bindings;

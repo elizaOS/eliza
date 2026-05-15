@@ -114,4 +114,36 @@ describe("response-handler evaluators", () => {
 		expect(result.activeEvaluators).toEqual(["a", "broken", "b"]);
 		expect(result.errors).toEqual([{ evaluatorName: "broken", error: "boom" }]);
 	});
+
+	it("can clear stale action hints when an evaluator turns the route into a direct reply", async () => {
+		const messageHandler = handler();
+		messageHandler.plan.requiresTool = true;
+		messageHandler.plan.candidateActions = ["SHELL"];
+		messageHandler.plan.parentActionHints = ["TASKS"];
+
+		await runResponseHandlerEvaluators({
+			runtime: runtimeWith([
+				{
+					name: "direct-completion",
+					priority: 10,
+					shouldRun: () => true,
+					evaluate: () => ({
+						requiresTool: false,
+						clearCandidateActions: true,
+						clearParentActionHints: true,
+						reply: "Done.",
+					}),
+				},
+			]),
+			message,
+			state,
+			messageHandler,
+			availableContexts: [],
+		});
+
+		expect(messageHandler.plan.requiresTool).toBe(false);
+		expect(messageHandler.plan.candidateActions).toBeUndefined();
+		expect(messageHandler.plan.parentActionHints).toBeUndefined();
+		expect(messageHandler.plan.reply).toBe("Done.");
+	});
 });

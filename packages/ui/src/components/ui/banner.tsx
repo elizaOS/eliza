@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { AlertTriangle, Info, X, XCircle } from "lucide-react";
+import { AlertTriangle, Info, type LucideIcon, X, XCircle } from "lucide-react";
 import * as React from "react";
 import { cn } from "../../lib/utils";
 import { Button } from "./button";
@@ -20,7 +20,11 @@ const bannerVariants = cva(
   },
 );
 
-const ICONS: Record<string, React.ElementType> = {
+type BannerVariant = NonNullable<
+  VariantProps<typeof bannerVariants>["variant"]
+>;
+
+const ICONS: Record<BannerVariant, LucideIcon> = {
   error: XCircle,
   warning: AlertTriangle,
   info: Info,

@@ -244,8 +244,7 @@ export async function runPlannerLoop(
 							finalMessage: userSafeFinalMessage(
 								evaluator.messageToUser ??
 									plannerOutput.messageToUser ??
-									latestToolResultText(trajectory) ??
-									evaluator.thought,
+									latestToolResultText(trajectory),
 								trajectory,
 							),
 						};
@@ -323,9 +322,29 @@ export async function runPlannerLoop(
 					terminalMessage: finalMessage,
 					terminalOnly: true,
 				});
+				const terminalEvaluator = terminalToolCallFinish(finalMessage);
+				trajectory.evaluatorOutputs.push(terminalEvaluator);
+				trajectory.context = appendEvaluationEvent({
+					context: trajectory.context,
+					iteration,
+					evaluator: terminalEvaluator,
+				});
+				const terminalEvalStartedAt = Date.now();
+				await recordGatedEvaluationStage({
+					recorder: params.recorder,
+					trajectoryId: params.trajectoryId,
+					parentStageId: params.parentStageId,
+					iteration,
+					startedAt: terminalEvalStartedAt,
+					endedAt: Date.now(),
+					output: terminalEvaluator,
+					reason: "terminal_tool_call",
+					logger: params.runtime.logger,
+				});
 				return {
 					status: "finished",
 					trajectory,
+					evaluator: terminalEvaluator,
 					finalMessage,
 				};
 			}
@@ -446,9 +465,7 @@ export async function runPlannerLoop(
 				trajectory,
 				evaluator,
 				finalMessage: userSafeFinalMessage(
-					evaluator.messageToUser ??
-						latestToolResultText(trajectory) ??
-						evaluator.thought,
+					evaluator.messageToUser ?? latestToolResultText(trajectory),
 					trajectory,
 				),
 			};
@@ -593,7 +610,7 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	}
 	const seen = new Set<string>();
 	const lines: string[] = [];
-	for (const event of events) {
+	for (const event of events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
 		const tool = event.tool as ContextObjectTool;
 		const hint = tool.action?.routingHint?.trim();
@@ -625,7 +642,7 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 	const tools: ContextObjectTool[] = [];
 	const seen = new Set<string>();
 
-	for (const event of context.events) {
+	for (const event of context.events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) {
 			continue;
 		}
@@ -1186,6 +1203,7 @@ async function recordGatedEvaluationStage(args: {
 	startedAt: number;
 	endedAt: number;
 	output: EvaluatorOutput;
+	reason?: string;
 	logger?: PlannerRuntime["logger"];
 }): Promise<void> {
 	if (!args.recorder || !args.trajectoryId) return;
@@ -1205,7 +1223,7 @@ async function recordGatedEvaluationStage(args: {
 				messageToUser: args.output.messageToUser,
 				gated: true,
 				llmCallSkipped: true,
-				reason: "explicit_terminal_reply",
+				reason: args.reason ?? "explicit_terminal_reply",
 			},
 		};
 		await args.recorder.recordStage(args.trajectoryId, stage);
@@ -1826,7 +1844,14 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.toolName ??
 			record.tool ??
 			record.action ??
-			functionName,
+			record.actionName ??
+			functionName ??
+			// gpt-oss narrates calls as `{type: "ACTION", args: {...}}`. `type`
+			// is the last-resort name source so the canonical OpenAI/Anthropic
+			// envelope shapes, where `type` is "function"/"tool", still resolve
+			// through `functionName`/`name` first.
+			record.type ??
+			"",
 	);
 	if (!name) {
 		return null;
@@ -1839,7 +1864,10 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.params ??
 			record.parameters ??
 			rawFunction?.input ??
-			rawFunction?.arguments,
+			rawFunction?.args ??
+			rawFunction?.arguments ??
+			rawFunction?.params ??
+			rawFunction?.parameters,
 	);
 
 	return {
@@ -2072,6 +2100,23 @@ function tryGateEvaluator(args: {
  * cheaply. */
 export const GATED_EVALUATOR_THOUGHT =
 	"Gated FINISH: queue drained successfully with a clean planner messageToUser; evaluator LLM call skipped.";
+
+const TERMINAL_TOOL_CALL_FINISH_THOUGHT =
+	"Terminal FINISH: planner ended the loop with a terminal tool call; evaluator LLM call skipped.";
+
+function terminalToolCallFinish(
+	finalMessage: string | undefined,
+): EvaluatorOutput {
+	const output: EvaluatorOutput = {
+		success: true,
+		decision: "FINISH",
+		thought: TERMINAL_TOOL_CALL_FINISH_THOUGHT,
+	};
+	if (finalMessage) {
+		output.messageToUser = finalMessage;
+	}
+	return output;
+}
 
 function userSafeFinalMessage(
 	message: string | undefined,

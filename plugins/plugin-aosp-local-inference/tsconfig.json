@@ -17,6 +17,7 @@
     "types": ["node", "bun-types"],
     "paths": {
       "@elizaos/core": ["../../packages/core/dist/node"],
+      "@elizaos/shared": ["../../packages/shared/src/index.ts"],
       "@elizaos/shared/local-inference": [
         "../../packages/shared/src/local-inference/index.ts"
       ]

@@ -12,6 +12,9 @@ const ENV_KEYS = [
   "ELIZA_DISABLE_LOCAL_EMBEDDINGS",
   "ELIZA_BUILD_VARIANT",
   "ELIZA_AGENT_ORCHESTRATOR",
+  "ELIZA_DEFAULT_AGENT_TYPE",
+  "ELIZA_ACP_DEFAULT_AGENT",
+  "ELIZA_AGENT_SELECTION_STRATEGY",
   "OPENAI_API_KEY",
   "OLLAMA_BASE_URL",
 ] as const;
@@ -116,5 +119,22 @@ describe("collectPluginNames runtime mode provider policy", () => {
     expect(names.has("@elizaos/plugin-local-inference")).toBe(true);
     expect(names.has("@elizaos/plugin-ollama")).toBe(true);
     expect(names.has("@elizaos/plugin-elizacloud")).toBe(false);
+  });
+
+  it("loads the agent orchestrator when a coding-agent default is configured", () => {
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("agent-orchestrator")).toBe(true);
+  });
+
+  it("lets ELIZA_AGENT_ORCHESTRATOR=false override coding-agent defaults", () => {
+    process.env.ELIZA_AGENT_ORCHESTRATOR = "false";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+
+    const names = collectPluginNames({} as ElizaConfig);
+
+    expect(names.has("agent-orchestrator")).toBe(false);
   });
 });

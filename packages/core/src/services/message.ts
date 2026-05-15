@@ -2,6 +2,10 @@ import { v4 } from "uuid";
 import z from "zod";
 import { formatActionNames, formatActions } from "../actions";
 import {
+	DEFAULT_SUBACTION_KEYS,
+	normalizeSubaction,
+} from "../actions/subaction-dispatch";
+import {
 	actionToTool,
 	buildPlannerToolsFromTieredActions,
 	CORE_PLANNER_TERMINALS,
@@ -60,6 +64,7 @@ import {
 	type FactsAndRelationshipsRunResult,
 	runFactsAndRelationshipsStage,
 } from "../runtime/facts-and-relationships";
+import { parseJsonObject } from "../runtime/json-output";
 import { getLocalizedExamplesProvider } from "../runtime/localized-examples-provider";
 import {
 	getMessageHandlerReply,
@@ -105,6 +110,7 @@ import {
 	isTrajectoryRecordingEnabled,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
+import { TurnAbortedError } from "../runtime/turn-controller";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
 	getModelStreamChunkDeliveryDepth,
@@ -797,6 +803,10 @@ const CORE_RESPONSE_STATE_PROVIDERS = [
 	"ATTACHMENTS",
 	"PLATFORM_CHAT_CONTEXT",
 	"PLATFORM_USER_CONTEXT",
+	// Runtime model identity is baseline state for self-model/provider questions.
+	// Without it, the response handler has to infer from training data or old
+	// chat history and can confidently claim a model the runtime is not using.
+	"RUNTIME_MODEL_CONTEXT",
 	// CURRENT_TIME is dynamic and would otherwise be filtered out before
 	// reaching the response handler. The wall-clock time is a baseline
 	// signal for nearly every routing decision (scheduling, freshness of
@@ -1554,6 +1564,25 @@ function asProviderRecord(value: unknown):
 	};
 }
 
+const INTERNAL_BRIDGE_MESSAGE_SOURCES = new Set([
+	"acpx:sub-agent-router",
+	"swarm_synthesis",
+]);
+
+function isInternalBridgeDialogueMemory(memory: Memory): boolean {
+	const source =
+		typeof memory.content?.source === "string"
+			? memory.content.source.trim()
+			: "";
+	const metadata =
+		memory.content?.metadata && typeof memory.content.metadata === "object"
+			? (memory.content.metadata as Record<string, unknown>)
+			: {};
+	return (
+		INTERNAL_BRIDGE_MESSAGE_SOURCES.has(source) || metadata.subAgent === true
+	);
+}
+
 function appendPriorDialogueEvents(
 	events: ContextEvent[],
 	runtime: IAgentRuntime,
@@ -1591,6 +1620,7 @@ function appendPriorDialogueEvents(
 			if (!memory || typeof memory !== "object") return false;
 			const m = memory as Memory;
 			if (m.id && currentMessage.id && m.id === currentMessage.id) return false;
+			if (isInternalBridgeDialogueMemory(m)) return false;
 			const contentType =
 				m.content && typeof m.content === "object"
 					? (m.content as { type?: string }).type
@@ -1649,7 +1679,7 @@ function appendPriorDialogueEvents(
 }
 
 function hasStructuredRecentMessages(state: State): boolean {
-	const providers = state.data.providers;
+	const providers = state.data?.providers;
 	if (!providers || typeof providers !== "object") {
 		return false;
 	}
@@ -1691,6 +1721,7 @@ function getRecentConversationSearchText(
 			if (memory.id && currentMessage.id && memory.id === currentMessage.id) {
 				return false;
 			}
+			if (isInternalBridgeDialogueMemory(memory)) return false;
 			return typeof memory.content?.text === "string";
 		})
 		.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
@@ -2141,8 +2172,9 @@ async function createV5MessageContextObject(args: {
 }): Promise<ContextObject> {
 	const events: ContextEvent[] = [];
 
-	const excludeRecentMessagesProviderText =
-		args.includeTools === true && hasStructuredRecentMessages(args.state);
+	const excludeRecentMessagesProviderText = hasStructuredRecentMessages(
+		args.state,
+	);
 	const renderExclusions = args.extraProviderExclusions?.length
 		? [...MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
 		: MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
@@ -2610,6 +2642,26 @@ function parseToolArguments(value: unknown): Record<string, unknown> | null {
 	return value as Record<string, unknown>;
 }
 
+function extractToolCallArguments(
+	entry: Record<string, unknown>,
+): Record<string, unknown> | null {
+	const rawFunction =
+		entry.function && typeof entry.function === "object"
+			? (entry.function as Record<string, unknown>)
+			: null;
+	return (
+		parseToolArguments(entry.arguments) ??
+		parseToolArguments(entry.args) ??
+		parseToolArguments(entry.input) ??
+		parseToolArguments(entry.params) ??
+		parseToolArguments(entry.parameters) ??
+		parseToolArguments(rawFunction?.arguments) ??
+		parseToolArguments(rawFunction?.args) ??
+		parseToolArguments(rawFunction?.input) ??
+		parseToolArguments(rawFunction?.parameters)
+	);
+}
+
 function parseMessageHandlerNativeToolCall(
 	raw: GenerateTextResult,
 ): MessageHandlerResult | null {
@@ -2625,11 +2677,20 @@ function extractHandleResponseToolArguments(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const name = String(entry.name).trim();
+		const record = entry as unknown as Record<string, unknown>;
+		const rawFunction =
+			record.function && typeof record.function === "object"
+				? (record.function as Record<string, unknown>)
+				: null;
+		const name = String(
+			record.name ?? record.toolName ?? rawFunction?.name,
+		).trim();
 		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
 		}
-		const args = parseToolArguments(entry.arguments);
+		const args = extractToolCallArguments(
+			entry as unknown as Record<string, unknown>,
+		);
 		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
 			continue;
 		}
@@ -2653,41 +2714,67 @@ function looksLikeMessageHandlerToolArguments(
 		args.facts !== undefined ||
 		args.relationships !== undefined ||
 		args.addressedTo !== undefined ||
-		args.emotion !== undefined
+		args.emotion !== undefined ||
+		args.processMessage !== undefined ||
+		args.plan !== undefined ||
+		args.extract !== undefined
 	);
 }
 
 function extractMessageHandlerRawParsed(
 	raw: string | GenerateTextResult,
 ): Record<string, unknown> | null {
-	if (typeof raw === "string") return null;
-	return extractHandleResponseToolArguments(raw);
+	const parsed =
+		typeof raw === "string"
+			? parseJsonObject<Record<string, unknown>>(raw)
+			: (extractHandleResponseToolArguments(raw) ??
+				parseJsonObject<Record<string, unknown>>(getV5ModelText(raw)));
+	return parsed && looksLikeMessageHandlerToolArguments(parsed) ? parsed : null;
 }
 
 function normalizeRawParsedForFieldRegistry(
 	raw: Record<string, unknown>,
 ): Record<string, unknown> {
 	const normalized = { ...raw };
+	const plan =
+		raw.plan && typeof raw.plan === "object" && !Array.isArray(raw.plan)
+			? (raw.plan as Record<string, unknown>)
+			: undefined;
+	const extract =
+		raw.extract &&
+		typeof raw.extract === "object" &&
+		!Array.isArray(raw.extract)
+			? (raw.extract as Record<string, unknown>)
+			: undefined;
 	if (normalized.shouldRespond === undefined) {
-		normalized.shouldRespond = "RESPOND";
+		normalized.shouldRespond =
+			raw.processMessage === "IGNORE" || raw.processMessage === "STOP"
+				? raw.processMessage
+				: "RESPOND";
 	}
 	if (normalized.replyText === undefined) {
-		normalized.replyText = "";
+		normalized.replyText = typeof plan?.reply === "string" ? plan.reply : "";
 	}
 	if (normalized.contexts === undefined) {
-		normalized.contexts = [];
+		normalized.contexts = Array.isArray(plan?.contexts) ? plan.contexts : [];
 	}
 	if (normalized.candidateActionNames === undefined) {
-		normalized.candidateActionNames = [];
+		normalized.candidateActionNames = Array.isArray(plan?.candidateActions)
+			? plan.candidateActions
+			: [];
 	}
 	if (normalized.facts === undefined) {
-		normalized.facts = [];
+		normalized.facts = Array.isArray(extract?.facts) ? extract.facts : [];
 	}
 	if (normalized.relationships === undefined) {
-		normalized.relationships = [];
+		normalized.relationships = Array.isArray(extract?.relationships)
+			? extract.relationships
+			: [];
 	}
 	if (normalized.addressedTo === undefined) {
-		normalized.addressedTo = [];
+		normalized.addressedTo = Array.isArray(extract?.addressedTo)
+			? extract.addressedTo
+			: [];
 	}
 	return normalized;
 }
@@ -2695,7 +2782,10 @@ function normalizeRawParsedForFieldRegistry(
 export function messageHandlerFromFieldResult(
 	result: ResponseHandlerResult,
 	fieldRun?: ResponseHandlerFieldRunResult,
-	runtimeContext?: { actions: ReadonlyArray<Pick<Action, "name">> },
+	runtimeContext?: {
+		actions: ReadonlyArray<Pick<Action, "name">>;
+		messageText?: string;
+	},
 ): MessageHandlerResult {
 	const contexts = Array.isArray(result.contexts)
 		? result.contexts.map((context) => String(context).trim()).filter(Boolean)
@@ -2705,6 +2795,38 @@ export function messageHandlerFromFieldResult(
 				.map((action) => String(action).trim())
 				.filter(Boolean)
 		: [];
+	const replyTextRaw =
+		typeof result.replyText === "string" ? result.replyText : "";
+	const currentMessageText = runtimeContext?.messageText ?? "";
+	const initialValidCandidateCount = runtimeContext
+		? countValidMessageHandlerCandidates(
+				candidateActions,
+				runtimeContext.actions,
+			)
+		: candidateActions.length;
+	const inferredAckCandidateActions =
+		initialValidCandidateCount === 0 &&
+		hasAckOnlyActionableIntent(result, replyTextRaw, currentMessageText)
+			? inferAckIntentCandidateActions(
+					result,
+					runtimeContext?.actions ?? [],
+					currentMessageText,
+				)
+			: [];
+	const inferredDirectCandidateActions =
+		initialValidCandidateCount === 0 &&
+		inferredAckCandidateActions.length === 0 &&
+		currentMessageText.trim().length > 0
+			? inferDirectCurrentRequestCandidateActions(
+					runtimeContext?.actions ?? [],
+					currentMessageText,
+				)
+			: [];
+	const effectiveCandidateActions = uniqueActionNames([
+		...candidateActions,
+		...inferredAckCandidateActions,
+		...inferredDirectCandidateActions,
+	]);
 	// When the caller passes the runtime's `actions`, narrow the candidate set
 	// to those that are (a) registered actions OR (b) canonical control names
 	// (REPLY / IGNORE / STOP). All-bogus candidate lists collapse to length 0,
@@ -2712,14 +2834,11 @@ export function messageHandlerFromFieldResult(
 	// only context is "simple". When no `runtimeContext` is provided, behaviour
 	// is unchanged (back-compat).
 	const validCandidateCount = runtimeContext
-		? candidateActions.filter((name) => {
-				const normalized = normalizeActionIdentifier(name);
-				if (canonicalPlannerControlActionName(normalized) !== null) return true;
-				return runtimeContext.actions.some(
-					(action) => normalizeActionIdentifier(action.name) === normalized,
-				);
-			}).length
-		: candidateActions.length;
+		? countValidMessageHandlerCandidates(
+				effectiveCandidateActions,
+				runtimeContext.actions,
+			)
+		: effectiveCandidateActions.length;
 	const facts = Array.isArray(result.facts)
 		? result.facts.map((fact) => String(fact).trim()).filter(Boolean)
 		: [];
@@ -2763,8 +2882,6 @@ export function messageHandlerFromFieldResult(
 					: "RESPOND";
 	const preemptDirect =
 		preempt?.mode === "ack-and-stop" || preempt?.mode === "direct-reply";
-	const replyTextRaw =
-		typeof result.replyText === "string" ? result.replyText : "";
 	const routedContexts = preemptDirect
 		? Array.from(new Set([...contexts, SIMPLE_CONTEXT_ID]))
 		: contexts;
@@ -2797,8 +2914,8 @@ export function messageHandlerFromFieldResult(
 		simple: preemptDirect ? true : !shouldPlan,
 		requiresTool: shouldPlan,
 	};
-	if (candidateActions.length > 0) {
-		plan.candidateActions = candidateActions;
+	if (effectiveCandidateActions.length > 0) {
+		plan.candidateActions = effectiveCandidateActions;
 	}
 	const extract =
 		facts.length > 0 || relationships.length > 0 || addressedTo.length > 0
@@ -2810,6 +2927,182 @@ export function messageHandlerFromFieldResult(
 		plan,
 		...(extract ? { extract } : {}),
 	};
+}
+
+function countValidMessageHandlerCandidates(
+	candidateActions: readonly string[],
+	actions: ReadonlyArray<Pick<Action, "name">>,
+): number {
+	return candidateActions.filter((name) => {
+		const normalized = normalizeActionIdentifier(name);
+		if (canonicalPlannerControlActionName(normalized) !== null) return true;
+		return actions.some(
+			(action) => normalizeActionIdentifier(action.name) === normalized,
+		);
+	}).length;
+}
+
+const PLANNING_ACK_REPLIES = new Set([
+	"got it.",
+	"looking into it.",
+	"on it.",
+	"running shell commands to gather disk usage...",
+	"spawning the sub-agent now.",
+	"working on it.",
+]);
+
+function looksLikeProgressOnlyReply(replyText: string): boolean {
+	const normalized = replyText.trim().toLowerCase();
+	if (!normalized) return false;
+	if (PLANNING_ACK_REPLIES.has(normalized)) return true;
+	return /^(?:checking|fetching|gathering|looking (?:up|into)|running|using|spawning|starting|working on|one moment|let me|i(?:'|’)ll|i will)\b/.test(
+		normalized,
+	);
+}
+
+function hasAckOnlyActionableIntent(
+	result: ResponseHandlerResult,
+	replyText: string,
+	fallbackText = "",
+): boolean {
+	if (!looksLikeProgressOnlyReply(replyText)) {
+		return false;
+	}
+	const intentText = Array.isArray(result.intents)
+		? result.intents
+				.map((intent) => (typeof intent === "string" ? intent : ""))
+				.join("\n")
+		: "";
+	const actionText = [intentText, fallbackText].filter(Boolean).join("\n");
+	return (
+		looksLikeLocalShellRequest(actionText) ||
+		looksLikeWebSearchRequest(actionText) ||
+		looksLikeCodingDelegationRequest(actionText)
+	);
+}
+
+function inferAckIntentCandidateActions(
+	result: ResponseHandlerResult,
+	actions: ReadonlyArray<Pick<Action, "name">>,
+	fallbackText = "",
+): string[] {
+	const intentText = Array.isArray(result.intents)
+		? result.intents
+				.map((intent) => (typeof intent === "string" ? intent : ""))
+				.join("\n")
+		: "";
+	const actionText = [intentText, fallbackText].filter(Boolean).join("\n");
+	if (!actionText.trim()) return [];
+	if (looksLikeLocalShellRequest(actionText)) {
+		const shellAction = findAvailableActionName(actions, [
+			"SHELL",
+			"RUN_IN_TERMINAL",
+			"RUN_COMMAND",
+			"EXECUTE_COMMAND",
+			"TERMINAL",
+			"RUN_SHELL",
+			"EXEC",
+		]);
+		if (shellAction) return [shellAction];
+	}
+	if (looksLikeWebSearchRequest(actionText)) {
+		const lookupAction = findWebLookupActionName(actions);
+		if (lookupAction) return [lookupAction];
+	}
+	if (looksLikeCodingDelegationRequest(actionText)) {
+		const codingAction = findAvailableActionName(actions, [
+			"TASKS",
+			"TASKS_SPAWN_AGENT",
+			"SPAWN_AGENT",
+			"START_CODING_TASK",
+			"CODE_TASK",
+			"SPAWN_CODING_AGENT",
+		]);
+		if (codingAction) return [codingAction];
+	}
+	return [];
+}
+
+function inferDirectCurrentRequestCandidateActions(
+	actions: ReadonlyArray<Pick<Action, "name">>,
+	messageText: string,
+): string[] {
+	if (looksLikeLocalShellRequest(messageText)) {
+		const shellAction = findAvailableActionName(actions, [
+			"SHELL",
+			"RUN_IN_TERMINAL",
+			"RUN_COMMAND",
+			"EXECUTE_COMMAND",
+			"TERMINAL",
+			"RUN_SHELL",
+			"EXEC",
+		]);
+		if (shellAction) return [shellAction];
+	}
+	if (looksLikeWebSearchRequest(messageText)) {
+		const lookupAction = findWebLookupActionName(actions);
+		if (lookupAction) return [lookupAction];
+	}
+	if (looksLikeCodingDelegationRequest(messageText)) {
+		const codingAction = findAvailableActionName(actions, [
+			"TASKS",
+			"TASKS_SPAWN_AGENT",
+			"SPAWN_AGENT",
+			"START_CODING_TASK",
+			"CODE_TASK",
+			"SPAWN_CODING_AGENT",
+		]);
+		if (codingAction) return [codingAction];
+	}
+	return [];
+}
+
+function findWebLookupActionName(
+	actions: ReadonlyArray<Pick<Action, "name">>,
+): string | undefined {
+	return (
+		findAvailableActionName(actions, [
+			"SEARCH",
+			"WEB_SEARCH",
+			"SEARCH_WEB",
+			"BRAVE_SEARCH",
+			"INTERNET_SEARCH",
+			"SEARCH_INTERNET",
+			"LOOKUP_WEB",
+			"GOOGLE",
+		]) ??
+		findAvailableActionName(actions, [
+			"SHELL",
+			"RUN_IN_TERMINAL",
+			"RUN_COMMAND",
+			"EXECUTE_COMMAND",
+			"TERMINAL",
+			"RUN_SHELL",
+			"EXEC",
+		])
+	);
+}
+
+function findAvailableActionName(
+	actions: ReadonlyArray<Pick<Action, "name">>,
+	names: readonly string[],
+): string | undefined {
+	const wanted = new Set(names.map(normalizeActionIdentifier));
+	return actions.find((action) =>
+		wanted.has(normalizeActionIdentifier(action.name)),
+	)?.name;
+}
+
+function uniqueActionNames(names: readonly string[]): string[] {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const name of names) {
+		const normalized = normalizeActionIdentifier(name);
+		if (!normalized || seen.has(normalized)) continue;
+		seen.add(normalized);
+		result.push(name);
+	}
+	return result;
 }
 
 /**
@@ -2978,17 +3271,24 @@ function shouldUseStage1PlannerFallback(
 	]);
 }
 
-function synthesizePlannerFallbackFromStage1Failure(
-	reason: string,
-): MessageHandlerResult {
+function synthesizePlannerFallbackFromStage1Failure(args: {
+	reason: string;
+	actions: ReadonlyArray<Pick<Action, "name">>;
+	messageText: string;
+}): MessageHandlerResult {
+	const candidateActions = inferDirectCurrentRequestCandidateActions(
+		args.actions,
+		args.messageText,
+	);
 	return {
 		processMessage: "RESPOND",
-		thought: `Response handler returned ${reason}; falling back to planner because the message is explicitly addressed to the agent.`,
+		thought: `Response handler returned ${args.reason}; falling back to planner because the message is explicitly addressed to the agent.`,
 		plan: {
 			contexts: ["general"],
 			reply: "",
 			simple: false,
 			requiresTool: true,
+			candidateActions,
 		},
 	};
 }
@@ -3353,7 +3653,11 @@ async function executeV5PlannedToolCall(
 		(candidate) => candidate.name === toolCall.name,
 	);
 
-	if (action && actionHasSubActions(action)) {
+	if (
+		action &&
+		actionHasSubActions(action) &&
+		!hasExplicitSubActionDispatch(action, toolCall)
+	) {
 		const subResult = await runSubPlanner({
 			runtime: args.runtime as IAgentRuntime & PlannerRuntime,
 			action,
@@ -3377,6 +3681,47 @@ async function executeV5PlannedToolCall(
 		{ ...(args.executorOptions ?? {}), actions: executionActions },
 	);
 	return actionResultToPlannerToolResult(actionResult);
+}
+
+function hasExplicitSubActionDispatch(
+	action: Action,
+	toolCall: PlannerToolCall,
+): boolean {
+	const rawParams =
+		(toolCall as { params?: unknown; args?: unknown; arguments?: unknown })
+			.params ??
+		(toolCall as { args?: unknown }).args ??
+		(toolCall as { arguments?: unknown }).arguments;
+	const params = parseToolArguments(rawParams) ?? {};
+	if (Object.keys(params).length === 0) {
+		return false;
+	}
+	for (const parameter of action.parameters ?? []) {
+		const name = parameter.name;
+		if (
+			typeof name !== "string" ||
+			!DEFAULT_SUBACTION_KEYS.includes(name) ||
+			!(name in params)
+		) {
+			continue;
+		}
+		const schema = parameter.schema as {
+			enum?: unknown[];
+			enumValues?: unknown[];
+		};
+		const enumValues = schema.enumValues ?? schema.enum;
+		if (!Array.isArray(enumValues) || enumValues.length === 0) {
+			continue;
+		}
+		const value = normalizeSubaction(params[name]);
+		if (!value) {
+			continue;
+		}
+		if (enumValues.some((entry) => normalizeSubaction(entry) === value)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 export function subPlannerResultToPlannerToolResult(
@@ -3777,7 +4122,10 @@ export async function runV5MessageRuntimeStage1(args: {
 			messageHandler = messageHandlerFromFieldResult(
 				fieldRunResult.parsed,
 				fieldRunResult,
-				{ actions: args.runtime.actions },
+				{
+					actions: args.runtime.actions,
+					messageText: args.message.content?.text ?? "",
+				},
 			);
 		}
 		if (!messageHandler) {
@@ -3790,9 +4138,12 @@ export async function runV5MessageRuntimeStage1(args: {
 			const stage1FailureReason = isEmptyStage1Result(rawMessageHandler)
 				? `empty output after ${emptyRetryLimit + 1} attempts`
 				: "unparseable output";
-			messageHandler =
-				synthesizePlannerFallbackFromStage1Failure(stage1FailureReason);
-			args.runtime.logger.warn(
+			messageHandler = synthesizePlannerFallbackFromStage1Failure({
+				reason: stage1FailureReason,
+				actions: args.runtime.actions,
+				messageText: args.message.content?.text ?? "",
+			});
+			args.runtime.logger?.warn?.(
 				{
 					src: "service:message",
 					reason: stage1FailureReason,
@@ -4459,8 +4810,10 @@ function extractMessageHandlerToolCalls(
 		if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
 			continue;
 		}
-		const name = String(entry.name).trim();
-		const args = parseToolArguments(entry.arguments);
+		const name = String(entry.name ?? entry.toolName).trim();
+		const args = extractToolCallArguments(
+			entry as unknown as Record<string, unknown>,
+		);
 		toolCalls.push({
 			id:
 				typeof entry.id === "string"
@@ -5256,7 +5609,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 	}
 
 	const mentionsCommand =
-		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh)\b/iu.test(
+		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|disk (?:space|usage)|storage usage)\b/iu.test(
 			normalized,
 		);
 	const asksToInspect =
@@ -5265,7 +5618,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 		);
 	const mentionsLocalSurface =
 		/(?:^|\s)(?:\/home\/|~\/|\.\/|\.\.\/)/u.test(normalized) ||
-		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|origin\/(?:develop|main|master)|git status|disk space|logs?|service|systemd)\b/iu.test(
+		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|logs?|service|systemd)\b/iu.test(
 			normalized,
 		);
 
@@ -5312,7 +5665,7 @@ function looksLikeWebSearchRequest(text: string): boolean {
 			normalized,
 		);
 	const asksCurrentInfo =
-		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|up[- ]?to[- ]?date)\b/iu.test(
+		/\b(?:current|currently|latest|live|real[- ]?time|right now|today|now|rn|atm|up[- ]?to[- ]?date)\b/iu.test(
 			normalized,
 		);
 	const mentionsMarketOrNews =
@@ -5321,6 +5674,45 @@ function looksLikeWebSearchRequest(text: string): boolean {
 		);
 
 	return explicitlyAsksSearch || (asksCurrentInfo && mentionsMarketOrNews);
+}
+
+function looksLikeCodingDelegationRequest(text: string): boolean {
+	const normalized = text.toLowerCase();
+	if (!normalized.trim()) {
+		return false;
+	}
+
+	if (
+		/\b(?:do not|don't|dont|without)\s+(?:spawn|delegate|use|start)\s+(?:a\s+)?(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+			normalized,
+		)
+	) {
+		return false;
+	}
+
+	if (looksLikeActionExplanationRequest(normalized)) {
+		return false;
+	}
+
+	const asksCodingWork =
+		/\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b[\s\S]{0,160}\b(?:app|web\s+app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:app|web\s+app|site|website|page|code|file|files|project|cli|script|backend|frontend|repo|feature|bug|url)\b[\s\S]{0,160}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+			normalized,
+		);
+
+	if (asksCodingWork) return true;
+
+	const asksDelegation =
+		/\b(?:spawn|delegate|use|start|ask|have)\b[\s\S]{0,80}\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b/iu.test(
+			normalized,
+		) ||
+		/\b(?:sub[- ]?agent|task[- ]?agent|coding agent|opencode|codex|claude)\b[\s\S]{0,80}\b(?:build|create|make|implement|write|scaffold|fix|edit|modify|verify)\b/iu.test(
+			normalized,
+		);
+	if (!asksDelegation) return false;
+	return asksCodingWork;
 }
 
 function quoteShellArg(value: string): string {
@@ -7673,6 +8065,12 @@ export class DefaultMessageService implements IMessageService {
 					state = outcome.result.state;
 				}
 			} catch (error) {
+				if (
+					error instanceof TurnAbortedError ||
+					(isRecord(error) && error.code === "TURN_ABORTED")
+				) {
+					throw error;
+				}
 				const errMsg = error instanceof Error ? error.message : String(error);
 				const errStack = error instanceof Error ? error.stack : undefined;
 				runtime.logger.warn(

@@ -1,5 +1,20 @@
 # voice-classifier-cpp — port plan
 
+**ONNX deprecation status (K7 update, 2026-05-15):** all three model heads in
+this library (`voice_emotion_*`, `voice_speaker_*`, `voice_diarizer_*`) are stubs
+that return `-ENOSYS`. The ONNX runtime paths in the resolved production code
+remain active until these stubs are replaced with real ggml graph implementations.
+
+K7 audit confirmed:
+- `voice-emotion-classifier.ts` → `onnxruntime-node` (active, blocked on K1)
+- `speaker/encoder.ts` → `onnxruntime-node` (active, blocked on K2)
+- `speaker/diarizer.ts` → `onnxruntime-node` (active, blocked on K3)
+
+Do NOT remove `onnxruntime-node` from `plugin-local-inference/package.json` until
+all three heads are implemented and the TS files renamed from `*-ggml.ts` to
+canonical names. See `.swarm/impl/K7-no-onnx.md §D` for the per-head migration
+protocol and `.swarm/impl/I1-single-runtime.md §F` for the broader context.
+
 Standalone C library that ports three small voice-side classifiers to
 the elizaOS/llama.cpp fork's ggml dispatcher, replacing the ONNX
 runtime path used today by:

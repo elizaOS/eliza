@@ -85,6 +85,21 @@ describe("shellAction", () => {
     expect(result.text).toContain("[exit 0]");
   });
 
+  it("marks empty stdout and stderr explicitly for successful commands", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "true" },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("[exit 0]");
+    expect(result.text).toContain("--- stdout ---\n(empty)");
+    expect(result.text).toContain("--- stderr ---\n(empty)");
+  });
+
   it("rejects a cwd under the blocklist", async () => {
     const tmpRoot = path.resolve(os.tmpdir());
     const blocked = path.join(tmpRoot, `blocked-${Date.now()}`);
@@ -127,6 +142,65 @@ describe("shellAction", () => {
     );
     expect(result.success).toBe(true);
     expect(result.text).toContain(tmpRoot);
+  });
+
+  it("falls back to the session cwd when an explicit cwd is missing", async () => {
+    const tmpRoot = path.resolve(process.cwd(), `.tmp-shell-cwd-${Date.now()}`);
+    await fs.mkdir(tmpRoot, { recursive: true });
+    try {
+      const roomId = "11111111-aaaa-bbbb-cccc-333333333333";
+      const { runtime, session } = await makeRuntime();
+      session.setCwd(roomId, tmpRoot);
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(roomId),
+        undefined,
+        { command: "pwd", cwd: path.join(tmpRoot, "does-not-exist") },
+      );
+      expect(result.success).toBe(true);
+      expect(result.text).toContain(tmpRoot);
+      const data = result.data as Record<string, unknown> | undefined;
+      expect(data?.cwd).toBe(tmpRoot);
+    } finally {
+      await fs.rm(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("quotes bare URLs with shell metacharacters before execution", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      {
+        command:
+          'node -e "console.log(process.argv[1])" https://example.com/simple?ids=bitcoin&vs_currencies=usd',
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(
+      "https://example.com/simple?ids=bitcoin&vs_currencies=usd",
+    );
+    expect(result.text).toContain(
+      "'https://example.com/simple?ids=bitcoin&vs_currencies=usd'",
+    );
+  });
+
+  it("leaves already quoted URLs unchanged", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      {
+        command:
+          'node -e "console.log(process.argv[1])" "https://example.com/simple?ids=bitcoin&vs_currencies=usd"',
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(
+      '"https://example.com/simple?ids=bitcoin&vs_currencies=usd"',
+    );
   });
 
   it("returns command_failed when the command exits non-zero", async () => {

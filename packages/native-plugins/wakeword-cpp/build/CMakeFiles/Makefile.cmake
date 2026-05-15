@@ -79,6 +79,10 @@ set(CMAKE_MAKEFILE_DEPENDS
   "/usr/share/cmake-3.28/Modules/Compiler/XL-C-DetermineCompiler.cmake"
   "/usr/share/cmake-3.28/Modules/Compiler/XLClang-C-DetermineCompiler.cmake"
   "/usr/share/cmake-3.28/Modules/Compiler/zOS-C-DetermineCompiler.cmake"
+  "/usr/share/cmake-3.28/Modules/FindPackageHandleStandardArgs.cmake"
+  "/usr/share/cmake-3.28/Modules/FindPackageMessage.cmake"
+  "/usr/share/cmake-3.28/Modules/FindPython/Support.cmake"
+  "/usr/share/cmake-3.28/Modules/FindPython3.cmake"
   "/usr/share/cmake-3.28/Modules/Internal/FeatureTesting.cmake"
   "/usr/share/cmake-3.28/Modules/Platform/Linux-GNU-C.cmake"
   "/usr/share/cmake-3.28/Modules/Platform/Linux-GNU.cmake"
@@ -104,7 +108,9 @@ set(CMAKE_MAKEFILE_PRODUCTS
 # Dependency information for all targets:
 set(CMAKE_DEPEND_INFO_FILES
   "CMakeFiles/wakeword.dir/DependInfo.cmake"
+  "CMakeFiles/wakeword_shared.dir/DependInfo.cmake"
   "CMakeFiles/wakeword_stub_smoke.dir/DependInfo.cmake"
   "CMakeFiles/wakeword_melspec_test.dir/DependInfo.cmake"
   "CMakeFiles/wakeword_window_test.dir/DependInfo.cmake"
+  "CMakeFiles/wakeword_runtime_test.dir/DependInfo.cmake"
   )

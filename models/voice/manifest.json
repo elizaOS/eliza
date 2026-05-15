@@ -12,7 +12,7 @@
       "SHA256 and sizeBytes verified against HF LFS metadata for every binary asset.",
       "Canonical destination elizaos/eliza-1/voice/<model-id>/ verified at 20b291b5820937e8a1e1ca9f2927f5bc64aefe7e; scripts/hf_consolidate_eliza1_voice.py verifies source and destination before legacy split repo deletion.",
       "Legacy elizaos/eliza-1-voice-* repos were deleted after destination verification passed; runtime registry entries now resolve to elizaos/eliza-1.",
-      "GGUF-only migration is not complete: speaker, diarizer, turn-detector, voice-emotion, kokoro, VAD, and wakeword still include ONNX payloads tracked by the ONNX-to-GGML migration audit.",
+      "GGUF-only migration status (I1 audit 2026-05-15): VAD + wakeword resolved-runtime paths are on the elizaOS llama.cpp fork's FFI (eliza_inference_vad_* / eliza_inference_wakeword_* on libelizainference); ONNX payloads kept on HF for the one-release deprecation runway. Speaker-encoder, diarizer, turn-detector, voice-emotion, and kokoro remain ONNX in the resolved path because their native ggml backends are stubbed (voice-classifier-cpp returns -ENOSYS; LLM_ARCH_KOKORO has the arch enum but no graph builder); each is compute-gated with a precise next-step in .swarm/impl/I1-single-runtime.md.",
       "turn-detector updated to v0.2.0 (DailyDialog fine-tune, F1=0.9811); hfRevision updated to 9eaff4947ebd87b1d811e27dec939e29362a9e42.",
       "Kokoro same voice and voice-emotion remain quality-gate=false; staged and published as-is per spec.",
       "OmniVoice same preset (716 bytes frozen conditioning) live on HF at b766eb23d5f6c84d580973c0f2013b6fcbd561c0."
@@ -113,8 +113,8 @@
           "sha256": "52a132ed9c53fe41381cd97a800a9d36b7494d5ea608183de03adfc0723662f8",
           "assetStatus": "available",
           "stagedPath": "models/voice/turn-detector-en/model_q8.onnx",
-          "sourceRepo": "elizaos/eliza-1-voice-turn",
-          "sourcePath": "onnx/model_q8.onnx",
+          "sourceRepo": "elizaos/eliza-1",
+          "sourcePath": "voice/turn-detector/onnx/model_q8.onnx",
           "sourceRevision": "9eaff4947ebd87b1d811e27dec939e29362a9e42"
         },
         {
@@ -127,8 +127,8 @@
           "sha256": "04bc18aeec5f59a94ae338aa66a48e204fc02785a6217d9055145f95d2192980",
           "assetStatus": "available",
           "stagedPath": "models/voice/turn-detector-en-q8.gguf",
-          "sourceRepo": "elizaos/eliza-1-voice-turn",
-          "sourcePath": "onnx/turn-detector-en-q8.gguf",
+          "sourceRepo": "elizaos/eliza-1",
+          "sourcePath": "voice/turn-detector/onnx/turn-detector-en-q8.gguf",
           "sourceRevision": "9eaff4947ebd87b1d811e27dec939e29362a9e42"
         }
       ],
@@ -209,7 +209,7 @@
       "displayName": "Kokoro 82M base + voice presets",
       "purpose": "Kokoro TTS base weights and voice presets",
       "runtime": "onnxruntime-node",
-      "currentVersion": "0.1.0",
+      "currentVersion": "0.2.0",
       "license": "Apache-2.0",
       "attribution": "https://huggingface.co/hexgrad/Kokoro-82M",
       "introducedIn": "R7/I7",
@@ -241,20 +241,24 @@
           "sourcePath": "voices/af_bella.bin"
         },
         {
-          "variantId": "kokoro-af-same",
-          "filename": "voices/af_same.bin",
+          "variantId": "kokoro-af-sam",
+          "filename": "voices/af_sam.bin",
           "format": "bin",
-          "precision": "fp16",
+          "precision": "fp32",
           "approxSizeBytes": 524288,
           "sizeBytes": 522240,
-          "sha256": "cf2810d3eb73cdcff22e285b0c51711773acb99b6d7606656f3c63ee414c628e",
+          "sha256": "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
           "assetStatus": "available",
-          "stagedPath": "artifacts/voice-sub-model-staging/kokoro/voices/af_same.bin",
+          "evalGatePass": false,
+          "evalNotes": "WER=1.0 / UTMOS=2.32 / SpkSim=0.15 — shipped per user override (I2); gate failure is structural (corpus ceiling 0.56 ECAPA cosine). OmniVoice path is production sam voice.",
+          "stagedPath": "artifacts/i2-kokoro-ship/20260515T112744Z/af_sam.bin",
           "sourceRepo": "local-kokoro-same-sweep",
-          "sourcePath": "packages/training/out/kokoro-same-sweep/anchor-0.0/af_same-anchor-0.0.bin"
+          "sourcePath": "packages/training/out/kokoro-same-sweep/anchor-0.2/af_same-anchor-0.2.bin",
+          "hfPath": "elizaos/eliza-1:voice/kokoro/voices/af_sam.bin",
+          "hfRevision": "4b8809b197aa90ae486f83c1e0a5dc7effb6b285"
         }
       ],
-      "hfRevision": "967f7449f79414d2b49db3b2441ea683630c11ab"
+      "hfRevision": "4b8809b197aa90ae486f83c1e0a5dc7effb6b285"
     },
     {
       "id": "omnivoice",

@@ -55,6 +55,12 @@
         "../../plugins/plugin-sql/src/dist/index.node.d.ts"
       ],
       "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/plugin-app-manager": [
+        "../../plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-app-manager/*": [
+        "../../plugins/plugin-app-manager/src/*"
+      ],
       "@elizaos/plugin-video": ["../../plugins/plugin-video/dist/index.d.ts"],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
@@ -87,7 +93,8 @@
         "../../plugins/plugin-local-inference/src/services/index.ts"
       ],
       "@elizaos/core": ["../core/dist/index.d.ts"],
-      "@elizaos/shared": ["../shared/dist/index.d.ts"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/capacitor-agent": ["../native-plugins/agent/src/index.ts"],
       "@elizaos/capacitor-desktop": ["../native-plugins/desktop/src/index.ts"],
       "@elizaos/capacitor-llama": ["../native-plugins/llama/src/index.ts"],

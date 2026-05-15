@@ -69,24 +69,80 @@ include CMakeFiles/voice_classifier.dir/progress.make
 # Include the compile flags for this target's objects.
 include CMakeFiles/voice_classifier.dir/flags.make
 
-CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o: CMakeFiles/voice_classifier.dir/flags.make
-CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_classifier_stub.c
-CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_classifier_stub.c
+CMakeFiles/voice_classifier.dir/src/voice_emotion.c.o: CMakeFiles/voice_classifier.dir/flags.make
+CMakeFiles/voice_classifier.dir/src/voice_emotion.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_emotion.c
+CMakeFiles/voice_classifier.dir/src/voice_emotion.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/voice_classifier.dir/src/voice_emotion.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_emotion.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_emotion.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_emotion.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_emotion.c
 
-CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.i"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_classifier_stub.c > CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.i
+CMakeFiles/voice_classifier.dir/src/voice_emotion.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/voice_classifier.dir/src/voice_emotion.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_emotion.c > CMakeFiles/voice_classifier.dir/src/voice_emotion.c.i
 
-CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.s"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_classifier_stub.c -o CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.s
+CMakeFiles/voice_classifier.dir/src/voice_emotion.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/voice_classifier.dir/src/voice_emotion.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_emotion.c -o CMakeFiles/voice_classifier.dir/src/voice_emotion.c.s
+
+CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o: CMakeFiles/voice_classifier.dir/flags.make
+CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_speaker.c
+CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building C object CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_speaker.c
+
+CMakeFiles/voice_classifier.dir/src/voice_speaker.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/voice_classifier.dir/src/voice_speaker.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_speaker.c > CMakeFiles/voice_classifier.dir/src/voice_speaker.c.i
+
+CMakeFiles/voice_classifier.dir/src/voice_speaker.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/voice_classifier.dir/src/voice_speaker.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_speaker.c -o CMakeFiles/voice_classifier.dir/src/voice_speaker.c.s
+
+CMakeFiles/voice_classifier.dir/src/voice_eot.c.o: CMakeFiles/voice_classifier.dir/flags.make
+CMakeFiles/voice_classifier.dir/src/voice_eot.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_eot.c
+CMakeFiles/voice_classifier.dir/src/voice_eot.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building C object CMakeFiles/voice_classifier.dir/src/voice_eot.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_eot.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_eot.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_eot.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_eot.c
+
+CMakeFiles/voice_classifier.dir/src/voice_eot.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/voice_classifier.dir/src/voice_eot.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_eot.c > CMakeFiles/voice_classifier.dir/src/voice_eot.c.i
+
+CMakeFiles/voice_classifier.dir/src/voice_eot.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/voice_classifier.dir/src/voice_eot.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_eot.c -o CMakeFiles/voice_classifier.dir/src/voice_eot.c.s
+
+CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.o: CMakeFiles/voice_classifier.dir/flags.make
+CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_diarizer.c
+CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building C object CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_diarizer.c
+
+CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_diarizer.c > CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.i
+
+CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_diarizer.c -o CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.s
+
+CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.o: CMakeFiles/voice_classifier.dir/flags.make
+CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_classifier_diagnostics.c
+CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building C object CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_classifier_diagnostics.c
+
+CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_classifier_diagnostics.c > CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.i
+
+CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_classifier_diagnostics.c -o CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.s
 
 CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o: CMakeFiles/voice_classifier.dir/flags.make
 CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_emotion_classes.c
 CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building C object CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building C object CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o"
 	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_emotion_classes.c
 
 CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.i: cmake_force
@@ -100,7 +156,7 @@ CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.s: cmake_force
 CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o: CMakeFiles/voice_classifier.dir/flags.make
 CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_speaker_distance.c
 CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building C object CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building C object CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o"
 	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_speaker_distance.c
 
 CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.i: cmake_force
@@ -114,7 +170,7 @@ CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.s: cmake_force
 CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o: CMakeFiles/voice_classifier.dir/flags.make
 CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_mel_features.c
 CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building C object CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building C object CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o"
 	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_mel_features.c
 
 CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.i: cmake_force
@@ -125,23 +181,63 @@ CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.s"
 	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_mel_features.c -o CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.s
 
+CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o: CMakeFiles/voice_classifier.dir/flags.make
+CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_loader.c
+CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Building C object CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_loader.c
+
+CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_loader.c > CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.i
+
+CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_loader.c -o CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.s
+
+CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o: CMakeFiles/voice_classifier.dir/flags.make
+CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o: /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_tensors.c
+CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o: CMakeFiles/voice_classifier.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building C object CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o -MF CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o.d -o CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o -c /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_tensors.c
+
+CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_tensors.c > CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.i
+
+CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_tensors.c -o CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.s
+
 # Object files for target voice_classifier
 voice_classifier_OBJECTS = \
-"CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o" \
+"CMakeFiles/voice_classifier.dir/src/voice_emotion.c.o" \
+"CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o" \
+"CMakeFiles/voice_classifier.dir/src/voice_eot.c.o" \
+"CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.o" \
+"CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.o" \
 "CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o" \
 "CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o" \
-"CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o"
+"CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o" \
+"CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o" \
+"CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o"
 
 # External object files for target voice_classifier
 voice_classifier_EXTERNAL_OBJECTS =
 
-libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_classifier_stub.c.o
+libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_emotion.c.o
+libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_speaker.c.o
+libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_eot.c.o
+libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_diarizer.c.o
+libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_classifier_diagnostics.c.o
 libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_emotion_classes.c.o
 libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_speaker_distance.c.o
 libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_mel_features.c.o
+libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_gguf_loader.c.o
+libvoice_classifier.a: CMakeFiles/voice_classifier.dir/src/voice_gguf_tensors.c.o
 libvoice_classifier.a: CMakeFiles/voice_classifier.dir/build.make
 libvoice_classifier.a: CMakeFiles/voice_classifier.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Linking C static library libvoice_classifier.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Linking C static library libvoice_classifier.a"
 	$(CMAKE_COMMAND) -P CMakeFiles/voice_classifier.dir/cmake_clean_target.cmake
 	$(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/voice_classifier.dir/link.txt --verbose=$(VERBOSE)
 

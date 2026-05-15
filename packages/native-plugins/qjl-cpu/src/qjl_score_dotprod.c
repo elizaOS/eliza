@@ -78,3 +78,6 @@ void qjl_score_qk_i8_dotprod(const qjl_i8_sketch_256 *q_sketch_i8,
 }
 
 #endif /* __aarch64__ && __ARM_FEATURE_DOTPROD */
+
+/* Avoid ISO C "empty translation unit" pedantic diagnostics when ARM dotprod is undefined. */
+typedef int qjl_score_dotprod_iso_c_tu_stub;

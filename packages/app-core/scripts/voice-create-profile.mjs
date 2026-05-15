@@ -49,7 +49,7 @@ const DEFAULT_BUNDLE = path.join(
   ".eliza",
   "local-inference",
   "models",
-  "eliza-1-1_7b.bundle",
+  "eliza-1-2b.bundle",
 );
 const DEFAULT_VOICE_MODELS_DIR = path.join(REPO_ROOT, "models", "voice");
 const FREEZE_VOICE_SCRIPT = path.join(

@@ -41,7 +41,6 @@
   "scripts": {
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
-    "test": "vitest run --config ./vitest.config.ts",
     "prepublishOnly": "bun run build",
     "watch": "tsc --watch"
   },

@@ -64,9 +64,11 @@ CMAKE_BINARY_DIR = /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/
 
 # The main recursive "all" target.
 all: CMakeFiles/wakeword.dir/all
+all: CMakeFiles/wakeword_shared.dir/all
 all: CMakeFiles/wakeword_stub_smoke.dir/all
 all: CMakeFiles/wakeword_melspec_test.dir/all
 all: CMakeFiles/wakeword_window_test.dir/all
+all: CMakeFiles/wakeword_runtime_test.dir/all
 .PHONY : all
 
 # The main recursive "preinstall" target.
@@ -75,9 +77,11 @@ preinstall:
 
 # The main recursive "clean" target.
 clean: CMakeFiles/wakeword.dir/clean
+clean: CMakeFiles/wakeword_shared.dir/clean
 clean: CMakeFiles/wakeword_stub_smoke.dir/clean
 clean: CMakeFiles/wakeword_melspec_test.dir/clean
 clean: CMakeFiles/wakeword_window_test.dir/clean
+clean: CMakeFiles/wakeword_runtime_test.dir/clean
 .PHONY : clean
 
 #=============================================================================
@@ -107,13 +111,39 @@ CMakeFiles/wakeword.dir/clean:
 .PHONY : CMakeFiles/wakeword.dir/clean
 
 #=============================================================================
+# Target rules for target CMakeFiles/wakeword_shared.dir
+
+# All Build rule for target.
+CMakeFiles/wakeword_shared.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles --progress-num=9,10,11,12 "Built target wakeword_shared"
+.PHONY : CMakeFiles/wakeword_shared.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/wakeword_shared.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles 4
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/wakeword_shared.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles 0
+.PHONY : CMakeFiles/wakeword_shared.dir/rule
+
+# Convenience name for target.
+wakeword_shared: CMakeFiles/wakeword_shared.dir/rule
+.PHONY : wakeword_shared
+
+# clean rule for target.
+CMakeFiles/wakeword_shared.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_shared.dir/build.make CMakeFiles/wakeword_shared.dir/clean
+.PHONY : CMakeFiles/wakeword_shared.dir/clean
+
+#=============================================================================
 # Target rules for target CMakeFiles/wakeword_stub_smoke.dir
 
 # All Build rule for target.
 CMakeFiles/wakeword_stub_smoke.dir/all: CMakeFiles/wakeword.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_stub_smoke.dir/build.make CMakeFiles/wakeword_stub_smoke.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_stub_smoke.dir/build.make CMakeFiles/wakeword_stub_smoke.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles --progress-num=7,8 "Built target wakeword_stub_smoke"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles --progress-num=13,14 "Built target wakeword_stub_smoke"
 .PHONY : CMakeFiles/wakeword_stub_smoke.dir/all
 
 # Build rule for subdir invocation for target.
@@ -165,7 +195,7 @@ CMakeFiles/wakeword_melspec_test.dir/clean:
 CMakeFiles/wakeword_window_test.dir/all: CMakeFiles/wakeword.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_window_test.dir/build.make CMakeFiles/wakeword_window_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_window_test.dir/build.make CMakeFiles/wakeword_window_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles --progress-num=9,10 "Built target wakeword_window_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles --progress-num=15,16 "Built target wakeword_window_test"
 .PHONY : CMakeFiles/wakeword_window_test.dir/all
 
 # Build rule for subdir invocation for target.
@@ -183,6 +213,32 @@ wakeword_window_test: CMakeFiles/wakeword_window_test.dir/rule
 CMakeFiles/wakeword_window_test.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_window_test.dir/build.make CMakeFiles/wakeword_window_test.dir/clean
 .PHONY : CMakeFiles/wakeword_window_test.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/wakeword_runtime_test.dir
+
+# All Build rule for target.
+CMakeFiles/wakeword_runtime_test.dir/all: CMakeFiles/wakeword.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_runtime_test.dir/build.make CMakeFiles/wakeword_runtime_test.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_runtime_test.dir/build.make CMakeFiles/wakeword_runtime_test.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles --progress-num=7,8 "Built target wakeword_runtime_test"
+.PHONY : CMakeFiles/wakeword_runtime_test.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/wakeword_runtime_test.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles 6
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/wakeword_runtime_test.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles 0
+.PHONY : CMakeFiles/wakeword_runtime_test.dir/rule
+
+# Convenience name for target.
+wakeword_runtime_test: CMakeFiles/wakeword_runtime_test.dir/rule
+.PHONY : wakeword_runtime_test
+
+# clean rule for target.
+CMakeFiles/wakeword_runtime_test.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/wakeword_runtime_test.dir/build.make CMakeFiles/wakeword_runtime_test.dir/clean
+.PHONY : CMakeFiles/wakeword_runtime_test.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

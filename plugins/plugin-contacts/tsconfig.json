@@ -3,6 +3,7 @@
   "compilerOptions": {
     "composite": false,
     "jsx": "react-jsx",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
@@ -25,8 +26,8 @@
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
-      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
-      "@elizaos/ui/*": ["../../packages/ui/src/*"],
+      "@elizaos/ui": ["../../packages/ui/dist/index.d.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/dist/*"],
       "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
       "@elizaos/core/*": ["../../packages/core/dist/*"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],

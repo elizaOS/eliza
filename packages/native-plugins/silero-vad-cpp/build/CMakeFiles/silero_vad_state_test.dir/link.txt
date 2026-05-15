@@ -1,1 +1,1 @@
-/usr/bin/cc -O3 -DNDEBUG CMakeFiles/silero_vad_state_test.dir/test/silero_vad_state_test.c.o -o silero_vad_state_test  libsilero_vad.a 
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/silero_vad_state_test.dir/test/silero_vad_state_test.c.o -o silero_vad_state_test  libsilero_vad.a -lm 

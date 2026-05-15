@@ -279,7 +279,8 @@ commit `cd79fe1186`. Update to the latest `develop` branch.
 Check that:
 1. The bundle includes ASR and VAD files (all published tiers do).
 2. Microphone permission is granted.
-3. `silero-vad-int8.onnx` exists in the bundle (check `~/.milady/local-inference/models/<tier>/vad/`).
+3. The VAD file exists in the bundle at `~/.milady/local-inference/models/<tier>/vad/silero-vad-v5.1.2.ggml.bin`
+   (the runtime uses the fork's FFI path; the older `silero-vad-int8.onnx` is a deprecated runway asset).
 
 ---
 

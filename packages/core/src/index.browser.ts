@@ -84,6 +84,7 @@ export * from "./types/message-service";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
+export { addHeader, composePromptFromState, parseKeyValueXml } from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export * from "./utils/description-compressed-lint";
@@ -140,6 +141,10 @@ export function resolveStateDir(
 // browser; we just need named exports so Rollup's static analysis succeeds.
 export function resolveOAuthDir(): string {
 	return "/.eliza/oauth";
+}
+
+export function migrateLegacyStateDir(): { migrated: false } {
+	return { migrated: false };
 }
 
 export async function runPluginMigrations(): Promise<void> {}

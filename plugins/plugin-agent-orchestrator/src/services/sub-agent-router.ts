@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import type {
   Content,
   HandlerCallback,
@@ -31,6 +33,18 @@ interface DeadUrl {
   status: string;
   /** Set when this URL was discovered as a sub-resource of another page. */
   via?: string;
+}
+
+interface RouteUrlMapping {
+  urlPrefix: string;
+  localPath: string;
+  requireFresh?: boolean;
+}
+
+interface RouteUrlVerification {
+  workdir: string;
+  sessionStartedAtMs: number;
+  mappings: RouteUrlMapping[];
 }
 
 function collectVerifiableUrlCandidates(
@@ -69,7 +83,12 @@ function extractVerifiableUrls(
   referenceText?: string,
   ignoredUrls?: ReadonlySet<string>,
 ): string[] {
-  const candidates = collectVerifiableUrlCandidates(text, ignoredUrls);
+  const candidates = [
+    ...collectVerifiableUrlCandidates(text, ignoredUrls),
+    ...(referenceText
+      ? collectVerifiableUrlCandidates(referenceText, ignoredUrls)
+      : []),
+  ].filter((url, index, all) => all.indexOf(url) === index);
   const filtered = candidates.filter((url) => {
     const prefix = url.endsWith("/") ? url : `${url}/`;
     return !candidates.some(
@@ -77,7 +96,7 @@ function extractVerifiableUrls(
     );
   });
   const referenceUrls = referenceText
-    ? new Set(collectVerifiableUrlCandidates(referenceText))
+    ? new Set(collectVerifiableUrlCandidates(referenceText, ignoredUrls))
     : undefined;
   const routeFocused = referenceUrls?.size
     ? filterToReferencedAppRoute(filtered, referenceUrls)
@@ -422,20 +441,24 @@ export class SubAgentRouter extends Service {
     // accurate status report.
     let text = baseText;
     let deadUrls: DeadUrl[] = [];
+    let verifiedUrls: string[] = [];
     if (event === "task_complete") {
       const meta = session.metadata as Record<string, unknown> | undefined;
       const verificationReferenceText =
         typeof meta?.initialTask === "string" ? meta.initialTask : undefined;
       const ignoredVerifyUrls = pickStringSet(meta?.cachedStaleMissUrls);
+      const routeVerification = routeVerificationForSession(session);
       const verified = await annotateUnverifiedUrls(
         baseText,
         (m) => this.log("debug", m),
         verificationReferenceText,
         ignoredVerifyUrls,
         this.runtime,
+        routeVerification,
       );
       text = verified.text;
       deadUrls = verified.dead;
+      verifiedUrls = verified.verifiedUrls;
     }
     // Verify-retry: the sub-agent reported done but referenced URLs that
     // are unreachable — the build is incomplete (missing or empty files).
@@ -445,6 +468,9 @@ export class SubAgentRouter extends Service {
     if (event === "task_complete" && deadUrls.length > 0) {
       const retried = await this.retryIncompleteBuild(session, deadUrls);
       if (retried) return;
+    }
+    if (event === "task_complete" && verifiedUrls.length > 0) {
+      text = verifiedUrlCompletionFallback(text, verifiedUrls);
     }
     const memory: Memory = {
       id: randomUUID() as UUID,
@@ -468,6 +494,9 @@ export class SubAgentRouter extends Service {
           subAgentRoundTrip: nextCount,
           subAgentRoundTripCap: this.roundTripCap,
           ...(capExceeded ? { subAgentCapExceeded: true } : {}),
+          ...(verifiedUrls.length > 0
+            ? { subAgentVerifiedUrls: verifiedUrls }
+            : {}),
           ...(origin.userId ? { originUserId: origin.userId } : {}),
           ...(origin.parentMessageId
             ? { originMessageId: origin.parentMessageId }
@@ -712,6 +741,32 @@ function shouldInject(event: SessionEventName): boolean {
   return event === "task_complete" || event === "error" || event === "blocked";
 }
 
+function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
+  if (!text.includes("[tool output:")) return text;
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const retained: string[] = [];
+  let insideToolOutput = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!insideToolOutput && trimmed.startsWith("[tool output:")) {
+      insideToolOutput = true;
+      continue;
+    }
+    if (insideToolOutput && trimmed === "[/tool output]") {
+      insideToolOutput = false;
+      continue;
+    }
+    if (!insideToolOutput) retained.push(line);
+  }
+  const meaningful = retained
+    .filter((line) => !line.trim().startsWith("[sub-agent:"))
+    .join("\n")
+    .trim();
+  if (meaningful.length > 0) return text;
+  const header = retained.find((line) => line.trim().startsWith("[sub-agent:"));
+  return [header, ...verifiedUrls].filter(Boolean).join("\n");
+}
+
 interface OriginInfo {
   roomId: UUID;
   worldId?: UUID;
@@ -755,6 +810,49 @@ function pickStringSet(value: unknown): Set<string> {
   return new Set(
     value.filter((v): v is string => typeof v === "string" && v.length > 0),
   );
+}
+
+function pickRouteUrlMappings(value: unknown): RouteUrlMapping[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") return undefined;
+      const record = entry as Record<string, unknown>;
+      const urlPrefix =
+        typeof record.urlPrefix === "string" ? record.urlPrefix.trim() : "";
+      const localPath =
+        typeof record.localPath === "string" ? record.localPath.trim() : "";
+      if (!urlPrefix || !localPath) return undefined;
+      return {
+        urlPrefix,
+        localPath,
+        ...(typeof record.requireFresh === "boolean"
+          ? { requireFresh: record.requireFresh }
+          : {}),
+      };
+    })
+    .filter((entry): entry is RouteUrlMapping => entry !== undefined);
+}
+
+function routeVerificationForSession(
+  session: SessionInfo,
+): RouteUrlVerification | undefined {
+  const route =
+    session.metadata?.workdirRoute &&
+    typeof session.metadata.workdirRoute === "object"
+      ? (session.metadata.workdirRoute as Record<string, unknown>)
+      : undefined;
+  const mappings = pickRouteUrlMappings(route?.urlMappings);
+  if (mappings.length === 0) return undefined;
+  const createdAt =
+    session.createdAt instanceof Date
+      ? session.createdAt.getTime()
+      : new Date(session.createdAt).getTime();
+  return {
+    workdir: session.workdir,
+    sessionStartedAtMs: Number.isFinite(createdAt) ? createdAt : Date.now(),
+    mappings,
+  };
 }
 
 function mergeCachedStaleMissUrls(
@@ -837,9 +935,10 @@ async function annotateUnverifiedUrls(
   referenceText?: string,
   ignoredUrls?: ReadonlySet<string>,
   runtime?: IAgentRuntime,
-): Promise<{ text: string; dead: DeadUrl[] }> {
+  routeVerification?: RouteUrlVerification,
+): Promise<{ text: string; dead: DeadUrl[]; verifiedUrls: string[] }> {
   const urls = extractVerifiableUrls(text, 5, referenceText, ignoredUrls);
-  if (urls.length === 0) return { text, dead: [] };
+  if (urls.length === 0) return { text, dead: [], verifiedUrls: [] };
   log?.(
     `[verify] start @ ${new Date().toISOString()} — ${urls.length} url(s): ${urls.join(", ")}`,
   );
@@ -931,6 +1030,11 @@ async function annotateUnverifiedUrls(
         dead.push({ url, status: result.status });
         return;
       }
+      const localStatus = verifyMappedLocalUrl(url, routeVerification);
+      if (localStatus) {
+        dead.push({ url, status: localStatus });
+        return;
+      }
       // Follow the page's own declared dependencies — a 200 index.html
       // that <link>s a missing style.css is still a broken app.
       if (result.html) {
@@ -940,6 +1044,14 @@ async function annotateUnverifiedUrls(
             const subResult = await probe(subUrl);
             if (subResult.status !== null) {
               dead.push({ url: subUrl, status: subResult.status, via: url });
+              return;
+            }
+            const subLocalStatus = verifyMappedLocalUrl(
+              subUrl,
+              routeVerification,
+            );
+            if (subLocalStatus) {
+              dead.push({ url: subUrl, status: subLocalStatus, via: url });
             }
           }),
         );
@@ -949,7 +1061,7 @@ async function annotateUnverifiedUrls(
   log?.(
     `[verify] done @ ${new Date().toISOString()} — ${dead.length} dead of ${urls.length} mentioned`,
   );
-  if (dead.length === 0) return { text, dead };
+  if (dead.length === 0) return { text, dead, verifiedUrls: urls };
   const lines = dead
     .map((d) =>
       d.via
@@ -960,7 +1072,91 @@ async function annotateUnverifiedUrls(
   return {
     text: `${text}\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live; report the real status and that the build likely did not complete]\n${lines}`,
     dead,
+    verifiedUrls: urls.filter(
+      (url) => !dead.some((entry) => entry.url === url || entry.via === url),
+    ),
   };
+}
+
+function verifyMappedLocalUrl(
+  url: string,
+  routeVerification: RouteUrlVerification | undefined,
+): string | undefined {
+  if (!routeVerification) return undefined;
+  for (const mapping of routeVerification.mappings) {
+    const localTarget = mappedLocalTarget(
+      url,
+      routeVerification.workdir,
+      mapping,
+    );
+    if (!localTarget) continue;
+    return verifyLocalTarget(
+      localTarget,
+      routeVerification.sessionStartedAtMs,
+      mapping.requireFresh !== false,
+    );
+  }
+  return undefined;
+}
+
+function mappedLocalTarget(
+  url: string,
+  workdir: string,
+  mapping: RouteUrlMapping,
+): string | undefined {
+  let parsed: URL;
+  let prefix: URL;
+  try {
+    parsed = new URL(url);
+    prefix = new URL(mapping.urlPrefix);
+  } catch {
+    return undefined;
+  }
+  if (parsed.origin !== prefix.origin) return undefined;
+  const prefixPath = prefix.pathname.endsWith("/")
+    ? prefix.pathname
+    : `${prefix.pathname}/`;
+  if (!parsed.pathname.startsWith(prefixPath)) return undefined;
+  const relativePath = decodeURIComponent(
+    parsed.pathname.slice(prefixPath.length),
+  );
+  if (!relativePath) return undefined;
+  const localRoot = path.resolve(workdir, mapping.localPath);
+  const target = path.resolve(localRoot, relativePath);
+  if (target !== localRoot && !target.startsWith(`${localRoot}${path.sep}`)) {
+    return undefined;
+  }
+  return target;
+}
+
+function verifyLocalTarget(
+  target: string,
+  sessionStartedAtMs: number,
+  requireFresh: boolean,
+): string | undefined {
+  const file = localFileForTarget(target);
+  if (!file) {
+    return `mapped local target missing or empty: ${path.relative(process.cwd(), target)}`;
+  }
+  const stat = fs.statSync(file);
+  if (stat.size <= 0) {
+    return `mapped local target missing or empty: ${path.relative(process.cwd(), file)}`;
+  }
+  if (requireFresh && stat.mtimeMs < sessionStartedAtMs - 5000) {
+    return `mapped local target was not updated during this session: ${path.relative(process.cwd(), file)}`;
+  }
+  return undefined;
+}
+
+function localFileForTarget(target: string): string | undefined {
+  if (!fs.existsSync(target)) return undefined;
+  const stat = fs.statSync(target);
+  if (stat.isFile()) return target;
+  if (!stat.isDirectory()) return undefined;
+  const indexFile = path.join(target, "index.html");
+  return fs.existsSync(indexFile) && fs.statSync(indexFile).isFile()
+    ? indexFile
+    : undefined;
 }
 
 async function detectCachedMiss(

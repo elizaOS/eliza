@@ -1,4 +1,0 @@
-yolo_stub_smoke 1 0.00244929
-yolo_nms_test 1 0.00292479
-yolo_classes_test 1 0.00295496
----

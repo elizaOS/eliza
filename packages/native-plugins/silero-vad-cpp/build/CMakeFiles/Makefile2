@@ -64,9 +64,11 @@ CMAKE_BINARY_DIR = /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cp
 
 # The main recursive "all" target.
 all: CMakeFiles/silero_vad.dir/all
+all: CMakeFiles/silero_vad_shared.dir/all
 all: CMakeFiles/silero_vad_stub_smoke.dir/all
 all: CMakeFiles/silero_vad_state_test.dir/all
 all: CMakeFiles/silero_vad_resample_test.dir/all
+all: CMakeFiles/silero_vad_runtime_test.dir/all
 .PHONY : all
 
 # The main recursive "preinstall" target.
@@ -75,9 +77,11 @@ preinstall:
 
 # The main recursive "clean" target.
 clean: CMakeFiles/silero_vad.dir/clean
+clean: CMakeFiles/silero_vad_shared.dir/clean
 clean: CMakeFiles/silero_vad_stub_smoke.dir/clean
 clean: CMakeFiles/silero_vad_state_test.dir/clean
 clean: CMakeFiles/silero_vad_resample_test.dir/clean
+clean: CMakeFiles/silero_vad_runtime_test.dir/clean
 .PHONY : clean
 
 #=============================================================================
@@ -107,13 +111,39 @@ CMakeFiles/silero_vad.dir/clean:
 .PHONY : CMakeFiles/silero_vad.dir/clean
 
 #=============================================================================
+# Target rules for target CMakeFiles/silero_vad_shared.dir
+
+# All Build rule for target.
+CMakeFiles/silero_vad_shared.dir/all:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles --progress-num=9,10,11,12 "Built target silero_vad_shared"
+.PHONY : CMakeFiles/silero_vad_shared.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/silero_vad_shared.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles 4
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/silero_vad_shared.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles 0
+.PHONY : CMakeFiles/silero_vad_shared.dir/rule
+
+# Convenience name for target.
+silero_vad_shared: CMakeFiles/silero_vad_shared.dir/rule
+.PHONY : silero_vad_shared
+
+# clean rule for target.
+CMakeFiles/silero_vad_shared.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_shared.dir/build.make CMakeFiles/silero_vad_shared.dir/clean
+.PHONY : CMakeFiles/silero_vad_shared.dir/clean
+
+#=============================================================================
 # Target rules for target CMakeFiles/silero_vad_stub_smoke.dir
 
 # All Build rule for target.
 CMakeFiles/silero_vad_stub_smoke.dir/all: CMakeFiles/silero_vad.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_stub_smoke.dir/build.make CMakeFiles/silero_vad_stub_smoke.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_stub_smoke.dir/build.make CMakeFiles/silero_vad_stub_smoke.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles --progress-num=9,10 "Built target silero_vad_stub_smoke"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles --progress-num=15,16 "Built target silero_vad_stub_smoke"
 .PHONY : CMakeFiles/silero_vad_stub_smoke.dir/all
 
 # Build rule for subdir invocation for target.
@@ -139,7 +169,7 @@ CMakeFiles/silero_vad_stub_smoke.dir/clean:
 CMakeFiles/silero_vad_state_test.dir/all: CMakeFiles/silero_vad.dir/all
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_state_test.dir/build.make CMakeFiles/silero_vad_state_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_state_test.dir/build.make CMakeFiles/silero_vad_state_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles --progress-num=7,8 "Built target silero_vad_state_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles --progress-num=13,14 "Built target silero_vad_state_test"
 .PHONY : CMakeFiles/silero_vad_state_test.dir/all
 
 # Build rule for subdir invocation for target.
@@ -183,6 +213,32 @@ silero_vad_resample_test: CMakeFiles/silero_vad_resample_test.dir/rule
 CMakeFiles/silero_vad_resample_test.dir/clean:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_resample_test.dir/build.make CMakeFiles/silero_vad_resample_test.dir/clean
 .PHONY : CMakeFiles/silero_vad_resample_test.dir/clean
+
+#=============================================================================
+# Target rules for target CMakeFiles/silero_vad_runtime_test.dir
+
+# All Build rule for target.
+CMakeFiles/silero_vad_runtime_test.dir/all: CMakeFiles/silero_vad.dir/all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_runtime_test.dir/build.make CMakeFiles/silero_vad_runtime_test.dir/depend
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_runtime_test.dir/build.make CMakeFiles/silero_vad_runtime_test.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles --progress-num=7,8 "Built target silero_vad_runtime_test"
+.PHONY : CMakeFiles/silero_vad_runtime_test.dir/all
+
+# Build rule for subdir invocation for target.
+CMakeFiles/silero_vad_runtime_test.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles 6
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 CMakeFiles/silero_vad_runtime_test.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/shaw/milady/eliza/packages/native-plugins/silero-vad-cpp/build/CMakeFiles 0
+.PHONY : CMakeFiles/silero_vad_runtime_test.dir/rule
+
+# Convenience name for target.
+silero_vad_runtime_test: CMakeFiles/silero_vad_runtime_test.dir/rule
+.PHONY : silero_vad_runtime_test
+
+# clean rule for target.
+CMakeFiles/silero_vad_runtime_test.dir/clean:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/silero_vad_runtime_test.dir/build.make CMakeFiles/silero_vad_runtime_test.dir/clean
+.PHONY : CMakeFiles/silero_vad_runtime_test.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

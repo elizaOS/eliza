@@ -242,6 +242,13 @@ function normalizeChatContext(
 	});
 }
 
+function omitRecentMessages(
+	context: Record<string, ProviderValue>,
+): Record<string, ProviderValue> {
+	const { recentMessages: _recentMessages, ...rest } = context;
+	return rest;
+}
+
 function normalizeUserContext(
 	connector: MessageConnector,
 	context: MessageConnectorUserContext,
@@ -361,9 +368,13 @@ export const platformChatContextProvider: Provider = {
 			chatContextCount: contexts.length,
 			contexts,
 		};
+		const promptData = {
+			...data,
+			contexts: contexts.map(omitRecentMessages),
+		};
 
 		return {
-			text: renderJson({ platform_chat_context: data }),
+			text: renderJson({ platform_chat_context: promptData }),
 			values: {
 				platformChatContextCount: contexts.length,
 			},

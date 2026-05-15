@@ -1,8 +1,12 @@
+/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/voice_classifier_shared.dir
 /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/voice_classifier.dir
 /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/voice_classifier_stub_smoke.dir
 /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/voice_emotion_classes_test.dir
 /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/voice_speaker_distance_test.dir
 /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/voice_mel_features_test.dir
+/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/voice_gguf_loader_test.dir
+/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/voice_diarizer_parity_test.dir
+/home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/voice_speaker_parity_test.dir
 /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/test.dir
 /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/edit_cache.dir
 /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/CMakeFiles/rebuild_cache.dir

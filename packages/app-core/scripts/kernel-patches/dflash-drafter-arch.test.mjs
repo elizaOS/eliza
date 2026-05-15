@@ -166,4 +166,28 @@ describe("patchDflashDrafterArch", () => {
       fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
     ).toBe(before);
   });
+
+  it("uses the hyphenated upstream dflash-draft filename when CMake references it", () => {
+    const root = makeLlamaCppFixture();
+    write(
+      root,
+      "src/CMakeLists.txt",
+      "set(LLAMA_MODELS\n            models/dream.cpp\n            models/dflash-draft.cpp\n)\n",
+    );
+
+    patchDflashDrafterArch(root);
+
+    expect(fs.existsSync(path.join(root, "src/models/dflash-draft.cpp"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(root, "src/models/dflash_draft.cpp"))).toBe(
+      false,
+    );
+    const cmake = fs.readFileSync(
+      path.join(root, "src/CMakeLists.txt"),
+      "utf8",
+    );
+    expect(cmake).toContain("models/dflash-draft.cpp");
+    expect(cmake).not.toContain("models/dflash_draft.cpp");
+  });
 });
