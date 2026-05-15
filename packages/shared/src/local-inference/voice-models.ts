@@ -155,19 +155,22 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ggufAssets: [
       {
         filename: "omnivoice-base-q4_k_m.gguf",
-        sha256: "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6",
+        sha256:
+          "4836ba5affcb83c04d08b3e96b6e48ac839947ee3864188739807b68e0e159c6",
         sizeBytes: 407_485_216,
         quant: "q4_k_m",
       },
       {
         filename: "omnivoice-tokenizer-q4_k_m.gguf",
-        sha256: "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d",
+        sha256:
+          "988fc32bc699bce361c44e9af8383be9811960441f293eb5ab4ec6bf6386378d",
         sizeBytes: 252_474_112,
         quant: "q4_k_m",
       },
       {
         filename: "omnivoice-base-q8_0.gguf",
-        sha256: "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
+        sha256:
+          "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
         sizeBytes: 656_395_008,
         quant: "q8_0",
       },
@@ -194,7 +197,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ggufAssets: [
       {
         filename: "wespeaker-resnet34-lm.onnx",
-        sha256: "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
+        sha256:
+          "7bb2f06e9df17cdf1ef14ee8a15ab08ed28e8d0ef5054ee135741560df2ec068",
         sizeBytes: 26_530_309,
         quant: "onnx-fp16",
       },
@@ -212,13 +216,15 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ggufAssets: [
       {
         filename: "pyannote-segmentation-3.0-int8.onnx",
-        sha256: "465d0975bf70fbf14fb77c0589a5d346a9c07c2170345f529cf774678446db76",
+        sha256:
+          "465d0975bf70fbf14fb77c0589a5d346a9c07c2170345f529cf774678446db76",
         sizeBytes: 1_542_304,
         quant: "onnx-int8",
       },
       {
         filename: "pyannote-segmentation-3.0-fp32.onnx",
-        sha256: "057ee564753071c0b09b5b611648b50ac188d50846bff5f01e9f7bbf1591ea25",
+        sha256:
+          "057ee564753071c0b09b5b611648b50ac188d50846bff5f01e9f7bbf1591ea25",
         sizeBytes: 5_986_908,
         quant: "onnx-fp16",
       },
@@ -236,19 +242,22 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ggufAssets: [
       {
         filename: "turn-detector-en-int8.onnx",
-        sha256: "fdd695a99bda01155fb0b5ce71d34cb9fd3902c62496db7a6c2c7bdeac310ac7",
+        sha256:
+          "fdd695a99bda01155fb0b5ce71d34cb9fd3902c62496db7a6c2c7bdeac310ac7",
         sizeBytes: 65_712_276,
         quant: "onnx-int8",
       },
       {
         filename: "turn-detector-intl-int8.onnx",
-        sha256: "bd2c30776882138a1d95a07faddc13756fe1a35bef6323505f1124fca349bc9c",
+        sha256:
+          "bd2c30776882138a1d95a07faddc13756fe1a35bef6323505f1124fca349bc9c",
         sizeBytes: 396_316_457,
         quant: "onnx-int8",
       },
       {
         filename: "turnsense-fallback-int8.onnx",
-        sha256: "a423adf55f5f33cf4ee9e3fe73ec133d0106affae3aa14693417b4a1c79e2df8",
+        sha256:
+          "a423adf55f5f33cf4ee9e3fe73ec133d0106affae3aa14693417b4a1c79e2df8",
         sizeBytes: 176_072_860,
         quant: "onnx-int8",
       },
@@ -291,13 +300,15 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ggufAssets: [
       {
         filename: "kokoro-v1.0-q4.onnx",
-        sha256: "04cf570cf9c4153694f76347ed4b9a48c1b59ff1de0999e6605d123966b197c7",
+        sha256:
+          "04cf570cf9c4153694f76347ed4b9a48c1b59ff1de0999e6605d123966b197c7",
         sizeBytes: 305_215_966,
         quant: "onnx-int8",
       },
       {
         filename: "voices/af_bella.bin",
-        sha256: "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b",
+        sha256:
+          "f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b",
         sizeBytes: 522_240,
         quant: "fp16",
       },
@@ -360,13 +371,15 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ggufAssets: [
       {
         filename: "silero-vad-int8.onnx",
-        sha256: "90b026c95f054d59d7bf79387b0ed93c8950f35a4d8b741cd78d4bb23a7d2776",
+        sha256:
+          "90b026c95f054d59d7bf79387b0ed93c8950f35a4d8b741cd78d4bb23a7d2776",
         sizeBytes: 639_383,
         quant: "onnx-int8",
       },
       {
         filename: "silero-vad-v5.1.2.ggml.bin",
-        sha256: "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
+        sha256:
+          "29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf",
         sizeBytes: 885_098,
         quant: "onnx-fp16",
       },
@@ -403,7 +416,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ggufAssets: [
       {
         filename: "eliza-1-embedding-q8_0.gguf",
-        sha256: "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
+        sha256:
+          "06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439",
         sizeBytes: 639_150_592,
         quant: "q8_0",
       },
@@ -421,13 +435,15 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ggufAssets: [
       {
         filename: "eliza-1-asr-q8_0.gguf",
-        sha256: "58e22d0532d4eacaf034cfac17a6fed159f37c41390c710186783be439d1fc57",
+        sha256:
+          "58e22d0532d4eacaf034cfac17a6fed159f37c41390c710186783be439d1fc57",
         sizeBytes: 2_165_034_944,
         quant: "q8_0",
       },
       {
         filename: "eliza-1-asr-mmproj.gguf",
-        sha256: "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
+        sha256:
+          "46c1d533af3f354ceb37ce855dbceff7da7fa7cf1e6a523df3b13440bd164c0d",
         sizeBytes: 355_709_344,
         quant: "q8_0",
       },
