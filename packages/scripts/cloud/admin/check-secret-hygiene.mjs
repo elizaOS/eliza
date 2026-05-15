@@ -8,7 +8,7 @@ import { existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 
 function main() {
   if (!existsSync(join(repoRoot, ".git"))) {
@@ -21,6 +21,7 @@ function main() {
     tracked = execSync("git ls-files", {
       cwd: repoRoot,
       encoding: "utf8",
+      maxBuffer: 16 * 1024 * 1024,
       stdio: ["ignore", "pipe", "pipe"],
     });
   } catch {

@@ -4,7 +4,7 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const cloudRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
 const truthyValues = new Set(["1", "true", "yes", "on"]);
 const defaultServerPort = Number.parseInt(process.env.TEST_SERVER_PORT?.trim() || "8787", 10);
 const defaultBaseUrl = process.env.TEST_BASE_URL?.trim() || `http://localhost:${defaultServerPort}`;
@@ -41,7 +41,7 @@ if (envFlagEnabled("AGENT_SKIP_CLOUD_LIVE_SMOKE")) {
   skip("AGENT_SKIP_CLOUD_LIVE_SMOKE=1");
 }
 
-if (!fs.existsSync(path.join(cloudRoot, "packages", "tests", "e2e", "preload.ts"))) {
+if (!fs.existsSync(path.join(repoRoot, "packages", "cloud-api", "test", "e2e", "preload.ts"))) {
   skip("the cloud e2e harness is not available in this checkout");
 }
 
@@ -55,14 +55,13 @@ const result = spawnSync(
     "test",
     "--max-concurrency=1",
     "--preload",
-    "./packages/tests/e2e/preload.ts",
-    "packages/tests/e2e/api/health-route.test.ts",
-    "packages/tests/e2e/v1/chat.test.ts",
+    "packages/cloud-api/test/e2e/preload.ts",
+    "packages/cloud-api/test/e2e/agent-token-flow.test.ts",
     "--timeout",
     "120000",
   ],
   {
-    cwd: cloudRoot,
+    cwd: repoRoot,
     stdio: "inherit",
     env: {
       ...process.env,

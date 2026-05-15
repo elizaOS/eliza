@@ -6,18 +6,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const cloudRoot = path.resolve(here, "../..");
-const integrationRoot = path.join(cloudRoot, "packages/tests/integration");
+const repoRoot = path.resolve(here, "../../../..");
+const integrationRoot = path.join(repoRoot, "packages/cloud-api/test/e2e");
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
 
-const serverPreload = "./packages/tests/e2e/preload.ts";
-const dbPreload = "./packages/tests/load-env.ts";
+const serverPreload = "packages/cloud-api/test/e2e/preload.ts";
+const dbPreload = "packages/cloud-api/test/e2e/preload.ts";
 const timeoutMs = process.env.CLOUD_INTEGRATION_TIMEOUT_MS || "120000";
 
-const isolatedServerFiles = new Set(["packages/tests/integration/oauth-api.test.ts"]);
-const isolatedDbFiles = new Set([
-  "packages/tests/integration/services/organizations.service.test.ts",
-]);
+const isolatedServerFiles = new Set(["packages/cloud-api/test/e2e/agent-token-flow.test.ts"]);
+const isolatedDbFiles = new Set([]);
 
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -27,7 +25,7 @@ function walk(dir) {
     if (entry.isDirectory()) {
       files.push(...walk(fullPath));
     } else if (entry.isFile() && entry.name.endsWith(".test.ts")) {
-      files.push(path.relative(cloudRoot, fullPath));
+      files.push(path.relative(repoRoot, fullPath));
     }
   }
   return files.sort();
@@ -49,7 +47,7 @@ function run(label, preload, files) {
     bun,
     ["test", "--max-concurrency=1", "--preload", preload, ...files, "--timeout", timeoutMs],
     {
-      cwd: cloudRoot,
+      cwd: repoRoot,
       env: process.env,
       stdio: "inherit",
     },

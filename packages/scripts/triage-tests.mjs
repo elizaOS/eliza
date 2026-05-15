@@ -5,7 +5,7 @@
  * Walks every test file under the repo (excluding vendored/build dirs) and
  * classifies each as KEEP / DELETE / CONVERT based on imports and content
  * signals. Writes coverage-matrix.csv at repo root and
- * scripts/triage-tests.summary.md.
+ * packages/scripts/triage-tests.summary.md.
  *
  * Read-only with respect to test files. The only writes are the two outputs
  * listed above.
@@ -17,7 +17,7 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const REPO_ROOT = path.resolve(__dirname, "..");
+const REPO_ROOT = path.resolve(__dirname, "../..");
 
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -537,7 +537,7 @@ function main() {
   const csvPath = path.join(REPO_ROOT, "coverage-matrix.csv");
   writeCsv(rows, csvPath);
 
-  const summaryPath = path.join(REPO_ROOT, "scripts", "triage-tests.summary.md");
+  const summaryPath = path.join(REPO_ROOT, "packages", "scripts", "triage-tests.summary.md");
   writeSummary(rows, summaryPath);
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(2);

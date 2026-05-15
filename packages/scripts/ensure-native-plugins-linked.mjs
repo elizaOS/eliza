@@ -22,7 +22,7 @@ import { existsSync, readdirSync, readFileSync, lstatSync, symlinkSync, mkdirSyn
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const nativePluginsRoot = path.join(repoRoot, "packages", "native-plugins");
 const nodeModulesRoot = path.join(repoRoot, "node_modules");
 
