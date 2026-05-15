@@ -46,6 +46,8 @@ export type {
   DocumentImageUploadFile,
 } from "./components";
 export * from "./components";
+export * from "./components/apps/overlay-app-api";
+export * from "./components/apps/overlay-app-registry";
 export {
   autoLabel,
   ENV_KEY_ACRONYMS,
