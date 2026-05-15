@@ -33,6 +33,8 @@ const TIMEOUT_MAX_MS = 600_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const STREAM_CAP_CHARS = 30_000;
 const SHELL_HISTORY_DEFAULT_LIMIT = 20;
+const URL_PREFIXES = ["https://", "http://"] as const;
+const SHELL_URL_METACHARS = new Set(["&", ";", "(", ")", "<", ">", "|"]);
 
 type ShellActionSubaction = "run" | "clear_history" | "view_history";
 
@@ -107,6 +109,85 @@ function clampHistoryLimit(value: number | undefined): number {
 function isMissingPathError(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
   return code === "ENOENT" || code === "ENOTDIR";
+}
+
+function hasUnescapedShellUrlMetachar(token: string): boolean {
+  let escaped = false;
+  for (const char of token) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (SHELL_URL_METACHARS.has(char)) return true;
+  }
+  return false;
+}
+
+function shellSingleQuote(token: string): string {
+  return `'${token.replace(/'/g, "'\\''")}'`;
+}
+
+function quoteBareUrlsWithShellMetacharacters(command: string): string {
+  let out = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  let index = 0;
+
+  while (index < command.length) {
+    const char = command[index];
+    if (escaped) {
+      out += char;
+      escaped = false;
+      index += 1;
+      continue;
+    }
+    if (char === "\\" && quote !== "'") {
+      out += char;
+      escaped = true;
+      index += 1;
+      continue;
+    }
+    if (quote) {
+      out += char;
+      if (char === quote) quote = null;
+      index += 1;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      out += char;
+      index += 1;
+      continue;
+    }
+
+    const prefix = URL_PREFIXES.find((candidate) =>
+      command.startsWith(candidate, index),
+    );
+    if (!prefix) {
+      out += char;
+      index += 1;
+      continue;
+    }
+
+    let end = index + prefix.length;
+    while (end < command.length) {
+      const next = command[end];
+      if (/\s/.test(next) || next === "'" || next === '"') break;
+      end += 1;
+    }
+
+    const token = command.slice(index, end);
+    out += hasUnescapedShellUrlMetachar(token)
+      ? shellSingleQuote(token)
+      : token;
+    index = end;
+  }
+
+  return out;
 }
 
 function formatStreams(stdout: string, stderr: string): string {
@@ -255,12 +336,18 @@ export const shellAction: Action = {
       });
     }
 
-    const command = readStringParam(options, "command");
-    if (!command || command.trim().length === 0) {
+    const rawCommand = readStringParam(options, "command");
+    if (!rawCommand || rawCommand.trim().length === 0) {
       return failureToActionResult({
         reason: "missing_param",
         message: "SHELL requires 'command' (string)",
       });
+    }
+    const command = quoteBareUrlsWithShellMetacharacters(rawCommand);
+    if (command !== rawCommand) {
+      coreLogger.debug(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL quoted bare URL metacharacters before execution`,
+      );
     }
     const cwdParam = readStringParam(options, "cwd");
 

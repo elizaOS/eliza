@@ -151,6 +151,43 @@ describe("shellAction", () => {
     }
   });
 
+  it("quotes bare URLs with shell metacharacters before execution", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      {
+        command:
+          'node -e "console.log(process.argv[1])" https://example.com/simple?ids=bitcoin&vs_currencies=usd',
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(
+      "https://example.com/simple?ids=bitcoin&vs_currencies=usd",
+    );
+    expect(result.text).toContain(
+      "'https://example.com/simple?ids=bitcoin&vs_currencies=usd'",
+    );
+  });
+
+  it("leaves already quoted URLs unchanged", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      {
+        command:
+          'node -e "console.log(process.argv[1])" "https://example.com/simple?ids=bitcoin&vs_currencies=usd"',
+      },
+    );
+    expect(result.success).toBe(true);
+    expect(result.text).toContain(
+      '"https://example.com/simple?ids=bitcoin&vs_currencies=usd"',
+    );
+  });
+
   it("returns command_failed when the command exits non-zero", async () => {
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
