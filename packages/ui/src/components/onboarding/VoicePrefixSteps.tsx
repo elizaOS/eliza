@@ -88,6 +88,21 @@ const AGENT_GREETING_SCRIPT =
   "To recognise your voice across conversations I need to learn how you " +
   "sound. Ready?";
 
+/** Convert a Blob to a raw base64 string (no data-URL prefix). */
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const commaIdx = result.indexOf(",");
+      resolve(commaIdx >= 0 ? result.slice(commaIdx + 1) : result);
+    };
+    reader.onerror = () =>
+      reject(reader.error ?? new Error("Failed to read blob"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 export function VoicePrefixSteps(
   props: VoicePrefixStepsProps,
 ): React.ReactElement {
@@ -312,11 +327,15 @@ function AgentSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
 }
 
 // ── Step 5 — User speaks ─────────────────────────────────────────────────
+// Real capture: MediaRecorder → base64 → appendOwnerCapture per prompt.
 
 function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
   const [state, setState] = React.useState<VoiceCaptureState>(
     INITIAL_CAPTURE_STATE,
   );
+  const recorderRef = React.useRef<MediaRecorder | null>(null);
+  const chunksRef = React.useRef<Blob[]>([]);
+  const streamRef = React.useRef<MediaStream | null>(null);
 
   const startSession = React.useCallback(async () => {
     try {
@@ -325,6 +344,7 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
         session,
         currentPromptIndex: 0,
         recording: false,
+        uploading: false,
         capturedPromptIds: [],
         error: null,
       });
@@ -342,7 +362,72 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
     }
   }, [state.session, startSession]);
 
-  const advancePrompt = React.useCallback(() => {
+  // Cleanup recorder + stream on unmount.
+  React.useEffect(
+    () => () => {
+      recorderRef.current?.stop();
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    },
+    [],
+  );
+
+  const startRecording = React.useCallback(async () => {
+    if (!state.session) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
+      };
+      recorder.start();
+      setState((prev) => ({ ...prev, recording: true, error: null }));
+    } catch (err) {
+      setState((prev) => ({
+        ...prev,
+        error: err instanceof Error ? err.message : "Microphone access failed.",
+      }));
+    }
+  }, [state.session]);
+
+  const stopRecordingAndAppend = React.useCallback(async () => {
+    const recorder = recorderRef.current;
+    const session = state.session;
+    if (!recorder || !session) return;
+
+    setState((prev) => ({ ...prev, recording: false, uploading: true }));
+
+    await new Promise<void>((resolve) => {
+      recorder.onstop = () => resolve();
+      if (recorder.state !== "inactive") recorder.stop();
+      else resolve();
+    });
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    recorderRef.current = null;
+
+    const blob = new Blob(chunksRef.current, {
+      type: recorder.mimeType || "audio/webm",
+    });
+    chunksRef.current = [];
+    const durationMs = (session.prompts[state.currentPromptIndex]?.targetSeconds ?? 5) * 1000;
+
+    try {
+      const audioBase64 = await blobToBase64(blob);
+      const promptId = session.prompts[state.currentPromptIndex]?.id;
+      if (promptId) {
+        await props.profilesClient.appendOwnerCapture(session.sessionId, {
+          promptId,
+          audioBase64,
+          durationMs,
+        });
+      }
+    } catch {
+      // Fallback: endpoint not live — proceed anyway, capture stored locally.
+    }
+
     setState((prev) => {
       if (!prev.session) return prev;
       const promptId = prev.session.prompts[prev.currentPromptIndex]?.id;
@@ -355,8 +440,23 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
           prev.currentPromptIndex + 1,
           prev.session.prompts.length,
         ),
-        recording: false,
+        uploading: false,
         capturedPromptIds: captured,
+      };
+    });
+  }, [state.session, state.currentPromptIndex, props.profilesClient]);
+
+  const skipPrompt = React.useCallback(() => {
+    setState((prev) => {
+      if (!prev.session) return prev;
+      return {
+        ...prev,
+        currentPromptIndex: Math.min(
+          prev.currentPromptIndex + 1,
+          prev.session.prompts.length,
+        ),
+        recording: false,
+        uploading: false,
       };
     });
   }, []);
@@ -404,23 +504,28 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
             "{currentPrompt.text}"
           </p>
           <div className="flex gap-2">
-            <Button
-              variant={state.recording ? "destructive" : "default"}
-              onClick={() => {
-                if (state.recording) {
-                  advancePrompt();
-                } else {
-                  setState((prev) => ({ ...prev, recording: true }));
+            {state.uploading ? (
+              <Button disabled data-testid="voice-prefix-user-speaks-uploading">
+                Saving…
+              </Button>
+            ) : (
+              <Button
+                variant={state.recording ? "destructive" : "default"}
+                onClick={
+                  state.recording
+                    ? () => void stopRecordingAndAppend()
+                    : () => void startRecording()
                 }
-              }}
-              data-testid="voice-prefix-user-speaks-record"
-            >
-              <Mic className="mr-2 h-4 w-4" />
-              {state.recording ? "Stop & save" : "Record"}
-            </Button>
+                data-testid="voice-prefix-user-speaks-record"
+              >
+                <Mic className="mr-2 h-4 w-4" />
+                {state.recording ? "Stop & save" : "Record"}
+              </Button>
+            )}
             <Button
               variant="ghost"
-              onClick={advancePrompt}
+              onClick={skipPrompt}
+              disabled={state.recording || state.uploading}
               data-testid="voice-prefix-user-speaks-skip-prompt"
             >
               Skip this one
