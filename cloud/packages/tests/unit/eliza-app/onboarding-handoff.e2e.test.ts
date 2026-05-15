@@ -198,9 +198,7 @@ describe("eliza-app onboarding handoff e2e", () => {
     expect(state.enqueuedJobs).toHaveLength(1);
     expect(
       authenticated.session.history.map((message: { content: string }) => message.content),
-    ).toContain(
-      "My name is Ada.",
-    );
+    ).toContain("My name is Ada.");
 
     state.sandboxes[0] = {
       ...state.sandboxes[0],

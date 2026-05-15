@@ -263,6 +263,28 @@ const coreMocks = vi.hoisted(() => {
 
   return {
     DEFAULT_PRIVACY_LEVEL: "owner_only",
+    ModelType: {
+      TEXT_NANO: "TEXT_NANO",
+      TEXT_SMALL: "TEXT_SMALL",
+      TEXT_MEDIUM: "TEXT_MEDIUM",
+      TEXT_LARGE: "TEXT_LARGE",
+      TEXT_EMBEDDING: "TEXT_EMBEDDING",
+      TEXT_TOKENIZER_ENCODE: "TEXT_TOKENIZER_ENCODE",
+      TEXT_TOKENIZER_DECODE: "TEXT_TOKENIZER_DECODE",
+      TEXT_REASONING_SMALL: "TEXT_REASONING_SMALL",
+      TEXT_REASONING_LARGE: "TEXT_REASONING_LARGE",
+      TEXT_COMPLETION: "TEXT_COMPLETION",
+      IMAGE_DESCRIPTION: "IMAGE_DESCRIPTION",
+      IMAGE_GENERATION: "IMAGE_GENERATION",
+      OBJECT_SMALL: "OBJECT_SMALL",
+      OBJECT_LARGE: "OBJECT_LARGE",
+      TRANSCRIPTION: "TRANSCRIPTION",
+      TEXT_TO_SPEECH: "TEXT_TO_SPEECH",
+      AUDIO: "AUDIO",
+      VIDEO: "VIDEO",
+      RESPONSE_HANDLER: "RESPONSE_HANDLER",
+      ACTION_PLANNER: "ACTION_PLANNER",
+    },
     getConnectorAccountManager,
     InMemoryConnectorAccountStorage,
     isPrivacyLevel: (value: unknown) =>
@@ -271,7 +293,10 @@ const coreMocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@elizaos/core", () => coreMocks);
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  ...coreMocks,
+}));
 
 const { getConnectorAccountManager, InMemoryConnectorAccountStorage } =
   coreMocks;
