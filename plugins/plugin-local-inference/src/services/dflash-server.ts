@@ -1278,13 +1278,9 @@ function parseRuntimeGpuLayers(value: string | undefined): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-<<<<<<< HEAD
 function resolveRuntimeGpuLayersFromArgs(
 	args: readonly string[],
 ): number | null {
-=======
-function resolveRuntimeGpuLayersFromArgs(args: readonly string[]): number | null {
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 	let resolved: number | null = null;
 	for (let i = 0; i < args.length; i += 1) {
 		const arg = args[i];
@@ -2060,14 +2056,9 @@ export function resolveDflashGenerateRequestTimeoutMs(args?: {
 	}
 
 	const explicit =
-<<<<<<< HEAD
 		parsePositiveTimeoutMs(
 			process.env.ELIZA_LOCAL_INFERENCE_REQUEST_TIMEOUT_MS,
 		) ?? parsePositiveTimeoutMs(process.env.ELIZA_DFLASH_GENERATE_TIMEOUT_MS);
-=======
-		parsePositiveTimeoutMs(process.env.ELIZA_LOCAL_INFERENCE_REQUEST_TIMEOUT_MS) ??
-		parsePositiveTimeoutMs(process.env.ELIZA_DFLASH_GENERATE_TIMEOUT_MS);
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 	if (explicit !== null) return explicit;
 
 	const chatTimeout = parsePositiveTimeoutMs(
@@ -3446,7 +3437,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		this.loadedPlan = effectivePlan;
 		this.loadedBinaryPath = status.binaryPath;
 		this.loadedRuntimeConfig = {
-<<<<<<< HEAD
 			contextSize: effectivePlan.contextSize,
 			cacheTypeK: cacheTypeK ?? null,
 			cacheTypeV: cacheTypeV ?? null,
@@ -3454,15 +3444,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			parallel,
 			binaryPath: status.binaryPath,
 		};
-=======
-				contextSize: effectivePlan.contextSize,
-				cacheTypeK: cacheTypeK ?? null,
-				cacheTypeV: cacheTypeV ?? null,
-				gpuLayers: resolveRuntimeGpuLayersFromArgs(args),
-				parallel,
-				binaryPath: status.binaryPath,
-			};
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 
 		child.stdout?.on("data", (chunk) => this.captureLog(chunk));
 		child.stderr?.on("data", (chunk) => this.captureLog(chunk));
@@ -3906,21 +3887,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				dflashArgs.onVerifierEvent ||
 				dflashArgs.onDflashEvent,
 		);
-<<<<<<< HEAD
 		const prefill =
 			typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
 				? dflashArgs.prefill
 				: "";
 		const requestTimeoutMs = resolveDflashGenerateRequestTimeoutMs(args);
 		const payload = buildChatCompletionBody(dflashArgs, slotId, streaming);
-=======
-			const prefill =
-				typeof dflashArgs.prefill === "string" && dflashArgs.prefill.length > 0
-					? dflashArgs.prefill
-					: "";
-			const requestTimeoutMs = resolveDflashGenerateRequestTimeoutMs(args);
-			const payload = buildChatCompletionBody(dflashArgs, slotId, streaming);
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 		attachDflashSpeculativeRequestFields(payload, this.loadedPlan);
 		if (readBool("ELIZA_DFLASH_DEBUG_REQUEST")) {
 			console.error(
@@ -3998,17 +3970,10 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 					method: "POST",
 					headers: { "content-type": "application/json" },
 					body: JSON.stringify(payload),
-<<<<<<< HEAD
 				},
 				requestTimeoutMs,
 				{
 					onTextChunk: args.onTextChunk,
-=======
-					},
-					requestTimeoutMs,
-					{
-						onTextChunk: args.onTextChunk,
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 					onVerifierEvent: dflashArgs.onVerifierEvent,
 					onDflashEvent,
 					suppressSynthesizedVerifierEvent: nativeEventsActive,
@@ -4052,7 +4017,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		} else {
 			json = (await fetchJson(
 				`${baseUrl}/v1/chat/completions`,
-<<<<<<< HEAD
 				{
 					method: "POST",
 					headers: { "content-type": "application/json" },
@@ -4061,16 +4025,6 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				requestTimeoutMs,
 				args.signal,
 			)) as Record<string, unknown>;
-=======
-					{
-						method: "POST",
-						headers: { "content-type": "application/json" },
-						body: JSON.stringify(payload),
-					},
-					requestTimeoutMs,
-					args.signal,
-				)) as Record<string, unknown>;
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 			text = prefill + extractCompletionText(json);
 			if (dflashArgs.responseSkeleton) {
 				text = repairStructuredOutput(text, {

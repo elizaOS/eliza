@@ -62,7 +62,7 @@ function getDiscordClient(runtime: AgentRuntime): DiscordClientLike | null {
 	const runtimeWithServices = runtime as AgentRuntime & {
 		getService?: (name: string) => unknown;
 	};
-	const service = runtimeWithServices.getService?.("discord") as
+	const service = runtimeWithServices.getService("discord") as
 		| { client?: DiscordClientLike | null }
 		| undefined;
 	return service?.client ?? null;
@@ -206,7 +206,7 @@ export async function cacheDiscordAvatarForRuntime(
 	userId?: string,
 ): Promise<string | undefined> {
 	return cacheDiscordAvatarUrl(avatarUrl, {
-		fetchImpl: runtime.fetch ?? globalThis.fetch,
+		fetchImpl: runtime.fetch,
 		userId,
 	});
 }

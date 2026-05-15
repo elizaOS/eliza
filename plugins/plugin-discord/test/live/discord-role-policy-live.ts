@@ -346,8 +346,8 @@ async function main(): Promise<void> {
 		"Expected whitelisted Discord owner to create a task agent",
 	);
 	const allowedSessionId =
-		Array.isArray(allowedCreate?.data?.agents) &&
-		allowedCreate?.data?.agents[0] &&
+		Array.isArray(allowedCreate.data?.agents) &&
+		allowedCreate.data.agents[0] &&
 		typeof allowedCreate.data.agents[0].sessionId === "string"
 			? allowedCreate.data.agents[0].sessionId
 			: "";
@@ -373,7 +373,7 @@ async function main(): Promise<void> {
 		false,
 		"Expected non-whitelisted Discord user to be denied task creation",
 	);
-	assert.equal(deniedCreate?.error, "FORBIDDEN");
+	assert.equal(deniedCreate.error, "FORBIDDEN");
 
 	await waitFor(
 		async () =>
@@ -398,7 +398,7 @@ async function main(): Promise<void> {
 		false,
 		"Expected non-whitelisted Discord user to be denied interaction",
 	);
-	assert.equal(deniedInteract?.error, "FORBIDDEN");
+	assert.equal(deniedInteract.error, "FORBIDDEN");
 
 	const allowedInteract = await sendToAgentAction.handler(
 		runtime as IAgentRuntime,

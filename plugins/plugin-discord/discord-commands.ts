@@ -76,7 +76,7 @@ export async function handleGuildCreate(
 	const fullGuild = await guild.fetch();
 
 	// Register commands to the newly joined guild
-	const clientApplication = service.client?.application;
+	const clientApplication = service.client.application;
 	if (service.slashCommands.length > 0 && clientApplication) {
 		try {
 			const generalCommands = service.slashCommands.filter(

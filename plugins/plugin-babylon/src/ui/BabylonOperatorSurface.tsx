@@ -229,10 +229,7 @@ export function BabylonOperatorSurface({
       const response = await client.controlAppRun(run.runId, controlAction);
       await loadDashboard();
       setStatusMessage(
-        response.message ??
-          (controlAction === "pause"
-            ? "Babylon autonomy paused."
-            : "Babylon autonomy resumed."),
+        response.message,
       );
     } catch (error) {
       setStatusMessage(
@@ -252,7 +249,7 @@ export function BabylonOperatorSurface({
     try {
       const result = await client.sendAppRunMessage(run.runId, content);
       setChatInput("");
-      setStatusMessage(result.message ?? "Suggestion sent to Babylon.");
+      setStatusMessage(result.message);
       await loadDashboard();
     } catch (error) {
       setStatusMessage(
@@ -274,7 +271,7 @@ export function BabylonOperatorSurface({
       setStatusMessage(null);
       try {
         const result = await client.sendAppRunMessage(run.runId, content);
-        setStatusMessage(result.message ?? "Suggestion sent to Babylon.");
+        setStatusMessage(result.message);
         await loadDashboard();
       } catch (error) {
         setStatusMessage(
@@ -341,7 +338,7 @@ export function BabylonOperatorSurface({
             />
             <SurfaceCard
               label="Current Focus"
-              value={activeGoal?.description ?? "No active goal recorded."}
+              value={activeGoal?.description}
               subtitle={
                 activeGoal
                   ? (() => {

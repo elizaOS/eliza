@@ -198,7 +198,7 @@ export function ClawvilleOperatorSurface({
           {
             id: localEventId("clawville-game"),
             label: response.disposition === "queued" ? "Queued" : "ClawVille",
-            message: response.message ?? "Command accepted.",
+            message: response.message,
             tone:
               response.disposition === "accepted"
                 ? "success"

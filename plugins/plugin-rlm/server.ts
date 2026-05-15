@@ -206,7 +206,7 @@ export class RLMServer {
   // --------------------------------------------------------------------------
 
   private async handleRequest(request: RLMServerRequest): Promise<RLMServerResponse> {
-    const requestId = request.id ?? 0;
+    const requestId = request.id;
 
     try {
       switch (request.type) {

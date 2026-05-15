@@ -207,7 +207,7 @@ export class VisionServiceLifecycleManager {
       });
     }, this.watchdogIntervalMs);
     // Don't keep the event loop alive on the watchdog alone.
-    this.watchdogTimer.unref?.();
+    this.watchdogTimer.unref();
   }
 
   private async runWatchdog(): Promise<void> {

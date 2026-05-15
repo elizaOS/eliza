@@ -345,8 +345,8 @@ export class MessageManager {
 				senderId: userId,
 				metadata: {
 					username: message.author.username,
-					displayName: message.author.displayName ?? message.author.username,
-					discriminator: message.author.discriminator ?? "",
+					displayName: message.author.displayName,
+					discriminator: message.author.discriminator,
 				},
 			});
 
@@ -430,7 +430,7 @@ export class MessageManager {
 			return;
 		}
 
-		if (this.discordSettings.shouldIgnoreBotMessages && message.author?.bot) {
+		if (this.discordSettings.shouldIgnoreBotMessages && message.author.bot) {
 			return;
 		}
 
@@ -485,7 +485,7 @@ export class MessageManager {
 		}
 
 		const isBotPlatformMentioned = !!(
-			clientUser?.id && message.mentions.users?.has(clientUser.id)
+			clientUser?.id && message.mentions.users.has(clientUser.id)
 		);
 		const isReplyToBot =
 			!!message.reference?.messageId &&
@@ -521,8 +521,7 @@ export class MessageManager {
 		const name =
 			message.member?.displayName ??
 			message.author.globalName ??
-			message.author.displayName ??
-			message.author.username;
+			message.author.displayName;
 		const channelId = message.channel.id;
 		const roomId = createUniqueUuid(this.runtime, channelId);
 		const roomName =
@@ -574,7 +573,7 @@ export class MessageManager {
 				}
 			}
 
-			if (!processedContent && !attachments?.length) {
+			if (!processedContent && !attachments.length) {
 				// Only process messages that are not empty
 				return;
 			}
@@ -668,7 +667,7 @@ export class MessageManager {
 					? stringToUuid(messageServerId)
 					: undefined,
 				type,
-				worldId: createUniqueUuid(this.runtime, messageServerId ?? roomId),
+				worldId: createUniqueUuid(this.runtime, messageServerId),
 				worldName: message.guild?.name,
 				// Preserve the raw Discord user id in source metadata for role and allowlist checks.
 				userId: message.author.id as UUID,
@@ -896,7 +895,7 @@ export class MessageManager {
 					const textContent = normalizeDiscordMessageText(content.text);
 					const hasText = textContent.trim().length > 0;
 					const attachmentCount = Array.isArray(content.attachments)
-						? content.attachments.filter((media) => Boolean(media?.url)).length
+						? content.attachments.filter((media) => Boolean(media.url)).length
 						: 0;
 
 					if (!hasText && attachmentCount === 0) {
@@ -1030,7 +1029,7 @@ export class MessageManager {
 					for (const m of messages) {
 						const actions = content.actions;
 						// Only attach files to the memory for the message that actually carries them
-						const hasAttachments = m.attachments?.size > 0;
+						const hasAttachments = m.attachments.size > 0;
 
 						const memory: Memory = {
 							id: createUniqueUuid(this.runtime, m.id),
@@ -1245,7 +1244,7 @@ export class MessageManager {
 		let processedContent = message.content;
 		const attachments: Media[] = [];
 
-		if (message.embeds?.length) {
+		if (message.embeds.length) {
 			for (const i in message.embeds) {
 				const embed = message.embeds[i];
 				// type: rich

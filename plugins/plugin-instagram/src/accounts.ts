@@ -18,7 +18,7 @@ function stringSetting(runtime: IAgentRuntime, key: string): string | undefined 
 }
 
 function characterConfig(runtime: IAgentRuntime): InstagramMultiAccountConfig {
-  const settings = runtime.character?.settings as Record<string, unknown> | undefined;
+  const settings = runtime.character.settings as Record<string, unknown> | undefined;
   const raw = settings?.instagram;
   return raw && typeof raw === "object" ? (raw as InstagramMultiAccountConfig) : {};
 }

@@ -334,7 +334,7 @@ export function TwoThousandFourScapeOperatorSurface({
   const hasAutoLoginCredentials = Boolean(
     run?.viewer?.postMessageAuth &&
       run.viewer.authMessage?.authToken &&
-      run.viewer.authMessage?.sessionToken,
+      run.viewer.authMessage.sessionToken,
   );
   const autoLoginLabel = run?.viewer?.postMessageAuth
     ? hasAutoLoginCredentials
@@ -366,7 +366,7 @@ export function TwoThousandFourScapeOperatorSurface({
         : run?.health.state === "degraded" || session?.status === "disconnected"
           ? "warn"
           : "neutral";
-  const steeringReady = Boolean(session?.canSendCommands && session?.sessionId);
+  const steeringReady = Boolean(session?.canSendCommands && session.sessionId);
   const steeringLabel = steeringReady
     ? "Live steering ready"
     : session?.sessionId
@@ -426,7 +426,7 @@ export function TwoThousandFourScapeOperatorSurface({
       try {
         if (run.runId) {
           const response = await client.sendAppRunMessage(run.runId, content);
-          setStatusMessage(response.message ?? "Operator message sent.");
+          setStatusMessage(response.message);
           return response.success;
         }
         setStatusMessage("Waiting for the 2004scape command bridge.");
@@ -468,10 +468,7 @@ export function TwoThousandFourScapeOperatorSurface({
       try {
         const response = await client.controlAppRun(run.runId, action);
         setStatusMessage(
-          response.message ??
-            (action === "pause"
-              ? "2004scape session paused."
-              : "2004scape session resumed."),
+          response.message,
         );
       } catch (error) {
         setStatusMessage(

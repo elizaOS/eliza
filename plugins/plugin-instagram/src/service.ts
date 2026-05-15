@@ -85,7 +85,7 @@ function filterMemoriesByQuery(memories: Memory[], query: string, limit: number)
   }
   return memories
     .filter((memory) => {
-      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+      const text = typeof memory.content.text === "string" ? memory.content.text : "";
       return text.toLowerCase().includes(normalized);
     })
     .slice(0, limit);
@@ -389,7 +389,7 @@ export class InstagramService extends Service {
    * Get the logged-in user
    */
   getLoggedInUser(): InstagramUser | null {
-    return this.loggedInUser ?? this.getAccountService()?.loggedInUser ?? null;
+    return this.loggedInUser ?? this.getAccountService().loggedInUser ?? null;
   }
 
   getAccountId(runtime?: IAgentRuntime): string {
@@ -405,7 +405,7 @@ export class InstagramService extends Service {
 
   private getAccountService(accountId = this.defaultAccountId): InstagramService {
     const normalized = normalizeInstagramAccountId(accountId);
-    const services = this.accountServices ?? new Map<string, InstagramService>();
+    const services = this.accountServices;
     return (
       services.get(normalized) ?? (normalized === this.getAccountId() ? this : undefined) ?? this
     );

@@ -1528,7 +1528,6 @@ export class LocalInferenceEngine {
 						kokoroOnly: kokoro,
 					});
 				} else {
-<<<<<<< HEAD
 					const { ensureSamanthaPresetReady } = await import(
 						"./voice/samantha-preset-regenerator"
 					);
@@ -1542,8 +1541,6 @@ export class LocalInferenceEngine {
 							`[voice] Samantha preset is the I-wave placeholder and on-the-fly regen is unavailable (reason=${outcome.reason}, detail=${outcome.detail}). Run packages/training/scripts/voice/samantha_lora/RUNBOOK.md or plugins/plugin-local-inference/scripts/regenerate-samantha-preset.mjs to produce a real preset.`,
 						);
 					}
-=======
->>>>>>> origin/codex/fused-local-inference-latest-20260515
 					bridge = this.startVoice({
 						bundleRoot: bundle.root,
 						useFfiBackend: true,
