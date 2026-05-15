@@ -11,6 +11,23 @@ import type { Eliza1DeviceCaps, Eliza1Manifest, Eliza1Tier } from "./types";
 
 const SHA = "0".repeat(64);
 
+const DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+	"2b",
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+	"27b-1m",
+]);
+
+const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
+	"4b",
+	"9b",
+	"27b",
+	"27b-256k",
+	"27b-1m",
+]);
+
 function passingBackends() {
 	return {
 		metal: {
@@ -30,7 +47,9 @@ function passingBackends() {
 }
 
 function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
-	return {
+	const hasDflash = DFLASH_TIERS.has(tier);
+	const hasVision = VISION_TIERS.has(tier);
+	const manifest: Eliza1Manifest = {
 		id: `eliza-1-${tier}`,
 		tier,
 		version: "1.0.0",
@@ -38,9 +57,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 		lineage: {
 			text: { base: "eliza-1-text-backbone", license: "apache-2.0" },
 			voice: { base: "eliza-1-voice-backbone", license: "apache-2.0" },
-			drafter: { base: "eliza-1-drafter", license: "apache-2.0" },
 			asr: { base: "eliza-1-asr", license: "apache-2.0" },
-			vision: { base: "eliza-1-vision", license: "apache-2.0" },
 			vad: { base: "eliza-1-vad", license: "apache-2.0" },
 		},
 		files: {
@@ -49,8 +66,8 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 			],
 			voice: [{ path: "tts/omnivoice-base-Q4_K_M.gguf", sha256: SHA }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA }],
-			vision: [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }],
-			dflash: [{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA }],
+			vision: [],
+			dflash: [],
 			cache: [{ path: "cache/voice-preset-default.bin", sha256: SHA }],
 			vad: [{ path: "vad/silero-vad-v5.1.2.ggml.bin", sha256: SHA }],
 		},
@@ -70,13 +87,43 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 				falseBargeInRate: 0.01,
 				passed: true,
 			},
-			dflash: { acceptanceRate: 0.72, speedup: 1.8, passed: true },
 			e2eLoopOk: true,
 			thirtyTurnOk: true,
 		},
 		ramBudgetMb: { min: 7000, recommended: 9500 },
 		defaultEligible: true,
 	};
+	if (hasDflash) {
+		manifest.lineage.drafter = {
+			base: "eliza-1-drafter",
+			license: "apache-2.0",
+		};
+		manifest.files.dflash = [
+			{ path: `dflash/drafter-${tier}.gguf`, sha256: SHA },
+		];
+		manifest.evals.dflash = {
+			acceptanceRate: 0.72,
+			speedup: 1.8,
+			passed: true,
+		};
+	}
+	if (hasVision) {
+		manifest.lineage.vision = {
+			base: "eliza-1-vision",
+			license: "apache-2.0",
+		};
+		manifest.files.vision = [
+			{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA },
+		];
+	}
+	if (tier === "0_8b" || tier === "2b" || tier === "4b") {
+		manifest.files.voice = [
+			{ path: "tts/kokoro/model_q4.onnx", sha256: SHA },
+			{ path: "tts/kokoro/tokenizer.json", sha256: SHA },
+			{ path: "tts/kokoro/voices/af_bella.bin", sha256: SHA },
+		];
+	}
+	return manifest;
 }
 
 describe("Eliza-1 manifest schema constants", () => {
@@ -93,6 +140,7 @@ describe("Eliza-1 manifest schema constants", () => {
 			"9b",
 			"27b",
 			"27b-256k",
+			"27b-1m",
 		]);
 		expect(Object.keys(REQUIRED_KERNELS_BY_TIER)).toEqual(
 			expect.arrayContaining(["0_8b", "2b", "4b"]),
