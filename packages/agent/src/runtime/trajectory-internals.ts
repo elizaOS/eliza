@@ -657,7 +657,7 @@ export async function flushObservationBuffer(
       lastExchange.trajectoryId,
     );
     if (trajectory) {
-      const meta = (trajectory.metadata) as Record<string, unknown>;
+      const meta = trajectory.metadata as Record<string, unknown>;
       const existing = Array.isArray(meta.observations)
         ? (meta.observations as string[])
         : [];

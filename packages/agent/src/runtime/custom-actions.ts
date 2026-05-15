@@ -628,7 +628,7 @@ function defToAction(def: CustomActionDef): Action {
     def.name,
     ...(def.similes ?? []),
     ...def.name.split(/[_\s-]+/),
-    ...(def.description).split(/[\s,.;:()[\]{}'"`/\\-]+/),
+    ...def.description.split(/[\s,.;:()[\]{}'"`/\\-]+/),
   ].filter((term) => term.trim().length > 2);
 
   return {

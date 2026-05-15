@@ -595,9 +595,7 @@ export async function initStewardWalletCache(): Promise<void> {
 
     const agent = body.data ?? body;
     const stewardEvm =
-      agent.walletAddresses?.evm?.trim() ||
-      agent.walletAddress?.trim() ||
-      null;
+      agent.walletAddresses?.evm?.trim() || agent.walletAddress?.trim() || null;
     const stewardSolana = agent.walletAddresses?.solana?.trim() || null;
 
     stewardAddressCache = { evm: stewardEvm, solana: stewardSolana };
@@ -731,9 +729,7 @@ export async function getWalletAddressesWithSteward(): Promise<
 
     const agent = body.data ?? body;
     const stewardEvm =
-      agent.walletAddresses?.evm?.trim() ||
-      agent.walletAddress?.trim() ||
-      null;
+      agent.walletAddresses?.evm?.trim() || agent.walletAddress?.trim() || null;
     const stewardSolana = agent.walletAddresses?.solana?.trim() || null;
 
     return {

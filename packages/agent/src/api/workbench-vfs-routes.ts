@@ -523,7 +523,7 @@ async function exportVfsBundle(
       };
     }),
   );
-  const totalBytes = files.reduce((sum, file) => sum + (file.size), 0);
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
   return {
     sourceKind: "project",
     projectId,

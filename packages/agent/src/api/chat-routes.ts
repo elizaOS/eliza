@@ -1215,9 +1215,7 @@ export async function generateChatResponse(
     throw createChatGenerationTimeoutError(generationTimeoutMs);
   }
   try {
-    const originalUserText = String(
-      extractCompatTextContent(message.content),
-    );
+    const originalUserText = String(extractCompatTextContent(message.content));
     type StreamSource = "unset" | "callback" | "onStreamChunk";
     let responseText = "";
     let forcedWalletExecutionText = false;
