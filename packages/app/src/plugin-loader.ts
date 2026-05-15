@@ -116,6 +116,10 @@ const BrowserBridgeSetupPanel = lazyNamedComponent<Record<string, never>>(
   async () =>
     (await loadPlugin("@elizaos/app-lifeops")).LifeOpsBrowserSetupPanel,
 );
+const LifeOpsActivitySignalsEffect = lazyNamedComponent<Record<string, never>>(
+  async () =>
+    (await loadPlugin("@elizaos/app-lifeops")).LifeOpsActivitySignalsEffect,
+);
 const AppBlockerSettingsCard = lazyNamedComponent<AppBlockerSettingsCardProps>(
   async () => (await loadPlugin("@elizaos/app-lifeops")).AppBlockerSettingsCard,
 );
@@ -150,7 +154,7 @@ const FineTuningView = lazyNamedComponent<FineTuningViewProps>(
   async () => (await loadPlugin("@elizaos/app-training")).FineTuningView,
 );
 
-export { PhoneCompanionApp };
+export { LifeOpsActivitySignalsEffect, PhoneCompanionApp };
 
 // ---------------------------------------------------------------------------
 // Hook proxies. Companion/Vincent expose hook factories that are only known

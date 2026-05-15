@@ -25,6 +25,20 @@ export * from "./permissions/types";
 // would shadow the real api/server, runtime/eliza, etc. exports above with
 // noop stubs. Browser bundlers alias it in via the path map; Node imports
 // the originals directly through this barrel.
+// === Phase 5D ===
+// Browser/shell-only platform bootstrap. Re-exported here so the app shell
+// (`packages/app/src/main.tsx`) can import a single `@elizaos/app-core` entry
+// point. The modules themselves only touch browser globals + Capacitor APIs.
+export {
+  initializeAppBootstrapBridges,
+  installAppBootstrapClientPatches,
+  type InitializeAppBootstrapClientsArgs,
+} from "./platform/capacitor-bootstrap";
+export {
+  IOS_FULL_BUN_SMOKE_REQUEST_KEY,
+  IOS_FULL_BUN_SMOKE_RESULT_KEY,
+  runIosFullBunSmokeIfRequested,
+} from "./platform/ios-runtime-bridge";
 export * from "./registry";
 // `ConfigField` and `getPlugins` also exist in @elizaos/ui, which is bridged
 // below for legacy app-core UI consumers. Keep the app-core registry exports
@@ -36,6 +50,10 @@ export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
 export * from "./runtime/build-variant";
 export * from "./runtime/channel-plugin-map";
+// === Phase 5C: desktop runtime + app-config + onboarding-config moved from @elizaos/ui ===
+export * from "./config/app-config";
+export * from "./onboarding/onboarding-config";
+export * from "./runtime/desktop";
 export * from "./runtime/eliza";
 export * from "./runtime/mobile-safe-runtime";
 export * from "./runtime/mode/runtime-mode";
