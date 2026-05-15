@@ -59,6 +59,24 @@ const anthropicProxyPlugin: Plugin = {
 	routes: anthropicProxyRoutes,
 	tests: [],
 
+	/**
+	 * Mirror of `auto-enable.ts` for runtimes that consume the Plugin-object
+	 * `autoEnable` field instead of the per-plugin manifest module. Keep both
+	 * in sync. The per-plugin manifest engine reads `auto-enable.ts` while
+	 * legacy / cloud runtimes (milady-cloud's `applyPluginSelfDeclaredAutoEnable`)
+	 * read this field. The opt-in is identical: CLAUDE_MAX_PROXY_MODE in
+	 * {inline, shared} enables; off / unset does not.
+	 */
+	autoEnable: {
+		shouldEnable: (env): boolean => {
+			const raw = env.CLAUDE_MAX_PROXY_MODE;
+			if (!raw) return false;
+			const mode = raw.trim().toLowerCase();
+			if (mode === "" || mode === "off") return false;
+			return mode === "inline" || mode === "shared";
+		},
+	},
+
 	init: async (
 		_config: Record<string, string>,
 		_runtime: IAgentRuntime,
