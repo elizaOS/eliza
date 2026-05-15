@@ -32,7 +32,7 @@ ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
-ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
+ELIZA_1_HF_REPO: Final[str] = "elizalabs/eliza-1"
 
 # The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
@@ -42,6 +42,14 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "9b",
     "27b",
     "27b-256k",
+    "27b-1m",
+)
+
+ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
+    ("2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
+)
+ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(
+    ("4b", "9b", "27b", "27b-256k", "27b-1m")
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -142,39 +150,20 @@ CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "Qwen/Qwen3.6-27B",
         "unsloth/Qwen3.6-27B-GGUF",
     ),
+    "27b-1m": (
+        "Qwen/Qwen3.6-27B",
+        "unsloth/Qwen3.6-27B-GGUF",
+    ),
 }
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
+    "0_8b": ("turboquant_q4", "qjl", "polarquant"),
     "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "4b": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
-    "9b": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
-    "27b": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
-    "27b-256k": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
+    "4b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
+    "9b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
+    "27b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
+    "27b-256k": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
+    "27b-1m": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
 }
 
 RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
@@ -192,6 +181,7 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
@@ -201,6 +191,7 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
+    "27b-1m": "Q8_0",
 }
 
 # Full K-quant ladder published per tier for the OmniVoice TTS GGUF. Mirror
@@ -210,21 +201,23 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 # host's RAM/SoC class (no silent fallback — AGENTS.md §3). Small tiers keep
 # the OmniVoice ladder narrow and retain Kokoro as their low-latency fallback.
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
-    "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
-    "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "0_8b": (),
+    "2b": (),
+    "4b": (),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
+    "27b-1m": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("omnivoice", "kokoro"),
-    "2b": ("omnivoice", "kokoro"),
-    "4b": ("omnivoice", "kokoro"),
-    "9b": ("omnivoice", "kokoro"),
+    "0_8b": ("kokoro",),
+    "2b": ("kokoro",),
+    "4b": ("kokoro",),
+    "9b": ("kokoro", "omnivoice"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
+    "27b-1m": ("omnivoice",),
 }
 
 KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
@@ -534,8 +527,12 @@ def validate_manifest(
     if not _is_object(lineage):
         errors.append("lineage: must be an object")
     else:
-        # Required lineage entries.
-        for slot in ("text", "voice", "drafter"):
+        # Required lineage entries. DFlash/drafter is tier-gated: 0_8b keeps
+        # the slot absent because it intentionally ships without a drafter.
+        required_lineage_slots = ["text", "voice"]
+        if tier in ELIZA_1_DFLASH_TIERS:
+            required_lineage_slots.append("drafter")
+        for slot in required_lineage_slots:
             entry = lineage.get(slot)
             if not _is_object(entry):
                 errors.append(f"lineage.{slot}: must be an object")
@@ -545,7 +542,7 @@ def validate_manifest(
             if not entry.get("license"):
                 errors.append(f"lineage.{slot}.license: required")
         # Wave-6 optional lineage entries — must validate when present.
-        for slot in ("asr", "embedding", "vision", "vad", "wakeword"):
+        for slot in ("asr", "embedding", "vision", "vad", "wakeword", "drafter"):
             entry = lineage.get(slot)
             if entry is None:
                 continue
@@ -562,8 +559,8 @@ def validate_manifest(
     if not _is_object(files):
         errors.append("files: must be an object")
     else:
-        kinds_min1 = ("text", "voice", "dflash", "cache")
-        kinds_optional = ("asr", "vision")
+        kinds_min1 = ("text", "voice", "cache")
+        kinds_optional = ("asr", "vision", "dflash")
         # Wave-6 fully-optional file slots: missing key = "this bundle
         # does not ship this component". The validator does not require
         # an empty array for absence (TS schema makes the array itself
@@ -1003,14 +1000,47 @@ def validate_manifest(
             errors.append("files.vad: required for defaultEligible local voice bundles")
 
     # ── §3/§6 contract: optional component consistency + gates ──────────
-    optional_component_slots = ("asr", "embedding", "vision", "vad", "wakeword")
+    optional_component_slots = (
+        "asr",
+        "embedding",
+        "vision",
+        "vad",
+        "wakeword",
+        "drafter",
+    )
     for slot in optional_component_slots:
-        component_files = files.get(slot) or []
+        if slot == "drafter":
+            component_files = files.get("dflash") or []
+            file_slot = "dflash"
+        else:
+            component_files = files.get(slot) or []
+            file_slot = slot
         component_lineage = lineage.get(slot)
         if component_files and not component_lineage:
-            errors.append(f"lineage.{slot}: required when files.{slot} is non-empty")
+            errors.append(
+                f"lineage.{slot}: required when files.{file_slot} is non-empty"
+            )
         if component_lineage and not component_files:
-            errors.append(f"files.{slot}: required when lineage.{slot} is present")
+            errors.append(f"files.{file_slot}: required when lineage.{slot} is present")
+
+    dflash_files = files.get("dflash") or []
+    if tier in ELIZA_1_DFLASH_TIERS:
+        if not dflash_files:
+            errors.append(f"files.dflash: required for DFlash-enabled tier {tier}")
+    else:
+        if dflash_files:
+            errors.append(f"files.dflash: unsupported for DFlash-disabled tier {tier}")
+        if "dflash" in declared_set:
+            errors.append(
+                f"kernels.required: dflash is unsupported for DFlash-disabled tier {tier}"
+            )
+
+    vision_files = files.get("vision") or []
+    if tier in ELIZA_1_VISION_TIERS:
+        if not vision_files:
+            errors.append(f"files.vision: required for vision-enabled tier {tier}")
+    elif vision_files:
+        errors.append(f"files.vision: unsupported for text/voice-only tier {tier}")
 
     if files.get("asr"):
         gate = evals.get("asrWer")
@@ -1047,13 +1077,16 @@ def validate_manifest(
 
     # ── DFlash bench ────────────────────────────────────────────────────
     # Staging manifests may record a missing/failing DFlash measurement, but
-    # a default-eligible bundle must prove speculative decoding was measured
-    # and passed. Keep this in lockstep with the TS runtime validator.
+    # a default-eligible DFlash tier must prove speculative decoding was
+    # measured and passed. 0_8b intentionally omits this slot.
     dflash_gate = evals.get("dflash")
+    dflash_enabled = tier in ELIZA_1_DFLASH_TIERS
     if not _is_object(dflash_gate):
-        if manifest["defaultEligible"]:
+        if manifest["defaultEligible"] and dflash_enabled:
             errors.append("evals.dflash: required when defaultEligible=true")
     else:
+        if not dflash_enabled:
+            errors.append(f"evals.dflash: unsupported for DFlash-disabled tier {tier}")
         if dflash_gate["passed"] and (
             dflash_gate["acceptanceRate"] is None
             or dflash_gate["speedup"] is None
@@ -1061,7 +1094,7 @@ def validate_manifest(
             errors.append(
                 "evals.dflash: passed=true but acceptanceRate/speedup is null"
             )
-        if manifest["defaultEligible"]:
+        if manifest["defaultEligible"] and dflash_enabled:
             if not dflash_gate["passed"]:
                 readiness_errors.append(
                     "evals.dflash.passed: false for defaultEligible manifest"
@@ -1081,7 +1114,9 @@ def validate_manifest(
     if _is_object(provenance) and provenance.get("releaseState") == "base-v1":
         sources = provenance.get("sourceModels")
         if _is_object(sources):
-            required_slots = ["text", "voice", "drafter"]
+            required_slots = ["text", "voice"]
+            if tier in ELIZA_1_DFLASH_TIERS:
+                required_slots.append("drafter")
             for slot in ("asr", "vad", "embedding", "vision"):
                 if files.get(slot):
                     required_slots.append(slot)
