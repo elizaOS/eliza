@@ -227,9 +227,43 @@
 
 ### Wave 3 cycle log (newest at top)
 
+- 2026-05-14 W3-8 phase=impl-done: TTS first-line cache cross-restart validation + I4 follow-ups. PID=76882. Delivered: (1) cross-restart: 5 tests proving SQLite WAL-backed durability across close+reopen; (2) cache-key parity property test: 200 randomised inputs, hashCacheKey==referenceHash, same for hashCloudCacheKey; (3) cross-voice N×N matrix: all 5×4=20 provider pairs verified as clean misses; F3 regression test explicit; (4) per-provider wiring: miss→populate→hit cycle for kokoro/omnivoice/edge-tts/elevenlabs/cloud (11 tests); (5) load test: local 32.4% hit-rate / cloud 55.8% — both above 30% threshold. Files: plugins/plugin-local-inference/__tests__/W3-8-tts-cache-validation.test.ts (26 tests), cloud/packages/lib/services/__tests__/tts-cache-key-parity.test.ts (4 tests), cloud/apps/api/__tests__/tts-cache-load.test.ts (4 tests). All 34 W3-8 tests green. Impl report: .swarm/impl/W3-8-tts-cache.md.
+
 - 2026-05-14 W3-7 phase=impl-done: All four voice benches wired to real Eliza runtime. (1) voiceagentbench Cerebras-direct larp replaced with _ElizaHttpAgent → ELIZA_API_BASE/api/benchmark/message. (2) voicebench-quality ElizaClient base URL fixed to port 31337; eliza-runtime STT provider added. (3) voicebench TS was already real. (4) voice-emotion BenchUnavailable is explicit (not mock). New: scripts/bench-voice.mjs, bun run bench:voice + bench:voice:smoke, .github/workflows/voice-bench-smoke.yml. Artifacts: artifacts/<bench>/<run-id>/ + artifacts/voice-bench-summary.json. Report: .swarm/impl/W3-7-voicebench.md
 
 - 2026-05-14 C0-W3 cycle=1 phase=coord WAKE: PID written ($$). git pull --no-rebase: Already up to date (2 commits ahead origin/develop from earlier lalalune commits). ALL W3 PIDs dead (W3-1 through W3-12). NO W3 impl reports exist. Assessment: W3 agents spawned and did work but exited without writing impl reports or committing. Uncommitted W3 work found: three-agent-dialogue harness, voice-speaker-validation fixtures+conftest, voice-profile-routes (W3-4), VoiceCancellationToken (W3-9), W3-8 TTS cache validation test, voice-create-profile.mjs (W3-4), voice-bench-smoke.yml CI (W3-7), bench-voice.mjs (W3-7), ASR training scripts (W3-11). Modified-but-uncommitted: ChatView ContinuousChatToggle mount (W3-10), Header OwnerBadge mount (W3-10), voiceagentbench real adapter (W3-7), voicebench-quality real STT (W3-7), shared/evaluator biome fixes (W3-13), llama.cpp submodule dirty. Action: commit all W3 work, write W3 impl reports, run verify, close wave.
 
 - 2026-05-14 W3-3-omnivoice-merge phase=impl-start: starting OmniVoice → llama.cpp literal merge per VOICE_WAVE_3.md §4 W3-3. State map at start: (a) `tools/omnivoice/` tree in submodule has patches 0001-0003 applied (vendored sources, LLAMA_BUILD_OMNIVOICE option, backend-share patch) — this is the canonical merged path; (b) `omnivoice/` tree in submodule is the legacy graft (ELIZA_FUSE_OMNIVOICE, generated at build time by prepare.mjs); (c) `tools/server/server.cpp` already has the /v1/audio/speech route wired under #ifdef ELIZA_FUSE_OMNIVOICE; (d) `build-llama-cpp-dflash.mjs` still drives the legacy graft path. Plan: (1) rename the server `#ifdef` to `LLAMA_BUILD_OMNIVOICE` (canonical define), (2) add libelizainference shared lib + ov_encode_reference + FFI bridge to `tools/omnivoice/`, (3) add streaming optimizations to merged sources, (4) update build script to drive `LLAMA_BUILD_OMNIVOICE=ON` + drop the legacy graft step, (5) delete `omnivoice/` legacy tree from fork, (6) tag v1.0.1-eliza, bump submodule pin, (7) introduce OMNIVOICE_INSIDE_LLAMA_CPP=1 as canonical env. Will commit liberally as `wip(W3-3): …` and `feat(W3-3): …`. Won't clobber W3-1 (Kokoro K-quant arch in same fork) — coordinate before touching ggml backend dirs.
 
+
+- 2026-05-15 W3-4 phase=impl-done: server-side profile management routes
+  (GET/POST/DELETE /v1/voice/profiles) + catalog persistence in
+  models/voice/profiles/catalog.json + bun run voice:create-profile CLI
+  (wraps freeze-voice.mjs + catalog + CHANGELOG). 15 tests green.
+  typecheck + lint clean. No runtime recording path existed to remove.
+  Report at .swarm/impl/W3-4-omnivoice-simplify.md.
+  W3-3 coordination: C++ ov_tts_params unchanged, merge independently.
+  W3-11 coordination: ov_encode_reference + fine-tune path untouched.
+
+- 2026-05-14 18:50 W3-9 phase=impl-done: canonical VoiceCancellationToken
+  in @elizaos/shared + VoiceCancellationCoordinator (per-room registry,
+  fans abort to runtime.turnControllers.abortTurn, slotAbort callback,
+  ttsStop callback, plus standard AbortSignal) +
+  OptimisticGenerationPolicy (default true plugged-in / false battery,
+  with override) + bindBargeInController glue. Integration tests at
+  packages/app-core/__tests__/voice/barge-in.test.ts (9 scenarios)
+  prove: "LM starts within 200 ms of EOT" and "TTS stops within 100 ms
+  of speech-detected, LM aborts, new turn re-plans". Total 50 new tests
+  (16 shared + 25 plugin-local-inference + 9 app-core), all green.
+  Contract doc at
+  plugins/plugin-local-inference/docs/voice-cancellation-contract.md;
+  AGENTS.md updated. Report at .swarm/impl/W3-9-barge-in.md. The engine
+  bridge runtime-ref refactor (wiring the coordinator into
+  EngineVoiceBridge.start) is captured as a follow-up — it touches
+  engine-bridge.ts + engine.ts + voice-state-machine.ts and belongs in
+  a separate PR alongside the W3-3 fork merge so the slot-cancel REST
+  surface is reviewed at the same time. Open R11 carryovers (HTTP TTS
+  C++ interrupt, REST-shape reconciliation) documented in the contract
+  doc. Pushed to origin/develop.
+
+- 2026-05-15 W3-2 phase=impl-done: Three-agent dialogue harness complete. Three Eliza agents (Alice/Bob/Cleo) each with distinct TTS voice (zoey/theo/autumn via Groq Orpheus; sine-wave fallback at C4/G3/E4). Shared in-process AudioBus mixes per-turn WAV into mix.wav. Scripted canonical.json scenario (10 turns, smokeSubset=[0..3] for CI). Per-run artifacts: transcripts.json, emotion.json, turn-events.json, verification.json, turns/*.wav, mix.wav — all landing under artifacts/three-agent-dialogue/<run-id>/. Fresh full run (2026-05-15T01-43-23-612Z): 10 turns, 20.96s, 3 distinct speakers, emotion fraction 1.0, pass=true. Smoke tests: 13/14 pass (1 skipped without GROQ_API_KEY), runs in ~6s with synthetic fallback. bun run bench:three-agent + bench:three-agent:smoke in root package.json. Report: .swarm/impl/W3-2-three-agent.md.
