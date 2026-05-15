@@ -332,7 +332,21 @@ interface LlamaModel {
 		 */
 		experimentalKvCacheKeyType?: StockKvCacheTypeName;
 		experimentalKvCacheValueType?: StockKvCacheTypeName;
+		/**
+		 * Optional LoRA adapter(s) attached to this context only. The voice
+		 * EOT scorer uses this to layer a fine-tuned EOT head onto the base
+		 * weights without shipping a separate model.
+		 */
+		lora?:
+			| string
+			| { adapters: Array<{ filePath: string; scale?: number }> };
 	}): Promise<LlamaContext>;
+	/**
+	 * Tokenize text using the model's vocab. `specialTokens=true` resolves
+	 * tokens like `<|im_end|>` to their dedicated IDs. Used by the EOT
+	 * scorer to find the `<|im_end|>` token id once at startup.
+	 */
+	tokenize(text: string, specialTokens?: boolean): readonly number[];
 	dispose(): Promise<void>;
 }
 
