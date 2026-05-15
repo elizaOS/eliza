@@ -202,6 +202,14 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 
 ## omnivoice
 
+
+### 0.2.0 — 2026-05-15
+
+- OmniVoice ELZ2 v2 frozen-conditioning preset for the 'same' voice (Her-derivative)
+- **Parent:** 0.1.0.
+- **HF repo:** `elizaos/eliza-1-voice-omnivoice-same-v01` @ rev `fd0d04439d48826abc89dcfc03d9d1f31d29bf20`.
+- **Eval deltas:** (none recorded)
+- **Net improvement:** yes.
 ### 0.1.2 — 2026-05-14 (F3 — HF repo staging)
 
 - **What changed:** HF repo slug confirmed as `elizaos/eliza-1-voice-omnivoice`. Staging dir at `artifacts/voice-sub-model-staging/omnivoice/`. Files: `omnivoice-base-q4_k_m.gguf`, `omnivoice-tokenizer-q4_k_m.gguf`, `omnivoice-base-q8_0.gguf`, `presets/voice-preset-sam.bin`, `manifest.json`, `README.md`. HF push gated on `HF_TOKEN`.
