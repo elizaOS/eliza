@@ -43,6 +43,6 @@ export function appendContextEvent(
 ): ContextObject {
 	return {
 		...context,
-		events: [...(context.events), event],
+		events: [...context.events, event],
 	};
 }

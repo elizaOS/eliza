@@ -3,11 +3,7 @@ import { SOLANA_SERVICE_NAME } from "./constants";
 import { walletProvider } from "./providers/wallet";
 import { solanaRoutes } from "./routes/index";
 import { solanaSignRoutes } from "./routes/sign";
-import {
-  SolanaService,
-  SolanaWalletService,
-  SOLANA_WALLET_COMPAT_SERVICE_NAME,
-} from "./service";
+import { SOLANA_WALLET_COMPAT_SERVICE_NAME, SolanaService, SolanaWalletService } from "./service";
 
 function getStringSetting(runtime: IAgentRuntime, key: string): string | null {
   const value = runtime.getSetting(key);
@@ -61,12 +57,10 @@ export const solanaPlugin: Plugin = {
       });
   },
   async dispose(runtime: IAgentRuntime) {
-    const solana = runtime.getService<SolanaService>(
-      SOLANA_SERVICE_NAME as ServiceTypeName,
-    );
+    const solana = runtime.getService<SolanaService>(SOLANA_SERVICE_NAME as ServiceTypeName);
     await solana?.stop();
     const wallet = runtime.getService<SolanaWalletService>(
-      SOLANA_WALLET_COMPAT_SERVICE_NAME as ServiceTypeName,
+      SOLANA_WALLET_COMPAT_SERVICE_NAME as ServiceTypeName
     );
     await wallet?.stop();
   },

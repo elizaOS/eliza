@@ -879,8 +879,7 @@ class LocalAIManager {
 			});
 			const toolCalls = extractToolCalls(meta.response);
 			const text = stripThinkTags(meta.responseText);
-			const usedTokensAfter =
-				entry.session.sequence.contextTokens.length;
+			const usedTokensAfter = entry.session.sequence.contextTokens.length;
 			logger.info(
 				{
 					toolCallCount: toolCalls.length,
@@ -898,8 +897,7 @@ class LocalAIManager {
 				grammar: plan.grammar,
 			});
 			const text = stripThinkTags(meta.responseText);
-			const usedTokensAfter =
-				entry.session.sequence.contextTokens.length;
+			const usedTokensAfter = entry.session.sequence.contextTokens.length;
 			logger.info(
 				{
 					kind: plan.kind,

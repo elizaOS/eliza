@@ -50,6 +50,16 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+import {
+  fusedCmakeBuildTargets,
+  fusedExtraCmakeFlags,
+} from "./build-helpers/omnivoice-merged.mjs";
+// H2.c collapsed the W3-3 deprecation runway: OmniVoice is now built
+// exclusively from the in-fork merged tree at
+// `plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/`. The
+// legacy graft path (`OMNIVOICE_INSIDE_LLAMA_CPP=0` +
+// `omnivoice-fuse/{prepare,cmake-graft}.mjs`) has been removed.
+import { verifyFusedSymbols } from "./build-helpers/verify-fused-symbols.mjs";
 import { patchCpuPolarKernels as patchCpuPolarKernelsImpl } from "./kernel-patches/cpu-polar-kernels.mjs";
 import {
   patchCpuSimdKernels as patchCpuSimdKernelsImpl,
@@ -70,22 +80,6 @@ import { patchMetalKernels as patchMetalKernelsImpl } from "./kernel-patches/met
 // the production route without any runtime patching.
 import { patchServerStructuredOutput as patchServerStructuredOutputImpl } from "./kernel-patches/server-structured-output.mjs";
 import { patchVulkanKernels as patchVulkanKernelsImpl } from "./kernel-patches/vulkan-kernels.mjs";
-import {
-  appendCmakeGraft,
-  appendKokoroCmakeGraft,
-  fusedCmakeBuildTargets,
-  fusedExtraCmakeFlags,
-} from "./omnivoice-fuse/cmake-graft.mjs";
-// Source-level omnivoice.cpp fusion (text + TTS sharing one llama.cpp
-// build, one ggml pin, one kernel set). Helpers live alongside this
-// script under omnivoice-fuse/; see omnivoice-fuse/README.md for the
-// GGML pin reconciliation strategy.
-import {
-  OMNIVOICE_GGML_REF,
-  OMNIVOICE_REF,
-  prepareOmnivoiceFusion,
-} from "./omnivoice-fuse/prepare.mjs";
-import { verifyFusedSymbols } from "./omnivoice-fuse/verify-symbols.mjs";
 
 // elizaOS/llama.cpp @ 33c888a7b — the unified fork that
 // composes TBQ (turbo3/turbo4/turbo3_tcq) + QJL (block_qjl1_256,
@@ -1834,12 +1828,10 @@ function parseArgs(argv) {
               `  ${t}${FUSED_TARGETS.has(t) ? "  (fused: text + omnivoice TTS in one build)" : ""}`,
           ),
           "",
-          "Fused targets perform source-level fusion of",
-          "github.com/ServeurpersoCom/omnivoice.cpp into the elizaOS/llama.cpp",
-          "build, sharing one ggml pin and one kernel set.",
-          `Pinned omnivoice commit: ${OMNIVOICE_REF}`,
-          `Reconciled-out omnivoice ggml submodule: ${OMNIVOICE_GGML_REF}`,
-          "See packages/app-core/scripts/omnivoice-fuse/README.md.",
+          "Fused targets build the merged in-fork OmniVoice tree at",
+          "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/.",
+          "Text + TTS share one llama.cpp build, one ggml pin, one kernel set.",
+          "See plugins/plugin-local-inference/native/AGENTS.md.",
           "",
           "Source: by default the in-repo submodule plugins/plugin-local-inference/native/llama.cpp",
           `(elizaOS/llama.cpp @ ${REF}). Pass --ref / --cache-dir or set`,
@@ -3366,14 +3358,13 @@ function targetOutDir(target, override) {
 function cmakeBuildTargetsFor(target) {
   const { platform, backend, fused } = parseTarget(target);
   const isIos = platform === "ios";
-  // W3-3: resolve fused target list against the layout in use. The
-  // merged path (default) produces `omnivoice_lib` + `omnivoice-tts/codec`;
-  // the legacy graft path produces `omnivoice-core` + `llama-omnivoice-server`.
-  const legacyOmnivoiceGraft = process.env.OMNIVOICE_INSIDE_LLAMA_CPP === "0";
+  // H2.c: only the merged in-fork path remains. `tools/omnivoice/` produces
+  // `omnivoice_lib` + `omnivoice-tts/codec` + `elizainference` and patches
+  // `/v1/audio/speech` onto `llama-server` directly.
   const targets = isIos
     ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
     : fused
-      ? fusedCmakeBuildTargets({ legacy: legacyOmnivoiceGraft })
+      ? fusedCmakeBuildTargets()
       : [
           "llama-server",
           "llama-cli",
@@ -3410,83 +3401,21 @@ function buildTarget({ target, args, ctx }) {
   }
   const flags = cmakeFlagsForTarget(target, ctx);
 
-  // W3-3 OmniVoice → llama.cpp literal merge:
-  //
-  //   * `OMNIVOICE_INSIDE_LLAMA_CPP=1` (default in this script as of
-  //     v1.0.1-eliza) drives the canonical merged path. OmniVoice
-  //     sources live INSIDE the fork at `tools/omnivoice/`; the build
-  //     just sets `-DLLAMA_BUILD_OMNIVOICE=ON -DOMNIVOICE_SHARED=ON`
-  //     and the merged tree's CMakeLists produces libelizainference,
-  //     omnivoice-tts, omnivoice-codec, and wires the
-  //     /v1/audio/speech route into llama-server.
-  //
-  //   * The pre-W3-3 fallback (legacy graft) still works for ONE
-  //     release as a deprecation runway. Set
-  //     `OMNIVOICE_INSIDE_LLAMA_CPP=0` to opt back into the legacy
-  //     `prepareOmnivoiceFusion()` clone-and-graft path. The legacy
-  //     path will be removed in v1.0.2-eliza.
-  const omnivoiceInsideLlamaCpp =
-    process.env.OMNIVOICE_INSIDE_LLAMA_CPP !== "0";
-  let omnivoiceInfo = null;
+  // H2.c — only the merged in-fork OmniVoice path remains. The pre-W3-3
+  // clone-and-graft fallback (gated on `OMNIVOICE_INSIDE_LLAMA_CPP=0`) was
+  // a one-release deprecation runway and has been removed; setting that
+  // env var now no-ops.
   if (fused) {
-    if (omnivoiceInsideLlamaCpp) {
-      if (args.dryRun) {
-        console.log(
-          `[dflash-build] (dry-run) target=${target} fused=true (W3-3 merged path; OMNIVOICE_INSIDE_LLAMA_CPP=1)`,
-        );
-      } else {
-        console.log(
-          `[dflash-build] omnivoice merged path: building tools/omnivoice/ in-fork (W3-3 v1.0.1-eliza)`,
-        );
-      }
-      // Merged path: just turn on the CMake option. The fork's
-      // `tools/omnivoice/CMakeLists.txt` declares omnivoice_lib,
-      // elizainference, omnivoice-tts, omnivoice-codec, and the
-      // llama-server route mount.
-      flags.push(
-        "-DLLAMA_BUILD_OMNIVOICE=ON",
-        "-DOMNIVOICE_SHARED=ON",
-        "-DBUILD_SHARED_LIBS=ON",
+    if (args.dryRun) {
+      console.log(
+        `[dflash-build] (dry-run) target=${target} fused=true (merged path)`,
       );
     } else {
-      // Legacy graft path (deprecated; one-release runway).
-      if (args.dryRun) {
-        console.log(
-          `[dflash-build] (dry-run) target=${target} fused=true legacy-graft=true (OMNIVOICE_INSIDE_LLAMA_CPP=0)`,
-        );
-        console.log(
-          `  prepareOmnivoiceFusion ref=${OMNIVOICE_REF} llamaCppRoot=${args.cacheDir}`,
-        );
-        console.log(
-          `  appendCmakeGraft -> ${path.join(args.cacheDir, "CMakeLists.txt")}`,
-        );
-      } else {
-        console.warn(
-          `[dflash-build] OMNIVOICE_INSIDE_LLAMA_CPP=0 — using DEPRECATED legacy graft. ` +
-            `Switch to the merged path (unset OMNIVOICE_INSIDE_LLAMA_CPP) before v1.0.2-eliza.`,
-        );
-        omnivoiceInfo = prepareOmnivoiceFusion({
-          cacheRoot: path.dirname(args.cacheDir),
-          llamaCppRoot: args.cacheDir,
-        });
-        const grafted = appendCmakeGraft({ llamaCppRoot: args.cacheDir });
-        let kokoroGrafted = false;
-        if ((omnivoiceInfo.kokoroSourceCount ?? 0) > 0) {
-          kokoroGrafted = appendKokoroCmakeGraft({
-            llamaCppRoot: args.cacheDir,
-          });
-        }
-        console.log(
-          `[dflash-build] omnivoice-fuse (legacy): pin=${omnivoiceInfo.commit} ` +
-            `ggmlSubmodule=${omnivoiceInfo.ggmlSubmoduleCommit} ` +
-            `sources=${omnivoiceInfo.sourceCount} ` +
-            `cmakeGraftAppended=${grafted} ` +
-            `kokoroSources=${omnivoiceInfo.kokoroSourceCount ?? 0} ` +
-            `kokoroGraftAppended=${kokoroGrafted}`,
-        );
-      }
-      flags.push(...fusedExtraCmakeFlags());
+      console.log(
+        `[dflash-build] omnivoice merged path: building tools/omnivoice/ in-fork`,
+      );
     }
+    flags.push(...fusedExtraCmakeFlags());
   }
 
   if (args.dryRun) {
@@ -3692,18 +3621,14 @@ function buildTarget({ target, args, ctx }) {
     cacheDir: args.cacheDir,
     forkCommit: ctx.forkCommit,
     binaries: installedBaseNames,
-    omnivoice:
-      fused && omnivoiceInfo
-        ? {
-            ref: omnivoiceInfo.ref,
-            commit: omnivoiceInfo.commit,
-            ggmlSubmoduleCommit: omnivoiceInfo.ggmlSubmoduleCommit,
-            ggmlReconciliation: "graft-strip-submodule",
-            sourceCount: omnivoiceInfo.sourceCount,
-            appliedPatches: omnivoiceInfo.appliedPatches,
-            verification: omnivoiceVerification,
-          }
-        : null,
+    omnivoice: fused
+      ? {
+          mode: "merged",
+          source:
+            "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice",
+          verification: omnivoiceVerification,
+        }
+      : null,
   });
   console.log(
     `[dflash-build] installed ${target} binaries to ${outDir} (kernels: ${

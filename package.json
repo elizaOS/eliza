@@ -302,6 +302,7 @@
     "drizzle-orm": "0.45.2",
     "@electric-sql/pglite": "^0.4.5",
     "rimraf": "^6.0.1",
+    "@rollup/wasm-node": "4.60.3",
     "rollup": "npm:@rollup/wasm-node@4.60.3",
     "tsup": "8.5.1",
     "vitest": "4.1.5",

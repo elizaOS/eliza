@@ -227,7 +227,7 @@ function getScopedToEntityId(
 		const ownerId = runtime.getSetting("ELIZA_ADMIN_ENTITY_ID");
 		return typeof ownerId === "string" && ownerId.trim()
 			? (ownerId.trim() as UUID)
-			: (message.entityId);
+			: message.entityId;
 	}
 	if (
 		typeof params?.scopedToEntityId === "string" &&
@@ -430,9 +430,7 @@ function getFilePath(
 	if (typeof params.filePath === "string" && params.filePath.trim()) {
 		return params.filePath.trim();
 	}
-	return (
-		(message.content.text ?? "").match(DOCUMENT_PATH_PATTERN)?.[0] ?? null
-	);
+	return (message.content.text ?? "").match(DOCUMENT_PATH_PATTERN)?.[0] ?? null;
 }
 
 function getUrl(

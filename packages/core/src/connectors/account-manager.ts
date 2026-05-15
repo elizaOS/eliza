@@ -470,7 +470,7 @@ function normalizeAccount(
 ): ConnectorAccount {
 	const now = nowMs();
 	const full = input as ConnectorAccount;
-	const id = (full.id).trim();
+	const id = full.id.trim();
 	if (!id) {
 		throw new Error("Connector account requires an id");
 	}

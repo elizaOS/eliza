@@ -77,7 +77,9 @@ const linePlugin: Plugin = {
 
   async dispose(runtime: IAgentRuntime) {
     await runtime.getService<LineService>(LineService.serviceType)?.stop();
-    await runtime.getService<LineWorkflowCredentialProvider>(LineWorkflowCredentialProvider.serviceType)?.stop();
+    await runtime
+      .getService<LineWorkflowCredentialProvider>(LineWorkflowCredentialProvider.serviceType)
+      ?.stop();
   },
 
   init: async (config: Record<string, string>, runtime: IAgentRuntime): Promise<void> => {

@@ -63,12 +63,12 @@ function mergeStates(base: State | undefined, providerState: State): State {
 
 	return {
 		values: {
-			...(base.values),
-			...(providerState.values),
+			...base.values,
+			...providerState.values,
 		},
 		data: {
-			...(base.data),
-			...(providerState.data),
+			...base.data,
+			...providerState.data,
 			...(mergedProviders ? { providers: mergedProviders } : {}),
 		},
 		text: [base.text, providerState.text].filter(Boolean).join("\n"),

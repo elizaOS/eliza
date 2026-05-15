@@ -1282,7 +1282,7 @@ async function recordPlannerStage(args: {
 
 	try {
 		const responseText =
-			typeof args.raw === "string" ? args.raw : (args.raw.text);
+			typeof args.raw === "string" ? args.raw : args.raw.text;
 		const usage = extractUsage(args.raw);
 		const finishReason = extractFinishReason(args.raw);
 		const modelName = extractModelName(args.raw);
@@ -1805,12 +1805,28 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 	}
 
 	const record = entry as ToolCall & Record<string, unknown>;
-	const name = normalizeToolCallName(record.name);
+	const rawFunction =
+		record.function && typeof record.function === "object"
+			? (record.function as Record<string, unknown>)
+			: null;
+	const functionName =
+		typeof record.function === "string" ? record.function : rawFunction?.name;
+	const name = normalizeToolCallName(
+		record.name ?? record.toolName ?? record.tool ?? record.action ?? functionName,
+	);
 	if (!name) {
 		return null;
 	}
 
-	const args = normalizeArgs(record.input);
+	const args = normalizeArgs(
+		record.input ??
+			record.args ??
+			record.arguments ??
+			record.params ??
+			record.parameters ??
+			rawFunction?.input ??
+			rawFunction?.arguments,
+	);
 
 	return {
 		id: typeof record.id === "string" ? record.id : undefined,

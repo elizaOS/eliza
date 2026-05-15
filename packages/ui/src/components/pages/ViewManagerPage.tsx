@@ -176,7 +176,10 @@ function ViewSection({
 }
 
 /** Fetch semantic search results from /api/views/search. */
-async function fetchSearchResults(q: string, limit: number): Promise<ViewRegistryEntry[]> {
+async function fetchSearchResults(
+  q: string,
+  limit: number,
+): Promise<ViewRegistryEntry[]> {
   const url = new URL("/api/views/search", window.location.origin);
   url.searchParams.set("q", q);
   url.searchParams.set("limit", String(limit));
@@ -192,7 +195,9 @@ export function ViewManagerPage() {
   const { views, loading, error } = useAvailableViews();
   const isDeveloperMode = useIsDeveloperMode();
   const [query, setQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<ViewRegistryEntry[] | null>(null);
+  const [searchResults, setSearchResults] = useState<
+    ViewRegistryEntry[] | null
+  >(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
