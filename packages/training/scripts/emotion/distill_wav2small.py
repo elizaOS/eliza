@@ -942,7 +942,7 @@ def export_student_onnx(
     student: Any,
     out_path: pathlib.Path,
     opset: int = DEFAULT_OPSET,
-    smoke_input_seconds: float = 1.0,
+    smoke_input_seconds: float = 8.0,
 ) -> None:
     """Export the trained student to int8 ONNX.
 
@@ -971,9 +971,11 @@ def export_student_onnx(
     student = student.eval().cpu()
     sample_len = int(smoke_input_seconds * WAV2SMALL_SAMPLE_RATE)
     dummy = torch.zeros(1, sample_len, dtype=torch.float32)
-    # `dynamo=False` keeps us on the legacy TorchScript exporter, which is
-    # what onnxruntime-node 1.20.x ships against. The dynamo path also
-    # requires `onnxscript`, an extra dep we don't want in the training env.
+    # `dynamo=True` produces a real dynamic-shape ONNX graph; the legacy
+    # TorchScript exporter (`dynamo=False`) bakes the dummy's sequence
+    # length into the multi-head-attention Reshape ops, so a model exported
+    # at 8 s would refuse to run on 4 s inputs. The runtime accepts inputs
+    # from 1 s through MAX_WINDOW, so dynamic shapes are required.
     torch.onnx.export(
         student,
         dummy,
@@ -982,14 +984,17 @@ def export_student_onnx(
         output_names=["vad"],
         opset_version=opset,
         dynamic_axes={"pcm": {0: "batch", 1: "samples"}, "vad": {0: "batch"}},
-        dynamo=False,
+        dynamo=True,
     )
 
     # Bake emotion-tag metadata into the ONNX so the runtime classifier can
-    # sanity-check label order at load time.
+    # sanity-check label order at load time. Also clear value_info entries —
+    # the dynamo exporter sometimes leaves stale shape annotations that the
+    # int8 quantizer's shape inference rejects.
     try:
         import onnx
         model_proto = onnx.load(str(fp32_path))
+        model_proto.graph.ClearField("value_info")
         meta = model_proto.metadata_props.add()
         meta.key = "expressive_emotion_tags"
         meta.value = ",".join(EXPRESSIVE_EMOTION_TAGS)
@@ -1027,7 +1032,10 @@ def export_student_onnx(
         ) from exc
 
     # Smoke-roundtrip the exported ONNX so we catch op-set / quantisation
-    # mismatches at training time instead of at runtime load.
+    # mismatches at training time instead of at runtime load. We validate
+    # 1 s / 4 s / 8 s inputs since the runtime adapter accepts variable
+    # window lengths between `WAV2SMALL_MIN_SAMPLES` and `WAV2SMALL_MAX_SAMPLES`.
+    # Batch is fixed at 1 (runtime feeds a single window per call).
     try:
         import numpy as np
         import onnxruntime as ort
@@ -1035,13 +1043,15 @@ def export_student_onnx(
         session = ort.InferenceSession(
             str(out_path), providers=["CPUExecutionProvider"],
         )
-        smoke = np.zeros((1, sample_len), dtype="float32")
-        outputs = session.run(None, {"pcm": smoke})
-        if outputs[0].shape != (1, 3):
-            raise RuntimeError(
-                f"exported ONNX returned unexpected output shape "
-                f"{outputs[0].shape}; expected (1, 3)",
-            )
+        for sec in (1.0, 4.0, 8.0):
+            smoke_len = int(sec * WAV2SMALL_SAMPLE_RATE)
+            smoke = np.zeros((1, smoke_len), dtype="float32")
+            outputs = session.run(None, {"pcm": smoke})
+            if outputs[0].shape != (1, 3):
+                raise RuntimeError(
+                    f"exported ONNX returned unexpected output shape "
+                    f"{outputs[0].shape} at {sec}-sec input; expected (1, 3)",
+                )
     except ImportError:
         # If onnxruntime isn't installed in the training env, this is the
         # documented escape hatch (per the task brief): print a single line
