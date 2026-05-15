@@ -1,48 +1,13 @@
-/**
- * Feishu Connector Validation Tests
- *
- * Comprehensive E2E tests for validating the Feishu/Lark connector (@elizaos/plugin-feishu).
- *
- * Test Categories:
- *   1. Setup & Authentication
- *   2. Message Handling
- *   3. Feishu-Specific Features
- *   4. Groups & Chats
- *   5. Media & Attachments
- *   6. Error Handling
- *   7. Integration
- *
- * Requirements for live tests:
- *   FEISHU_APP_ID              — Feishu/Lark application ID (cli_xxx format)
- *   FEISHU_APP_SECRET          — Feishu/Lark application secret
- *   ELIZA_LIVE_TEST=1         — Enable live tests
- *
- * Additional env vars for write tests:
- *   FEISHU_TEST_CHAT_ID        — Chat ID to test in (e.g., oc_xxx)
- *
- * Optional env vars:
- *   FEISHU_DOMAIN              — "feishu.cn" (default) or "larksuite.com"
- *
- * Or configure in ~/.eliza/eliza.json:
- *   { "connectors": { "feishu": { "token": "...", "appId": "...", "appSecret": "..." } } }
- *
- * NO MOCKS for live tests — all tests use real Feishu API.
- */
-
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  extractPlugin,
-  resolveFeishuPluginImportSpecifier,
-} from "@elizaos/app-core";
 import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 
-// ---------------------------------------------------------------------------
-// Environment Setup
-// ---------------------------------------------------------------------------
+const { extractPlugin, resolveFeishuPluginImportSpecifier } = await import(
+  "../../src/test-support/test-helpers.ts"
+);
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

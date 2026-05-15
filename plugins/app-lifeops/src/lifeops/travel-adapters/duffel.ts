@@ -362,7 +362,7 @@ function mapOffer(raw: DuffelApiOffer): DuffelOffer {
       duration: seg.duration,
     })),
   }));
-  const passengers: DuffelOfferPassenger[] = (raw.passengers ?? []).map(
+  const passengers: DuffelOfferPassenger[] = (raw.passengers).map(
     (passenger, index) => ({
       id: passenger.id?.trim() || `passenger_${index}`,
       type: passenger.type?.trim() || "adult",
@@ -413,7 +413,7 @@ function mapOrder(raw: DuffelApiOrder): DuffelOrder {
         duration: segment.duration,
       })),
     })),
-    passengers: (raw.passengers ?? []).map((passenger, index) => ({
+    passengers: (raw.passengers).map((passenger, index) => ({
       id: passenger.id?.trim() || `passenger_${index}`,
       givenName: passenger.given_name?.trim() || null,
       familyName: passenger.family_name?.trim() || null,
@@ -680,7 +680,7 @@ export async function searchFlights(
       operation: "offer_request",
     });
 
-  const offers = (responseData.data.offers ?? []).map(mapOffer);
+  const offers = (responseData.data.offers).map(mapOffer);
 
   logger.info(
     {

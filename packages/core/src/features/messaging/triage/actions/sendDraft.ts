@@ -133,7 +133,7 @@ function outboundDraftOptionsFromMessage(
 ): HandlerOptions | undefined {
 	const params = getParameters(options);
 	const text =
-		typeof message.content?.text === "string" ? message.content.text : "";
+		typeof message.content.text === "string" ? message.content.text : "";
 	const source =
 		normalizeSource(
 			params.source ?? params.platform ?? params.connector ?? params.service,

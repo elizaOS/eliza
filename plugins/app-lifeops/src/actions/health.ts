@@ -146,10 +146,10 @@ async function resolveHealthPlanWithLlm(args: {
     })
   ).join("\n");
   const currentMessage =
-    typeof args.message.content?.text === "string"
+    typeof args.message.content.text === "string"
       ? args.message.content.text
       : "";
-  const paramsText = Object.entries(args.params ?? {})
+  const paramsText = Object.entries(args.params)
     .map(([key, value]) => `${key}: ${String(value)}`)
     .join("\n");
   const prompt = [
@@ -446,7 +446,7 @@ export async function runHealthHandler(
       days: plannedDays ?? params.days ?? 7,
     });
   } catch (error) {
-    runtime.logger?.warn?.(
+    runtime.logger.warn(
       {
         src: "action:health",
         error: error instanceof Error ? error.message : String(error),

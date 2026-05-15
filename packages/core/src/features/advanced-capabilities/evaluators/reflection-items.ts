@@ -291,14 +291,14 @@ function partitionByKind(memories: Memory[]): {
 
 function formatKnownDurableLine(memory: Memory): string {
 	const id = memory.id ?? "";
-	const text = memory.content?.text ?? "";
+	const text = memory.content.text ?? "";
 	if (!id || !text) return "";
 	return `[${id}] (durable.${readCategory(memory)}) ${text}`;
 }
 
 function formatKnownCurrentLine(memory: Memory): string {
 	const id = memory.id ?? "";
-	const text = memory.content?.text ?? "";
+	const text = memory.content.text ?? "";
 	if (!id || !text) return "";
 	const since = readEffectiveValidAt(memory) ?? "unknown";
 	return `[${id}] (current.${readCategory(memory)}, since ${since}) ${text}`;
@@ -320,12 +320,12 @@ function formatRecentMessages(memories: Memory[]): string {
 	const lines: string[] = [];
 	for (const memory of memories) {
 		if (isSyntheticConversationArtifactMemory(memory)) continue;
-		const text = memory.content?.text;
+		const text = memory.content.text;
 		if (typeof text !== "string" || !text.trim()) continue;
 		const senderName =
-			(typeof memory.content?.senderName === "string" &&
+			(typeof memory.content.senderName === "string" &&
 				memory.content.senderName) ||
-			(typeof memory.content?.name === "string" && memory.content.name) ||
+			(typeof memory.content.name === "string" && memory.content.name) ||
 			memory.entityId ||
 			"someone";
 		lines.push(`- ${senderName}: ${text}`);
@@ -666,7 +666,7 @@ async function applyContradict(
 		entityId: ctx.message.entityId,
 		kind: "contradict",
 		existingFactId: asUuidOrNull(fact.id) ?? undefined,
-		proposedText: op.proposedText ?? fact.content?.text ?? "",
+		proposedText: op.proposedText ?? fact.content.text ?? "",
 		reason: op.reason,
 		evidenceMessageId: asUuidOrNull(ctx.message.id) ?? undefined,
 	});
@@ -839,7 +839,7 @@ async function storeTaskCompletionReflection(
 
 function canEvaluateMessage(message: Memory): boolean {
 	return Boolean(
-		message.content?.text?.trim() &&
+		message.content.text?.trim() &&
 			message.entityId &&
 			message.roomId &&
 			!isSyntheticConversationArtifactMemory(message),

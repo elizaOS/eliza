@@ -1537,7 +1537,7 @@ async function setupUpdater(): Promise<void> {
 			}
 
 			const updateResult = await Updater.checkForUpdate();
-			if (updateResult?.updateAvailable) {
+			if (updateResult.updateAvailable) {
 				Updater.downloadUpdate().catch((err: unknown) => {
 					logger.warn(
 						`[Updater] Download failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -1741,7 +1741,7 @@ async function setupUpdater(): Promise<void> {
 		Electrobun.events.on(
 			"application-menu-clicked",
 			(e: { data?: { action?: string } }) => {
-				void handleApplicationMenuAction(e?.data?.action);
+				void handleApplicationMenuAction(e.data?.action);
 			},
 		);
 
@@ -1751,7 +1751,7 @@ async function setupUpdater(): Promise<void> {
 		Electrobun.events.on(
 			"tray-clicked",
 			(e: { data?: { action?: string } }) => {
-				const action = e?.data?.action;
+				const action = e.data?.action;
 				if (typeof action === "string" && action.startsWith("tray-app-")) {
 					void handleApplicationMenuAction(action);
 				}

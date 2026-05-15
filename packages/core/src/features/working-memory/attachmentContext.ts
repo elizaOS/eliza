@@ -70,7 +70,7 @@ async function describeImageAttachment(
 			imageUrl,
 		});
 	} catch (error) {
-		runtime.logger?.warn?.(
+		runtime.logger.warn(
 			{
 				src: "core:clipboard:attachment-context",
 				attachmentId: attachment.id,
@@ -119,8 +119,8 @@ export async function listConversationAttachments(
 ): Promise<AttachmentWithInlineData[]> {
 	const currentMessageAttachments = (message.content.attachments ??
 		[]) as AttachmentWithInlineData[];
-	const conversationLength = runtime.getConversationLength?.() ?? 20;
-	const recentMessages = await runtime.getMemories?.({
+	const conversationLength = runtime.getConversationLength();
+	const recentMessages = await runtime.getMemories({
 		roomId: message.roomId,
 		count: conversationLength,
 		unique: false,

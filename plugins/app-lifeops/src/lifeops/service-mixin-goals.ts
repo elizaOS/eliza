@@ -1292,8 +1292,8 @@ export function withGoals<TBase extends Constructor<LifeOpsServiceBase>>(
           source: definitionRecord.definition.source,
           whyVisible,
           lastReminderAt: lastReminderAttempt?.attemptedAt ?? null,
-          lastReminderChannel: lastReminderAttempt?.channel ?? null,
-          lastReminderOutcome: lastReminderAttempt?.outcome ?? null,
+          lastReminderChannel: lastReminderAttempt?.channel,
+          lastReminderOutcome: lastReminderAttempt?.outcome,
           lastActionSummary: lastOccurrenceAudit
             ? `${lastOccurrenceAudit.reason} at ${lastOccurrenceAudit.createdAt}`
             : null,

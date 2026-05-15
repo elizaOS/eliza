@@ -555,7 +555,7 @@ export function useGoogleLifeOpsConnector(
   const runtimeReady = isLifeOpsRuntimeReady({
     startupPhase,
     agentState: agentStatus?.state ?? null,
-    backendState: backendConnection?.state ?? null,
+    backendState: backendConnection.state,
   });
 
   const refresh = useCallback(

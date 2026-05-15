@@ -912,7 +912,7 @@ async function memoriesToHits(
   const results: CrossChannelSearchHit[] = [];
 
   for (const mem of memories) {
-    const text = (mem.content?.text ?? "").trim();
+    const text = (mem.content.text ?? "").trim();
     if (!text) continue;
 
     const iso = normalizeIsoFromMs(mem.createdAt);

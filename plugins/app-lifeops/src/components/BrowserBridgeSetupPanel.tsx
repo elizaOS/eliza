@@ -83,7 +83,7 @@ function detectRuntimeBrowserKind(): BrowserBridgeKind | null {
     return null;
   }
   const userAgent = navigator.userAgent.toLowerCase();
-  const vendor = navigator.vendor?.toLowerCase() ?? "";
+  const vendor = navigator.vendor.toLowerCase();
   const chromeFamily =
     userAgent.includes("chrome") ||
     userAgent.includes("chromium") ||
@@ -1477,7 +1477,7 @@ export function BrowserBridgeSetupPanel() {
   const recommendedCompanion =
     companionByBrowser.get(recommendedBrowser) ?? primaryCompanion;
   const recommendedConnected =
-    recommendedCompanion?.connectionState === "connected";
+    recommendedCompanion.connectionState === "connected";
   const recommendedArtifactReady = hasBrowserArtifact(
     recommendedBrowser,
     packageStatus,

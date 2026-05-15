@@ -151,7 +151,7 @@ export async function loadCoreMlImageGenBackend(
 					"[imagegen/coreml] generate called after dispose()",
 				);
 			}
-			if (!req.prompt?.trim()) {
+			if (!req.prompt.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"coreml",
 					"unsupported_request",

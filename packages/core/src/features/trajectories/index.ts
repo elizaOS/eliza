@@ -131,7 +131,7 @@ async function buildTrajectoryMetadata(
 	const channelType =
 		typeof meta.channelType === "string" && meta.channelType.length > 0
 			? meta.channelType
-			: typeof message.content?.channelType === "string" &&
+			: typeof message.content.channelType === "string" &&
 					message.content.channelType.length > 0
 				? message.content.channelType
 				: null;
@@ -280,7 +280,7 @@ export const trajectoriesPlugin: Plugin = {
 						);
 					}
 				} catch (err) {
-					runtime.logger?.warn(
+					runtime.logger.warn(
 						{
 							err,
 							src: "trajectories",
@@ -315,7 +315,7 @@ export const trajectoriesPlugin: Plugin = {
 				try {
 					await endPendingTrajectory(runtime, trajectoryStepId, "completed");
 				} catch (err) {
-					runtime.logger?.warn(
+					runtime.logger.warn(
 						{
 							err,
 							src: "trajectories",
@@ -342,7 +342,7 @@ export const trajectoriesPlugin: Plugin = {
 						getFinalStatusForRun(payload),
 					);
 				} catch (err) {
-					runtime.logger?.warn(
+					runtime.logger.warn(
 						{
 							err,
 							src: "trajectories",
@@ -366,7 +366,7 @@ export const trajectoriesPlugin: Plugin = {
 				try {
 					await endPendingTrajectory(runtime, trajectoryStepId, "timeout");
 				} catch (err) {
-					runtime.logger?.warn(
+					runtime.logger.warn(
 						{
 							err,
 							src: "trajectories",
@@ -378,6 +378,12 @@ export const trajectoriesPlugin: Plugin = {
 				}
 			},
 		],
+	},
+	async dispose(runtime: IAgentRuntime) {
+		const svc = runtime.getService<TrajectoriesService>(
+			TrajectoriesService.serviceType,
+		);
+		await svc?.stop();
 	},
 };
 

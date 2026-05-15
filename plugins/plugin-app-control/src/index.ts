@@ -14,6 +14,7 @@
 
 import type { Plugin } from "@elizaos/core";
 import { appAction, createAppAction } from "./actions/app.js";
+import { viewsAction, createViewsAction } from "./actions/views.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
@@ -53,18 +54,34 @@ export type {
 	InstalledAppInfo,
 } from "./types.js";
 export { appAction, availableAppsProvider, createAppAction };
+export { viewsAction, createViewsAction } from "./actions/views.js";
+export type { ViewsMode } from "./actions/views.js";
+export type { ViewSummary } from "./actions/views-client.js";
 
 export const appControlPlugin: Plugin = {
 	name: "app-control",
 	description:
-		"Launch, close, list, relaunch, load, and create Eliza apps from agent chat. Backed by the Eliza dashboard /api/apps/* HTTP surface.",
-	actions: [appAction],
+		"Launch, close, list, relaunch, load, and create Eliza apps from agent chat. Backed by the Eliza dashboard /api/apps/* HTTP surface. Also manages UI views via the VIEWS action.",
+	actions: [appAction, viewsAction],
 	providers: [availableAppsProvider],
 	services: [
 		AppRegistryService,
 		AppVerificationService,
 		AppWorkerHostService,
 		VerificationRoomBridgeService,
+	],
+	views: [
+		{
+			id: "views-manager",
+			label: "Views",
+			description: "Browse and open available views contributed by plugins",
+			icon: "LayoutGrid",
+			path: "/views",
+			bundlePath: "dist/views/bundle.js",
+			componentExport: "ViewManagerView",
+			visibleInManager: true,
+			desktopTabEnabled: true,
+		},
 	],
 };
 

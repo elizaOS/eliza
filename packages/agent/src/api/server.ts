@@ -115,16 +115,14 @@ type BrowserWorkspaceTabKind = NonNullable<
   Parameters<typeof openBrowserWorkspaceTab>[0]["kind"]
 >;
 
-// === Phase 4E: skills routes + helpers moved to plugin-agent-skills ===
-import {
-  discoverSkills,
-  handleCuratedSkillsRoutes,
-  handleSkillsRoutes,
-} from "@elizaos/plugin-agent-skills";
-import { AppManager, handleAppsRoutes } from "@elizaos/plugin-app-manager";
-// === Phase 4F: plugin routes moved to @elizaos/plugin-registry ===
-import { handlePluginRoutes } from "@elizaos/plugin-registry";
-import { handleWalletRoutes } from "@elizaos/plugin-wallet";
+const { discoverSkills, handleCuratedSkillsRoutes, handleSkillsRoutes } =
+  await import("@elizaos/plugin-agent-skills");
+const { AppManager, handleAppsRoutes } = await import(
+  "@elizaos/plugin-app-manager"
+);
+const { handlePluginRoutes } = await import("@elizaos/plugin-registry");
+const { handleWalletRoutes } = await import("@elizaos/plugin-wallet");
+
 import { getGlobalAwarenessRegistry } from "../awareness/registry.ts";
 import {
   type ElizaConfig,
@@ -255,6 +253,7 @@ import {
 } from "./server-route-dispatch.ts";
 import { handleSubscriptionRoutes } from "./subscription-routes.ts";
 import { handleUpdateRoutes } from "./update-routes.ts";
+import { handleViewsRoutes } from "./views-routes.ts";
 import {
   deriveSolanaAddress,
   fetchEvmBalances,
@@ -1969,7 +1968,7 @@ async function handleRequest(
         : null;
     const agentName =
       state.runtime?.character.name?.trim() ||
-      state.agentName?.trim() ||
+      state.agentName.trim() ||
       "Eliza";
 
     json(res, {
@@ -2632,6 +2631,7 @@ async function handleRequest(
   }
 
   // ── App routes (/api/apps/*) ──────────────────────────────────────────
+  const appManager = state.appManager as InstanceType<typeof AppManager>;
   if (
     await handleAppsRoutes({
       req,
@@ -2641,34 +2641,34 @@ async function handleRequest(
       url,
       appManager: {
         listAvailable: (pluginManager) =>
-          state.appManager.listAvailable(pluginManager),
+          appManager.listAvailable(pluginManager),
         search: (pluginManager, query, limit) =>
-          state.appManager.search(pluginManager, query, limit),
+          appManager.search(pluginManager, query, limit),
         listInstalled: (pluginManager) =>
-          state.appManager.listInstalled(pluginManager),
+          appManager.listInstalled(pluginManager),
         listRuns: (runtime) =>
-          state.appManager.listRuns(
+          appManager.listRuns(
             runtime && typeof runtime === "object"
               ? (runtime as IAgentRuntime)
               : null,
           ),
         getRun: (runId, runtime) =>
-          state.appManager.getRun(
+          appManager.getRun(
             runId,
             runtime && typeof runtime === "object"
               ? (runtime as IAgentRuntime)
               : null,
           ),
         attachRun: (runId, runtime) =>
-          state.appManager.attachRun(
+          appManager.attachRun(
             runId,
             runtime && typeof runtime === "object"
               ? (runtime as IAgentRuntime)
               : null,
           ),
-        detachRun: (runId) => state.appManager.detachRun(runId),
+        detachRun: (runId) => appManager.detachRun(runId),
         launch: (pluginManager, name, onProgress, runtime) =>
-          state.appManager.launch(
+          appManager.launch(
             pluginManager,
             name,
             onProgress,
@@ -2677,7 +2677,7 @@ async function handleRequest(
               : null,
           ),
         stop: (pluginManager, name, runId, runtime) =>
-          state.appManager.stop(
+          appManager.stop(
             pluginManager,
             name,
             runId,
@@ -2685,9 +2685,9 @@ async function handleRequest(
               ? (runtime as IAgentRuntime)
               : null,
           ),
-        recordHeartbeat: (runId) => state.appManager.recordHeartbeat(runId),
+        recordHeartbeat: (runId) => appManager.recordHeartbeat(runId),
         getInfo: (pluginManager, name) =>
-          state.appManager.getInfo(pluginManager, name),
+          appManager.getInfo(pluginManager, name),
       },
       getPluginManager: () => getPluginManagerForState(state),
       parseBoundedLimit,
@@ -2715,6 +2715,22 @@ async function handleRequest(
       json,
       error,
       runtime: state.runtime,
+    })
+  ) {
+    return;
+  }
+
+  // ── View routes (/api/views/*) ────────────────────────────────────────────
+  if (
+    await handleViewsRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      url,
+      json,
+      error,
+      broadcastWs: state.broadcastWs ?? undefined,
     })
   ) {
     return;
@@ -3117,7 +3133,9 @@ export async function startApiServer(opts?: {
   // the Defense-of-the-Agents game loop — would tick forever after the
   // browser disappeared. The sweeper invokes the same `stopRun` route
   // hook the Stop button uses so plugins have one shutdown path.
-  state.appManager.startStaleRunSweeper(() => state.runtime);
+  (state.appManager as InstanceType<typeof AppManager>).startStaleRunSweeper(
+    () => state.runtime,
+  );
 
   const addLog = (
     level: string,
@@ -4108,7 +4126,7 @@ export async function startApiServer(opts?: {
       const agentName = rt.character.name ?? "Eliza";
       const worldId = stringToUuid(`${agentName}-web-chat-world`);
       const rooms = await rt.getRoomsByWorld(worldId);
-      if (!rooms?.length) return;
+      if (!rooms.length) return;
 
       let restored = 0;
       for (const room of rooms) {

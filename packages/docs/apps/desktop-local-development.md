@@ -88,7 +88,7 @@ After cloning the repo, or whenever you change `native/macos/window-effects.mm`,
 cd packages/app/electrobun && bun run build:native-effects
 ```
 
-More detail: [Electrobun shell package](https://github.com/eliza-ai/eliza/tree/main/packages/app/electrobun) (README: *macOS window chrome*), and [Electrobun macOS window chrome](../apps/desktop-local-development.md).
+More detail: [Electrobun shell package](https://github.com/elizaOS/eliza/tree/main/packages/app/electrobun) (README: *macOS window chrome*), and [Electrobun macOS window chrome](../apps/desktop-local-development.md).
 
 ## macOS: Local Network permission (gateway discovery)
 

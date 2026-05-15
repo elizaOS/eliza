@@ -2,7 +2,7 @@
 # ==============================================================================
 #  Eliza desktop installer - macOS / Linux / WSL
 #
-#  curl -fsSL https://elizaos.github.io/install.sh | bash
+#  curl -fsSL https://eliza.ai/install.sh | bash
 #
 #  What this script does:
 #    1. Detects OS, architecture, and environment (WSL etc.)
@@ -79,7 +79,7 @@ detect_system() {
     Linux)                     DETECTED_OS="linux"   ;;
     MINGW*|MSYS*|CYGWIN*)
       error "This bash script does not support native Windows. Use install.ps1 instead:"
-      error "  irm https://elizaos.github.io/install.ps1 | iex"
+      error "  irm https://eliza.ai/install.ps1 | iex"
       exit 1
       ;;
     *)                         DETECTED_OS="unknown" ;;
@@ -325,7 +325,7 @@ main() {
   printf "${BOLD}${GREEN}  Installation complete!${RESET}\n"
   printf "${BOLD}${GREEN}  ======================================${RESET}\n"
   printf "\n"
-  printf "  Docs: ${BLUE}https://elizaos.github.io${RESET}\n"
+  printf "  Docs: ${BLUE}https://eliza.how${RESET}\n"
   printf "\n"
 }
 

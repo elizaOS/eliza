@@ -2208,7 +2208,7 @@ function WelcomeChooser({
             style={{ fontFamily: MONO_FONT }}
           >
             {t("runtimegate.welcomeAdvancedToggle", {
-              defaultValue: "Run it myself",
+              defaultValue: "I want to run it myself",
             })}
             <span aria-hidden="true">{advancedOpen ? "▴" : "▾"}</span>
           </button>

@@ -235,11 +235,11 @@ function documentMatchesDefinition(
   return (
     existing.content.text === document.text &&
     metadata?.type === MemoryType.DOCUMENT &&
-    metadata?.documentId === documentId &&
-    metadata?.filename === document.filename &&
-    metadata?.contentType === document.contentType &&
-    metadata?.bundledDocumentKey === document.key &&
-    metadata?.bundledDocumentVersion === document.version
+    metadata.documentId === documentId &&
+    metadata.filename === document.filename &&
+    metadata.contentType === document.contentType &&
+    metadata.bundledDocumentKey === document.key &&
+    metadata.bundledDocumentVersion === document.version
   );
 }
 
@@ -261,10 +261,10 @@ function fragmentMatchesDefinition(
   return (
     existing.content.text === text &&
     metadata?.type === MemoryType.FRAGMENT &&
-    metadata?.documentId === documentId &&
-    metadata?.position === index &&
-    metadata?.bundledDocumentKey === document.key &&
-    metadata?.bundledDocumentVersion === document.version &&
+    metadata.documentId === documentId &&
+    metadata.position === index &&
+    metadata.bundledDocumentKey === document.key &&
+    metadata.bundledDocumentVersion === document.version &&
     embeddingsEqual(existingEmbedding, embedding)
   );
 }

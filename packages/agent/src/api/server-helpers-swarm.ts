@@ -903,7 +903,7 @@ export function wireCoordinatorEventRouting(st: ServerState): boolean {
             }
           }
 
-          resolveOuter(parseActionBlock(result.text ?? ""));
+          resolveOuter(parseActionBlock(result.text));
         } catch (err) {
           logger.error(
             `Coordinator event routing failed: ${err instanceof Error ? err.message : String(err)}`,

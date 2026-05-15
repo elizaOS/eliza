@@ -11,6 +11,20 @@ const hyperscapePlugin: Plugin = {
   name: "@elizaos/app-hyperscape",
   description:
     "Hyperscape game session resolvers — spectate-and-steer agent sessions with live data from the Hyperscape API.",
+  views: [
+    {
+      id: "hyperscape",
+      label: "Hyperscape",
+      description: "Hyperscape game spectator and operator surface",
+      icon: "Gamepad2",
+      path: "/hyperscape",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "HyperscapeOperatorSurface",
+      tags: ["game", "hyperscape"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };
 
 export default hyperscapePlugin;

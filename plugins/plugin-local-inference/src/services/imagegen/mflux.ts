@@ -122,7 +122,7 @@ export async function loadMfluxImageGenBackend(
 					"[imagegen/mflux] generate called after dispose()",
 				);
 			}
-			if (!req.prompt?.trim()) {
+			if (!req.prompt.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"mflux",
 					"unsupported_request",

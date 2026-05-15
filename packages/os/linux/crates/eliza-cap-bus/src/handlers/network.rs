@@ -118,9 +118,7 @@ pub async fn fetch(
         return rpc_error(
             id,
             error_code::CAPABILITY_NOT_GRANTED,
-            &format!(
-                "host {host:?} not in app manifest's network:fetch allowlist"
-            ),
+            &format!("host {host:?} not in app manifest's network:fetch allowlist"),
         );
     }
 
@@ -195,10 +193,7 @@ pub async fn fetch(
         return rpc_error(
             id,
             error_code::INTERNAL_ERROR,
-            &format!(
-                "response body {} bytes exceeds limit of {max}",
-                bytes.len()
-            ),
+            &format!("response body {} bytes exceeds limit of {max}", bytes.len()),
         );
     }
 
@@ -223,8 +218,7 @@ pub fn host_in_allowlist(host: &str, allowlist: &[String]) -> bool {
 /// body is overkill; this is the standard RFC 4648 alphabet with `=`
 /// padding.
 fn b64_encode(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8] =
-        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
     let chunks = bytes.chunks(3);
     for chunk in chunks {

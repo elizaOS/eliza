@@ -70,7 +70,7 @@ interface AppBlockPlan {
 }
 
 function getMessageText(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  return typeof message.content.text === "string" ? message.content.text : "";
 }
 
 function normalizeShouldAct(value: unknown): boolean | null {
@@ -243,7 +243,7 @@ async function resolveAppBlockPlanWithLlm(args: {
       durationMinutes: normalizeDurationMinutes(parsed.durationMinutes),
     };
   } catch (error) {
-    args.runtime.logger?.warn?.(
+    args.runtime.logger.warn(
       {
         src: "action:app-block",
         error: error instanceof Error ? error.message : String(error),
@@ -287,7 +287,7 @@ async function handleBlock(
     try {
       installedApps = await getInstalledApps();
     } catch (error) {
-      runtime.logger?.warn?.(
+      runtime.logger.warn(
         {
           src: "action:app-block",
           error: error instanceof Error ? error.message : String(error),

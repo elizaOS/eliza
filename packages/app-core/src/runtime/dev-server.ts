@@ -361,7 +361,7 @@ async function shutdown(): Promise<void> {
     );
     process.exit(1);
   }, 10_000);
-  forceExitTimer.unref?.();
+  forceExitTimer.unref();
 
   logger.info(`${getLogPrefix()} Dev server shutting down…`);
   if (currentRuntime) {

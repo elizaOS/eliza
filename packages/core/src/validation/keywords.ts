@@ -23,7 +23,7 @@ export function validateActionKeywords(
 	const relevantText: string[] = [];
 
 	// 1. Current message content
-	if (message.content?.text) {
+	if (message.content.text) {
 		relevantText.push(message.content.text);
 	}
 
@@ -35,7 +35,7 @@ export function validateActionKeywords(
 			: recentMessages || [];
 
 	for (const msg of recentSubset) {
-		if (msg.content?.text) {
+		if (msg.content.text) {
 			relevantText.push(msg.content.text);
 		}
 	}
@@ -78,7 +78,7 @@ export function validateActionRegex(
 	const relevantText: string[] = [];
 
 	// 1. Current message content
-	if (message.content?.text) {
+	if (message.content.text) {
 		relevantText.push(message.content.text);
 	}
 
@@ -89,7 +89,7 @@ export function validateActionRegex(
 			: recentMessages || [];
 
 	for (const msg of recentSubset) {
-		if (msg.content?.text) {
+		if (msg.content.text) {
 			relevantText.push(msg.content.text);
 		}
 	}

@@ -214,7 +214,7 @@ function failAppleCalendarResult(
   }
   if (
     result.reason === "native_error" &&
-    /attendee|invitee|invited meeting/i.test(result.message ?? "")
+    /attendee|invitee|invited meeting/i.test(result.message)
   ) {
     fail(
       409,

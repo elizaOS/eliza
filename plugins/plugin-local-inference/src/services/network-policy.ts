@@ -69,7 +69,7 @@ export function isHeadlessRuntime(): boolean {
 	if (process.env.ELIZA_NETWORK_POLICY === "headless") return true;
 	if (process.env.ELIZA_HEADLESS === "1") return true;
 	if (process.env.CI !== undefined && process.env.CI !== "false") return true;
-	if (typeof process.stdout?.isTTY === "boolean" && !process.stdout.isTTY) {
+	if (typeof process.stdout.isTTY === "boolean" && !process.stdout.isTTY) {
 		// On a Linux server with no TTY this is a strong "headless" signal;
 		// but a packaged Electron app also has no TTY. Use the explicit env
 		// override above when we want to force one way or the other.
@@ -236,7 +236,7 @@ async function readAndroidMeteredShim(): Promise<boolean | null> {
 	if (typeof fn !== "function") return null;
 	try {
 		const res = await fn();
-		return typeof res?.metered === "boolean" ? res.metered : null;
+		return typeof res.metered === "boolean" ? res.metered : null;
 	} catch {
 		return null;
 	}
@@ -252,8 +252,8 @@ async function readIosPathHintsShim(): Promise<{
 	try {
 		const res = await fn();
 		return {
-			isExpensive: Boolean(res?.isExpensive),
-			isConstrained: Boolean(res?.isConstrained),
+			isExpensive: Boolean(res.isExpensive),
+			isConstrained: Boolean(res.isConstrained),
 		};
 	} catch {
 		return null;

@@ -185,7 +185,7 @@ export async function runPlannerLoop(
 			// ambiguous to drive the gate. We therefore probe `raw.messageToUser`
 			// directly here; native-mode returns won't have that key, so the gate
 			// stays inert in that path.
-			const explicit = plannerOutput.raw?.messageToUser;
+			const explicit = plannerOutput.raw.messageToUser;
 			lastPlannerExplicitMessageToUser =
 				typeof explicit === "string" && explicit.trim().length > 0
 					? explicit
@@ -583,7 +583,7 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	}
 	const seen = new Set<string>();
 	const lines: string[] = [];
-	for (const event of events ?? []) {
+	for (const event of events) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
 		const tool = event.tool as ContextObjectTool;
 		const hint = tool.action?.routingHint?.trim();
@@ -615,12 +615,12 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 	const tools: ContextObjectTool[] = [];
 	const seen = new Set<string>();
 
-	for (const event of context.events ?? []) {
+	for (const event of context.events) {
 		if (event.type !== "tool" || !("tool" in event)) {
 			continue;
 		}
 		const tool = event.tool as ContextObjectTool;
-		if (!tool?.name) {
+		if (!tool.name) {
 			continue;
 		}
 		const parentMatches =
@@ -958,8 +958,8 @@ async function callPlanner(params: {
 		const usage = extractUsage(raw);
 		if (usage) {
 			params.onUsage({
-				promptTokens: usage.promptTokens ?? 0,
-				completionTokens: usage.completionTokens ?? 0,
+				promptTokens: usage.promptTokens,
+				completionTokens: usage.completionTokens,
 			});
 		}
 	}
@@ -1282,7 +1282,7 @@ async function recordPlannerStage(args: {
 
 	try {
 		const responseText =
-			typeof args.raw === "string" ? args.raw : (args.raw.text ?? "");
+			typeof args.raw === "string" ? args.raw : (args.raw.text);
 		const usage = extractUsage(args.raw);
 		const finishReason = extractFinishReason(args.raw);
 		const modelName = extractModelName(args.raw);
@@ -1332,9 +1332,9 @@ function extractUsage(
 	if (typeof raw === "string") return undefined;
 	if (!raw.usage) return undefined;
 	const usage = raw.usage;
-	const promptTokens = usage.promptTokens ?? 0;
-	const completionTokens = usage.completionTokens ?? 0;
-	const totalTokens = usage.totalTokens ?? promptTokens + completionTokens;
+	const promptTokens = usage.promptTokens;
+	const completionTokens = usage.completionTokens;
+	const totalTokens = usage.totalTokens;
 	const out: RecordedUsage = {
 		promptTokens,
 		completionTokens,
@@ -1681,7 +1681,7 @@ function findToolContextEvent(
 	context: ContextObject,
 	toolCall: PlannerToolCall,
 ): ContextEvent | undefined {
-	return context.events?.find((event) => {
+	return context.events.find((event) => {
 		if (event.type !== "tool" || !("tool" in event)) {
 			return false;
 		}
@@ -1816,14 +1816,7 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.toolName ??
 			record.tool ??
 			record.action ??
-			record.actionName ??
-			functionName ??
-			// gpt-oss narrates calls as `{type: "ACTION", args: {...}}`. `type`
-			// is the last-resort name source so the canonical OpenAI/Anthropic
-			// envelope shapes — where `type` is "function"/"tool" — still
-			// resolve through `functionName`/`name` first.
-			record.type ??
-			"",
+			record.actionName,
 	);
 	if (!name) {
 		return null;
@@ -1836,10 +1829,7 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.params ??
 			record.parameters ??
 			rawFunction?.input ??
-			rawFunction?.args ??
-			rawFunction?.arguments ??
-			rawFunction?.params ??
-			rawFunction?.parameters,
+			rawFunction?.args,
 	);
 
 	return {
@@ -1889,7 +1879,7 @@ function getToolDefinitionName(tool: ToolDefinition): string | undefined {
 		function?: { name?: unknown };
 		name?: unknown;
 	};
-	const name = maybeTool.name ?? maybeTool.function?.name;
+	const name = maybeTool.name;
 	return typeof name === "string" && name.trim().length > 0
 		? name.trim()
 		: undefined;

@@ -44,9 +44,8 @@ Building from source costs ~5 minutes on a current Mac and gives us:
 ## Pinned version
 
 See `../VERSIONS` (`llama.cpp=<ref>`). The pin may be a tag, branch name,
-or raw commit SHA — anything `git fetch` accepts. Fallback if unset:
-`main` (tracks elizaOS fork tip). Bump by editing that file and
-re-running `./build-ios.sh`.
+or raw commit SHA — anything `git fetch` accepts. Bump by editing that
+file and re-running `./build-ios.sh`.
 
 To verify the ref exists on the fork:
 
@@ -64,7 +63,7 @@ LLAMA_CPP_REPO=https://github.com/ggml-org/llama.cpp ./build-ios.sh
 ## Build
 
 ```bash
-cd native/ios-bun-port/vendor-deps/llama.cpp
+cd packages/ios-native-deps/llama.cpp
 ./build-ios.sh                  # builds both slices + LlamaCpp.xcframework
 ./build-ios.sh device           # device slice only
 ./build-ios.sh simulator        # simulator slice only

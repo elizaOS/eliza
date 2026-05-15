@@ -170,7 +170,10 @@ async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
   )) as StewardEvmBridgeModule;
 }
 
-import { detectEmbeddingPreset } from "@elizaos/plugin-local-inference";
+const { detectEmbeddingPreset } = await import(
+  "@elizaos/plugin-local-inference"
+);
+
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
@@ -473,13 +476,13 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
       }
 
       try {
-        await current?.beforeShutdown?.();
+        await current.beforeShutdown?.();
       } catch (err) {
         logger.warn(`[eliza] Pre-shutdown cleanup error: ${formatError(err)}`);
       }
 
       try {
-        const sandboxManager = current?.getSandboxManager();
+        const sandboxManager = current.getSandboxManager();
         if (sandboxManager) {
           try {
             await sandboxManager.stop();
@@ -495,7 +498,7 @@ function registerSignalShutdownHandlers(context: SignalShutdownContext): void {
       }
 
       try {
-        const runtime = current?.getRuntime();
+        const runtime = current.getRuntime();
         if (runtime) {
           await shutdownRuntime(runtime, "signal shutdown");
         }
@@ -2401,7 +2404,7 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
         return withEntityCreateMutex(runtimeWithBindings, async () => {
           const uniqueById = new Map<UUID, Entity>();
           for (const entity of entities) {
-            if (entity?.id) uniqueById.set(entity.id as UUID, entity);
+            if (entity.id) uniqueById.set(entity.id as UUID, entity);
           }
           const deduped = Array.from(uniqueById.values());
           if (deduped.length === 0) return deduped.map((e) => e.id as UUID);
@@ -2415,7 +2418,7 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
                 )) ?? [];
               const existingIds = new Set<UUID>();
               for (const entity of existing) {
-                if (entity?.id) existingIds.add(entity.id as UUID);
+                if (entity.id) existingIds.add(entity.id as UUID);
               }
               missing = deduped.filter(
                 (entity) => !existingIds.has(entity.id as UUID),
@@ -2477,7 +2480,7 @@ function installActionAliases(runtime: AgentRuntime): void {
 
   // Keep compaction automatic-only; do not allow manual COMPACT_SESSION invokes.
   const compactSessionIndex = actions.findIndex(
-    (action) => action?.name?.toUpperCase() === "COMPACT_SESSION",
+    (action) => action.name?.toUpperCase() === "COMPACT_SESSION",
   );
   if (compactSessionIndex !== -1) {
     actions.splice(compactSessionIndex, 1);
@@ -2490,9 +2493,8 @@ function installActionAliases(runtime: AgentRuntime): void {
   // while agent-orchestrator exposes START_CODING_TASK.
   const codingTaskAction =
     actions.find(
-      (action) => action?.name?.toUpperCase() === "START_CODING_TASK",
-    ) ??
-    actions.find((action) => action?.name?.toUpperCase() === "CREATE_TASK");
+      (action) => action.name?.toUpperCase() === "START_CODING_TASK",
+    ) ?? actions.find((action) => action.name?.toUpperCase() === "CREATE_TASK");
   if (codingTaskAction) {
     const similes = Array.isArray(codingTaskAction.similes)
       ? codingTaskAction.similes
@@ -3074,7 +3076,7 @@ export async function startEliza(
           "Pair an Eliza Cloud account in onboarding, or switch to the direct download build.",
       );
     }
-    if (!config.cloud?.apiKey?.trim() || !config.cloud?.agentId?.trim()) {
+    if (!config.cloud?.apiKey?.trim() || !config.cloud.agentId?.trim()) {
       throw new Error(
         "[eliza] Store-variant build requires a paired Eliza Cloud account. " +
           "Run onboarding to link Eliza Cloud, or switch to the direct download build.",
@@ -3087,7 +3089,7 @@ export async function startEliza(
     deploymentTarget.runtime === "cloud" &&
     deploymentTarget.provider === "elizacloud" &&
     config.cloud?.apiKey &&
-    config.cloud?.agentId?.trim()
+    config.cloud.agentId?.trim()
   ) {
     return startInCloudMode(config, config.cloud.agentId, opts);
   }
@@ -3262,7 +3264,7 @@ export async function startEliza(
     // process.env.LOG_LEVEL is already resolved (set explicitly or from
     // config.logging.level above), so prefer it to honour the dev-mode
     // LOG_LEVEL=error override set by eliza/packages/app-core/scripts/dev-ui.mjs.
-    const lvl = process.env.LOG_LEVEL ?? config.logging?.level ?? "error";
+    const lvl = process.env.LOG_LEVEL;
     if (lvl === "silent") return "fatal" as const;
     return lvl as "trace" | "debug" | "info" | "warn" | "error" | "fatal";
   })();
@@ -3322,7 +3324,7 @@ export async function startEliza(
         network: (dockerSettings?.network as string) ?? undefined,
         memory: (dockerSettings?.memory as string) ?? undefined,
         cpus: (dockerSettings?.cpus as number) ?? undefined,
-        workspaceRoot: workspaceDir ?? undefined,
+        workspaceRoot: workspaceDir,
         browser: browserSettings
           ? {
               enabled: (browserSettings.enabled as boolean) ?? false,
@@ -3758,7 +3760,7 @@ export async function startEliza(
     // 8a. Apply legacy role redaction to protected plugin providers.
     try {
       const { applyPluginRoleGating } = await import("./plugin-role-gating.ts");
-      applyPluginRoleGating(runtime.plugins ?? []);
+      applyPluginRoleGating(runtime.plugins);
     } catch (err) {
       logger.debug(
         `[eliza] Plugin provider role gating skipped: ${formatError(err)}`,
@@ -4201,7 +4203,7 @@ export async function startEliza(
             const { applyPluginRoleGating } = await import(
               "./plugin-role-gating.ts"
             );
-            applyPluginRoleGating(newRuntime.plugins ?? []);
+            applyPluginRoleGating(newRuntime.plugins);
           } catch (err) {
             logger.debug(
               `[eliza] Hot-reload plugin provider role gating skipped: ${formatError(err)}`,
@@ -4443,7 +4445,7 @@ export async function startEliza(
           runtime,
           message,
           async (content) => {
-            if (content?.text) {
+            if (content.text) {
               process.stdout.write(content.text);
             }
             return [];

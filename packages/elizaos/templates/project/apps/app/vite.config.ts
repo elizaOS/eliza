@@ -584,10 +584,10 @@ function generateNodeBuiltinStub(moduleId: string, req = _require): string {
   ];
 
   let exportNames: string[] = [];
+  let realModule: Record<string, unknown> | null = null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const real = req(bareModule);
-    exportNames = Object.keys(real).filter(
+    realModule = req(bareModule) as Record<string, unknown>;
+    exportNames = Object.keys(realModule).filter(
       (k) => !k.startsWith("_") && k !== "default",
     );
   } catch {
@@ -635,13 +635,10 @@ function generateNodeBuiltinStub(moduleId: string, req = _require): string {
 
   for (const name of exportNames) {
     if (reserved.has(name)) continue;
-    // Validate it's a valid JS identifier
     if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) continue;
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const real = req(bareModule);
-      const val = real[name];
+      const val = realModule?.[name];
       if (typeof val === "function") {
         if (
           /^[A-Z]/.test(name) &&
@@ -1220,10 +1217,6 @@ export default defineConfig({
         }
         const uiPkgDir = path.dirname(uiPkgPath);
         const uiPkg = JSON.parse(fs.readFileSync(uiPkgPath, "utf8"));
-        const _autonomousSource = path.resolve(
-          elizaRoot,
-          "node_modules/@elizaos/agent/packages/agent/src",
-        );
 
         return [
           ...generatedAliases,

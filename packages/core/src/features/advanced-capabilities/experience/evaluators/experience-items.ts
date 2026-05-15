@@ -249,7 +249,7 @@ function isSyntheticMemory(memory: Memory): boolean {
 }
 
 function getMessageText(memory: Memory): string {
-	return typeof memory.content?.text === "string" ? memory.content.text : "";
+	return typeof memory.content.text === "string" ? memory.content.text : "";
 }
 
 function hasExplicitExperienceRequest(text: string): boolean {
@@ -359,7 +359,7 @@ export const experiencePatternEvaluator: Evaluator<
 	priority: EvaluatorPriority.EXPERIENCE,
 	schema: experienceSchema,
 	async shouldRun({ runtime, message, state, options }) {
-		if (!message.roomId || !message.content?.text) return false;
+		if (!message.roomId || !message.content.text) return false;
 		if (isSyntheticMemory(message)) return false;
 		const experienceService = runtime.getService(
 			"EXPERIENCE",

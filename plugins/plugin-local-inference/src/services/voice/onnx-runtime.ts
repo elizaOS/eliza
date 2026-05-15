@@ -64,7 +64,7 @@ export async function loadOnnxRuntime(): Promise<OrtModule> {
 				const spec = "onnxruntime-node";
 				const mod = (await import(spec)) as { default?: OrtModule } & OrtModule;
 				const resolved = (mod.default ?? mod) as OrtModule;
-				if (!resolved?.InferenceSession || !resolved?.Tensor) {
+				if (!resolved.InferenceSession || !resolved.Tensor) {
 					throw new Error("module did not export InferenceSession/Tensor");
 				}
 				return resolved;

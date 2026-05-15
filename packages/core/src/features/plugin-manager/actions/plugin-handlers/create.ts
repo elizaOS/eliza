@@ -267,8 +267,8 @@ async function dispatchCodingAgent({
 	callback?: HandlerCallback;
 }): Promise<DispatchResult> {
 	const createTask =
-		runtime.actions?.find((action) => action.name === "START_CODING_TASK") ??
-		runtime.actions?.find((action) => action.name === "CREATE_TASK");
+		runtime.actions.find((action) => action.name === "START_CODING_TASK") ??
+		runtime.actions.find((action) => action.name === "CREATE_TASK");
 	if (!createTask) {
 		return {
 			dispatched: false,
@@ -625,7 +625,7 @@ export async function runCreate({
 }: PluginCreateInput): Promise<ActionResult> {
 	const roomId =
 		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
-	const userText = (message.content?.text ?? "").trim();
+	const userText = (message.content.text ?? "").trim();
 	const optionChoice = readStringOption(options, "choice");
 	const optionIntent = readStringOption(options, "intent");
 	const optionEditTarget = readStringOption(options, "editTarget");

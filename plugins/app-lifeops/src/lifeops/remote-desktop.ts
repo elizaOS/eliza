@@ -346,7 +346,7 @@ async function startNgrokVncSession(args: {
           const evt = JSON.parse(line) as { url?: string; msg?: string };
           if (evt.url?.startsWith("tcp://")) {
             clearTimeout(timer);
-            child.stdout?.off("data", onStdout);
+            child.stdout.off("data", onStdout);
             resolve(evt.url);
             return;
           }
@@ -355,7 +355,7 @@ async function startNgrokVncSession(args: {
         }
       }
     };
-    child.stdout?.on("data", onStdout);
+    child.stdout.on("data", onStdout);
     child.once("error", (err) => {
       clearTimeout(timer);
       reject(

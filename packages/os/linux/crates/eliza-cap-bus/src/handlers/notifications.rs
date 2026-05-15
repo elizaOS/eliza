@@ -98,7 +98,10 @@ pub async fn write(
                 serde_json::json!({ "ok": true, "transport": "notify-send" }),
             );
         }
-        warn!(slug, "notify-send invocation failed; falling back to elizad chat");
+        warn!(
+            slug,
+            "notify-send invocation failed; falling back to elizad chat"
+        );
     }
 
     // Path 2: POST to elizad's /api/notify.

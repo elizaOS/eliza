@@ -250,7 +250,7 @@ export const recentTaskStatesProvider: Provider = {
     try {
       summary = await createRecentTaskStatesProvider(runtime).summarize();
     } catch (error) {
-      logger.debug?.(
+      logger.debug(
         "[recent-task-states-provider] summarize failed:",
         String(error),
       );

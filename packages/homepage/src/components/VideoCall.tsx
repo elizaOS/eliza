@@ -1,4 +1,5 @@
 import { animated, useSpring } from "@react-spring/web";
+import { X } from "lucide-react";
 import type { ComponentType, HTMLAttributes } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
@@ -102,7 +103,6 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
             className="w-full aspect-4/3 object-cover rounded-[26px]"
           />
 
-          {/* Close button */}
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5">
             <button
               type="button"
@@ -110,17 +110,7 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
               aria-label="End call"
               className="size-14 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={1.5}
-                strokeLinecap="round"
-                className="size-8"
-              >
-                <title>End call</title>
-                <path d="M18 6L6 18M6 6l12 12" />
-              </svg>
+              <X className="size-8" strokeWidth={1.5} />
             </button>
             <span className="text-white text-xs font-medium">end</span>
           </div>

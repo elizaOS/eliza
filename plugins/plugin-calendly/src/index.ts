@@ -53,6 +53,10 @@ export const calendlyPlugin: Plugin = {
       "ELIZA_E2E_CALENDLY_ACCESS_TOKEN",
     ],
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<CalendlyService>(CalendlyService.serviceType);
+    await svc?.stop();
+  },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {
     try {
       const manager = getConnectorAccountManager(runtime);

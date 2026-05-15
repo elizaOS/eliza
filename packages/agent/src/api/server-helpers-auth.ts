@@ -417,7 +417,7 @@ export function isTrustedLocalRequest(req: http.IncomingMessage): boolean {
   // per-boot ELIZA_API_TOKEN; with this flag the server requires bearer
   // auth on every route except /api/health (which is read-only liveness).
   if (process.env.ELIZA_REQUIRE_LOCAL_AUTH === "1") return false;
-  if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
+  if (!isLoopbackRemoteAddress(req.socket.remoteAddress)) return false;
   if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
 
   const host = firstHeaderValue(req.headers.host);

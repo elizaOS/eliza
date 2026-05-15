@@ -60,7 +60,7 @@ export const roomPolicyProvider: Provider = {
     try {
       store = createHandoffStore(runtime);
     } catch (error) {
-      logger.debug?.(
+      logger.debug(
         "[room-policy-provider] handoff store unavailable:",
         String(error),
       );
@@ -71,7 +71,7 @@ export const roomPolicyProvider: Provider = {
     try {
       status = await store.status(roomId);
     } catch (error) {
-      logger.debug?.(
+      logger.debug(
         "[room-policy-provider] handoff status read failed:",
         String(error),
       );

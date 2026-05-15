@@ -3,11 +3,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import type {
-	PTYService,
-	SwarmCoordinator,
-} from "@elizaos/plugin-agent-orchestrator";
 import { createTestRuntime } from "../helpers/pglite-runtime.ts";
+
+const { PTYService } = await import("@elizaos/plugin-agent-orchestrator");
+
+type PTYServiceInstance = Awaited<ReturnType<typeof PTYService.start>>;
+type SwarmCoordinator = NonNullable<PTYServiceInstance["coordinator"]>;
 
 async function waitFor(
 	predicate: () => Promise<boolean>,
@@ -27,7 +28,7 @@ async function waitFor(
 
 let runtime: AgentRuntime | undefined;
 let cleanupRuntime: (() => Promise<void>) | undefined;
-let service: PTYService | undefined;
+let service: PTYServiceInstance | undefined;
 let sessionIdToStop: string | null = null;
 let workdir: string | undefined;
 
@@ -57,7 +58,6 @@ async function cleanup(): Promise<void> {
 
 async function main(): Promise<void> {
 	({ runtime, cleanup: cleanupRuntime } = await createTestRuntime());
-	const { PTYService } = await import("@elizaos/plugin-agent-orchestrator");
 	service = await PTYService.start(runtime);
 	(runtime.services as Map<string, unknown[]>).set("PTY_SERVICE", [
 		service as unknown,

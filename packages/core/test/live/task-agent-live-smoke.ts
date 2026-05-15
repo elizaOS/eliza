@@ -4,14 +4,15 @@ import { createServer, type Server } from "node:http";
 import net from "node:net";
 import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
-import {
+import { createTestRuntime } from "../helpers/pglite-runtime.ts";
+
+const {
 	cleanForChat,
 	listAgentsAction,
 	PTYService,
 	sendToAgentAction,
 	spawnAgentAction,
-} from "@elizaos/plugin-agent-orchestrator";
-import { createTestRuntime } from "../helpers/pglite-runtime.ts";
+} = await import("@elizaos/plugin-agent-orchestrator");
 
 type Framework = "claude" | "codex";
 type Mode = "sequential" | "web";

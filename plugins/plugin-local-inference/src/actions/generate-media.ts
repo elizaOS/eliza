@@ -51,8 +51,8 @@ interface IntentDetection {
 interface KeywordRule {
 	kind: MediaKind;
 	pattern: RegExp;
-	/** Optional explicit strip pattern to remove the leading imperative. */
-	strip?: RegExp;
+	/** Explicit strip pattern to remove the leading imperative. */
+	strip: RegExp;
 }
 
 /**
@@ -126,7 +126,6 @@ export interface IntentDetectorOptions {
 }
 
 function stripPrompt(rule: KeywordRule, text: string): string {
-	if (!rule.strip) return text.trim();
 	return text.replace(rule.strip, "").trim();
 }
 
@@ -381,12 +380,14 @@ function extractMessageText(message: Memory | null | undefined): string {
 
 interface BuildHandlerOptions {
 	/** Test seam: override the intent detector. */
-	detectIntent?: typeof detectMediaIntent;
+	detectIntent: typeof detectMediaIntent;
 	/** Test seam: override the classifier resolver. */
-	classifierFactory?: (runtime: IAgentRuntime) => ClassifierFn;
+	classifierFactory: (runtime: IAgentRuntime) => ClassifierFn;
 }
 
-export function buildGenerateMediaHandler(opts: BuildHandlerOptions = {}) {
+export function buildGenerateMediaHandler(
+	opts: Partial<BuildHandlerOptions> = {},
+) {
 	const detect = opts.detectIntent ?? detectMediaIntent;
 	const classifierFactory = opts.classifierFactory ?? makeRuntimeClassifier;
 	return async function generateMediaHandler(

@@ -18,6 +18,12 @@
       "@elizaos/plugin-streaming": [
         "../../plugins/plugin-streaming/src/index.ts"
       ],
+      "@elizaos/plugin-app-manager": [
+        "../../plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-registry": [
+        "../../plugins/plugin-registry/src/index.ts"
+      ],
       "@elizaos/app-core": ["./src/index.ts"],
       "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
       "@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],

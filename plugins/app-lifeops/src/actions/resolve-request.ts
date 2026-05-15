@@ -321,7 +321,7 @@ async function resolveApprovalRequest(
     limit: 20,
   });
   const userText =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   const explicitRequestId =
     typeof params.requestId === "string" && params.requestId.trim().length > 0
       ? params.requestId.trim()

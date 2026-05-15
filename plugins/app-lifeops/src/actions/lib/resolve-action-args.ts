@@ -101,7 +101,7 @@ function valueIsPresent(value: unknown): boolean {
 }
 
 function getMessageText(message: Memory): string {
-  const text = message?.content?.text;
+  const text = message.content.text;
   return typeof text === "string" ? text.trim() : "";
 }
 

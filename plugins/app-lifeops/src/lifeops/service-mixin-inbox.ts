@@ -77,7 +77,7 @@ function deriveThreadId(
     return message.xConversationId;
   }
   if (channel === "gmail") {
-    const subject = (message.channelName ?? "")
+    const subject = (message.channelName)
       .replace(/^Email from\s+/i, "")
       .replace(SUBJECT_REPLY_PREFIX, "")
       .trim();
@@ -105,9 +105,9 @@ export function toInboxMessage(
   const receivedAt = new Date(message.timestamp).toISOString();
   const subject =
     channel === "gmail"
-      ? message.channelName?.startsWith("Email from ")
+      ? message.channelName.startsWith("Email from ")
         ? message.channelName.slice("Email from ".length)
-        : (message.channelName ?? null)
+        : (message.channelName)
       : null;
 
   // Gmail triage exposes `likelyReplyNeeded`/`isImportant` but the shared
@@ -122,7 +122,7 @@ export function toInboxMessage(
         )
       : true;
 
-  const threadId = deriveThreadId(message, channel, externalId ?? message.id);
+  const threadId = deriveThreadId(message, channel, externalId);
   const chatType: InboxChatType =
     message.chatType ??
     (channel === "gmail"
@@ -135,19 +135,19 @@ export function toInboxMessage(
     id: `${channel}:${externalId || `${message.timestamp}-${index}`}`,
     channel,
     sender: {
-      id: senderId ?? `${channel}-${index}`,
+      id: senderId,
       displayName: message.senderName || "Unknown",
       email: message.senderEmail?.trim().toLowerCase() || null,
       avatarUrl: null,
     },
     subject,
-    snippet: message.snippet ?? "",
+    snippet: message.snippet,
     receivedAt,
     unread,
     deepLink: message.deepLink ?? null,
     sourceRef: {
       channel,
-      externalId: externalId ?? message.id,
+      externalId: externalId,
     },
     threadId,
     chatType,
@@ -209,7 +209,7 @@ function scoreSmallGroupThread(
   let hasQuestion = false;
   let hasDateLike = false;
   for (const member of members) {
-    const text = `${member.subject ?? ""} ${member.snippet ?? ""}`;
+    const text = `${member.subject ?? ""} ${member.snippet}`;
     if (!mentionsOwner) {
       if (
         ownerNameLower &&
@@ -566,7 +566,7 @@ function flattenInboxMessages(inbox: LifeOpsInbox): LifeOpsInboxMessage[] {
   }
   for (const group of inbox.threadGroups ?? []) {
     messages.set(group.latestMessage.id, group.latestMessage);
-    for (const message of group.messages ?? []) {
+    for (const message of group.messages) {
       messages.set(message.id, message);
     }
   }
@@ -648,7 +648,7 @@ export function resolveInboxRequest(
 }
 
 function resolveOwnerName(runtime: IAgentRuntime): string | null {
-  const name = runtime.character?.name;
+  const name = runtime.character.name;
   return typeof name === "string" && name.trim().length > 0
     ? name.trim()
     : null;

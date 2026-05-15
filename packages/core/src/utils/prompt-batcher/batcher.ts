@@ -906,7 +906,7 @@ export class PromptBatcher {
 			}
 
 			const state = await this.runtime.composeState(anchorMessage);
-			pieces.push(state.text ?? "");
+			pieces.push(state.text);
 		} else if (providers.length > 0) {
 			if (!anchorMessage) {
 				this.runtime.logger.warn(
@@ -925,7 +925,7 @@ export class PromptBatcher {
 				providers,
 				true,
 			);
-			pieces.push(state.text ?? "");
+			pieces.push(state.text);
 		}
 
 		if (section.contextBuilder) {

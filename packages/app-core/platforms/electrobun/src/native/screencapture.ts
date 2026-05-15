@@ -530,7 +530,7 @@ $bmp.Dispose()`;
 					const captureRpc = this.frameCaptureWindow.webview
 						.rpc as WebviewEvalRpc;
 					const dataUrl =
-						await captureRpc?.requestProxy?.evaluateJavascriptWithResponse?.({
+						await captureRpc.requestProxy?.evaluateJavascriptWithResponse?.({
 							script: captureGameScript,
 						});
 

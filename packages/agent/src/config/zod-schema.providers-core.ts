@@ -582,7 +582,7 @@ export const SlackConfigSchema = SlackAccountSchema.extend({
   webhookPath: z.string().optional().default("/slack/events"),
   accounts: z.record(z.string(), SlackAccountSchema.optional()).optional(),
 }).superRefine((value, ctx) => {
-  const baseMode = value.mode ?? "socket";
+  const baseMode = value.mode;
   if (baseMode === "http" && !value.signingSecret) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,

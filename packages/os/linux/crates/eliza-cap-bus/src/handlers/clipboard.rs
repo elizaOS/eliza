@@ -228,7 +228,11 @@ mod tests {
     fn read_returns_stdout_of_wl_paste_stub() {
         let dir = mktemp("read");
         // wl-paste --no-newline → echo without trailing newline.
-        let stub = write_stub(&dir, "wl-paste", "#!/bin/sh\nprintf '%s' 'hello clip'\nexit 0\n");
+        let stub = write_stub(
+            &dir,
+            "wl-paste",
+            "#!/bin/sh\nprintf '%s' 'hello clip'\nexit 0\n",
+        );
         let cfg = ClipboardConfig {
             wl_copy: None,
             wl_paste: Some(stub.to_string_lossy().into_owned()),

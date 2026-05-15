@@ -13,7 +13,7 @@ import { verifyCronSecret } from "@/lib/auth/cron";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
 
-async function handleAutoscale(c: AppContext, env?: AppEnv["Bindings"]) {
+async function handleAutoscale(c: AppContext, env: AppEnv["Bindings"]) {
   const authError = verifyCronSecret(c.req.raw, "[Node Autoscale]", env);
   if (authError) return authError;
   return forwardCronToContainerControlPlane(c);

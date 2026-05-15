@@ -84,7 +84,7 @@ function serializeMessages(messages: ModelMessage[]): string {
 							return "[non-text content]";
 						})
 						.join("\n")
-				: String(message.content ?? "");
+				: String(message.content);
 			return `message ${index + 1} (${message.role}):\n${content}`;
 		})
 		.join("\n\n");
@@ -104,7 +104,7 @@ async function generateLoggedText({
 	const startedAt = Date.now();
 	const result = await invoke();
 
-	logActiveTrajectoryLlmCall?.(runtime, {
+	logActiveTrajectoryLlmCall(runtime, {
 		model: modelName,
 		modelVersion: result.response?.modelId,
 		systemPrompt,

@@ -123,7 +123,7 @@ export async function extractActionParamsViaLlm<
   }
 
   const currentMessageText =
-    typeof message.content?.text === "string"
+    typeof message.content.text === "string"
       ? message.content.text.trim()
       : "";
   const recentConversation = collectRecentConversation(
@@ -147,7 +147,7 @@ export async function extractActionParamsViaLlm<
       prompt,
       stopSequences: [],
     });
-    response = typeof raw === "string" ? raw : String(raw ?? "");
+    response = typeof raw === "string" ? raw : String(raw);
   } catch (err) {
     logger.warn(
       `[${actionName}] LLM param extraction failed: ${
@@ -252,7 +252,7 @@ function buildExtractionPrompt(args: {
     })
     .join("\n");
 
-  const existingJson = JSON.stringify(existingParams ?? {}, null, 0);
+  const existingJson = JSON.stringify(existingParams, null, 0);
   const recentConversationBlock = recentConversation
     ? `Recent conversation (oldest first):\n${recentConversation}`
     : "(no recent conversation context)";

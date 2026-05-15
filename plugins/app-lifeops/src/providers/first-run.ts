@@ -76,7 +76,7 @@ export const firstRunProvider: Provider = {
     try {
       store = createFirstRunStateStore(runtime);
     } catch (error) {
-      logger.debug?.(
+      logger.debug(
         "[first-run-provider] state store unavailable:",
         String(error),
       );
@@ -87,7 +87,7 @@ export const firstRunProvider: Provider = {
     try {
       record = await store.read();
     } catch (error) {
-      logger.debug?.("[first-run-provider] state read failed:", String(error));
+      logger.debug("[first-run-provider] state read failed:", String(error));
       return QUIET_RESULT;
     }
 

@@ -198,7 +198,7 @@ export function LifeOpsDocumentsSection() {
 
   const sortedDocuments = useMemo(
     () =>
-      [...documents].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0)),
+      [...documents].sort((a, b) => (b.createdAt) - (a.createdAt)),
     [documents],
   );
 

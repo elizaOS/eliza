@@ -117,12 +117,12 @@ export function withRelationships<
         primaryHandle: input.primaryHandle,
         email: input.email ?? null,
         phone: input.phone ?? null,
-        notes: input.notes ?? "",
-        tags: input.tags ?? [],
+        notes: input.notes,
+        tags: input.tags,
         relationshipType: input.relationshipType,
         lastContactedAt:
           input.lastContactedAt ?? existing?.lastContactedAt ?? null,
-        metadata: input.metadata ?? {},
+        metadata: input.metadata,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
       };
@@ -156,7 +156,7 @@ export function withRelationships<
         direction: input.direction,
         summary: input.summary,
         occurredAt: input.occurredAt,
-        metadata: input.metadata ?? {},
+        metadata: input.metadata,
         createdAt: isoNow(),
       };
       await this.repository.logRelationshipInteraction(record);
@@ -210,10 +210,10 @@ export function withRelationships<
         dueAt: input.dueAt,
         reason: input.reason,
         status: input.status ?? "pending",
-        priority: input.priority ?? 3,
+        priority: input.priority,
         draft: input.draft ?? null,
         completedAt: input.completedAt ?? null,
-        metadata: input.metadata ?? {},
+        metadata: input.metadata,
         createdAt: now,
         updatedAt: now,
       };

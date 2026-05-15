@@ -105,7 +105,7 @@ export async function handleSecretsInventoryRoute(
         sendJsonError(res, 400, "invalid JSON body");
         return true;
       }
-      const config = (body as { config?: unknown }).config;
+      const config = (body as { config: unknown }).config;
       if (!config || typeof config !== "object") {
         sendJsonError(res, 400, "missing `config` field");
         return true;
@@ -130,7 +130,7 @@ export async function handleSecretsInventoryRoute(
       return true;
     }
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
-    const body = (await readJsonBody(req)) as { key?: unknown } | null;
+    const body = (await readJsonBody(req)) as { key: unknown } | null;
     const targetKey = typeof body?.key === "string" ? body.key : null;
     if (!targetKey || !KEY_RE.test(targetKey) || isReservedKey(targetKey)) {
       sendJsonError(res, 400, "invalid `key`");
@@ -277,10 +277,10 @@ async function handleKeyRoute(
       return true;
     }
     const v = body as {
-      value?: unknown;
-      label?: unknown;
-      providerId?: unknown;
-      category?: unknown;
+      value: unknown;
+      label: unknown;
+      providerId: unknown;
+      category: unknown;
     };
     if (typeof v.value !== "string" || v.value.length === 0) {
       sendJsonError(res, 400, "`value` is required");
@@ -375,7 +375,7 @@ async function handleProfilesRoute(
       sendJsonError(res, 400, "invalid JSON body");
       return true;
     }
-    const v = body as { id?: unknown; label?: unknown; value?: unknown };
+    const v = body as { id: unknown; label: unknown; value: unknown };
     if (typeof v.id !== "string" || !PROFILE_ID_RE.test(v.id)) {
       sendJsonError(res, 400, "`id` must match [A-Za-z0-9_-]+");
       return true;
@@ -429,7 +429,7 @@ async function handleSingleProfileRoute(
       sendJsonError(res, 400, "invalid JSON body");
       return true;
     }
-    const v = body as { label?: unknown; value?: unknown };
+    const v = body as { label: unknown; value: unknown };
     if (v.label !== undefined && typeof v.label !== "string") {
       sendJsonError(res, 400, "`label` must be string when set");
       return true;
@@ -511,7 +511,7 @@ async function handleActiveProfileRoute(
     sendJsonError(res, 400, "invalid JSON body");
     return true;
   }
-  const v = body as { profileId?: unknown };
+  const v = body as { profileId: unknown };
   if (typeof v.profileId !== "string" || !PROFILE_ID_RE.test(v.profileId)) {
     sendJsonError(res, 400, "`profileId` is required");
     return true;

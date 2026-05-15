@@ -71,22 +71,22 @@ export interface SensitiveRequestRouteOptions {
 }
 
 interface CreateBody {
-  kind?: unknown;
-  agentId?: unknown;
-  organizationId?: unknown;
-  ownerEntityId?: unknown;
-  requesterEntityId?: unknown;
-  sourceRoomId?: unknown;
-  sourceChannelType?: unknown;
-  sourcePlatform?: unknown;
-  target?: unknown;
-  callback?: unknown;
-  ttlMs?: unknown;
-  source?: unknown;
-  channelType?: unknown;
-  ownerAppPrivateChat?: unknown;
-  dmAvailable?: unknown;
-  policy?: unknown;
+  kind: unknown;
+  agentId: unknown;
+  organizationId: unknown;
+  ownerEntityId: unknown;
+  requesterEntityId: unknown;
+  sourceRoomId: unknown;
+  sourceChannelType: unknown;
+  sourcePlatform: unknown;
+  target: unknown;
+  callback: unknown;
+  ttlMs: unknown;
+  source: unknown;
+  channelType: unknown;
+  ownerAppPrivateChat: unknown;
+  dmAvailable: unknown;
+  policy: unknown;
 }
 
 function firstPathMatch(

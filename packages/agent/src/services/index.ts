@@ -34,18 +34,14 @@ export type WhatsAppPairingSession = InstanceType<
   typeof WhatsAppPairingSession
 >;
 export type WhatsAppPairingStatus = string;
-// === Phase 4G: app-manager extracted to @elizaos/plugin-app-manager ===
-// Re-export the public surface (including app-run-store helpers) so
-// downstream callers that imported from `@elizaos/agent` keep working
-// during the transition. New callers should import from
-// `@elizaos/plugin-app-manager` directly.
-export {
+const appManagerModule = await import("@elizaos/plugin-app-manager");
+export const {
   AppManager,
   readAppRunStore,
   resolveAppRunStoreFilePath,
   resolveLegacyAppRunStoreFilePath,
   writeAppRunStore,
-} from "@elizaos/plugin-app-manager";
+} = appManagerModule;
 export * from "./agent-export.ts";
 export * from "./app-session-gate.ts";
 export {

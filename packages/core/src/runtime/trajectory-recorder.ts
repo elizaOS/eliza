@@ -685,8 +685,8 @@ function applyMetricsForStage(
 		: 0;
 
 	if (stage.model?.usage) {
-		metrics.totalPromptTokens += stage.model.usage.promptTokens ?? 0;
-		metrics.totalCompletionTokens += stage.model.usage.completionTokens ?? 0;
+		metrics.totalPromptTokens += stage.model.usage.promptTokens;
+		metrics.totalCompletionTokens += stage.model.usage.completionTokens;
 		metrics.totalCacheReadTokens += stage.model.usage.cacheReadInputTokens ?? 0;
 		metrics.totalCacheCreationTokens +=
 			stage.model.usage.cacheCreationInputTokens ?? 0;
@@ -873,7 +873,7 @@ function cloneRootMessageForRecord(
 ): RecordedTrajectory["rootMessage"] {
 	return {
 		id: String(rootMessage.id),
-		text: truncateRecordString(String(rootMessage.text ?? "")),
+		text: truncateRecordString(String(rootMessage.text)),
 		sender:
 			rootMessage.sender === undefined
 				? undefined

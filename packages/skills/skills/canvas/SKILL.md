@@ -199,5 +199,5 @@ The `/__otto__/canvas/` prefix is defined by `CANVAS_HOST_PATH` constant.
 - Keep HTML self-contained (inline CSS/JS) for best results
 - Use the default index.html as a test page (has bridge diagnostics)
 - The canvas persists until you `hide` it or navigate away
-- Live reload makes development fast - just save and it updates!
-- A2UI JSON push is WIP - use HTML files for now
+- Live reload updates the canvas after saves
+- Use HTML files for canvas content

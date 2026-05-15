@@ -228,7 +228,7 @@ async function ensureAutonomyBootstrapContext(
   const adapter = runtime.adapter as RuntimeAdapterAutonomyCompat | undefined;
   const autonomousRoomId = stringToUuid(`autonomy-room-${runtime.agentId}`);
 
-  await runtimeWithCompat.ensureWorldExists?.({
+  await runtimeWithCompat.ensureWorldExists({
     id: AUTONOMY_WORLD_ID,
     name: "Autonomy World",
     agentId: runtime.agentId,
@@ -239,7 +239,7 @@ async function ensureAutonomyBootstrapContext(
     },
   });
 
-  await runtimeWithCompat.ensureRoomExists?.({
+  await runtimeWithCompat.ensureRoomExists({
     id: autonomousRoomId,
     name: "Autonomous Thoughts",
     worldId: AUTONOMY_WORLD_ID,
@@ -261,10 +261,10 @@ async function ensureAutonomyBootstrapContext(
     },
   };
   const existingEntity =
-    (await runtimeWithCompat.getEntityById?.(AUTONOMY_ENTITY_ID)) ?? null;
+    (await runtimeWithCompat.getEntityById(AUTONOMY_ENTITY_ID)) ?? null;
 
   if (!existingEntity) {
-    const created = await runtimeWithCompat.createEntity?.(autonomyEntity);
+    const created = await runtimeWithCompat.createEntity(autonomyEntity);
     if (!created && adapter?.upsertEntities) {
       await adapter.upsertEntities([autonomyEntity]);
     }
@@ -589,8 +589,8 @@ async function ensureConnectorTargetCatalog(
     );
     const catalog = createElizaConnectorTargetCatalog({
       getConfig: () => loadElizaConfig(),
-      discordCache: _discordEnumerationCache ?? undefined,
-      logger: { warn: runtime.logger.warn?.bind(runtime.logger) },
+      discordCache: _discordEnumerationCache,
+      logger: { warn: runtime.logger.warn.bind(runtime.logger) },
     });
     runtime.services.set(CONNECTOR_TARGET_CATALOG_SERVICE_TYPE as never, [
       catalog as never,
@@ -1239,7 +1239,7 @@ export async function startEliza(
           logger.warn("[eliza] Shutdown timed out after 10s — forcing exit");
           process.exit(1);
         }, 10_000);
-        forceExitTimer.unref?.();
+        forceExitTimer.unref();
         stopTelegramBotPolling("SIGINT");
         if (currentRuntime) {
           await upstreamShutdownRuntime(currentRuntime, "server-only shutdown");

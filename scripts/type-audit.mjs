@@ -9,7 +9,7 @@
  *
  * Usage:
  *   node scripts/type-audit.mjs --json
- *   node scripts/type-audit.mjs --json --production
+ *   node scripts/type-audit.mjs --json --include-tests
  *   node scripts/type-audit.mjs --roots=packages/core,plugins/app-lifeops
  */
 
@@ -26,8 +26,11 @@ const OUTPUT_JSON = path.join(ROOT, "scripts", "type-audit-report.json");
 
 const args = process.argv.slice(2);
 const JSON_FLAG = args.includes("--json");
-const INCLUDE_TESTS =
-  !args.includes("--production") && !args.includes("--no-tests");
+const INCLUDE_TESTS = args.includes("--include-tests");
+const INCLUDE_DECLARATIONS = args.includes("--include-declarations");
+const INCLUDE_GENERATED = args.includes("--include-generated");
+const INCLUDE_DOCS = args.includes("--include-docs");
+const INCLUDE_VENDOR = args.includes("--include-vendor");
 const NEAR_LIMIT = Number(readArg("--near-limit") ?? 500);
 const ROOT_ARGS = readArg("--roots")
   ?.split(",")
@@ -45,17 +48,36 @@ const IGNORED_DIRS = new Set([
   ".next",
   ".turbo",
   ".vite",
+  "__fixtures__",
+  "__mocks__",
+  "__snapshots__",
+  "__tests__",
   "build",
   "coverage",
+  "docs",
   "dist",
+  "e2e",
+  "fixtures",
+  "generated",
   "node_modules",
   "out",
+  "snapshots",
   "target",
+  "test",
+  "tests",
   "tmp",
+  "vendor",
+  "vendored",
 ]);
 
 const TEST_FILE_PATTERN =
   /(?:^|\/)(?:__tests__|__mocks__|test|tests|e2e|fixtures|fixture)(?:\/|$)|\.(?:test|spec|e2e|stories)\.(?:ts|tsx)$/;
+const DECLARATION_FILE_PATTERN = /\.d\.ts$/;
+const GENERATED_FILE_PATTERN =
+  /(?:^|\/)(?:generated|gen|\.generated)(?:\/|$)|(?:^|\/).*generated\.(?:ts|tsx)$/;
+const DOC_FILE_PATTERN =
+  /(?:^|\/)(?:docs?|documentation|website)(?:\/|$)|\.(?:mdx?|stories)\.(?:ts|tsx)$/;
+const SNAPSHOT_FILE_PATTERN = /(?:^|\/)__snapshots__(?:\/|$)|\.snap\.(?:ts|tsx)$/;
 
 function readArg(name) {
   const prefix = `${name}=`;
@@ -99,7 +121,27 @@ function collectFiles(roots) {
 function walk(dir, acc) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     if (entry.isDirectory()) {
-      if (IGNORED_DIRS.has(entry.name)) continue;
+      if (IGNORED_DIRS.has(entry.name)) {
+        if (
+          INCLUDE_TESTS &&
+          /^(?:__tests__|__mocks__|test|tests|e2e|fixtures|__fixtures__)$/.test(
+            entry.name,
+          )
+        ) {
+          // explicitly included below by file-level filtering
+        } else if (INCLUDE_GENERATED && entry.name === "generated") {
+          // explicitly included below by file-level filtering
+        } else if (
+          INCLUDE_DOCS &&
+          /^(?:docs?|documentation|website)$/.test(entry.name)
+        ) {
+          // explicitly included below by file-level filtering
+        } else if (INCLUDE_VENDOR && /^(?:vendor|vendored)$/.test(entry.name)) {
+          // explicitly included below by file-level filtering
+        } else {
+          continue;
+        }
+      }
       walk(path.join(dir, entry.name), acc);
       continue;
     }
@@ -108,7 +150,11 @@ function walk(dir, acc) {
 
     const full = path.join(dir, entry.name);
     const rel = relative(full);
+    if (!INCLUDE_DECLARATIONS && DECLARATION_FILE_PATTERN.test(rel)) continue;
     if (!INCLUDE_TESTS && TEST_FILE_PATTERN.test(rel)) continue;
+    if (!INCLUDE_GENERATED && GENERATED_FILE_PATTERN.test(rel)) continue;
+    if (!INCLUDE_DOCS && DOC_FILE_PATTERN.test(rel)) continue;
+    if (!INCLUDE_TESTS && SNAPSHOT_FILE_PATTERN.test(rel)) continue;
     acc.push(full);
   }
 }
@@ -226,17 +272,45 @@ function memberSignature(sf, member) {
 function memberDetails(sf, members) {
   const names = [];
   const signatures = [];
+  const typesByName = {};
 
   for (const member of members ?? []) {
     const name = memberName(sf, member);
     if (name) names.push(name);
     signatures.push(memberSignature(sf, member));
+    if (name) typesByName[name] = memberTypeText(sf, member);
   }
 
   return {
     names: uniqueSorted(names),
     signatures: uniqueSorted(signatures),
+    typesByName,
   };
+}
+
+function memberTypeText(sf, member) {
+  if (ts.isPropertySignature(member) || ts.isPropertyDeclaration(member)) {
+    return typeNodeText(sf, member.type);
+  }
+  if (ts.isMethodSignature(member) || ts.isMethodDeclaration(member)) {
+    const params = member.parameters
+      .map((param) => paramSignature(sf, param))
+      .join(",");
+    return `(${params})=>${typeNodeText(sf, member.type)}`;
+  }
+  if (ts.isIndexSignatureDeclaration(member)) {
+    return typeNodeText(sf, member.type);
+  }
+  if (
+    ts.isCallSignatureDeclaration(member) ||
+    ts.isConstructSignatureDeclaration(member)
+  ) {
+    const params = member.parameters
+      .map((param) => paramSignature(sf, param))
+      .join(",");
+    return `(${params})=>${typeNodeText(sf, member.type)}`;
+  }
+  return normalizeText(member.getText(sf));
 }
 
 function typeLiteralMembers(typeNode) {
@@ -254,6 +328,42 @@ function typeParametersText(sf, node) {
   return (
     node.typeParameters?.map((param) => normalizeText(param.getText(sf))) ?? []
   );
+}
+
+function collectValueTokens(sf, node, acc = []) {
+  if (!node) return acc;
+
+  if (
+    ts.isStringLiteral(node) ||
+    ts.isNumericLiteral(node) ||
+    node.kind === ts.SyntaxKind.TrueKeyword ||
+    node.kind === ts.SyntaxKind.FalseKeyword ||
+    node.kind === ts.SyntaxKind.NullKeyword ||
+    node.kind === ts.SyntaxKind.UndefinedKeyword
+  ) {
+    acc.push(normalizeText(node.getText(sf)));
+    return acc;
+  }
+
+  if (ts.isLiteralTypeNode(node)) {
+    collectValueTokens(sf, node.literal, acc);
+    return acc;
+  }
+
+  if (ts.isUnionTypeNode(node)) {
+    for (const inner of node.types) collectValueTokens(sf, inner, acc);
+    return acc;
+  }
+
+  if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName)) {
+    const text = node.typeName.text;
+    if (!/^(?:string|number|boolean|Record|Array|Promise|Partial|Pick|Omit|Readonly|unknown|any|never|void)$/.test(text)) {
+      acc.push(text);
+    }
+    return acc;
+  }
+
+  return acc;
 }
 
 function declarationRecord(
@@ -284,14 +394,18 @@ function declarationRecord(
     extends: [],
     memberNames: details.names,
     memberSignatures: details.signatures,
+    memberTypesByName: details.typesByName,
     memberNameKey: details.names.join("|"),
     memberSignatureKey: details.signatures.join("|"),
+    valueTokens: [],
+    valueSignature: "",
     structureSignature: normalizeText(structureParts.join("|")),
     snippet: normalizeText(node.getText(sf)).slice(0, 500),
   };
 }
 
 function extractDeclarations(filePath) {
+  if (!fs.existsSync(filePath)) return [];
   const source = fs.readFileSync(filePath, "utf8");
   const sf = ts.createSourceFile(
     filePath,
@@ -331,15 +445,24 @@ function extractDeclarations(filePath) {
       const members = typeLiteralMembers(node.type);
       const details = memberDetails(sf, members);
       const typeText = typeNodeText(sf, node.type);
-      declarations.push(
-        declarationRecord(sf, filePath, node, "type", node.name.text, details, [
+      const record = declarationRecord(
+        sf,
+        filePath,
+        node,
+        "type",
+        node.name.text,
+        details,
+        [
           "type",
           `typeParams:${typeParametersText(sf, node).join(",")}`,
           details.signatures.length > 0
             ? `members:${details.signatures.join(";")}`
             : `alias:${typeText}`,
-        ]),
+        ],
       );
+      record.valueTokens = uniqueSorted(collectValueTokens(sf, node.type));
+      record.valueSignature = record.valueTokens.join("|");
+      declarations.push(record);
     }
 
     if (ts.isEnumDeclaration(node) && node.name) {
@@ -352,20 +475,22 @@ function extractDeclarations(filePath) {
           : "";
         return `${nameText(sf, member.name)}${initializer}`;
       });
-      declarations.push(
-        declarationRecord(
-          sf,
-          filePath,
-          node,
-          "enum",
-          node.name.text,
-          {
-            names: uniqueSorted(memberNames),
-            signatures: uniqueSorted(memberSignatures),
-          },
-          ["enum", `members:${uniqueSorted(memberSignatures).join(";")}`],
-        ),
+      const record = declarationRecord(
+        sf,
+        filePath,
+        node,
+        "enum",
+        node.name.text,
+        {
+          names: uniqueSorted(memberNames),
+          signatures: uniqueSorted(memberSignatures),
+          typesByName: {},
+        },
+        ["enum", `members:${uniqueSorted(memberSignatures).join(";")}`],
       );
+      record.valueTokens = uniqueSorted(memberSignatures);
+      record.valueSignature = record.valueTokens.join("|");
+      declarations.push(record);
     }
 
     ts.forEachChild(node, visit);
@@ -397,6 +522,7 @@ function declarationRef(entry) {
     exported: entry.exported,
     memberNames: entry.memberNames,
     memberSignatures: entry.memberSignatures,
+    valueTokens: entry.valueTokens,
     extends: entry.extends,
   };
 }
@@ -470,8 +596,158 @@ function analyze(entries) {
     differentNameSameMemberSignature,
     sameMemberNames,
     differentNameSameMemberNames,
+    reallyLikeCandidates: findReallyLikeCandidates(entries),
     nearOverlaps: findNearOverlaps(entries, NEAR_LIMIT),
   };
+}
+
+function setOverlap(aValues, bValues) {
+  const a = new Set(aValues);
+  const b = new Set(bValues);
+  const shared = [...a].filter((value) => b.has(value));
+  const union = new Set([...a, ...b]);
+  const minScore = Math.min(a.size, b.size) === 0 ? 0 : shared.length / Math.min(a.size, b.size);
+  const jaccard = union.size === 0 ? 0 : shared.length / union.size;
+  return { shared, minScore, jaccard };
+}
+
+function memberTypeAgreement(a, b, sharedNames) {
+  if (sharedNames.length === 0) return 0;
+  let same = 0;
+  for (const name of sharedNames) {
+    if (a.memberTypesByName[name] === b.memberTypesByName[name]) same++;
+  }
+  return same / sharedNames.length;
+}
+
+function declarationSimilarity(a, b) {
+  const memberOverlap = setOverlap(a.memberNames, b.memberNames);
+  const signatureOverlap = setOverlap(a.memberSignatures, b.memberSignatures);
+  const valueOverlap = setOverlap(a.valueTokens, b.valueTokens);
+  const typeAgreement = memberTypeAgreement(a, b, memberOverlap.shared);
+
+  const reasons = [];
+  let score = 0;
+
+  if (a.name === b.name) {
+    score += 0.28;
+    reasons.push("same symbol name");
+  }
+  if (a.kind === b.kind) score += 0.06;
+  if (a.typeParameters.join("|") === b.typeParameters.join("|")) score += 0.04;
+
+  if (a.structureSignature === b.structureSignature) {
+    score += 0.62;
+    reasons.push("exact canonical structure");
+  } else if (
+    a.memberSignatures.length > 0 &&
+    a.memberSignatureKey === b.memberSignatureKey
+  ) {
+    score += 0.54;
+    reasons.push("same member signatures");
+  } else {
+    if (memberOverlap.shared.length >= 2) {
+      score += 0.28 * memberOverlap.minScore;
+      reasons.push(
+        `${memberOverlap.shared.length} shared member names (${Math.round(
+          memberOverlap.minScore * 100,
+        )}% of smaller shape)`,
+      );
+    }
+    if (signatureOverlap.shared.length >= 2) {
+      score += 0.22 * signatureOverlap.minScore;
+      reasons.push(`${signatureOverlap.shared.length} identical member signatures`);
+    }
+    if (memberOverlap.shared.length >= 2 && typeAgreement >= 0.65) {
+      score += 0.16 * typeAgreement;
+      reasons.push(`${Math.round(typeAgreement * 100)}% matching shared member types`);
+    }
+    if (valueOverlap.shared.length >= 2 && valueOverlap.minScore >= 0.6) {
+      score += 0.2 * valueOverlap.minScore;
+      reasons.push(`${valueOverlap.shared.length} shared literal/enum values`);
+    }
+  }
+
+  if (a.packageName === b.packageName) score -= 0.2;
+  if (a.file === b.file) score -= 0.2;
+  if (!a.exported || !b.exported) score -= 0.06;
+
+  return {
+    score: Math.max(0, Math.min(1, score)),
+    reasons,
+    sharedMembers: memberOverlap.shared,
+    sharedSignatures: signatureOverlap.shared,
+    sharedValues: valueOverlap.shared,
+    memberOverlapScore: memberOverlap.minScore,
+    valueOverlapScore: valueOverlap.minScore,
+    typeAgreement,
+  };
+}
+
+function findReallyLikeCandidates(entries) {
+  const sourceEntries = entries.filter(
+    (entry) =>
+      entry.packageName !== "(root)" &&
+      (entry.memberNames.length >= 2 || entry.valueTokens.length >= 2),
+  );
+  const byName = groupBy(sourceEntries, (entry) => entry.name);
+  const pairs = new Map();
+
+  function addPair(a, b, similarity) {
+    if (a.id === b.id) return;
+    if (a.packageName === b.packageName) return;
+    const key = [a.id, b.id].sort().join("::");
+    const existing = pairs.get(key);
+    if (!existing || existing.similarity.score < similarity.score) {
+      pairs.set(key, {
+        score: similarity.score,
+        reasons: similarity.reasons,
+        sharedMembers: similarity.sharedMembers,
+        sharedSignatures: similarity.sharedSignatures,
+        sharedValues: similarity.sharedValues,
+        memberOverlapScore: similarity.memberOverlapScore,
+        valueOverlapScore: similarity.valueOverlapScore,
+        typeAgreement: similarity.typeAgreement,
+        a: declarationRef(a),
+        b: declarationRef(b),
+        packages: uniqueSorted([a.packageName, b.packageName]),
+        names: uniqueSorted([a.name, b.name]),
+      });
+    }
+  }
+
+  for (const group of byName.values()) {
+    if (group.length < 2) continue;
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        const similarity = declarationSimilarity(group[i], group[j]);
+        if (similarity.score >= 0.72) addPair(group[i], group[j], similarity);
+      }
+    }
+  }
+
+  const structuralGroups = groupBy(sourceEntries, (entry) => entry.structureSignature);
+  for (const group of structuralGroups.values()) {
+    if (group.length < 2 || uniqueSorted(group.map((entry) => entry.packageName)).length < 2) {
+      continue;
+    }
+    for (let i = 0; i < group.length; i++) {
+      for (let j = i + 1; j < group.length; j++) {
+        if (group[i].name === group[j].name) continue;
+        if (group[i].memberNames.length < 3 && group[i].valueTokens.length < 3) continue;
+        const similarity = declarationSimilarity(group[i], group[j]);
+        if (similarity.score >= 0.68) addPair(group[i], group[j], similarity);
+      }
+    }
+  }
+
+  return [...pairs.values()].sort((a, b) => {
+    const byScore = b.score - a.score;
+    if (byScore !== 0) return byScore;
+    const byMembers = b.sharedMembers.length - a.sharedMembers.length;
+    if (byMembers !== 0) return byMembers;
+    return `${a.a.name}:${a.b.name}`.localeCompare(`${b.a.name}:${b.b.name}`);
+  });
 }
 
 function findNearOverlaps(entries, limit) {
@@ -665,6 +941,60 @@ function emitNearOverlaps(lines, overlaps) {
   lines.push("");
 }
 
+function emitReallyLikeCandidates(lines, candidates) {
+  lines.push("### High-Confidence Shared-Type Candidates");
+  lines.push("");
+  lines.push(
+    "These pairs are cross-package source declarations with the same symbol name or exact structure plus close member/value signatures. They are intended as the short list to inspect for `packages/shared` extraction.",
+  );
+  lines.push("");
+  if (candidates.length === 0) {
+    lines.push("No high-confidence candidates found.");
+    lines.push("");
+    return;
+  }
+
+  for (const candidate of candidates.slice(0, 80)) {
+    lines.push(
+      `- ${Math.round(candidate.score * 100)}%: \`${markdownEscape(
+        candidate.a.name,
+      )}\` (\`${markdownEscape(candidate.a.file)}:${candidate.a.line}\`) vs \`${markdownEscape(
+        candidate.b.name,
+      )}\` (\`${markdownEscape(candidate.b.file)}:${candidate.b.line}\`)`,
+    );
+    lines.push(
+      `  - packages: ${candidate.packages
+        .map((pkg) => `\`${markdownEscape(pkg)}\``)
+        .join(", ")}`,
+    );
+    lines.push(
+      `  - rationale: ${candidate.reasons
+        .map((reason) => markdownEscape(reason))
+        .join("; ")}`,
+    );
+    if (candidate.sharedMembers.length) {
+      lines.push(
+        `  - shared members: \`${markdownEscape(
+          candidate.sharedMembers.slice(0, 12).join(", "),
+        )}\``,
+      );
+    }
+    if (candidate.sharedValues.length) {
+      lines.push(
+        `  - shared values: \`${markdownEscape(
+          candidate.sharedValues.slice(0, 12).join(", "),
+        )}\``,
+      );
+    }
+  }
+
+  if (candidates.length > 80) {
+    lines.push("");
+    lines.push(`Showing 80 of ${candidates.length}; see JSON for the full set.`);
+  }
+  lines.push("");
+}
+
 function generateReport(files, entries, analysis) {
   const lines = [];
   const summary = {
@@ -707,11 +1037,18 @@ function generateReport(files, entries, analysis) {
   lines.push(
     `| Near overlap pairs retained | ${analysis.nearOverlaps.length} |`,
   );
+  lines.push(
+    `| High-confidence shared-type candidates | ${analysis.reallyLikeCandidates.length} |`,
+  );
   lines.push("");
   lines.push(
     `Roots: ${SCAN_ROOTS.map((root) => `\`${relative(root) || "."}\``).join(", ")}`,
   );
   lines.push(`Tests included: ${INCLUDE_TESTS ? "yes" : "no"}`);
+  lines.push(`Declaration files included: ${INCLUDE_DECLARATIONS ? "yes" : "no"}`);
+  lines.push(`Generated files included: ${INCLUDE_GENERATED ? "yes" : "no"}`);
+  lines.push(`Docs/stories included: ${INCLUDE_DOCS ? "yes" : "no"}`);
+  lines.push(`Vendor files included: ${INCLUDE_VENDOR ? "yes" : "no"}`);
   lines.push("");
 
   lines.push("## Package Breakdown");
@@ -729,6 +1066,7 @@ function generateReport(files, entries, analysis) {
 
   lines.push("## Consolidation Candidates");
   lines.push("");
+  emitReallyLikeCandidates(lines, analysis.reallyLikeCandidates);
   emitGroupList(
     lines,
     "Same Name and Same Canonical Structure",

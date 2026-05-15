@@ -382,7 +382,7 @@ function isSystemInactivitySession(session: LifeOpsScreenTimeSession): boolean {
       bundleId: session.identifier,
       appName: session.displayName,
       platform:
-        typeof session.metadata?.platform === "string"
+        typeof session.metadata.platform === "string"
           ? session.metadata.platform
           : null,
     })

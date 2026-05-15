@@ -1,8 +1,3 @@
-/**
- * Composed landing page for unauthenticated users.
- * Renders background, header, hero chat input, and footer.
- */
-
 import { LandingFooter } from "./footer";
 import { HeroChatInput } from "./hero-chat-input";
 import { LandingBackground } from "./landing-background";

@@ -9,18 +9,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { resolveStateDir } from "@elizaos/core";
 
-/**
- * Cached skills directory path
- */
 let cachedSkillsDir: string | undefined;
 
-/**
- * Check if a directory looks like a skills directory
- * (contains subdirectories with SKILL.md files or .md files directly)
- *
- * @param dir - Directory to check
- * @returns True if directory appears to contain skills
- */
 function looksLikeSkillsDir(dir: string): boolean {
   if (!existsSync(dir)) {
     return false;
@@ -96,10 +86,6 @@ export function getSkillsDir(): string {
   );
 }
 
-/**
- * Clear the cached skills directory path.
- * Useful for testing or when the directory may have changed.
- */
 export function clearSkillsDirCache(): void {
   cachedSkillsDir = undefined;
 }

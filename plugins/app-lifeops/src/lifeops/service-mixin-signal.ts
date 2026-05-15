@@ -176,7 +176,7 @@ export function withSignal<TBase extends Constructor<LifeOpsServiceBase>>(
     }
 
     lifeOpsSignalServiceRegistered(): boolean {
-      return Boolean(this.runtime.getService?.("signal"));
+      return Boolean(this.runtime.getService("signal"));
     }
 
     async getSignalConnectorStatus(

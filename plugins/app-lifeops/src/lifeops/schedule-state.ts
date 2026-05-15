@@ -674,8 +674,8 @@ function resolveMergedCircadianState(relevant: LifeOpsScheduleObservation[]): {
   if (candidates.length === 0) {
     const fallback = relevant[0];
     return {
-      circadianState: fallback?.circadianState ?? "unclear",
-      stateConfidence: fallback?.stateConfidence ?? 0,
+      circadianState: fallback?.circadianState,
+      stateConfidence: fallback?.stateConfidence,
       uncertaintyReason:
         fallback?.uncertaintyReason ??
         (relevant.length === 0 ? "no_signals" : "contradictory_signals"),

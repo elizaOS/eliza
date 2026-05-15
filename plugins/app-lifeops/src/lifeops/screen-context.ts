@@ -194,8 +194,8 @@ async function analyzeImageWithSharp(
   const lumaStdDev = Math.sqrt(Math.max(0, variance)) / 255;
 
   return {
-    width: info.width ?? 0,
-    height: info.height ?? 0,
+    width: info.width,
+    height: info.height,
     averageLuma,
     lumaStdDev,
     darkRatio: dark / count,

@@ -125,7 +125,7 @@ export class PairingService extends Service {
 		const [result] = await this.runtime.getPairingRequests([
 			{ channel, agentId: this.runtime.agentId },
 		]);
-		const requests = result?.requests ?? [];
+		const requests = result.requests;
 
 		// Filter out expired requests
 		const validRequests = requests.filter((r) => !this.isExpired(r));
@@ -295,7 +295,7 @@ export class PairingService extends Service {
 		const [result] = await this.runtime.getPairingAllowlists([
 			{ channel, agentId: this.runtime.agentId },
 		]);
-		return result?.entries ?? [];
+		return result.entries;
 	}
 
 	/**

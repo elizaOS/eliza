@@ -150,7 +150,7 @@ async function runTask(
           runtime,
           message,
           async (content) => {
-            if (content?.text) {
+            if (content.text) {
               callbackText += content.text;
             }
             // Track actions taken

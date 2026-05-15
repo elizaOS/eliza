@@ -12,7 +12,7 @@ This package is the single source of truth for prompt templates used by the runt
 packages/prompts/
 ├── src/
 │   └── index.ts      # TypeScript prompt template exports
-├── specs/            # Canonical merged action/provider specs (JSON) + generated plugins.generated.json
+├── specs/            # Merged action/provider specs (JSON) + generated plugins.generated.json
 └── scripts/          # Spec + docs generators
     ├── generate-action-docs.js
     ├── generate-plugin-action-spec.js

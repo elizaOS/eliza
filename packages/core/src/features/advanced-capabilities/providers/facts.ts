@@ -239,7 +239,7 @@ const factsProvider: Provider = {
 			lastMessageLines.reverse();
 			const last5Messages = lastMessageLines.join("\n");
 			const queryText = buildFactQueryText(
-				message.content?.text ?? "",
+				message.content.text ?? "",
 				last5Messages,
 			);
 

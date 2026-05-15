@@ -1,4 +1,5 @@
 type Msg = { from: "bot" | "user"; text: string };
+type ChatPlatform = "imessage" | "telegram";
 
 const imessageMessages: Msg[] = [
   { from: "bot", text: "good morning! what's on the agenda today?" },
@@ -34,12 +35,6 @@ const telegramMessages: Msg[] = [
 
 function getMessages(): Msg[] {
   if (currentRenderPlatform === "telegram") return telegramMessages;
-  if (currentRenderPlatform === "imessage") return imessageMessages;
-  console.warn(
-    "[renderChatToCanvas] Unsupported render platform:",
-    currentRenderPlatform,
-    "- falling back to iMessage messages.",
-  );
   return imessageMessages;
 }
 
@@ -62,8 +57,6 @@ export function measurePreloadedScrollHeight(count: number): number {
   return total;
 }
 
-export const MESSAGE_COUNT = imessageMessages.length;
-
 export interface ExtraMessage {
   text: string;
   progress: number;
@@ -73,12 +66,9 @@ export interface ExtraMessage {
 
 export const TYPING_BUBBLE_HEIGHT = 50;
 
-let currentRenderPlatform = "imessage";
+let currentRenderPlatform: ChatPlatform = "imessage";
 export function setChatPlatform(p: string) {
-  currentRenderPlatform = p;
-}
-export function getChatPlatform() {
-  return currentRenderPlatform;
+  currentRenderPlatform = p === "telegram" ? "telegram" : "imessage";
 }
 
 let wallpaperImg: HTMLImageElement | null = null;
@@ -94,14 +84,10 @@ const SCALE = 4;
 const W = 390 * SCALE;
 const H = 844 * SCALE;
 
-// Button overlay constants (canvas pixels)
-// Back button is a pill — export its left edge, center-Y, width, height
 export const BACK_BTN_X = 17 * SCALE;
 export const BACK_BTN_CY = 59 * SCALE + 15 * SCALE;
 export const BACK_BTN_H = 40 * SCALE;
-// Width is computed at runtime (depends on font metrics), so we export a close estimate
 export const BACK_BTN_W_ESTIMATE = 380;
-// Video button remains a circle
 export const VID_BTN_CX = W - 37 * SCALE;
 export const VID_BTN_CY = 59 * SCALE + 15 * SCALE;
 export const CANVAS_W = W;
@@ -913,9 +899,8 @@ export function renderChatToCanvas(
     }
   }
 
-  ctx.restore(); // end scrollable clip
+  ctx.restore();
 
-  // ── Fixed header overlay (drawn on top of scrolled content) ──
   if (currentRenderPlatform === "telegram") {
     const altHeaderBottom = navY + s(52);
     ctx.fillStyle = "#f5f5f5";
@@ -936,120 +921,11 @@ export function renderChatToCanvas(
     ctx.fillRect(0, 0, W, headerBottom);
   }
 
-  // ── Status bar (drawn on top of gradient) ──
-  const statusY = topInset - s(36);
-  ctx.fillStyle = "#000";
-  ctx.font = `700 ${s(17)}px Inter, -apple-system, system-ui, sans-serif`;
-  ctx.textBaseline = "middle";
-  ctx.textAlign = "left";
-  const statusBarTime = now.toLocaleTimeString([], {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: false,
-  });
-  ctx.fillText(statusBarTime, s(43), statusY + s(10));
-
-  // Right status icons
-  const iconsY = statusY + s(10);
-  const iconGap = s(6);
-  const iconCenterY = iconsY;
-
-  // Battery
-  const batW = s(29);
-  const batH = s(13.5);
-  const batCapW = s(2);
-  const batRight = W - s(30);
-  const batX = batRight - batCapW - batW;
-  const batY = iconCenterY - batH / 2;
-  ctx.strokeStyle = "rgba(0,0,0,0.35)";
-  ctx.lineWidth = s(1);
-  roundRect(ctx, batX, batY, batW, batH, s(3), s(3), s(3), s(3));
-  ctx.stroke();
-  const bi = s(2);
-  ctx.fillStyle = "#000";
-  roundRect(
-    ctx,
-    batX + bi,
-    batY + bi,
-    batW - bi * 2,
-    batH - bi * 2,
-    s(1.5),
-    s(1.5),
-    s(1.5),
-    s(1.5),
-  );
-  ctx.fill();
-  ctx.fillStyle = "rgba(0,0,0,0.35)";
-  roundRect(
-    ctx,
-    batX + batW + s(1),
-    iconCenterY - s(2.5),
-    batCapW,
-    s(5),
-    s(0.8),
-    s(0.8),
-    s(0.8),
-    s(0.8),
-  );
-  ctx.fill();
-
-  // WiFi
-  const wifiCx = batX - iconGap - s(7);
-  const wifiBaseline = iconCenterY + s(7);
-  ctx.fillStyle = "#000";
-  const wifiLayers = [
-    { outer: s(14), inner: s(10.5) },
-    { outer: s(9.3), inner: s(5.8) },
-    { outer: s(4.6), inner: s(0) },
-  ];
-  const wifiAngleStart = -Math.PI * 0.75;
-  const wifiAngleEnd = -Math.PI * 0.25;
-  for (const layer of wifiLayers) {
-    ctx.beginPath();
-    if (layer.inner > 0) {
-      ctx.arc(wifiCx, wifiBaseline, layer.outer, wifiAngleStart, wifiAngleEnd);
-      ctx.arc(
-        wifiCx,
-        wifiBaseline,
-        layer.inner,
-        wifiAngleEnd,
-        wifiAngleStart,
-        true,
-      );
-      ctx.closePath();
-    } else {
-      ctx.arc(wifiCx, wifiBaseline, layer.outer, wifiAngleStart, wifiAngleEnd);
-      ctx.lineTo(wifiCx, wifiBaseline);
-      ctx.closePath();
-    }
-    ctx.fill();
-  }
-
-  // Cellular
-  const cellBarW = s(3.5);
-  const cellBarGap = s(1.5);
-  const cellTotalW = 4 * cellBarW + 3 * cellBarGap;
-  const cellRight = wifiCx - s(12) - iconGap;
-  const cellBaseX = cellRight - cellTotalW;
-  const maxCellH = s(13.5);
-  const cellBottom = iconCenterY + maxCellH / 2;
-  ctx.fillStyle = "#000";
-  const cellHeights = [s(4.5), s(7), s(10), s(13.5)];
-  for (let i = 0; i < 4; i++) {
-    const bx = cellBaseX + i * (cellBarW + cellBarGap);
-    const bh = cellHeights[i];
-    roundRect(ctx, bx, cellBottom - bh, cellBarW, bh, s(1), s(1), s(1), s(1));
-    ctx.fill();
-  }
-
-  ctx.textAlign = "left";
-  ctx.textBaseline = "alphabetic";
+  drawStatusBar(ctx);
 
   if (currentRenderPlatform === "telegram") {
-    // ── Telegram-style header ──
     const chevCy = navY + s(24);
 
-    // Back chevron + "Log In" text (blue)
     ctx.strokeStyle = "#007AFF";
     ctx.lineWidth = s(3);
     ctx.lineCap = "round";

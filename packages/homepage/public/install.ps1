@@ -8,10 +8,10 @@
     and runs it.
 
     Run with:
-      irm https://elizaos.github.io/install.ps1 | iex
+      irm https://eliza.ai/install.ps1 | iex
 
     Or save and run:
-      Invoke-WebRequest -Uri https://elizaos.github.io/install.ps1 -OutFile install.ps1
+      Invoke-WebRequest -Uri https://eliza.ai/install.ps1 -OutFile install.ps1
       .\install.ps1
 
 .PARAMETER Version
@@ -24,7 +24,7 @@
     Pass /S to the installer for an unattended install.
 
 .EXAMPLE
-    irm https://elizaos.github.io/install.ps1 | iex
+    irm https://eliza.ai/install.ps1 | iex
 #>
 
 [CmdletBinding()]
@@ -123,5 +123,5 @@ Write-Host "  ======================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Launch Eliza from the Start menu."
 Write-Host ""
-Write-Host "  Docs: https://elizaos.github.io" -ForegroundColor Blue
+Write-Host "  Docs: https://eliza.how" -ForegroundColor Blue
 Write-Host ""

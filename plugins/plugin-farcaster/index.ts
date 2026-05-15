@@ -62,6 +62,9 @@ export const farcasterPlugin: Plugin = {
       );
     }
   },
+  async dispose(runtime) {
+    await FarcasterService.stop(runtime);
+  },
 };
 
 export default farcasterPlugin;

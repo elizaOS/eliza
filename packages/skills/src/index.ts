@@ -22,7 +22,6 @@
  * ```
  */
 
-// Prompt formatting
 export {
   buildSkillCommandSpecs,
   formatSkillEntriesForPrompt,
@@ -30,7 +29,6 @@ export {
   formatSkillsForPrompt,
   formatSkillsList,
 } from "./formatter.js";
-// Frontmatter parsing
 export {
   type ParsedFrontmatter,
   parseFrontmatter,
@@ -40,10 +38,7 @@ export {
   serializeSkillFile,
   stripFrontmatter,
 } from "./frontmatter.js";
-
-// Skill loading
 export { loadSkillEntries, loadSkills, loadSkillsFromDir } from "./loader.js";
-// Path resolution
 export {
   clearSkillsDirCache,
   getCuratedActiveDir,
@@ -51,7 +46,6 @@ export {
   getSkillsDir,
   promoteSkill,
 } from "./resolver.js";
-// Types
 export type {
   LoadSkillsFromDirOptions,
   LoadSkillsOptions,

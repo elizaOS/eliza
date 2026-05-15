@@ -22,7 +22,7 @@ type OwnerScheduleParameters = {
 };
 
 function messageText(message: Memory): string {
-  return (message?.content?.text ?? "").toString().toLowerCase();
+  return (message.content.text ?? "").toString().toLowerCase();
 }
 
 function coerceSubaction(value: unknown, text: string): ScheduleSubaction {

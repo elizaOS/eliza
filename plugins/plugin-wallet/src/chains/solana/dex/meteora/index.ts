@@ -3,6 +3,7 @@ import {
   createSolanaLpProtocolProvider,
   registerLpProtocolProvider,
 } from "../../../../lp/services/LpManagementService.ts";
+import type { MeteoraLpService } from "./services/MeteoraLpService.ts";
 
 export const meteoraPlugin: Plugin = {
   name: "@elizaos/plugin-meteora",
@@ -31,6 +32,10 @@ export const meteoraPlugin: Plugin = {
         error instanceof Error ? error.message : String(error)
       );
     }
+  },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<MeteoraLpService>("meteora-lp");
+    await svc?.stop();
   },
 };
 

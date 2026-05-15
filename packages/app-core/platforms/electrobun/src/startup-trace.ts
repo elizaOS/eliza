@@ -297,7 +297,7 @@ export function recordStartupPhase(
 	const stateExecPath =
 		hasOwn(update, "exec_path") && update.exec_path !== undefined
 			? update.exec_path
-			: (previous?.exec_path ?? process.execPath ?? null);
+			: (previous?.exec_path ?? process.execPath);
 	const nextState: StartupTraceState = {
 		session_id: config.sessionId,
 		phase,

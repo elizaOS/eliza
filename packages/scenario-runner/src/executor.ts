@@ -1192,7 +1192,15 @@ async function executeTickTurn(args: {
         })
       : undefined;
   const startedAt = Date.now();
-  const { executeLifeOpsSchedulerTask } = await import("@elizaos/app-lifeops");
+  const appLifeOpsSpecifier = "@elizaos/app-lifeops" as string;
+  const { executeLifeOpsSchedulerTask } = (await import(
+    appLifeOpsSpecifier
+  )) as {
+    executeLifeOpsSchedulerTask: (
+      runtime: AgentRuntime,
+      options: Record<string, unknown>,
+    ) => Promise<Record<string, unknown>>;
+  };
   const result = await withTimeout(
     executeLifeOpsSchedulerTask(args.runtime, {
       ...(toRecord(options) ?? {}),
@@ -1220,15 +1228,6 @@ async function runTurnAssertions(
 ): Promise<string[]> {
   const failures: string[] = [];
   const kind = typeof turn.kind === "string" ? turn.kind : "message";
-  const expectedStatus = (turn as { expectedStatus?: unknown }).expectedStatus;
-
-  if (kind === "api" && expectedStatus !== undefined) {
-    if (execution.apiStatus !== expectedStatus) {
-      failures.push(
-        `expectedStatus: expected ${String(expectedStatus)}, saw ${String(execution.apiStatus ?? "(missing)")}`,
-      );
-    }
-  }
 
   if (typeof turn.assertResponse === "function") {
     const result =
@@ -1244,12 +1243,12 @@ async function runTurnAssertions(
     }
   }
 
-  if (
-    (turn.kind === "api" || turn.kind === "tick") &&
-    typeof (turn as { expectedStatus?: unknown }).expectedStatus === "number"
-  ) {
+  if (kind === "api" || kind === "tick") {
     const expectedStatus = (turn as { expectedStatus: number }).expectedStatus;
-    if (execution.statusCode !== expectedStatus) {
+    if (
+      typeof expectedStatus === "number" &&
+      execution.statusCode !== expectedStatus
+    ) {
       failures.push(
         `expectedStatus: expected ${expectedStatus}, saw ${execution.statusCode ?? "unknown"}`,
       );
@@ -1447,12 +1446,8 @@ export async function runScenario(
       return report;
     }
 
-    // Requires gate runs AFTER seeds so scenarios that register fixture
-    // plugins via a `custom` seed step (e.g. convo.echo-self-test) still
-    // satisfy their own declared `requires.plugins`. For package-named
-    // plugins (e.g. "@elizaos/plugin-agent-skills") we attempt a dynamic
-    // import and register the default export so scenarios don't skip when
-    // the plugin is on disk.
+    // Seeds may register fixture plugins, so check declared plugin requirements
+    // after seeding and try to load package-named requirements that are present.
     const requiredPlugins = resolveRequiredPlugins(scenario);
     for (const pkg of requiredPlugins) {
       if (!pkg.startsWith("@")) continue;

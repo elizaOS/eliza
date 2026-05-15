@@ -110,7 +110,7 @@ export function normalizeModelMetadataInConfig(config: ElizaConfig): void {
 
   for (const [providerId, provider] of Object.entries(providers)) {
     const providerRecord = provider as ModelProviderConfig;
-    providerRecord.models = (providerRecord.models ?? []).map((model) =>
+    providerRecord.models = (providerRecord.models).map((model) =>
       normalizeModelDefinitionConfig(
         { ...model, id: model.id },
         providerId === "bedrock" ? defaults : undefined,
@@ -157,7 +157,7 @@ function findConfiguredModel(
   for (const [providerId, provider] of Object.entries(
     config.models.providers,
   )) {
-    for (const model of provider.models ?? []) {
+    for (const model of provider.models) {
       if (configuredModelKeys(providerId, model.id).includes(lookupKey)) {
         return { providerId, model };
       }

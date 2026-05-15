@@ -742,7 +742,7 @@ export class OnboardingStateMachine {
 				break;
 
 			case "oauth":
-				if (!data.oauthCallback?.code || !data.oauthCallback?.state) {
+				if (!data.oauthCallback?.code || !data.oauthCallback.state) {
 					return { valid: false, error: "OAuth callback data is incomplete" };
 				}
 				break;

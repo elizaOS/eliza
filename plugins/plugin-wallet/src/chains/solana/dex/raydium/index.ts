@@ -47,6 +47,10 @@ export const raydiumPlugin: Plugin = {
       console.info("Raydium registered with Solana service");
     }
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<RaydiumService>(RaydiumService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export * from "./types.ts";

@@ -105,6 +105,10 @@ export const githubPlugin: Plugin = {
       );
     }
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<GitHubService>(GitHubService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default githubPlugin;

@@ -169,7 +169,7 @@ export async function handleAuthSessionRoutes(
     return false;
   }
   const store = new AuthStore(db);
-  const ip = req.socket?.remoteAddress ?? null;
+  const ip = req.socket.remoteAddress ?? null;
   const userAgent = extractHeaderValue(req.headers["user-agent"]);
 
   // POST /api/auth/setup — first-run owner identity creation
@@ -630,7 +630,7 @@ async function handleListSessions(
         {
           id: "local-loopback",
           kind: "local" as const,
-          ip: req.socket?.remoteAddress ?? "127.0.0.1",
+          ip: req.socket.remoteAddress ?? "127.0.0.1",
           userAgent: extractHeaderValue(req.headers["user-agent"]),
           lastSeenAt: Date.now(),
           expiresAt: null,

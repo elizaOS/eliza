@@ -23,13 +23,13 @@ The PGlite shim (`polyfill/src/modules/pglite-shim.ts`) rewrites
 plugin-sql call sites that build similarity queries need to swap their
 pgvector operators (`<->`, `<=>`, `cosine_distance(...)`) for
 sqlite-vec's `vec_distance_l2(...)` / virtual-table `MATCH` syntax. That
-swap is a *separate* PR on plugin-sql, outside this vendor-deps tree.
+swap is a separate plugin-sql change, outside this package.
 
 ## How to build (manual; do not run inside CI yet)
 
 ```bash
 # 1. Clone at the pinned tag.
-cd vendor-deps/sqlite-vec
+cd packages/ios-native-deps/sqlite-vec
 git clone --depth 1 --branch <tag> https://github.com/asg017/sqlite-vec src
 
 # 2. Configure for iOS arm64 (device).

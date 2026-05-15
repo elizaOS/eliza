@@ -225,7 +225,7 @@ function success(text: string, data: Record<string, unknown>): ActionResult {
 }
 
 function calendlyRuntimeServiceAvailable(runtime: IAgentRuntime): boolean {
-  const service = runtime.getService?.("calendly") as
+  const service = runtime.getService("calendly") as
     | { isConnected?: (accountId?: string) => boolean }
     | null
     | undefined;
@@ -422,7 +422,7 @@ export const calendlyAction: Action = {
       message,
       state,
       actionName: "CALENDLY",
-      actionDescription: calendlyAction.description ?? "",
+      actionDescription: calendlyAction.description,
       paramSchema: calendlyAction.parameters ?? [],
       existingParams,
       requiredFields: ["action"],

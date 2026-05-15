@@ -35,7 +35,7 @@ function tryBindOnce(
 		server.once("error", fail);
 		server.listen({ port, host }, () => {
 			clearTimeout(listenTimer);
-			server.unref?.();
+			server.unref();
 
 			// Bun on packaged Windows can occasionally never invoke the close
 			// callback even though the listen succeeded. Without this grace timer

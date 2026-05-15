@@ -18,6 +18,20 @@ export const appContactsPlugin: Plugin = {
   description:
     "Contacts overlay: read-only Android address-book context via the @elizaos/capacitor-contacts native plugin. The Android runtime adapter gates the provider to the active Contacts app session.",
   providers: [contactsProvider],
+  views: [
+    {
+      id: "contacts",
+      label: "Contacts",
+      description: "Android address book — read-only contact lookup",
+      icon: "Users",
+      path: "/contacts",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "ContactsAppView",
+      tags: ["contacts", "android", "address-book"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };
 
 export { contactsProvider } from "./providers/contacts";

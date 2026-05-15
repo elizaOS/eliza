@@ -1,5 +1,5 @@
 import { gatePluginSessionForHostedApp } from "@elizaos/agent/services/app-session-gate";
-import type { Plugin, ServiceClass } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 
 import { scapeActions } from "./actions/index.js";
 import { scapeProviders } from "./providers/index.js";
@@ -45,6 +45,24 @@ export function createAppScapePlugin(): Plugin {
         mode: "spectate-and-steer",
         features: ["commands", "telemetry", "suggestions"],
       },
+    },
+    views: [
+      {
+        id: "scape",
+        label: "'scape",
+        description: "RuneScape-alike agent — operator controls and game journal",
+        icon: "Gamepad2",
+        path: "/scape",
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "ScapeOperatorSurface",
+        tags: ["game", "scape", "runescape"],
+        visibleInManager: true,
+        desktopTabEnabled: true,
+      },
+    ],
+    async dispose(runtime: IAgentRuntime) {
+      const svc = runtime.getService<ScapeGameService>(ScapeGameService.serviceType);
+      await svc?.stop();
     },
   };
 }

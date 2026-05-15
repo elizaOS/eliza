@@ -265,7 +265,7 @@ export async function evaluateGoalProgressWithLlm(args: {
       {
         boundary: "lifeops",
         component: "goal-semantic-evaluator",
-        goalId: args.goal?.id ?? null,
+        goalId: args.goal.id,
         detail: error instanceof Error ? error.message : String(error),
       },
       "[goal-semantic-evaluator] evaluation failed; returning null",

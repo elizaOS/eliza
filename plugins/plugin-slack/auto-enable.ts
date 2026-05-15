@@ -8,7 +8,7 @@ import type { PluginAutoEnableContext } from "@elizaos/core";
 
 /** Enable when a `slack` connector block is present and not explicitly disabled. */
 export function shouldEnable(ctx: PluginAutoEnableContext): boolean {
-  const c = (ctx.config?.connectors as Record<string, unknown> | undefined)
+  const c = (ctx.config.connectors as Record<string, unknown> | undefined)
     ?.slack;
   if (!c || typeof c !== "object") return false;
   const config = c as Record<string, unknown>;

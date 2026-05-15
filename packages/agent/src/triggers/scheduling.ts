@@ -460,7 +460,7 @@ export function normalizeTriggerDraft(params: {
   }
 
   const triggerType =
-    params.input.triggerType ?? params.fallback.triggerType ?? "interval";
+    params.input.triggerType ?? params.fallback.triggerType;
   const wakeMode = params.input.wakeMode ?? params.fallback.wakeMode;
   const enabled = params.input.enabled ?? params.fallback.enabled;
   const createdBy = params.input.createdBy ?? params.fallback.createdBy;

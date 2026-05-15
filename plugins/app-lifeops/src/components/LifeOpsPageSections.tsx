@@ -425,9 +425,9 @@ export function AgentGithubCard({
           <div className="mt-1 text-xs text-muted">
             {connected
               ? githubIdentityLabel({
-                  displayName: github?.githubDisplayName,
-                  username: github?.githubUsername,
-                  email: github?.githubEmail,
+                  displayName: github.githubDisplayName,
+                  username: github.githubUsername,
+                  email: github.githubEmail,
                 })
               : "No agent GitHub account linked"}
           </div>

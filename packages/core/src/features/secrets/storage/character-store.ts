@@ -96,7 +96,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 
 			// Check expiration
 			if (
-				storedSecret.config?.expiresAt &&
+				storedSecret.config.expiresAt &&
 				storedSecret.config.expiresAt < Date.now()
 			) {
 				await this.delete(key, context);
@@ -180,7 +180,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 
 				// Check expiration
 				if (
-					storedSecret.config?.expiresAt &&
+					storedSecret.config.expiresAt &&
 					storedSecret.config.expiresAt < Date.now()
 				) {
 					continue;
@@ -279,7 +279,7 @@ export class CharacterSettingsStorage extends BaseSecretStorage {
 	 */
 	async migrateFromEnvVars(envVarPrefix: string = "ENV_"): Promise<number> {
 		let migrated = 0;
-		const settings = this.runtime.character?.settings ?? {};
+		const settings = this.runtime.character.settings ?? {};
 
 		for (const [key, value] of Object.entries(settings)) {
 			if (key.startsWith(envVarPrefix) && typeof value === "string") {

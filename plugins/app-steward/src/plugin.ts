@@ -375,4 +375,18 @@ export const stewardPlugin: Plugin = {
     stewardBalanceProvider,
     stewardReceiveAddressProvider,
   ],
+  views: [
+    {
+      id: "steward",
+      label: "Steward",
+      description: "Transaction history and approval queue for Steward wallet management",
+      icon: "Shield",
+      path: "/steward",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "StewardView",
+      tags: ["finance", "wallet", "approvals", "transactions"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };

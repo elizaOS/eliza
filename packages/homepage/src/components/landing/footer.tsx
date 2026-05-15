@@ -1,7 +1,3 @@
-/**
- * Footer for the landing page: branding, nav links, token addresses, social.
- */
-
 import { Check, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
@@ -73,7 +69,7 @@ export function LandingFooter() {
       style={{ flexShrink: 0 }}
     >
       <div className="container mx-auto px-6 py-8 md:py-16 relative z-10">
-        <div className="grid grid-cols-2 md:grid-cols-3 gap-8 items-start">
+        <div className="grid grid-cols-2 gap-8 items-start">
           <div className="flex flex-col gap-8">
             <div className="flex items-center gap-3 relative mr-auto">
               <ElizaLogo className="h-7 sm:h-8 invert shrink-0" />
@@ -81,11 +77,6 @@ export function LandingFooter() {
             <p className="text-sm text-white/60 whitespace-nowrap">
               © 2026 Eliza AI · USA
             </p>
-          </div>
-
-          <div className="hidden md:flex justify-center items-center w-40">
-            {/* Placeholder when /eliza-footer.png is not present; add image to public/ to show decorative art */}
-            <div className="w-40 h-40 rounded-lg bg-white/5" aria-hidden />
           </div>
 
           <div className="flex flex-col gap-1 md:gap-2 items-end">

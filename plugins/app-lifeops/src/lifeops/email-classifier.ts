@@ -129,7 +129,7 @@ function cacheKey(messageId: string | null | undefined, model: string): string {
 }
 
 function readSettingString(runtime: IAgentRuntime, key: string): string | null {
-  const value = runtime.getSetting?.(key);
+  const value = runtime.getSetting(key);
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
@@ -139,7 +139,7 @@ function readSettingBoolean(
   runtime: IAgentRuntime,
   key: string,
 ): boolean | null {
-  const raw = runtime.getSetting?.(key);
+  const raw = runtime.getSetting(key);
   if (typeof raw === "boolean") return raw;
   if (typeof raw === "string") {
     const v = raw.trim().toLowerCase();

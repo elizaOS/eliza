@@ -439,7 +439,7 @@ export class VoiceEmotionClassifier {
 		const out = outputs[headName];
 		if (!out || !(out.data instanceof Float32Array)) {
 			throw new VoiceEmotionClassifierError(
-				`[voice-emotion] expected Float32 output, got ${out?.data?.constructor?.name ?? "undefined"}`,
+				`[voice-emotion] expected Float32 output, got ${out?.data.constructor.name}`,
 			);
 		}
 		const dataLen = out.data.length;

@@ -1253,7 +1253,7 @@ function createLogger(bindings: LoggerBindings | boolean = false): Logger {
 	 * Clear console and memory buffer
 	 */
 	const clear = (): void => {
-		const consoleClear = console?.clear;
+		const consoleClear = console.clear;
 		if (typeof consoleClear === "function") {
 			consoleClear();
 		}

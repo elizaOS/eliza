@@ -24,26 +24,11 @@ import type {
   SkillFrontmatter,
 } from "./types.js";
 
-/** Maximum skill name length per Agent Skills spec */
 const MAX_NAME_LENGTH = 64;
-
-/** Maximum description length per Agent Skills spec */
 const MAX_DESCRIPTION_LENGTH = 1024;
-
-/** Default config directory name */
 const CONFIG_DIR_NAME = ".elizaos";
-
-/** Default agent directory for user skills */
 const DEFAULT_AGENT_DIR = join(homedir(), CONFIG_DIR_NAME);
 
-/**
- * Validate skill name per Agent Skills spec.
- * Returns array of validation error messages (empty if valid).
- *
- * @param name - The skill name to validate
- * @param parentDirName - The parent directory name (should match)
- * @returns Array of validation error messages
- */
 function validateName(name: string, parentDirName: string): string[] {
   const errors: string[] = [];
 
@@ -74,12 +59,6 @@ function validateName(name: string, parentDirName: string): string[] {
   return errors;
 }
 
-/**
- * Validate description per Agent Skills spec.
- *
- * @param description - The skill description to validate
- * @returns Array of validation error messages
- */
 function validateDescription(description: string | undefined): string[] {
   const errors: string[] = [];
 
@@ -94,13 +73,6 @@ function validateDescription(description: string | undefined): string[] {
   return errors;
 }
 
-/**
- * Load a single skill from a SKILL.md file
- *
- * @param filePath - Absolute path to the SKILL.md file
- * @param source - Source identifier for this skill
- * @returns Loaded skill and diagnostics
- */
 function loadSkillFromFile(
   filePath: string,
   source: string,
@@ -144,14 +116,6 @@ function loadSkillFromFile(
   };
 }
 
-/**
- * Internal recursive skill loader
- *
- * @param dir - Directory to scan
- * @param source - Source identifier
- * @param includeRootFiles - Whether to include .md files at root level
- * @returns Loaded skills and diagnostics
- */
 function loadSkillsFromDirInternal(
   dir: string,
   source: string,
@@ -229,12 +193,6 @@ export function loadSkillsFromDir(
   return loadSkillsFromDirInternal(dir, source, true);
 }
 
-/**
- * Normalize a path, expanding ~ to home directory
- *
- * @param input - Path that may contain ~
- * @returns Normalized absolute path
- */
 function normalizePath(input: string): string {
   const trimmed = input.trim();
   if (trimmed === "~") return homedir();
@@ -243,25 +201,11 @@ function normalizePath(input: string): string {
   return trimmed;
 }
 
-/**
- * Resolve a skill path relative to cwd
- *
- * @param p - Path to resolve
- * @param cwd - Current working directory
- * @returns Absolute path
- */
 function resolveSkillPath(p: string, cwd: string): string {
   const normalized = normalizePath(p);
   return isAbsolute(normalized) ? normalized : resolve(cwd, normalized);
 }
 
-/**
- * Check if a target path is under a root path
- *
- * @param target - Path to check
- * @param root - Root path
- * @returns True if target is under root
- */
 function isUnderPath(target: string, root: string): boolean {
   const normalizedRoot = resolve(root);
   if (target === normalizedRoot) {
@@ -295,7 +239,6 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
     managedSkillsDir,
   } = options;
 
-  // Resolve directories
   const resolvedAgentDir = agentDir ?? DEFAULT_AGENT_DIR;
   const resolvedBundledDir = bundledSkillsDir ?? getSkillsDir();
   const resolvedManagedDir =
@@ -347,11 +290,6 @@ export function loadSkills(options: LoadSkillsOptions = {}): LoadSkillsResult {
   }
 
   if (includeDefaults) {
-    // Load in precedence order: bundled < managed < curated < project.
-    // The curated namespace holds agent-derived skills that were promoted to
-    // "active" by the closed learning loop or the user. Skills under the
-    // sibling "proposed" directory are intentionally NOT scanned here — they
-    // are pending human review and only surfaced via the curated-skills API.
     if (resolvedBundledDir) {
       addSkills(loadSkillsFromDirInternal(resolvedBundledDir, "bundled", true));
     }
@@ -421,11 +359,9 @@ export function loadSkillEntries(
   return skills.map((skill) => {
     let frontmatter: SkillFrontmatter = {};
     if (skill.filePath) {
-      try {
-        const raw = readFileSync(skill.filePath, "utf-8");
-        const parsed = parseFrontmatter<SkillFrontmatter>(raw);
-        frontmatter = parsed.frontmatter;
-      } catch {}
+      const raw = readFileSync(skill.filePath, "utf-8");
+      const parsed = parseFrontmatter<SkillFrontmatter>(raw);
+      frontmatter = parsed.frontmatter;
     }
 
     return {

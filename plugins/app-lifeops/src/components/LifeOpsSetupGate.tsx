@@ -71,7 +71,7 @@ export function LifeOpsSetupGate({ onDismiss }: LifeOpsSetupGateProps) {
 
   const [name, setName] = useState("");
   const [timezone, setTimezone] = useState(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone ?? "",
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone,
   );
   const [skipped, setSkipped] = useState(false);
 

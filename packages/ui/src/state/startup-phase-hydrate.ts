@@ -383,6 +383,23 @@ export function bindReadyPhase(
     },
   );
 
+  const unbindShellNavigateView = client.onWsEvent(
+    "shell:navigate:view",
+    (data: Record<string, unknown>) => {
+      if (typeof window === "undefined") return;
+      const viewId = typeof data.viewId === "string" ? data.viewId : undefined;
+      const viewPath =
+        typeof data.viewPath === "string" ? data.viewPath : undefined;
+      const viewLabel =
+        typeof data.viewLabel === "string" ? data.viewLabel : undefined;
+      window.dispatchEvent(
+        new CustomEvent("eliza:navigate:view", {
+          detail: { viewId, viewPath, viewLabel },
+        }),
+      );
+    },
+  );
+
   const unbindAgent = client.onWsEvent(
     "agent_event",
     (data: Record<string, unknown>) => {
@@ -637,6 +654,7 @@ export function bindReadyPhase(
     unbindWsReconnect();
     unbindSysWarn();
     unbindRestart();
+    unbindShellNavigateView();
     unbindConvUp();
     unbindPty();
     if (ptyPollInterval) clearInterval(ptyPollInterval);

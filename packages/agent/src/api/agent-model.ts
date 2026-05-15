@@ -152,7 +152,7 @@ export function detectRuntimeModel(
   const pluginNames = Array.isArray(runtime.plugins)
     ? runtime.plugins
         .map((plugin) =>
-          typeof plugin?.name === "string" ? plugin.name.trim() : "",
+          typeof plugin.name === "string" ? plugin.name.trim() : "",
         )
         .filter((name): name is string => name.length > 0)
     : [];

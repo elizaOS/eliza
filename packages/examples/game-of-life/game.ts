@@ -33,11 +33,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-// Import the in-memory database adapter directly from plugin package.
-import {
-  InMemoryDatabaseAdapter,
-  MemoryStorage,
-} from "@elizaos/plugin-inmemorydb";
 
 // Disable the full bootstrap plugin - we'll use our own minimal version
 process.env.IGNORE_BOOTSTRAP = "true";
@@ -104,8 +99,18 @@ interface WorldState {
 // Global world state shared by all agents
 let world: WorldState;
 
-// Shared storage for all agents
-const sharedStorage = new MemoryStorage();
+type InMemoryDbModule = typeof import("@elizaos/plugin-inmemorydb");
+
+let inMemoryDbModulePromise: Promise<InMemoryDbModule> | null = null;
+let sharedStorage: InstanceType<InMemoryDbModule["MemoryStorage"]> | null =
+  null;
+
+async function loadInMemoryDb() {
+  inMemoryDbModulePromise ??= import("@elizaos/plugin-inmemorydb");
+  const module = await inMemoryDbModulePromise;
+  sharedStorage ??= new module.MemoryStorage();
+  return { ...module, sharedStorage };
+}
 
 // Shared simulation room/world + environment entity (the "world" speaks to agents)
 const SIM_ROOM_ID = stringToUuid("game-of-life");
@@ -792,6 +797,7 @@ interface LiveAgent {
 }
 
 async function createAgentRuntime(agentState: AgentState): Promise<LiveAgent> {
+  const { InMemoryDatabaseAdapter, sharedStorage } = await loadInMemoryDb();
   const character = createCharacter({
     id: agentState.id as UUID,
     name: `Agent-${agentState.id.slice(0, 6)}`,

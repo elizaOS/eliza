@@ -1,10 +1,3 @@
-/**
- * MEMORY — consolidated memory action.
- *
- * Single polymorphic action that dispatches across {create, search, update,
- * delete} ops via in-process runtime APIs only. No HTTP fan-out.
- */
-
 import type {
   Action,
   ActionResult,
@@ -82,8 +75,8 @@ function toListItem(memory: Memory, type: MemoryType): MemoryListItem {
     id: memory.id ?? "",
     type,
     text: (content?.text as string) ?? "",
-    entityId: memory.entityId ?? null,
-    roomId: memory.roomId ?? null,
+    entityId: memory.entityId,
+    roomId: memory.roomId,
     agentId: memory.agentId ?? null,
     createdAt: memory.createdAt ?? 0,
   };
@@ -108,7 +101,7 @@ async function doCreate(
 
   const agentId = runtime.agentId as UUID;
   const roomId = stringToUuid(
-    `${runtime.character?.name ?? "eliza"}-manual-memories-room`,
+    `${runtime.character.name ?? "eliza"}-manual-memories-room`,
   ) as UUID;
   const memoryId = crypto.randomUUID() as UUID;
   const createdAt = Date.now();

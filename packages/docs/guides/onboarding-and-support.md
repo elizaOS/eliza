@@ -90,4 +90,4 @@ Paste errors or attach screenshots.
 ## 6. Where to report
 
 - In-app reporting where offered for Cloud or onboarding errors.
-- GitHub: <https://github.com/eliza-ai/eliza/issues>
+- GitHub: <https://github.com/elizaOS/eliza/issues>

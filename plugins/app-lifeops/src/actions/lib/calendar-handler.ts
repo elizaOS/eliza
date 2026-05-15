@@ -2412,8 +2412,8 @@ function formatUpdateEventTargetContext(
     `formattedStart: ${formatCalendarEventDateTime(event, {
       includeTimeZoneName: true,
     })}`,
-    `location: ${event.location ?? ""}`,
-    `description: ${event.description ?? ""}`,
+    `location: ${event.location}`,
+    `description: ${event.description}`,
     `attendees: ${attendees}`,
   ].join("\n");
 }
@@ -2809,8 +2809,8 @@ function formatCalendarCandidateForGrounding(
     `score: ${candidate.score}`,
     `title: ${candidate.event.title}`,
     `startAt: ${candidate.event.startAt}`,
-    `location: ${candidate.event.location ?? ""}`,
-    `description: ${(candidate.event.description ?? "").slice(0, 240)}`,
+    `location: ${candidate.event.location}`,
+    `description: ${(candidate.event.description).slice(0, 240)}`,
     `attendees: ${attendees}`,
   ].join("\n");
 }
@@ -3273,7 +3273,7 @@ export const calendarAction: Action & {
             true,
           );
         } catch (error) {
-          runtime.logger?.warn?.(
+          runtime.logger.warn(
             {
               src: "action:calendar",
               error: error instanceof Error ? error.message : String(error),
@@ -3402,7 +3402,7 @@ export const calendarAction: Action & {
               createEventRequestFingerprint(repaired.request) !==
                 createEventRequestFingerprint(requestToCreate)
             ) {
-              runtime.logger?.info?.(
+              runtime.logger.info(
                 {
                   src: "action:calendar",
                   error: error.message,
@@ -3435,7 +3435,7 @@ export const calendarAction: Action & {
               calendar: calendarLookup,
               event: {
                 id: event.id,
-                location: event.location ?? "",
+                location: event.location,
               },
               travelIntent,
             });
@@ -3599,7 +3599,7 @@ export const calendarAction: Action & {
               state,
               intent,
               targetEvent,
-              targetEvent?.timezone ?? planningTimeZone,
+              targetEvent.timezone ?? planningTimeZone,
             )
           : ({} as Record<string, unknown>);
         const extractedStartAt =
@@ -3632,7 +3632,7 @@ export const calendarAction: Action & {
           side: detailString(details, "side") as "owner" | "agent" | undefined,
           grantId: detailString(details, "grantId") ?? targetEvent?.grantId,
           calendarId: resolvedCalendarId,
-          eventId: resolvedEventId ?? "",
+          eventId: resolvedEventId,
           title: newTitle,
           description:
             detailString(details, "description") ?? extractedDescription,

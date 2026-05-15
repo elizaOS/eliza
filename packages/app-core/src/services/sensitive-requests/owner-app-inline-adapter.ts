@@ -94,7 +94,7 @@ function buildInlineEnvelope(
 ): InlineSecretRequestEnvelope {
   if (!request.target || request.target.kind !== "secret") {
     throw new Error(
-      `owner-app-inline adapter received non-secret request kind: ${request.target?.kind ?? "unknown"}`,
+      `owner-app-inline adapter received non-secret request kind: ${request.target?.kind}`,
     );
   }
   const target = request.target as SensitiveRequestSecretTarget;
@@ -184,11 +184,11 @@ export const ownerAppInlineSensitiveRequestAdapter: SensitiveRequestDeliveryAdap
         };
       }
 
-      if (request.target?.kind !== "secret") {
+      if (request.target.kind !== "secret") {
         return {
           delivered: false,
           target: "owner_app_inline",
-          error: `owner-app-inline supports kind=secret only (got ${request.target?.kind ?? "unknown"})`,
+          error: `owner-app-inline supports kind=secret only (got ${request.target?.kind})`,
         };
       }
 

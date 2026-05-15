@@ -11,6 +11,10 @@ export const localStoragePlugin: Plugin = {
     "Local filesystem attachment storage (default fallback when Eliza Cloud storage is not connected)",
   services: [LocalFileStorageService],
   actions: [],
+  async dispose(runtime) {
+    const svc = runtime.getService<LocalFileStorageService>(LocalFileStorageService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default localStoragePlugin;

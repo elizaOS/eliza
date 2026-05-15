@@ -72,9 +72,6 @@ Runtime field — pick the right one for what the user asked for:
 - "widget"       — a small floating window that doesn't take focus.
                    Use for ambient surfaces (Pomodoro countdown,
                    weather pill). 200-300px square typical.
-- "wallpaper"    — DO NOT use; wallpapers are set via the
-                   SET_WALLPAPER action, not code generation.
-
 For panels and widgets, design the HTML to fill its docked frame edge-
 to-edge with NO margin/padding on the body, NO header chrome, and the
 content centered inside the available space. The window manager handles

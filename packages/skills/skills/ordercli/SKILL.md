@@ -1,6 +1,6 @@
 ---
 name: ordercli
-description: Foodora-only CLI for checking past orders and active order status (Deliveroo WIP). Use when the user asks to check food delivery orders, track a Foodora delivery, view order history, reorder a meal, look up past food orders, check delivery status, or manage Foodora sessions and authentication.
+description: Foodora CLI for checking past orders and active order status. Use when the user asks to check food delivery orders, track a Foodora delivery, view order history, reorder a meal, look up past food orders, check delivery status, or manage Foodora sessions and authentication.
 homepage: https://ordercli.sh
 metadata:
   {
@@ -31,7 +31,7 @@ metadata:
 
 # ordercli
 
-Use `ordercli` to check past orders and track active order status (Foodora only right now).
+Use `ordercli` to check Foodora past orders and active order status.
 
 Quick start (Foodora)
 
@@ -65,12 +65,6 @@ Session import (no password)
 
 - `ordercli foodora session chrome --url https://www.foodora.at/ --profile "Default"`
 - `ordercli foodora session refresh --client-id android`
-
-Deliveroo (WIP, not working yet)
-
-- Requires `DELIVEROO_BEARER_TOKEN` (optional `DELIVEROO_COOKIE`).
-- `ordercli deliveroo config set --market uk`
-- `ordercli deliveroo history`
 
 Notes
 

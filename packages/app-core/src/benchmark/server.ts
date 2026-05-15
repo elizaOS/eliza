@@ -258,7 +258,7 @@ function normalizeLocaIncomingToolCall(
     type: "function",
     function: {
       name,
-      arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
+      arguments: typeof args === "string" ? args : JSON.stringify(args),
     },
   };
 }
@@ -302,7 +302,7 @@ function normalizeLocaNativeToolCalls(rawToolCalls: unknown): Array<{
       type: "function",
       function: {
         name,
-        arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
+        arguments: typeof args === "string" ? args : JSON.stringify(args),
       },
     });
   }
@@ -499,7 +499,7 @@ function disableManualCompactionAction(runtime: AgentRuntime): void {
     return;
   }
   const compactSessionIndex = runtimeWithActions.actions.findIndex(
-    (action) => action?.name?.toUpperCase() === "COMPACT_SESSION",
+    (action) => action.name.toUpperCase() === "COMPACT_SESSION",
   );
   if (compactSessionIndex === -1) {
     return;
@@ -550,7 +550,7 @@ async function collectSessionDiagnostics(
     ]);
 
   const compactionSummaries = allMessages
-    .filter((m) => m.content?.source === "compaction")
+    .filter((m) => m.content.source === "compaction")
     .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
   const latestCompactionSummary = compactionSummaries.at(-1) ?? null;
   const latestSummaryText =
@@ -562,11 +562,11 @@ async function collectSessionDiagnostics(
   const providerNames = runtime.providers.map((provider) => provider.name);
   const evaluatorNames =
     (runtime as { evaluators?: Array<{ name?: string }> }).evaluators
-      ?.map((evaluator) => evaluator?.name ?? "")
+      ?.map((evaluator) => evaluator.name ?? "")
       .filter((name) => name.length > 0) ?? [];
   const actionNames =
     (runtime as { actions?: Array<{ name?: string }> }).actions
-      ?.map((action) => action?.name?.toUpperCase() ?? "")
+      ?.map((action) => action.name?.toUpperCase() ?? "")
       .filter((name) => name.length > 0) ?? [];
 
   return {

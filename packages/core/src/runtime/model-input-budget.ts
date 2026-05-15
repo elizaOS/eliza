@@ -53,7 +53,7 @@ function textLength(value: unknown): number {
 	if (value == null) {
 		return 0;
 	}
-	return JSON.stringify(value)?.length ?? 0;
+	return JSON.stringify(value).length;
 }
 
 function estimateTokensFromChars(chars: number): number {

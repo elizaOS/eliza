@@ -2434,7 +2434,7 @@ export class LocalInferenceEngine {
 			return null;
 		}
 
-		const kvCache = catalog?.runtime?.kvCache;
+		const kvCache = catalog.runtime?.kvCache;
 		return {
 			targetModelPath: target.path,
 			drafterModelPath: drafter.path,

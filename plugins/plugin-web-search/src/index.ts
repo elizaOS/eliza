@@ -60,6 +60,10 @@ export const webSearchPlugin: Plugin = {
     init: async (_config, runtime) => {
         registerWebSearchCategory(runtime);
     },
+    async dispose(runtime) {
+        const svc = runtime.getService<WebSearchService>(WebSearchService.serviceType);
+        await svc?.stop();
+    },
     actions: [],
     providers: [],
     services: [WebSearchService],

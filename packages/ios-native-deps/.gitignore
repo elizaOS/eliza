@@ -8,5 +8,4 @@ sqlite-vec/src/
 sqlite-vec/build/
 sqlite-vec/dist/
 
-# node_modules (in case this becomes a workspace package consumer)
 node_modules/

@@ -15,7 +15,7 @@ function takeValue(
 } {
   if (raw.includes("=")) {
     const [, value] = raw.split("=", 2);
-    const trimmed = (value ?? "").trim();
+    const trimmed = (value).trim();
     return { value: trimmed || null, consumedNext: false };
   }
   const trimmed = (next ?? "").trim();
@@ -117,7 +117,7 @@ export function applyCliProfileEnv(params: {
     env.ELIZA_STATE_DIR = resolveProfileStateDir(profile, namespace, homedir);
   }
 
-  const stateDir = env.ELIZA_STATE_DIR?.trim() || "";
+  const stateDir = env.ELIZA_STATE_DIR.trim() || "";
   if (!env.ELIZA_CONFIG_PATH?.trim() && stateDir) {
     env.ELIZA_CONFIG_PATH = path.join(stateDir, `${namespace}.json`);
   }

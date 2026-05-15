@@ -89,9 +89,9 @@ function readPageKey(value: unknown): PageKey | undefined {
 
 /**
  * Parse the delegate call into `{ page, action, parameters }`. Accepts both
- * the canonical nested shape and a flat shape that LLMs commonly emit.
+ * the nested shape and a flat shape that LLMs commonly emit.
  *
- * Canonical (nested):
+ * Nested:
  *   `{page: "browser", action: "BROWSER", parameters: {subaction: "navigate", url: "..."}}`
  *
  * Flat (auto-lifted): every key except `page`, `action`, and `parameters` is

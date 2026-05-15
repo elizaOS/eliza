@@ -1,4 +1,4 @@
-import type { Plugin } from "../../types/index.ts";
+import type { IAgentRuntime, Plugin } from "../../types/index.ts";
 import { planAction } from "./actions/plan.ts";
 import { PlanningService } from "./services/planning-service.ts";
 
@@ -9,6 +9,12 @@ export function createAdvancedPlanningPlugin(): Plugin {
 		providers: [],
 		actions: [planAction],
 		services: [PlanningService],
+		async dispose(runtime: IAgentRuntime) {
+			const svc = runtime.getService<PlanningService>(
+				PlanningService.serviceType,
+			);
+			await svc?.stop();
+		},
 	};
 }
 

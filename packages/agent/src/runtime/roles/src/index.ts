@@ -193,7 +193,7 @@ async function ensureOwnerRole(
           for (const [entityId, role] of Object.entries(metadata.roles)) {
             if (entityId !== ownerId && normalizeRole(role) === "OWNER") {
               delete metadata.roles[entityId];
-              delete metadata.roleSources?.[entityId];
+              delete metadata.roleSources[entityId];
               changed = true;
             }
           }
@@ -255,7 +255,7 @@ async function applyConnectorAdminWhitelists(
         for (const room of rooms) {
           const entities = await runtime.getEntitiesForRoom(room.id);
           for (const entity of entities) {
-            if (!entity?.id) continue;
+            if (!entity.id) continue;
             const entityId = entity.id;
 
             if (metadata.roles[entityId]) continue;
@@ -352,7 +352,7 @@ const rolesPlugin: Plugin = {
   async init(pluginConfig: Record<string, unknown>, runtime: IAgentRuntime) {
     logger.info("[roles] Initializing roles");
     const config = loadConnectorAdminsConfig(pluginConfig, runtime);
-    const connectorAdmins = config?.connectorAdmins ?? {};
+    const connectorAdmins = config.connectorAdmins ?? {};
     const hasConnectorAdmins = Object.values(connectorAdmins).some(
       (ids) => ids.length > 0,
     );

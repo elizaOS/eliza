@@ -47,9 +47,6 @@ declare module "@elizaos/app-task-coordinator" {
   export const CodingAgentTasksPanel: import("react").ComponentType<
     import("@elizaos/ui").CodingAgentTasksPanelProps
   >;
-  export const PtyConsoleDrawer: import("react").ComponentType<
-    import("@elizaos/ui").PtyConsoleDrawerProps
-  >;
 }
 
 declare module "@elizaos/app-training" {

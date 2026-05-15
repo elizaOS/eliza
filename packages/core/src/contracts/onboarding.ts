@@ -1272,11 +1272,11 @@ export function resolveLinkedAccountsInConfig(
 	const hasCloudKey = Boolean(normalizeSecretString(cloud?.apiKey));
 	const existingCloudAccount = next.elizacloud;
 
-	if (hasCloudKey && !existingCloudAccount?.status) {
+	if (hasCloudKey && !existingCloudAccount.status) {
 		next.elizacloud = {
 			...existingCloudAccount,
 			status: "linked",
-			source: existingCloudAccount?.source ?? "api-key",
+			source: existingCloudAccount.source ?? "api-key",
 		};
 	}
 

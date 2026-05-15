@@ -27,7 +27,10 @@ const oauthLinkSchema = z.object({
 });
 
 function resolveManagedReturnUrl(rawValue: string | undefined): string {
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!baseUrl) {
+    throw new Error("NEXT_PUBLIC_APP_URL is required to build Discord OAuth return URLs");
+  }
   const defaultPath = "/dashboard/settings?tab=agents";
 
   if (!rawValue) {

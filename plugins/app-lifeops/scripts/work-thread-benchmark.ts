@@ -116,7 +116,7 @@ async function runThreadAction(
   msg: Memory,
   operations: unknown[],
 ): Promise<ActionResult> {
-  const result = await workThreadAction.handler?.(
+  const result = await workThreadAction.handler(
     runtime,
     msg,
     state(),

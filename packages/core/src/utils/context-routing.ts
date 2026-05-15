@@ -153,7 +153,7 @@ export function getContextRoutingFromState(
 export function getContextRoutingFromMessage(
 	message: Memory,
 ): ContextRoutingDecision {
-	const metadata = message.content?.metadata;
+	const metadata = message.content.metadata;
 	if (!metadata || typeof metadata !== "object") {
 		return {};
 	}
@@ -440,7 +440,7 @@ export function inferContextRoutingFromMessage(
 	return inferContextRoutingFromText(
 		typeof message.content === "string"
 			? message.content
-			: typeof message.content?.text === "string"
+			: typeof message.content.text === "string"
 				? message.content.text
 				: "",
 	);

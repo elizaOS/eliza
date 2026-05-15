@@ -1171,7 +1171,7 @@ function CalendarColumn({
                     className={`flex w-full items-start justify-between gap-3 px-3 py-3 text-left ${
                       index > 0 ? "border-t border-border/12" : ""
                     } ${
-                      workspace.selectedCalendarEvent?.id === event.id
+                      workspace.selectedCalendarEvent.id === event.id
                         ? "bg-accent/8"
                         : "hover:bg-bg-hover/30"
                     }`}
@@ -1637,7 +1637,7 @@ function EmailColumn({
                 className={`flex w-full items-start justify-between gap-3 px-3 py-3 text-left ${
                   index > 0 ? "border-t border-border/12" : ""
                 } ${
-                  workspace.selectedGmailMessage?.id === message.id
+                  workspace.selectedGmailMessage.id === message.id
                     ? "bg-accent/8"
                     : "hover:bg-bg-hover/30"
                 }`}

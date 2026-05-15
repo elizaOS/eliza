@@ -93,7 +93,7 @@ function hasReleaseBlockIntent(
   state: State | undefined,
 ): boolean {
   const text = [
-    typeof message.content?.text === "string" ? message.content.text : "",
+    typeof message.content.text === "string" ? message.content.text : "",
     typeof state?.values?.recentMessages === "string"
       ? state.values.recentMessages
       : "",

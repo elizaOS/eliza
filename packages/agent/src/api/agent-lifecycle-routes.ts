@@ -138,7 +138,7 @@ export async function handleAgentLifecycleRoutes(
     // Set the property AND call the service method so the batcher
     // section is actually registered/unregistered.
     const autonomySvc =
-      runtime.getService?.("AUTONOMY") ?? runtime.getService?.("autonomy");
+      runtime.getService("AUTONOMY") ?? runtime.getService("autonomy");
     if (isAutonomyToggleService(autonomySvc)) {
       if (enabled) {
         await autonomySvc.enableAutonomy();

@@ -2,7 +2,7 @@
   "root": false,
   "$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
   "files": {
-    "includes": ["src/**", "*.ts", "!dist", "!node_modules"]
+    "includes": ["src/**", "__tests__/**", "*.ts", "!dist", "!node_modules"]
   },
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "linter": {

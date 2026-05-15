@@ -192,10 +192,10 @@ export class TunnelToMobileClient {
     socket.addEventListener("close", (event: { reason?: string }) => {
       this.socket = null;
       if (this.stopped) {
-        this.transition("disconnected", event?.reason);
+        this.transition("disconnected", event.reason);
         return;
       }
-      this.transition("reconnecting", event?.reason);
+      this.transition("reconnecting", event.reason);
       this.scheduleReconnect();
     });
 

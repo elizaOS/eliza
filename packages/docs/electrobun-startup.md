@@ -32,11 +32,15 @@ So we keep:
 - **try/catch and `.catch()` where still applicable** — Any remaining async paths that could reject should set **error** state instead of leaving the UI uninitialized.
 - **Outer paths that must NOT kill the shell** when the goal is to show an in-app error — align with `native/agent.ts` comments and this doc.
 
-## Do not remove as "excess"
+## Preserve startup error guards
 
-Code reviews or automated "deslop" passes sometimes remove try/catch or `.catch()` as "redundant" or "excess exception handling." In this module, those guards are **intentional**: they keep the app window usable when the runtime fails to load. Removing them would bring back broken behavior (dead window, **Failed to fetch**, no error message).
+The remaining try/catch and `.catch()` paths are intentional. They keep the app
+window usable when the runtime fails to load. Removing them would bring back
+broken behavior: a dead window, **Failed to fetch**, and no useful error
+message.
 
-The file and key sites in `agent.ts` include **WHY** comments that reference this doc. When editing that file, preserve the guards and the rationale.
+The key sites in `agent.ts` include comments that reference this doc. When
+editing that file, preserve the guards and the rationale.
 
 ## Logs
 

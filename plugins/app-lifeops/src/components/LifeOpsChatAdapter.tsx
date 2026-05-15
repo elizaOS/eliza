@@ -66,7 +66,7 @@ export function buildMessageChatPrefill(message: LifeOpsInboxMessage): string {
     `Help me handle this ${channelLabel(message.channel)} from ${message.sender.displayName}.`,
     `Subject: ${subject}.`,
     receivedAt ? `Received: ${receivedAt}.` : null,
-    message.snippet?.trim().length
+    message.snippet.trim().length
       ? `Context: ${message.snippet.trim()}`
       : null,
     link || null,
@@ -178,7 +178,7 @@ export function useLifeOpsChatAdapter(selection: LifeOpsSelection): {
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<PrefillChatDetail>).detail;
-      if (!detail?.text) {
+      if (!detail.text) {
         return;
       }
       setChatInput(detail.text);

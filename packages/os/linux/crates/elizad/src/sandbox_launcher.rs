@@ -246,20 +246,6 @@ pub async fn stop(registry: &LaunchRegistry, slug: &str) -> Result<()> {
     Ok(())
 }
 
-/// Stop everything. Used on Tauri shutdown.
-#[allow(dead_code)] // Wired into the Tauri shutdown hook in milestone 11d.
-pub async fn stop_all(registry: &LaunchRegistry) {
-    let slugs: Vec<String> = {
-        let inner = registry.inner.lock().await;
-        inner.keys().cloned().collect()
-    };
-    for slug in slugs {
-        if let Err(e) = stop(registry, &slug).await {
-            warn!(slug, "stop_all error: {e:#}");
-        }
-    }
-}
-
 /// Construct the per-app `Arc<LaunchRegistry>` `AppState` carries.
 pub fn registry() -> Arc<LaunchRegistry> {
     Arc::new(LaunchRegistry::new())
