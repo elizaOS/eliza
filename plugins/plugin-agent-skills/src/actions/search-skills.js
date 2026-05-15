@@ -6,6 +6,7 @@
  * per result, and the LLM can suggest the right follow-up action by name.
  */
 import { createAgentSkillsActionValidator } from "./validators";
+
 function buildResultActions(slug, state) {
     const detailsAction = {
         kind: "details",

@@ -26,6 +26,7 @@ export { createStorage, FileSystemSkillStore, loadSkillFromStorage, MemorySkillS
 export { startSyncTask, syncCatalogTask } from "./tasks/sync-catalog";
 // Constants
 export { SKILL_BODY_RECOMMENDED_TOKENS, SKILL_COMPATIBILITY_MAX_LENGTH, SKILL_DESCRIPTION_MAX_LENGTH, SKILL_NAME_MAX_LENGTH, SKILL_NAME_PATTERN, SKILL_SOURCE_PRECEDENCE, } from "./types";
+
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
 // into an empty `init_X = () => {}`. Without this the on-device
@@ -41,6 +42,7 @@ import { AgentSkillsService as _bs_24_AgentSkillsService } from "./services/skil
 import { createStorage as _bs_25_createStorage, FileSystemSkillStore as _bs_26_FileSystemSkillStore, loadSkillFromStorage as _bs_27_loadSkillFromStorage, MemorySkillStore as _bs_28_MemorySkillStore } from "./storage";
 import { startSyncTask as _bs_29_startSyncTask, syncCatalogTask as _bs_30_syncCatalogTask } from "./tasks/sync-catalog";
 import { SKILL_BODY_RECOMMENDED_TOKENS as _bs_31_SKILL_BODY_RECOMMENDED_TOKENS, SKILL_COMPATIBILITY_MAX_LENGTH as _bs_32_SKILL_COMPATIBILITY_MAX_LENGTH, SKILL_DESCRIPTION_MAX_LENGTH as _bs_33_SKILL_DESCRIPTION_MAX_LENGTH, SKILL_NAME_MAX_LENGTH as _bs_34_SKILL_NAME_MAX_LENGTH, SKILL_NAME_PATTERN as _bs_35_SKILL_NAME_PATTERN, SKILL_SOURCE_PRECEDENCE as _bs_36_SKILL_SOURCE_PRECEDENCE } from "./types";
+
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
 const __bundle_safety_PLUGINS_PLUGIN_AGENT_SKILLS_SRC_INDEX__ = [_bs_1_useSkillAction, _bs_2_estimateTokens, _bs_3_extractBody, _bs_4_generateSkillsJson, _bs_5_parseFrontmatter, _bs_6_validateFrontmatter, _bs_7_validateSkillDirectory, _bs_8_agentSkillsPlugin, _bs_9_default, _bs_10_enabledSkillsProvider, _bs_11_catalogAwarenessProvider, _bs_12_skillInstructionsProvider, _bs_13_skillsSummaryProvider, _bs_14_findBestInstallOption, _bs_15_getAvailableInstallOptions, _bs_16_getInstallPlan, _bs_17_getPreferredNodeManager, _bs_18_installSkillDependencies, _bs_19_installSkillDependency, _bs_20_isAptAvailable, _bs_21_isCargoAvailable, _bs_22_isHomebrewAvailable, _bs_23_isPipAvailable, _bs_24_AgentSkillsService, _bs_25_createStorage, _bs_26_FileSystemSkillStore, _bs_27_loadSkillFromStorage, _bs_28_MemorySkillStore, _bs_29_startSyncTask, _bs_30_syncCatalogTask, _bs_31_SKILL_BODY_RECOMMENDED_TOKENS, _bs_32_SKILL_COMPATIBILITY_MAX_LENGTH, _bs_33_SKILL_DESCRIPTION_MAX_LENGTH, _bs_34_SKILL_NAME_MAX_LENGTH, _bs_35_SKILL_NAME_PATTERN, _bs_36_SKILL_SOURCE_PRECEDENCE];

@@ -20,6 +20,7 @@ import { catalogAwarenessProvider, skillInstructionsProvider, skillsSummaryProvi
 import { AgentSkillsService } from "./services/skills";
 // Background task
 import { startSyncTask } from "./tasks/sync-catalog";
+
 const ALL_SERVICES = [
     AgentSkillsService,
 ];

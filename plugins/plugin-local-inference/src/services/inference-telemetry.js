@@ -24,6 +24,7 @@
  *   tts.chunk_size_bytes     — byte size of one PCM chunk (T2)
  */
 import { logger } from "@elizaos/core";
+
 class BoundedRing {
 	cap;
 	buf;

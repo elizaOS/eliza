@@ -37,6 +37,7 @@
  * `/health` capability probe.
  */
 import { z } from "zod";
+
 // ---------------------------------------------------------------------------
 // Runtime validators. Hand-written (no zod dep here) — the discriminated
 // union is small and the parsers run per SSE chunk in a hot path.

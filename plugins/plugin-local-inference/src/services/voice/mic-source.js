@@ -30,6 +30,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { PcmRingBuffer } from "./ring-buffer";
+
 /** Resolve an executable on PATH (with the Windows extension list). */
 function whichBin(bin) {
 	const pathEnv = process.env.PATH ?? "";

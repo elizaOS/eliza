@@ -42,6 +42,7 @@
  */
 import { classifyDeviceTier, effectiveModelMemoryGb } from "../device-tier";
 import { RESIDENT_ROLE_PRIORITY } from "./shared-resources";
+
 const BYTES_PER_MB = 1024 * 1024;
 const BYTES_PER_GB = 1024 ** 3;
 export function priorityClassForRole(role) {

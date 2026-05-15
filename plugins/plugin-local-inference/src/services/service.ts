@@ -20,12 +20,6 @@ import { dflashLlamaServer, getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
-import { createVisionCapabilityRegistration } from "./vision";
-import type {
-	VisionDescribeBackend,
-	VisionDescribeRequest,
-	VisionDescribeResult,
-} from "./vision/types";
 import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
 import {
 	MemoryArbiter,
@@ -64,6 +58,12 @@ import type {
 } from "./types";
 import { type VerifyResult, verifyInstalledModel } from "./verify";
 import { verifyBundleOnDevice } from "./verify-on-device";
+import { createVisionCapabilityRegistration } from "./vision";
+import type {
+	VisionDescribeBackend,
+	VisionDescribeRequest,
+	VisionDescribeResult,
+} from "./vision/types";
 
 export class LocalInferenceService {
 	// The downloader runs the engine-backed on-device verify pass

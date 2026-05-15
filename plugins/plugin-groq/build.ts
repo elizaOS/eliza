@@ -80,20 +80,23 @@ async function build(): Promise<void> {
   const { $ } = await import("bun");
   await $`tsc --project tsconfig.build.json`;
 
+  // Top-level `dist/index.d.ts` aggregates the node entrypoint declarations.
+  // We re-export from the tsc-emitted `./node/index.node` rather than `./node/index`
+  // to avoid forming a cycle with `dist/node/index.d.ts`, which tsc emits from
+  // `index.ts` and which `index.node.ts` itself imports via `./index`.
   await writeFile(
     join(distDir, "index.d.ts"),
-    `export * from "./node/index";
-export { default } from "./node/index";
+    `export * from "./node/index.node";
+export { default } from "./node/index.node";
 `,
     "utf8"
   );
-  await writeFile(
-    join(distDir, "node", "index.d.ts"),
-    `export * from "./index.node";
-export { default } from "./index.node";
-`,
-    "utf8"
-  );
+  // Note: tsc already emits `dist/node/index.d.ts` from `index.ts` and
+  // `dist/node/index.node.d.ts` from `index.node.ts`. Previously this script
+  // overwrote `dist/node/index.d.ts` to re-export `./index.node`, which formed
+  // a cycle: `index.d.ts → index.node.d.ts → index.d.ts` (because
+  // `index.node.ts` does `import from "./index"`). Leave the tsc-emitted
+  // declarations in place so the types are flat.
   await writeFile(
     join(distDir, "browser", "index.d.ts"),
     `export * from "./index.browser";

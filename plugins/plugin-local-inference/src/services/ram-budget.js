@@ -30,6 +30,7 @@ import path from "node:path";
 import { ELIZA_1_TIER_IDS, MODEL_CATALOG } from "./catalog";
 import { estimateQuantizedKvBytesPerToken } from "./kv-spill";
 import { validateManifest } from "./manifest";
+
 const MB_PER_GB = 1024;
 const BYTES_PER_MB = 1024 * 1024;
 /**
