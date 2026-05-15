@@ -83,3 +83,15 @@ target_link_libraries(face_embed_runtime_test PRIVATE face)
 target_include_directories(face_embed_runtime_test PRIVATE test src)
 target_compile_options(face_embed_runtime_test PRIVATE -O2 -Wall -Wextra -Wno-unused-parameter)
 add_test(NAME face_embed_runtime_test COMMAND face_embed_runtime_test)
+
+# Optional Python-driven parity test against MediaPipe / hollance/BlazeFace-PyTorch.
+# Skips itself when torch / Pillow / the reference checkpoint are unavailable so it
+# never blocks the C-only build but always runs in the dev environment.
+find_program(PYTHON3_EXECUTABLE python3)
+if(PYTHON3_EXECUTABLE)
+    add_test(
+        NAME face_parity_test
+        COMMAND ${PYTHON3_EXECUTABLE} -u
+                ${CMAKE_CURRENT_SOURCE_DIR}/test/face_parity_test.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+endif()

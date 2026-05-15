@@ -151,6 +151,7 @@ class OpenClawTerminalAgent:
         self._model_name = model_name or "openclaw"
         self._client = client or OpenClawClient(direct_openai_compatible=True)
         self._verbose = verbose
+        self._last_session = None
         # OpenClaw is stateless per send_message — every turn embeds the
         # full conversation in the user-side prompt.
         self._history: list[dict[str, str]] = []
@@ -184,6 +185,7 @@ class OpenClawTerminalAgent:
             environment_vars={},
             start_time=datetime.now(),
         )
+        self._last_session = session
 
         try:
             self._client.reset(task_id=task.task_id, benchmark="terminal_bench")

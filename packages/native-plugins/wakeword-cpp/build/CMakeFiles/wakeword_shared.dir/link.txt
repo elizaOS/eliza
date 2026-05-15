@@ -1,0 +1,1 @@
+/usr/bin/cc -fPIC -O3 -DNDEBUG -shared -Wl,-soname,libwakeword.so -o libwakeword.so CMakeFiles/wakeword_shared.dir/src/wakeword_runtime.c.o CMakeFiles/wakeword_shared.dir/src/wakeword_melspec.c.o CMakeFiles/wakeword_shared.dir/src/wakeword_window.c.o  -lm 

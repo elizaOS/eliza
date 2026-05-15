@@ -1,5 +1,5 @@
 {
-  "generatedAtIso": "2026-05-15T11:42:21.129Z",
+  "generatedAtIso": "2026-05-15T11:56:50.870Z",
   "provider": "cerebras",
   "model": "gpt-oss-120b",
   "domainsGraded": 28,
@@ -144,7 +144,7 @@
         "promptTokens": 1748,
         "completionTokens": 60,
         "totalTokens": 1808,
-        "cachedTokens": 1024
+        "cachedTokens": 1664
       },
       "tasksObserved": 2,
       "logEntriesObserved": 3
@@ -209,12 +209,12 @@
       "domain": 15,
       "title": "Multi-channel & cross-channel search",
       "verdict": "pass",
-      "rationale": "The task is correctly scheduled with the required contextRequest and no errors in state or log.",
+      "rationale": "The task is correctly scheduled with the required contextRequest and no violations of the spine rules.",
       "usage": {
         "promptTokens": 1451,
         "completionTokens": 76,
         "totalTokens": 1527,
-        "cachedTokens": 1024
+        "cachedTokens": 1408
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1
@@ -228,7 +228,7 @@
         "promptTokens": 1717,
         "completionTokens": 110,
         "totalTokens": 1827,
-        "cachedTokens": 1024
+        "cachedTokens": 1664
       },
       "tasksObserved": 1,
       "logEntriesObserved": 4
@@ -293,12 +293,12 @@
       "domain": 21,
       "title": "Health, money, screen time",
       "verdict": "pass",
-      "rationale": "The watcher was correctly scheduled with the appropriate completion check and no premature firing or completion, matching the expected end state.",
+      "rationale": "The watcher was correctly scheduled with the appropriate completion check and no erroneous state transitions.",
       "usage": {
         "promptTokens": 1427,
-        "completionTokens": 79,
-        "totalTokens": 1506,
-        "cachedTokens": 1024
+        "completionTokens": 72,
+        "totalTokens": 1499,
+        "cachedTokens": 1408
       },
       "tasksObserved": 1,
       "logEntriesObserved": 1

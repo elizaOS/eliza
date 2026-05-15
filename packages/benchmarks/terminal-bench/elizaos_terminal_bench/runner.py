@@ -468,6 +468,28 @@ class TerminalBenchRunner:
 
         except asyncio.TimeoutError:
             logger.warning(f"Task {task.task_id} timed out")
+            partial_session = getattr(agent, "_last_session", None)
+            if partial_session is not None:
+                partial_session.end_time = datetime.now()
+                total_execution_time = sum(
+                    c.execution_time_ms for c in partial_session.commands
+                )
+                return TerminalBenchResult(
+                    task_id=task.task_id,
+                    success=False,
+                    commands_executed=len(partial_session.commands),
+                    total_execution_time_ms=total_execution_time,
+                    test_output=partial_session.final_test_output,
+                    test_exit_code=(
+                        partial_session.final_test_exit_code
+                        if partial_session.final_test_exit_code is not None
+                        else 1
+                    ),
+                    error_message=f"Task timed out after {self.config.timeout_per_task_seconds}s",
+                    session=partial_session,
+                    category=task.category,
+                    difficulty=task.difficulty,
+                )
             return TerminalBenchResult(
                 task_id=task.task_id,
                 success=False,

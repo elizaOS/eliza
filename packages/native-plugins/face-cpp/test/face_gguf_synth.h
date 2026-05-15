@@ -182,8 +182,12 @@ static int synth_write(synth_gguf *g, const char *path) {
     for (int i = 0; i < g->n_tensors; ++i) {
         if (buf_str(&hdr, g->tensors[i].name)) goto oom;
         if (buf_u32(&hdr, (uint32_t)g->tensors[i].ndim)) goto oom;
+        /* Match GGUFWriter: store dimensions fastest-varying first
+         * (reverse of PyTorch's (cout, cin, kh, kw) convention). The
+         * face_gguf_open reader un-reverses on load. */
         for (int d = 0; d < g->tensors[i].ndim; ++d) {
-            if (buf_u64(&hdr, g->tensors[i].dims[d])) goto oom;
+            const int j = g->tensors[i].ndim - 1 - d;
+            if (buf_u64(&hdr, g->tensors[i].dims[j])) goto oom;
         }
         if (buf_u32(&hdr, g->tensors[i].dtype)) goto oom;
         if (buf_u64(&hdr, g->tensors[i].data_off)) goto oom;

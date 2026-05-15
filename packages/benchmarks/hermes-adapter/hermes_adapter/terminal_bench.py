@@ -155,6 +155,7 @@ class HermesTerminalAgent:
         self._client = client or HermesClient()
         self._verbose = verbose
         self._initialized = False
+        self._last_session = None
         # Hermes is stateless per send_message — every turn carries the full
         # conversation in context["messages"]. ``_history`` accumulates the
         # OpenAI-shape transcript for this task.
@@ -229,6 +230,7 @@ class HermesTerminalAgent:
             environment_vars={},
             start_time=datetime.now(),
         )
+        self._last_session = session
 
         try:
             self._client.reset(task_id=task.task_id, benchmark="terminal_bench")

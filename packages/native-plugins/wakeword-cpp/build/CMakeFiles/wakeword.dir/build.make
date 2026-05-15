@@ -69,19 +69,19 @@ include CMakeFiles/wakeword.dir/progress.make
 # Include the compile flags for this target's objects.
 include CMakeFiles/wakeword.dir/flags.make
 
-CMakeFiles/wakeword.dir/src/wakeword_stub.c.o: CMakeFiles/wakeword.dir/flags.make
-CMakeFiles/wakeword.dir/src/wakeword_stub.c.o: /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/src/wakeword_stub.c
-CMakeFiles/wakeword.dir/src/wakeword_stub.c.o: CMakeFiles/wakeword.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/wakeword.dir/src/wakeword_stub.c.o"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/wakeword.dir/src/wakeword_stub.c.o -MF CMakeFiles/wakeword.dir/src/wakeword_stub.c.o.d -o CMakeFiles/wakeword.dir/src/wakeword_stub.c.o -c /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/src/wakeword_stub.c
+CMakeFiles/wakeword.dir/src/wakeword_runtime.c.o: CMakeFiles/wakeword.dir/flags.make
+CMakeFiles/wakeword.dir/src/wakeword_runtime.c.o: /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/src/wakeword_runtime.c
+CMakeFiles/wakeword.dir/src/wakeword_runtime.c.o: CMakeFiles/wakeword.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building C object CMakeFiles/wakeword.dir/src/wakeword_runtime.c.o"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT CMakeFiles/wakeword.dir/src/wakeword_runtime.c.o -MF CMakeFiles/wakeword.dir/src/wakeword_runtime.c.o.d -o CMakeFiles/wakeword.dir/src/wakeword_runtime.c.o -c /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/src/wakeword_runtime.c
 
-CMakeFiles/wakeword.dir/src/wakeword_stub.c.i: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/wakeword.dir/src/wakeword_stub.c.i"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/src/wakeword_stub.c > CMakeFiles/wakeword.dir/src/wakeword_stub.c.i
+CMakeFiles/wakeword.dir/src/wakeword_runtime.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/wakeword.dir/src/wakeword_runtime.c.i"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/src/wakeword_runtime.c > CMakeFiles/wakeword.dir/src/wakeword_runtime.c.i
 
-CMakeFiles/wakeword.dir/src/wakeword_stub.c.s: cmake_force
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/wakeword.dir/src/wakeword_stub.c.s"
-	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/src/wakeword_stub.c -o CMakeFiles/wakeword.dir/src/wakeword_stub.c.s
+CMakeFiles/wakeword.dir/src/wakeword_runtime.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/wakeword.dir/src/wakeword_runtime.c.s"
+	/usr/bin/cc $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/src/wakeword_runtime.c -o CMakeFiles/wakeword.dir/src/wakeword_runtime.c.s
 
 CMakeFiles/wakeword.dir/src/wakeword_melspec.c.o: CMakeFiles/wakeword.dir/flags.make
 CMakeFiles/wakeword.dir/src/wakeword_melspec.c.o: /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/src/wakeword_melspec.c
@@ -113,14 +113,14 @@ CMakeFiles/wakeword.dir/src/wakeword_window.c.s: cmake_force
 
 # Object files for target wakeword
 wakeword_OBJECTS = \
-"CMakeFiles/wakeword.dir/src/wakeword_stub.c.o" \
+"CMakeFiles/wakeword.dir/src/wakeword_runtime.c.o" \
 "CMakeFiles/wakeword.dir/src/wakeword_melspec.c.o" \
 "CMakeFiles/wakeword.dir/src/wakeword_window.c.o"
 
 # External object files for target wakeword
 wakeword_EXTERNAL_OBJECTS =
 
-libwakeword.a: CMakeFiles/wakeword.dir/src/wakeword_stub.c.o
+libwakeword.a: CMakeFiles/wakeword.dir/src/wakeword_runtime.c.o
 libwakeword.a: CMakeFiles/wakeword.dir/src/wakeword_melspec.c.o
 libwakeword.a: CMakeFiles/wakeword.dir/src/wakeword_window.c.o
 libwakeword.a: CMakeFiles/wakeword.dir/build.make

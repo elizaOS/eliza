@@ -111,13 +111,22 @@ typedef struct {
 } ww_gguf;
 
 static int rd_u32(const uint8_t *p, size_t a, size_t *c, uint32_t *o) {
-    if (*c + 4 > a) return -EINVAL; memcpy(o, p + *c, 4); *c += 4; return 0;
+    if (*c + 4 > a) return -EINVAL;
+    memcpy(o, p + *c, 4);
+    *c += 4;
+    return 0;
 }
 static int rd_u64(const uint8_t *p, size_t a, size_t *c, uint64_t *o) {
-    if (*c + 8 > a) return -EINVAL; memcpy(o, p + *c, 8); *c += 8; return 0;
+    if (*c + 8 > a) return -EINVAL;
+    memcpy(o, p + *c, 8);
+    *c += 8;
+    return 0;
 }
 static int rd_f32(const uint8_t *p, size_t a, size_t *c, float *o) {
-    if (*c + 4 > a) return -EINVAL; memcpy(o, p + *c, 4); *c += 4; return 0;
+    if (*c + 4 > a) return -EINVAL;
+    memcpy(o, p + *c, 4);
+    *c += 4;
+    return 0;
 }
 static int rd_str(const uint8_t *p, size_t a, size_t *c,
                   const char **so, uint64_t *lo) {
@@ -134,13 +143,17 @@ static int rd_str(const uint8_t *p, size_t a, size_t *c,
 static int skip_kv_value(const uint8_t *p, size_t a, size_t *c, uint32_t type) {
     switch (type) {
     case GGUF_TYPE_UINT8: case GGUF_TYPE_INT8: case GGUF_TYPE_BOOL:
-        if (*c + 1 > a) return -EINVAL; *c += 1; return 0;
+        if (*c + 1 > a) return -EINVAL;
+        *c += 1; return 0;
     case GGUF_TYPE_UINT16: case GGUF_TYPE_INT16:
-        if (*c + 2 > a) return -EINVAL; *c += 2; return 0;
+        if (*c + 2 > a) return -EINVAL;
+        *c += 2; return 0;
     case GGUF_TYPE_UINT32: case GGUF_TYPE_INT32: case GGUF_TYPE_FLOAT32:
-        if (*c + 4 > a) return -EINVAL; *c += 4; return 0;
+        if (*c + 4 > a) return -EINVAL;
+        *c += 4; return 0;
     case GGUF_TYPE_UINT64: case GGUF_TYPE_INT64: case GGUF_TYPE_FLOAT64:
-        if (*c + 8 > a) return -EINVAL; *c += 8; return 0;
+        if (*c + 8 > a) return -EINVAL;
+        *c += 8; return 0;
     case GGUF_TYPE_STRING: { const char *s; uint64_t l; return rd_str(p, a, c, &s, &l); }
     case GGUF_TYPE_ARRAY: {
         uint32_t et; uint64_t n;
@@ -891,37 +904,22 @@ int wakeword_process(wakeword_handle h,
     if (!h || !score_out) return -EINVAL;
     if (n_samples > 0 && !pcm_16khz) return -EINVAL;
 
-    /* Push PCM through the streaming melspec. The chunk-size bound is
-     * generous: max columns from `wakeword_melspec_max_columns`. */
-    const size_t max_cols = wakeword_melspec_max_columns(n_samples);
-    if (max_cols > 0) {
-        float *cols = (float *)malloc(max_cols * (size_t)WW_N_MELS * sizeof(float));
-        if (!cols) return -ENOMEM;
-        size_t n_cols = 0;
-        int rc = wakeword_melspec_stream(&h->mel_state, pcm_16khz, n_samples, cols, &n_cols);
+    /* Push PCM through the streaming melspec. Always allocate at least
+     * one column of scratch so the carry buffer can absorb input chunks
+     * smaller than the STFT window without `wakeword_melspec_stream`
+     * tripping its own NULL-buffer check. */
+    size_t max_cols = wakeword_melspec_max_columns(n_samples);
+    if (max_cols == 0) max_cols = 1;
+    float *cols = (float *)malloc(max_cols * (size_t)WW_N_MELS * sizeof(float));
+    if (!cols) return -ENOMEM;
+    size_t n_cols = 0;
+    int rc = wakeword_melspec_stream(&h->mel_state, pcm_16khz, n_samples, cols, &n_cols);
+    if (rc != 0) { free(cols); return rc; }
+    if (n_cols > 0) {
+        rc = push_mel_frames(h, cols, (int)n_cols);
         if (rc != 0) { free(cols); return rc; }
-        if (n_cols > 0) {
-            rc = push_mel_frames(h, cols, (int)n_cols);
-            if (rc != 0) { free(cols); return rc; }
-        }
-        free(cols);
-    } else {
-        /* Even with too few samples to emit a column, the carry buffer
-         * needs to absorb them so the next call sees them. The max=0
-         * branch happens when total carry+input < WW_N_FFT. */
-        size_t n_cols = 0;
-        /* We still call stream() with a 0-cap buffer (allowed: no
-         * column will be emitted). */
-        int rc = wakeword_melspec_stream(&h->mel_state, pcm_16khz, n_samples, NULL, &n_cols);
-        /* When there's no out_columns buffer but n_cols stays 0 the
-         * stream() impl rejects on EINVAL — handle the corner by
-         * supplying a tiny scratch. */
-        if (rc == -EINVAL) {
-            float scratch[WW_N_MELS];
-            rc = wakeword_melspec_stream(&h->mel_state, pcm_16khz, n_samples, scratch, &n_cols);
-        }
-        if (rc != 0) return rc;
     }
+    free(cols);
 
     *score_out = h->last_score;
     return 0;

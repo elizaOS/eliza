@@ -115,6 +115,7 @@ class ElizaBridgeTerminalAgent:
         self._client = client or ElizaClient()
         self._verbose = verbose
         self._initialized = False
+        self._last_session = None
 
     async def _initialize(self) -> None:
         if self._initialized:
@@ -135,6 +136,7 @@ class ElizaBridgeTerminalAgent:
             environment_vars={},
             start_time=datetime.now(),
         )
+        self._last_session = session
 
         # Reset bridge session for this task
         try:

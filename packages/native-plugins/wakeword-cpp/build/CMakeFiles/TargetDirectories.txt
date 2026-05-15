@@ -1,7 +1,9 @@
 /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles/wakeword.dir
+/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles/wakeword_shared.dir
 /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles/wakeword_stub_smoke.dir
 /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles/wakeword_melspec_test.dir
 /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles/wakeword_window_test.dir
+/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles/wakeword_runtime_test.dir
 /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles/test.dir
 /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles/edit_cache.dir
 /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/CMakeFiles/rebuild_cache.dir

@@ -56,9 +56,18 @@
 
 #define VAD_STFT_FILTER_LENGTH 256
 #define VAD_STFT_HOP           128
-#define VAD_STFT_PAD            64
+/* Context = the last `VAD_CONTEXT_SAMPLES` samples of the previous
+ * window, prepended to the current window before STFT. This mirrors
+ * the upstream OnnxWrapper (utils_vad.py): each window the wrapper
+ * passes to the model is `[prev_last_64, current_512] = 576`
+ * samples; without it the model's STFT loses the carry it was
+ * trained against and the per-window prob drifts from the reference
+ * by 0.1+ on speech-like inputs. The C runtime owns this context as
+ * part of `silero_vad_session`. */
+#define VAD_CONTEXT_SAMPLES     64
+#define VAD_INPUT_PADDED_LEN   (VAD_CONTEXT_SAMPLES + SILERO_VAD_WINDOW_SAMPLES_16K + 64)  /* = 640 */
 #define VAD_STFT_BINS          129   /* (filter_length / 2) + 1 */
-#define VAD_STFT_FRAMES          4   /* (512 + 2*64 - 256)/128 + 1 */
+#define VAD_STFT_FRAMES          4   /* (640 - 256)/128 + 1 */
 #define VAD_ENCODER_T            1   /* after stride 1, 2, 2, 1 over 4 STFT frames */
 #define VAD_LSTM_INPUT_DIM     128
 #define VAD_HIDDEN_DIM         SILERO_VAD_STATE_HIDDEN_DIM
