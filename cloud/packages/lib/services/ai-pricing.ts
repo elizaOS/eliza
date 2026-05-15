@@ -349,46 +349,109 @@ function inferOpenRouterProductFamily(model: OpenRouterCatalogModel): PricingPro
   return "language";
 }
 
-function buildOpenRouterPreparedEntries(model: OpenRouterCatalogModel): PreparedPricingEntry[] {
+/**
+ * Strips a versioned snapshot suffix from a model id when the suffix looks
+ * unambiguous: dated (`-20240605`, `-2024-06-05`), labeled (`-latest`,
+ * `-preview`, `-beta`), or numeric (`-001`, `-1234`).
+ *
+ * **Why:** OpenRouter's catalog lists models under their snapshot ids
+ * (`google/gemini-2.0-flash-001`, `openai/gpt-4o-2024-11-20`) while clients
+ * routinely send the unsuffixed canonical id (`google/gemini-2.0-flash`,
+ * `openai/gpt-4o`). Without a second index entry under the base id, pricing
+ * lookup throws "Pricing unavailable" even though the inference call itself
+ * succeeds at OpenRouter (which performs its own alias resolution).
+ *
+ * **Numeric-suffix safety rail:** for `-NNN` patterns we require at least two
+ * dash-separated segments to remain after the slash so `openai/gpt-4` does not
+ * collapse to `openai/gpt`. Date and labelled suffixes are unambiguous so
+ * `openai/o1-2024-12-17` still strips to `openai/o1`.
+ *
+ * Returns the stripped id, or `null` if no rule applies or the result would be
+ * degenerate (empty, or just a `provider/` prefix).
+ */
+export function stripVersionedSnapshotSuffix(modelId: string): string | null {
+  const datedOrLabelledPatterns = [
+    /-\d{4}-\d{2}-\d{2}$/, // ISO date: -2024-06-05
+    /-\d{8}$/, // compact date: -20240605
+    /-latest$/,
+    /-preview$/,
+    /-beta$/,
+  ];
+
+  for (const pattern of datedOrLabelledPatterns) {
+    if (!pattern.test(modelId)) continue;
+    const stripped = modelId.replace(pattern, "");
+    if (stripped.length === 0 || stripped.endsWith("/")) return null;
+    return stripped;
+  }
+
+  const numericPattern = /-\d{1,4}$/;
+  if (numericPattern.test(modelId)) {
+    const stripped = modelId.replace(numericPattern, "");
+    if (stripped.length === 0 || stripped.endsWith("/")) return null;
+    const slashIdx = stripped.indexOf("/");
+    const afterSlash = slashIdx === -1 ? stripped : stripped.slice(slashIdx + 1);
+    if (afterSlash.split("-").length < 2) return null;
+    return stripped;
+  }
+
+  return null;
+}
+
+/**
+ * Builds pricing entries from a single OpenRouter catalog row.
+ *
+ * For each (input/output) price we emit the exact-id row at default priority
+ * and — when `stripVersionedSnapshotSuffix` produces a base id — a duplicate
+ * row at `priority: -1` so lookups for the unsuffixed canonical id resolve.
+ * The exact match still wins via `chooseBestCandidatePricingEntry`'s priority
+ * tie-break when both forms are requested.
+ */
+export function buildOpenRouterPreparedEntries(
+  model: OpenRouterCatalogModel,
+): PreparedPricingEntry[] {
   const pricing = model.pricing ?? {};
   const provider = inferProviderFromCanonicalModel(model.id);
   const productFamily = inferOpenRouterProductFamily(model);
   const fetchedAt = new Date();
   const staleAfter = new Date(fetchedAt.getTime() + EXTERNAL_CACHE_TTL_MS);
-  const entries: PreparedPricingEntry[] = [];
+  const baseId = stripVersionedSnapshotSuffix(model.id);
 
+  const buildEntry = (
+    modelId: string,
+    chargeType: "input" | "output",
+    unitPrice: number,
+    priority?: number,
+  ): PreparedPricingEntry => ({
+    billingSource: "openrouter",
+    provider,
+    model: modelId,
+    productFamily,
+    chargeType,
+    unit: "token",
+    unitPrice,
+    sourceKind: "openrouter_catalog",
+    sourceUrl: OPENROUTER_MODELS_URL,
+    fetchedAt,
+    staleAfter,
+    ...(priority !== undefined ? { priority } : {}),
+  });
+
+  const entries: PreparedPricingEntry[] = [];
   const promptPrice = parseNumericPrice(pricing.prompt);
   if (promptPrice != null) {
-    entries.push({
-      billingSource: "openrouter",
-      provider,
-      model: model.id,
-      productFamily,
-      chargeType: "input",
-      unit: "token",
-      unitPrice: promptPrice,
-      sourceKind: "openrouter_catalog",
-      sourceUrl: OPENROUTER_MODELS_URL,
-      fetchedAt,
-      staleAfter,
-    });
+    entries.push(buildEntry(model.id, "input", promptPrice));
+    if (baseId !== null && baseId !== model.id) {
+      entries.push(buildEntry(baseId, "input", promptPrice, -1));
+    }
   }
 
   const completionPrice = parseNumericPrice(pricing.completion);
   if (completionPrice != null) {
-    entries.push({
-      billingSource: "openrouter",
-      provider,
-      model: model.id,
-      productFamily,
-      chargeType: "output",
-      unit: "token",
-      unitPrice: completionPrice,
-      sourceKind: "openrouter_catalog",
-      sourceUrl: OPENROUTER_MODELS_URL,
-      fetchedAt,
-      staleAfter,
-    });
+    entries.push(buildEntry(model.id, "output", completionPrice));
+    if (baseId !== null && baseId !== model.id) {
+      entries.push(buildEntry(baseId, "output", completionPrice, -1));
+    }
   }
 
   return entries;
@@ -973,7 +1036,9 @@ function parseVastPricingOverrides(): Record<string, { input: number; output: nu
         const input = Number(value?.input);
         const output = Number(value?.output);
         if (!Number.isFinite(input) || !Number.isFinite(output) || input < 0 || output < 0) {
-          logger.warn("ai-pricing: ignoring invalid Vast pricing override", { model });
+          logger.warn("ai-pricing: ignoring invalid Vast pricing override", {
+            model,
+          });
           return [];
         }
         return [[model, { input, output }]];
