@@ -519,8 +519,10 @@ function runtimeForTier(
 }
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
+  q3_k_m: "q3_k_m",
   q4_0: "Q4_0",
   q4_k_m: "q4_k_m",
+  q5_k_m: "q5_k_m",
   q6_k: "q6_k",
   q8_0: "q8_0",
 };
@@ -552,9 +554,11 @@ function textQuantizationMatrix(args: {
   return {
     defaultVariantId: "q4_k_m",
     variants: [
+      mk("q3_k_m", "3-bit", 0.78, 0.8, "published"),
       mk("q4_k_m", "4-bit", 1, 1, "published"),
-      mk("q6_k", "6-bit", 1.45, 1.35, "planned"),
-      mk("q8_0", "8-bit", 1.95, 1.8, "planned"),
+      mk("q5_k_m", "5-bit", 1.24, 1.18, "published"),
+      mk("q6_k", "6-bit", 1.45, 1.35, "published"),
+      mk("q8_0", "8-bit", 1.95, 1.8, "published"),
     ],
   };
 }

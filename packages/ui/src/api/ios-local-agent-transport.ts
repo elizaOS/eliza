@@ -167,6 +167,46 @@ function fullBunStartupError(message: string, cause?: unknown): Error {
   );
 }
 
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function localUnavailablePayload(reason: string, message: string): string {
+  return JSON.stringify({
+    error: "local-unavailable",
+    code: "local-unavailable",
+    reason,
+    message,
+  });
+}
+
+function localUnavailableNativeResult(
+  reason: string,
+  message: string,
+): IosLocalAgentNativeRequestResult {
+  return {
+    status: 503,
+    statusText: "Local Agent Unavailable",
+    headers: { "content-type": "application/json" },
+    body: localUnavailablePayload(reason, message),
+  };
+}
+
+function localUnavailableResponse(reason: string, message: string): Response {
+  return nativeResultToResponse(localUnavailableNativeResult(reason, message));
+}
+
+function createIosLocalUnavailableTransport(
+  reason: string,
+  message: string,
+): AgentRequestTransport {
+  return {
+    async request() {
+      return localUnavailableResponse(reason, message);
+    },
+  };
+}
+
 function isNativeIos(): boolean {
   try {
     return Capacitor.isNativePlatform() && Capacitor.getPlatform() === "ios";
@@ -260,7 +300,7 @@ function isMobileLocalAgentUrl(value: string): boolean {
   return (
     parsed.protocol === "http:" &&
     parsed.port === LOCAL_AGENT_PORT &&
-    LOCAL_AGENT_HOSTS.has(parsed.hostname)
+    LOCAL_AGENT_HOSTS.has(normalizeHost(parsed.hostname))
   );
 }
 
