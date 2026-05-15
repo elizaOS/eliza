@@ -20,6 +20,4 @@ export const appContactsPlugin: Plugin = {
   providers: [contactsProvider],
 };
 
-export default appContactsPlugin;
-
 export { contactsProvider } from "./providers/contacts";

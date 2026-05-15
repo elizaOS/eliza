@@ -122,7 +122,7 @@ function setupMocks(): TestState {
     },
   }));
 
-  globalThis.fetch = mock(async (input, init) => {
+  globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
     const request = new Request(input, init);
     if (request.url === "https://agent-runtime.example/api/memory/remember") {
       const body = (await request.json()) as { text?: string };
@@ -137,7 +137,7 @@ function setupMocks(): TestState {
       });
     }
     throw new Error(`Unexpected fetch in onboarding handoff test: ${request.url}`);
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   return state;
 }
@@ -196,7 +196,9 @@ describe("eliza-app onboarding handoff e2e", () => {
     );
     expect(state.createdAgents).toHaveLength(1);
     expect(state.enqueuedJobs).toHaveLength(1);
-    expect(authenticated.session.history.map((message) => message.content)).toContain(
+    expect(
+      authenticated.session.history.map((message: { content: string }) => message.content),
+    ).toContain(
       "My name is Ada.",
     );
 
