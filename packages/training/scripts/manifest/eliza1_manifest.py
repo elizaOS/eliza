@@ -32,7 +32,7 @@ ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
-ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
+ELIZA_1_HF_REPO: Final[str] = "elizalabs/eliza-1"
 
 # The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
@@ -42,6 +42,14 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "9b",
     "27b",
     "27b-256k",
+    "27b-1m",
+)
+
+ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(
+    ("2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
+)
+ELIZA_1_VISION_TIERS: Final[frozenset[str]] = frozenset(
+    ("4b", "9b", "27b", "27b-256k", "27b-1m")
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
