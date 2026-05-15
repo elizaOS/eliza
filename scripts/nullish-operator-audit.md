@@ -1,43 +1,46 @@
 # Nullish Operator Audit Report
 
-Generated: 2026-05-15T10:53:40.460Z
+Generated: 2026-05-15T10:55:16.786Z
 
 ## Summary
 
 | Metric | Count |
 | --- | ---: |
-| TypeScript files scanned | 348 |
-| Operators found | 10453 |
-| Type-obvious removable | 4 |
+| TypeScript files scanned | 291 |
+| Operators found | 6029 |
+| Type-obvious removable | 5 |
 | Applied edits | 0 |
 
 ## By Kind
 
 | Kind | Count |
 | --- | ---: |
-| `binary-??` | 1959 |
-| `binary-&&` | 1922 |
-| `binary-\|\|` | 1707 |
-| `optional-chain` | 1974 |
-| `optional-declaration` | 2891 |
+| `binary-??` | 1137 |
+| `binary-&&` | 975 |
+| `binary-\|\|` | 1197 |
+| `non-null-assertion` | 2 |
+| `optional-chain` | 994 |
+| `optional-declaration` | 1724 |
 
 ## By Classification
 
 | Classification | Count |
 | --- | ---: |
-| `review-required` | 3602 |
-| `truthy-left-review` | 27 |
-| `type-obvious-removable` | 4 |
-| `type-required-or-unknown` | 3929 |
-| `upstream-type-review` | 2891 |
+| `review-required` | 2165 |
+| `truthy-left-review` | 7 |
+| `type-obvious-removable` | 5 |
+| `type-required-or-unknown` | 2128 |
+| `upstream-type-review` | 1724 |
 
 ## Type-Obvious Removable Examples
 
-- `packages/agent/src/api/connector-account-routes.ts:863:38` binary-??: query.outcome ?? ""
-  - left-hand type excludes null and undefined; type: `string`
-- `packages/agent/src/api/connector-account-routes.ts:871:37` binary-??: query.accountId ?? ""
-  - left-hand type excludes null and undefined; type: `string`
-- `packages/agent/src/api/connector-account-routes.ts:872:31` binary-??: query.action ?? ""
-  - left-hand type excludes null and undefined; type: `string`
-- `packages/agent/src/api/views-routes.ts:122:26` optional-chain: body?.payload
-  - receiver type excludes null and undefined; type: `Record<string, unknown>`
+- `packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts:97:83` optional-chain: request.target?.kind
+  - receiver type excludes null and undefined; type: `SensitiveRequestPrivateInfoTarget \| SensitiveRequestPaymentTarget \| SensitiveRequestOauthTarget`
+- `packages/app-core/src/services/sensitive-requests/owner-app-inline-adapter.ts:191:83` optional-chain: request.target?.kind
+  - receiver type excludes null and undefined; type: `SensitiveRequestPrivateInfoTarget \| SensitiveRequestPaymentTarget \| SensitiveRequestOauthTarget`
+- `packages/app-core/src/services/phrase-chunked-tts.ts:148:60` binary-??: globalThis.performance?.now?.() ?? Date.now()
+  - left-hand type excludes null and undefined; type: `number`
+- `packages/app-core/src/services/phrase-chunked-tts.ts:148:55` optional-chain: globalThis.performance?.now?.()
+  - receiver type excludes null and undefined; type: `() => number`
+- `packages/app-core/src/services/phrase-chunked-tts.ts:148:50` optional-chain: globalThis.performance?.now
+  - receiver type excludes null and undefined; type: `Performance`

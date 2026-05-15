@@ -2732,6 +2732,7 @@ async function handleRequest(
       json,
       error,
       broadcastWs: state.broadcastWs ?? undefined,
+      runtime: state.runtime,
     })
   ) {
     return;
