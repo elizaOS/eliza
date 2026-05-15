@@ -214,6 +214,118 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
+	it("uses a compact direct-channel prompt catalog", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hi.",
+			}),
+		]);
+		const longDescription =
+			"Very long context description. ".repeat(80) +
+			"This should not be in direct-channel Stage 1 prompts.";
+		runtime.contexts = {
+			listAvailable: vi.fn(() => [
+				{
+					id: "simple",
+					label: "Simple",
+					description: longDescription,
+					sensitivity: "public",
+				},
+				{
+					id: "calendar",
+					label: "Calendar",
+					description: longDescription,
+					roleGate: { minRole: "ADMIN" },
+					sensitivity: "private",
+				},
+				{
+					id: "terminal",
+					label: "Terminal",
+					aliases: ["shell"],
+					description: longDescription,
+					roleGate: { minRole: "OWNER" },
+					sensitivity: "private",
+				},
+			]),
+		} as IAgentRuntime["contexts"];
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const systemContent = params.messages?.[0]?.content ?? "";
+		expect(systemContent).toContain("task: Plan this direct message.");
+		expect(systemContent).toContain("- calendar [label=Calendar");
+		expect(systemContent).toContain("role>=ADMIN");
+		expect(systemContent).not.toContain(longDescription);
+		expect(systemContent.length).toBeLessThan(3_500);
+	});
+
+	it("uses the fast direct reply path for simple private chat", async () => {
+		const runtime = makeRuntime(["Hi, I am here."]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "hi, can you say hi back?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall?.[0]).toBe(ModelType.TEXT_SMALL);
+		const params = firstCall?.[1] as {
+			prompt?: string;
+			maxTokens?: number;
+			grammar?: string;
+			responseSkeleton?: unknown;
+		};
+		expect(params.prompt).toContain("task: Write one direct reply");
+		expect(params.prompt).toContain("hi, can you say hi back?");
+		expect(params.maxTokens).toBe(96);
+		expect(params.grammar).toBeUndefined();
+		expect(params.responseSkeleton).toBeUndefined();
+	});
+
+	it("keeps tool-like direct messages on the structured routing path", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["general"],
+				replyText: "Looking into it.",
+			}),
+			JSON.stringify({
+				thought: "No tool is registered in this fixture.",
+				toolCalls: [],
+				messageToUser: "I would need a web tool to check current prices.",
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "search the web for current GPU prices",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+	});
+
 	it("parses provider-native message-handler calls that use args instead of arguments", async () => {
 		const runtime = makeRuntime([
 			{

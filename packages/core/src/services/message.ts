@@ -217,6 +217,7 @@ const PLANNER_CONTROL_ACTIONS = new Set(
 	["REPLY", "RESPOND", "IGNORE", "STOP"].map(normalizeActionIdentifier),
 );
 const DIRECT_CHANNEL_STAGE1_MAX_TOKENS = 384;
+const DIRECT_REPLY_FAST_PATH_MAX_TOKENS = 96;
 const DEFAULT_STAGE1_MAX_TOKENS = 1024;
 const DIRECT_CHANNEL_OMITTED_RESPONSE_FIELDS = new Set([
 	"shouldRespond",
@@ -2329,29 +2330,70 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"- do not include internal reasoning",
 ].join("\n");
 
+const DIRECT_MESSAGE_HANDLER_TEMPLATE = `task: Plan this direct message.
+
+available_contexts:
+{{availableContexts}}
+
+direct/private rules:
+- Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations should use contexts=["simple"] and put the final answer in replyText.
+- Use a non-simple context or candidateActionNames only when the request needs tools, current/live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
+- For tool/planning paths, replyText is only a brief ack ("On it.", "Looking into it."). Never refuse because tools may run after this stage.
+- If schema omits shouldRespond, do not invent it.
+- contexts must be ids from available_contexts. If a needed tool context is unclear, use ["general"].
+
+Return exactly one JSON object for {{handleResponseToolName}}. No prose, markdown, or thinking.
+`;
+
+function directReplyPromptForMessage(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	messageHandler: MessageHandlerResult;
+}): string {
+	const latestText = getUserMessageText(args.message) ?? "";
+	const contextText = truncateToCompleteSentence(
+		(args.state.text ?? "").trim(),
+		1000,
+	);
+	const instructions = resolveOptimizedPromptForRuntime(
+		args.runtime,
+		"response",
+		RESPONSE_TASK_BASELINE_INSTRUCTIONS,
+	);
+	return [
+		instructions,
+		"",
+		contextText ? `recent_context:\n${contextText}` : "",
+		contextText ? "" : "",
+		`user_message: ${latestText}`,
+		`routing_thought: ${args.messageHandler.thought}`,
+	].filter((line) => line.length > 0).join("\n");
+}
+
+async function generateDirectReplyModel(args: {
+	runtime: IAgentRuntime;
+	message: Memory;
+	state: State;
+	messageHandler: MessageHandlerResult;
+	signal?: AbortSignal;
+}): Promise<{ text: string; raw: string | GenerateTextResult; prompt: string }> {
+	const prompt = directReplyPromptForMessage(args);
+	const raw = (await args.runtime.useModel(ModelType.TEXT_SMALL, {
+		prompt,
+		maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+		signal: args.signal,
+	})) as string | GenerateTextResult;
+	return { text: getV5ModelText(raw).trim(), raw, prompt };
+}
+
 async function generateDirectReplyOnce(args: {
 	runtime: IAgentRuntime;
 	message: Memory;
 	state: State;
 	messageHandler: MessageHandlerResult;
 }): Promise<string> {
-	const latestText = getUserMessageText(args.message) ?? "";
-	const instructions = resolveOptimizedPromptForRuntime(
-		args.runtime,
-		"response",
-		RESPONSE_TASK_BASELINE_INSTRUCTIONS,
-	);
-	const prompt = [
-		instructions,
-		"",
-		"context:",
-		args.state.text,
-		"",
-		`user_message: ${latestText}`,
-		`routing_thought: ${args.messageHandler.thought}`,
-	].join("\n");
-	const raw = await args.runtime.useModel(ModelType.TEXT_SMALL, { prompt });
-	return getV5ModelText(raw).trim();
+	return (await generateDirectReplyModel(args)).text;
 }
 
 /**
@@ -2361,6 +2403,7 @@ async function generateDirectReplyOnce(args: {
  */
 export function formatAvailableContextsForPrompt(
 	contexts: readonly ContextDefinition[],
+	options?: { compact?: boolean },
 ): string {
 	if (contexts.length === 0) {
 		return "(no contexts registered)";
@@ -2389,6 +2432,9 @@ export function formatAvailableContextsForPrompt(
 				definition.cacheScope ? `cache=${definition.cacheScope}` : undefined,
 			].filter(Boolean);
 			const suffix = metadata.length > 0 ? ` [${metadata.join("; ")}]` : "";
+			if (options?.compact) {
+				return `- ${definition.id}${suffix}`;
+			}
 			return description
 				? `- ${definition.id}${suffix}: ${description}`
 				: `- ${definition.id}${suffix}`;
@@ -2444,15 +2490,20 @@ function renderMessageHandlerInstructions(
 	availableContexts: readonly ContextDefinition[],
 	options?: { directMessage?: boolean; responseHandlerFields?: string },
 ): string {
+	const baselineTemplate = options?.directMessage
+		? DIRECT_MESSAGE_HANDLER_TEMPLATE
+		: messageHandlerTemplate;
 	const baseline = resolveOptimizedPromptForRuntime(
 		runtime,
 		selectMessageHandlerTask(availableContexts),
-		messageHandlerTemplate,
+		baselineTemplate,
 	);
 	const rendered = composePrompt({
 		state: {
 			directMessage: options?.directMessage ? "true" : "",
-			availableContexts: formatAvailableContextsForPrompt(availableContexts),
+			availableContexts: formatAvailableContextsForPrompt(availableContexts, {
+				compact: options?.directMessage === true,
+			}),
 			handleResponseToolName: HANDLE_RESPONSE_TOOL_NAME,
 		},
 		template: baseline,
@@ -2968,6 +3019,26 @@ function inferDirectCurrentRequestCandidateActions(
 		if (codingAction) return [codingAction];
 	}
 	return [];
+}
+
+function shouldUseDirectReplyFastPath(args: {
+	message: Memory;
+	actions: ReadonlyArray<Pick<Action, "name">>;
+}): boolean {
+	const text = (getUserMessageText(args.message) ?? "").trim();
+	if (!text || text.length > 280) return false;
+	if (inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0) {
+		return false;
+	}
+	if (/https?:\/\//iu.test(text)) return false;
+	if (
+		/\b(?:search|browse|lookup|look\s+up|find|fetch|download|install|run|execute|build|deploy|commit|push|pull\s+request|pr\b|issue|debug|inspect|logs?|repo|github|terminal|shell|file|folder|save|send|create|update|delete|schedule|remind|todo|task|calendar|email|contact|message|dm|call|wallet|balance|price|weather|news|latest|current|today|tomorrow|yesterday|remember|forget|settings?|password|secret|key|token|screen|screenshot|browser|click|open|close|app|window|device|workflow|automation)\b/iu.test(
+			text,
+		)
+	) {
+		return false;
+	}
+	return true;
 }
 
 function findWebLookupActionName(
@@ -3792,6 +3863,61 @@ export async function runV5MessageRuntimeStage1(args: {
 			args.message.content?.channelType === ChannelType.SELF;
 		const stage1TurnSignal =
 			getStreamingContext()?.abortSignal ?? new AbortController().signal;
+		if (
+			directMessageChannel &&
+			shouldUseDirectReplyFastPath({
+				message: args.message,
+				actions: args.runtime.actions,
+			})
+		) {
+			const fastStartedAt = Date.now();
+			const fastMessageHandler: MessageHandlerResult = {
+				processMessage: "RESPOND",
+				thought: "Direct private chat fast path.",
+				plan: {
+					contexts: [SIMPLE_CONTEXT_ID],
+					reply: "",
+					simple: true,
+					requiresTool: false,
+				},
+			};
+			const generated = await generateDirectReplyModel({
+				runtime: args.runtime,
+				message: args.message,
+				state: args.state,
+				messageHandler: fastMessageHandler,
+				signal: stage1TurnSignal,
+			});
+			const fastEndedAt = Date.now();
+			fastMessageHandler.plan.reply = generated.text;
+			if (recorder && trajectoryId) {
+				await recordMessageHandlerStage({
+					recorder,
+					trajectoryId,
+					messages: [{ role: "user", content: generated.prompt }],
+					providerOptions: {
+						eliza: {
+							directReplyFastPath: true,
+							maxTokens: DIRECT_REPLY_FAST_PATH_MAX_TOKENS,
+						},
+					},
+					raw: generated.raw,
+					parsed: fastMessageHandler,
+					startedAt: fastStartedAt,
+					endedAt: fastEndedAt,
+					logger: args.runtime.logger,
+				});
+			}
+			return {
+				kind: "direct_reply",
+				messageHandler: fastMessageHandler,
+				result: createV5ReplyStrategyResult({
+					...args,
+					text: generated.text,
+					thought: fastMessageHandler.thought,
+				}),
+			};
+		}
 		const responseHandlerFieldContext: ResponseHandlerFieldContext = {
 			runtime: args.runtime,
 			message: args.message,
