@@ -469,6 +469,9 @@ export class SubAgentRouter extends Service {
       const retried = await this.retryIncompleteBuild(session, deadUrls);
       if (retried) return;
     }
+    if (event === "task_complete" && verifiedUrls.length > 0) {
+      text = verifiedUrlCompletionFallback(text, verifiedUrls);
+    }
     const memory: Memory = {
       id: randomUUID() as UUID,
       entityId: subAgentEntityId,
@@ -736,6 +739,32 @@ Do not report done until every referenced URL in the final page resolves without
 
 function shouldInject(event: SessionEventName): boolean {
   return event === "task_complete" || event === "error" || event === "blocked";
+}
+
+function verifiedUrlCompletionFallback(text: string, verifiedUrls: string[]) {
+  if (!text.includes("[tool output:")) return text;
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const retained: string[] = [];
+  let insideToolOutput = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!insideToolOutput && trimmed.startsWith("[tool output:")) {
+      insideToolOutput = true;
+      continue;
+    }
+    if (insideToolOutput && trimmed === "[/tool output]") {
+      insideToolOutput = false;
+      continue;
+    }
+    if (!insideToolOutput) retained.push(line);
+  }
+  const meaningful = retained
+    .filter((line) => !line.trim().startsWith("[sub-agent:"))
+    .join("\n")
+    .trim();
+  if (meaningful.length > 0) return text;
+  const header = retained.find((line) => line.trim().startsWith("[sub-agent:"));
+  return [header, ...verifiedUrls].filter(Boolean).join("\n");
 }
 
 interface OriginInfo {

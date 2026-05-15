@@ -530,6 +530,37 @@ describe("SubAgentRouter", () => {
       expect(metadata?.subAgentVerifiedUrls).toEqual([appBase]);
     });
 
+    it("uses verified URLs instead of raw tool-only completion transcripts", async () => {
+      const appBase = "https://example.test/apps/tool-only/";
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          return new Response("<html><body>ok</body></html>", {
+            status: 200,
+            headers: { "content-type": "text/html" },
+          });
+        }),
+      );
+      session = sessionWithTask(`build and verify ${appBase}`);
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response:
+          "[tool output: Write file]\nWrote file successfully.\n[/tool output]",
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).toContain(appBase);
+      expect(posted?.content?.text).not.toContain("[tool output:");
+    });
+
     it("rejects mapped app URLs whose local target was not written this session", async () => {
       const tmpRoot = fs.mkdtempSync(
         path.join(os.tmpdir(), "sub-agent-router-"),
