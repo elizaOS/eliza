@@ -2626,7 +2626,7 @@ function extractHandleResponseToolArguments(
 			continue;
 		}
 		const name = String(
-			entry.name ?? entry.toolName,
+			entry.name,
 		).trim();
 		if (name !== HANDLE_RESPONSE_TOOL_NAME) {
 			continue;
@@ -4465,7 +4465,7 @@ function extractMessageHandlerToolCalls(
 			continue;
 		}
 		const name = String(
-			entry.name ?? entry.toolName,
+			entry.name,
 		).trim();
 		const args = parseToolArguments(
 			entry.arguments,

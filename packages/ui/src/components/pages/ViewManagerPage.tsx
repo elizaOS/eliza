@@ -10,7 +10,8 @@
  */
 
 import { Pin, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { fetchWithCsrf } from "../../api/csrf-client";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   useAvailableViews,
@@ -174,19 +175,71 @@ function ViewSection({
   );
 }
 
+/** Fetch semantic search results from /api/views/search. */
+async function fetchSearchResults(q: string, limit: number): Promise<ViewRegistryEntry[]> {
+  const url = new URL("/api/views/search", window.location.origin);
+  url.searchParams.set("q", q);
+  url.searchParams.set("limit", String(limit));
+  const resp = await fetchWithCsrf(url.pathname + url.search);
+  if (!resp.ok) return [];
+  const body = (await resp.json()) as unknown;
+  if (!body || typeof body !== "object" || !("results" in body)) return [];
+  const { results } = body as { results: unknown };
+  return Array.isArray(results) ? (results as ViewRegistryEntry[]) : [];
+}
+
 export function ViewManagerPage() {
   const { views, loading, error } = useAvailableViews();
   const isDeveloperMode = useIsDeveloperMode();
   const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ViewRegistryEntry[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When the query changes, debounce a call to the semantic search endpoint.
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    const q = query.trim();
+    if (!q) {
+      setSearchResults(null);
+      setSearchLoading(false);
+      return;
+    }
+    setSearchLoading(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const results = await fetchSearchResults(q, 10);
+        setSearchResults(results);
+      } catch {
+        // Semantic search unavailable — fall back to client-side filtering.
+        setSearchResults(null);
+      } finally {
+        setSearchLoading(false);
+      }
+    }, 200);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [query]);
 
   const { builtinViews, pluginViews } = useMemo(() => {
+    // When the search endpoint returned results, display those ranked by score.
+    if (searchResults !== null) {
+      const visible = searchResults.filter((v) => {
+        if (v.developerOnly && !isDeveloperMode) return false;
+        if (v.visibleInManager === false) return false;
+        return true;
+      });
+      return {
+        builtinViews: visible.filter((v) => v.builtin),
+        pluginViews: visible.filter((v) => !v.builtin),
+      };
+    }
+    // No active search — show all views with client-side visibility rules.
     const q = query.trim().toLowerCase();
     const visible = views.filter((v) => {
-      // Hide developer-only views when not in developer mode.
       if (v.developerOnly && !isDeveloperMode) return false;
-      // Hide views explicitly excluded from the manager grid.
       if (v.visibleInManager === false) return false;
-      // Text search across label, description, tags, and plugin name.
       if (!q) return true;
       return (
         v.label.toLowerCase().includes(q) ||
@@ -199,9 +252,10 @@ export function ViewManagerPage() {
       builtinViews: visible.filter((v) => v.builtin),
       pluginViews: visible.filter((v) => !v.builtin),
     };
-  }, [views, isDeveloperMode, query]);
+  }, [views, isDeveloperMode, query, searchResults]);
 
   const totalVisible = builtinViews.length + pluginViews.length;
+  const isSearching = searchLoading && query.trim().length > 0;
 
   function handleViewClick(view: ViewRegistryEntry) {
     const path = view.path ?? `/apps/${view.id}`;
@@ -268,7 +322,7 @@ export function ViewManagerPage() {
           </div>
         )}
 
-        {loading && views.length === 0 ? (
+        {(loading && views.length === 0) || isSearching ? (
           <ViewsLoadingSkeleton />
         ) : totalVisible === 0 ? (
           <ViewsEmptyState hasQuery={query.trim().length > 0} />

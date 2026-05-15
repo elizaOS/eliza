@@ -137,11 +137,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"INTERACT_WITH_VIEW",
 			"CLICK_IN_VIEW",
 			"INVOKE_VIEW_CAPABILITY",
+			"PIN_VIEW",
+			"OPEN_VIEW_WINDOW",
 		],
 		description:
-			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, show the view manager, broadcast events to views, or interact with a mounted view (click buttons, read state, focus inputs).",
+			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, show the view manager, broadcast events to views, interact with a mounted view, pin a view as a desktop tab, or open a view in a separate window.",
 		descriptionCompressed:
-			"views list|show|open|search|manager|broadcast|interact; navigate UI views; push events; click/read/focus elements in views",
+			"views list|show|open|search|manager|broadcast|interact|pin|window; navigate UI views; push events; click/read/focus elements; pin desktop tabs; open in window",
 		suppressPostActionContinuation: true,
 
 		parameters: [
@@ -356,6 +358,51 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						text: resultText,
 						values: { mode: "interact", viewId, capability },
 						data: { viewId, capability, params },
+					};
+				}
+
+				case "pin": {
+					// Resolve target view and ask the shell to pin it as a desktop tab.
+					// The shell listens for POST /api/views/:id/navigate with action=pin-tab.
+					const pinViewId =
+						readStringOption(options, "view") ??
+						readStringOption(options, "id") ??
+						readStringOption(options, "name");
+					if (!pinViewId) {
+						const reply =
+							'Specify which view to pin as a desktop tab, e.g. action=pin view=wallet.';
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+					const pinResultText = await pinViewAsTab(pinViewId);
+					await callback?.({ text: pinResultText });
+					return {
+						success: true,
+						text: pinResultText,
+						values: { mode: "pin", viewId: pinViewId },
+						data: { viewId: pinViewId },
+					};
+				}
+
+				case "window": {
+					// Resolve target view and ask the shell to open it in a separate window.
+					const windowViewId =
+						readStringOption(options, "view") ??
+						readStringOption(options, "id") ??
+						readStringOption(options, "name");
+					if (!windowViewId) {
+						const reply =
+							'Specify which view to open in a new window, e.g. action=window view=wallet.';
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+					const windowResultText = await openViewInWindow(windowViewId);
+					await callback?.({ text: windowResultText });
+					return {
+						success: true,
+						text: windowResultText,
+						values: { mode: "window", viewId: windowViewId },
+						data: { viewId: windowViewId },
 					};
 				}
 			}
