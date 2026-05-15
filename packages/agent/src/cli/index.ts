@@ -53,9 +53,7 @@ export async function runAutonomousCli(
   }
 
   if (command === "ios-bridge") {
-    const { runIosBridgeCli } = await import(
-      "@elizaos/plugin-capacitor-bridge"
-    );
+    const { runIosBridgeCli } = await import("./ios-bridge.ts");
     await runIosBridgeCli(argv);
     return;
   }
@@ -89,9 +87,7 @@ export async function runAutonomousCli(
   }
 
   if (command === "android-bridge") {
-    const { runAndroidBridgeCli } = await import(
-      "@elizaos/plugin-capacitor-bridge"
-    );
+    const { runAndroidBridgeCli } = await import("./android-mobile-bridge.ts");
     await runAndroidBridgeCli();
     return;
   }
