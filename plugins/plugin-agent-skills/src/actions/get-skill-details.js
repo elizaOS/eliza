@@ -4,6 +4,7 @@
  * Get detailed information about a specific skill from the registry.
  */
 import { createAgentSkillsActionValidator } from "./validators";
+
 const SKILL_DETAILS_TEXT_MAX_CHARS = 4_000;
 function truncateSkillDetailsText(text) {
     return text.length <= SKILL_DETAILS_TEXT_MAX_CHARS

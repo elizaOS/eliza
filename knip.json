@@ -191,7 +191,7 @@
       ],
       "ignore": ["dist/**"]
     },
-    "packages/registry": {
+    "scripts/generate-registry": {
       "ignore": ["site/**"]
     },
     "packages/browser-bridge-extension": {

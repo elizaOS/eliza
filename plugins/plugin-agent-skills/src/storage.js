@@ -7,15 +7,15 @@
  *
  * Both implement the same interface for seamless switching.
  */
-var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExtension) || function (path, preserveJsx) {
+var __rewriteRelativeImportExtension = (this && this.__rewriteRelativeImportExtension) || ((path, preserveJsx) => {
     if (typeof path === "string" && /^\.\.?\//.test(path)) {
-        return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, function (m, tsx, d, ext, cm) {
-            return tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : (d + ext + "." + cm.toLowerCase() + "js");
-        });
+        return path.replace(/\.(tsx)$|((?:\.d)?)((?:\.[^./]+?)?)\.([cm]?)ts$/i, (m, tsx, d, ext, cm) => tsx ? preserveJsx ? ".jsx" : ".js" : d && (!ext || !cm) ? m : (`${d + ext}.${cm.toLowerCase()}js`));
     }
     return path;
-};
+});
+
 import { parseFrontmatter, validateFrontmatter } from "./parser";
+
 // fflate's package.json exports map omits a "types" entry in older transitive
 // resolutions (v0.6.10 pulled in by three-stdlib), which breaks tsup's DTS
 // build under bun's isolated layout. Widening moduleId to `string` prevents

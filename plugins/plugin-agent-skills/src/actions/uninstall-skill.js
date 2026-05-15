@@ -7,6 +7,7 @@
 import { requireConfirmation } from "@elizaos/core";
 import { extractSlugFromMessage } from "./parse-helpers";
 import { createAgentSkillsActionValidator } from "./validators";
+
 const INSTALLED_SKILL_MATCH_LIMIT = 100;
 export const uninstallSkillAction = {
     name: "SKILL",

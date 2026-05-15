@@ -54,6 +54,7 @@ import {
 	SpeakerPresetCache,
 } from "./speaker-preset-cache";
 import { AsrUnavailableError, createStreamingTranscriber } from "./transcriber";
+
 const SAMPLE_RATE_DEFAULT = 24_000;
 const RING_BUFFER_CAPACITY_DEFAULT = SAMPLE_RATE_DEFAULT * 4; // 4s
 /**
@@ -104,6 +105,7 @@ function ffiSpeakerPresetId(preset) {
 	}
 	return preset.voiceId;
 }
+
 /** Re-exported from `./errors` so existing `engine-bridge` importers don't churn. */
 export { VoiceStartupError };
 /**
@@ -1201,8 +1203,10 @@ function bundleMmapRegion(dir, kind, ffi, ctx) {
 		},
 	};
 }
+
 /** Re-export for the engine and tests that want the default loader. */
 export { defaultLifecycleLoaders };
+
 /**
  * Platform-specific shared-library suffix for the fused omnivoice build.
  * macOS dylib, Linux/Android so, Windows dll. Windows artifacts have

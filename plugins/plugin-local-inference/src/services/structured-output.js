@@ -18,6 +18,7 @@ export {
 	repairStructuredOutput,
 	StructuredOutputRepairStream,
 } from "./structured-output/deterministic-repair";
+
 /** True when `kind` is a span the model actually samples. */
 function isFreeSpan(span) {
 	return (

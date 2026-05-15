@@ -314,9 +314,12 @@ export class VisionModels {
       return [];
     }
 
-    const count = peopleMatch[0].match(/\d+/)?.[0]
-      ? parseInt(peopleMatch[0].match(/\d+/)?.[0], 10)
-      : 1;
+    const firstPeopleMatch = peopleMatch[0];
+    if (!firstPeopleMatch) {
+      return [];
+    }
+    const countText = firstPeopleMatch.match(/\d+/)?.[0];
+    const count = countText ? parseInt(countText, 10) : 1;
 
     // Analyze description for pose and facing information
     const poseKeywords = {
