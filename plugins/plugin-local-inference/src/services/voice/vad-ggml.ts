@@ -266,9 +266,12 @@ export class SileroVadGgml implements VadLike {
 		// bun:ffi with `returns: T.cstring` already hands back a CString;
 		// fall back to constructing one from a raw pointer if the
 		// runtime returned a number/bigint instead (older Bun versions).
-		if (cstr && typeof (cstr as { toString?: () => string }).toString === "function"
-			&& typeof cstr !== "number"
-			&& typeof cstr !== "bigint") {
+		if (
+			cstr &&
+			typeof (cstr as { toString?: () => string }).toString === "function" &&
+			typeof cstr !== "number" &&
+			typeof cstr !== "bigint"
+		) {
 			return String(cstr);
 		}
 		return new this.ffi.CString(cstr).toString();

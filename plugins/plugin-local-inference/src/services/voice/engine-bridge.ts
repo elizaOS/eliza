@@ -1078,10 +1078,12 @@ export class EngineVoiceBridge {
 		// the standard 127.0.0.1:18789 the rest of the runtime uses), and the
 		// model id from ELIZA_KOKORO_FORK_MODEL_ID. Setting KOKORO_BACKEND=onnx
 		// flips back to the legacy ONNX path during the deprecation runway.
-		const forkUrl = process.env.ELIZA_KOKORO_FORK_URL?.trim()
-			|| process.env.ELIZA_GATEWAY_URL?.trim()
-			|| "http://127.0.0.1:18789";
-		const forkModelId = process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
+		const forkUrl =
+			process.env.ELIZA_KOKORO_FORK_URL?.trim() ||
+			process.env.ELIZA_GATEWAY_URL?.trim() ||
+			"http://127.0.0.1:18789";
+		const forkModelId =
+			process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
 		const decision = pickKokoroRuntimeBackend({
 			fork: {
 				serverUrl: forkUrl,

@@ -67,6 +67,61 @@ prefer the GGUF.
 
 ## kokoro
 
+### 0.3.0 — 2026-05-15 (J2 — fork-side StyleTTS-2 inference path)
+
+**Runtime path move:** the resolved-runtime path for Kokoro TTS is now
+the elizaOS llama.cpp fork. The fork's `tools/kokoro/` subtree implements
+a standalone StyleTTS-2 + iSTFTNet inference pipeline that satisfies the
+J2 single-runtime brief — Kokoro synthesis can now run through
+`llama-server` end-to-end with no `onnxruntime-node` dependency on the
+resolved path.
+
+**What landed:**
+
+- `LLM_ARCH_KOKORO` arch tag + GGUF loader in the fork (extends the
+  W3-1 K-quant scaffold with the StyleTTS-2 graph builder).
+- `tools/kokoro/` subtree: `kokoro_lib` (inference + iSTFT + phoneme
+  table), `kokoro-tts` standalone CLI, `/v1/audio/speech` server-mount
+  handler.
+- LLAMA_BUILD_KOKORO=ON CMake option; gated on the existing fork build.
+- `convert_kokoro_pth_to_gguf.py` with `--pth` (PyTorch checkpoint) and
+  `--stub` (smoke-test) modes.
+- `pickKokoroRuntimeBackend()` in `@elizaos/shared` — defaults
+  `KOKORO_BACKEND=fork` to route TTS through the llama-server route;
+  `KOKORO_BACKEND=onnx` is the one-release deprecation runway.
+- `EngineVoiceBridge.startKokoroOnly` now uses the selector (fork by
+  default).
+
+**Quality gap (documented):** the from-scratch port runs at lower
+acoustic quality vs the ONNX reference. The text encoder + style
+projection + iSTFT pipeline produce non-blank audio shaped by the
+phoneme sequence + voice preset, but the predictor convs and ResBlock
+decoder ops need follow-up per-tensor weight-mapping to match the
+PyTorch reference (the converter ships an initial `_PTH_KEY_RULES` map
+that covers the Albert text encoder; the predictor + decoder mappings
+are a Phase-2 worker-day item). UTMOS regression vs ONNX baseline is
+expected. Detailed gap log: `.swarm/impl/J2-kokoro-port-notes.md`.
+
+**Verification:**
+- `tools/kokoro/tests/` ctest: 2/2 PASS (`test-kokoro-phonemes`,
+  `test-kokoro-istft`).
+- `scripts/voice-kokoro/smoke.sh`: end-to-end stub GGUF + voice preset
+  + CLI produces a non-blank 24kHz WAV (peak ≈ 0.03 fp32 on the stub).
+- TypeScript: `pickKokoroRuntimeBackend` typechecks under
+  `@elizaos/shared` and `@elizaos/plugin-local-inference`.
+
+**Net improvement:** false. Quality gap vs ONNX baseline is the
+deliberate one-release deprecation runway, not a regression we intend
+to keep. Auto-updater will not recommend the GGUF swap until the
+follow-up weight-mapping pass closes the gap.
+
+**Compute-gated follow-up:** full predictor + decoder weight mapping
+(walks the iSTFTNet ResBlock + harmonic generator from the PyTorch
+checkpoint into the fork's GGUF layout). Estimated 5-10 worker-days
+per `.swarm/impl/I1-single-runtime.md` §F.
+
+---
+
 ### 0.2.0 — 2026-05-15 (I2 — sam ship per user override)
 
 **af_sam.bin** shipped to `elizaos/eliza-1-voice-kokoro:voices/af_sam.bin` per explicit user
