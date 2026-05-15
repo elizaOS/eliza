@@ -680,12 +680,14 @@ contexts (directly after replyText): ids from available_contexts. Never invent. 
 
 requiresTool=true for tools/actions/subagents/providers/filesystem/network/browser/API/live data/side effects/long work/verification. Else false.
 
-simple shortcut: choose contexts=["simple"] only when ALL true:
-- conversational/greeting/training-only fact
-- no external data, state, person, document, file, schedule, calendar, email, memory, provider
-- no action verbs: search/find/get/fetch/save/send/create/update/delete/run/execute/call
+simple shortcut: choose contexts=["simple"] when the user is asking for a direct chat answer and ALL true:
+- direct conversational, creative, explanatory, summarization, rewriting, translation, brainstorming, or static-knowledge answer
+- no external data, current/live facts, private state, person lookup, document/file access, schedule, calendar, email, memory, provider, or side effect
+- no action verbs requiring tools: search/find/get/fetch/save/send/create/update/delete/run/execute/call
 - answer unchanged by checking current info/world state/memory
 - uncertain => planning
+
+For simple requests, replyText is the final answer itself, not a description of what the user asked for and not an internal plan.
 
 Platform mention/reply target/channel/room/connector alone can still be simple when only chat reply needed.
 

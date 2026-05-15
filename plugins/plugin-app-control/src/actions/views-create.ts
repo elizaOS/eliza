@@ -24,8 +24,8 @@ import type {
 } from "@elizaos/core";
 import { logger, ModelType, spawnWithTrajectoryLink } from "@elizaos/core";
 import { readStringOption } from "../params.js";
-import type { ViewSummary } from "./views-client.js";
 import { isRestrictedPlatform } from "./views.js";
+import type { ViewSummary } from "./views-client.js";
 
 export const VIEWS_CREATE_INTENT_TAG = "views-create-intent";
 
@@ -75,7 +75,12 @@ const STOP_WORDS = new Set([
 export interface ViewsCreateIntentMetadata {
 	roomId: string;
 	intent: string;
-	choices: Array<{ key: string; label: string; pluginName?: string; pluginDir?: string }>;
+	choices: Array<{
+		key: string;
+		label: string;
+		pluginName?: string;
+		pluginDir?: string;
+	}>;
 	intentCreatedAt: string;
 }
 
@@ -227,7 +232,9 @@ async function copyTemplate(
 	}
 }
 
-async function resolveTemplateDir(repoRoot: string): Promise<string | undefined> {
+async function resolveTemplateDir(
+	repoRoot: string,
+): Promise<string | undefined> {
 	for (const rel of MIN_PLUGIN_TEMPLATE_CANDIDATES) {
 		const dir = path.join(repoRoot, rel);
 		const stat = await fs.stat(dir).catch(() => null);
@@ -248,15 +255,25 @@ async function findFreePluginWorkdir(
 		let pluginDirName = `plugin-${baseName}`;
 		let dir = path.join(baseDir, pluginDirName);
 		let suffix = 2;
-		while (await fs.stat(dir).then(() => true, () => false)) {
+		while (
+			await fs.stat(dir).then(
+				() => true,
+				() => false,
+			)
+		) {
 			pluginDirName = `plugin-${baseName}-${suffix}`;
 			dir = path.join(baseDir, pluginDirName);
 			suffix += 1;
-			if (suffix > 50) throw new Error(`Could not find a free plugin directory for "${baseName}"`);
+			if (suffix > 50)
+				throw new Error(
+					`Could not find a free plugin directory for "${baseName}"`,
+				);
 		}
 		return dir;
 	}
-	throw new Error(`Could not find a plugins directory under ${repoRoot} (tried: ${PLUGINS_DIR_CANDIDATES.join(", ")})`);
+	throw new Error(
+		`Could not find a plugins directory under ${repoRoot} (tried: ${PLUGINS_DIR_CANDIDATES.join(", ")})`,
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -268,7 +285,9 @@ function readStringField(
 	key: string,
 ): string | undefined {
 	const value = source[key];
-	return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+	return typeof value === "string" && value.trim().length > 0
+		? value
+		: undefined;
 }
 
 function readTaskAgents(result: ActionResult | undefined): TaskAgentStatus[] {
@@ -283,11 +302,18 @@ function readTaskAgents(result: ActionResult | undefined): TaskAgentStatus[] {
 		const label = readStringField(record, "label");
 		const status = readStringField(record, "status");
 		if (!sessionId || !agentType || !workdir || !label || !status) return [];
-		return [{ sessionId, agentType, workdir, label, status,
-			workspaceId: readStringField(record, "workspaceId"),
-			branch: readStringField(record, "branch"),
-			error: readStringField(record, "error"),
-		}];
+		return [
+			{
+				sessionId,
+				agentType,
+				workdir,
+				label,
+				status,
+				workspaceId: readStringField(record, "workspaceId"),
+				branch: readStringField(record, "branch"),
+				error: readStringField(record, "error"),
+			},
+		];
 	});
 }
 
@@ -312,7 +338,10 @@ async function dispatchCodingAgent({
 		runtime.actions?.find((a) => a.name === "START_CODING_TASK") ??
 		runtime.actions?.find((a) => a.name === "CREATE_TASK");
 	if (!createTask) {
-		return { dispatched: false, reason: "START_CODING_TASK action not registered" };
+		return {
+			dispatched: false,
+			reason: "START_CODING_TASK action not registered",
+		};
 	}
 
 	const fakeMessage = {
@@ -333,12 +362,17 @@ async function dispatchCodingAgent({
 
 	const result = await spawnWithTrajectoryLink(
 		runtime,
-		{ source: "plugin-app-control:views-create", metadata: { pluginName, label, workdir } },
+		{
+			source: "plugin-app-control:views-create",
+			metadata: { pluginName, label, workdir },
+		},
 		async (trajectory) => {
 			if (trajectory.parentStepId) {
 				const parameters = handlerOptions.parameters as Record<string, unknown>;
 				const existingMeta =
-					parameters.metadata && typeof parameters.metadata === "object" && !Array.isArray(parameters.metadata)
+					parameters.metadata &&
+					typeof parameters.metadata === "object" &&
+					!Array.isArray(parameters.metadata)
 						? (parameters.metadata as Record<string, unknown>)
 						: {};
 				parameters.metadata = {
@@ -347,7 +381,13 @@ async function dispatchCodingAgent({
 					trajectoryLinkSource: "plugin-app-control:views-create",
 				};
 			}
-			const r = await createTask.handler(runtime, fakeMessage, undefined, handlerOptions, callback);
+			const r = await createTask.handler(
+				runtime,
+				fakeMessage,
+				undefined,
+				handlerOptions,
+				callback,
+			);
 			for (const agent of readTaskAgents(r)) {
 				await trajectory.linkChild(agent.sessionId);
 			}
@@ -358,13 +398,20 @@ async function dispatchCodingAgent({
 	if (!result?.success) {
 		return {
 			dispatched: false,
-			reason: result?.text ?? (typeof result?.error === "string" ? result.error : "START_CODING_TASK failed"),
+			reason:
+				result?.text ??
+				(typeof result?.error === "string"
+					? result.error
+					: "START_CODING_TASK failed"),
 		};
 	}
 
 	const agents = readTaskAgents(result);
 	if (agents.length === 0) {
-		return { dispatched: false, reason: "START_CODING_TASK did not return a tracked task status" };
+		return {
+			dispatched: false,
+			reason: "START_CODING_TASK did not return a tracked task status",
+		};
 	}
 
 	return { dispatched: true, agents };
@@ -438,8 +485,14 @@ async function findExistingIntentTask(
 		.sort((a, b) => {
 			const aMeta = a.metadata as Record<string, unknown> | undefined;
 			const bMeta = b.metadata as Record<string, unknown> | undefined;
-			const aAt = typeof aMeta?.intentCreatedAt === "string" ? Date.parse(aMeta.intentCreatedAt) : 0;
-			const bAt = typeof bMeta?.intentCreatedAt === "string" ? Date.parse(bMeta.intentCreatedAt) : 0;
+			const aAt =
+				typeof aMeta?.intentCreatedAt === "string"
+					? Date.parse(aMeta.intentCreatedAt)
+					: 0;
+			const bAt =
+				typeof bMeta?.intentCreatedAt === "string"
+					? Date.parse(bMeta.intentCreatedAt)
+					: 0;
 			return bAt - aAt;
 		});
 
@@ -451,8 +504,16 @@ async function findExistingIntentTask(
 	const choicesRaw = Array.isArray(meta.choices) ? meta.choices : [];
 	const choices = choicesRaw
 		.filter(
-			(c): c is { key: string; label: string; pluginName?: string; pluginDir?: string } =>
-				typeof c === "object" && c !== null &&
+			(
+				c,
+			): c is {
+				key: string;
+				label: string;
+				pluginName?: string;
+				pluginDir?: string;
+			} =>
+				typeof c === "object" &&
+				c !== null &&
 				typeof (c as { key: unknown }).key === "string" &&
 				typeof (c as { label: unknown }).label === "string",
 		)
@@ -469,7 +530,10 @@ async function findExistingIntentTask(
 			roomId,
 			intent: meta.intent,
 			choices,
-			intentCreatedAt: typeof meta.intentCreatedAt === "string" ? meta.intentCreatedAt : new Date().toISOString(),
+			intentCreatedAt:
+				typeof meta.intentCreatedAt === "string"
+					? meta.intentCreatedAt
+					: new Date().toISOString(),
 		},
 	};
 }
@@ -491,7 +555,10 @@ async function persistIntentTask(
 	});
 }
 
-async function deleteIntentTask(runtime: IAgentRuntime, taskId: string): Promise<void> {
+async function deleteIntentTask(
+	runtime: IAgentRuntime,
+	taskId: string,
+): Promise<void> {
 	await runtime
 		.deleteTask(taskId as `${string}-${string}-${string}-${string}-${string}`)
 		.catch((err) => {
@@ -531,7 +598,9 @@ async function locatePluginSourceDir(
 ): Promise<string | null> {
 	const pluginBasename = view.pluginName.replace(/^@[^/]+\//, "").trim();
 	const candidates = [
-		...PLUGINS_DIR_CANDIDATES.map((d) => path.join(repoRoot, d, pluginBasename)),
+		...PLUGINS_DIR_CANDIDATES.map((d) =>
+			path.join(repoRoot, d, pluginBasename),
+		),
 		path.join(repoRoot, "eliza", "apps", pluginBasename),
 	];
 	for (const candidate of candidates) {
@@ -562,7 +631,9 @@ async function createNewViewPlugin({
 
 	const templateSrc = await resolveTemplateDir(repoRoot);
 	if (!templateSrc) {
-		const tried = MIN_PLUGIN_TEMPLATE_CANDIDATES.map((rel) => path.join(repoRoot, rel)).join(", ");
+		const tried = MIN_PLUGIN_TEMPLATE_CANDIDATES.map((rel) =>
+			path.join(repoRoot, rel),
+		).join(", ");
 		const text = `min-plugin template not found (tried: ${tried}); cannot scaffold a new view plugin.`;
 		await callback?.({ text });
 		return { success: false, text };
@@ -607,13 +678,30 @@ async function createNewViewPlugin({
 	const task = dispatch.agents[0];
 	const text = `Started view create task for ${displayName} at ${workdir}. Task session ${task.sessionId} is ${task.status}.`;
 	await callback?.({ text });
-	logger.info(`[plugin-app-control] VIEWS/create new name=${name} workdir=${workdir} session=${task.sessionId}`);
+	logger.info(
+		`[plugin-app-control] VIEWS/create new name=${name} workdir=${workdir} session=${task.sessionId}`,
+	);
 
 	return {
 		success: true,
 		text,
-		values: { mode: "create", subMode: "new", name, displayName, workdir, taskStatus: task.status, taskSessionId: task.sessionId },
-		data: { name, displayName, workdir, task, agents: dispatch.agents, suppressActionResultClipboard: true },
+		values: {
+			mode: "create",
+			subMode: "new",
+			name,
+			displayName,
+			workdir,
+			taskStatus: task.status,
+			taskSessionId: task.sessionId,
+		},
+		data: {
+			name,
+			displayName,
+			workdir,
+			task,
+			agents: dispatch.agents,
+			suppressActionResultClipboard: true,
+		},
 	};
 }
 
@@ -653,19 +741,38 @@ async function editExistingViewPlugin({
 	if (dispatch.dispatched === false) {
 		const text = `Could not dispatch a coding agent to edit ${view.label}: ${dispatch.reason}.`;
 		await callback?.({ text });
-		return { success: false, text, data: { suppressActionResultClipboard: true } };
+		return {
+			success: false,
+			text,
+			data: { suppressActionResultClipboard: true },
+		};
 	}
 
 	const task = dispatch.agents[0];
 	const text = `Started view edit task for ${view.label} at ${workdir}. Task session ${task.sessionId} is ${task.status}.`;
 	await callback?.({ text });
-	logger.info(`[plugin-app-control] VIEWS/create edit viewId=${view.id} workdir=${workdir} session=${task.sessionId}`);
+	logger.info(
+		`[plugin-app-control] VIEWS/create edit viewId=${view.id} workdir=${workdir} session=${task.sessionId}`,
+	);
 
 	return {
 		success: true,
 		text,
-		values: { mode: "create", subMode: "edit", viewId: view.id, workdir, taskStatus: task.status, taskSessionId: task.sessionId },
-		data: { view, workdir, task, agents: dispatch.agents, suppressActionResultClipboard: true },
+		values: {
+			mode: "create",
+			subMode: "edit",
+			viewId: view.id,
+			workdir,
+			taskStatus: task.status,
+			taskSessionId: task.sessionId,
+		},
+		data: {
+			view,
+			workdir,
+			task,
+			agents: dispatch.agents,
+			suppressActionResultClipboard: true,
+		},
 	};
 }
 
@@ -682,12 +789,14 @@ export async function runViewsCreate({
 	repoRoot,
 }: ViewsCreateInput): Promise<ActionResult> {
 	if (isRestrictedPlatform()) {
-		const text = "Plugin creation and editing is not available on this platform.";
+		const text =
+			"Plugin creation and editing is not available on this platform.";
 		await callback?.({ text });
 		return { success: false, text };
 	}
 
-	const roomId = typeof message.roomId === "string" ? message.roomId : runtime.agentId;
+	const roomId =
+		typeof message.roomId === "string" ? message.roomId : runtime.agentId;
 	const userText = (message.content?.text ?? "").trim();
 	const explicitChoice = readStringOption(options, "choice");
 	const explicitEditTarget = readStringOption(options, "editTarget");
@@ -704,17 +813,29 @@ export async function runViewsCreate({
 		if (normalized === "cancel") {
 			const text = "Canceled. No view changes made.";
 			await callback?.({ text });
-			return { success: true, text, values: { mode: "create", subMode: "cancel" } };
+			return {
+				success: true,
+				text,
+				values: { mode: "create", subMode: "cancel" },
+			};
 		}
 
 		if (normalized === "new") {
-			return createNewViewPlugin({ runtime, intent: existing.metadata.intent, repoRoot, originRoomId: roomId, callback });
+			return createNewViewPlugin({
+				runtime,
+				intent: existing.metadata.intent,
+				repoRoot,
+				originRoomId: roomId,
+				callback,
+			});
 		}
 
 		// edit-N path
 		const idxMatch = normalized.match(/^edit-(\d+)$/);
 		const idx = idxMatch ? Number(idxMatch[1]) - 1 : -1;
-		const choice = existing.metadata.choices.filter((c) => c.key.startsWith("edit-"))[idx];
+		const choice = existing.metadata.choices.filter((c) =>
+			c.key.startsWith("edit-"),
+		)[idx];
 		if (!choice?.pluginName) {
 			const text = `I lost track of the edit target "${normalized}". Please re-state your request.`;
 			await callback?.({ text });
@@ -726,7 +847,14 @@ export async function runViewsCreate({
 			await callback?.({ text });
 			return { success: false, text };
 		}
-		return editExistingViewPlugin({ runtime, intent: existing.metadata.intent, view: target, repoRoot, originRoomId: roomId, callback });
+		return editExistingViewPlugin({
+			runtime,
+			intent: existing.metadata.intent,
+			view: target,
+			repoRoot,
+			originRoomId: roomId,
+			callback,
+		});
 	}
 
 	// First turn: gather intent.
@@ -750,14 +878,27 @@ export async function runViewsCreate({
 			await callback?.({ text });
 			return { success: false, text };
 		}
-		return editExistingViewPlugin({ runtime, intent, view: target, repoRoot, originRoomId: roomId, callback });
+		return editExistingViewPlugin({
+			runtime,
+			intent,
+			view: target,
+			repoRoot,
+			originRoomId: roomId,
+			callback,
+		});
 	}
 
 	const matches = rankViewMatches(intent, views);
 
 	if (matches.length === 0) {
 		// No matches — go straight to create-new.
-		return createNewViewPlugin({ runtime, intent, repoRoot, originRoomId: roomId, callback });
+		return createNewViewPlugin({
+			runtime,
+			intent,
+			repoRoot,
+			originRoomId: roomId,
+			callback,
+		});
 	}
 
 	// Persist intent + render choice block.
@@ -772,11 +913,18 @@ export async function runViewsCreate({
 		{ key: "cancel", label: "Cancel" },
 	];
 
-	await persistIntentTask(runtime, { roomId, intent, choices, intentCreatedAt: new Date().toISOString() });
+	await persistIntentTask(runtime, {
+		roomId,
+		intent,
+		choices,
+		intentCreatedAt: new Date().toISOString(),
+	});
 
 	const text = renderChoiceBlock(choiceId, matches);
 	await callback?.({ text });
-	logger.info(`[plugin-app-control] VIEWS/create offered ${matches.length} edit choices for room=${roomId}`);
+	logger.info(
+		`[plugin-app-control] VIEWS/create offered ${matches.length} edit choices for room=${roomId}`,
+	);
 
 	return {
 		success: true,

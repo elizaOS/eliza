@@ -14,7 +14,7 @@
 
 import type { Plugin } from "@elizaos/core";
 import { appAction, createAppAction } from "./actions/app.js";
-import { viewsAction, createViewsAction } from "./actions/views.js";
+import { viewsAction } from "./actions/views.js";
 import { availableAppsProvider } from "./providers/available-apps.js";
 import { AppRegistryService } from "./services/app-registry-service.js";
 import { AppVerificationService } from "./services/app-verification.js";
@@ -22,6 +22,9 @@ import { AppWorkerHostService } from "./services/app-worker-host-service.js";
 import { VerificationRoomBridgeService } from "./services/verification-room-bridge.js";
 
 export type { AppMode } from "./actions/app.js";
+export type { ViewsMode } from "./actions/views.js";
+export { createViewsAction, viewsAction } from "./actions/views.js";
+export type { ViewSummary } from "./actions/views-client.js";
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
 export {
@@ -54,9 +57,6 @@ export type {
 	InstalledAppInfo,
 } from "./types.js";
 export { appAction, availableAppsProvider, createAppAction };
-export { viewsAction, createViewsAction } from "./actions/views.js";
-export type { ViewsMode } from "./actions/views.js";
-export type { ViewSummary } from "./actions/views-client.js";
 
 export const appControlPlugin: Plugin = {
 	name: "app-control",

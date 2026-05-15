@@ -1503,9 +1503,7 @@ export function describeAndroidTargetDryRun({
   log(`  build=${buildDir}`);
   log(`  install=${abiAssetDir}`);
   if (parsed.fused) {
-    log(`  graft:`);
-    log(`    prepareOmnivoiceFusion llamaCppRoot=${srcDir}`);
-    log(`    appendCmakeGraft -> ${path.join(srcDir, "CMakeLists.txt")}`);
+    log(`  omnivoice: merged in-fork path (tools/omnivoice/)`);
   }
   const cmakeFlags = [
     "-S",
@@ -1544,7 +1542,7 @@ export function describeAndroidTargetDryRun({
   log(`    libllama.so libggml*.so llama-server libeliza-llama-shim.so`);
   if (parsed.fused) {
     log(
-      `    libelizainference.so llama-omnivoice-server (omnivoice-fuse artifacts)`,
+      `    libelizainference.so omnivoice-tts omnivoice-codec (merged-tree artifacts)`,
     );
     log(
       `  verifyFusedSymbols outDir=${abiAssetDir} target=${parsed.target} (post-build)`,
@@ -1723,9 +1721,11 @@ export async function main(argv = process.argv.slice(2)) {
  * Build flow per target:
  *   1. Resolve the llama.cpp source tree (--src-dir / in-repo submodule /
  *      standalone clone — same logic as the bulk --abi path).
- *   2. For `*-fused`: run the omnivoice graft (prepare + appendCmakeGraft).
+ *   2. For `*-fused`: the merged in-fork tree at `tools/omnivoice/`
+ *      already declares the omnivoice + elizainference targets; just add
+ *      the CMake flags via `fusedExtraCmakeFlags()`.
  *   3. Run `buildLibllamaForAbi()` (which also configures + links the
- *      llama-server target — required for fused so omnivoice-core links
+ *      llama-server target — required for fused so omnivoice_lib links
  *      into the same binary).
  *   4. For `*-fused`: run `verifyFusedSymbols()` against the install dir,
  *      asserting libelizainference.so carries `llama_*` + `ov_*` +
@@ -1855,7 +1855,7 @@ export async function mainTargets(args) {
         target: parsed.target,
       });
       console.log(
-        `[compile-libllama] omnivoice-fuse symbol-verify: ` +
+        `[compile-libllama] omnivoice symbol-verify: ` +
           `library=${verification.library} ` +
           `llama=${verification.llamaSymbolCount} ` +
           `omnivoice=${verification.omnivoiceSymbolCount} ` +
@@ -1863,7 +1863,7 @@ export async function mainTargets(args) {
       );
       if (omnivoiceInfo) {
         console.log(
-          `[compile-libllama] omnivoice pin=${omnivoiceInfo.commit} sources=${omnivoiceInfo.sourceCount}`,
+          `[compile-libllama] omnivoice mode=${omnivoiceInfo.mode ?? "merged"} source=${omnivoiceInfo.source ?? "tools/omnivoice"}`,
         );
       }
     }
