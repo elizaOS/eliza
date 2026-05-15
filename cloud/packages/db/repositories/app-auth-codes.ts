@@ -1,6 +1,10 @@
 import { and, eq, gt, lt } from "drizzle-orm";
-import { dbRead, dbWrite } from "@/db/helpers";
-import { type AppAuthCode, appAuthCodes, type NewAppAuthCode } from "@/db/schemas/app-auth-codes";
+import { dbWrite } from "@/db/helpers";
+import {
+  type AppAuthCode,
+  appAuthCodes,
+  type NewAppAuthCode,
+} from "@/db/schemas/app-auth-codes";
 
 export type { AppAuthCode, NewAppAuthCode };
 
@@ -19,16 +23,6 @@ export class AppAuthCodesRepository {
     return row;
   }
 
-  async findActiveByHash(codeHash: string): Promise<AppAuthCode | undefined> {
-    const now = new Date();
-    const [row] = await dbRead
-      .select()
-      .from(appAuthCodes)
-      .where(and(eq(appAuthCodes.code_hash, codeHash), gt(appAuthCodes.expires_at, now)))
-      .limit(1);
-    return row;
-  }
-
   /**
    * Atomically read-and-delete an active (unexpired) code. Single-use
    * semantics: even if two requests redeem the same code in parallel, at most
@@ -39,7 +33,12 @@ export class AppAuthCodesRepository {
     const now = new Date();
     const [row] = await dbWrite
       .delete(appAuthCodes)
-      .where(and(eq(appAuthCodes.code_hash, codeHash), gt(appAuthCodes.expires_at, now)))
+      .where(
+        and(
+          eq(appAuthCodes.code_hash, codeHash),
+          gt(appAuthCodes.expires_at, now),
+        ),
+      )
       .returning();
     return row;
   }

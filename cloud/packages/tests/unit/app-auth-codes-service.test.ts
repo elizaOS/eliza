@@ -3,15 +3,22 @@
  *
  * The repository (Drizzle/Postgres) is the only mocked boundary; everything
  * else is the real service code. We verify:
- *   - codes carry the `eac_` prefix and are sufficiently long
+ *   - issued codes carry the `eac_` prefix, 64-hex tail, and TTL metadata
  *   - the persisted column holds the SHA-256 hash, not the plaintext
  *   - consume() returns the original `{appId, userId, ...}` on a fresh code
- *   - consume() is single-use (second call returns null)
- *   - consume() rejects values whose prefix doesn't match
+ *     and null on replay (single-use)
+ *   - consume() short-circuits before hitting the DB on non-matching prefixes
+ *   - looksLikeAppAuthCode is a strict, case-sensitive prefix guard
+ *   - expired rows are filtered even before the cleanup cron runs
+ *   - independent codes don't collide across many issues (entropy proof)
+ *   - the persisted code_hash is case-sensitive at consume time
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import type { AppAuthCode } from "@/db/repositories/app-auth-codes";
+import type {
+  AppAuthCode,
+  NewAppAuthCode,
+} from "@/db/repositories/app-auth-codes";
 import { appAuthCodesRepository } from "@/db/repositories/app-auth-codes";
 import {
   APP_AUTH_CODE_TTL_SECONDS,
@@ -20,32 +27,40 @@ import {
   looksLikeAppAuthCode,
 } from "@/lib/services/app-auth-codes";
 
-interface CreateInput {
-  code_hash: string;
-  app_id: string;
-  user_id: string;
-  issued_at: Date;
-  expires_at: Date;
-}
-
-const originalCreate = appAuthCodesRepository.create.bind(appAuthCodesRepository);
-const originalConsume = appAuthCodesRepository.consume.bind(appAuthCodesRepository);
-const originalFindActive = appAuthCodesRepository.findActiveByHash.bind(appAuthCodesRepository);
+const originalCreate = appAuthCodesRepository.create.bind(
+  appAuthCodesRepository,
+);
+const originalConsume = appAuthCodesRepository.consume.bind(
+  appAuthCodesRepository,
+);
 
 const APP_ID = "11111111-1111-4111-8111-111111111111";
 const USER_ID = "22222222-2222-4222-8222-222222222222";
 
+async function sha256Hex(input: string): Promise<string> {
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(input),
+  );
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 describe("App auth codes service", () => {
   let store: Map<string, AppAuthCode>;
-  let lastCreated: CreateInput | null;
+  let lastCreated: NewAppAuthCode | null;
 
   beforeEach(() => {
     store = new Map();
     lastCreated = null;
 
-    appAuthCodesRepository.create = (async (record: CreateInput) => {
+    appAuthCodesRepository.create = (async (record: NewAppAuthCode) => {
       lastCreated = record;
-      const row: AppAuthCode = { ...record };
+      const row: AppAuthCode = {
+        ...record,
+        issued_at: record.issued_at ?? new Date(),
+      };
       store.set(record.code_hash, row);
       return row;
     }) as typeof appAuthCodesRepository.create;
@@ -56,49 +71,69 @@ describe("App auth codes service", () => {
       store.delete(codeHash);
       return row;
     }) as typeof appAuthCodesRepository.consume;
-
-    appAuthCodesRepository.findActiveByHash = (async (codeHash: string) => {
-      const row = store.get(codeHash);
-      if (!row || row.expires_at.getTime() <= Date.now()) return undefined;
-      return row;
-    }) as typeof appAuthCodesRepository.findActiveByHash;
   });
 
   afterEach(() => {
     appAuthCodesRepository.create = originalCreate;
     appAuthCodesRepository.consume = originalConsume;
-    appAuthCodesRepository.findActiveByHash = originalFindActive;
   });
 
-  test("issued codes carry the eac_ prefix and a high-entropy random tail", async () => {
-    const { code, expiresIn } = await issueAppAuthCode({
+  test("issued codes have the eac_ prefix, a 64-hex random tail, and TTL metadata", async () => {
+    const before = Date.now();
+    const { code, expiresAt, expiresIn } = await issueAppAuthCode({
       appId: APP_ID,
       userId: USER_ID,
     });
+    const after = Date.now();
 
-    expect(code.startsWith("eac_")).toBe(true);
-    expect(code.length).toBeGreaterThan("eac_".length + 32);
+    // Two crypto.randomUUID() concatenations stripped of dashes = 64 hex chars.
+    expect(code).toMatch(/^eac_[0-9a-f]{64}$/);
     expect(expiresIn).toBe(APP_AUTH_CODE_TTL_SECONDS);
+
+    const expiresAtMs = Date.parse(expiresAt);
+    expect(Number.isNaN(expiresAtMs)).toBe(false);
+    expect(expiresAtMs).toBeGreaterThanOrEqual(
+      before + APP_AUTH_CODE_TTL_SECONDS * 1000,
+    );
+    expect(expiresAtMs).toBeLessThanOrEqual(
+      after + APP_AUTH_CODE_TTL_SECONDS * 1000,
+    );
   });
 
-  test("persists the SHA-256 hash of the code, never the plaintext", async () => {
+  test("persists SHA-256(code) as code_hash, never the plaintext", async () => {
     const { code } = await issueAppAuthCode({ appId: APP_ID, userId: USER_ID });
 
-    expect(lastCreated).not.toBeNull();
-    expect(lastCreated?.code_hash.length).toBe(64); // 32 bytes × 2 hex chars
-    expect(lastCreated?.code_hash).not.toBe(code);
-    expect(lastCreated?.code_hash).not.toContain(code);
-    expect(lastCreated?.app_id).toBe(APP_ID);
-    expect(lastCreated?.user_id).toBe(USER_ID);
+    const expectedHash = await sha256Hex(code);
+    if (!lastCreated) throw new Error("expected create() to have been called");
+    const created = lastCreated;
+    expect(created.code_hash).toBe(expectedHash);
+    expect(created.code_hash).toHaveLength(64);
+    expect(created.code_hash).not.toBe(code);
+    expect(created.code_hash).not.toContain(code);
+    expect(created.app_id).toBe(APP_ID);
+    expect(created.user_id).toBe(USER_ID);
+    // The service always supplies issued_at, even though the insert type marks
+    // it optional (DB default). Assert so the TTL arithmetic stays well-typed.
+    if (!created.issued_at)
+      throw new Error("expected service to set issued_at");
+    expect(created.expires_at.getTime() - created.issued_at.getTime()).toBe(
+      APP_AUTH_CODE_TTL_SECONDS * 1000,
+    );
   });
 
   test("consume returns the original record once, then null on replay", async () => {
+    const before = Date.now();
     const { code } = await issueAppAuthCode({ appId: APP_ID, userId: USER_ID });
+    const after = Date.now();
 
     const first = await consumeAppAuthCode(code);
     expect(first?.appId).toBe(APP_ID);
     expect(first?.userId).toBe(USER_ID);
-    expect(first?.expiresAt).toBeGreaterThan(Date.now());
+    expect(first?.issuedAt).toBeGreaterThanOrEqual(before);
+    expect(first?.issuedAt).toBeLessThanOrEqual(after);
+    expect(first?.expiresAt).toBe(
+      first!.issuedAt + APP_AUTH_CODE_TTL_SECONDS * 1000,
+    );
 
     const second = await consumeAppAuthCode(code);
     expect(second).toBeNull();
@@ -136,16 +171,37 @@ describe("App auth codes service", () => {
     expect(await consumeAppAuthCode(code)).toBeNull();
   });
 
-  test("two issued codes are independent — consuming one does not affect the other", async () => {
-    const a = await issueAppAuthCode({ appId: APP_ID, userId: USER_ID });
-    const b = await issueAppAuthCode({ appId: APP_ID, userId: USER_ID });
+  test("issued codes are unique across many issues and consume independently", async () => {
+    const ISSUE_COUNT = 50;
+    const issued = await Promise.all(
+      Array.from({ length: ISSUE_COUNT }, () =>
+        issueAppAuthCode({ appId: APP_ID, userId: USER_ID }),
+      ),
+    );
+    const codes = issued.map((r) => r.code);
+    expect(new Set(codes).size).toBe(ISSUE_COUNT);
 
-    expect(a.code).not.toBe(b.code);
+    // Consuming the first one must not invalidate the rest.
+    const firstConsumed = await consumeAppAuthCode(codes[0]!);
+    expect(firstConsumed?.userId).toBe(USER_ID);
 
-    const consumedA = await consumeAppAuthCode(a.code);
-    expect(consumedA?.userId).toBe(USER_ID);
+    const lastConsumed = await consumeAppAuthCode(codes[ISSUE_COUNT - 1]!);
+    expect(lastConsumed?.userId).toBe(USER_ID);
+  });
 
-    const consumedB = await consumeAppAuthCode(b.code);
-    expect(consumedB?.userId).toBe(USER_ID);
+  test("consume is case-sensitive on the SHA-256 hash lookup", async () => {
+    const { code } = await issueAppAuthCode({ appId: APP_ID, userId: USER_ID });
+
+    // Same plaintext but uppercase: not a valid hex of the same bytes, so the
+    // store lookup must miss and consume must return null without touching the
+    // real row. We assert by consuming with an uppercased code (whose SHA-256
+    // differs from the lowercased original) and confirming the original still
+    // redeems afterwards.
+    const upper = `eac_${code.slice(4).toUpperCase()}`;
+    expect(upper).not.toBe(code);
+    expect(await consumeAppAuthCode(upper)).toBeNull();
+
+    const consumed = await consumeAppAuthCode(code);
+    expect(consumed?.userId).toBe(USER_ID);
   });
 });
