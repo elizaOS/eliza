@@ -64,16 +64,27 @@ app.patch("/", async (c) => {
     const parsed = UpdateCampaignSchema.safeParse(body);
 
     if (!parsed.success) {
-      return c.json({ error: "Invalid request", details: parsed.error.flatten() }, 400);
+      return c.json(
+        { error: "Invalid request", details: parsed.error.flatten() },
+        400,
+      );
     }
 
-    const campaign = await advertisingService.updateCampaign(id, user.organization_id, {
-      name: parsed.data.name,
-      budgetAmount: parsed.data.budgetAmount,
-      startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : undefined,
-      endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : undefined,
-      targeting: parsed.data.targeting,
-    });
+    const campaign = await advertisingService.updateCampaign(
+      id,
+      user.organization_id,
+      {
+        name: parsed.data.name,
+        budgetAmount: parsed.data.budgetAmount,
+        startDate: parsed.data.startDate
+          ? new Date(parsed.data.startDate)
+          : undefined,
+        endDate: parsed.data.endDate
+          ? new Date(parsed.data.endDate)
+          : undefined,
+        targeting: parsed.data.targeting,
+      },
+    );
 
     logger.info("[Advertising API] Campaign updated", { campaignId: id });
 

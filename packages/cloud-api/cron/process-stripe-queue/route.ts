@@ -28,7 +28,11 @@ async function handleProcessStripeQueue(c: Context<AppEnv>) {
     );
     const after = await queueLength(STRIPE_QUEUE_KEY);
 
-    logger.info("[Stripe Queue] Redis drain complete", { before, after, ...stats });
+    logger.info("[Stripe Queue] Redis drain complete", {
+      before,
+      after,
+      ...stats,
+    });
 
     return c.json({
       success: true,

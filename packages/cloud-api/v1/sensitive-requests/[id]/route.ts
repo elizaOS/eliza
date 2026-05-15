@@ -5,7 +5,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   type SensitiveRequestActor,
   sensitiveRequestsService,
@@ -32,7 +35,8 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id");
-    if (!id) return c.json({ success: false, error: "Missing request id" }, 400);
+    if (!id)
+      return c.json({ success: false, error: "Missing request id" }, 400);
 
     const request = await sensitiveRequestsService.get(id, actorFromUser(user));
     return c.json({ success: true, request });

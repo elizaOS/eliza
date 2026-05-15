@@ -12,14 +12,22 @@ function escapeXml(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
-function clampText(value: string | null, fallback: string, maxLength: number): string {
+function clampText(
+  value: string | null,
+  fallback: string,
+  maxLength: number,
+): string {
   const trimmed = value?.trim();
   if (!trimmed) return fallback;
-  return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength - 1)}...` : trimmed;
+  return trimmed.length > maxLength
+    ? `${trimmed.slice(0, maxLength - 1)}...`
+    : trimmed;
 }
 
 app.get("/", (c) => {
-  const title = escapeXml(clampText(c.req.query("title") ?? null, "Eliza Cloud", 90));
+  const title = escapeXml(
+    clampText(c.req.query("title") ?? null, "Eliza Cloud", 90),
+  );
   const description = escapeXml(
     clampText(
       c.req.query("description") ?? c.req.query("subtitle") ?? null,
@@ -27,7 +35,9 @@ app.get("/", (c) => {
       150,
     ),
   );
-  const label = escapeXml(clampText(c.req.query("label") ?? null, "elizaOS", 36));
+  const label = escapeXml(
+    clampText(c.req.query("label") ?? null, "elizaOS", 36),
+  );
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="${title}">
   <defs>

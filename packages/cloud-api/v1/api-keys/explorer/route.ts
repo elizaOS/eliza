@@ -6,15 +6,23 @@
 import { Hono } from "hono";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { apiKeysService } from "@/lib/services/api-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const EXPLORER_KEY_NAME = "API Explorer Key";
 
-function isUsableExplorerKey(key: { key: string; is_active: boolean; expires_at: Date | null }) {
-  const isValidFormat = key.key.startsWith("eliza_") || key.key.startsWith("sk-");
+function isUsableExplorerKey(key: {
+  key: string;
+  is_active: boolean;
+  expires_at: Date | null;
+}) {
+  const isValidFormat =
+    key.key.startsWith("eliza_") || key.key.startsWith("sk-");
   const isExpired = key.expires_at ? key.expires_at < new Date() : false;
   return key.is_active && isValidFormat && !isExpired;
 }
@@ -27,10 +35,16 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const existingKeys = await apiKeysService.listByOrganization(user.organization_id);
+    const existingKeys = await apiKeysService.listByOrganization(
+      user.organization_id,
+    );
     const explorerKeys = existingKeys
-      .filter((key) => key.name === EXPLORER_KEY_NAME && key.user_id === user.id)
-      .sort((left, right) => right.created_at.getTime() - left.created_at.getTime());
+      .filter(
+        (key) => key.name === EXPLORER_KEY_NAME && key.user_id === user.id,
+      )
+      .sort(
+        (left, right) => right.created_at.getTime() - left.created_at.getTime(),
+      );
 
     const explorerKey = explorerKeys.find(isUsableExplorerKey);
 
@@ -90,7 +104,12 @@ app.get("/", async (c) => {
         return c.json({ error: "Please sign in to use the API Explorer" }, 401);
       }
       if (error.status === 403) {
-        return c.json({ error: "Please complete your account setup to use the API Explorer" }, 403);
+        return c.json(
+          {
+            error: "Please complete your account setup to use the API Explorer",
+          },
+          403,
+        );
       }
     }
     logger.error("Error getting/creating explorer API key:", error);

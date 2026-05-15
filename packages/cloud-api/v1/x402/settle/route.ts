@@ -4,7 +4,10 @@
  */
 
 import { Hono } from "hono";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { x402FacilitatorService } from "@/lib/services/x402-facilitator";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -37,7 +40,8 @@ app.post("/", async (c) => {
         success: false,
         transaction: "",
         network: "",
-        errorReason: "missing_fields: paymentPayload and paymentRequirements are required",
+        errorReason:
+          "missing_fields: paymentPayload and paymentRequirements are required",
       },
       400,
     );
@@ -46,7 +50,9 @@ app.post("/", async (c) => {
   try {
     const result = await x402FacilitatorService.settle(
       paymentPayload as Parameters<typeof x402FacilitatorService.settle>[0],
-      paymentRequirements as Parameters<typeof x402FacilitatorService.settle>[1],
+      paymentRequirements as Parameters<
+        typeof x402FacilitatorService.settle
+      >[1],
     );
 
     return c.json(result, result.success ? 200 : 400);

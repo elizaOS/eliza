@@ -8,8 +8,15 @@
 import { and, desc, eq, isNotNull, type SQL, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { dbRead } from "@/db/helpers";
-import { type AgentSandboxStatus, agentSandboxes } from "@/db/schemas/agent-sandboxes";
-import { ForbiddenError, failureResponse, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  type AgentSandboxStatus,
+  agentSandboxes,
+} from "@/db/schemas/agent-sandboxes";
+import {
+  ForbiddenError,
+  failureResponse,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireAdmin } from "@/lib/auth/workers-hono-auth";
 import { getStewardAgent } from "@/lib/services/steward-client";
 import { logger } from "@/lib/utils/logger";
@@ -42,7 +49,8 @@ async function mapWithConcurrency<T, R>(
 app.get("/", async (c) => {
   try {
     const { role } = await requireAdmin(c);
-    if (role !== "super_admin") throw ForbiddenError("Super admin access required");
+    if (role !== "super_admin")
+      throw ForbiddenError("Super admin access required");
 
     const statusFilter = c.req.query("status");
     const nodeFilter = c.req.query("nodeId");
@@ -62,7 +70,9 @@ app.get("/", async (c) => {
       if (!VALID_STATUSES.has(statusFilter)) {
         throw ValidationError(`Invalid status filter: ${statusFilter}`);
       }
-      conditions.push(eq(agentSandboxes.status, statusFilter as AgentSandboxStatus));
+      conditions.push(
+        eq(agentSandboxes.status, statusFilter as AgentSandboxStatus),
+      );
     }
 
     if (nodeFilter) {

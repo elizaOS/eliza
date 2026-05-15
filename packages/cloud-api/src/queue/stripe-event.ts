@@ -78,9 +78,13 @@ function parseAndValidateCredits(creditsStr: string): number | null {
  * recover by retrying). Returns `retry` on transient failures so the Redis
  * queue helper can redeliver until maxAttempts is exhausted.
  */
-export async function processStripeEvent(delivery: StripeEventDelivery): Promise<DrainResult> {
+export async function processStripeEvent(
+  delivery: StripeEventDelivery,
+): Promise<DrainResult> {
   const { event } = delivery.body;
-  logger.info(`[Stripe Queue] Processing ${event.type} (${event.id}) attempt=${delivery.attempts}`);
+  logger.info(
+    `[Stripe Queue] Processing ${event.type} (${event.id}) attempt=${delivery.attempts}`,
+  );
 
   try {
     switch (event.type) {
@@ -98,7 +102,8 @@ export async function processStripeEvent(delivery: StripeEventDelivery): Promise
     }
     return "ack";
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
 
     // Permanent errors: bad data we cannot recover by retrying. Ack so
     // the DLQ does not collect noise from poisonous metadata.
@@ -116,10 +121,13 @@ export async function processStripeEvent(delivery: StripeEventDelivery): Promise
       return "ack";
     }
 
-    logger.error(`[Stripe Queue] Transient failure for ${event.type} (${event.id}); retrying`, {
-      error: errorMessage,
-      attempts: delivery.attempts,
-    });
+    logger.error(
+      `[Stripe Queue] Transient failure for ${event.type} (${event.id}); retrying`,
+      {
+        error: errorMessage,
+        attempts: delivery.attempts,
+      },
+    );
     return "retry";
   }
 }
@@ -128,7 +136,9 @@ export async function processStripeEvent(delivery: StripeEventDelivery): Promise
 // checkout.session.completed
 // ---------------------------------------------------------------------------
 
-async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void> {
+async function handleCheckoutSessionCompleted(
+  event: Stripe.Event,
+): Promise<void> {
   const session = event.data.object as Stripe.Checkout.Session;
   if (session.payment_status !== "paid") return;
 
@@ -170,7 +180,9 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
   }
 
   if (isAppPurchase && !isDuplicate) {
-    logger.info(`[Stripe Queue] Processing app-specific credit purchase for app ${appId}`);
+    logger.info(
+      `[Stripe Queue] Processing app-specific credit purchase for app ${appId}`,
+    );
 
     const result = await appCreditsService.processPurchase({
       appId,
@@ -227,7 +239,9 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
       stripePaymentIntentId: paymentIntentId,
     });
 
-    logger.info(`[Stripe Queue] Credits added: ${credits} to org ${organizationId}`);
+    logger.info(
+      `[Stripe Queue] Credits added: ${credits} to org ${organizationId}`,
+    );
 
     invalidateOrgTierCache(organizationId).catch((err) =>
       logger.warn("[Stripe Queue] Failed to invalidate org tier cache", {
@@ -255,7 +269,10 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
   // hits at the per-row level) so a retry that previously failed mid-way
   // can complete. dedupeBySourceId guarantees we never insert twice.
   if (!isAppPurchase && userId) {
-    const { splits } = await referralsService.calculateRevenueSplits(userId, credits);
+    const { splits } = await referralsService.calculateRevenueSplits(
+      userId,
+      credits,
+    );
     if (splits.length > 0) {
       logger.info(
         `[Stripe Queue] Processing revenue splits for $${credits.toFixed(2)} purchase by user ${userId}`,
@@ -263,7 +280,9 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
       for (const split of splits) {
         if (split.amount <= 0) continue;
         const source =
-          split.role === "app_owner" ? "app_owner_revenue_share" : "creator_revenue_share";
+          split.role === "app_owner"
+            ? "app_owner_revenue_share"
+            : "creator_revenue_share";
         try {
           await redeemableEarningsService.addEarnings({
             userId: split.userId,
@@ -288,13 +307,21 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
           // Surface as transient — the queue will retry. dedupeBySourceId
           // guarantees a successful split on a previous attempt is not
           // re-applied on retry.
-          logger.error(`[Stripe Queue] Failed to credit split to ${split.role} (${split.userId})`, {
-            error: splitError instanceof Error ? splitError.message : String(splitError),
-            amount: split.amount,
-            paymentIntentId,
-            sourceId: `revenue_split:${paymentIntentId}:${split.userId}`,
-          });
-          throw splitError instanceof Error ? splitError : new Error(String(splitError));
+          logger.error(
+            `[Stripe Queue] Failed to credit split to ${split.role} (${split.userId})`,
+            {
+              error:
+                splitError instanceof Error
+                  ? splitError.message
+                  : String(splitError),
+              amount: split.amount,
+              paymentIntentId,
+              sourceId: `revenue_split:${paymentIntentId}:${split.userId}`,
+            },
+          );
+          throw splitError instanceof Error
+            ? splitError
+            : new Error(String(splitError));
         }
       }
     }
@@ -302,7 +329,9 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
 
   if (!isDuplicate) {
     organizationsRepository.findById(organizationId).then((org) => {
-      const user = userId ? usersRepository.findById(userId) : Promise.resolve(null);
+      const user = userId
+        ? usersRepository.findById(userId)
+        : Promise.resolve(null);
       user.then((userData) => {
         discordService
           .logPaymentReceived({
@@ -315,10 +344,13 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
             userId: userId || undefined,
             userName: userData?.name || userData?.email,
             paymentMethod: "stripe",
-            paymentType: purchaseType === "credit_pack" ? "Credit Pack" : "Balance Top-up",
+            paymentType:
+              purchaseType === "credit_pack" ? "Credit Pack" : "Balance Top-up",
           })
           .catch((err) => {
-            logger.error("[Stripe Queue] Failed to log payment to Discord", { error: err });
+            logger.error("[Stripe Queue] Failed to log payment to Discord", {
+              error: err,
+            });
           });
       });
     });
@@ -326,7 +358,9 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
 
   if (!isDuplicate) {
     try {
-      const existingInvoice = await invoicesService.getByStripeInvoiceId(`cs_${session.id}`);
+      const existingInvoice = await invoicesService.getByStripeInvoiceId(
+        `cs_${session.id}`,
+      );
 
       if (!existingInvoice) {
         const amountTotal = session.amount_total
@@ -355,14 +389,21 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
           paid_at: new Date(),
         });
 
-        logger.debug(`[Stripe Queue] Invoice created for checkout session ${session.id}`);
+        logger.debug(
+          `[Stripe Queue] Invoice created for checkout session ${session.id}`,
+        );
       } else {
-        logger.debug(`[Stripe Queue] Invoice already exists for checkout session ${session.id}`);
+        logger.debug(
+          `[Stripe Queue] Invoice already exists for checkout session ${session.id}`,
+        );
       }
     } catch (invoiceError) {
       // Invoice row failure is non-critical: credits were already added.
       // Log and continue so we do not retry the whole event for this.
-      logger.error("[Stripe Queue] Non-critical error creating invoice record", invoiceError);
+      logger.error(
+        "[Stripe Queue] Non-critical error creating invoice record",
+        invoiceError,
+      );
     }
   }
 }
@@ -371,7 +412,9 @@ async function handleCheckoutSessionCompleted(event: Stripe.Event): Promise<void
 // payment_intent.succeeded
 // ---------------------------------------------------------------------------
 
-async function handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> {
+async function handlePaymentIntentSucceeded(
+  event: Stripe.Event,
+): Promise<void> {
   const paymentIntent = event.data.object as Stripe.PaymentIntent;
   logger.debug(`[Stripe Queue] Payment intent succeeded: ${paymentIntent.id}`);
 
@@ -401,11 +444,16 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> 
   }
 
   const affiliateFeeStr = paymentIntent.metadata?.affiliate_fee_amount;
-  const affiliateFeeAmount = affiliateFeeStr ? Number.parseFloat(affiliateFeeStr) : 0;
+  const affiliateFeeAmount = affiliateFeeStr
+    ? Number.parseFloat(affiliateFeeStr)
+    : 0;
   const affiliateOwnerId = paymentIntent.metadata?.affiliate_owner_id;
   const affiliateCodeId = paymentIntent.metadata?.affiliate_code_id;
 
-  if (affiliateFeeStr && (!Number.isFinite(affiliateFeeAmount) || affiliateFeeAmount <= 0)) {
+  if (
+    affiliateFeeStr &&
+    (!Number.isFinite(affiliateFeeAmount) || affiliateFeeAmount <= 0)
+  ) {
     logger.warn(
       `[Stripe Queue] Permanent failure - Invalid affiliate metadata in payment intent ${paymentIntent.id}`,
       { affiliateFeeStr },
@@ -413,9 +461,8 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> 
     return;
   }
 
-  const existingTransaction = await creditsService.getTransactionByStripePaymentIntent(
-    paymentIntent.id,
-  );
+  const existingTransaction =
+    await creditsService.getTransactionByStripePaymentIntent(paymentIntent.id);
   const isDuplicate = !!existingTransaction;
 
   if (isDuplicate) {
@@ -461,10 +508,15 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> 
           organizationId,
           organizationName: org?.name,
           paymentMethod: "stripe",
-          paymentType: purchaseType === "auto_top_up" ? "Auto Top-up" : "One-time Purchase",
+          paymentType:
+            purchaseType === "auto_top_up"
+              ? "Auto Top-up"
+              : "One-time Purchase",
         })
         .catch((err) => {
-          logger.error("[Stripe Queue] Failed to log payment to Discord", { error: err });
+          logger.error("[Stripe Queue] Failed to log payment to Discord", {
+            error: err,
+          });
         });
     });
   }
@@ -495,7 +547,9 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> 
         `[Stripe Queue] Failed to credit auto top-up affiliate payout for ${paymentIntent.id}`,
         { error: result.error, affiliateOwnerId, affiliateCodeId },
       );
-      throw new Error(`Failed to process auto top-up affiliate payout: ${result.error}`);
+      throw new Error(
+        `Failed to process auto top-up affiliate payout: ${result.error}`,
+      );
     }
   }
 
@@ -515,7 +569,8 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> 
         ? invoiceIdOrObject.id
         : invoiceIdOrObject;
 
-      const existingInvoice = await invoicesService.getByStripeInvoiceId(invoiceId);
+      const existingInvoice =
+        await invoicesService.getByStripeInvoiceId(invoiceId);
 
       if (!existingInvoice) {
         const stripe = requireStripe();
@@ -543,10 +598,14 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> 
             : undefined,
         });
 
-        logger.debug(`[Stripe Queue] Invoice created for payment intent ${paymentIntent.id}`);
+        logger.debug(
+          `[Stripe Queue] Invoice created for payment intent ${paymentIntent.id}`,
+        );
       }
     } else {
-      const existingInvoice = await invoicesService.getByStripeInvoiceId(`pi_${paymentIntent.id}`);
+      const existingInvoice = await invoicesService.getByStripeInvoiceId(
+        `pi_${paymentIntent.id}`,
+      );
 
       if (!existingInvoice) {
         await invoicesService.create({
@@ -569,13 +628,20 @@ async function handlePaymentIntentSucceeded(event: Stripe.Event): Promise<void> 
           paid_at: new Date(),
         });
 
-        logger.debug(`[Stripe Queue] Invoice created for direct payment ${paymentIntent.id}`);
+        logger.debug(
+          `[Stripe Queue] Invoice created for direct payment ${paymentIntent.id}`,
+        );
       } else {
-        logger.debug(`[Stripe Queue] Invoice already exists for payment ${paymentIntent.id}`);
+        logger.debug(
+          `[Stripe Queue] Invoice already exists for payment ${paymentIntent.id}`,
+        );
       }
     }
   } catch (invoiceError) {
-    logger.error("[Stripe Queue] Non-critical error creating invoice record", invoiceError);
+    logger.error(
+      "[Stripe Queue] Non-critical error creating invoice record",
+      invoiceError,
+    );
   }
 }
 
@@ -593,9 +659,13 @@ async function handlePaymentIntentFailed(event: Stripe.Event): Promise<void> {
   const amountUsd =
     parseAndValidateCredits(
       paymentIntent.metadata?.credits || paymentIntent.metadata?.amount || "",
-    ) ?? (paymentIntent.amount ? Math.round((paymentIntent.amount / 100) * 100) / 100 : undefined);
+    ) ??
+    (paymentIntent.amount
+      ? Math.round((paymentIntent.amount / 100) * 100) / 100
+      : undefined);
   const lastPaymentError = paymentIntent.last_payment_error;
-  const errorReason = lastPaymentError?.message || lastPaymentError?.code || "Payment failed";
+  const errorReason =
+    lastPaymentError?.message || lastPaymentError?.code || "Payment failed";
 
   logger.warn(`[Stripe Queue] Payment intent failed: ${paymentIntent.id}`, {
     paymentIntentId: paymentIntent.id,

@@ -10,7 +10,10 @@ import type Stripe from "stripe";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { creditsService } from "@/lib/services/credits";
 import { organizationsService } from "@/lib/services/organizations";
 import { isStripeConfigured, requireStripe } from "@/lib/stripe";
@@ -73,7 +76,9 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     // stripe v22 re-exports `SessionCreateParams` as a type alias from the
     // Checkout barrel, which strips the nested `LineItem` namespace. Derive
     // the line-item type from the params shape directly.
-    type LineItem = NonNullable<Stripe.Checkout.SessionCreateParams["line_items"]>[number];
+    type LineItem = NonNullable<
+      Stripe.Checkout.SessionCreateParams["line_items"]
+    >[number];
     let lineItems: LineItem[];
     let sessionMetadata: Record<string, string>;
 
@@ -81,7 +86,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
 
     if (creditPackId) {
       const creditPack = await creditsService.getCreditPackById(creditPackId);
-      if (!creditPack || !creditPack.is_active) {
+      if (!creditPack?.is_active) {
         return c.json({ error: "Invalid or inactive credit pack" }, 404);
       }
 
@@ -114,7 +119,10 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         type: "custom_amount",
       };
     } else {
-      return c.json({ error: "Either creditPackId or amount must be provided" }, 400);
+      return c.json(
+        { error: "Either creditPackId or amount must be provided" },
+        400,
+      );
     }
 
     const orgFull = (user.organization ?? {}) as {
@@ -148,7 +156,8 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
 
     const envAppUrl = c.env.NEXT_PUBLIC_APP_URL;
     const requestOrigin =
-      c.req.header("origin") || c.req.header("referer")?.split("/").slice(0, 3).join("/");
+      c.req.header("origin") ||
+      c.req.header("referer")?.split("/").slice(0, 3).join("/");
 
     let baseUrl: string;
     if (envAppUrl?.trim()) {
@@ -157,7 +166,9 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       baseUrl = requestOrigin;
     } else {
       if (requestOrigin) {
-        logger.warn(`[Stripe Checkout] Untrusted origin rejected: ${requestOrigin}`);
+        logger.warn(
+          `[Stripe Checkout] Untrusted origin rejected: ${requestOrigin}`,
+        );
       }
       baseUrl = "http://localhost:3000";
     }

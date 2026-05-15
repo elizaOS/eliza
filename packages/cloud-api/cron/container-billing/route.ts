@@ -19,7 +19,10 @@ import {
 } from "@/db/repositories/container-billing";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { CONTAINER_PRICING, calculateDailyContainerCost } from "@/lib/constants/pricing";
+import {
+  CONTAINER_PRICING,
+  calculateDailyContainerCost,
+} from "@/lib/constants/pricing";
 import { computeContainerBillingPlan } from "@/lib/services/container-billing-policy";
 import { emailService } from "@/lib/services/email";
 import { redeemableEarningsService } from "@/lib/services/redeemable-earnings";
@@ -46,12 +49,16 @@ interface BillingResult {
  * Mirrors the rule used elsewhere: prefer role='owner', fall back to
  * the earliest member.
  */
-async function findEarningsSourceUserId(organizationId: string): Promise<string | null> {
+async function findEarningsSourceUserId(
+  organizationId: string,
+): Promise<string | null> {
   const members = await usersRepository.listByOrganization(organizationId);
   if (members.length === 0) return null;
   const owner = members.find((m) => m.role === "owner");
   if (owner) return owner.id;
-  return members.slice().sort((a, b) => a.created_at.getTime() - b.created_at.getTime())[0].id;
+  return members
+    .slice()
+    .sort((a, b) => a.created_at.getTime() - b.created_at.getTime())[0].id;
 }
 
 async function getAvailableEarnings(userId: string): Promise<number> {
@@ -122,16 +129,25 @@ async function processContainerBilling(
   // Check if we have enough across both pools (earnings + credits)
   if (totalAvailable < dailyCost) {
     // Insufficient total - check if we need to send warning
-    if (container.billing_status === "active" || !container.shutdown_warning_sent_at) {
+    if (
+      container.billing_status === "active" ||
+      !container.shutdown_warning_sent_at
+    ) {
       // Send 48-hour warning and schedule shutdown
       const shutdownTime = new Date(
-        now.getTime() + CONTAINER_PRICING.SHUTDOWN_WARNING_HOURS * 60 * 60 * 1000,
+        now.getTime() +
+          CONTAINER_PRICING.SHUTDOWN_WARNING_HOURS * 60 * 60 * 1000,
       );
 
-      await containerBillingRepository.scheduleShutdownWarning(containerId, now, shutdownTime);
+      await containerBillingRepository.scheduleShutdownWarning(
+        containerId,
+        now,
+        shutdownTime,
+      );
 
       // Send warning email
-      const recipientEmail = org.billing_email || (await getOrgUserEmail(organizationId));
+      const recipientEmail =
+        org.billing_email || (await getOrgUserEmail(organizationId));
       if (recipientEmail) {
         await emailService.sendContainerShutdownWarningEmail({
           email: recipientEmail,
@@ -211,7 +227,10 @@ async function processContainerBilling(
       },
     });
     if (!conversion.success) {
-      logger.error(`[Container Billing] Earnings convert failed for ${containerName}`, conversion);
+      logger.error(
+        `[Container Billing] Earnings convert failed for ${containerName}`,
+        conversion,
+      );
       // Fall through: try to charge full cost to credits below.
     }
   }
@@ -219,18 +238,19 @@ async function processContainerBilling(
   const newBalance = currentBalance + fromEarnings - dailyCost;
 
   // Atomic billing — credits down by (dailyCost - fromEarnings), record kept.
-  const billingResult = await containerBillingRepository.recordSuccessfulDailyBilling({
-    containerId,
-    organizationId,
-    userId: container.user_id,
-    containerName,
-    currentTotalBilled: container.total_billed,
-    dailyCost,
-    newBalance,
-    fromEarnings,
-    fromCredits,
-    now,
-  });
+  const billingResult =
+    await containerBillingRepository.recordSuccessfulDailyBilling({
+      containerId,
+      organizationId,
+      userId: container.user_id,
+      containerName,
+      currentTotalBilled: container.total_billed,
+      dailyCost,
+      newBalance,
+      fromEarnings,
+      fromCredits,
+      now,
+    });
 
   logger.info(
     `[Container Billing] Billed ${containerName}: $${dailyCost.toFixed(4)} (earnings $${fromEarnings.toFixed(4)} + credits $${fromCredits.toFixed(4)})`,
@@ -279,7 +299,8 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
 
     logger.info("[Container Billing] Starting daily container billing run");
     // Get all running containers that need billing
-    const runningContainers = await containerBillingRepository.listBillableContainers();
+    const runningContainers =
+      await containerBillingRepository.listBillableContainers();
 
     if (runningContainers.length === 0) {
       logger.info("[Container Billing] No running containers to bill");
@@ -297,25 +318,38 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
       });
     }
 
-    logger.info(`[Container Billing] Processing ${runningContainers.length} containers`);
+    logger.info(
+      `[Container Billing] Processing ${runningContainers.length} containers`,
+    );
 
     // Get all unique organization IDs
-    const orgIds = [...new Set(runningContainers.map((c) => c.organization_id))];
+    const orgIds = [
+      ...new Set(runningContainers.map((c) => c.organization_id)),
+    ];
 
-    const orgs = await containerBillingRepository.listBillingOrganizations(orgIds);
+    const orgs =
+      await containerBillingRepository.listBillingOrganizations(orgIds);
 
     // Resolve each org's earnings source user + their available balance once
     // so we don't query inside the per-container loop.
-    const earningsByOrg = new Map<string, { sourceUserId: string | null; available: number }>();
+    const earningsByOrg = new Map<
+      string,
+      { sourceUserId: string | null; available: number }
+    >();
     for (const orgId of orgIds) {
       const sourceUserId = await findEarningsSourceUserId(orgId);
-      const available = sourceUserId ? await getAvailableEarnings(sourceUserId) : 0;
+      const available = sourceUserId
+        ? await getAvailableEarnings(sourceUserId)
+        : 0;
       earningsByOrg.set(orgId, { sourceUserId, available });
     }
 
     const orgMap = new Map(
       orgs.map((o) => {
-        const earnings = earningsByOrg.get(o.id) ?? { sourceUserId: null, available: 0 };
+        const earnings = earningsByOrg.get(o.id) ?? {
+          sourceUserId: null,
+          available: 0,
+        };
         return [
           o.id,
           {
@@ -371,7 +405,10 @@ async function handleContainerBilling(c: AppContext): Promise<Response> {
           errors++;
         }
       } catch (error) {
-        logger.error(`[Container Billing] Error processing container ${container.name}`, { error });
+        logger.error(
+          `[Container Billing] Error processing container ${container.name}`,
+          { error },
+        );
         results.push({
           containerId: container.id,
           containerName: container.name,

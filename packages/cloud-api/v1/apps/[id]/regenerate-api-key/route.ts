@@ -1,13 +1,22 @@
 import { Hono } from "hono";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-async function handlePOST(request: Request, context: { params: Promise<{ id: string }> }) {
+async function handlePOST(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
   if (!context) {
-    return Response.json({ success: false, error: "Missing route parameters" }, { status: 400 });
+    return Response.json(
+      { success: false, error: "Missing route parameters" },
+      { status: 400 },
+    );
   }
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
@@ -46,14 +55,18 @@ async function handlePOST(request: Request, context: { params: Promise<{ id: str
     return Response.json({
       success: true,
       apiKey: newApiKey,
-      message: "API key regenerated successfully. Make sure to save it securely.",
+      message:
+        "API key regenerated successfully. Make sure to save it securely.",
     });
   } catch (error) {
     logger.error("Failed to regenerate API key:", error);
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to regenerate API key",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to regenerate API key",
       },
       { status: 500 },
     );

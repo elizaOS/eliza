@@ -11,7 +11,10 @@
 import { Hono } from "hono";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -25,13 +28,19 @@ app.post("/", async (c) => {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id");
     if (!id) {
-      return c.json({ success: false, error: "Missing payment request id" }, 400);
+      return c.json(
+        { success: false, error: "Missing payment request id" },
+        400,
+      );
     }
 
     const service = getPaymentRequestsService(c.env);
     const existing = await service.get(id, user.organization_id);
     if (!existing) {
-      return c.json({ success: false, error: "Payment request not found" }, 404);
+      return c.json(
+        { success: false, error: "Payment request not found" },
+        404,
+      );
     }
 
     const expiredIds = await service.expirePast(new Date());
@@ -39,7 +48,11 @@ app.post("/", async (c) => {
 
     const after = await service.get(id, user.organization_id);
     if (!after) {
-      throw new ApiError(500, "internal_error", "Payment request vanished after expire");
+      throw new ApiError(
+        500,
+        "internal_error",
+        "Payment request vanished after expire",
+      );
     }
 
     return c.json({
@@ -48,7 +61,9 @@ app.post("/", async (c) => {
       expired: wasExpired,
     });
   } catch (error) {
-    logger.error("[PaymentRequests API] Failed to expire payment request", { error });
+    logger.error("[PaymentRequests API] Failed to expire payment request", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });

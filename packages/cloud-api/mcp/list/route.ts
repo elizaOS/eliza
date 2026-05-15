@@ -22,7 +22,8 @@ const mcpDefinitions = [
     tools: [
       {
         name: "check_credits",
-        description: "Check credit balance and recent transactions for your organization",
+        description:
+          "Check credit balance and recent transactions for your organization",
         parameters: {
           includeTransactions: {
             type: "boolean",
@@ -42,7 +43,8 @@ const mcpDefinitions = [
       },
       {
         name: "get_recent_usage",
-        description: "Get recent API usage statistics including models used, costs, and tokens",
+        description:
+          "Get recent API usage statistics including models used, costs, and tokens",
         parameters: {
           limit: {
             type: "number",
@@ -68,7 +70,12 @@ const mcpDefinitions = [
           },
           model: {
             type: "enum",
-            options: ["gpt-4o", "gpt-5-mini", "claude-sonnet-4-6", "gemini-2.0-flash-exp"],
+            options: [
+              "gpt-4o",
+              "gpt-5-mini",
+              "claude-sonnet-4-6",
+              "gemini-2.0-flash-exp",
+            ],
             optional: true,
             default: "gpt-4o",
             description: "The AI model to use for generation",
@@ -181,7 +188,15 @@ const mcpDefinitions = [
         parameters: {
           operation: {
             type: "enum",
-            options: ["list", "create", "get", "delete", "navigate", "snapshot", "command"],
+            options: [
+              "list",
+              "create",
+              "get",
+              "delete",
+              "navigate",
+              "snapshot",
+              "command",
+            ],
             description: "Browser operation to perform",
           },
           sessionId: {
@@ -297,7 +312,8 @@ const mcpDefinitions = [
       },
       {
         name: "list_agents",
-        description: "List all available agents, characters, and deployed elizaOS instances.",
+        description:
+          "List all available agents, characters, and deployed elizaOS instances.",
         parameters: {
           filters: {
             type: "object",
@@ -438,12 +454,14 @@ const mcpDefinitions = [
       },
       {
         name: "get_market_data",
-        description: "Get comprehensive market data including price, volume, supply, ATH/ATL",
+        description:
+          "Get comprehensive market data including price, volume, supply, ATH/ATL",
         cost: "Free",
       },
       {
         name: "list_trending",
-        description: "Get list of trending cryptocurrencies by search popularity",
+        description:
+          "Get list of trending cryptocurrencies by search popularity",
         cost: "Free",
       },
     ],

@@ -7,7 +7,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { NotFoundError, ValidationError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { usersService } from "@/lib/services/users";
 import type {
   CurrentUserDto,
@@ -23,7 +26,15 @@ const updateUserSchema = z.object({
   avatar: z.string().url().optional().or(z.literal("")),
   nickname: z.string().max(50).optional(),
   work_function: z
-    .enum(["developer", "designer", "product", "data", "marketing", "sales", "other"])
+    .enum([
+      "developer",
+      "designer",
+      "product",
+      "data",
+      "marketing",
+      "sales",
+      "other",
+    ])
     .optional(),
   preferences: z.string().max(1000).optional(),
   response_notifications: z.boolean().optional(),
@@ -40,7 +51,9 @@ type UserWithOrganization = NonNullable<
 type UpdatedUser = NonNullable<Awaited<ReturnType<typeof usersService.update>>>;
 
 function toIsoString(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  return value instanceof Date
+    ? value.toISOString()
+    : new Date(value).toISOString();
 }
 
 function toIsoStringOrNull(value: Date | string | null): string | null {
@@ -139,8 +152,12 @@ app.patch("/", async (c) => {
     ...(validated.name && { name: validated.name }),
     ...(validated.avatar !== undefined && { avatar: validated.avatar || null }),
     ...(validated.nickname !== undefined && { nickname: validated.nickname }),
-    ...(validated.work_function !== undefined && { work_function: validated.work_function }),
-    ...(validated.preferences !== undefined && { preferences: validated.preferences }),
+    ...(validated.work_function !== undefined && {
+      work_function: validated.work_function,
+    }),
+    ...(validated.preferences !== undefined && {
+      preferences: validated.preferences,
+    }),
     ...(validated.response_notifications !== undefined && {
       response_notifications: validated.response_notifications,
     }),

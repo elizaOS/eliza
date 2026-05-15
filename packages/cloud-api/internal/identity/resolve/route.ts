@@ -1,12 +1,21 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
-import { type IdentityProvider, usersRepository } from "@/db/repositories/users";
+import {
+  type IdentityProvider,
+  usersRepository,
+} from "@/db/repositories/users";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { requireInternalAuth } from "../../_auth";
 
-const identityProviderSchema = z.enum(["steward", "telegram", "discord", "whatsapp", "phone"]);
+const identityProviderSchema = z.enum([
+  "steward",
+  "telegram",
+  "discord",
+  "whatsapp",
+  "phone",
+]);
 
 const resolveIdentitySchema = z
   .object({
@@ -22,7 +31,9 @@ const resolveIdentitySchema = z
 
 const app = new Hono<AppEnv>();
 
-function providerForPlatform(platform: string | undefined): IdentityProvider | undefined {
+function providerForPlatform(
+  platform: string | undefined,
+): IdentityProvider | undefined {
   switch (platform) {
     case "telegram":
       return "telegram";
@@ -53,10 +64,16 @@ app.post("/", async (c) => {
     const parsed = resolveIdentitySchema.parse(rawBody);
     const identifier = parsed.platformId ?? parsed.identifier;
     if (!identifier) {
-      return jsonError(c, 400, "identifier or platformId is required", "validation_error");
+      return jsonError(
+        c,
+        400,
+        "identifier or platformId is required",
+        "validation_error",
+      );
     }
     const provider =
-      (parsed.provider as IdentityProvider | undefined) ?? providerForPlatform(parsed.platform);
+      (parsed.provider as IdentityProvider | undefined) ??
+      providerForPlatform(parsed.platform);
     const result = await usersRepository.resolveIdentity(identifier, provider);
     if (!result) {
       return jsonError(c, 404, "Identity not found", "resource_not_found");
@@ -65,12 +82,23 @@ app.post("/", async (c) => {
     const { user, identity } = result;
     const organizationId = user.organization_id;
     if (!organizationId) {
-      return jsonError(c, 404, "Provisioned agent not found", "resource_not_found");
+      return jsonError(
+        c,
+        404,
+        "Provisioned agent not found",
+        "resource_not_found",
+      );
     }
 
-    const [sandbox] = await agentSandboxesRepository.listByOrganization(organizationId);
+    const [sandbox] =
+      await agentSandboxesRepository.listByOrganization(organizationId);
     if (!sandbox) {
-      return jsonError(c, 404, "Provisioned agent not found", "resource_not_found");
+      return jsonError(
+        c,
+        404,
+        "Provisioned agent not found",
+        "resource_not_found",
+      );
     }
 
     return c.json({

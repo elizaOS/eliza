@@ -21,7 +21,9 @@ function parsePositiveIntEnv(
 ): number {
   const n = Number.parseInt(value || String(defaultValue), 10);
   if (Number.isNaN(n) || n <= 0) {
-    logger.warn(`[create-anonymous-session] Invalid ${name}, using default: ${defaultValue}`);
+    logger.warn(
+      `[create-anonymous-session] Invalid ${name}, using default: ${defaultValue}`,
+    );
     return defaultValue;
   }
   return n;
@@ -35,13 +37,20 @@ const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
   try {
-    const env = c.env as { ANON_SESSION_EXPIRY_DAYS?: string; ANON_MESSAGE_LIMIT?: string };
+    const env = c.env as {
+      ANON_SESSION_EXPIRY_DAYS?: string;
+      ANON_MESSAGE_LIMIT?: string;
+    };
     const expiryDays = parsePositiveIntEnv(
       env.ANON_SESSION_EXPIRY_DAYS,
       7,
       "ANON_SESSION_EXPIRY_DAYS",
     );
-    const msgLimit = parsePositiveIntEnv(env.ANON_MESSAGE_LIMIT, 5, "ANON_MESSAGE_LIMIT");
+    const msgLimit = parsePositiveIntEnv(
+      env.ANON_MESSAGE_LIMIT,
+      5,
+      "ANON_MESSAGE_LIMIT",
+    );
 
     const rawReturnUrl = c.req.query("returnUrl") || "/";
     const returnUrl = isValidReturnUrl(rawReturnUrl) ? rawReturnUrl : "/";
@@ -79,7 +88,9 @@ app.get("/", async (c) => {
     return c.redirect(new URL(returnUrl, c.req.url).toString());
   } catch (error) {
     logger.error("[create-anonymous-session] Error creating session:", error);
-    return c.redirect(new URL("/login?error=session_error", c.req.url).toString());
+    return c.redirect(
+      new URL("/login?error=session_error", c.req.url).toString(),
+    );
   }
 });
 

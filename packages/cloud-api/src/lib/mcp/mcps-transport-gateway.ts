@@ -72,7 +72,8 @@ const BUILTIN_TOOLS: Record<string, McpTool[]> = {
   time: [
     {
       name: "get_current_time",
-      description: "Get the current date and time in various formats for any timezone.",
+      description:
+        "Get the current date and time in various formats for any timezone.",
       inputSchema: {
         type: "object",
         properties: {
@@ -94,11 +95,15 @@ const BUILTIN_TOOLS: Record<string, McpTool[]> = {
   weather: [
     {
       name: "get_current_weather",
-      description: "Current weather for a place name or explicit latitude/longitude.",
+      description:
+        "Current weather for a place name or explicit latitude/longitude.",
       inputSchema: {
         type: "object",
         properties: {
-          location: { type: "string", description: "City or region name, e.g. Berlin" },
+          location: {
+            type: "string",
+            description: "City or region name, e.g. Berlin",
+          },
           latitude: { type: "number" },
           longitude: { type: "number" },
         },
@@ -107,7 +112,8 @@ const BUILTIN_TOOLS: Record<string, McpTool[]> = {
     },
     {
       name: "search_location",
-      description: "Resolve a place name to coordinates using Open-Meteo geocoding.",
+      description:
+        "Resolve a place name to coordinates using Open-Meteo geocoding.",
       inputSchema: {
         type: "object",
         properties: {
@@ -162,7 +168,11 @@ function upstreamEnvKey(provider: string): string {
 }
 
 function jsonRpcId(value: unknown): JsonRpcId {
-  return typeof value === "string" || typeof value === "number" || value === null ? value : null;
+  return typeof value === "string" ||
+    typeof value === "number" ||
+    value === null
+    ? value
+    : null;
 }
 
 function jsonRpcResult(id: JsonRpcId, result: unknown): Response {
@@ -173,7 +183,12 @@ function jsonRpcResult(id: JsonRpcId, result: unknown): Response {
   });
 }
 
-function jsonRpcError(id: JsonRpcId, code: number, message: string, data?: unknown): Response {
+function jsonRpcError(
+  id: JsonRpcId,
+  code: number,
+  message: string,
+  data?: unknown,
+): Response {
   return Response.json({
     jsonrpc: "2.0",
     id,
@@ -231,13 +246,18 @@ async function geocode(query: string): Promise<GeocodeItem | null> {
   url.searchParams.set("name", query);
   url.searchParams.set("count", "1");
   url.searchParams.set("language", "en");
-  const res = await fetch(url.toString(), { headers: { Accept: "application/json" } });
+  const res = await fetch(url.toString(), {
+    headers: { Accept: "application/json" },
+  });
   if (!res.ok) return null;
   const data = (await res.json()) as GeocodeResponse;
   return data.results?.[0] ?? null;
 }
 
-async function callTimeTool(name: string, args: JsonObject): Promise<ToolResult> {
+async function callTimeTool(
+  name: string,
+  args: JsonObject,
+): Promise<ToolResult> {
   if (name !== "get_current_time") {
     return errorResult({ error: `Unknown time tool: ${name}` });
   }
@@ -266,7 +286,10 @@ async function callTimeTool(name: string, args: JsonObject): Promise<ToolResult>
   return textResult(payload);
 }
 
-async function callWeatherTool(name: string, args: JsonObject): Promise<ToolResult> {
+async function callWeatherTool(
+  name: string,
+  args: JsonObject,
+): Promise<ToolResult> {
   if (name === "search_location") {
     const query = stringArg(args, "query")?.trim();
     if (!query) return errorResult({ error: "Provide query" });
@@ -313,7 +336,9 @@ async function callWeatherTool(name: string, args: JsonObject): Promise<ToolResu
   forecastUrl.searchParams.set("current_weather", "true");
   forecastUrl.searchParams.set("timezone", "auto");
 
-  const res = await fetch(forecastUrl.toString(), { headers: { Accept: "application/json" } });
+  const res = await fetch(forecastUrl.toString(), {
+    headers: { Accept: "application/json" },
+  });
   if (!res.ok) return errorResult({ error: "Weather provider request failed" });
   const data = (await res.json()) as ForecastResponse;
   return textResult({
@@ -324,15 +349,25 @@ async function callWeatherTool(name: string, args: JsonObject): Promise<ToolResu
   });
 }
 
-async function callCryptoTool(name: string, args: JsonObject): Promise<ToolResult> {
+async function callCryptoTool(
+  name: string,
+  args: JsonObject,
+): Promise<ToolResult> {
   if (name === "list_trending") {
     const res = await fetch(`${COINGECKO}/search/trending`, {
-      headers: { Accept: "application/json", "User-Agent": "eliza-cloud-mcp/1.0" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "eliza-cloud-mcp/1.0",
+      },
     });
     if (!res.ok) return errorResult({ error: "CoinGecko trending failed" });
     const data = (await res.json()) as {
       readonly coins?: {
-        readonly item?: { readonly id?: string; readonly name?: string; readonly symbol?: string };
+        readonly item?: {
+          readonly id?: string;
+          readonly name?: string;
+          readonly symbol?: string;
+        };
       }[];
     };
     return textResult({ trending: (data.coins ?? []).map((c) => c.item) });
@@ -348,7 +383,10 @@ async function callCryptoTool(name: string, args: JsonObject): Promise<ToolResul
     url.searchParams.set("vs_currencies", currency);
     url.searchParams.set("include_24hr_change", "true");
     const res = await fetch(url.toString(), {
-      headers: { Accept: "application/json", "User-Agent": "eliza-cloud-mcp/1.0" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "eliza-cloud-mcp/1.0",
+      },
     });
     if (!res.ok) return errorResult({ error: "CoinGecko request failed" });
     const data = (await res.json()) as Record<string, Record<string, number>>;
@@ -364,9 +402,13 @@ async function callCryptoTool(name: string, args: JsonObject): Promise<ToolResul
     url.searchParams.set("developer_data", "false");
     url.searchParams.set("sparkline", "false");
     const res = await fetch(url.toString(), {
-      headers: { Accept: "application/json", "User-Agent": "eliza-cloud-mcp/1.0" },
+      headers: {
+        Accept: "application/json",
+        "User-Agent": "eliza-cloud-mcp/1.0",
+      },
     });
-    if (!res.ok) return errorResult({ error: `CoinGecko error: ${res.status}` });
+    if (!res.ok)
+      return errorResult({ error: `CoinGecko error: ${res.status}` });
     const raw = (await res.json()) as {
       readonly id?: string;
       readonly market_data?: {
@@ -397,7 +439,10 @@ async function callBuiltinTool(
   return errorResult({ error: `Unknown built-in provider: ${provider}` });
 }
 
-async function handleBuiltinJsonRpc(provider: string, req: Request): Promise<Response> {
+async function handleBuiltinJsonRpc(
+  provider: string,
+  req: Request,
+): Promise<Response> {
   if (req.method === "GET") {
     return Response.json({ error: "Method not allowed" }, { status: 405 });
   }

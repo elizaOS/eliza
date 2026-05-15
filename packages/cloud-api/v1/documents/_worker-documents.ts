@@ -44,7 +44,10 @@ export function r2KeyFromBlobUrl(blobUrl: string): string | null {
   }
 }
 
-export function publicBlobUrl(c: { env: AppEnv["Bindings"] }, key: string): string {
+export function publicBlobUrl(
+  c: { env: AppEnv["Bindings"] },
+  key: string,
+): string {
   const host =
     typeof c.env.R2_PUBLIC_HOST === "string" && c.env.R2_PUBLIC_HOST.trim()
       ? c.env.R2_PUBLIC_HOST.trim()
@@ -64,9 +67,15 @@ export async function resolveDocumentScope(
     };
   }
 
-  const character = await charactersService.getByIdForUser(normalizedCharacterId, user.id);
+  const character = await charactersService.getByIdForUser(
+    normalizedCharacterId,
+    user.id,
+  );
   if (!character) {
-    return Response.json({ success: false, error: "Character not found" }, { status: 404 });
+    return Response.json(
+      { success: false, error: "Character not found" },
+      { status: 404 },
+    );
   }
 
   return {
@@ -93,7 +102,9 @@ function getMemoryStringField(memory: Memory, key: string): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
-export function isStoredDocumentMemory(memory: Memory | null): memory is Memory & { id: string } {
+export function isStoredDocumentMemory(
+  memory: Memory | null,
+): memory is Memory & { id: string } {
   return (
     !!memory &&
     typeof memory.id === "string" &&
@@ -102,8 +113,12 @@ export function isStoredDocumentMemory(memory: Memory | null): memory is Memory 
 }
 
 export function toDocumentRecord(memory: Memory) {
-  const contentMetadata = isRecord(memory.content.metadata) ? memory.content.metadata : undefined;
-  const metadata = isRecord(memory.metadata) ? memory.metadata : (contentMetadata ?? {});
+  const contentMetadata = isRecord(memory.content.metadata)
+    ? memory.content.metadata
+    : undefined;
+  const metadata = isRecord(memory.metadata)
+    ? memory.metadata
+    : (contentMetadata ?? {});
   return {
     id: memory.id ?? "",
     content: {
@@ -124,7 +139,11 @@ function fragmentTextChunks(text: string): string[] {
   return chunks.length > 0 ? chunks : [text];
 }
 
-export async function listDocumentRecords(scope: DocumentScope, limit = 100, offset = 0) {
+export async function listDocumentRecords(
+  scope: DocumentScope,
+  limit = 100,
+  offset = 0,
+) {
   const memories = await memoriesRepository.search({
     agentId: scope.agentId,
     roomId: scope.roomId,
@@ -200,9 +219,14 @@ export async function createDocumentRecord(
   return toDocumentRecord(memory);
 }
 
-async function ensureDocumentStorageGraph(user: AuthedUser, scope: DocumentScope): Promise<void> {
+async function ensureDocumentStorageGraph(
+  user: AuthedUser,
+  scope: DocumentScope,
+): Promise<void> {
   const now = new Date();
-  const agentName = scope.characterId ? `Documents ${scope.characterId}` : "User Documents";
+  const agentName = scope.characterId
+    ? `Documents ${scope.characterId}`
+    : "User Documents";
 
   await dbWrite.execute(sql`
     INSERT INTO agents (id, name, enabled, created_at, updated_at)
@@ -239,7 +263,10 @@ async function ensureDocumentStorageGraph(user: AuthedUser, scope: DocumentScope
 
 export function validateDocumentFiles(files: File[]): Response | null {
   if (files.length === 0) {
-    return Response.json({ success: false, error: "No files provided" }, { status: 400 });
+    return Response.json(
+      { success: false, error: "No files provided" },
+      { status: 400 },
+    );
   }
   if (files.length > DOCUMENT_CONSTANTS.MAX_FILES_PER_REQUEST) {
     return Response.json(
@@ -253,13 +280,21 @@ export function validateDocumentFiles(files: File[]): Response | null {
 
   const totalSize = files.reduce((sum, file) => sum + file.size, 0);
   if (totalSize > DOCUMENT_CONSTANTS.MAX_BATCH_SIZE) {
-    return Response.json({ success: false, error: "Upload batch exceeds 5MB" }, { status: 413 });
+    return Response.json(
+      { success: false, error: "Upload batch exceeds 5MB" },
+      { status: 413 },
+    );
   }
 
-  const oversized = files.find((file) => file.size > DOCUMENT_CONSTANTS.MAX_FILE_SIZE);
+  const oversized = files.find(
+    (file) => file.size > DOCUMENT_CONSTANTS.MAX_FILE_SIZE,
+  );
   if (oversized) {
     return Response.json(
-      { success: false, error: `"${oversized.name}" exceeds the 5MB file limit` },
+      {
+        success: false,
+        error: `"${oversized.name}" exceeds the 5MB file limit`,
+      },
       { status: 413 },
     );
   }
@@ -267,7 +302,9 @@ export function validateDocumentFiles(files: File[]): Response | null {
   return null;
 }
 
-export async function fileToDocumentInput(file: File): Promise<DocumentFileInput> {
+export async function fileToDocumentInput(
+  file: File,
+): Promise<DocumentFileInput> {
   return {
     filename: sanitizeFilename(file.name || "document.txt"),
     contentType: file.type || "application/octet-stream",
@@ -281,7 +318,9 @@ export function scoreDocumentText(text: string, query: string): number {
   const normalizedQuery = query.toLowerCase();
   if (normalizedText.includes(normalizedQuery)) return 1;
 
-  const terms = Array.from(new Set(normalizedQuery.split(/\s+/).filter((term) => term.length > 1)));
+  const terms = Array.from(
+    new Set(normalizedQuery.split(/\s+/).filter((term) => term.length > 1)),
+  );
   if (terms.length === 0) return 0;
 
   const matches = terms.filter((term) => normalizedText.includes(term)).length;

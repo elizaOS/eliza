@@ -3,14 +3,20 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse, jsonError } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { calculateMusicGenerationCostFromCatalog } from "@/lib/services/ai-pricing";
 import {
   getSupportedMusicModelDefinition,
   SUPPORTED_MUSIC_MODEL_IDS,
 } from "@/lib/services/ai-pricing-definitions";
 import { contentSafetyService } from "@/lib/services/content-safety";
-import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
+import {
+  creditsService,
+  InsufficientCreditsError,
+} from "@/lib/services/credits";
 import { generationsService } from "@/lib/services/generations";
 import { putPublicObject } from "@/lib/storage/r2-public-object";
 import { logger } from "@/lib/utils/logger";
@@ -21,8 +27,12 @@ const MAX_PROMPT_LENGTH = 4100;
 const MAX_LYRICS_LENGTH = 3500;
 
 const audioFormatSchema = z.enum(["mp3", "wav", "pcm", "flac"]).optional();
-const audioSampleRateSchema = z.enum(["16000", "24000", "32000", "44100"]).optional();
-const audioBitrateSchema = z.enum(["32000", "64000", "128000", "256000"]).optional();
+const audioSampleRateSchema = z
+  .enum(["16000", "24000", "32000", "44100"])
+  .optional();
+const audioBitrateSchema = z
+  .enum(["32000", "64000", "128000", "256000"])
+  .optional();
 
 const musicRequestSchema = z.object({
   prompt: z.string().trim().min(1).max(MAX_PROMPT_LENGTH),
@@ -84,7 +94,10 @@ function sunoKey(env: Bindings): string | null {
 }
 
 function sunoBaseUrl(env: Bindings): string {
-  return (envString(env, "SUNO_BASE_URL") ?? "https://api.suno.ai/v1").replace(/\/+$/, "");
+  return (envString(env, "SUNO_BASE_URL") ?? "https://api.suno.ai/v1").replace(
+    /\/+$/,
+    "",
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -96,7 +109,9 @@ function stringValue(value: unknown): string | undefined {
 }
 
 function numberValue(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
 }
 
 function normalizeMusicObject(value: unknown): MusicObject | null {
@@ -115,7 +130,10 @@ function normalizeMusicObject(value: unknown): MusicObject | null {
   };
 }
 
-function normalizeMusicResult(result: unknown, requestId?: string): NormalizedMusicResult {
+function normalizeMusicResult(
+  result: unknown,
+  requestId?: string,
+): NormalizedMusicResult {
   if (!isRecord(result)) {
     throw new Error("Music provider returned an invalid response");
   }
@@ -170,7 +188,8 @@ function buildFalInput(request: MusicRequest): Record<string, unknown> {
   };
 
   if (request.lyrics !== undefined) input.lyrics = request.lyrics;
-  if (request.instrumental !== undefined) input.is_instrumental = request.instrumental;
+  if (request.instrumental !== undefined)
+    input.is_instrumental = request.instrumental;
   if (request.lyricsOptimizer !== undefined) {
     input.lyrics_optimizer = request.lyricsOptimizer;
   } else if (!request.lyrics && request.instrumental !== true) {
@@ -187,7 +206,9 @@ function buildFalInput(request: MusicRequest): Record<string, unknown> {
   }
   if (request.audio) {
     input.audio_setting = {
-      ...(request.audio.sampleRate ? { sample_rate: request.audio.sampleRate } : {}),
+      ...(request.audio.sampleRate
+        ? { sample_rate: request.audio.sampleRate }
+        : {}),
       ...(request.audio.bitrate ? { bitrate: request.audio.bitrate } : {}),
       ...(request.audio.format ? { format: request.audio.format } : {}),
     };
@@ -199,7 +220,10 @@ function buildFalInput(request: MusicRequest): Record<string, unknown> {
   };
 }
 
-async function runFalMusic(env: Bindings, request: MusicRequest): Promise<NormalizedMusicResult> {
+async function runFalMusic(
+  env: Bindings,
+  request: MusicRequest,
+): Promise<NormalizedMusicResult> {
   const key = falKey(env);
   if (!key) {
     throw new Error("Fal music generation is not configured");
@@ -244,7 +268,9 @@ async function runElevenLabsMusic(
     },
     body: JSON.stringify({
       prompt: request.prompt,
-      ...(request.durationSeconds ? { music_length_ms: request.durationSeconds * 1000 } : {}),
+      ...(request.durationSeconds
+        ? { music_length_ms: request.durationSeconds * 1000 }
+        : {}),
       model_id: request.model.replace(/^elevenlabs\//, ""),
       ...(request.seed !== undefined ? { seed: request.seed } : {}),
       ...(request.extraInput ?? {}),
@@ -253,11 +279,14 @@ async function runElevenLabsMusic(
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`ElevenLabs music generation failed (${response.status}): ${text}`);
+    throw new Error(
+      `ElevenLabs music generation failed (${response.status}): ${text}`,
+    );
   }
 
   const contentType =
-    response.headers.get("content-type") ?? contentTypeForOutputFormat(outputFormat);
+    response.headers.get("content-type") ??
+    contentTypeForOutputFormat(outputFormat);
   const bytes = await response.arrayBuffer();
   const ext = extensionForContentType(contentType);
   const organizationId = user.organization_id ?? "unknown";
@@ -285,7 +314,10 @@ async function runElevenLabsMusic(
   };
 }
 
-async function runSunoMusic(env: Bindings, request: MusicRequest): Promise<NormalizedMusicResult> {
+async function runSunoMusic(
+  env: Bindings,
+  request: MusicRequest,
+): Promise<NormalizedMusicResult> {
   const key = sunoKey(env);
   if (!key) {
     throw new Error("Suno-compatible music generation is not configured");
@@ -301,29 +333,40 @@ async function runSunoMusic(env: Bindings, request: MusicRequest): Promise<Norma
       prompt: request.prompt,
       ...(request.durationSeconds ? { duration: request.durationSeconds } : {}),
       ...(request.lyrics ? { lyrics: request.lyrics } : {}),
-      ...(request.instrumental !== undefined ? { instrumental: request.instrumental } : {}),
+      ...(request.instrumental !== undefined
+        ? { instrumental: request.instrumental }
+        : {}),
       ...(request.extraInput ?? {}),
     }),
   });
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(`Suno-compatible music generation failed (${response.status})`);
+    throw new Error(
+      `Suno-compatible music generation failed (${response.status})`,
+    );
   }
   return normalizeMusicResult(data);
 }
 
 app.post("/", async (c) => {
-  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null = null;
+  let reservation: Awaited<ReturnType<typeof creditsService.reserve>> | null =
+    null;
 
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const request = musicRequestSchema.parse(await c.req.json());
     const definition = getSupportedMusicModelDefinition(request.model);
     if (!definition) {
-      return jsonError(c, 400, `Unsupported music model: ${request.model}`, "validation_error", {
-        supportedModels: SUPPORTED_MUSIC_MODEL_IDS,
-      });
+      return jsonError(
+        c,
+        400,
+        `Unsupported music model: ${request.model}`,
+        "validation_error",
+        {
+          supportedModels: SUPPORTED_MUSIC_MODEL_IDS,
+        },
+      );
     }
 
     const provider = request.provider ?? definition.provider;
@@ -351,12 +394,15 @@ app.post("/", async (c) => {
       text: [
         `Music prompt: ${request.prompt}`,
         request.lyrics ? `Lyrics: ${request.lyrics}` : undefined,
-        request.referenceUrl ? `Reference URL: ${request.referenceUrl}` : undefined,
+        request.referenceUrl
+          ? `Reference URL: ${request.referenceUrl}`
+          : undefined,
       ],
       metadata: { type: "music", model: request.model, provider },
     });
 
-    const durationSeconds = request.durationSeconds ?? definition.defaultParameters.durationSeconds;
+    const durationSeconds =
+      request.durationSeconds ?? definition.defaultParameters.durationSeconds;
     const cost = await calculateMusicGenerationCostFromCatalog({
       model: request.model,
       provider: definition.provider,
@@ -364,7 +410,9 @@ app.post("/", async (c) => {
       durationSeconds,
       dimensions: {
         ...(durationSeconds ? { durationSeconds } : {}),
-        ...(request.instrumental !== undefined ? { instrumental: request.instrumental } : {}),
+        ...(request.instrumental !== undefined
+          ? { instrumental: request.instrumental }
+          : {}),
       },
     });
 
@@ -378,7 +426,11 @@ app.post("/", async (c) => {
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return c.json(
-          { success: false, error: "Insufficient credits", required: error.required },
+          {
+            success: false,
+            error: "Insufficient credits",
+            required: error.required,
+          },
           402,
         );
       }
@@ -410,7 +462,9 @@ app.post("/", async (c) => {
       status: "completed",
       storage_url: normalized.music.url,
       thumbnail_url: null,
-      file_size: normalized.music.file_size ? BigInt(normalized.music.file_size) : undefined,
+      file_size: normalized.music.file_size
+        ? BigInt(normalized.music.file_size)
+        : undefined,
       mime_type: normalized.music.content_type ?? "audio/mpeg",
       parameters: {
         durationSeconds,
@@ -441,7 +495,10 @@ app.post("/", async (c) => {
     if (reservation) {
       await reservation.reconcile(0).catch((reconcileError) => {
         logger.error("[GenerateMusic] Failed to refund reservation", {
-          error: reconcileError instanceof Error ? reconcileError.message : String(reconcileError),
+          error:
+            reconcileError instanceof Error
+              ? reconcileError.message
+              : String(reconcileError),
         });
       });
     }
@@ -449,6 +506,8 @@ app.post("/", async (c) => {
   }
 });
 
-app.all("*", (c) => c.json({ success: false, error: "Method not allowed" }, 405));
+app.all("*", (c) =>
+  c.json({ success: false, error: "Method not allowed" }, 405),
+);
 
 export default app;

@@ -23,9 +23,13 @@ const patchRequestSchema = z.object({
   attendees: z.array(attendeeSchema).optional(),
 });
 
-async function __hono_PATCH(request: Request, { params }: RouteContext<{ eventId: string }>) {
+async function __hono_PATCH(
+  request: Request,
+  { params }: RouteContext<{ eventId: string }>,
+) {
   try {
-    const { user } = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const { user } =
+      await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
     const { eventId } = await params;
     const parsed = patchRequestSchema.safeParse(await request.json());
     if (!parsed.success) {
@@ -61,25 +65,39 @@ async function __hono_PATCH(request: Request, { params }: RouteContext<{ eventId
     }
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "Failed to update Google Calendar event.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update Google Calendar event.",
       },
       { status: 500 },
     );
   }
 }
 
-async function __hono_DELETE(request: Request, { params }: RouteContext<{ eventId: string }>) {
+async function __hono_DELETE(
+  request: Request,
+  { params }: RouteContext<{ eventId: string }>,
+) {
   try {
-    const { user } = await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
+    const { user } =
+      await agentGoogleRouteDeps.requireAuthOrApiKeyWithOrg(request);
     const { eventId } = await params;
     const sideRaw = new URL(request.url).searchParams.get("side");
-    const grantId = new URL(request.url).searchParams.get("grantId")?.trim() || undefined;
+    const grantId =
+      new URL(request.url).searchParams.get("grantId")?.trim() || undefined;
     const calendarIdRaw = new URL(request.url).searchParams.get("calendarId");
     if (sideRaw && sideRaw !== "owner" && sideRaw !== "agent") {
-      return Response.json({ error: "Invalid calendar event delete request." }, { status: 400 });
+      return Response.json(
+        { error: "Invalid calendar event delete request." },
+        { status: 400 },
+      );
     }
     if (calendarIdRaw !== null && calendarIdRaw.trim().length === 0) {
-      return Response.json({ error: "Invalid calendar event delete request." }, { status: 400 });
+      return Response.json(
+        { error: "Invalid calendar event delete request." },
+        { status: 400 },
+      );
     }
 
     return Response.json(
@@ -98,7 +116,10 @@ async function __hono_DELETE(request: Request, { params }: RouteContext<{ eventI
     }
     return Response.json(
       {
-        error: error instanceof Error ? error.message : "Failed to delete Google Calendar event.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to delete Google Calendar event.",
       },
       { status: 500 },
     );
@@ -107,9 +128,13 @@ async function __hono_DELETE(request: Request, { params }: RouteContext<{ eventI
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.patch("/", async (c) =>
-  __hono_PATCH(c.req.raw, { params: Promise.resolve({ eventId: c.req.param("eventId")! }) }),
+  __hono_PATCH(c.req.raw, {
+    params: Promise.resolve({ eventId: c.req.param("eventId")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ eventId: c.req.param("eventId")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ eventId: c.req.param("eventId")! }),
+  }),
 );
 export default __hono_app;

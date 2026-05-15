@@ -2,7 +2,10 @@ import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appsService } from "@/lib/services/apps";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -36,11 +39,17 @@ async function handleGET(
     const existingApp = await appsService.getById(id);
 
     if (!existingApp) {
-      return Response.json({ success: false, error: "App not found" }, { status: 404 });
+      return Response.json(
+        { success: false, error: "App not found" },
+        { status: 404 },
+      );
     }
 
     if (existingApp.organization_id !== user.organization_id) {
-      return Response.json({ success: false, error: "Access denied" }, { status: 403 });
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
     }
 
     const view = searchParams.get("view") || "stats";
@@ -57,7 +66,10 @@ async function handleGET(
     const MAX_LIMIT = 100;
     const rawLimit = Number.parseInt(searchParams.get("limit") || "50", 10);
     const rawOffset = Number.parseInt(searchParams.get("offset") || "0", 10);
-    const limit = Math.min(Math.max(Number.isNaN(rawLimit) ? 50 : rawLimit, 1), MAX_LIMIT);
+    const limit = Math.min(
+      Math.max(Number.isNaN(rawLimit) ? 50 : rawLimit, 1),
+      MAX_LIMIT,
+    );
     const offset = Math.max(Number.isNaN(rawOffset) ? 0 : rawOffset, 0);
 
     switch (view) {
@@ -79,7 +91,12 @@ async function handleGET(
       }
 
       case "visitors": {
-        const visitors = await appsService.getTopVisitors(id, limit, startDate, endDate);
+        const visitors = await appsService.getTopVisitors(
+          id,
+          limit,
+          startDate,
+          endDate,
+        );
         return Response.json({
           success: true,
           visitors,
@@ -91,7 +108,8 @@ async function handleGET(
           | "hourly"
           | "daily"
           | "monthly";
-        const timelineStart = startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const timelineStart =
+          startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
         const timelineEnd = endDate || new Date();
 
         const timeline = await appsService.getRequestsOverTime(
@@ -110,8 +128,6 @@ async function handleGET(
           },
         });
       }
-
-      case "stats":
       default: {
         const stats = await appsService.getRequestStats(id, startDate, endDate);
         return Response.json({
@@ -125,7 +141,10 @@ async function handleGET(
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to get request analytics",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to get request analytics",
       },
       { status: 500 },
     );

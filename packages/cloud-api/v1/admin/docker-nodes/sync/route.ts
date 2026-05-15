@@ -19,7 +19,10 @@ app.post("/", async (c) => {
   try {
     const { role } = await requireAdmin(c);
     if (role !== "super_admin") {
-      return c.json({ success: false, error: "Super admin access required" }, 403);
+      return c.json(
+        { success: false, error: "Super admin access required" },
+        403,
+      );
     }
 
     const changes = await dockerNodeManager.syncAllocatedCounts();

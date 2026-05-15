@@ -20,7 +20,10 @@ app.get("/", async (c) => {
     if (!id) return c.json({ success: false, error: "Missing app id" }, 400);
     const { searchParams } = new URL(c.req.url);
 
-    const periodType = (searchParams.get("period") || "daily") as "hourly" | "daily" | "monthly";
+    const periodType = (searchParams.get("period") || "daily") as
+      | "hourly"
+      | "daily"
+      | "monthly";
     const startDate = searchParams.get("start_date")
       ? new Date(searchParams.get("start_date")!)
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
@@ -38,7 +41,12 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Access denied" }, 403);
     }
 
-    const analytics = await appsService.getAnalytics(id, periodType, startDate, endDate);
+    const analytics = await appsService.getAnalytics(
+      id,
+      periodType,
+      startDate,
+      endDate,
+    );
     const totalStats = await appsService.getTotalStats(id);
 
     return c.json({
@@ -56,7 +64,10 @@ app.get("/", async (c) => {
     return c.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to get app analytics",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to get app analytics",
       },
       500,
     );

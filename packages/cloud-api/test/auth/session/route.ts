@@ -22,7 +22,9 @@ function isEnabled(c: AppContext): boolean {
 function testAuthEnv(c: AppContext): PlaywrightTestAuthEnv {
   return {
     PLAYWRIGHT_TEST_AUTH:
-      typeof c.env.PLAYWRIGHT_TEST_AUTH === "string" ? c.env.PLAYWRIGHT_TEST_AUTH : undefined,
+      typeof c.env.PLAYWRIGHT_TEST_AUTH === "string"
+        ? c.env.PLAYWRIGHT_TEST_AUTH
+        : undefined,
     PLAYWRIGHT_TEST_AUTH_SECRET:
       typeof c.env.PLAYWRIGHT_TEST_AUTH_SECRET === "string"
         ? c.env.PLAYWRIGHT_TEST_AUTH_SECRET
@@ -57,14 +59,18 @@ app.post("/", async (c) => {
   }
 
   const user = await usersService.getWithOrganization(apiKey.user_id);
-  if (!user || !user.organization_id || !user.organization) {
+  if (!user?.organization_id || !user.organization) {
     return c.json({ error: "User organization not found" }, 403);
   }
   if (!user.is_active || !user.organization.is_active) {
     return c.json({ error: "User or organization is inactive" }, 403);
   }
 
-  const token = createPlaywrightTestSessionToken(user.id, user.organization_id, testAuthEnv(c));
+  const token = createPlaywrightTestSessionToken(
+    user.id,
+    user.organization_id,
+    testAuthEnv(c),
+  );
 
   const url = new URL(c.req.url);
   setCookie(c, PLAYWRIGHT_TEST_SESSION_COOKIE_NAME, token, {

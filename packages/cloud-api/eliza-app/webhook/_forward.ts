@@ -40,7 +40,10 @@ async function proxyRequest(
   const headers = new Headers(c.req.raw.headers);
   headers.delete("host");
   headers.set("x-forwarded-host", new URL(c.req.url).host);
-  headers.set("x-forwarded-proto", new URL(c.req.url).protocol.replace(":", ""));
+  headers.set(
+    "x-forwarded-proto",
+    new URL(c.req.url).protocol.replace(":", ""),
+  );
 
   try {
     const upstream = await fetch(target, {
@@ -91,7 +94,8 @@ export async function forwardToWebhookGateway(
     );
   }
 
-  const project = readStringEnv(c, ["ELIZA_APP_WEBHOOK_PROJECT"]) ?? "eliza-app";
+  const project =
+    readStringEnv(c, ["ELIZA_APP_WEBHOOK_PROJECT"]) ?? "eliza-app";
   const target = new URL(baseUrl);
   const sourceUrl = new URL(c.req.url);
   target.pathname = `/webhook/${encodeURIComponent(project)}/${platform}${requestSuffix(
@@ -103,7 +107,9 @@ export async function forwardToWebhookGateway(
   return proxyRequest(c, target, "webhook gateway", options);
 }
 
-export async function forwardToDiscordWebhookHandler(c: AppContext): Promise<Response> {
+export async function forwardToDiscordWebhookHandler(
+  c: AppContext,
+): Promise<Response> {
   const configuredUrl = readStringEnv(c, [
     "ELIZA_APP_DISCORD_WEBHOOK_HANDLER_URL",
     "DISCORD_WEBHOOK_HANDLER_URL",

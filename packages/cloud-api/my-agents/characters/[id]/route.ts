@@ -56,7 +56,10 @@ app.put("/", async (c) => {
       username: elizaCharacter.username ?? null,
       system: elizaCharacter.system ?? null,
       bio: elizaCharacter.bio,
-      message_examples: (elizaCharacter.messageExamples ?? []) as Record<string, unknown>[][],
+      message_examples: (elizaCharacter.messageExamples ?? []) as Record<
+        string,
+        unknown
+      >[][],
       post_examples: elizaCharacter.postExamples ?? [],
       topics: elizaCharacter.topics ?? [],
       adjectives: elizaCharacter.adjectives ?? [],
@@ -69,7 +72,11 @@ app.put("/", async (c) => {
       avatar_url: elizaCharacter.avatarUrl ?? null,
     };
 
-    const character = await charactersService.updateForUser(id, user.id, updates);
+    const character = await charactersService.updateForUser(
+      id,
+      user.id,
+      updates,
+    );
     if (!character) throw NotFoundError("Character not found or access denied");
 
     const invalidations: Promise<void>[] = [
@@ -98,14 +105,20 @@ app.delete("/", async (c) => {
 
     const character = await charactersService.getByIdForUser(id, user.id);
     if (!character) {
-      return c.json({ success: false, error: "Character not found or access denied" }, 404);
+      return c.json(
+        { success: false, error: "Character not found or access denied" },
+        404,
+      );
     }
 
     await charactersService.delete(id);
     if (character.is_public) {
       await cache.delPattern(CacheKeys.discovery.pattern());
     }
-    return c.json({ success: true, data: { message: "Character deleted successfully" } });
+    return c.json({
+      success: true,
+      data: { message: "Character deleted successfully" },
+    });
   } catch (error) {
     return failureResponse(c, error);
   }

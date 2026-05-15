@@ -145,7 +145,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
             version: "1.0.0",
           },
         },
-        id: "test-" + Date.now(),
+        id: `test-${Date.now()}`,
       };
 
       const mcpResponse = await fetch(server.endpoint, {

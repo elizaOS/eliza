@@ -29,7 +29,11 @@ app.get("/", async (c) => {
     let balance = await appCreditsService.getBalance(appId, user.id);
 
     if (!balance) {
-      await appCreditsService.getOrCreateBalance(appId, user.id, user.organization_id);
+      await appCreditsService.getOrCreateBalance(
+        appId,
+        user.id,
+        user.organization_id,
+      );
       balance = await appCreditsService.getBalance(appId, user.id);
     }
 

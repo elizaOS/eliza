@@ -53,7 +53,6 @@ function getStatusVariant(
       return "success";
     case "expired":
       return "warning";
-    case "inactive":
     default:
       return "neutral";
   }
@@ -65,7 +64,6 @@ function getStatusLabel(status: ApiKeyDisplay["status"]): string {
       return "Active";
     case "expired":
       return "Expired";
-    case "inactive":
     default:
       return "Inactive";
   }
@@ -74,7 +72,7 @@ function getStatusLabel(status: ApiKeyDisplay["status"]): string {
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const date = new Date(value);
-  if (isNaN(date.getTime())) return "—";
+  if (Number.isNaN(date.getTime())) return "—";
   return date.toLocaleDateString(undefined, {
     month: "short",
     day: "numeric",

@@ -28,15 +28,24 @@ const drainSchema = z.object({
   deprovision: z.boolean().optional().default(false),
 });
 
-async function __hono_POST(request: Request, context: { params: Promise<{ nodeId: string }> }) {
+async function __hono_POST(
+  request: Request,
+  context: { params: Promise<{ nodeId: string }> },
+) {
   const { role } = await requireAdmin(request);
   if (role !== "super_admin") {
-    return Response.json({ success: false, error: "Super admin access required" }, { status: 403 });
+    return Response.json(
+      { success: false, error: "Super admin access required" },
+      { status: 403 },
+    );
   }
 
   const { nodeId } = await context.params;
   if (!nodeId) {
-    return Response.json({ success: false, error: "nodeId is required" }, { status: 400 });
+    return Response.json(
+      { success: false, error: "nodeId is required" },
+      { status: 400 },
+    );
   }
 
   let body: unknown = {};
@@ -59,7 +68,9 @@ async function __hono_POST(request: Request, context: { params: Promise<{ nodeId
   }
 
   try {
-    await getNodeAutoscaler().drainNode(nodeId, { deprovision: parsed.data.deprovision });
+    await getNodeAutoscaler().drainNode(nodeId, {
+      deprovision: parsed.data.deprovision,
+    });
     const refreshed = await dockerNodesRepository.findByNodeId(nodeId);
 
     return Response.json({
@@ -106,6 +117,8 @@ async function __hono_POST(request: Request, context: { params: Promise<{ nodeId
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ nodeId: c.req.param("nodeId")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ nodeId: c.req.param("nodeId")! }),
+  }),
 );
 export default __hono_app;

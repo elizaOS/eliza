@@ -39,7 +39,7 @@ export function EmailCaptureModal({
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
 
-    if (!email || !email.includes("@")) {
+    if (!email?.includes("@")) {
       toast.error("Please enter a valid email address");
       return;
     }

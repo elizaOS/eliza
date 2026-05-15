@@ -51,25 +51,40 @@ app.post("/", async (c) => {
 
     // Validate phone number format
     if (!isE164PhoneNumber(phoneNumber)) {
-      return c.json({ error: "Phone number must be in E.164 format (e.g., +15551234567)" }, 400);
+      return c.json(
+        { error: "Phone number must be in E.164 format (e.g., +15551234567)" },
+        400,
+      );
     }
 
     // Validate the credentials
-    const validation = await twilioAutomationService.validateCredentials(accountSid, authToken);
+    const validation = await twilioAutomationService.validateCredentials(
+      accountSid,
+      authToken,
+    );
 
     if (!validation.valid) {
-      return c.json({ error: validation.error || "Invalid Twilio credentials" }, 400);
+      return c.json(
+        { error: validation.error || "Invalid Twilio credentials" },
+        400,
+      );
     }
 
     // Store credentials
-    await twilioAutomationService.storeCredentials(user.organization_id, user.id, {
-      accountSid,
-      authToken,
-      phoneNumber,
-    });
+    await twilioAutomationService.storeCredentials(
+      user.organization_id,
+      user.id,
+      {
+        accountSid,
+        authToken,
+        phoneNumber,
+      },
+    );
 
     // Get the webhook URL to display to user
-    const webhookUrl = twilioAutomationService.getWebhookUrl(user.organization_id);
+    const webhookUrl = twilioAutomationService.getWebhookUrl(
+      user.organization_id,
+    );
 
     await invalidateOAuthState(user.organization_id, "twilio", user.id);
 

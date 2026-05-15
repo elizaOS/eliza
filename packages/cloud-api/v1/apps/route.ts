@@ -30,7 +30,9 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const apps = await appsService.listByOrganizationWithDatabaseState(user.organization_id);
+    const apps = await appsService.listByOrganizationWithDatabaseState(
+      user.organization_id,
+    );
     return c.json({ success: true, apps });
   } catch (error) {
     logger.error("[Apps API] Failed to list apps:", error);

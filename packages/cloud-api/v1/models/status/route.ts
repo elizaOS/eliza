@@ -28,10 +28,16 @@ const UNAVAILABLE_PROVIDERS = new Set([
   "bfl", // BFL/Flux not currently available
 ]);
 
-function isProviderUnavailable(modelId: string): { unavailable: boolean; reason?: string } {
+function isProviderUnavailable(modelId: string): {
+  unavailable: boolean;
+  reason?: string;
+} {
   const provider = modelId.split("/")[0];
   if (UNAVAILABLE_PROVIDERS.has(provider)) {
-    return { unavailable: true, reason: `${provider} provider is currently unavailable` };
+    return {
+      unavailable: true,
+      reason: `${provider} provider is currently unavailable`,
+    };
   }
   return { unavailable: false };
 }
@@ -64,39 +70,52 @@ app.post("/", async (c) => {
       return c.json({ error: getAiProviderConfigurationError() }, 503);
     }
 
-    const gatewayModelIds = new Set((await getCachedMergedModelCatalog()).map((model) => model.id));
+    const gatewayModelIds = new Set(
+      (await getCachedMergedModelCatalog()).map((model) => model.id),
+    );
 
-    const results: ModelAvailability[] = (modelIds as string[]).map((modelId) => {
-      const providerCheck = isProviderUnavailable(modelId);
-      if (providerCheck.unavailable) {
-        return { modelId, available: false, reason: providerCheck.reason };
-      }
+    const results: ModelAvailability[] = (modelIds as string[]).map(
+      (modelId) => {
+        const providerCheck = isProviderUnavailable(modelId);
+        if (providerCheck.unavailable) {
+          return { modelId, available: false, reason: providerCheck.reason };
+        }
 
-      if (isGroqNativeModel(modelId)) {
-        return {
-          modelId,
-          available: groqConfigured,
-          reason: groqConfigured ? undefined : "Groq models are not configured on this deployment",
-        };
-      }
+        if (isGroqNativeModel(modelId)) {
+          return {
+            modelId,
+            available: groqConfigured,
+            reason: groqConfigured
+              ? undefined
+              : "Groq models are not configured on this deployment",
+          };
+        }
 
-      if (!gatewayConfigured) {
-        return {
-          modelId,
-          available: false,
-          reason: "Gateway provider is not configured on this deployment",
-        };
-      }
+        if (!gatewayConfigured) {
+          return {
+            modelId,
+            available: false,
+            reason: "Gateway provider is not configured on this deployment",
+          };
+        }
 
-      const inGateway = gatewayModelIds.has(modelId);
-      if (!inGateway) {
-        return { modelId, available: false, reason: "Model not found in gateway" };
-      }
+        const inGateway = gatewayModelIds.has(modelId);
+        if (!inGateway) {
+          return {
+            modelId,
+            available: false,
+            reason: "Model not found in gateway",
+          };
+        }
 
-      return { modelId, available: true };
-    });
+        return { modelId, available: true };
+      },
+    );
 
-    c.header("Cache-Control", "public, s-maxage=300, stale-while-revalidate=600");
+    c.header(
+      "Cache-Control",
+      "public, s-maxage=300, stale-while-revalidate=600",
+    );
     return c.json({ models: results, timestamp: Date.now() });
   } catch (error) {
     logger.error("Error fetching model status:", error);

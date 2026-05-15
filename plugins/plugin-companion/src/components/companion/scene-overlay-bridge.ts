@@ -68,7 +68,7 @@ export function SceneOverlayDataBridge(): null {
       state: agentStatus.state,
       agentName: agentStatus.agentName,
       uptime: agentStatus.uptime,
-      sessions: (ptySessions).map((s) => ({
+      sessions: ptySessions.map((s) => ({
         sessionId: s.sessionId,
         label: s.label,
         agentType: s.agentType,

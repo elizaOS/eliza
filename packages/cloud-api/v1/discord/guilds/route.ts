@@ -17,7 +17,9 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const guilds = await discordAutomationService.getGuilds(user.organization_id);
+    const guilds = await discordAutomationService.getGuilds(
+      user.organization_id,
+    );
 
     return c.json({
       guilds: guilds.map((g) => ({

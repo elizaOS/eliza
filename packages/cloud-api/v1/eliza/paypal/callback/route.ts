@@ -29,11 +29,18 @@ const requestSchema = z.object({
 app.post("/", async (c) => {
   try {
     await requireUserOrApiKeyWithOrg(c);
-    const parsed = requestSchema.safeParse(await c.req.json().catch(() => ({})));
+    const parsed = requestSchema.safeParse(
+      await c.req.json().catch(() => ({})),
+    );
     if (!parsed.success) {
-      return c.json({ error: "code is required.", details: parsed.error.issues }, 400);
+      return c.json(
+        { error: "code is required.", details: parsed.error.issues },
+        400,
+      );
     }
-    const exchange = await exchangePaypalAuthorizationCode({ code: parsed.data.code });
+    const exchange = await exchangePaypalAuthorizationCode({
+      code: parsed.data.code,
+    });
     let identity: PaypalIdentity | null = null;
     try {
       identity = await getPaypalIdentity({ accessToken: exchange.accessToken });

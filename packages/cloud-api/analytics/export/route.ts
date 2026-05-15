@@ -24,7 +24,10 @@ import {
   generateExcel,
   generateJSON,
 } from "@/lib/export/analytics";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   getModelBreakdown,
   getProviderBreakdown,
@@ -67,7 +70,8 @@ app.get("/", async (c) => {
       : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const endDate = endDateRaw ? new Date(endDateRaw) : new Date();
 
-    const timeRangeDays = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
+    const timeRangeDays =
+      (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24);
     if (timeRangeDays > EXPORT_LIMITS.MAX_TIME_RANGE_DAYS) {
       return c.json(
         {
@@ -94,7 +98,10 @@ app.get("/", async (c) => {
     const dataType = c.req.query("type") || "timeseries";
     const includeMetadata = c.req.query("includeMetadata") === "true";
 
-    const exportOptions: ExportOptions = { includeTimestamp: true, includeMetadata };
+    const exportOptions: ExportOptions = {
+      includeTimestamp: true,
+      includeMetadata,
+    };
 
     let data: Array<Record<string, unknown>>;
     let columns: ExportColumn[];
@@ -126,10 +133,13 @@ app.get("/", async (c) => {
       ];
       filename = `user-analytics-${startDate.toISOString().split("T")[0]}-to-${endDate.toISOString().split("T")[0]}`;
     } else if (dataType === "providers") {
-      const providerBreakdown = await getProviderBreakdown(user.organization_id, {
-        startDate,
-        endDate,
-      });
+      const providerBreakdown = await getProviderBreakdown(
+        user.organization_id,
+        {
+          startDate,
+          endDate,
+        },
+      );
       data = providerBreakdown.map((p) => ({
         provider: p.provider,
         requests: p.totalRequests,
@@ -144,7 +154,11 @@ app.get("/", async (c) => {
         { key: "cost", label: "Total Cost (Credits)", format: formatCurrency },
         { key: "tokens", label: "Total Tokens", format: formatNumber },
         { key: "successRate", label: "Success Rate", format: formatPercentage },
-        { key: "percentage", label: "Usage %", format: (v) => `${Number(v).toFixed(1)}%` },
+        {
+          key: "percentage",
+          label: "Usage %",
+          format: (v) => `${Number(v).toFixed(1)}%`,
+        },
       ];
       filename = `provider-analytics-${startDate.toISOString().split("T")[0]}-to-${endDate.toISOString().split("T")[0]}`;
     } else if (dataType === "models") {
@@ -168,7 +182,11 @@ app.get("/", async (c) => {
         { key: "requests", label: "Total Requests", format: formatNumber },
         { key: "cost", label: "Total Cost (Credits)", format: formatCurrency },
         { key: "tokens", label: "Total Tokens", format: formatNumber },
-        { key: "avgCostPerToken", label: "Avg Cost/Token", format: (v) => Number(v).toFixed(6) },
+        {
+          key: "avgCostPerToken",
+          label: "Avg Cost/Token",
+          format: (v) => Number(v).toFixed(6),
+        },
         { key: "successRate", label: "Success Rate", format: formatPercentage },
       ];
       filename = `model-analytics-${startDate.toISOString().split("T")[0]}-to-${endDate.toISOString().split("T")[0]}`;
@@ -221,7 +239,8 @@ app.get("/", async (c) => {
         `${filename}.json`,
         "application/json",
       );
-      for (const [k, v] of Object.entries(responseHeaders)) response.headers.set(k, v);
+      for (const [k, v] of Object.entries(responseHeaders))
+        response.headers.set(k, v);
       return response;
     }
 
@@ -232,7 +251,8 @@ app.get("/", async (c) => {
         `${filename}.xlsx`,
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       );
-      for (const [k, v] of Object.entries(responseHeaders)) response.headers.set(k, v);
+      for (const [k, v] of Object.entries(responseHeaders))
+        response.headers.set(k, v);
       return response;
     }
 
@@ -241,7 +261,8 @@ app.get("/", async (c) => {
       `${filename}.csv`,
       "text/csv",
     );
-    for (const [k, v] of Object.entries(responseHeaders)) response.headers.set(k, v);
+    for (const [k, v] of Object.entries(responseHeaders))
+      response.headers.set(k, v);
     return response;
   } catch (error) {
     logger.error("[Analytics Export] Error:", error);

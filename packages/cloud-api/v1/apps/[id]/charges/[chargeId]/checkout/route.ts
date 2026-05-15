@@ -7,7 +7,10 @@ import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { SUPPORTED_PAY_CURRENCIES } from "@/lib/config/crypto";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { appChargeRequestsService } from "@/lib/services/app-charge-requests";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -18,7 +21,9 @@ const CheckoutSchema = z.object({
   cancel_url: z.string().url().optional(),
   return_url: z.string().url().optional(),
   payCurrency: z.enum(SUPPORTED_PAY_CURRENCIES).optional(),
-  network: z.enum(["ERC20", "TRC20", "BEP20", "POLYGON", "SOL", "BASE", "ARB", "OP"]).optional(),
+  network: z
+    .enum(["ERC20", "TRC20", "BEP20", "POLYGON", "SOL", "BASE", "ARB", "OP"])
+    .optional(),
 });
 
 const app = new Hono<AppEnv>();
@@ -38,7 +43,11 @@ app.post("/", async (c) => {
     const parsed = CheckoutSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }

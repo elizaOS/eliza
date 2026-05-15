@@ -1,10 +1,10 @@
-export { CompactMessageStack } from "./CompactMessageStack";
 export type {
   CompactMessageStackProps,
   CompanionMessage,
   CompanionRole,
 } from "./CompactMessageStack";
-export { CompanionShell } from "./CompanionShell";
+export { CompactMessageStack } from "./CompactMessageStack";
 export type { CompanionShellProps } from "./CompanionShell";
-export { ComposerBar, describeRightButton } from "./ComposerBar";
+export { CompanionShell } from "./CompanionShell";
 export type { ComposerBarProps, ComposerMode } from "./ComposerBar";
+export { ComposerBar, describeRightButton } from "./ComposerBar";

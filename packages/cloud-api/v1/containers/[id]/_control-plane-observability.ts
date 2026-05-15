@@ -25,7 +25,10 @@ export interface ControlPlaneContainerLogs {
   note: string;
 }
 
-export function parseTailParam(raw: string | undefined, defaultTail = 200): number {
+export function parseTailParam(
+  raw: string | undefined,
+  defaultTail = 200,
+): number {
   if (!raw) return defaultTail;
   const value = Number.parseInt(raw, 10);
   if (!Number.isInteger(value) || value < 1 || value > 10_000) {

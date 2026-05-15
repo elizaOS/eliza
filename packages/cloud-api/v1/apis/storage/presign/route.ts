@@ -44,7 +44,10 @@ app.post("/", async (c) => {
     if (!adapter) {
       logger.error("[storage proxy] R2_* env vars not set; presign rejected");
       return c.json(
-        { error: "Attachment storage proxy not available — server misconfigured" },
+        {
+          error:
+            "Attachment storage proxy not available — server misconfigured",
+        },
         503,
       );
     }
@@ -52,11 +55,17 @@ app.post("/", async (c) => {
     const rawBody = await c.req.json().catch(() => null);
     const parsed = presignRequestSchema.safeParse(rawBody);
     if (!parsed.success) {
-      return c.json({ error: "Invalid presign request", details: parsed.error.issues }, 400);
+      return c.json(
+        { error: "Invalid presign request", details: parsed.error.issues },
+        400,
+      );
     }
     const { key: userKey, operation, expiresIn } = parsed.data;
     const trimmedKey = userKey.replace(/^\/+|\/+$/g, "");
-    if (trimmedKey.length === 0 || trimmedKey.split("/").some((s) => s === "..")) {
+    if (
+      trimmedKey.length === 0 ||
+      trimmedKey.split("/").some((s) => s === "..")
+    ) {
       return c.json({ error: "Invalid object key" }, 400);
     }
 

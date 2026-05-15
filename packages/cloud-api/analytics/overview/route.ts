@@ -6,7 +6,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { analyticsService } from "@/lib/services/analytics";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -19,9 +22,16 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const timeRange =
-      (c.req.query("timeRange") as "daily" | "weekly" | "monthly" | undefined) || "daily";
+      (c.req.query("timeRange") as
+        | "daily"
+        | "weekly"
+        | "monthly"
+        | undefined) || "daily";
 
-    const overview = await analyticsService.getOverview(user.organization_id, timeRange);
+    const overview = await analyticsService.getOverview(
+      user.organization_id,
+      timeRange,
+    );
 
     const now = new Date();
     const startDate = (() => {
@@ -46,7 +56,9 @@ app.get("/", async (c) => {
         ),
         failedRequests:
           overview.summary.totalRequests -
-          Math.round(overview.summary.totalRequests * overview.summary.successRate),
+          Math.round(
+            overview.summary.totalRequests * overview.summary.successRate,
+          ),
         successRate: overview.summary.successRate,
         totalCost: overview.summary.totalCost,
         avgCostPerRequest: overview.summary.avgCostPerRequest,

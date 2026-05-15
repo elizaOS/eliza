@@ -46,7 +46,11 @@ app.get("/", async (c) => {
     return c.json({
       status: "ready",
       description: "Agent budget maintenance cron job",
-      tasks: ["Auto-refill low budgets", "Reset daily spending limits", "Send low budget alerts"],
+      tasks: [
+        "Auto-refill low budgets",
+        "Reset daily spending limits",
+        "Send low budget alerts",
+      ],
     });
   } catch (error) {
     return failureResponse(c, error);

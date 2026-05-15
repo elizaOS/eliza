@@ -14,8 +14,15 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { calculateCost, estimateTokens, getProviderFromModel } from "@/lib/pricing";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  calculateCost,
+  estimateTokens,
+  getProviderFromModel,
+} from "@/lib/pricing";
 import {
   type AnthropicCotEnv,
   mergeAnthropicCotProviderOptions,
@@ -25,7 +32,10 @@ import {
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { CreditReservation } from "@/lib/services/credits";
-import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
+import {
+  creditsService,
+  InsufficientCreditsError,
+} from "@/lib/services/credits";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -43,9 +53,13 @@ const app = new Hono<AppEnv>();
 function getAnthropicCotEnv(env: AppEnv["Bindings"]): AnthropicCotEnv {
   return {
     ANTHROPIC_COT_BUDGET:
-      typeof env.ANTHROPIC_COT_BUDGET === "string" ? env.ANTHROPIC_COT_BUDGET : undefined,
+      typeof env.ANTHROPIC_COT_BUDGET === "string"
+        ? env.ANTHROPIC_COT_BUDGET
+        : undefined,
     ANTHROPIC_COT_BUDGET_MAX:
-      typeof env.ANTHROPIC_COT_BUDGET_MAX === "string" ? env.ANTHROPIC_COT_BUDGET_MAX : undefined,
+      typeof env.ANTHROPIC_COT_BUDGET_MAX === "string"
+        ? env.ANTHROPIC_COT_BUDGET_MAX
+        : undefined,
   };
 }
 
@@ -60,7 +74,9 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   }
 
   const baseUrl = c.env.NEXT_PUBLIC_APP_URL || "https://www.elizacloud.ai";
-  const bioText = Array.isArray(character.bio) ? character.bio.join("\n") : character.bio;
+  const bioText = Array.isArray(character.bio)
+    ? character.bio.join("\n")
+    : character.bio;
   const markupPct = Number(character.inference_markup_percentage || 0);
 
   return c.json({
@@ -241,7 +257,9 @@ async function handleToolCall(
   };
 
   if (name === "get_info") {
-    const bioText = Array.isArray(character.bio) ? character.bio.join("\n") : character.bio;
+    const bioText = Array.isArray(character.bio)
+      ? character.bio.join("\n")
+      : character.bio;
     return c.json({
       jsonrpc: "2.0",
       result: {
@@ -274,8 +292,11 @@ async function handleToolCall(
       });
     }
 
-    const bioText = Array.isArray(character.bio) ? character.bio.join("\n") : character.bio;
-    const systemPrompt = character.system || `You are ${character.name}. ${bioText}`;
+    const bioText = Array.isArray(character.bio)
+      ? character.bio.join("\n")
+      : character.bio;
+    const systemPrompt =
+      character.system || `You are ${character.name}. ${bioText}`;
     const messages = [
       { role: "system" as const, content: systemPrompt },
       { role: "user" as const, content: message },
@@ -284,7 +305,9 @@ async function handleToolCall(
     const provider = getProviderFromModel(model);
     const markupPct = Number(character.inference_markup_percentage || 0);
     const envForThinking = getAnthropicCotEnv(c.env);
-    const agentThinkingBudget = parseThinkingBudgetFromCharacterSettings(character.settings);
+    const agentThinkingBudget = parseThinkingBudgetFromCharacterSettings(
+      character.settings,
+    );
     const effectiveThinkingBudget = resolveAnthropicThinkingBudgetTokens(
       model,
       envForThinking,
@@ -322,7 +345,8 @@ async function handleToolCall(
     }
 
     const maxOutputTokens = effectiveThinkingBudget
-      ? Math.max(DEFAULT_MIN_OUTPUT_TOKENS, effectiveThinkingBudget) + DEFAULT_MIN_OUTPUT_TOKENS
+      ? Math.max(DEFAULT_MIN_OUTPUT_TOKENS, effectiveThinkingBudget) +
+        DEFAULT_MIN_OUTPUT_TOKENS
       : undefined;
 
     try {
@@ -330,7 +354,11 @@ async function handleToolCall(
         model: gateway.languageModel(model),
         messages,
         ...(maxOutputTokens && { maxOutputTokens }),
-        ...mergeAnthropicCotProviderOptions(model, envForThinking, agentThinkingBudget),
+        ...mergeAnthropicCotProviderOptions(
+          model,
+          envForThinking,
+          agentThinkingBudget,
+        ),
       });
 
       let fullText = "";
@@ -362,11 +390,14 @@ async function handleToolCall(
           tokens: (usage?.inputTokens || 0) + (usage?.outputTokens || 0),
           protocol: "mcp",
         });
-        logger.info("[Agent MCP] Creator earnings credited to redeemable balance", {
-          agentId: character.id,
-          ownerId: character.user_id,
-          earnings: actualCreatorMarkup,
-        });
+        logger.info(
+          "[Agent MCP] Creator earnings credited to redeemable balance",
+          {
+            agentId: character.id,
+            ownerId: character.user_id,
+            earnings: actualCreatorMarkup,
+          },
+        );
       }
 
       await reservation.reconcile(actualTotal);

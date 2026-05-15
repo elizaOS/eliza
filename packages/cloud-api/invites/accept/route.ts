@@ -7,11 +7,16 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { invitesService } from "@/lib/services/invites";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-const acceptInviteSchema = z.object({ token: z.string().min(1, "Token is required") });
+const acceptInviteSchema = z.object({
+  token: z.string().min(1, "Token is required"),
+});
 
 const app = new Hono<AppEnv>();
 
@@ -23,7 +28,10 @@ app.post("/", async (c) => {
     const body = await c.req.json();
     const validated = acceptInviteSchema.parse(body);
 
-    const acceptedInvite = await invitesService.acceptInvite(validated.token, user.id);
+    const acceptedInvite = await invitesService.acceptInvite(
+      validated.token,
+      user.id,
+    );
 
     return c.json({
       success: true,
@@ -36,14 +44,20 @@ app.post("/", async (c) => {
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return c.json({ success: false, error: "Validation error", details: error.issues }, 400);
+      return c.json(
+        { success: false, error: "Validation error", details: error.issues },
+        400,
+      );
     }
 
-    const errorMessage = error instanceof Error ? error.message : "Failed to accept invitation";
+    const errorMessage =
+      error instanceof Error ? error.message : "Failed to accept invitation";
     const status =
-      errorMessage.includes("sign in with") || errorMessage.includes("already a member")
+      errorMessage.includes("sign in with") ||
+      errorMessage.includes("already a member")
         ? 409
-        : errorMessage.includes("Invalid invite") || errorMessage.includes("expired")
+        : errorMessage.includes("Invalid invite") ||
+            errorMessage.includes("expired")
           ? 400
           : null;
     if (status) {

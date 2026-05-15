@@ -7,7 +7,8 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "Clone Your Crush | AI-Powered Chat",
-  description: "Create an AI clone of your crush and chat with them. Powered by ElizaOS.",
+  description:
+    "Create an AI clone of your crush and chat with them. Powered by ElizaOS.",
   keywords: ["AI", "chat", "crush", "artificial intelligence", "ElizaOS"],
   openGraph: {
     title: "Clone Your Crush",

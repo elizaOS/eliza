@@ -59,14 +59,20 @@ app.post("/", async (c) => {
     }
 
     // Store credentials
-    await blooioAutomationService.storeCredentials(user.organization_id, user.id, {
-      apiKey,
-      webhookSecret,
-      fromNumber,
-    });
+    await blooioAutomationService.storeCredentials(
+      user.organization_id,
+      user.id,
+      {
+        apiKey,
+        webhookSecret,
+        fromNumber,
+      },
+    );
 
     // Get the webhook URL to display to user
-    const webhookUrl = blooioAutomationService.getWebhookUrl(user.organization_id);
+    const webhookUrl = blooioAutomationService.getWebhookUrl(
+      user.organization_id,
+    );
 
     await invalidateOAuthState(user.organization_id, "blooio", user.id);
 

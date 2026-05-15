@@ -7,7 +7,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
-import { elizaTokenPriceService, type SupportedNetwork } from "@/lib/services/eliza-token-price";
+import {
+  elizaTokenPriceService,
+  type SupportedNetwork,
+} from "@/lib/services/eliza-token-price";
 import { twapPriceOracle } from "@/lib/services/twap-price-oracle";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -35,7 +38,11 @@ app.post("/", async (c) => {
       networks.map(async (network) => {
         try {
           const quote = await elizaTokenPriceService.getPrice(network);
-          await twapPriceOracle.recordPriceSample(network, quote.priceUsd, quote.source);
+          await twapPriceOracle.recordPriceSample(
+            network,
+            quote.priceUsd,
+            quote.source,
+          );
           results.push({
             network,
             success: true,
@@ -43,7 +50,8 @@ app.post("/", async (c) => {
             source: quote.source,
           });
         } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : "Unknown error";
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
           results.push({ network, success: false, error: errorMessage });
           logger.error("[PriceSample Cron] Failed to sample price", {
             network,
@@ -57,7 +65,9 @@ app.post("/", async (c) => {
     try {
       cleanedUp = await twapPriceOracle.cleanupOldSamples();
     } catch (error) {
-      logger.warn("[PriceSample Cron] Failed to cleanup old samples", { error });
+      logger.warn("[PriceSample Cron] Failed to cleanup old samples", {
+        error,
+      });
     }
 
     const systemHealth = await twapPriceOracle.getSystemHealth();

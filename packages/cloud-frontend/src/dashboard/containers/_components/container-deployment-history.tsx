@@ -270,7 +270,7 @@ export function ContainerDeploymentHistory({
 
               {/* Timeline */}
               <div className="space-y-3">
-                {deployments.map((deployment, index) => (
+                {deployments.map((deployment, _index) => (
                   <div
                     key={deployment.id}
                     className="relative pl-8 pb-4 border-l-2 border-white/10 last:border-l-0 last:pb-0"

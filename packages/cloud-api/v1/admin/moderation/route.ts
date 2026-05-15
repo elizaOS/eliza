@@ -15,7 +15,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { ApiError, ValidationError } from "@/lib/api/cloud-worker-errors";
-import { requireAdmin, requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
+import {
+  requireAdmin,
+  requireUserOrApiKey,
+} from "@/lib/auth/workers-hono-auth";
 import { adminService } from "@/lib/services/admin";
 import type {
   AdminModerationActionResponse,
@@ -35,7 +38,13 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
-const ViewSchema = z.enum(["overview", "violations", "users", "admins", "user-detail"]);
+const ViewSchema = z.enum([
+  "overview",
+  "violations",
+  "users",
+  "admins",
+  "user-detail",
+]);
 const CombinableViews = ["overview", "violations", "users", "admins"] as const;
 type CombinableView = (typeof CombinableViews)[number];
 
@@ -45,7 +54,9 @@ function isCombinableView(value: string): value is CombinableView {
 const LimitSchema = z.coerce.number().int().min(1).max(1000).default(100);
 const AdminRoleSchema = z.enum(["super_admin", "moderator", "viewer"]);
 
-type AdminUserRecord = Awaited<ReturnType<typeof adminService.listAdmins>>[number];
+type AdminUserRecord = Awaited<
+  ReturnType<typeof adminService.listAdmins>
+>[number];
 type ModerationViolationRecord = Awaited<
   ReturnType<typeof adminService.getRecentViolations>
 >[number];
@@ -55,7 +66,9 @@ type ModerationStatusRecord = Awaited<
 type UserDetails = Awaited<ReturnType<typeof adminService.getUserDetails>>;
 
 function toIsoString(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+  return value instanceof Date
+    ? value.toISOString()
+    : new Date(value).toISOString();
 }
 
 function toIsoStringOrNull(value: Date | string | null): string | null {
@@ -66,7 +79,9 @@ function truncateText(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 }
 
-function toAdminRole(role: string | null): z.infer<typeof AdminRoleSchema> | null {
+function toAdminRole(
+  role: string | null,
+): z.infer<typeof AdminRoleSchema> | null {
   if (role === null) return null;
   const parsed = AdminRoleSchema.safeParse(role);
   if (!parsed.success) {
@@ -94,7 +109,9 @@ function toViolationDto(
   };
 }
 
-function toModerationStatusDto(status: ModerationStatusRecord): AdminModerationUserStatusDto {
+function toModerationStatusDto(
+  status: ModerationStatusRecord,
+): AdminModerationUserStatusDto {
   return {
     id: status.id,
     userId: status.userId,
@@ -128,7 +145,9 @@ function toAdminUserDto(admin: AdminUserRecord): AdminUserDto {
   };
 }
 
-function toUserDetailResponse(details: UserDetails): AdminModerationUserDetailResponse {
+function toUserDetailResponse(
+  details: UserDetails,
+): AdminModerationUserDetailResponse {
   return {
     user: details.user
       ? {
@@ -142,7 +161,9 @@ function toUserDetailResponse(details: UserDetails): AdminModerationUserDetailRe
     moderationStatus: details.moderationStatus
       ? toModerationStatusDto(details.moderationStatus)
       : null,
-    violations: details.violations.map((violation) => toViolationDto(violation, 500)),
+    violations: details.violations.map((violation) =>
+      toViolationDto(violation, 500),
+    ),
     generationsCount: details.generationsCount,
   };
 }
@@ -159,7 +180,9 @@ async function buildOverview(
   ]);
 
   return {
-    recentViolations: violations.map((violation) => toViolationDto(violation, 100)),
+    recentViolations: violations.map((violation) =>
+      toViolationDto(violation, 100),
+    ),
     totalViolations: violations.length,
     flaggedUsers: flaggedUsers.length,
     bannedUsers: bannedUsers.length,
@@ -171,7 +194,9 @@ async function buildOverview(
   };
 }
 
-async function buildViolations(limit: number): Promise<AdminModerationViolationsResponse> {
+async function buildViolations(
+  limit: number,
+): Promise<AdminModerationViolationsResponse> {
   const violations = await adminService.getRecentViolations(limit);
   return {
     violations: violations.map((violation) => toViolationDto(violation, 200)),
@@ -192,7 +217,9 @@ async function buildUsers(): Promise<AdminModerationUsersResponse> {
   };
 }
 
-async function buildAdmins(role: string | null): Promise<AdminModerationAdminsResponse> {
+async function buildAdmins(
+  role: string | null,
+): Promise<AdminModerationAdminsResponse> {
   const admins = await adminService.listAdmins();
   return {
     admins: admins.map(toAdminUserDto),
@@ -217,7 +244,10 @@ async function adminStatusResponse(c: AppContext): Promise<Response> {
     c.header("X-Admin-Role", role ?? "");
     return c.body(null, 200);
   } catch (error) {
-    if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+    if (
+      error instanceof ApiError &&
+      (error.status === 401 || error.status === 403)
+    ) {
       return notAdminResponse();
     }
     throw error;
@@ -290,7 +320,9 @@ app.get("/", async (c) => {
     const wantAdmins = seen.has("admins");
 
     const [overview, violations, users, admins] = await Promise.all([
-      wantOverview ? buildOverview(user.wallet_address ?? null, role) : Promise.resolve(undefined),
+      wantOverview
+        ? buildOverview(user.wallet_address ?? null, role)
+        : Promise.resolve(undefined),
       wantViolations ? buildViolations(limit) : Promise.resolve(undefined),
       wantUsers ? buildUsers() : Promise.resolve(undefined),
       wantAdmins ? buildAdmins(role) : Promise.resolve(undefined),
@@ -328,7 +360,8 @@ app.get("/", async (c) => {
       return c.json(await buildAdmins(role));
 
     case "user-detail": {
-      if (!userId) throw ValidationError("userId required for user-detail view");
+      if (!userId)
+        throw ValidationError("userId required for user-detail view");
       const details = await adminService.getUserDetails(userId);
       return c.json(toUserDetailResponse(details));
     }
@@ -383,13 +416,22 @@ app.post("/", async (c) => {
     throw ValidationError("Invalid request", { issues: parsed.error.issues });
   }
 
-  const action = parsed.data.action === "clear_flags" ? "clear_status" : parsed.data.action;
+  const action =
+    parsed.data.action === "clear_flags" ? "clear_status" : parsed.data.action;
   const userId = parsed.data.userId ?? parsed.data.targetUserId;
-  const walletAddress = parsed.data.walletAddress ?? parsed.data.targetWalletAddress;
+  const walletAddress =
+    parsed.data.walletAddress ?? parsed.data.targetWalletAddress;
   const { role, reason, notes } = parsed.data;
 
-  if ((action === "add_admin" || action === "revoke_admin") && adminRole !== "super_admin") {
-    throw new ApiError(403, "access_denied", "Only super_admin can manage other admins");
+  if (
+    (action === "add_admin" || action === "revoke_admin") &&
+    adminRole !== "super_admin"
+  ) {
+    throw new ApiError(
+      403,
+      "access_denied",
+      "Only super_admin can manage other admins",
+    );
   }
 
   logger.info("[Admin] Action", {
@@ -469,7 +511,10 @@ app.post("/", async (c) => {
         throw ValidationError("Cannot revoke your own admin privileges");
       }
 
-      await adminService.revokeAdmin(walletAddress, user.wallet_address ?? undefined);
+      await adminService.revokeAdmin(
+        walletAddress,
+        user.wallet_address ?? undefined,
+      );
       return c.json(actionResponse("Admin privileges revoked"));
     }
 

@@ -8,7 +8,10 @@ import { Hono } from "hono";
 import { organizationsRepository } from "@/db/repositories";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { autoTopUpService } from "@/lib/services/auto-top-up";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -25,7 +28,10 @@ app.post("/", async (c) => {
 
     if (!org.auto_top_up_enabled) {
       return c.json(
-        { error: "Auto top-up is not enabled", message: "Please enable auto top-up first" },
+        {
+          error: "Auto top-up is not enabled",
+          message: "Please enable auto top-up first",
+        },
         400,
       );
     }

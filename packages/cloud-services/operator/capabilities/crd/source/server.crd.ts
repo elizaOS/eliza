@@ -23,7 +23,8 @@ export const ServerCRD = {
                     type: "integer",
                     minimum: 1,
                     maximum: 200,
-                    description: "Maximum number of agents this server can host",
+                    description:
+                      "Maximum number of agents this server can host",
                   },
                   tier: {
                     type: "string",
@@ -32,7 +33,8 @@ export const ServerCRD = {
                   },
                   project: {
                     type: "string",
-                    description: "Project identifier for Gateway routing (e.g. cloud, soulmate)",
+                    description:
+                      "Project identifier for Gateway routing (e.g. cloud, soulmate)",
                   },
                   image: {
                     type: "string",
@@ -42,11 +44,13 @@ export const ServerCRD = {
                     type: "integer",
                     minimum: 0,
                     default: 3,
-                    description: "KEDA maxReplicaCount (0 = scale-to-zero only)",
+                    description:
+                      "KEDA maxReplicaCount (0 = scale-to-zero only)",
                   },
                   secretRef: {
                     type: "string",
-                    description: "K8s Secret name containing DATABASE_URL, REDIS_URL, etc.",
+                    description:
+                      "K8s Secret name containing DATABASE_URL, REDIS_URL, etc.",
                   },
                   resources: {
                     type: "object",
@@ -71,13 +75,15 @@ export const ServerCRD = {
                     type: "integer",
                     minimum: 0,
                     default: 900,
-                    description: "KEDA cooldown in seconds before scale-to-zero (default 900)",
+                    description:
+                      "KEDA cooldown in seconds before scale-to-zero (default 900)",
                   },
                   pollingInterval: {
                     type: "integer",
                     minimum: 5,
                     default: 30,
-                    description: "KEDA polling interval in seconds (default 30)",
+                    description:
+                      "KEDA polling interval in seconds (default 30)",
                   },
                   agents: {
                     type: "array",
@@ -91,7 +97,8 @@ export const ServerCRD = {
                         },
                         characterRef: {
                           type: "string",
-                          description: "Reference to the character configuration",
+                          description:
+                            "Reference to the character configuration",
                         },
                       },
                     },

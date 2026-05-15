@@ -7,7 +7,10 @@
 
 import { Hono } from "hono";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { getCreditBalanceResponse } from "@/lib/services/credit-balance-response";
 import type { AppEnv } from "@/types/cloud-worker-env";
 

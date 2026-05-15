@@ -18,10 +18,14 @@ import { z } from "zod";
 import { orgRateLimitOverridesRepository } from "@/db/repositories/org-rate-limit-overrides";
 import { organizationsRepository } from "@/db/repositories/organizations";
 import { requireAdminWithResponse } from "@/lib/auth/admin";
-import { getOrgTier, invalidateOrgTierCache } from "@/lib/services/org-rate-limits";
+import {
+  getOrgTier,
+  invalidateOrgTierCache,
+} from "@/lib/services/org-rate-limits";
 import { logger } from "@/lib/utils/logger";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function validateOrgId(orgId: string): Response | null {
   if (!UUID_RE.test(orgId)) {
@@ -30,8 +34,14 @@ function validateOrgId(orgId: string): Response | null {
   return null;
 }
 
-async function __hono_GET(request: Request, context: RouteContext<{ orgId: string }>) {
-  const authResult = await requireAdminWithResponse(request, "[Admin] Org rate limits auth error");
+async function __hono_GET(
+  request: Request,
+  context: RouteContext<{ orgId: string }>,
+) {
+  const authResult = await requireAdminWithResponse(
+    request,
+    "[Admin] Org rate limits auth error",
+  );
   if (authResult instanceof Response) return authResult;
 
   const { orgId } = await context.params;
@@ -64,8 +74,14 @@ const PatchSchema = z.object({
   note: z.string().max(500).nullable().optional(),
 });
 
-async function __hono_PATCH(request: Request, context: RouteContext<{ orgId: string }>) {
-  const authResult = await requireAdminWithResponse(request, "[Admin] Org rate limits auth error");
+async function __hono_PATCH(
+  request: Request,
+  context: RouteContext<{ orgId: string }>,
+) {
+  const authResult = await requireAdminWithResponse(
+    request,
+    "[Admin] Org rate limits auth error",
+  );
   if (authResult instanceof Response) return authResult;
 
   const { orgId } = await context.params;
@@ -105,7 +121,10 @@ async function __hono_PATCH(request: Request, context: RouteContext<{ orgId: str
   try {
     const org = await organizationsRepository.findById(orgId);
     if (!org) {
-      return Response.json({ error: "Organization not found" }, { status: 404 });
+      return Response.json(
+        { error: "Organization not found" },
+        { status: 404 },
+      );
     }
     // Pass values as-is: null clears a field, undefined = not provided (no change)
     const result = await orgRateLimitOverridesRepository.upsert({
@@ -140,8 +159,14 @@ async function __hono_PATCH(request: Request, context: RouteContext<{ orgId: str
   }
 }
 
-async function __hono_DELETE(request: Request, context: RouteContext<{ orgId: string }>) {
-  const authResult = await requireAdminWithResponse(request, "[Admin] Org rate limits auth error");
+async function __hono_DELETE(
+  request: Request,
+  context: RouteContext<{ orgId: string }>,
+) {
+  const authResult = await requireAdminWithResponse(
+    request,
+    "[Admin] Org rate limits auth error",
+  );
   if (authResult instanceof Response) return authResult;
 
   const { orgId } = await context.params;
@@ -166,12 +191,18 @@ async function __hono_DELETE(request: Request, context: RouteContext<{ orgId: st
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ orgId: c.req.param("orgId")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ orgId: c.req.param("orgId")! }),
+  }),
 );
 __hono_app.patch("/", async (c) =>
-  __hono_PATCH(c.req.raw, { params: Promise.resolve({ orgId: c.req.param("orgId")! }) }),
+  __hono_PATCH(c.req.raw, {
+    params: Promise.resolve({ orgId: c.req.param("orgId")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ orgId: c.req.param("orgId")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ orgId: c.req.param("orgId")! }),
+  }),
 );
 export default __hono_app;

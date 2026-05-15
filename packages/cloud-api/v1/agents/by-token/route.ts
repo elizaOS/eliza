@@ -19,16 +19,28 @@ app.get("/", async (c) => {
     const chain = c.req.query("chain") || undefined;
 
     if (!address) {
-      return c.json({ success: false, error: "Missing required query parameter: address" }, 400);
+      return c.json(
+        { success: false, error: "Missing required query parameter: address" },
+        400,
+      );
     }
     if (address.length > 256) {
       return c.json(
-        { success: false, error: "address parameter exceeds maximum length (256)" },
+        {
+          success: false,
+          error: "address parameter exceeds maximum length (256)",
+        },
         400,
       );
     }
     if (chain && chain.length > 50) {
-      return c.json({ success: false, error: "chain parameter exceeds maximum length (50)" }, 400);
+      return c.json(
+        {
+          success: false,
+          error: "chain parameter exceeds maximum length (50)",
+        },
+        400,
+      );
     }
 
     const character = await userCharactersRepository.findByTokenAddress(
@@ -36,8 +48,11 @@ app.get("/", async (c) => {
       chain,
     );
 
-    if (!character || !character.is_public) {
-      return c.json({ success: false, error: "No agent linked to this token" }, 404);
+    if (!character?.is_public) {
+      return c.json(
+        { success: false, error: "No agent linked to this token" },
+        404,
+      );
     }
 
     return c.json({

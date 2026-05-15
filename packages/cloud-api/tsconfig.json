@@ -40,6 +40,11 @@
       "@/*": ["../cloud-shared/*"]
     }
   },
-  "include": ["./**/*.ts", "./**/*.tsx", "../cloud-shared/src/db/**/*.ts", "../cloud-shared/src/types/**/*"],
+  "include": [
+    "./**/*.ts",
+    "./**/*.tsx",
+    "../cloud-shared/src/db/**/*.ts",
+    "../cloud-shared/src/types/**/*"
+  ],
   "exclude": ["node_modules", "../../node_modules"]
 }

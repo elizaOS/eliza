@@ -14,7 +14,10 @@ import { Hono } from "hono";
 import { userVoicesRepository } from "@/db/repositories/user-voices";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const MAX_LIMIT = 100;
@@ -61,7 +64,10 @@ app.get("/", async (c) => {
         ? cloneTypeParam
         : undefined;
 
-    const rawLimit = Number.parseInt(c.req.query("limit") ?? String(DEFAULT_LIMIT), 10);
+    const rawLimit = Number.parseInt(
+      c.req.query("limit") ?? String(DEFAULT_LIMIT),
+      10,
+    );
     const rawOffset = Number.parseInt(c.req.query("offset") ?? "0", 10);
     const limit = Math.min(
       Math.max(Number.isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit, 1),
@@ -69,12 +75,15 @@ app.get("/", async (c) => {
     );
     const offset = Math.max(Number.isNaN(rawOffset) ? 0 : rawOffset, 0);
 
-    const result = await userVoicesRepository.listByOrganization(user.organization_id, {
-      includeInactive,
-      cloneType,
-      limit,
-      offset,
-    });
+    const result = await userVoicesRepository.listByOrganization(
+      user.organization_id,
+      {
+        includeInactive,
+        cloneType,
+        limit,
+        offset,
+      },
+    );
 
     const voices: VoiceListItem[] = result.voices.map((voice) => ({
       id: voice.id,

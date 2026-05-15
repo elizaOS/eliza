@@ -318,12 +318,11 @@ export function ImageGeneratorAdvanced({
       if (Array.isArray(data.images) && data.images.length > 0) {
         const generatedBatch: GeneratedImage[] = data.images
           .map((img: { image?: string; url?: string }, index: number) => {
-            const base64OrData =
-              img.image && img.image.startsWith("data:")
-                ? img.image
-                : img?.image
-                  ? `data:image/png;base64,${img.image}`
-                  : "";
+            const base64OrData = img.image?.startsWith("data:")
+              ? img.image
+              : img?.image
+                ? `data:image/png;base64,${img.image}`
+                : "";
             const finalUrl = img.url ?? base64OrData;
             return {
               id: `${Date.now()}-${index}`,

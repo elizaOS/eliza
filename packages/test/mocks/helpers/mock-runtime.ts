@@ -6,7 +6,7 @@ import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
-} from "../../../packages/app-core/test/helpers/real-runtime.ts";
+} from "../../app-core/test/helpers/real-runtime.ts";
 import { appLifeOpsPlugin } from "../../../plugins/plugin-lifeops/src/plugin.ts";
 import {
   MOCK_ENVIRONMENTS,

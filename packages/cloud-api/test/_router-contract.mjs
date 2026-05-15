@@ -10,7 +10,10 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
-import { collectRouteEntries, compareMountPaths } from "../src/_generate-router.mjs";
+import {
+  collectRouteEntries,
+  compareMountPaths,
+} from "../src/_generate-router.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const API_ROOT = resolve(__dirname, "..");
@@ -38,15 +41,25 @@ function assertBefore(routes, first, second) {
   const secondIndex = routes.indexOf(second);
   assert.notEqual(firstIndex, -1, `${first} must be mounted`);
   assert.notEqual(secondIndex, -1, `${second} must be mounted`);
-  assert.ok(firstIndex < secondIndex, `${first} must be mounted before ${second}`);
+  assert.ok(
+    firstIndex < secondIndex,
+    `${first} must be mounted before ${second}`,
+  );
 }
 
 const { entries } = await collectRouteEntries(API_ROOT);
 const expectedRoutes = entries.map((entry) => entry.path);
 const actualRoutes = generatedRoutes();
 
-assert.deepEqual(actualRoutes, expectedRoutes, "generated router must match current route tree");
-assert.ok(actualRoutes.includes("/api/.well-known/jwks.json"), ".well-known route must be mounted");
+assert.deepEqual(
+  actualRoutes,
+  expectedRoutes,
+  "generated router must match current route tree",
+);
+assert.ok(
+  actualRoutes.includes("/api/.well-known/jwks.json"),
+  ".well-known route must be mounted",
+);
 assert.ok(
   actualRoutes.includes("/api/v1/proxy/birdeye/:*{.+}"),
   "catch-all routes must mount as Hono regex wildcard params",
@@ -57,10 +70,22 @@ assert.ok(
 );
 
 assertBefore(actualRoutes, "/api/invoices/list", "/api/invoices/:id");
-assertBefore(actualRoutes, "/api/my-agents/characters/avatar", "/api/my-agents/characters/:id");
-assertBefore(actualRoutes, "/api/v1/agents/by-token", "/api/v1/agents/:agentId");
+assertBefore(
+  actualRoutes,
+  "/api/my-agents/characters/avatar",
+  "/api/my-agents/characters/:id",
+);
+assertBefore(
+  actualRoutes,
+  "/api/v1/agents/by-token",
+  "/api/v1/agents/:agentId",
+);
 assertBefore(actualRoutes, "/api/v1/apps/check-name", "/api/v1/apps/:id");
-assertBefore(actualRoutes, "/api/v1/oauth/callback", "/api/v1/oauth/:platform/callback");
+assertBefore(
+  actualRoutes,
+  "/api/v1/oauth/callback",
+  "/api/v1/oauth/:platform/callback",
+);
 
 const ordered = [
   { path: "/api/v1/apps/:id", app: route("dynamic") },
@@ -91,10 +116,13 @@ const catchAllRoute = new Hono();
 catchAllRoute.get("/*", (c) => c.text(c.req.param("*") ?? "missing"));
 catchAllApp.route("/api/v1/proxy/birdeye/:*{.+}", catchAllRoute);
 
-assert.deepEqual(await responseText(catchAllApp, "/api/v1/proxy/birdeye/defi/price"), {
-  status: 200,
-  text: "defi/price",
-});
+assert.deepEqual(
+  await responseText(catchAllApp, "/api/v1/proxy/birdeye/defi/price"),
+  {
+    status: 200,
+    text: "defi/price",
+  },
+);
 assert.equal((await catchAllApp.request("/api/v1/proxy/birdeye")).status, 404);
 
 console.log(

@@ -37,12 +37,20 @@ app.get("/", async (c) => {
 
     // Filtering happens in memory because we need to match on a metadata
     // jsonb field; a dedicated repository method would be cleaner.
-    const allRecords = await usageRecordsRepository.listByOrganization(user.organization_id, 50);
-    const deployments = allRecords.filter((record) => record.type === "container_deployment");
+    const allRecords = await usageRecordsRepository.listByOrganization(
+      user.organization_id,
+      50,
+    );
+    const deployments = allRecords.filter(
+      (record) => record.type === "container_deployment",
+    );
 
     const containerDeployments = deployments.filter((d) => {
       const metadata = (d.metadata as DeploymentMetadata | null) ?? {};
-      return metadata.container_id === id || metadata.container_name === container.name;
+      return (
+        metadata.container_id === id ||
+        metadata.container_name === container.name
+      );
     });
 
     const enhancedHistory = containerDeployments.map((deployment) => {

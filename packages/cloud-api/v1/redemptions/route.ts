@@ -9,7 +9,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { payoutStatusService } from "@/lib/services/payout-status";
 import { secureTokenRedemptionService } from "@/lib/services/token-redemption-secure";
 import { logger } from "@/lib/utils/logger";
@@ -28,7 +31,9 @@ const CreateRedemptionSchema = z.object({
   idempotencyKey: z.string().uuid().optional(),
 });
 
-function normalizeRedemptionNetwork(network: z.infer<typeof CreateRedemptionSchema>["network"]) {
+function normalizeRedemptionNetwork(
+  network: z.infer<typeof CreateRedemptionSchema>["network"],
+) {
   return network === "bsc" ? "bnb" : network;
 }
 
@@ -36,13 +41,14 @@ const app = new Hono<AppEnv>();
 
 app.options(
   "/",
-  (c) =>
+  (_c) =>
     new Response(null, {
       status: 204,
       headers: {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-API-Key, X-App-Id",
+        "Access-Control-Allow-Headers":
+          "Content-Type, Authorization, X-API-Key, X-App-Id",
       },
     }),
 );
@@ -50,11 +56,14 @@ app.options(
 app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
   try {
     if (c.env.REDEMPTION_EMERGENCY_PAUSE === "true") {
-      logger.warn("[Redemption API] Emergency pause active - rejecting request");
+      logger.warn(
+        "[Redemption API] Emergency pause active - rejecting request",
+      );
       return c.json(
         {
           success: false,
-          error: "Redemptions are temporarily paused for maintenance. Please try again later.",
+          error:
+            "Redemptions are temporarily paused for maintenance. Please try again later.",
           paused: true,
         },
         503,
@@ -86,10 +95,12 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
       );
     }
 
-    const { appId, pointsAmount, payoutAddress, signature, idempotencyKey } = validation.data;
+    const { appId, pointsAmount, payoutAddress, signature, idempotencyKey } =
+      validation.data;
     const network = normalizeRedemptionNetwork(validation.data.network);
 
-    const networkAvailability = await payoutStatusService.isNetworkAvailable(network);
+    const networkAvailability =
+      await payoutStatusService.isNetworkAvailable(network);
     if (!networkAvailability.available) {
       const status = await payoutStatusService.getStatus();
       const availableNetworks = status.networks
@@ -100,7 +111,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
         network,
         message: networkAvailability.message,
         availableNetworks,
-        userId: user.id.slice(0, 8) + "...",
+        userId: `${user.id.slice(0, 8)}...`,
       });
 
       return c.json(
@@ -129,7 +140,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
         : "***";
 
     logger.info("[Redemption API] Creating secure redemption request", {
-      userId: user.id.slice(0, 8) + "...",
+      userId: `${user.id.slice(0, 8)}...`,
       appId,
       pointsAmount,
       usdValue: (pointsAmount / 100).toFixed(2),
@@ -155,7 +166,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
 
     if (!result.success) {
       logger.warn("[Redemption API] Secure redemption request failed", {
-        userId: user.id.slice(0, 8) + "...",
+        userId: `${user.id.slice(0, 8)}...`,
         error: result.error,
       });
 
@@ -164,7 +175,7 @@ app.post("/", rateLimit(RateLimitPresets.CRITICAL), async (c) => {
 
     logger.info("[Redemption API] Secure redemption request created", {
       redemptionId: result.redemptionId,
-      userId: user.id.slice(0, 8) + "...",
+      userId: `${user.id.slice(0, 8)}...`,
       usdValue: result.quote?.usdValue,
       elizaAmount: result.quote?.elizaAmount,
       requiresReview: result.quote?.requiresReview,
@@ -191,7 +202,10 @@ app.get("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     const limitParam = c.req.query("limit");
     const limit = limitParam ? Math.min(parseInt(limitParam, 10), 100) : 20;
 
-    const redemptions = await secureTokenRedemptionService.listUserRedemptions(user.id, limit);
+    const redemptions = await secureTokenRedemptionService.listUserRedemptions(
+      user.id,
+      limit,
+    );
 
     return c.json({
       success: true,

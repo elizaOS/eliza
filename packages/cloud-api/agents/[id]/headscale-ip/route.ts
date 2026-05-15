@@ -13,20 +13,24 @@ import { Hono } from "hono";
 import { agentSandboxesRepository } from "@/db/repositories/agent-sandboxes";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function getInternalToken(c: AppContext): string | null {
   const direct = c.req.header("x-internal-token");
   if (direct) return direct.trim();
   const authorization = c.req.header("authorization");
-  if (authorization && authorization.toLowerCase().startsWith("bearer ")) {
+  if (authorization?.toLowerCase().startsWith("bearer ")) {
     return authorization.slice(7).trim();
   }
   return null;
 }
 
 function getExpectedInternalToken(c: AppContext): string | null {
-  for (const key of ["HEADSCALE_INTERNAL_TOKEN", "CONTAINER_CONTROL_PLANE_TOKEN"] as const) {
+  for (const key of [
+    "HEADSCALE_INTERNAL_TOKEN",
+    "CONTAINER_CONTROL_PLANE_TOKEN",
+  ] as const) {
     const value = ((c.env[key] as string | undefined) ?? "").trim();
     if (value) return value;
   }

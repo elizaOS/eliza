@@ -8,7 +8,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { userCharactersRepository } from "@/db/repositories/characters";
-import { ForbiddenError, failureResponse, NotFoundError } from "@/lib/api/cloud-worker-errors";
+import {
+  ForbiddenError,
+  failureResponse,
+  NotFoundError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { charactersService } from "@/lib/services/characters/characters";
 import { logger } from "@/lib/utils/logger";
@@ -76,7 +80,10 @@ app.post("/", async (c) => {
 
     await charactersService.invalidateCache(agentId);
 
-    logger.info("[Agent Publish API] Agent published", { agentId, userId: user.id });
+    logger.info("[Agent Publish API] Agent published", {
+      agentId,
+      userId: user.id,
+    });
 
     return c.json({
       success: true,
@@ -111,7 +118,10 @@ app.delete("/", async (c) => {
 
     await charactersService.invalidateCache(agentId);
 
-    logger.info("[Agent Publish API] Agent unpublished", { agentId, userId: user.id });
+    logger.info("[Agent Publish API] Agent unpublished", {
+      agentId,
+      userId: user.id,
+    });
 
     return c.json({
       success: true,

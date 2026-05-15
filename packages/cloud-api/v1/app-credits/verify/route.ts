@@ -58,7 +58,9 @@ app.get("/", async (c) => {
     }
 
     const paymentIntentId =
-      typeof session.payment_intent === "string" ? session.payment_intent : null;
+      typeof session.payment_intent === "string"
+        ? session.payment_intent
+        : null;
     if (!paymentIntentId) {
       return c.json({ success: false, error: "Missing payment intent" }, 400);
     }
@@ -72,18 +74,23 @@ app.get("/", async (c) => {
         stripePaymentIntentId: paymentIntentId,
       });
 
-      logger.info("[App Credits API] Verified and processed app credit purchase", {
-        sessionId,
-        appId,
-        userId,
-        amount,
-      });
+      logger.info(
+        "[App Credits API] Verified and processed app credit purchase",
+        {
+          sessionId,
+          appId,
+          userId,
+          amount,
+        },
+      );
     } catch (e) {
       const errorMsg = e instanceof Error ? e.message : "";
       if (!errorMsg.includes("already processed")) {
         throw e;
       }
-      logger.info("[App Credits API] Purchase already processed", { sessionId });
+      logger.info("[App Credits API] Purchase already processed", {
+        sessionId,
+      });
     }
 
     return c.json({

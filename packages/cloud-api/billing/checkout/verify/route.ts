@@ -11,9 +11,16 @@
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
-import { ForbiddenError, failureResponse, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  ForbiddenError,
+  failureResponse,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { creditsService } from "@/lib/services/credits";
 import { invoicesService } from "@/lib/services/invoices";
 import { organizationsService } from "@/lib/services/organizations";
@@ -57,12 +64,17 @@ app.post("/", async (c) => {
 
     const { session_id: sessionId } = parsed.data;
 
-    const session = await requireStripe().checkout.sessions.retrieve(sessionId, {
-      expand: ["payment_intent"],
-    });
+    const session = await requireStripe().checkout.sessions.retrieve(
+      sessionId,
+      {
+        expand: ["payment_intent"],
+      },
+    );
 
     if (session.payment_status !== "paid") {
-      throw ValidationError(`Payment not completed. Status: ${session.payment_status}`);
+      throw ValidationError(
+        `Payment not completed. Status: ${session.payment_status}`,
+      );
     }
 
     const organizationId = session.metadata?.organization_id;
@@ -71,11 +83,19 @@ app.post("/", async (c) => {
     const credits = parseAndValidateCredits(creditsStr);
     const purchaseType = session.metadata?.type ?? "checkout";
 
-    const paymentIntent = session.payment_intent as Stripe.PaymentIntent | string | null;
+    const paymentIntent = session.payment_intent as
+      | Stripe.PaymentIntent
+      | string
+      | null;
     const paymentIntentId =
-      typeof paymentIntent === "string" ? paymentIntent : (paymentIntent?.id ?? null);
+      typeof paymentIntent === "string"
+        ? paymentIntent
+        : (paymentIntent?.id ?? null);
 
-    if (organizationId !== user.organization_id || (userId && userId !== user.id)) {
+    if (
+      organizationId !== user.organization_id ||
+      (userId && userId !== user.id)
+    ) {
       throw ForbiddenError("You do not have access to this checkout session.");
     }
 
@@ -118,7 +138,9 @@ app.post("/", async (c) => {
       stripePaymentIntentId: paymentIntentId,
     });
 
-    const existingInvoice = await invoicesService.getByStripeInvoiceId(`cs_${sessionId}`);
+    const existingInvoice = await invoicesService.getByStripeInvoiceId(
+      `cs_${sessionId}`,
+    );
     if (!existingInvoice) {
       const amountTotal = session.amount_total
         ? (session.amount_total / 100).toString()

@@ -51,7 +51,10 @@ async function __hono_POST(
     );
 
     if (!result.success) {
-      return Response.json({ error: result.error || "Failed to post" }, { status: 400 });
+      return Response.json(
+        { error: result.error || "Failed to post" },
+        { status: 400 },
+      );
     }
 
     logger.info("[Telegram Post] Announcement posted", {
@@ -80,6 +83,8 @@ async function __hono_POST(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

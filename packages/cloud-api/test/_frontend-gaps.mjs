@@ -22,7 +22,13 @@
  *   node apps/api/test/_frontend-gaps.mjs
  */
 
-import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -71,7 +77,10 @@ for (const dir of FRONTEND_DIRS) {
 }
 
 // Map mounted Hono routes (paths from the codegen) → handler file.
-const routerSrc = readFileSync(join(API_ROOT, "src", "_router.generated.ts"), "utf8");
+const routerSrc = readFileSync(
+  join(API_ROOT, "src", "_router.generated.ts"),
+  "utf8",
+);
 const honoRoutes = new Map();
 for (const m of routerSrc.matchAll(/app\.route\("([^"]+)"\s*,\s*(\w+)\)/g)) {
   honoRoutes.set(m[1], m[2]);
@@ -79,7 +88,9 @@ for (const m of routerSrc.matchAll(/app\.route\("([^"]+)"\s*,\s*(\w+)\)/g)) {
 // Build regex per Hono route for matching.
 function honoToRegex(route) {
   const escaped = route.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  const wildcarded = escaped.replace(/:([^/]+)/g, "[^/?#]+").replace(/\\\*/g, ".*");
+  const wildcarded = escaped
+    .replace(/:([^/]+)/g, "[^/?#]+")
+    .replace(/\\\*/g, ".*");
   return new RegExp(`^${wildcarded}(/[^?]*)?(\\?.*)?$`);
 }
 
@@ -91,7 +102,13 @@ const honoRealFiles = new Set();
 function walkApi(dir) {
   const out = [];
   for (const e of readdirSync(dir)) {
-    if (e === "node_modules" || e === "test" || e === "src" || e.startsWith("_smoke-")) continue;
+    if (
+      e === "node_modules" ||
+      e === "test" ||
+      e === "src" ||
+      e.startsWith("_smoke-")
+    )
+      continue;
     const p = join(dir, e);
     const s = statSync(p);
     if (s.isDirectory()) out.push(...walkApi(p));
@@ -172,7 +189,7 @@ function classifyByStaticPrefix(refPath) {
 
   for (const route of honoRoutes.keys()) {
     const sp = routeStaticPrefix(route);
-    const covers = sp === r || sp.startsWith(r + "/") || r.startsWith(sp + "/");
+    const covers = sp === r || sp.startsWith(`${r}/`) || r.startsWith(`${sp}/`);
     if (!covers) continue;
 
     const file = resolveHonoFile(route);
@@ -210,7 +227,9 @@ for (const f of walkApi(API_ROOT)) {
     .replace(/\/route\.ts$/, "")
     .split("/")
     .map((s) =>
-      s.startsWith("[") && s.endsWith("]") ? `:${s.slice(1, -1).replace(/^\.\.\./, "")}` : s,
+      s.startsWith("[") && s.endsWith("]")
+        ? `:${s.slice(1, -1).replace(/^\.\.\./, "")}`
+        : s,
     );
   const path = `/api/${segments.join("/")}`;
   nextOnlyByPath.set(path, f);
@@ -245,7 +264,11 @@ function classify(refPathRaw) {
       return new RegExp(`^${wildcarded}(/[^?]*)?(\\?.*)?$`);
     })();
     if (re.test(refPath)) {
-      return { kind: "next-only", route: nextPath, file: relative(API_ROOT, file) };
+      return {
+        kind: "next-only",
+        route: nextPath,
+        file: relative(API_ROOT, file),
+      };
     }
   }
   if (isAgentRuntimeApiPath(refPath)) {
@@ -269,7 +292,9 @@ for (const [path, callerSet] of [...referencedPaths.entries()].sort()) {
 const lines = [];
 lines.push("# Frontend × Worker gap analysis");
 lines.push("");
-lines.push("Auto-generated. Re-run with `node apps/api/test/_frontend-gaps.mjs`.");
+lines.push(
+  "Auto-generated. Re-run with `node apps/api/test/_frontend-gaps.mjs`.",
+);
 lines.push("");
 lines.push(
   "For each `/api/*` path referenced anywhere in the frontend code (frontend " +
@@ -279,7 +304,9 @@ lines.push(
 lines.push("");
 lines.push("| Bucket | Count | Worker behavior |");
 lines.push("| --- | ---: | --- |");
-lines.push(`| hono-real | ${buckets["hono-real"].length} | Worker serves this for real. |`);
+lines.push(
+  `| hono-real | ${buckets["hono-real"].length} | Worker serves this for real. |`,
+);
 lines.push(
   `| hono-stub | ${buckets["hono-stub"].length} | Worker returns 501; live Next.js handler still serves it. |`,
 );
@@ -294,7 +321,13 @@ lines.push(
 );
 lines.push("");
 
-for (const bucket of ["hono-stub", "next-only", "agent-runtime-api", "unknown", "hono-real"]) {
+for (const bucket of [
+  "hono-stub",
+  "next-only",
+  "agent-runtime-api",
+  "unknown",
+  "hono-real",
+]) {
   lines.push(`## ${bucket} (${buckets[bucket].length})`);
   lines.push("");
   if (bucket === "hono-real") {

@@ -78,7 +78,6 @@ function DeploymentStatusBadge({
       );
     case "failed":
       return <StatusBadge status="error" label="Failed" icon={<XCircle />} />;
-    case "draft":
     default:
       return <StatusBadge status="neutral" label="Draft" icon={<FileEdit />} />;
   }
@@ -179,7 +178,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         (origin): origin is string => typeof origin === "string",
       )
     : [];
-  const maskedApiKey = "eliza_" + "•".repeat(32);
+  const maskedApiKey = `eliza_${"•".repeat(32)}`;
 
   const _getDeploymentBadge = () => {
     const status = app.deployment_status || "draft";

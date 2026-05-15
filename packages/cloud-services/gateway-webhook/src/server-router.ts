@@ -1,4 +1,4 @@
-import { readFileSync } from "fs";
+import { readFileSync } from "node:fs";
 import { getHashTargets, refreshHashRing } from "./hash-router";
 import { logger } from "./logger";
 import type { GatewayRedis } from "./redis";
@@ -15,7 +15,10 @@ interface ServerRoute {
   serverUrl: string;
 }
 
-export type RoutingRedis = Pick<GatewayRedis, "get" | "set" | "lpush" | "ltrim" | "expire">;
+export type RoutingRedis = Pick<
+  GatewayRedis,
+  "get" | "set" | "lpush" | "ltrim" | "expire"
+>;
 
 export interface ResolvedIdentity {
   userId: string;
@@ -32,7 +35,9 @@ export async function resolveIdentity(
   platformName?: string,
 ): Promise<ResolvedIdentity | null> {
   const cacheKey = `identity:${platform}:${platformId}`;
-  const cached = await redis.get<ResolvedIdentity | { notFound: true }>(cacheKey);
+  const cached = await redis.get<ResolvedIdentity | { notFound: true }>(
+    cacheKey,
+  );
   if (cached) {
     if ("notFound" in cached) return null;
     return cached;
@@ -72,7 +77,11 @@ export async function resolveIdentity(
           success?: boolean;
         };
     const userId =
-      "userId" in data ? data.userId : "data" in data ? data.data?.user?.id : undefined;
+      "userId" in data
+        ? data.userId
+        : "data" in data
+          ? data.data?.user?.id
+          : undefined;
     const organizationId =
       "organizationId" in data
         ? data.organizationId
@@ -86,7 +95,9 @@ export async function resolveIdentity(
           ? (data.data?.agent?.id ?? undefined)
           : undefined;
     if (!userId || !organizationId || !agentId) {
-      throw new Error("Identity resolve response missing userId, organizationId, or agentId");
+      throw new Error(
+        "Identity resolve response missing userId, organizationId, or agentId",
+      );
     }
     const identity: ResolvedIdentity = {
       userId,
@@ -115,7 +126,10 @@ export async function resolveAgentServer(
   return { serverName, serverUrl };
 }
 
-export async function refreshKedaActivity(redis: RoutingRedis, serverName: string): Promise<void> {
+export async function refreshKedaActivity(
+  redis: RoutingRedis,
+  serverName: string,
+): Promise<void> {
   const key = `keda:${serverName}:activity`;
   await redis.lpush(key, Date.now().toString());
   await redis.ltrim(key, 0, 0);
@@ -128,7 +142,10 @@ let k8sCaCert: string | null = null;
 function getK8sToken(): string | null {
   if (k8sToken !== null) return k8sToken;
   try {
-    k8sToken = readFileSync("/var/run/secrets/kubernetes.io/serviceaccount/token", "utf-8").trim();
+    k8sToken = readFileSync(
+      "/var/run/secrets/kubernetes.io/serviceaccount/token",
+      "utf-8",
+    ).trim();
   } catch (err) {
     logger.debug("K8s service account token not available", {
       error: err instanceof Error ? err.message : String(err),
@@ -141,7 +158,10 @@ function getK8sToken(): string | null {
 function getK8sCaCert(): string | null {
   if (k8sCaCert !== null) return k8sCaCert;
   try {
-    k8sCaCert = readFileSync("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt", "utf-8");
+    k8sCaCert = readFileSync(
+      "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt",
+      "utf-8",
+    );
   } catch (err) {
     logger.debug("K8s CA cert not available", {
       error: err instanceof Error ? err.message : String(err),
@@ -156,7 +176,10 @@ function parseNamespaceFromUrl(serverUrl: string): string | null {
   return match?.[1] ?? null;
 }
 
-async function wakeServer(serverName: string, serverUrl: string): Promise<void> {
+async function wakeServer(
+  serverName: string,
+  serverUrl: string,
+): Promise<void> {
   const token = getK8sToken();
   if (!token) return;
 
@@ -369,7 +392,9 @@ async function tryTarget(
 
   try {
     const targetBase =
-      target.startsWith("http://") || target.startsWith("https://") ? target : `http://${target}`;
+      target.startsWith("http://") || target.startsWith("https://")
+        ? target
+        : `http://${target}`;
     const res = await fetch(`${targetBase}${endpointPath}`, {
       method: "POST",
       headers,

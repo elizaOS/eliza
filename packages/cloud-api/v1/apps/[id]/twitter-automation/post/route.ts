@@ -8,7 +8,9 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 const PostTweetSchema = z.object({
   text: z.string().max(280).optional(),
-  type: z.enum(["promotional", "engagement", "educational", "announcement"]).optional(),
+  type: z
+    .enum(["promotional", "engagement", "educational", "announcement"])
+    .optional(),
 });
 
 async function __hono_POST(
@@ -43,7 +45,10 @@ async function __hono_POST(
 
     if (!result.success) {
       const status = result.error === "App not found" ? 404 : 400;
-      return Response.json({ error: result.error || "Failed to post tweet" }, { status });
+      return Response.json(
+        { error: result.error || "Failed to post tweet" },
+        { status },
+      );
     }
 
     return Response.json({
@@ -55,19 +60,27 @@ async function __hono_POST(
     if (error instanceof Error && error.message === "App not found") {
       return Response.json({ error: "App not found" }, { status: 404 });
     }
-    if (error instanceof Error && error.message.includes("Insufficient credits")) {
+    if (
+      error instanceof Error &&
+      error.message.includes("Insufficient credits")
+    ) {
       return Response.json({ error: error.message }, { status: 402 });
     }
     logger.error("[Twitter Automation API] Failed to post tweet", {
       appId: id,
       error: error instanceof Error ? error.message : "Unknown error",
     });
-    return Response.json({ error: "Failed to post tweet. Please try again." }, { status: 500 });
+    return Response.json(
+      { error: "Failed to post tweet. Please try again." },
+      { status: 500 },
+    );
   }
 }
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

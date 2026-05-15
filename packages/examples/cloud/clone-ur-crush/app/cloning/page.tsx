@@ -17,7 +17,7 @@ export default function CloningPage() {
   useEffect(() => {
     // Animated dots
     const interval = setInterval(() => {
-      setDots((prev) => (prev.length >= 3 ? "" : prev + "."));
+      setDots((prev) => (prev.length >= 3 ? "" : `${prev}.`));
     }, 500);
 
     // Animate progress steps sequentially
@@ -50,7 +50,8 @@ export default function CloningPage() {
         }
 
         // Try to get photo from various possible sources
-        const photoUrl = characterData.photoUrl || characterData.settings?.photoUrl || null;
+        const photoUrl =
+          characterData.photoUrl || characterData.settings?.photoUrl || null;
         console.log("Character photo URL:", photoUrl);
         console.log("Has photoUrl:", !!photoUrl);
         setCharacterPhoto(photoUrl);
@@ -107,23 +108,28 @@ export default function CloningPage() {
           "Content-Type": "application/json",
         };
         if (APP_CONFIG.affiliateApiKey) {
-          headers["Authorization"] = `Bearer ${APP_CONFIG.affiliateApiKey}`;
+          headers.Authorization = `Bearer ${APP_CONFIG.affiliateApiKey}`;
         }
 
-        const response = await fetch(`${APP_CONFIG.elizaCloudUrl}/api/affiliate/create-character`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({
-            character: cloudCharacter,
-            affiliateId: "clone-your-crush",
-            sessionId,
-          }),
-        });
+        const response = await fetch(
+          `${APP_CONFIG.elizaCloudUrl}/api/affiliate/create-character`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              character: cloudCharacter,
+              affiliateId: "clone-your-crush",
+              sessionId,
+            }),
+          },
+        );
 
         if (!response.ok) {
           const errorData = await response.json().catch(() => ({}));
           console.error("Cloud API error:", errorData);
-          throw new Error(errorData.error || "Failed to create character in Cloud");
+          throw new Error(
+            errorData.error || "Failed to create character in Cloud",
+          );
         }
 
         const result = await response.json();
@@ -146,7 +152,9 @@ export default function CloningPage() {
         }
 
         // Redirect to ElizaOS Cloud chat page with images in URL params
-        const cloudChatUrl = new URL(`${APP_CONFIG.elizaCloudUrl}/chat/${result.characterId}`);
+        const cloudChatUrl = new URL(
+          `${APP_CONFIG.elizaCloudUrl}/chat/${result.characterId}`,
+        );
         cloudChatUrl.searchParams.set("source", "clone-your-crush");
         cloudChatUrl.searchParams.set("session", sessionId || "");
 
@@ -155,7 +163,10 @@ export default function CloningPage() {
           cloudChatUrl.searchParams.set("photoUrl", characterData.photoUrl);
         }
         if (freshFullBodyImageUrl) {
-          cloudChatUrl.searchParams.set("fullBodyImageUrl", freshFullBodyImageUrl);
+          cloudChatUrl.searchParams.set(
+            "fullBodyImageUrl",
+            freshFullBodyImageUrl,
+          );
         }
 
         console.log(`Redirecting to Cloud: ${cloudChatUrl.toString()}`);
@@ -218,7 +229,9 @@ export default function CloningPage() {
               <div className="mb-6">
                 <h1 className="text-4xl md:text-5xl font-bold text-white mb-3">
                   {characterName || "Your Crush"}
-                  <span className="ml-3 text-pink-400 animate-pulse-glow">{dots}</span>
+                  <span className="ml-3 text-pink-400 animate-pulse-glow">
+                    {dots}
+                  </span>
                 </h1>
                 {characterDescription && (
                   <p className="text-white/90 text-lg leading-relaxed line-clamp-3">
@@ -232,27 +245,35 @@ export default function CloningPage() {
                 {progressStep >= 0 && (
                   <div
                     className={`flex items-center gap-3 bg-white/10 backdrop-blur-md rounded-xl p-3 transition-all duration-500 ${
-                      progressStep > 0 ? "opacity-60 scale-95" : "opacity-100 scale-100"
+                      progressStep > 0
+                        ? "opacity-60 scale-95"
+                        : "opacity-100 scale-100"
                     }`}
                     style={{
                       animation: "slideInUp 0.4s ease-out",
                     }}
                   >
                     <Sparkles className="w-4 h-4 text-pink-300 flex-shrink-0 animate-spin" />
-                    <span className="text-sm text-white/90">Analyzing personality</span>
+                    <span className="text-sm text-white/90">
+                      Analyzing personality
+                    </span>
                   </div>
                 )}
                 {progressStep >= 1 && (
                   <div
                     className={`flex items-center gap-3 bg-white/10 backdrop-blur-md rounded-xl p-3 transition-all duration-500 ${
-                      progressStep > 1 ? "opacity-60 scale-95" : "opacity-100 scale-100"
+                      progressStep > 1
+                        ? "opacity-60 scale-95"
+                        : "opacity-100 scale-100"
                     }`}
                     style={{
                       animation: "slideInUp 0.4s ease-out",
                     }}
                   >
                     <Sparkles className="w-4 h-4 text-purple-300 flex-shrink-0 animate-spin" />
-                    <span className="text-sm text-white/90">Creating AI companion</span>
+                    <span className="text-sm text-white/90">
+                      Creating AI companion
+                    </span>
                   </div>
                 )}
                 {progressStep >= 2 && (
@@ -263,7 +284,9 @@ export default function CloningPage() {
                     }}
                   >
                     <Sparkles className="w-4 h-4 text-pink-300 flex-shrink-0 animate-spin" />
-                    <span className="text-sm text-white/90">Setting up chat</span>
+                    <span className="text-sm text-white/90">
+                      Setting up chat
+                    </span>
                   </div>
                 )}
               </div>
@@ -274,10 +297,15 @@ export default function CloningPage() {
         /* Error State */
         <div className="min-h-screen flex items-center justify-center p-4">
           <div className="text-center max-w-md">
-            <Heart className="w-24 h-24 text-red-500 mx-auto mb-6" fill="currentColor" />
+            <Heart
+              className="w-24 h-24 text-red-500 mx-auto mb-6"
+              fill="currentColor"
+            />
             <h1 className="text-3xl font-bold mb-4 text-red-600">Oops!</h1>
             <p className="text-lg text-gray-700 mb-4">{error}</p>
-            <p className="text-sm text-gray-500">Redirecting you back to try again...</p>
+            <p className="text-sm text-gray-500">
+              Redirecting you back to try again...
+            </p>
 
             {/* Footer Branding */}
             <div className="mt-12">

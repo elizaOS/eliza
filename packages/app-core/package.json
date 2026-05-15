@@ -103,7 +103,6 @@
     }
   },
   "peerDependencies": {
-    "@elizaos/agent": "workspace:*",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.184.0"
@@ -170,7 +169,6 @@
     "directory": "dist"
   },
   "devDependencies": {
-    "@elizaos/agent": "workspace:*",
     "@playwright/test": "^1.59.1",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

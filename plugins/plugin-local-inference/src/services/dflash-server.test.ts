@@ -360,7 +360,6 @@ describe("fused-vs-two-process spawn selection", () => {
 		process.env.ELIZA_DFLASH_LLAMA_SERVER = explicit;
 		expect(resolveDflashBinary()).toBe(explicit);
 	});
-
 });
 
 describe("DflashLlamaServer runtime load config", () => {
@@ -424,7 +423,9 @@ describe("DflashLlamaServer runtime load config", () => {
 
 describe("DflashLlamaServer runtime load config", () => {
 	it("reports the normalized target GPU layers passed to llama-server", async () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-runtime-config-"));
+		const root = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-runtime-config-"),
+		);
 		const binary = path.join(root, "llama-server");
 		fs.writeFileSync(
 			binary,
@@ -446,7 +447,9 @@ describe("DflashLlamaServer runtime load config", () => {
 		process.env.ELIZA_DFLASH_LLAMA_SERVER = binary;
 		__setCtxCheckpointsProbeCacheForTests(binary, false);
 		installDflashFetchMock((url) =>
-			url.pathname === "/health" ? new Response("{}", { status: 200 }) : notFoundResponse(),
+			url.pathname === "/health"
+				? new Response("{}", { status: 200 })
+				: notFoundResponse(),
 		);
 
 		const server = new DflashLlamaServer();

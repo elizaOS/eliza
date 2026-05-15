@@ -25,7 +25,8 @@ app.post("/", async (c) => {
 
     const body = shutdownSchema.parse(await c.req.json().catch(() => ({})));
     const podName = body.pod_name ?? auth.podName;
-    const released = await discordConnectionsRepository.clearPodAssignments(podName);
+    const released =
+      await discordConnectionsRepository.clearPodAssignments(podName);
     return c.json({ success: true, released });
   } catch (err) {
     logger.error("[internal/discord/gateway/shutdown]", { error: err });

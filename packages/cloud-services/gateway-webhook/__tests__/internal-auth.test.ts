@@ -50,7 +50,9 @@ describe("validateInternalSecret", () => {
 
   test("returns false when header does not match secret (length and value differ)", () => {
     process.env.GATEWAY_INTERNAL_SECRET = "short";
-    expect(validateInternalSecret(makeRequest("this-is-a-much-longer-secret-value"))).toBe(false);
+    expect(
+      validateInternalSecret(makeRequest("this-is-a-much-longer-secret-value")),
+    ).toBe(false);
   });
 
   test("returns false for multi-byte UTF-8 secret with different encoding", () => {

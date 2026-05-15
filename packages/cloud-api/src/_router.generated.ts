@@ -565,14 +565,26 @@ import _route_webhooks_twilio_p_orgId_route from "../webhooks/twilio/[orgId]/rou
 import _route_webhooks_whatsapp_p_orgId_route from "../webhooks/whatsapp/[orgId]/route";
 
 export function mountRoutes(app: Hono<AppEnv>): void {
-  app.route("/api/.well-known/agent-card.json", _route__well_known_agent_card_json_route);
+  app.route(
+    "/api/.well-known/agent-card.json",
+    _route__well_known_agent_card_json_route,
+  );
   app.route("/api/.well-known/jwks.json", _route__well_known_jwks_json_route);
   app.route("/api/a2a", _route_a2a_route);
   app.route("/api/admin/redemptions", _route_admin_redemptions_route);
-  app.route("/api/affiliate/create-character", _route_affiliate_create_character_route);
-  app.route("/api/affiliate/create-session", _route_affiliate_create_session_route);
+  app.route(
+    "/api/affiliate/create-character",
+    _route_affiliate_create_character_route,
+  );
+  app.route(
+    "/api/affiliate/create-session",
+    _route_affiliate_create_session_route,
+  );
   app.route("/api/agents/:id/a2a", _route_agents_p_id_a2a_route);
-  app.route("/api/agents/:id/headscale-ip", _route_agents_p_id_headscale_ip_route);
+  app.route(
+    "/api/agents/:id/headscale-ip",
+    _route_agents_p_id_headscale_ip_route,
+  );
   app.route("/api/agents/:id/mcp", _route_agents_p_id_mcp_route);
   app.route("/api/analytics/breakdown", _route_analytics_breakdown_route);
   app.route("/api/analytics/export", _route_analytics_export_route);
@@ -584,9 +596,15 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/auth/cli-session/:sessionId/complete",
     _route_auth_cli_session_p_sessionId_complete_route,
   );
-  app.route("/api/auth/cli-session/:sessionId", _route_auth_cli_session_p_sessionId_route);
+  app.route(
+    "/api/auth/cli-session/:sessionId",
+    _route_auth_cli_session_p_sessionId_route,
+  );
   app.route("/api/auth/cli-session", _route_auth_cli_session_route);
-  app.route("/api/auth/create-anonymous-session", _route_auth_create_anonymous_session_route);
+  app.route(
+    "/api/auth/create-anonymous-session",
+    _route_auth_create_anonymous_session_route,
+  );
   app.route("/api/auth/logout", _route_auth_logout_route);
   app.route("/api/auth/migrate-anonymous", _route_auth_migrate_anonymous_route);
   app.route("/api/auth/pair", _route_auth_pair_route);
@@ -595,15 +613,42 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/auth/steward-debug", _route_auth_steward_debug_route);
   app.route("/api/auth/steward-session", _route_auth_steward_session_route);
   app.route("/api/auto-top-up/trigger", _route_auto_top_up_trigger_route);
-  app.route("/api/billing/checkout/verify", _route_billing_checkout_verify_route);
-  app.route("/api/characters/:characterId/mcps", _route_characters_p_characterId_mcps_route);
-  app.route("/api/characters/:characterId/public", _route_characters_p_characterId_public_route);
-  app.route("/api/compat/agents/:id/launch", _route_compat_agents_p_id_launch_route);
-  app.route("/api/compat/agents/:id/logs", _route_compat_agents_p_id_logs_route);
-  app.route("/api/compat/agents/:id/restart", _route_compat_agents_p_id_restart_route);
-  app.route("/api/compat/agents/:id/resume", _route_compat_agents_p_id_resume_route);
-  app.route("/api/compat/agents/:id/status", _route_compat_agents_p_id_status_route);
-  app.route("/api/compat/agents/:id/suspend", _route_compat_agents_p_id_suspend_route);
+  app.route(
+    "/api/billing/checkout/verify",
+    _route_billing_checkout_verify_route,
+  );
+  app.route(
+    "/api/characters/:characterId/mcps",
+    _route_characters_p_characterId_mcps_route,
+  );
+  app.route(
+    "/api/characters/:characterId/public",
+    _route_characters_p_characterId_public_route,
+  );
+  app.route(
+    "/api/compat/agents/:id/launch",
+    _route_compat_agents_p_id_launch_route,
+  );
+  app.route(
+    "/api/compat/agents/:id/logs",
+    _route_compat_agents_p_id_logs_route,
+  );
+  app.route(
+    "/api/compat/agents/:id/restart",
+    _route_compat_agents_p_id_restart_route,
+  );
+  app.route(
+    "/api/compat/agents/:id/resume",
+    _route_compat_agents_p_id_resume_route,
+  );
+  app.route(
+    "/api/compat/agents/:id/status",
+    _route_compat_agents_p_id_status_route,
+  );
+  app.route(
+    "/api/compat/agents/:id/suspend",
+    _route_compat_agents_p_id_suspend_route,
+  );
   app.route("/api/compat/agents/:id", _route_compat_agents_p_id_route);
   app.route("/api/compat/agents", _route_compat_agents_route);
   app.route("/api/compat/availability", _route_compat_availability_route);
@@ -613,41 +658,83 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/cron/agent-billing", _route_cron_agent_billing_route);
   app.route("/api/cron/agent-budgets", _route_cron_agent_budgets_route);
   app.route("/api/cron/auto-top-up", _route_cron_auto_top_up_route);
-  app.route("/api/cron/cleanup-anonymous-sessions", _route_cron_cleanup_anonymous_sessions_route);
-  app.route("/api/cron/cleanup-cli-sessions", _route_cron_cleanup_cli_sessions_route);
+  app.route(
+    "/api/cron/cleanup-anonymous-sessions",
+    _route_cron_cleanup_anonymous_sessions_route,
+  );
+  app.route(
+    "/api/cron/cleanup-cli-sessions",
+    _route_cron_cleanup_cli_sessions_route,
+  );
   app.route(
     "/api/cron/cleanup-expired-crypto-payments",
     _route_cron_cleanup_expired_crypto_payments_route,
   );
-  app.route("/api/cron/cleanup-priorities", _route_cron_cleanup_priorities_route);
-  app.route("/api/cron/cleanup-stuck-provisioning", _route_cron_cleanup_stuck_provisioning_route);
-  app.route("/api/cron/cleanup-webhook-events", _route_cron_cleanup_webhook_events_route);
+  app.route(
+    "/api/cron/cleanup-priorities",
+    _route_cron_cleanup_priorities_route,
+  );
+  app.route(
+    "/api/cron/cleanup-stuck-provisioning",
+    _route_cron_cleanup_stuck_provisioning_route,
+  );
+  app.route(
+    "/api/cron/cleanup-webhook-events",
+    _route_cron_cleanup_webhook_events_route,
+  );
   app.route("/api/cron/compute-metrics", _route_cron_compute_metrics_route);
   app.route("/api/cron/container-billing", _route_cron_container_billing_route);
-  app.route("/api/cron/process-redemptions", _route_cron_process_redemptions_route);
-  app.route("/api/cron/process-stripe-queue", _route_cron_process_stripe_queue_route);
-  app.route("/api/cron/release-pending-earnings", _route_cron_release_pending_earnings_route);
-  app.route("/api/cron/sample-eliza-price", _route_cron_sample_eliza_price_route);
+  app.route(
+    "/api/cron/process-redemptions",
+    _route_cron_process_redemptions_route,
+  );
+  app.route(
+    "/api/cron/process-stripe-queue",
+    _route_cron_process_stripe_queue_route,
+  );
+  app.route(
+    "/api/cron/release-pending-earnings",
+    _route_cron_release_pending_earnings_route,
+  );
+  app.route(
+    "/api/cron/sample-eliza-price",
+    _route_cron_sample_eliza_price_route,
+  );
   app.route("/api/cron/social-automation", _route_cron_social_automation_route);
-  app.route("/api/crypto/payments/:id/confirm", _route_crypto_payments_p_id_confirm_route);
+  app.route(
+    "/api/crypto/payments/:id/confirm",
+    _route_crypto_payments_p_id_confirm_route,
+  );
   app.route("/api/crypto/payments/:id", _route_crypto_payments_p_id_route);
   app.route("/api/crypto/payments", _route_crypto_payments_route);
   app.route("/api/crypto/status", _route_crypto_status_route);
   app.route("/api/crypto/webhook", _route_crypto_webhook_route);
   app.route("/api/elevenlabs/stt", _route_elevenlabs_stt_route);
   app.route("/api/elevenlabs/tts", _route_elevenlabs_tts_route);
-  app.route("/api/elevenlabs/voices/clone", _route_elevenlabs_voices_clone_route);
+  app.route(
+    "/api/elevenlabs/voices/clone",
+    _route_elevenlabs_voices_clone_route,
+  );
   app.route("/api/elevenlabs/voices/jobs", _route_elevenlabs_voices_jobs_route);
   app.route("/api/elevenlabs/voices/user", _route_elevenlabs_voices_user_route);
-  app.route("/api/elevenlabs/voices/verify/:id", _route_elevenlabs_voices_verify_p_id_route);
+  app.route(
+    "/api/elevenlabs/voices/verify/:id",
+    _route_elevenlabs_voices_verify_p_id_route,
+  );
   app.route("/api/elevenlabs/voices/:id", _route_elevenlabs_voices_p_id_route);
   app.route("/api/elevenlabs/voices", _route_elevenlabs_voices_route);
   app.route(
     "/api/eliza/rooms/:roomId/messages/stream",
     _route_eliza_rooms_p_roomId_messages_stream_route,
   );
-  app.route("/api/eliza/rooms/:roomId/messages", _route_eliza_rooms_p_roomId_messages_route);
-  app.route("/api/eliza/rooms/:roomId/welcome", _route_eliza_rooms_p_roomId_welcome_route);
+  app.route(
+    "/api/eliza/rooms/:roomId/messages",
+    _route_eliza_rooms_p_roomId_messages_route,
+  );
+  app.route(
+    "/api/eliza/rooms/:roomId/welcome",
+    _route_eliza_rooms_p_roomId_welcome_route,
+  );
   app.route("/api/eliza/rooms/:roomId", _route_eliza_rooms_p_roomId_route);
   app.route("/api/eliza/rooms", _route_eliza_rooms_route);
   app.route(
@@ -655,31 +742,73 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     _route_eliza_app_auth_connection_success_route,
   );
   app.route("/api/eliza-app/auth/discord", _route_eliza_app_auth_discord_route);
-  app.route("/api/eliza-app/auth/telegram", _route_eliza_app_auth_telegram_route);
-  app.route("/api/eliza-app/auth/whatsapp", _route_eliza_app_auth_whatsapp_route);
-  app.route("/api/eliza-app/cli-auth/complete", _route_eliza_app_cli_auth_complete_route);
-  app.route("/api/eliza-app/cli-auth/init", _route_eliza_app_cli_auth_init_route);
-  app.route("/api/eliza-app/cli-auth/poll", _route_eliza_app_cli_auth_poll_route);
+  app.route(
+    "/api/eliza-app/auth/telegram",
+    _route_eliza_app_auth_telegram_route,
+  );
+  app.route(
+    "/api/eliza-app/auth/whatsapp",
+    _route_eliza_app_auth_whatsapp_route,
+  );
+  app.route(
+    "/api/eliza-app/cli-auth/complete",
+    _route_eliza_app_cli_auth_complete_route,
+  );
+  app.route(
+    "/api/eliza-app/cli-auth/init",
+    _route_eliza_app_cli_auth_init_route,
+  );
+  app.route(
+    "/api/eliza-app/cli-auth/poll",
+    _route_eliza_app_cli_auth_poll_route,
+  );
   app.route(
     "/api/eliza-app/connections/:platform/initiate",
     _route_eliza_app_connections_p_platform_initiate_route,
   );
   app.route("/api/eliza-app/connections", _route_eliza_app_connections_route);
-  app.route("/api/eliza-app/gateway/:agentId", _route_eliza_app_gateway_p_agentId_route);
-  app.route("/api/eliza-app/onboarding/chat", _route_eliza_app_onboarding_chat_route);
-  app.route("/api/eliza-app/provision-agent", _route_eliza_app_provision_agent_route);
+  app.route(
+    "/api/eliza-app/gateway/:agentId",
+    _route_eliza_app_gateway_p_agentId_route,
+  );
+  app.route(
+    "/api/eliza-app/onboarding/chat",
+    _route_eliza_app_onboarding_chat_route,
+  );
+  app.route(
+    "/api/eliza-app/provision-agent",
+    _route_eliza_app_provision_agent_route,
+  );
   app.route(
     "/api/eliza-app/provisioning-agent/chat",
     _route_eliza_app_provisioning_agent_chat_route,
   );
-  app.route("/api/eliza-app/provisioning-agent", _route_eliza_app_provisioning_agent_route);
+  app.route(
+    "/api/eliza-app/provisioning-agent",
+    _route_eliza_app_provisioning_agent_route,
+  );
   app.route("/api/eliza-app/user/me", _route_eliza_app_user_me_route);
   app.route("/api/eliza-app/user/phone", _route_eliza_app_user_phone_route);
-  app.route("/api/eliza-app/webhook/blooio", _route_eliza_app_webhook_blooio_route);
-  app.route("/api/eliza-app/webhook/discord", _route_eliza_app_webhook_discord_route);
-  app.route("/api/eliza-app/webhook/telegram", _route_eliza_app_webhook_telegram_route);
-  app.route("/api/eliza-app/webhook/twilio", _route_eliza_app_webhook_twilio_route);
-  app.route("/api/eliza-app/webhook/whatsapp", _route_eliza_app_webhook_whatsapp_route);
+  app.route(
+    "/api/eliza-app/webhook/blooio",
+    _route_eliza_app_webhook_blooio_route,
+  );
+  app.route(
+    "/api/eliza-app/webhook/discord",
+    _route_eliza_app_webhook_discord_route,
+  );
+  app.route(
+    "/api/eliza-app/webhook/telegram",
+    _route_eliza_app_webhook_telegram_route,
+  );
+  app.route(
+    "/api/eliza-app/webhook/twilio",
+    _route_eliza_app_webhook_twilio_route,
+  );
+  app.route(
+    "/api/eliza-app/webhook/whatsapp",
+    _route_eliza_app_webhook_whatsapp_route,
+  );
   app.route("/api/fal/proxy", _route_fal_proxy_route);
   app.route("/api/feedback", _route_feedback_route);
   app.route("/api/health/operational", _route_health_operational_route);
@@ -690,7 +819,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/internal/discord/eliza-app/messages",
     _route_internal_discord_eliza_app_messages_route,
   );
-  app.route("/api/internal/discord/events", _route_internal_discord_events_route);
+  app.route(
+    "/api/internal/discord/events",
+    _route_internal_discord_events_route,
+  );
   app.route(
     "/api/internal/discord/gateway/assignments",
     _route_internal_discord_gateway_assignments_route,
@@ -707,9 +839,18 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/internal/discord/gateway/shutdown",
     _route_internal_discord_gateway_shutdown_route,
   );
-  app.route("/api/internal/discord/gateway/status", _route_internal_discord_gateway_status_route);
-  app.route("/api/internal/identity/resolve", _route_internal_identity_resolve_route);
-  app.route("/api/internal/webhook/config", _route_internal_webhook_config_route);
+  app.route(
+    "/api/internal/discord/gateway/status",
+    _route_internal_discord_gateway_status_route,
+  );
+  app.route(
+    "/api/internal/identity/resolve",
+    _route_internal_identity_resolve_route,
+  );
+  app.route(
+    "/api/internal/webhook/config",
+    _route_internal_webhook_config_route,
+  );
   app.route("/api/invites/accept", _route_invites_accept_route);
   app.route("/api/invites/validate", _route_invites_validate_route);
   app.route("/api/invoices/list", _route_invoices_list_route);
@@ -720,30 +861,81 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/mcp/registry", _route_mcp_registry_route);
   app.route("/api/mcp/stream", _route_mcp_stream_route);
   app.route("/api/mcp", _route_mcp_route);
-  app.route("/api/mcps/airtable/:transport", _route_mcps_airtable_p_transport_route);
+  app.route(
+    "/api/mcps/airtable/:transport",
+    _route_mcps_airtable_p_transport_route,
+  );
   app.route("/api/mcps/asana/:transport", _route_mcps_asana_p_transport_route);
-  app.route("/api/mcps/crypto/:transport", _route_mcps_crypto_p_transport_route);
+  app.route(
+    "/api/mcps/crypto/:transport",
+    _route_mcps_crypto_p_transport_route,
+  );
   app.route("/api/mcps/crypto", _route_mcps_crypto_route);
-  app.route("/api/mcps/dropbox/:transport", _route_mcps_dropbox_p_transport_route);
-  app.route("/api/mcps/github/:transport", _route_mcps_github_p_transport_route);
-  app.route("/api/mcps/google/:transport", _route_mcps_google_p_transport_route);
-  app.route("/api/mcps/hubspot/:transport", _route_mcps_hubspot_p_transport_route);
+  app.route(
+    "/api/mcps/dropbox/:transport",
+    _route_mcps_dropbox_p_transport_route,
+  );
+  app.route(
+    "/api/mcps/github/:transport",
+    _route_mcps_github_p_transport_route,
+  );
+  app.route(
+    "/api/mcps/google/:transport",
+    _route_mcps_google_p_transport_route,
+  );
+  app.route(
+    "/api/mcps/hubspot/:transport",
+    _route_mcps_hubspot_p_transport_route,
+  );
   app.route("/api/mcps/jira/:transport", _route_mcps_jira_p_transport_route);
-  app.route("/api/mcps/linear/:transport", _route_mcps_linear_p_transport_route);
-  app.route("/api/mcps/linkedin/:transport", _route_mcps_linkedin_p_transport_route);
-  app.route("/api/mcps/microsoft/:transport", _route_mcps_microsoft_p_transport_route);
-  app.route("/api/mcps/notion/:transport", _route_mcps_notion_p_transport_route);
-  app.route("/api/mcps/salesforce/:transport", _route_mcps_salesforce_p_transport_route);
+  app.route(
+    "/api/mcps/linear/:transport",
+    _route_mcps_linear_p_transport_route,
+  );
+  app.route(
+    "/api/mcps/linkedin/:transport",
+    _route_mcps_linkedin_p_transport_route,
+  );
+  app.route(
+    "/api/mcps/microsoft/:transport",
+    _route_mcps_microsoft_p_transport_route,
+  );
+  app.route(
+    "/api/mcps/notion/:transport",
+    _route_mcps_notion_p_transport_route,
+  );
+  app.route(
+    "/api/mcps/salesforce/:transport",
+    _route_mcps_salesforce_p_transport_route,
+  );
   app.route("/api/mcps/time/:transport", _route_mcps_time_p_transport_route);
   app.route("/api/mcps/time", _route_mcps_time_route);
-  app.route("/api/mcps/twitter/:transport", _route_mcps_twitter_p_transport_route);
-  app.route("/api/mcps/weather/:transport", _route_mcps_weather_p_transport_route);
+  app.route(
+    "/api/mcps/twitter/:transport",
+    _route_mcps_twitter_p_transport_route,
+  );
+  app.route(
+    "/api/mcps/weather/:transport",
+    _route_mcps_weather_p_transport_route,
+  );
   app.route("/api/mcps/weather", _route_mcps_weather_route);
   app.route("/api/mcps/zoom/:transport", _route_mcps_zoom_p_transport_route);
-  app.route("/api/my-agents/characters/avatar", _route_my_agents_characters_avatar_route);
-  app.route("/api/my-agents/characters/:id/clone", _route_my_agents_characters_p_id_clone_route);
-  app.route("/api/my-agents/characters/:id/share", _route_my_agents_characters_p_id_share_route);
-  app.route("/api/my-agents/characters/:id/stats", _route_my_agents_characters_p_id_stats_route);
+  app.route(
+    "/api/my-agents/characters/avatar",
+    _route_my_agents_characters_avatar_route,
+  );
+  app.route(
+    "/api/my-agents/characters/:id/clone",
+    _route_my_agents_characters_p_id_clone_route,
+  );
+  app.route(
+    "/api/my-agents/characters/:id/share",
+    _route_my_agents_characters_p_id_share_route,
+  );
+  app.route(
+    "/api/my-agents/characters/:id/stats",
+    _route_my_agents_characters_p_id_stats_route,
+  );
   app.route(
     "/api/my-agents/characters/:id/track-interaction",
     _route_my_agents_characters_p_id_track_interaction_route,
@@ -752,7 +944,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/my-agents/characters/:id/track-view",
     _route_my_agents_characters_p_id_track_view_route,
   );
-  app.route("/api/my-agents/characters/:id", _route_my_agents_characters_p_id_route);
+  app.route(
+    "/api/my-agents/characters/:id",
+    _route_my_agents_characters_p_id_route,
+  );
   app.route("/api/my-agents/characters", _route_my_agents_characters_route);
   app.route(
     "/api/my-agents/claim-affiliate-characters",
@@ -762,40 +957,73 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/my-agents/saved", _route_my_agents_saved_route);
   app.route("/api/og", _route_og_route);
   app.route("/api/openapi.json", _route_openapi_json_route);
-  app.route("/api/organizations/invites/:inviteId", _route_organizations_invites_p_inviteId_route);
+  app.route(
+    "/api/organizations/invites/:inviteId",
+    _route_organizations_invites_p_inviteId_route,
+  );
   app.route("/api/organizations/invites", _route_organizations_invites_route);
-  app.route("/api/organizations/members/:userId", _route_organizations_members_p_userId_route);
+  app.route(
+    "/api/organizations/members/:userId",
+    _route_organizations_members_p_userId_route,
+  );
   app.route("/api/organizations/members", _route_organizations_members_route);
   app.route("/api/quotas/usage", _route_quotas_usage_route);
   app.route("/api/sessions/current", _route_sessions_current_route);
   app.route("/api/set-anonymous-session", _route_set_anonymous_session_route);
   app.route("/api/signup-code/redeem", _route_signup_code_redeem_route);
   app.route("/api/stats/account", _route_stats_account_route);
-  app.route("/api/stripe/create-checkout-session", _route_stripe_create_checkout_session_route);
+  app.route(
+    "/api/stripe/create-checkout-session",
+    _route_stripe_create_checkout_session_route,
+  );
   app.route("/api/stripe/credit-packs", _route_stripe_credit_packs_route);
   app.route("/api/stripe/webhook", _route_stripe_webhook_route);
   app.route("/api/test/auth/session", _route_test_auth_session_route);
-  app.route("/api/training/trajectories/export", _route_training_trajectories_export_route);
-  app.route("/api/training/vertex/assignments", _route_training_vertex_assignments_route);
+  app.route(
+    "/api/training/trajectories/export",
+    _route_training_trajectories_export_route,
+  );
+  app.route(
+    "/api/training/vertex/assignments",
+    _route_training_vertex_assignments_route,
+  );
   app.route("/api/training/vertex/jobs", _route_training_vertex_jobs_route);
   app.route("/api/training/vertex/models", _route_training_vertex_models_route);
   app.route("/api/training/vertex/tune", _route_training_vertex_tune_route);
   app.route("/api/users/me", _route_users_me_route);
   app.route("/api/v1/admin/ai-pricing", _route_v1_admin_ai_pricing_route);
-  app.route("/api/v1/admin/containers/ingress-map", _route_v1_admin_containers_ingress_map_route);
-  app.route("/api/v1/admin/docker-containers/audit", _route_v1_admin_docker_containers_audit_route);
+  app.route(
+    "/api/v1/admin/containers/ingress-map",
+    _route_v1_admin_containers_ingress_map_route,
+  );
+  app.route(
+    "/api/v1/admin/docker-containers/audit",
+    _route_v1_admin_docker_containers_audit_route,
+  );
   app.route(
     "/api/v1/admin/docker-containers/:id/logs",
     _route_v1_admin_docker_containers_p_id_logs_route,
   );
-  app.route("/api/v1/admin/docker-containers", _route_v1_admin_docker_containers_route);
+  app.route(
+    "/api/v1/admin/docker-containers",
+    _route_v1_admin_docker_containers_route,
+  );
   app.route(
     "/api/v1/admin/docker-nodes/bootstrap-callback",
     _route_v1_admin_docker_nodes_bootstrap_callback_route,
   );
-  app.route("/api/v1/admin/docker-nodes/capacity", _route_v1_admin_docker_nodes_capacity_route);
-  app.route("/api/v1/admin/docker-nodes/provision", _route_v1_admin_docker_nodes_provision_route);
-  app.route("/api/v1/admin/docker-nodes/sync", _route_v1_admin_docker_nodes_sync_route);
+  app.route(
+    "/api/v1/admin/docker-nodes/capacity",
+    _route_v1_admin_docker_nodes_capacity_route,
+  );
+  app.route(
+    "/api/v1/admin/docker-nodes/provision",
+    _route_v1_admin_docker_nodes_provision_route,
+  );
+  app.route(
+    "/api/v1/admin/docker-nodes/sync",
+    _route_v1_admin_docker_nodes_sync_route,
+  );
   app.route(
     "/api/v1/admin/docker-nodes/:nodeId/drain",
     _route_v1_admin_docker_nodes_p_nodeId_drain_route,
@@ -804,7 +1032,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/admin/docker-nodes/:nodeId/health-check",
     _route_v1_admin_docker_nodes_p_nodeId_health_check_route,
   );
-  app.route("/api/v1/admin/docker-nodes/:nodeId", _route_v1_admin_docker_nodes_p_nodeId_route);
+  app.route(
+    "/api/v1/admin/docker-nodes/:nodeId",
+    _route_v1_admin_docker_nodes_p_nodeId_route,
+  );
   app.route("/api/v1/admin/docker-nodes", _route_v1_admin_docker_nodes_route);
   app.route("/api/v1/admin/headscale", _route_v1_admin_headscale_route);
   app.route(
@@ -815,7 +1046,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/admin/infrastructure/containers",
     _route_v1_admin_infrastructure_containers_route,
   );
-  app.route("/api/v1/admin/infrastructure", _route_v1_admin_infrastructure_route);
+  app.route(
+    "/api/v1/admin/infrastructure",
+    _route_v1_admin_infrastructure_route,
+  );
   app.route("/api/v1/admin/metrics", _route_v1_admin_metrics_route);
   app.route("/api/v1/admin/moderation", _route_v1_admin_moderation_route);
   app.route(
@@ -823,21 +1057,36 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     _route_v1_admin_orgs_p_orgId_rate_limits_route,
   );
   app.route("/api/v1/admin/orgs", _route_v1_admin_orgs_route);
-  app.route("/api/v1/admin/service-pricing/audit", _route_v1_admin_service_pricing_audit_route);
-  app.route("/api/v1/admin/service-pricing", _route_v1_admin_service_pricing_route);
+  app.route(
+    "/api/v1/admin/service-pricing/audit",
+    _route_v1_admin_service_pricing_audit_route,
+  );
+  app.route(
+    "/api/v1/admin/service-pricing",
+    _route_v1_admin_service_pricing_route,
+  );
   app.route(
     "/api/v1/admin/users/:userId/billing/breakdown",
     _route_v1_admin_users_p_userId_billing_breakdown_route,
   );
   app.route("/api/v1/admin/users", _route_v1_admin_users_route);
   app.route("/api/v1/admin/warm-pool", _route_v1_admin_warm_pool_route);
-  app.route("/api/v1/advertising/accounts/discover", _route_v1_advertising_accounts_discover_route);
+  app.route(
+    "/api/v1/advertising/accounts/discover",
+    _route_v1_advertising_accounts_discover_route,
+  );
   app.route(
     "/api/v1/advertising/accounts/:id/media",
     _route_v1_advertising_accounts_p_id_media_route,
   );
-  app.route("/api/v1/advertising/accounts/:id", _route_v1_advertising_accounts_p_id_route);
-  app.route("/api/v1/advertising/accounts", _route_v1_advertising_accounts_route);
+  app.route(
+    "/api/v1/advertising/accounts/:id",
+    _route_v1_advertising_accounts_p_id_route,
+  );
+  app.route(
+    "/api/v1/advertising/accounts",
+    _route_v1_advertising_accounts_route,
+  );
   app.route(
     "/api/v1/advertising/campaigns/:id/analytics",
     _route_v1_advertising_campaigns_p_id_analytics_route,
@@ -854,20 +1103,53 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/advertising/campaigns/:id/start",
     _route_v1_advertising_campaigns_p_id_start_route,
   );
-  app.route("/api/v1/advertising/campaigns/:id", _route_v1_advertising_campaigns_p_id_route);
-  app.route("/api/v1/advertising/campaigns", _route_v1_advertising_campaigns_route);
-  app.route("/api/v1/advertising/creatives/:id", _route_v1_advertising_creatives_p_id_route);
+  app.route(
+    "/api/v1/advertising/campaigns/:id",
+    _route_v1_advertising_campaigns_p_id_route,
+  );
+  app.route(
+    "/api/v1/advertising/campaigns",
+    _route_v1_advertising_campaigns_route,
+  );
+  app.route(
+    "/api/v1/advertising/creatives/:id",
+    _route_v1_advertising_creatives_p_id_route,
+  );
   app.route("/api/v1/affiliates/link", _route_v1_affiliates_link_route);
   app.route("/api/v1/affiliates", _route_v1_affiliates_route);
   app.route("/api/v1/agents/by-token", _route_v1_agents_by_token_route);
-  app.route("/api/v1/agents/:agentId/logs", _route_v1_agents_p_agentId_logs_route);
-  app.route("/api/v1/agents/:agentId/monetization", _route_v1_agents_p_agentId_monetization_route);
-  app.route("/api/v1/agents/:agentId/publish", _route_v1_agents_p_agentId_publish_route);
-  app.route("/api/v1/agents/:agentId/restart", _route_v1_agents_p_agentId_restart_route);
-  app.route("/api/v1/agents/:agentId/resume", _route_v1_agents_p_agentId_resume_route);
-  app.route("/api/v1/agents/:agentId/status", _route_v1_agents_p_agentId_status_route);
-  app.route("/api/v1/agents/:agentId/suspend", _route_v1_agents_p_agentId_suspend_route);
-  app.route("/api/v1/agents/:agentId/usage", _route_v1_agents_p_agentId_usage_route);
+  app.route(
+    "/api/v1/agents/:agentId/logs",
+    _route_v1_agents_p_agentId_logs_route,
+  );
+  app.route(
+    "/api/v1/agents/:agentId/monetization",
+    _route_v1_agents_p_agentId_monetization_route,
+  );
+  app.route(
+    "/api/v1/agents/:agentId/publish",
+    _route_v1_agents_p_agentId_publish_route,
+  );
+  app.route(
+    "/api/v1/agents/:agentId/restart",
+    _route_v1_agents_p_agentId_restart_route,
+  );
+  app.route(
+    "/api/v1/agents/:agentId/resume",
+    _route_v1_agents_p_agentId_resume_route,
+  );
+  app.route(
+    "/api/v1/agents/:agentId/status",
+    _route_v1_agents_p_agentId_status_route,
+  );
+  app.route(
+    "/api/v1/agents/:agentId/suspend",
+    _route_v1_agents_p_agentId_suspend_route,
+  );
+  app.route(
+    "/api/v1/agents/:agentId/usage",
+    _route_v1_agents_p_agentId_usage_route,
+  );
   app.route(
     "/api/v1/agents/:agentId/workflows/executions/:executionId",
     _route_v1_agents_p_agentId_workflows_executions_p_executionId_route,
@@ -880,20 +1162,44 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/agents/:agentId/workflows/:workflowId",
     _route_v1_agents_p_agentId_workflows_p_workflowId_route,
   );
-  app.route("/api/v1/agents/:agentId/workflows", _route_v1_agents_p_agentId_workflows_route);
+  app.route(
+    "/api/v1/agents/:agentId/workflows",
+    _route_v1_agents_p_agentId_workflows_route,
+  );
   app.route("/api/v1/agents/:agentId", _route_v1_agents_p_agentId_route);
   app.route("/api/v1/agents", _route_v1_agents_route);
   app.route("/api/v1/api-keys/explorer", _route_v1_api_keys_explorer_route);
-  app.route("/api/v1/api-keys/:id/regenerate", _route_v1_api_keys_p_id_regenerate_route);
+  app.route(
+    "/api/v1/api-keys/:id/regenerate",
+    _route_v1_api_keys_p_id_regenerate_route,
+  );
   app.route("/api/v1/api-keys/:id", _route_v1_api_keys_p_id_route);
   app.route("/api/v1/api-keys", _route_v1_api_keys_route);
-  app.route("/api/v1/apis/birdeye/:*{.+}", _route_v1_apis_birdeye_splat_path_route);
-  app.route("/api/v1/apis/dexscreener/:*{.+}", _route_v1_apis_dexscreener_splat_path_route);
+  app.route(
+    "/api/v1/apis/birdeye/:*{.+}",
+    _route_v1_apis_birdeye_splat_path_route,
+  );
+  app.route(
+    "/api/v1/apis/dexscreener/:*{.+}",
+    _route_v1_apis_dexscreener_splat_path_route,
+  );
   app.route("/api/v1/apis/storage/list", _route_v1_apis_storage_list_route);
-  app.route("/api/v1/apis/storage/objects/:*{.+}", _route_v1_apis_storage_objects_splat_key_route);
-  app.route("/api/v1/apis/storage/presign", _route_v1_apis_storage_presign_route);
-  app.route("/api/v1/apis/streaming/sessions/:id", _route_v1_apis_streaming_sessions_p_id_route);
-  app.route("/api/v1/apis/streaming/sessions", _route_v1_apis_streaming_sessions_route);
+  app.route(
+    "/api/v1/apis/storage/objects/:*{.+}",
+    _route_v1_apis_storage_objects_splat_key_route,
+  );
+  app.route(
+    "/api/v1/apis/storage/presign",
+    _route_v1_apis_storage_presign_route,
+  );
+  app.route(
+    "/api/v1/apis/streaming/sessions/:id",
+    _route_v1_apis_streaming_sessions_p_id_route,
+  );
+  app.route(
+    "/api/v1/apis/streaming/sessions",
+    _route_v1_apis_streaming_sessions_route,
+  );
   app.route(
     "/api/v1/apis/tunnels/tailscale/auth-key",
     _route_v1_apis_tunnels_tailscale_auth_key_route,
@@ -902,81 +1208,162 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/app-auth/connect", _route_v1_app_auth_connect_route);
   app.route("/api/v1/app-auth/session", _route_v1_app_auth_session_route);
   app.route("/api/v1/app-credits/balance", _route_v1_app_credits_balance_route);
-  app.route("/api/v1/app-credits/checkout", _route_v1_app_credits_checkout_route);
+  app.route(
+    "/api/v1/app-credits/checkout",
+    _route_v1_app_credits_checkout_route,
+  );
   app.route("/api/v1/app-credits/verify", _route_v1_app_credits_verify_route);
   app.route(
     "/api/v1/approval-requests/:id/approve",
     _route_v1_approval_requests_p_id_approve_route,
   );
-  app.route("/api/v1/approval-requests/:id/cancel", _route_v1_approval_requests_p_id_cancel_route);
-  app.route("/api/v1/approval-requests/:id/deny", _route_v1_approval_requests_p_id_deny_route);
-  app.route("/api/v1/approval-requests/:id", _route_v1_approval_requests_p_id_route);
+  app.route(
+    "/api/v1/approval-requests/:id/cancel",
+    _route_v1_approval_requests_p_id_cancel_route,
+  );
+  app.route(
+    "/api/v1/approval-requests/:id/deny",
+    _route_v1_approval_requests_p_id_deny_route,
+  );
+  app.route(
+    "/api/v1/approval-requests/:id",
+    _route_v1_approval_requests_p_id_route,
+  );
   app.route("/api/v1/approval-requests", _route_v1_approval_requests_route);
   app.route("/api/v1/apps/check-name", _route_v1_apps_check_name_route);
-  app.route("/api/v1/apps/:id/analytics/requests", _route_v1_apps_p_id_analytics_requests_route);
+  app.route(
+    "/api/v1/apps/:id/analytics/requests",
+    _route_v1_apps_p_id_analytics_requests_route,
+  );
   app.route("/api/v1/apps/:id/analytics", _route_v1_apps_p_id_analytics_route);
-  app.route("/api/v1/apps/:id/characters", _route_v1_apps_p_id_characters_route);
+  app.route(
+    "/api/v1/apps/:id/characters",
+    _route_v1_apps_p_id_characters_route,
+  );
   app.route(
     "/api/v1/apps/:id/charges/:chargeId/checkout",
     _route_v1_apps_p_id_charges_p_chargeId_checkout_route,
   );
-  app.route("/api/v1/apps/:id/charges/:chargeId", _route_v1_apps_p_id_charges_p_chargeId_route);
+  app.route(
+    "/api/v1/apps/:id/charges/:chargeId",
+    _route_v1_apps_p_id_charges_p_chargeId_route,
+  );
   app.route("/api/v1/apps/:id/charges", _route_v1_apps_p_id_charges_route);
   app.route("/api/v1/apps/:id/chat", _route_v1_apps_p_id_chat_route);
   app.route(
     "/api/v1/apps/:id/discord-automation/post",
     _route_v1_apps_p_id_discord_automation_post_route,
   );
-  app.route("/api/v1/apps/:id/discord-automation", _route_v1_apps_p_id_discord_automation_route);
-  app.route("/api/v1/apps/:id/domains/buy", _route_v1_apps_p_id_domains_buy_route);
-  app.route("/api/v1/apps/:id/domains/check", _route_v1_apps_p_id_domains_check_route);
-  app.route("/api/v1/apps/:id/domains/status", _route_v1_apps_p_id_domains_status_route);
-  app.route("/api/v1/apps/:id/domains/sync", _route_v1_apps_p_id_domains_sync_route);
-  app.route("/api/v1/apps/:id/domains/verify", _route_v1_apps_p_id_domains_verify_route);
+  app.route(
+    "/api/v1/apps/:id/discord-automation",
+    _route_v1_apps_p_id_discord_automation_route,
+  );
+  app.route(
+    "/api/v1/apps/:id/domains/buy",
+    _route_v1_apps_p_id_domains_buy_route,
+  );
+  app.route(
+    "/api/v1/apps/:id/domains/check",
+    _route_v1_apps_p_id_domains_check_route,
+  );
+  app.route(
+    "/api/v1/apps/:id/domains/status",
+    _route_v1_apps_p_id_domains_status_route,
+  );
+  app.route(
+    "/api/v1/apps/:id/domains/sync",
+    _route_v1_apps_p_id_domains_sync_route,
+  );
+  app.route(
+    "/api/v1/apps/:id/domains/verify",
+    _route_v1_apps_p_id_domains_verify_route,
+  );
   app.route(
     "/api/v1/apps/:id/domains/:domain/dns/:recordId",
     _route_v1_apps_p_id_domains_p_domain_dns_p_recordId_route,
   );
-  app.route("/api/v1/apps/:id/domains/:domain/dns", _route_v1_apps_p_id_domains_p_domain_dns_route);
+  app.route(
+    "/api/v1/apps/:id/domains/:domain/dns",
+    _route_v1_apps_p_id_domains_p_domain_dns_route,
+  );
   app.route("/api/v1/apps/:id/domains", _route_v1_apps_p_id_domains_route);
-  app.route("/api/v1/apps/:id/earnings/history", _route_v1_apps_p_id_earnings_history_route);
-  app.route("/api/v1/apps/:id/earnings/withdraw", _route_v1_apps_p_id_earnings_withdraw_route);
+  app.route(
+    "/api/v1/apps/:id/earnings/history",
+    _route_v1_apps_p_id_earnings_history_route,
+  );
+  app.route(
+    "/api/v1/apps/:id/earnings/withdraw",
+    _route_v1_apps_p_id_earnings_withdraw_route,
+  );
   app.route("/api/v1/apps/:id/earnings", _route_v1_apps_p_id_earnings_route);
-  app.route("/api/v1/apps/:id/monetization", _route_v1_apps_p_id_monetization_route);
-  app.route("/api/v1/apps/:id/promote/analytics", _route_v1_apps_p_id_promote_analytics_route);
-  app.route("/api/v1/apps/:id/promote/assets", _route_v1_apps_p_id_promote_assets_route);
-  app.route("/api/v1/apps/:id/promote/preview", _route_v1_apps_p_id_promote_preview_route);
+  app.route(
+    "/api/v1/apps/:id/monetization",
+    _route_v1_apps_p_id_monetization_route,
+  );
+  app.route(
+    "/api/v1/apps/:id/promote/analytics",
+    _route_v1_apps_p_id_promote_analytics_route,
+  );
+  app.route(
+    "/api/v1/apps/:id/promote/assets",
+    _route_v1_apps_p_id_promote_assets_route,
+  );
+  app.route(
+    "/api/v1/apps/:id/promote/preview",
+    _route_v1_apps_p_id_promote_preview_route,
+  );
   app.route("/api/v1/apps/:id/promote", _route_v1_apps_p_id_promote_route);
   app.route("/api/v1/apps/:id/public", _route_v1_apps_p_id_public_route);
-  app.route("/api/v1/apps/:id/regenerate-api-key", _route_v1_apps_p_id_regenerate_api_key_route);
+  app.route(
+    "/api/v1/apps/:id/regenerate-api-key",
+    _route_v1_apps_p_id_regenerate_api_key_route,
+  );
   app.route(
     "/api/v1/apps/:id/telegram-automation/post",
     _route_v1_apps_p_id_telegram_automation_post_route,
   );
-  app.route("/api/v1/apps/:id/telegram-automation", _route_v1_apps_p_id_telegram_automation_route);
+  app.route(
+    "/api/v1/apps/:id/telegram-automation",
+    _route_v1_apps_p_id_telegram_automation_route,
+  );
   app.route(
     "/api/v1/apps/:id/twitter-automation/post",
     _route_v1_apps_p_id_twitter_automation_post_route,
   );
-  app.route("/api/v1/apps/:id/twitter-automation", _route_v1_apps_p_id_twitter_automation_route);
+  app.route(
+    "/api/v1/apps/:id/twitter-automation",
+    _route_v1_apps_p_id_twitter_automation_route,
+  );
   app.route("/api/v1/apps/:id/users", _route_v1_apps_p_id_users_route);
   app.route("/api/v1/apps/:id", _route_v1_apps_p_id_route);
   app.route("/api/v1/apps", _route_v1_apps_route);
   app.route("/api/v1/ballots/:id/cancel", _route_v1_ballots_p_id_cancel_route);
-  app.route("/api/v1/ballots/:id/distribute", _route_v1_ballots_p_id_distribute_route);
+  app.route(
+    "/api/v1/ballots/:id/distribute",
+    _route_v1_ballots_p_id_distribute_route,
+  );
   app.route("/api/v1/ballots/:id/tally", _route_v1_ballots_p_id_tally_route);
   app.route("/api/v1/ballots/:id/vote", _route_v1_ballots_p_id_vote_route);
   app.route("/api/v1/ballots/:id", _route_v1_ballots_p_id_route);
   app.route("/api/v1/ballots", _route_v1_ballots_route);
   app.route("/api/v1/billing/active", _route_v1_billing_active_route);
   app.route("/api/v1/billing/ledger", _route_v1_billing_ledger_route);
-  app.route("/api/v1/billing/resources/:id/cancel", _route_v1_billing_resources_p_id_cancel_route);
+  app.route(
+    "/api/v1/billing/resources/:id/cancel",
+    _route_v1_billing_resources_p_id_cancel_route,
+  );
   app.route("/api/v1/billing/settings", _route_v1_billing_settings_route);
   app.route("/api/v1/blooio/connect", _route_v1_blooio_connect_route);
   app.route("/api/v1/blooio/disconnect", _route_v1_blooio_disconnect_route);
   app.route("/api/v1/blooio/status", _route_v1_blooio_status_route);
-  app.route("/api/v1/blooio/webhook-secret", _route_v1_blooio_webhook_secret_route);
-  app.route("/api/v1/browser/sessions/:id/command", _route_v1_browser_sessions_p_id_command_route);
+  app.route(
+    "/api/v1/blooio/webhook-secret",
+    _route_v1_blooio_webhook_secret_route,
+  );
+  app.route(
+    "/api/v1/browser/sessions/:id/command",
+    _route_v1_browser_sessions_p_id_command_route,
+  );
   app.route(
     "/api/v1/browser/sessions/:id/navigate",
     _route_v1_browser_sessions_p_id_navigate_route,
@@ -985,30 +1372,63 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/browser/sessions/:id/snapshot",
     _route_v1_browser_sessions_p_id_snapshot_route,
   );
-  app.route("/api/v1/browser/sessions/:id", _route_v1_browser_sessions_p_id_route);
+  app.route(
+    "/api/v1/browser/sessions/:id",
+    _route_v1_browser_sessions_p_id_route,
+  );
   app.route("/api/v1/browser/sessions", _route_v1_browser_sessions_route);
-  app.route("/api/v1/chain/nfts/:chain/:address", _route_v1_chain_nfts_p_chain_p_address_route);
-  app.route("/api/v1/chain/tokens/:chain/:address", _route_v1_chain_tokens_p_chain_p_address_route);
+  app.route(
+    "/api/v1/chain/nfts/:chain/:address",
+    _route_v1_chain_nfts_p_chain_p_address_route,
+  );
+  app.route(
+    "/api/v1/chain/tokens/:chain/:address",
+    _route_v1_chain_tokens_p_chain_p_address_route,
+  );
   app.route(
     "/api/v1/chain/transfers/:chain/:address",
     _route_v1_chain_transfers_p_chain_p_address_route,
   );
   app.route("/api/v1/chat/completions", _route_v1_chat_completions_route);
   app.route("/api/v1/chat", _route_v1_chat_route);
-  app.route("/api/v1/coding-containers/promotions", _route_v1_coding_containers_promotions_route);
+  app.route(
+    "/api/v1/coding-containers/promotions",
+    _route_v1_coding_containers_promotions_route,
+  );
   app.route(
     "/api/v1/coding-containers/:containerId/sync",
     _route_v1_coding_containers_p_containerId_sync_route,
   );
   app.route("/api/v1/coding-containers", _route_v1_coding_containers_route);
-  app.route("/api/v1/connections/:platform", _route_v1_connections_p_platform_route);
-  app.route("/api/v1/containers/credentials", _route_v1_containers_credentials_route);
+  app.route(
+    "/api/v1/connections/:platform",
+    _route_v1_connections_p_platform_route,
+  );
+  app.route(
+    "/api/v1/containers/credentials",
+    _route_v1_containers_credentials_route,
+  );
   app.route("/api/v1/containers/quota", _route_v1_containers_quota_route);
-  app.route("/api/v1/containers/:id/deployments", _route_v1_containers_p_id_deployments_route);
-  app.route("/api/v1/containers/:id/health", _route_v1_containers_p_id_health_route);
-  app.route("/api/v1/containers/:id/logs/stream", _route_v1_containers_p_id_logs_stream_route);
-  app.route("/api/v1/containers/:id/logs", _route_v1_containers_p_id_logs_route);
-  app.route("/api/v1/containers/:id/metrics", _route_v1_containers_p_id_metrics_route);
+  app.route(
+    "/api/v1/containers/:id/deployments",
+    _route_v1_containers_p_id_deployments_route,
+  );
+  app.route(
+    "/api/v1/containers/:id/health",
+    _route_v1_containers_p_id_health_route,
+  );
+  app.route(
+    "/api/v1/containers/:id/logs/stream",
+    _route_v1_containers_p_id_logs_stream_route,
+  );
+  app.route(
+    "/api/v1/containers/:id/logs",
+    _route_v1_containers_p_id_logs_route,
+  );
+  app.route(
+    "/api/v1/containers/:id/metrics",
+    _route_v1_containers_p_id_metrics_route,
+  );
   app.route("/api/v1/containers/:id", _route_v1_containers_p_id_route);
   app.route("/api/v1/containers", _route_v1_containers_route);
   app.route("/api/v1/credits/balance", _route_v1_credits_balance_route);
@@ -1016,19 +1436,37 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/credits/summary", _route_v1_credits_summary_route);
   app.route("/api/v1/credits/verify", _route_v1_credits_verify_route);
   app.route("/api/v1/cron/agent-hot-pool", _route_v1_cron_agent_hot_pool_route);
-  app.route("/api/v1/cron/deployment-monitor", _route_v1_cron_deployment_monitor_route);
+  app.route(
+    "/api/v1/cron/deployment-monitor",
+    _route_v1_cron_deployment_monitor_route,
+  );
   app.route("/api/v1/cron/health-check", _route_v1_cron_health_check_route);
   app.route("/api/v1/cron/node-autoscale", _route_v1_cron_node_autoscale_route);
-  app.route("/api/v1/cron/pool-drain-idle", _route_v1_cron_pool_drain_idle_route);
-  app.route("/api/v1/cron/pool-health-check", _route_v1_cron_pool_health_check_route);
-  app.route("/api/v1/cron/pool-image-rollout", _route_v1_cron_pool_image_rollout_route);
+  app.route(
+    "/api/v1/cron/pool-drain-idle",
+    _route_v1_cron_pool_drain_idle_route,
+  );
+  app.route(
+    "/api/v1/cron/pool-health-check",
+    _route_v1_cron_pool_health_check_route,
+  );
+  app.route(
+    "/api/v1/cron/pool-image-rollout",
+    _route_v1_cron_pool_image_rollout_route,
+  );
   app.route("/api/v1/cron/pool-replenish", _route_v1_cron_pool_replenish_route);
   app.route(
     "/api/v1/cron/process-provisioning-jobs",
     _route_v1_cron_process_provisioning_jobs_route,
   );
-  app.route("/api/v1/cron/refresh-model-catalog", _route_v1_cron_refresh_model_catalog_route);
-  app.route("/api/v1/cron/refresh-pricing", _route_v1_cron_refresh_pricing_route);
+  app.route(
+    "/api/v1/cron/refresh-model-catalog",
+    _route_v1_cron_refresh_model_catalog_route,
+  );
+  app.route(
+    "/api/v1/cron/refresh-pricing",
+    _route_v1_cron_refresh_pricing_route,
+  );
   app.route("/api/v1/dashboard", _route_v1_dashboard_route);
   app.route(
     "/api/v1/device-bus/devices/:deviceId/intents",
@@ -1037,9 +1475,15 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/device-bus/devices", _route_v1_device_bus_devices_route);
   app.route("/api/v1/device-bus/intents", _route_v1_device_bus_intents_route);
   app.route("/api/v1/discord/callback", _route_v1_discord_callback_route);
-  app.route("/api/v1/discord/channels/refresh", _route_v1_discord_channels_refresh_route);
+  app.route(
+    "/api/v1/discord/channels/refresh",
+    _route_v1_discord_channels_refresh_route,
+  );
   app.route("/api/v1/discord/channels", _route_v1_discord_channels_route);
-  app.route("/api/v1/discord/connections/:id", _route_v1_discord_connections_p_id_route);
+  app.route(
+    "/api/v1/discord/connections/:id",
+    _route_v1_discord_connections_p_id_route,
+  );
   app.route("/api/v1/discord/connections", _route_v1_discord_connections_route);
   app.route("/api/v1/discord/disconnect", _route_v1_discord_disconnect_route);
   app.route("/api/v1/discord/guilds", _route_v1_discord_guilds_route);
@@ -1047,10 +1491,16 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/discord/status", _route_v1_discord_status_route);
   app.route("/api/v1/discovery", _route_v1_discovery_route);
   app.route("/api/v1/documents/check", _route_v1_documents_check_route);
-  app.route("/api/v1/documents/pre-upload", _route_v1_documents_pre_upload_route);
+  app.route(
+    "/api/v1/documents/pre-upload",
+    _route_v1_documents_pre_upload_route,
+  );
   app.route("/api/v1/documents/query", _route_v1_documents_query_route);
   app.route("/api/v1/documents/submit", _route_v1_documents_submit_route);
-  app.route("/api/v1/documents/upload-file", _route_v1_documents_upload_file_route);
+  app.route(
+    "/api/v1/documents/upload-file",
+    _route_v1_documents_upload_file_route,
+  );
   app.route("/api/v1/documents/:id", _route_v1_documents_p_id_route);
   app.route("/api/v1/documents", _route_v1_documents_route);
   app.route("/api/v1/domains/resolve", _route_v1_domains_resolve_route);
@@ -1064,7 +1514,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/eliza/agents/:agentId/backups",
     _route_v1_eliza_agents_p_agentId_backups_route,
   );
-  app.route("/api/v1/eliza/agents/:agentId/bridge", _route_v1_eliza_agents_p_agentId_bridge_route);
+  app.route(
+    "/api/v1/eliza/agents/:agentId/bridge",
+    _route_v1_eliza_agents_p_agentId_bridge_route,
+  );
   app.route(
     "/api/v1/eliza/agents/:agentId/discord/oauth",
     _route_v1_eliza_agents_p_agentId_discord_oauth_route,
@@ -1085,7 +1538,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/eliza/agents/:agentId/github/token",
     _route_v1_eliza_agents_p_agentId_github_token_route,
   );
-  app.route("/api/v1/eliza/agents/:agentId/github", _route_v1_eliza_agents_p_agentId_github_route);
+  app.route(
+    "/api/v1/eliza/agents/:agentId/github",
+    _route_v1_eliza_agents_p_agentId_github_route,
+  );
   app.route(
     "/api/v1/eliza/agents/:agentId/lifeops/schedule/merged-state",
     _route_v1_eliza_agents_p_agentId_lifeops_schedule_merged_state_route,
@@ -1106,17 +1562,26 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/eliza/agents/:agentId/restore",
     _route_v1_eliza_agents_p_agentId_restore_route,
   );
-  app.route("/api/v1/eliza/agents/:agentId/resume", _route_v1_eliza_agents_p_agentId_resume_route);
+  app.route(
+    "/api/v1/eliza/agents/:agentId/resume",
+    _route_v1_eliza_agents_p_agentId_resume_route,
+  );
   app.route(
     "/api/v1/eliza/agents/:agentId/snapshot",
     _route_v1_eliza_agents_p_agentId_snapshot_route,
   );
-  app.route("/api/v1/eliza/agents/:agentId/stream", _route_v1_eliza_agents_p_agentId_stream_route);
+  app.route(
+    "/api/v1/eliza/agents/:agentId/stream",
+    _route_v1_eliza_agents_p_agentId_stream_route,
+  );
   app.route(
     "/api/v1/eliza/agents/:agentId/suspend",
     _route_v1_eliza_agents_p_agentId_suspend_route,
   );
-  app.route("/api/v1/eliza/agents/:agentId/wallet", _route_v1_eliza_agents_p_agentId_wallet_route);
+  app.route(
+    "/api/v1/eliza/agents/:agentId/wallet",
+    _route_v1_eliza_agents_p_agentId_wallet_route,
+  );
   app.route(
     "/api/v1/eliza/agents/:agentId/workflows/:*{.+}",
     _route_v1_eliza_agents_p_agentId_workflows_splat_path_route,
@@ -1125,9 +1590,15 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/eliza/agents/:agentId/workflows",
     _route_v1_eliza_agents_p_agentId_workflows_route,
   );
-  app.route("/api/v1/eliza/agents/:agentId", _route_v1_eliza_agents_p_agentId_route);
+  app.route(
+    "/api/v1/eliza/agents/:agentId",
+    _route_v1_eliza_agents_p_agentId_route,
+  );
   app.route("/api/v1/eliza/agents", _route_v1_eliza_agents_route);
-  app.route("/api/v1/eliza/discord/gateway-agent", _route_v1_eliza_discord_gateway_agent_route);
+  app.route(
+    "/api/v1/eliza/discord/gateway-agent",
+    _route_v1_eliza_discord_gateway_agent_route,
+  );
   app.route(
     "/api/v1/eliza/gateway-relay/sessions/:sessionId/next",
     _route_v1_eliza_gateway_relay_sessions_p_sessionId_next_route,
@@ -1140,9 +1611,18 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/eliza/gateway-relay/sessions/:sessionId",
     _route_v1_eliza_gateway_relay_sessions_p_sessionId_route,
   );
-  app.route("/api/v1/eliza/gateway-relay/sessions", _route_v1_eliza_gateway_relay_sessions_route);
-  app.route("/api/v1/eliza/github-oauth-complete", _route_v1_eliza_github_oauth_complete_route);
-  app.route("/api/v1/eliza/google/accounts", _route_v1_eliza_google_accounts_route);
+  app.route(
+    "/api/v1/eliza/gateway-relay/sessions",
+    _route_v1_eliza_gateway_relay_sessions_route,
+  );
+  app.route(
+    "/api/v1/eliza/github-oauth-complete",
+    _route_v1_eliza_github_oauth_complete_route,
+  );
+  app.route(
+    "/api/v1/eliza/google/accounts",
+    _route_v1_eliza_google_accounts_route,
+  );
   app.route(
     "/api/v1/eliza/google/calendar/calendars",
     _route_v1_eliza_google_calendar_calendars_route,
@@ -1151,36 +1631,84 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/eliza/google/calendar/events/:eventId",
     _route_v1_eliza_google_calendar_events_p_eventId_route,
   );
-  app.route("/api/v1/eliza/google/calendar/events", _route_v1_eliza_google_calendar_events_route);
-  app.route("/api/v1/eliza/google/calendar/feed", _route_v1_eliza_google_calendar_feed_route);
-  app.route("/api/v1/eliza/google/connect/initiate", _route_v1_eliza_google_connect_initiate_route);
-  app.route("/api/v1/eliza/google/disconnect", _route_v1_eliza_google_disconnect_route);
+  app.route(
+    "/api/v1/eliza/google/calendar/events",
+    _route_v1_eliza_google_calendar_events_route,
+  );
+  app.route(
+    "/api/v1/eliza/google/calendar/feed",
+    _route_v1_eliza_google_calendar_feed_route,
+  );
+  app.route(
+    "/api/v1/eliza/google/connect/initiate",
+    _route_v1_eliza_google_connect_initiate_route,
+  );
+  app.route(
+    "/api/v1/eliza/google/disconnect",
+    _route_v1_eliza_google_disconnect_route,
+  );
   app.route(
     "/api/v1/eliza/google/gmail/message-send",
     _route_v1_eliza_google_gmail_message_send_route,
   );
-  app.route("/api/v1/eliza/google/gmail/read", _route_v1_eliza_google_gmail_read_route);
-  app.route("/api/v1/eliza/google/gmail/reply-send", _route_v1_eliza_google_gmail_reply_send_route);
-  app.route("/api/v1/eliza/google/gmail/search", _route_v1_eliza_google_gmail_search_route);
+  app.route(
+    "/api/v1/eliza/google/gmail/read",
+    _route_v1_eliza_google_gmail_read_route,
+  );
+  app.route(
+    "/api/v1/eliza/google/gmail/reply-send",
+    _route_v1_eliza_google_gmail_reply_send_route,
+  );
+  app.route(
+    "/api/v1/eliza/google/gmail/search",
+    _route_v1_eliza_google_gmail_search_route,
+  );
   app.route(
     "/api/v1/eliza/google/gmail/subscription-headers",
     _route_v1_eliza_google_gmail_subscription_headers_route,
   );
-  app.route("/api/v1/eliza/google/gmail/triage", _route_v1_eliza_google_gmail_triage_route);
+  app.route(
+    "/api/v1/eliza/google/gmail/triage",
+    _route_v1_eliza_google_gmail_triage_route,
+  );
   app.route("/api/v1/eliza/google/status", _route_v1_eliza_google_status_route);
   app.route(
     "/api/v1/eliza/launch-sessions/:sessionId",
     _route_v1_eliza_launch_sessions_p_sessionId_route,
   );
-  app.route("/api/v1/eliza/lifeops/github-complete", _route_v1_eliza_lifeops_github_complete_route);
-  app.route("/api/v1/eliza/paypal/authorize", _route_v1_eliza_paypal_authorize_route);
-  app.route("/api/v1/eliza/paypal/callback", _route_v1_eliza_paypal_callback_route);
-  app.route("/api/v1/eliza/paypal/popup-callback", _route_v1_eliza_paypal_popup_callback_route);
-  app.route("/api/v1/eliza/paypal/refresh", _route_v1_eliza_paypal_refresh_route);
+  app.route(
+    "/api/v1/eliza/lifeops/github-complete",
+    _route_v1_eliza_lifeops_github_complete_route,
+  );
+  app.route(
+    "/api/v1/eliza/paypal/authorize",
+    _route_v1_eliza_paypal_authorize_route,
+  );
+  app.route(
+    "/api/v1/eliza/paypal/callback",
+    _route_v1_eliza_paypal_callback_route,
+  );
+  app.route(
+    "/api/v1/eliza/paypal/popup-callback",
+    _route_v1_eliza_paypal_popup_callback_route,
+  );
+  app.route(
+    "/api/v1/eliza/paypal/refresh",
+    _route_v1_eliza_paypal_refresh_route,
+  );
   app.route("/api/v1/eliza/paypal/status", _route_v1_eliza_paypal_status_route);
-  app.route("/api/v1/eliza/paypal/transactions", _route_v1_eliza_paypal_transactions_route);
-  app.route("/api/v1/eliza/plaid/exchange", _route_v1_eliza_plaid_exchange_route);
-  app.route("/api/v1/eliza/plaid/link-token", _route_v1_eliza_plaid_link_token_route);
+  app.route(
+    "/api/v1/eliza/paypal/transactions",
+    _route_v1_eliza_paypal_transactions_route,
+  );
+  app.route(
+    "/api/v1/eliza/plaid/exchange",
+    _route_v1_eliza_plaid_exchange_route,
+  );
+  app.route(
+    "/api/v1/eliza/plaid/link-token",
+    _route_v1_eliza_plaid_link_token_route,
+  );
   app.route("/api/v1/eliza/plaid/status", _route_v1_eliza_plaid_status_route);
   app.route("/api/v1/eliza/plaid/sync", _route_v1_eliza_plaid_sync_route);
   app.route("/api/v1/embeddings", _route_v1_embeddings_route);
@@ -1206,7 +1734,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/market/preview/portfolio/:chain/:address",
     _route_v1_market_preview_portfolio_p_chain_p_address_route,
   );
-  app.route("/api/v1/market/preview/predictions", _route_v1_market_preview_predictions_route);
+  app.route(
+    "/api/v1/market/preview/predictions",
+    _route_v1_market_preview_predictions_route,
+  );
   app.route(
     "/api/v1/market/preview/price/:chain/:address",
     _route_v1_market_preview_price_p_chain_p_address_route,
@@ -1219,43 +1750,91 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/market/preview/wallet-overview",
     _route_v1_market_preview_wallet_overview_route,
   );
-  app.route("/api/v1/market/price/:chain/:address", _route_v1_market_price_p_chain_p_address_route);
-  app.route("/api/v1/market/token/:chain/:address", _route_v1_market_token_p_chain_p_address_route);
+  app.route(
+    "/api/v1/market/price/:chain/:address",
+    _route_v1_market_price_p_chain_p_address_route,
+  );
+  app.route(
+    "/api/v1/market/token/:chain/:address",
+    _route_v1_market_token_p_chain_p_address_route,
+  );
   app.route(
     "/api/v1/market/trades/:chain/:address",
     _route_v1_market_trades_p_chain_p_address_route,
   );
-  app.route("/api/v1/mcps/:mcpId/publish", _route_v1_mcps_p_mcpId_publish_route);
+  app.route(
+    "/api/v1/mcps/:mcpId/publish",
+    _route_v1_mcps_p_mcpId_publish_route,
+  );
   app.route("/api/v1/mcps/:mcpId", _route_v1_mcps_p_mcpId_route);
   app.route("/api/v1/mcps", _route_v1_mcps_route);
   app.route("/api/v1/messages", _route_v1_messages_route);
   app.route("/api/v1/models/status", _route_v1_models_status_route);
   app.route("/api/v1/models/:*{.+}", _route_v1_models_splat_model_route);
   app.route("/api/v1/models", _route_v1_models_route);
-  app.route("/api/v1/oauth/callback/:provider", _route_v1_oauth_callback_p_provider_route);
+  app.route(
+    "/api/v1/oauth/callback/:provider",
+    _route_v1_oauth_callback_p_provider_route,
+  );
   app.route("/api/v1/oauth/callback", _route_v1_oauth_callback_route);
   app.route("/api/v1/oauth/connect", _route_v1_oauth_connect_route);
-  app.route("/api/v1/oauth/connections/:id/token", _route_v1_oauth_connections_p_id_token_route);
-  app.route("/api/v1/oauth/connections/:id", _route_v1_oauth_connections_p_id_route);
+  app.route(
+    "/api/v1/oauth/connections/:id/token",
+    _route_v1_oauth_connections_p_id_token_route,
+  );
+  app.route(
+    "/api/v1/oauth/connections/:id",
+    _route_v1_oauth_connections_p_id_route,
+  );
   app.route("/api/v1/oauth/connections", _route_v1_oauth_connections_route);
   app.route("/api/v1/oauth/initiate", _route_v1_oauth_initiate_route);
   app.route("/api/v1/oauth/providers", _route_v1_oauth_providers_route);
   app.route("/api/v1/oauth/status", _route_v1_oauth_status_route);
-  app.route("/api/v1/oauth/token/:platform", _route_v1_oauth_token_p_platform_route);
-  app.route("/api/v1/oauth/:platform/callback", _route_v1_oauth_p_platform_callback_route);
-  app.route("/api/v1/oauth/:platform/initiate", _route_v1_oauth_p_platform_initiate_route);
-  app.route("/api/v1/oauth-intents/:id/cancel", _route_v1_oauth_intents_p_id_cancel_route);
+  app.route(
+    "/api/v1/oauth/token/:platform",
+    _route_v1_oauth_token_p_platform_route,
+  );
+  app.route(
+    "/api/v1/oauth/:platform/callback",
+    _route_v1_oauth_p_platform_callback_route,
+  );
+  app.route(
+    "/api/v1/oauth/:platform/initiate",
+    _route_v1_oauth_p_platform_initiate_route,
+  );
+  app.route(
+    "/api/v1/oauth-intents/:id/cancel",
+    _route_v1_oauth_intents_p_id_cancel_route,
+  );
   app.route("/api/v1/oauth-intents/:id", _route_v1_oauth_intents_p_id_route);
   app.route("/api/v1/oauth-intents", _route_v1_oauth_intents_route);
-  app.route("/api/v1/payment-requests/:id/cancel", _route_v1_payment_requests_p_id_cancel_route);
-  app.route("/api/v1/payment-requests/:id/expire", _route_v1_payment_requests_p_id_expire_route);
-  app.route("/api/v1/payment-requests/:id", _route_v1_payment_requests_p_id_route);
+  app.route(
+    "/api/v1/payment-requests/:id/cancel",
+    _route_v1_payment_requests_p_id_cancel_route,
+  );
+  app.route(
+    "/api/v1/payment-requests/:id/expire",
+    _route_v1_payment_requests_p_id_expire_route,
+  );
+  app.route(
+    "/api/v1/payment-requests/:id",
+    _route_v1_payment_requests_p_id_route,
+  );
   app.route("/api/v1/payment-requests", _route_v1_payment_requests_route);
   app.route("/api/v1/pricing/summary", _route_v1_pricing_summary_route);
-  app.route("/api/v1/provisioning-agent/chat", _route_v1_provisioning_agent_chat_route);
+  app.route(
+    "/api/v1/provisioning-agent/chat",
+    _route_v1_provisioning_agent_chat_route,
+  );
   app.route("/api/v1/provisioning-agent", _route_v1_provisioning_agent_route);
-  app.route("/api/v1/proxy/birdeye/:*{.+}", _route_v1_proxy_birdeye_splat_path_route);
-  app.route("/api/v1/proxy/evm-rpc/:chain", _route_v1_proxy_evm_rpc_p_chain_route);
+  app.route(
+    "/api/v1/proxy/birdeye/:*{.+}",
+    _route_v1_proxy_birdeye_splat_path_route,
+  );
+  app.route(
+    "/api/v1/proxy/evm-rpc/:chain",
+    _route_v1_proxy_evm_rpc_p_chain_route,
+  );
   app.route("/api/v1/proxy/solana-rpc", _route_v1_proxy_solana_rpc_route);
   app.route("/api/v1/redemptions/balance", _route_v1_redemptions_balance_route);
   app.route("/api/v1/redemptions/quote", _route_v1_redemptions_quote_route);
@@ -1265,7 +1844,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/referrals/apply", _route_v1_referrals_apply_route);
   app.route("/api/v1/referrals", _route_v1_referrals_route);
   app.route("/api/v1/remote/pair", _route_v1_remote_pair_route);
-  app.route("/api/v1/remote/sessions/:id/revoke", _route_v1_remote_sessions_p_id_revoke_route);
+  app.route(
+    "/api/v1/remote/sessions/:id/revoke",
+    _route_v1_remote_sessions_p_id_revoke_route,
+  );
   app.route("/api/v1/remote/sessions", _route_v1_remote_sessions_route);
   app.route("/api/v1/reports/bug", _route_v1_reports_bug_route);
   app.route("/api/v1/responses", _route_v1_responses_route);
@@ -1283,17 +1865,29 @@ export function mountRoutes(app: Hono<AppEnv>): void {
     "/api/v1/sensitive-requests/:id/submit",
     _route_v1_sensitive_requests_p_id_submit_route,
   );
-  app.route("/api/v1/sensitive-requests/:id", _route_v1_sensitive_requests_p_id_route);
+  app.route(
+    "/api/v1/sensitive-requests/:id",
+    _route_v1_sensitive_requests_p_id_route,
+  );
   app.route("/api/v1/sensitive-requests", _route_v1_sensitive_requests_route);
-  app.route("/api/v1/solana/assets/:address", _route_v1_solana_assets_p_address_route);
+  app.route(
+    "/api/v1/solana/assets/:address",
+    _route_v1_solana_assets_p_address_route,
+  );
   app.route("/api/v1/solana/methods", _route_v1_solana_methods_route);
   app.route("/api/v1/solana/rpc", _route_v1_solana_rpc_route);
   app.route(
     "/api/v1/solana/token-accounts/:address",
     _route_v1_solana_token_accounts_p_address_route,
   );
-  app.route("/api/v1/solana/transactions/:address", _route_v1_solana_transactions_p_address_route);
-  app.route("/api/v1/steward/tenants/credentials", _route_v1_steward_tenants_credentials_route);
+  app.route(
+    "/api/v1/solana/transactions/:address",
+    _route_v1_solana_transactions_p_address_route,
+  );
+  app.route(
+    "/api/v1/steward/tenants/credentials",
+    _route_v1_steward_tenants_credentials_route,
+  );
   app.route("/api/v1/steward/tenants", _route_v1_steward_tenants_route);
   app.route("/api/v1/stripe/checkout", _route_v1_stripe_checkout_route);
   app.route("/api/v1/stripe/webhook", _route_v1_stripe_webhook_route);
@@ -1302,7 +1896,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/telegram/disconnect", _route_v1_telegram_disconnect_route);
   app.route("/api/v1/telegram/scan-chats", _route_v1_telegram_scan_chats_route);
   app.route("/api/v1/telegram/status", _route_v1_telegram_status_route);
-  app.route("/api/v1/telegram/webhook/:orgId", _route_v1_telegram_webhook_p_orgId_route);
+  app.route(
+    "/api/v1/telegram/webhook/:orgId",
+    _route_v1_telegram_webhook_p_orgId_route,
+  );
   app.route("/api/v1/topup/10", _route_v1_topup_10_route);
   app.route("/api/v1/topup/100", _route_v1_topup_100_route);
   app.route("/api/v1/topup/50", _route_v1_topup_50_route);
@@ -1310,7 +1907,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/twilio/connect", _route_v1_twilio_connect_route);
   app.route("/api/v1/twilio/disconnect", _route_v1_twilio_disconnect_route);
   app.route("/api/v1/twilio/status", _route_v1_twilio_status_route);
-  app.route("/api/v1/twilio/voice/inbound", _route_v1_twilio_voice_inbound_route);
+  app.route(
+    "/api/v1/twilio/voice/inbound",
+    _route_v1_twilio_voice_inbound_route,
+  );
   app.route("/api/v1/twitter/callback", _route_v1_twitter_callback_route);
   app.route("/api/v1/twitter/connect", _route_v1_twitter_connect_route);
   app.route("/api/v1/twitter/disconnect", _route_v1_twitter_disconnect_route);
@@ -1318,7 +1918,10 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/twitter/token", _route_v1_twitter_token_route);
   app.route("/api/v1/user/avatar", _route_v1_user_avatar_route);
   app.route("/api/v1/user/email", _route_v1_user_email_route);
-  app.route("/api/v1/user/wallets/provision", _route_v1_user_wallets_provision_route);
+  app.route(
+    "/api/v1/user/wallets/provision",
+    _route_v1_user_wallets_provision_route,
+  );
   app.route("/api/v1/user/wallets/rpc", _route_v1_user_wallets_rpc_route);
   app.route("/api/v1/user/wallets", _route_v1_user_wallets_route);
   app.route("/api/v1/user", _route_v1_user_route);
@@ -1330,11 +1933,17 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/voice/stt", _route_v1_voice_stt_route);
   app.route("/api/v1/voice/tts", _route_v1_voice_tts_route);
   app.route("/api/v1/voice/:id", _route_v1_voice_p_id_route);
-  app.route("/api/v1/voice-models/catalog", _route_v1_voice_models_catalog_route);
+  app.route(
+    "/api/v1/voice-models/catalog",
+    _route_v1_voice_models_catalog_route,
+  );
   app.route("/api/v1/whatsapp/connect", _route_v1_whatsapp_connect_route);
   app.route("/api/v1/whatsapp/disconnect", _route_v1_whatsapp_disconnect_route);
   app.route("/api/v1/whatsapp/status", _route_v1_whatsapp_status_route);
-  app.route("/api/v1/x/dms/conversations/send", _route_v1_x_dms_conversations_send_route);
+  app.route(
+    "/api/v1/x/dms/conversations/send",
+    _route_v1_x_dms_conversations_send_route,
+  );
   app.route("/api/v1/x/dms/curate", _route_v1_x_dms_curate_route);
   app.route("/api/v1/x/dms/digest", _route_v1_x_dms_digest_route);
   app.route("/api/v1/x/dms/groups", _route_v1_x_dms_groups_route);
@@ -1342,13 +1951,25 @@ export function mountRoutes(app: Hono<AppEnv>): void {
   app.route("/api/v1/x/feed", _route_v1_x_feed_route);
   app.route("/api/v1/x/posts", _route_v1_x_posts_route);
   app.route("/api/v1/x/status", _route_v1_x_status_route);
-  app.route("/api/v1/x402/requests/:id/settle", _route_v1_x402_requests_p_id_settle_route);
+  app.route(
+    "/api/v1/x402/requests/:id/settle",
+    _route_v1_x402_requests_p_id_settle_route,
+  );
   app.route("/api/v1/x402/requests/:id", _route_v1_x402_requests_p_id_route);
   app.route("/api/v1/x402/requests", _route_v1_x402_requests_route);
   app.route("/api/v1/x402/settle", _route_v1_x402_settle_route);
   app.route("/api/v1/x402/verify", _route_v1_x402_verify_route);
   app.route("/api/v1/x402", _route_v1_x402_route);
-  app.route("/api/webhooks/blooio/:orgId", _route_webhooks_blooio_p_orgId_route);
-  app.route("/api/webhooks/twilio/:orgId", _route_webhooks_twilio_p_orgId_route);
-  app.route("/api/webhooks/whatsapp/:orgId", _route_webhooks_whatsapp_p_orgId_route);
+  app.route(
+    "/api/webhooks/blooio/:orgId",
+    _route_webhooks_blooio_p_orgId_route,
+  );
+  app.route(
+    "/api/webhooks/twilio/:orgId",
+    _route_webhooks_twilio_p_orgId_route,
+  );
+  app.route(
+    "/api/webhooks/whatsapp/:orgId",
+    _route_webhooks_whatsapp_p_orgId_route,
+  );
 }

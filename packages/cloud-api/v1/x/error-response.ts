@@ -18,7 +18,12 @@ type ErrorWithStatus = Error & { status: number };
 function isHttpStatusError(error: unknown): error is ErrorWithStatus {
   if (!(error instanceof Error)) return false;
   const status = (error as { status?: unknown }).status;
-  return typeof status === "number" && Number.isInteger(status) && status >= 400 && status < 600;
+  return (
+    typeof status === "number" &&
+    Number.isInteger(status) &&
+    status >= 400 &&
+    status < 600
+  );
 }
 
 export function xRouteErrorResponse(c: Context, error: unknown): Response {

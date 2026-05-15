@@ -10,7 +10,9 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const chats = await telegramChatsRepository.findByOrganization(user.organization_id);
+    const chats = await telegramChatsRepository.findByOrganization(
+      user.organization_id,
+    );
 
     return c.json({
       chats: chats.map((chat) => ({

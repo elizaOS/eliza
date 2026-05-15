@@ -10,7 +10,10 @@ import { z } from "zod";
 import { approvalRequestsRepository } from "@/db/repositories/approval-requests";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   type ApprovalRequestsService,
   createApprovalRequestsService,
@@ -19,7 +22,14 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const ChallengeKindSchema = z.enum(["login", "signature", "generic"]);
-const StatusSchema = z.enum(["pending", "delivered", "approved", "denied", "expired", "canceled"]);
+const StatusSchema = z.enum([
+  "pending",
+  "delivered",
+  "approved",
+  "denied",
+  "expired",
+  "canceled",
+]);
 const SignerKindSchema = z.enum(["wallet", "ed25519"]);
 
 const ChallengePayloadSchema = z.object({
@@ -55,7 +65,9 @@ const ListQuerySchema = z.object({
 
 let singleton: ApprovalRequestsService | null = null;
 function getApprovalRequestsService(): ApprovalRequestsService {
-  singleton ??= createApprovalRequestsService({ repository: approvalRequestsRepository });
+  singleton ??= createApprovalRequestsService({
+    repository: approvalRequestsRepository,
+  });
   return singleton;
 }
 
@@ -71,7 +83,11 @@ app.post("/", async (c) => {
     const parsed = CreateApprovalRequestSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }
@@ -90,7 +106,9 @@ app.post("/", async (c) => {
 
     return c.json({ success: true, approvalRequest });
   } catch (error) {
-    logger.error("[ApprovalRequests API] Failed to create approval request", { error });
+    logger.error("[ApprovalRequests API] Failed to create approval request", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });
@@ -108,7 +126,14 @@ app.get("/", async (c) => {
       offset: c.req.query("offset"),
     });
     if (!parsed.success) {
-      return c.json({ success: false, error: "Invalid query", details: parsed.error.issues }, 400);
+      return c.json(
+        {
+          success: false,
+          error: "Invalid query",
+          details: parsed.error.issues,
+        },
+        400,
+      );
     }
 
     const service = getApprovalRequestsService();
@@ -123,7 +148,9 @@ app.get("/", async (c) => {
 
     return c.json({ success: true, approvalRequests });
   } catch (error) {
-    logger.error("[ApprovalRequests API] Failed to list approval requests", { error });
+    logger.error("[ApprovalRequests API] Failed to list approval requests", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });

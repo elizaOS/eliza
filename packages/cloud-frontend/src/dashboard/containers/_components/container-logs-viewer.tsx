@@ -98,7 +98,6 @@ function getLevelBadgeVariant(logLevel: string): BadgeVariant {
       return "default";
     case "debug":
       return "secondary";
-    case "warn":
     default:
       return "outline";
   }

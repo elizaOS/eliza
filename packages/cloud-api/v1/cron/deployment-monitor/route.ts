@@ -16,7 +16,10 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
 
-async function handleDeploymentMonitor(c: AppContext, env?: AppEnv["Bindings"]) {
+async function handleDeploymentMonitor(
+  c: AppContext,
+  env?: AppEnv["Bindings"],
+) {
   const authError = verifyCronSecret(c.req.raw, "[Deployment Monitor]", env);
   if (authError) return authError;
   return forwardCronToContainerControlPlane(c);

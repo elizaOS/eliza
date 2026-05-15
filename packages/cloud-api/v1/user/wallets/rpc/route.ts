@@ -7,7 +7,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { verifyWalletSignature } from "@/lib/auth/wallet-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { executeServerWalletRpc } from "@/lib/services/server-wallets";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -42,17 +45,26 @@ app.post("/", async (c) => {
     const validated = rpcPayloadSchema.parse(body);
 
     const url = new URL(c.req.url);
-    const authenticatedUser = await verifyWalletSignature(honoToWalletAuthRequest(c, url));
+    const authenticatedUser = await verifyWalletSignature(
+      honoToWalletAuthRequest(c, url),
+    );
     if (!authenticatedUser) {
-      return c.json({ success: false, error: "Wallet authentication required" }, 401);
+      return c.json(
+        { success: false, error: "Wallet authentication required" },
+        401,
+      );
     }
 
     const authenticatedWallet = authenticatedUser.wallet_address?.toLowerCase();
-    if (!authenticatedWallet || authenticatedWallet !== validated.clientAddress.toLowerCase()) {
+    if (
+      !authenticatedWallet ||
+      authenticatedWallet !== validated.clientAddress.toLowerCase()
+    ) {
       return c.json(
         {
           success: false,
-          error: "Unauthorized: clientAddress does not belong to the authenticated wallet",
+          error:
+            "Unauthorized: clientAddress does not belong to the authenticated wallet",
         },
         403,
       );
@@ -73,7 +85,10 @@ app.post("/", async (c) => {
     logger.error("Error executing server wallet RPC:", error);
 
     if (error instanceof z.ZodError) {
-      return c.json({ success: false, error: "Validation error", details: error.issues }, 400);
+      return c.json(
+        { success: false, error: "Validation error", details: error.issues },
+        400,
+      );
     }
 
     if (

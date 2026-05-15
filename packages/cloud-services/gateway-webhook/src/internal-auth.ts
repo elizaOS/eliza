@@ -1,4 +1,4 @@
-import { timingSafeEqual } from "crypto";
+import { timingSafeEqual } from "node:crypto";
 import { logger } from "./logger";
 
 /**
@@ -33,7 +33,9 @@ export function validateInternalSecret(request: Request): boolean {
   // to know why requests are being rejected. The timing oracle concern is
   // mitigated because timingSafeEqual always runs below (no early return).
   if (secretMissing) {
-    logger.warn("Internal auth rejected: GATEWAY_INTERNAL_SECRET not configured");
+    logger.warn(
+      "Internal auth rejected: GATEWAY_INTERNAL_SECRET not configured",
+    );
   } else if (headerMissing) {
     logger.warn("Internal auth rejected: missing X-Internal-Secret header");
   }

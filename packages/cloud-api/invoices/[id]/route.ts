@@ -6,7 +6,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { invoicesService } from "@/lib/services/invoices";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -41,7 +44,9 @@ app.get("/", async (c) => {
         invoiceNumber: invoice.invoice_number,
         invoicePdf: invoice.invoice_pdf,
         hostedInvoiceUrl: invoice.hosted_invoice_url,
-        creditsAdded: invoice.credits_added ? Number(invoice.credits_added) : undefined,
+        creditsAdded: invoice.credits_added
+          ? Number(invoice.credits_added)
+          : undefined,
         metadata: invoice.metadata,
         createdAt: invoice.created_at.toISOString(),
         updatedAt: invoice.updated_at.toISOString(),

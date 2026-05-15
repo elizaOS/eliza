@@ -15,7 +15,10 @@ import { z } from "zod";
 import { secretBallotsRepository } from "@/db/repositories/secret-ballots";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { createSecretBallotsService } from "@/lib/services/secret-ballots";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -63,12 +66,19 @@ app.post("/", async (c) => {
     const parsed = CreateBallotSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }
     if (parsed.data.threshold > parsed.data.participants.length) {
-      return c.json({ success: false, error: "threshold cannot exceed participant count" }, 400);
+      return c.json(
+        { success: false, error: "threshold cannot exceed participant count" },
+        400,
+      );
     }
 
     const service = buildService();
@@ -105,7 +115,14 @@ app.get("/", async (c) => {
       offset: c.req.query("offset"),
     });
     if (!parsed.success) {
-      return c.json({ success: false, error: "Invalid query", details: parsed.error.issues }, 400);
+      return c.json(
+        {
+          success: false,
+          error: "Invalid query",
+          details: parsed.error.issues,
+        },
+        400,
+      );
     }
     const service = buildService();
     const ballots = await service.list(user.organization_id, parsed.data);

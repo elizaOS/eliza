@@ -943,7 +943,6 @@ class LocalAIManager {
 
 		await this.mediumModelInitializingPromise;
 	}
-
 }
 
 /**

@@ -479,8 +479,7 @@ export function ElizaChatInterface({
       const rooms = useChatStore.getState().rooms;
       const room = rooms.find((r) => r.id === roomId);
       if (
-        room &&
-        room.characterId &&
+        room?.characterId &&
         targetCharacterId &&
         room.characterId !== targetCharacterId
       ) {
@@ -517,7 +516,7 @@ export function ElizaChatInterface({
   }, [roomId, selectedCharacterId, expectedCharacterId, loadMessages]);
 
   const createRoom = useCallback(
-    async (characterId?: string | null, skipLoadRooms = false) => {
+    async (characterId?: string | null, _skipLoadRooms = false) => {
       const charIdToUse =
         characterId !== undefined ? characterId : selectedCharacterId;
       setError(null);

@@ -63,7 +63,9 @@ beforeAll(async () => {
   hasTestApiKey = Boolean(process.env.TEST_API_KEY?.trim());
   serverReachable = await isServerReachable();
   if (!hasTestApiKey) {
-    throw new Error("[group-e] TEST_API_KEY is not set; the e2e preload did not bootstrap auth.");
+    throw new Error(
+      "[group-e] TEST_API_KEY is not set; the e2e preload did not bootstrap auth.",
+    );
   }
 
   sessionCookie = adminSessionCookie || (await exchangeApiKeyForSession());
@@ -86,7 +88,9 @@ const NOT_IMPLEMENTED_OK_STATUSES = [200, 202, 501] as const;
 function expectAuthGate(status: number, path: string): void {
   expect([401, 403]).toContain(status);
   if (![401, 403].includes(status)) {
-    throw new Error(`Expected 401/403 from unauthenticated ${path}, got ${status}`);
+    throw new Error(
+      `Expected 401/403 from unauthenticated ${path}, got ${status}`,
+    );
   }
 }
 
@@ -99,7 +103,9 @@ describe("Group E: admin / redemptions", () => {
 
   test("GET /api/admin/redemptions rejects non-admin bearer with 403", async () => {
     if (!shouldRun()) return;
-    const res = await api.get("/api/admin/redemptions", { headers: memberBearerHeaders() });
+    const res = await api.get("/api/admin/redemptions", {
+      headers: memberBearerHeaders(),
+    });
     // Use the seeded member key here; the primary bootstrapped key is a super-admin
     // when AGENT_TEST_BOOTSTRAP_ADMIN=true.
     expect([401, 403]).toContain(res.status);
@@ -142,7 +148,9 @@ describe("Group E: admin / ai-pricing", () => {
 
   test("GET /api/v1/admin/ai-pricing rejects non-admin bearer", async () => {
     if (!shouldRun()) return;
-    const res = await api.get("/api/v1/admin/ai-pricing", { headers: memberBearerHeaders() });
+    const res = await api.get("/api/v1/admin/ai-pricing", {
+      headers: memberBearerHeaders(),
+    });
     expect([401, 403]).toContain(res.status);
   });
 
@@ -151,7 +159,12 @@ describe("Group E: admin / ai-pricing", () => {
     const headers = adminHeaders();
     const res = await api.put(
       "/api/v1/admin/ai-pricing",
-      { billingSource: "not-a-real-source", provider: "", model: "", unitPrice: -1 },
+      {
+        billingSource: "not-a-real-source",
+        provider: "",
+        model: "",
+        unitPrice: -1,
+      },
       { headers },
     );
     expect(res.status).toBe(400);
@@ -159,9 +172,14 @@ describe("Group E: admin / ai-pricing", () => {
 
   test("GET /api/v1/admin/ai-pricing returns pricing entries for admin", async () => {
     if (!shouldRun()) return;
-    const res = await api.get("/api/v1/admin/ai-pricing", { headers: adminHeaders() });
+    const res = await api.get("/api/v1/admin/ai-pricing", {
+      headers: adminHeaders(),
+    });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { pricing?: unknown[]; refreshRuns?: unknown[] };
+    const body = (await res.json()) as {
+      pricing?: unknown[];
+      refreshRuns?: unknown[];
+    };
     expect(Array.isArray(body.pricing)).toBe(true);
     expect(Array.isArray(body.refreshRuns)).toBe(true);
   });
@@ -184,9 +202,12 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
 
   test("GET /api/v1/admin/docker-containers rejects invalid status filter (admin)", async () => {
     if (!shouldRun()) return;
-    const res = await api.get("/api/v1/admin/docker-containers?status=garbage", {
-      headers: adminHeaders(),
-    });
+    const res = await api.get(
+      "/api/v1/admin/docker-containers?status=garbage",
+      {
+        headers: adminHeaders(),
+      },
+    );
     // ValidationError(400) when status is not in the allowed set; super_admin
     // is required so 403 is also acceptable for non-super admins.
     expect([400, 403]).toContain(res.status);
@@ -194,12 +215,17 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
 
   test("GET /api/v1/admin/docker-containers/:id/logs is a 501 stub (auth required first)", async () => {
     if (!shouldRun()) return;
-    const unauthed = await api.get(`/api/v1/admin/docker-containers/${FAKE_UUID}/logs`);
+    const unauthed = await api.get(
+      `/api/v1/admin/docker-containers/${FAKE_UUID}/logs`,
+    );
     expectAuthGate(unauthed.status, "GET docker-containers/:id/logs (unauth)");
 
-    const authed = await api.get(`/api/v1/admin/docker-containers/${FAKE_UUID}/logs`, {
-      headers: bearerHeaders(),
-    });
+    const authed = await api.get(
+      `/api/v1/admin/docker-containers/${FAKE_UUID}/logs`,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect(authed.status).toBe(501);
     const body = (await authed.json()) as { error?: string };
     expect(body.error).toBe("not_yet_migrated");
@@ -218,11 +244,17 @@ describe("Group E: admin / docker-containers (live + 501 stubs)", () => {
 
   test("POST /api/v1/admin/infrastructure/containers/actions is a 501 stub; rejects unauthenticated", async () => {
     if (!shouldRun()) return;
-    const unauthed = await api.post("/api/v1/admin/infrastructure/containers/actions", {
-      action: "restart",
-      containerId: FAKE_UUID,
-    });
-    expectAuthGate(unauthed.status, "POST infrastructure/containers/actions (unauth)");
+    const unauthed = await api.post(
+      "/api/v1/admin/infrastructure/containers/actions",
+      {
+        action: "restart",
+        containerId: FAKE_UUID,
+      },
+    );
+    expectAuthGate(
+      unauthed.status,
+      "POST infrastructure/containers/actions (unauth)",
+    );
 
     const authed = await api.post(
       "/api/v1/admin/infrastructure/containers/actions",
@@ -260,10 +292,13 @@ describe("Group E: advertising / accounts", () => {
 
   test("POST /api/v1/advertising/accounts/:id/media rejects unauthenticated", async () => {
     if (!serverReachable) return;
-    const res = await api.post(`/api/v1/advertising/accounts/${FAKE_UUID}/media`, {
-      type: "image",
-      url: "https://example.com/creative.png",
-    });
+    const res = await api.post(
+      `/api/v1/advertising/accounts/${FAKE_UUID}/media`,
+      {
+        type: "image",
+        url: "https://example.com/creative.png",
+      },
+    );
     expectAuthGate(res.status, "POST advertising/accounts/:id/media");
   });
 
@@ -279,9 +314,12 @@ describe("Group E: advertising / accounts", () => {
 
   test("GET /api/v1/advertising/accounts/:id/media rejects missing status query", async () => {
     if (!shouldRun()) return;
-    const res = await api.get(`/api/v1/advertising/accounts/${FAKE_UUID}/media`, {
-      headers: bearerHeaders(),
-    });
+    const res = await api.get(
+      `/api/v1/advertising/accounts/${FAKE_UUID}/media`,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect(res.status).toBe(400);
   });
 });
@@ -321,7 +359,9 @@ describe("Group E: advertising / campaigns", () => {
 
   test("GET /api/v1/advertising/campaigns/:id/analytics rejects unauthenticated", async () => {
     if (!serverReachable) return;
-    const res = await api.get(`/api/v1/advertising/campaigns/${FAKE_UUID}/analytics`);
+    const res = await api.get(
+      `/api/v1/advertising/campaigns/${FAKE_UUID}/analytics`,
+    );
     expectAuthGate(res.status, "GET advertising/campaigns/:id/analytics");
   });
 
@@ -338,7 +378,9 @@ describe("Group E: advertising / campaigns", () => {
 
   test("GET /api/v1/advertising/campaigns/:id/creatives rejects unauthenticated", async () => {
     if (!serverReachable) return;
-    const res = await api.get(`/api/v1/advertising/campaigns/${FAKE_UUID}/creatives`);
+    const res = await api.get(
+      `/api/v1/advertising/campaigns/${FAKE_UUID}/creatives`,
+    );
     expectAuthGate(res.status, "GET advertising/campaigns/:id/creatives");
   });
 
@@ -354,21 +396,29 @@ describe("Group E: advertising / campaigns", () => {
 
   test("POST /api/v1/advertising/campaigns/:id/pause rejects unauthenticated", async () => {
     if (!serverReachable) return;
-    const res = await api.post(`/api/v1/advertising/campaigns/${FAKE_UUID}/pause`);
+    const res = await api.post(
+      `/api/v1/advertising/campaigns/${FAKE_UUID}/pause`,
+    );
     expectAuthGate(res.status, "POST advertising/campaigns/:id/pause");
   });
 
   test("POST /api/v1/advertising/campaigns/:id/start rejects unauthenticated", async () => {
     if (!serverReachable) return;
-    const res = await api.post(`/api/v1/advertising/campaigns/${FAKE_UUID}/start`);
+    const res = await api.post(
+      `/api/v1/advertising/campaigns/${FAKE_UUID}/start`,
+    );
     expectAuthGate(res.status, "POST advertising/campaigns/:id/start");
   });
 
   test("POST /api/v1/advertising/campaigns/:id/start returns 404 for unknown campaign", async () => {
     if (!shouldRun()) return;
-    const res = await api.post(`/api/v1/advertising/campaigns/${FAKE_UUID}/start`, undefined, {
-      headers: bearerHeaders(),
-    });
+    const res = await api.post(
+      `/api/v1/advertising/campaigns/${FAKE_UUID}/start`,
+      undefined,
+      {
+        headers: bearerHeaders(),
+      },
+    );
     expect([400, 404]).toContain(res.status);
   });
 });
@@ -400,7 +450,9 @@ describe("Group E: advertising / creatives", () => {
 describe("Group E: training / vertex tune (501 stub)", () => {
   test("POST /api/training/vertex/tune rejects unauthenticated", async () => {
     if (!serverReachable) return;
-    const res = await api.post("/api/training/vertex/tune", { datasetUri: "gs://demo" });
+    const res = await api.post("/api/training/vertex/tune", {
+      datasetUri: "gs://demo",
+    });
     expectAuthGate(res.status, "POST training/vertex/tune");
   });
 
@@ -438,8 +490,13 @@ describe("Group E: session-cookie sanity check", () => {
 describe("Group E: admin / docker control-plane forwarding", () => {
   test("POST /api/v1/admin/docker-nodes/:nodeId/health-check forwards to the control plane", async () => {
     if (!shouldRun()) return;
-    const unauthed = await api.post(`/api/v1/admin/docker-nodes/${FAKE_UUID}/health-check`);
-    expectAuthGate(unauthed.status, "POST docker-nodes/:nodeId/health-check (unauth)");
+    const unauthed = await api.post(
+      `/api/v1/admin/docker-nodes/${FAKE_UUID}/health-check`,
+    );
+    expectAuthGate(
+      unauthed.status,
+      "POST docker-nodes/:nodeId/health-check (unauth)",
+    );
 
     const authed = await api.post(
       `/api/v1/admin/docker-nodes/${FAKE_UUID}/health-check`,

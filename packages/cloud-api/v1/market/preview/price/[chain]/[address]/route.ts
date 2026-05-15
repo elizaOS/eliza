@@ -36,7 +36,10 @@ async function GET(
   context: { params: Promise<{ chain: string; address: string }> },
 ) {
   const response = await handleGET(request, context);
-  response.headers.set("X-RateLimit-Limit", String(PUBLIC_MARKET_PRICE_RATE_LIMIT.maxRequests));
+  response.headers.set(
+    "X-RateLimit-Limit",
+    String(PUBLIC_MARKET_PRICE_RATE_LIMIT.maxRequests),
+  );
   return response;
 }
 

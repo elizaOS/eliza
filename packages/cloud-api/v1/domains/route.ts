@@ -16,7 +16,9 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const domains = await managedDomainsService.listForOrganization(user.organization_id);
+    const domains = await managedDomainsService.listForOrganization(
+      user.organization_id,
+    );
     return c.json({
       success: true,
       domains: domains.map((d) => ({

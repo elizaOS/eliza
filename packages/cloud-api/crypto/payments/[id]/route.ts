@@ -7,7 +7,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { cryptoPaymentsService } from "@/lib/services/crypto-payments";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -31,7 +34,8 @@ app.get("/", async (c) => {
       return c.json({ error: "Unauthorized" }, 403);
     }
 
-    const { confirmed, payment: status } = await cryptoPaymentsService.checkAndConfirmPayment(id);
+    const { confirmed, payment: status } =
+      await cryptoPaymentsService.checkAndConfirmPayment(id);
     return c.json({ ...status, confirmed });
   } catch (error) {
     logger.error("[Crypto Payments API] Get payment error:", error);

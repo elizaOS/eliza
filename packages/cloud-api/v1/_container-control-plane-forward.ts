@@ -42,7 +42,8 @@ async function forwardControlPlaneRequest(
   headers.set("x-forwarded-proto", sourceUrl.protocol.replace(":", ""));
 
   const internalToken = readStringEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
-  if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  if (internalToken)
+    headers.set("x-container-control-plane-token", internalToken);
 
   const databaseUrl = readStringEnv(c, ["DATABASE_URL"]);
   if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
@@ -51,7 +52,10 @@ async function forwardControlPlaneRequest(
 
   try {
     const upstream = await fetch(target, {
-      body: c.req.method === "GET" || c.req.method === "HEAD" ? undefined : c.req.raw.body,
+      body:
+        c.req.method === "GET" || c.req.method === "HEAD"
+          ? undefined
+          : c.req.raw.body,
       headers,
       method: c.req.method,
       redirect: "manual",
@@ -88,6 +92,8 @@ export async function forwardToContainerControlPlane(
   });
 }
 
-export async function forwardCronToContainerControlPlane(c: AppContext): Promise<Response> {
+export async function forwardCronToContainerControlPlane(
+  c: AppContext,
+): Promise<Response> {
   return forwardControlPlaneRequest(c, () => {});
 }

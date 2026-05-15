@@ -31,7 +31,10 @@ async function __hono_OPTIONS(request: Request) {
   });
 }
 
-async function __hono_GET(request: Request, { params }: RouteContext<{ sessionId: string }>) {
+async function __hono_GET(
+  request: Request,
+  { params }: RouteContext<{ sessionId: string }>,
+) {
   const { sessionId } = await params;
   const headers = getCorsHeaders(request.headers.get("origin"));
   const payload = await cache.getAndDelete<ManagedLaunchSessionPayload>(
@@ -63,6 +66,8 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ sessionId
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", async (c) => __hono_OPTIONS(c.req.raw));
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ sessionId: c.req.param("sessionId")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ sessionId: c.req.param("sessionId")! }),
+  }),
 );
 export default __hono_app;

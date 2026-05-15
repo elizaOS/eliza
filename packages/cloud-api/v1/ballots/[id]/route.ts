@@ -9,7 +9,10 @@ import { Hono } from "hono";
 import { secretBallotsRepository } from "@/db/repositories/secret-ballots";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   createSecretBallotsService,
   redactSecretBallotForPublic,
@@ -27,14 +30,19 @@ app.get("/", async (c) => {
       return c.json({ success: false, error: "Missing ballot id" }, 400);
     }
     const isPublic = c.req.query("public") === "1";
-    const service = createSecretBallotsService({ repository: secretBallotsRepository });
+    const service = createSecretBallotsService({
+      repository: secretBallotsRepository,
+    });
 
     if (isPublic) {
       const row = await secretBallotsRepository.getBallot(id);
       if (!row) {
         return c.json({ success: false, error: "Ballot not found" }, 404);
       }
-      return c.json({ success: true, ballot: redactSecretBallotForPublic(row) });
+      return c.json({
+        success: true,
+        ballot: redactSecretBallotForPublic(row),
+      });
     }
 
     const user = await requireUserOrApiKeyWithOrg(c);

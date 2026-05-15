@@ -48,7 +48,7 @@ export function CharacterIntroPageWrapper({
     navigate(`/chat/${characterId}${queryString ? `?${queryString}` : ""}`);
   }
 
-  async function handleEmailSubmit(email: string): Promise<void> {
+  async function handleEmailSubmit(_email: string): Promise<void> {
     const params = new URLSearchParams();
     if (source) params.set("source", source);
 

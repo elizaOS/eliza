@@ -16,8 +16,15 @@ import { z } from "zod";
 import type { UserCharacter } from "@/db/repositories/characters";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { CORS_ALLOW_HEADERS, CORS_ALLOW_METHODS } from "@/lib/cors-constants";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { calculateCost, estimateRequestCost, getProviderFromModel } from "@/lib/pricing";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  calculateCost,
+  estimateRequestCost,
+  getProviderFromModel,
+} from "@/lib/pricing";
 import {
   type AnthropicCotEnv,
   mergeAnthropicCotProviderOptions,
@@ -27,7 +34,10 @@ import {
 import { agentMonetizationService } from "@/lib/services/agent-monetization";
 import { charactersService } from "@/lib/services/characters/characters";
 import type { CreditReservation } from "@/lib/services/credits";
-import { creditsService, InsufficientCreditsError } from "@/lib/services/credits";
+import {
+  creditsService,
+  InsufficientCreditsError,
+} from "@/lib/services/credits";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 
@@ -39,7 +49,9 @@ const JsonRpcRequestSchema = z.object({
 });
 
 function generateAgentCard(character: UserCharacter, baseUrl: string) {
-  const bioText = Array.isArray(character.bio) ? character.bio.join("\n") : character.bio;
+  const bioText = Array.isArray(character.bio)
+    ? character.bio.join("\n")
+    : character.bio;
   const markupPct = Number(character.inference_markup_percentage || 0);
   const hasMonetization = character.monetization_enabled && markupPct > 0;
 
@@ -101,9 +113,13 @@ const app = new Hono<AppEnv>();
 function getAnthropicCotEnv(env: AppEnv["Bindings"]): AnthropicCotEnv {
   return {
     ANTHROPIC_COT_BUDGET:
-      typeof env.ANTHROPIC_COT_BUDGET === "string" ? env.ANTHROPIC_COT_BUDGET : undefined,
+      typeof env.ANTHROPIC_COT_BUDGET === "string"
+        ? env.ANTHROPIC_COT_BUDGET
+        : undefined,
     ANTHROPIC_COT_BUDGET_MAX:
-      typeof env.ANTHROPIC_COT_BUDGET_MAX === "string" ? env.ANTHROPIC_COT_BUDGET_MAX : undefined,
+      typeof env.ANTHROPIC_COT_BUDGET_MAX === "string"
+        ? env.ANTHROPIC_COT_BUDGET_MAX
+        : undefined,
   };
 }
 
@@ -113,7 +129,8 @@ app.get("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
 
   const character = await charactersService.getById(id);
   if (!character) return c.json({ error: "Agent not found" }, 404);
-  if (!character.is_public) return c.json({ error: "Agent is not public" }, 403);
+  if (!character.is_public)
+    return c.json({ error: "Agent is not public" }, 403);
   if (!character.a2a_enabled) {
     return c.json({ error: "A2A not enabled for this agent" }, 403);
   }
@@ -241,8 +258,11 @@ async function handleChat(
     });
   }
 
-  const bioText = Array.isArray(character.bio) ? character.bio.join("\n") : character.bio;
-  const systemPrompt = character.system || `You are ${character.name}. ${bioText}`;
+  const bioText = Array.isArray(character.bio)
+    ? character.bio.join("\n")
+    : character.bio;
+  const systemPrompt =
+    character.system || `You are ${character.name}. ${bioText}`;
 
   const fullMessages = [
     { role: "system" as const, content: systemPrompt },
@@ -253,7 +273,9 @@ async function handleChat(
   ];
 
   const provider = getProviderFromModel(model);
-  const agentThinkingBudget = parseThinkingBudgetFromCharacterSettings(character.settings);
+  const agentThinkingBudget = parseThinkingBudgetFromCharacterSettings(
+    character.settings,
+  );
   const envForThinking = getAnthropicCotEnv(c.env);
   const effectiveThinkingBudget = resolveAnthropicThinkingBudgetTokens(
     model,
@@ -262,10 +284,16 @@ async function handleChat(
   );
   const maxOutputTokens =
     effectiveThinkingBudget != null ? 500 + effectiveThinkingBudget : undefined;
-  const baseCost = await estimateRequestCost(model, fullMessages, maxOutputTokens);
+  const baseCost = await estimateRequestCost(
+    model,
+    fullMessages,
+    maxOutputTokens,
+  );
 
   const markupPct = Number(character.inference_markup_percentage || 0);
-  const creatorMarkup = character.monetization_enabled ? baseCost * (markupPct / 100) : 0;
+  const creatorMarkup = character.monetization_enabled
+    ? baseCost * (markupPct / 100)
+    : 0;
   const totalCost = baseCost + creatorMarkup;
 
   let reservation: CreditReservation;
@@ -329,11 +357,14 @@ async function handleChat(
         tokens: usage?.totalTokens,
         protocol: "a2a",
       });
-      logger.info("[Agent A2A] Creator earnings credited to redeemable balance", {
-        agentId: character.id,
-        ownerId: character.user_id,
-        earnings: actualCreatorMarkup,
-      });
+      logger.info(
+        "[Agent A2A] Creator earnings credited to redeemable balance",
+        {
+          agentId: character.id,
+          ownerId: character.user_id,
+          earnings: actualCreatorMarkup,
+        },
+      );
     }
 
     await reservation.reconcile(actualTotal);

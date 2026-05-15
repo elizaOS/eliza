@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import crypto from "node:crypto";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
 
@@ -19,7 +19,8 @@ async function telegramApi<T>(
   const data = await response.json();
   if (!data.ok) {
     throw new Error(
-      data.description ?? `Telegram API error: ${data.error_code ?? response.status}`,
+      data.description ??
+        `Telegram API error: ${data.error_code ?? response.status}`,
     );
   }
   return data.result as T;
@@ -75,7 +76,11 @@ interface TelegramUpdate {
 export const telegramAdapter: PlatformAdapter = {
   platform: "telegram",
 
-  async verifyWebhook(request: Request, _rawBody: string, config: WebhookConfig): Promise<boolean> {
+  async verifyWebhook(
+    request: Request,
+    _rawBody: string,
+    config: WebhookConfig,
+  ): Promise<boolean> {
     if (!config.webhookSecret) {
       logger.warn("Telegram webhook secret not configured — rejecting request");
       return false;
@@ -122,8 +127,13 @@ export const telegramAdapter: PlatformAdapter = {
     };
   },
 
-  async sendReply(config: WebhookConfig, event: ChatEvent, text: string): Promise<void> {
-    if (!config.botToken) throw new Error("Missing botToken for Telegram reply");
+  async sendReply(
+    config: WebhookConfig,
+    event: ChatEvent,
+    text: string,
+  ): Promise<void> {
+    if (!config.botToken)
+      throw new Error("Missing botToken for Telegram reply");
 
     const chunks = splitMessage(text);
     for (const chunk of chunks) {
@@ -145,7 +155,10 @@ export const telegramAdapter: PlatformAdapter = {
     }
   },
 
-  async sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void> {
+  async sendTypingIndicator(
+    config: WebhookConfig,
+    event: ChatEvent,
+  ): Promise<void> {
     if (!config.botToken) return;
     try {
       await telegramApi(config.botToken, "sendChatAction", {

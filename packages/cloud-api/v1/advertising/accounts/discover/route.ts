@@ -18,7 +18,10 @@ app.post("/", async (c) => {
     const parsed = DiscoverAdAccountsSchema.safeParse(body);
 
     if (!parsed.success) {
-      return c.json({ error: "Invalid request", details: parsed.error.flatten() }, 400);
+      return c.json(
+        { error: "Invalid request", details: parsed.error.flatten() },
+        400,
+      );
     }
 
     const accounts = await advertisingService.listAvailableAdAccounts(

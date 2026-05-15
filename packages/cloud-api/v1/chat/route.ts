@@ -12,7 +12,10 @@ import type { AnonymousSession } from "@/db/repositories/anonymous-sessions";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getCurrentUser } from "@/lib/auth/workers-hono-auth";
 import { checkAnonymousLimit, getAnonymousUser } from "@/lib/auth-anonymous";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { resolveModel } from "@/lib/models";
 import { estimateTokens } from "@/lib/pricing";
 import {
@@ -84,7 +87,9 @@ function normalizeMessages(
   });
 }
 
-function extractTextFromParts(parts: Array<{ type: string; text?: string }>): string {
+function extractTextFromParts(
+  parts: Array<{ type: string; text?: string }>,
+): string {
   return parts.map((p) => (p.type === "text" ? p.text : "")).join("");
 }
 
@@ -108,7 +113,7 @@ async function getRequestApiKey(c: AppContext): Promise<ApiKey | undefined> {
   const apiKeyHeader = c.req.header("X-API-Key") || c.req.header("x-api-key");
   const auth = c.req.header("authorization");
   const bearer = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
-  const elizaBearer = bearer && bearer.startsWith("eliza_") ? bearer : null;
+  const elizaBearer = bearer?.startsWith("eliza_") ? bearer : null;
   const apiKey = apiKeyHeader || elizaBearer;
   if (!apiKey) return undefined;
   const { apiKeysService } = await import("@/lib/services/api-keys");
@@ -173,13 +178,17 @@ app.post("/", async (c) => {
     try {
       messages = normalizeMessages(rawMessages);
     } catch (error) {
-      if (error instanceof Error && error.message.includes("Invalid message role")) {
+      if (
+        error instanceof Error &&
+        error.message.includes("Invalid message role")
+      ) {
         return c.json({ error: error.message }, 400);
       }
       throw error;
     }
 
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const UUID_RE =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     const tierOrModel = tier || (id && !UUID_RE.test(id) ? id : undefined);
     const modelConfig = resolveModel(tierOrModel);
     const selectedModel = modelConfig.modelId;
@@ -229,7 +238,9 @@ app.post("/", async (c) => {
     }
 
     if (isAnonymous && anonymousSession) {
-      const limitCheck = await checkAnonymousLimit(anonymousSession.session_token);
+      const limitCheck = await checkAnonymousLimit(
+        anonymousSession.session_token,
+      );
       if (!limitCheck.allowed) {
         const errorMessage =
           limitCheck.reason === "message_limit"
@@ -259,11 +270,14 @@ app.post("/", async (c) => {
       });
     }
 
-    let reservation: CreditReservation = creditsService.createAnonymousReservation();
+    let reservation: CreditReservation =
+      creditsService.createAnonymousReservation();
     const affiliateCode = c.req.header("X-Affiliate-Code") ?? null;
 
     if (!isAnonymous && user.organization_id) {
-      const messageText = messages.map((m) => extractTextFromParts(m.parts)).join(" ");
+      const messageText = messages
+        .map((m) => extractTextFromParts(m.parts))
+        .join(" ");
       const estimatedInputTokens = estimateTokens(messageText);
       try {
         reservation = await creditsService.reserve({
@@ -276,7 +290,10 @@ app.post("/", async (c) => {
         });
       } catch (error) {
         if (error instanceof InsufficientCreditsError) {
-          return c.json({ error: "Insufficient balance", details: error.message }, 402);
+          return c.json(
+            { error: "Insufficient balance", details: error.message },
+            402,
+          );
         }
         throw error;
       }
@@ -286,10 +303,16 @@ app.post("/", async (c) => {
     const routeTimeoutMs = getRouteTimeoutMs(ROUTE_MAX_DURATION);
 
     const DEFAULT_MIN_OUTPUT_TOKENS = 4096;
-    const cotBudget = resolveAnthropicThinkingBudgetTokens(selectedModel, process.env);
+    const cotBudget = resolveAnthropicThinkingBudgetTokens(
+      selectedModel,
+      process.env,
+    );
     const effectiveMaxOutputTokens =
       cotBudget != null
-        ? Math.max(DEFAULT_MIN_OUTPUT_TOKENS, cotBudget + DEFAULT_MIN_OUTPUT_TOKENS)
+        ? Math.max(
+            DEFAULT_MIN_OUTPUT_TOKENS,
+            cotBudget + DEFAULT_MIN_OUTPUT_TOKENS,
+          )
         : undefined;
 
     const result = streamText({
@@ -299,8 +322,14 @@ app.post("/", async (c) => {
       messages: await convertToModelMessages(messages),
       abortSignal: c.req.raw.signal,
       timeout: routeTimeoutMs,
-      ...(effectiveMaxOutputTokens != null ? { maxOutputTokens: effectiveMaxOutputTokens } : {}),
-      ...mergeAnthropicCotProviderOptions(selectedModel, process.env, cotBudget ?? undefined),
+      ...(effectiveMaxOutputTokens != null
+        ? { maxOutputTokens: effectiveMaxOutputTokens }
+        : {}),
+      ...mergeAnthropicCotProviderOptions(
+        selectedModel,
+        process.env,
+        cotBudget ?? undefined,
+      ),
       onFinish: async ({ text, usage }) => {
         try {
           if (!usage) {
@@ -309,11 +338,17 @@ app.post("/", async (c) => {
           }
 
           if (isAnonymous && anonymousSession) {
-            await anonymousSessionsService.incrementMessageCount(anonymousSession.id);
-            logger.info("chat-api", "Incremented anonymous message count after success", {
-              sessionId: anonymousSession.id,
-              newCount: anonymousSession.message_count + 1,
-            });
+            await anonymousSessionsService.incrementMessageCount(
+              anonymousSession.id,
+            );
+            logger.info(
+              "chat-api",
+              "Incremented anonymous message count after success",
+              {
+                sessionId: anonymousSession.id,
+                newCount: anonymousSession.message_count + 1,
+              },
+            );
           }
 
           const userMessage = messages[messages.length - 1];
@@ -380,7 +415,9 @@ app.post("/", async (c) => {
 
             if (apiKey) {
               const lastMessageParts = messages[messages.length - 1]?.parts;
-              const userPrompt = lastMessageParts ? extractTextFromParts(lastMessageParts) : "";
+              const userPrompt = lastMessageParts
+                ? extractTextFromParts(lastMessageParts)
+                : "";
               await generationsService.create({
                 organization_id: user.organization_id,
                 user_id: user.id,
@@ -400,7 +437,8 @@ app.post("/", async (c) => {
                   text: text,
                   inputTokens: usage.inputTokens,
                   outputTokens: usage.outputTokens,
-                  totalTokens: (usage.inputTokens || 0) + (usage.outputTokens || 0),
+                  totalTokens:
+                    (usage.inputTokens || 0) + (usage.outputTokens || 0),
                 },
               });
             }
@@ -413,9 +451,13 @@ app.post("/", async (c) => {
           });
         } catch (error) {
           await settleReservation?.(0);
-          logger.error("chat-api", "Error persisting messages or deducting credits", {
-            error: error instanceof Error ? error.message : "Unknown error",
-          });
+          logger.error(
+            "chat-api",
+            "Error persisting messages or deducting credits",
+            {
+              error: error instanceof Error ? error.message : "Unknown error",
+            },
+          );
 
           if (usage && user.organization_id) {
             try {
@@ -431,12 +473,15 @@ app.post("/", async (c) => {
                 input_cost: String(0),
                 output_cost: String(0),
                 is_successful: false,
-                error_message: error instanceof Error ? error.message : "Unknown error",
+                error_message:
+                  error instanceof Error ? error.message : "Unknown error",
               });
 
               if (apiKey) {
                 const lastMessageParts = messages[messages.length - 1]?.parts;
-                const userPrompt = lastMessageParts ? extractTextFromParts(lastMessageParts) : "";
+                const userPrompt = lastMessageParts
+                  ? extractTextFromParts(lastMessageParts)
+                  : "";
                 await generationsService.create({
                   organization_id: user.organization_id,
                   user_id: user.id,
@@ -446,14 +491,18 @@ app.post("/", async (c) => {
                   provider: provider,
                   prompt: userPrompt,
                   status: "failed",
-                  error: error instanceof Error ? error.message : "Unknown error",
+                  error:
+                    error instanceof Error ? error.message : "Unknown error",
                   usage_record_id: errorUsageRecord.id,
                   completed_at: new Date(),
                 });
               }
             } catch (usageError) {
               logger.error("chat-api", "Error creating usage record", {
-                error: usageError instanceof Error ? usageError.message : "Unknown error",
+                error:
+                  usageError instanceof Error
+                    ? usageError.message
+                    : "Unknown error",
               });
             }
           }

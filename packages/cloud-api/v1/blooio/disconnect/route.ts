@@ -18,7 +18,10 @@ async function handleDisconnect(c: AppContext) {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    await blooioAutomationService.removeCredentials(user.organization_id, user.id);
+    await blooioAutomationService.removeCredentials(
+      user.organization_id,
+      user.id,
+    );
 
     await invalidateOAuthState(user.organization_id, "blooio", user.id);
 

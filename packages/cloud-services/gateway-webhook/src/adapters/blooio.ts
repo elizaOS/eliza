@@ -1,4 +1,4 @@
-import crypto from "crypto";
+import crypto from "node:crypto";
 import { z } from "zod";
 import { logger } from "../logger";
 import type { ChatEvent, PlatformAdapter, WebhookConfig } from "./types";
@@ -13,7 +13,12 @@ const BlooioWebhookEventSchema = z.object({
   sender: z.string().nullish(),
   text: z.string().nullish(),
   attachments: z
-    .array(z.union([z.string(), z.object({ url: z.string().url(), name: z.string().nullish() })]))
+    .array(
+      z.union([
+        z.string(),
+        z.object({ url: z.string().url(), name: z.string().nullish() }),
+      ]),
+    )
     .nullish(),
   protocol: z.string().nullish(),
   is_group: z.boolean().nullish(),
@@ -77,7 +82,11 @@ async function verifySignature(
       false,
       ["sign"],
     );
-    const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(signedPayload));
+    const signature = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(signedPayload),
+    );
     const computedSignature = Array.from(new Uint8Array(signature))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
@@ -103,9 +112,15 @@ async function verifySignature(
 export const blooioAdapter: PlatformAdapter = {
   platform: "blooio",
 
-  async verifyWebhook(request: Request, rawBody: string, config: WebhookConfig): Promise<boolean> {
+  async verifyWebhook(
+    request: Request,
+    rawBody: string,
+    config: WebhookConfig,
+  ): Promise<boolean> {
     if (!config.blooioWebhookSecret) {
-      logger.warn("Blooio webhook secret not configured — signature verification skipped");
+      logger.warn(
+        "Blooio webhook secret not configured — signature verification skipped",
+      );
       return false;
     }
     const sig = request.headers.get("x-blooio-signature") ?? "";
@@ -144,13 +159,20 @@ export const blooioAdapter: PlatformAdapter = {
       messageId: event.message_id ?? event.internal_id ?? `${Date.now()}`,
       chatId: event.sender ?? "",
       senderId: event.sender ?? "",
-      text: mediaUrls.length > 0 && !text ? `[media: ${mediaUrls.join(", ")}]` : text,
+      text:
+        mediaUrls.length > 0 && !text
+          ? `[media: ${mediaUrls.join(", ")}]`
+          : text,
       mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
       rawPayload: data,
     };
   },
 
-  async sendReply(config: WebhookConfig, event: ChatEvent, text: string): Promise<void> {
+  async sendReply(
+    config: WebhookConfig,
+    event: ChatEvent,
+    text: string,
+  ): Promise<void> {
     if (!config.apiKey) throw new Error("Missing apiKey for Blooio reply");
 
     const url = `${BLOOIO_API_BASE}/chats/${encodeURIComponent(event.senderId)}/messages`;
@@ -172,7 +194,10 @@ export const blooioAdapter: PlatformAdapter = {
     }
   },
 
-  async sendTypingIndicator(config: WebhookConfig, event: ChatEvent): Promise<void> {
+  async sendTypingIndicator(
+    config: WebhookConfig,
+    event: ChatEvent,
+  ): Promise<void> {
     if (!config.apiKey) return;
     try {
       const url = `${BLOOIO_API_BASE}/chats/${encodeURIComponent(event.senderId)}/read`;

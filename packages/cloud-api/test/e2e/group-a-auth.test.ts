@@ -91,7 +91,11 @@ describe("Group A: auth + sessions", () => {
 
     test("happy path: with valid Bearer creates or returns an anon session", async () => {
       if (!shouldRun()) return;
-      const res = await api.post("/api/auth/anonymous-session", {}, { headers: bearerHeaders() });
+      const res = await api.post(
+        "/api/auth/anonymous-session",
+        {},
+        { headers: bearerHeaders() },
+      );
       // Steward session-mode users may not be able to mint anon sessions;
       // accept 200 (session minted) or 4xx (user is not anonymous-eligible).
       expect([200, 400, 403]).toContain(res.status);
@@ -118,7 +122,12 @@ describe("Group A: auth + sessions", () => {
       const res = await api.post(
         "/api/auth/pair",
         {},
-        { headers: { Origin: "http://localhost:8787", "Content-Type": "application/json" } },
+        {
+          headers: {
+            Origin: "http://localhost:8787",
+            "Content-Type": "application/json",
+          },
+        },
       );
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
@@ -145,7 +154,12 @@ describe("Group A: auth + sessions", () => {
       const res = await api.post(
         "/api/auth/pair",
         { token: "definitely-not-a-real-pairing-token-zzz" },
-        { headers: { Origin: "http://localhost:8787", "Content-Type": "application/json" } },
+        {
+          headers: {
+            Origin: "http://localhost:8787",
+            "Content-Type": "application/json",
+          },
+        },
       );
       // Token validation rejects → 401. (404 if token validates but the
       // sandbox is missing — shouldn't happen with a random token.)
@@ -177,7 +191,11 @@ describe("Group A: auth + sessions", () => {
       // status code in handler, so Hono defaults to 200). Accept either
       // shape but assert the `error` channel is populated.
       expect([200, 400, 401, 500]).toContain(res.status);
-      const body = (await res.json()) as { error?: string; step?: string; ok?: boolean };
+      const body = (await res.json()) as {
+        error?: string;
+        step?: string;
+        ok?: boolean;
+      };
       // Either `error` is set OR `ok: true` (if a real token is leaking
       // into env). For a fake token we expect `error`.
       expect(body.error || body.ok).toBeTruthy();
@@ -198,10 +216,14 @@ describe("Group A: auth + sessions", () => {
 
     test("POST auth gate: invalid steward JWT returns 401", async () => {
       if (!reachableOnly()) return;
-      const res = await api.post("/api/auth/steward-session", { token: "bogus.jwt.token" });
+      const res = await api.post("/api/auth/steward-session", {
+        token: "bogus.jwt.token",
+      });
       expect([401, 503]).toContain(res.status);
       const body = (await res.json()) as { code?: string; error?: string };
-      expect(["invalid_token", "server_secret_missing"]).toContain(body.code ?? "");
+      expect(["invalid_token", "server_secret_missing"]).toContain(
+        body.code ?? "",
+      );
     });
 
     test("DELETE clears cookies and returns ok", async () => {
@@ -311,7 +333,9 @@ describe("Group A: auth + sessions", () => {
 
     test("happy path: Bearer eliza_* returns session stats", async () => {
       if (!shouldRun()) return;
-      const res = await api.get("/api/sessions/current", { headers: bearerHeaders() });
+      const res = await api.get("/api/sessions/current", {
+        headers: bearerHeaders(),
+      });
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         success?: boolean;
@@ -346,7 +370,9 @@ describe("Group A: auth + sessions", () => {
   describe("POST /api/internal/auth/refresh", () => {
     test("rejects missing internal bearer with 401 or JWKS config failure", async () => {
       if (!reachableOnly()) return;
-      const res = await api.post("/api/internal/auth/refresh", { token: "anything" });
+      const res = await api.post("/api/internal/auth/refresh", {
+        token: "anything",
+      });
       expect([401, 503]).toContain(res.status);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBeTruthy();
@@ -393,12 +419,16 @@ describe("Group A: auth + sessions", () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         success?: boolean;
-        data?: { user?: { id?: string; email?: string; organizationId?: string } };
+        data?: {
+          user?: { id?: string; email?: string; organizationId?: string };
+        };
       };
       expect(body.success).toBe(true);
       expect(body.data?.user?.id).toBe(process.env.TEST_USER_ID);
       expect(body.data?.user?.email).toBe(process.env.TEST_USER_EMAIL);
-      expect(body.data?.user?.organizationId).toBe(process.env.TEST_ORGANIZATION_ID);
+      expect(body.data?.user?.organizationId).toBe(
+        process.env.TEST_ORGANIZATION_ID,
+      );
     });
 
     test("validation: invalid JSON body returns 400", async () => {
@@ -470,7 +500,9 @@ describe("Group A: auth + sessions", () => {
 
     test("happy path: discord platform returns HTML success page", async () => {
       if (!reachableOnly()) return;
-      const res = await api.get("/api/eliza-app/auth/connection-success?platform=discord");
+      const res = await api.get(
+        "/api/eliza-app/auth/connection-success?platform=discord",
+      );
       expect(res.status).toBe(200);
       const ct = res.headers.get("content-type") ?? "";
       expect(ct).toMatch(/text\/html/);
@@ -567,9 +599,14 @@ describe("Group A: auth + sessions", () => {
         `/api/eliza-app/cli-auth/poll?session_id=${encodeURIComponent(sessionId ?? "")}`,
       );
       expect(pollRes.status).toBe(200);
-      const pollBody = (await pollRes.json()) as { success?: boolean; status?: string };
+      const pollBody = (await pollRes.json()) as {
+        success?: boolean;
+        status?: string;
+      };
       expect(pollBody.success).toBe(true);
-      expect(["pending", "expired", "authenticated"]).toContain(pollBody.status ?? "");
+      expect(["pending", "expired", "authenticated"]).toContain(
+        pollBody.status ?? "",
+      );
     });
   });
 
@@ -579,7 +616,9 @@ describe("Group A: auth + sessions", () => {
   describe("POST /api/eliza-app/cli-auth/complete", () => {
     test("auth gate: missing Authorization returns 401", async () => {
       if (!reachableOnly()) return;
-      const res = await api.post("/api/eliza-app/cli-auth/complete", { session_id: "abc" });
+      const res = await api.post("/api/eliza-app/cli-auth/complete", {
+        session_id: "abc",
+      });
       expect(res.status).toBe(401);
       const body = (await res.json()) as { success?: boolean; error?: string };
       expect(body.success).toBe(false);
@@ -607,7 +646,8 @@ describe("Group A: auth + sessions", () => {
         { session_id: "abc" },
         {
           headers: {
-            Authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.not-a-real-sig",
+            Authorization:
+              "Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.not-a-real-sig",
           },
         },
       );

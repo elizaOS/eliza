@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
-import type { ChatEvent, PlatformAdapter, WebhookConfig } from "../src/adapters/types";
+import type {
+  ChatEvent,
+  PlatformAdapter,
+  WebhookConfig,
+} from "../src/adapters/types";
 import type { GatewayRedis } from "../src/redis";
 import { handleWebhook } from "../src/webhook-handler";
 
@@ -18,7 +22,11 @@ class MemoryRedis implements GatewayRedis {
     }
   }
 
-  async set(key: string, value: string, options: RedisSetOptions = {}): Promise<unknown> {
+  async set(
+    key: string,
+    value: string,
+    options: RedisSetOptions = {},
+  ): Promise<unknown> {
     if (options.nx && this.store.has(key)) return null;
     this.store.set(key, value);
     return "OK";
@@ -61,17 +69,21 @@ function createAdapter(event: ChatEvent): PlatformAdapter & {
     platform: "twilio",
     replies: [],
     typingCount: 0,
-    verifyWebhook: mock(async (_request: Request, _rawBody: string, config: WebhookConfig) => {
-      expect(config.agentId).toBe("public-onboarding-agent");
-      expect(config.accountSid).toBe("AC_test");
-      expect(config.authToken).toBe("twilio-secret");
-      expect(config.phoneNumber).toBe("+15550000000");
-      return true;
-    }),
+    verifyWebhook: mock(
+      async (_request: Request, _rawBody: string, config: WebhookConfig) => {
+        expect(config.agentId).toBe("public-onboarding-agent");
+        expect(config.accountSid).toBe("AC_test");
+        expect(config.authToken).toBe("twilio-secret");
+        expect(config.phoneNumber).toBe("+15550000000");
+        return true;
+      },
+    ),
     extractEvent: mock(async () => event),
-    sendReply: mock(async (_config: WebhookConfig, _event: ChatEvent, text: string) => {
-      adapter.replies.push(text);
-    }),
+    sendReply: mock(
+      async (_config: WebhookConfig, _event: ChatEvent, text: string) => {
+        adapter.replies.push(text);
+      },
+    ),
     sendTypingIndicator: mock(async () => {
       adapter.typingCount += 1;
     }),
@@ -140,16 +152,28 @@ describe("gateway webhook handler e2e routing", () => {
 
     globalThis.fetch = mock(async (input, init) => {
       const request = new Request(input, init);
-      if (request.url === "https://api.elizacloud.ai/api/internal/identity/resolve") {
-        return new Response(JSON.stringify({ success: false }), { status: 404 });
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
+        return new Response(JSON.stringify({ success: false }), {
+          status: 404,
+        });
       }
-      if (request.url === "https://api.elizacloud.ai/api/eliza-app/onboarding/chat") {
-        expect(request.headers.get("authorization")).toBe("Bearer internal-secret");
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/eliza-app/onboarding/chat"
+      ) {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer internal-secret",
+        );
         onboardingBody = (await request.json()) as Record<string, unknown>;
         return new Response(
           JSON.stringify({
             success: true,
-            data: { reply: "onboarding reply with control-panel action metadata" },
+            data: {
+              reply: "onboarding reply with control-panel action metadata",
+            },
           }),
           { status: 200, headers: { "content-type": "application/json" } },
         );
@@ -171,7 +195,9 @@ describe("gateway webhook handler e2e routing", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/xml");
     await waitFor(() => adapter.replies.length === 1, "onboarding reply");
-    expect(adapter.replies).toEqual(["onboarding reply with control-panel action metadata"]);
+    expect(adapter.replies).toEqual([
+      "onboarding reply with control-panel action metadata",
+    ]);
     expect(onboardingBody).toMatchObject({
       sessionId: "platform:twilio:+15551234567",
       message: "My name is Ada",
@@ -186,13 +212,19 @@ describe("gateway webhook handler e2e routing", () => {
     const redis = new MemoryRedis();
     redis.store.set("agent:agent-1:server", "server-1");
     redis.store.set("server:server-1:url", "http://agent-server.local");
-    const event = createTwilioEvent({ messageId: "SM_linked_1", text: "Are you running?" });
+    const event = createTwilioEvent({
+      messageId: "SM_linked_1",
+      text: "Are you running?",
+    });
     const adapter = createAdapter(event);
     let forwardedBody: Record<string, unknown> | null = null;
 
     globalThis.fetch = mock(async (input, init) => {
       const request = new Request(input, init);
-      if (request.url === "https://api.elizacloud.ai/api/internal/identity/resolve") {
+      if (
+        request.url ===
+        "https://api.elizacloud.ai/api/internal/identity/resolve"
+      ) {
         return new Response(
           JSON.stringify({
             success: true,
@@ -206,10 +238,13 @@ describe("gateway webhook handler e2e routing", () => {
       }
       if (request.url === "http://agent-server.local/agents/agent-1/message") {
         forwardedBody = (await request.json()) as Record<string, unknown>;
-        return new Response(JSON.stringify({ response: "agent reply: container is running" }), {
-          status: 200,
-          headers: { "content-type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ response: "agent reply: container is running" }),
+          {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          },
+        );
       }
       throw new Error(`Unexpected fetch: ${request.url}`);
     }) as typeof fetch;

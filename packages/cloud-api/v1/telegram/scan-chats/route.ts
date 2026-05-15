@@ -31,7 +31,9 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const allChats = await telegramChatsRepository.findByOrganization(user.organization_id);
+    const allChats = await telegramChatsRepository.findByOrganization(
+      user.organization_id,
+    );
 
     return c.json({
       success: true,
@@ -60,7 +62,9 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const botToken = await telegramAutomationService.getBotToken(user.organization_id);
+    const botToken = await telegramAutomationService.getBotToken(
+      user.organization_id,
+    );
 
     if (!botToken) {
       return c.json({ error: "Telegram bot not connected" }, 400);
@@ -142,7 +146,9 @@ app.post("/", async (c) => {
       if (
         chat &&
         !seenChatIds.has(chat.id) &&
-        (chat.type === "group" || chat.type === "supergroup" || chat.type === "channel")
+        (chat.type === "group" ||
+          chat.type === "supergroup" ||
+          chat.type === "channel")
       ) {
         seenChatIds.add(chat.id);
 
@@ -151,8 +157,10 @@ app.post("/", async (c) => {
         let canPost = false;
         try {
           const member = await bot.telegram.getChatMember(chat.id, botInfo.id);
-          isAdmin = member.status === "administrator" || member.status === "creator";
-          canPost = isAdmin || (member.status === "member" && chat.type !== "channel");
+          isAdmin =
+            member.status === "administrator" || member.status === "creator";
+          canPost =
+            isAdmin || (member.status === "member" && chat.type !== "channel");
         } catch {
           // If we can't check membership, assume basic permissions for groups
           canPost = chat.type !== "channel";
@@ -179,17 +187,28 @@ app.post("/", async (c) => {
     }
 
     // Also refresh existing chats' status
-    const existingChats = await telegramChatsRepository.findByOrganization(user.organization_id);
+    const existingChats = await telegramChatsRepository.findByOrganization(
+      user.organization_id,
+    );
     for (const existingChat of existingChats) {
       if (!seenChatIds.has(existingChat.chat_id)) {
         try {
-          const member = await bot.telegram.getChatMember(existingChat.chat_id, botInfo.id);
-          const isAdmin = member.status === "administrator" || member.status === "creator";
+          const member = await bot.telegram.getChatMember(
+            existingChat.chat_id,
+            botInfo.id,
+          );
+          const isAdmin =
+            member.status === "administrator" || member.status === "creator";
           const canPost =
-            isAdmin || (member.status === "member" && existingChat.chat_type !== "channel");
+            isAdmin ||
+            (member.status === "member" &&
+              existingChat.chat_type !== "channel");
 
           // Update if permissions changed
-          if (existingChat.is_admin !== isAdmin || existingChat.can_post_messages !== canPost) {
+          if (
+            existingChat.is_admin !== isAdmin ||
+            existingChat.can_post_messages !== canPost
+          ) {
             await telegramChatsRepository.upsert({
               organization_id: user.organization_id,
               chat_id: existingChat.chat_id,
@@ -207,7 +226,9 @@ app.post("/", async (c) => {
     }
 
     // Re-set the webhook using the centralized service (ensures secret_token is included)
-    const webhookResult = await telegramAutomationService.setWebhook(user.organization_id);
+    const webhookResult = await telegramAutomationService.setWebhook(
+      user.organization_id,
+    );
     if (webhookResult.success) {
       logger.info("[Telegram Scan] Webhook set via service", {
         organizationId: user.organization_id,
@@ -225,7 +246,9 @@ app.post("/", async (c) => {
     });
 
     // Fetch all chats for this org
-    const allChats = await telegramChatsRepository.findByOrganization(user.organization_id);
+    const allChats = await telegramChatsRepository.findByOrganization(
+      user.organization_id,
+    );
 
     return c.json({
       success: true,

@@ -22,7 +22,8 @@ app.post("/", async (c) => {
       return c.json({ success: false, error: "Unauthorized" }, 401);
     }
 
-    const userSession = await elizaAppSessionService.validateAuthHeader(authHeader);
+    const userSession =
+      await elizaAppSessionService.validateAuthHeader(authHeader);
     if (!userSession) {
       return c.json({ success: false, error: "Invalid session" }, 401);
     }
@@ -39,8 +40,15 @@ app.post("/", async (c) => {
       .where(eq(cliAuthSessions.session_id, sessionId))
       .limit(1);
 
-    if (!cliSession || cliSession.status !== "pending" || new Date() > cliSession.expires_at) {
-      return c.json({ success: false, error: "Invalid or expired CLI session" }, 400);
+    if (
+      !cliSession ||
+      cliSession.status !== "pending" ||
+      new Date() > cliSession.expires_at
+    ) {
+      return c.json(
+        { success: false, error: "Invalid or expired CLI session" },
+        400,
+      );
     }
 
     const tokenToPass = authHeader.split(" ")[1];
@@ -58,7 +66,10 @@ app.post("/", async (c) => {
     return c.json({ success: true });
   } catch (error) {
     console.error("[CLI Auth Complete] Error:", error);
-    return c.json({ success: false, error: "Failed to complete CLI auth" }, 500);
+    return c.json(
+      { success: false, error: "Failed to complete CLI auth" },
+      500,
+    );
   }
 });
 

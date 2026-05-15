@@ -19,7 +19,9 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
 
-    const status = await telegramAutomationService.getConnectionStatus(user.organization_id);
+    const status = await telegramAutomationService.getConnectionStatus(
+      user.organization_id,
+    );
 
     // Optionally include webhook info for debugging
     const includeWebhookInfo = c.req.query("webhook") === "true";
@@ -36,7 +38,9 @@ app.get("/", async (c) => {
     } | null = null;
 
     if (includeWebhookInfo && status.connected) {
-      const botToken = await telegramAutomationService.getBotToken(user.organization_id);
+      const botToken = await telegramAutomationService.getBotToken(
+        user.organization_id,
+      );
       if (botToken) {
         const bot = new Telegraf(botToken);
         const info = await bot.telegram.getWebhookInfo();

@@ -6,13 +6,19 @@
  */
 
 import { Hono } from "hono";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { anonymousSessionsService } from "@/lib/services/anonymous-sessions";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 async function sha256Hex(input: string): Promise<string> {
-  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+  const buf = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(input),
+  );
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -41,7 +47,9 @@ app.get("/", async (c) => {
 
   const session = await anonymousSessionsService.getByToken(token);
   if (!session) {
-    logger.warn(`[Anonymous Session API] Session not found for token hash: ${tokenHash}`);
+    logger.warn(
+      `[Anonymous Session API] Session not found for token hash: ${tokenHash}`,
+    );
     return c.json({ error: "Session not found or expired" }, 404);
   }
 

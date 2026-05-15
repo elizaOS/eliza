@@ -31,22 +31,26 @@ app.get("/", async (c) => {
     });
 
     if (!parsedQuery.success) {
-      return c.json({ error: "Validation error", details: parsedQuery.error.issues }, 400);
+      return c.json(
+        { error: "Validation error", details: parsedQuery.error.issues },
+        400,
+      );
     }
 
     const { type, limit, offset } = parsedQuery.data;
 
     const fetchLimit = Math.min(limit + 1, 1001);
-    const allGenerations = await generationsService.listByOrganizationAndStatusSummary(
-      user.organization_id,
-      "completed",
-      {
-        userId: user.id,
-        type,
-        limit: fetchLimit,
-        offset,
-      },
-    );
+    const allGenerations =
+      await generationsService.listByOrganizationAndStatusSummary(
+        user.organization_id,
+        "completed",
+        {
+          userId: user.id,
+          type,
+          limit: fetchLimit,
+          offset,
+        },
+      );
 
     const generations = allGenerations.filter((gen) => gen.storage_url);
     const visibleGenerations = generations.slice(0, limit);

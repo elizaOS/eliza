@@ -6,7 +6,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { type AdPlatform, advertisingService } from "@/lib/services/advertising";
+import {
+  type AdPlatform,
+  advertisingService,
+} from "@/lib/services/advertising";
 import { CreateCampaignSchema } from "@/lib/services/advertising/schemas";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -22,12 +25,15 @@ app.get("/", async (c) => {
     const status = c.req.query("status");
     const appId = c.req.query("appId");
 
-    const campaigns = await advertisingService.listCampaigns(user.organization_id, {
-      adAccountId: adAccountId || undefined,
-      platform: platform || undefined,
-      status: status || undefined,
-      appId: appId || undefined,
-    });
+    const campaigns = await advertisingService.listCampaigns(
+      user.organization_id,
+      {
+        adAccountId: adAccountId || undefined,
+        platform: platform || undefined,
+        status: status || undefined,
+        appId: appId || undefined,
+      },
+    );
 
     return c.json({
       campaigns: campaigns.map((c) => ({
@@ -64,7 +70,10 @@ app.post("/", async (c) => {
     const parsed = CreateCampaignSchema.safeParse(body);
 
     if (!parsed.success) {
-      return c.json({ error: "Invalid request", details: parsed.error.flatten() }, 400);
+      return c.json(
+        { error: "Invalid request", details: parsed.error.flatten() },
+        400,
+      );
     }
 
     const campaign = await advertisingService.createCampaign({
@@ -75,7 +84,9 @@ app.post("/", async (c) => {
       budgetType: parsed.data.budgetType,
       budgetAmount: parsed.data.budgetAmount,
       budgetCurrency: parsed.data.budgetCurrency,
-      startDate: parsed.data.startDate ? new Date(parsed.data.startDate) : undefined,
+      startDate: parsed.data.startDate
+        ? new Date(parsed.data.startDate)
+        : undefined,
       endDate: parsed.data.endDate ? new Date(parsed.data.endDate) : undefined,
       targeting: parsed.data.targeting,
       appId: parsed.data.appId,

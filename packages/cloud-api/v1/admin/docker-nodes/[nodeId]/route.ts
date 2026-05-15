@@ -25,7 +25,10 @@ import { logger } from "@/lib/utils/logger";
 // GET — Get single node details
 // ---------------------------------------------------------------------------
 
-async function __hono_GET(request: Request, { params }: RouteContext<{ nodeId: string }>) {
+async function __hono_GET(
+  request: Request,
+  { params }: RouteContext<{ nodeId: string }>,
+) {
   try {
     const { role } = await requireAdmin(request);
     if (role !== "super_admin") {
@@ -35,7 +38,8 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ nodeId: s
       );
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Admin access required";
+    const message =
+      error instanceof Error ? error.message : "Admin access required";
     return Response.json({ success: false, error: message }, { status: 403 });
   }
 
@@ -91,7 +95,10 @@ async function __hono_GET(request: Request, { params }: RouteContext<{ nodeId: s
       nodeId,
       error: error instanceof Error ? error.message : String(error),
     });
-    return Response.json({ success: false, error: "Failed to get Docker node" }, { status: 500 });
+    return Response.json(
+      { success: false, error: "Failed to get Docker node" },
+      { status: 500 },
+    );
   }
 }
 
@@ -113,7 +120,10 @@ const updateNodeSchema = z
     message: "At least one field must be provided for update",
   });
 
-async function __hono_PATCH(request: Request, { params }: RouteContext<{ nodeId: string }>) {
+async function __hono_PATCH(
+  request: Request,
+  { params }: RouteContext<{ nodeId: string }>,
+) {
   try {
     const { role } = await requireAdmin(request);
     if (role !== "super_admin") {
@@ -123,7 +133,8 @@ async function __hono_PATCH(request: Request, { params }: RouteContext<{ nodeId:
       );
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Admin access required";
+    const message =
+      error instanceof Error ? error.message : "Admin access required";
     return Response.json({ success: false, error: message }, { status: 403 });
   }
 
@@ -133,7 +144,10 @@ async function __hono_PATCH(request: Request, { params }: RouteContext<{ nodeId:
   try {
     body = await request.json();
   } catch {
-    return Response.json({ success: false, error: "Invalid JSON body" }, { status: 400 });
+    return Response.json(
+      { success: false, error: "Invalid JSON body" },
+      { status: 400 },
+    );
   }
 
   const parsed = updateNodeSchema.safeParse(body);
@@ -157,8 +171,15 @@ async function __hono_PATCH(request: Request, { params }: RouteContext<{ nodeId:
       );
     }
 
-    const { hostname, enabled, capacity, sshPort, sshUser, hostKeyFingerprint, metadata } =
-      parsed.data;
+    const {
+      hostname,
+      enabled,
+      capacity,
+      sshPort,
+      sshUser,
+      hostKeyFingerprint,
+      metadata,
+    } = parsed.data;
 
     const updateData: Record<string, unknown> = {};
     if (hostname !== undefined) updateData.hostname = hostname;
@@ -166,7 +187,8 @@ async function __hono_PATCH(request: Request, { params }: RouteContext<{ nodeId:
     if (capacity !== undefined) updateData.capacity = capacity;
     if (sshPort !== undefined) updateData.ssh_port = sshPort;
     if (sshUser !== undefined) updateData.ssh_user = sshUser;
-    if (hostKeyFingerprint !== undefined) updateData.host_key_fingerprint = hostKeyFingerprint;
+    if (hostKeyFingerprint !== undefined)
+      updateData.host_key_fingerprint = hostKeyFingerprint;
     if (metadata !== undefined) updateData.metadata = metadata;
 
     const updated = await dockerNodesRepository.update(existing.id, updateData);
@@ -211,7 +233,10 @@ async function __hono_PATCH(request: Request, { params }: RouteContext<{ nodeId:
 // DELETE — Remove node (only if no containers are running on it)
 // ---------------------------------------------------------------------------
 
-async function __hono_DELETE(request: Request, { params }: RouteContext<{ nodeId: string }>) {
+async function __hono_DELETE(
+  request: Request,
+  { params }: RouteContext<{ nodeId: string }>,
+) {
   try {
     const { role } = await requireAdmin(request);
     if (role !== "super_admin") {
@@ -221,7 +246,8 @@ async function __hono_DELETE(request: Request, { params }: RouteContext<{ nodeId
       );
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Admin access required";
+    const message =
+      error instanceof Error ? error.message : "Admin access required";
     return Response.json({ success: false, error: message }, { status: 403 });
   }
 
@@ -240,7 +266,12 @@ async function __hono_DELETE(request: Request, { params }: RouteContext<{ nodeId
     const activeContainers = await dbRead
       .select({ id: agentSandboxes.id })
       .from(agentSandboxes)
-      .where(and(eq(agentSandboxes.node_id, nodeId), ne(agentSandboxes.status, "stopped")));
+      .where(
+        and(
+          eq(agentSandboxes.node_id, nodeId),
+          ne(agentSandboxes.status, "stopped"),
+        ),
+      );
 
     if (activeContainers.length > 0) {
       return Response.json(
@@ -280,12 +311,18 @@ async function __hono_DELETE(request: Request, { params }: RouteContext<{ nodeId
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ nodeId: c.req.param("nodeId")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ nodeId: c.req.param("nodeId")! }),
+  }),
 );
 __hono_app.patch("/", async (c) =>
-  __hono_PATCH(c.req.raw, { params: Promise.resolve({ nodeId: c.req.param("nodeId")! }) }),
+  __hono_PATCH(c.req.raw, {
+    params: Promise.resolve({ nodeId: c.req.param("nodeId")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ nodeId: c.req.param("nodeId")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ nodeId: c.req.param("nodeId")! }),
+  }),
 );
 export default __hono_app;

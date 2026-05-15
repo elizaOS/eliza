@@ -7,7 +7,10 @@
  */
 
 import { Hono } from "hono";
-import { getPlatformAgentCard, handlePlatformA2aJsonRpc } from "@/lib/api/a2a/platform-cloud";
+import {
+  getPlatformAgentCard,
+  handlePlatformA2aJsonRpc,
+} from "@/lib/api/a2a/platform-cloud";
 import { A2AErrorCodes, jsonRpcError } from "@/lib/types/a2a";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -25,7 +28,10 @@ app.post("/", async (c) => {
   try {
     body = await c.req.json();
   } catch {
-    return c.json(jsonRpcError(A2AErrorCodes.PARSE_ERROR, "Parse error", null), 400);
+    return c.json(
+      jsonRpcError(A2AErrorCodes.PARSE_ERROR, "Parse error", null),
+      400,
+    );
   }
 
   const messages = Array.isArray(body) ? body : [body];

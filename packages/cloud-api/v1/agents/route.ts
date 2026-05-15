@@ -13,7 +13,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { userCharactersRepository } from "@/db/repositories/characters";
-import { failureResponse, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  failureResponse,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireServiceKey } from "@/lib/auth/service-key-hono-worker";
 import { charactersService } from "@/lib/services/characters/characters";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
@@ -62,7 +65,9 @@ app.post("/", async (c) => {
 
     const parsed = provisionSchema.safeParse(body);
     if (!parsed.success) {
-      throw ValidationError("Invalid request data", { details: parsed.error.issues });
+      throw ValidationError("Invalid request data", {
+        details: parsed.error.issues,
+      });
     }
 
     const p = parsed.data;
@@ -72,15 +77,24 @@ app.post("/", async (c) => {
     if (!sync) {
       const workerHealth = await checkProvisioningWorkerHealth();
       if (!workerHealth.ok) {
-        logger.warn("[service-api] Agent provisioning blocked: worker unavailable", {
-          orgId: identity.organizationId,
-          code: workerHealth.code,
-        });
-        return c.json(provisioningWorkerFailureBody(workerHealth), workerHealth.status);
+        logger.warn(
+          "[service-api] Agent provisioning blocked: worker unavailable",
+          {
+            orgId: identity.organizationId,
+            code: workerHealth.code,
+          },
+        );
+        return c.json(
+          provisioningWorkerFailureBody(workerHealth),
+          workerHealth.status,
+        );
       }
     }
 
-    const normalizedTokenAddress = normalizeTokenAddress(p.tokenContractAddress, p.chain);
+    const normalizedTokenAddress = normalizeTokenAddress(
+      p.tokenContractAddress,
+      p.chain,
+    );
 
     logger.info("[service-api] Provisioning agent", {
       token: normalizedTokenAddress,
@@ -108,7 +122,9 @@ app.post("/", async (c) => {
     try {
       character = await charactersService.create({
         name: agentName,
-        bio: p.character?.bio ? [p.character.bio] : [`Agent for ${p.tokenName}`],
+        bio: p.character?.bio
+          ? [p.character.bio]
+          : [`Agent for ${p.tokenName}`],
         user_id: identity.userId,
         organization_id: identity.organizationId,
         source: "cloud",
@@ -164,20 +180,29 @@ app.post("/", async (c) => {
     } catch (createErr) {
       try {
         await charactersService.delete(character.id);
-        logger.info("[service-api] Cleaned up orphaned character after createAgent failure", {
-          characterId: character.id,
-        });
+        logger.info(
+          "[service-api] Cleaned up orphaned character after createAgent failure",
+          {
+            characterId: character.id,
+          },
+        );
       } catch (cleanupErr) {
         logger.error("[service-api] Failed to clean up orphaned character", {
           characterId: character.id,
-          error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
+          error:
+            cleanupErr instanceof Error
+              ? cleanupErr.message
+              : String(cleanupErr),
         });
       }
       throw createErr;
     }
 
     if (sync) {
-      const result = await elizaSandboxService.provision(agent.id, identity.organizationId);
+      const result = await elizaSandboxService.provision(
+        agent.id,
+        identity.organizationId,
+      );
       if (!result.success) {
         logger.error("[service-api] Provision failed", {
           agentId: agent.id,
@@ -222,16 +247,25 @@ app.post("/", async (c) => {
     } catch (enqueueErr) {
       try {
         await charactersService.delete(character.id);
-        logger.info("[service-api] Cleaned up orphaned character after enqueue failure", {
-          characterId: character.id,
-          agentId: agent.id,
-        });
+        logger.info(
+          "[service-api] Cleaned up orphaned character after enqueue failure",
+          {
+            characterId: character.id,
+            agentId: agent.id,
+          },
+        );
       } catch (cleanupErr) {
-        logger.error("[service-api] Failed to clean up orphaned character after enqueue failure", {
-          characterId: character.id,
-          agentId: agent.id,
-          error: cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr),
-        });
+        logger.error(
+          "[service-api] Failed to clean up orphaned character after enqueue failure",
+          {
+            characterId: character.id,
+            agentId: agent.id,
+            error:
+              cleanupErr instanceof Error
+                ? cleanupErr.message
+                : String(cleanupErr),
+          },
+        );
       }
       throw enqueueErr;
     }

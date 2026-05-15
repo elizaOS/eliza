@@ -12,7 +12,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { approvalRequestsRepository } from "@/db/repositories/approval-requests";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { approvalCallbackBus } from "@/lib/services/approval-callback-bus";
 import {
   type ApprovalRequestsService,
@@ -53,14 +56,21 @@ app.post("/", async (c) => {
   try {
     const id = c.req.param("id");
     if (!id) {
-      return c.json({ success: false, error: "Missing approval request id" }, 400);
+      return c.json(
+        { success: false, error: "Missing approval request id" },
+        400,
+      );
     }
 
     const body = await c.req.json().catch(() => null);
     const parsed = ApproveSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }
@@ -73,7 +83,10 @@ app.post("/", async (c) => {
     });
     if (!verification.valid || !verification.signerIdentityId) {
       return c.json(
-        { success: false, error: verification.error ?? "signature verification failed" },
+        {
+          success: false,
+          error: verification.error ?? "signature verification failed",
+        },
         400,
       );
     }
@@ -98,7 +111,9 @@ app.post("/", async (c) => {
       signerIdentityId: verification.signerIdentityId,
     });
   } catch (error) {
-    logger.error("[ApprovalRequests API] Failed to approve approval request", { error });
+    logger.error("[ApprovalRequests API] Failed to approve approval request", {
+      error,
+    });
     return failureResponse(c, error);
   }
 });

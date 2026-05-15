@@ -1,6 +1,9 @@
 import { Hono } from "hono";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { handleWorkflowProxyOptions, handleWorkflowProxyRequest } from "./_shared";
+import {
+  handleWorkflowProxyOptions,
+  handleWorkflowProxyRequest,
+} from "./_shared";
 
 const app = new Hono<AppEnv>();
 

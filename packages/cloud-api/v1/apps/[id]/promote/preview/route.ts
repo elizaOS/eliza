@@ -96,12 +96,18 @@ async function __hono_POST(
   if (platforms.includes("discord")) {
     generatePromises.push(
       (async () => {
-        const postTypes = ["promotional", "engagement", "educational", "announcement"] as const;
+        const postTypes = [
+          "promotional",
+          "engagement",
+          "educational",
+          "announcement",
+        ] as const;
         for (let i = 0; i < Math.min(count, postTypes.length); i++) {
-          const content = await discordAppAutomationService.generateAnnouncement(
-            user.organization_id,
-            previewApp,
-          );
+          const content =
+            await discordAppAutomationService.generateAnnouncement(
+              user.organization_id,
+              previewApp,
+            );
           previews.push({
             platform: "discord",
             content,
@@ -110,7 +116,8 @@ async function __hono_POST(
           });
         }
       })().catch((error) => {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
         logger.error("[Promote Preview API] Discord generation failed", {
           appId: id,
           error: errorMessage,
@@ -123,12 +130,18 @@ async function __hono_POST(
   if (platforms.includes("telegram")) {
     generatePromises.push(
       (async () => {
-        const postTypes = ["announcement", "update", "feature", "community"] as const;
+        const postTypes = [
+          "announcement",
+          "update",
+          "feature",
+          "community",
+        ] as const;
         for (let i = 0; i < Math.min(count, postTypes.length); i++) {
-          const content = await telegramAppAutomationService.generateAnnouncement(
-            user.organization_id,
-            previewApp,
-          );
+          const content =
+            await telegramAppAutomationService.generateAnnouncement(
+              user.organization_id,
+              previewApp,
+            );
           previews.push({
             platform: "telegram",
             content,
@@ -137,7 +150,8 @@ async function __hono_POST(
           });
         }
       })().catch((error) => {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
         logger.error("[Promote Preview API] Telegram generation failed", {
           appId: id,
           error: errorMessage,
@@ -150,7 +164,12 @@ async function __hono_POST(
   if (platforms.includes("twitter")) {
     generatePromises.push(
       (async () => {
-        const tweetTypes = ["promotional", "engagement", "educational", "announcement"] as const;
+        const tweetTypes = [
+          "promotional",
+          "engagement",
+          "educational",
+          "announcement",
+        ] as const;
         for (let i = 0; i < Math.min(count, tweetTypes.length); i++) {
           const tweet = await twitterAppAutomationService.generateAppTweet(
             user.organization_id,
@@ -165,7 +184,8 @@ async function __hono_POST(
           });
         }
       })().catch((error) => {
-        const errorMessage = error instanceof Error ? error.message : "Unknown error";
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
         logger.error("[Promote Preview API] Twitter generation failed", {
           appId: id,
           error: errorMessage,
@@ -198,6 +218,8 @@ async function __hono_POST(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

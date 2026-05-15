@@ -12,7 +12,10 @@ import { verifyCronSecret } from "@/lib/auth/cron";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
 
-async function handleProcessProvisioningJobs(c: AppContext, env?: AppEnv["Bindings"]) {
+async function handleProcessProvisioningJobs(
+  c: AppContext,
+  env?: AppEnv["Bindings"],
+) {
   const authError = verifyCronSecret(c.req.raw, "[Provisioning Jobs]", env);
   if (authError) return authError;
   return forwardCronToContainerControlPlane(c);

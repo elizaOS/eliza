@@ -7,7 +7,10 @@
 import { Hono } from "hono";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { creditsService } from "@/lib/services/credits";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -35,13 +38,16 @@ app.get("/", async (c) => {
     const transactions =
       hours !== null
         ? allTransactions.filter(
-            (t) => new Date(t.created_at) >= new Date(Date.now() - hours * 60 * 60 * 1000),
+            (t) =>
+              new Date(t.created_at) >=
+              new Date(Date.now() - hours * 60 * 60 * 1000),
           )
         : allTransactions;
 
     const periodStart = hours
       ? new Date(Date.now() - hours * 60 * 60 * 1000).toISOString()
-      : transactions[transactions.length - 1]?.created_at || new Date().toISOString();
+      : transactions[transactions.length - 1]?.created_at ||
+        new Date().toISOString();
     const periodEnd = new Date().toISOString();
 
     return c.json({

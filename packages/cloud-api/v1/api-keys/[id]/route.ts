@@ -7,7 +7,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { apiKeysService } from "@/lib/services/api-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -51,12 +54,21 @@ app.patch("/", async (c) => {
     }
 
     const body = await c.req.json();
-    const { name, description, permissions, rate_limit, is_active, expires_at } =
-      updateApiKeySchema.parse(body);
+    const {
+      name,
+      description,
+      permissions,
+      rate_limit,
+      is_active,
+      expires_at,
+    } = updateApiKeySchema.parse(body);
 
     if (name !== undefined && ApiKeysService.isAgentSandboxKey({ name })) {
       return c.json(
-        { error: "Name prefix 'agent-sandbox:' is reserved for provisioner-managed keys." },
+        {
+          error:
+            "Name prefix 'agent-sandbox:' is reserved for provisioner-managed keys.",
+        },
         400,
       );
     }

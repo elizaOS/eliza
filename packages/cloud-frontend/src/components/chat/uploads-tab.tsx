@@ -112,7 +112,7 @@ export function UploadsTab({
 
           // Use add callback - parent uses functional update to avoid stale closure issues
           // Non-null assertion safe: validated before entering upload state
-          onPreUploadedFilesAdd!(newFiles);
+          onPreUploadedFilesAdd?.(newFiles);
 
           toast.success("Files uploaded successfully", {
             description: `${data.successCount} file(s) uploaded. They will be processed when you save the character.`,

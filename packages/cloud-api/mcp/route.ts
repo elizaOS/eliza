@@ -68,9 +68,14 @@ async function handleJsonRpc(c: AppContext, message: unknown) {
       });
     case "tools/call": {
       const toolName = request.params?.name;
-      if (!toolName) return jsonRpcError(request.id, -32602, "params.name is required");
+      if (!toolName)
+        return jsonRpcError(request.id, -32602, "params.name is required");
       try {
-        const result = await callPlatformCloudMcpTool(c, toolName, request.params?.arguments ?? {});
+        const result = await callPlatformCloudMcpTool(
+          c,
+          toolName,
+          request.params?.arguments ?? {},
+        );
         return jsonRpcResult(request.id, result);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -78,7 +83,11 @@ async function handleJsonRpc(c: AppContext, message: unknown) {
       }
     }
     default:
-      return jsonRpcError(request.id, -32601, `Unsupported MCP method: ${request.method}`);
+      return jsonRpcError(
+        request.id,
+        -32601,
+        `Unsupported MCP method: ${request.method}`,
+      );
   }
 }
 
@@ -108,14 +117,19 @@ app.post("/", async (c) => {
   }
 
   const messages = Array.isArray(body) ? body : [body];
-  const results = await Promise.all(messages.map((message) => handleJsonRpc(c, message)));
+  const results = await Promise.all(
+    messages.map((message) => handleJsonRpc(c, message)),
+  );
   return c.json(Array.isArray(body) ? results : results[0]);
 });
 
 app.all("*", (c) => {
   const upstream = getPlatformUpstream(c);
   if (upstream) return forwardMcpUpstreamRequest(c.req.raw, upstream);
-  return c.json({ success: false, error: "MCP method/path not supported" }, 405);
+  return c.json(
+    { success: false, error: "MCP method/path not supported" },
+    405,
+  );
 });
 
 export default app;

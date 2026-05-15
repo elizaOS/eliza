@@ -34,7 +34,10 @@ app.get("/", async (c) => {
       );
     }
 
-    c.header("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=7200");
+    c.header(
+      "Cache-Control",
+      "public, s-maxage=3600, stale-while-revalidate=7200",
+    );
     return c.json({
       object: "list",
       data: await getCachedMergedModelCatalog(),

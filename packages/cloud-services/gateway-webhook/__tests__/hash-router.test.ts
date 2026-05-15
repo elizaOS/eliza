@@ -9,6 +9,8 @@ describe("hash-router direct targets", () => {
   });
 
   test("skips hash-ring refreshes for direct service URLs", async () => {
-    await expect(refreshHashRing("https://agent-server.up.railway.app")).resolves.toBeUndefined();
+    await expect(
+      refreshHashRing("https://agent-server.up.railway.app"),
+    ).resolves.toBeUndefined();
   });
 });

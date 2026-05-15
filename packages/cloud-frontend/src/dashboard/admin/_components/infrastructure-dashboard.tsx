@@ -971,7 +971,7 @@ export function InfrastructureDashboard() {
     for (const row of filteredContainerRows) {
       const nodeKey = row.nodeId;
       if (!groups.has(nodeKey)) groups.set(nodeKey, []);
-      groups.get(nodeKey)!.push(row);
+      groups.get(nodeKey)?.push(row);
     }
     return groups;
   }, [filteredContainerRows]);

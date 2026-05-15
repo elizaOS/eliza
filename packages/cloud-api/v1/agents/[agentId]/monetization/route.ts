@@ -38,7 +38,10 @@ app.get("/", async (c) => {
     const agent = await charactersService.getById(agentId);
     if (!agent) throw NotFoundError("Agent not found");
 
-    if (agent.user_id !== user.id && agent.organization_id !== user.organization_id) {
+    if (
+      agent.user_id !== user.id &&
+      agent.organization_id !== user.organization_id
+    ) {
       throw ForbiddenError("Not authorized to view this agent");
     }
 
@@ -70,12 +73,20 @@ app.put("/", async (c) => {
     const body = await c.req.json();
     const validation = UpdateMonetizationSchema.safeParse(body);
     if (!validation.success) {
-      throw ValidationError("Invalid request", { details: validation.error.format() });
+      throw ValidationError("Invalid request", {
+        details: validation.error.format(),
+      });
     }
 
-    const result = await agentMonetizationService.updateSettings(agentId, user.id, validation.data);
+    const result = await agentMonetizationService.updateSettings(
+      agentId,
+      user.id,
+      validation.data,
+    );
     if (!result.success) {
-      throw ValidationError(result.error || "Failed to update monetization settings");
+      throw ValidationError(
+        result.error || "Failed to update monetization settings",
+      );
     }
 
     logger.info("[Agent Monetization API] Settings updated", {

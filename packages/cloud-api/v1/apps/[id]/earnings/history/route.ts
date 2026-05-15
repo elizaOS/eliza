@@ -9,7 +9,9 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const QuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
-  type: z.enum(["inference_markup", "purchase_share", "withdrawal", "adjustment"]).optional(),
+  type: z
+    .enum(["inference_markup", "purchase_share", "withdrawal", "adjustment"])
+    .optional(),
 });
 
 /**
@@ -27,7 +29,10 @@ const QuerySchema = z.object({
  * @param params - Route parameters containing the app ID.
  * @returns Transaction history with pagination information.
  */
-async function __hono_GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
@@ -101,7 +106,10 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to get earnings history",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to get earnings history",
       },
       { status: 500 },
     );
@@ -110,6 +118,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

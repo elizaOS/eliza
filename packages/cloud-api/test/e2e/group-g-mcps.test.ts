@@ -85,7 +85,9 @@ function isWranglerRestartBody(text: string): boolean {
   return text.includes("worker restarted mid-request");
 }
 
-async function postToolsList(basePath: string): Promise<{ status: number; text: string }> {
+async function postToolsList(
+  basePath: string,
+): Promise<{ status: number; text: string }> {
   for (let attempt = 0; attempt < 2; attempt++) {
     const res = await api.post(basePath, jsonRpcToolsList(), {
       headers: {

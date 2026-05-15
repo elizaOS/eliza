@@ -21,7 +21,10 @@ const UpdateMonetizationSchema = z.object({
  * @param params - Route parameters containing the app ID.
  * @returns Monetization settings including markup percentages and enabled status.
  */
-async function __hono_GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
@@ -29,11 +32,17 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     const app = await appsService.getById(id);
 
     if (!app) {
-      return Response.json({ success: false, error: "App not found" }, { status: 404 });
+      return Response.json(
+        { success: false, error: "App not found" },
+        { status: 404 },
+      );
     }
 
     if (app.organization_id !== user.organization_id) {
-      return Response.json({ success: false, error: "Access denied" }, { status: 403 });
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
     }
 
     const settings = await appCreditsService.getMonetizationSettings(id);
@@ -44,7 +53,10 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to get monetization settings",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to get monetization settings",
       },
       { status: 500 },
     );
@@ -65,7 +77,10 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ id: 
  * @param params - Route parameters containing the app ID.
  * @returns Updated monetization settings.
  */
-async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
+async function __hono_PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await params;
@@ -73,11 +88,17 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
     const app = await appsService.getById(id);
 
     if (!app) {
-      return Response.json({ success: false, error: "App not found" }, { status: 404 });
+      return Response.json(
+        { success: false, error: "App not found" },
+        { status: 404 },
+      );
     }
 
     if (app.organization_id !== user.organization_id) {
-      return Response.json({ success: false, error: "Access denied" }, { status: 403 });
+      return Response.json(
+        { success: false, error: "Access denied" },
+        { status: 403 },
+      );
     }
 
     const body = await request.json();
@@ -94,7 +115,10 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
       );
     }
 
-    await appCreditsService.updateMonetizationSettings(id, validationResult.data);
+    await appCreditsService.updateMonetizationSettings(
+      id,
+      validationResult.data,
+    );
     const updatedSettings = await appCreditsService.getMonetizationSettings(id);
 
     logger.info(`Updated monetization settings for app: ${id}`, {
@@ -109,7 +133,10 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to update monetization settings",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Failed to update monetization settings",
       },
       { status: 500 },
     );
@@ -118,9 +145,13 @@ async function __hono_PUT(request: Request, { params }: { params: Promise<{ id: 
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.put("/", async (c) =>
-  __hono_PUT(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_PUT(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

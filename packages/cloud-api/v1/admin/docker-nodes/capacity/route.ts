@@ -19,7 +19,10 @@ import { logger } from "@/lib/utils/logger";
 async function __hono_GET(request: Request) {
   const { role } = await requireAdmin(request);
   if (role !== "super_admin") {
-    return Response.json({ success: false, error: "Super admin access required" }, { status: 403 });
+    return Response.json(
+      { success: false, error: "Super admin access required" },
+      { status: 403 },
+    );
   }
 
   try {
@@ -38,7 +41,8 @@ async function __hono_GET(request: Request) {
     return Response.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Failed to read capacity",
+        error:
+          error instanceof Error ? error.message : "Failed to read capacity",
       },
       { status: 500 },
     );

@@ -1,6 +1,8 @@
 type Env = Record<string, string | undefined>;
 
-export function normalizeServerName(value: string | undefined): string | undefined {
+export function normalizeServerName(
+  value: string | undefined,
+): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed) {
     return undefined;
@@ -22,12 +24,21 @@ export function ensureServerName(env: Env = process.env): string | undefined {
   }
 
   const railwayName =
-    normalizeServerName(env.RAILWAY_SERVICE_NAME) ?? normalizeServerName(env.RAILWAY_SERVICE_ID);
+    normalizeServerName(env.RAILWAY_SERVICE_NAME) ??
+    normalizeServerName(env.RAILWAY_SERVICE_ID);
   if (railwayName) {
     env.SERVER_NAME = railwayName;
   }
 
   return railwayName;
+}
+
+export function getRequiredEnv(name: string, env: Env = process.env): string {
+  const value = env[name]?.trim();
+  if (!value) {
+    throw new Error(`Missing required env var: ${name}`);
+  }
+  return value;
 }
 
 function withoutTrailingSlash(value: string): string {

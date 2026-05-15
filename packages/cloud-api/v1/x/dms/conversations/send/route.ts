@@ -28,7 +28,10 @@ app.post("/", async (c) => {
     try {
       body = await c.req.json();
     } catch {
-      return c.json({ success: false, error: "Request body must be valid JSON" }, 400);
+      return c.json(
+        { success: false, error: "Request body must be valid JSON" },
+        400,
+      );
     }
 
     const parsed = requestSchema.safeParse(body);

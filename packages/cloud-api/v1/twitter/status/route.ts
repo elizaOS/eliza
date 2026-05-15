@@ -9,7 +9,8 @@ const app = new Hono<AppEnv>();
 app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const role = c.req.query("connectionRole") === "agent" ? "agent" : ("owner" as const);
+    const role =
+      c.req.query("connectionRole") === "agent" ? "agent" : ("owner" as const);
     const connectionId = `twitter:${user.organization_id}:${role}`;
 
     if (!twitterAutomationService.isConfigured()) {
@@ -21,7 +22,10 @@ app.get("/", async (c) => {
       });
     }
 
-    const status = await twitterAutomationService.getConnectionStatus(user.organization_id, role);
+    const status = await twitterAutomationService.getConnectionStatus(
+      user.organization_id,
+      role,
+    );
 
     return c.json({
       configured: true,

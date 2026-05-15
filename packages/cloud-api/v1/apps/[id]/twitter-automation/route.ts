@@ -25,7 +25,10 @@ async function __hono_GET(
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
-  const status = await twitterAppAutomationService.getAutomationStatus(user.organization_id, id);
+  const status = await twitterAppAutomationService.getAutomationStatus(
+    user.organization_id,
+    id,
+  );
 
   return Response.json(status);
 }
@@ -112,7 +115,10 @@ async function __hono_DELETE(
     userId: user.id,
   });
 
-  const app = await twitterAppAutomationService.disableAutomation(user.organization_id, id);
+  const app = await twitterAppAutomationService.disableAutomation(
+    user.organization_id,
+    id,
+  );
 
   return Response.json({
     success: true,
@@ -126,12 +132,18 @@ async function __hono_DELETE(
 
 const __hono_app = new Hono<AppEnv>();
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c.req.raw, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_DELETE(c.req.raw, {
+    params: Promise.resolve({ id: c.req.param("id")! }),
+  }),
 );
 export default __hono_app;

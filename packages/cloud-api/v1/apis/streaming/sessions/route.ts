@@ -30,7 +30,10 @@ app.post("/", async (c) => {
     const raw = await c.req.json().catch(() => null);
     const parsed = createBodySchema.safeParse(raw);
     if (!parsed.success) {
-      return c.json({ error: "Invalid body", details: parsed.error.issues }, 400);
+      return c.json(
+        { error: "Invalid body", details: parsed.error.issues },
+        400,
+      );
     }
 
     const cost = await getServiceMethodCost("streaming", "session.create");
@@ -47,7 +50,10 @@ app.post("/", async (c) => {
     });
     if (!deduct.success) {
       return c.json(
-        { error: "Insufficient credits", topUpUrl: "https://www.elizacloud.ai/dashboard/billing" },
+        {
+          error: "Insufficient credits",
+          topUpUrl: "https://www.elizacloud.ai/dashboard/billing",
+        },
         402,
       );
     }

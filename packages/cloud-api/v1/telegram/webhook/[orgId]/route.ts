@@ -11,8 +11,14 @@ import type { ChatMemberUpdated, Message, Update } from "telegraf/types";
 import type { App } from "@/db/repositories/apps";
 import { telegramChatsRepository } from "@/db/repositories/telegram-chats";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { nextStyleParams, type RouteContext } from "@/lib/api/hono-next-style-params";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  nextStyleParams,
+  type RouteContext,
+} from "@/lib/api/hono-next-style-params";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
 import { telegramAutomationService } from "@/lib/services/telegram-automation";
 import { telegramAppAutomationService } from "@/lib/services/telegram-automation/app-automation";
@@ -90,7 +96,8 @@ async function handleTelegramWebhook(
   }
 
   const bot = new Telegraf(botToken);
-  const activeApps = await telegramAppAutomationService.getAppsWithActiveAutomation(orgId);
+  const activeApps =
+    await telegramAppAutomationService.getAppsWithActiveAutomation(orgId);
 
   setupBotHandlers(bot, orgId, activeApps);
 
@@ -117,7 +124,11 @@ async function trackChatFromMessage(
   botToken: string,
 ): Promise<void> {
   // Only track groups, supergroups, and channels
-  if (chat.type !== "channel" && chat.type !== "group" && chat.type !== "supergroup") {
+  if (
+    chat.type !== "channel" &&
+    chat.type !== "group" &&
+    chat.type !== "supergroup"
+  ) {
     return;
   }
 
@@ -133,8 +144,10 @@ async function trackChatFromMessage(
     const botInfo = await bot.telegram.getMe();
     const member = await bot.telegram.getChatMember(chat.id, botInfo.id);
 
-    const isAdmin = member.status === "administrator" || member.status === "creator";
-    const canPost = isAdmin || (member.status === "member" && chat.type !== "channel");
+    const isAdmin =
+      member.status === "administrator" || member.status === "creator";
+    const canPost =
+      isAdmin || (member.status === "member" && chat.type !== "channel");
 
     await telegramChatsRepository.upsert({
       organization_id: orgId,
@@ -164,18 +177,26 @@ async function trackChatFromMessage(
   }
 }
 
-async function handleChatMemberUpdate(orgId: string, update: ChatMemberUpdated): Promise<void> {
+async function handleChatMemberUpdate(
+  orgId: string,
+  update: ChatMemberUpdated,
+): Promise<void> {
   const chat = update.chat;
   const newStatus = update.new_chat_member.status;
 
   // Only track channels, groups, and supergroups
-  if (chat.type !== "channel" && chat.type !== "group" && chat.type !== "supergroup") {
+  if (
+    chat.type !== "channel" &&
+    chat.type !== "group" &&
+    chat.type !== "supergroup"
+  ) {
     return;
   }
 
   const isAdmin = newStatus === "administrator" || newStatus === "creator";
   const isMember = isAdmin || newStatus === "member";
-  const canPost = isAdmin || (newStatus === "member" && chat.type !== "channel");
+  const canPost =
+    isAdmin || (newStatus === "member" && chat.type !== "channel");
 
   if (isMember) {
     await telegramChatsRepository.upsert({
@@ -225,7 +246,9 @@ function setupBotHandlers(bot: Telegraf, orgId: string, activeApps: App[]) {
         `Welcome to ${matchingApp.name}! I'm here to help you.`;
       await ctx.reply(welcomeMessage);
     } else {
-      await ctx.reply(`Hello ${userName}! 👋 I'm an AI assistant. How can I help you today?`);
+      await ctx.reply(
+        `Hello ${userName}! 👋 I'm an AI assistant. How can I help you today?`,
+      );
     }
 
     logger.info("[Telegram Webhook] Start command handled", {
@@ -310,12 +333,16 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
 
     if (matchingApp?.telegram_automation?.autoReply) {
       try {
-        await telegramAppAutomationService.handleIncomingMessage(orgId, matchingApp.id, {
-          chatId,
-          messageId: message.message_id,
-          text,
-          userName,
-        });
+        await telegramAppAutomationService.handleIncomingMessage(
+          orgId,
+          matchingApp.id,
+          {
+            chatId,
+            messageId: message.message_id,
+            text,
+            userName,
+          },
+        );
       } catch (error) {
         logger.error("[Telegram Webhook] Error handling message", {
           orgId,
@@ -325,7 +352,9 @@ ${matchingApp.website_url ? `🌐 Website: ${matchingApp.website_url}` : ""}`;
         });
       }
     } else if (!matchingApp) {
-      await ctx.reply("Thanks for your message! This bot is configured for specific applications.");
+      await ctx.reply(
+        "Thanks for your message! This bot is configured for specific applications.",
+      );
     }
   });
 
@@ -352,7 +381,10 @@ const ROUTE_PARAM_SPEC = [{ name: "orgId", splat: false }] as const;
 const honoRouter = new Hono<AppEnv>();
 honoRouter.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), async (c) => {
   try {
-    return await handleTelegramWebhook(c.req.raw, nextStyleParams(c, ROUTE_PARAM_SPEC));
+    return await handleTelegramWebhook(
+      c.req.raw,
+      nextStyleParams(c, ROUTE_PARAM_SPEC),
+    );
   } catch (error) {
     return failureResponse(c, error);
   }

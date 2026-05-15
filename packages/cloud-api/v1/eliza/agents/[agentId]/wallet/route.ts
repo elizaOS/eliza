@@ -21,15 +21,24 @@ import { logger } from "@/lib/utils/logger";
 
 const CORS_METHODS = "GET, OPTIONS";
 
-async function __hono_GET(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_GET(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
 
-    const agent = await elizaSandboxService.getAgent(agentId, user.organization_id);
+    const agent = await elizaSandboxService.getAgent(
+      agentId,
+      user.organization_id,
+    );
     if (!agent) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "Agent not found" }, { status: 404 }),
+        Response.json(
+          { success: false, error: "Agent not found" },
+          { status: 404 },
+        ),
         CORS_METHODS,
       );
     }
@@ -57,7 +66,9 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ agen
         );
       }
 
-      logger.warn(`[wallet-api] Steward unreachable for agent ${agentId}, falling back to DB`);
+      logger.warn(
+        `[wallet-api] Steward unreachable for agent ${agentId}, falling back to DB`,
+      );
     }
 
     // DB fallback (legacy wallet rows linked by character_id, kept until
@@ -75,7 +86,10 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ agen
               walletProvider: "steward",
               walletStatus: "active",
               balance: null,
-              chain: walletRecord.chain_type === "evm" ? "base" : walletRecord.chain_type,
+              chain:
+                walletRecord.chain_type === "evm"
+                  ? "base"
+                  : walletRecord.chain_type,
             },
           }),
           CORS_METHODS,
@@ -106,6 +120,8 @@ async function __hono_GET(request: Request, { params }: { params: Promise<{ agen
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.get("/", async (c) =>
-  __hono_GET(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_GET(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;

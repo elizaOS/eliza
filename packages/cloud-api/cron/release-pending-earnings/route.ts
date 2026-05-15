@@ -7,7 +7,10 @@
 import { and, gt, lte, sql } from "drizzle-orm";
 import { Hono } from "hono";
 import { dbRead, dbWrite } from "@/db/client";
-import { appEarnings, appEarningsTransactions } from "@/db/schemas/app-earnings";
+import {
+  appEarnings,
+  appEarningsTransactions,
+} from "@/db/schemas/app-earnings";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireCronSecret } from "@/lib/auth/workers-hono-auth";
 import { VESTING_CONFIG } from "@/lib/config/redemption-addresses";
@@ -25,7 +28,9 @@ app.get("/", async (c) => {
     let appsProcessed = 0;
     let totalReleased = 0;
 
-    const cutoffDate = new Date(Date.now() - VESTING_CONFIG.APP_EARNINGS_HOLD_PERIOD_MS);
+    const cutoffDate = new Date(
+      Date.now() - VESTING_CONFIG.APP_EARNINGS_HOLD_PERIOD_MS,
+    );
 
     const appsWithPending = await dbRead
       .select({
@@ -90,7 +95,9 @@ app.get("/", async (c) => {
           description: `Vesting release: $${amountToRelease.toFixed(2)} now withdrawable`,
           metadata: {
             released_at: new Date().toISOString(),
-            vesting_period_days: VESTING_CONFIG.APP_EARNINGS_HOLD_PERIOD_MS / (24 * 60 * 60 * 1000),
+            vesting_period_days:
+              VESTING_CONFIG.APP_EARNINGS_HOLD_PERIOD_MS /
+              (24 * 60 * 60 * 1000),
           },
         });
       });

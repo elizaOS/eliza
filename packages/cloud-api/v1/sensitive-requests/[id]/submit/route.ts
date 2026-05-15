@@ -6,7 +6,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   type SensitiveRequestActor,
   sensitiveRequestsService,
@@ -39,13 +42,18 @@ app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id");
-    if (!id) return c.json({ success: false, error: "Missing request id" }, 400);
+    if (!id)
+      return c.json({ success: false, error: "Missing request id" }, 400);
 
     const body = await c.req.json().catch(() => null);
     const parsed = SubmitSensitiveRequestSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }

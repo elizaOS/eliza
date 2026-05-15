@@ -21,7 +21,10 @@ const linkSchema = z.object({
  * bind the credential to the agent, storing the binding in agent_config and
  * restarting the agent if it's running.
  */
-async function __hono_POST(request: Request, { params }: { params: Promise<{ agentId: string }> }) {
+async function __hono_POST(
+  request: Request,
+  { params }: { params: Promise<{ agentId: string }> },
+) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);
     const { agentId } = await params;
@@ -30,7 +33,10 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
     const parsed = linkSchema.safeParse(body);
     if (!parsed.success) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "connectionId is required" }, { status: 400 }),
+        Response.json(
+          { success: false, error: "connectionId is required" },
+          { status: 400 },
+        ),
         CORS_METHODS,
       );
     }
@@ -45,7 +51,10 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 
     if (!connection) {
       return applyCorsHeaders(
-        Response.json({ success: false, error: "OAuth connection not found" }, { status: 404 }),
+        Response.json(
+          { success: false, error: "OAuth connection not found" },
+          { status: 404 },
+        ),
         CORS_METHODS,
       );
     }
@@ -61,7 +70,8 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
     }
 
     const connectionRole =
-      connection.connectionRole === "owner" || connection.connectionRole === "agent"
+      connection.connectionRole === "owner" ||
+      connection.connectionRole === "agent"
         ? connection.connectionRole
         : undefined;
 
@@ -102,6 +112,8 @@ async function __hono_POST(request: Request, { params }: { params: Promise<{ age
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(c.req.raw, { params: Promise.resolve({ agentId: c.req.param("agentId")! }) }),
+  __hono_POST(c.req.raw, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;

@@ -58,7 +58,8 @@ async function forwardContainerSync(
   headers.set("x-eliza-organization-id", user.organization_id);
 
   const internalToken = readStringEnv(c, ["CONTAINER_CONTROL_PLANE_TOKEN"]);
-  if (internalToken) headers.set("x-container-control-plane-token", internalToken);
+  if (internalToken)
+    headers.set("x-container-control-plane-token", internalToken);
 
   const databaseUrl = readStringEnv(c, ["DATABASE_URL"]);
   if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
@@ -85,21 +86,26 @@ async function forwardContainerSync(
         text ||
           JSON.stringify({
             success: false,
-            error: "Container control plane rejected the coding-container sync request",
+            error:
+              "Container control plane rejected the coding-container sync request",
           }),
         {
           status: upstream.status,
           statusText: upstream.statusText,
           headers: {
-            "content-type": upstream.headers.get("content-type") ?? "application/json",
+            "content-type":
+              upstream.headers.get("content-type") ?? "application/json",
           },
         },
       );
     }
 
-    const body = json && typeof json === "object" ? (json as Record<string, unknown>) : {};
+    const body =
+      json && typeof json === "object" ? (json as Record<string, unknown>) : {};
     const upstreamData =
-      body.data && typeof body.data === "object" ? (body.data as Record<string, unknown>) : {};
+      body.data && typeof body.data === "object"
+        ? (body.data as Record<string, unknown>)
+        : {};
     const base = buildCodingSyncResponse(containerId, request);
     const response: SyncCloudCodingContainerResponse = {
       success: true,
@@ -111,7 +117,8 @@ async function forwardContainerSync(
         createdAt: base.createdAt,
         metadata: {
           ...(base.metadata ?? {}),
-          ...((upstreamData.metadata as Record<string, unknown> | undefined) ?? {}),
+          ...((upstreamData.metadata as Record<string, unknown> | undefined) ??
+            {}),
         },
       },
       message: "Sync request applied by the container control plane.",
@@ -153,7 +160,12 @@ app.post("/", async (c) => {
       );
     }
 
-    return forwardContainerSync(c, user, decodeURIComponent(containerId), parsed.data);
+    return forwardContainerSync(
+      c,
+      user,
+      decodeURIComponent(containerId),
+      parsed.data,
+    );
   } catch (error) {
     logger.error("[CodingContainers API] sync error:", error);
     return failureResponse(c, error);

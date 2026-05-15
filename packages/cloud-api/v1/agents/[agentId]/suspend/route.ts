@@ -26,11 +26,16 @@ app.post("/", async (c) => {
 
     const raw = await c.req.json().catch(() => ({}));
     const parsed = suspendSchema.safeParse(raw);
-    const reason = parsed.success ? parsed.data.reason : "owner requested suspension";
+    const reason = parsed.success
+      ? parsed.data.reason
+      : "owner requested suspension";
 
     logger.info("[service-api] Suspending agent", { agentId, reason });
 
-    const result = await elizaSandboxService.shutdown(agentId, identity.organizationId);
+    const result = await elizaSandboxService.shutdown(
+      agentId,
+      identity.organizationId,
+    );
     if (!result.success) {
       const status =
         result.error === "Agent not found"

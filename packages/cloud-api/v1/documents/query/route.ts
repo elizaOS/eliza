@@ -2,9 +2,16 @@ import { Hono } from "hono";
 
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import type { AppEnv } from "@/types/cloud-worker-env";
-import { listDocumentRecords, resolveDocumentScope, scoreDocumentText } from "../_worker-documents";
+import {
+  listDocumentRecords,
+  resolveDocumentScope,
+  scoreDocumentText,
+} from "../_worker-documents";
 
 interface DocumentQueryBody {
   query?: string;
@@ -19,11 +26,18 @@ app.use("*", rateLimit(RateLimitPresets.STANDARD));
 app.post("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
-    const body = (await c.req.json().catch(() => null)) as DocumentQueryBody | null;
-    if (!body) return c.json({ success: false, error: "Request body must be JSON" }, 400);
+    const body = (await c.req
+      .json()
+      .catch(() => null)) as DocumentQueryBody | null;
+    if (!body)
+      return c.json(
+        { success: false, error: "Request body must be JSON" },
+        400,
+      );
 
     const query = body.query?.trim();
-    if (!query) return c.json({ success: false, error: "query is required" }, 400);
+    if (!query)
+      return c.json({ success: false, error: "query is required" }, 400);
 
     const scope = await resolveDocumentScope(user, body.characterId);
     if (scope instanceof Response) return scope;

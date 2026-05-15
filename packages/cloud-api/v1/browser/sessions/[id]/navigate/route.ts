@@ -2,9 +2,15 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getErrorStatusCode, getSafeErrorMessage } from "@/lib/api/errors";
-import { nextStyleParams, type RouteContext } from "@/lib/api/hono-next-style-params";
+import {
+  nextStyleParams,
+  type RouteContext,
+} from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   logHostedBrowserFailure,
   navigateHostedBrowserSession,
@@ -15,7 +21,10 @@ const navigateSchema = z.object({
   url: z.string().trim().url().max(2_000),
 });
 
-async function handlePOST(request: Request, context: RouteContext<{ id: string }>) {
+async function handlePOST(
+  request: Request,
+  context: RouteContext<{ id: string }>,
+) {
   try {
     const authResult = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await context.params;
@@ -30,12 +39,16 @@ async function handlePOST(request: Request, context: RouteContext<{ id: string }
       );
     }
 
-    const session = await navigateHostedBrowserSession(id, bodyResult.data.url, {
-      apiKeyId: authResult.apiKey?.id ?? null,
-      organizationId: authResult.user.organization_id,
-      requestSource: "api",
-      userId: authResult.user.id,
-    });
+    const session = await navigateHostedBrowserSession(
+      id,
+      bodyResult.data.url,
+      {
+        apiKeyId: authResult.apiKey?.id ?? null,
+        organizationId: authResult.user.organization_id,
+        requestSource: "api",
+        userId: authResult.user.id,
+      },
+    );
 
     return Response.json({ session });
   } catch (error) {

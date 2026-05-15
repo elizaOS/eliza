@@ -24,8 +24,14 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 
 import { applyCorsHeaders, handleCorsOptions } from "@/lib/services/proxy/cors";
 import { executeWithBody } from "@/lib/services/proxy/engine";
-import { isValidAddress, isValidChain } from "@/lib/services/proxy/services/address-validation";
-import { marketDataConfig, marketDataHandler } from "@/lib/services/proxy/services/market-data";
+import {
+  isValidAddress,
+  isValidChain,
+} from "@/lib/services/proxy/services/address-validation";
+import {
+  marketDataConfig,
+  marketDataHandler,
+} from "@/lib/services/proxy/services/market-data";
 
 // WHY 30s maxDuration:
 // - Upstream calls + retries can take 15-20s
@@ -95,7 +101,10 @@ const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", async () => __hono_OPTIONS());
 __hono_app.get("/", async (c) =>
   __hono_GET(c.req.raw, {
-    params: Promise.resolve({ chain: c.req.param("chain")!, address: c.req.param("address")! }),
+    params: Promise.resolve({
+      chain: c.req.param("chain")!,
+      address: c.req.param("address")!,
+    }),
   }),
 );
 export default __hono_app;

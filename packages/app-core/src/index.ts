@@ -14,7 +14,10 @@ export * from "./api/server-wallet-trade";
 export * from "./api/setup-contract";
 export * from "./api/training-benchmarks";
 export * from "./api/workbench-compat-routes";
+// === Phase 5C: desktop runtime + app-config + onboarding-config moved from @elizaos/ui ===
+export * from "./config/app-config";
 export * from "./diagnostics/integration-observability";
+export * from "./onboarding/onboarding-config";
 export * from "./permissions/types";
 // `./platform/empty-node-module` is intentionally NOT re-exported here.
 // It exists as a tsconfig-paths target for browser builds — re-exporting it
@@ -26,9 +29,9 @@ export * from "./permissions/types";
 // (`packages/app/src/main.tsx`) can import a single `@elizaos/app-core` entry
 // point. The modules themselves only touch browser globals + Capacitor APIs.
 export {
+  type InitializeAppBootstrapClientsArgs,
   initializeAppBootstrapBridges,
   installAppBootstrapClientPatches,
-  type InitializeAppBootstrapClientsArgs,
 } from "./platform/capacitor-bootstrap";
 export {
   IOS_FULL_BUN_SMOKE_REQUEST_KEY,
@@ -46,9 +49,6 @@ export * from "./runtime/app-route-plugin-registry";
 export * from "./runtime/build-character-from-config";
 export * from "./runtime/build-variant";
 export * from "./runtime/channel-plugin-map";
-// === Phase 5C: desktop runtime + app-config + onboarding-config moved from @elizaos/ui ===
-export * from "./config/app-config";
-export * from "./onboarding/onboarding-config";
 export * from "./runtime/desktop";
 export * from "./runtime/eliza";
 export * from "./runtime/mobile-safe-runtime";

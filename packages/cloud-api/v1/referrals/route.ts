@@ -4,9 +4,15 @@
 import { Hono } from "hono";
 import { ApiError, failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { referralsService } from "@/lib/services/referrals";
-import { coerceNonNegativeIntegerCount, type ReferralMeResponse } from "@/lib/types/referral-me";
+import {
+  coerceNonNegativeIntegerCount,
+  type ReferralMeResponse,
+} from "@/lib/types/referral-me";
 import { getCorsHeaders } from "@/lib/utils/cors";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -29,7 +35,9 @@ app.get("/", async (c) => {
     const row = await referralsService.getOrCreateCode(user.id);
 
     if (row == null || typeof row !== "object") {
-      throw new Error("Referrals API: getOrCreateCode returned no referral row");
+      throw new Error(
+        "Referrals API: getOrCreateCode returned no referral row",
+      );
     }
     if (typeof row.code !== "string" || row.code.length === 0) {
       throw new Error("Referrals API: referral row missing code");

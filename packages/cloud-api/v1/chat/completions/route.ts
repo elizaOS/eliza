@@ -25,7 +25,10 @@ import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { createPreflightResponse } from "@/lib/middleware/cors-apps";
 import { enforceOrgRateLimit } from "@/lib/middleware/rate-limit";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
   calculateCost,
   getProviderFromModel,
@@ -104,7 +107,9 @@ function buildProviderBillingFields(
   }
   return {
     providerInstanceId:
-      process.env.VAST_PROVIDER_INSTANCE_ID ?? process.env.VAST_INSTANCE_ID ?? null,
+      process.env.VAST_PROVIDER_INSTANCE_ID ??
+      process.env.VAST_INSTANCE_ID ??
+      null,
     providerEndpoint:
       process.env.VAST_PROVIDER_ENDPOINT ??
       process.env.VAST_ENDPOINT_URL ??
@@ -125,7 +130,10 @@ function computeEffectiveMaxTokens(
   if (cotBudget !== null) {
     // When CoT is active, ensure max_tokens covers both thinking budget AND response capacity
     // Without this, thinking consumes all tokens leaving nothing for the actual response
-    return Math.max(requestMaxTokens ?? MIN_RESPONSE_TOKENS, cotBudget + MIN_RESPONSE_TOKENS);
+    return Math.max(
+      requestMaxTokens ?? MIN_RESPONSE_TOKENS,
+      cotBudget + MIN_RESPONSE_TOKENS,
+    );
   }
   return requestMaxTokens;
 }
@@ -172,7 +180,10 @@ interface ChatRequest {
       parameters?: Record<string, unknown>;
     };
   }>;
-  tool_choice?: "auto" | "none" | { type: "function"; function: { name: string } };
+  tool_choice?:
+    | "auto"
+    | "none"
+    | { type: "function"; function: { name: string } };
   response_format?:
     | { type: "json_object" | "text" }
     | {
@@ -224,10 +235,14 @@ function addCorsHeaders(response: Response): Response {
  */
 function inferImageMediaType(url: string): string {
   const lowerUrl = url.toLowerCase();
-  if (lowerUrl.includes(".png") || lowerUrl.includes("image/png")) return "image/png";
-  if (lowerUrl.includes(".gif") || lowerUrl.includes("image/gif")) return "image/gif";
-  if (lowerUrl.includes(".webp") || lowerUrl.includes("image/webp")) return "image/webp";
-  if (lowerUrl.includes(".svg") || lowerUrl.includes("image/svg")) return "image/svg+xml";
+  if (lowerUrl.includes(".png") || lowerUrl.includes("image/png"))
+    return "image/png";
+  if (lowerUrl.includes(".gif") || lowerUrl.includes("image/gif"))
+    return "image/gif";
+  if (lowerUrl.includes(".webp") || lowerUrl.includes("image/webp"))
+    return "image/webp";
+  if (lowerUrl.includes(".svg") || lowerUrl.includes("image/svg"))
+    return "image/svg+xml";
   // Default to JPEG for .jpg, .jpeg, or unknown
   return "image/jpeg";
 }
@@ -239,7 +254,10 @@ function getImageUrl(imageUrl: { url: string } | string): string | null {
   return imageUrl.url || null;
 }
 
-function inferFileMediaType(fileData: string | undefined, filename: string | undefined): string {
+function inferFileMediaType(
+  fileData: string | undefined,
+  filename: string | undefined,
+): string {
   const dataUrlMatch = fileData?.match(/^data:([^;,]+)[;,]/i);
   if (dataUrlMatch?.[1]) {
     return dataUrlMatch[1];
@@ -277,7 +295,9 @@ function toOpenAIArguments(input: unknown): string {
   }
 }
 
-function toModelContentParts(content: Exclude<ChatMessage["content"], string | null>) {
+function toModelContentParts(
+  content: Exclude<ChatMessage["content"], string | null>,
+) {
   return content
     .map((part) => {
       if (part.image_url) {
@@ -295,10 +315,13 @@ function toModelContentParts(content: Exclude<ChatMessage["content"], string | n
       if (part.file) {
         const fileUrl = part.file.file_data;
         if (!fileUrl) {
-          logger.warn("[chat/completions] Ignoring file part without file_data", {
-            filename: part.file.filename,
-            hasFileId: typeof part.file.file_id === "string",
-          });
+          logger.warn(
+            "[chat/completions] Ignoring file part without file_data",
+            {
+              filename: part.file.filename,
+              hasFileId: typeof part.file.file_id === "string",
+            },
+          );
           return null;
         }
         return {
@@ -316,7 +339,9 @@ function toModelContentParts(content: Exclude<ChatMessage["content"], string | n
     .filter((part): part is NonNullable<typeof part> => part !== null);
 }
 
-function convertToModelMessagesFromOpenAI(messages: ChatMessage[]): ModelMessage[] {
+function convertToModelMessagesFromOpenAI(
+  messages: ChatMessage[],
+): ModelMessage[] {
   const modelMessages: ModelMessage[] = [];
   const toolNames = new Map<string, string>();
 
@@ -369,7 +394,10 @@ function convertToModelMessagesFromOpenAI(messages: ChatMessage[]): ModelMessage
       ];
       modelMessages.push({
         role: "assistant",
-        content: assistantParts.length > 0 ? assistantParts : [{ type: "text", text: "" }],
+        content:
+          assistantParts.length > 0
+            ? assistantParts
+            : [{ type: "text", text: "" }],
       } as ModelMessage);
       continue;
     }
@@ -390,9 +418,14 @@ function convertTools(tools: ChatRequest["tools"]) {
     tools.map((tool) => [
       tool.function.name,
       {
-        ...(tool.function.description ? { description: tool.function.description } : {}),
+        ...(tool.function.description
+          ? { description: tool.function.description }
+          : {}),
         inputSchema: jsonSchema(tool.function.parameters ?? { type: "object" }),
-        outputSchema: jsonSchema({ type: "object", additionalProperties: true }),
+        outputSchema: jsonSchema({
+          type: "object",
+          additionalProperties: true,
+        }),
       },
     ]),
   );
@@ -400,7 +433,12 @@ function convertTools(tools: ChatRequest["tools"]) {
 
 function mapToolChoice(
   toolChoice: ChatRequest["tool_choice"],
-): "auto" | "none" | "required" | { type: "tool"; toolName: string } | undefined {
+):
+  | "auto"
+  | "none"
+  | "required"
+  | { type: "tool"; toolName: string }
+  | undefined {
   if (!toolChoice) return undefined;
   if (toolChoice === "auto" || toolChoice === "none") return toolChoice;
   return { type: "tool", toolName: toolChoice.function.name };
@@ -412,9 +450,14 @@ function mapResponseFormat(responseFormat: ChatRequest["response_format"]) {
     responseFormat.type === "json_schema"
       ? (responseFormat.json_schema.schema ?? { type: "object" })
       : { type: "object", additionalProperties: true };
-  const name = responseFormat.type === "json_schema" ? responseFormat.json_schema.name : undefined;
+  const name =
+    responseFormat.type === "json_schema"
+      ? responseFormat.json_schema.name
+      : undefined;
   const description =
-    responseFormat.type === "json_schema" ? responseFormat.json_schema.description : undefined;
+    responseFormat.type === "json_schema"
+      ? responseFormat.json_schema.description
+      : undefined;
 
   const output = {
     name: "object",
@@ -457,13 +500,17 @@ function formatOpenAIUsage(
   billing: { inputTokens: number; outputTokens: number; totalTokens: number },
   usage: unknown,
 ) {
-  const record = usage && typeof usage === "object" ? (usage as Record<string, unknown>) : {};
+  const record =
+    usage && typeof usage === "object"
+      ? (usage as Record<string, unknown>)
+      : {};
   const inputTokenDetails =
     record.inputTokenDetails && typeof record.inputTokenDetails === "object"
       ? (record.inputTokenDetails as Record<string, unknown>)
       : {};
   const promptTokenDetails =
-    record.prompt_tokens_details && typeof record.prompt_tokens_details === "object"
+    record.prompt_tokens_details &&
+    typeof record.prompt_tokens_details === "object"
       ? (record.prompt_tokens_details as Record<string, unknown>)
       : {};
   const cacheReadInputTokens = firstNumber(
@@ -497,7 +544,10 @@ function formatOpenAIUsage(
     completion_tokens: billing.outputTokens,
     total_tokens: billing.totalTokens,
   };
-  if (cacheReadInputTokens !== undefined || cacheCreationInputTokens !== undefined) {
+  if (
+    cacheReadInputTokens !== undefined ||
+    cacheCreationInputTokens !== undefined
+  ) {
     out.prompt_tokens_details = {
       ...(cacheReadInputTokens !== undefined
         ? {
@@ -556,7 +606,8 @@ function parseJsonObject(value: string | undefined): unknown {
 
 function getProviderErrorCode(value: unknown): string | null {
   const errorValue = getObjectValue(value, "error");
-  const source = errorValue && typeof errorValue === "object" ? errorValue : value;
+  const source =
+    errorValue && typeof errorValue === "object" ? errorValue : value;
   const code = getObjectValue(source, "code");
   const type = getObjectValue(source, "type");
 
@@ -579,7 +630,9 @@ function unwrapProviderError(error: unknown): unknown {
 function getRecoverableProviderErrorStatus(error: unknown): number | null {
   const providerError = unwrapProviderError(error);
   const message =
-    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : String(error).toLowerCase();
 
   if (APICallError.isInstance(providerError)) {
     const providerCode =
@@ -592,7 +645,8 @@ function getRecoverableProviderErrorStatus(error: unknown): number | null {
       providerCode === "insufficient_quota" ||
       providerCode === "rate_limit_exceeded" ||
       providerMessage.includes("insufficient_quota") ||
-      (providerMessage.includes("quota") && providerMessage.includes("exceeded")) ||
+      (providerMessage.includes("quota") &&
+        providerMessage.includes("exceeded")) ||
       message.includes("insufficient_quota")
     ) {
       return 429;
@@ -651,14 +705,18 @@ export async function handleChatCompletionsPOST(
 
     // 1b. Per-org tier rate limit
     if (user.organization_id && !options.skipOrgRateLimit) {
-      const orgRateLimited = await enforceOrgRateLimit(user.organization_id, "completions");
+      const orgRateLimited = await enforceOrgRateLimit(
+        user.organization_id,
+        "completions",
+      );
       if (orgRateLimited) return orgRateLimited;
     }
 
     // 2. Check for app monetization
     const appId = req.headers.get("X-App-Id");
     let useAppCredits = false;
-    let monetizedApp: Awaited<ReturnType<typeof appsService.getById>> | null = null;
+    let monetizedApp: Awaited<ReturnType<typeof appsService.getById>> | null =
+      null;
 
     if (appId) {
       monetizedApp = await appsService.getById(appId);
@@ -708,10 +766,19 @@ export async function handleChatCompletionsPOST(
     const billingSource = resolveAiProviderSource(model) ?? "gateway";
     const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
     const cotOptions =
-      cotBudget != null ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget) : {};
-    const effectiveMaxTokens = computeEffectiveMaxTokens(request.max_tokens, cotBudget);
+      cotBudget != null
+        ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget)
+        : {};
+    const effectiveMaxTokens = computeEffectiveMaxTokens(
+      request.max_tokens,
+      cotBudget,
+    );
     const webSearchEnabled = request.webSearchEnabled === true;
-    const webSearchActive = isAnthropicWebSearchEnabled(provider, model, webSearchEnabled);
+    const webSearchActive = isAnthropicWebSearchEnabled(
+      provider,
+      model,
+      webSearchEnabled,
+    );
     const webSearchOptions = buildProviderNativeWebSearchTools({
       provider,
       model,
@@ -725,7 +792,8 @@ export async function handleChatCompletionsPOST(
         Response.json(
           {
             error: {
-              message: "Your account has been suspended due to policy violations.",
+              message:
+                "Your account has been suspended due to policy violations.",
               type: "account_suspended",
               code: "moderation_violation",
             },
@@ -736,24 +804,36 @@ export async function handleChatCompletionsPOST(
     }
 
     // Start async moderation in background
-    const lastUserMessage = request.messages.filter((m) => m.role === "user").pop();
+    const lastUserMessage = request.messages
+      .filter((m) => m.role === "user")
+      .pop();
     if (lastUserMessage) {
       const content = getMessageContent(lastUserMessage);
       if (content) {
-        contentModerationService.moderateInBackground(content, user.id, undefined, (result) => {
-          logger.warn("[Chat Completions] Async moderation detected violation", {
-            userId: user.id,
-            categories: result.flaggedCategories,
-          });
-        });
+        contentModerationService.moderateInBackground(
+          content,
+          user.id,
+          undefined,
+          (result) => {
+            logger.warn(
+              "[Chat Completions] Async moderation detected violation",
+              {
+                userId: user.id,
+                categories: result.flaggedCategories,
+              },
+            );
+          },
+        );
       }
     }
 
     // 6. Estimate tokens and reserve credits
     const estimatedInputTokens =
-      estimateInputTokens(request.messages.map((m) => ({ content: getMessageContent(m) }))) +
-      (webSearchActive ? ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER : 0);
-    const estimatedOutputTokens = effectiveMaxTokens ?? request.max_tokens ?? 500;
+      estimateInputTokens(
+        request.messages.map((m) => ({ content: getMessageContent(m) })),
+      ) + (webSearchActive ? ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER : 0);
+    const estimatedOutputTokens =
+      effectiveMaxTokens ?? request.max_tokens ?? 500;
     const affiliateCode = req.headers.get("X-Affiliate-Code");
 
     let reservation: CreditReservation;
@@ -770,7 +850,10 @@ export async function handleChatCompletionsPOST(
         estimatedOutputTokens,
         billingSource,
       );
-      const costWithMarkup = await appCreditsService.calculateCostWithMarkup(appId, totalCost);
+      const costWithMarkup = await appCreditsService.calculateCostWithMarkup(
+        appId,
+        totalCost,
+      );
 
       const balanceCheck = await appCreditsService.checkBalance(
         appId,
@@ -841,8 +924,12 @@ export async function handleChatCompletionsPOST(
 
     // 7. Convert messages for AI SDK
     const systemMessage = request.messages.find((m) => m.role === "system");
-    const systemPrompt = systemMessage ? getMessageContent(systemMessage) : undefined;
-    const nonSystemMessages = request.messages.filter((m) => m.role !== "system");
+    const systemPrompt = systemMessage
+      ? getMessageContent(systemMessage)
+      : undefined;
+    const nonSystemMessages = request.messages.filter(
+      (m) => m.role !== "system",
+    );
     const modelMessages = convertToModelMessagesFromOpenAI(nonSystemMessages);
 
     logger.info("[Chat Completions] Request", {
@@ -949,7 +1036,9 @@ async function handleStreamingRequest(
   request: ChatRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
-  appCreditsInfo: { appId: string; estimatedBaseCost: number; app: unknown } | undefined,
+  appCreditsInfo:
+    | { appId: string; estimatedBaseCost: number; app: unknown }
+    | undefined,
   affiliateCode: string | null,
   idempotencyKey: string,
   requestId: string,
@@ -957,7 +1046,9 @@ async function handleStreamingRequest(
   startTime: number,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
-  settleReservation: (actualCost: number) => Promise<CreditReconciliationResult | null>,
+  settleReservation: (
+    actualCost: number,
+  ) => Promise<CreditReconciliationResult | null>,
   cotOptions: ReturnType<typeof mergeAnthropicCotProviderOptions>,
   effectiveMaxTokens: number | undefined,
   webSearchOptions: ReturnType<typeof buildProviderNativeWebSearchTools>,
@@ -1003,7 +1094,12 @@ async function handleStreamingRequest(
           provider,
           billingSource,
           requestId,
-          metadata: buildProviderReconciliationMetadata(provider, model, true, appId),
+          metadata: buildProviderReconciliationMetadata(
+            provider,
+            model,
+            true,
+            appId,
+          ),
           affiliateCode,
           ...buildProviderBillingFields(provider, model),
         };
@@ -1022,13 +1118,19 @@ async function handleStreamingRequest(
           });
         }
 
-        const usageRecord = await recordUsageAnalytics(billingContext, billing, {
-          type: "chat",
-          content: text,
-          systemPrompt,
-          prompt: request.messages.map((m) => `[${m.role}] ${getMessageContent(m)}`).join("\n"),
-          latencyMs: Date.now() - startTime,
-        });
+        const usageRecord = await recordUsageAnalytics(
+          billingContext,
+          billing,
+          {
+            type: "chat",
+            content: text,
+            systemPrompt,
+            prompt: request.messages
+              .map((m) => `[${m.role}] ${getMessageContent(m)}`)
+              .join("\n"),
+            latencyMs: Date.now() - startTime,
+          },
+        );
         if (usageRecord) {
           await aiBillingRecordsService.record({
             context: billingContext,
@@ -1086,7 +1188,9 @@ async function handleStreamingRequest(
                 },
               ],
             };
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`),
+            );
             continue;
           }
 
@@ -1152,7 +1256,8 @@ async function handleStreamingRequest(
           }
 
           if (part.type === "tool-call") {
-            const index = toolCallIndexes.get(part.toolCallId) ?? nextToolCallIndex++;
+            const index =
+              toolCallIndexes.get(part.toolCallId) ?? nextToolCallIndex++;
             toolCallIndexes.set(part.toolCallId, index);
             controller.enqueue(
               encoder.encode(
@@ -1188,7 +1293,10 @@ async function handleStreamingRequest(
           }
 
           if (part.type === "finish") {
-            finishReason = part.finishReason === "tool-calls" ? "tool_calls" : part.finishReason;
+            finishReason =
+              part.finishReason === "tool-calls"
+                ? "tool_calls"
+                : part.finishReason;
           }
 
           if (part.type === "error") {
@@ -1206,11 +1314,14 @@ async function handleStreamingRequest(
             {
               index: 0,
               delta: {},
-              finish_reason: finishReason === "tool-calls" ? "tool_calls" : finishReason,
+              finish_reason:
+                finishReason === "tool-calls" ? "tool_calls" : finishReason,
             },
           ],
         };
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`));
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify(finalChunk)}\n\n`),
+        );
         controller.enqueue(encoder.encode("data: [DONE]\n\n"));
         controller.close();
       } catch (error) {
@@ -1241,7 +1352,9 @@ async function handleNonStreamingRequest(
   request: ChatRequest,
   user: { id: string; organization_id: string },
   apiKey: { id: string } | null,
-  appCreditsInfo: { appId: string; estimatedBaseCost: number; app: unknown } | undefined,
+  appCreditsInfo:
+    | { appId: string; estimatedBaseCost: number; app: unknown }
+    | undefined,
   affiliateCode: string | null,
   idempotencyKey: string,
   requestId: string,
@@ -1249,7 +1362,9 @@ async function handleNonStreamingRequest(
   startTime: number,
   abortSignal: AbortSignal | undefined,
   timeoutMs: number,
-  settleReservation: (actualCost: number) => Promise<CreditReconciliationResult | null>,
+  settleReservation: (
+    actualCost: number,
+  ) => Promise<CreditReconciliationResult | null>,
   cotOptions: ReturnType<typeof mergeAnthropicCotProviderOptions>,
   effectiveMaxTokens: number | undefined,
   webSearchOptions: ReturnType<typeof buildProviderNativeWebSearchTools>,
@@ -1299,7 +1414,12 @@ async function handleNonStreamingRequest(
       provider,
       billingSource,
       requestId,
-      metadata: buildProviderReconciliationMetadata(provider, model, false, appId),
+      metadata: buildProviderReconciliationMetadata(
+        provider,
+        model,
+        false,
+        appId,
+      ),
       affiliateCode,
       ...buildProviderBillingFields(provider, model),
     };
@@ -1322,7 +1442,9 @@ async function handleNonStreamingRequest(
       type: "chat",
       content: result.text,
       systemPrompt,
-      prompt: request.messages.map((m) => `[${m.role}] ${getMessageContent(m)}`).join("\n"),
+      prompt: request.messages
+        .map((m) => `[${m.role}] ${getMessageContent(m)}`)
+        .join("\n"),
       latencyMs: Date.now() - startTime,
     });
     if (usageRecord) {

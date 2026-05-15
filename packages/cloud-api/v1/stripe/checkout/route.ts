@@ -14,7 +14,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { stripePaymentAdapter } from "@/lib/services/payment-adapters/stripe";
 import type { PaymentRequestRow } from "@/lib/services/payment-requests";
 import { getPaymentRequestsService } from "@/lib/services/payment-requests-default";
@@ -39,24 +42,40 @@ app.post("/", async (c) => {
     const parsed = CheckoutSchema.safeParse(body);
     if (!parsed.success) {
       return c.json(
-        { success: false, error: "Invalid request", details: parsed.error.issues },
+        {
+          success: false,
+          error: "Invalid request",
+          details: parsed.error.issues,
+        },
         400,
       );
     }
 
     const service = getPaymentRequestsService(c.env);
-    const request = await service.get(parsed.data.paymentRequestId, user.organization_id);
+    const request = await service.get(
+      parsed.data.paymentRequestId,
+      user.organization_id,
+    );
     if (!request) {
-      return c.json({ success: false, error: "Payment request not found" }, 404);
+      return c.json(
+        { success: false, error: "Payment request not found" },
+        404,
+      );
     }
     if (request.provider !== "stripe") {
       return c.json(
-        { success: false, error: `Payment request provider is ${request.provider}, not stripe` },
+        {
+          success: false,
+          error: `Payment request provider is ${request.provider}, not stripe`,
+        },
         400,
       );
     }
     if (request.status !== "pending") {
-      return c.json({ success: false, error: `Payment request already ${request.status}` }, 409);
+      return c.json(
+        { success: false, error: `Payment request already ${request.status}` },
+        409,
+      );
     }
 
     const requestForAdapter: PaymentRequestRow = {
@@ -65,8 +84,14 @@ app.post("/", async (c) => {
       cancelUrl: parsed.data.cancelUrl,
     };
 
-    const result = await stripePaymentAdapter.createIntent({ request: requestForAdapter });
-    await service.markInitialized(request.id, result.providerIntent, result.hostedUrl ?? null);
+    const result = await stripePaymentAdapter.createIntent({
+      request: requestForAdapter,
+    });
+    await service.markInitialized(
+      request.id,
+      result.providerIntent,
+      result.hostedUrl ?? null,
+    );
 
     return c.json({ success: true, hostedUrl: result.hostedUrl ?? null });
   } catch (error) {

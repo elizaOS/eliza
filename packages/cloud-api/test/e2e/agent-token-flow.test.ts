@@ -94,7 +94,9 @@ describe("Foundation: agent token flow", () => {
 
   test("Bearer eliza_* unlocks GET /api/v1/credits/balance", async () => {
     if (!shouldRun()) return;
-    const res = await api.get("/api/v1/credits/balance", { headers: bearerHeaders() });
+    const res = await api.get("/api/v1/credits/balance", {
+      headers: bearerHeaders(),
+    });
     expect([200, 401, 403]).toContain(res.status);
     if (res.status !== 200) {
       const body = await res.text();
@@ -114,17 +116,24 @@ describe("Foundation: agent token flow", () => {
 
   test("session cookie unlocks GET /api/v1/api-keys (session-only path)", async () => {
     if (!shouldRun()) return;
-    if (!sessionCookie) throw new Error("session cookie not set — earlier step failed");
-    const res = await api.get("/api/v1/api-keys", { headers: { Cookie: sessionCookie } });
+    if (!sessionCookie)
+      throw new Error("session cookie not set — earlier step failed");
+    const res = await api.get("/api/v1/api-keys", {
+      headers: { Cookie: sessionCookie },
+    });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { keys?: unknown[]; apiKeys?: unknown[] };
+    const body = (await res.json()) as {
+      keys?: unknown[];
+      apiKeys?: unknown[];
+    };
     const list = body.keys ?? body.apiKeys ?? [];
     expect(Array.isArray(list)).toBe(true);
   });
 
   test("session cookie can create a new API key, and that key works as Bearer", async () => {
     if (!shouldRun()) return;
-    if (!sessionCookie) throw new Error("session cookie not set — earlier step failed");
+    if (!sessionCookie)
+      throw new Error("session cookie not set — earlier step failed");
 
     const createRes = await api.post(
       "/api/v1/api-keys",

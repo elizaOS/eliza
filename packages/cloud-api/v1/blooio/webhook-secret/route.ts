@@ -31,7 +31,10 @@ app.post("/", async (c) => {
     const { webhookSecret } = parsed.data;
 
     if (!webhookSecret.startsWith("whsec_")) {
-      return c.json({ error: "Invalid format. Secret should start with 'whsec_'" }, 400);
+      return c.json(
+        { error: "Invalid format. Secret should start with 'whsec_'" },
+        400,
+      );
     }
 
     // Fetch existing credentials in parallel

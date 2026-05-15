@@ -12,7 +12,10 @@ import { z } from "zod";
 import { cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
-import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
+import {
+  RateLimitPresets,
+  rateLimit,
+} from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { cryptoPaymentsService } from "@/lib/services/crypto-payments";
 import { logger, redact } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -33,8 +36,10 @@ function validateTransactionHashFormat(hash: string, network: string): boolean {
   ) {
     return ethereumTxHashRegex.test(hash);
   }
-  if (n.includes("TRC20") || n.includes("TRON")) return tronTxHashRegex.test(hash);
-  if (n.includes("SOL") || n.includes("SOLANA")) return solanaTxHashRegex.test(hash);
+  if (n.includes("TRC20") || n.includes("TRON"))
+    return tronTxHashRegex.test(hash);
+  if (n.includes("SOL") || n.includes("SOLANA"))
+    return solanaTxHashRegex.test(hash);
   return ethereumTxHashRegex.test(hash);
 }
 
@@ -101,15 +106,20 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     const { transactionHash } = validation.data;
 
     if (!validateTransactionHashFormat(transactionHash, payment.network)) {
-      logger.warn("[Crypto Payments API] Invalid transaction hash format for network", {
-        paymentId: redact.paymentId(id),
-        ip: redact.ip(ip),
-        userId: redact.userId(user.id),
-        network: payment.network,
-        txHashLength: transactionHash.length,
-      });
+      logger.warn(
+        "[Crypto Payments API] Invalid transaction hash format for network",
+        {
+          paymentId: redact.paymentId(id),
+          ip: redact.ip(ip),
+          userId: redact.userId(user.id),
+          network: payment.network,
+          txHashLength: transactionHash.length,
+        },
+      );
       return c.json(
-        { error: `Invalid transaction hash format for ${payment.network} network` },
+        {
+          error: `Invalid transaction hash format for ${payment.network} network`,
+        },
         400,
       );
     }
@@ -122,7 +132,10 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
       ip: redact.ip(ip),
     });
 
-    const result = await cryptoPaymentsService.verifyAndConfirmByTxHash(id, transactionHash);
+    const result = await cryptoPaymentsService.verifyAndConfirmByTxHash(
+      id,
+      transactionHash,
+    );
 
     if (result.success) {
       logger.info("[Crypto Payments API] Manual confirmation successful", {
@@ -145,7 +158,11 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     });
 
     return c.json(
-      { success: false, message: "Unable to confirm payment", status: payment.status },
+      {
+        success: false,
+        message: "Unable to confirm payment",
+        status: payment.status,
+      },
       400,
     );
   } catch (error) {

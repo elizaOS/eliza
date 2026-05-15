@@ -25,7 +25,8 @@ app.get("/", async (c) => {
   try {
     const user = await requireUserOrApiKeyWithOrg(c);
     const org = await organizationsService.getById(user.organization_id);
-    if (!org) return c.json({ success: false, error: "Organization not found" }, 404);
+    if (!org)
+      return c.json({ success: false, error: "Organization not found" }, 404);
 
     const existingContainers = await listContainers(user.organization_id);
     const currentCount = existingContainers.length;
@@ -47,7 +48,9 @@ app.get("/", async (c) => {
       memory: 1792,
     });
 
-    const runningContainers = existingContainers.filter((cn) => cn.status === "running");
+    const runningContainers = existingContainers.filter(
+      (cn) => cn.status === "running",
+    );
     const currentDailyBurn = runningContainers.reduce(
       (total, container) =>
         total +
@@ -61,7 +64,9 @@ app.get("/", async (c) => {
 
     const currentBalance = Number(org.credit_balance);
     const daysOfRunway =
-      currentDailyBurn > 0 ? Math.floor(currentBalance / currentDailyBurn) : Infinity;
+      currentDailyBurn > 0
+        ? Math.floor(currentBalance / currentDailyBurn)
+        : Infinity;
 
     return c.json({
       success: true,
@@ -96,7 +101,8 @@ app.get("/", async (c) => {
         },
         limits: {
           maxImageSize: CONTAINER_LIMITS.MAX_IMAGE_SIZE_BYTES,
-          maxInstancesPerContainer: CONTAINER_LIMITS.MAX_INSTANCES_PER_CONTAINER,
+          maxInstancesPerContainer:
+            CONTAINER_LIMITS.MAX_INSTANCES_PER_CONTAINER,
           maxEnvVars: CONTAINER_LIMITS.MAX_ENV_VARS,
         },
       },

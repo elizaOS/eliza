@@ -54,9 +54,7 @@
 			"@elizaos/plugin-registry": [
 				"../../plugins/plugin-registry/src/index.ts"
 			],
-			"@elizaos/plugin-registry/*": [
-				"../../plugins/plugin-registry/src/*"
-			],
+			"@elizaos/plugin-registry/*": ["../../plugins/plugin-registry/src/*"],
 			"@elizaos/plugin-wallet": ["../../plugins/plugin-wallet/src/index.ts"],
 			"@elizaos/plugin-wallet/*": ["../../plugins/plugin-wallet/src/*"],
 			"@elizaos/plugin-x402": ["../../plugins/plugin-x402/src/index.ts"],

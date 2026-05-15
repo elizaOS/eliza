@@ -20,7 +20,10 @@ export interface ElizaCharacter {
   adjectives?: string[];
   knowledge?: (string | { path: string; shared?: boolean })[];
   plugins?: string[];
-  settings?: Record<string, string | boolean | number | Record<string, unknown>>;
+  settings?: Record<
+    string,
+    string | boolean | number | Record<string, unknown>
+  >;
   secrets?: Record<string, string | boolean | number>;
   style?: {
     all?: string[];
