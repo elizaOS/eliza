@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchWithCsrf } from "../api/csrf-client";
+import { getFrontendPlatform } from "../platform/platform-guards";
 
 export interface ViewRegistryEntry {
   /** Stable unique identifier for the view, e.g. "wallet.inventory". */
@@ -57,7 +58,10 @@ interface UseAvailableViewsResult {
 const POLL_INTERVAL_MS = 30_000;
 
 async function fetchViews(): Promise<ViewRegistryEntry[]> {
-  const response = await fetchWithCsrf("/api/views");
+  const platform = getFrontendPlatform();
+  const response = await fetchWithCsrf("/api/views", {
+    headers: { "X-Eliza-Platform": platform },
+  });
   if (!response.ok) {
     throw new Error(`GET /api/views returned HTTP ${response.status}`);
   }

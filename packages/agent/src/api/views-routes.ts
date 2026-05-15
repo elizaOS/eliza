@@ -6,18 +6,23 @@
  *
  * Routes:
  *   GET  /api/views                    — list all registered views (JSON)
+ *   GET  /api/views/platform-info      — platform detection info (JSON)
  *   GET  /api/views/:id                — single view metadata (JSON)
  *   GET  /api/views/:id/bundle.js      — compiled view bundle (JS)
  *   GET  /api/views/:id/hero           — hero image (image/*)
+ *   POST /api/views/:id/navigate       — broadcast shell navigation event (JSON)
  *   POST /api/views/:id/interact       — reserved for agent-view interaction
  */
 
 import { promises as fs } from "node:fs";
 import type http from "node:http";
-import path from "node:path";
 
 import { logger, type RouteRequestMeta } from "@elizaos/core";
 import type { RouteHelpers } from "@elizaos/shared";
+import {
+  detectClientPlatform,
+  isDynamicLoadingAllowed,
+} from "./platform-detect.ts";
 import {
   findHeroOnDisk,
   generateViewHeroSvg,
@@ -31,37 +36,47 @@ export interface ViewsRouteContext
     Pick<RouteHelpers, "json" | "error"> {
   url: URL;
   developerMode?: boolean;
+  /** Broadcast an arbitrary payload to all connected WebSocket clients. */
+  broadcastWs?: (payload: object) => void;
 }
 
-/** Prefix all view routes share. */
 const PREFIX = "/api/views";
 
-/**
- * Handle all `/api/views/*` routes.
- *
- * Returns `true` when the request was handled (regardless of status code),
- * `false` when it does not match any view route and should fall through.
- */
 export async function handleViewsRoutes(
   ctx: ViewsRouteContext,
 ): Promise<boolean> {
   const { req, res, method, pathname, url, json, error } = ctx;
 
-  // Only handle /api/views paths.
   if (!pathname.startsWith(PREFIX)) return false;
+
+  // ── GET /api/views/platform-info ─────────────────────────────────────────
+  if (method === "GET" && pathname === `${PREFIX}/platform-info`) {
+    const platform = detectClientPlatform(req);
+    const dynamicLoadingAllowed = isDynamicLoadingAllowed(platform);
+    json(res, {
+      platform,
+      dynamicLoadingAllowed,
+      prebuiltOnly: !dynamicLoadingAllowed,
+    });
+    return true;
+  }
 
   // ── GET /api/views ────────────────────────────────────────────────────────
   if (method === "GET" && (pathname === PREFIX || pathname === `${PREFIX}/`)) {
     const developerMode =
-      ctx.developerMode ??
-      url.searchParams.get("developerMode") === "true";
-    const views = listViews({ developerMode });
+      ctx.developerMode ?? url.searchParams.get("developerMode") === "true";
+    const platform = detectClientPlatform(req);
+    const dynamicAllowed = isDynamicLoadingAllowed(platform);
+    const allViews = listViews({ developerMode });
+    // On restricted platforms (iOS/Android store builds), only surface views
+    // without a dynamic bundle URL (already in-process).
+    const views = dynamicAllowed
+      ? allViews
+      : allViews.filter((v) => !v.bundleUrl);
     json(res, { views });
     return true;
   }
 
-  // Parse the view id and optional sub-resource.
-  // Pattern: /api/views/<id>[/bundle.js|/hero|/interact]
   const afterPrefix = pathname.slice(PREFIX.length + 1); // strip /api/views/
   if (!afterPrefix) return false;
 
@@ -74,7 +89,6 @@ export async function handleViewsRoutes(
   const id = decodeURIComponent(rawId);
   if (!id) return false;
 
-  // ── GET /api/views/:id ────────────────────────────────────────────────────
   if (method === "GET" && subResource === "") {
     const entry = getView(id);
     if (!entry) {
@@ -87,6 +101,17 @@ export async function handleViewsRoutes(
 
   // ── GET /api/views/:id/bundle.js ──────────────────────────────────────────
   if (method === "GET" && subResource === "bundle.js") {
+    // Block dynamic bundle delivery on restricted platforms (iOS/Android store).
+    const clientPlatform = detectClientPlatform(req);
+    if (!isDynamicLoadingAllowed(clientPlatform)) {
+      error(
+        res,
+        "Dynamic view bundle loading is not permitted on this platform.",
+        403,
+      );
+      return true;
+    }
+
     const entry = getView(id);
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
@@ -169,6 +194,33 @@ export async function handleViewsRoutes(
 
     // No image found — send an SVG placeholder.
     return sendGeneratedHero(res, entry.label, entry.icon);
+  }
+
+  // ── POST /api/views/:id/navigate ─────────────────────────────────────────
+  // Broadcasts a shell:navigate:view WebSocket event to all connected clients.
+  // The frontend's startup-phase-hydrate WS handler dispatches eliza:navigate:view
+  // on window when it receives this message, which App.tsx handles.
+  if (method === "POST" && subResource === "navigate") {
+    const entry = getView(id);
+    // Allow navigating to synthetic IDs (like __view-manager__) even when not
+    // in the registry — they route to built-in shell tabs.
+    const viewPath = entry?.path ?? null;
+    const viewLabel = entry?.label ?? id;
+
+    logger.info(
+      { src: "ViewsRoutes", viewId: id, viewPath },
+      `[ViewsRoutes] Navigate to view "${id}"`,
+    );
+
+    ctx.broadcastWs?.({
+      type: "shell:navigate:view",
+      viewId: id,
+      viewPath,
+      viewLabel,
+    });
+
+    json(res, { ok: true, viewId: id, viewPath });
+    return true;
   }
 
   // ── POST /api/views/:id/interact ──────────────────────────────────────────

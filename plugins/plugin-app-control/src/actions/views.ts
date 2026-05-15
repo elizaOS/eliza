@@ -286,6 +286,20 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * Returns true when the agent is running on a platform that prohibits dynamic
+ * code loading (iOS App Store and Google Play builds).
+ *
+ * Reads ELIZA_BUILD_VARIANT and ELIZA_PLATFORM from the process environment —
+ * the same variables the coding-tools plugin uses to gate shell support.
+ */
+export function isRestrictedPlatform(): boolean {
+	const variant = (process.env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
+	if (variant === "store") return true;
+	const platform = (process.env.ELIZA_PLATFORM ?? "").trim().toLowerCase();
+	return platform === "ios" || platform === "android";
+}
+
 async function navigateToPath(path: string, label: string): Promise<string> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);

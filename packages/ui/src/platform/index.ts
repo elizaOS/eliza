@@ -57,4 +57,5 @@ export type {
   OnboardingClientLike,
   PermissionsClientLike,
 } from "./types";
+export * from "./platform-guards";
 export * from "./window-shell";

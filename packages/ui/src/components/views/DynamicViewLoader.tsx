@@ -6,6 +6,10 @@
  * from crashing the shell.
  *
  * Loaded modules are cached by bundleUrl so re-mounting does not re-fetch.
+ *
+ * On iOS App Store and Google Play builds, dynamic remote JS loading is
+ * prohibited by platform policy. The loader detects this and renders a
+ * static fallback instead of attempting to import the bundle.
  */
 
 import {
@@ -16,6 +20,7 @@ import {
   Suspense,
   useRef,
 } from "react";
+import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
 import { ErrorBoundary } from "../ui/error-boundary";
 
 // Module cache lives outside React so it persists across re-renders and
@@ -64,6 +69,20 @@ function ViewErrorState({ viewId }: { viewId: string }) {
   );
 }
 
+function ViewRestrictedState({ viewId }: { viewId: string }) {
+  return (
+    <div className="flex flex-1 min-h-0 min-w-0 flex-col items-center justify-center gap-2 p-6 text-center">
+      <p className="text-sm font-semibold text-muted-foreground">
+        View not available on this platform
+      </p>
+      <p className="text-xs text-muted">
+        Dynamic views cannot be loaded on iOS or Android store builds.
+      </p>
+      <p className="text-xs text-muted">View ID: {viewId}</p>
+    </div>
+  );
+}
+
 interface DynamicViewLoaderProps {
   /** The URL of the JS bundle to dynamically import. */
   bundleUrl: string;
@@ -89,6 +108,11 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   componentExport = "default",
   viewId,
 }: DynamicViewLoaderProps) {
+  // iOS App Store and Google Play builds cannot load remote JS at runtime.
+  if (!isDynamicViewLoadingAllowed()) {
+    return <ViewRestrictedState viewId={viewId} />;
+  }
+
   // Keep a stable lazy component reference per (bundleUrl, componentExport)
   // pair so React does not remount on every render.
   const lazyRef = useRef<LazyExoticComponent<ComponentType> | null>(null);

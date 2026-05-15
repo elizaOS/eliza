@@ -10,6 +10,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 
 import { logger, type Plugin, type ViewDeclaration } from "@elizaos/core";
+import type { AgentPlatform } from "./platform-detect.ts";
 
 /** Hero image extensions checked in order when `heroImagePath` is not set. */
 const HERO_EXTENSIONS = [".webp", ".png", ".jpg", ".jpeg", ".svg"] as const;
@@ -36,6 +37,13 @@ export interface ViewRegistryEntry extends ViewDeclaration {
   available: boolean;
   /** Unix timestamp (ms) when this entry was registered. */
   loadedAt: number;
+  /**
+   * Platform this view is available on. Populated from
+   * `ViewDeclaration.platforms` (first entry) or defaults to "web".
+   * Used by platform-aware route filtering to gate dynamic bundles on
+   * restricted platforms (iOS App Store, Google Play).
+   */
+  platform: AgentPlatform;
 }
 
 /** Module-level registry storage. Keyed by view id. */
@@ -135,10 +143,7 @@ export async function findHeroOnDisk(
 /**
  * Build a minimal SVG placeholder when no hero image is available.
  */
-export function generateViewHeroSvg(
-  label: string,
-  icon?: string,
-): string {
+export function generateViewHeroSvg(label: string, icon?: string): string {
   const displayIcon = icon ?? label.slice(0, 2).toUpperCase();
   // Use a simple gradient tile — readable at any size.
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">
@@ -176,8 +181,7 @@ export async function registerPluginViews(
   if (!views || views.length === 0) return;
 
   // Resolve plugin directory once for all views in this plugin.
-  const resolvedDir =
-    pluginDir ?? (await resolvePluginPackageDir(plugin.name));
+  const resolvedDir = pluginDir ?? (await resolvePluginPackageDir(plugin.name));
 
   for (const view of views) {
     const entry = await buildEntry(view, plugin.name, resolvedDir);
@@ -261,6 +265,12 @@ async function buildEntry(
     }
   }
 
+  // Derive a representative platform from the declaration's platforms list.
+  // When multiple platforms are declared, the first entry wins. Absent the
+  // field, treat the view as "web" (no platform restriction).
+  const platform: AgentPlatform =
+    (view.platforms?.[0] as AgentPlatform | undefined) ?? "web";
+
   return {
     ...view,
     pluginName,
@@ -269,5 +279,6 @@ async function buildEntry(
     heroImageUrl,
     available,
     loadedAt: Date.now(),
+    platform,
   };
 }
