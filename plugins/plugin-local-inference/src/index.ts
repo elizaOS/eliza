@@ -12,13 +12,6 @@ export {
 	type MediaKind,
 } from "./actions/generate-media.js";
 export {
-	detectEmbeddingPreset,
-	detectEmbeddingTier,
-	EMBEDDING_PRESETS,
-	type EmbeddingPreset,
-	type EmbeddingTier,
-} from "./config/embedding-presets.js";
-export {
 	getLocalInferenceActiveModelId,
 	getLocalInferenceActiveSnapshot,
 	getLocalInferenceChatStatus,

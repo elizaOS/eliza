@@ -35,29 +35,29 @@ import {
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
-import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import { shouldRestoreAgentsListAfterAppLaunch } from "./app-manager-agents-list-guard.ts";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import { shouldRestoreAgentsListAfterAppLaunch } from "@elizaos/agent/services/app-manager-agents-list-guard";
 import {
   importAppPlugin,
   importAppRouteModule,
-} from "./app-package-modules.ts";
+} from "@elizaos/agent/services/app-package-modules";
 import { readAppRunStore, writeAppRunStore } from "./app-run-store.ts";
 import type {
   InstallProgressLike,
   PluginManagerLike,
   RegistryPluginInfo,
   RegistrySearchResult,
-} from "./plugin-manager-types.ts";
-import { getPluginInfo, getRegistryPlugins } from "./registry-client.ts";
+} from "@elizaos/agent/services/plugin-manager-types";
+import { getPluginInfo, getRegistryPlugins } from "@elizaos/agent/services/registry-client";
 import {
   mergeAppMeta as mergeRegistryAppMeta,
   resolveAppOverride,
-} from "./registry-client-app-meta.ts";
+} from "@elizaos/agent/services/registry-client-app-meta";
 import {
   resolveAppHeroImage,
   scoreEntries,
   toSearchResults,
-} from "./registry-client-queries.ts";
+} from "@elizaos/agent/services/registry-client-queries";
 
 const LOCAL_PLUGINS_DIR = "plugins";
 
