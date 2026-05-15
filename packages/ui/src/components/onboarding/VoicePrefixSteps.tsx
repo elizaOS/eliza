@@ -365,7 +365,9 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
   React.useEffect(
     () => () => {
       recorderRef.current?.stop();
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      for (const track of streamRef.current?.getTracks() ?? []) {
+        track.stop();
+      }
     },
     [],
   );
@@ -403,7 +405,9 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
       if (recorder.state !== "inactive") recorder.stop();
       else resolve();
     });
-    streamRef.current?.getTracks().forEach((t) => t.stop());
+    for (const track of streamRef.current?.getTracks() ?? []) {
+      track.stop();
+    }
     streamRef.current = null;
     recorderRef.current = null;
 
