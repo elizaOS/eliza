@@ -183,7 +183,7 @@ function isNativeIosCloudRuntime(): boolean {
   if (!isNativeIos()) return false;
   const runtimeMode = readRuntimeMode();
   if (!runtimeMode && isTruthyBuildFlag(viteEnv().PROD)) return true;
-  return runtimeMode === "cloud" || runtimeMode === "cloud-hybrid";
+  return runtimeMode === "cloud";
 }
 
 function usesStrictIosNetworkPolicy(): boolean {

@@ -10,7 +10,7 @@
  * constructs the registry should look roughly like:
  *
  *     import { PermissionsRegistry } from "./permissions-registry";
- *     import { registerAllProbers } from "@elizaos/agent";
+ *     import { registerAllProbers } from "@elizaos/agent/services/permissions/register-probers";
  *
  *     const registry = new PermissionsRegistry();
  *     registerAllProbers(registry);
