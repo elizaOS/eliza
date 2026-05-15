@@ -450,8 +450,14 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
     voice: bundleComponent(id, primaryVoiceFileForTier(id)),
     asr: bundleComponent(id, "asr/eliza-1-asr.gguf"),
     vad: bundleComponent(id, "vad/silero-vad-v5.1.2.ggml.bin"),
-    drafter: bundleComponent(id, `dflash/drafter-${tierSlug(id)}.gguf`),
   };
+
+  if (ELIZA_1_DFLASH_TIER_ID_SET.has(id)) {
+    components.drafter = bundleComponent(
+      id,
+      `dflash/drafter-${tierSlug(id)}.gguf`,
+    );
+  }
 
   if (spec.hasEmbedding) {
     components.embedding = bundleComponent(
@@ -459,7 +465,7 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
       "embedding/eliza-1-embedding.gguf",
     );
   }
-  if (spec.hasVision) {
+  if (spec.hasVision && ELIZA_1_VISION_TIER_ID_SET.has(id)) {
     components.vision = bundleComponent(
       id,
       `vision/mmproj-${tierSlug(id)}.gguf`,
@@ -473,11 +479,13 @@ function runtimeForTier(
   id: Eliza1TierId,
   contextLength: number,
 ): CatalogModel["runtime"] {
+  const hasDflash = ELIZA_1_DFLASH_TIER_ID_SET.has(id);
+  const dflashKernels: LocalRuntimeKernel[] = hasDflash ? ["dflash"] : [];
   const requiresKernel: LocalRuntimeKernel[] =
     contextLength >= 65536
-      ? [...BASE_REQUIRED_KERNELS, "turbo3_tcq"]
-      : BASE_REQUIRED_KERNELS;
-  return {
+      ? [...BASE_REQUIRED_KERNELS, ...dflashKernels, "turbo3_tcq"]
+      : [...BASE_REQUIRED_KERNELS, ...dflashKernels];
+  const runtime: CatalogModel["runtime"] = {
     preferredBackend: "llama-server",
     optimizations: {
       parallel: 4,
@@ -491,7 +499,9 @@ function runtimeForTier(
       typeV: "tbq3_0",
       requiresFork: "buun-llama-cpp",
     },
-    dflash: {
+  };
+  if (hasDflash) {
+    runtime.dflash = {
       drafterModelId: drafterId(id),
       specType: "dflash",
       contextSize: contextLength,
@@ -500,9 +510,10 @@ function runtimeForTier(
       draftMax: contextLength >= 65536 ? 6 : 4,
       gpuLayers: "auto",
       draftGpuLayers: "auto",
-      disableThinking: true,
-    },
-  };
+      disableThinking: false,
+    };
+  }
+  return runtime;
 }
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
