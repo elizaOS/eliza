@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-wifi",
+  "name": "@elizaos/plugin-wifi",
   "version": "2.0.0-beta.2",
   "type": "module",
   "description": "Wi-Fi overlay app for the Eliza Android build — scan, inspect, and connect to nearby networks via @elizaos/capacitor-wifi.",

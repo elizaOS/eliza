@@ -300,7 +300,7 @@ async function extractUseModel(
     // Lazy-import so the helper isn't required during unit tests that don't
     // exercise this branch.
     const { getTrainingUseModelAdapter } = await import(
-      "../../../app-lifeops/test/helpers/lifeops-eval-model.ts"
+      "../../../plugin-lifeops/test/helpers/lifeops-eval-model.ts"
     );
     return getTrainingUseModelAdapter();
   }

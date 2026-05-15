@@ -1,4 +1,4 @@
-# @elizaos/app-scape
+# @elizaos/plugin-scape
 
 First-class agent integration for **xRSPS** — the TypeScript OSRS private
 server at [xrsps-typescript](https://github.com/xrsps/xrsps-typescript).

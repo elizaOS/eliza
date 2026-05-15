@@ -2502,7 +2502,7 @@ export class LifeOpsRepository {
           schema: browserBridgeSchema,
         },
         {
-          name: "@elizaos/app-lifeops",
+          name: "@elizaos/plugin-lifeops",
           schema: lifeOpsSchema,
         },
       ],

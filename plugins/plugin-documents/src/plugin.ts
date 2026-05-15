@@ -102,7 +102,7 @@ export const documentsRoutes: Route[] = DOCUMENT_ROUTES.map(
 );
 
 export const documentsPlugin: Plugin = {
-  name: "@elizaos/app-documents-routes",
+  name: "@elizaos/plugin-documents-routes",
   description: "Document management, fragment listing, and search routes",
   routes: documentsRoutes,
 };

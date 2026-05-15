@@ -5,7 +5,7 @@
  *
  * Does not include Steward wallet state — that lived in this provider while
  * `@elizaos/app-browser` owned both surfaces. After consolidation, Steward
- * exposes its own provider from `@elizaos/app-steward`; an agent that needs
+ * exposes its own provider from `@elizaos/plugin-steward-app`; an agent that needs
  * both contexts gets both providers, not a coupled one.
  */
 

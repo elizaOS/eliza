@@ -9,7 +9,7 @@
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { PhoneAppView } from "./PhoneAppView";
 
-export const PHONE_APP_NAME = "@elizaos/app-phone";
+export const PHONE_APP_NAME = "@elizaos/plugin-phone";
 
 export const phoneApp: OverlayApp = {
   name: PHONE_APP_NAME,

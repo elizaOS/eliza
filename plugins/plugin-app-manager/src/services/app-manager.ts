@@ -578,7 +578,7 @@ function isLocalPlugin(appInfo: RegistryPluginInfo): boolean {
   }
 
   // Check for directory names that match the app
-  // E.g., @elizaos/app-babylon -> app-babylon
+  // E.g., @elizaos/plugin-babylon -> app-babylon
   const bareName = appInfo.name.replace(/^@[^/]+\//, "");
   const possibleDirs = [bareName, appInfo.name.replace("/", "-")];
 

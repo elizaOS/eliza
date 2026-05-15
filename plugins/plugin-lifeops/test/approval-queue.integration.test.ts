@@ -8,7 +8,7 @@
  *   - enqueue (expired in past) → purgeExpired → markExpired noop rejected
  *   - invalid transitions throw ApprovalStateTransitionError
  *
- * Run: bunx vitest run eliza/plugins/app-lifeops/test/approval-queue.integration.test.ts
+ * Run: bunx vitest run eliza/plugins/plugin-lifeops/test/approval-queue.integration.test.ts
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";

@@ -9,7 +9,7 @@
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { WifiAppView } from "./WifiAppView";
 
-export const WIFI_APP_NAME = "@elizaos/app-wifi";
+export const WIFI_APP_NAME = "@elizaos/plugin-wifi";
 
 export const wifiApp: OverlayApp = {
   name: WIFI_APP_NAME,

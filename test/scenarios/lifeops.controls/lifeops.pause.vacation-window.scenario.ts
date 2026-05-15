@@ -8,7 +8,7 @@ import {
  * Closes the gap from the lifeops audit (`docs/audits/lifeops-2026-05-09/
  * 03-coverage-gap-matrix.md` line 442): `lifeOpsPauseAction` had no scenario
  * coverage of the planner → action → store path. The integration test
- * (`plugins/app-lifeops/test/lifeops-pause.test.ts`) exercises the handler
+ * (`plugins/plugin-lifeops/test/lifeops-pause.test.ts`) exercises the handler
  * directly; this scenario covers the natural-language → planner-routing
  * lane so we know the LIFEOPS action surfaces when a user asks for
  * vacation mode.

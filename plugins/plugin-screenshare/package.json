@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-screenshare",
+  "name": "@elizaos/plugin-screenshare",
   "version": "2.0.0-beta.2",
   "type": "module",
   "description": "Screen Share app: authenticated desktop screen streaming and remote mouse/keyboard control for local, Linux, macOS, and Windows runtimes.",
@@ -49,7 +49,7 @@
         "keyboard-control",
         "remote-support"
       ],
-      "runtimePlugin": "@elizaos/app-screenshare",
+      "runtimePlugin": "@elizaos/plugin-screenshare",
       "bridgeExport": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js",

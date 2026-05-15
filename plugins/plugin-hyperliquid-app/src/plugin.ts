@@ -106,7 +106,7 @@ const hyperliquidRoutes: Route[] = [
 ];
 
 export const hyperliquidPlugin: Plugin = {
-  name: "@elizaos/app-hyperliquid",
+  name: "@elizaos/plugin-hyperliquid-app",
   description:
     "Native Hyperliquid perpetual market status, market, position, and trading-readiness routes/actions for elizaOS",
   actions: hyperliquidActions,

@@ -14,7 +14,7 @@
  * --------------------------------------------------------------------------
  * Background-job inventory (search results for brief|followup|reminder|
  * escalation|digest|watchdog|nudge|sweep|cron|schedule under
- * `eliza/plugins/app-lifeops/src/lifeops/` and adjacent job dirs).
+ * `eliza/plugins/plugin-lifeops/src/lifeops/` and adjacent job dirs).
  *
  * Real registered task workers (runtime.registerTaskWorker callsites):
  *

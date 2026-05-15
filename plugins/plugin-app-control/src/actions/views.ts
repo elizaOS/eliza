@@ -134,11 +134,14 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			"BROADCAST_VIEW_EVENT",
 			"NOTIFY_VIEW",
 			"SIGNAL_VIEW",
+			"INTERACT_WITH_VIEW",
+			"CLICK_IN_VIEW",
+			"INVOKE_VIEW_CAPABILITY",
 		],
 		description:
-			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, show the view manager, or broadcast an event to all mounted views.",
+			"Manage and navigate UI views. List available views, open a specific view, search views by name or capability, show the view manager, broadcast events to views, or interact with a mounted view (click buttons, read state, focus inputs).",
 		descriptionCompressed:
-			"views list|show|open|search|manager|broadcast; navigate UI views by name, id, or keyword; push events to views",
+			"views list|show|open|search|manager|broadcast|interact; navigate UI views; push events; click/read/focus elements in views",
 		suppressPostActionContinuation: true,
 
 		parameters: [

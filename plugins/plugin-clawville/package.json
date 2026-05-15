@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-clawville",
+  "name": "@elizaos/plugin-clawville",
   "version": "2.0.0-beta.2",
   "type": "module",
   "description": "Eliza app integration for ClawVille, a sea-themed agent game where connected agents enter a 3D underwater world, visit specialist buildings, and learn skills via the agentskills.io open standard.",
@@ -54,7 +54,7 @@
         "multi-agent",
         "solana-wallet"
       ],
-      "runtimePlugin": "@elizaos/app-clawville",
+      "runtimePlugin": "@elizaos/plugin-clawville",
       "viewer": {
         "url": "/api/apps/clawville/viewer",
         "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"

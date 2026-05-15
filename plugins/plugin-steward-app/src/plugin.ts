@@ -361,7 +361,7 @@ const stewardRoutes: Route[] = [
 // ---------------------------------------------------------------------------
 
 export const stewardPlugin: Plugin = {
-  name: "@elizaos/app-steward",
+  name: "@elizaos/plugin-steward-app",
   description:
     "Steward wallet management, browser wallet bridge, and trade/transfer routes (extracted from agent server.ts)",
   routes: stewardRoutes,

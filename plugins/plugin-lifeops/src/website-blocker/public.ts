@@ -1,6 +1,6 @@
 /**
  * Self-control (hosts-file website blocker) — public API for
- * `@elizaos/app-lifeops/selfcontrol` subpath imports.
+ * `@elizaos/plugin-lifeops/selfcontrol` subpath imports.
  */
 
 // External consumers that still import `websiteBlockAction` get the canonical

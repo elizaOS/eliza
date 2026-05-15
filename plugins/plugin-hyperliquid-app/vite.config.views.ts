@@ -1,7 +1,7 @@
 import { createViewBundleConfig } from "../../scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({
-  packageName: "@elizaos/app-hyperliquid",
+  packageName: "@elizaos/plugin-hyperliquid-app",
   viewId: "hyperliquid",
   entry: "./src/HyperliquidAppView.tsx",
   outDir: "dist/views",

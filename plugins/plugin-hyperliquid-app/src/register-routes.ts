@@ -1,6 +1,6 @@
 import { registerAppRoutePluginLoader } from "@elizaos/core";
 
-registerAppRoutePluginLoader("@elizaos/app-hyperliquid", async () => {
+registerAppRoutePluginLoader("@elizaos/plugin-hyperliquid-app", async () => {
   const { hyperliquidPlugin } = await import("./plugin");
   return hyperliquidPlugin;
 });

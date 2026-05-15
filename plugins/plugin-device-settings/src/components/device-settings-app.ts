@@ -1,7 +1,7 @@
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { DeviceSettingsAppView } from "./DeviceSettingsAppView";
 
-export const DEVICE_SETTINGS_APP_NAME = "@elizaos/app-device-settings";
+export const DEVICE_SETTINGS_APP_NAME = "@elizaos/plugin-device-settings";
 
 export const deviceSettingsApp: OverlayApp = {
   name: DEVICE_SETTINGS_APP_NAME,

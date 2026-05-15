@@ -7,7 +7,7 @@
  * and asserts merged citations across all five platforms.
  *
  * Run:
- *   bunx vitest run eliza/plugins/app-lifeops/test/cross-channel-search.integration.test.ts
+ *   bunx vitest run eliza/plugins/plugin-lifeops/test/cross-channel-search.integration.test.ts
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";

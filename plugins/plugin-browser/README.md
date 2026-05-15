@@ -17,10 +17,10 @@ This plugin owns the generic browser-companion surface:
 - Contract types under the `BrowserBridge*` prefix.
 
 The workflow-bound `life_browser_sessions` table intentionally stays in
-`@elizaos/app-lifeops` because it carries `workflowId` plus LifeOps-only
+`@elizaos/plugin-lifeops` because it carries `workflowId` plus LifeOps-only
 scoping columns (`domain`, `subjectType`, `subjectId`, `visibilityScope`,
 `contextPolicy`). Session endpoints here therefore call into
-`@elizaos/app-lifeops/lifeops/service` to operate on that table.
+`@elizaos/plugin-lifeops/lifeops/service` to operate on that table.
 
 ## Destructive migration
 

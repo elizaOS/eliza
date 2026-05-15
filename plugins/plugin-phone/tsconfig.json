@@ -31,8 +31,8 @@
       "@elizaos/agent/*": ["../../packages/agent/src/*"],
       "@elizaos/core": ["../../packages/core/src/index.ts"],
       "@elizaos/core/*": ["../../packages/core/src/*"],
-      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
-      "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
+      "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/shared": ["../../packages/shared/src/index.ts"],
@@ -48,7 +48,7 @@
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ],
-      "lucide-react": ["../app-companion/node_modules/lucide-react"]
+      "lucide-react": ["../plugin-companion/node_modules/lucide-react"]
     }
   },
   "include": [

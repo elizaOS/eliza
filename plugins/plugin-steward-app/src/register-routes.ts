@@ -1,6 +1,6 @@
 import { registerAppRoutePluginLoader } from "@elizaos/core";
 
-registerAppRoutePluginLoader("@elizaos/app-steward", async () => {
+registerAppRoutePluginLoader("@elizaos/plugin-steward-app", async () => {
   const { stewardPlugin } = await import("./plugin");
   return stewardPlugin;
 });

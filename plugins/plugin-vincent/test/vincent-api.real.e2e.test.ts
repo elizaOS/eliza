@@ -32,7 +32,7 @@ describeIf(LIVE)("Vincent API live route coverage", () => {
     runtime = await startLiveRuntimeServer({
       tempPrefix: "eliza-vincent-api-",
       loggingLevel: "warn",
-      pluginsAllow: ["@elizaos/app-vincent"],
+      pluginsAllow: ["@elizaos/plugin-vincent"],
     });
     await waitForVincentRoute(runtime);
   }, 180_000);

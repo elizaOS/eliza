@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-messages",
+  "name": "@elizaos/plugin-messages",
   "version": "2.0.0-beta.2",
   "type": "module",
   "description": "Android Messages overlay app for ElizaOS — SMS inbox and compose surface backed by @elizaos/capacitor-messages.",

@@ -1,5 +1,5 @@
 /**
- * Shopify App — @elizaos/app-shopify
+ * Shopify App — @elizaos/plugin-shopify-ui
  *
  * Full-screen overlay app for Shopify store management: products, orders,
  * inventory, and customers. Implements the OverlayApp API so the host shell
@@ -10,7 +10,7 @@ import type { OverlayApp } from "@elizaos/ui";
 import { registerOverlayApp } from "@elizaos/ui";
 import { ShopifyAppView } from "./ShopifyAppView";
 
-export const SHOPIFY_APP_NAME = "@elizaos/app-shopify";
+export const SHOPIFY_APP_NAME = "@elizaos/plugin-shopify-ui";
 
 export const shopifyApp: OverlayApp = {
   name: SHOPIFY_APP_NAME,

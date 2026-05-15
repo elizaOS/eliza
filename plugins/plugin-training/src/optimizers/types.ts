@@ -1,7 +1,7 @@
 /**
  * Native prompt-optimization primitives.
  *
- * The optimizers under `plugins/app-training/src/optimizers/` (instruction-search,
+ * The optimizers under `plugins/plugin-training/src/optimizers/` (instruction-search,
  * prompt-evolution, bootstrap-fewshot) all operate on the same triple:
  *
  *   - `OptimizationExample`: a labeled (input -> expected output) row, mirroring

@@ -5,7 +5,7 @@
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { TrajectoryLoggerView } from "./TrajectoryLoggerView";
 
-export const TRAJECTORY_LOGGER_APP_NAME = "@elizaos/app-trajectory-logger";
+export const TRAJECTORY_LOGGER_APP_NAME = "@elizaos/plugin-trajectory-logger";
 
 export const trajectoryLoggerApp: OverlayApp = {
   name: TRAJECTORY_LOGGER_APP_NAME,

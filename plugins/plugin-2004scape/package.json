@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-2004scape",
+  "name": "@elizaos/plugin-2004scape",
   "version": "2.0.0-beta.2",
   "description": "2004scape game service — autonomous RS agent with SDK WebSocket layer",
   "type": "module",

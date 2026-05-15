@@ -1,7 +1,7 @@
 /**
  * PLAY_EMOTE action — plays an emote animation on the VRM companion avatar.
  *
- * Lives in @elizaos/app-companion so emote catalog and behavior stay with the
+ * Lives in @elizaos/plugin-companion so emote catalog and behavior stay with the
  * companion app. Session gating is applied at the plugin level
  * (`gatePluginSessionForHostedApp`).
  */

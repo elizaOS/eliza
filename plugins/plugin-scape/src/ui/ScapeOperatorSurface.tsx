@@ -396,7 +396,7 @@ function formatHp(agent: ScapeAgentSelf | null): string {
   return `${agent.hp} / ${agent.maxHp}`;
 }
 
-// Real SdkConnectionStatus values from plugins/app-scape/src/sdk/index.ts:
+// Real SdkConnectionStatus values from plugins/plugin-scape/src/sdk/index.ts:
 // idle | connecting | auth-pending | spawn-pending | connected | reconnecting
 // | closed | failed
 function connectionTone(status: string | undefined): SurfaceTone {

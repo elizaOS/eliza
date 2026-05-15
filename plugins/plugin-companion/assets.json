@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "Public assets required by @elizaos/app-companion at runtime. Consuming apps must serve these from their public/ root.",
+  "description": "Public assets required by @elizaos/plugin-companion at runtime. Consuming apps must serve these from their public/ root.",
   "publicAssets": {
     "vrm-decoders/draco/": {
       "source": "vendored",

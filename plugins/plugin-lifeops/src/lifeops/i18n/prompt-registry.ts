@@ -130,7 +130,7 @@ export function createMultilingualPromptRegistry(): MultilingualPromptRegistry {
 // --- Runtime registration -------------------------------------------------
 
 const REGISTRY_KEY = Symbol.for(
-  "@elizaos/app-lifeops:multilingual-prompt-registry",
+  "@elizaos/plugin-lifeops:multilingual-prompt-registry",
 );
 
 interface RegistryHostRuntime extends IAgentRuntime {

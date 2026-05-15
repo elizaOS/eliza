@@ -14,7 +14,7 @@ import { PhoneCompanionApp } from "./companion/components/PhoneCompanionApp";
 
 registerAppShellPage({
   id: "phone-companion",
-  pluginId: "@elizaos/app-phone",
+  pluginId: "@elizaos/plugin-phone",
   label: "Phone Companion",
   icon: "Smartphone",
   path: "/phone-companion",

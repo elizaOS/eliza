@@ -28,7 +28,7 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
-const APP_NAME = "@elizaos/app-clawville";
+const APP_NAME = "@elizaos/plugin-clawville";
 const APP_DISPLAY_NAME = "ClawVille";
 const VIEWER_ROUTE_PATH = "/api/apps/clawville/viewer";
 const VIEWER_FETCH_TIMEOUT_MS = 8_000;

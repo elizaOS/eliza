@@ -123,7 +123,7 @@ const elizaMakerRoutes: Route[] = elizaMakerRouteSpecs.map((route) => ({
 }));
 
 export const elizaMakerPlugin: Plugin = {
-  name: "@elizaos/app-elizamaker",
+  name: "@elizaos/plugin-elizamaker",
   description:
     "ElizaMaker ERC-8041 drop, mint, whitelist, and Merkle proof routes.",
   routes: elizaMakerRoutes,

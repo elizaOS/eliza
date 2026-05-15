@@ -164,7 +164,7 @@ const DEFAULT_PHONE_PATTERNS: RegExp[] = [
  * Geo coordinate redaction.
  *
  * The travel-time consumer now reads from the Location plugin
- * (`plugins/app-lifeops/src/travel-time/service.ts`), so precise lat/lon
+ * (`plugins/plugin-lifeops/src/travel-time/service.ts`), so precise lat/lon
  * values can land in trajectory text. We strip them before any export with
  * the marker `[REDACTED_GEO]`.
  *

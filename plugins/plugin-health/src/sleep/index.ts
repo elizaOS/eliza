@@ -2,7 +2,7 @@
  * Sleep / circadian / awake-probability domain entry point.
  *
  * The implementation files in this directory were moved from
- * `eliza/plugins/app-lifeops/src/lifeops/` in Wave-1 (W1-B). They are pure
+ * `eliza/plugins/plugin-lifeops/src/lifeops/` in Wave-1 (W1-B). They are pure
  * domain helpers — no LifeOpsService coupling, no SQL repository coupling
  * (the small set of repository methods sleep-episode-store needs is captured
  * by the structural `SleepEpisodeRepository` interface in

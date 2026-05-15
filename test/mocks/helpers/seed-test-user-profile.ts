@@ -1,10 +1,10 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { HABIT_STARTER_RECORDS } from "../../../plugins/app-lifeops/src/default-packs/habit-starters.ts";
+import { HABIT_STARTER_RECORDS } from "../../../plugins/plugin-lifeops/src/default-packs/habit-starters.ts";
 import {
   persistConfiguredOwnerName,
   updateLifeOpsOwnerProfile,
-} from "../../../plugins/app-lifeops/src/lifeops/owner-profile.ts";
-import { LifeOpsService } from "../../../plugins/app-lifeops/src/lifeops/service.ts";
+} from "../../../plugins/plugin-lifeops/src/lifeops/owner-profile.ts";
+import { LifeOpsService } from "../../../plugins/plugin-lifeops/src/lifeops/service.ts";
 import { ensureLifeOpsSchema } from "./seed-grants.ts";
 
 // `seed-routines.ts` was removed during the default-packs migration. The

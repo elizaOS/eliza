@@ -24,7 +24,7 @@ try {
   /* dotenv optional */
 }
 
-// ``live-runtime-server`` and ``@elizaos/app-training`` are imported lazily
+// ``live-runtime-server`` and ``@elizaos/plugin-training`` are imported lazily
 // because ``startApiServer`` transitively imports ``@elizaos/plugin-imessage``,
 // which isn't symlinked into every workspace and would otherwise break
 // collection of this file even when the LIVE gate is off.
@@ -41,7 +41,7 @@ describeIf(LIVE)("App-Training: API e2e", () => {
     const { startLiveRuntimeServer } = await import(
       "../../../packages/app-core/test/helpers/live-runtime-server"
     );
-    const { trainingPlugin } = await import("@elizaos/app-training");
+    const { trainingPlugin } = await import("@elizaos/plugin-training");
     runtime = await startLiveRuntimeServer({
       plugins: [trainingPlugin],
       tempPrefix: "eliza-training-e2e-",

@@ -8,7 +8,7 @@
 import type { Plugin } from "@elizaos/core";
 import { wifiNetworksProvider } from "./providers/networks";
 
-const WIFI_APP_NAME = "@elizaos/app-wifi";
+const WIFI_APP_NAME = "@elizaos/plugin-wifi";
 
 export const appWifiPlugin: Plugin = {
   name: WIFI_APP_NAME,

@@ -78,7 +78,7 @@ const URGENCY_STYLES: Record<UrgencyKey, UrgencyStyle> = {
 const BUCKET_ORDER: UrgencyKey[] = ["overdue", "soon", "today", "later"];
 
 // Mirror of NATIVE_APPLE_REMINDER_METADATA_KEY from
-// `eliza/plugins/app-lifeops/src/lifeops/apple-reminders.ts` — that module pulls
+// `eliza/plugins/plugin-lifeops/src/lifeops/apple-reminders.ts` — that module pulls
 // in `node:child_process` so we cannot import it from a browser bundle.
 // Keep this constant in sync with apple-reminders.ts.
 const NATIVE_APPLE_REMINDER_METADATA_KEY = "nativeAppleReminder";

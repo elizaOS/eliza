@@ -49,7 +49,7 @@ interface StartSessionResponse {
   viewerUrl: string;
 }
 
-const APP_NAME = "@elizaos/app-screenshare";
+const APP_NAME = "@elizaos/plugin-screenshare";
 
 function apiUrl(path: string): string {
   const base = client.getBaseUrl();

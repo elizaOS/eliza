@@ -6,7 +6,7 @@ import { TwoThousandFourScapeDetailExtension } from "./TwoThousandFourScapeDetai
 import { TwoThousandFourScapeOperatorSurface } from "./TwoThousandFourScapeOperatorSurface.js";
 
 registerOperatorSurface(
-  "@elizaos/app-2004scape",
+  "@elizaos/plugin-2004scape",
   TwoThousandFourScapeOperatorSurface,
 );
 registerDetailExtension(

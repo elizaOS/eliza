@@ -274,7 +274,7 @@ export function planGm(
  *
  * - **Chat surface (the user-visible night summary):** owned by
  *   `processSleepCycleCheckins` →
- *   `CheckinService.runNightCheckin` (`plugins/app-lifeops/src/lifeops/checkin/checkin-service.ts`).
+ *   `CheckinService.runNightCheckin` (`plugins/plugin-lifeops/src/lifeops/checkin/checkin-service.ts`).
  *   That path collects briefing sections (X DMs, Gmail, GitHub, calendar,
  *   contacts, promises, habit summaries, sleep recap), runs them through
  *   `useModel(TEXT_LARGE, ...)`, and persists a `CheckinReport`. Anti-spam

@@ -3,7 +3,7 @@ import { createViewBundleConfig } from "../../scripts/view-bundle-vite.config.ts
 
 export default {
   ...createViewBundleConfig({
-    packageName: "@elizaos/app-contacts",
+    packageName: "@elizaos/plugin-contacts",
     viewId: "contacts",
     entry: "./src/components/ContactsAppView.tsx",
     outDir: "dist/views",

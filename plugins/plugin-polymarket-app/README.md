@@ -1,4 +1,4 @@
-# @elizaos/app-polymarket
+# @elizaos/plugin-polymarket-app
 
 Native Polymarket app plugin for market discovery, orderbook quote reads, position reads, and trading readiness context.
 

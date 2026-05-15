@@ -9,7 +9,7 @@ import type {
   AppSessionState,
 } from "@elizaos/shared";
 
-const APP_NAME = "@elizaos/app-defense-of-the-agents";
+const APP_NAME = "@elizaos/plugin-defense-of-the-agents";
 const APP_DISPLAY_NAME = "Defense of the Agents";
 const DEFAULT_API_BASE_URL = "https://wc2-agentic-dev-3o6un.ondigitalocean.app";
 const DEFAULT_VIEWER_URL = "https://www.defenseoftheagents.com/";

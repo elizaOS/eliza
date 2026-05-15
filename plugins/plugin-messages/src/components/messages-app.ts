@@ -1,7 +1,7 @@
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { MessagesAppView } from "./MessagesAppView";
 
-export const MESSAGES_APP_NAME = "@elizaos/app-messages";
+export const MESSAGES_APP_NAME = "@elizaos/plugin-messages";
 
 export const messagesApp: OverlayApp = {
   name: MESSAGES_APP_NAME,

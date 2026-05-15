@@ -134,7 +134,7 @@ export default defineConfig({
       // vitest.config.ts (which excludes the integration suffix from the
       // unit lane) nor this integration config picked them up. Include
       // them now so the existing coverage runs.
-      "eliza/plugins/app-lifeops/test/**/*.integration.test.ts",
+      "eliza/plugins/plugin-lifeops/test/**/*.integration.test.ts",
       "eliza/plugins/*/test/**/*.integration.test.ts",
     ],
     setupFiles: ["eliza/packages/app-core/test/setup.ts"],

@@ -1,6 +1,6 @@
 import { registerAppRoutePluginLoader } from "@elizaos/core";
 
-registerAppRoutePluginLoader("@elizaos/app-polymarket", async () => {
+registerAppRoutePluginLoader("@elizaos/plugin-polymarket-app", async () => {
   const { polymarketPlugin } = await import("./plugin");
   return polymarketPlugin;
 });

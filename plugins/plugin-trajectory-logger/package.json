@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-trajectory-logger",
+  "name": "@elizaos/plugin-trajectory-logger",
   "version": "2.0.0-beta.2",
   "type": "module",
   "description": "Realtime trajectory inspector overlay app — surfaces the last completed and the in-flight trajectory with HANDLE / PLAN / ACTION / EVALUATE phase drilldowns.",

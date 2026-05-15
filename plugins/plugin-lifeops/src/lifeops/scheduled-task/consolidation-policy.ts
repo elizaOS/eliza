@@ -137,7 +137,7 @@ const stubWakeConfirmedAnchor: AnchorContribution = {
   anchorKey: "wake.confirmed",
   describe: {
     label: "Wake confirmed (stub: ownerFact.morningWindow.start)",
-    provider: "@elizaos/app-lifeops:scheduled-task:stub",
+    provider: "@elizaos/plugin-lifeops:scheduled-task:stub",
   },
   resolve(context) {
     const tz = context.ownerFacts.timezone ?? "UTC";

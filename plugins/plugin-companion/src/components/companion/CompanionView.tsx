@@ -25,7 +25,7 @@ const COMPANION_DOCK_HEIGHT = "min(42vh, 24rem)";
  * only visible when the user has explicitly clicked a session.
  *
  * The PtyConsoleSidePanel + Base + Drawer + TerminalPane components were
- * removed from @elizaos/app-task-coordinator in 355be0ed1a ("update agent" —
+ * removed from @elizaos/plugin-task-coordinator in 355be0ed1a ("update agent" —
  * drop the PtyConsole component family). Until a replacement UI lands, render
  * nothing so clicking a session pill is a no-op rather than a build break.
  */

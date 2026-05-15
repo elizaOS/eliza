@@ -4,7 +4,7 @@
  * These tests exercise the real wallet API surface against the currently
  * configured RPC providers, including the repo's cloud-managed path.
  *
- * Wallet routes live in @elizaos/app-steward and are wired into the API
+ * Wallet routes live in @elizaos/plugin-steward-app and are wired into the API
  * server for this suite, so these tests should exercise the real route
  * surface directly.
  */

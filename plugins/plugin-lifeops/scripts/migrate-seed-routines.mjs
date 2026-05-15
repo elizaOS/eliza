@@ -2,7 +2,7 @@
 /**
  * Wave-2 W2-A driver for the seed-routine migrator.
  *
- *   node plugins/app-lifeops/scripts/migrate-seed-routines.mjs --agent <id>
+ *   node plugins/plugin-lifeops/scripts/migrate-seed-routines.mjs --agent <id>
  *     [--apply] [--out <path>]
  *
  * Defaults to dry-run; emits a JSON manual-review report to stdout (or
@@ -16,7 +16,7 @@
  *   1. point it at a JSON snapshot of the legacy definitions
  *      (`--snapshot <path>`), in which case dry-run runs purely
  *      offline; or
- *   2. import the migrator from `@elizaos/app-lifeops` inside a host
+ *   2. import the migrator from `@elizaos/plugin-lifeops` inside a host
  *      process that already holds a `LifeOpsRepository` + a
  *      `ScheduledTaskRunner` and call `applySeedRoutineMigration({...})`
  *      directly.
@@ -66,7 +66,7 @@ function printUsageAndExit(code) {
 async function loadModule() {
   // The script is shipped alongside the plugin; resolve the migrator
   // through the package entry point so test/dev/prod paths converge.
-  return import("@elizaos/app-lifeops/seed-routine-migrator");
+  return import("@elizaos/plugin-lifeops/seed-routine-migrator");
 }
 
 async function runFromSnapshot(args, mod) {

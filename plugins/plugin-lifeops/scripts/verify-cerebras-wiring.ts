@@ -1,5 +1,5 @@
 // Smoke test for the Cerebras eval/training helper.
-// Run: bun run plugins/app-lifeops/scripts/verify-cerebras-wiring.ts
+// Run: bun run plugins/plugin-lifeops/scripts/verify-cerebras-wiring.ts
 //
 // Confirms that getEvalModelClient and getTrainingModelClient can both
 // reach Cerebras gpt-oss-120b and that the response shape is parsed.

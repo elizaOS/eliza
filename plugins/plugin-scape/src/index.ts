@@ -6,7 +6,7 @@ import { scapeProviders } from "./providers/index.js";
 import { ScapeGameService } from "./services/game-service.js";
 
 /**
- * `@elizaos/app-scape` plugin entry point.
+ * `@elizaos/plugin-scape` plugin entry point.
  *
  * PR 2 scope: plugin shell only. Declares the app metadata that the
  * eliza launcher reads (display name, capabilities, viewer URL) and
@@ -20,7 +20,7 @@ import { ScapeGameService } from "./services/game-service.js";
  */
 export function createAppScapePlugin(): Plugin {
   return {
-    name: "@elizaos/app-scape",
+    name: "@elizaos/plugin-scape",
     description:
       "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, a Scape Journal, and directed-prompt operator control.",
     // Service + routers + providers all register on plugin load.
@@ -36,7 +36,7 @@ export function createAppScapePlugin(): Plugin {
       launchType: "connect",
       launchUrl: resolveLaunchUrl(),
       capabilities: ["autonomous", "game", "journal", "operator-steering"],
-      runtimePlugin: "@elizaos/app-scape",
+      runtimePlugin: "@elizaos/plugin-scape",
       viewer: {
         url: "/api/apps/scape/viewer",
         sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",
@@ -84,7 +84,7 @@ function resolveLaunchUrl(): string {
 
 export const appScapePlugin = gatePluginSessionForHostedApp(
   createAppScapePlugin(),
-  "@elizaos/app-scape",
+  "@elizaos/plugin-scape",
 );
 
 export default appScapePlugin;

@@ -1,5 +1,5 @@
 /**
- * `@elizaos/app-lifeops` — ScheduledTask spine.
+ * `@elizaos/plugin-lifeops` — ScheduledTask spine.
  *
  * Public exports for cross-module consumers; this barrel re-exports the typed
  * runner surface other plugins build against.

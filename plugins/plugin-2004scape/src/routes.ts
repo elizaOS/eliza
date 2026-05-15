@@ -19,7 +19,7 @@ import type {
 // Constants
 // ---------------------------------------------------------------------------
 
-const APP_NAME = "@elizaos/app-2004scape";
+const APP_NAME = "@elizaos/plugin-2004scape";
 const APP_DISPLAY_NAME = "2004scape";
 const VIEWER_ROUTE_PATH = "/api/apps/2004scape/viewer";
 const VIEWER_PROXY_PREFIX = `${VIEWER_ROUTE_PATH}/proxy`;

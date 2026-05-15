@@ -19,7 +19,7 @@
  *
  * To run locally:
  *   DUFFEL_API_KEY=duffel_test_xxx ELIZA_DUFFEL_DIRECT=1 \
- *     bunx vitest run plugins/app-lifeops/test/travel-duffel.integration.test.ts
+ *     bunx vitest run plugins/plugin-lifeops/test/travel-duffel.integration.test.ts
  *
  * Use a Duffel TEST-mode key (prefix `duffel_test_`). Do NOT wire a live
  * API key into CI — search requests count against account quota and

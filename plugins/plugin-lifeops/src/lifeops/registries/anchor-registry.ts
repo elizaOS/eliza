@@ -43,7 +43,7 @@ function nullableTimeAnchor(args: {
     anchorKey,
     describe: {
       label,
-      provider: "@elizaos/app-lifeops:time-window",
+      provider: "@elizaos/plugin-lifeops:time-window",
     },
     resolve(context: AnchorContext) {
       const tz = context.ownerFacts.timezone ?? "UTC";
@@ -133,7 +133,7 @@ const lunchStartAnchor: AnchorContribution = {
   anchorKey: "lunch.start",
   describe: {
     label: "Owner lunch window start (default 12:00 local)",
-    provider: "@elizaos/app-lifeops:time-window",
+    provider: "@elizaos/plugin-lifeops:time-window",
   },
   resolve(context) {
     const tz = context.ownerFacts.timezone ?? "UTC";
@@ -152,7 +152,7 @@ const meetingEndedAnchor: AnchorContribution = {
   anchorKey: "meeting.ended",
   describe: {
     label: "Calendar meeting ended (event-driven; resolves via bus)",
-    provider: "@elizaos/app-lifeops:calendar",
+    provider: "@elizaos/plugin-lifeops:calendar",
   },
   resolve() {
     return null;

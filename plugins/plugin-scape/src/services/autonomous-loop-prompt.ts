@@ -1,5 +1,5 @@
 /**
- * Autonomous-loop prompt scaffolding for `@elizaos/app-scape`.
+ * Autonomous-loop prompt scaffolding for `@elizaos/plugin-scape`.
  *
  * The planner-facing action surface is now a single `SCAPE` parent
  * action (see `actions/scape.ts`). The autonomous LLM loop in

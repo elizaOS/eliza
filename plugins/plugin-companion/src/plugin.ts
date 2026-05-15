@@ -6,7 +6,7 @@ import { gatePluginSessionForHostedApp } from "@elizaos/agent/services/app-sessi
 import type { Plugin } from "@elizaos/core";
 import { emoteAction } from "./actions/emote.js";
 
-const COMPANION_APP_NAME = "@elizaos/app-companion";
+const COMPANION_APP_NAME = "@elizaos/plugin-companion";
 
 const rawCompanionPlugin: Plugin = {
   name: COMPANION_APP_NAME,

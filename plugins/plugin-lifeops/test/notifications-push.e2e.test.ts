@@ -20,7 +20,7 @@
  * To run locally:
  *   NTFY_BASE_URL=https://ntfy.sh \
  *   NTFY_DEFAULT_TOPIC=eliza-test \
- *     bunx vitest run plugins/app-lifeops/test/notifications-push.integration.test.ts
+ *     bunx vitest run plugins/plugin-lifeops/test/notifications-push.integration.test.ts
  *
  * Do NOT enable this suite in CI by injecting NTFY_BASE_URL — it publishes
  * real notifications to a public broker. If we want CI coverage for the

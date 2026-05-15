@@ -23,8 +23,8 @@
     "paths": {
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
-      "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
+      "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
+      "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/core": ["../../packages/core/dist/index.d.ts"],
@@ -39,8 +39,8 @@
         "../../plugins/plugin-computeruse/src/index.ts"
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
-      "@elizaos/app-task-coordinator": [
-        "../../plugins/app-task-coordinator/src/index.ts"
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
       "@elizaos/plugin-whatsapp": [
         "../../plugins/plugin-whatsapp/src/index.ts"
@@ -55,7 +55,7 @@
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ],
-      "lucide-react": ["../app-companion/node_modules/lucide-react"]
+      "lucide-react": ["../plugin-companion/node_modules/lucide-react"]
     }
   },
   "include": [

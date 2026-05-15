@@ -31,7 +31,7 @@
       "!reports",
       "!docs/audits",
       "!docs/**/*.json",
-      "!plugins/app-lifeops/docs/audit",
+      "!plugins/plugin-lifeops/docs/audit",
       "!packages/elizaos/templates",
       "!packages/app-core/test/contracts/lib/openzeppelin-contracts",
       "!packages/benchmarks/evm/metrics",

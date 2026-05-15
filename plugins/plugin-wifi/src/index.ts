@@ -1,5 +1,5 @@
 /**
- * Public entry for @elizaos/app-wifi — Android-only Wi-Fi overlay.
+ * Public entry for @elizaos/plugin-wifi — Android-only Wi-Fi overlay.
  *
  * Wraps `@elizaos/capacitor-wifi` and exposes a simple scan + connect UI plus
  * a single SCAN_WIFI agent action. The app is only registered on Android via

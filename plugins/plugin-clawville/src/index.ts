@@ -10,7 +10,7 @@ export * from "./ui/index.js";
 
 export function createAppClawvillePlugin(): Plugin {
   return {
-    name: "@elizaos/app-clawville",
+    name: "@elizaos/plugin-clawville",
     description:
       "ClawVille app wrapper for Eliza. Serves an embedded viewer for the sea-themed agent game and routes session commands to the ClawVille API.",
     app: {
@@ -25,7 +25,7 @@ export function createAppClawvillePlugin(): Plugin {
         "multi-agent",
         "solana-wallet",
       ],
-      runtimePlugin: "@elizaos/app-clawville",
+      runtimePlugin: "@elizaos/plugin-clawville",
       viewer: {
         url: "/api/apps/clawville/viewer",
         sandbox: "allow-scripts allow-same-origin allow-popups allow-forms",

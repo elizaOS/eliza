@@ -19,7 +19,7 @@
  * unsubscribes on `stop()`.
  *
  * Privacy filter: the privacy filter at
- * `eliza/plugins/app-training/src/core/privacy-filter.ts` exists for
+ * `eliza/plugins/plugin-training/src/core/privacy-filter.ts` exists for
  * trajectory exports — it anonymizes user-content trajectories before
  * disk/cloud writes. Messages this service writes are agent-authored
  * verification results and contain no user trajectory data, so the

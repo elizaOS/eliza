@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-defense-of-the-agents",
+  "name": "@elizaos/plugin-defense-of-the-agents",
   "version": "2.0.0-beta.2",
   "type": "module",
   "description": "Eliza app integration for Defense of the Agents.",
@@ -55,7 +55,7 @@
         "telemetry",
         "lane-control"
       ],
-      "runtimePlugin": "@elizaos/app-defense-of-the-agents",
+      "runtimePlugin": "@elizaos/plugin-defense-of-the-agents",
       "viewer": {
         "url": "/api/apps/defense-of-the-agents/viewer",
         "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms"

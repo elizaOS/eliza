@@ -89,7 +89,7 @@ describe("LifeOps plugin action gating", () => {
   it("registers MESSAGE so the LLM can see owner inbox/email work without a LifeOps UI session", async () => {
     // The previous `gatePluginSessionForHostedApp` wrapper made every action's
     // validate() return false unless an AppManager run or overlay heartbeat
-    // existed for @elizaos/app-lifeops. Neither is set up in this test, so if
+    // existed for @elizaos/plugin-lifeops. Neither is set up in this test, so if
     // the wrapper were still in place validate() would return false here.
     const ownerInbox = findAction("MESSAGE");
     const message = ownerMessage(

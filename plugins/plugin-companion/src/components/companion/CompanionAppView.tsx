@@ -22,7 +22,7 @@ const COMPANION_DOCK_HEIGHT = "min(42vh, 24rem)";
 
 /**
  * Isolated PTY panel — avoids polling ptySessions in the main overlay.
- * The host-side console UI was removed from @elizaos/app-task-coordinator
+ * The host-side console UI was removed from @elizaos/plugin-task-coordinator
  * in 355be0ed1a ("update agent" — drop the PtyConsole component family).
  * Keep the hook subscription so the dock pulls in PTY session metadata,
  * but render nothing until the replacement UI lands. The render-gate

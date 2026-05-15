@@ -1,7 +1,7 @@
 import type { Plugin } from "@elizaos/core";
 
 export const walletAppPlugin: Plugin = {
-  name: "@elizaos/app-wallet",
+  name: "@elizaos/plugin-wallet-ui",
   description: "Non-custodial wallet inventory UI",
   app: {
     displayName: "Wallet",
@@ -16,7 +16,7 @@ export const walletAppPlugin: Plugin = {
         icon: "Wallet",
         path: "/inventory",
         order: 50,
-        componentExport: "@elizaos/app-wallet#InventoryView",
+        componentExport: "@elizaos/plugin-wallet-ui#InventoryView",
       },
     ],
   },

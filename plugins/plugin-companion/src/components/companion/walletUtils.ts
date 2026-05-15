@@ -4,7 +4,7 @@ import {
   HEX_ADDRESS_RE,
   isAvaxChainName,
   isBscChainName,
-} from "@elizaos/app-wallet";
+} from "@elizaos/plugin-wallet-ui";
 import type { BscTradeTxStatusResponse } from "@elizaos/shared";
 
 export {

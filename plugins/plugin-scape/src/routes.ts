@@ -25,7 +25,7 @@ import type {
 import type { ScapeGameService } from "./services/game-service.js";
 
 /**
- * HTTP route handlers for `@elizaos/app-scape`.
+ * HTTP route handlers for `@elizaos/plugin-scape`.
  *
  * ## Routes
  *
@@ -66,7 +66,7 @@ import type { ScapeGameService } from "./services/game-service.js";
  *      postMessage bridge for auto-login later).
  */
 
-const APP_NAME = "@elizaos/app-scape";
+const APP_NAME = "@elizaos/plugin-scape";
 const APP_DISPLAY_NAME = "'scape";
 const VIEWER_ROUTE_PATH = "/api/apps/scape/viewer";
 const PROMPT_ROUTE_PATH = "/api/apps/scape/prompt";

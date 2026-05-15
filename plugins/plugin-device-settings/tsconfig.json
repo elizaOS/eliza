@@ -21,7 +21,7 @@
       "@elizaos/capacitor-system": [
         "../../packages/native-plugins/system/src/index.ts"
       ],
-      "lucide-react": ["../app-companion/node_modules/lucide-react"],
+      "lucide-react": ["../plugin-companion/node_modules/lucide-react"],
       "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": [
         "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"

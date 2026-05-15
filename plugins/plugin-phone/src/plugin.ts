@@ -14,7 +14,7 @@
 import type { Plugin } from "@elizaos/core";
 import { phoneCallLogProvider } from "./providers/call-log";
 
-const PHONE_APP_NAME = "@elizaos/app-phone";
+const PHONE_APP_NAME = "@elizaos/plugin-phone";
 
 export const appPhonePlugin: Plugin = {
   name: PHONE_APP_NAME,
@@ -47,7 +47,7 @@ export const appPhonePlugin: Plugin = {
         label: "Phone Companion",
         icon: "Smartphone",
         path: "/phone-companion",
-        componentExport: "@elizaos/app-phone#PhoneCompanionApp",
+        componentExport: "@elizaos/plugin-phone#PhoneCompanionApp",
       },
     ],
   },

@@ -21,7 +21,7 @@ import {
   resolveSettingLike,
 } from "./babylon-auth";
 
-const APP_NAME = "@elizaos/app-babylon";
+const APP_NAME = "@elizaos/plugin-babylon";
 const APP_DISPLAY_NAME = "Babylon";
 const BABYLON_AGENT_SESSION_TOKEN_KEY = "BABYLON_AGENT_SESSION_TOKEN";
 const BABYLON_AGENT_SESSION_EXPIRES_AT_KEY = "BABYLON_AGENT_SESSION_EXPIRES_AT";

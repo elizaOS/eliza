@@ -1,7 +1,7 @@
 import { createViewBundleConfig } from "../../scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({
-  packageName: "@elizaos/app-companion",
+  packageName: "@elizaos/plugin-companion",
   viewId: "companion",
   entry: "./src/components/companion/CompanionView.tsx",
   outDir: "dist/views",

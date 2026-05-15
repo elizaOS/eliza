@@ -41,7 +41,7 @@
       "react-dom": [
         "../../packages/app-core/node_modules/@types/react-dom/index.d.ts"
       ],
-      "lucide-react": ["../app-companion/node_modules/lucide-react"]
+      "lucide-react": ["../plugin-companion/node_modules/lucide-react"]
     }
   },
   "include": [

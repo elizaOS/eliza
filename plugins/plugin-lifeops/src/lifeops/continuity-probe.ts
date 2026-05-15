@@ -14,7 +14,7 @@
  * only when there is no recent `mobile_device` signal from a Capacitor
  * source (to avoid double-counting when the iOS app is already reporting).
  *
- * See `eliza/plugins/app-lifeops/docs/telemetry-event-families.md` §2.6 for
+ * See `eliza/plugins/plugin-lifeops/docs/telemetry-event-families.md` §2.6 for
  * the canonical payload shape.
  */
 

@@ -1,7 +1,7 @@
 import { createViewBundleConfig } from "../../scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({
-  packageName: "@elizaos/app-2004scape",
+  packageName: "@elizaos/plugin-2004scape",
   viewId: "2004scape",
   entry: "./src/ui/TwoThousandFourScapeOperatorSurface.tsx",
   outDir: "dist/views",

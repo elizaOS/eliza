@@ -3,7 +3,7 @@
  *
  * Include this module when you want auto-registration. For explicit control,
  * import `registerCompanionApp` from the main entry:
- *   import { registerCompanionApp } from "@elizaos/app-companion";
+ *   import { registerCompanionApp } from "@elizaos/plugin-companion";
  *   registerCompanionApp();
  */
 import { registerCompanionApp } from "./components/companion/companion-app";

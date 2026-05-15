@@ -5,7 +5,7 @@ import {
 import { BabylonDetailExtension } from "./BabylonDetailExtension.js";
 import { BabylonOperatorSurface } from "./BabylonOperatorSurface.js";
 
-registerOperatorSurface("@elizaos/app-babylon", BabylonOperatorSurface);
+registerOperatorSurface("@elizaos/plugin-babylon", BabylonOperatorSurface);
 registerDetailExtension("babylon-operator-dashboard", BabylonDetailExtension);
 
 export * from "./babylon-data.js";

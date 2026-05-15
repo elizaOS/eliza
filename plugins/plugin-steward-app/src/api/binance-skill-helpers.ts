@@ -50,7 +50,7 @@ async function resolveBuiltInFallbackAction(
   }
 
   if (!ownerBlockFallbackPromise) {
-    ownerBlockFallbackPromise = import("@elizaos/app-lifeops")
+    ownerBlockFallbackPromise = import("@elizaos/plugin-lifeops")
       .then((mod) => mod.websiteBlockAction ?? null)
       .catch(() => null);
   }

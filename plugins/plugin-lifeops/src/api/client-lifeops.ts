@@ -6,7 +6,7 @@
  *
  * Include once at startup to register the methods.
  *
- * The `@elizaos/app-lifeops/widgets` entry point imports this transitively.
+ * The `@elizaos/plugin-lifeops/widgets` entry point imports this transitively.
  */
 
 import type {

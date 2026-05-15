@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-polymarket",
+  "name": "@elizaos/plugin-polymarket-app",
   "version": "2.0.0-beta.2",
   "type": "module",
   "main": "./dist/index.js",

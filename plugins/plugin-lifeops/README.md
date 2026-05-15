@@ -1,4 +1,4 @@
-# `@elizaos/app-lifeops`
+# `@elizaos/plugin-lifeops`
 
 LifeOps is the elizaOS app that runs the user's day: routines, goals,
 calendar, email, messaging, follow-ups with people, blockers, watchers, and

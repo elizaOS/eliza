@@ -102,7 +102,7 @@ const vincentRoutes: Route[] = [
 // ---------------------------------------------------------------------------
 
 export const vincentPlugin: Plugin = {
-  name: "@elizaos/app-vincent",
+  name: "@elizaos/plugin-vincent",
   description:
     "Vincent OAuth and Hyperliquid/Polymarket trading dashboard routes",
   routes: vincentRoutes,

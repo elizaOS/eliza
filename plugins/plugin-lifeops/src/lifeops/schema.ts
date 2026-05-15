@@ -2,7 +2,7 @@
  * LifeOps Drizzle schema.
  *
  * Tables are placed in the `app_lifeops` PostgreSQL schema (matches the
- * `deriveSchemaName("@elizaos/app-lifeops")` result used by plugin-sql's
+ * `deriveSchemaName("@elizaos/plugin-lifeops")` result used by plugin-sql's
  * runtime migrator) so they no longer trip the
  * "Plugin table is using public schema" warning. The runtime migrator
  * issues `CREATE SCHEMA IF NOT EXISTS` automatically before applying

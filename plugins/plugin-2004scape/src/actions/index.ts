@@ -1,5 +1,5 @@
 /**
- * Action registry for `@elizaos/app-2004scape`.
+ * Action registry for `@elizaos/plugin-2004scape`.
  *
  * Single planner-facing parent: `RS_2004` (Pattern C). It absorbs the
  * old `RS_2004_WALK_TO` standalone plus the six router actions

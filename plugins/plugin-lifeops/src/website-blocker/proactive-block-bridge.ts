@@ -3,7 +3,7 @@
  *
  * Closes the gap called out in `/tmp/lifeops-assessment/07-on-demand-block.md`:
  * the browser extension already records per-domain focus windows
- * (`plugins/app-lifeops/src/lifeops/browser-extension-store.ts`) and the
+ * (`plugins/plugin-lifeops/src/lifeops/browser-extension-store.ts`) and the
  * website-blocker engine can sinkhole hosts on demand
  * (`startSelfControlBlock`), but nothing previously consumed the focus
  * stream to enforce a standing "don't let me use X" rule.

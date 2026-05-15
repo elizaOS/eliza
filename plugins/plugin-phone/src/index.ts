@@ -1,5 +1,5 @@
 /**
- * Public entry for @elizaos/app-phone.
+ * Public entry for @elizaos/plugin-phone.
  *
  * Two surfaces ship in this package:
  *  - The Android phone overlay (dialer, recent-calls, contacts pane) backed

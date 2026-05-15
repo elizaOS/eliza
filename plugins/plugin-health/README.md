@@ -1,7 +1,7 @@
 # `@elizaos/plugin-health`
 
 Owns the health, sleep, circadian-regularity, and screen-time domain for
-elizaOS. Extracted from `@elizaos/app-lifeops` so the same domain can serve
+elizaOS. Extracted from `@elizaos/plugin-lifeops` so the same domain can serve
 other apps without bringing the LifeOps runtime along.
 
 ## What this plugin owns
@@ -96,12 +96,12 @@ plugin by registering their own implementations of:
 - A `ScheduledTaskRunner` that accepts the default packs
 
 The contracts the plugin builds against live in `src/contracts/health.ts`
-and `plugins/app-lifeops/docs/audit/wave1-interfaces.md` §1, §3.
+and `plugins/plugin-lifeops/docs/audit/wave1-interfaces.md` §1, §3.
 
 ## Where to look next
 
 - Plugin entry: `src/index.ts`.
-- LifeOps consumption: `plugins/app-lifeops/README.md`.
-- Frozen contracts: `plugins/app-lifeops/docs/audit/wave1-interfaces.md`
+- LifeOps consumption: `plugins/plugin-lifeops/README.md`.
+- Frozen contracts: `plugins/plugin-lifeops/docs/audit/wave1-interfaces.md`
   §5 (this plugin's contributions) and §3 (the connector / channel /
   transport contracts the plugin implements).

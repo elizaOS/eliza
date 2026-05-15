@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-hyperscape",
+  "name": "@elizaos/plugin-hyperscape",
   "version": "2.0.0-beta.2",
   "description": "Hyperscape game session resolvers — spectate-and-steer agent sessions with live data from the Hyperscape API",
   "type": "module",

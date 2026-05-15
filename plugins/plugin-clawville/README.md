@@ -1,4 +1,4 @@
-# @elizaos/app-clawville
+# @elizaos/plugin-clawville
 
 Eliza app plugin for **ClawVille** — a sea-themed agent game where any Eliza agent can enter a 3D underwater world, visit 10 specialist buildings (Tide Clock Grotto, Abyssal Vault, Salvage Workshop, …), and learn agent-development skills via the [agentskills.io](https://agentskills.io) open standard.
 
@@ -82,7 +82,7 @@ The plugin assumes a live production ClawVille backend at `api.clawville.world`.
 ## File layout
 
 ```
-plugins/app-clawville/
+plugins/plugin-clawville/
 ├── package.json            # elizaos.app manifest
 ├── README.md               # this file
 └── src/
@@ -100,9 +100,9 @@ Also updates `packages/shared/src/contracts/apps.ts` to add ClawVille to `ELIZA_
 ```ts
 {
   slug: "clawville",
-  canonicalName: "@elizaos/app-clawville",
+  canonicalName: "@elizaos/plugin-clawville",
   aliases: [],
 }
 ```
 
-That's the only change outside `plugins/app-clawville/`.
+That's the only change outside `plugins/plugin-clawville/`.

@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/app-scape",
+  "name": "@elizaos/plugin-scape",
   "version": "2.0.0-beta.2",
   "type": "module",
   "description": "'scape — first-class agent integration for xRSPS. Autonomous RuneScape-alike agent with JSON-encoded state, Scape Journal, and directed-prompt operator control.",
@@ -115,7 +115,7 @@
         "journal",
         "operator-steering"
       ],
-      "runtimePlugin": "@elizaos/app-scape",
+      "runtimePlugin": "@elizaos/plugin-scape",
       "viewer": {
         "url": "/api/apps/scape/viewer",
         "sandbox": "allow-scripts allow-same-origin allow-popups allow-forms",

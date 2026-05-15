@@ -605,7 +605,7 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
 }
 
 const rawAppLifeOpsPlugin: Plugin = {
-  name: "@elizaos/app-lifeops",
+  name: "@elizaos/plugin-lifeops",
   description:
     "Owner operations: routines, goals, scheduled tasks, calendar, messaging, connectors, credentials, voice calls, browser companions, website/app blocking, and related owner-only surfaces.",
   dependencies: [GOOGLE_CONNECTOR_PLUGIN_PACKAGE],

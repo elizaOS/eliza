@@ -4,7 +4,7 @@
  * `LifeOpsRepository.createActivitySignal` so every signal is mirrored into
  * the canonical `life_telemetry_events` store with a dedupe-stable payload.
  *
- * See `eliza/plugins/app-lifeops/docs/telemetry-event-families.md` §8 for the
+ * See `eliza/plugins/plugin-lifeops/docs/telemetry-event-families.md` §8 for the
  * canonical mapping table.
  */
 

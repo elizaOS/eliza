@@ -11,7 +11,7 @@
  *   GOOGLE_SHEETS_TEST_SPREADSHEET_ID — a known Spreadsheet ID to test getSheetContent
  *
  * Run:
- *   GOOGLE_OAUTH_TEST_TOKEN=ya29.xxx bunx --bun vitest run plugins/app-lifeops/test/google-drive.integration.test.ts
+ *   GOOGLE_OAUTH_TEST_TOKEN=ya29.xxx bunx --bun vitest run plugins/plugin-lifeops/test/google-drive.integration.test.ts
  */
 import {
   GoogleApiClientFactory,

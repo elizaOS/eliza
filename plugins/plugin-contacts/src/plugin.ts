@@ -11,7 +11,7 @@
 import type { Plugin } from "@elizaos/core";
 import { contactsProvider } from "./providers/contacts";
 
-const CONTACTS_APP_NAME = "@elizaos/app-contacts";
+const CONTACTS_APP_NAME = "@elizaos/plugin-contacts";
 
 export const appContactsPlugin: Plugin = {
   name: CONTACTS_APP_NAME,

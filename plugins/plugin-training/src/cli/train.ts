@@ -135,10 +135,10 @@ export async function runTrainCli(argv: string[]): Promise<number> {
         return 1;
       }
       const helperPath =
-        "../../../app-lifeops/test/helpers/lifeops-eval-model.ts";
+        "../../../plugin-lifeops/test/helpers/lifeops-eval-model.ts";
       const { getTrainingUseModelAdapter } = (await import(
         helperPath
-      )) as typeof import("../../../app-lifeops/test/helpers/lifeops-eval-model.ts");
+      )) as typeof import("../../../plugin-lifeops/test/helpers/lifeops-eval-model.ts");
       const useModel = getTrainingUseModelAdapter();
       const adapter = {
         async complete(input: {

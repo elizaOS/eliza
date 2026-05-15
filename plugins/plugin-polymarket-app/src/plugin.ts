@@ -85,7 +85,7 @@ const polymarketRoutes: Route[] = [
 ];
 
 export const polymarketPlugin: Plugin = {
-  name: "@elizaos/app-polymarket",
+  name: "@elizaos/plugin-polymarket-app",
   description:
     "Native Polymarket market discovery, orderbook quote, position, and readiness routes/actions",
   actions: polymarketActions,

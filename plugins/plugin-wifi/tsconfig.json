@@ -44,13 +44,13 @@
       "@elizaos/plugin-discord-local/*": [
         "../../plugins/plugin-discord-local/src/*"
       ],
-      "@elizaos/app-wallet": ["../../plugins/app-wallet/src/index.ts"],
-      "@elizaos/app-wallet/*": ["../../plugins/app-wallet/src/*"],
-      "@elizaos/app-task-coordinator": [
-        "../../plugins/app-task-coordinator/src/index.ts"
+      "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
+      "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
+      "@elizaos/plugin-task-coordinator": [
+        "../../plugins/plugin-task-coordinator/src/index.ts"
       ],
-      "@elizaos/app-task-coordinator/*": [
-        "../../plugins/app-task-coordinator/src/*"
+      "@elizaos/plugin-task-coordinator/*": [
+        "../../plugins/plugin-task-coordinator/src/*"
       ],
       "@elizaos/plugin-elizacloud": [
         "../../plugins/plugin-elizacloud/src/index.node.ts"
@@ -91,7 +91,7 @@
       "@elizaos/plugin-sql": ["../../plugins/plugin-sql/src/index.node.ts"],
       "@elizaos/plugin-sql/*": ["../../plugins/plugin-sql/src/*"],
       "@elizaos/*": ["../../node_modules/@elizaos/*"],
-      "lucide-react": ["../app-companion/node_modules/lucide-react"]
+      "lucide-react": ["../plugin-companion/node_modules/lucide-react"]
     }
   },
   "include": [

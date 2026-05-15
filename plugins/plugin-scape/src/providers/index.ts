@@ -1,5 +1,5 @@
 /**
- * Provider registry for `@elizaos/app-scape`.
+ * Provider registry for `@elizaos/plugin-scape`.
  *
  * Providers are the "read" side of the game-agent contract — they
  * format pieces of the current perception snapshot into compact JSON

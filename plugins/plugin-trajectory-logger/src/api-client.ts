@@ -1,4 +1,4 @@
-// Wire shapes for /api/trajectories[?/...] (served by @elizaos/app-training).
+// Wire shapes for /api/trajectories[?/...] (served by @elizaos/plugin-training).
 // Only the fields the widget reads are typed — extra fields the route returns
 // are tolerated, just untyped.
 

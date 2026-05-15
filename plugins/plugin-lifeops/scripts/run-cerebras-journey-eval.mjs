@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // Cerebras-graded journey eval runner.
 //
-// Loads `eliza/.env` (and `plugins/app-lifeops/.env` if present), then invokes
+// Loads `eliza/.env` (and `plugins/plugin-lifeops/.env` if present), then invokes
 // vitest on the live e2e suite. The suite skips itself if CEREBRAS_API_KEY is
 // absent.
 //
 // Usage:
-//   bun run plugins/app-lifeops/scripts/run-cerebras-journey-eval.mjs
+//   bun run plugins/plugin-lifeops/scripts/run-cerebras-journey-eval.mjs
 //
 // The vitest run produces:
-//   plugins/app-lifeops/docs/audit/cerebras-journey-eval-results.json
+//   plugins/plugin-lifeops/docs/audit/cerebras-journey-eval-results.json
 
 import { spawn } from "node:child_process";
 import fs from "node:fs";
@@ -36,13 +36,13 @@ for (const candidate of envCandidates) {
 if (!process.env.CEREBRAS_API_KEY) {
   console.error(
     "[run-cerebras-journey-eval] CEREBRAS_API_KEY is not set after dotenv load. " +
-      "Set it in eliza/.env or plugins/app-lifeops/.env before running.",
+      "Set it in eliza/.env or plugins/plugin-lifeops/.env before running.",
   );
   process.exit(1);
 }
 
 const testFile =
-  "eliza/plugins/app-lifeops/test/journey-cerebras-eval.live.e2e.test.ts";
+  "eliza/plugins/plugin-lifeops/test/journey-cerebras-eval.live.e2e.test.ts";
 const vitestConfig = "eliza/test/vitest/live-e2e.config.ts";
 
 console.info(

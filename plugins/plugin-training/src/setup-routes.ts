@@ -317,7 +317,7 @@ export const trainingRoutes: Route[] = [
 ];
 
 export const trainingPlugin: Plugin = {
-  name: "@elizaos/app-training-routes",
+  name: "@elizaos/plugin-training-routes",
   description:
     "Training jobs, datasets, models, blueprints, and trajectory routes",
   routes: trainingRoutes,

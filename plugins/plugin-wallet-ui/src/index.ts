@@ -1,4 +1,4 @@
-// Re-exports for hosts that import directly from "@elizaos/app-wallet".
+// Re-exports for hosts that import directly from "@elizaos/plugin-wallet-ui".
 
 export { useWalletState } from "@elizaos/ui";
 export { InventoryView } from "./InventoryView.tsx";

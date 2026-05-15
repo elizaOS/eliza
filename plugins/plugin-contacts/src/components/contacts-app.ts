@@ -1,5 +1,5 @@
 /**
- * Contacts App — @elizaos/app-contacts
+ * Contacts App — @elizaos/plugin-contacts
  *
  * Full-screen overlay app that wraps the @elizaos/capacitor-contacts native
  * plugin. Android-only; the platform gate in `../register.ts` decides whether
@@ -9,7 +9,7 @@
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
 import { ContactsAppView } from "./ContactsAppView";
 
-export const CONTACTS_APP_NAME = "@elizaos/app-contacts";
+export const CONTACTS_APP_NAME = "@elizaos/plugin-contacts";
 
 export const contactsApp: OverlayApp = {
   name: CONTACTS_APP_NAME,

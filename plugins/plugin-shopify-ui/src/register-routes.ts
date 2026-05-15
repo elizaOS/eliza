@@ -1,6 +1,6 @@
 import { registerAppRoutePluginLoader } from "@elizaos/core";
 
-registerAppRoutePluginLoader("@elizaos/app-shopify", async () => {
+registerAppRoutePluginLoader("@elizaos/plugin-shopify-ui", async () => {
   const { shopifyPlugin } = await import("./plugin");
   return shopifyPlugin;
 });

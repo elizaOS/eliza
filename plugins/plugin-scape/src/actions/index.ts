@@ -1,5 +1,5 @@
 /**
- * Action registry for `@elizaos/app-scape`.
+ * Action registry for `@elizaos/plugin-scape`.
  *
  * Single planner-facing parent: SCAPE (Pattern C). Old leaves
  * (SCAPE_WALK_TO, ATTACK_NPC, CHAT_PUBLIC, JOURNAL_OP, INVENTORY_OP,
