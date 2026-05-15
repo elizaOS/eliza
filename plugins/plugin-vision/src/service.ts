@@ -1011,6 +1011,26 @@ export class VisionService extends Service {
     return description;
   }
 
+  /**
+   * Pull the latest desktop scene context from plugin-computeruse's
+   * VisionContextProvider when registered. Returns `null` when no provider is
+   * available (or when the lookup fails) so the VLM still receives a valid
+   * prompt — the context block is purely additive.
+   */
+  private async collectVisionContext(): Promise<VisionContextSnapshot | null> {
+    const candidate = this.runtime.getService(VISION_CONTEXT_SERVICE_TYPE);
+    if (!isVisionContextProvider(candidate)) return null;
+    try {
+      return await candidate.getContext();
+    } catch (error) {
+      logger.warn(
+        "[VisionService] vision-context provider getContext() failed:",
+        error,
+      );
+      return null;
+    }
+  }
+
   private async describeSceneWithVLM(imageUrl: string): Promise<string> {
     return withStandaloneTrajectory(
       this.runtime,
@@ -1031,10 +1051,12 @@ export class VisionService extends Service {
       // otherwise the runtime rotates to whichever cloud/remote provider
       // has registered IMAGE_DESCRIPTION. plugin-vision no longer ships its
       // own VLM.
+      const sceneContext = await this.collectVisionContext();
+      const prompt = buildSceneDescriptionPrompt(sceneContext);
       try {
         const result = await this.runtime.useModel(
           ModelType.IMAGE_DESCRIPTION,
-          { imageUrl, prompt: SCENE_DESCRIPTION_PROMPT },
+          { imageUrl, prompt },
         );
         const description = this.extractDescriptionFromUseModel(result);
         if (description) {
