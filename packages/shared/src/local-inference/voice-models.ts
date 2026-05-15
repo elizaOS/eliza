@@ -219,9 +219,9 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   {
     id: "speaker-encoder",
     version: "0.1.0",
-    publishedToHfAt: "2026-05-14T00:00:00Z",
+    publishedToHfAt: "2026-05-15T07:15:30Z",
     hfRepo: "elizaos/eliza-1-voice-speaker",
-    hfRevision: "f6a2c964e0f36091e995e69b506bd36e1e645289",
+    hfRevision: "3d882d6dfb00c9eed49f89bb7cc2e45ac3497159",
     ggufAssets: [
       {
         filename: "wespeaker-resnet34-lm.onnx",
@@ -238,9 +238,9 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   {
     id: "diarizer",
     version: "0.1.0",
-    publishedToHfAt: "2026-05-14T00:00:00Z",
+    publishedToHfAt: "2026-05-15T07:15:30Z",
     hfRepo: "elizaos/eliza-1-voice-diarizer",
-    hfRevision: "d3c4974d391d45ac9261221a96f2eeb4750aa2cf",
+    hfRevision: "7a8d059b770aeab08e6eabcf9dcbfc051e5bafef",
     ggufAssets: [
       {
         filename: "pyannote-segmentation-3.0-int8.onnx",
@@ -401,9 +401,9 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   {
     id: "vad",
     version: "0.1.0",
-    publishedToHfAt: "2026-05-14T00:00:00Z",
+    publishedToHfAt: "2026-05-15T07:15:30Z",
     hfRepo: "elizaos/eliza-1-voice-vad",
-    hfRevision: "9d8f7eefc72fda18b9d8ae6e8d4cc413a939a7a7",
+    hfRevision: "7fc2359bbc0ee1e0dd7de2acb126f6872a4fb4c2",
     ggufAssets: [
       {
         filename: "silero-vad-int8.onnx",
@@ -427,9 +427,9 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   {
     id: "wakeword",
     version: "0.1.0",
-    publishedToHfAt: "2026-05-14T00:00:00Z",
+    publishedToHfAt: "2026-05-15T07:15:30Z",
     hfRepo: "elizaos/eliza-1-voice-wakeword",
-    hfRevision: "85bef810f8bb0ca57e8625ec36abe1c617fd3e39",
+    hfRevision: "bcd866bc070a649dfd2dfbf7aadbd01b3cc68c4b",
     ggufAssets: [
       {
         filename: "melspectrogram.onnx",
@@ -460,9 +460,9 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   {
     id: "embedding",
     version: "0.1.0",
-    publishedToHfAt: "2026-05-14T00:00:00Z",
+    publishedToHfAt: "2026-05-15T07:15:30Z",
     hfRepo: "elizaos/eliza-1-voice-embedding",
-    hfRevision: "acddce031d74deebe1027382feb143df7dd1500e",
+    hfRevision: "bf6afa907c83ec98e487f018cfb4e29ec3cb7c03",
     ggufAssets: [
       {
         filename: "eliza-1-embedding-q8_0.gguf",

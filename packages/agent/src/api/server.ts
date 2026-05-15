@@ -2050,7 +2050,9 @@ async function handleRequest(
         readJsonBody,
         readBody,
         discoverSkills,
-        saveElizaConfig,
+        saveElizaConfig: coerce<
+          Parameters<typeof handleSkillsRoutes>[0]["saveElizaConfig"]
+        >(saveElizaConfig),
       })
     ) {
       return;
@@ -2183,6 +2185,7 @@ async function handleRequest(
           fetchEvmBalances,
           fetchSolanaBalances,
           fetchSolanaNativeBalanceViaRpc,
+          getWalletAddresses,
           validatePrivateKey,
           importWallet,
           generateWalletForChain,
