@@ -1029,14 +1029,40 @@ def validate_manifest(
             errors.append("files.vad: required for defaultEligible local voice bundles")
 
     # ── §3/§6 contract: optional component consistency + gates ──────────
-    optional_component_slots = ("asr", "embedding", "vision", "vad", "wakeword")
+    optional_component_slots = (
+        "asr",
+        "embedding",
+        "vision",
+        "vad",
+        "wakeword",
+        "drafter",
+    )
     for slot in optional_component_slots:
-        component_files = files.get(slot) or []
+        component_files = files.get("dflash") or [] if slot == "drafter" else files.get(slot) or []
         component_lineage = lineage.get(slot)
         if component_files and not component_lineage:
             errors.append(f"lineage.{slot}: required when files.{slot} is non-empty")
         if component_lineage and not component_files:
             errors.append(f"files.{slot}: required when lineage.{slot} is present")
+
+    dflash_files = files.get("dflash") or []
+    if tier in ELIZA_1_DFLASH_TIERS:
+        if not dflash_files:
+            errors.append(f"files.dflash: required for DFlash-enabled tier {tier}")
+    else:
+        if dflash_files:
+            errors.append(f"files.dflash: unsupported for DFlash-disabled tier {tier}")
+        if "dflash" in declared_set:
+            errors.append(
+                f"kernels.required: dflash is unsupported for DFlash-disabled tier {tier}"
+            )
+
+    vision_files = files.get("vision") or []
+    if tier in ELIZA_1_VISION_TIERS:
+        if not vision_files:
+            errors.append(f"files.vision: required for vision-enabled tier {tier}")
+    elif vision_files:
+        errors.append(f"files.vision: unsupported for text/voice-only tier {tier}")
 
     if files.get("asr"):
         gate = evals.get("asrWer")
@@ -1076,10 +1102,13 @@ def validate_manifest(
     # a default-eligible bundle must prove speculative decoding was measured
     # and passed. Keep this in lockstep with the TS runtime validator.
     dflash_gate = evals.get("dflash")
+    dflash_enabled = tier in ELIZA_1_DFLASH_TIERS
     if not _is_object(dflash_gate):
-        if manifest["defaultEligible"]:
+        if manifest["defaultEligible"] and dflash_enabled:
             errors.append("evals.dflash: required when defaultEligible=true")
     else:
+        if not dflash_enabled:
+            errors.append(f"evals.dflash: unsupported for DFlash-disabled tier {tier}")
         if dflash_gate["passed"] and (
             dflash_gate["acceptanceRate"] is None
             or dflash_gate["speedup"] is None
@@ -1087,7 +1116,7 @@ def validate_manifest(
             errors.append(
                 "evals.dflash: passed=true but acceptanceRate/speedup is null"
             )
-        if manifest["defaultEligible"]:
+        if manifest["defaultEligible"] and dflash_enabled:
             if not dflash_gate["passed"]:
                 readiness_errors.append(
                     "evals.dflash.passed: false for defaultEligible manifest"
@@ -1107,7 +1136,9 @@ def validate_manifest(
     if _is_object(provenance) and provenance.get("releaseState") == "base-v1":
         sources = provenance.get("sourceModels")
         if _is_object(sources):
-            required_slots = ["text", "voice", "drafter"]
+            required_slots = ["text", "voice"]
+            if tier in ELIZA_1_DFLASH_TIERS:
+                required_slots.append("drafter")
             for slot in ("asr", "vad", "embedding", "vision"):
                 if files.get(slot):
                     required_slots.append(slot)
