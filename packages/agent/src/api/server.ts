@@ -212,7 +212,8 @@ import { tryHandleMusicPlayerStatusFallback } from "./music-player-route-fallbac
 import { handleOnboardingRoutes } from "./onboarding-routes.ts";
 import { handlePermissionRoutes } from "./permissions-routes.ts";
 import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
-import { handlePluginRoutes } from "./plugin-routes.ts";
+// === Phase 4F: plugin routes moved to @elizaos/plugin-registry ===
+import { handlePluginRoutes } from "@elizaos/plugin-registry";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";

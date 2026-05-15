@@ -398,6 +398,38 @@ function envWithBinaryLibraryPath(binaryPath: string): NodeJS.ProcessEnv {
 	return env;
 }
 
+/**
+ * Honor `model.runtime.optimizations.unsupportedKernels` at spawn time.
+ *
+ * When a text tier declares OpenVINO as unsupported, we keep the GGML
+ * OpenVINO backend out of layer placement for *this* spawn. Two signals
+ * are set on the child env:
+ *
+ *   - `GGML_OPENVINO_DISABLE=1` — checked by the elizaOS/llama.cpp fork's
+ *     `ggml_backend_openvino_get_device_count()` to return 0 (i.e. don't
+ *     register the backend at all). This is the strict guarantee.
+ *   - `GGML_OPENVINO_DEVICE=NONE` — falls back through the upstream
+ *     "device not available, fallback to CPU" path on any build that
+ *     doesn't carry the disable patch yet. The OpenVINO CPU device's
+ *     `supports_op` does not accept the dynamic autoregressive ops our
+ *     text path emits, so it loses backend scoring to the native CPU /
+ *     CUDA / Metal / Vulkan backend in practice.
+ *
+ * The setting is per-spawn: the ASR Whisper worker runs in a separate
+ * process tree and is unaffected.
+ */
+export function applyUnsupportedKernelEnv(
+	env: NodeJS.ProcessEnv,
+	optimizations: LocalRuntimeOptimizations | null | undefined,
+): NodeJS.ProcessEnv {
+	const unsupported = optimizations?.unsupportedKernels ?? [];
+	if (unsupported.includes("openvino")) {
+		env.GGML_OPENVINO_DISABLE = "1";
+		env.GGML_OPENVINO_DEVICE = "NONE";
+	}
+	return env;
+}
+
 function allowZeroDraftForDiagnostics(): boolean {
 	return readBool("ELIZA_DFLASH_ALLOW_ZERO_DRAFT");
 }

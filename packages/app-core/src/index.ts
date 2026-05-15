@@ -44,7 +44,8 @@ export * from "./services/account-pool";
 export * from "./services/auth-store";
 export * from "./services/github-credentials";
 export * from "./services/inference-abort";
-export * from "./services/plugin-installer";
+// === Phase 4F: plugin-installer moved to @elizaos/plugin-registry ===
+// (this used to be `export * from "./services/plugin-installer"`)
 export * from "./services/steward-credentials";
 export * from "./services/steward-sidecar/helpers";
 // Explicit .ts extension on steward-sidecar.ts disambiguates from the
