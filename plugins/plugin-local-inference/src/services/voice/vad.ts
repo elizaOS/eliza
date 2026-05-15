@@ -432,10 +432,7 @@ export interface VadLike {
 	reset(): void;
 }
 
-export type VadProviderId =
-	| "qwen-toolkit"
-	| "silero-cpp"
-	| "silero-ggml";
+export type VadProviderId = "qwen-toolkit" | "silero-cpp" | "silero-ggml";
 export type VadProviderPreference = "auto" | VadProviderId;
 
 export interface QwenToolkitVadAdapter {

@@ -83,17 +83,24 @@ interface BunFfiModule {
 	read: { u64(buf: unknown, offset?: number): bigint };
 }
 
-function loadBunFfi(): BunFfiModule {
-	const req: ((id: string) => unknown) | undefined = (
-		globalThis as { Bun?: { __require?: (id: string) => unknown } }
-	).Bun?.__require;
-	if (typeof req !== "function") {
+async function loadBunFfi(): Promise<BunFfiModule> {
+	const isBun = typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
+	if (!isBun) {
 		throw new VadGgmlUnavailableError(
 			"ffi-unavailable",
 			"[vad-ggml] bun:ffi is unavailable. The ggml-backed Silero VAD binding requires Bun (Electrobun / Capacitor bridge); plain Node cannot dlopen libsilero_vad.",
 		);
 	}
-	return req("bun:ffi") as BunFfiModule;
+	// `import("bun:ffi")` is a Bun-only module specifier — wrapping the
+	// dynamic import in a Function constructor keeps tsc/Node from
+	// resolving it at build time. Under Bun the runtime resolves the
+	// specifier natively.
+	const dynamicImport = new Function(
+		"specifier",
+		"return import(specifier);",
+	) as (specifier: string) => Promise<unknown>;
+	const mod = (await dynamicImport("bun:ffi")) as BunFfiModule;
+	return mod;
 }
 
 /* ---- Library resolution ----------------------------------------- */

@@ -1,43 +1,31 @@
 /**
- * Speaker-embedding encoder — EXPERIMENTAL ggml-backed binding.
+ * Speaker-embedding encoder — ggml-backed binding (J1.b).
  *
- * This is the Phase 1 TS surface that will replace `encoder.ts` (the
- * onnxruntime-node WeSpeaker ResNet34-LM implementation) once the
- * native `voice-classifier-cpp` library
- * (`packages/native-plugins/voice-classifier-cpp/`) grows real
- * implementations behind its frozen C ABI. The recommended replacement
- * upstream is `speechbrain/spkrec-ecapa-voxceleb` (Apache-2.0,
- * ECAPA-TDNN, native 192-dim embedding — matches the C-side
- * `VOICE_SPEAKER_EMBEDDING_DIM`).
+ * Replaces `encoder.ts` (onnxruntime-node WeSpeaker ResNet34-LM) with
+ * a `bun:ffi` binding to the `voice-classifier-cpp` SHARED library at
+ * `packages/native-plugins/voice-classifier-cpp/`.
  *
- * Status today (Phase 1):
- *   - The native library exists with a frozen C ABI declared in
- *     `include/voice_classifier/voice_classifier.h`.
- *   - The model entry points (`voice_speaker_open`,
- *     `voice_speaker_embed`, `voice_speaker_close`) currently return
- *     `-ENOSYS` from the stub.
- *   - The cosine-distance helper (`voice_speaker_distance`) is real
- *     and exposed below as `voiceSpeakerDistance` (Float32 fallback —
- *     Phase 2 will dispatch into the native helper for parity).
+ * Status today (J1.b infrastructure landed):
+ *   - The native library now ships as `libvoice_classifier.{so,dylib,dll}`.
+ *   - `voice_speaker_open` is a REAL implementation: parses + validates
+ *     the GGUF metadata block, returns a real handle.
+ *   - `voice_speaker_embed` returns `-ENOSYS` until the ResNet34 +
+ *     statistics-pool graph is ported to ggml (J1.b follow-up).
  *
- * Output contract:
- *   - 192-dim L2-normalized speaker embedding suitable for cosine-
- *     distance matching.
- *   - The embedding dim is fixed at 192 (matches the ECAPA-TDNN
- *     convention and the C-side header). The legacy WeSpeaker
- *     ResNet34-LM encoder used today produces 256-dim embeddings;
- *     callers migrating must update their `embeddingDim` checks.
+ * Output dim is pinned at 192 (matches the ECAPA-TDNN convention and
+ * the C-side `VOICE_SPEAKER_EMBEDDING_DIM`). The legacy WeSpeaker
+ * ResNet34-LM produces 256-dim embeddings; conversion scripts must
+ * reproject to 192 before packing the GGUF (the C-side `_open` rejects
+ * mismatched dims loudly per AGENTS.md §3 "no silent fallback").
  *
- * Audio convention:
- *   - Mono Float32 PCM, samples in [-1, 1], sample rate 16 kHz.
- *
- * No silent fallback: when the native library is missing or the model
- * entry points are still stubbed, this class throws
+ * No silent fallback: every failure mode throws
  * `SpeakerEncoderGgmlUnavailableError`. There is no synthetic
  * embedding fallback — synthetic embeddings would silently match every
- * voice to whatever cluster they happened to be near in the synthetic
- * feature space.
+ * voice to whatever cluster they happened to be near.
  */
+
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 /** Output embedding dim. Matches `VOICE_SPEAKER_EMBEDDING_DIM`. */
 export const SPEAKER_GGML_EMBEDDING_DIM = 192;
@@ -45,17 +33,17 @@ export const SPEAKER_GGML_EMBEDDING_DIM = 192;
 /** Required input sample rate. */
 export const SPEAKER_GGML_SAMPLE_RATE = 16_000;
 
-/** Minimum useful audio window (~1.0 s). Shorter windows yield
- *  embeddings dominated by silence-padding bias. */
+/** Minimum useful audio window (~1.0 s). */
 export const SPEAKER_GGML_MIN_SAMPLES = 16_000;
 
-/** Raised when the encoder cannot be constructed (missing native lib,
- *  bad GGUF) or the native model entry points are still stubbed. */
 export class SpeakerEncoderGgmlUnavailableError extends Error {
 	readonly code:
 		| "native-missing"
-		| "native-stub"
+		| "library-missing"
+		| "model-missing"
 		| "model-load-failed"
+		| "model-shape-mismatch"
+		| "forward-not-implemented"
 		| "invalid-input";
 	constructor(
 		code: SpeakerEncoderGgmlUnavailableError["code"],
@@ -67,41 +55,115 @@ export class SpeakerEncoderGgmlUnavailableError extends Error {
 	}
 }
 
-/** The bare contract every speaker encoder honors. Mirrors
- *  `SpeakerEncoder` in the legacy `encoder.ts` so callers can migrate
- *  without changing their interaction shape. */
 export interface SpeakerEncoderGgml {
 	readonly ggufPath: string;
 	readonly embeddingDim: number;
 	readonly sampleRate: number;
-	/** Encode a PCM window to a 192-dim L2-normalized embedding.
-	 *  Throws `SpeakerEncoderGgmlUnavailableError`. */
 	encode(pcm: Float32Array): Promise<Float32Array>;
-	/** Release the underlying native session. Idempotent. */
 	dispose(): Promise<void>;
 }
 
-/** Construction options. */
 export interface SpeakerEncoderGgmlOptions {
-	/** Absolute path to the GGUF file produced by
-	 *  `scripts/voice_speaker_to_gguf.py`. */
 	ggufPath: string;
+	libraryPath?: string;
+	repoRoot?: string;
+}
+
+/* -------- bun:ffi minimal surface -------- */
+
+interface BunFfiSymbols {
+	voice_speaker_open: (gguf_path: unknown, out: unknown) => number;
+	voice_speaker_embed: (
+		handle: bigint,
+		pcm: unknown,
+		n_samples: bigint | number,
+		out_embedding: unknown,
+	) => number;
+	voice_speaker_close: (handle: bigint) => number;
+}
+
+interface BunFfiLib {
+	symbols: BunFfiSymbols;
+	close(): void;
+}
+
+interface BunFfiModule {
+	dlopen(path: string, defs: Record<string, unknown>): BunFfiLib;
+	FFIType: Record<string, number>;
+	ptr(value: ArrayBufferView): unknown;
+}
+
+function loadBunFfi(): BunFfiModule {
+	const req: ((id: string) => unknown) | undefined = (
+		globalThis as { Bun?: { __require?: (id: string) => unknown } }
+	).Bun?.__require;
+	if (typeof req !== "function") {
+		throw new SpeakerEncoderGgmlUnavailableError(
+			"native-missing",
+			"[speaker-ggml] bun:ffi is unavailable. The ggml-backed binding requires Bun.",
+		);
+	}
+	return req("bun:ffi") as BunFfiModule;
+}
+
+function resolveVoiceClassifierLibrary(opts: {
+	libraryPath?: string;
+	repoRoot?: string;
+}): string | null {
+	const explicit =
+		opts.libraryPath ?? process.env.ELIZA_VOICE_CLASSIFIER_LIB;
+	if (explicit) return existsSync(explicit) ? path.resolve(explicit) : null;
+	const repoRoot = opts.repoRoot ?? process.cwd();
+	const buildDir = path.join(
+		repoRoot,
+		"packages",
+		"native-plugins",
+		"voice-classifier-cpp",
+		"build",
+	);
+	for (const name of [
+		"libvoice_classifier.so",
+		"libvoice_classifier.dylib",
+		"voice_classifier.dll",
+	]) {
+		const candidate = path.join(buildDir, name);
+		if (existsSync(candidate)) return candidate;
+	}
+	return null;
+}
+
+function dlopenLibrary(libraryPath: string): {
+	lib: BunFfiLib;
+	ffi: BunFfiModule;
+} {
+	const ffi = loadBunFfi();
+	const T = ffi.FFIType;
+	const lib = ffi.dlopen(libraryPath, {
+		voice_speaker_open: { args: [T.cstring, T.ptr], returns: T.i32 },
+		voice_speaker_embed: {
+			args: [T.u64, T.ptr, T.usize, T.ptr],
+			returns: T.i32,
+		},
+		voice_speaker_close: { args: [T.u64], returns: T.i32 },
+	});
+	return { lib, ffi };
 }
 
 /**
- * EXPERIMENTAL ggml-backed speaker encoder. Wraps the
- * `voice_speaker_*` entry points in `voice-classifier-cpp`.
- *
- * Today this class declares the stable TS surface; Phase 2 wires it
- * into the production speaker-attribution pipeline once the native
- * model TUs land and parity gates pass. Until then constructing it
- * succeeds (so callers can probe), but `encode()` throws
- * `SpeakerEncoderGgmlUnavailableError` with `code: "native-stub"`.
+ * ggml-backed speaker encoder. Wraps `voice_speaker_*` entry points
+ * in `voice-classifier-cpp`. Today the `open` path is real (parses +
+ * validates the GGUF); the `embed` forward pass returns -ENOSYS until
+ * the J1.b-forward ResNet34 graph ports.
  */
 export class SpeakerEncoderGgmlImpl implements SpeakerEncoderGgml {
 	readonly ggufPath: string;
 	readonly embeddingDim = SPEAKER_GGML_EMBEDDING_DIM;
 	readonly sampleRate = SPEAKER_GGML_SAMPLE_RATE;
+	private readonly libraryPath: string | undefined;
+	private readonly repoRoot: string | undefined;
+	private handle: bigint | null = null;
+	private ffi: BunFfiModule | null = null;
+	private lib: BunFfiLib | null = null;
 	private disposed = false;
 
 	constructor(options: SpeakerEncoderGgmlOptions) {
@@ -112,15 +174,70 @@ export class SpeakerEncoderGgmlImpl implements SpeakerEncoderGgml {
 			);
 		}
 		this.ggufPath = options.ggufPath;
+		this.libraryPath = options.libraryPath;
+		this.repoRoot = options.repoRoot;
 	}
 
-	async encode(pcm: Float32Array): Promise<Float32Array> {
+	private ensureOpen(): void {
 		if (this.disposed) {
 			throw new SpeakerEncoderGgmlUnavailableError(
 				"model-load-failed",
 				"[speaker-ggml] encoder has been disposed",
 			);
 		}
+		if (this.handle !== null) return;
+
+		if (!existsSync(this.ggufPath)) {
+			throw new SpeakerEncoderGgmlUnavailableError(
+				"model-missing",
+				`[speaker-ggml] GGUF not found at ${this.ggufPath}`,
+			);
+		}
+		const libraryPath = resolveVoiceClassifierLibrary({
+			...(this.libraryPath ? { libraryPath: this.libraryPath } : {}),
+			...(this.repoRoot ? { repoRoot: this.repoRoot } : {}),
+		});
+		if (!libraryPath) {
+			throw new SpeakerEncoderGgmlUnavailableError(
+				"library-missing",
+				"[speaker-ggml] libvoice_classifier not found. Build via cmake in packages/native-plugins/voice-classifier-cpp/.",
+			);
+		}
+
+		const { lib, ffi } = dlopenLibrary(libraryPath);
+		const handleView = new BigUint64Array(1);
+		const cstrBuf = new TextEncoder().encode(`${this.ggufPath}\0`);
+		const rc = lib.symbols.voice_speaker_open(
+			ffi.ptr(cstrBuf),
+			ffi.ptr(handleView),
+		);
+		if (rc !== 0) {
+			lib.close();
+			const code: SpeakerEncoderGgmlUnavailableError["code"] =
+				rc === -2
+					? "model-missing"
+					: rc === -22
+						? "model-shape-mismatch"
+						: "model-load-failed";
+			throw new SpeakerEncoderGgmlUnavailableError(
+				code,
+				`[speaker-ggml] voice_speaker_open returned ${rc} for ${this.ggufPath}`,
+			);
+		}
+		const handle = handleView[0];
+		if (handle === 0n) {
+			lib.close();
+			throw new SpeakerEncoderGgmlUnavailableError(
+				"model-load-failed",
+				"[speaker-ggml] voice_speaker_open returned 0 but did not write a handle",
+			);
+		}
+		this.handle = handle;
+		this.ffi = ffi;
+		this.lib = lib;
+	}
+
+	async encode(pcm: Float32Array): Promise<Float32Array> {
 		if (!(pcm instanceof Float32Array)) {
 			throw new SpeakerEncoderGgmlUnavailableError(
 				"invalid-input",
@@ -141,40 +258,52 @@ export class SpeakerEncoderGgmlImpl implements SpeakerEncoderGgml {
 				);
 			}
 		}
+		this.ensureOpen();
+		if (!this.handle || !this.ffi || !this.lib) {
+			throw new SpeakerEncoderGgmlUnavailableError(
+				"model-load-failed",
+				"[speaker-ggml] handle is null after ensureOpen",
+			);
+		}
 
-		// Phase 1 stub: the native library returns -ENOSYS. Phase 2
-		// wiring loads `voice_classifier_cpp` via N-API / FFI and
-		// dispatches into the real `voice_speaker_embed`. Until then
-		// surface a structured error rather than fabricate an embedding —
-		// a synthetic embedding would silently match every voice to
-		// whatever cluster it happened to be near.
-		throw new SpeakerEncoderGgmlUnavailableError(
-			"native-stub",
-			"[speaker-ggml] native voice_speaker_embed is stubbed (-ENOSYS); Phase 2 wires the real ggml backend",
+		const embView = new Float32Array(SPEAKER_GGML_EMBEDDING_DIM);
+		const rc = this.lib.symbols.voice_speaker_embed(
+			this.handle,
+			this.ffi.ptr(pcm),
+			BigInt(pcm.length),
+			this.ffi.ptr(embView),
 		);
+		if (rc !== 0) {
+			const code: SpeakerEncoderGgmlUnavailableError["code"] =
+				rc === -38
+					? "forward-not-implemented"
+					: rc === -22
+						? "invalid-input"
+						: "model-load-failed";
+			throw new SpeakerEncoderGgmlUnavailableError(
+				code,
+				`[speaker-ggml] voice_speaker_embed returned ${rc}; J1.b-forward ResNet34 graph is the next port.`,
+			);
+		}
+		return embView;
 	}
 
 	async dispose(): Promise<void> {
 		this.disposed = true;
+		if (this.handle !== null && this.lib) {
+			this.lib.symbols.voice_speaker_close(this.handle);
+			this.lib.close();
+		}
+		this.handle = null;
+		this.lib = null;
+		this.ffi = null;
 	}
 }
 
 /**
  * Cosine distance between two 192-dim speaker embeddings. Defined as
- * `1 - cos_similarity(a, b)`, range [0, 2]:
- *   identical / parallel       → 0
- *   orthogonal                 → 1
- *   anti-parallel / opposite   → 2
- *
- * Mirrors the C-side `voice_speaker_distance` helper exactly. Both
- * inputs must be `SPEAKER_GGML_EMBEDDING_DIM` floats long. A zero-norm
- * input degenerates the cosine; this helper treats a zero-norm vector
- * as orthogonal to everything (returns 1) rather than producing a NaN —
- * matches what callers want when an embedding has been zeroed by an
- * upstream error path.
- *
- * Phase 1 TS implementation; Phase 2 wires into the native helper for
- * bit-parity with the C-side dispatch.
+ * `1 - cos_similarity(a, b)`, range [0, 2]. Mirrors the C-side
+ * `voice_speaker_distance` helper exactly.
  */
 export function voiceSpeakerDistance(a: Float32Array, b: Float32Array): number {
 	if (a.length !== SPEAKER_GGML_EMBEDDING_DIM) {
