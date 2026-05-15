@@ -56,11 +56,7 @@ import {
   initializeStorageBridge,
   installDesktopPermissionsClientPatch,
   installForceFreshOnboardingClientPatch,
-  installIosLocalAgentFetchBridge,
-  installIosLocalAgentNativeRequestBridge,
   installLocalProviderCloudPreferencePatch,
-  type IosLocalAgentNativeRequestOptions,
-  type IosLocalAgentNativeRequestResult,
   isAppWindowRoute,
   isDetachedWindowShell,
   isElectrobunRuntime,
@@ -73,7 +69,6 @@ import {
   type NetworkStatusChangeDetail,
   normalizeMobileRuntimeMode,
   preSeedAndroidLocalRuntimeIfFresh,
-  primeIosFullBunRuntime,
   resolveWindowShellRoute,
   routeOnboardingDeepLink,
   SHARE_TARGET_EVENT,
@@ -85,6 +80,15 @@ import {
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui";
+import type {
+  IosLocalAgentNativeRequestOptions,
+  IosLocalAgentNativeRequestResult,
+} from "@elizaos/ui/api/ios-local-agent-transport";
+import {
+  installIosLocalAgentFetchBridge,
+  installIosLocalAgentNativeRequestBridge,
+  primeIosFullBunRuntime,
+} from "@elizaos/ui/api/ios-local-agent-transport";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import {
