@@ -168,9 +168,7 @@ const PYTHON = resolvePython();
 if (!JSON_OUT) {
   console.log("=== Eliza-1 v1 release prep — no-hardware steps ===\n");
   console.log("Runbook: docs/eliza-1-pipeline/06-test-matrix.md");
-  console.log(
-    "Bundle plan: docs/ELIZA_1_GGUF_PLATFORM_PLAN.json\n",
-  );
+  console.log("Bundle plan: docs/ELIZA_1_GGUF_PLATFORM_PLAN.json\n");
 }
 
 // --- 1. Build plumbing ---------------------------------------------------------
@@ -273,12 +271,20 @@ step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", PYTHON, [
 
 // --- 7. Platform plan regenerates idempotently --------------------------------
 {
-  const planPath = path.join(REPO_ROOT, "docs", "ELIZA_1_GGUF_PLATFORM_PLAN.json");
+  const planPath = path.join(
+    REPO_ROOT,
+    "docs",
+    "ELIZA_1_GGUF_PLATFORM_PLAN.json",
+  );
   const readinessPath = path.join(
-    fs.mkdtempSync(path.join(process.env.TMPDIR || "/tmp", "eliza1-prep-readiness-")),
+    fs.mkdtempSync(
+      path.join(process.env.TMPDIR || "/tmp", "eliza1-prep-readiness-"),
+    ),
     "ELIZA_1_GGUF_READINESS.md",
   );
-  const before = fs.existsSync(planPath) ? fs.readFileSync(planPath, "utf8") : "";
+  const before = fs.existsSync(planPath)
+    ? fs.readFileSync(planPath, "utf8")
+    : "";
   step(
     "eliza1_platform_plan.py regenerates docs/ELIZA_1_GGUF_PLATFORM_PLAN.json and readiness markdown",
     PYTHON,
@@ -290,7 +296,9 @@ step("distill_dflash_drafter.py --tier 2b --synthetic-smoke", PYTHON, [
       readinessPath,
     ],
   );
-  const after = fs.existsSync(planPath) ? fs.readFileSync(planPath, "utf8") : "";
+  const after = fs.existsSync(planPath)
+    ? fs.readFileSync(planPath, "utf8")
+    : "";
   if (before !== after) {
     results.push({
       name: "eliza1_platform_plan.py idempotency",

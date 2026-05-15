@@ -34,10 +34,7 @@
       "source": "research_agent",
       "target": "coding_agent",
       "direction": "unidirectional",
-      "data_categories_allowed": [
-        "public",
-        "internal"
-      ],
+      "data_categories_allowed": ["public", "internal"],
       "bandwidth_limit_kbps": 1024,
       "active": true,
       "established": "2024-04-01T00:00:00Z"
@@ -46,10 +43,7 @@
       "source": "research_agent",
       "target": "customer_agent",
       "direction": "unidirectional",
-      "data_categories_allowed": [
-        "public",
-        "internal"
-      ],
+      "data_categories_allowed": ["public", "internal"],
       "bandwidth_limit_kbps": 512,
       "active": true,
       "established": "2024-04-01T00:00:00Z"
@@ -58,11 +52,7 @@
       "source": "research_agent",
       "target": "analytics_agent",
       "direction": "unidirectional",
-      "data_categories_allowed": [
-        "public",
-        "internal",
-        "confidential"
-      ],
+      "data_categories_allowed": ["public", "internal", "confidential"],
       "bandwidth_limit_kbps": 2048,
       "active": true,
       "established": "2024-04-01T00:00:00Z"
@@ -71,10 +61,7 @@
       "source": "research_agent",
       "target": "ops_agent",
       "direction": "unidirectional",
-      "data_categories_allowed": [
-        "public",
-        "internal"
-      ],
+      "data_categories_allowed": ["public", "internal"],
       "bandwidth_limit_kbps": 256,
       "active": true,
       "established": "2024-04-15T00:00:00Z"
@@ -83,11 +70,7 @@
       "source": "analytics_agent",
       "target": "research_agent",
       "direction": "bidirectional",
-      "data_categories_allowed": [
-        "public",
-        "internal",
-        "confidential"
-      ],
+      "data_categories_allowed": ["public", "internal", "confidential"],
       "bandwidth_limit_kbps": 2048,
       "active": true,
       "established": "2024-04-10T00:00:00Z"
@@ -96,10 +79,7 @@
       "source": "analytics_agent",
       "target": "coding_agent",
       "direction": "bidirectional",
-      "data_categories_allowed": [
-        "public",
-        "internal"
-      ],
+      "data_categories_allowed": ["public", "internal"],
       "bandwidth_limit_kbps": 1024,
       "active": true,
       "established": "2024-04-10T00:00:00Z"
@@ -108,11 +88,7 @@
       "source": "analytics_agent",
       "target": "customer_agent",
       "direction": "bidirectional",
-      "data_categories_allowed": [
-        "public",
-        "internal",
-        "confidential"
-      ],
+      "data_categories_allowed": ["public", "internal", "confidential"],
       "bandwidth_limit_kbps": 1024,
       "active": true,
       "established": "2024-04-10T00:00:00Z"
@@ -136,10 +112,7 @@
       "source": "coding_agent",
       "target": "ops_agent",
       "direction": "unidirectional",
-      "data_categories_allowed": [
-        "public",
-        "internal"
-      ],
+      "data_categories_allowed": ["public", "internal"],
       "bandwidth_limit_kbps": 512,
       "active": true,
       "established": "2024-04-20T00:00:00Z"
@@ -148,10 +121,7 @@
       "source": "ops_agent",
       "target": "coding_agent",
       "direction": "unidirectional",
-      "data_categories_allowed": [
-        "public",
-        "internal"
-      ],
+      "data_categories_allowed": ["public", "internal"],
       "bandwidth_limit_kbps": 256,
       "active": true,
       "established": "2024-04-20T00:00:00Z"
@@ -160,9 +130,7 @@
       "source": "customer_agent",
       "target": "research_agent",
       "direction": "unidirectional",
-      "data_categories_allowed": [
-        "public"
-      ],
+      "data_categories_allowed": ["public"],
       "bandwidth_limit_kbps": 128,
       "active": false,
       "established": "2024-03-15T00:00:00Z",
@@ -179,12 +147,7 @@
       "coding_agent",
       "ops_agent"
     ],
-    "agents_receive_only": [
-      "customer_agent"
-    ],
-    "hub_agents": [
-      "research_agent",
-      "analytics_agent"
-    ]
+    "agents_receive_only": ["customer_agent"],
+    "hub_agents": ["research_agent", "analytics_agent"]
   }
 }

@@ -1,107 +1,112 @@
-import { useState, useEffect } from 'react'
 import {
-  Container,
-  Clock,
+  AlertTriangle,
   ChevronDown,
   ChevronRight,
-  RefreshCw,
-  X,
-  Trash2,
+  Clock,
+  Container,
+  ExternalLink,
   FolderOpen,
+  RefreshCw,
   Terminal,
-  AlertTriangle,
-  ExternalLink
-} from 'lucide-react'
+  Trash2,
+  X,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface StuckContainer {
-  name: string
-  runningFor: string
-  runningForMs: number
-  status: string
-  image: string
-  taskName: string | null
-  trialId: string | null
-  jobName: string | null
-  trialPath: string | null
-  logs: string
+  name: string;
+  runningFor: string;
+  runningForMs: number;
+  status: string;
+  image: string;
+  taskName: string | null;
+  trialId: string | null;
+  jobName: string | null;
+  trialPath: string | null;
+  logs: string;
 }
 
 interface StuckContainersPanelProps {
-  onClose: () => void
-  onFilesSelect?: (trialPath: string) => void
+  onClose: () => void;
+  onFilesSelect?: (trialPath: string) => void;
 }
 
-export function StuckContainersPanel({ onClose, onFilesSelect }: StuckContainersPanelProps) {
-  const [containers, setContainers] = useState<StuckContainer[]>([])
-  const [loading, setLoading] = useState(true)
-  const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set())
-  const [killing, setKilling] = useState<string | null>(null)
+export function StuckContainersPanel({
+  onClose,
+  onFilesSelect,
+}: StuckContainersPanelProps) {
+  const [containers, setContainers] = useState<StuckContainer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedContainers, setExpandedContainers] = useState<Set<string>>(
+    new Set(),
+  );
+  const [killing, setKilling] = useState<string | null>(null);
 
   const fetchContainers = async () => {
     try {
-      const res = await fetch('/api/stuck-containers')
-      const data = await res.json()
-      setContainers(data.containers || [])
+      const res = await fetch("/api/stuck-containers");
+      const data = await res.json();
+      setContainers(data.containers || []);
     } catch (err) {
-      console.error('Failed to fetch stuck containers:', err)
+      console.error("Failed to fetch stuck containers:", err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchContainers()
-    const interval = setInterval(fetchContainers, 5000)
-    return () => clearInterval(interval)
-  }, [])
+    fetchContainers();
+    const interval = setInterval(fetchContainers, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const toggleExpand = (name: string) => {
-    setExpandedContainers(prev => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
-  }
+    setExpandedContainers((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   const killContainer = async (name: string) => {
-    if (!confirm(`Stop container "${name}"?`)) return
-    setKilling(name)
+    if (!confirm(`Stop container "${name}"?`)) return;
+    setKilling(name);
     try {
-      const res = await fetch('/api/kill-container', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ containerName: name })
-      })
-      const data = await res.json()
+      const res = await fetch("/api/kill-container", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ containerName: name }),
+      });
+      const data = await res.json();
       if (data.success) {
         // Remove from list
-        setContainers(prev => prev.filter(c => c.name !== name))
+        setContainers((prev) => prev.filter((c) => c.name !== name));
       } else {
-        alert(`Error: ${data.error}`)
+        alert(`Error: ${data.error}`);
       }
     } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      alert(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
-      setKilling(null)
+      setKilling(null);
     }
-  }
+  };
 
   const killAllContainers = async () => {
-    if (!confirm(`Stop all ${containers.length} stuck containers?`)) return
+    if (!confirm(`Stop all ${containers.length} stuck containers?`)) return;
     try {
-      const res = await fetch('/api/kill-stuck', { method: 'POST' })
-      const data = await res.json()
+      const res = await fetch("/api/kill-stuck", { method: "POST" });
+      const data = await res.json();
       if (data.success) {
-        alert(`Stopped ${data.killedCount} containers`)
-        fetchContainers()
+        alert(`Stopped ${data.killedCount} containers`);
+        fetchContainers();
       } else {
-        alert(`Error: ${data.error}`)
+        alert(`Error: ${data.error}`);
       }
     } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      alert(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }
+  };
 
   return (
     <div className="border border-border rounded-lg bg-card overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
@@ -110,11 +115,17 @@ export function StuckContainersPanel({ onClose, onFilesSelect }: StuckContainers
         <div className="flex items-center gap-2">
           <Container className="w-5 h-5 text-yellow-500" />
           <span className="font-medium">Stuck Containers</span>
-          <span className="text-xs text-muted-foreground">({containers.length} running &gt;1h)</span>
+          <span className="text-xs text-muted-foreground">
+            ({containers.length} running &gt;1h)
+          </span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchContainers} className="p-1.5 hover:bg-muted rounded" title="Refresh">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <button
+            onClick={fetchContainers}
+            className="p-1.5 hover:bg-muted rounded"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
           <button onClick={onClose} className="p-1.5 hover:bg-muted rounded">
             <X className="w-4 h-4" />
@@ -149,8 +160,8 @@ export function StuckContainersPanel({ onClose, onFilesSelect }: StuckContainers
         ) : (
           <div className="divide-y divide-border">
             {containers.map((container) => {
-              const isExpanded = expandedContainers.has(container.name)
-              const isKilling = killing === container.name
+              const isExpanded = expandedContainers.has(container.name);
+              const isKilling = killing === container.name;
               return (
                 <div key={container.name} className="bg-card">
                   {/* Container header */}
@@ -169,7 +180,10 @@ export function StuckContainersPanel({ onClose, onFilesSelect }: StuckContainers
                     <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0" />
 
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-sm truncate" title={container.name}>
+                      <div
+                        className="font-medium text-sm truncate"
+                        title={container.name}
+                      >
                         {container.taskName || container.name}
                       </div>
                       <div className="text-xs text-muted-foreground flex items-center gap-3">
@@ -217,7 +231,9 @@ export function StuckContainersPanel({ onClose, onFilesSelect }: StuckContainers
                       {/* Container info */}
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
-                          <span className="text-muted-foreground">Container:</span>
+                          <span className="text-muted-foreground">
+                            Container:
+                          </span>
                           <code className="ml-2 text-xs bg-muted px-1.5 py-0.5 rounded break-all">
                             {container.name}
                           </code>
@@ -234,13 +250,17 @@ export function StuckContainersPanel({ onClose, onFilesSelect }: StuckContainers
                         </div>
                         {container.trialPath && (
                           <div className="col-span-2 flex items-center gap-2">
-                            <span className="text-muted-foreground">Trial Path:</span>
+                            <span className="text-muted-foreground">
+                              Trial Path:
+                            </span>
                             <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
                               {container.trialPath}
                             </code>
                             {onFilesSelect && (
                               <button
-                                onClick={() => onFilesSelect(container.trialPath!)}
+                                onClick={() =>
+                                  onFilesSelect(container.trialPath!)
+                                }
                                 className="text-primary hover:underline text-xs flex items-center gap-1"
                               >
                                 <ExternalLink className="w-3 h-3" />
@@ -258,17 +278,17 @@ export function StuckContainersPanel({ onClose, onFilesSelect }: StuckContainers
                           Last 50 lines of logs
                         </div>
                         <pre className="text-xs bg-black/80 text-green-400 p-3 rounded overflow-auto max-h-64 whitespace-pre-wrap break-words font-mono">
-                          {container.logs || '(No logs available)'}
+                          {container.logs || "(No logs available)"}
                         </pre>
                       </div>
                     </div>
                   )}
                 </div>
-              )
+              );
             })}
           </div>
         )}
       </div>
     </div>
-  )
+  );
 }

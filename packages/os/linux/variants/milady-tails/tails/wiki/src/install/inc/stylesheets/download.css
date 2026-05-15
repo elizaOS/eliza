@@ -12,8 +12,7 @@
 #verification-error-image,
 #tails-version,
 #download-img,
-#download-iso
-{
+#download-iso {
   display: none;
 }
 
@@ -23,7 +22,8 @@
   display: none;
 }
 
-#javascript-verification-tip, #verification-failed {
+#javascript-verification-tip,
+#verification-failed {
   position: relative;
 }
 
@@ -53,8 +53,12 @@
 }
 
 @keyframes move {
-  0% { background-position: 0px; }
-  100% { background-position: 398px; }
+  0% {
+    background-position: 0px;
+  }
+  100% {
+    background-position: 398px;
+  }
 }
 
 .progress-bar {
@@ -71,11 +75,14 @@ img.icon {
   vertical-align: bottom;
 }
 
-#verification-error-file, #verification-error-json, #verification-error-image {
+#verification-error-file,
+#verification-error-json,
+#verification-error-image {
   margin-top: 1.5em;
 }
 
-#retry-json, #retry-image {
+#retry-json,
+#retry-image {
   cursor: pointer;
 }
 

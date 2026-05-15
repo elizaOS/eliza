@@ -1,8 +1,6 @@
 {
-    "shell-version": [
-      "48.1"
-    ],
-    "uuid": "torstatus@tails.boum.org",
-    "name": "Tor Daemon Status",
-    "description": "Show the status of the Tor daemon"
+  "shell-version": ["48.1"],
+  "uuid": "torstatus@tails.boum.org",
+  "name": "Tor Daemon Status",
+  "description": "Show the status of the Tor daemon"
 }

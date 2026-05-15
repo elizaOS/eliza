@@ -99,12 +99,20 @@ export function resolveReference(
   if (lc.length === 0) return null;
   const ocrCandidates = scene.ocr
     .filter((b) => b.text.toLowerCase().includes(lc))
-    .sort((a, b) => preferenceScore(b, preferredDisplay) - preferenceScore(a, preferredDisplay));
+    .sort(
+      (a, b) =>
+        preferenceScore(b, preferredDisplay) -
+        preferenceScore(a, preferredDisplay),
+    );
   const bestOcr = ocrCandidates[0];
   if (bestOcr) return toOcrTarget(bestOcr);
   const axCandidates = scene.ax
     .filter((n) => (n.label ?? "").toLowerCase().includes(lc))
-    .sort((a, b) => preferenceScoreAx(b, preferredDisplay) - preferenceScoreAx(a, preferredDisplay));
+    .sort(
+      (a, b) =>
+        preferenceScoreAx(b, preferredDisplay) -
+        preferenceScoreAx(a, preferredDisplay),
+    );
   const bestAx = axCandidates[0];
   if (bestAx) return toAxTarget(bestAx);
   return null;
@@ -134,7 +142,10 @@ function preferenceScore(box: SceneOcrBox, preferredDisplay: number): number {
   return (box.displayId === preferredDisplay ? 1000 : 0) + box.conf;
 }
 
-function preferenceScoreAx(node: SceneAxNode, preferredDisplay: number): number {
+function preferenceScoreAx(
+  node: SceneAxNode,
+  preferredDisplay: number,
+): number {
   const area = (node.bbox[2] ?? 0) * (node.bbox[3] ?? 0);
   return (node.displayId === preferredDisplay ? 1_000_000 : 0) + area;
 }
@@ -173,7 +184,9 @@ export class OsAtlasProActor implements Actor {
 
   constructor(private readonly opts: OsAtlasProActorOptions) {
     if (!opts.endpoint) {
-      throw new Error("[computeruse/actor] OsAtlasProActor requires an endpoint");
+      throw new Error(
+        "[computeruse/actor] OsAtlasProActor requires an endpoint",
+      );
     }
   }
 
@@ -213,10 +226,7 @@ export class OsAtlasProActor implements Actor {
         `[computeruse/actor] osatlas-pro emitted non-JSON: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    if (
-      typeof parsed.x !== "number" ||
-      typeof parsed.y !== "number"
-    ) {
+    if (typeof parsed.x !== "number" || typeof parsed.y !== "number") {
       throw new Error(
         `[computeruse/actor] osatlas-pro response missing (x, y): ${text}`,
       );
@@ -225,7 +235,8 @@ export class OsAtlasProActor implements Actor {
       displayId: args.displayId,
       x: parsed.x,
       y: parsed.y,
-      confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
+      confidence:
+        typeof parsed.confidence === "number" ? parsed.confidence : 0.5,
       reason: `osatlas-pro grounded ${args.ref ?? args.hint}`,
     };
   }

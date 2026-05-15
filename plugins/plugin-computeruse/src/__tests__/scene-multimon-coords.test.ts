@@ -24,25 +24,24 @@
 
 import { deflateSync } from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LinuxAccessibilityProvider } from "../scene/a11y-provider.js";
 import type { DisplayCapture } from "../platform/capture.js";
-import type { DisplayInfo } from "../platform/displays.js";
 import { localToGlobal } from "../platform/coords.js";
+import type { DisplayInfo } from "../platform/displays.js";
 import * as displaysModule from "../platform/displays.js";
-import { findDisplay, listDisplays, refreshDisplays } from "../platform/displays.js";
 import {
-  SceneBuilder,
-} from "../scene/scene-builder.js";
+  findDisplay,
+  listDisplays,
+  refreshDisplays,
+} from "../platform/displays.js";
+import { LinuxAccessibilityProvider } from "../scene/a11y-provider.js";
 import {
   blockGrid,
   coalesceDirtyBlocks,
   diffBlocks,
   pngDimensions,
 } from "../scene/dhash.js";
-import type {
-  SceneAxNode,
-  SceneOcrBox,
-} from "../scene/scene-types.js";
+import { SceneBuilder } from "../scene/scene-builder.js";
+import type { SceneAxNode, SceneOcrBox } from "../scene/scene-types.js";
 import type { DisplayDescriptor } from "../types.js";
 
 // ── tiny PNG builder (shared shape with scene-builder.test.ts) ──────────────
@@ -76,7 +75,13 @@ function makePng(
   seed: number,
   w = 256,
   h = 256,
-  dirtyCell?: { col: number; row: number; cols?: number; rows?: number; value?: number },
+  dirtyCell?: {
+    col: number;
+    row: number;
+    cols?: number;
+    rows?: number;
+    value?: number;
+  },
 ): Buffer {
   const stride = w * 3;
   const rows = Buffer.alloc((stride + 1) * h);
@@ -125,7 +130,14 @@ function makePng(
 
 // ── shared fake fixtures ────────────────────────────────────────────────────
 
-function fakeDisplay(id: number, x: number, y: number, w = 1920, h = 1080, scale = 1): DisplayDescriptor {
+function fakeDisplay(
+  id: number,
+  x: number,
+  y: number,
+  w = 1920,
+  h = 1080,
+  scale = 1,
+): DisplayDescriptor {
   return {
     id,
     bounds: [x, y, w, h],
@@ -173,10 +185,14 @@ describe("coord round-trip — secondary display", () => {
   let listSpy: ReturnType<typeof vi.spyOn>;
   let findSpy: ReturnType<typeof vi.spyOn>;
   beforeEach(() => {
-    listSpy = vi.spyOn(displaysModule, "listDisplays").mockReturnValue(twoDisplays);
+    listSpy = vi
+      .spyOn(displaysModule, "listDisplays")
+      .mockReturnValue(twoDisplays);
     findSpy = vi
       .spyOn(displaysModule, "findDisplay")
-      .mockImplementation((id: number) => twoDisplays.find((d) => d.id === id) ?? null);
+      .mockImplementation(
+        (id: number) => twoDisplays.find((d) => d.id === id) ?? null,
+      );
   });
   afterEach(() => {
     listSpy.mockRestore();
@@ -187,7 +203,9 @@ describe("coord round-trip — secondary display", () => {
     // This is the canonical end-to-end check for the audit dimension 1:
     // a Scene with an OCR box at display-local (100, 200) on displayId=1
     // becomes a global click at (2660, 200).
-    const ocrBoxBboxLocal: [number, number, number, number] = [100, 200, 50, 24];
+    const ocrBoxBboxLocal: [number, number, number, number] = [
+      100, 200, 50, 24,
+    ];
     const displayId = 1;
     const result = localToGlobal({
       displayId,
@@ -203,7 +221,10 @@ describe("coord round-trip — secondary display", () => {
   });
 
   it("clicking with displayId=1 at corner (0,0) lands at the secondary origin", () => {
-    expect(localToGlobal({ displayId: 1, x: 0, y: 0 })).toEqual({ x: 2560, y: 0 });
+    expect(localToGlobal({ displayId: 1, x: 0, y: 0 })).toEqual({
+      x: 2560,
+      y: 0,
+    });
   });
 
   it("parser fixture for parseXrandrMonitors matches the synthetic registry", () => {
@@ -229,11 +250,17 @@ describe("dHash short-circuit — 10 identical frames", () => {
       captureAll: async () => cap,
       captureOne: async () => cap[0]!,
       captureRegion: async () => {
-        throw new Error("captureRegion should not be invoked for identical frames");
+        throw new Error(
+          "captureRegion should not be invoked for identical frames",
+        );
       },
       listDisplays: () => [fakeDisplay(0, 0, 0)],
       enumerateApps: () => [],
-      accessibilityProvider: { name: "f", available: () => true, snapshot: async () => [] },
+      accessibilityProvider: {
+        name: "f",
+        available: () => true,
+        snapshot: async () => [],
+      },
       runOcrOnFrame: async (_p, displayId, idState) => {
         ocrCalls += 1;
         const seq = (idState.perDisplay.get(displayId) ?? 0) + 1;
@@ -249,7 +276,9 @@ describe("dHash short-circuit — 10 identical frames", () => {
         ];
       },
       runOcrOnCrops: async () => {
-        throw new Error("runOcrOnCrops should not be invoked for identical frames");
+        throw new Error(
+          "runOcrOnCrops should not be invoked for identical frames",
+        );
       },
       log: () => {},
     });
@@ -278,13 +307,21 @@ describe("dirty-block re-OCR — wired to captureRegion", () => {
     // Frame 2: one block (col 4, row 4) painted bright — dirty fraction = 1/256 ~ 0.4%.
     const frame2 = makePng(0, 256, 256, { col: 4, row: 4 });
 
-    const captures: DisplayCapture[][] = [[fakeCapture(0, frame1)], [fakeCapture(0, frame2)]];
-    let captureRegionCalls: Array<{ displayId: number; region: { x: number; y: number; width: number; height: number } }> = [];
+    const captures: DisplayCapture[][] = [
+      [fakeCapture(0, frame1)],
+      [fakeCapture(0, frame2)],
+    ];
+    const captureRegionCalls: Array<{
+      displayId: number;
+      region: { x: number; y: number; width: number; height: number };
+    }> = [];
     let runOcrOnFrameCalls = 0;
     let runOcrOnCropsCalls = 0;
     let i = 0;
     const builder = new SceneBuilder({
-      captureAll: async () => captures[Math.min(i++, captures.length - 1)] ?? captures[captures.length - 1]!,
+      captureAll: async () =>
+        captures[Math.min(i++, captures.length - 1)] ??
+        captures[captures.length - 1]!,
       captureOne: async () => captures[0]![0]!,
       captureRegion: async (displayId, region) => {
         captureRegionCalls.push({ displayId, region });
@@ -298,12 +335,20 @@ describe("dirty-block re-OCR — wired to captureRegion", () => {
             primary: true,
             name: "fake-0",
           },
-          frame: makePng(displayId * 100 + region.x, Math.max(8, region.width), Math.max(8, region.height)),
+          frame: makePng(
+            displayId * 100 + region.x,
+            Math.max(8, region.width),
+            Math.max(8, region.height),
+          ),
         };
       },
       listDisplays: () => [fakeDisplay(0, 0, 0)],
       enumerateApps: () => [],
-      accessibilityProvider: { name: "f", available: () => true, snapshot: async () => [] },
+      accessibilityProvider: {
+        name: "f",
+        available: () => true,
+        snapshot: async () => [],
+      },
       runOcrOnFrame: async (_p, displayId, idState) => {
         runOcrOnFrameCalls += 1;
         const seq = (idState.perDisplay.get(displayId) ?? 0) + 1;
@@ -380,13 +425,18 @@ describe("multi-display scene-builder", () => {
     const cap = [fakeCapture(0, makePng(1)), fakeCapture(1, makePng(2))];
     const builder = new SceneBuilder({
       captureAll: async () => cap,
-      captureOne: async (displayId) => cap.find((c) => c.display.id === displayId)!,
+      captureOne: async (displayId) =>
+        cap.find((c) => c.display.id === displayId)!,
       listDisplays: () => [
         fakeDisplay(0, 0, 0, 1920, 1080),
         fakeDisplay(1, 2560, 0, 3840, 2160),
       ],
       enumerateApps: () => [],
-      accessibilityProvider: { name: "f", available: () => true, snapshot: async () => [] },
+      accessibilityProvider: {
+        name: "f",
+        available: () => true,
+        snapshot: async () => [],
+      },
       runOcrOnFrame: async (_p, displayId, idState) => {
         const seq = (idState.perDisplay.get(displayId) ?? 0) + 1;
         idState.perDisplay.set(displayId, seq);
@@ -520,9 +570,21 @@ describe("coalesceDirtyBlocks", () => {
   it("merges a horizontal strip into one rect", () => {
     const grid = blockGrid(makePng(0, 256, 256), 16, 16)!;
     const dirty = [
-      { col: 3, row: 5, bbox: [0, 0, 1, 1] as [number, number, number, number] },
-      { col: 4, row: 5, bbox: [0, 0, 1, 1] as [number, number, number, number] },
-      { col: 5, row: 5, bbox: [0, 0, 1, 1] as [number, number, number, number] },
+      {
+        col: 3,
+        row: 5,
+        bbox: [0, 0, 1, 1] as [number, number, number, number],
+      },
+      {
+        col: 4,
+        row: 5,
+        bbox: [0, 0, 1, 1] as [number, number, number, number],
+      },
+      {
+        col: 5,
+        row: 5,
+        bbox: [0, 0, 1, 1] as [number, number, number, number],
+      },
     ];
     const rects = coalesceDirtyBlocks(dirty, grid, 256, 256);
     expect(rects).toHaveLength(1);
@@ -533,9 +595,21 @@ describe("coalesceDirtyBlocks", () => {
   it("merges a vertical strip into one rect", () => {
     const grid = blockGrid(makePng(0, 256, 256), 16, 16)!;
     const dirty = [
-      { col: 2, row: 4, bbox: [0, 0, 1, 1] as [number, number, number, number] },
-      { col: 2, row: 5, bbox: [0, 0, 1, 1] as [number, number, number, number] },
-      { col: 2, row: 6, bbox: [0, 0, 1, 1] as [number, number, number, number] },
+      {
+        col: 2,
+        row: 4,
+        bbox: [0, 0, 1, 1] as [number, number, number, number],
+      },
+      {
+        col: 2,
+        row: 5,
+        bbox: [0, 0, 1, 1] as [number, number, number, number],
+      },
+      {
+        col: 2,
+        row: 6,
+        bbox: [0, 0, 1, 1] as [number, number, number, number],
+      },
     ];
     const rects = coalesceDirtyBlocks(dirty, grid, 256, 256);
     expect(rects).toHaveLength(1);
@@ -545,8 +619,16 @@ describe("coalesceDirtyBlocks", () => {
   it("keeps disjoint regions separate", () => {
     const grid = blockGrid(makePng(0, 256, 256), 16, 16)!;
     const dirty = [
-      { col: 1, row: 1, bbox: [0, 0, 1, 1] as [number, number, number, number] },
-      { col: 10, row: 10, bbox: [0, 0, 1, 1] as [number, number, number, number] },
+      {
+        col: 1,
+        row: 1,
+        bbox: [0, 0, 1, 1] as [number, number, number, number],
+      },
+      {
+        col: 10,
+        row: 10,
+        bbox: [0, 0, 1, 1] as [number, number, number, number],
+      },
     ];
     const rects = coalesceDirtyBlocks(dirty, grid, 256, 256);
     expect(rects).toHaveLength(2);
@@ -562,8 +644,14 @@ describe("coalesceDirtyBlocks", () => {
 
 describe("pngDimensions", () => {
   it("reads IHDR dimensions without inflating IDAT", () => {
-    expect(pngDimensions(makePng(0, 256, 192))).toEqual({ width: 256, height: 192 });
-    expect(pngDimensions(makePng(7, 96, 32))).toEqual({ width: 96, height: 32 });
+    expect(pngDimensions(makePng(0, 256, 192))).toEqual({
+      width: 256,
+      height: 192,
+    });
+    expect(pngDimensions(makePng(7, 96, 32))).toEqual({
+      width: 96,
+      height: 32,
+    });
   });
   it("returns null for non-PNG input", () => {
     expect(pngDimensions(Buffer.from("garbage"))).toBeNull();
@@ -627,7 +715,11 @@ describe("agent-turn cache miss — confirmation", () => {
       captureOne: async () => cap[0]!,
       listDisplays: () => [fakeDisplay(0, 0, 0)],
       enumerateApps: () => [],
-      accessibilityProvider: { name: "f", available: () => true, snapshot: async () => [] },
+      accessibilityProvider: {
+        name: "f",
+        available: () => true,
+        snapshot: async () => [],
+      },
       runOcrOnFrame: async (_p, displayId, idState) => {
         ocrCalls += 1;
         const seq = (idState.perDisplay.get(displayId) ?? 0) + 1;

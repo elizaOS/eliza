@@ -11,12 +11,14 @@ class SourceNode {
       for (const item of chunk) this.add(item);
       return this;
     }
-    if (chunk !== undefined && chunk !== null) this.children.push(String(chunk));
+    if (chunk !== undefined && chunk !== null)
+      this.children.push(String(chunk));
     return this;
   }
 
   prepend(chunk) {
-    if (chunk !== undefined && chunk !== null) this.children.unshift(String(chunk));
+    if (chunk !== undefined && chunk !== null)
+      this.children.unshift(String(chunk));
     return this;
   }
 

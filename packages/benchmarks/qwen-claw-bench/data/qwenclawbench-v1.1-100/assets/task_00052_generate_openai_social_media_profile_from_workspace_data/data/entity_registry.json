@@ -9,7 +9,14 @@
       "type": "TechCompany",
       "category": "AI Research Lab",
       "founded": 2015,
-      "founders": ["Sam Altman", "Greg Brockman", "Ilya Sutskever", "Elon Musk", "Wojciech Zaremski", "John Schulman"],
+      "founders": [
+        "Sam Altman",
+        "Greg Brockman",
+        "Ilya Sutskever",
+        "Elon Musk",
+        "Wojciech Zaremski",
+        "John Schulman"
+      ],
       "headquarters": {
         "city": "San Francisco",
         "state": "California",
@@ -22,7 +29,12 @@
       "status": "active",
       "website": "https://openai.com",
       "social_tone": "professional yet approachable",
-      "key_research_areas": ["Large Language Models", "Reinforcement Learning from Human Feedback", "AI Alignment", "Multimodal AI"],
+      "key_research_areas": [
+        "Large Language Models",
+        "Reinforcement Learning from Human Feedback",
+        "AI Alignment",
+        "Multimodal AI"
+      ],
       "notable_partnerships": ["Microsoft"],
       "tags": ["generative-ai", "llm", "safety", "alignment"]
     },
@@ -45,7 +57,12 @@
       "status": "active",
       "website": "https://deepmind.google",
       "social_tone": "academic and authoritative",
-      "key_research_areas": ["Protein Folding", "Reinforcement Learning", "Neuroscience-inspired AI", "Game Playing AI"],
+      "key_research_areas": [
+        "Protein Folding",
+        "Reinforcement Learning",
+        "Neuroscience-inspired AI",
+        "Game Playing AI"
+      ],
       "notable_partnerships": ["Google", "NHS"],
       "tags": ["deeplearning", "scientific-discovery", "alphafold"]
     },
@@ -68,7 +85,12 @@
       "status": "active",
       "website": "https://anthropic.com",
       "social_tone": "thoughtful and safety-conscious",
-      "key_research_areas": ["AI Safety", "Constitutional AI", "Interpretability", "Alignment"],
+      "key_research_areas": [
+        "AI Safety",
+        "Constitutional AI",
+        "Interpretability",
+        "Alignment"
+      ],
       "notable_partnerships": ["Google Cloud", "Amazon"],
       "tags": ["ai-safety", "constitutional-ai", "alignment"]
     },
@@ -91,7 +113,12 @@
       "status": "active",
       "website": "https://ai.meta.com",
       "social_tone": "open-source advocate, community-driven",
-      "key_research_areas": ["Open Source LLMs", "Computer Vision", "Self-supervised Learning", "Embodied AI"],
+      "key_research_areas": [
+        "Open Source LLMs",
+        "Computer Vision",
+        "Self-supervised Learning",
+        "Embodied AI"
+      ],
       "notable_partnerships": ["Microsoft", "Hugging Face"],
       "tags": ["open-source", "llama", "computer-vision"]
     },
@@ -108,13 +135,22 @@
         "country": "United Kingdom"
       },
       "mission": "Democratize AI through open-source generative models",
-      "products": ["Stable Diffusion", "StableLM", "Stable Audio", "DeepFloyd IF"],
+      "products": [
+        "Stable Diffusion",
+        "StableLM",
+        "Stable Audio",
+        "DeepFloyd IF"
+      ],
       "employee_count": 300,
       "funding_status": "Private",
       "status": "active",
       "website": "https://stability.ai",
       "social_tone": "enthusiastic and community-focused",
-      "key_research_areas": ["Image Generation", "Open Source Models", "Multimodal Generation"],
+      "key_research_areas": [
+        "Image Generation",
+        "Open Source Models",
+        "Multimodal Generation"
+      ],
       "notable_partnerships": ["AWS", "Hugging Face"],
       "tags": ["stable-diffusion", "open-source", "image-generation"]
     }

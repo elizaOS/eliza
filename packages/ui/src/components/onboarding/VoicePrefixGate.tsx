@@ -14,11 +14,11 @@
 import * as React from "react";
 import { client } from "../../api/client";
 import { createVoiceProfilesClient } from "../../api/client-voice-profiles";
-import { resolveAppAssetUrl } from "../../utils";
 import {
   nextVoicePrefixStep,
   type VoicePrefixStep,
 } from "../../onboarding/voice-prefix";
+import { resolveAppAssetUrl } from "../../utils";
 import { VoicePrefixSteps } from "./VoicePrefixSteps";
 
 export interface VoicePrefixGateProps {
@@ -55,7 +55,8 @@ export function VoicePrefixGate({
   }, [onDone]);
 
   const handleRequestMicPermission = React.useCallback(async () => {
-    if (typeof navigator === "undefined" || !navigator.mediaDevices) return false;
+    if (typeof navigator === "undefined" || !navigator.mediaDevices)
+      return false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       // Release the stream immediately after permission is granted.

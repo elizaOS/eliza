@@ -90,19 +90,19 @@ import type { IAgentRuntime } from "@elizaos/core";
  * vision module's `loadAospVisionBackend` consumes this shape.
  */
 export interface AospLlamaMtmdBinding {
-	hasMtmd(): boolean;
-	initMtmd(args: { mmprojPath: string }): Promise<AospMtmdHandle>;
+  hasMtmd(): boolean;
+  initMtmd(args: { mmprojPath: string }): Promise<AospMtmdHandle>;
 }
 
 export interface AospMtmdHandle {
-	describe(args: {
-		imageBytes: Uint8Array;
-		prompt: string;
-		maxTokens?: number;
-		temperature?: number;
-		signal?: AbortSignal;
-	}): Promise<string>;
-	dispose(): Promise<void>;
+  describe(args: {
+    imageBytes: Uint8Array;
+    prompt: string;
+    maxTokens?: number;
+    temperature?: number;
+    signal?: AbortSignal;
+  }): Promise<string>;
+  dispose(): Promise<void>;
 }
 
 const SERVICE_NAME = "aosp-llama-mtmd";
@@ -119,9 +119,9 @@ let cachedBinding: AospLlamaMtmdBinding | null = null;
  * binding (until `__resetForTests` is invoked).
  */
 export function getAospLlamaMtmdBinding(): AospLlamaMtmdBinding {
-	if (cachedBinding) return cachedBinding;
-	cachedBinding = probeAospMtmdBinding();
-	return cachedBinding;
+  if (cachedBinding) return cachedBinding;
+  cachedBinding = probeAospMtmdBinding();
+  return cachedBinding;
 }
 
 /**
@@ -130,33 +130,33 @@ export function getAospLlamaMtmdBinding(): AospLlamaMtmdBinding {
  * pick it up via `runtime.getService("aosp-llama-mtmd")`. Idempotent.
  */
 export function registerAospLlamaMtmdBinding(runtime: IAgentRuntime): void {
-	const r = runtime as IAgentRuntime & {
-		registerService?: (name: string, impl: unknown) => unknown;
-		getService?: (name: string) => unknown;
-	};
-	if (typeof r.registerService !== "function") return;
-	if (typeof r.getService === "function" && r.getService(SERVICE_NAME)) return;
-	r.registerService(SERVICE_NAME, getAospLlamaMtmdBinding());
+  const r = runtime as IAgentRuntime & {
+    registerService?: (name: string, impl: unknown) => unknown;
+    getService?: (name: string) => unknown;
+  };
+  if (typeof r.registerService !== "function") return;
+  if (typeof r.getService === "function" && r.getService(SERVICE_NAME)) return;
+  r.registerService(SERVICE_NAME, getAospLlamaMtmdBinding());
 }
 
 function probeAospMtmdBinding(): AospLlamaMtmdBinding {
-	// The probe is intentionally narrow today: it never returns a live
-	// binding. When the native shim adds the mtmd symbols, replace this
-	// body with a bun:ffi dlopen + symbol bind. The shape of the live
-	// binding is fully specified in the JSDoc at the top of this file.
-	return {
-		hasMtmd(): boolean {
-			return false;
-		},
-		async initMtmd(): Promise<AospMtmdHandle> {
-			throw new Error(
-				"[aosp-llama-vision] libeliza-llama-shim.so does not export mtmd symbols yet. The expected symbols are eliza_llama_mtmd_init_from_file / _describe / _free; see aosp-llama-vision.ts JSDoc for the full ABI.",
-			);
-		},
-	};
+  // The probe is intentionally narrow today: it never returns a live
+  // binding. When the native shim adds the mtmd symbols, replace this
+  // body with a bun:ffi dlopen + symbol bind. The shape of the live
+  // binding is fully specified in the JSDoc at the top of this file.
+  return {
+    hasMtmd(): boolean {
+      return false;
+    },
+    async initMtmd(): Promise<AospMtmdHandle> {
+      throw new Error(
+        "[aosp-llama-vision] libeliza-llama-shim.so does not export mtmd symbols yet. The expected symbols are eliza_llama_mtmd_init_from_file / _describe / _free; see aosp-llama-vision.ts JSDoc for the full ABI.",
+      );
+    },
+  };
 }
 
 /** Test-only: drop the cached binding so a fresh probe runs next call. */
 export function __resetForTests(): void {
-	cachedBinding = null;
+  cachedBinding = null;
 }

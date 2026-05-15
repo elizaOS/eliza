@@ -23,9 +23,9 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { type Actor, OcrCoordinateGroundingActor } from "../actor/actor.js";
 import { Brain } from "../actor/brain.js";
 import { Cascade } from "../actor/cascade.js";
-import { OcrCoordinateGroundingActor, type Actor } from "../actor/actor.js";
 import type { DisplayCapture } from "../platform/capture.js";
 import type { Scene } from "../scene/scene-types.js";
 
@@ -33,7 +33,13 @@ function scene(): Scene {
   return {
     timestamp: 1,
     displays: [
-      { id: 0, bounds: [0, 0, 1920, 1080], scaleFactor: 1, primary: true, name: "fake" },
+      {
+        id: 0,
+        bounds: [0, 0, 1920, 1080],
+        scaleFactor: 1,
+        primary: true,
+        name: "fake",
+      },
     ],
     focused_window: {
       app: "Editor",
@@ -44,9 +50,27 @@ function scene(): Scene {
     },
     apps: [],
     ocr: [
-      { id: "t0-1", text: "Save", bbox: [100, 200, 80, 32], conf: 0.97, displayId: 0 },
-      { id: "t0-2", text: "Cancel", bbox: [200, 200, 80, 32], conf: 0.95, displayId: 0 },
-      { id: "t0-3", text: "File", bbox: [50, 10, 40, 20], conf: 0.99, displayId: 0 },
+      {
+        id: "t0-1",
+        text: "Save",
+        bbox: [100, 200, 80, 32],
+        conf: 0.97,
+        displayId: 0,
+      },
+      {
+        id: "t0-2",
+        text: "Cancel",
+        bbox: [200, 200, 80, 32],
+        conf: 0.95,
+        displayId: 0,
+      },
+      {
+        id: "t0-3",
+        text: "File",
+        bbox: [50, 10, 40, 20],
+        conf: 0.99,
+        displayId: 0,
+      },
     ],
     ax: [
       {
@@ -98,7 +122,11 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
         proposed_action: { kind: "wait", rationale: "loading" },
       }),
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     expect(res.proposed.kind).toBe("wait");
     expect(res.proposed.displayId).toBe(0);
     expect(res.proposed.x).toBeUndefined();
@@ -113,7 +141,11 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
         proposed_action: { kind: "finish", rationale: "" },
       }),
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     expect(res.proposed.kind).toBe("finish");
   });
 
@@ -123,10 +155,18 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
         scene_summary: "S",
         target_display_id: 0,
         roi: [],
-        proposed_action: { kind: "type", args: { text: "hello" }, rationale: "" },
+        proposed_action: {
+          kind: "type",
+          args: { text: "hello" },
+          rationale: "",
+        },
       }),
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     expect(res.proposed.kind).toBe("type");
     expect(res.proposed.text).toBe("hello");
   });
@@ -144,7 +184,11 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
         },
       }),
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     expect(res.proposed.kind).toBe("hotkey");
     expect(res.proposed.keys).toEqual(["ctrl", "s"]);
   });
@@ -158,7 +202,11 @@ describe("Cascade — non-coordinate actions short-circuit grounding", () => {
         proposed_action: { kind: "key", args: { key: "Enter" }, rationale: "" },
       }),
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     expect(res.proposed.kind).toBe("key");
     expect(res.proposed.key).toBe("Enter");
   });
@@ -188,7 +236,11 @@ describe("Cascade — click grounding paths", () => {
         proposed_action: { kind: "click", ref: "t0-1", rationale: "save" },
       }),
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     // Save bbox = [100, 200, 80, 32] -> center = (140, 216)
     expect(res.proposed.kind).toBe("click");
     expect(res.proposed.x).toBe(140);
@@ -210,7 +262,10 @@ describe("Cascade — click grounding paths", () => {
         };
       },
     };
-    const fakeCrop = (frame: Buffer, bbox: [number, number, number, number]): Buffer => {
+    const fakeCrop = (
+      frame: Buffer,
+      bbox: [number, number, number, number],
+    ): Buffer => {
       // Concatenate a deterministic tag with bbox so we can assert the bbox
       // we cropped from is the one the Brain asked for.
       return Buffer.concat([
@@ -228,7 +283,11 @@ describe("Cascade — click grounding paths", () => {
       actor: fakeActor,
       crop: fakeCrop,
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures(42) });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(42),
+    });
     expect(seenCrops).toHaveLength(1);
     // Crop carries the exact bbox the Brain emitted.
     expect(seenCrops[0]!.toString("utf8", 0, 20)).toBe("crop:[10,20,200,300]");
@@ -247,7 +306,11 @@ describe("Cascade — click grounding paths", () => {
         proposed_action: { kind: "click", rationale: "click me" },
       }),
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     expect(res.proposed.x).toBe(140);
     expect(res.proposed.y).toBe(220);
   });
@@ -265,7 +328,11 @@ describe("Cascade — click grounding paths", () => {
         proposed_action: { kind: "click", rationale: "x" },
       }),
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     expect(res.rois.length).toBeLessThanOrEqual(2);
   });
 
@@ -288,7 +355,9 @@ describe("Cascade — click grounding paths", () => {
       brain: stubBrain({
         scene_summary: "S",
         target_display_id: 0,
-        roi: [{ displayId: 0, bbox: [100, 100, 200, 200], reason: "scroll-area" }],
+        roi: [
+          { displayId: 0, bbox: [100, 100, 200, 200], reason: "scroll-area" },
+        ],
         proposed_action: {
           kind: "scroll",
           args: { dx: 0, dy: 3 },
@@ -296,7 +365,11 @@ describe("Cascade — click grounding paths", () => {
         },
       }),
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     expect(res.proposed.kind).toBe("scroll");
     expect(res.proposed.x).toBe(200);
     expect(res.proposed.y).toBe(200);
@@ -317,7 +390,11 @@ describe("Cascade — click grounding paths", () => {
         },
       }),
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     expect(res.proposed.kind).toBe("drag");
     expect(res.proposed.startX).toBe(10);
     expect(res.proposed.startY).toBe(20);
@@ -338,7 +415,11 @@ describe("Cascade — registered OCR actor end-to-end", () => {
       }),
       actor,
     });
-    const res = await cascade.run({ scene: scene(), goal: "g", captures: captures() });
+    const res = await cascade.run({
+      scene: scene(),
+      goal: "g",
+      captures: captures(),
+    });
     // Cancel bbox = [200, 200, 80, 32] -> center (240, 216)
     expect(res.proposed.x).toBe(240);
     expect(res.proposed.y).toBe(216);

@@ -388,7 +388,9 @@ endif()
  */
 export function appendKokoroCmakeGraft({ llamaCppRoot } = {}) {
   if (!llamaCppRoot) {
-    throw new Error("[omnivoice-fuse] appendKokoroCmakeGraft: llamaCppRoot is required");
+    throw new Error(
+      "[omnivoice-fuse] appendKokoroCmakeGraft: llamaCppRoot is required",
+    );
   }
   const cmakePath = path.join(llamaCppRoot, "CMakeLists.txt");
   const original = fs.readFileSync(cmakePath, "utf8");

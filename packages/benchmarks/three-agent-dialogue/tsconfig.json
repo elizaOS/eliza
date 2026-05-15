@@ -20,10 +20,6 @@
     "allowImportingTsExtensions": true,
     "noEmit": true
   },
-  "include": [
-    "runner/**/*.ts",
-    "verify/**/*.ts",
-    "__tests__/**/*.ts"
-  ],
+  "include": ["runner/**/*.ts", "verify/**/*.ts", "__tests__/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

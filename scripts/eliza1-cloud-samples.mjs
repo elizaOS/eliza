@@ -13,7 +13,11 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), "..");
-const DEFAULT_REPORT_DIR = path.join(REPO_ROOT, "reports", "eliza1-cloud-samples");
+const DEFAULT_REPORT_DIR = path.join(
+  REPO_ROOT,
+  "reports",
+  "eliza1-cloud-samples",
+);
 
 const DEFAULT_MODELS = ["vast/eliza-1-2b", "vast/eliza-1-27b-256k"];
 
@@ -79,7 +83,8 @@ function parseArgs(argv) {
     if (arg === "--base-url") args.baseUrl = next();
     else if (arg === "--api-key") args.apiKey = next();
     else if (arg === "--report-dir") args.reportDir = path.resolve(next());
-    else if (arg === "--timeout-ms") args.timeoutMs = Number.parseInt(next(), 10);
+    else if (arg === "--timeout-ms")
+      args.timeoutMs = Number.parseInt(next(), 10);
     else if (arg === "--models") {
       args.models = next()
         .split(",")
@@ -207,17 +212,21 @@ async function fetchWithTimeout(args, url, options) {
 
 async function chat(args, model, prompt, stream = false) {
   const started = performance.now();
-  const res = await fetchWithTimeout(args, `${args.baseUrl}/api/v1/chat/completions`, {
-    method: "POST",
-    headers: authHeaders(args),
-    body: JSON.stringify({
-      model,
-      messages: prompt.messages,
-      temperature: 0,
-      max_tokens: prompt.maxTokens,
-      stream,
-    }),
-  });
+  const res = await fetchWithTimeout(
+    args,
+    `${args.baseUrl}/api/v1/chat/completions`,
+    {
+      method: "POST",
+      headers: authHeaders(args),
+      body: JSON.stringify({
+        model,
+        messages: prompt.messages,
+        temperature: 0,
+        max_tokens: prompt.maxTokens,
+        stream,
+      }),
+    },
+  );
 
   if (!stream) {
     const rawText = await res.text();
@@ -245,9 +254,7 @@ async function chat(args, model, prompt, stream = false) {
   const raw = await res.text();
   const chunks = [];
   for (const block of raw.split(/\n\n+/)) {
-    const line = block
-      .split(/\n/)
-      .find((entry) => entry.startsWith("data: "));
+    const line = block.split(/\n/).find((entry) => entry.startsWith("data: "));
     if (!line) continue;
     const payload = line.slice("data: ".length).trim();
     if (!payload || payload === "[DONE]") continue;
@@ -275,23 +282,33 @@ async function chat(args, model, prompt, stream = false) {
 }
 
 function isMp3(bytes) {
-  if (bytes.length >= 3 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
+  if (
+    bytes.length >= 3 &&
+    bytes[0] === 0x49 &&
+    bytes[1] === 0x44 &&
+    bytes[2] === 0x33
+  ) {
     return true;
   }
   return bytes.length >= 2 && bytes[0] === 0xff && (bytes[1] & 0xe0) === 0xe0;
 }
 
 async function collectVoice(args, text, reportDir, stamp) {
-  const voiceText = stripThinking(text).slice(0, 240) || "Eliza cloud voice sample is clear.";
+  const voiceText =
+    stripThinking(text).slice(0, 240) || "Eliza cloud voice sample is clear.";
   const ttsStarted = performance.now();
-  const ttsRes = await fetchWithTimeout(args, `${args.baseUrl}/api/v1/voice/tts`, {
-    method: "POST",
-    headers: authHeaders(args),
-    body: JSON.stringify({
-      text: voiceText,
-      modelId: "eleven_flash_v2_5",
-    }),
-  });
+  const ttsRes = await fetchWithTimeout(
+    args,
+    `${args.baseUrl}/api/v1/voice/tts`,
+    {
+      method: "POST",
+      headers: authHeaders(args),
+      body: JSON.stringify({
+        text: voiceText,
+        modelId: "eleven_flash_v2_5",
+      }),
+    },
+  );
   const ttsBuffer = new Uint8Array(await ttsRes.arrayBuffer());
   const audioPath = path.join(reportDir, `voice-tts-${stamp}.mp3`);
   if (ttsRes.ok && ttsBuffer.byteLength > 0) {
@@ -320,11 +337,15 @@ async function collectVoice(args, text, reportDir, stamp) {
     );
     form.set("languageCode", "en");
     const sttStarted = performance.now();
-    const sttRes = await fetchWithTimeout(args, `${args.baseUrl}/api/v1/voice/stt`, {
-      method: "POST",
-      headers: { "X-Api-Key": args.apiKey },
-      body: form,
-    });
+    const sttRes = await fetchWithTimeout(
+      args,
+      `${args.baseUrl}/api/v1/voice/stt`,
+      {
+        method: "POST",
+        headers: { "X-Api-Key": args.apiKey },
+        body: form,
+      },
+    );
     const rawText = await sttRes.text();
     let json = null;
     try {
@@ -401,14 +422,18 @@ async function main() {
     status: pass ? "pass" : "fail",
     summary: {
       textSamples: samples.length,
-      textPass: samples.filter((sample) => sample.ok && sample.quality?.ok).length,
+      textPass: samples.filter((sample) => sample.ok && sample.quality?.ok)
+        .length,
       voicePass: voice?.ok ?? null,
     },
     samples,
     voice,
   };
 
-  const reportPath = path.join(args.reportDir, `eliza1-cloud-samples-${stamp}.json`);
+  const reportPath = path.join(
+    args.reportDir,
+    `eliza1-cloud-samples-${stamp}.json`,
+  );
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
   console.log(
     `[eliza1:cloud-samples] wrote ${path.relative(REPO_ROOT, reportPath)} (${report.status})`,
@@ -417,6 +442,8 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`[eliza1:cloud-samples] ${error instanceof Error ? error.stack : error}`);
+  console.error(
+    `[eliza1:cloud-samples] ${error instanceof Error ? error.stack : error}`,
+  );
   process.exit(1);
 });

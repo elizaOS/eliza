@@ -1,11 +1,16 @@
-span.dvd, a.dvd {
+span.dvd,
+a.dvd {
   display: inline;
 }
 
-div.dvd, img.dvd, p.dvd, h1.dvd, h2.dvd {
+div.dvd,
+img.dvd,
+p.dvd,
+h1.dvd,
+h2.dvd {
   display: block;
 }
 
 h1.step:before {
-  content: counter(step)'/3';
+  content: counter(step) "/3";
 }

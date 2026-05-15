@@ -2,11 +2,11 @@ import {
 	asUUID,
 	ChannelType,
 	type Component,
+	logger as coreLogger,
 	createUniqueUuid,
 	type Entity,
 	type IAgentRuntime,
 	type JsonValue,
-	logger as coreLogger,
 	type Memory,
 	ModelType,
 	Service,
@@ -18,7 +18,9 @@ import {
 type ComponentData = Component["data"];
 
 function toJsonRecord(value: unknown): { [key: string]: JsonValue } {
-	return JSON.parse(JSON.stringify(value ?? {})) as { [key: string]: JsonValue };
+	return JSON.parse(JSON.stringify(value ?? {})) as {
+		[key: string]: JsonValue;
+	};
 }
 
 function logValue(value: unknown): string {
@@ -1704,7 +1706,7 @@ export class CommunityInvestorService
 				tableName: "transactions",
 				embedding,
 				match_threshold: 0.7,
-					limit: 20,
+				limit: 20,
 			});
 
 			const transactions: Transaction[] = [];
@@ -1712,9 +1714,12 @@ export class CommunityInvestorService
 			for (const memory of memories) {
 				if (
 					memory.content.transaction &&
-					(memory.content.transaction as unknown as Transaction).positionId === positionId
+					(memory.content.transaction as unknown as Transaction).positionId ===
+						positionId
 				) {
-					transactions.push(memory.content.transaction as unknown as Transaction);
+					transactions.push(
+						memory.content.transaction as unknown as Transaction,
+					);
 				}
 			}
 
@@ -1742,7 +1747,7 @@ export class CommunityInvestorService
 				tableName: "transactions",
 				embedding,
 				match_threshold: 0.7,
-					limit: 50,
+				limit: 50,
 			});
 
 			const transactions: Transaction[] = [];
@@ -1750,10 +1755,12 @@ export class CommunityInvestorService
 			for (const memory of memories) {
 				if (
 					memory.content.transaction &&
-					(memory.content.transaction as unknown as Transaction).tokenAddress ===
-						tokenAddress
+					(memory.content.transaction as unknown as Transaction)
+						.tokenAddress === tokenAddress
 				) {
-					transactions.push(memory.content.transaction as unknown as Transaction);
+					transactions.push(
+						memory.content.transaction as unknown as Transaction,
+					);
 				}
 			}
 
@@ -1789,7 +1796,7 @@ export class CommunityInvestorService
 				tableName: "positions",
 				embedding,
 				match_threshold: 0.7,
-					limit: 1,
+				limit: 1,
 			});
 
 			if (memories.length > 0 && memories[0].content.position) {
@@ -1827,7 +1834,7 @@ export class CommunityInvestorService
 				tableName: "recommendations",
 				embedding,
 				match_threshold: 0.7,
-					limit: 50,
+				limit: 50,
 			});
 
 			const recommendations: TokenRecommendation[] = [];
@@ -1943,10 +1950,7 @@ export class CommunityInvestorService
 			};
 
 			// Add embedding to memory
-			const embedding = await this.runtime.useModel(
-					"TEXT_EMBEDDING",
-					text,
-				);
+			const embedding = await this.runtime.useModel("TEXT_EMBEDDING", text);
 			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
@@ -1983,10 +1987,7 @@ export class CommunityInvestorService
 			};
 
 			// Add embedding to memory
-			const embedding = await this.runtime.useModel(
-					"TEXT_EMBEDDING",
-					text,
-				);
+			const embedding = await this.runtime.useModel("TEXT_EMBEDDING", text);
 			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
@@ -2023,10 +2024,7 @@ export class CommunityInvestorService
 			};
 
 			// Add embedding to memory
-			const embedding = await this.runtime.useModel(
-					"TEXT_EMBEDDING",
-					text,
-				);
+			const embedding = await this.runtime.useModel("TEXT_EMBEDDING", text);
 			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
@@ -2077,10 +2075,7 @@ export class CommunityInvestorService
 			};
 
 			// Add embedding to memory
-			const embedding = await this.runtime.useModel(
-					"TEXT_EMBEDDING",
-					text,
-				);
+			const embedding = await this.runtime.useModel("TEXT_EMBEDDING", text);
 			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
@@ -2126,10 +2121,7 @@ export class CommunityInvestorService
 			};
 
 			// Add embedding to memory
-			const embedding = await this.runtime.useModel(
-					"TEXT_EMBEDDING",
-					text,
-				);
+			const embedding = await this.runtime.useModel("TEXT_EMBEDDING", text);
 			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
@@ -2172,10 +2164,7 @@ export class CommunityInvestorService
 			};
 
 			// Add embedding to memory
-			const embedding = await this.runtime.useModel(
-					"TEXT_EMBEDDING",
-					text,
-				);
+			const embedding = await this.runtime.useModel("TEXT_EMBEDDING", text);
 			const memoryWithEmbedding: Memory = { ...memory, embedding };
 
 			// Store in memory manager
@@ -2242,11 +2231,12 @@ export class CommunityInvestorService
 				tableName: "recommender_metrics",
 				embedding,
 				match_threshold: 0.7,
-					limit: 1,
+				limit: 1,
 			});
 
 			if (memories.length > 0 && memories[0].content.metrics) {
-				const metrics = memories[0].content.metrics as unknown as RecommenderMetrics;
+				const metrics = memories[0].content
+					.metrics as unknown as RecommenderMetrics;
 
 				// Cache the metrics
 				await this.runtime.setCache<RecommenderMetrics>(cacheKey, metrics); // Cache for 5 minutes
@@ -2289,7 +2279,7 @@ export class CommunityInvestorService
 				tableName: "recommender_metrics_history",
 				embedding,
 				match_threshold: 0.7,
-					limit: 10,
+				limit: 10,
 			});
 
 			const historyEntries: RecommenderMetricsHistory[] = [];
@@ -2297,8 +2287,8 @@ export class CommunityInvestorService
 			for (const memory of memories) {
 				if (
 					memory.content.history &&
-					(memory.content.history as unknown as RecommenderMetricsHistory).entityId ===
-						entityId
+					(memory.content.history as unknown as RecommenderMetricsHistory)
+						.entityId === entityId
 				) {
 					historyEntries.push(
 						memory.content.history as unknown as RecommenderMetricsHistory,
@@ -2394,7 +2384,7 @@ export class CommunityInvestorService
 				tableName: "tokens",
 				embedding,
 				match_threshold: 0.7,
-					limit: 1,
+				limit: 1,
 			});
 
 			if (memories.length > 0 && memories[0].content.token) {
@@ -2442,7 +2432,7 @@ export class CommunityInvestorService
 				tableName: "positions",
 				embedding,
 				match_threshold: 0.7,
-					limit: 50,
+				limit: 50,
 			});
 
 			const positions: PositionWithBalance[] = [];
@@ -3617,16 +3607,16 @@ ${report.tokenReports.join("\n")}
 	}
 
 	private registerTaskWorkers(runtime: IAgentRuntime): void {
-			runtime.registerTaskWorker({
-				name: "PROCESS_TRADE_DECISION",
-				execute: async (_runtime, options, task) => {
-					await this.executeProcessTradeDecision(
-						options as { recommendationId: UUID; userId: UUID },
-						task,
-					);
-					return undefined;
-				},
-			});
+		runtime.registerTaskWorker({
+			name: "PROCESS_TRADE_DECISION",
+			execute: async (_runtime, options, task) => {
+				await this.executeProcessTradeDecision(
+					options as { recommendationId: UUID; userId: UUID },
+					task,
+				);
+				return undefined;
+			},
+		});
 		logger.info(
 			"[CommunityInvestorService] Registered PROCESS_TRADE_DECISION task worker.",
 		);
@@ -3764,7 +3754,7 @@ ${report.tokenReports.join("\n")}
 				id: this.componentWorldId,
 				name: `Social Alpha Global World (Agent: ${this.runtime.agentId})`,
 				agentId: this.runtime.agentId,
-					metadata: {
+				metadata: {
 					plugin_managed: true,
 					description: "World context for CommunityInvestor plugin components",
 				},

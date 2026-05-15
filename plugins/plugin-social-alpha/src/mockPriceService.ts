@@ -17,7 +17,9 @@ export interface SimulatedToken {
 export class MockPriceService {
 	private tokens = new Map<string, SimulatedToken>();
 
-	static neutralTokenTrajectory(initialPrice: number): (step: number) => number {
+	static neutralTokenTrajectory(
+		initialPrice: number,
+	): (step: number) => number {
 		return (step: number) => initialPrice * (1 + Math.sin(step / 10) * 0.02);
 	}
 

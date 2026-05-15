@@ -1,9 +1,7 @@
 {
   "clipCount": 58,
   "commitSha": "c6db5b5dc703e212664a17cf58114f5ecfddc853",
-  "excludedIds": [
-    "samantha_002"
-  ],
+  "excludedIds": ["samantha_002"],
   "fetchedAt": "2026-05-14",
   "license": "research-only (no upstream LICENSE; samantha is derivative of *Her* (2013))",
   "normalizedLufs": -23.0,

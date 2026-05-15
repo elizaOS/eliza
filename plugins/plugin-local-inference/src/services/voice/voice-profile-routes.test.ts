@@ -11,9 +11,9 @@
 
 import * as fs from "node:fs";
 import * as http from "node:http";
+import { Socket } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Socket } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
 	handleVoiceProfileRoutes,
@@ -77,7 +77,10 @@ function makeRes(): {
 	}) as typeof res.writeHead;
 	res.end = ((chunk?: string | Buffer | Uint8Array) => {
 		if (chunk) {
-			chunks = Buffer.concat([chunks, Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)]);
+			chunks = Buffer.concat([
+				chunks,
+				Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk),
+			]);
 		}
 		return res;
 	}) as typeof res.end;
@@ -110,7 +113,9 @@ describe("GET /v1/voice/profiles", () => {
 
 	it("lists bundle-scanned profiles", async () => {
 		const bundleRoot = path.join(tmpDir, "bundle");
-		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-samantha.bin"));
+		writeEmptyPreset(
+			path.join(bundleRoot, "cache", "voice-preset-samantha.bin"),
+		);
 		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-alloy.bin"));
 
 		const opts: VoiceProfileRouteOptions = {
@@ -130,7 +135,9 @@ describe("GET /v1/voice/profiles", () => {
 
 	it("marks catalog default correctly", async () => {
 		const bundleRoot = path.join(tmpDir, "bundle");
-		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-samantha.bin"));
+		writeEmptyPreset(
+			path.join(bundleRoot, "cache", "voice-preset-samantha.bin"),
+		);
 
 		const voiceModelsDir = path.join(tmpDir, "models", "voice");
 		fs.mkdirSync(path.join(voiceModelsDir, "profiles"), { recursive: true });
@@ -150,7 +157,9 @@ describe("GET /v1/voice/profiles", () => {
 		await handleVoiceProfileRoutes(req, res, opts);
 
 		const json = JSON.parse(body());
-		const samantha = json.profiles.find((p: { id: string }) => p.id === "samantha");
+		const samantha = json.profiles.find(
+			(p: { id: string }) => p.id === "samantha",
+		);
 		expect(samantha?.isDefault).toBe(true);
 		expect(json.defaultProfileId).toBe("samantha");
 	});
@@ -170,7 +179,9 @@ describe("GET /v1/voice/profiles", () => {
 describe("POST /v1/voice/profiles/:id/activate", () => {
 	it("sets the default profile in catalog", async () => {
 		const bundleRoot = path.join(tmpDir, "bundle");
-		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-samantha.bin"));
+		writeEmptyPreset(
+			path.join(bundleRoot, "cache", "voice-preset-samantha.bin"),
+		);
 		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-alloy.bin"));
 
 		const voiceModelsDir = path.join(tmpDir, "models", "voice");
@@ -197,7 +208,10 @@ describe("POST /v1/voice/profiles/:id/activate", () => {
 
 		// Verify catalog was written.
 		const written = JSON.parse(
-			fs.readFileSync(path.join(voiceModelsDir, "profiles", "catalog.json"), "utf8"),
+			fs.readFileSync(
+				path.join(voiceModelsDir, "profiles", "catalog.json"),
+				"utf8",
+			),
 		) as VoiceProfileCatalog;
 		expect(written.defaultProfileId).toBe("alloy");
 	});
@@ -243,15 +257,15 @@ describe("POST /v1/voice/profiles/:id/activate", () => {
 		expect(status()).toBe(409);
 	});
 
-	it("returns 400 for invalid profile ids", async () => {
+	it("returns 400 for profile ids with invalid characters", async () => {
 		const opts: VoiceProfileRouteOptions = {
 			voiceModelsDir: path.join(tmpDir, "models", "voice"),
 		};
-		const req = makeReq("POST", "/v1/voice/profiles/../../../etc/activate");
+		// A profile id with spaces (URL-encoded) should be rejected.
+		const req = makeReq("POST", "/v1/voice/profiles/bad%20id%20here/activate");
 		const { res, status } = makeRes();
 		await handleVoiceProfileRoutes(req, res, opts);
-		// Path traversal attempt is rejected.
-		expect(status()).toBeGreaterThanOrEqual(400);
+		expect(status()).toBe(400);
 	});
 });
 
@@ -300,7 +314,10 @@ describe("DELETE /v1/voice/profiles/:id", () => {
 
 		// Catalog must have active=false.
 		const written = JSON.parse(
-			fs.readFileSync(path.join(voiceModelsDir, "profiles", "catalog.json"), "utf8"),
+			fs.readFileSync(
+				path.join(voiceModelsDir, "profiles", "catalog.json"),
+				"utf8",
+			),
 		) as VoiceProfileCatalog;
 		const entry = written.profiles.find((p) => p.id === "alloy");
 		expect(entry?.active).toBe(false);
@@ -308,7 +325,9 @@ describe("DELETE /v1/voice/profiles/:id", () => {
 
 	it("refuses to delete the active default profile", async () => {
 		const bundleRoot = path.join(tmpDir, "bundle");
-		writeEmptyPreset(path.join(bundleRoot, "cache", "voice-preset-samantha.bin"));
+		writeEmptyPreset(
+			path.join(bundleRoot, "cache", "voice-preset-samantha.bin"),
+		);
 
 		const voiceModelsDir = path.join(tmpDir, "models", "voice");
 		fs.mkdirSync(path.join(voiceModelsDir, "profiles"), { recursive: true });
@@ -382,7 +401,10 @@ describe("registerProfileInCatalog", () => {
 			createdAt: new Date().toISOString(),
 		});
 		const catalog = JSON.parse(
-			fs.readFileSync(path.join(voiceModelsDir, "profiles", "catalog.json"), "utf8"),
+			fs.readFileSync(
+				path.join(voiceModelsDir, "profiles", "catalog.json"),
+				"utf8",
+			),
 		) as VoiceProfileCatalog;
 		expect(catalog.profiles).toHaveLength(1);
 		expect(catalog.profiles[0]?.id).toBe("nova");
@@ -405,7 +427,10 @@ describe("registerProfileInCatalog", () => {
 			createdAt: now,
 		});
 		const catalog = JSON.parse(
-			fs.readFileSync(path.join(voiceModelsDir, "profiles", "catalog.json"), "utf8"),
+			fs.readFileSync(
+				path.join(voiceModelsDir, "profiles", "catalog.json"),
+				"utf8",
+			),
 		) as VoiceProfileCatalog;
 		expect(catalog.profiles).toHaveLength(1);
 		expect(catalog.profiles[0]?.instruct).toBe("v2");

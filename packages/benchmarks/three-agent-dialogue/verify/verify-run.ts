@@ -11,8 +11,15 @@
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import type { TranscriptEntry, EmotionEntry, VerificationResult } from "../runner/run-dialogue.ts";
-import { estimateWavDurationSec, isAudioNonBlank } from "../runner/audio-bus.ts";
+import {
+  estimateWavDurationSec,
+  isAudioNonBlank,
+} from "../runner/audio-bus.ts";
+import type {
+  EmotionEntry,
+  TranscriptEntry,
+  VerificationResult,
+} from "../runner/run-dialogue.ts";
 
 export interface RunVerificationReport {
   runDir: string;
@@ -138,7 +145,9 @@ async function main(): Promise<void> {
   console.log(`  mix.wav exists:       ${report.mixWavExists}`);
   console.log(`  mix.wav duration:     ${report.mixWavDurationSec}s`);
   console.log(`  mix.wav non-blank:    ${report.mixWavNonBlank}`);
-  console.log(`  Distinct speakers:    ${report.verification.distinctSpeakersDetected}`);
+  console.log(
+    `  Distinct speakers:    ${report.verification.distinctSpeakersDetected}`,
+  );
   console.log(
     `  Emotion fraction:     ${(report.verification.emotionDetectedFraction * 100).toFixed(0)}%`,
   );

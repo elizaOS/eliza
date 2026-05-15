@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, promises as fsp } from "node:fs";
+import { existsSync, promises as fsp, readdirSync } from "node:fs";
 import path from "node:path";
 
 type EsbuildOnLoadArgs = {

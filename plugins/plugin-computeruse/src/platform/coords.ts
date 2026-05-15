@@ -114,9 +114,7 @@ function translate(
  * display containing it. Returns null if no display contains the point.
  * Useful for translating OS-reported cursor positions back to local coords.
  */
-export function globalToLocal(
-  point: GlobalPoint,
-): LocalPoint | null {
+export function globalToLocal(point: GlobalPoint): LocalPoint | null {
   for (const d of listDisplays()) {
     const [x, y, w, h] = d.bounds;
     if (point.x >= x && point.x < x + w && point.y >= y && point.y < y + h) {

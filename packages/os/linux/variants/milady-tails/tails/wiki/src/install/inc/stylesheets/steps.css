@@ -10,7 +10,8 @@ body {
   counter-reset: step;
 }
 
-h1.step, span.next-counter {
+h1.step,
+span.next-counter {
   counter-increment: step;
 }
 
@@ -88,7 +89,16 @@ div.toggleable .hide {
     color: black !important;
   }
 
-  p, h1, h2, h3, h4, h5, h6, blockquote, ul, ol {
+  p,
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  blockquote,
+  ul,
+  ol {
     color: black !important;
   }
 
@@ -116,5 +126,4 @@ div.toggleable .hide {
     page-break-after: auto; /* 'always,' 'avoid,' 'left,' 'inherit,' or 'right' */
     page-break-inside: avoid; /* or 'auto' */
   }
-
 }

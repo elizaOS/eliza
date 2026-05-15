@@ -50,7 +50,8 @@ export function serializeSceneForPrompt(
   }
 
   // AX: prefer focused-window display subtree.
-  const focusedDisplay = scene.focused_window?.displayId ?? scene.displays[0]?.id ?? 0;
+  const focusedDisplay =
+    scene.focused_window?.displayId ?? scene.displays[0]?.id ?? 0;
   const focusedAx = scene.ax.filter((n) => n.displayId === focusedDisplay);
   const remaining = scene.ax.filter((n) => n.displayId !== focusedDisplay);
   const trimmedAx = [...focusedAx, ...remaining].slice(0, axMax);

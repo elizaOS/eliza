@@ -16,14 +16,14 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { OcrCoordinateGroundingActor } from "../../src/actor/actor.js";
 import { Brain } from "../../src/actor/brain.js";
 import { Cascade } from "../../src/actor/cascade.js";
-import { OcrCoordinateGroundingActor } from "../../src/actor/actor.js";
-import { dispatch } from "../../src/actor/dispatch.js";
 import type {
   ComputerInterface,
   DisplayPoint,
 } from "../../src/actor/computer-interface.js";
+import { dispatch } from "../../src/actor/dispatch.js";
 import type { DisplayCapture } from "../../src/platform/capture.js";
 import type { Scene } from "../../src/scene/scene-types.js";
 import type { DisplayDescriptor } from "../../src/types.js";
@@ -70,14 +70,73 @@ interface ClickGroundingResult {
 // A 1-pixel PNG is enough to validate "this is a real PNG buffer". Real
 // fixture bytes (the 8-byte signature + IHDR + IDAT + IEND).
 const ONE_PX_PNG: Buffer = Buffer.from([
-  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, // PNG signature
-  0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-  0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-  0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89,
-  0x00, 0x00, 0x00, 0x0d, 0x49, 0x44, 0x41, 0x54,
-  0x78, 0x9c, 0x62, 0x00, 0x01, 0x00, 0x00, 0x05,
-  0x00, 0x01, 0x0d, 0x0a, 0x2d, 0xb4,
-  0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+  0x89,
+  0x50,
+  0x4e,
+  0x47,
+  0x0d,
+  0x0a,
+  0x1a,
+  0x0a, // PNG signature
+  0x00,
+  0x00,
+  0x00,
+  0x0d,
+  0x49,
+  0x48,
+  0x44,
+  0x52, // IHDR chunk
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x00,
+  0x01,
+  0x08,
+  0x06,
+  0x00,
+  0x00,
+  0x00,
+  0x1f,
+  0x15,
+  0xc4,
+  0x89,
+  0x00,
+  0x00,
+  0x00,
+  0x0d,
+  0x49,
+  0x44,
+  0x41,
+  0x54,
+  0x78,
+  0x9c,
+  0x62,
+  0x00,
+  0x01,
+  0x00,
+  0x00,
+  0x05,
+  0x00,
+  0x01,
+  0x0d,
+  0x0a,
+  0x2d,
+  0xb4,
+  0x00,
+  0x00,
+  0x00,
+  0x00,
+  0x49,
+  0x45,
+  0x4e,
+  0x44,
+  0xae,
+  0x42,
+  0x60,
+  0x82,
 ]);
 
 function stubCaptureScreen(): CapturedScreen {
@@ -103,10 +162,11 @@ function stubOcr(_screen: CapturedScreen): OcrHit[] {
 }
 
 function stubGround(req: ClickGroundingRequest): ClickGroundingResult {
-  const hit = req.ocr.find((h) =>
-    h.text.toLowerCase() === req.target.toLowerCase(),
+  const hit = req.ocr.find(
+    (h) => h.text.toLowerCase() === req.target.toLowerCase(),
   );
-  if (!hit) throw new Error(`stub-ground: no OCR hit for target "${req.target}"`);
+  if (!hit)
+    throw new Error(`stub-ground: no OCR hit for target "${req.target}"`);
   return {
     hit,
     click: {
@@ -221,7 +281,11 @@ describe("golden path: via the live cascade (WS7 wired end-to-end)", () => {
       brain,
       actor: new OcrCoordinateGroundingActor(() => scene),
     });
-    const cascadeResult = await cascade.run({ scene, goal: "click save", captures });
+    const cascadeResult = await cascade.run({
+      scene,
+      goal: "click save",
+      captures,
+    });
     expect(cascadeResult.proposed.kind).toBe("click");
     expect(cascadeResult.proposed.displayId).toBe(0);
     // The cascade resolves t0-1's center (1740, 1016).

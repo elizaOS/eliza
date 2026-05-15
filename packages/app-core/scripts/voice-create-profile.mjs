@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * `bun run voice:create-profile` — build-time / fine-tune-time voice
  * profile creation.
@@ -36,11 +37,11 @@
  *   2  bad CLI args
  */
 
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import fsp from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const DEFAULT_BUNDLE = path.join(
@@ -206,7 +207,13 @@ async function writeCatalog(voiceModelsDir, catalog) {
 // CHANGELOG helper
 // ---------------------------------------------------------------------------
 
-async function appendChangelog(voiceModelsDir, name, displayName, instruct, presetPath) {
+async function appendChangelog(
+  voiceModelsDir,
+  name,
+  displayName,
+  instruct,
+  presetPath,
+) {
   const changelogPath = path.join(voiceModelsDir, "CHANGELOG.md");
   const now = new Date().toISOString().slice(0, 10);
   let presetBytes = 0;
@@ -236,7 +243,9 @@ async function appendChangelog(voiceModelsDir, name, displayName, instruct, pres
     }
     await fsp.writeFile(changelogPath, existing + entry, "utf8");
   } catch (err) {
-    console.warn(`[voice:create-profile] warning: could not append CHANGELOG: ${err.message}`);
+    console.warn(
+      `[voice:create-profile] warning: could not append CHANGELOG: ${err.message}`,
+    );
   }
 }
 
@@ -250,7 +259,9 @@ async function main() {
   console.log(`[voice:create-profile] name=${args.name}`);
   console.log(`[voice:create-profile] display-name=${args.displayName}`);
   console.log(`[voice:create-profile] from=${args.from}`);
-  console.log(`[voice:create-profile] instruct=${JSON.stringify(args.instruct)}`);
+  console.log(
+    `[voice:create-profile] instruct=${JSON.stringify(args.instruct)}`,
+  );
   console.log(`[voice:create-profile] bundle=${args.bundle}`);
   console.log(`[voice:create-profile] max-seconds=${args.maxSeconds}`);
   console.log(`[voice:create-profile] skip-encode=${args.skipEncode}`);
@@ -264,22 +275,32 @@ async function main() {
     "cache",
     `voice-preset-${args.name}.bin`,
   );
-  console.log(`\n[voice:create-profile] step 1: run freeze-voice.mjs → ${presetPath}`);
+  console.log(
+    `\n[voice:create-profile] step 1: run freeze-voice.mjs → ${presetPath}`,
+  );
 
   const freezeArgv = [
-    "--voice", args.name,
-    "--corpus", args.from,
-    "--out", presetPath,
-    "--bundle", args.bundle,
-    "--instruct", args.instruct,
-    "--max-seconds", String(args.maxSeconds),
+    "--voice",
+    args.name,
+    "--corpus",
+    args.from,
+    "--out",
+    presetPath,
+    "--bundle",
+    args.bundle,
+    "--instruct",
+    args.instruct,
+    "--max-seconds",
+    String(args.maxSeconds),
   ];
   if (args.skipEncode) freezeArgv.push("--skip-encode");
   if (args.dylib) freezeArgv.push("--dylib", args.dylib);
   if (args.dryRun) freezeArgv.push("--dry-run");
 
   if (!existsSync(FREEZE_VOICE_SCRIPT)) {
-    console.error(`[voice:create-profile] freeze-voice.mjs not found at ${FREEZE_VOICE_SCRIPT}`);
+    console.error(
+      `[voice:create-profile] freeze-voice.mjs not found at ${FREEZE_VOICE_SCRIPT}`,
+    );
     process.exit(1);
   }
 
@@ -288,19 +309,25 @@ async function main() {
     env: process.env,
   });
   if (result.status !== 0) {
-    console.error(`[voice:create-profile] freeze-voice.mjs exited with code ${result.status}`);
+    console.error(
+      `[voice:create-profile] freeze-voice.mjs exited with code ${result.status}`,
+    );
     process.exit(result.status ?? 1);
   }
 
   if (args.dryRun) {
-    console.log("\n[voice:create-profile] dry-run: skipping catalog + changelog writes.");
+    console.log(
+      "\n[voice:create-profile] dry-run: skipping catalog + changelog writes.",
+    );
     return;
   }
 
   // ------------------------------------------------------------------
   // Step 2: update catalog.json
   // ------------------------------------------------------------------
-  console.log(`\n[voice:create-profile] step 2: update catalog → ${catalogPath(args.voiceModelsDir)}`);
+  console.log(
+    `\n[voice:create-profile] step 2: update catalog → ${catalogPath(args.voiceModelsDir)}`,
+  );
   const catalog = await readCatalog(args.voiceModelsDir);
   const now = new Date().toISOString();
   const existingIdx = catalog.profiles.findIndex((e) => e.id === args.name);
@@ -313,10 +340,14 @@ async function main() {
   };
   if (existingIdx >= 0) {
     catalog.profiles[existingIdx] = entry;
-    console.log(`[voice:create-profile] updated existing catalog entry for '${args.name}'`);
+    console.log(
+      `[voice:create-profile] updated existing catalog entry for '${args.name}'`,
+    );
   } else {
     catalog.profiles.push(entry);
-    console.log(`[voice:create-profile] added catalog entry for '${args.name}'`);
+    console.log(
+      `[voice:create-profile] added catalog entry for '${args.name}'`,
+    );
   }
   await writeCatalog(args.voiceModelsDir, catalog);
   console.log(`[voice:create-profile] catalog written.`);
@@ -333,7 +364,9 @@ async function main() {
     presetPath,
   );
 
-  console.log(`\n[voice:create-profile] done. Profile '${args.name}' is ready.`);
+  console.log(
+    `\n[voice:create-profile] done. Profile '${args.name}' is ready.`,
+  );
   console.log(`  Preset: ${presetPath}`);
   console.log(`  Catalog: ${catalogPath(args.voiceModelsDir)}`);
   console.log(`  Activate: POST /v1/voice/profiles/${args.name}/activate`);

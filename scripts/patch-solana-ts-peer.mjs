@@ -9,7 +9,7 @@
  * Idempotent.
  */
 
-import { readdirSync, readFileSync, writeFileSync, statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -39,7 +39,14 @@ for (const entry of bunEntries) {
   if (!parts) continue;
   const [, name, version] = parts;
   if (!version.startsWith("5.")) continue;
-  const real = join(bunDir, entry, "node_modules", "@solana", name, "package.json");
+  const real = join(
+    bunDir,
+    entry,
+    "node_modules",
+    "@solana",
+    name,
+    "package.json",
+  );
   let raw;
   try {
     raw = readFileSync(real, "utf8");
@@ -55,5 +62,7 @@ for (const entry of bunEntries) {
 }
 
 if (patched > 0) {
-  console.log(`[patch-solana-ts-peer] loosened typescript peer on ${patched} @solana/* packages`);
+  console.log(
+    `[patch-solana-ts-peer] loosened typescript peer on ${patched} @solana/* packages`,
+  );
 }

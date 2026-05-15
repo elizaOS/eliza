@@ -22,7 +22,9 @@ type PrimaryChannelPolicy = {
   requireConfirmationForActions: boolean;
 };
 
-type TestMessagingServiceInstance = InstanceType<typeof TestMessagingService> & {
+type TestMessagingServiceInstance = InstanceType<
+  typeof TestMessagingService
+> & {
   resolvePrimaryChannelPolicy(
     provider: "x",
   ): Promise<PrimaryChannelPolicy | null>;
@@ -303,21 +305,25 @@ describe("LifeOps messaging mixin runtime delegation", () => {
         _opts: { participantId?: string; limit?: number },
       ) => [],
     );
-    const sendDirectMessageForAccount = vi.fn(async (
-      _accountId: string,
-      _message: { participantId: string; text: string },
-    ) => ({
-      ok: true,
-      status: 201,
-      messageId: "dm-requested",
-    }));
-    const createPostForAccount = vi.fn(async (
-      _accountId: string,
-      _request: { text: string; replyToTweetId?: string },
-    ) => ({
-      id: "tweet-requested",
-      metadata: { messageIdFull: "tweet-requested" },
-    }));
+    const sendDirectMessageForAccount = vi.fn(
+      async (
+        _accountId: string,
+        _message: { participantId: string; text: string },
+      ) => ({
+        ok: true,
+        status: 201,
+        messageId: "dm-requested",
+      }),
+    );
+    const createPostForAccount = vi.fn(
+      async (
+        _accountId: string,
+        _request: { text: string; replyToTweetId?: string },
+      ) => ({
+        id: "tweet-requested",
+        metadata: { messageIdFull: "tweet-requested" },
+      }),
+    );
     const service = serviceWithConnectorGrants({
       services: {
         x: {

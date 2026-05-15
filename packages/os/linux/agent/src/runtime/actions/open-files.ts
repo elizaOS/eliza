@@ -40,16 +40,16 @@ import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
  * nautilus (universal). First hit wins.
  */
 const FILE_MANAGER_BINARIES = [
-    "/usr/bin/thunar",
-    "/usr/bin/pcmanfm",
-    "/usr/bin/nautilus",
+  "/usr/bin/thunar",
+  "/usr/bin/pcmanfm",
+  "/usr/bin/nautilus",
 ] as const;
 
 function defaultFindBinary(): string | null {
-    for (const abs of FILE_MANAGER_BINARIES) {
-        if (existsSync(abs)) return abs;
-    }
-    return null;
+  for (const abs of FILE_MANAGER_BINARIES) {
+    if (existsSync(abs)) return abs;
+  }
+  return null;
 }
 
 /**
@@ -58,27 +58,27 @@ function defaultFindBinary(): string | null {
  * nautilus prefers a URI but happily resolves a path too.
  */
 function argsForBinary(binary: string, target: string): string[] {
-    if (binary.endsWith("/nautilus")) {
-        return ["--new-window", target];
-    }
-    // thunar + pcmanfm: just the path.
-    return [target];
+  if (binary.endsWith("/nautilus")) {
+    return ["--new-window", target];
+  }
+  // thunar + pcmanfm: just the path.
+  return [target];
 }
 
 export interface SpawnOptions {
-    /** Tests inject a fake binary resolver. */
-    readonly findBinary?: () => string | null;
-    /** Tests inject a fake spawn — same shape as node:child_process.spawn. */
-    readonly spawnFn?: (cmd: string, args: readonly string[]) => ChildProcess;
-    /** Path to open. Defaults to the current user's $HOME. */
-    readonly path?: string;
+  /** Tests inject a fake binary resolver. */
+  readonly findBinary?: () => string | null;
+  /** Tests inject a fake spawn — same shape as node:child_process.spawn. */
+  readonly spawnFn?: (cmd: string, args: readonly string[]) => ChildProcess;
+  /** Path to open. Defaults to the current user's $HOME. */
+  readonly path?: string;
 }
 
 export interface SpawnResult {
-    readonly status: "spawned" | "no-binary";
-    readonly pid?: number | undefined;
-    readonly binary?: string | undefined;
-    readonly path?: string | undefined;
+  readonly status: "spawned" | "no-binary";
+  readonly pid?: number | undefined;
+  readonly binary?: string | undefined;
+  readonly path?: string | undefined;
 }
 
 /**
@@ -87,104 +87,112 @@ export interface SpawnResult {
  * manager is installed.
  */
 export function openFiles(opts: SpawnOptions = {}): SpawnResult {
-    const findBin = opts.findBinary ?? defaultFindBinary;
-    const spawnFn = opts.spawnFn ?? ((cmd, args) =>
-        spawn(cmd, [...args], { detached: true, stdio: "ignore" }));
-    const target = opts.path ?? homedir();
+  const findBin = opts.findBinary ?? defaultFindBinary;
+  const spawnFn =
+    opts.spawnFn ??
+    ((cmd, args) => spawn(cmd, [...args], { detached: true, stdio: "ignore" }));
+  const target = opts.path ?? homedir();
 
-    const binary = findBin();
-    if (binary === null) return { status: "no-binary" };
+  const binary = findBin();
+  if (binary === null) return { status: "no-binary" };
 
-    const args = argsForBinary(binary, target);
-    const child = spawnFn(binary, args);
-    try {
-        child.unref?.();
-    } catch {
-        // Some test stubs return objects without unref; harmless.
-    }
-    child.on?.("error", () => {});
-    return {
-        status: "spawned",
-        pid: child.pid ?? undefined,
-        binary,
-        path: target,
-    };
+  const args = argsForBinary(binary, target);
+  const child = spawnFn(binary, args);
+  try {
+    child.unref?.();
+  } catch {
+    // Some test stubs return objects without unref; harmless.
+  }
+  child.on?.("error", () => {});
+  return {
+    status: "spawned",
+    pid: child.pid ?? undefined,
+    binary,
+    path: target,
+  };
 }
 
 function readSpawnOptions(options: unknown): SpawnOptions {
-    if (typeof options !== "object" || options === null) return {};
-    const o = options as Record<string, unknown>;
-    const findBinary =
-        typeof o["findBinary"] === "function" ? (o["findBinary"] as () => string | null) : undefined;
-    const spawnFn =
-        typeof o["spawnFn"] === "function"
-            ? (o["spawnFn"] as (cmd: string, args: readonly string[]) => ChildProcess)
-            : undefined;
-    const path = typeof o["path"] === "string" ? (o["path"] as string) : undefined;
-    return {
-        ...(findBinary !== undefined ? { findBinary } : {}),
-        ...(spawnFn !== undefined ? { spawnFn } : {}),
-        ...(path !== undefined ? { path } : {}),
-    };
+  if (typeof options !== "object" || options === null) return {};
+  const o = options as Record<string, unknown>;
+  const findBinary =
+    typeof o["findBinary"] === "function"
+      ? (o["findBinary"] as () => string | null)
+      : undefined;
+  const spawnFn =
+    typeof o["spawnFn"] === "function"
+      ? (o["spawnFn"] as (cmd: string, args: readonly string[]) => ChildProcess)
+      : undefined;
+  const path =
+    typeof o["path"] === "string" ? (o["path"] as string) : undefined;
+  return {
+    ...(findBinary !== undefined ? { findBinary } : {}),
+    ...(spawnFn !== undefined ? { spawnFn } : {}),
+    ...(path !== undefined ? { path } : {}),
+  };
 }
 
 export const OPEN_FILES_ACTION: Action = {
-    name: "OPEN_FILES",
-    similes: [
-        "open files",
-        "show my files",
-        "open file manager",
-        "browse files",
-        "show files",
-        "i need a file manager",
+  name: "OPEN_FILES",
+  similes: [
+    "open files",
+    "show my files",
+    "open file manager",
+    "browse files",
+    "show files",
+    "i need a file manager",
+  ],
+  description:
+    "Pop a GTK file manager as a floating sway window so the user can " +
+    "browse, drag, and rename files directly. The chat is still the " +
+    "primary UI; this is the point-and-click escape hatch — Eliza " +
+    "spawns thunar (or pcmanfm / nautilus if thunar isn't present), " +
+    "opens it to the user's home directory, and sway floats + centers " +
+    "it via the matching app-id rule. The user closes the window when " +
+    "they're done.",
+
+  validate: async (_runtime: IAgentRuntime, _message: Memory) => true,
+
+  handler: async (_runtime, _message, _state, options, callback) => {
+    const result = openFiles(readSpawnOptions(options));
+    if (result.status === "no-binary") {
+      const reply =
+        "I couldn't find a file manager on this machine — " +
+        "thunar, pcmanfm, and nautilus are all missing.";
+      if (callback) await callback({ text: reply, actions: ["OPEN_FILES"] });
+      return { success: false, text: reply };
+    }
+    const reply = "Opened a file manager — close the window when you're done.";
+    if (callback) await callback({ text: reply, actions: ["OPEN_FILES"] });
+    return {
+      success: true,
+      text: reply,
+      data: {
+        actionName: "OPEN_FILES",
+        pid: result.pid ?? null,
+        binary: result.binary ?? null,
+      },
+    };
+  },
+
+  examples: [
+    [
+      { name: "{{user}}", content: { text: "open my files" } },
+      {
+        name: "Eliza",
+        content: {
+          text: "Opened a file manager — close the window when you're done.",
+        },
+      },
     ],
-    description:
-        "Pop a GTK file manager as a floating sway window so the user can " +
-        "browse, drag, and rename files directly. The chat is still the " +
-        "primary UI; this is the point-and-click escape hatch — Eliza " +
-        "spawns thunar (or pcmanfm / nautilus if thunar isn't present), " +
-        "opens it to the user's home directory, and sway floats + centers " +
-        "it via the matching app-id rule. The user closes the window when " +
-        "they're done.",
-
-    validate: async (_runtime: IAgentRuntime, _message: Memory) => true,
-
-    handler: async (_runtime, _message, _state, options, callback) => {
-        const result = openFiles(readSpawnOptions(options));
-        if (result.status === "no-binary") {
-            const reply =
-                "I couldn't find a file manager on this machine — " +
-                "thunar, pcmanfm, and nautilus are all missing.";
-            if (callback) await callback({ text: reply, actions: ["OPEN_FILES"] });
-            return { success: false, text: reply };
-        }
-        const reply = "Opened a file manager — close the window when you're done.";
-        if (callback) await callback({ text: reply, actions: ["OPEN_FILES"] });
-        return {
-            success: true,
-            text: reply,
-            data: {
-                actionName: "OPEN_FILES",
-                pid: result.pid ?? null,
-                binary: result.binary ?? null,
-            },
-        };
-    },
-
-    examples: [
-        [
-            { name: "{{user}}", content: { text: "open my files" } },
-            {
-                name: "Eliza",
-                content: { text: "Opened a file manager — close the window when you're done." },
-            },
-        ],
-        [
-            { name: "{{user}}", content: { text: "show me a file manager" } },
-            {
-                name: "Eliza",
-                content: { text: "Opened a file manager — close the window when you're done." },
-            },
-        ],
+    [
+      { name: "{{user}}", content: { text: "show me a file manager" } },
+      {
+        name: "Eliza",
+        content: {
+          text: "Opened a file manager — close the window when you're done.",
+        },
+      },
     ],
+  ],
 };

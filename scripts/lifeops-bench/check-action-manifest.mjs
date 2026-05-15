@@ -18,11 +18,11 @@
  */
 import { spawnSync } from "node:child_process";
 import {
-  existsSync,
   copyFileSync,
+  existsSync,
+  mkdtempSync,
   readFileSync,
   unlinkSync,
-  mkdtempSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -59,7 +59,12 @@ function run(cmd, args, opts = {}) {
   return res.status ?? 1;
 }
 
-function lineDiff(originalText, regeneratedText, originalLabel, regeneratedLabel) {
+function lineDiff(
+  originalText,
+  regeneratedText,
+  originalLabel,
+  regeneratedLabel,
+) {
   // Lightweight line-by-line diff. Avoids a `diff` binary dependency since
   // GitHub Windows runners may not have it. The output is sufficient to
   // identify drift in CI logs.
@@ -108,10 +113,15 @@ async function main() {
 
     // Step 2 — Python umbrella augment (patches the same file in place).
     const pythonBin =
-      process.env.PYTHON ?? (process.platform === "win32" ? "python" : "python3");
-    const augmentStatus = run(pythonBin, ["-m", "eliza_lifeops_bench.manifest_export"], {
-      cwd: BENCH_DIR,
-    });
+      process.env.PYTHON ??
+      (process.platform === "win32" ? "python" : "python3");
+    const augmentStatus = run(
+      pythonBin,
+      ["-m", "eliza_lifeops_bench.manifest_export"],
+      {
+        cwd: BENCH_DIR,
+      },
+    );
     if (augmentStatus !== 0) {
       fail(`manifest_export.py exited with code ${augmentStatus}`);
       exitCode = 1;

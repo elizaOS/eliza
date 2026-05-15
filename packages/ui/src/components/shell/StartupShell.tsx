@@ -291,9 +291,7 @@ export function StartupShell() {
     }
     // Voice prefix prefix runs on first boot before the runtime picker.
     if (!voicePrefixDone) {
-      return (
-        <VoicePrefixGate onDone={handleVoicePrefixDone} />
-      );
+      return <VoicePrefixGate onDone={handleVoicePrefixDone} />;
     }
     return <RuntimeGate />;
   }

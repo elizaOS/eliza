@@ -1,10 +1,15 @@
 @import url("usb.css");
 
-span.mac, a.mac {
+span.mac,
+a.mac {
   display: inline;
 }
 
-div.mac, img.mac, p.mac, h1.mac, h2.mac {
+div.mac,
+img.mac,
+p.mac,
+h1.mac,
+h2.mac {
   display: block;
 }
 
@@ -13,5 +18,5 @@ li.mac {
 }
 
 h1.step:before {
-  content: counter(step)'/8';
+  content: counter(step) "/8";
 }

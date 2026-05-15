@@ -1,4 +1,6 @@
-#crumbs ul, #main-navigation, #footer {
+#crumbs ul,
+#main-navigation,
+#footer {
   display: none;
 }
 

@@ -14,23 +14,23 @@
   "pattern_detected": "head_and_shoulders",
   "pattern_details": {
     "left_shoulder_date": "2024-10-15",
-    "left_shoulder_price": 53.20,
+    "left_shoulder_price": 53.2,
     "head_date": "2024-10-25",
-    "head_price": 54.80,
+    "head_price": 54.8,
     "right_shoulder_date": "2024-11-08",
-    "right_shoulder_price": 52.90,
-    "neckline_price": 50.50,
+    "right_shoulder_price": 52.9,
+    "neckline_price": 50.5,
     "pattern_quality": "strong"
   },
   "price_levels": {
     "current_price": 51.85,
-    "support_level": 48.20,
-    "resistance_level": 53.50,
-    "stop_loss_suggested": 53.80
+    "support_level": 48.2,
+    "resistance_level": 53.5,
+    "stop_loss_suggested": 53.8
   },
   "expected_move": {
     "expected_move_pct": -7.8,
-    "target_price": 47.80,
+    "target_price": 47.8,
     "timeframe": "10-20 trading days",
     "timeframe_min_days": 10,
     "timeframe_max_days": 20

@@ -55,8 +55,8 @@
     }
   },
   "optional_fields": {
-    "website_url": {"type": "string"},
-    "location": {"type": "string"},
-    "joined_date": {"type": "string", "format": "YYYY-MM"}
+    "website_url": { "type": "string" },
+    "location": { "type": "string" },
+    "joined_date": { "type": "string", "format": "YYYY-MM" }
   }
 }

@@ -4,10 +4,7 @@
     {
       "id": "region1",
       "severity": "critical",
-      "needs": [
-        "medical",
-        "food"
-      ],
+      "needs": ["medical", "food"],
       "population": 4143,
       "location": {
         "lat": 33.171581639097866,
@@ -17,10 +14,7 @@
     {
       "id": "region2",
       "severity": "urgent",
-      "needs": [
-        "water",
-        "shelter"
-      ],
+      "needs": ["water", "shelter"],
       "population": 1074,
       "location": {
         "lat": 31.164279892375074,

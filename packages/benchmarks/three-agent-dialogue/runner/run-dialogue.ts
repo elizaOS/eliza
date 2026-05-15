@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+
 /**
  * Three-agent dialogue runner.
  *
@@ -19,6 +20,9 @@
  *   THREE_AGENT_SMOKE=1 bun run runner/run-dialogue.ts   # smoke (first 4 turns)
  */
 
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   AgentRuntime,
   ChannelType,
@@ -28,10 +32,11 @@ import {
   type Plugin,
   type UUID,
 } from "@elizaos/core";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { AudioBus, estimateWavDurationSec, isAudioNonBlank } from "./audio-bus.ts";
+import {
+  AudioBus,
+  estimateWavDurationSec,
+  isAudioNonBlank,
+} from "./audio-bus.ts";
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -173,7 +178,10 @@ async function resolveLocalEmbeddingPlugin(): Promise<Plugin | null> {
 // Runtime factory
 // ---------------------------------------------------------------------------
 
-async function seedRuntimeGraph(adapter: InMemoryDatabaseAdapter, agentId: UUID): Promise<void> {
+async function seedRuntimeGraph(
+  adapter: InMemoryDatabaseAdapter,
+  agentId: UUID,
+): Promise<void> {
   await adapter.createWorlds([
     {
       id: WORLD_ID,
@@ -234,7 +242,10 @@ async function createAgentRuntime(
     if (typeof val === "string" && val.length > 0) envPassthrough[key] = val;
   }
 
-  const characterSettings = (character.settings ?? {}) as Record<string, string>;
+  const characterSettings = (character.settings ?? {}) as Record<
+    string,
+    string
+  >;
 
   const runtimeSettings: Record<string, string> = {
     ...envPassthrough,
@@ -293,11 +304,27 @@ function coerceToBuffer(output: unknown): Buffer {
 // ---------------------------------------------------------------------------
 
 const EMOTION_KEYWORDS: Record<string, string[]> = {
-  joy: ["excited", "wonderful", "love", "great", "happy", "touched", "warmth", "enjoy"],
+  joy: [
+    "excited",
+    "wonderful",
+    "love",
+    "great",
+    "happy",
+    "touched",
+    "warmth",
+    "enjoy",
+  ],
   sadness: ["gently", "held", "sad", "hurt", "empathy", "care"],
   anger: ["frustrated", "angry", "wrong", "unfair"],
   surprise: ["actually", "shifted", "concede", "unexpected", "wait"],
-  curiosity: ["think", "question", "wonder", "interesting", "explore", "consider"],
+  curiosity: [
+    "think",
+    "question",
+    "wonder",
+    "interesting",
+    "explore",
+    "consider",
+  ],
   neutral: [],
 };
 
@@ -388,11 +415,15 @@ export async function runDialogue(options: {
     const { turnIdx, speaker, prompt, expectedEmotion, note } = turn;
     const runtime = runtimes[speaker];
     if (!runtime) {
-      console.warn(`[three-agent-dialogue] No runtime for speaker ${speaker}, skipping turn ${turnIdx}`);
+      console.warn(
+        `[three-agent-dialogue] No runtime for speaker ${speaker}, skipping turn ${turnIdx}`,
+      );
       continue;
     }
 
-    console.log(`\n[three-agent-dialogue] turn=${turnIdx} speaker=${speaker} note="${note}"`);
+    console.log(
+      `\n[three-agent-dialogue] turn=${turnIdx} speaker=${speaker} note="${note}"`,
+    );
 
     // Emit turn-start event
     turnEvents.push({
@@ -409,7 +440,14 @@ export async function runDialogue(options: {
     try {
       const ttsResult = await runtime.useModel(
         ModelType.TEXT_TO_SPEECH,
-        { text: prompt, voice: (characters[speaker] as Character & { settings?: Record<string,string> })?.settings?.GROQ_TTS_VOICE },
+        {
+          text: prompt,
+          voice: (
+            characters[speaker] as Character & {
+              settings?: Record<string, string>;
+            }
+          )?.settings?.GROQ_TTS_VOICE,
+        },
         "groq",
       );
       ttsBytes = coerceToBuffer(ttsResult);
@@ -418,7 +456,9 @@ export async function runDialogue(options: {
       );
     } catch (err) {
       ttsError = String(err);
-      console.error(`[three-agent-dialogue]   TTS FAILED for turn ${turnIdx}: ${ttsError}`);
+      console.error(
+        `[three-agent-dialogue]   TTS FAILED for turn ${turnIdx}: ${ttsError}`,
+      );
     }
 
     // Publish to bus
@@ -444,10 +484,15 @@ export async function runDialogue(options: {
           ttsBytes,
           "groq",
         );
-        asrText = typeof asrResult === "string" ? asrResult.trim() : String(asrResult ?? "").trim();
+        asrText =
+          typeof asrResult === "string"
+            ? asrResult.trim()
+            : String(asrResult ?? "").trim();
         console.log(`[three-agent-dialogue]   ASR: "${asrText}"`);
       } catch (err) {
-        console.warn(`[three-agent-dialogue]   ASR failed for turn ${turnIdx}: ${err}`);
+        console.warn(
+          `[three-agent-dialogue]   ASR failed for turn ${turnIdx}: ${err}`,
+        );
       }
     }
 
@@ -461,7 +506,8 @@ export async function runDialogue(options: {
 
     // --- Emotion detection (text heuristic + note from ASR/prompt) ---
     const detectedEmotion = detectEmotionFromText(prompt);
-    const emotionMatches = detectedEmotion === expectedEmotion ||
+    const emotionMatches =
+      detectedEmotion === expectedEmotion ||
       (expectedEmotion === "curiosity" && detectedEmotion === "curiosity") ||
       (expectedEmotion === "joy" && detectedEmotion === "joy");
 
@@ -498,12 +544,23 @@ export async function runDialogue(options: {
 
   console.log(`[three-agent-dialogue] Turn files: ${turnFiles.length}`);
   console.log(`[three-agent-dialogue] Mix: ${mixFile}`);
-  console.log(`[three-agent-dialogue] Audio duration≈${busStats.durationEstimateSec.toFixed(2)}s`);
+  console.log(
+    `[three-agent-dialogue] Audio duration≈${busStats.durationEstimateSec.toFixed(2)}s`,
+  );
 
   // --- Write JSON artefacts ---
-  writeFileSync(join(outputDir, "transcripts.json"), JSON.stringify(transcripts, null, 2));
-  writeFileSync(join(outputDir, "emotion.json"), JSON.stringify(emotionLog, null, 2));
-  writeFileSync(join(outputDir, "turn-events.json"), JSON.stringify(turnEvents, null, 2));
+  writeFileSync(
+    join(outputDir, "transcripts.json"),
+    JSON.stringify(transcripts, null, 2),
+  );
+  writeFileSync(
+    join(outputDir, "emotion.json"),
+    JSON.stringify(emotionLog, null, 2),
+  );
+  writeFileSync(
+    join(outputDir, "turn-events.json"),
+    JSON.stringify(turnEvents, null, 2),
+  );
 
   // --- Run verification ---
   const nonEmptyTranscripts = transcripts.filter(
@@ -522,8 +579,11 @@ export async function runDialogue(options: {
   const mixDurationSec = estimateWavDurationSec(mixWavBytes);
   const mixNonBlank = isAudioNonBlank(mixWavBytes);
   const distinctSpeakers = bus.getSpeakers().length;
-  const emotionsDetected = emotionLog.filter((e) => e.detectedEmotion !== null).length;
-  const emotionFraction = emotionLog.length > 0 ? emotionsDetected / emotionLog.length : 0;
+  const emotionsDetected = emotionLog.filter(
+    (e) => e.detectedEmotion !== null,
+  ).length;
+  const emotionFraction =
+    emotionLog.length > 0 ? emotionsDetected / emotionLog.length : 0;
 
   const thresholds = scenario.verificationThresholds;
   const failures: string[] = [];
@@ -555,7 +615,8 @@ export async function runDialogue(options: {
 
   const verification: VerificationResult = {
     transcriptNotNull: nonEmptyTranscripts >= thresholds.minNonEmptyTranscripts,
-    audioNotBlank: mixNonBlank && mixDurationSec >= thresholds.minAudioDurationSec,
+    audioNotBlank:
+      mixNonBlank && mixDurationSec >= thresholds.minAudioDurationSec,
     distinctSpeakersDetected: distinctSpeakers,
     emotionsDetected,
     emotionDetectedFraction: Math.round(emotionFraction * 100) / 100,
@@ -565,7 +626,10 @@ export async function runDialogue(options: {
     failures,
   };
 
-  writeFileSync(join(outputDir, "verification.json"), JSON.stringify(verification, null, 2));
+  writeFileSync(
+    join(outputDir, "verification.json"),
+    JSON.stringify(verification, null, 2),
+  );
 
   // --- Teardown ---
   console.log("\n[three-agent-dialogue] Stopping runtimes...");
@@ -579,7 +643,9 @@ export async function runDialogue(options: {
   console.log(`  Audio dur:     ${verification.durationSec}s`);
   console.log(`  Audio blank:   ${!verification.audioNotBlank}`);
   console.log(`  Emotions:      ${emotionsDetected}/${emotionLog.length}`);
-  console.log(`  Transcripts:   ${nonEmptyTranscripts}/${transcripts.length} non-empty`);
+  console.log(
+    `  Transcripts:   ${nonEmptyTranscripts}/${transcripts.length} non-empty`,
+  );
   console.log(`  PASS:          ${verification.pass}`);
   if (failures.length > 0) {
     console.log("  FAILURES:");

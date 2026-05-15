@@ -1,5 +1,3 @@
-"use strict";
-
 const fs = require("fs");
 const path = require("path");
 
@@ -68,7 +66,9 @@ class ContentPicker {
     } catch {
       return null;
     }
-    const candidates = files.filter((f) => f.endsWith(".json") || f.endsWith(".md"));
+    const candidates = files.filter(
+      (f) => f.endsWith(".json") || f.endsWith(".md"),
+    );
     if (candidates.length === 0) {
       return null;
     }

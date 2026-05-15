@@ -9,12 +9,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
-import {
-  loadContinuousChatMode,
-  saveContinuousChatMode,
-} from "../../state/persistence";
-import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { type CodingAgentSession, client } from "../../api/client";
 import type {
   ConversationMessage,
@@ -33,9 +27,14 @@ import {
 } from "../../slots/task-coordinator-slots.js";
 import { useChatComposer } from "../../state/ChatComposerContext";
 import { usePtySessions } from "../../state/PtySessionsContext";
+import {
+  loadContinuousChatMode,
+  saveContinuousChatMode,
+} from "../../state/persistence";
 import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";
+import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
 import { AgentActivityBox } from "../chat/AgentActivityBox";
 import { ConnectorAccountPicker } from "../chat/ConnectorAccountPicker";
@@ -46,6 +45,11 @@ import {
   mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
+import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
+import {
+  ContinuousChatToggle,
+  ContinuousChatToggle,
+} from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import { ChatComposer } from "../composites/chat/chat-composer";
 import { ChatComposerShell } from "../composites/chat/chat-composer-shell";
@@ -305,11 +309,15 @@ export function ChatView({
   const {
     beginVoiceCapture,
     endVoiceCapture,
+    continuous,
+    continuousMode,
+    setContinuousMode,
     handleEditMessage,
     handleSpeakMessage,
     stopSpeaking,
     voice,
     voiceLatency,
+    voiceSpeaker,
   } = useChatVoiceController({
     agentVoiceMuted,
     chatFirstTokenReceived,

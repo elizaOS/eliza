@@ -13,12 +13,12 @@
  * this test.
  */
 
-import crypto from "node:crypto";
 import { describe, expect, test } from "bun:test";
+import crypto from "node:crypto";
 import {
+  type CloudFirstLineCacheKey,
   fingerprintCloudVoiceSettings,
   hashCloudCacheKey,
-  type CloudFirstLineCacheKey,
 } from "../tts-first-line-cache";
 
 const PROVIDERS = ["kokoro", "omnivoice", "edge-tts", "elevenlabs", "cloud"] as const;
@@ -26,7 +26,9 @@ const CODECS = ["mp3", "opus", "wav", "pcm_f32", "ogg"] as const;
 const SAMPLE_RATES = [16000, 24000, 44100, 48000] as const;
 
 function randomString(len = 8): string {
-  return Math.random().toString(36).slice(2, 2 + len);
+  return Math.random()
+    .toString(36)
+    .slice(2, 2 + len);
 }
 
 function randomElement<T>(arr: ReadonlyArray<T>): T {
@@ -76,7 +78,7 @@ describe("hashCloudCacheKey parity — 200 randomised inputs", () => {
         stability: Math.random(),
         style: Math.random(),
       });
-      const normalizedText = (randomString(20).replace(/\d/g, " ").trim() || "a");
+      const normalizedText = randomString(20).replace(/\d/g, " ").trim() || "a";
       const scope = Math.random() > 0.5 ? "global" : `org:${randomString(8)}`;
 
       const key: CloudFirstLineCacheKey = {

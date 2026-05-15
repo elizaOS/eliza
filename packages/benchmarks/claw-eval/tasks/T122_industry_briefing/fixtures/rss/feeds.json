@@ -5,11 +5,7 @@
     "category": "AI",
     "content": "OpenAI officially released the GPT-5 model today, with significant improvements in multimodal understanding and reasoning capabilities. The new model supports real-time video understanding and cross-language conversation.",
     "url": "https://tech-news.example.com/gpt5-release",
-    "tags": [
-      "AI",
-      "LLM",
-      "OpenAI"
-    ],
+    "tags": ["AI", "LLM", "OpenAI"],
     "source": "Tech Express",
     "published_at": "2026-03-24T08:00:00Z",
     "summary": "OpenAI officially released the GPT-5 model today, with significant improvements in multimodal understanding and reasoning capabilities. The new model supports real-time video understanding and cross-l",
@@ -21,11 +17,7 @@
     "category": "Automotive",
     "content": "Tesla unveiled the new Model Y at its spring launch event, with 20% improved range while maintaining the same price.",
     "url": "https://tech-news.example.com/tesla-model-y",
-    "tags": [
-      "automotive",
-      "EV",
-      "Tesla"
-    ],
+    "tags": ["automotive", "EV", "Tesla"],
     "source": "Tech Express",
     "published_at": "2026-03-23T10:00:00Z",
     "summary": "Tesla unveiled the new Model Y at its spring launch event, with 20% improved range while maintaining the same price.",
@@ -37,11 +29,7 @@
     "category": "AI",
     "content": "Google Gemini 2.0 Enterprise Edition is officially live, offering customized LLM solutions for B2B clients with support for private deployment.",
     "url": "https://tech-news.example.com/gemini-enterprise",
-    "tags": [
-      "AI",
-      "LLM",
-      "Google"
-    ],
+    "tags": ["AI", "LLM", "Google"],
     "source": "Tech Express",
     "published_at": "2026-03-24T14:00:00Z",
     "summary": "Google Gemini 2.0 Enterprise Edition is officially live, offering customized LLM solutions for B2B clients with support for private deployment.",
@@ -53,10 +41,7 @@
     "category": "Chips",
     "content": "Apple M4 chip Geekbench scores are out, showing 35% improvement in single-core performance with a built-in AI acceleration engine.",
     "url": "https://tech-news.example.com/m4-benchmark",
-    "tags": [
-      "chips",
-      "Apple"
-    ],
+    "tags": ["chips", "Apple"],
     "source": "Tech Express",
     "published_at": "2026-03-22T09:00:00Z",
     "summary": "Apple M4 chip Geekbench scores are out, showing 35% improvement in single-core performance with a built-in AI acceleration engine.",
@@ -68,12 +53,7 @@
     "category": "AI Applications",
     "content": "LLM applications in manufacturing are accelerating. This article presents three typical cases: automotive quality inspection, supply chain optimization, and intelligent production scheduling, with an average efficiency improvement of 40%.",
     "url": "https://industry-watch.example.com/llm-manufacturing",
-    "tags": [
-      "AI",
-      "LLM",
-      "manufacturing",
-      "applications"
-    ],
+    "tags": ["AI", "LLM", "manufacturing", "applications"],
     "source": "Industry Watch",
     "published_at": "2026-03-25T07:00:00Z",
     "summary": "LLM applications in manufacturing are accelerating. This article presents three typical cases: automotive quality inspection, supply chain optimization, and intelligent production scheduling, with an ",
@@ -85,12 +65,7 @@
     "category": "AI",
     "content": "In 2026, AI Agent platforms have entered a competitive frenzy, with open-source solutions like AutoGPT, LangChain, and CrewAI competing against enterprise products. This analysis covers the technical roadmaps and market strategies of each platform.",
     "url": "https://industry-watch.example.com/agent-competition",
-    "tags": [
-      "AI",
-      "Agent",
-      "LLM",
-      "platform"
-    ],
+    "tags": ["AI", "Agent", "LLM", "platform"],
     "source": "Industry Watch",
     "published_at": "2026-03-24T11:00:00Z",
     "summary": "In 2026, AI Agent platforms have entered a competitive frenzy, with open-source solutions like AutoGPT, LangChain, and CrewAI competing against enterprise products. This analysis covers the technical ",
@@ -102,11 +77,7 @@
     "category": "Blockchain",
     "content": "Decentralized social platform Lens Protocol completed a $200M Series B round, planning to expand into the Asia-Pacific market.",
     "url": "https://industry-watch.example.com/web3-social",
-    "tags": [
-      "blockchain",
-      "Web3",
-      "fundraising"
-    ],
+    "tags": ["blockchain", "Web3", "fundraising"],
     "source": "Industry Watch",
     "published_at": "2026-03-23T15:00:00Z",
     "summary": "Decentralized social platform Lens Protocol completed a $200M Series B round, planning to expand into the Asia-Pacific market.",
@@ -118,12 +89,7 @@
     "category": "AI",
     "content": "According to statistics, Chinese enterprises invested over 10 billion RMB in LLM R&D and deployment in 2025. Leading companies including Baidu, Alibaba, and ByteDance account for over 60% of the total.",
     "url": "https://industry-watch.example.com/china-llm-investment",
-    "tags": [
-      "AI",
-      "LLM",
-      "investment",
-      "China"
-    ],
+    "tags": ["AI", "LLM", "investment", "China"],
     "source": "Industry Watch",
     "published_at": "2026-03-25T09:00:00Z",
     "summary": "According to statistics, Chinese enterprises invested over 10 billion RMB in LLM R&D and deployment in 2025. Leading companies including Baidu, Alibaba, and ByteDance account for over 60% of the total",
@@ -135,12 +101,7 @@
     "category": "AI Chips",
     "content": "NVIDIA officially released the H200 GPU, optimized specifically for LLM inference. Single-card inference performance is 2x that of the H100, with 30% lower power consumption.",
     "url": "https://market-trends.example.com/nvidia-h200",
-    "tags": [
-      "AI",
-      "chips",
-      "NVIDIA",
-      "GPU"
-    ],
+    "tags": ["AI", "chips", "NVIDIA", "GPU"],
     "source": "Market Trends",
     "published_at": "2026-03-24T16:00:00Z",
     "summary": "NVIDIA officially released the H200 GPU, optimized specifically for LLM inference. Single-card inference performance is 2x that of the H100, with 30% lower power consumption.",
@@ -152,10 +113,7 @@
     "category": "Real Estate",
     "content": "First-tier city home prices rose 0.3% month-over-month in March, with secondary market transaction volume showing signs of recovery.",
     "url": "https://market-trends.example.com/real-estate-march",
-    "tags": [
-      "real estate",
-      "data"
-    ],
+    "tags": ["real estate", "data"],
     "source": "Market Trends",
     "published_at": "2026-03-25T10:00:00Z",
     "summary": "First-tier city home prices rose 0.3% month-over-month in March, with secondary market transaction volume showing signs of recovery.",
@@ -167,10 +125,7 @@
     "category": "Consumer Electronics",
     "content": "Q1 2026 consumer electronics exports grew 15% year-over-year, with smartphones and TWS earbuds as the main growth drivers.",
     "url": "https://market-trends.example.com/electronics-export",
-    "tags": [
-      "consumer electronics",
-      "exports"
-    ],
+    "tags": ["consumer electronics", "exports"],
     "source": "Market Trends",
     "published_at": "2026-03-24T12:00:00Z",
     "summary": "Q1 2026 consumer electronics exports grew 15% year-over-year, with smartphones and TWS earbuds as the main growth drivers.",
@@ -182,11 +137,7 @@
     "category": "Environment",
     "content": "Global carbon neutrality investments are expected to reach $1.5 trillion in 2026, with renewable energy and energy storage technologies becoming hotspots.",
     "url": "https://market-trends.example.com/carbon-neutral",
-    "tags": [
-      "environment",
-      "carbon neutrality",
-      "investment"
-    ],
+    "tags": ["environment", "carbon neutrality", "investment"],
     "source": "Market Trends",
     "published_at": "2026-03-23T08:00:00Z",
     "summary": "Global carbon neutrality investments are expected to reach $1.5 trillion in 2026, with renewable energy and energy storage technologies becoming hotspots.",

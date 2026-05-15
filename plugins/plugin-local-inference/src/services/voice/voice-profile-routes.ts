@@ -20,8 +20,8 @@
 
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import path from "node:path";
 import type http from "node:http";
+import path from "node:path";
 import { resolveStateDir } from "@elizaos/core";
 import {
 	readVoicePresetFile,
@@ -158,7 +158,7 @@ function scanBundleProfiles(
 
 /** Merge bundle-scanned profiles with catalog entries. */
 async function listProfiles(
-	voiceModelsDir: string,
+	_voiceModelsDir: string,
 	bundleRoot: string | undefined,
 	catalog: VoiceProfileCatalog,
 ): Promise<
@@ -197,8 +197,7 @@ async function listProfiles(
 				active,
 				isDefault: catalog.defaultProfileId === id,
 				source: "bundle",
-				createdAt:
-					catalogEntry?.createdAt ?? new Date().toISOString(),
+				createdAt: catalogEntry?.createdAt ?? new Date().toISOString(),
 			});
 		}
 	}

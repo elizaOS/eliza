@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
@@ -193,7 +193,10 @@ function installIssueCapture(page) {
     };
     logs.push(entry);
     if (message.type() === "error" || RED_ERROR_TEXT.test(message.text())) {
-      issues.push({ kind: `console.${message.type()}`, detail: message.text() });
+      issues.push({
+        kind: `console.${message.type()}`,
+        detail: message.text(),
+      });
     }
   });
   page.on("pageerror", (error) => {
@@ -250,19 +253,19 @@ async function inspectPage(page) {
       title: document.title,
       bodyHasRedError: red.test(bodyText),
       buttons: document.querySelectorAll("button").length,
-      visibleElementCount: Array.from(document.querySelectorAll("body *")).filter(
-        (node) => {
-          const element = node;
-          const rect = element.getBoundingClientRect();
-          const style = window.getComputedStyle(element);
-          return (
-            rect.width > 0 &&
-            rect.height > 0 &&
-            style.visibility !== "hidden" &&
-            style.display !== "none"
-          );
-        },
-      ).length,
+      visibleElementCount: Array.from(
+        document.querySelectorAll("body *"),
+      ).filter((node) => {
+        const element = node;
+        const rect = element.getBoundingClientRect();
+        const style = window.getComputedStyle(element);
+        return (
+          rect.width > 0 &&
+          rect.height > 0 &&
+          style.visibility !== "hidden" &&
+          style.display !== "none"
+        );
+      }).length,
       textLength: bodyText.length,
       textSample: bodyText.slice(0, 700),
       scroll: {
@@ -352,7 +355,8 @@ async function makeContactSheet(records, viewport) {
   for (let index = 0; index < rows.length; index += 1) {
     const record = rows[index];
     const left = gap + (index % columns) * (tileWidth + gap);
-    const top = gap + Math.floor(index / columns) * (tileHeight + labelHeight + gap);
+    const top =
+      gap + Math.floor(index / columns) * (tileHeight + labelHeight + gap);
     const screenshotPath = join(REPORT_DIR, record.screenshot);
     if (!existsSync(screenshotPath)) continue;
     const image = await sharp(screenshotPath)
@@ -415,8 +419,9 @@ async function main() {
     readyFailures: records.filter((record) => !record.readyOk).length,
     errorScreens: records.filter((record) => record.inspection.bodyHasRedError)
       .length,
-    overflow: records.filter((record) => record.inspection.hasHorizontalOverflow)
-      .length,
+    overflow: records.filter(
+      (record) => record.inspection.hasHorizontalOverflow,
+    ).length,
     consoleIssues: records.flatMap((record) => record.issues).length,
   };
   const report = {
@@ -426,7 +431,10 @@ async function main() {
     routes: records,
     summary,
   };
-  await writeFile(join(REPORT_DIR, "report.json"), JSON.stringify(report, null, 2));
+  await writeFile(
+    join(REPORT_DIR, "report.json"),
+    JSON.stringify(report, null, 2),
+  );
   await makeContactSheet(records, "desktop");
   await makeContactSheet(records, "mobile");
   console.log(REPORT_DIR);

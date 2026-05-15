@@ -8510,7 +8510,9 @@ export class LifeOpsRepository {
         }
 
         // 2. UPDATE each source with version check (status=stopped + metadata).
-        const sourceMetadataPatch = (existingMetadata: Record<string, unknown>) => ({
+        const sourceMetadataPatch = (
+          existingMetadata: Record<string, unknown>,
+        ) => ({
           ...existingMetadata,
           mergedIntoWorkThreadId: args.target.id,
           mergeRequestId: args.mergeRequestId,

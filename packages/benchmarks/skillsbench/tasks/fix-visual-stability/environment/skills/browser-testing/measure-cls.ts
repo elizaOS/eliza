@@ -1,22 +1,25 @@
-import { chromium } from 'playwright';
+import { chromium } from "playwright";
 
 interface CLSResult {
   url: string;
   cls: number;
-  rating: 'good' | 'needs-improvement' | 'poor';
+  rating: "good" | "needs-improvement" | "poor";
   metrics: Record<string, number>;
 }
 
-async function measureCLS(url: string, scroll: boolean = false): Promise<CLSResult> {
+async function measureCLS(
+  url: string,
+  scroll: boolean = false,
+): Promise<CLSResult> {
   const browser = await chromium.launch();
   const page = await browser.newPage();
   const client = await page.context().newCDPSession(page);
 
   // Enable Performance domain
-  await client.send('Performance.enable');
+  await client.send("Performance.enable");
 
   // Navigate and wait for load
-  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.goto(url, { waitUntil: "networkidle" });
 
   // Optional: scroll to trigger lazy-loaded content shifts
   if (scroll) {
@@ -30,7 +33,7 @@ async function measureCLS(url: string, scroll: boolean = false): Promise<CLSResu
   await page.waitForTimeout(2000);
 
   // Get all metrics including CumulativeLayoutShift
-  const perfMetrics = await client.send('Performance.getMetrics');
+  const perfMetrics = await client.send("Performance.getMetrics");
 
   await browser.close();
 
@@ -41,33 +44,33 @@ async function measureCLS(url: string, scroll: boolean = false): Promise<CLSResu
   }
 
   // CLS is directly available from CDP
-  const cls = metrics['CumulativeLayoutShift'] || 0;
+  const cls = metrics["CumulativeLayoutShift"] || 0;
 
   // Determine rating (Google's thresholds)
-  let rating: 'good' | 'needs-improvement' | 'poor';
+  let rating: "good" | "needs-improvement" | "poor";
   if (cls < 0.1) {
-    rating = 'good';
+    rating = "good";
   } else if (cls < 0.25) {
-    rating = 'needs-improvement';
+    rating = "needs-improvement";
   } else {
-    rating = 'poor';
+    rating = "poor";
   }
 
   return {
     url,
     cls: Math.round(cls * 1000) / 1000,
     rating,
-    metrics
+    metrics,
   };
 }
 
 // Main
-const url = process.argv[2] || 'http://localhost:3000';
-const scroll = process.argv.includes('--scroll');
+const url = process.argv[2] || "http://localhost:3000";
+const scroll = process.argv.includes("--scroll");
 
 measureCLS(url, scroll)
-  .then(result => console.log(JSON.stringify(result, null, 2)))
-  .catch(err => {
-    console.error('CLS measurement failed:', err.message);
+  .then((result) => console.log(JSON.stringify(result, null, 2)))
+  .catch((err) => {
+    console.error("CLS measurement failed:", err.message);
     process.exit(1);
   });

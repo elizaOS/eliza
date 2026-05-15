@@ -6,6 +6,14 @@
  * for model catalog, downloads, status, and chat commands.
  */
 
+export {
+	handleVoiceProfileRoutes,
+	registerProfileInCatalog,
+	resolveDefaultProfileId,
+	type VoiceProfileCatalog,
+	type VoiceProfileCatalogEntry,
+	type VoiceProfileRouteOptions,
+} from "../services/voice/voice-profile-routes.js";
 export * from "./local-inference-compat-routes.js";
 export * from "./local-inference-tts-route.js";
 export {
@@ -18,11 +26,3 @@ export {
 	setVoiceOnboardingProfileStore,
 	setVoiceOnboardingSettingsWriter,
 } from "./voice-onboarding-routes.js";
-export {
-	handleVoiceProfileRoutes,
-	resolveDefaultProfileId,
-	registerProfileInCatalog,
-	type VoiceProfileCatalog,
-	type VoiceProfileCatalogEntry,
-	type VoiceProfileRouteOptions,
-} from "../services/voice/voice-profile-routes.js";

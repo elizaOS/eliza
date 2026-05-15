@@ -41,15 +41,18 @@ const SHIM_DIR = path.join(here, "desktop-llama-shim");
 const LLAMA_CPP_REPO =
   process.env.ELIZA_DESKTOP_LLAMA_CPP_REPO ||
   "https://github.com/elizaOS/llama.cpp";
-const LLAMA_CPP_REF =
-  process.env.ELIZA_DESKTOP_LLAMA_CPP_REF || "main";
+const LLAMA_CPP_REF = process.env.ELIZA_DESKTOP_LLAMA_CPP_REF || "main";
 
 const STATE_DIR =
   process.env.ELIZA_STATE_DIR ||
   process.env.MILADY_STATE_DIR ||
   path.join(os.homedir(), ".eliza");
 
-const CACHE_DIR = path.join(STATE_DIR, "local-inference", "desktop-llama-build");
+const CACHE_DIR = path.join(
+  STATE_DIR,
+  "local-inference",
+  "desktop-llama-build",
+);
 
 // ─── target table ────────────────────────────────────────────────────────────
 
@@ -62,7 +65,8 @@ const CACHE_DIR = path.join(STATE_DIR, "local-inference", "desktop-llama-build")
 const TARGETS = {
   "darwin-arm64": {
     backend: "metal",
-    canBuildHere: () => process.platform === "darwin" && process.arch === "arm64",
+    canBuildHere: () =>
+      process.platform === "darwin" && process.arch === "arm64",
     libExt: "dylib",
     cmakeFlags: [
       "-DCMAKE_OSX_ARCHITECTURES=arm64",
@@ -95,8 +99,8 @@ const TARGETS = {
       ...(process.env.ELIZA_DESKTOP_BACKEND === "cuda"
         ? ["-DGGML_CUDA=ON"]
         : process.env.ELIZA_DESKTOP_BACKEND === "cpu"
-        ? []
-        : ["-DGGML_VULKAN=ON"]),
+          ? []
+          : ["-DGGML_VULKAN=ON"]),
     ],
     crossNote:
       "Cross-build from darwin host: use `zig cc -target x86_64-linux-gnu` " +
@@ -234,9 +238,13 @@ function buildTarget(targetKey) {
   // depending on generator (Ninja vs Make). Fall through to a find scan.
   let libllamaSrcPath = candidates.find((p) => fs.existsSync(p));
   if (!libllamaSrcPath) {
-    const found = spawnSync("find", [buildDir, "-name", libllamaName, "-print"], {
-      encoding: "utf8",
-    });
+    const found = spawnSync(
+      "find",
+      [buildDir, "-name", libllamaName, "-print"],
+      {
+        encoding: "utf8",
+      },
+    );
     libllamaSrcPath = found.stdout.split("\n").find((s) => s.trim());
   }
   if (!libllamaSrcPath) {
@@ -301,7 +309,9 @@ function buildTarget(targetKey) {
   // ── Step 5: smoke-check that exports are present ─────────────────────────
   const nm = spawnSync("nm", ["-gU", shimOut], { encoding: "utf8" });
   const exportCount = (nm.stdout.match(/_eliza_llama_/g) ?? []).length;
-  log(`exports in libeliza-llama-shim.${t.libExt}: ${exportCount} eliza_llama_* symbols`);
+  log(
+    `exports in libeliza-llama-shim.${t.libExt}: ${exportCount} eliza_llama_* symbols`,
+  );
   if (exportCount === 0) die("shim has no eliza_llama_* exports — link failed");
 
   log(`✔ ${targetKey} → ${outDir}`);

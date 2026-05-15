@@ -2,7 +2,7 @@
   {
     "transaction_id": "TXN-1101",
     "date": "2026-03-05",
-    "amount": 150000.00,
+    "amount": 150000.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Network Equipment",
@@ -15,7 +15,7 @@
   {
     "transaction_id": "TXN-1102",
     "date": "2026-03-06",
-    "amount": 80000.00,
+    "amount": 80000.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Network Equipment",
@@ -28,7 +28,7 @@
   {
     "transaction_id": "TXN-1103",
     "date": "2026-03-07",
-    "amount": 60000.00,
+    "amount": 60000.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Security Equipment",
@@ -41,7 +41,7 @@
   {
     "transaction_id": "TXN-1104",
     "date": "2026-03-08",
-    "amount": 45000.00,
+    "amount": 45000.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Network Equipment",
@@ -54,7 +54,7 @@
   {
     "transaction_id": "TXN-1105",
     "date": "2026-03-10",
-    "amount": 25000.00,
+    "amount": 25000.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Accessories",
@@ -66,7 +66,7 @@
   {
     "transaction_id": "TXN-1106",
     "date": "2026-03-12",
-    "amount": 35000.00,
+    "amount": 35000.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Power Equipment",
@@ -78,7 +78,7 @@
   {
     "transaction_id": "TXN-1107",
     "date": "2026-03-11",
-    "amount": 240000.00,
+    "amount": 240000.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Servers",
@@ -90,7 +90,7 @@
   {
     "transaction_id": "TXN-1108",
     "date": "2026-03-15",
-    "amount": 180000.00,
+    "amount": 180000.0,
     "currency": "CNY",
     "type": "sales receipt",
     "category": "Customer Payment",
@@ -101,7 +101,7 @@
   {
     "transaction_id": "TXN-1109",
     "date": "2026-03-16",
-    "amount": 95000.00,
+    "amount": 95000.0,
     "currency": "CNY",
     "type": "sales receipt",
     "category": "Customer Payment",
@@ -112,7 +112,7 @@
   {
     "transaction_id": "TXN-1110",
     "date": "2026-03-17",
-    "amount": 220000.00,
+    "amount": 220000.0,
     "currency": "CNY",
     "type": "sales receipt",
     "category": "Customer Payment",

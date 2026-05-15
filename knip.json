@@ -216,10 +216,7 @@
       "ignoreBinaries": ["swiftc"]
     },
     "plugins/app-companion": {
-      "ignore": [
-        ".storybook-smoke/**",
-        "public/vrm-decoders/draco/*.js"
-      ]
+      "ignore": [".storybook-smoke/**", "public/vrm-decoders/draco/*.js"]
     },
     "packages/elizaos": {
       "entry": [

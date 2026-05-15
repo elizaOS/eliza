@@ -60,7 +60,10 @@ export interface RetrievalTierDefaults {
  *   slate. topK=20, embedding/keyword weighted up to surface long-tail
  *   matches.
  */
-export const RETRIEVAL_DEFAULTS_BY_TIER: Record<ModelTier, RetrievalTierDefaults> = {
+export const RETRIEVAL_DEFAULTS_BY_TIER: Record<
+  ModelTier,
+  RetrievalTierDefaults
+> = {
   small: {
     topK: 5,
     stageWeights: {

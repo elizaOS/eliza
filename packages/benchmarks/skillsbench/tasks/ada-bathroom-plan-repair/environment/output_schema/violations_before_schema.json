@@ -9,8 +9,8 @@
         "type": "object",
         "required": ["rule", "element_id"],
         "properties": {
-          "rule": {"type": "string"},
-          "element_id": {"type": "string"},
+          "rule": { "type": "string" },
+          "element_id": { "type": "string" },
           "actual": {},
           "required": {}
         }
@@ -18,4 +18,3 @@
     }
   }
 }
-

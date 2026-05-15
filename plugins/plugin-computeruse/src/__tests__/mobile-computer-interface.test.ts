@@ -18,15 +18,15 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-  MobileComputerInterface,
-  makeMobileComputerInterface,
-} from "../mobile/mobile-computer-interface.js";
 import { dispatch } from "../actor/dispatch.js";
 import type {
   AndroidComputerUseBridge,
   GestureArgs,
 } from "../mobile/android-bridge.js";
+import {
+  MobileComputerInterface,
+  makeMobileComputerInterface,
+} from "../mobile/mobile-computer-interface.js";
 import type { DisplayDescriptor } from "../types.js";
 
 interface BridgeCalls {
@@ -48,7 +48,10 @@ function fakeDisplay(): DisplayDescriptor {
 
 function makeFakeBridge(opts: {
   gestureOk?: boolean;
-  gestureError?: { code: "accessibility_unavailable" | "internal_error"; message: string };
+  gestureError?: {
+    code: "accessibility_unavailable" | "internal_error";
+    message: string;
+  };
   captureError?: { code: "capture_unavailable"; message: string };
   globalActionOk?: boolean;
 }): { bridge: AndroidComputerUseBridge; calls: BridgeCalls } {
@@ -58,15 +61,22 @@ function makeFakeBridge(opts: {
     setTexts: [],
     capturedFrames: 0,
   };
-  const stub = <T,>(code = "internal_error" as const): Promise<{ ok: false; code: typeof code; message: string } & { data?: T }> =>
-    Promise.resolve({ ok: false, code, message: "stub" });
+  const stub = <T>(
+    code = "internal_error" as const,
+  ): Promise<
+    { ok: false; code: typeof code; message: string } & { data?: T }
+  > => Promise.resolve({ ok: false, code, message: "stub" });
   const bridge = {
     startMediaProjection: () => stub(),
     stopMediaProjection: () => stub(),
     captureFrame: async () => {
       calls.capturedFrames += 1;
       if (opts.captureError) {
-        return { ok: false as const, code: opts.captureError.code, message: opts.captureError.message };
+        return {
+          ok: false as const,
+          code: opts.captureError.code,
+          message: opts.captureError.message,
+        };
       }
       return {
         ok: true as const,
@@ -82,7 +92,11 @@ function makeFakeBridge(opts: {
     dispatchGesture: async (g: GestureArgs) => {
       calls.gestures.push(g);
       if (opts.gestureError) {
-        return { ok: false as const, code: opts.gestureError.code, message: opts.gestureError.message };
+        return {
+          ok: false as const,
+          code: opts.gestureError.code,
+          message: opts.gestureError.message,
+        };
       }
       return { ok: true as const, data: { ok: opts.gestureOk ?? true } };
     },
@@ -98,7 +112,8 @@ function makeFakeBridge(opts: {
     getMemoryPressureSnapshot: () => stub(),
     dispatchMemoryPressure: () => stub(),
     startCamera: () => stub(),
-    stopCamera: () => Promise.resolve({ ok: true as const, data: { ok: true } }),
+    stopCamera: () =>
+      Promise.resolve({ ok: true as const, data: { ok: true } }),
     captureFrameCamera: () => stub(),
   } as unknown as AndroidComputerUseBridge;
   return { bridge, calls };
@@ -253,7 +268,9 @@ describe("MobileComputerInterface — keyboard", () => {
 
   it("hotkey throws on Android", async () => {
     const { iface } = makeIface();
-    await expect(iface.hotkey({ keys: ["ctrl", "s"] })).rejects.toThrow(/not supported/);
+    await expect(iface.hotkey({ keys: ["ctrl", "s"] })).rejects.toThrow(
+      /not supported/,
+    );
   });
 
   it("typeText routes to the focused editable AX node", async () => {
@@ -270,7 +287,9 @@ describe("MobileComputerInterface — screenshot", () => {
     expect(calls.capturedFrames).toBe(1);
     expect(shot.displayId).toBe(0);
     expect(shot.bounds).toEqual([0, 0, 1080, 1920]);
-    expect(shot.frame.subarray(0, 4)).toEqual(Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
+    expect(shot.frame.subarray(0, 4)).toEqual(
+      Buffer.from([0xff, 0xd8, 0xff, 0xe0]),
+    );
   });
 
   it("propagates capture failure as a thrown Error", async () => {
@@ -298,7 +317,10 @@ describe("MobileComputerInterface — error propagation", () => {
 
   it("throws when bridge returns ok:false on dispatchGesture", async () => {
     const { iface } = makeIface({
-      gestureError: { code: "accessibility_unavailable", message: "service off" },
+      gestureError: {
+        code: "accessibility_unavailable",
+        message: "service off",
+      },
     });
     await expect(
       iface.leftClick({ displayId: 0, x: 10, y: 10 }),
@@ -347,7 +369,13 @@ describe("MobileComputerInterface — coord helpers + metadata", () => {
       apps: [],
       ocr: [],
       ax: [
-        { id: "a0-1", role: "Button", bbox: [0, 0, 10, 10] as [number, number, number, number], actions: [], displayId: 0 },
+        {
+          id: "a0-1",
+          role: "Button",
+          bbox: [0, 0, 10, 10] as [number, number, number, number],
+          actions: [],
+          displayId: 0,
+        },
       ],
       vlm_scene: null,
       vlm_elements: null,
@@ -375,7 +403,9 @@ describe("MobileComputerInterface — global action override map", () => {
     await iface.pressKey({ key: "bksp" });
     expect(calls.globalActions).toEqual(["back"]);
     // The default `back` alias is replaced because the override map is the sole resolver
-    await expect(iface.pressKey({ key: "back" })).rejects.toThrow(/no Android equivalent/);
+    await expect(iface.pressKey({ key: "back" })).rejects.toThrow(
+      /no Android equivalent/,
+    );
   });
 });
 
@@ -395,7 +425,10 @@ describe("MobileComputerInterface — integration with WS7 dispatch", () => {
 
   it("WS7 dispatch wraps a mobile-bridge ok:false as driver_error", async () => {
     const { iface } = makeIface({
-      gestureError: { code: "accessibility_unavailable", message: "service off" },
+      gestureError: {
+        code: "accessibility_unavailable",
+        message: "service off",
+      },
     });
     const res = await dispatch(
       { kind: "click", displayId: 0, x: 10, y: 10, rationale: "" },

@@ -237,11 +237,14 @@ for (const target of CONNECTORS) {
     });
 
     // ── Contract rule 5: error responses use { error: { code, message } }
-    contractTest("error responses use structured { error: { code, message } } envelope", () => {
-      expect(
-        parsed.hasBareErrorString,
-        'found bare `error: "string"` in responses',
-      ).toBe(false);
-    });
+    contractTest(
+      "error responses use structured { error: { code, message } } envelope",
+      () => {
+        expect(
+          parsed.hasBareErrorString,
+          'found bare `error: "string"` in responses',
+        ).toBe(false);
+      },
+    );
   });
 }

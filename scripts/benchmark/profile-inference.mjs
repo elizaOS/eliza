@@ -805,10 +805,7 @@ async function main() {
     const health = await client.json("GET", "/api/health", undefined, {
       timeoutMs: 10_000,
     });
-    if (
-      health?.synthetic === true ||
-      health?.server === "stub-agent-server"
-    ) {
+    if (health?.synthetic === true || health?.server === "stub-agent-server") {
       throw new Error(
         "target is the synthetic stub-agent-server; start a real elizaOS agent before profiling",
       );

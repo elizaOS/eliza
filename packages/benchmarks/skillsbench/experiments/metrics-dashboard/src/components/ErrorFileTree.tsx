@@ -1,32 +1,36 @@
-import { useState } from 'react'
-import type { ProcessedTrial, ErrorGroup } from '../types/metrics'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { AlertCircle, ChevronRight, FileText } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { AlertCircle, ChevronRight, FileText } from "lucide-react";
+import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import type { ErrorGroup, ProcessedTrial } from "../types/metrics";
 
 interface ErrorFileTreeProps {
-  errorGroups: ErrorGroup[]
-  onTrialSelect: (trial: ProcessedTrial) => void
-  selectedTrialId: string | null
+  errorGroups: ErrorGroup[];
+  onTrialSelect: (trial: ProcessedTrial) => void;
+  selectedTrialId: string | null;
 }
 
-export function ErrorFileTree({ errorGroups, onTrialSelect, selectedTrialId }: ErrorFileTreeProps) {
+export function ErrorFileTree({
+  errorGroups,
+  onTrialSelect,
+  selectedTrialId,
+}: ErrorFileTreeProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set(errorGroups.map((g) => g.exceptionType))
-  )
+    new Set(errorGroups.map((g) => g.exceptionType)),
+  );
 
   const toggleGroup = (exceptionType: string) => {
     setExpandedGroups((prev) => {
-      const next = new Set(prev)
+      const next = new Set(prev);
       if (next.has(exceptionType)) {
-        next.delete(exceptionType)
+        next.delete(exceptionType);
       } else {
-        next.add(exceptionType)
+        next.add(exceptionType);
       }
-      return next
-    })
-  }
+      return next;
+    });
+  };
 
   if (errorGroups.length === 0) {
     return (
@@ -35,10 +39,10 @@ export function ErrorFileTree({ errorGroups, onTrialSelect, selectedTrialId }: E
           No errors found in the current selection
         </CardContent>
       </Card>
-    )
+    );
   }
 
-  const totalErrors = errorGroups.reduce((sum, g) => sum + g.count, 0)
+  const totalErrors = errorGroups.reduce((sum, g) => sum + g.count, 0);
 
   return (
     <Card>
@@ -59,18 +63,20 @@ export function ErrorFileTree({ errorGroups, onTrialSelect, selectedTrialId }: E
               className="w-full text-left flex items-center gap-2 py-1 px-2 rounded-md hover:bg-accent transition-colors"
             >
               <span className="text-muted-foreground">
-                {groupIndex === errorGroups.length - 1 ? '└' : '├'}
+                {groupIndex === errorGroups.length - 1 ? "└" : "├"}
               </span>
               <ChevronRight
                 className={cn(
-                  'w-3 h-3 text-muted-foreground transition-transform',
-                  expandedGroups.has(group.exceptionType) && 'rotate-90'
+                  "w-3 h-3 text-muted-foreground transition-transform",
+                  expandedGroups.has(group.exceptionType) && "rotate-90",
                 )}
               />
               <Badge variant="error" className="text-xs">
                 {group.exceptionType}
               </Badge>
-              <span className="text-muted-foreground text-xs">({group.count})</span>
+              <span className="text-muted-foreground text-xs">
+                ({group.count})
+              </span>
             </button>
 
             {/* Trial nodes */}
@@ -81,18 +87,20 @@ export function ErrorFileTree({ errorGroups, onTrialSelect, selectedTrialId }: E
                     key={trial.id}
                     onClick={() => onTrialSelect(trial)}
                     className={cn(
-                      'w-full text-left flex items-center gap-2 py-1 px-2 rounded-md transition-colors',
+                      "w-full text-left flex items-center gap-2 py-1 px-2 rounded-md transition-colors",
                       selectedTrialId === trial.id
-                        ? 'bg-accent'
-                        : 'hover:bg-accent/50'
+                        ? "bg-accent"
+                        : "hover:bg-accent/50",
                     )}
                   >
                     <span className="text-muted-foreground">
-                      {trialIndex === group.trials.length - 1 ? '└' : '├'}
+                      {trialIndex === group.trials.length - 1 ? "└" : "├"}
                     </span>
                     <FileText className="w-3 h-3 text-muted-foreground" />
                     <span className="truncate flex-1">{trial.trialName}</span>
-                    <span className="text-muted-foreground text-xs">{trial.taskName}</span>
+                    <span className="text-muted-foreground text-xs">
+                      {trial.taskName}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -101,5 +109,5 @@ export function ErrorFileTree({ errorGroups, onTrialSelect, selectedTrialId }: E
         ))}
       </CardContent>
     </Card>
-  )
+  );
 }

@@ -82,7 +82,9 @@ function extractSqlText(
 ): string {
   if (!raw || !Array.isArray(raw.queryChunks)) return "";
   return raw.queryChunks
-    .map((chunk) => (chunk && "value" in chunk ? String(chunk.value ?? "") : ""))
+    .map((chunk) =>
+      chunk && "value" in chunk ? String(chunk.value ?? "") : "",
+    )
     .join("");
 }
 
@@ -112,7 +114,10 @@ function buildAdvancedMockRuntime(
     execute: async (raw: { queryChunks?: Array<{ value?: unknown }> }) => {
       const sqlText = extractSqlText(raw).trim().toUpperCase();
       capture.push({ sql: sqlText });
-      if (sqlText.startsWith("SELECT") && sqlText.includes("LIFE_WORK_THREADS")) {
+      if (
+        sqlText.startsWith("SELECT") &&
+        sqlText.includes("LIFE_WORK_THREADS")
+      ) {
         // store.get() lookups - return a thread with version 1.
         return [];
       }
@@ -126,7 +131,10 @@ function buildAdvancedMockRuntime(
         execute: async (raw: { queryChunks?: Array<{ value?: unknown }> }) => {
           const sqlText = extractSqlText(raw).trim().toUpperCase();
           capture.push({ sql: sqlText });
-          if (sqlText.startsWith("SELECT") && sqlText.includes("LIFE_WORK_THREAD_EVENTS")) {
+          if (
+            sqlText.startsWith("SELECT") &&
+            sqlText.includes("LIFE_WORK_THREAD_EVENTS")
+          ) {
             if (opts.idempotencyHit) {
               return [
                 {

@@ -5,7 +5,7 @@
     "author": "@techreviewer_jake",
     "timestamp": "2024-06-14T19:45:00Z",
     "content": "Heard AlphaWare might be shaking up their pricing soon. Anyone else hearing this? #SaaS #ProjectManagement",
-    "engagement": {"likes": 12, "retweets": 3, "replies": 2},
+    "engagement": { "likes": 12, "retweets": 3, "replies": 2 },
     "sentiment": "neutral",
     "relevance_tag": "pricing_rumor"
   },
@@ -15,7 +15,7 @@
     "author": "@sarahm_ops",
     "timestamp": "2024-06-14T14:22:00Z",
     "content": "Day 3 waiting on @AlphaWareSolutions support to fix our integration issue. Starting to look at alternatives. 😤",
-    "engagement": {"likes": 8, "retweets": 1, "replies": 5},
+    "engagement": { "likes": 8, "retweets": 1, "replies": 5 },
     "sentiment": "negative",
     "relevance_tag": "customer_support"
   },
@@ -25,7 +25,7 @@
     "author": "David Chen, VP Engineering at Meridian Healthcare",
     "timestamp": "2024-06-13T10:15:00Z",
     "content": "Great session with the AlphaWare team today walking through their integration roadmap. Impressed by the depth of their connector library. Looking forward to what's next!",
-    "engagement": {"likes": 45, "retweets": 0, "replies": 7},
+    "engagement": { "likes": 45, "retweets": 0, "replies": 7 },
     "sentiment": "positive",
     "relevance_tag": "customer_praise"
   },
@@ -35,7 +35,7 @@
     "author": "u/pm_tool_nerd",
     "timestamp": "2024-06-12T22:08:00Z",
     "content": "Switched from AlphaWare to BetaFlow last month. The AI features alone are worth it. AlphaWare needs to catch up on that front.",
-    "engagement": {"likes": 34, "retweets": 0, "replies": 12},
+    "engagement": { "likes": 34, "retweets": 0, "replies": 12 },
     "sentiment": "negative",
     "relevance_tag": "competitor_comparison"
   },
@@ -45,7 +45,7 @@
     "author": "@cloud_consultant_amy",
     "timestamp": "2024-06-12T16:30:00Z",
     "content": "Just helped a client implement @AlphaWareSolutions — onboarding was smooth and their support team was responsive. Solid choice for mid-market teams.",
-    "engagement": {"likes": 15, "retweets": 2, "replies": 1},
+    "engagement": { "likes": 15, "retweets": 2, "replies": 1 },
     "sentiment": "positive",
     "relevance_tag": "customer_praise"
   },
@@ -55,7 +55,7 @@
     "author": "@devops_marcus",
     "timestamp": "2024-06-11T09:12:00Z",
     "content": "@AlphaWareSolutions your API rate limits are killing our automation workflows. Any plans to increase them for enterprise accounts?",
-    "engagement": {"likes": 22, "retweets": 5, "replies": 3},
+    "engagement": { "likes": 22, "retweets": 5, "replies": 3 },
     "sentiment": "negative",
     "relevance_tag": "product_feedback"
   },
@@ -65,7 +65,7 @@
     "author": "Anonymous (Verified User)",
     "timestamp": "2024-06-10T00:00:00Z",
     "content": "AlphaWare is reliable and easy to use but feels like it's falling behind on innovation. Competitors are adding AI features and AlphaWare hasn't kept pace. Still a 4/5 for what it does well.",
-    "engagement": {"likes": 0, "retweets": 0, "replies": 0},
+    "engagement": { "likes": 0, "retweets": 0, "replies": 0 },
     "sentiment": "mixed",
     "relevance_tag": "product_review"
   },
@@ -75,7 +75,7 @@
     "author": "@startup_lisa",
     "timestamp": "2024-06-09T20:45:00Z",
     "content": "Anyone know if AlphaWare offers startup discounts? Their pricing page only shows standard plans. #startuplife",
-    "engagement": {"likes": 3, "retweets": 0, "replies": 4},
+    "engagement": { "likes": 3, "retweets": 0, "replies": 4 },
     "sentiment": "neutral",
     "relevance_tag": "pricing_inquiry"
   },
@@ -85,7 +85,7 @@
     "author": "Jennifer Walsh, COO at NovaCraft Industries",
     "timestamp": "2024-06-09T11:30:00Z",
     "content": "Celebrating 2 years with AlphaWare Solutions! Their platform has been instrumental in streamlining our project delivery. The integrations with our existing tools made adoption seamless.",
-    "engagement": {"likes": 89, "retweets": 0, "replies": 14},
+    "engagement": { "likes": 89, "retweets": 0, "replies": 14 },
     "sentiment": "positive",
     "relevance_tag": "customer_praise"
   },
@@ -95,7 +95,7 @@
     "author": "@saas_watcher",
     "timestamp": "2024-06-08T15:18:00Z",
     "content": "The mid-market PM tool space is getting crowded. AlphaWare, BetaFlow, Nimbus, TaskForge... hard to differentiate anymore unless you have AI. That's the new table stakes.",
-    "engagement": {"likes": 56, "retweets": 11, "replies": 8},
+    "engagement": { "likes": 56, "retweets": 11, "replies": 8 },
     "sentiment": "neutral",
     "relevance_tag": "market_commentary"
   }

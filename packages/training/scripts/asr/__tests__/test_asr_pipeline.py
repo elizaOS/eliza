@@ -189,12 +189,16 @@ def test_baseline_comparison_loses(tmp_path: Path) -> None:
 
 
 def test_early_stopping_no_improvement() -> None:
-    """Early stopping triggers when WER stalls for patience evals."""
+    """Early stopping triggers when WER stalls/worsens for patience evals.
+
+    patience=2: look at the last patience+1=3 entries; if all of the last
+    `patience` entries have WER >= baseline (the entry just before the window),
+    stop. Here: baseline=0.30, recent=[0.30, 0.30] — all >= baseline → stop.
+    """
     history = [
         {"step": 100, "wer": 0.3},
-        {"step": 200, "wer": 0.31},
+        {"step": 200, "wer": 0.30},
         {"step": 300, "wer": 0.30},
-        {"step": 400, "wer": 0.30},
     ]
     assert finetune_asr._should_early_stop(history, patience=2) is True
 

@@ -1,10 +1,15 @@
 @import url("usb.css");
 
-span.windows, a.windows {
+span.windows,
+a.windows {
   display: inline;
 }
 
-div.windows, img.windows, p.windows, h1.windows, h2.windows {
+div.windows,
+img.windows,
+p.windows,
+h1.windows,
+h2.windows {
   display: block;
 }
 
@@ -13,5 +18,5 @@ li.windows {
 }
 
 h1.step:before {
-  content: counter(step)'/8';
+  content: counter(step) "/8";
 }

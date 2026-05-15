@@ -6,9 +6,7 @@
  * Otherwise the pack is offered at customize time but its record is NOT seeded.
  */
 
-import type {
-  ConnectorRegistryStub,
-} from "./contract-stubs.js";
+import type { ConnectorRegistryStub } from "./contract-stubs.js";
 import type { DefaultPack } from "./registry-types.js";
 import {
   compileTaskDefinition,

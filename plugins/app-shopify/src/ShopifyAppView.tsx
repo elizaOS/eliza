@@ -33,7 +33,12 @@ import { useShopifyDashboard } from "./useShopifyDashboard";
 function ShopifySetupCard() {
   const setupItems = [
     { label: "Domain", value: "STORE_DOMAIN", icon: Globe2, tone: "text-info" },
-    { label: "Token", value: "ACCESS_TOKEN", icon: KeyRound, tone: "text-warning" },
+    {
+      label: "Token",
+      value: "ACCESS_TOKEN",
+      icon: KeyRound,
+      tone: "text-warning",
+    },
     { label: "Scopes", value: "read_*", icon: ShieldCheck, tone: "text-ok" },
   ] as const;
 
@@ -44,9 +49,7 @@ function ShopifySetupCard() {
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-ok/25 bg-ok/12">
             <Store className="h-7 w-7 text-ok" />
           </div>
-          <div className="text-lg font-semibold text-txt">
-            Connect Shopify
-          </div>
+          <div className="text-lg font-semibold text-txt">Connect Shopify</div>
 
           <div className="grid w-full gap-2 sm:grid-cols-3">
             {setupItems.map((item) => {

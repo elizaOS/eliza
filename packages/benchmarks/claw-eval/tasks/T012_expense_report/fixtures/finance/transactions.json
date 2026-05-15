@@ -2,7 +2,7 @@
   {
     "transaction_id": "txn_001",
     "date": "2026-02-20",
-    "amount": 328.00,
+    "amount": 328.0,
     "currency": "CNY",
     "merchant": "Quanjude Roast Duck",
     "category": "",
@@ -12,7 +12,7 @@
   {
     "transaction_id": "txn_002",
     "date": "2026-02-21",
-    "amount": 45.00,
+    "amount": 45.0,
     "currency": "CNY",
     "merchant": "Didi Ride",
     "category": "",
@@ -22,7 +22,7 @@
   {
     "transaction_id": "txn_003",
     "date": "2026-02-21",
-    "amount": 45.00,
+    "amount": 45.0,
     "currency": "CNY",
     "merchant": "Didi Ride",
     "category": "",
@@ -32,7 +32,7 @@
   {
     "transaction_id": "txn_004",
     "date": "2026-02-22",
-    "amount": 1280.00,
+    "amount": 1280.0,
     "currency": "CNY",
     "merchant": "JD.com",
     "category": "",
@@ -42,7 +42,7 @@
   {
     "transaction_id": "txn_005",
     "date": "2026-02-23",
-    "amount": 89.00,
+    "amount": 89.0,
     "currency": "CNY",
     "merchant": "Starbucks",
     "category": "",
@@ -52,7 +52,7 @@
   {
     "transaction_id": "txn_006",
     "date": "2026-02-24",
-    "amount": 2599.00,
+    "amount": 2599.0,
     "currency": "CNY",
     "merchant": "Home Inn Hotel",
     "category": "",
@@ -62,7 +62,7 @@
   {
     "transaction_id": "txn_007",
     "date": "2026-02-24",
-    "amount": 1350.00,
+    "amount": 1350.0,
     "currency": "CNY",
     "merchant": "China Southern Airlines",
     "category": "",
@@ -72,7 +72,7 @@
   {
     "transaction_id": "txn_008",
     "date": "2026-02-25",
-    "amount": 156.00,
+    "amount": 156.0,
     "currency": "CNY",
     "merchant": "Stationery World",
     "category": "",
@@ -82,7 +82,7 @@
   {
     "transaction_id": "txn_009",
     "date": "2026-02-26",
-    "amount": 68.00,
+    "amount": 68.0,
     "currency": "CNY",
     "merchant": "Meituan Delivery",
     "category": "",
@@ -92,7 +92,7 @@
   {
     "transaction_id": "txn_010",
     "date": "2026-02-27",
-    "amount": 3200.00,
+    "amount": 3200.0,
     "currency": "CNY",
     "merchant": "Tencent Cloud",
     "category": "",
@@ -112,7 +112,7 @@
   {
     "transaction_id": "txn_012",
     "date": "2026-02-22",
-    "amount": -328.00,
+    "amount": -328.0,
     "currency": "CNY",
     "merchant": "Quanjude Roast Duck",
     "category": "",
@@ -122,7 +122,7 @@
   {
     "transaction_id": "txn_013",
     "date": "2026-02-26",
-    "amount": 2599.00,
+    "amount": 2599.0,
     "currency": "CNY",
     "merchant": "JD.com",
     "category": "",

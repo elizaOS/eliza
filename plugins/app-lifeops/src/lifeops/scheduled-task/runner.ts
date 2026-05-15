@@ -1062,7 +1062,8 @@ export function createScheduledTaskRunner(
     // status — it merely shifts the wire-out mechanism so a `bg-heavy-fgs`
     // task on iOS becomes a banner the user can tap.
     const hostCaps = deps.hostCapabilities?.() ?? ALL_PROFILES_AVAILABLE;
-    const taskProfile = claimed.executionProfile ?? DEFAULT_TASK_EXECUTION_PROFILE;
+    const taskProfile =
+      claimed.executionProfile ?? DEFAULT_TASK_EXECUTION_PROFILE;
     const substituted = !hostCaps.has(taskProfile);
     const dispatchChannelKey = substituted ? "in_app" : pickChannelKey(claimed);
     if (substituted) {

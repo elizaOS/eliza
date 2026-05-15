@@ -12,7 +12,13 @@
     "article_id": "KB-1502",
     "title": "Automation Task Dependency Documentation",
     "category": "Operations Manual",
-    "tags": ["automation", "scheduled-tasks", "dependencies", "JOB", "scheduler"],
+    "tags": [
+      "automation",
+      "scheduled-tasks",
+      "dependencies",
+      "JOB",
+      "scheduler"
+    ],
     "content": "## Automation Task Dependency Chain Documentation\n\n### Supply Chain Automation Task Chain\nThe following three tasks have strict dependency relationships:\n\n```\nJOB-1501 (Supplier Data Sync) -> JOB-1502 (Inventory Auto Update) -> JOB-1503 (Auto Restock Trigger)\n```\n\n- **JOB-1501 Supplier Data Sync**: Pulls the latest product pricing, inventory levels, and delivery schedules from the supplier API. Runs every 4 hours.\n- **JOB-1502 Inventory Auto Update**: Updates quantities and statuses in the local inventory system based on supplier data pulled by JOB-1501. Depends on JOB-1501's data; if JOB-1501 fails, the data source is unavailable.\n- **JOB-1503 Auto Restock Trigger**: Checks safety stock levels based on the latest inventory data and automatically generates restock orders for items below threshold. Depends on JOB-1502's update results; refuses to execute if inventory data has not been updated for more than 24 hours (to prevent ordering based on stale data).\n\n### Failure Propagation\nWhen JOB-1501 fails, it triggers a cascade:\n1. JOB-1502 fails because it cannot retrieve upstream data\n2. JOB-1503 fails because inventory data is stale\n3. Affected inventory products cannot be automatically restocked\n4. Warehouse and Procurement departments may report data inconsistency issues\n\n### Repair Priority\nRepairs should start from the root node of the dependency chain (JOB-1501). Once the data source is restored, downstream tasks will automatically resume normal operation.",
     "last_updated": "2026-03-15",
     "views": 89

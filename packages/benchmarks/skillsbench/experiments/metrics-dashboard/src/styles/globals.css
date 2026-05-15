@@ -55,7 +55,9 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family:
+      system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+      sans-serif;
   }
 }
 
@@ -99,7 +101,8 @@
 
 /* File tree */
 .file-tree {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.875rem;
 }
 
@@ -117,7 +120,8 @@
 
 /* Traceback viewer */
 .traceback {
-  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-family:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.75rem;
   line-height: 1.5;
   white-space: pre-wrap;

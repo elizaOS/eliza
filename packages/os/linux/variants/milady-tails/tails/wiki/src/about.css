@@ -4,7 +4,8 @@ section section {
   justify-content: space-evenly;
 }
 
-.image, .text {
+.image,
+.text {
   width: 80%;
 }
 
@@ -17,7 +18,8 @@ section section {
 }
 
 @media (min-width: 579px) {
-  .image, .text {
+  .image,
+  .text {
     width: 463px;
     padding: 0 30px;
   }

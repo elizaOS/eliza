@@ -1,153 +1,153 @@
-import { useState, useEffect } from 'react'
 import {
-  Folder,
-  File,
+  ArrowLeft,
   ChevronRight,
-  RefreshCw,
-  X,
+  File,
   FileCode,
   FileJson,
   FileText,
-  ArrowLeft
-} from 'lucide-react'
+  Folder,
+  RefreshCw,
+  X,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface FileEntry {
-  name: string
-  type: 'file' | 'directory'
-  size: number | null
+  name: string;
+  type: "file" | "directory";
+  size: number | null;
 }
 
 interface TrialFilesPanelProps {
-  trialPath: string // e.g., "main-with-skills-pass1/task-name__xyz123"
-  onClose: () => void
+  trialPath: string; // e.g., "main-with-skills-pass1/task-name__xyz123"
+  onClose: () => void;
 }
 
 function getFileIcon(name: string) {
-  const ext = name.split('.').pop()?.toLowerCase()
+  const ext = name.split(".").pop()?.toLowerCase();
   switch (ext) {
-    case 'json':
-      return <FileJson className="w-4 h-4 text-yellow-500" />
-    case 'py':
-    case 'ts':
-    case 'js':
-    case 'tsx':
-    case 'jsx':
-      return <FileCode className="w-4 h-4 text-blue-500" />
-    case 'txt':
-    case 'md':
-    case 'log':
-      return <FileText className="w-4 h-4 text-gray-500" />
+    case "json":
+      return <FileJson className="w-4 h-4 text-yellow-500" />;
+    case "py":
+    case "ts":
+    case "js":
+    case "tsx":
+    case "jsx":
+      return <FileCode className="w-4 h-4 text-blue-500" />;
+    case "txt":
+    case "md":
+    case "log":
+      return <FileText className="w-4 h-4 text-gray-500" />;
     default:
-      return <File className="w-4 h-4 text-muted-foreground" />
+      return <File className="w-4 h-4 text-muted-foreground" />;
   }
 }
 
 function formatSize(bytes: number | null): string {
-  if (bytes === null) return ''
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  if (bytes === null) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export function TrialFilesPanel({ trialPath, onClose }: TrialFilesPanelProps) {
-  const [currentPath, setCurrentPath] = useState('')
-  const [files, setFiles] = useState<FileEntry[]>([])
-  const [loading, setLoading] = useState(true)
-  const [fileContent, setFileContent] = useState<string | null>(null)
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const [fileLoading, setFileLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [currentPath, setCurrentPath] = useState("");
+  const [files, setFiles] = useState<FileEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const fetchFiles = async (subPath: string = '') => {
-    setLoading(true)
-    setError(null)
+  const fetchFiles = async (subPath: string = "") => {
+    setLoading(true);
+    setError(null);
     try {
-      const params = new URLSearchParams({ path: trialPath })
-      if (subPath) params.append('subpath', subPath)
+      const params = new URLSearchParams({ path: trialPath });
+      if (subPath) params.append("subpath", subPath);
 
-      const res = await fetch(`/api/files?${params}`)
-      if (!res.ok) throw new Error('Failed to load files')
+      const res = await fetch(`/api/files?${params}`);
+      if (!res.ok) throw new Error("Failed to load files");
 
-      const data = await res.json()
-      setFiles(data.files)
-      setCurrentPath(subPath)
+      const data = await res.json();
+      setFiles(data.files);
+      setCurrentPath(subPath);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load files')
+      setError(err instanceof Error ? err.message : "Failed to load files");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const fetchFileContent = async (filePath: string) => {
-    setFileLoading(true)
-    setSelectedFile(filePath)
-    setError(null)
+    setFileLoading(true);
+    setSelectedFile(filePath);
+    setError(null);
     try {
-      const fullPath = currentPath ? `${currentPath}/${filePath}` : filePath
+      const fullPath = currentPath ? `${currentPath}/${filePath}` : filePath;
       const params = new URLSearchParams({
         path: trialPath,
-        file: fullPath
-      })
+        file: fullPath,
+      });
 
-      const res = await fetch(`/api/file?${params}`)
-      if (!res.ok) throw new Error('Failed to load file')
+      const res = await fetch(`/api/file?${params}`);
+      if (!res.ok) throw new Error("Failed to load file");
 
-      const contentType = res.headers.get('content-type')
-      if (contentType?.includes('application/json')) {
-        const json = await res.json()
-        setFileContent(JSON.stringify(json, null, 2))
+      const contentType = res.headers.get("content-type");
+      if (contentType?.includes("application/json")) {
+        const json = await res.json();
+        setFileContent(JSON.stringify(json, null, 2));
       } else {
-        const data = await res.json()
-        setFileContent(data.content)
+        const data = await res.json();
+        setFileContent(data.content);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load file')
-      setFileContent(null)
+      setError(err instanceof Error ? err.message : "Failed to load file");
+      setFileContent(null);
     } finally {
-      setFileLoading(false)
+      setFileLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchFiles()
-  }, [trialPath])
+    fetchFiles();
+  }, [trialPath]);
 
   // Close on escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
 
   const handleEntryClick = (entry: FileEntry) => {
-    if (entry.type === 'directory') {
-      const newPath = currentPath ? `${currentPath}/${entry.name}` : entry.name
-      fetchFiles(newPath)
-      setFileContent(null)
-      setSelectedFile(null)
+    if (entry.type === "directory") {
+      const newPath = currentPath ? `${currentPath}/${entry.name}` : entry.name;
+      fetchFiles(newPath);
+      setFileContent(null);
+      setSelectedFile(null);
     } else {
-      fetchFileContent(entry.name)
+      fetchFileContent(entry.name);
     }
-  }
+  };
 
   const goUp = () => {
-    const parentPath = currentPath.split('/').slice(0, -1).join('/')
-    fetchFiles(parentPath)
-    setFileContent(null)
-    setSelectedFile(null)
-  }
+    const parentPath = currentPath.split("/").slice(0, -1).join("/");
+    fetchFiles(parentPath);
+    setFileContent(null);
+    setSelectedFile(null);
+  };
 
-  const trialName = trialPath.split('/').pop() || trialPath
-  const jobName = trialPath.split('/')[0] || ''
+  const trialName = trialPath.split("/").pop() || trialPath;
+  const jobName = trialPath.split("/")[0] || "";
 
   return (
     // Modal overlay
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
+        if (e.target === e.currentTarget) onClose();
       }}
     >
       {/* Modal content */}
@@ -158,14 +158,26 @@ export function TrialFilesPanel({ trialPath, onClose }: TrialFilesPanelProps) {
             <Folder className="w-5 h-5 shrink-0 text-yellow-600" />
             <div className="flex flex-col min-w-0">
               <span className="font-medium truncate">{trialName}</span>
-              <span className="text-xs text-muted-foreground truncate">{jobName}</span>
+              <span className="text-xs text-muted-foreground truncate">
+                {jobName}
+              </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={() => fetchFiles(currentPath)} className="p-2 hover:bg-muted rounded" title="Refresh">
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <button
+              onClick={() => fetchFiles(currentPath)}
+              className="p-2 hover:bg-muted rounded"
+              title="Refresh"
+            >
+              <RefreshCw
+                className={`w-4 h-4 ${loading ? "animate-spin" : ""}`}
+              />
             </button>
-            <button onClick={onClose} className="p-2 hover:bg-muted rounded" title="Close (Esc)">
+            <button
+              onClick={onClose}
+              className="p-2 hover:bg-muted rounded"
+              title="Close (Esc)"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -174,33 +186,40 @@ export function TrialFilesPanel({ trialPath, onClose }: TrialFilesPanelProps) {
         {/* Breadcrumb */}
         <div className="px-4 py-2 border-b border-border bg-muted/20 text-sm flex items-center gap-1 shrink-0 overflow-x-auto">
           <button
-            onClick={() => { fetchFiles(''); setFileContent(null); setSelectedFile(null) }}
+            onClick={() => {
+              fetchFiles("");
+              setFileContent(null);
+              setSelectedFile(null);
+            }}
             className="hover:text-primary shrink-0 font-medium"
           >
             {trialName}
           </button>
-          {currentPath && currentPath.split('/').map((part, idx, arr) => (
-            <span key={idx} className="flex items-center gap-1 shrink-0">
-              <ChevronRight className="w-3 h-3 text-muted-foreground" />
-              <button
-                onClick={() => {
-                  const newPath = arr.slice(0, idx + 1).join('/')
-                  fetchFiles(newPath)
-                  setFileContent(null)
-                  setSelectedFile(null)
-                }}
-                className="hover:text-primary"
-              >
-                {part}
-              </button>
-            </span>
-          ))}
+          {currentPath &&
+            currentPath.split("/").map((part, idx, arr) => (
+              <span key={idx} className="flex items-center gap-1 shrink-0">
+                <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                <button
+                  onClick={() => {
+                    const newPath = arr.slice(0, idx + 1).join("/");
+                    fetchFiles(newPath);
+                    setFileContent(null);
+                    setSelectedFile(null);
+                  }}
+                  className="hover:text-primary"
+                >
+                  {part}
+                </button>
+              </span>
+            ))}
         </div>
 
         {/* Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* File list */}
-          <div className={`${fileContent ? 'w-1/3 border-r border-border' : 'w-full'} overflow-auto`}>
+          <div
+            className={`${fileContent ? "w-1/3 border-r border-border" : "w-full"} overflow-auto`}
+          >
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
@@ -223,15 +242,17 @@ export function TrialFilesPanel({ trialPath, onClose }: TrialFilesPanelProps) {
                     key={entry.name}
                     onClick={() => handleEntryClick(entry)}
                     className={`w-full px-4 py-2.5 flex items-center gap-3 hover:bg-muted/50 text-left ${
-                      selectedFile === entry.name ? 'bg-primary/10' : ''
+                      selectedFile === entry.name ? "bg-primary/10" : ""
                     }`}
                   >
-                    {entry.type === 'directory' ? (
+                    {entry.type === "directory" ? (
                       <Folder className="w-5 h-5 text-yellow-600" />
                     ) : (
                       getFileIcon(entry.name)
                     )}
-                    <span className="text-sm flex-1 truncate">{entry.name}</span>
+                    <span className="text-sm flex-1 truncate">
+                      {entry.name}
+                    </span>
                     {entry.size !== null && (
                       <span className="text-xs text-muted-foreground shrink-0">
                         {formatSize(entry.size)}
@@ -265,5 +286,5 @@ export function TrialFilesPanel({ trialPath, onClose }: TrialFilesPanelProps) {
         </div>
       </div>
     </div>
-  )
+  );
 }

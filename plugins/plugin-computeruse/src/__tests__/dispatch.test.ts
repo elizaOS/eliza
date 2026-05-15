@@ -13,7 +13,6 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { dispatch } from "../actor/dispatch.js";
 import type {
   ComputerInterface,
   CursorPosition,
@@ -21,8 +20,9 @@ import type {
   DragPath,
   ScrollDelta,
 } from "../actor/computer-interface.js";
-import type { DisplayDescriptor } from "../types.js";
+import { dispatch } from "../actor/dispatch.js";
 import type { ProposedAction } from "../actor/types.js";
+import type { DisplayDescriptor } from "../types.js";
 
 function fakeDisplays(): DisplayDescriptor[] {
   return [
@@ -227,7 +227,15 @@ describe("dispatch — happy paths", () => {
   it("scroll routes to scroll with delta", async () => {
     const { iface, calls } = makeIface();
     await dispatch(
-      { kind: "scroll", displayId: 0, x: 50, y: 50, dx: 0, dy: 3, rationale: "" },
+      {
+        kind: "scroll",
+        displayId: 0,
+        x: 50,
+        y: 50,
+        dx: 0,
+        dy: 3,
+        rationale: "",
+      },
       { interface: iface, listDisplays: () => fakeDisplays() },
     );
     expect(calls.scrolls).toHaveLength(1);

@@ -19,12 +19,11 @@
  */
 
 import { logger } from "@elizaos/core";
-import { BRAIN_MAX_ROIS } from "./brain.js";
-import { Brain } from "./brain.js";
 import type { DisplayCapture } from "../platform/capture.js";
 import type { Scene } from "../scene/scene-types.js";
-import { resolveReference } from "./actor.js";
 import type { Actor, ActorGroundArgs } from "./actor.js";
+import { resolveReference } from "./actor.js";
+import { BRAIN_MAX_ROIS, type Brain } from "./brain.js";
 import type {
   BrainOutput,
   BrainRoi,
@@ -136,7 +135,11 @@ export class Cascade {
       const dx = Number(action.args?.dx ?? 0);
       const dy = Number(action.args?.dy ?? 0);
       // Anchor scroll on the ROI if present, else display center.
-      const anchor = await this.resolveCoords(input, brainOut, /*allowMissing*/ true);
+      const anchor = await this.resolveCoords(
+        input,
+        brainOut,
+        /*allowMissing*/ true,
+      );
       const display = input.scene.displays.find((d) => d.id === targetDisplay);
       const cx = anchor?.x ?? Math.round((display?.bounds[2] ?? 0) / 2);
       const cy = anchor?.y ?? Math.round((display?.bounds[3] ?? 0) / 2);
@@ -157,9 +160,16 @@ export class Cascade {
     if (action.kind === "drag") {
       const from = action.args?.from as { x?: number; y?: number } | undefined;
       const to = action.args?.to as { x?: number; y?: number } | undefined;
-      const start = await this.coordsForRef(input, brainOut, action.ref, /*from*/ true) ?? from;
-      const end = await this.resolveCoords(input, brainOut, false) ?? to;
-      if (!start || !end || typeof start.x !== "number" || typeof end.x !== "number") {
+      const start =
+        (await this.coordsForRef(input, brainOut, action.ref, /*from*/ true)) ??
+        from;
+      const end = (await this.resolveCoords(input, brainOut, false)) ?? to;
+      if (
+        !start ||
+        !end ||
+        typeof start.x !== "number" ||
+        typeof end.x !== "number"
+      ) {
         throw new Error(
           `[computeruse/cascade] drag requires args.from and args.to (or a ref + endpoint)`,
         );
@@ -271,7 +281,11 @@ export class Cascade {
             hint: brainOut.proposed_action.rationale,
             ref,
           });
-          if (refined && Number.isFinite(refined.x) && Number.isFinite(refined.y)) {
+          if (
+            refined &&
+            Number.isFinite(refined.x) &&
+            Number.isFinite(refined.y)
+          ) {
             return {
               displayId: target.displayId,
               x: Math.round(refined.x),

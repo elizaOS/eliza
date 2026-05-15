@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-"use strict";
 
 const fs = require("fs");
 const path = require("path");
@@ -77,7 +76,7 @@ async function main() {
     const elapsed = (now - new Date(state.lastPostAt)) / 60000;
     if (elapsed < (config.postIntervalMin || 60)) {
       console.log(
-        `[moltbook-auto-post] Too soon since last post (${elapsed.toFixed(1)}m < ${config.postIntervalMin || 60}m)`
+        `[moltbook-auto-post] Too soon since last post (${elapsed.toFixed(1)}m < ${config.postIntervalMin || 60}m)`,
       );
       appendLog({
         ts: now.toISOString(),
@@ -109,9 +108,11 @@ async function main() {
   const client = new MoltbookClient(config);
 
   try {
-    console.log(`[moltbook-auto-post] Posting: "${content.text.slice(0, 80)}..."`);
+    console.log(
+      `[moltbook-auto-post] Posting: "${content.text.slice(0, 80)}..."`,
+    );
 
-    let mediaIds = [];
+    const mediaIds = [];
     if (content.media && content.media.length > 0) {
       for (const mediaPath of content.media) {
         const id = await client.uploadMedia(mediaPath);
@@ -132,7 +133,9 @@ async function main() {
     state.postsToday++;
     state.totalPostsLifetime++;
 
-    console.log(`[moltbook-auto-post] Posted successfully! ID: ${result.postId}`);
+    console.log(
+      `[moltbook-auto-post] Posted successfully! ID: ${result.postId}`,
+    );
     appendLog({
       ts: now.toISOString(),
       action: "post",
@@ -145,7 +148,9 @@ async function main() {
     // Remove from queue if it came from there
     if (content._queueFile) {
       fs.unlinkSync(content._queueFile);
-      console.log(`[moltbook-auto-post] Removed queued item: ${path.basename(content._queueFile)}`);
+      console.log(
+        `[moltbook-auto-post] Removed queued item: ${path.basename(content._queueFile)}`,
+      );
     }
   } catch (err) {
     console.error(`[moltbook-auto-post] Error posting: ${err.message}`);

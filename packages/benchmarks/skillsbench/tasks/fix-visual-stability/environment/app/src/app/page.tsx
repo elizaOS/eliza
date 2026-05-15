@@ -1,12 +1,12 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useTheme } from '@/components/ThemeProvider';
-import Banner from '@/components/Banner';
-import ProductList from '@/components/ProductList';
-import LateBanner from '@/components/LateBanner';
-import SidePane from '@/components/SidePane';
-import ResultsBar from '@/components/ResultsBar';
+import { useState } from "react";
+import Banner from "@/components/Banner";
+import LateBanner from "@/components/LateBanner";
+import ProductList from "@/components/ProductList";
+import ResultsBar from "@/components/ResultsBar";
+import SidePane from "@/components/SidePane";
+import { useTheme } from "@/components/ThemeProvider";
 
 export default function Home() {
   const { theme, toggleTheme } = useTheme();
@@ -15,14 +15,17 @@ export default function Home() {
 
   return (
     <main>
-      <header className="flex justify-between items-center p-5 border-b" style={{ borderColor: 'var(--border-color)' }}>
+      <header
+        className="flex justify-between items-center p-5 border-b"
+        style={{ borderColor: "var(--border-color)" }}
+      >
         <h1 className="text-2xl">Modern Marketplace</h1>
         <button
           data-testid="theme-toggle"
           className="px-4 py-2 border-none rounded bg-[#0070f3] text-white cursor-pointer"
           onClick={toggleTheme}
         >
-          {theme === 'light' ? 'Dark Mode' : 'Light Mode'}
+          {theme === "light" ? "Dark Mode" : "Light Mode"}
         </button>
       </header>
       <Banner />
@@ -35,10 +38,7 @@ export default function Home() {
             totalProducts={totalProducts}
             onPageChange={setPage}
           />
-          <ProductList
-            page={page}
-            onProductsLoaded={setTotalProducts}
-          />
+          <ProductList page={page} onProductsLoaded={setTotalProducts} />
         </div>
       </div>
     </main>

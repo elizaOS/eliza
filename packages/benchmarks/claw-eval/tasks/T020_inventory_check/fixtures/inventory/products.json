@@ -5,7 +5,7 @@
     "category": "Electronics",
     "current_stock": 3,
     "min_stock_threshold": 20,
-    "unit_price": 299.00,
+    "unit_price": 299.0,
     "daily_avg_sales": 8,
     "supplier": "Shenzhen Xinda Electronics",
     "lead_time_days": 7
@@ -16,7 +16,7 @@
     "category": "Accessories",
     "current_stock": 450,
     "min_stock_threshold": 100,
-    "unit_price": 29.90,
+    "unit_price": 29.9,
     "daily_avg_sales": 25,
     "supplier": "Dongguan Huatong Cable",
     "lead_time_days": 3
@@ -27,7 +27,7 @@
     "category": "Accessories",
     "current_stock": 12,
     "min_stock_threshold": 30,
-    "unit_price": 159.00,
+    "unit_price": 159.0,
     "daily_avg_sales": 5,
     "supplier": "Foshan Youpin Hardware",
     "lead_time_days": 5
@@ -38,7 +38,7 @@
     "category": "Electronics",
     "current_stock": 0,
     "min_stock_threshold": 15,
-    "unit_price": 899.00,
+    "unit_price": 899.0,
     "daily_avg_sales": 3,
     "supplier": "Shenzhen Xinda Electronics",
     "lead_time_days": 10,
@@ -50,7 +50,7 @@
     "category": "Accessories",
     "current_stock": 85,
     "min_stock_threshold": 50,
-    "unit_price": 89.00,
+    "unit_price": 89.0,
     "daily_avg_sales": 12,
     "supplier": "Dongguan Huatong Cable",
     "lead_time_days": 3
@@ -61,7 +61,7 @@
     "category": "Electronics",
     "current_stock": 8,
     "min_stock_threshold": 25,
-    "unit_price": 459.00,
+    "unit_price": 459.0,
     "daily_avg_sales": 4,
     "supplier": "Guangzhou KeyWay Tech",
     "lead_time_days": 7
@@ -72,7 +72,7 @@
     "category": "Cleaning Supplies",
     "current_stock": 200,
     "min_stock_threshold": 40,
-    "unit_price": 35.00,
+    "unit_price": 35.0,
     "daily_avg_sales": 6,
     "supplier": "Hangzhou Jiemei Chemicals",
     "lead_time_days": 4
@@ -83,7 +83,7 @@
     "category": "Electronics",
     "current_stock": 5,
     "min_stock_threshold": 20,
-    "unit_price": 249.00,
+    "unit_price": 249.0,
     "daily_avg_sales": 6,
     "supplier": "Guangzhou KeyWay Tech",
     "lead_time_days": 5
@@ -94,7 +94,7 @@
     "category": "Electronics",
     "current_stock": 50,
     "min_stock_threshold": 100,
-    "unit_price": 2499.00,
+    "unit_price": 2499.0,
     "daily_avg_sales": 15,
     "supplier": "Shenzhen Xinda Electronics",
     "lead_time_days": 14
@@ -105,7 +105,7 @@
     "category": "Accessories",
     "current_stock": 0,
     "min_stock_threshold": 20,
-    "unit_price": 399.00,
+    "unit_price": 399.0,
     "daily_avg_sales": 8,
     "supplier": "Dongguan Huatong Cable",
     "lead_time_days": 7,

@@ -18,14 +18,14 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { Brain } from "../actor/brain.js";
 import {
-  runComputerUseAgentLoop,
   type ComputerUseAgentReport,
+  runComputerUseAgentLoop,
 } from "../actions/use-computer-agent.js";
-import type { ComputerUseService } from "../services/computer-use-service.js";
-import type { Scene } from "../scene/scene-types.js";
+import { Brain } from "../actor/brain.js";
 import type { DisplayCapture } from "../platform/capture.js";
+import type { Scene } from "../scene/scene-types.js";
+import type { ComputerUseService } from "../services/computer-use-service.js";
 import type { DisplayDescriptor } from "../types.js";
 
 function display(): DisplayDescriptor {
@@ -45,7 +45,13 @@ function syntheticScene(): Scene {
     focused_window: null,
     apps: [],
     ocr: [
-      { id: "t0-1", text: "Save", bbox: [100, 100, 80, 32], conf: 0.97, displayId: 0 },
+      {
+        id: "t0-1",
+        text: "Save",
+        bbox: [100, 100, 80, 32],
+        conf: 0.97,
+        displayId: 0,
+      },
     ],
     ax: [],
     vlm_scene: null,
@@ -148,7 +154,13 @@ describe("runComputerUseAgentLoop — stubbed Brain", () => {
         JSON.stringify({
           scene_summary: "S",
           target_display_id: 0,
-          roi: [{ displayId: 0, bbox: [9_000, 9_000, 10, 10], reason: "off-screen" }],
+          roi: [
+            {
+              displayId: 0,
+              bbox: [9_000, 9_000, 10, 10],
+              reason: "off-screen",
+            },
+          ],
           proposed_action: { kind: "click", rationale: "click out-of-bounds" },
         }),
     });

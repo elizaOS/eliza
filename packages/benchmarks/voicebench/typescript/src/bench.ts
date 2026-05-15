@@ -275,7 +275,10 @@ function wordErrorRate(reference: string, hypothesis: string): number | null {
   return levenshteinDistance(refWords, hypWords) / refWords.length;
 }
 
-function characterErrorRate(reference: string, hypothesis: string): number | null {
+function characterErrorRate(
+  reference: string,
+  hypothesis: string,
+): number | null {
   const refChars = Array.from(normalizeText(reference).replace(/\s+/g, ""));
   if (refChars.length === 0) return null;
   const hypChars = Array.from(normalizeText(hypothesis).replace(/\s+/g, ""));
@@ -681,14 +684,8 @@ async function main(): Promise<void> {
     ? dataset.samples
     : [{ id: "single-audio", audioPath: audioPath!, expectedText: null }];
 
-  const sttProvider =
-    profile === "elevenlabs"
-        ? "elevenLabs"
-        : "groq";
-  const ttsProvider =
-    profile === "elevenlabs"
-        ? "elevenLabs"
-        : "groq";
+  const sttProvider = profile === "elevenlabs" ? "elevenLabs" : "groq";
+  const ttsProvider = profile === "elevenlabs" ? "elevenLabs" : "groq";
 
   const results: IterationResult[] = [];
   const firstSentenceCache = new Map<string, Uint8Array>();
@@ -813,7 +810,8 @@ async function main(): Promise<void> {
           const segmented = splitFirstSentence(responseText);
           const firstSentence = segmented.firstSentence || responseText;
           const remainder = segmented.remainder;
-          const firstSentenceEstimatedTokens = estimateTokenCount(firstSentence);
+          const firstSentenceEstimatedTokens =
+            estimateTokenCount(firstSentence);
           const ttsFirstSentenceCacheEligible =
             firstSentenceEstimatedTokens > 0 &&
             firstSentenceEstimatedTokens < 10;
@@ -1240,9 +1238,7 @@ async function main(): Promise<void> {
       ),
       firstSentenceCacheEligibleRate: round(
         average(
-          rows.map((entry) =>
-            entry.ttsFirstSentenceCacheEligible ? 1 : 0,
-          ),
+          rows.map((entry) => (entry.ttsFirstSentenceCacheEligible ? 1 : 0)),
         ),
       ),
       avgTranscriptionWer: round(

@@ -135,19 +135,9 @@
   "generatedAt": "2026-05-14T10:23:58Z",
   "generator": "MMPROJ-PHASE-2 swarm; chain F16 -> llama-quantize",
   "projectorGroupings": {
-    "large": [
-      "9b",
-      "27b",
-      "27b-256k",
-      "27b-1m"
-    ],
-    "mid": [
-      "2b",
-      "4b"
-    ],
-    "small": [
-      "0_8b"
-    ]
+    "large": ["9b", "27b", "27b-256k", "27b-1m"],
+    "mid": ["2b", "4b"],
+    "small": ["0_8b"]
   },
   "quantizer": "plugins/plugin-local-inference/native/llama.cpp llama-quantize (fork)",
   "quantizerBinary": "/tmp/w4d-builds/linux-x64-cpu/bin/llama-quantize",

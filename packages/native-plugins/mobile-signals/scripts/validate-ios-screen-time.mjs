@@ -15,10 +15,8 @@ export const IOS_SCREEN_TIME_REQUIREMENTS = Object.freeze({
   }),
   frameworks: Object.freeze(["FamilyControls", "DeviceActivity"]),
   extensionPoints: Object.freeze({
-    deviceActivityMonitor:
-      "com.apple.deviceactivity.monitor-extension",
-    deviceActivityReport:
-      "com.apple.deviceactivityui.report-extension",
+    deviceActivityMonitor: "com.apple.deviceactivity.monitor-extension",
+    deviceActivityReport: "com.apple.deviceactivityui.report-extension",
   }),
   extensionTargets: Object.freeze({
     deviceActivityMonitor: "DeviceActivityMonitorExtension",
@@ -195,9 +193,13 @@ function findDeviceActivityExtensionInfoPlists(appRootPath) {
   for (const filePath of walkFiles(appRootPath)) {
     if (path.basename(filePath) !== "Info.plist") continue;
     const plist = fs.readFileSync(filePath, "utf8");
-    const extensionPoint = plistStringValue(plist, "NSExtensionPointIdentifier", {
-      enclosingKey: "NSExtension",
-    });
+    const extensionPoint = plistStringValue(
+      plist,
+      "NSExtensionPointIdentifier",
+      {
+        enclosingKey: "NSExtension",
+      },
+    );
     for (const [key, expected] of Object.entries(expectedPoints)) {
       if (extensionPoint === expected) {
         matches[key].push(filePath);

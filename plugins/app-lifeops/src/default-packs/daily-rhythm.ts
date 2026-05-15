@@ -15,9 +15,9 @@
 
 import type { DefaultPack } from "./registry-types.js";
 import {
+  type CheckInTaskDefinition,
   compileTaskDefinition,
   compileTaskDefinitions,
-  type CheckInTaskDefinition,
   type FollowUpTaskDefinition,
   type ReminderTaskDefinition,
 } from "./task-definitions.js";

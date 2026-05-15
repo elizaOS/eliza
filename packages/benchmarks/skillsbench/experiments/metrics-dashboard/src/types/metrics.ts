@@ -70,7 +70,7 @@ export interface TrialResult {
   verifier: TrialTimingPhase | null;
 }
 
-export type TrialStatus = 'pass' | 'fail' | 'error' | 'timeout';
+export type TrialStatus = "pass" | "fail" | "error" | "timeout";
 
 export interface ProcessedTrial {
   id: string;
@@ -96,7 +96,7 @@ export interface ProcessedTrial {
 
 export interface JobSummary {
   jobName: string;
-  jobStatus: 'running' | 'completed';
+  jobStatus: "running" | "completed";
   expectedTrials: number;
   completedTrials: number;
   passedTrials: number;
@@ -144,7 +144,7 @@ export interface TrajectoryMetrics {
 export interface TrajectoryStep {
   step_id: number;
   timestamp: string;
-  source: 'user' | 'agent' | 'system';
+  source: "user" | "agent" | "system";
   model_name?: string;
   message: string;
   tool_calls?: TrajectoryToolCall[];

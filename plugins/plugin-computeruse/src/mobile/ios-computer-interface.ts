@@ -62,7 +62,10 @@ export const IOS_LOGICAL_DISPLAY_ID = 0 as const;
 
 /** Default physical bounds when the bridge hasn't reported a frame yet. */
 const IOS_FALLBACK_BOUNDS: readonly [number, number, number, number] = [
-  0, 0, 393, 852, // iPhone 15 logical points; the cascade re-derives from frames.
+  0,
+  0,
+  393,
+  852, // iPhone 15 logical points; the cascade re-derives from frames.
 ];
 
 export interface IosComputerInterfaceDeps {
@@ -95,15 +98,16 @@ export class IosComputerInterface implements ComputerInterface {
 
   constructor(deps: IosComputerInterfaceDeps) {
     this.deps = deps;
-    this.cursorState =
-      deps.cursorState ?? {
-        current: { displayId: IOS_LOGICAL_DISPLAY_ID, x: 0, y: 0 },
-      };
+    this.cursorState = deps.cursorState ?? {
+      current: { displayId: IOS_LOGICAL_DISPLAY_ID, x: 0, y: 0 },
+    };
   }
 
   // ── Screenshot ─────────────────────────────────────────────────────────────
 
-  async screenshot(opts: { displayId?: number } = {}): Promise<ScreenshotResult> {
+  async screenshot(
+    opts: { displayId?: number } = {},
+  ): Promise<ScreenshotResult> {
     this.requireDisplayId(opts.displayId);
     const bridge = this.requireBridge();
     const sessionId = this.deps.getReplayKitSessionId?.();
@@ -122,7 +126,9 @@ export class IosComputerInterface implements ComputerInterface {
         "[computeruse/ios] replayKitForegroundDrain returned no frames — caller must back off and retry next tick.",
       );
     }
-    const decoded = (this.deps.decodeJpeg ?? defaultDecodeJpeg)(frame.jpegBase64);
+    const decoded = (this.deps.decodeJpeg ?? defaultDecodeJpeg)(
+      frame.jpegBase64,
+    );
     return {
       displayId: IOS_LOGICAL_DISPLAY_ID,
       frame: decoded,
@@ -133,7 +139,9 @@ export class IosComputerInterface implements ComputerInterface {
 
   // ── Input-bearing primitives — all throw with a redirect to App Intents ──
 
-  async mouseDown(point: DisplayPoint & { button?: MouseButton }): Promise<void> {
+  async mouseDown(
+    point: DisplayPoint & { button?: MouseButton },
+  ): Promise<void> {
     this.refuseInput("mouseDown", point);
   }
 
@@ -331,9 +339,7 @@ export class IosComputerInterface implements ComputerInterface {
 
   private requireFiniteCoords(p: DisplayPoint): void {
     if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
-      throw new Error(
-        `[computeruse/ios] non-finite coords (${p.x}, ${p.y})`,
-      );
+      throw new Error(`[computeruse/ios] non-finite coords (${p.x}, ${p.y})`);
     }
   }
 

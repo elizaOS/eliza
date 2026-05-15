@@ -45,7 +45,9 @@
           },
           "sample_rate": {
             "type": "integer",
-            "enum": [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000]
+            "enum": [
+              8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000
+            ]
           },
           "bit_depth": {
             "type": "integer",
@@ -57,7 +59,14 @@
             "maximum": 8
           }
         },
-        "required": ["track_id", "title", "artist", "duration_ms", "file_path", "codec"]
+        "required": [
+          "track_id",
+          "title",
+          "artist",
+          "duration_ms",
+          "file_path",
+          "codec"
+        ]
       },
       "maxItems": 10000
     },
