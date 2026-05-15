@@ -128,7 +128,8 @@ static int valid_region(const char * name) {
          || strcmp(name, "asr") == 0
          || strcmp(name, "text") == 0
          || strcmp(name, "dflash") == 0
-         || strcmp(name, "vad") == 0);
+         || strcmp(name, "vad") == 0
+         || strcmp(name, "wakeword") == 0);
 }
 
 int eliza_inference_mmap_acquire(
@@ -143,7 +144,7 @@ int eliza_inference_mmap_acquire(
     }
     if (!valid_region(region_name)) {
         set_error(out_error,
-            "[libelizainference-stub] mmap_acquire: invalid region_name (expected tts|asr|text|dflash|vad)");
+            "[libelizainference-stub] mmap_acquire: invalid region_name (expected tts|asr|text|dflash|vad|wakeword)");
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
@@ -163,7 +164,7 @@ int eliza_inference_mmap_evict(
     }
     if (!valid_region(region_name)) {
         set_error(out_error,
-            "[libelizainference-stub] mmap_evict: invalid region_name (expected tts|asr|text|dflash|vad)");
+            "[libelizainference-stub] mmap_evict: invalid region_name (expected tts|asr|text|dflash|vad|wakeword)");
         return ELIZA_ERR_INVALID_ARG;
     }
     set_error(out_error,
@@ -358,6 +359,66 @@ int eliza_inference_vad_reset(
 
 void eliza_inference_vad_close(EliVad * vad) {
     if (vad) free(vad);
+}
+
+/* ----------------------------------------------------------------- */
+/* Native wake-word (ABI v5)                                         */
+/* ----------------------------------------------------------------- */
+
+struct EliWakeWord {
+    int sample_rate_hz;
+};
+
+int eliza_inference_wakeword_supported(void) {
+    return 0; /* stub has no native wake-word backend */
+}
+
+EliWakeWord * eliza_inference_wakeword_open(
+    EliInferenceContext * ctx,
+    int sample_rate_hz,
+    const char * head_name,
+    char ** out_error)
+{
+    (void)sample_rate_hz;
+    (void)head_name;
+    if (!ctx) {
+        set_error(out_error,
+            "[libelizainference-stub] wakeword_open: ctx is NULL");
+        return NULL;
+    }
+    set_error(out_error,
+        "[libelizainference-stub] wakeword_open: not implemented in stub — fused build with wake-word GGUF runtime required");
+    return NULL;
+}
+
+int eliza_inference_wakeword_score(
+    EliWakeWord * wake,
+    const float * pcm,
+    size_t n_samples,
+    float * out_probability,
+    char ** out_error)
+{
+    (void)wake;
+    (void)pcm;
+    (void)n_samples;
+    (void)out_probability;
+    set_error(out_error,
+        "[libelizainference-stub] wakeword_score: not implemented in stub — fused build with wake-word GGUF runtime required");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+int eliza_inference_wakeword_reset(
+    EliWakeWord * wake,
+    char ** out_error)
+{
+    (void)wake;
+    set_error(out_error,
+        "[libelizainference-stub] wakeword_reset: not implemented in stub — fused build with wake-word GGUF runtime required");
+    return ELIZA_ERR_NOT_IMPLEMENTED;
+}
+
+void eliza_inference_wakeword_close(EliWakeWord * wake) {
+    if (wake) free(wake);
 }
 
 int eliza_inference_asr_transcribe(
