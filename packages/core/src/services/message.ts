@@ -2148,7 +2148,7 @@ async function createV5MessageContextObject(args: {
 	const events: ContextEvent[] = [];
 
 	const excludeRecentMessagesProviderText =
-		args.includeTools === true && hasStructuredRecentMessages(args.state);
+		hasStructuredRecentMessages(args.state);
 	const renderExclusions = args.extraProviderExclusions?.length
 		? [...MODEL_CONTEXT_PROVIDER_EXCLUSIONS, ...args.extraProviderExclusions]
 		: MODEL_CONTEXT_PROVIDER_EXCLUSIONS;
@@ -2638,7 +2638,7 @@ function extractHandleResponseToolArguments(
 			continue;
 		}
 		const args = parseToolArguments(
-			entry.arguments,
+			entry.arguments ?? entry.args ?? entry.input ?? entry.params,
 		);
 		if (!args || !looksLikeMessageHandlerToolArguments(args)) {
 			continue;
@@ -4764,7 +4764,7 @@ function extractMessageHandlerToolCalls(
 			entry.name ?? entry.toolName,
 		).trim();
 		const args = parseToolArguments(
-			entry.arguments,
+			entry.arguments ?? entry.args ?? entry.input ?? entry.params,
 		);
 		toolCalls.push({
 			id:

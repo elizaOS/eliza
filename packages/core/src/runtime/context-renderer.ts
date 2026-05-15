@@ -446,7 +446,7 @@ export function renderContextObject(
 		renderPrefixTool(rendered, tool);
 	}
 
-	for (const event of context.events) {
+	for (const event of context.events ?? []) {
 		renderEvent(rendered, event);
 	}
 

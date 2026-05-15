@@ -600,7 +600,7 @@ function renderRoutingHintsBlock(context: ContextObject): string | null {
 	}
 	const seen = new Set<string>();
 	const lines: string[] = [];
-	for (const event of events) {
+	for (const event of events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) continue;
 		const tool = event.tool as ContextObjectTool;
 		const hint = tool.action?.routingHint?.trim();
@@ -632,7 +632,7 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
 	const tools: ContextObjectTool[] = [];
 	const seen = new Set<string>();
 
-	for (const event of context.events) {
+	for (const event of context.events ?? []) {
 		if (event.type !== "tool" || !("tool" in event)) {
 			continue;
 		}
@@ -1834,7 +1834,14 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.toolName ??
 			record.tool ??
 			record.action ??
-			record.actionName,
+			record.actionName ??
+			functionName ??
+			// gpt-oss narrates calls as `{type: "ACTION", args: {...}}`. `type`
+			// is the last-resort name source so the canonical OpenAI/Anthropic
+			// envelope shapes, where `type` is "function"/"tool", still resolve
+			// through `functionName`/`name` first.
+			record.type ??
+			"",
 	);
 	if (!name) {
 		return null;
@@ -1847,7 +1854,10 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.params ??
 			record.parameters ??
 			rawFunction?.input ??
-			rawFunction?.args,
+			rawFunction?.args ??
+			rawFunction?.arguments ??
+			rawFunction?.params ??
+			rawFunction?.parameters,
 	);
 
 	return {
