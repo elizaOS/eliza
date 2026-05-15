@@ -68,6 +68,16 @@
 
 ## Active agents
 
+- 2026-05-15 H3 phase=impl-done: @elizaos/agent and @elizaos/plugin-local-inference
+  typecheck both GREEN (EXIT:0). Four fixes: (1) plugin-compiler.ts bunGlobal.Bun?.Transpiler
+  optional chain; (2) removed bare `declare module "@elizaos/plugin-commands"` stub from
+  external-modules.d.ts that shadowed real types → TS2709; (3) typed registerCommand local
+  variable as CommandDefinition instead of Record<string, unknown> → TS2322 under strict:true;
+  (4) added "skills" to CommandCategory union in plugin-commands types.ts; (5) added
+  @elizaos/app-phone ambient stub (no package.json in plugins/app-phone). Merge-safety
+  caveat: bare plugin-commands stub was re-introduced by merge from fdd1603889 — fixed again
+  in b6d38696f6. Report: .swarm/impl/H3-agent-typecheck.md. Commits: 61630536bf, b6d38696f6.
+
 - 2026-05-15 H4 phase=impl-done: All 10 elizaos/eliza-1-voice-* repos confirmed live
   on HuggingFace with real ONNX/GGUF weights. SHA256 verified against HF LFS metadata
   for all binaries. models/voice/manifest.json: turn-detector promoted to v0.2.0

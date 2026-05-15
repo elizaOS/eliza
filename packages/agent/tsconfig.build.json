@@ -25,6 +25,9 @@
       "@elizaos/plugin-browser": [
         "../../plugins/plugin-browser/dist/index.d.ts"
       ],
+      "@elizaos/plugin-app-manager": [
+        "../../plugins/plugin-app-manager/src/index.ts"
+      ],
       "@elizaos/plugin-elizacloud": ["./src/external-modules.d.ts"]
     },
     "types": ["node", "bun-types", "react", "react-dom"],

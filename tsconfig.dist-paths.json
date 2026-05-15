@@ -224,6 +224,9 @@
       "@elizaos/plugin-app-control": [
         "./plugins/plugin-app-control/dist/index.d.ts"
       ],
+      "@elizaos/plugin-app-manager": [
+        "./plugins/plugin-app-manager/src/index.ts"
+      ],
       "@elizaos/plugin-hyperliquid-app": ["./plugins/plugin-hyperliquid-app/dist/index.d.ts"],
       "@elizaos/plugin-rlm": ["./plugins/plugin-rlm/dist/index.d.ts"],
       "@elizaos/plugin-anthropic": [

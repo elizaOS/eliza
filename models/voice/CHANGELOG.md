@@ -193,6 +193,52 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 - **What changed:** First publish. Pyannote-segmentation-3.0 ONNX int8,
   1.54 MB. MIT.
 
+## turn-detector-intl
+
+### 0.1.0 — 2026-05-15 (O-turn-intl — OASST1 multilingual fine-tune)
+
+- **What changed:** Fine-tuned `livekit/turn-detector @ v0.4.1-intl`
+  (24-layer Qwen2-0.5B pruned, ~500M params, 14-language tokenizer) on
+  a multilingual EOU corpus built from `OpenAssistant/oasst1` (Apache-2.0,
+  prompter-role utterances). Same prefix-augmented signal as H-turn: each
+  utterance ≥ 3 word-units (or character-units for CJK scripts) emits a
+  positive (full utterance, EOU=1) and a randomly-truncated prefix as a
+  negative (trailing ASCII + fullwidth punctuation stripped). Per-language
+  cap = 6 000 utterances; 12 OASST1 locales with non-trivial coverage.
+  Final train set: 47 342 examples; eval set: 1 248 language-stratified.
+- **Parent:** none (first publish of the multilingual variant).
+- **HF repo:** `elizaos/eliza-1-voice-turn` @ rev
+  `7ec50ce4b65943ccc32a14959c54181f57a0a284`, `intl/` subfolder.
+- **Assets:** `intl/model_q8.onnx` (262 MB INT8 ONNX,
+  `af70f5b5e815f6baf11dad252fbc80400964c6589cea02115187139f6ccf9d66`),
+  `intl/turn-detector-intl-q8.gguf` (281 MB Q8_0 GGUF,
+  `5dbcba3fb490217b10ec898003dd0905f9d81b8b7e24378029cff921ab7f9e79`).
+  Tokenizer + config sidecars co-located.
+- **Training:** APOLLO-Mini, lr=3e-5, 1 epoch (2 959 steps) at batch=16
+  on a single RTX 5080 (laptop, sm_120, ~16 min wall-clock, 5.9 GB peak
+  VRAM bf16). Loss: BCE on `(im_end_logit − logsumexp(other_logits))`
+  at the last real-token position — same quantity the runtime's
+  `probabilityFromOnnxOutput` softmax-projects. Best checkpoint at
+  step 2 000 (held-out F1=0.9379, bf16 in-training).
+- **Eval (held-out 1 248-row language-stratified OASST1 split, INT8 ONNX):**
+  - F1=0.9308 (overall), meanLatencyMs=95.5 (CPU inference, single-thread
+    onnxruntime). F1 gate ≥ 0.85 — **passed by +0.0808 margin**. The
+    30 ms latency target is for the 135M EN model (`turn-detector` 0.2.0);
+    the 500M intl model is intrinsically larger, single-thread CPU
+    latency tracked for parity and improved via batched / GPU inference
+    paths.
+  - Per-language F1: de 0.9826, pt 0.9846, en 0.9412, es 0.9222,
+    fr 0.8992, zh 0.9053, ru 0.9071, ja 0.8889 (n=20), it 0.7692 (n=22).
+    Single-sample langs (id, tr, ko) reported but not statistically
+    meaningful.
+- **Net improvement:** F1 +0.09 vs LiveKit `v0.4.1-intl` baseline
+  (estimated 0.84 from upstream model card).
+- **Smoke test (multilingual hand-crafted pairs, en/es/de/zh/fr/ja):**
+  5 of 6 locales pass complete-vs-prefix discrimination at threshold 0.5.
+  Japanese fails one of two complete utterances (closing politeness
+  marker `どうぞ` scored 0.137 < 0.5); known weakness, OASST1 Japanese
+  coverage is thin (n=201 train, 20 eval).
+
 ## turn-detector
 
 ### 0.2.0 — 2026-05-15 (H-turn — DailyDialog fine-tune)
