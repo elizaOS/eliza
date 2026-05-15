@@ -653,6 +653,18 @@ def main(argv: list[str] | None = None) -> int:
                         help="Re-export ONNX from an existing best.pt; skip phases 1-3.")
     parser.add_argument("--allow-below-gate", action="store_true",
                         help="Write ONNX even if eval gate fails (for diagnostic runs).")
+    parser.add_argument(
+        "--head", choices=("vad", "cls7"), default="vad",
+        help="Which head to export and gate against. 'vad' (default) emits "
+             "[B, 3] V-A-D and gates on the projection macro-F1; 'cls7' emits "
+             "[B, 7] cls_logits and gates on the aux head's direct macro-F1.",
+    )
+    parser.add_argument(
+        "--export-name", default=None,
+        help="Override the ONNX filename in <run-dir>. Defaults to "
+             "'wav2small-msp-dim-int8.onnx' for head=vad and "
+             "'wav2small-cls7-int8.onnx' for head=cls7.",
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -673,7 +685,10 @@ def main(argv: list[str] | None = None) -> int:
     param_count = dw.count_params(student)
     LOG.info("student param count: %d (target %d)", param_count, dw.TARGET_PARAM_COUNT)
 
-    onnx_path = args.run_dir / "wav2small-msp-dim-int8.onnx"
+    default_name = (
+        "wav2small-msp-dim-int8.onnx" if args.head == "vad" else "wav2small-cls7-int8.onnx"
+    )
+    onnx_path = args.run_dir / (args.export_name or default_name)
 
     test_metrics: dict[str, float]
     if args.skip_train and (args.run_dir / "test-metrics.json").is_file():
@@ -710,18 +725,26 @@ def main(argv: list[str] | None = None) -> int:
             vad_loss_weight=args.vad_loss_weight,
         )
 
-    LOG.info("phase 4: eval gate (macro_f1 >= %.2f)", args.eval_gate_macro_f1)
-    if test_metrics["macro_f1"] < args.eval_gate_macro_f1 and not args.allow_below_gate:
+    # When head=cls7 we gate on the aux head's direct macro-F1 (the
+    # classifier output that actually ships); when head=vad we gate on the
+    # V-A-D projection metric (the shipped contract for that head).
+    gate_metric_key = "macro_f1_aux" if args.head == "cls7" else "macro_f1"
+    gate_value = float(test_metrics.get(gate_metric_key, 0.0))
+    LOG.info(
+        "phase 4: eval gate (head=%s, %s=%.4f >= %.2f)",
+        args.head, gate_metric_key, gate_value, args.eval_gate_macro_f1,
+    )
+    if gate_value < args.eval_gate_macro_f1 and not args.allow_below_gate:
         LOG.error(
-            "EVAL GATE FAIL: test macro_f1 %.4f < gate %.2f. "
+            "EVAL GATE FAIL: test %s %.4f < gate %.2f. "
             "Re-run with --allow-below-gate to write the diagnostic ONNX, "
             "or escalate to a larger corpus / more epochs.",
-            test_metrics["macro_f1"], args.eval_gate_macro_f1,
+            gate_metric_key, gate_value, args.eval_gate_macro_f1,
         )
         return 2
 
-    LOG.info("phase 5: export INT8 ONNX → %s", onnx_path)
-    dw.export_student_onnx(student=student, out_path=onnx_path)
+    LOG.info("phase 5: export INT8 ONNX → %s (head=%s)", onnx_path, args.head)
+    dw.export_student_onnx(student=student, out_path=onnx_path, head=args.head)
     sha = sha256_of(onnx_path)
     size = onnx_path.stat().st_size
     LOG.info("ONNX sha256=%s size=%d bytes", sha, size)
@@ -757,7 +780,10 @@ def main(argv: list[str] | None = None) -> int:
         "teacher_repo": args.teacher,
         "teacher_license": "CC-BY-NC-SA-4.0",
         "corpus": "xbgoose/ravdess",
-        "eval_gate_pass": bool(test_metrics["macro_f1"] >= args.eval_gate_macro_f1),
+        "head": args.head,
+        "gate_metric": gate_metric_key,
+        "gate_value": gate_value,
+        "eval_gate_pass": bool(gate_value >= args.eval_gate_macro_f1),
         "eval_gate_threshold": args.eval_gate_macro_f1,
     }
     (args.run_dir / "summary.json").write_text(json.dumps(summary, indent=2), "utf-8")

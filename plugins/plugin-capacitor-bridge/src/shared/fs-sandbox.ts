@@ -2,7 +2,11 @@ import * as realFs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export type FsAccessMode = "read" | "write";
-export type AnyFn = (...args: unknown[]) => unknown;
+// Intentionally uses `any[]` for parameter contravariance. The wrapper
+// generics propagate the real `T` shape to callers; the wrapper body
+// re-validates path-like arguments at runtime via `mobileFsPathLikeToString`.
+// biome-ignore lint/suspicious/noExplicitAny: contravariance for fs.* signatures
+export type AnyFn = (...args: any[]) => unknown;
 export type MobileFsGlobals = typeof globalThis & {
   __ELIZA_MOBILE_FS_RESOLVE__?: (
     inputPath: string,
