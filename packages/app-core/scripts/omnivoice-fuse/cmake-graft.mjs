@@ -448,38 +448,27 @@ export { KOKORO_SENTINEL as KOKORO_CMAKE_GRAFT_SENTINEL };
  * Names of CMake build targets the fused build must produce. Caller
  * passes these to `cmake --build … --target …`.
  *
- * Two layouts:
+ * W3-3 (v1.0.1-eliza): the legacy `omnivoice/` graft tree was deleted
+ * from the fork — there is no more `omnivoice-core` or `llama-omnivoice-
+ * server` target. The fork's `tools/omnivoice/CMakeLists.txt` declares
+ * `omnivoice_lib` (STATIC, underscore not hyphen), `elizainference`
+ * (SHARED), `omnivoice-tts` / `omnivoice-codec` (CLIs), and patches the
+ * /v1/audio/speech route into `llama-server`.
  *
- *   * Merged path (W3-3, canonical, default as of v1.0.1-eliza —
- *     `OMNIVOICE_INSIDE_LLAMA_CPP=1`): the fork's
- *     `tools/omnivoice/CMakeLists.txt` declares `omnivoice_lib`
- *     (STATIC, underscore not hyphen — different from the legacy
- *     graft's `omnivoice-core`), `elizainference` (SHARED),
- *     `omnivoice-tts` / `omnivoice-codec` (CLIs), and patches the
- *     /v1/audio/speech route into `llama-server`.
- *
- *   * Legacy graft path (deprecated; `OMNIVOICE_INSIDE_LLAMA_CPP=0`):
- *     the in-script `prepare.mjs` clones omnivoice.cpp into
- *     `omnivoice/` at the fork root and the CMakeLists graft block
- *     produces `omnivoice-core` + `llama-omnivoice-server` instead.
- *
- * The two layouts use disjoint target names; we resolve to the right
- * set based on the env var so `cmake --build --target …` doesn't error
- * on an unknown target.
+ * The `legacy` flag is retained for one release as a deprecation
+ * runway. Setting it currently has no effect on the produced target
+ * list (the underlying CMake produces the merged-tree targets either
+ * way — `ELIZA_FUSE_OMNIVOICE=ON` redirects to
+ * `LLAMA_BUILD_OMNIVOICE=ON` in the fork's root CMakeLists.txt).
+ * Callers still passing `legacy: true` get a warning logged at the
+ * call site.
  */
-export function fusedCmakeBuildTargets({ legacy = false } = {}) {
-  const base = [
+export function fusedCmakeBuildTargets({ legacy: _legacy = false } = {}) {
+  return [
     "llama-server",
     "llama-cli",
     "llama-speculative-simple",
     "llama-mtmd-cli",
-  ];
-  if (legacy) {
-    return [...base, "omnivoice-core", "elizainference", "llama-omnivoice-server"];
-  }
-  // Merged path (W3-3).
-  return [
-    ...base,
     "omnivoice_lib",
     "elizainference",
     "omnivoice-tts",
