@@ -585,8 +585,27 @@ export function ChatView({
       />
     );
 
+  const voiceStatusBarVisible =
+    voice.supported &&
+    (continuousChatMode !== "off" ||
+      voice.isListening ||
+      voice.isSpeaking ||
+      Boolean(voiceSpeaker) ||
+      Boolean(continuous.interimTranscript));
+
   const auxiliaryNode = (
     <>
+      {voiceStatusBarVisible ? (
+        <ChatVoiceStatusBar
+          status={continuous.status}
+          interimTranscript={continuous.interimTranscript}
+          speaker={voiceSpeaker}
+          latency={continuous.latency}
+          visible
+          className={`mb-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
+          data-testid="chat-view-voice-status-bar"
+        />
+      ) : null}
       {shareIngestNotice ? (
         <div
           className={`text-xs text-ok py-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
@@ -664,6 +683,17 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
+          {voice.supported ? (
+            <div className="flex justify-end px-1 pb-0.5">
+              <ContinuousChatToggle
+                compact
+                value={continuousChatMode}
+                onChange={handleContinuousChatModeChange}
+                disabled={isComposerLocked}
+                data-testid="chat-view-continuous-chat-toggle-game-modal"
+              />
+            </div>
+          ) : null}
           <AgentActivityBox
             sessions={ptySessions}
             onSessionClick={onPtySessionClick ?? focusTerminalSession}
