@@ -85,6 +85,8 @@ export type { ChatImageAttachment, LogEntry };
 const { getLocalInferenceChatStatus, handleLocalInferenceChatCommand } =
   await import("@elizaos/plugin-local-inference");
 
+const DEFAULT_CONVERSATION_TITLE_TIMEOUT_MS = 5_000;
+
 type LocalInferenceChatMetadata = Record<string, unknown>;
 type LocalInferenceCommandIntent =
   | "cancel"
@@ -1871,10 +1873,63 @@ export async function generateChatResponse(
 // generateConversationTitle
 // ---------------------------------------------------------------------------
 
+interface ConversationTitleGenerationOptions {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}
+
+function createConversationTitleAbortSignal(
+  options: ConversationTitleGenerationOptions = {},
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const abortFromCaller = () => {
+    controller.abort(options.signal?.reason ?? new Error("Request aborted"));
+  };
+  if (options.signal?.aborted) {
+    abortFromCaller();
+  } else {
+    options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  }
+
+  const timeoutMs =
+    typeof options.timeoutMs === "number" &&
+    Number.isFinite(options.timeoutMs) &&
+    options.timeoutMs > 0
+      ? Math.floor(options.timeoutMs)
+      : DEFAULT_CONVERSATION_TITLE_TIMEOUT_MS;
+  const timer = setTimeout(() => {
+    controller.abort(
+      new DOMException(
+        `Conversation title generation timed out after ${timeoutMs}ms`,
+        "TimeoutError",
+      ),
+    );
+  }, timeoutMs);
+  (timer as { unref?: () => void }).unref?.();
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", abortFromCaller);
+    },
+  };
+}
+
+function isAbortLikeError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  return (
+    err.name === "AbortError" ||
+    err.name === "TimeoutError" ||
+    err.message.toLowerCase().includes("aborted")
+  );
+}
+
 export async function generateConversationTitle(
   runtime: AgentRuntime,
   userMessage: string,
   agentName: string,
+  options?: ConversationTitleGenerationOptions,
 ): Promise<string | null> {
   const modelClass = ModelType.TEXT_SMALL;
 
@@ -1887,11 +1942,13 @@ User message: "${userMessage}"
 
 Title:`;
 
+  const abort = createConversationTitleAbortSignal(options);
   try {
     const title = await runtime.useModel(modelClass, {
       prompt,
       maxTokens: 20,
       temperature: 0.7,
+      signal: abort.signal,
     });
 
     if (!title) return null;
@@ -1908,10 +1965,15 @@ Title:`;
 
     return cleanTitle;
   } catch (err) {
-    logger.warn(
-      `[eliza] Failed to generate conversation title: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    const message = err instanceof Error ? err.message : String(err);
+    if (isAbortLikeError(err)) {
+      logger.info(`[eliza] Conversation title generation cancelled: ${message}`);
+    } else {
+      logger.warn(`[eliza] Failed to generate conversation title: ${message}`);
+    }
     return null;
+  } finally {
+    abort.cleanup();
   }
 }
 
