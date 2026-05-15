@@ -227,6 +227,17 @@
 
 ### Wave 3 cycle log (newest at top)
 
+- 2026-05-14 W3-12 phase=impl-done: HF feature-complete audit + elizalabs→elizaos slug fix.
+  CRITICAL BUG FIXED: ELIZA_1_HF_REPO was "elizalabs/eliza-1" across 15 files; all
+  download URLs would 404. Fixed in commit cd79fe1186. 19 catalog tests now pass.
+  27b-1m marked pending (hardware-gated, H200 required). Smoke test: 6/7 tier manifests
+  reachable via corrected URL, primary GGUF files verified downloadable. Platform code paths
+  verified: Linux/macOS/Windows/iOS/Android code paths all exist (iOS streaming, Android
+  foreground service, network-policy for metered). Docs: docs/eliza-1-install.md written.
+  Gaps documented: vision mmproj missing for 0_8b/2b, voice sub-model repos not created,
+  samantha preset not pushed. Report: .swarm/impl/W3-12-hf-complete.md.
+  Artifact: artifacts/eliza-1-install-smoke/linux-x86-2026-05-14-smoke1/timing.json.
+
 - 2026-05-14 W3-8 phase=impl-done: TTS first-line cache cross-restart validation + I4 follow-ups. PID=76882. Delivered: (1) cross-restart: 5 tests proving SQLite WAL-backed durability across close+reopen; (2) cache-key parity property test: 200 randomised inputs, hashCacheKey==referenceHash, same for hashCloudCacheKey; (3) cross-voice N×N matrix: all 5×4=20 provider pairs verified as clean misses; F3 regression test explicit; (4) per-provider wiring: miss→populate→hit cycle for kokoro/omnivoice/edge-tts/elevenlabs/cloud (11 tests); (5) load test: local 32.4% hit-rate / cloud 55.8% — both above 30% threshold. Files: plugins/plugin-local-inference/__tests__/W3-8-tts-cache-validation.test.ts (26 tests), cloud/packages/lib/services/__tests__/tts-cache-key-parity.test.ts (4 tests), cloud/apps/api/__tests__/tts-cache-load.test.ts (4 tests). All 34 W3-8 tests green. Impl report: .swarm/impl/W3-8-tts-cache.md.
 
 - 2026-05-14 W3-7 phase=impl-done: All four voice benches wired to real Eliza runtime. (1) voiceagentbench Cerebras-direct larp replaced with _ElizaHttpAgent → ELIZA_API_BASE/api/benchmark/message. (2) voicebench-quality ElizaClient base URL fixed to port 31337; eliza-runtime STT provider added. (3) voicebench TS was already real. (4) voice-emotion BenchUnavailable is explicit (not mock). New: scripts/bench-voice.mjs, bun run bench:voice + bench:voice:smoke, .github/workflows/voice-bench-smoke.yml. Artifacts: artifacts/<bench>/<run-id>/ + artifacts/voice-bench-summary.json. Report: .swarm/impl/W3-7-voicebench.md
