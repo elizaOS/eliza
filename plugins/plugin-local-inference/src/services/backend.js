@@ -171,6 +171,14 @@ export function decideBackend(input) {
 			unsatisfiedKernels,
 		};
 	}
+	if (llamaServerAvailable) {
+		return {
+			backend: "llama-server",
+			reason: "default",
+			kernels,
+			unsatisfiedKernels,
+		};
+	}
 	return {
 		backend: "node-llama-cpp",
 		reason: "default",
