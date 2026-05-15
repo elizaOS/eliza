@@ -12,11 +12,12 @@ export default defineConfig({
 		"path",
 		"child_process",
 		"@elizaos/core",
-		// Phase 4E: skill routes/services depend on @elizaos/agent for
-		// `resolveDefaultAgentWorkspaceDir` and `createIntegrationTelemetrySpan`.
+		// Phase 4G: app-manager routes/services depend on @elizaos/agent for
+		// config helpers (paths, feature-flags, eliza config) and sibling
+		// runtime services (overlay presence, registry client, plugin types,
+		// app-package modules, app-manager-agents-list-guard, atomic-json).
 		// The agent loads us at runtime; we must not bundle it.
 		"@elizaos/agent",
 		"@elizaos/shared",
-		"fflate",
 	],
 });

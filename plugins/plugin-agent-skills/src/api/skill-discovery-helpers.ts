@@ -8,10 +8,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { type AgentRuntime, logger } from "@elizaos/core";
-import type { ElizaConfig } from "../config/config.ts";
-import { resolveStateDir } from "../config/paths.ts";
-import type { SkillEntry } from "./skills-routes.ts";
+import { type AgentRuntime, logger, resolveStateDir } from "@elizaos/core";
+import type { ElizaConfig, SkillEntry } from "./skills-routes";
 
 /** Cache key for persisting skill enable/disable state in the agent database. */
 const SKILL_PREFS_CACHE_KEY = "eliza:skill-preferences";

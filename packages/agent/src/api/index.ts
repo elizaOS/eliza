@@ -24,7 +24,16 @@ export * from "./agent-admin-routes.ts";
 export * from "./agent-lifecycle-routes.ts";
 export * from "./agent-model.ts";
 export * from "./agent-transfer-routes.ts";
-export * from "./apps-routes.ts";
+// === Phase 4G: apps routes extracted to @elizaos/plugin-app-manager ===
+// Re-export the public surface so downstream callers that imported from
+// `@elizaos/agent` keep working during the transition. New callers
+// should import from `@elizaos/plugin-app-manager` directly.
+export {
+  type AppManagerLike,
+  type AppsRouteContext,
+  type FavoriteAppsStore,
+  handleAppsRoutes,
+} from "@elizaos/plugin-app-manager";
 export * from "./auth-routes.ts";
 export * from "./bug-report-routes.ts";
 export * from "./character-routes.ts";
