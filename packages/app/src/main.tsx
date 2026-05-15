@@ -471,6 +471,9 @@ function buildAppBootConfig({
   };
 }
 
+// The full list of eagerly-loaded side-effect plugins is documented in
+// ./plugin-registrations.ts. The next phase will replace this with on-demand
+// dynamic loading from /api/views via ViewManagerPage + DynamicViewLoader.
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
     await importAppCore();
