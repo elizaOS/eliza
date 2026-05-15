@@ -11,7 +11,11 @@
 import { Hono } from "hono";
 import { z } from "zod";
 import { appsRepository } from "@/db/repositories/apps";
-import { failureResponse, NotFoundError, ValidationError } from "@/lib/api/cloud-worker-errors";
+import {
+  failureResponse,
+  NotFoundError,
+  ValidationError,
+} from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKey } from "@/lib/auth/workers-hono-auth";
 import { isAllowedOrigin } from "@/lib/security/origin-validation";
 import { issueAppAuthCode } from "@/lib/services/app-auth-codes";

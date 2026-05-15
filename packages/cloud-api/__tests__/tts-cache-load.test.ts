@@ -295,7 +295,9 @@ const VOICE_CONTEXTS_50: VoiceCtx[] = PROVIDERS_LIST.flatMap((provider) =>
 function pickOrThrow<T>(arr: readonly T[], idx: number, label: string): T {
   const value = arr[idx];
   if (value === undefined) {
-    throw new Error(`${label}: index ${idx} out of bounds (length ${arr.length})`);
+    throw new Error(
+      `${label}: index ${idx} out of bounds (length ${arr.length})`,
+    );
   }
   return value;
 }
@@ -314,7 +316,11 @@ function samplePhrase(rng: () => number): string {
 function sampleVoice(rng: () => number): VoiceCtx {
   // 80% of traffic → top 10 voices.
   if (rng() < 0.8) {
-    return pickOrThrow(VOICE_CONTEXTS_50, Math.floor(rng() * 10), "VOICE_CONTEXTS_50");
+    return pickOrThrow(
+      VOICE_CONTEXTS_50,
+      Math.floor(rng() * 10),
+      "VOICE_CONTEXTS_50",
+    );
   }
   return pickOrThrow(
     VOICE_CONTEXTS_50,
