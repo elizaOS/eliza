@@ -243,8 +243,27 @@ import {
   resolveWalletAutomationMode as resolveAgentAutomationModeFromConfig,
   resolveWalletCapabilityStatus,
 } from "./wallet-capability.ts";
-import { handleWalletRoutes } from "./wallet-routes.ts";
-import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
+// === Phase 4D: wallet routes extracted to @elizaos/plugin-wallet ===
+import { handleWalletRoutes } from "@elizaos/plugin-wallet";
+import { isCloudWalletEnabled } from "../config/feature-flags.ts";
+import { createIntegrationTelemetrySpan } from "../diagnostics/integration-observability.ts";
+import { persistConfigEnv } from "./config-env.ts";
+import {
+  deriveSolanaAddress,
+  fetchEvmBalances,
+  fetchSolanaBalances,
+  fetchSolanaNativeBalanceViaRpc,
+  generateWalletForChain,
+  importWallet,
+  setSolanaWalletEnv,
+  validatePrivateKey,
+} from "./wallet.ts";
+import {
+  applyWalletRpcConfigUpdate,
+  getStoredWalletRpcSelections,
+  resolveWalletNetworkMode,
+  resolveWalletRpcReadiness,
+} from "./wallet-rpc.ts";
 import { handleWorkbenchRoutes } from "./workbench-routes.ts";
 
 export {

@@ -71,8 +71,8 @@ import type {
   AnyFn,
   FsAccessMode,
   MobileFsGlobals,
-} from "./fs-sandbox.ts";
-import { modeForMobileFsOpenFlags } from "./fs-sandbox.ts";
+} from "./mobile-fs-sandbox.ts";
+import { modeForMobileFsOpenFlags } from "./mobile-fs-sandbox.ts";
 
 // ---------------------------------------------------------------------------
 // Internal state
