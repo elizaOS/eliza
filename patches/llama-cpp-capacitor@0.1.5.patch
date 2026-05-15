@@ -306,7 +306,7 @@ new file mode 100644
 index 0000000..14aaeb8
 --- /dev/null
 +++ b/android/src/main/eliza-dflash-jni.cpp
-@@ -0,0 +1,999 @@
+@@ -0,0 +1,1014 @@
 +#include <android/log.h>
 +#include <jni.h>
 +
