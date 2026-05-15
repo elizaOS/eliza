@@ -1026,7 +1026,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
       if (!confirmed) {
         fail(409, "Batch Gmail reply send requires confirmSend=true.");
       }
-      for (const item of request.items ?? []) {
+      for (const item of request.items) {
         await this.sendGmailReply(requestUrl, {
           mode: request.mode,
           side: request.side,
@@ -1039,7 +1039,7 @@ export function withGmail<TBase extends Constructor<LifeOpsServiceBase>>(
           confirmSend: true,
         });
       }
-      return { ok: true, sentCount: request.items?.length ?? 0 };
+      return { ok: true, sentCount: request.items.length };
     }
   } as unknown as MixinClass<TBase, LifeOpsGmailService>;
 }

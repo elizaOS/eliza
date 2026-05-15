@@ -10,15 +10,13 @@
  * `/<pluginName>` unless the route sets `rawPath: true`. Assertions check
  * for substring inclusion (`.includes(path)`) rather than exact equality.
  */
-import { describe, expect, it } from "vitest";
+
 import type { Plugin } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { createTestRuntime } from "./plugin-lifecycle-test-utils.ts";
 
 /** Returns true if the runtime has a registered route whose path includes the given segment. */
-function hasRoutePath(
-  routes: { path: string }[],
-  segment: string,
-): boolean {
+function hasRoutePath(routes: { path: string }[], segment: string): boolean {
   return routes.some((r) => r.path.includes(segment));
 }
 
@@ -38,7 +36,10 @@ function makeSyntheticSkillsPlugin(): Plugin {
         examples: [],
         similes: ["run skill", "execute skill"],
         validate: async () => true,
-        handler: async () => ({ result: "skill-output" }),
+        handler: async () => ({
+          success: true,
+          data: { result: "skill-output" },
+        }),
       },
       {
         name: "SKILL",
@@ -46,7 +47,7 @@ function makeSyntheticSkillsPlugin(): Plugin {
         examples: [],
         similes: [],
         validate: async () => true,
-        handler: async () => ({ skills: [] }),
+        handler: async () => ({ success: true, data: { skills: [] } }),
       },
     ],
     providers: [
@@ -100,7 +101,7 @@ function makeSyntheticAppPlugin(): Plugin {
         examples: [],
         similes: [],
         validate: async () => true,
-        handler: async () => ({ done: true }),
+        handler: async () => ({ success: true, data: { done: true } }),
       },
     ],
     routes: [
@@ -135,7 +136,7 @@ function makeSyntheticConnectorPlugin(): Plugin {
         examples: [],
         similes: ["message", "send"],
         validate: async () => true,
-        handler: async () => ({ sent: true }),
+        handler: async () => ({ success: true, data: { sent: true } }),
       },
     ],
     events: {
@@ -220,18 +221,14 @@ describe("connector-shaped plugin — 3 load/unload cycles", () => {
       await runtime.registerPlugin(plugin);
 
       expect(runtime.actions.some((a) => a.name === "SEND_MESSAGE")).toBe(true);
-      expect(
-        (runtime.events.MESSAGE_RECEIVED?.length ?? 0),
-      ).toBeGreaterThan(0);
+      expect(runtime.events.MESSAGE_RECEIVED?.length ?? 0).toBeGreaterThan(0);
 
       await runtime.unloadPlugin("synthetic-connector-plugin");
 
       expect(runtime.actions.some((a) => a.name === "SEND_MESSAGE")).toBe(
         false,
       );
-      expect(
-        runtime.events.MESSAGE_RECEIVED?.length ?? 0,
-      ).toBe(0);
+      expect(runtime.events.MESSAGE_RECEIVED?.length ?? 0).toBe(0);
     }
   });
 });
@@ -272,7 +269,7 @@ describe("dispose error handling", () => {
           examples: [],
           similes: [],
           validate: async () => true,
-          handler: async () => ({}),
+          handler: async () => ({ success: true }),
         },
       ],
     };

@@ -34,7 +34,7 @@ function dedupePreservingOrder(values: string[]): string[] {
 
 export function recentConversationTextsFromState(
   state: State | undefined,
-  limit = 6,
+  limit: number,
 ): string[] {
   const collected: string[] = [];
   const pushText = (value: unknown) => {
@@ -47,7 +47,7 @@ export function recentConversationTextsFromState(
   pushText((state as { text?: unknown })?.text);
 
   for (const item of getRecentMessagesData(state)) {
-    const content = item?.content;
+    const content = item.content;
     if (content && typeof content === "object") {
       pushText((content as Record<string, unknown>).text);
     }
@@ -60,9 +60,9 @@ export async function recentConversationTexts(args: {
   runtime: IAgentRuntime;
   message?: Memory;
   state: State | undefined;
-  limit?: number;
+  limit: number;
 }): Promise<string[]> {
-  const limit = Math.max(1, args.limit ?? 6);
+  const limit = Math.max(1, args.limit);
   const stateTexts = recentConversationTextsFromState(args.state, limit);
   const roomId =
     typeof args.message?.roomId === "string" ? args.message.roomId : "";
@@ -84,7 +84,7 @@ export async function recentConversationTexts(args: {
     const memoryTexts = Array.isArray(memories)
       ? memories
           .map((memory) =>
-            typeof memory?.content?.text === "string"
+            typeof memory.content.text === "string"
               ? normalizeConversationLine(memory.content.text)
               : "",
           )

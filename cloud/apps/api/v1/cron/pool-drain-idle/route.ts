@@ -4,7 +4,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
 
 /** Warm pool idle-scaledown cron. Trims surplus pool entries past the idle window. */
-async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
+async function handle(c: AppContext, env: AppEnv["Bindings"]) {
   const authError = verifyCronSecret(c.req.raw, "[Pool Drain Idle]", env);
   if (authError) return authError;
   return forwardCronToContainerControlPlane(c);

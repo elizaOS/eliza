@@ -613,7 +613,7 @@ export function SignalConnectorCard() {
 
       {isConnected ? (
         <div className="space-y-2">
-          {signal.status?.identity?.phoneNumber ? (
+          {signal.status.identity?.phoneNumber ? (
             <div className="flex items-center gap-1.5 text-xs text-muted">
               <Phone className="h-3.5 w-3.5" />
               {signal.status.identity.phoneNumber}
@@ -1011,7 +1011,7 @@ export function TelegramConnectorCard() {
   const rawAuthError = telegram.status?.authError ?? telegram.error;
   const authError = telegram.pluginManaged ? telegram.error : rawAuthError;
   const authState = inferTelegramRetryState({
-    authState: telegram.authState ?? "idle",
+    authState: telegram.authState,
     authError: rawAuthError,
   });
   const readReady =
@@ -1255,7 +1255,7 @@ export function TelegramConnectorCard() {
 
       {isConnected ? (
         <div className="space-y-2">
-          {telegram.status?.identity ? (
+          {telegram.status.identity ? (
             <div className="flex items-center gap-1.5 text-xs text-muted">
               <Phone className="h-3.5 w-3.5" />
               {String(
@@ -1333,7 +1333,7 @@ export function WhatsAppConnectorCard() {
     statusLabel = "Checking...";
   } else if (fullyReady) {
     statusLabel =
-      status?.transport === "cloudapi"
+      status.transport === "cloudapi"
         ? "Inbound + outbound"
         : "Local session ready";
   } else if (outboundReady) {
@@ -1612,7 +1612,7 @@ export function IMessageConnectorCard() {
             </summary>
             <div className="mt-2 rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
               <div>
-                Send path: {formatIMessageSendMode(status?.sendMode ?? "none")}
+                Send path: {formatIMessageSendMode(status.sendMode)}
               </div>
               <div>Read path: {nativeReadDegraded ? "limited" : "ready"}</div>
             </div>

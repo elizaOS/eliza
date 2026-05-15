@@ -50,13 +50,13 @@ export interface PaymentRouteOptions {
 }
 
 interface CreateBody {
-  provider?: unknown;
-  amountCents?: unknown;
-  currency?: unknown;
-  reason?: unknown;
-  paymentContext?: unknown;
-  expiresInMs?: unknown;
-  metadata?: unknown;
+  provider: unknown;
+  amountCents: unknown;
+  currency: unknown;
+  reason: unknown;
+  paymentContext: unknown;
+  expiresInMs: unknown;
+  metadata: unknown;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -69,9 +69,12 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function clampTtlMs(value: unknown): number {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+function parseTtlMs(value: unknown): number | string {
+  if (value === undefined || value === null) {
     return DEFAULT_TTL_MS;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return "invalid expiresInMs";
   }
   return Math.min(Math.max(1, Math.floor(value)), MAX_TTL_MS);
 }
@@ -333,7 +336,11 @@ export async function handlePaymentRoutes(
       sendJsonError(res, 400, paymentContext);
       return true;
     }
-    const ttlMs = clampTtlMs(body.expiresInMs);
+    const ttlMs = parseTtlMs(body.expiresInMs);
+    if (typeof ttlMs === "string") {
+      sendJsonError(res, 400, ttlMs);
+      return true;
+    }
     const id = newPaymentRequestId();
     const expiresAt = now + ttlMs;
     const hostedUrl = buildHostedUrl(options, id);

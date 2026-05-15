@@ -80,7 +80,7 @@ export const rolodexProvider: Provider = {
         return {
           text: "Rolodex: No known contacts yet.",
           values: { rolodexCount: 0 },
-          data: { contacts: [], stats: snapshot?.stats },
+          data: { contacts: [], stats: snapshot.stats },
         };
       }
 

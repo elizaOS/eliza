@@ -102,10 +102,8 @@ async function installOnboardingMocks(page: Page): Promise<void> {
     });
   });
 
-  // POST /api/provider/switch is the canonical write path for the
-  // local-runtime sub-view. Mocked in case any future change surfaces
-  // that path during this spec — present today as a precautionary
-  // route so the suite does not silently hit the real backend.
+  // Mock the local-runtime write path so future UI changes in this flow do
+  // not silently hit the real backend.
   await page.route("**/api/provider/switch", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
@@ -239,11 +237,8 @@ test.describe
       page,
       baseURL,
     }) => {
-      // Drive the only end-to-end finish path the production web build
-      // exposes without a real cloud backend: "Connect remote". This
-      // mirrors the canonical contract verified end-to-end by the cloud
-      // path in cloud-provisioning-startup.spec.ts; using the remote
-      // sub-view here keeps the spec self-contained.
+      // Drive the production web finish path that does not need a real cloud
+      // backend: "Connect remote".
       expect(baseURL).toBeTruthy();
       const apiBase = (baseURL ?? "").replace(/\/$/, "");
 

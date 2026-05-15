@@ -141,7 +141,7 @@ export function nextEscalationStep(
   const step = ladder.steps[nextIdx];
   if (!step) return null;
   const lastMs = new Date(cursor.lastDispatchedAt).getTime();
-  const fireAtMs = lastMs + (step.delayMinutes ?? 0) * 60_000;
+  const fireAtMs = lastMs + (step.delayMinutes) * 60_000;
   return {
     step,
     nextStepIndex: nextIdx,

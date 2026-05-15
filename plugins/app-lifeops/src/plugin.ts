@@ -346,8 +346,7 @@ async function handleLifeOpsMessageAction(
   const recipient =
     match?.sourceRoomId ??
     match?.sourceEntityId ??
-    match?.channelName ??
-    hint;
+    match?.channelName;
   const body =
     match?.suggestedResponse ??
     (hint

@@ -470,7 +470,7 @@ export async function runProposeMeetingTimesHandler(
   const params = getParams<ProposeMeetingTimesParameters>(options);
   const preferences = await readLifeOpsMeetingPreferences(runtime);
   const messageBody =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   const inferredTimeZone =
     (typeof params.timeZone === "string" && params.timeZone.trim().length > 0
       ? params.timeZone.trim()
@@ -855,7 +855,7 @@ async function resolveSchedulingPlanWithLlm(args: {
     })
   ).join("\n");
   const currentMessage =
-    typeof args.message.content?.text === "string"
+    typeof args.message.content.text === "string"
       ? args.message.content.text
       : "";
   const prompt = [
@@ -910,7 +910,7 @@ async function resolveSchedulingPlanWithLlm(args: {
       response: normalizePlannerResponse(parsed.response),
     };
   } catch (error) {
-    args.runtime.logger?.warn?.(
+    args.runtime.logger.warn(
       {
         src: "action:scheduling",
         error: error instanceof Error ? error.message : String(error),
@@ -966,7 +966,7 @@ export async function runSchedulingNegotiationHandler(
       | SchedulingActionParameters
       | undefined) ?? {};
   const messageBody =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   const planIntent = (params.intent ?? messageBody).trim();
   const explicitSubaction = normalizeSchedulingSubaction(params.subaction);
   const llmPlan = await resolveSchedulingPlanWithLlm({

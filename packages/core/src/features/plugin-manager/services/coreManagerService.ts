@@ -101,7 +101,7 @@ export class CoreManagerService extends Service {
 		this.ejectLock = new Promise<void>((r) => {
 			resolve = r;
 		});
-		return prev.then(fn).finally(() => resolve?.());
+		return prev.then(fn).finally(() => resolve());
 	}
 
 	private coreBaseDir(): string {

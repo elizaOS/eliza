@@ -441,7 +441,7 @@ export async function findEntityByName(
 
 	// Fallback: if parsing failed to produce a usable match list, try to detect
 	// usernames/handles mentioned in the raw model output.
-	const resultLower = JSON.stringify(result ?? "").toLowerCase();
+	const resultLower = JSON.stringify(result).toLowerCase();
 	const fallbackEntity = indexedEntities.find((entry) =>
 		entry.fallbackTokens.some((token) => resultLower.includes(token)),
 	)?.entity;

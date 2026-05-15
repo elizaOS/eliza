@@ -5,8 +5,9 @@
  * from a mock view registry on load/unload cycles. Tests use a lightweight
  * in-process registry to avoid depending on the full views-registry service.
  */
-import { describe, expect, it } from "vitest";
+
 import type { Plugin, ViewDeclaration } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import { createTestRuntime } from "./plugin-lifecycle-test-utils.ts";
 
 /**
@@ -191,7 +192,7 @@ describe("view bundle plugin — views field propagation through Plugin interfac
           examples: [],
           similes: [],
           validate: async () => true,
-          handler: async () => ({ opened: true }),
+          handler: async () => ({ success: true, data: { opened: true } }),
         },
       ],
     };

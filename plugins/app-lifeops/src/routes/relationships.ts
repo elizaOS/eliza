@@ -19,7 +19,7 @@ import type {
 import type { LifeOpsRouteContext } from "./lifeops-routes.js";
 
 function defaultAgentId(runtime: AgentRuntime): string {
-  return String(runtime.agentId ?? "default-agent");
+  return String(runtime.agentId);
 }
 
 function makeStore(ctx: LifeOpsRouteContext): RelationshipStore | null {

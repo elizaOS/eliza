@@ -42,7 +42,7 @@ function memoryToMessageRef(memory: Memory): MessageRef {
     "unknown",
   );
   const senderHandle = stringField(x.senderUsername ?? sender.username);
-  const body = stringField(memory.content?.text);
+  const body = stringField(memory.content.text);
   return {
     id: `twitter:${stringField(x.dmEventId ?? metadata.messageIdFull ?? memory.id)}`,
     source: "twitter",
@@ -68,7 +68,7 @@ export class XDmAdapter extends BaseMessageAdapter {
 
   isAvailable(runtime: IAgentRuntime): boolean {
     const service =
-      runtime.getService?.("x") ?? runtime.getService?.("twitter") ?? null;
+      runtime.getService("x") ?? runtime.getService("twitter") ?? null;
     return Boolean(service);
   }
 

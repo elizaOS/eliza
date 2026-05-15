@@ -702,7 +702,7 @@ export function installRuntimePluginLifecycle(runtime: AgentRuntime): void {
         (existingAction) => existingAction.name === actionName,
       )
     ) {
-      runtime.logger.debug?.(
+      runtime.logger.debug(
         {
           src: "plugin-lifecycle",
           agentId: runtime.agentId,

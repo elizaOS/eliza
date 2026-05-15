@@ -65,7 +65,7 @@ function firstHeaderValue(value: string | string[] | undefined): string | null {
 }
 
 function requestBaseUrl(req: http.IncomingMessage): string {
-  const headers = req.headers ?? {};
+  const headers = req.headers;
   const protocol =
     firstHeaderValue(headers["x-forwarded-proto"]) ??
     (req.socket instanceof TLSSocket && req.socket.encrypted
@@ -120,8 +120,8 @@ async function resolveRouteActorRole(
       ? await runtime.getAllWorlds()
       : [];
   let bestRole: RoleName = "GUEST";
-  for (const world of worlds ?? []) {
-    const metadata = (world?.metadata ?? {}) as RolesWorldMetadata;
+  for (const world of worlds) {
+    const metadata = (world.metadata ?? {}) as RolesWorldMetadata;
     const role = await resolveEntityRole(
       runtime,
       world,

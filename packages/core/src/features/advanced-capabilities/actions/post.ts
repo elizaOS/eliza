@@ -60,7 +60,7 @@ function resolveOp(message: Memory, options?: HandlerOptions): PostOp {
 	const params = paramsFromOptions(options);
 	const explicit = normalizeOp(params.action);
 	if (explicit) return explicit;
-	const text = `${message.content?.text ?? ""}`.toLowerCase();
+	const text = `${message.content.text ?? ""}`.toLowerCase();
 	if (params.query || /\b(search|find)\b/.test(text)) return "search";
 	if (params.feed || /\b(read|recent|timeline|feed)\b/.test(text))
 		return "read";
@@ -106,7 +106,7 @@ function postText(params: ParamRecord, message: Memory): string {
 		textParam(params.text) ??
 		textParam(params.message) ??
 		textParam(params.post) ??
-		textParam(message.content?.text) ??
+		textParam(message.content.text) ??
 		""
 	);
 }
@@ -120,7 +120,7 @@ function recordValue(value: unknown): Record<string, unknown> | undefined {
 function connectorSendAsMetadata(
 	message: Memory,
 ): Record<string, unknown> | undefined {
-	const metadata = recordValue(message.content?.metadata);
+	const metadata = recordValue(message.content.metadata);
 	return (
 		recordValue(metadata?.connectorSendAs) ??
 		recordValue(metadata?.connectorAccount)
@@ -131,7 +131,7 @@ function accountIdParam(
 	params: ParamRecord,
 	message: Memory,
 ): string | undefined {
-	const metadata = recordValue(message.content?.metadata);
+	const metadata = recordValue(message.content.metadata);
 	const sendAs = connectorSendAsMetadata(message);
 	return (
 		textParam(params.accountId) ??
@@ -155,8 +155,8 @@ function buildPostContent(
 	message: Memory,
 ): Content {
 	const feed = textParam(params.feed);
-	const target = textParam(params.target) ?? textParam(message.content?.target);
-	const messageMediaId = message.content?.mediaId;
+	const target = textParam(params.target) ?? textParam(message.content.target);
+	const messageMediaId = message.content.mediaId;
 	const mediaId =
 		textParam(params.mediaId) ??
 		(typeof messageMediaId === "number"
@@ -372,7 +372,7 @@ async function handleSend(
 		"POST",
 		connectors,
 		sourceParamForMessage(params, message),
-		message.content?.source,
+		message.content.source,
 		accountIdParam(params, message),
 	);
 	if ("result" in selected) return selected.result;
@@ -445,7 +445,7 @@ async function handleRead(
 		"POST",
 		connectors,
 		sourceParamForMessage(params, message),
-		message.content?.source,
+		message.content.source,
 		accountIdParam(params, message),
 	);
 	if ("result" in selected) return selected.result;
@@ -516,7 +516,7 @@ async function handleSearch(
 		"POST",
 		connectors,
 		sourceParamForMessage(params, message),
-		message.content?.source,
+		message.content.source,
 		accountIdParam(params, message),
 	);
 	if ("result" in selected) return selected.result;

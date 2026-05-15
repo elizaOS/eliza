@@ -35,7 +35,7 @@ function readMessageTimestamp(payload: MessagePayload): string {
 function readPlatform(payload: MessagePayload): string {
   const messageRecord = isRecord(payload.message) ? payload.message : null;
   const content = isRecord(messageRecord?.content)
-    ? messageRecord?.content
+    ? messageRecord.content
     : null;
   const candidates = [
     content?.channelType,

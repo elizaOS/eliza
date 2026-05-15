@@ -90,7 +90,7 @@ function isDialogueMessage(msg: Memory): boolean {
 	return (
 		!isSyntheticConversationArtifactMemory(msg) &&
 		!(
-			msg.content?.type === "action_result" &&
+			msg.content.type === "action_result" &&
 			(msg.metadata?.type as string) === "action_result"
 		) &&
 		((msg.metadata?.type as string) === "agent_response_message" ||
@@ -158,7 +158,7 @@ function formatMessages(runtime: IAgentRuntime, msgs: Memory[]): string {
 			const sender =
 				msg.entityId === runtime.agentId
 					? (runtime.character.name ?? "Agent")
-					: msg.content?.senderName || msg.entityId || "User";
+					: msg.content.senderName || msg.entityId || "User";
 			return `${sender}: ${msg.content.text || "[non-text message]"}`;
 		})
 		.join("\n");
@@ -282,7 +282,7 @@ export const summaryEvaluator: Evaluator<SummaryOutput, SummaryPrepared> = {
 	priority: EvaluatorPriority.MEMORY_SUMMARY,
 	schema: summarySchema,
 	async shouldRun({ runtime, message }) {
-		if (!message.content?.text || !message.roomId) return false;
+		if (!message.content.text || !message.roomId) return false;
 		const memoryService = runtime.getService("memory") as MemoryService | null;
 		if (!memoryService) return false;
 		return shouldSummarize(runtime, message, memoryService);
@@ -406,7 +406,7 @@ export const longTermMemoryEvaluator: Evaluator<
 	priority: EvaluatorPriority.MEMORY_LONG_TERM,
 	schema: longTermMemorySchema,
 	async shouldRun({ runtime, message }) {
-		if (!message.content?.text || !message.roomId || !message.entityId) {
+		if (!message.content.text || !message.roomId || !message.entityId) {
 			return false;
 		}
 		const memoryService = runtime.getService("memory") as MemoryService | null;

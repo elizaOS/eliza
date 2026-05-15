@@ -2833,7 +2833,7 @@ export async function handleLifeOpsRoutes(
   if (method === "GET" && pathname === "/api/lifeops/smart-features/settings") {
     return runRoute(ctx, async (service) => {
       const get = (key: string): string | null => {
-        const value = service.runtime.getSetting?.(key);
+        const value = service.runtime.getSetting(key);
         if (value === undefined || value === null) return null;
         return typeof value === "string" ? value : String(value);
       };
@@ -2860,7 +2860,7 @@ export async function handleLifeOpsRoutes(
     }>(req, res);
     if (!body) return true;
     return runRoute(ctx, async (service) => {
-      const setRuntime = service.runtime.setSetting?.bind(service.runtime);
+      const setRuntime = service.runtime.setSetting.bind(service.runtime);
       if (typeof setRuntime !== "function") {
         ctx.error(res, "Runtime does not support setSetting", 501);
         return;

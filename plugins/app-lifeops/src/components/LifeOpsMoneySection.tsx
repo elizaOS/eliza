@@ -702,13 +702,13 @@ export function LifeOpsMoneySection(): JSX.Element | null {
             email
           </h2>
         </header>
-        {(dash.upcomingBills ?? []).length === 0 ? (
+        {(dash.upcomingBills).length === 0 ? (
           <p className="text-xs text-muted">
             No bills detected from email yet.
           </p>
         ) : (
           <ul className="space-y-1.5">
-            {(dash.upcomingBills ?? []).map((bill) => (
+            {(dash.upcomingBills).map((bill) => (
               <li
                 key={bill.id}
                 className="flex items-center justify-between gap-2 rounded border border-border/10 bg-bg/40 px-2.5 py-1.5 text-xs"

@@ -594,7 +594,7 @@ export function withSubscriptions<
           continue;
         }
         const bestEvidence = evidence[0] ?? null;
-        const bestMessage = bestEvidence?.message ?? null;
+        const bestMessage = bestEvidence?.message;
         const cadence = bestMessage ? guessCadence(bestMessage) : "unknown";
         const state = bestMessage ? guessState(bestMessage) : "uncertain";
         const amount = bestMessage ? parseUsdAmount(bestMessage) : null;
@@ -608,15 +608,13 @@ export function withSubscriptions<
           serviceName: playbook.serviceName,
           provider:
             bestMessage?.fromEmail ??
-            bestMessage?.from ??
-            playbook.auditDomains[0] ??
-            playbook.serviceName,
+            bestMessage?.from,
           cadence,
           state,
           confidence,
           annualCostEstimateUsd: annualizeAmount(amount, cadence),
           managementUrl: playbook.managementUrl,
-          latestEvidenceAt: bestMessage?.receivedAt ?? null,
+          latestEvidenceAt: bestMessage.receivedAt,
           evidenceJson: extractEvidenceMessages(
             evidence.map((item) => item.message),
           ),
@@ -935,7 +933,7 @@ export function withSubscriptions<
       };
       await this.repository.updateSubscriptionCancellation(cancellation);
 
-      for (const step of playbook.steps ?? []) {
+      for (const step of playbook.steps) {
         if ("destructive" in step && step.destructive && !confirmed) {
           cancellation = {
             ...cancellation,

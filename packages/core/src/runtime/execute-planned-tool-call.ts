@@ -195,7 +195,7 @@ export async function executePlannedToolCall(
 		text: `Executing action: ${action.name}`,
 		actions: [action.name],
 		actionStatus: "executing" as const,
-		source: executorCtx.message.content?.source,
+		source: executorCtx.message.content.source,
 	};
 	if (typeof runtime.emitEvent === "function") {
 		await runtime
@@ -207,7 +207,7 @@ export async function executePlannedToolCall(
 				content: actionStartContent,
 			})
 			.catch((err) => {
-				runtime.logger?.warn?.(
+				runtime.logger.warn(
 					{
 						src: "execute-planned-tool-call",
 						action: action.name,
@@ -252,7 +252,7 @@ export async function executePlannedToolCall(
 					actions: [action.name],
 					actionStatus: resultForEvent.success ? "completed" : "failed",
 					actionResult: actionResultToContentRecord(resultForEvent),
-					source: executorCtx.message.content?.source,
+					source: executorCtx.message.content.source,
 					error:
 						typeof resultForEvent.error === "string"
 							? resultForEvent.error
@@ -260,7 +260,7 @@ export async function executePlannedToolCall(
 				},
 			})
 			.catch((err) => {
-				runtime.logger?.warn?.(
+				runtime.logger.warn(
 					{
 						src: "execute-planned-tool-call",
 						action: action.name,
@@ -328,7 +328,7 @@ async function resolveToolCallUserRoles(
 			return [result.role as RoleGateRole];
 		}
 	} catch (error) {
-		runtime.logger?.debug?.(
+		runtime.logger.debug(
 			{
 				src: "execute-planned-tool-call",
 				error: error instanceof Error ? error.message : String(error),

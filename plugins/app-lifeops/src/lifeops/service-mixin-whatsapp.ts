@@ -122,7 +122,7 @@ function memoryToWhatsAppMessage(memory: Memory): WhatsAppMessage {
     channelId,
     timestamp: isoFromMemory(memory),
     type: stringField(whatsapp.type, "text") as WhatsAppMessage["type"],
-    text: stringField(memory.content?.text),
+    text: stringField(memory.content.text),
     metadata,
   };
 }

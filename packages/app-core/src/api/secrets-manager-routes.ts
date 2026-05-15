@@ -193,8 +193,8 @@ export async function handleSecretsManagerRoute(
       return true;
     }
     const { backendId, method: rawMethod } = parsed as {
-      backendId?: unknown;
-      method?: unknown;
+      backendId: unknown;
+      method: unknown;
     };
     if (!isInstallableBackend(backendId)) {
       sendJsonError(
@@ -297,7 +297,7 @@ export async function handleSecretsManagerRoute(
       sendJsonError(res, 400, "invalid JSON body");
       return true;
     }
-    const request = parsed as Partial<SigninRequest> & { backendId?: unknown };
+    const request = parsed as Partial<SigninRequest> & { backendId: unknown };
     if (!isInstallableBackend(request.backendId)) {
       sendJsonError(res, 400, "invalid `backendId`");
       return true;
@@ -341,7 +341,7 @@ export async function handleSecretsManagerRoute(
       sendJsonError(res, 400, "invalid JSON body");
       return true;
     }
-    const id = (parsed as { backendId?: unknown }).backendId;
+    const id = (parsed as { backendId: unknown }).backendId;
     if (!isInstallableBackend(id)) {
       sendJsonError(res, 400, "invalid `backendId`");
       return true;
@@ -434,11 +434,11 @@ async function handleSavedLoginsRoute(
       return true;
     }
     const p = parsed as {
-      domain?: unknown;
-      username?: unknown;
-      password?: unknown;
-      otpSeed?: unknown;
-      notes?: unknown;
+      domain: unknown;
+      username: unknown;
+      password: unknown;
+      otpSeed: unknown;
+      notes: unknown;
     };
     if (typeof p.domain !== "string" || p.domain.trim().length === 0) {
       sendJsonError(res, 400, "`domain` is required");
@@ -494,7 +494,7 @@ async function handleSavedLoginsRoute(
         sendJsonError(res, 400, "invalid JSON body");
         return true;
       }
-      const allowed = (parsed as { allowed?: unknown }).allowed;
+      const allowed = (parsed as { allowed: unknown }).allowed;
       if (typeof allowed !== "boolean") {
         sendJsonError(res, 400, "`allowed` must be boolean");
         return true;
@@ -540,20 +540,20 @@ async function handleSavedLoginsRoute(
 
 function isInstallMethodPayload(value: unknown): value is InstallMethod {
   if (!value || typeof value !== "object") return false;
-  const v = value as { kind?: unknown };
+  const v = value as { kind: unknown };
   if (v.kind === "brew") {
-    const m = value as { kind: "brew"; package?: unknown; cask?: unknown };
+    const m = value as { kind: "brew"; package: unknown; cask: unknown };
     return typeof m.package === "string" && typeof m.cask === "boolean";
   }
   if (v.kind === "npm") {
-    const m = value as { kind: "npm"; package?: unknown };
+    const m = value as { kind: "npm"; package: unknown };
     return typeof m.package === "string";
   }
   if (v.kind === "manual") {
     const m = value as {
       kind: "manual";
-      url?: unknown;
-      instructions?: unknown;
+      url: unknown;
+      instructions: unknown;
     };
     return typeof m.url === "string" && typeof m.instructions === "string";
   }

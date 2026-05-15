@@ -113,7 +113,7 @@ export const pendingPromptsProvider: Provider = {
     try {
       store = createPendingPromptsStore(runtime);
     } catch (error) {
-      logger.debug?.(
+      logger.debug(
         "[pending-prompts-provider] store unavailable:",
         String(error),
       );
@@ -124,7 +124,7 @@ export const pendingPromptsProvider: Provider = {
     try {
       prompts = await store.list(roomId);
     } catch (error) {
-      logger.debug?.("[pending-prompts-provider] list failed:", String(error));
+      logger.debug("[pending-prompts-provider] list failed:", String(error));
       return EMPTY;
     }
     if (prompts.length === 0) return EMPTY;

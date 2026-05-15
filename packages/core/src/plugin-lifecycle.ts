@@ -174,7 +174,7 @@ const INTENTIONAL_MULTI_SERVICE_TYPES = new Set<string>([
 function getServiceClassLabel(serviceClass: RuntimeServiceClass): string {
 	return (
 		(serviceClass as { name?: string }).name ||
-		serviceClass.constructor?.name ||
+		serviceClass.constructor.name ||
 		"anonymous service class"
 	);
 }

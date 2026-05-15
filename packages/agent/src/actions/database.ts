@@ -256,7 +256,7 @@ function checkReadOnly(
 
 // ---------------------------------------------------------------------------
 // Vector search category (kept as a separate runtime registration so the
-// unified search surface in web-search.ts can route to vectors).
+// shared search surface can route to vectors).
 // ---------------------------------------------------------------------------
 
 const VECTOR_SEARCH_DEFAULT_LIMIT = 10;
@@ -613,8 +613,8 @@ async function opSearchVectors(
       id: m.id ?? null,
       text: content?.text ?? "",
       similarity: (m as { similarity?: number }).similarity ?? null,
-      roomId: m.roomId ?? null,
-      entityId: m.entityId ?? null,
+      roomId: m.roomId,
+      entityId: m.entityId,
       createdAt: m.createdAt ?? null,
       tableName: table,
     };

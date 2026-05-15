@@ -136,7 +136,7 @@ export class RelationshipStore {
          ${sqlText(input.state.lastInteractionAt ?? null)},
          ${sqlInteger(input.state.interactionCount ?? 0)},
          ${sqlText(input.state.sentimentTrend ?? null)},
-         ${sqlJson(input.evidence ?? [])},
+         ${sqlJson(input.evidence)},
          ${sqlNumber(input.confidence)},
          ${sqlQuote(input.source)},
          ${sqlQuote(status)},

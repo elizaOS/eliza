@@ -71,7 +71,7 @@ function getRuntimeService<T>(
   serviceTypes: readonly string[],
 ): T | null {
   for (const serviceType of serviceTypes) {
-    const service = runtime.getService?.(serviceType);
+    const service = runtime.getService(serviceType);
     if (service && typeof service === "object") {
       return service as T;
     }

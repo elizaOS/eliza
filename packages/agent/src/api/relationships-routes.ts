@@ -315,7 +315,7 @@ export async function handleRelationshipsRoutes(
       });
       for (const fact of recentFacts) {
         const text =
-          typeof fact.content?.text === "string"
+          typeof fact.content.text === "string"
             ? fact.content.text.trim()
             : "";
         if (!text) {
@@ -346,7 +346,7 @@ export async function handleRelationshipsRoutes(
         activity.push({
           type: "fact",
           personName: person?.personName ?? "Unknown person",
-          personId: person?.personId ?? fact.entityId ?? "unknown",
+          personId: person?.personId ?? fact.entityId,
           summary: person?.personName
             ? `Fact for ${person.personName}`
             : "Fact extracted",

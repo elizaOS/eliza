@@ -124,7 +124,7 @@ function memoryToLifeOpsXDm(args: {
       typeof x.isInbound === "boolean"
         ? x.isInbound
         : metadata.fromBot !== true,
-    text: stringField(args.memory.content?.text),
+    text: stringField(args.memory.content.text),
     receivedAt,
     readAt: null,
     repliedAt: null,
@@ -160,7 +160,7 @@ function memoryToLifeOpsXFeedItem(args: {
     externalTweetId,
     authorHandle: stringField(x.username ?? sender.username),
     authorId,
-    text: stringField(args.memory.content?.text),
+    text: stringField(args.memory.content.text),
     createdAtSource: isoFromMemory(args.memory, args.syncedAt),
     feedType: args.feedType,
     metadata: {
@@ -212,10 +212,10 @@ function matchesCachedXSearchQuery(
     return false;
   }
   const haystack = [
-    item.authorHandle ?? "",
-    item.authorId ?? "",
+    item.authorHandle,
+    item.authorId,
     item.text,
-    JSON.stringify(item.metadata ?? {}),
+    JSON.stringify(item.metadata),
   ]
     .join(" ")
     .toLowerCase();
@@ -315,7 +315,7 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
       query: string,
       opts: XReadOpts = {},
     ): Promise<LifeOpsXFeedItem[]> {
-      const trimmed = (query ?? "").trim();
+      const trimmed = (query).trim();
       if (trimmed.length === 0) {
         fail(400, "searchXPosts requires a non-empty query.");
       }

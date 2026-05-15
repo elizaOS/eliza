@@ -260,8 +260,7 @@ function actionToPlannerTool(action: PlannerToolActionShape): ToolDefinition {
 	const baseDescription =
 		action.descriptionCompressed ??
 		action.compressedDescription ??
-		action.description ??
-		"";
+		action.description;
 	const routingHint = action.routingHint?.trim();
 	const description = routingHint
 		? `${routingHint}\n${baseDescription}`.trim()
@@ -344,7 +343,7 @@ export interface BuildPlannerToolsFromTieredActionsOptions {
 }
 
 function normalizeParentNameKey(name: string): string {
-	return String(name ?? "")
+	return String(name)
 		.trim()
 		.toUpperCase()
 		.replace(/[^A-Z0-9]/g, "");

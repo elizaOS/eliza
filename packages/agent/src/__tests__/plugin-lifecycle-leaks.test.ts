@@ -6,8 +6,9 @@
  * Also exercises dispose hooks and documents detectable vs. undetectable leak
  * patterns.
  */
-import { describe, expect, it } from "vitest";
+
 import type { Plugin } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 import {
   createTestPlugin,
   createTestRuntime,
@@ -39,7 +40,7 @@ describe("timer leak — plugin forgets clearInterval in dispose", () => {
           examples: [],
           similes: [],
           validate: async () => true,
-          handler: async () => ({}),
+          handler: async () => ({ success: true }),
         },
       ],
     };
@@ -84,7 +85,7 @@ describe("timer leak — plugin forgets clearInterval in dispose", () => {
           examples: [],
           similes: [],
           validate: async () => true,
-          handler: async () => ({}),
+          handler: async () => ({ success: true }),
         },
       ],
     };
@@ -169,8 +170,6 @@ describe("actions unregistered after unload", () => {
 
     await runtime.registerPlugin(plugin);
 
-    const actionName = `ACTION-CLEANUP-PLUGIN_ACTION`;
-    // Action might be named based on plugin name — use whatever was registered
     const registeredActionNames = runtime.actions.map((a) => a.name);
     expect(registeredActionNames.length).toBeGreaterThan(0);
 
@@ -192,7 +191,7 @@ describe("actions unregistered after unload", () => {
       examples: [] as never[],
       similes: [] as string[],
       validate: async () => true,
-      handler: async () => ({}),
+      handler: async () => ({ success: true }),
     };
 
     const plugin: Plugin = {
@@ -263,7 +262,7 @@ describe("load-unload-load stability", () => {
           validate: async () => true,
           handler: async () => {
             handlerCalls.push(Date.now());
-            return { pong: true };
+            return { success: true, data: { pong: true } };
           },
         },
       ],
@@ -283,8 +282,8 @@ describe("load-unload-load stability", () => {
       runtime as never,
       {} as never,
       {} as never,
-    )) as { pong?: boolean } | undefined;
-    expect(result1?.pong).toBe(true);
+    )) as { data?: { pong?: boolean } } | undefined;
+    expect(result1?.data?.pong).toBe(true);
 
     // Unload
     await runtime.unloadPlugin("stability-plugin");
@@ -303,8 +302,8 @@ describe("load-unload-load stability", () => {
       runtime as never,
       {} as never,
       {} as never,
-    )) as { pong?: boolean } | undefined;
-    expect(result2?.pong).toBe(true);
+    )) as { data?: { pong?: boolean } } | undefined;
+    expect(result2?.data?.pong).toBe(true);
 
     expect(handlerCalls.length).toBe(2);
   });
@@ -355,17 +354,13 @@ describe("plugin ownership tracking", () => {
     await runtime.registerPlugin(plugin1);
     await runtime.registerPlugin(plugin2);
 
-    const before = runtime
-      .getAllPluginOwnership()
-      .map((o) => o.pluginName);
+    const before = runtime.getAllPluginOwnership().map((o) => o.pluginName);
     expect(before).toContain("owned-plugin-one");
     expect(before).toContain("owned-plugin-two");
 
     await runtime.unloadPlugin("owned-plugin-one");
 
-    const after = runtime
-      .getAllPluginOwnership()
-      .map((o) => o.pluginName);
+    const after = runtime.getAllPluginOwnership().map((o) => o.pluginName);
     expect(after).not.toContain("owned-plugin-one");
     expect(after).toContain("owned-plugin-two");
   });

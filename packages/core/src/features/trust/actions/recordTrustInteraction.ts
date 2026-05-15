@@ -72,7 +72,7 @@ export async function recordTrustInteractionHandler(
 	const impact = parsedContent.impact as number;
 
 	const validTypes = Object.values(TrustEvidenceType);
-	const normalizedType = evidenceType?.toUpperCase();
+	const normalizedType = evidenceType.toUpperCase();
 	const matchedType = validTypes.find(
 		(type) => type.toUpperCase() === normalizedType,
 	);
@@ -91,7 +91,7 @@ export async function recordTrustInteractionHandler(
 	}
 
 	const finalTargetEntityId = targetEntityId || runtime.agentId;
-	const finalImpact = impact ?? 10;
+	const finalImpact = impact;
 
 	const interaction: TrustInteraction = {
 		sourceEntityId: message.entityId,

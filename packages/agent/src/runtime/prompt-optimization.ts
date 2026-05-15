@@ -672,7 +672,7 @@ function compactorMessagesToPayloadMessages(
         type: "function",
         function: {
           name: call.name,
-          arguments: JSON.stringify(call.arguments ?? {}),
+          arguments: JSON.stringify(call.arguments),
         },
       }));
     }
@@ -1118,7 +1118,7 @@ export async function maybeApplyConversationCompaction(
   try {
     strategy = resolveConversationCompactionStrategy();
   } catch (error) {
-    runtime.logger?.warn?.(String((error as Error).message));
+    runtime.logger.warn(String((error as Error).message));
     return prompt;
   }
   if (!strategy) return prompt;
@@ -1155,7 +1155,7 @@ export async function maybeApplyConversationCompaction(
     );
   }
 
-  runtime.logger?.info?.(
+  runtime.logger.info(
     `[eliza] conversation-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
   );
   return result.prompt;
@@ -1183,7 +1183,7 @@ export async function maybeApplyConversationMessageCompaction(
   try {
     strategy = resolveConversationCompactionStrategy();
   } catch (error) {
-    runtime.logger?.warn?.(String((error as Error).message));
+    runtime.logger.warn(String((error as Error).message));
     return messages;
   }
   if (!strategy) return messages;
@@ -1220,7 +1220,7 @@ export async function maybeApplyConversationMessageCompaction(
     );
   }
 
-  runtime.logger?.info?.(
+  runtime.logger.info(
     `[eliza] conversation-message-compaction strategy=${strategy} originalTokens=${result.originalTokens} compactedTokens=${result.compactedTokens} latencyMs=${result.latencyMs}`,
   );
   return result.messages;
@@ -1325,7 +1325,7 @@ export function installPromptOptimizations(
   installedRuntimes.add(runtime);
 
   // Validate intent-action map against registered actions
-  const actionNames = runtime.actions?.map((a) => a.name) ?? [];
+  const actionNames = runtime.actions?.map((a) => a.name);
   if (actionNames.length > 0) {
     validateIntentActionMap(actionNames, runtime.logger);
   }
@@ -1463,12 +1463,12 @@ export function installPromptOptimizations(
           );
         }
         if (ELIZA_PROMPT_TRACE && nextPrompt.length !== originalPrompt.length) {
-          runtime.logger?.info(
+          runtime.logger.info(
             `[eliza] Compact prompt rewrite: ${originalPrompt.length} -> ${nextPrompt.length} chars`,
           );
         }
       } else if (workingPrompt !== originalPrompt && ELIZA_PROMPT_TRACE) {
-        runtime.logger?.info(
+        runtime.logger.info(
           `[eliza] Action compaction: ${originalPrompt.length} -> ${workingPrompt.length} chars (saved ${originalPrompt.length - workingPrompt.length})`,
         );
       }
@@ -1521,7 +1521,7 @@ export function installPromptOptimizations(
             );
           }
         } catch (error) {
-          runtime.logger?.warn?.(
+          runtime.logger.warn(
             `[eliza] conversation-compaction failed: ${String(
               (error as Error).message,
             )}`,
@@ -1538,7 +1538,7 @@ export function installPromptOptimizations(
           );
           nextPrompt = budgetedPrompt.prompt;
           if (ELIZA_PROMPT_TRACE) {
-            runtime.logger?.info(
+            runtime.logger.info(
               `[eliza] Budget prompt rewrite (${budget.metadata.source}:${budget.metadata.modelId}): ${budgetedPrompt.originalPromptTokens} -> ${budgetedPrompt.promptTokens} tokens`,
             );
           }
@@ -1570,7 +1570,7 @@ export function installPromptOptimizations(
             );
           }
         } catch (error) {
-          runtime.logger?.warn?.(
+          runtime.logger.warn(
             `[eliza] conversation-message-compaction failed: ${String(
               (error as Error).message,
             )}`,
@@ -1640,7 +1640,7 @@ export function installPromptOptimizations(
     const systemPrompt =
       typeof payloadRecord.system === "string"
         ? payloadRecord.system
-        : typeof runtime.character?.system === "string"
+        : typeof runtime.character.system === "string"
           ? runtime.character.system
           : "";
     const payloadMessages = normalizePayloadMessages(payloadRecord.messages);
@@ -1705,7 +1705,7 @@ export function installPromptOptimizations(
     ) {
       try {
         trajectoryLogger.logLlmCall(fallbackCall);
-        runtime.logger?.warn?.(
+        runtime.logger.warn(
           `[eliza] Trajectory logger missed live LLM capture for ${normalizedTrajectoryStepId}; recorded fallback call from prompt optimization wrapper`,
         );
       } catch {

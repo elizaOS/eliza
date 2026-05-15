@@ -62,7 +62,7 @@ function findCatalogPaths(): string[] {
   const envPath = process.env.ELIZA_SKILLS_CATALOG?.trim();
   if (envPath) return [envPath];
 
-  let dir = import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
+  let dir = import.meta.dirname;
   for (let i = 0; i < 5; i++) {
     paths.push(path.join(dir, "skills", ".cache", "catalog.json"));
     const parent = path.dirname(dir);
@@ -138,7 +138,7 @@ export async function searchCatalogSkills(
 
   for (const skill of skills) {
     const slug = skill.slug.toLowerCase();
-    const name = (skill.displayName ?? "").toLowerCase();
+    const name = (skill.displayName).toLowerCase();
     const summary = (skill.summary ?? "").toLowerCase();
     let score = 0;
 

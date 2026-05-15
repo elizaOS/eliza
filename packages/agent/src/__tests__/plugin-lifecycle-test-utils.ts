@@ -5,8 +5,9 @@
  * `installRuntimePluginLifecycle`, so `unloadPlugin` and `reloadPlugin` are
  * always present without any additional setup.
  */
-import { AgentRuntime } from "@elizaos/core";
+
 import type { Plugin } from "@elizaos/core";
+import { AgentRuntime } from "@elizaos/core";
 
 export type { Plugin };
 export { AgentRuntime };
@@ -55,7 +56,7 @@ export function createTestPlugin(overrides: Partial<Plugin> = {}): Plugin {
         examples: [],
         similes: [],
         validate: async () => true,
-        handler: async () => ({ ok: true }),
+        handler: async () => ({ success: true, data: { ok: true } }),
       },
     ],
     providers: [

@@ -138,9 +138,8 @@ export function buildFactSearchText(memory: Memory): string {
 	const metadata = readFactMetadata(memory);
 	const keywords = readStoredFactKeywords(memory);
 	return [
-		memory.content?.text ?? "",
+		memory.content.text ?? "",
 		metadata.category ?? "",
-		keywords.join(" "),
 		keywords.join(" "),
 		metadata.structuredFields ?? {},
 	]

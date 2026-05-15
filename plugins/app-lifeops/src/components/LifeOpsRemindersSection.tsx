@@ -275,7 +275,7 @@ function describeRecurrence(
       return `Every ${minutes}m`;
     }
     case "times_per_day": {
-      const slots = cadence.slots?.length ?? 0;
+      const slots = cadence.slots.length;
       return slots > 0 ? `${slots}x/day` : "Daily";
     }
     case "weekly": {
@@ -768,7 +768,7 @@ function computeNextFireIso(
   const now = new Date();
   if (cadence.kind === "once") return cadence.dueAt;
   if (cadence.kind === "times_per_day") {
-    const slot = cadence.slots?.[0];
+    const slot = cadence.slots[0];
     if (!slot) return null;
     const candidate = new Date(now);
     candidate.setHours(0, 0, 0, 0);
@@ -779,9 +779,9 @@ function computeNextFireIso(
     return candidate.toISOString();
   }
   if (cadence.kind === "weekly") {
-    const weekdays = cadence.weekdays ?? [];
+    const weekdays = cadence.weekdays;
     if (weekdays.length === 0) return null;
-    const windowNames = new Set(cadence.windows ?? []);
+    const windowNames = new Set(cadence.windows);
     const startMinute =
       definition.windowPolicy.windows
         .filter((window) => windowNames.has(window.name))
@@ -834,8 +834,8 @@ function AddAlarmForm({ saving, onSave, onCancel }: AddAlarmFormProps) {
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const [hStr, mStr] = time.split(":");
-    const hour = Number.parseInt(hStr ?? "", 10);
-    const minute = Number.parseInt(mStr ?? "", 10);
+    const hour = Number.parseInt(hStr, 10);
+    const minute = Number.parseInt(mStr, 10);
     if (!Number.isFinite(hour) || hour < 0 || hour > 23) return;
     if (!Number.isFinite(minute) || minute < 0 || minute > 59) return;
     onSave({ label: label.trim(), hour, minute, weekdays });

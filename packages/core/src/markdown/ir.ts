@@ -317,7 +317,7 @@ function renderInlineCode(state: RenderState, content: string) {
 }
 
 function renderCodeBlock(state: RenderState, content: string) {
-	let code = content ?? "";
+	let code = content;
 	if (!code.endsWith("\n")) {
 		code = `${code}\n`;
 	}
@@ -524,7 +524,7 @@ function renderTableAsCode(state: RenderState) {
 	const updateWidths = (cells: TableCell[]) => {
 		for (let i = 0; i < columnCount; i += 1) {
 			const cell = cells[i];
-			const width = cell?.text.length ?? 0;
+			const width = cell?.text.length;
 			if (widths[i] < width) {
 				widths[i] = width;
 			}
@@ -545,7 +545,7 @@ function renderTableAsCode(state: RenderState) {
 			if (cell) {
 				appendCell(state, cell);
 			}
-			const pad = widths[i] - (cell?.text.length ?? 0);
+			const pad = widths[i] - (cell?.text.length);
 			if (pad > 0) {
 				state.text += " ".repeat(pad);
 			}
@@ -910,7 +910,7 @@ export function markdownToIRWithMeta(
 ): { ir: MarkdownIR; hasTables: boolean } {
 	const env: RenderEnv = { listStack: [] };
 	const md = createMarkdownIt(options);
-	const tokens = md.parse(markdown ?? "", env as object);
+	const tokens = md.parse(markdown, env as object);
 	if (options.enableSpoilers) {
 		applySpoilerTokens(tokens as MarkdownToken[]);
 	}

@@ -1020,7 +1020,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           return [];
         }
         const agentName =
-          typeof this.runtime.character?.name === "string" &&
+          typeof this.runtime.character.name === "string" &&
           this.runtime.character.name.trim().length > 0
             ? this.runtime.character.name.trim()
             : "Assistant";
@@ -1142,7 +1142,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
         return noResponse;
       }
       const attemptedAt =
-        args.attempt.attemptedAt ?? args.attempt.scheduledFor ?? null;
+        args.attempt.attemptedAt ?? args.attempt.scheduledFor;
       const attemptedMs = attemptedAt ? Date.parse(attemptedAt) : Number.NaN;
       if (!Number.isFinite(attemptedMs)) {
         return noResponse;
@@ -1173,7 +1173,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           .map((memory) => {
             const createdAt = readMemoryCreatedAtMs(memory);
             const text =
-              typeof memory.content?.text === "string"
+              typeof memory.content.text === "string"
                 ? memory.content.text.trim()
                 : "";
             const roomId =
@@ -1308,7 +1308,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       });
       const reminderAt = args.dueAt ?? args.scheduledFor;
       const prompt = [
-        `Write a short reminder nudge in the voice of ${this.runtime.character?.name ?? "the assistant"}.`,
+        `Write a short reminder nudge in the voice of ${this.runtime.character.name ?? "the assistant"}.`,
         "This is a real follow-up or reminder delivery, not a system log.",
         "",
         "Character voice:",
@@ -1843,18 +1843,18 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
     public async ingestScheduleObservations(
       request: SyncLifeOpsScheduleObservationsRequest,
     ): Promise<SyncLifeOpsScheduleObservationsResponse> {
-      const deviceId = requireNonEmptyString(request?.deviceId, "deviceId");
+      const deviceId = requireNonEmptyString(request.deviceId, "deviceId");
       const deviceKind = normalizeEnumValue(
-        request?.deviceKind,
+        request.deviceKind,
         "deviceKind",
         LIFEOPS_SCHEDULE_DEVICE_KINDS,
       );
-      const timezone = requireNonEmptyString(request?.timezone, "timezone");
+      const timezone = requireNonEmptyString(request.timezone, "timezone");
       const observedAt =
-        normalizeOptionalIsoString(request?.observedAt, "observedAt") ??
+        normalizeOptionalIsoString(request.observedAt, "observedAt") ??
         new Date().toISOString();
       if (
-        !Array.isArray(request?.observations) ||
+        !Array.isArray(request.observations) ||
         request.observations.length === 0
       ) {
         fail(400, "observations must be a non-empty array");
@@ -5110,7 +5110,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           uncertaintyReason: currentSchedule.uncertaintyReason,
           enteredAt: stateChanged
             ? now.toISOString()
-            : (priorState?.enteredAt ?? now.toISOString()),
+            : (priorState.enteredAt),
           sinceSleepDetectedAt:
             currentSchedule.circadianState === "sleeping" ||
             currentSchedule.circadianState === "napping"

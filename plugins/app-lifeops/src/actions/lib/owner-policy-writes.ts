@@ -106,7 +106,7 @@ export async function applyOwnerPolicySetReminder(
   const details = detailRecord(args.details);
   const intent =
     args.intent.trim() ||
-    (typeof args.message.content?.text === "string"
+    (typeof args.message.content.text === "string"
       ? args.message.content.text.trim()
       : "");
 
@@ -171,7 +171,7 @@ export async function applyOwnerPolicyConfigureEscalation(
   const service = new LifeOpsService(args.runtime);
   const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
   const intent =
-    typeof args.message.content?.text === "string"
+    typeof args.message.content.text === "string"
       ? args.message.content.text
       : "";
 

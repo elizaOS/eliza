@@ -633,7 +633,7 @@ export async function searchSkillsMarketplace(
           : undefined;
 
     out.push({
-      id: String(skill.id ?? slug ?? name),
+      id: String(skill.id ?? slug),
       slug: slug || undefined,
       name,
       description,
@@ -881,7 +881,7 @@ export async function installMarketplaceSkill(
   await writeInstallRecords(workspaceDir, records);
 
   logger.info(
-    `[skills-marketplace] Installed ${record.id} from ${record.repository}:${record.path} (scan: ${scanStatus ?? "skipped"})`,
+    `[skills-marketplace] Installed ${record.id} from ${record.repository}:${record.path} (scan: ${scanStatus})`,
   );
   return record;
 }

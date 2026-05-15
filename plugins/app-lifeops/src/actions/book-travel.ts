@@ -200,7 +200,7 @@ function getParams(options: HandlerOptions | undefined): BookTravelParameters {
 }
 
 function messageText(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  return typeof message.content.text === "string" ? message.content.text : "";
 }
 
 async function extractBookTravelPlanWithLlm(args: {
@@ -281,7 +281,7 @@ async function extractBookTravelPlanWithLlm(args: {
         ? Math.max(1, Math.floor(parsed.passengerCount))
         : null,
     passengers: Array.isArray(parsed?.passengers)
-      ? (parsed?.passengers as BookTravelPassengerInput[])
+      ? (parsed.passengers as BookTravelPassengerInput[])
       : [],
     calendarSync:
       parsed?.calendarSync && typeof parsed.calendarSync === "object"

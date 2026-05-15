@@ -316,7 +316,7 @@ export const onboardingMissingProvider: Provider = {
 				onboardingStateMachine?: SerializedOnboardingState;
 			};
 
-			if (!metadata?.onboardingStateMachine) {
+			if (!metadata.onboardingStateMachine) {
 				return {
 					data: { missing: [] },
 					values: { onboardingMissing: "" },

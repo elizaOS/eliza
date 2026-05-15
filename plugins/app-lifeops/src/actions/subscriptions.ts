@@ -188,7 +188,7 @@ async function resolveSubscriptionsPlanWithLlm(args: {
       response: normalizePlannerResponse(parsed.response),
     };
   } catch (error) {
-    args.runtime.logger?.warn?.(
+    args.runtime.logger.warn(
       {
         src: "action:subscriptions",
         error: error instanceof Error ? error.message : String(error),

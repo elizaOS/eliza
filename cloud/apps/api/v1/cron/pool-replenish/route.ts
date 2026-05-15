@@ -7,7 +7,7 @@ import { forwardCronToContainerControlPlane } from "../../_container-control-pla
  * Warm pool replenisher cron. Forwards to the Node container control
  * plane, which can SSH into Hetzner nodes and start new pool containers.
  */
-async function handle(c: AppContext, env?: AppEnv["Bindings"]) {
+async function handle(c: AppContext, env: AppEnv["Bindings"]) {
   const authError = verifyCronSecret(c.req.raw, "[Pool Replenish]", env);
   if (authError) return authError;
   return forwardCronToContainerControlPlane(c);

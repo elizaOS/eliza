@@ -640,7 +640,7 @@ async function handleTestConnection(
   let Pool: typeof import("pg").Pool;
   try {
     const pgModule = await import("pg");
-    Pool = pgModule.default?.Pool ?? pgModule.Pool;
+    Pool = pgModule.default?.Pool;
   } catch {
     sendJson(res, {
       success: false,
@@ -1353,8 +1353,8 @@ async function handleVectorSearch(
       id: m.id ?? null,
       text: content?.text ?? "",
       similarity: (m as { similarity?: number }).similarity ?? null,
-      roomId: m.roomId ?? null,
-      entityId: m.entityId ?? null,
+      roomId: m.roomId,
+      entityId: m.entityId,
       createdAt: m.createdAt ?? null,
       tableName: table,
     };

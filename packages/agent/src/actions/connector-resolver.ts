@@ -173,7 +173,7 @@ export async function resolveContactCandidates(
     limit,
   });
 
-  return snapshot?.people ?? [];
+  return snapshot?.people;
 }
 
 // ---------------------------------------------------------------------------
@@ -217,7 +217,7 @@ export async function getPersonConversations(
         if (!room) continue;
 
         const roomRecord = room as Room & { name?: string; source?: string };
-        const platform = roomRecord.source ?? room.type ?? "unknown";
+        const platform = roomRecord.source ?? room.type;
 
         // Get recent messages from this room
         const rawMemories = (await runtime.getMemories({
@@ -304,7 +304,7 @@ export function formatConversationView(
       const ts = mem.createdAt
         ? new Date(mem.createdAt).toISOString().slice(0, 19)
         : "";
-      const text = (mem.content?.text ?? "").slice(0, 500);
+      const text = (mem.content.text ?? "").slice(0, 500);
       sections.push(
         `${String(index + 1).padStart(3, " ")} | ${ts} ${speaker}: ${text}`,
       );
@@ -351,7 +351,7 @@ export async function findRoomForEntity(
       if (!room) continue;
       const roomRecord = room as Room & { source?: string };
       if (
-        (roomRecord.source ?? room.type ?? "").toLowerCase() ===
+        (roomRecord.source ?? room.type).toLowerCase() ===
         platform.toLowerCase()
       ) {
         return room;

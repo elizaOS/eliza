@@ -972,11 +972,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
         );
       } else {
         const existingPendingPairingTokens =
-          credential.pendingPairingTokens ??
-          (credential.pendingPairingTokenHashes ?? []).map((hash) => ({
-            hash,
-            expiresAt: null,
-          }));
+          credential.pendingPairingTokens;
         const pendingPairingTokens = normalizePendingBrowserPairingTokenHashes(
           [
             pairingTokenHash,
@@ -1004,12 +1000,12 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
           ...companion,
           pairingTokenExpiresAt: replaceActiveToken
             ? pairingTokenExpiresAt
-            : (credential?.companion.pairingTokenExpiresAt ??
+            : (credential.companion.pairingTokenExpiresAt ??
               companion.pairingTokenExpiresAt ??
               null),
           pairingTokenRevokedAt: replaceActiveToken
             ? null
-            : (credential?.companion.pairingTokenRevokedAt ??
+            : (credential.companion.pairingTokenRevokedAt ??
               companion.pairingTokenRevokedAt ??
               null),
           pairedAt: replaceActiveToken ? nowIso : companion.pairedAt,

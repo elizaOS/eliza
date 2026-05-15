@@ -247,7 +247,7 @@ async function sendToChannel(
           urgency: "urgent",
           escalation: true,
           routeSource: targetSource,
-          routeResolution: hint?.resolvedFrom ?? "config",
+          routeResolution: hint?.resolvedFrom,
           routeEndpoint:
             contact.channelId ?? contact.roomId ?? contact.entityId ?? null,
           routeLastResponseAt: hint?.lastResponseAt ?? null,

@@ -161,7 +161,7 @@ export async function searchMcpMarketplace(
       const q = query.toLowerCase();
       const matchName = server.name.toLowerCase().includes(q);
       const matchTitle = server.title?.toLowerCase().includes(q);
-      const matchDesc = server.description?.toLowerCase().includes(q);
+      const matchDesc = server.description.toLowerCase().includes(q);
       if (!matchName && !matchTitle && !matchDesc) continue;
     }
 

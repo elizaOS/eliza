@@ -252,7 +252,7 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
 };
 
 function messageText(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  return typeof message.content.text === "string" ? message.content.text : "";
 }
 
 function looksLikeFlightConflictQuestion(text: string): boolean {
@@ -353,14 +353,14 @@ function eventMatchesBulkRescheduleCohort(
 ): boolean {
   if (!cohortLabel) {
     return /\bmeeting|call|sync|standup|review\b/iu.test(
-      `${event.title} ${event.description ?? ""}`,
+      `${event.title} ${event.description}`,
     );
   }
 
   const searchable = [
     event.title,
-    event.description ?? "",
-    event.location ?? "",
+    event.description,
+    event.location,
     ...event.attendees.map(
       (attendee) => attendee.displayName ?? attendee.email ?? "",
     ),
@@ -499,7 +499,7 @@ async function route(
 
   switch (target) {
     case "calendar":
-      return (await googleCalendarAction.handler?.(
+      return (await googleCalendarAction.handler(
         runtime,
         message,
         state,

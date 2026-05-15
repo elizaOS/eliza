@@ -59,7 +59,7 @@ function threadGroupMatchesQuery(
   if (matchesQuery(group.latestMessage, q)) {
     return true;
   }
-  return (group.messages ?? []).some((message) => matchesQuery(message, q));
+  return (group.messages).some((message) => matchesQuery(message, q));
 }
 
 export function useInbox(opts: UseInboxOptions = {}): UseInboxResult {

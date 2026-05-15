@@ -186,7 +186,7 @@ function resolveTarget(
   );
   if (fromSubaction) return fromSubaction;
   const text =
-    typeof message.content?.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string" ? message.content.text : "";
   return inferTargetFromText(text);
 }
 

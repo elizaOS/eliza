@@ -43,7 +43,7 @@ function addSystemPrefix(body: AnthropicRequestBody): AnthropicRequestBody {
 
   if (Array.isArray(body.system)) {
     const hasPrefix = body.system.some((block) =>
-      block?.text?.startsWith("You are Claude Code"),
+      block.text?.startsWith("You are Claude Code"),
     );
     if (!hasPrefix) {
       body.system.unshift(prefix);

@@ -690,7 +690,7 @@ function validateVoice(
 ): readonly DocumentReviewValidationError[] {
   if (
     !voice ||
-    typeof voice?.preserveOriginalVoice !== "boolean" ||
+    typeof voice.preserveOriginalVoice !== "boolean" ||
     (voice.risk !== "low" &&
       voice.risk !== "medium" &&
       voice.risk !== "high") ||

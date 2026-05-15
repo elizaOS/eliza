@@ -1,9 +1,3 @@
-/**
- * Shared type definitions extracted from server.ts to break circular
- * dependencies.  Route files and services that only need type information
- * should import from this module instead of the full server.ts.
- */
-
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
 import type {
@@ -32,11 +26,6 @@ export interface TelegramAccountAuthSessionLike {
   stop: () => void | Promise<void>;
 }
 
-// PluginEntry and PluginParamDef are defined here to avoid a circular dependency
-// with plugin-discovery-helpers.ts (which imports from server-helpers.ts).
-// PluginParamDef is now canonical in @elizaos/shared; re-exported below.
-
-// Re-export shared types so existing imports from this module continue to work.
 export type {
   AgentAutomationMode,
   AgentStartupDiagnostics,
@@ -57,10 +46,6 @@ export type {
 
 import type { TrainingServiceWithRuntime } from "./training-service-like.ts";
 
-// ConversationScope, ConversationAutomationType, ConversationMetadata,
-// ChatImageAttachment, SkillEntry, LogEntry, AgentStartupDiagnostics are
-// canonical in @elizaos/shared and re-exported at the top of this file.
-
 /** Metadata for a web-chat conversation. */
 export interface ConversationMeta {
   id: string;
@@ -70,10 +55,6 @@ export interface ConversationMeta {
   createdAt: string;
   updatedAt: string;
 }
-
-// ---------------------------------------------------------------------------
-// Supporting types used by ServerState
-// ---------------------------------------------------------------------------
 
 export interface ShareIngestItem {
   id: string;
@@ -85,9 +66,6 @@ export interface ShareIngestItem {
   receivedAt: number;
 }
 
-// StreamEventType, StreamEventEnvelope, AgentAutomationMode, PluginParamDef are
-// canonical in @elizaos/shared and re-exported at the top of this file.
-
 /** A connector-registered route handler. Returns `true` if the request was handled. */
 export type ConnectorRouteHandler = (
   req: http.IncomingMessage,
@@ -97,12 +75,6 @@ export type ConnectorRouteHandler = (
 ) => Promise<boolean>;
 
 export type { TradePermissionMode } from "@elizaos/shared";
-
-// ---------------------------------------------------------------------------
-// Plugin entry types (canonical definitions — re-exported by plugin-discovery-helpers)
-// ---------------------------------------------------------------------------
-
-// PluginParamDef is canonical in @elizaos/shared and re-exported at the top of this file.
 
 export interface PluginEntry {
   id: string;
@@ -163,10 +135,6 @@ export interface PluginEntry {
   capabilityReason?: string | null;
   prerequisites?: Array<{ label: string; met: boolean }>;
 }
-
-// ---------------------------------------------------------------------------
-// ServerState
-// ---------------------------------------------------------------------------
 
 export interface ServerState {
   runtime: AgentRuntime | null;

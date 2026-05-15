@@ -1,35 +1,51 @@
-/**
- * Wave 3 W3-9 — barge-in & optimistic-generation integration tests.
- *
- * Drives the real `VoiceCancellationCoordinator` + `OptimisticGenerationPolicy`
- * end-to-end with a fake VAD / fake turn-detector / fake LM / fake TTS sink.
- * The runtime surface is a structural `CoordinatorRuntime` — we do NOT mock
- * `runtime.useModel` or `messageService`; we directly observe the
- * `runtime.turnControllers.abortTurn(roomId, reason)` callback the
- * coordinator fires.
- *
- * Test scenarios (per the W3-9 brief):
- *
- *   - "User speaks, EOT fires, LM start happens within 200 ms of EOT-fired
- *     timestamp."
- *   - "User barges in mid-response, TTS stops within 100 ms of speech-
- *     detected timestamp, LM aborts (signal aborted), new turn re-plans."
- */
-
-import {
-  type CoordinatorRuntime,
-  OptimisticGenerationPolicy,
-  VoiceCancellationCoordinator,
-} from "@elizaos/plugin-local-inference/services";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-// ---------------------------------------------------------------------------
-// Fakes
-// ---------------------------------------------------------------------------
+type RuntimeListenerEvent = {
+  type: "aborted";
+  roomId: string;
+  reason: string;
+};
 
-type RuntimeListenerEvent = Parameters<
-  Parameters<CoordinatorRuntime["turnControllers"]["onEvent"]>[0]
->[0];
+interface CoordinatorRuntime {
+  turnControllers: {
+    abortTurn(roomId: string, reason: string): boolean;
+    onEvent(listener: (event: RuntimeListenerEvent) => void): () => void;
+  };
+}
+
+type TurnToken = {
+  signal: AbortSignal;
+  aborted: boolean;
+  reason?: string;
+  runId: string;
+  slot: number;
+};
+
+type VoiceCancellationCoordinatorInstance = {
+  armTurn(input: { roomId: string; runId: string; slot: number }): TurnToken;
+  bargeIn(roomId: string): boolean;
+  current(roomId: string): TurnToken | null;
+  dispose(): void;
+};
+
+type OptimisticGenerationPolicyInstance = {
+  setPowerSource(source: "battery" | "ac"): void;
+  shouldStartOptimisticLm(eotProbability: number): boolean;
+};
+
+type LocalInferenceServicesModule = {
+  OptimisticGenerationPolicy: new () => OptimisticGenerationPolicyInstance;
+  VoiceCancellationCoordinator: new (options: {
+    runtime: CoordinatorRuntime;
+    slotAbort(slot: number, reason: string): void;
+    ttsStop(): void;
+  }) => VoiceCancellationCoordinatorInstance;
+};
+
+const { OptimisticGenerationPolicy, VoiceCancellationCoordinator } =
+  (await import(
+    "@elizaos/plugin-local-inference/services"
+  )) as LocalInferenceServicesModule;
 
 interface FakeRuntime extends CoordinatorRuntime {
   abortCalls: Array<{

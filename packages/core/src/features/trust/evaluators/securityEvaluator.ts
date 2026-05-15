@@ -114,7 +114,7 @@ export const securityEvaluator: Action = {
 		message: Memory,
 		_state?: State,
 	): Promise<ActionResult | undefined> => {
-		const text = message.content?.text || "";
+		const text = message.content.text || "";
 		if (!text || text.length < 3) {
 			return undefined;
 		}

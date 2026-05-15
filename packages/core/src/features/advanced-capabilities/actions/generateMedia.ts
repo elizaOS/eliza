@@ -46,7 +46,7 @@ function readParams(options?: HandlerOptions): Record<string, unknown> {
 function messageText(message: Memory): string {
 	const content = message.content;
 	if (typeof content === "string") return content;
-	return typeof content?.text === "string" ? content.text : "";
+	return typeof content.text === "string" ? content.text : "";
 }
 
 function readPrompt(

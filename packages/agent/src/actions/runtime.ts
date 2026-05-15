@@ -148,8 +148,8 @@ function fail(op: RuntimeOp | "unknown", text: string): ActionResult {
 
 function statusOp(runtime: IAgentRuntime, params: RuntimeParams): ActionResult {
   const view = params.view === "counts" ? "counts" : "summary";
-  const actionCount = runtime.actions?.length ?? 0;
-  const providerCount = runtime.providers?.length ?? 0;
+  const actionCount = runtime.actions?.length;
+  const providerCount = runtime.providers?.length;
   const services = runtime.services as Map<string, unknown[]> | undefined;
   let serviceCount = 0;
   if (services) {
@@ -158,10 +158,10 @@ function statusOp(runtime: IAgentRuntime, params: RuntimeParams): ActionResult {
     }
   }
   const character = runtime.character;
-  const agentName = character?.name ?? "unknown";
+  const agentName = character.name ?? "unknown";
   const model =
-    (character?.settings?.MODEL_PROVIDER as string | undefined) ??
-    (character?.settings?.model as string | undefined) ??
+    (character.settings?.MODEL_PROVIDER as string | undefined) ??
+    (character.settings?.model as string | undefined) ??
     null;
   const generatedAt = new Date().toISOString();
   const countLine = `Actions: ${actionCount}, Providers: ${providerCount}, Services: ${serviceCount}`;
@@ -244,13 +244,13 @@ function describeActionsOp(
 ): ActionResult {
   const filterRaw = params.filter?.trim() ?? "";
   const filter = filterRaw.toLowerCase();
-  const all = runtime.actions ?? [];
+  const all = runtime.actions;
   const matched = filter
     ? all.filter((action) => action.name.toLowerCase().includes(filter))
     : [...all];
   matched.sort((a, b) => a.name.localeCompare(b.name));
   const lines = matched.map((action) => {
-    const description = action.description?.trim() ?? "";
+    const description = action.description?.trim();
     return `${action.name}${description ? ` — ${description}` : ""}`;
   });
   const header = filter
@@ -266,7 +266,7 @@ function describeActionsOp(
       filter: filterRaw,
       actions: matched.map((action) => ({
         name: action.name,
-        description: action.description ?? "",
+        description: action.description,
         similes: action.similes ?? [],
       })),
     },

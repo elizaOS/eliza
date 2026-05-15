@@ -1900,7 +1900,7 @@ async function handleRequest(
         : null;
     const agentName =
       state.runtime?.character.name?.trim() ||
-      state.agentName?.trim() ||
+      state.agentName.trim() ||
       "Eliza";
 
     json(res, {
@@ -3984,7 +3984,7 @@ export async function startApiServer(opts?: {
       const agentName = rt.character.name ?? "Eliza";
       const worldId = stringToUuid(`${agentName}-web-chat-world`);
       const rooms = await rt.getRoomsByWorld(worldId);
-      if (!rooms?.length) return;
+      if (!rooms.length) return;
 
       let restored = 0;
       for (const room of rooms) {

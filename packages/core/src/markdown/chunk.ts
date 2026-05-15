@@ -124,7 +124,7 @@ export function chunkByParagraph(
 	const re = /\n[\t ]*\n+/g; // paragraph break: blank line(s), allowing whitespace
 	let lastIndex = 0;
 	for (const match of normalized.matchAll(re)) {
-		const idx = match.index ?? 0;
+		const idx = match.index;
 
 		// Do not split on blank lines that occur inside fenced code blocks.
 		if (!isSafeFenceBreak(spans, idx)) {

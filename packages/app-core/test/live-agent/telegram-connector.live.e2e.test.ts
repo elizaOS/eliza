@@ -1,31 +1,5 @@
-/**
- * Telegram Connector Validation Tests
- *
- * Comprehensive E2E tests for validating the Telegram connector (@elizaos/plugin-telegram).
- *
- * Test Categories:
- *   1. Setup & Authentication
- *   2. Message Handling
- *   3. Telegram-Specific Features
- *   4. Media & Attachments
- *   5. Enhanced Features
- *   6. Integration
- *   7. Configuration
- *
- * Requirements:
- *   - Telegram Bot Token (TELEGRAM_BOT_TOKEN environment variable)
- *   - Test Chat ID (TELEGRAM_TEST_CHAT_ID environment variable)
- *   - ELIZA_LIVE_TEST=1 for live API tests
- *
- * NO MOCKS for live tests — all tests use real Telegram Bot API.
- */
-
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  extractPlugin,
-  resolveTelegramPluginImportSpecifier,
-} from "@elizaos/app-core";
 import {
   AgentRuntime,
   createCharacter,
@@ -37,9 +11,9 @@ import dotenv from "dotenv";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 
-// ---------------------------------------------------------------------------
-// Environment Setup
-// ---------------------------------------------------------------------------
+const { extractPlugin, resolveTelegramPluginImportSpecifier } = await import(
+  "../../src/test-support/test-helpers.ts"
+);
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

@@ -163,7 +163,7 @@ export function sanitizePaymentSourceForClient(
   source: LifeOpsPaymentSource,
 ): LifeOpsPaymentSource {
   const metadata: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(source.metadata ?? {})) {
+  for (const [key, value] of Object.entries(source.metadata)) {
     if (!SENSITIVE_PAYMENT_SOURCE_METADATA_KEYS.has(key.toLowerCase())) {
       metadata[key] = value;
     }
@@ -709,7 +709,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         fail(404, `Bill ${billId} not found.`);
       }
       const currentDue =
-        typeof target.metadata?.dueDate === "string"
+        typeof target.metadata.dueDate === "string"
           ? target.metadata.dueDate
           : null;
       const baseDate = currentDue
@@ -756,7 +756,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       const todayIso = now.toISOString().slice(0, 10);
       const bills: LifeOpsUpcomingBill[] = [];
       for (const transaction of transactions) {
-        const metadata = transaction.metadata ?? {};
+        const metadata = transaction.metadata;
         if (metadata.kind !== "bill") continue;
         const dueDate =
           typeof metadata.dueDate === "string" ? metadata.dueDate : null;
@@ -1364,7 +1364,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
       // money IN (credit/refund). Our schema stores the absolute USD amount
       // and a `direction` enum.
       const direction = txn.amount >= 0 ? "debit" : "credit";
-      const merchantRaw = (txn.merchant_name ?? txn.name ?? "").trim();
+      const merchantRaw = (txn.merchant_name ?? txn.name).trim();
       const merchantNormalized = normalizeMerchant(merchantRaw);
       const category =
         txn.personal_finance_category?.detailed ??
@@ -1383,7 +1383,7 @@ export function withPayments<TBase extends Constructor<LifeOpsServiceBase>>(
         direction,
         merchantRaw,
         merchantNormalized,
-        description: txn.name ?? null,
+        description: txn.name,
         category,
         currency: txn.iso_currency_code ?? "USD",
         metadata: {

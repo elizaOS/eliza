@@ -325,7 +325,7 @@ export function hasActionNamed(runtime: IAgentRuntime, name: string): boolean {
   if (!Array.isArray(actions)) return false;
   const target = name.trim().toUpperCase();
   return actions.some((action) => {
-    const actionName = action?.name?.trim().toUpperCase() ?? "";
+    const actionName = action?.name?.trim().toUpperCase();
     return actionName === target;
   });
 }
@@ -657,7 +657,7 @@ export async function flushObservationBuffer(
       lastExchange.trajectoryId,
     );
     if (trajectory) {
-      const meta = (trajectory.metadata ?? {}) as Record<string, unknown>;
+      const meta = (trajectory.metadata) as Record<string, unknown>;
       const existing = Array.isArray(meta.observations)
         ? (meta.observations as string[])
         : [];
@@ -718,7 +718,7 @@ export async function getSqlRaw(): Promise<
 }
 
 export function getRuntimeDb(runtime: IAgentRuntime): RuntimeDb | null {
-  const adapterDb = runtime.adapter?.db as RuntimeDb | undefined;
+  const adapterDb = runtime.adapter.db as RuntimeDb | undefined;
   // Legacy runtimes may expose `databaseAdapter` instead of `adapter`
   const fallbackDb = (
     runtime as IAgentRuntime & {
@@ -780,7 +780,7 @@ export function warnRuntime(
   message: string,
   err?: unknown,
 ): void {
-  if (runtime.logger?.warn) {
+  if (runtime.logger.warn) {
     runtime.logger.warn(
       { err, src: "eliza", subsystem: "trajectory-db" },
       message,
@@ -1364,9 +1364,9 @@ export function enqueueStepWrite(
       );
     })
     .finally(() => {
-      const latest = perStep?.get(stepId);
+      const latest = perStep.get(stepId);
       if (latest === current) {
-        perStep?.delete(stepId);
+        perStep.delete(stepId);
       }
     });
 

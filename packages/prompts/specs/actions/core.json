@@ -80,7 +80,7 @@
           {
             "name": "{{name1}}",
             "content": {
-              "text": "Go screw yourself"
+              "text": "Leave me alone"
             }
           },
           {
@@ -95,7 +95,7 @@
           {
             "name": "{{name1}}",
             "content": {
-              "text": "Shut up, bot"
+              "text": "Stop talking, bot"
             }
           },
           {
@@ -158,7 +158,7 @@
           {
             "name": "{{name1}}",
             "content": {
-              "text": "wanna cyber"
+              "text": "send me something inappropriate"
             }
           },
           {
@@ -219,7 +219,7 @@
           {
             "name": "{{name2}}",
             "content": {
-              "text": "ya obviously",
+              "text": "Yes, probably.",
               "actions": ["NONE"]
             }
           }
@@ -235,7 +235,7 @@
           {
             "name": "{{name2}}",
             "content": {
-              "text": "why dont scientists trust atoms cuz they make up everything lmao",
+              "text": "Why don't scientists trust atoms? Because they make up everything.",
               "actions": ["NONE"]
             }
           }

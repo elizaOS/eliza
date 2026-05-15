@@ -1676,12 +1676,12 @@ async function handleDirectConversationMessage(
   });
 
   try {
-    await runtime.createMemory?.(message, "messages");
+    await runtime.createMemory(message, "messages");
   } catch {
     // Best effort. Some adapters persist inside messageService.
   }
 
-  if (!runtime.messageService?.handleMessage) {
+  if (!runtime.messageService.handleMessage) {
     throw new Error("runtime.messageService is not available");
   }
 
@@ -1691,7 +1691,7 @@ async function handleDirectConversationMessage(
       runtime,
       message,
       async (content) => {
-        if (content?.text) chunks.push(content.text);
+        if (content.text) chunks.push(content.text);
         return [];
       },
     );
@@ -2161,7 +2161,7 @@ export async function runIosBridgeCli(
     setEncoding?: (encoding: BufferEncoding) => void;
     resume?: () => void;
   };
-  stdin.setEncoding?.("utf8");
+  stdin.setEncoding("utf8");
   stdin.on("data", (chunk: Buffer | string) => {
     bufferedInput += typeof chunk === "string" ? chunk : chunk.toString("utf8");
     for (;;) {
@@ -2199,7 +2199,7 @@ export async function runIosBridgeCli(
     });
     stopBridge?.();
   });
-  stdin.resume?.();
+  stdin.resume();
 
   await stopPromise;
   clearInterval(keepAlive);

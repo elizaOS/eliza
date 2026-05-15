@@ -11,20 +11,18 @@ mimalloc=PLACEHOLDER-FILL-IN-AT-M02
 zstd=PLACEHOLDER-FILL-IN-AT-M02
 brotli=PLACEHOLDER-FILL-IN-AT-M02
 
-# llama.cpp pin for on-device inference (consumed by
-# vendor-deps/llama.cpp/build-ios.sh). Tracks the milady-controlled fork
-# at https://github.com/elizaOS/llama.cpp (branch `main`), NOT upstream
+# llama.cpp pin for on-device inference. Tracks the elizaOS fork at
+# https://github.com/elizaOS/llama.cpp (branch `main`), not upstream
 # ggml-org. The fork carries the elizaOS kernels (Q4_POLAR / QJL1_256 /
 # TBQ4_0 / TBQ3_0 GGML types + Metal/Vulkan/CUDA kernels) and DFlash
 # spec-decode, which on-device inference relies on. Bump deliberately,
-# not on every commit — pick a commit SHA that's known to build a green
-# llama-server on macOS arm64 (the iOS toolchain shares Metal kernels
-# with macOS arm64).
+# not on every commit; pick a commit SHA that's known to build a green
+# llama-server on macOS arm64.
 #
-# Current pin ce85787c8 (2026-05-13) — main HEAD after the
-# omnivoice-build-flag + openvino-backend-import consolidation. CPU
-# build verified on macOS arm64; iOS Metal build inherits from the
-# same source tree.
+# Current pin ce85787c8 (2026-05-13): main HEAD after the
+# omnivoice-build-flag + openvino-backend-import cleanup. CPU build
+# verified on macOS arm64; iOS Metal build inherits from the same source
+# tree.
 llama.cpp=ce85787c8
 
 # sqlite-vec pin — vector storage + KNN extension that replaces pgvector

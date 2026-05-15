@@ -460,7 +460,7 @@ export async function handlePluginRoutes(
       existingEvmPlugin.setupGuideUrl =
         existingEvmPlugin.setupGuideUrl ?? evmDiagnostic.setupGuideUrl;
       existingEvmPlugin.tags = Array.from(
-        new Set([...(existingEvmPlugin.tags ?? []), ...evmDiagnostic.tags]),
+        new Set([...(existingEvmPlugin.tags), ...evmDiagnostic.tags]),
       );
     } else {
       allPlugins.push(evmDiagnostic);
@@ -1196,7 +1196,7 @@ export async function handlePluginRoutes(
       }
 
       // Auto-enable the newly installed plugin so the runtime loads it after restart.
-      const installedId = (result.pluginName ?? pluginName)
+      const installedId = (result.pluginName)
         .replace(/^@[^/]+\/plugin-/, "")
         .replace(/^@[^/]+\//, "")
         .replace(/^plugin-/, "");
@@ -1223,12 +1223,12 @@ export async function handlePluginRoutes(
         }
         const installs = (state.config.plugins as Record<string, unknown>)
           .installs as Record<string, Record<string, unknown>>;
-        installs[result.pluginName ?? pluginName] = {
+        installs[result.pluginName] = {
           source: "npm",
           requestedVersion: result.requestedVersion,
           releaseStream: result.releaseStream,
           installPath: result.installPath,
-          version: result.version ?? "unknown",
+          version: result.version,
           installedAt: new Date().toISOString(),
         };
       }
@@ -1349,18 +1349,18 @@ export async function handlePluginRoutes(
       if (!state.config.plugins.entries) {
         state.config.plugins.entries = {};
       }
-      const updatedId = (result.pluginName ?? pluginName)
+      const updatedId = (result.pluginName)
         .replace(/^@[^/]+\/plugin-/, "")
         .replace(/^@[^/]+\//, "")
         .replace(/^plugin-/, "");
       state.config.plugins.entries[updatedId] = { enabled: true };
       state.config.plugins.installs = state.config.plugins.installs ?? {};
-      state.config.plugins.installs[result.pluginName ?? pluginName] = {
+      state.config.plugins.installs[result.pluginName] = {
         source: "npm",
         requestedVersion: result.requestedVersion,
         releaseStream: result.releaseStream,
         installPath: result.installPath,
-        version: result.version ?? "unknown",
+        version: result.version,
         installedAt: new Date().toISOString(),
       };
 
@@ -1458,13 +1458,13 @@ export async function handlePluginRoutes(
         return true;
       }
 
-      const removedId = (result.pluginName ?? pluginName)
+      const removedId = (result.pluginName)
         .replace(/^@[^/]+\/plugin-/, "")
         .replace(/^@[^/]+\//, "")
         .replace(/^plugin-/, "");
       const installs = state.config.plugins?.installs;
       if (installs && typeof installs === "object") {
-        delete installs[result.pluginName ?? pluginName];
+        delete installs[result.pluginName];
       }
       const entries = state.config.plugins?.entries;
       if (entries && typeof entries === "object") {

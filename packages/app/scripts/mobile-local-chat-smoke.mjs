@@ -586,39 +586,6 @@ function preseedAndroidLocalRuntime(context) {
   );
 }
 
-function androidScreenSize(context) {
-  const output = tryExec(context.adb, [
-    "-s",
-    context.serial,
-    "shell",
-    "wm",
-    "size",
-  ]);
-  const match = output?.match(/Physical size:\s*(\d+)x(\d+)/);
-  if (!match) return { width: 1440, height: 2960 };
-  return {
-    width: Number.parseInt(match[1], 10),
-    height: Number.parseInt(match[2], 10),
-  };
-}
-
-function _tapAndroidRatio(context, xRatio, yRatio) {
-  const { width, height } = androidScreenSize(context);
-  requireExec(
-    context.adb,
-    [
-      "-s",
-      context.serial,
-      "shell",
-      "input",
-      "tap",
-      String(Math.round(width * xRatio)),
-      String(Math.round(height * yRatio)),
-    ],
-    "Failed to tap Android emulator.",
-  );
-}
-
 function readAndroidLocalAgentToken(context) {
   if (!context?.installed) return null;
   return tryExec(

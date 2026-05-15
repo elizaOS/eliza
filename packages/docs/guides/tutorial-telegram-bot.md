@@ -213,4 +213,4 @@ eliza start
 ## Need Help?
 
 - Join the [Eliza Community Discord](https://discord.gg/eliza)
-- Report issues on [GitHub](https://github.com/eliza-ai/eliza/issues)
+- Report issues on [GitHub](https://github.com/elizaOS/eliza/issues)

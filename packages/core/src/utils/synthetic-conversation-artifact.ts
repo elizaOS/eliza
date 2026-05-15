@@ -28,7 +28,7 @@ export function isSyntheticConversationArtifactMemory(
 		? metadata.tags.filter((tag): tag is string => typeof tag === "string")
 		: [];
 	const text =
-		typeof memory.content?.text === "string" ? memory.content.text : "";
+		typeof memory.content.text === "string" ? memory.content.text : "";
 	return (
 		SYNTHETIC_SOURCE_RE.test(source) ||
 		tags.some((tag) => SYNTHETIC_SOURCE_RE.test(tag)) ||

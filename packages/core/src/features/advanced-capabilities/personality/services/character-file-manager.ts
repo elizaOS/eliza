@@ -384,10 +384,10 @@ export class CharacterFileManager extends Service {
 					modification.messageExamples.map((group) => ({
 						examples: group.map(
 							(item): MessageExample => ({
-								name: item.name ?? "",
+								name: item.name,
 								content: {
-									text: item.content?.text ?? "",
-									...(item.content?.actions
+									text: item.content.text,
+									...(item.content.actions
 										? { actions: item.content.actions }
 										: {}),
 								},

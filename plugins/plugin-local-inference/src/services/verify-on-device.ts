@@ -42,14 +42,14 @@ type VerifyEngine = Pick<
 >;
 
 interface VerifyBundleOnDeviceDeps {
-	readonly engine?: VerifyEngine;
-	readonly readFile?: typeof fs.readFile;
-	readonly parseManifest?: typeof parseManifestOrThrow;
+	readonly engine: VerifyEngine;
+	readonly readFile: typeof fs.readFile;
+	readonly parseManifest: typeof parseManifestOrThrow;
 }
 
 async function manifestDeclaresVoice(
 	manifestPath: string,
-	deps: Required<Pick<VerifyBundleOnDeviceDeps, "readFile" | "parseManifest">>,
+	deps: Pick<VerifyBundleOnDeviceDeps, "readFile" | "parseManifest">,
 ): Promise<boolean> {
 	const raw = await deps.readFile(manifestPath, "utf8");
 	const manifest = deps.parseManifest(JSON.parse(String(raw)));
@@ -103,7 +103,7 @@ async function verifyVoice(
 }
 
 export function createVerifyBundleOnDevice(
-	deps: VerifyBundleOnDeviceDeps = {},
+	deps: Partial<VerifyBundleOnDeviceDeps> = {},
 ): VerifyBundleOnDevice {
 	const engine = deps.engine ?? localInferenceEngine;
 	const manifestDeps = {

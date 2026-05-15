@@ -117,7 +117,7 @@ async function extractSettingValues(
 Available settings:
 ${settingsContext}
 
-User message: ${state.text || message.content?.text || ""}
+User message: ${state.text || message.content.text || ""}
 
 For each setting mentioned in the user's message, extract the value.
 
@@ -193,7 +193,7 @@ async function processSettingUpdates(
 		if (!setting) continue;
 
 		// Check dependencies
-		if (setting.dependsOn?.length) {
+		if (setting.dependsOn.length) {
 			const dependenciesMet = setting.dependsOn.every((dep) => {
 				const depSetting = updatedSettings[dep];
 				return depSetting && depSetting.value !== null;
@@ -339,7 +339,7 @@ export const updateSettingsAction: Action = {
 		_state?: State,
 		_options?: HandlerOptions,
 	): Promise<boolean> => {
-		const text = message.content?.text?.toLowerCase() ?? "";
+		const text = message.content.text?.toLowerCase() ?? "";
 		const hasUpdateIntent =
 			["update", "settings"].some((keyword) => text.includes(keyword)) &&
 			/\b(?:update|settings)\b/i.test(text);

@@ -58,6 +58,6 @@ export async function renderLifeOpsActionReply(
 }
 
 export function messageText(message: Memory): string {
-  const value = message?.content?.text;
+  const value = message.content.text;
   return typeof value === "string" ? value : "";
 }

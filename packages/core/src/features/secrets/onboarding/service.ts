@@ -488,7 +488,7 @@ export class OnboardingService extends Service {
 		}
 
 		// Try to extract a setting value from the message
-		const text = message.content?.text || "";
+		const text = message.content.text || "";
 		const currentSetting = session.currentSettingKey
 			? session.config.settings[session.currentSettingKey]
 			: null;

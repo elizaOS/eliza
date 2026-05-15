@@ -211,7 +211,7 @@ export function createWorkspaceProvider(options?: {
       message: Memory,
       _state: State,
     ): Promise<ProviderResult> {
-      const channelType = message.content?.channelType;
+      const channelType = message.content.channelType;
       if (
         channelType === ChannelType.VOICE_DM ||
         channelType === ChannelType.VOICE_GROUP

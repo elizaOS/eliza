@@ -319,19 +319,19 @@ type ParsedMessageLine = {
   /** Just the spoken text, no thought / action annotations. */
   text: string;
   /** The original timestamp string ("12:53"). */
-  time?: string;
+  time: string | undefined;
   /** Tags from a runtime-emitted synthetic marker. */
-  tags?: string[];
+  tags: string[] | undefined;
   /** Tool name from a runtime-emitted synthetic tool marker. */
-  toolName?: string;
+  toolName: string | undefined;
 };
 
 function parseSyntheticMarkerLine(line: string): {
   role: CompactorMessage["role"];
   text: string;
   name: string;
-  tags?: string[];
-  toolName?: string;
+  tags: string[] | undefined;
+  toolName: string | undefined;
 } | null {
   const match = line.trim().match(SYNTHETIC_MARKER_LINE_RE);
   if (!match) return null;
@@ -348,7 +348,8 @@ function parseSyntheticMarkerLine(line: string): {
       role: "system",
       name: "system summary",
       text: match[4]?.trim() ?? "",
-      ...(tags ? { tags } : {}),
+      tags,
+      toolName: undefined,
     };
   }
   if (marker.startsWith("tool")) {
@@ -357,15 +358,16 @@ function parseSyntheticMarkerLine(line: string): {
       role: "tool",
       name: toolName ? `Tool:${toolName}` : "Tool",
       text: match[4]?.trim() ?? "",
-      ...(tags ? { tags } : {}),
-      ...(toolName ? { toolName } : {}),
+      tags,
+      toolName,
     };
   }
   return {
     role: "assistant",
     name: "Agent",
     text: match[4]?.trim() ?? "",
-    ...(tags ? { tags } : {}),
+    tags,
+    toolName: undefined,
   };
 }
 
@@ -409,8 +411,9 @@ function parseConversationBody(body: string): ParsedMessageLine[] {
         raw,
         name: synthetic.name,
         text: synthetic.text,
-        ...(synthetic.tags ? { tags: synthetic.tags } : {}),
-        ...(synthetic.toolName ? { toolName: synthetic.toolName } : {}),
+        time: undefined,
+        tags: synthetic.tags,
+        toolName: synthetic.toolName,
       });
       continue;
     }
@@ -434,6 +437,8 @@ function parseConversationBody(body: string): ParsedMessageLine[] {
       name: normalizedName,
       text: text.trim(),
       time,
+      tags: undefined,
+      toolName: undefined,
     });
   }
   return messages;
@@ -950,21 +955,21 @@ const MEMORY_TAG_PREFIX = "memory-id:";
 const installedMessageHistoryHooks = new WeakSet<object>();
 
 type RuntimeWithSettings = AgentRuntime & {
-  getSetting?: (key: string) => unknown;
+  getSetting: ((key: string) => unknown) | undefined;
 };
 
 type RecentMessagesProviderRecord = {
-  text?: string;
-  values?: Record<string, State["values"][string]>;
-  data?: Record<string, State["data"][string]>;
-  providerName?: string;
+  text: string | undefined;
+  values: Record<string, State["values"][string]> | undefined;
+  data: Record<string, State["data"][string]> | undefined;
+  providerName: string | undefined;
 };
 
 function runtimeSettingText(
   runtime: RuntimeWithSettings,
   key: string,
 ): string | undefined {
-  const value = runtime.getSetting?.(key);
+  const value = runtime.getSetting(key);
   if (typeof value === "string" && value.trim().length > 0) {
     return value.trim();
   }
@@ -989,14 +994,14 @@ function positiveIntegerFromConfig(
 }
 
 function safeMemoryText(memory: Memory): string {
-  return typeof memory.content?.text === "string"
+  return typeof memory.content.text === "string"
     ? memory.content.text.trim()
     : "";
 }
 
 function memoryDisplayName(runtime: AgentRuntime, memory: Memory): string {
   if (memory.entityId === runtime.agentId) {
-    return runtime.character?.name ?? "Agent";
+    return runtime.character.name ?? "Agent";
   }
   const metadata = memory.metadata;
   if (metadata && typeof metadata === "object") {
@@ -1046,7 +1051,7 @@ function memoryIdFromCompactorMessage(
 
 function syntheticMemoryId(createdAt: number): UUID {
   const cryptoApi = globalThis.crypto;
-  if (typeof cryptoApi?.randomUUID === "function") {
+  if (typeof cryptoApi.randomUUID === "function") {
     return cryptoApi.randomUUID() as UUID;
   }
   const suffix = String(Math.abs(createdAt % 1_000_000_000_000)).padStart(
@@ -1092,13 +1097,13 @@ function renderMemoryForProvider(
   const text = safeMemoryText(memory);
   if (!text) return "";
   const speaker = memoryDisplayName(runtime, memory);
-  const entityId = memory.entityId ?? "unknown";
+  const entityId = memory.entityId;
   const thought =
-    typeof memory.content?.thought === "string" &&
+    typeof memory.content.thought === "string" &&
     memory.content.thought.trim().length > 0
       ? `\n(${speaker}'s internal thought: ${memory.content.thought.trim()})`
       : "";
-  const actions = Array.isArray(memory.content?.actions)
+  const actions = Array.isArray(memory.content.actions)
     ? memory.content.actions
         .map((action) => String(action).trim())
         .filter(Boolean)
@@ -1144,7 +1149,7 @@ function renderCompactedRecentMessagesProvider(args: {
 function getRecentMessagesProvider(
   state: State,
 ): RecentMessagesProviderRecord | null {
-  const providers = state.data?.providers;
+  const providers = state.data.providers;
   if (!providers || typeof providers !== "object") return null;
   const provider = (providers as Record<string, unknown>).RECENT_MESSAGES;
   if (!provider || typeof provider !== "object" || Array.isArray(provider)) {
@@ -1201,11 +1206,11 @@ function rewriteStateRecentMessages(args: {
     },
   };
   const providers = {
-    ...(args.state.data?.providers ?? {}),
+    ...(args.state.data.providers ?? {}),
     RECENT_MESSAGES: nextProvider,
   };
   const nextValues = {
-    ...(args.state.values ?? {}),
+    ...(args.state.values),
     recentMessages: rendered,
     recentPosts: rendered,
     messageHistoryCompaction: args.telemetry as unknown as JsonValue,
@@ -1273,7 +1278,7 @@ export async function applyMessageHistoryCompactionToState(args: {
   try {
     strategy = selectStrategyFromEnv();
   } catch (error) {
-    args.runtime.logger?.warn?.(String((error as Error).message));
+    args.runtime.logger.warn(String((error as Error).message));
     strategy = null;
   }
 
@@ -1482,7 +1487,7 @@ export async function applyMessageHistoryCompactionToState(args: {
     priorLedger: ledgerToPersist || priorLedger,
   });
 
-  args.runtime.logger?.info?.(
+  args.runtime.logger.info(
     `[eliza] message-history-compaction strategy=${strategy} originalTokens=${telemetry.originalTokens} compactedTokens=${telemetry.compactedTokens} messages=${telemetry.originalMessageCount}->${telemetry.compactedMessageCount} latencyMs=${telemetry.latencyMs}`,
   );
   return { state: nextState, telemetry };

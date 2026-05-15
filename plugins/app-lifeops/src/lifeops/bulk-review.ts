@@ -471,7 +471,7 @@ function canonicalJson(value: CleanupJsonValue): string {
 }
 
 async function sha256Hex(input: string): Promise<string> {
-  const subtle = globalThis.crypto?.subtle;
+  const subtle = globalThis.crypto.subtle;
   if (!subtle) {
     throw new Error("[BulkReview] SHA-256 crypto.subtle is unavailable");
   }

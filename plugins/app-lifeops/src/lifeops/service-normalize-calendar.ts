@@ -210,7 +210,7 @@ export function hasGoogleGmailBodyReadScope(
   grant: LifeOpsConnectorGrant,
 ): boolean {
   const scopes = new Set(
-    (grant.grantedScopes ?? [])
+    (grant.grantedScopes)
       .map((scope) => (typeof scope === "string" ? scope.trim() : ""))
       .filter(Boolean),
   );
@@ -236,7 +236,7 @@ export function hasGoogleGmailManageCapability(
     return true;
   }
   const scopes = new Set(
-    (grant.grantedScopes ?? [])
+    (grant.grantedScopes)
       .map((scope) => (typeof scope === "string" ? scope.trim() : ""))
       .filter(Boolean),
   );

@@ -1,44 +1,60 @@
-/**
- * Plugin view registrations — all plugin/app module dynamic imports in one place.
- *
- * TEMPORARY: This file consolidates the dynamic imports that were previously
- * inlined inside `initializeAppModules()` in `main.tsx`. The next phase will
- * replace these bundled imports with true dynamic loading from `/api/views`,
- * so each plugin's UI bundle is fetched on demand when the user navigates to
- * a view rather than eagerly at app startup.
- *
- * Until that transition is complete, importing this file triggers all plugin
- * registrations as side effects so the shell behaves identically to before.
- */
+type SideEffectAppModuleLoader = {
+  key: string;
+  load: () => Promise<unknown>;
+};
 
-// These imports are intentionally side-effect-only. The plugins register
-// themselves into the app-shell registry when their module initializes.
-// See packages/ui/src/app-shell-registry.ts for the registry API.
-
-// NOTE: These are NOT static top-level imports — they remain as dynamic imports
-// called from initializeAppModules() in main.tsx. This file documents and
-// centralizes the list of plugins that are loaded eagerly at startup.
-//
-// When migrating to dynamic view loading from /api/views:
-//   1. Remove each entry from initializeAppModules() in main.tsx
-//   2. Let the ViewManagerPage + DynamicViewLoader handle on-demand loading
-//   3. Delete this file once all plugins are lazily loaded via /api/views
-
-export const EAGERLY_LOADED_SIDE_EFFECT_PLUGINS = [
-  "@elizaos/app-babylon",
-  "@elizaos/app-scape",
-  "@elizaos/app-hyperscape",
-  "@elizaos/app-2004scape",
-  "@elizaos/app-defense-of-the-agents",
-  "@elizaos/app-clawville",
-  "@elizaos/app-trajectory-logger",
-  "@elizaos/app-shopify",
-  "@elizaos/app-hyperliquid",
-  "@elizaos/app-polymarket",
-  "@elizaos/app-wallet",
-  "@elizaos/app-contacts/register",
-  "@elizaos/app-device-settings/register",
-  "@elizaos/app-messages/register",
-  "@elizaos/app-phone/register",
-  "@elizaos/app-wifi/register",
-] as const;
+export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
+  [
+    { key: "@elizaos/app-babylon", load: () => import("@elizaos/app-babylon") },
+    { key: "@elizaos/app-scape", load: () => import("@elizaos/app-scape") },
+    {
+      key: "@elizaos/app-hyperscape",
+      load: () => import("@elizaos/app-hyperscape"),
+    },
+    {
+      key: "@elizaos/app-2004scape",
+      load: () => import("@elizaos/app-2004scape"),
+    },
+    {
+      key: "@elizaos/app-defense-of-the-agents",
+      load: () => import("@elizaos/app-defense-of-the-agents"),
+    },
+    {
+      key: "@elizaos/app-clawville",
+      load: () => import("@elizaos/app-clawville"),
+    },
+    {
+      key: "@elizaos/app-trajectory-logger",
+      load: () => import("@elizaos/app-trajectory-logger"),
+    },
+    { key: "@elizaos/app-shopify", load: () => import("@elizaos/app-shopify") },
+    {
+      key: "@elizaos/app-hyperliquid",
+      load: () => import("@elizaos/app-hyperliquid"),
+    },
+    {
+      key: "@elizaos/app-polymarket",
+      load: () => import("@elizaos/app-polymarket"),
+    },
+    { key: "@elizaos/app-wallet", load: () => import("@elizaos/app-wallet") },
+    {
+      key: "@elizaos/app-contacts/register",
+      load: () => import("@elizaos/app-contacts/register"),
+    },
+    {
+      key: "@elizaos/app-device-settings/register",
+      load: () => import("@elizaos/app-device-settings/register"),
+    },
+    {
+      key: "@elizaos/app-messages/register",
+      load: () => import("@elizaos/app-messages/register"),
+    },
+    {
+      key: "@elizaos/app-phone/register",
+      load: () => import("@elizaos/app-phone/register"),
+    },
+    {
+      key: "@elizaos/app-wifi/register",
+      load: () => import("@elizaos/app-wifi/register"),
+    },
+  ];

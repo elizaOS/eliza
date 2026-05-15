@@ -255,7 +255,7 @@ export class ResponseHandlerFieldRegistry {
 						fieldErrors[evaluator.name] = messageStr;
 						traces.push(trace);
 						// Hard-fail: surface for caller, but keep processing siblings.
-						args.runtime.logger?.warn?.(
+						args.runtime.logger.warn(
 							{
 								src: "response-handler-field-registry",
 								field: evaluator.name,
@@ -313,7 +313,7 @@ export class ResponseHandlerFieldRegistry {
 				trace.errorMessage = messageStr;
 				fieldErrors[evaluator.name] = messageStr;
 				traces.push(trace);
-				args.runtime.logger?.warn?.(
+				args.runtime.logger.warn(
 					{
 						src: "response-handler-field-registry",
 						field: evaluator.name,

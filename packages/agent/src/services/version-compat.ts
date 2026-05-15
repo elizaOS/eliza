@@ -175,7 +175,7 @@ export async function getInstalledVersion(
     const pkg = JSON.parse(readFileSync(pkgPath, "utf-8")) as {
       version: string;
     };
-    return pkg.version ?? null;
+    return pkg.version;
   } catch (err) {
     const code = (err as NodeJS.ErrnoException).code;
     if (

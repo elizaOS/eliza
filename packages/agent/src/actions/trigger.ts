@@ -222,7 +222,7 @@ async function opCreate(
     params.wakeMode?.trim().toLowerCase() === "next_autonomy_cycle"
       ? "next_autonomy_cycle"
       : "inject_now";
-  const creatorId = String(message.entityId ?? runtime.agentId);
+  const creatorId = String(message.entityId);
   const intervalMs = normalizeTriggerIntervalMs(
     parsePositiveInt(params.intervalMs) ?? DEFAULT_INTERVAL_MS,
   );

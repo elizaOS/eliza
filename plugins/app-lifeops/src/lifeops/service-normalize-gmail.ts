@@ -338,7 +338,7 @@ export function normalizeGmailSearchQueryMatches(
 
     const labelTokens = message.labels.map((label) => label.toLowerCase());
     const hasAttachment =
-      typeof message.metadata?.hasAttachments === "boolean"
+      typeof message.metadata.hasAttachments === "boolean"
         ? message.metadata.hasAttachments === true
         : /\battach(?:ed|ment|ments)?\b/i.test(
             `${message.subject} ${message.snippet}`,

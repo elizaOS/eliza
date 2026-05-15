@@ -621,7 +621,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		this.installLock = new Promise<void>((r) => {
 			resolve = r;
 		});
-		return prev.then(fn).finally(() => resolve?.());
+		return prev.then(fn).finally(() => resolve());
 	}
 
 	private serialiseEject<T>(fn: () => Promise<T>): Promise<T> {
@@ -630,7 +630,7 @@ export class PluginManagerService extends Service implements PluginRegistry {
 		this.ejectLock = new Promise<void>((r) => {
 			resolve = r;
 		});
-		return prev.then(fn).finally(() => resolve?.());
+		return prev.then(fn).finally(() => resolve());
 	}
 
 	private getPluginsBaseDir(): string {

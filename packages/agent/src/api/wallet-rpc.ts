@@ -558,7 +558,7 @@ export function applyWalletRpcConfigUpdate(
     process.env.SOLANA_RPC_URL = solanaRpcUrl;
   } else if (
     typeof update.credentials?.HELIUS_API_KEY === "string" &&
-    typeof update.credentials?.SOLANA_RPC_URL !== "string"
+    typeof update.credentials.SOLANA_RPC_URL !== "string"
   ) {
     delete env.SOLANA_RPC_URL;
     delete process.env.SOLANA_RPC_URL;

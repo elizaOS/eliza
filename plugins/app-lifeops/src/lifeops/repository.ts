@@ -8220,8 +8220,8 @@ export class LifeOpsRepository {
                 summary = ${sqlQuote(thread.summary)},
                 current_plan_summary = ${sqlText(thread.currentPlanSummary ?? null)},
                 primary_source_ref_json = ${sqlJson(thread.primarySourceRef)},
-                source_refs_json = ${sqlJson(thread.sourceRefs ?? [])},
-                participant_entity_ids_json = ${sqlJson(thread.participantEntityIds ?? [])},
+                source_refs_json = ${sqlJson(thread.sourceRefs)},
+                participant_entity_ids_json = ${sqlJson(thread.participantEntityIds)},
                 current_scheduled_task_id = ${sqlText(thread.currentScheduledTaskId ?? null)},
                 workflow_run_id = ${sqlText(thread.workflowRunId ?? null)},
                 approval_id = ${sqlText(thread.approvalId ?? null)},
@@ -8261,8 +8261,8 @@ export class LifeOpsRepository {
         ${sqlQuote(thread.summary)},
         ${sqlText(thread.currentPlanSummary ?? null)},
         ${sqlJson(thread.primarySourceRef)},
-        ${sqlJson(thread.sourceRefs ?? [])},
-        ${sqlJson(thread.participantEntityIds ?? [])},
+        ${sqlJson(thread.sourceRefs)},
+        ${sqlJson(thread.participantEntityIds)},
         ${sqlText(thread.currentScheduledTaskId ?? null)},
         ${sqlText(thread.workflowRunId ?? null)},
         ${sqlText(thread.approvalId ?? null)},
@@ -8430,7 +8430,7 @@ export class LifeOpsRepository {
     );
     const row = rows[0];
     if (!row) return null;
-    const detail = parseJsonRecord(row.detail_json) ?? {};
+    const detail = parseJsonRecord(row.detail_json);
     const rawSourceIds = (detail as { sourceWorkThreadIds?: unknown })
       .sourceWorkThreadIds;
     const sourceWorkThreadIds = Array.isArray(rawSourceIds)
@@ -8438,7 +8438,7 @@ export class LifeOpsRepository {
       : [];
     return {
       sourceWorkThreadIds,
-      occurredAt: toText(row.occurred_at) ?? "",
+      occurredAt: toText(row.occurred_at),
     };
   }
 
@@ -8480,8 +8480,8 @@ export class LifeOpsRepository {
           };
         }
 
-        const updatedAt = args.nextTarget.updatedAt ?? isoNow();
-        const lastActivityAt = args.nextTarget.lastActivityAt ?? updatedAt;
+        const updatedAt = args.nextTarget.updatedAt;
+        const lastActivityAt = args.nextTarget.lastActivityAt;
 
         // 1. UPDATE target with version check.
         const targetRows = await executeRawSqlTx(
@@ -8489,8 +8489,8 @@ export class LifeOpsRepository {
           `UPDATE app_lifeops.life_work_threads
               SET summary = ${sqlQuote(args.nextTarget.summary)},
                   current_plan_summary = ${sqlText(args.nextTarget.currentPlanSummary ?? null)},
-                  source_refs_json = ${sqlJson(args.nextTarget.sourceRefs ?? [])},
-                  participant_entity_ids_json = ${sqlJson(args.nextTarget.participantEntityIds ?? [])},
+                  source_refs_json = ${sqlJson(args.nextTarget.sourceRefs)},
+                  participant_entity_ids_json = ${sqlJson(args.nextTarget.participantEntityIds)},
                   last_message_memory_id = ${sqlText(args.nextTarget.lastMessageMemoryId ?? null)},
                   metadata_json = ${sqlJson(args.nextTarget.metadata ?? {})},
                   updated_at = ${sqlQuote(updatedAt)},
@@ -8607,7 +8607,7 @@ export class LifeOpsRepository {
     );
     const row = rows[0];
     if (!row) return null;
-    const detail = parseJsonRecord(row.detail_json) ?? {};
+    const detail = parseJsonRecord(row.detail_json);
     const rawSourceIds = (detail as { sourceWorkThreadIds?: unknown })
       .sourceWorkThreadIds;
     const sourceWorkThreadIds = Array.isArray(rawSourceIds)
@@ -8615,7 +8615,7 @@ export class LifeOpsRepository {
       : [];
     return {
       sourceWorkThreadIds,
-      occurredAt: toText(row.occurred_at) ?? "",
+      occurredAt: toText(row.occurred_at),
     };
   }
 

@@ -32,12 +32,37 @@ const MESSAGE_FETCH_PAGE_SIZE = 250;
 const STRATEGY: StrategyName = "hybrid-ledger";
 
 type CompactParams = {
-  targetTokens?: number;
-  preserveTailMessages?: number;
+  targetTokens: unknown;
+  preserveTailMessages: unknown;
 };
 
+function parseOptionalBoundedInteger(
+  name: string,
+  value: unknown,
+  fallback: number,
+  min: number,
+  max: number,
+): { ok: true; value: number } | { ok: false; reason: string } {
+  if (value === undefined) {
+    return { ok: true, value: fallback };
+  }
+  if (typeof value !== "number" || !Number.isInteger(value)) {
+    return {
+      ok: false,
+      reason: `${name} must be an integer between ${min} and ${max}.`,
+    };
+  }
+  if (value < min || value > max) {
+    return {
+      ok: false,
+      reason: `${name} must be between ${min} and ${max}.`,
+    };
+  }
+  return { ok: true, value };
+}
+
 function getText(memory: Memory): string {
-  return typeof memory.content?.text === "string" ? memory.content.text : "";
+  return typeof memory.content.text === "string" ? memory.content.text : "";
 }
 
 function memoryToCompactorMessage(
@@ -147,19 +172,46 @@ export const compactConversationAction: Action = {
   handler: async (runtime, message, _state, options): Promise<ActionResult> => {
     const params =
       ((options as HandlerOptions | undefined)?.parameters as
-        | CompactParams
+        | Partial<CompactParams>
         | undefined) ?? {};
-    const targetTokens = Math.max(
+    const targetTokensResult = parseOptionalBoundedInteger(
+      "targetTokens",
+      params.targetTokens,
+      DEFAULT_TARGET_TOKENS,
       256,
-      Math.min(4096, Number(params.targetTokens) || DEFAULT_TARGET_TOKENS),
+      4096,
     );
-    const preserveTailMessages = Math.max(
+    if (!targetTokensResult.ok) {
+      return {
+        success: false,
+        text: targetTokensResult.reason,
+        values: { compacted: false, reason: "invalid-parameters" },
+        data: {
+          actionName: "COMPACT_CONVERSATION",
+          reason: "invalid-parameters",
+        },
+      };
+    }
+    const preserveTailMessagesResult = parseOptionalBoundedInteger(
+      "preserveTailMessages",
+      params.preserveTailMessages,
+      DEFAULT_PRESERVE_TAIL,
       2,
-      Math.min(
-        24,
-        Number(params.preserveTailMessages) || DEFAULT_PRESERVE_TAIL,
-      ),
+      24,
     );
+    if (!preserveTailMessagesResult.ok) {
+      return {
+        success: false,
+        text: preserveTailMessagesResult.reason,
+        values: { compacted: false, reason: "invalid-parameters" },
+        data: {
+          actionName: "COMPACT_CONVERSATION",
+          reason: "invalid-parameters",
+        },
+      };
+    }
+    const targetTokens = targetTokensResult.value;
+    const preserveTailMessages = preserveTailMessagesResult.value;
     const memories = await getCompactableMessages(runtime, message);
     if (memories.length < MIN_COMPACTABLE_MESSAGES) {
       return {

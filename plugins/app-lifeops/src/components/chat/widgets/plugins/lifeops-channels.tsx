@@ -172,7 +172,7 @@ function LifeOpsCalendarWidget(_props: ChatSidebarWidgetProps) {
   const { dataStatus, calendarFeed } = useGoogleData(timeZone);
   const caps = capabilitySet(dataStatus);
   const showCalendar =
-    dataStatus?.connected === true &&
+    dataStatus.connected === true &&
     (caps.has("google.calendar.read") || caps.has("google.calendar.write"));
 
   const events = useMemo(
@@ -258,7 +258,7 @@ function LifeOpsInboxWidget(_props: ChatSidebarWidgetProps) {
   const { dataStatus, gmailFeed } = useGoogleData(timeZone);
   const caps = capabilitySet(dataStatus);
   const showInbox =
-    dataStatus?.connected === true && caps.has("google.gmail.triage");
+    dataStatus.connected === true && caps.has("google.gmail.triage");
 
   const messages = gmailFeed?.messages ?? [];
   if (!showInbox) return null;
@@ -353,7 +353,7 @@ function LifeOpsAutomationsWidget(_props: ChatSidebarWidgetProps) {
       try {
         const response = await client.getTriggers();
         if (cancelled) return;
-        setTriggers(response.triggers ?? []);
+        setTriggers(response.triggers);
       } catch {
         // Transient errors preserve the last snapshot; next tick retries.
       }

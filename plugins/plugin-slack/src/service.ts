@@ -676,7 +676,7 @@ export class SlackService extends Service implements ISlackService {
     this.botToken = state?.account.botToken ?? null;
     this.appToken = state?.account.appToken ?? null;
     this.signingSecret = state?.account.signingSecret ?? null;
-    this.isConnected = Array.from(this.accountStates?.values?.() ?? []).some(
+    this.isConnected = Array.from(this.accountStates.values()).some(
       (accountState) => accountState.isConnected,
     );
   }
@@ -867,9 +867,7 @@ export class SlackService extends Service implements ISlackService {
     if (!(states instanceof Map) || states.size === 0) {
       return null;
     }
-    const defaultId = normalizeAccountId(
-      this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
-    );
+    const defaultId = normalizeAccountId(this.defaultAccountId);
     return states.get(defaultId) ?? states.values().next().value ?? null;
   }
 
@@ -892,9 +890,7 @@ export class SlackService extends Service implements ISlackService {
       return state.client;
     }
     const requested = accountId ? normalizeAccountId(accountId) : null;
-    const defaultId = normalizeAccountId(
-      this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
-    );
+    const defaultId = normalizeAccountId(this.defaultAccountId);
     if (!requested || requested === defaultId) {
       return this.client;
     }
@@ -948,7 +944,7 @@ export class SlackService extends Service implements ISlackService {
     if (states instanceof Map && states.size > 0) {
       return Array.from(states.keys());
     }
-    return [normalizeAccountId(this.defaultAccountId ?? DEFAULT_ACCOUNT_ID)];
+    return [normalizeAccountId(this.defaultAccountId)];
   }
 
   private resolveAccountIdFromContext(
@@ -1002,7 +998,7 @@ export class SlackService extends Service implements ISlackService {
       }
     }
 
-    return normalizeAccountId(this.defaultAccountId ?? DEFAULT_ACCOUNT_ID);
+    return normalizeAccountId(this.defaultAccountId);
   }
 
   private getCandidateAccountIds(
@@ -1022,7 +1018,7 @@ export class SlackService extends Service implements ISlackService {
     accountId?: string | null,
   ): string {
     const normalized = normalizeAccountId(
-      accountId ?? this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
+      accountId ?? this.defaultAccountId,
     );
     return normalized === DEFAULT_ACCOUNT_ID
       ? `${prefix}-${key}`
@@ -1031,7 +1027,7 @@ export class SlackService extends Service implements ISlackService {
 
   private buildEventPayload(accountId?: string | null): EventPayload {
     const normalized = normalizeAccountId(
-      accountId ?? this.defaultAccountId ?? DEFAULT_ACCOUNT_ID,
+      accountId ?? this.defaultAccountId,
     );
     return {
       runtime: this.runtime,
@@ -2510,8 +2506,8 @@ export class SlackService extends Service implements ISlackService {
     });
     return memories
       .filter((memory) => {
-        const text = String(memory.content?.text ?? "").toLowerCase();
-        const name = String(memory.content?.name ?? "").toLowerCase();
+        const text = String(memory.content.text ?? "").toLowerCase();
+        const name = String(memory.content.name ?? "").toLowerCase();
         return text.includes(query) || name.includes(query);
       })
       .slice(0, params.limit ?? 25);

@@ -148,7 +148,7 @@ function inferSubAction(
 		normalizeSubAction(params.action) ?? normalizeSubAction(params.subaction);
 	if (explicit) return explicit;
 
-	const text = message.content?.text ?? "";
+	const text = message.content.text ?? "";
 	if (
 		(params.url || URL_PATTERN.test(text)) &&
 		/\b(add|import|save)\b/i.test(text)
@@ -183,7 +183,7 @@ function getDocumentId(
 	const candidate = (params.documentId ?? params.id)?.trim();
 	if (candidate && isUuid(candidate)) return candidate;
 
-	const match = (message.content?.text ?? "").match(
+	const match = (message.content.text ?? "").match(
 		/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i,
 	);
 	return match?.[0] && isUuid(match[0]) ? match[0] : null;
@@ -227,7 +227,7 @@ function getScopedToEntityId(
 		const ownerId = runtime.getSetting("ELIZA_ADMIN_ENTITY_ID");
 		return typeof ownerId === "string" && ownerId.trim()
 			? (ownerId.trim() as UUID)
-			: (message.entityId ?? runtime.agentId);
+			: (message.entityId);
 	}
 	if (
 		typeof params?.scopedToEntityId === "string" &&
@@ -235,7 +235,7 @@ function getScopedToEntityId(
 	) {
 		return params.scopedToEntityId;
 	}
-	return message.entityId ?? runtime.agentId;
+	return message.entityId;
 }
 
 async function getAddedByRole(
@@ -322,7 +322,7 @@ function getCleanWriteText(
 	if (typeof explicit === "string" && explicit.trim()) {
 		return explicit.trim();
 	}
-	return (message.content?.text ?? "")
+	return (message.content.text ?? "")
 		.replace(
 			/^(save|store|write|create|remember|add)\s+(this|that|the following|a document|document)?:?\s*/i,
 			"",
@@ -334,7 +334,7 @@ function getQuery(params: DocumentActionParameters, message: Memory): string {
 	if (typeof params.query === "string" && params.query.trim()) {
 		return params.query.trim();
 	}
-	return (message.content?.text ?? "")
+	return (message.content.text ?? "")
 		.replace(
 			/^(search|find|lookup|look up|query)\s+(my\s+|your\s+|the\s+)?documents?\s*(for|about)?\s*/i,
 			"",
@@ -431,7 +431,7 @@ function getFilePath(
 		return params.filePath.trim();
 	}
 	return (
-		(message.content?.text ?? "").match(DOCUMENT_PATH_PATTERN)?.[0] ?? null
+		(message.content.text ?? "").match(DOCUMENT_PATH_PATTERN)?.[0] ?? null
 	);
 }
 
@@ -442,7 +442,7 @@ function getUrl(
 	if (typeof params.url === "string" && params.url.trim()) {
 		return params.url.trim();
 	}
-	return (message.content?.text ?? "").match(URL_PATTERN)?.[0] ?? null;
+	return (message.content.text ?? "").match(URL_PATTERN)?.[0] ?? null;
 }
 
 async function scopedAddOptions(
@@ -453,11 +453,11 @@ async function scopedAddOptions(
 	params?: DocumentActionParameters,
 ) {
 	const scopedToEntityId = getScopedToEntityId(runtime, message, scope, params);
-	const addedBy = message.entityId ?? runtime.agentId;
+	const addedBy = message.entityId;
 	return {
 		agentId: runtime.agentId,
 		worldId: message.worldId ?? runtime.agentId,
-		roomId: message.roomId ?? runtime.agentId,
+		roomId: message.roomId,
 		entityId: scopedToEntityId ?? addedBy,
 		scope,
 		scopedToEntityId,
@@ -558,7 +558,7 @@ async function handleRead(
 		return result(false, text, "read", { values: { error: "not_found" } });
 	}
 
-	const text = document.content?.text ?? "";
+	const text = document.content.text ?? "";
 	await emit(callback, { text, actions: ["DOCUMENT"] });
 	return result(true, text, "read", {
 		values: { documentId, textLength: text.length },

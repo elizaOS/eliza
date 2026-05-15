@@ -9,9 +9,7 @@
  * `manifest.json` + every file in `files` to `~/.eliza/apps/<slug>/`, and
  * returns a `GenerationOutput` describing the on-disk paths.
  *
- * Phase 0 ships only the `claude` backend (locked decision: provider
- * portability lives at the trait/interface boundary; Phase 1 adds `codex`,
- * Phase 1.5 adds the managed-proxy).
+ * Codegen currently runs through the `claude` backend.
  */
 
 import { spawn } from "node:child_process";
@@ -24,12 +22,7 @@ import { buildSystemPrompt, buildUserPrompt } from "../prompts.ts";
 import { CODEGEN_OUTPUT_SCHEMA, type CodegenOutput } from "../schemas.ts";
 import { listVersions, promoteVersion } from "./app-history.ts";
 
-/** Available code generation backends. Phase 0 = `claude` only. */
-export type CodeGeneratorBackend =
-  | "claude"
-  | "codex"
-  | "local-llama"
-  | "managed-proxy";
+export type CodeGeneratorBackend = "claude";
 
 export interface GenerationBrief {
   slug: string;

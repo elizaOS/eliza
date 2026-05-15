@@ -691,12 +691,10 @@ export function analyzeMessages(
   const hasSleepData = healthSnapshots.length > 0;
   const lastSleepSignalAt =
     latestSleepingHealthSnapshot?.sleepStartedAt ??
-    latestSleepingHealthSnapshot?.observedAt ??
-    null;
+    latestSleepingHealthSnapshot?.observedAt;
   const lastWakeSignalAt =
     latestWakeHealthSnapshot?.sleepEndedAt ??
-    latestWakeHealthSnapshot?.observedAt ??
-    null;
+    latestWakeHealthSnapshot?.observedAt;
   const hasOpenActivityCycle =
     !isCurrentlySleeping &&
     lastSeenAt > 0 &&
@@ -752,13 +750,9 @@ export function analyzeMessages(
     currentActivityCycleStartedAt,
     currentActivityCycleLocalDate,
     effectiveDayKey: hasOpenActivityCycle
-      ? (currentActivityCycleLocalDate ??
-        localDateKeyForTimestamp(currentTime.getTime(), timezone))
+      ? (currentActivityCycleLocalDate)
       : isCurrentlySleeping
-        ? (currentActivityCycleLocalDate ??
-          (lastSleepSignalAt !== null
-            ? localDateKeyForTimestamp(lastSleepSignalAt, timezone)
-            : localDateKeyForTimestamp(currentTime.getTime(), timezone)))
+        ? (currentActivityCycleLocalDate)
         : localDateKeyForTimestamp(currentTime.getTime(), timezone),
     screenContextFocus: null,
     screenContextSource: null,

@@ -190,7 +190,7 @@ function matchesLifeOpsDerivedEventFilters(
     // The event fires on any class transition; the filter narrows to the
     // specific target class. The target class lands in the payload via the
     // merged state's regularity block.
-    const payload = event.payload ?? {};
+    const payload = event.payload;
     const regularity =
       typeof payload === "object" && payload !== null
         ? (payload as { regularityClass?: unknown }).regularityClass

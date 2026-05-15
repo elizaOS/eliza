@@ -86,10 +86,18 @@ function githubUrl(entry: RegistryEntry): string {
   return `${base}/tree/main/${entry.directory}`;
 }
 
-function originLabel(entry: RegistryEntry): string {
+function registryOrigin(entry: RegistryEntry): RegistryOrigin {
   return entry.origin === "third-party" || entry.thirdParty
-    ? "Third party"
-    : "Built in";
+    ? "third-party"
+    : "builtin";
+}
+
+function registryKind(entry: RegistryEntry): RegistryKind {
+  return entry.kind || "plugin";
+}
+
+function originLabel(entry: RegistryEntry): string {
+  return registryOrigin(entry) === "third-party" ? "Third party" : "Built in";
 }
 
 function supportLabel(entry: RegistryEntry): string {
@@ -182,8 +190,8 @@ const FilterButton = ({
 
 const PluginCard = ({ item }: { item: RegistryItem }) => {
   const { name, entry } = item;
-  const kind = entry.kind || "plugin";
-  const KindIcon = kindIcons[kind] || Plug;
+  const kind = registryKind(entry);
+  const KindIcon = kindIcons[kind];
 
   return (
     <article className="rounded-lg border border-zinc-200 bg-white p-4">
@@ -304,11 +312,8 @@ const App = () => {
   const filteredItems = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return items.filter(({ name, entry }) => {
-      const entryOrigin =
-        entry.origin === "third-party" || entry.thirdParty
-          ? "third-party"
-          : "builtin";
-      const entryKind = entry.kind || "plugin";
+      const entryOrigin = registryOrigin(entry);
+      const entryKind = registryKind(entry);
       if (origin !== "all" && entryOrigin !== origin) {
         return false;
       }

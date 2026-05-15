@@ -140,7 +140,7 @@ function parseSkillFile(content: string): ParsedSkill | null {
     if (/^[a-zA-Z]/.test(line)) {
       inProvenance = false;
       const [keyRaw, ...rest] = line.split(":");
-      const key = keyRaw?.trim();
+      const key = keyRaw.trim();
       const value = rest.join(":").trim();
       if (key === "name") parsed.name = stripQuotes(value);
       else if (key === "description") parsed.description = stripQuotes(value);
@@ -148,7 +148,7 @@ function parseSkillFile(content: string): ParsedSkill | null {
     } else if (inProvenance && /^\s+\S/.test(rawLine)) {
       const trimmed = rawLine.trim();
       const [keyRaw, ...rest] = trimmed.split(":");
-      const key = keyRaw?.trim();
+      const key = keyRaw.trim();
       const value = rest.join(":").trim();
       if (!key) continue;
       if (key === "source") {

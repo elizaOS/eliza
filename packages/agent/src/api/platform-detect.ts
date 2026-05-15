@@ -19,7 +19,7 @@ export type AgentPlatform = "web" | "desktop" | "ios" | "android";
  * 3. Default: "web".
  */
 export function detectClientPlatform(req: IncomingMessage): AgentPlatform {
-  const headers = req.headers ?? {};
+  const headers = req.headers;
   const header = headers["x-eliza-platform"];
   if (header === "ios") return "ios";
   if (header === "android") return "android";
