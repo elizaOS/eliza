@@ -507,6 +507,9 @@ const iosFsSandboxPlugin = {
 // call methods that only exist on the other (`getAgentsByIds is not a
 // function`). Pin every `@elizaos/core` (and `@elizaos/shared`) import to
 // the same workspace `src/` entry so the bundle ships exactly one identity.
+// Shared subpaths are pinned too, so mobile-only plugins that import
+// `@elizaos/shared/local-inference` don't fall through to stale package
+// exports or compiled dist while the rest of shared is bundled from source.
 const corePackages = [
   "@elizaos/core",
   "@elizaos/shared",
@@ -575,12 +578,29 @@ const dedupePlugin = {
         corePackages
           .map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
           .join("|") +
-        ")$",
+        ")(?:/.*)?$",
     );
     build.onResolve({ filter }, (args) => {
       const target = dedupeTargets[args.path];
-      if (!target) return undefined;
-      return { path: target, namespace: "file" };
+      if (target) return { path: target, namespace: "file" };
+      if (args.path.startsWith("@elizaos/shared/")) {
+        const subpath = args.path
+          .slice("@elizaos/shared/".length)
+          .replace(/\.js$/, "");
+        const sharedSrcRoot = path.resolve(repoRoot, "packages", "shared", "src");
+        const candidates = [
+          path.join(sharedSrcRoot, `${subpath}.ts`),
+          path.join(sharedSrcRoot, `${subpath}.tsx`),
+          path.join(sharedSrcRoot, subpath, "index.ts"),
+          path.join(sharedSrcRoot, subpath, "index.tsx"),
+        ];
+        for (const candidate of candidates) {
+          if (existsSync(candidate)) {
+            return { path: candidate, namespace: "file" };
+          }
+        }
+      }
+      return undefined;
     });
   },
 };

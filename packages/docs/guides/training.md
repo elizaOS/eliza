@@ -11,7 +11,7 @@ Eliza captures all LLM interactions as trajectories, which can be curated into t
 1. [Trajectory Collection](#trajectory-collection)
 2. [Trajectory Viewer](#trajectory-viewer)
 3. [Training Datasets](#training-datasets)
-4. [Fine-Tuning Workflow](#fine-tuning-workflow)
+4. [Fine-Tuning Workflow](#fine-tuning-workflow-model-weight-training)
 5. [Dashboard Integration](#dashboard-integration)
 6. [API Endpoints](#api-endpoints)
 

@@ -39,20 +39,16 @@ from typing import Final, Mapping, Sequence
 
 _LICENSE_TEXTS_DIR: Final[Path] = Path(__file__).resolve().parent / "license_texts"
 
-
 def _text(name: str) -> str:
     return (_LICENSE_TEXTS_DIR / name).read_text(encoding="utf-8")
 
-
 # Lazy cache so importing this module does not eagerly read 30 KB of text.
 _TEXT_CACHE: dict[str, str] = {}
-
 
 def license_text(text_file: str) -> str:
     if text_file not in _TEXT_CACHE:
         _TEXT_CACHE[text_file] = _text(text_file)
     return _TEXT_CACHE[text_file]
-
 
 @dataclass(frozen=True, slots=True)
 class LicenseAttestation:
@@ -96,7 +92,6 @@ class LicenseAttestation:
             "\n"
         )
         return header + body
-
 
 # The text backbone, the DFlash drafter (distilled from the text
 # backbone) and the embedding model are all Apache-2.0 (Qwen3 family on
@@ -247,7 +242,7 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
             "vision/mmproj artifact rather than reusing the ASR audio mmproj. "
             "Declared upstream license: Apache-2.0."
         ),
-        tiers=("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"),
+        tiers=("0_8b", "0_8b", "2b", "4b", "9b", "27b", "27b-256k"),
     ),
     LicenseAttestation(
         bundle_file="LICENSE.wakeword",
@@ -297,11 +292,9 @@ ATTESTATIONS: Final[tuple[LicenseAttestation, ...]] = (
     ),
 )
 
-
 _ATTESTATION_BY_FILE: Final[Mapping[str, LicenseAttestation]] = {
     a.bundle_file: a for a in ATTESTATIONS
 }
-
 
 def _voice_attestation_for_components(
     components: Sequence[str],
@@ -346,7 +339,6 @@ def _voice_attestation_for_components(
         )
     return _ATTESTATION_BY_FILE["LICENSE.voice"]
 
-
 def attestations_for_components(components: Sequence[str]) -> tuple[LicenseAttestation, ...]:
     """The license attestations a bundle with `components` must ship.
 
@@ -383,7 +375,6 @@ def attestations_for_components(components: Sequence[str]) -> tuple[LicenseAttes
             )
     return tuple(out)
 
-
 def license_manifest_sidecar(
     attestations: Sequence[LicenseAttestation],
 ) -> dict[str, object]:
@@ -418,7 +409,6 @@ def license_manifest_sidecar(
         ],
     }
 
-
 def write_bundle_licenses(
     licenses_dir: Path, components: Sequence[str]
 ) -> tuple[list[str], dict[str, object]]:
@@ -441,7 +431,6 @@ def write_bundle_licenses(
     sidecar_path.write_text(json.dumps(sidecar, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     written.append("licenses/license-manifest.json")
     return written, sidecar
-
 
 def verify_bundle_licenses(
     licenses_dir: Path, components: Sequence[str]
@@ -496,7 +485,6 @@ def verify_bundle_licenses(
                 )
     return problems
 
-
 def _detect_components(bundle_dir: Path) -> list[str]:
     """Infer which component kinds a bundle directory contains.
 
@@ -524,7 +512,6 @@ def _detect_components(bundle_dir: Path) -> list[str]:
     ).is_dir():
         components.append("wakeword")
     return components
-
 
 def main(argv: Sequence[str] | None = None) -> int:
     import argparse
@@ -563,7 +550,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     for rel in written:
         print(f"wrote {rel}")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

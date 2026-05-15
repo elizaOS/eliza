@@ -791,7 +791,35 @@ _KQUANT_SIBLINGS = (
     ("gguf-q4_k_m_apply", "Q4_K_M"),
     ("gguf-q5_k_m_apply", "Q5_K_M"),
     ("gguf-q6_k_apply",   "Q6_K"),
+    ("gguf-q8_0_apply", "Q8_0"),
 )
+
+
+def test_eliza1_required_quantization_hooks_are_reproducible():
+    """The training registry must name real, checked-in apply hooks.
+
+    This pins the Eliza-1 post-training recipe to the existing
+    PolarQuant/TurboQuant/Fused TurboQuant/QJL hooks and the complete GGUF
+    publish ladder instead of relying on out-of-band runner state.
+    """
+    training_root = _HERE.parents[1]
+    if str(training_root) not in sys.path:
+        sys.path.insert(0, str(training_root))
+    from scripts.training.model_registry import ELIZA1_REQUIRED_QUANTIZATION_AFTER
+
+    assert ELIZA1_REQUIRED_QUANTIZATION_AFTER == (
+        "polarquant",
+        "turboquant",
+        "fused_turboquant",
+        "qjl",
+        "gguf-q3_k_m",
+        "gguf-q4_k_m",
+        "gguf-q5_k_m",
+        "gguf-q6_k",
+        "gguf-q8_0",
+    )
+    for name in ELIZA1_REQUIRED_QUANTIZATION_AFTER:
+        assert (_HERE / f"{name}_apply.py").exists(), f"missing quantizer hook: {name}"
 
 
 @pytest.mark.parametrize("module_basename,expected_level", _KQUANT_SIBLINGS)

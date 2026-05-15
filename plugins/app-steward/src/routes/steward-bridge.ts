@@ -11,11 +11,11 @@ import { fetchSolanaNativeBalanceViaRpc } from "../api/wallet";
 import { fetchEvmNativeBalanceViaRpc } from "../api/wallet-evm-balance";
 import { resolveWalletRpcReadiness } from "../api/wallet-rpc";
 import {
+  fingerprintRandomToken,
   loadStewardCredentials,
   resolveEffectiveStewardConfig,
   saveStewardCredentials,
-} from "../services/steward-credentials";
-import { fingerprintRandomToken } from "../services/steward-sidecar/helpers";
+} from "@elizaos/app-core";
 import type { StewardSignRequest, StewardSignResponse } from "../types/steward";
 
 export interface StewardBridgeOptions {

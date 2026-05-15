@@ -460,17 +460,15 @@ describe("local inference downloader status", () => {
 	it("aborts before any weight byte when no verified backend overlaps the device", async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-download-test-"));
 		process.env.ELIZA_STATE_DIR = root;
-		// The 27b-1m tier ships verified only on CUDA (GH200-class). It is not a
-		// visible catalog entry in the active small-tier catalog, so build the
-		// test object from a visible bundle entry while preserving the same
-		// downloader shape.
-		const baseModel = findCatalogModel("eliza-1-4b");
+		// Force a CUDA-only manifest for an otherwise valid visible tier. A
+		// CPU-only device must stop after metadata and before fetching weights.
+		const baseModel = findCatalogModel("eliza-1-27b-256k");
 		if (!baseModel) throw new Error("missing test catalog model");
 		const model = {
 			...baseModel,
-			id: "eliza-1-27b-1m",
-			hfPathPrefix: "bundles/27b-1m",
-			ggufFile: "text/eliza-1-27b-1m-1m.gguf",
+			id: "eliza-1-27b-256k",
+			hfPathPrefix: "bundles/27b-256k",
+			ggufFile: "text/eliza-1-27b-256k.gguf",
 			bundleManifestFile: "eliza-1.manifest.json",
 			companionModelIds: [],
 		};
@@ -479,11 +477,11 @@ describe("local inference downloader status", () => {
 
 		const textPath = model.ggufFile;
 		const voicePath = "tts/voice.gguf";
-		const drafterPath = "dflash/drafter-27b-1m.gguf";
+		const drafterPath = "dflash/drafter-27b-256k.gguf";
 		const cachePath = "cache/voice-preset-default.bin";
 		const manifest = JSON.stringify({
-			id: "eliza-1-27b-1m",
-			tier: "27b-1m",
+			id: "eliza-1-27b-256k",
+			tier: "27b-256k",
 			version: "1.0.0",
 			publishedAt: "2026-05-11T00:00:00.000Z",
 			lineage: {
@@ -497,7 +495,7 @@ describe("local inference downloader status", () => {
 					{
 						path: textPath,
 						sha256: sha256("x"),
-						ctx: 1_048_576,
+						ctx: 262144,
 					},
 				],
 				voice: [{ path: voicePath, sha256: sha256("v") }],

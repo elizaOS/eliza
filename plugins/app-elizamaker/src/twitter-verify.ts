@@ -179,7 +179,7 @@ function whitelistPath(): string {
   return path.join(resolveStateDir(), WHITELIST_FILE);
 }
 
-export function loadWhitelist(): WhitelistData {
+function loadWhitelist(): WhitelistData {
   const filePath = whitelistPath();
   if (!fs.existsSync(filePath)) return { verified: {} };
   const raw = fs.readFileSync(filePath, "utf-8");

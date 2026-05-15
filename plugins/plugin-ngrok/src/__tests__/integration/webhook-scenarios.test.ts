@@ -1,11 +1,25 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { spawn } from 'node:child_process';
-import type { Server } from 'node:http';
+import {
+  createServer,
+  type IncomingHttpHeaders,
+  type IncomingMessage,
+  type Server,
+  type ServerResponse,
+} from 'node:http';
 import * as https from 'node:https';
-import express from 'express';
 import { NgrokService } from '../../services/NgrokService';
 import { testConfig, testDelay } from '../test-config';
 import { createMockRuntime } from '../test-utils';
+
+type CapturedWebhook = {
+  method: string | undefined;
+  path: string;
+  headers: IncomingHttpHeaders;
+  body: Record<string, unknown> | null;
+  query: Record<string, string>;
+  timestamp: number;
+};
 
 // Helper to check if ngrok is installed
 const _isNgrokInstalled = async (): Promise<boolean> => {
@@ -22,11 +36,10 @@ const _isNgrokInstalled = async (): Promise<boolean> => {
 
 describe('Webhook Integration Scenarios', () => {
   let service: NgrokService;
-  let app: express.Application;
   let server: Server;
   let webhookUrl: string | null = null;
   let webhookPort: number;
-  let receivedWebhooks: Array<Record<string, unknown>> = [];
+  let receivedWebhooks: CapturedWebhook[] = [];
   let skipTests = false;
 
   beforeAll(async () => {
@@ -47,28 +60,7 @@ describe('Webhook Integration Scenarios', () => {
     // Add delay before starting the test suite
     await testDelay(testConfig.execution.suitesDelay);
 
-    // Setup webhook server
-    app = express();
-    app.use(express.json());
-    app.use(express.urlencoded({ extended: true }));
-
-    // Generic webhook handler
-    app.all('/webhook/*', (req, res) => {
-      receivedWebhooks.push({
-        method: req.method,
-        path: req.path,
-        headers: req.headers,
-        body: req.body,
-        query: req.query,
-        timestamp: Date.now(),
-      });
-      res.status(200).json({ received: true });
-    });
-
-    // Health check endpoint
-    app.get('/health', (_req, res) => {
-      res.json({ status: 'ok', webhooks: receivedWebhooks.length });
-    });
+    server = createWebhookServer(() => receivedWebhooks);
 
     // Start server on random port
     await new Promise<void>((resolve) => {
@@ -396,6 +388,71 @@ describe('Webhook Integration Scenarios', () => {
     testConfig.execution.integrationTimeout
   );
 });
+
+function createWebhookServer(getWebhooks: () => CapturedWebhook[]): Server {
+  return createServer(async (req, res) => {
+    const requestUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
+
+    if (req.method === 'GET' && requestUrl.pathname === '/health') {
+      writeJson(res, 200, { status: 'ok', webhooks: getWebhooks().length });
+      return;
+    }
+
+    if (requestUrl.pathname.startsWith('/webhook/')) {
+      try {
+        getWebhooks().push({
+          method: req.method,
+          path: requestUrl.pathname,
+          headers: req.headers,
+          body: await readRequestBody(req),
+          query: Object.fromEntries(requestUrl.searchParams.entries()),
+          timestamp: Date.now(),
+        });
+        writeJson(res, 200, { received: true });
+      } catch (error) {
+        writeJson(res, 400, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    writeJson(res, 404, { error: 'not found' });
+  });
+}
+
+async function readRequestBody(req: IncomingMessage): Promise<Record<string, unknown> | null> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  const rawBody = Buffer.concat(chunks).toString('utf8');
+  if (!rawBody) {
+    return null;
+  }
+
+  const contentType = req.headers['content-type'] ?? '';
+  if (contentType.includes('application/x-www-form-urlencoded')) {
+    return Object.fromEntries(new URLSearchParams(rawBody).entries());
+  }
+
+  const parsed: unknown = JSON.parse(rawBody);
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    return parsed as Record<string, unknown>;
+  }
+
+  return { value: parsed };
+}
+
+function writeJson(res: ServerResponse, statusCode: number, payload: unknown): void {
+  const body = JSON.stringify(payload);
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json',
+    'Content-Length': Buffer.byteLength(body),
+  });
+  res.end(body);
+}
 
 // Helper function to send webhooks
 async function sendWebhook(

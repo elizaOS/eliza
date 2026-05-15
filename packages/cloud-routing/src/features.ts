@@ -49,18 +49,18 @@ interface FeatureDefinition {
 
 export type Feature = (typeof FEATURES)[number]["id"];
 
-export const FEATURE_IDS = FEATURES.map((f) => f.id) as ReadonlyArray<Feature>;
+export const FEATURE_IDS: ReadonlyArray<Feature> = FEATURES.map((f) => f.id);
 
-const FEATURE_BY_ID: ReadonlyMap<Feature, (typeof FEATURES)[number]> = new Map(
+const FEATURE_BY_ID: ReadonlyMap<string, (typeof FEATURES)[number]> = new Map(
   FEATURES.map((f) => [f.id, f]),
 );
 
 export function getFeature(id: string): (typeof FEATURES)[number] | null {
-  return FEATURE_BY_ID.get(id as Feature) ?? null;
+  return FEATURE_BY_ID.get(id) ?? null;
 }
 
 export function isFeature(value: unknown): value is Feature {
-  return typeof value === "string" && FEATURE_BY_ID.has(value as Feature);
+  return typeof value === "string" && FEATURE_BY_ID.has(value);
 }
 
 const FEATURE_POLICY_SET: ReadonlySet<string> = new Set(FEATURE_POLICIES);

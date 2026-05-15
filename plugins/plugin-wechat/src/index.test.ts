@@ -1,11 +1,27 @@
 import { describe, expect, it, vi } from "vitest";
+import type { PluginAutoEnableContext } from "@elizaos/core";
+import { shouldEnable } from "../auto-enable";
 import { Bot } from "./bot";
 import { normalizePayload } from "./callback-server";
 import type { ProxyClient } from "./proxy-client";
 import { ReplyDispatcher } from "./reply-dispatcher";
 import type { WechatMessageContext } from "./types";
 
+function autoEnableContext(connectors: Record<string, unknown>): PluginAutoEnableContext {
+  return {
+    env: {},
+    config: { connectors },
+    isNativePlatform: false,
+  };
+}
+
 describe("@elizaos/plugin-wechat", () => {
+  it("auto-enables only when the wechat connector is configured", () => {
+    expect(shouldEnable(autoEnableContext({ wechat: {} }))).toBe(true);
+    expect(shouldEnable(autoEnableContext({ wechat: { enabled: false } }))).toBe(false);
+    expect(shouldEnable(autoEnableContext({}))).toBe(false);
+  });
+
   it("normalizes supported direct and group webhook payloads", () => {
     expect(
       normalizePayload({

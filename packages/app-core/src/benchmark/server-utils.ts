@@ -1,3 +1,5 @@
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   type AgentRuntime,
   ChannelType,
@@ -10,6 +12,7 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type { LifeOpsBenchTurnRecord } from "./lifeops-bench-handler.js";
 import type { BenchmarkContext, CapturedAction } from "./plugin";
 
 export { coerceParams } from "./params";
@@ -435,6 +438,194 @@ export function summarizeBenchmarkTurnUsage(
     callCount: calls.length,
     calls,
   };
+}
+
+export function normalizeBenchmarkNativeToolCalls(
+  rawToolCalls: unknown,
+): Array<{
+  id: string;
+  type: "function";
+  function: { name: string; arguments: string };
+}> {
+  if (!Array.isArray(rawToolCalls)) return [];
+  const calls: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }> = [];
+  for (const raw of rawToolCalls) {
+    if (!isRecord(raw)) continue;
+    const fn = isRecord(raw.function) ? raw.function : {};
+    const name =
+      typeof raw.toolName === "string"
+        ? raw.toolName
+        : typeof raw.name === "string"
+          ? raw.name
+          : typeof fn.name === "string"
+            ? fn.name
+            : "";
+    if (!name) continue;
+    const args = raw.input ?? raw.args ?? raw.arguments ?? fn.arguments ?? {};
+    calls.push({
+      id:
+        typeof raw.toolCallId === "string"
+          ? raw.toolCallId
+          : typeof raw.id === "string"
+            ? raw.id
+            : `call_native_${calls.length}`,
+      type: "function",
+      function: {
+        name,
+        arguments: typeof args === "string" ? args : JSON.stringify(args ?? {}),
+      },
+    });
+  }
+  return calls;
+}
+
+function compactLifeOpsNativeContext(value: unknown): string {
+  if (!value || typeof value !== "object") return "";
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return "";
+  }
+}
+
+export function normalizeLifeOpsNativeMessages(
+  text: string,
+  context: Record<string, unknown>,
+  previousTurns: LifeOpsBenchTurnRecord[] = [],
+): Array<Record<string, unknown>> {
+  const lifeopsContext = compactLifeOpsNativeContext(context.lifeops);
+  const messages: Array<Record<string, unknown>> = [
+    {
+      role: "system",
+      content:
+        "You are running LifeOpsBench through the Eliza benchmark server. " +
+        "Use native tool calls exactly from the supplied tool list whenever " +
+        "an operation is needed. Do not invent action names or parameter " +
+        "spellings. For contacts use ENTITY with subaction='create' and " +
+        "top-level name/email. For BLOCK use bundle_id, not app_name. " +
+        "If previous tool results already completed the user's request, " +
+        "answer concisely with no further tool call.",
+    },
+    ...(lifeopsContext
+      ? [
+          {
+            role: "system",
+            content: `LifeOps benchmark context:\n${lifeopsContext}`,
+          },
+        ]
+      : []),
+  ];
+
+  for (const turn of previousTurns) {
+    if (turn.userText.trim()) {
+      messages.push({ role: "user", content: turn.userText });
+    }
+    const toolCalls = turn.toolCalls.map((call, index) => ({
+      id: call.id || `lifeops_call_${messages.length}_${index}`,
+      type: "function",
+      function: {
+        name: call.name,
+        arguments: JSON.stringify(call.arguments ?? {}),
+      },
+    }));
+    if (turn.assistantText.trim() || toolCalls.length > 0) {
+      messages.push({
+        role: "assistant",
+        content: turn.assistantText,
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+      });
+    }
+    for (const call of turn.toolCalls) {
+      messages.push({
+        role: "tool",
+        id: call.id || `lifeops_call_${messages.length}`,
+        name: call.name,
+        content: JSON.stringify(
+          call.ok
+            ? (call.result ?? {})
+            : {
+                error: call.error ?? "tool_error",
+                result: call.result ?? null,
+              },
+        ),
+      });
+    }
+  }
+
+  const lastTurn = previousTurns[previousTurns.length - 1];
+  if (
+    !lastTurn ||
+    lastTurn.userText !== text ||
+    lastTurn.toolCalls.length === 0
+  ) {
+    messages.push({ role: "user", content: text });
+  }
+
+  return messages;
+}
+
+export function chooseLifeOpsNativeToolChoice(
+  previousTurns: LifeOpsBenchTurnRecord[] = [],
+): "required" | "auto" {
+  return previousTurns.some((turn) => turn.toolCalls.length > 0)
+    ? "auto"
+    : "required";
+}
+
+export function normalizeLifeOpsNativePlannerResult(
+  nativeResult: unknown,
+  turnUsageBuffer: BenchmarkLlmCallUsage[] = [],
+): {
+  text: string;
+  toolCalls: Array<{
+    id?: string;
+    name: string;
+    arguments: Record<string, unknown>;
+  }>;
+  usage: BenchmarkTurnUsage;
+} {
+  const nativeRecord = isRecord(nativeResult) ? nativeResult : {};
+  const nativeToolCalls = normalizeBenchmarkNativeToolCalls(
+    nativeRecord.toolCalls ?? nativeRecord.tool_calls,
+  );
+  const responseText =
+    typeof nativeRecord.text === "string"
+      ? nativeRecord.text
+      : typeof nativeResult === "string"
+        ? nativeResult
+        : "";
+  const toolCalls = nativeToolCalls.map((call, index) => {
+    let args: Record<string, unknown> = {};
+    try {
+      const parsed = JSON.parse(call.function.arguments || "{}");
+      if (isRecord(parsed)) args = parsed;
+    } catch {
+      args = {};
+    }
+    return {
+      id: call.id || `call_${index}`,
+      name: call.function.name,
+      arguments: args,
+    };
+  });
+
+  return {
+    text: responseText,
+    toolCalls,
+    usage: summarizeBenchmarkTurnUsage(turnUsageBuffer),
+  };
+}
+
+export function isBenchmarkServerEntrypoint(
+  argvEntry = process.argv[1],
+  moduleUrl = import.meta.url,
+): boolean {
+  if (!argvEntry) return false;
+  return pathToFileURL(path.resolve(argvEntry)).href === moduleUrl;
 }
 
 export function envFlag(name: string): boolean {

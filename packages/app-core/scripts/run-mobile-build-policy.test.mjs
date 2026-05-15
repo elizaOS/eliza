@@ -9,6 +9,7 @@ import {
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_PERMISSIONS,
+  allowsAndroidCleartextForMobilePolicy,
   applyAndroidCleartextPolicy,
   configureIosAppStoreBuildDefaults,
   IOS_AGENT_RUNTIME_ASSETS,
@@ -17,6 +18,7 @@ import {
   resolveIosAgentRuntimeAssetPlan,
   resolveIosBuildTarget,
   resolveIosCustomPods,
+  resolveMobileBuildEnv,
   resolveMobileBuildPolicy,
 } from "./run-mobile-build.mjs";
 
@@ -150,6 +152,33 @@ test("Android manifest cleartext policy is inserted when absent", () => {
   );
 });
 
+test("Android cleartext policy follows local-agent runtime targets only", () => {
+  assert.equal(allowsAndroidCleartextForMobilePolicy("android"), true);
+  assert.equal(allowsAndroidCleartextForMobilePolicy("android-system"), true);
+  assert.equal(allowsAndroidCleartextForMobilePolicy("android-cloud"), false);
+  assert.equal(
+    allowsAndroidCleartextForMobilePolicy("android-cloud-debug"),
+    false,
+  );
+});
+
+test("resolveMobileBuildEnv exposes a shared mobile runtime mode for native shells", () => {
+  const androidCloud = resolveMobileBuildEnv("android-cloud", {});
+  assert.equal(androidCloud.ELIZA_CAPACITOR_BUILD_TARGET, "android");
+  assert.equal(androidCloud.VITE_ELIZA_ANDROID_RUNTIME_MODE, "cloud");
+  assert.equal(androidCloud.VITE_ELIZA_MOBILE_RUNTIME_MODE, "cloud");
+  assert.equal(androidCloud.VITE_ELIZA_RUNTIME_MODE, "cloud");
+  assert.equal(androidCloud.ELIZA_RELEASE_AUTHORITY, "google-play");
+
+  const iosStore = resolveMobileBuildEnv("ios", {});
+  assert.equal(iosStore.ELIZA_CAPACITOR_BUILD_TARGET, "ios");
+  assert.equal(iosStore.VITE_ELIZA_IOS_RUNTIME_MODE, "cloud-hybrid");
+  assert.equal(iosStore.VITE_ELIZA_MOBILE_RUNTIME_MODE, "cloud-hybrid");
+  assert.equal(iosStore.VITE_ELIZA_RUNTIME_MODE, "local-safe");
+  assert.equal(iosStore.ELIZA_RELEASE_AUTHORITY, "apple-app-store");
+  assert.equal(iosStore.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE, "1");
+});
+
 test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () => {
   assert.deepEqual(resolveMobileBuildPolicy("ios"), {
     capacitorTarget: "ios",
@@ -173,6 +202,7 @@ test("resolveMobileBuildPolicy keeps App Store iOS local-runtime capable", () =>
 
 test("configureIosAppStoreBuildDefaults bakes the same local-safe runtime env", () => {
   const keys = [
+    "ELIZA_CAPACITOR_BUILD_TARGET",
     "ELIZA_BUILD_VARIANT",
     "ELIZA_RELEASE_AUTHORITY",
     "ELIZA_IOS_RUNTIME_MODE",
@@ -181,6 +211,8 @@ test("configureIosAppStoreBuildDefaults bakes the same local-safe runtime env", 
     "RUNTIME_MODE",
     "LOCAL_RUNTIME_MODE",
     "VITE_ELIZA_RUNTIME_MODE",
+    "VITE_ELIZA_MOBILE_RUNTIME_MODE",
+    "VITE_ELIZA_IOS_FULL_BUN_AVAILABLE",
   ];
   const previous = Object.fromEntries(
     keys.map((key) => [key, process.env[key]]),
@@ -190,6 +222,7 @@ test("configureIosAppStoreBuildDefaults bakes the same local-safe runtime env", 
       delete process.env[key];
     }
     configureIosAppStoreBuildDefaults();
+    assert.equal(process.env.ELIZA_CAPACITOR_BUILD_TARGET, "ios");
     assert.equal(process.env.ELIZA_BUILD_VARIANT, "store");
     assert.equal(process.env.ELIZA_RELEASE_AUTHORITY, "apple-app-store");
     assert.equal(process.env.ELIZA_IOS_RUNTIME_MODE, "cloud-hybrid");
@@ -198,6 +231,8 @@ test("configureIosAppStoreBuildDefaults bakes the same local-safe runtime env", 
     assert.equal(process.env.RUNTIME_MODE, "local-safe");
     assert.equal(process.env.LOCAL_RUNTIME_MODE, "local-safe");
     assert.equal(process.env.VITE_ELIZA_RUNTIME_MODE, "local-safe");
+    assert.equal(process.env.VITE_ELIZA_MOBILE_RUNTIME_MODE, "cloud-hybrid");
+    assert.equal(process.env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE, "1");
   } finally {
     for (const [key, value] of Object.entries(previous)) {
       if (value == null) delete process.env[key];

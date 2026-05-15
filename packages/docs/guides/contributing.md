@@ -11,7 +11,7 @@ Welcome to Eliza! This guide covers development environment setup and contributi
 
 1. [Getting Started](#getting-started)
 2. [Development Environment](#development-environment)
-3. [Project Structure](#project-structure)
+3. [Monorepo Structure](#monorepo-structure)
 4. [Building and Testing](#building-and-testing)
 5. [Code Style](#code-style)
 6. [Pull Request Process](#pull-request-process)

@@ -151,7 +151,7 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
     assert vbq_command[:3] == [vbq_command[0], "-m", "elizaos_voicebench"]
     assert vbq_command[vbq_command.index("--agent") + 1] == "openclaw"
     assert vbq_command[vbq_command.index("--suite") + 1] == "openbookqa"
-    assert "--fixtures" in vbq_command
+    assert "--fixtures" not in vbq_command
     assert voicebench_quality.extract_score(
         {"score": 0.75, "n": 2, "per_suite": {"openbookqa": 0.75}}
     ).score == 0.75
@@ -164,11 +164,27 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
     )
     assert vab_command[:3] == [vab_command[0], "-m", "elizaos_voiceagentbench"]
     assert vab_command[vab_command.index("--agent") + 1] == "eliza"
-    assert "--mock" in vab_command
+    assert "--mock" not in vab_command
     assert "--no-judge" in vab_command
     assert voiceagentbench.extract_score(
         {"pass_at_1": 1.0, "tasks": [{"task_id": "t1"}]}
     ).score == 1.0
+
+
+def test_visualwebbench_registry_uses_current_sample_flag(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "visualwebbench"
+    ]
+
+    command = entry.build_command(
+        tmp_path / "vwb",
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "eliza", "max_tasks": 1},
+    )
+
+    assert "--use-sample-tasks" in command
+    assert "--fixture" not in command
+    assert "--hf" not in command
 
 
 def test_eliza_1_score_rejects_all_adapter_errors(tmp_path: Path) -> None:
@@ -238,10 +254,7 @@ def test_hermes_native_envs_are_hermes_only() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
 
     for benchmark_id in (
-        "hermes_tblite",
-        "hermes_terminalbench_2",
         "hermes_yc_bench",
-        "hermes_swe_env",
     ):
         adapter = adapters[benchmark_id]
         assert adapter.directory == "hermes-adapter"
@@ -250,11 +263,23 @@ def test_hermes_native_envs_are_hermes_only() -> None:
         assert _is_harness_compatible(adapter, "eliza") is False
         assert _is_harness_compatible(adapter, "openclaw") is False
 
+    for benchmark_id in (
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_swe_env",
+    ):
+        adapter = adapters[benchmark_id]
+        assert adapter.directory == "hermes-adapter"
+        assert adapter.agent_compatibility == ()
+        assert _is_harness_compatible(adapter, "hermes") is False
+        assert _is_harness_compatible(adapter, "eliza") is False
+        assert _is_harness_compatible(adapter, "openclaw") is False
+
 
 def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
 
-    for benchmark_id in ("openclaw_bench", "interrupt_bench"):
+    for benchmark_id in ("openclaw_bench", "interrupt_bench", "mmlu", "humaneval"):
         adapter = adapters[benchmark_id]
         assert adapter.agent_compatibility == ()
         assert _is_harness_compatible(adapter, "eliza") is False
@@ -265,7 +290,7 @@ def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
 def test_eliza_only_registry_bridges_are_not_published_as_cross_harness_rows() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
 
-    for benchmark_id in ("mint", "realm"):
+    for benchmark_id in ("mint", "realm", "gaia", "gaia_orchestrated", "webshop"):
         adapter = adapters[benchmark_id]
         assert adapter.agent_compatibility == ("eliza",)
         assert _is_harness_compatible(adapter, "eliza") is True
@@ -298,6 +323,44 @@ def test_gaia_orchestrated_registry_uses_orchestrated_entrypoint(tmp_path: Path)
     ]
     assert "--strict-capabilities" in command
     assert entry.locate_result(tmp_path) == tmp_path / "gaia-orchestrated-latest.json"
+    with pytest.raises(ValueError, match="native hermes harness adapter"):
+        entry.build_command(
+            tmp_path,
+            ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+            {"agent": "hermes"},
+        )
+
+
+def test_gaia_and_webshop_registry_block_mislabeled_harnesses(tmp_path: Path) -> None:
+    entries = {item.id: item for item in get_benchmark_registry(_workspace_root())}
+
+    for benchmark_id in ("gaia", "webshop"):
+        with pytest.raises(ValueError, match="native openclaw harness adapter"):
+            entries[benchmark_id].build_command(
+                tmp_path,
+                ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+                {"agent": "openclaw"},
+            )
+
+
+def test_clawbench_registry_routes_selected_harness_to_multi_harness_runner(
+    tmp_path: Path,
+) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "clawbench"
+    ]
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "hermes", "scenario": "client_escalation"},
+    )
+
+    assert command[command.index("-m") + 1] == "clawbench.multi_harness_runner"
+    assert command[command.index("--harness") + 1] == "hermes"
+    assert command[command.index("--scenario") + 1] == "client_escalation"
+    assert command[command.index("--model") + 1] == "gpt-oss-120b"
+    assert entry.locate_result(tmp_path) == tmp_path / "clawbench-result.json"
 
 
 def test_mint_registry_distinguishes_harness_bridge_from_direct_provider(
@@ -341,7 +404,8 @@ def test_realm_registry_smoke_bounds_and_blocks_mislabeled_harness(
         {"agent": "eliza", "max_tasks": 1, "max_steps": 3, "timeout": 60000},
     )
 
-    assert command[command.index("--categories") + 1] == "sequential"
+    assert "--use-sample-tasks" in command
+    assert command[command.index("--execution-model") + 1] == "sequential"
     assert command[command.index("--max-tasks") + 1] == "1"
     assert command[command.index("--max-steps") + 1] == "3"
     assert command[command.index("--timeout") + 1] == "60000"
@@ -486,9 +550,10 @@ def test_taubench_adapter_defaults_to_single_sample_task(tmp_path: Path) -> None
 
     command = adapter.command_builder(ctx, adapter)
 
-    assert command[command.index("--max-tasks") + 1] == "1"
-    assert "--sample" in command
-    assert "--no-trajectories" in command
+    assert command[command.index("--max-tasks-per-domain") + 1] == "1"
+    assert "--use-sample-tasks" in command
+    assert "--no-llm-judge" in command
+    assert command[command.index("--agent-max-turns") + 1] == "10"
 
 
 def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> None:
@@ -795,7 +860,34 @@ def test_compactbench_adapter_uses_repaired_scorer_by_default(tmp_path: Path) ->
     assert command[command.index("--valid-hit-output") + 1] == str(
         tmp_path / "out" / "compactbench-results.valid-hits.jsonl"
     )
-    assert adapter.agent_compatibility == ("eliza",)
+    assert adapter.agent_compatibility == ("eliza", "hermes")
+
+
+def test_compactbench_adapter_selects_hermes_compactor_for_hermes_harness(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    adapter = adapters["compactbench"]
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "packages" / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=RunRequest(
+            benchmarks=("compactbench",),
+            agent="hermes",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={"case_count": 1, "drift_cycles": 1, "score": True},
+        ),
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert command[command.index("--method") + 1] == (
+        "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
+    )
 
 
 def test_compactbench_score_prefers_repaired_valid_hit_analysis(tmp_path: Path) -> None:
@@ -957,7 +1049,7 @@ def test_compactbench_score_requires_repaired_valid_hit_analysis(tmp_path: Path)
         raise AssertionError("expected missing repaired analysis to fail scoring")
 
 
-def test_compare_label_remains_incompatible_with_eliza_only_compactbench() -> None:
+def test_compare_label_runs_multi_harness_compactbench() -> None:
     adapter = discover_adapters(_workspace_root()).adapters["compactbench"]
     request = RunRequest(
         benchmarks=("compactbench",),
@@ -970,9 +1062,9 @@ def test_compare_label_remains_incompatible_with_eliza_only_compactbench() -> No
 
     effective = _effective_request(adapter, request)
 
-    assert adapter.agent_compatibility == ("eliza",)
+    assert adapter.agent_compatibility == ("eliza", "hermes")
     assert effective.agent == "compare"
-    assert _is_harness_compatible(adapter, "compare") is False
+    assert _is_harness_compatible(adapter, "compare") is True
 
 
 def test_compare_label_still_runs_multi_harness_adapters() -> None:
@@ -1321,7 +1413,15 @@ def test_terminalbench_no_docker_uses_local_sandbox_not_dry_run(tmp_path: Path) 
     assert "--local-sandbox" in command
     assert "--dry-run" not in command
     assert "--model-provider" not in command
+    assert command[command.index("--agent-harness") + 1] == "eliza"
     assert command[command.index("--model") + 1] == "gpt-oss-120b"
+
+    hermes_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "hermes", "no_docker": True, "max_tasks": 1},
+    )
+    assert hermes_command[hermes_command.index("--agent-harness") + 1] == "hermes"
 
 
 def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:

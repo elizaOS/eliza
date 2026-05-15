@@ -19,6 +19,9 @@ sys.path.insert(0, str(HERE / "training"))
 
 import model_registry  # noqa: E402  (after sys.path tweak)
 
+ELIZA_1_LONG_CONTEXT_VARIANTS: dict[str, int] = {
+    "eliza-1-27b-256k": 262_144,
+}
 
 def main() -> int:
     out: dict[str, dict[str, object]] = {}
@@ -29,15 +32,22 @@ def main() -> int:
         out[entry.eliza_short_name] = {
             "eliza_short_name": entry.eliza_short_name,
             "eliza_repo_id": repo,
-            "gguf_repo_id": f"{repo}-gguf" if repo else "",
+            "gguf_repo_id": repo,
             "base_hf_id": entry.hf_id,
             "tier": entry.tier.value,
             "inference_max_context": entry.infer_max_in + entry.infer_max_out,
+            "quantization_after": list(entry.quantization_after),
         }
+        if entry.eliza_short_name == "eliza-1-27b":
+            for variant, context in ELIZA_1_LONG_CONTEXT_VARIANTS.items():
+                out[variant] = {
+                    **out[entry.eliza_short_name],
+                    "eliza_short_name": variant,
+                    "inference_max_context": context,
+                }
     json.dump(out, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

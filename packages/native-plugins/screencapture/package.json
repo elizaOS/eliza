@@ -27,13 +27,10 @@
     "android/build.gradle",
     "dist/",
     "ios/Sources/",
-    "ios/Plugin.xcodeproj/",
-    "*.podspec",
-    "dist"
+    "*.podspec"
   ],
   "author": "elizaOS",
   "license": "MIT",
-  "dependencies": {},
   "repository": {
     "type": "git",
     "url": "https://github.com/elizaOS/eliza"

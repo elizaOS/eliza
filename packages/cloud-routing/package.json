@@ -25,14 +25,27 @@
     "dist"
   ],
   "exports": {
-    ".": "./dist/index.js",
-    "./package.json": "./package.json",
-    "./*.css": "./dist/*.css",
-    "./*": {
-      "types": "./dist/*.d.ts",
-      "import": "./dist/*.js",
-      "default": "./dist/*.js"
-    }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./features": {
+      "types": "./dist/features.d.ts",
+      "import": "./dist/features.js",
+      "default": "./dist/features.js"
+    },
+    "./resolve": {
+      "types": "./dist/resolve.d.ts",
+      "import": "./dist/resolve.js",
+      "default": "./dist/resolve.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js",
+      "default": "./dist/types.js"
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
     "clean": "rm -rf dist",
@@ -54,8 +67,5 @@
     "@types/node": "^25.0.3",
     "typescript": "^6.0.3",
     "vitest": "^4.0.0"
-  },
-  "peerDependencies": {
-    "zod": "^4.4.3"
   }
 }

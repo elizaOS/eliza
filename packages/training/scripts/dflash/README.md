@@ -13,7 +13,7 @@ The catalog at `packages/shared/src/local-inference/catalog.ts`
 Today this is:
 
 ```
-0_8b, 2b, 4b, 9b, 27b, 27b-256k, 27b-1m
+0_8b, 2b, 4b, 9b, 27b, 27b-256k
 ```
 
 These IDs name the **target** text models — the bundles a user downloads

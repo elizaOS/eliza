@@ -291,10 +291,8 @@ interface SolanaWeb3Module {
   };
 }
 
-const SOLANA_WEB3_PACKAGE: string = "@solana/web3.js";
-
 async function loadSolanaWeb3(): Promise<SolanaWeb3Module> {
-  return (await import(SOLANA_WEB3_PACKAGE)) as SolanaWeb3Module;
+  return (await import("@solana/web3.js")) as SolanaWeb3Module;
 }
 
 function normalizeSolanaCluster(value: unknown): SolanaCluster {

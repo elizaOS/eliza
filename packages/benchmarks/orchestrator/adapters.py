@@ -65,8 +65,10 @@ IGNORED_BENCHMARK_DIRS = {
     "swe-bench-workspace",
     "tests",
     "viewer",
-    # Standalone package; not yet wired as an orchestrator adapter.
+    # Standalone packages; not yet wired as orchestrator adapters.
+    "three-agent-dialogue",
     "voice-emotion",
+    "voice-speaker-validation",
 }
 
 
@@ -75,10 +77,10 @@ IGNORED_BENCHMARK_DIRS = {
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
 AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
-    # CompactBench currently exercises elizaOS conversation-compactor
-    # implementations through a Python bridge. Hermes/OpenClaw rows would be
-    # misleading labels unless explicit per-agent compactor methods are added.
-    "compactbench": ("eliza",),
+    # CompactBench has explicit Eliza and Hermes compactor methods. OpenClaw is
+    # still excluded because its adapter intentionally fails closed until a
+    # native transcript-in/artifact-out compaction API exists.
+    "compactbench": ("eliza", "hermes"),
     # LOCA has real Eliza and Hermes proxy paths. OpenClaw's current LOCA path
     # is an explicit provider-level smoke mode, not native OpenClaw agent
     # parity, so keep it out of cross-agent result matrices.
@@ -100,6 +102,12 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # VoiceBench currently instantiates the local TypeScript runtime directly;
     # Hermes/OpenClaw labels run the same mock voice path with zero LLM calls.
     "voicebench": ("eliza",),
+    # GAIA and WebShop route through the Eliza TypeScript benchmark bridge.
+    # Their CLIs may accept provider/model hints, but they do not select native
+    # Hermes/OpenClaw agent loops.
+    "gaia": ("eliza",),
+    "gaia_orchestrated": ("eliza",),
+    "webshop": ("eliza",),
     # eliza-1 bench compares local eliza-1 decode modes / Cerebras reference
     # mode, not Hermes/OpenClaw agent harnesses.
     "eliza_1": ("eliza",),
@@ -115,11 +123,15 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # Eliza/Hermes/OpenClaw that all exercised the same direct-provider path.
     "openclaw_bench": (),
     "interrupt_bench": (),
+    "mmlu": (),
+    "humaneval": (),
 }
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
     if benchmark_id == "voicebench" and not os.environ.get("GROQ_API_KEY"):
+        return ()
+    if benchmark_id == "voicebench_quality" and not os.environ.get("GROQ_API_KEY"):
         return ()
     if benchmark_id == "hermes_swe_env":
         return ()
@@ -600,6 +612,14 @@ def _command_trust(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str
 
 
 def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    agent = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+        or ""
+    ).strip().lower()
+    if agent in {"hermes", "openclaw"}:
+        raise ValueError(f"webshop: native {agent} harness adapter is not implemented")
     args = [
         sys.executable,
         "-m",
@@ -1355,10 +1375,20 @@ def _score_from_framework(path: Path) -> ScoreSummary:
 
 
 def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
+    default_method = (
+        "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
+        if harness == "hermes"
+        else "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
+    )
     method = str(
         ctx.request.extra_config.get(
             "method",
-            "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor",
+            default_method,
         )
     )
     compactbench_root = Path(adapter.cwd)
@@ -1864,6 +1894,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "tau_bench": {
             "max_tasks": 1,
             "sample": True,
+            "no_llm_judge": True,
+            "agent_max_turns": 10,
         },
         "terminal_bench": {
             "max_tasks": 1,
@@ -1930,7 +1962,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "voicebench_quality": {
             "suite": "openbookqa",
             "limit": 2,
-            "fixtures": True,
         },
         "voiceagentbench": {
             "suite": "single",
@@ -1938,6 +1969,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "seeds": 1,
             "mock": True,
             "no_judge": True,
+            "data_path": "fixtures/test_tasks.jsonl",
         },
     }
     registry_dir_map = {

@@ -42,7 +42,20 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "9b",
     "27b",
     "27b-256k",
-    "27b-1m",
+)
+ELIZA_1_DFLASH_TIERS: Final[tuple[str, ...]] = (
+    "0_8b",
+    "2b",
+    "4b",
+    "9b",
+    "27b",
+    "27b-256k",
+)
+ELIZA_1_VISION_TIERS: Final[tuple[str, ...]] = (
+    "4b",
+    "9b",
+    "27b",
+    "27b-256k",
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -143,10 +156,6 @@ CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "Qwen/Qwen3.6-27B",
         "unsloth/Qwen3.6-27B-GGUF",
     ),
-    "27b-1m": (
-        "Qwen/Qwen3.6-27B",
-        "unsloth/Qwen3.6-27B-GGUF",
-    ),
 }
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -180,13 +189,6 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "dflash",
         "turbo3_tcq",
     ),
-    "27b-1m": (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
-        "dflash",
-        "turbo3_tcq",
-    ),
 }
 
 RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
@@ -204,7 +206,6 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
-    "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
@@ -214,33 +215,30 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
-    "27b-1m": "Q8_0",
 }
 
 # Full K-quant ladder published per tier for the OmniVoice TTS GGUF. Mirror
 # of ``OMNIVOICE_QUANT_LADDER_BY_TIER`` in
 # ``packages/shared/src/local-inference/catalog.ts``. The downloader picks
 # the appropriate level from this ladder at install time based on the
-# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Small tiers keep
-# the OmniVoice ladder narrow and retain Kokoro as their low-latency fallback.
+# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Kokoro-only
+# small tiers publish an empty OmniVoice ladder.
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
-    "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
-    "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "0_8b": (),
+    "2b": (),
+    "4b": (),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
-    "27b-1m": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("omnivoice", "kokoro"),
-    "2b": ("omnivoice", "kokoro"),
-    "4b": ("omnivoice", "kokoro"),
-    "9b": ("omnivoice", "kokoro"),
+    "0_8b": ("kokoro",),
+    "2b": ("kokoro",),
+    "4b": ("kokoro",),
+    "9b": ("kokoro", "omnivoice"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
-    "27b-1m": ("omnivoice",),
 }
 
 KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
@@ -248,7 +246,6 @@ KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
     "kokoro/tokenizer.json",
     "kokoro/voices/af_bella.bin",
 )
-
 
 def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
@@ -284,7 +281,6 @@ _DATETIME_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$"
 )
 
-
 # Filename ctx-suffix parser, e.g. ``64k`` → 65536, ``256k`` → 262144,
 # ``1m`` → 1048576. Lives here (not in the publish module) because both the
 # publish gate and the manifest builder must agree byte-for-byte on what
@@ -292,7 +288,6 @@ _DATETIME_RE = re.compile(
 # (× 1024) or ``m`` (× 1024²).
 _CTX_SUFFIX_RE = re.compile(r"^(\d+)([km])$")
 _CTX_SUFFIX_SCALE: Final[Mapping[str, int]] = {"k": 1024, "m": 1024 * 1024}
-
 
 def parse_ctx_string(s: str) -> int:
     """Return the integer context length encoded by a ``<num>k``/``<num>m`` suffix.
@@ -319,7 +314,6 @@ def parse_ctx_string(s: str) -> int:
         )
     return int(m.group(1)) * _CTX_SUFFIX_SCALE[m.group(2)]
 
-
 def parse_text_ctx_from_filename(p: Path) -> int | None:
     """Pull a `<num>k` token out of a text variant's filename stem.
 
@@ -335,7 +329,6 @@ def parse_text_ctx_from_filename(p: Path) -> int | None:
             continue
     return None
 
-
 class Eliza1ManifestError(ValueError):
     """Raised when manifest input violates schema or §3/§6 contract.
 
@@ -348,11 +341,9 @@ class Eliza1ManifestError(ValueError):
         super().__init__(f"Invalid Eliza-1 manifest:\n  - {joined}")
         self.errors: tuple[str, ...] = tuple(errors)
 
-
 # ---------------------------------------------------------------------------
 # Inputs to build_manifest()
 # ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True, slots=True)
 class FileEntry:
@@ -362,12 +353,10 @@ class FileEntry:
     sha256: str
     ctx: int | None = None
 
-
 @dataclass(frozen=True, slots=True)
 class LineageEntry:
     base: str
     license: str
-
 
 @dataclass(frozen=True, slots=True)
 class KernelVerification:
@@ -387,7 +376,6 @@ class KernelVerification:
     device: str | None = None
     caveat: str | None = None
 
-
 # Recipe-level kernel layout pins. These are the `kernel_manifest` fragments
 # the quantization recipes emit (see
 # ``packages/training/scripts/quantization/_kernel_manifest.py`` and
@@ -402,7 +390,6 @@ _RECIPE_KERNEL_MANIFEST_PER_TARGET_FIELDS: Final[tuple[str, ...]] = (
     "codebook_hash",
     "per_block_tolerance",
 )
-
 
 def merge_kernel_manifest_fragments(
     fragments: Iterable[Mapping[str, Any]],
@@ -471,15 +458,12 @@ def merge_kernel_manifest_fragments(
         raise Eliza1ManifestError(errors)
     return merged
 
-
 # ---------------------------------------------------------------------------
 # Validator
 # ---------------------------------------------------------------------------
 
-
 def _is_object(x: Any) -> bool:
     return isinstance(x, dict)
-
 
 def validate_manifest(
     manifest: Mapping[str, Any],
@@ -550,8 +534,9 @@ def validate_manifest(
     if not _is_object(lineage):
         errors.append("lineage: must be an object")
     else:
-        # Required lineage entries.
-        for slot in ("text", "voice", "drafter"):
+        # Required lineage entries. DFlash/drafter is tier-gated below so
+        # 0_8b can publish as a text/voice bundle with no speculative drafter.
+        for slot in ("text", "voice"):
             entry = lineage.get(slot)
             if not _is_object(entry):
                 errors.append(f"lineage.{slot}: must be an object")
@@ -561,7 +546,7 @@ def validate_manifest(
             if not entry.get("license"):
                 errors.append(f"lineage.{slot}.license: required")
         # Wave-6 optional lineage entries — must validate when present.
-        for slot in ("asr", "embedding", "vision", "vad", "wakeword"):
+        for slot in ("asr", "drafter", "embedding", "vision", "vad", "wakeword"):
             entry = lineage.get(slot)
             if entry is None:
                 continue
@@ -578,8 +563,8 @@ def validate_manifest(
     if not _is_object(files):
         errors.append("files: must be an object")
     else:
-        kinds_min1 = ("text", "voice", "dflash", "cache")
-        kinds_optional = ("asr", "vision")
+        kinds_min1 = ("text", "voice", "cache")
+        kinds_optional = ("asr", "dflash", "vision")
         # Wave-6 fully-optional file slots: missing key = "this bundle
         # does not ship this component". The validator does not require
         # an empty array for absence (TS schema makes the array itself
@@ -943,11 +928,23 @@ def validate_manifest(
 
     # ── §3/§6 contract: required-kernel coverage ────────────────────────
     declared_set = set(declared_required)
+    tier_requires_dflash = tier in ELIZA_1_DFLASH_TIERS
+    tier_requires_vision = tier in ELIZA_1_VISION_TIERS
+    dflash_files = files.get("dflash") or []
+    vision_files = files.get("vision") or []
     for k in REQUIRED_KERNELS_BY_TIER[tier]:
         if k not in declared_set:
             errors.append(
                 f"kernels.required: missing required kernel for tier {tier}: {k}"
             )
+    if tier_requires_dflash and not dflash_files:
+        errors.append(f"files.dflash: required for tier {tier}")
+    if not tier_requires_dflash and dflash_files:
+        errors.append(f"files.dflash: not supported for tier {tier}")
+    if tier_requires_vision and not vision_files:
+        errors.append(f"files.vision: required for tier {tier}")
+    if not tier_requires_vision and vision_files:
+        errors.append(f"files.vision: not supported for tier {tier}")
 
     must_have_recipe_manifest = require_publish_ready or manifest["defaultEligible"]
     if must_have_recipe_manifest:
@@ -1027,6 +1024,10 @@ def validate_manifest(
             errors.append(f"lineage.{slot}: required when files.{slot} is non-empty")
         if component_lineage and not component_files:
             errors.append(f"files.{slot}: required when lineage.{slot} is present")
+    if dflash_files and not lineage.get("drafter"):
+        errors.append("lineage.drafter: required when files.dflash is non-empty")
+    if lineage.get("drafter") and not dflash_files:
+        errors.append("files.dflash: required when lineage.drafter is present")
 
     if files.get("asr"):
         gate = evals.get("asrWer")
@@ -1066,8 +1067,11 @@ def validate_manifest(
     # a default-eligible bundle must prove speculative decoding was measured
     # and passed. Keep this in lockstep with the TS runtime validator.
     dflash_gate = evals.get("dflash")
+    requires_dflash_eval = (
+        tier_requires_dflash or bool(dflash_files) or "dflash" in declared_set
+    )
     if not _is_object(dflash_gate):
-        if manifest["defaultEligible"]:
+        if manifest["defaultEligible"] and requires_dflash_eval:
             errors.append("evals.dflash: required when defaultEligible=true")
     else:
         if dflash_gate["passed"] and (
@@ -1077,7 +1081,7 @@ def validate_manifest(
             errors.append(
                 "evals.dflash: passed=true but acceptanceRate/speedup is null"
             )
-        if manifest["defaultEligible"]:
+        if manifest["defaultEligible"] and requires_dflash_eval:
             if not dflash_gate["passed"]:
                 readiness_errors.append(
                     "evals.dflash.passed: false for defaultEligible manifest"
@@ -1097,7 +1101,9 @@ def validate_manifest(
     if _is_object(provenance) and provenance.get("releaseState") == "base-v1":
         sources = provenance.get("sourceModels")
         if _is_object(sources):
-            required_slots = ["text", "voice", "drafter"]
+            required_slots = ["text", "voice"]
+            if dflash_files:
+                required_slots.append("drafter")
             for slot in ("asr", "vad", "embedding", "vision"):
                 if files.get(slot):
                     required_slots.append(slot)
@@ -1119,7 +1125,6 @@ def validate_manifest(
         )
 
     return tuple(errors)
-
 
 def canonical_qwen_source_repo_error(
     slot: str,
@@ -1147,18 +1152,15 @@ def canonical_qwen_source_repo_error(
         f"got {repo!r}"
     )
 
-
 # ---------------------------------------------------------------------------
 # Builder
 # ---------------------------------------------------------------------------
-
 
 def _file_dict(entry: FileEntry) -> dict[str, Any]:
     out: dict[str, Any] = {"path": entry.path, "sha256": entry.sha256}
     if entry.ctx is not None:
         out["ctx"] = entry.ctx
     return out
-
 
 def _verified_backend_dict(v: KernelVerification) -> dict[str, Any]:
     out: dict[str, Any] = {
@@ -1171,7 +1173,6 @@ def _verified_backend_dict(v: KernelVerification) -> dict[str, Any]:
     if v.caveat is not None:
         out["caveat"] = v.caveat
     return out
-
 
 def build_manifest(
     *,
@@ -1379,7 +1380,6 @@ def build_manifest(
         raise Eliza1ManifestError(errors)
     return manifest
 
-
 def write_manifest(
     manifest: Mapping[str, Any],
     destination: Path,
@@ -1402,11 +1402,9 @@ def write_manifest(
     destination.write_text(json.dumps(manifest, indent=2, sort_keys=False) + "\n")
     return destination
 
-
 # ---------------------------------------------------------------------------
 # Loader helpers (used by publish_*.py to assemble inputs from JSON files)
 # ---------------------------------------------------------------------------
-
 
 def load_kernel_verification_reports(
     paths: Mapping[str, Path],
@@ -1440,7 +1438,6 @@ def load_kernel_verification_reports(
             caveat=data.get("caveat"),
         )
     return out
-
 
 def file_entries_from_records(
     records: Iterable[Mapping[str, Any]],

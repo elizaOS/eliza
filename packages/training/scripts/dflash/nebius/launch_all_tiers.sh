@@ -36,7 +36,6 @@
 #
 # Tier-to-hardware mapping (1 GPU unless noted):
 #   0_8b  2b  4b  9b  → 1× H200 each
-#   27b  27b-256k  27b-1m  → 2× H200 each (target + student don't fit on 1)
 #
 # All 7 tiers are listed in canonical order matching the tier-ID table in
 # ELIZA_1_GGUF_READINESS.md and packages/shared/src/local-inference/catalog.ts.
@@ -55,7 +54,6 @@ ALL_TIERS=(
   "9b:1.5:5:8:4:1.5e-4"
   "27b:3.0:5:8:4:1e-4"
   "27b-256k:3.0:5:8:4:1e-4"
-  "27b-1m:3.0:5:8:4:1e-4"
 )
 
 # --------------------------------------------------------------------------

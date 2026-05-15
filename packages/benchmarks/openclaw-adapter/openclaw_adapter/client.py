@@ -439,10 +439,14 @@ class OpenClawClient:
 
     def is_ready(self) -> bool:
         """Cheap synchronous readiness check."""
+        if self.direct_openai_compatible:
+            return True
         return self.health().get("status") == "ready"
 
     def wait_until_ready(self, timeout: float = 60.0, poll: float = 1.0) -> None:
         """Block until the binary becomes available or *timeout* elapses."""
+        if self.direct_openai_compatible:
+            return
         deadline = time.monotonic() + float(timeout)
         last_err: object = f"binary missing at {self.binary_path}"
         while time.monotonic() < deadline:

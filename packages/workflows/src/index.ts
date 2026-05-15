@@ -1,7 +1,8 @@
 // @elizaos/workflows
 //
 // Public type surface consumed by @elizaos/plugin-workflow.
-// This package is intentionally types-only — no runtime exports, no helpers.
+// This package is intentionally contract-only: one runtime const plus types,
+// no helpers.
 //
 // The five top-level types (INode, INodeCredentialsDetails, INodeProperties,
 // INodeTypeDescription, IWorkflowSettings) and their transitive type closure

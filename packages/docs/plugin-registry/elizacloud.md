@@ -39,5 +39,5 @@ export ELIZAOS_CLOUD_ENABLED=true
 
 ## Related
 
-- [Secrets (runtime)](/runtime/services#secrets-secrets-service) — Manage sensitive configuration
+- [Secrets API](/rest/secrets) — Manage sensitive configuration
 - [Webhooks Plugin](/plugin-registry/webhooks) — Receive cloud event callbacks

@@ -25,3 +25,26 @@ Most scripts here are invoked from **root `package.json`** (`bun run …`). **Ap
 | `vite-renderer-dist-stale.mjs` | Cheap mtime check so `vite build` is skipped when `apps/app/dist` is still fresh — avoids redundant multi‑minute production builds on restart. |
 | `kill-ui-listen-port.mjs` | Clears the UI port before Vite binds; Unix uses `lsof`, Windows uses `netstat` + `taskkill` because `lsof` is not standard there. |
 | `kill-process-tree.mjs` | Kills **only** the PID tree rooted at each spawned child — avoids `pkill bun` style collateral damage to other workspaces. |
+
+## Mobile: `run-mobile-build.mjs`
+
+`run-mobile-build.mjs` is the canonical Android/iOS build policy entry.
+It resolves each target through `resolveMobileBuildPolicy()` and stamps
+the shared renderer env with `resolveMobileBuildEnv()`, including
+`VITE_ELIZA_MOBILE_RUNTIME_MODE`.
+
+The store targets are fail-closed:
+
+- `android-cloud` is a Play Store thin client. It disables global
+  cleartext, strips local runtime assets, and removes native plugins that
+  can expose the on-device agent surface.
+- `ios` is an App Store cloud-hybrid build. It keeps the no-JIT local
+  runtime path when the full Bun engine is present, but foreground
+  traffic goes through `eliza-local-agent://ipc` and native IPC, not a
+  WebView-visible localhost listener.
+
+For local/sideload targets, the UI may keep a stable local-agent identity
+for persisted profiles, but new mobile API paths should be implemented
+behind the Capacitor/native bridge (`Agent.request` on Android,
+`ElizaBunRuntime.call("http_request")` on iOS). Do not add direct
+renderer fetches to `127.0.0.1:31337` as a mobile dependency.

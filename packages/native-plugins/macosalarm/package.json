@@ -21,8 +21,7 @@
     "dist/",
     "swift-helper/",
     "scripts/",
-    "bin/",
-    "dist"
+    "bin/"
   ],
   "engines": {
     "node": ">=24.0.0"

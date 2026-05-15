@@ -69,12 +69,10 @@ logging.basicConfig(
 )
 log = logging.getLogger("emit_eliza1_catalog")
 
-
 # The canonical catalog this script targets. Both the server
 # (``@elizaos/app-core``) and the UI client (``@elizaos/ui``) import
 # ``MODEL_CATALOG`` from here; the old app-core path is a re-export shim.
 CANONICAL_CATALOG_PATH = "packages/shared/src/local-inference/catalog.ts"
-
 
 # Heuristic mapping from base model name → catalog metadata. New
 # entries go here when adding a new optimization target.
@@ -133,7 +131,7 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 96,
         "size_gb_estimate": 16.8,
     },
-    "elizaos/eliza-1/bundles/27b-1m": {
+    "elizaos/eliza-1/bundles": {
         "params": "27B",
         "context_length": 1048576,
         "tokenizer_family": "eliza1",
@@ -143,7 +141,6 @@ KNOWN_BASE_MODELS = {
         "size_gb_estimate": 16.8,
     },
 }
-
 
 @dataclass(frozen=True)
 class Eliza1CatalogEntry:
@@ -216,14 +213,12 @@ class Eliza1CatalogEntry:
             "  },\n"
         )
 
-
 def _slug_from_repo(hf_repo: str) -> str:
     """Convert ``elizaos/eliza-1/bundles/2b`` to a catalog id."""
     if "/bundles/" in hf_repo:
         return f"eliza-1-{hf_repo.rsplit('/bundles/', 1)[1].strip('/')}".lower()
     last = hf_repo.split("/")[-1]
     return last.lower()
-
 
 def build_catalog_entry(manifest: dict[str, object]) -> Eliza1CatalogEntry:
     base_model = str(manifest.get("base_model", ""))
@@ -288,7 +283,6 @@ def build_catalog_entry(manifest: dict[str, object]) -> Eliza1CatalogEntry:
         blurb=f"{slug} - Eliza-1 optimized local runtime bundle.",
     )
 
-
 def _find_model_catalog_close(text: str) -> int:
     """Return the index of the ``];`` that closes ``MODEL_CATALOG``.
 
@@ -309,7 +303,6 @@ def _find_model_catalog_close(text: str) -> int:
             "either point at a real catalog file or refresh the marker."
         )
     return close
-
 
 def emit_diff(catalog_path: Path, new_entry: Eliza1CatalogEntry) -> str:
     """Build a unified diff that inserts ``new_entry`` at the end of MODEL_CATALOG."""
@@ -333,7 +326,6 @@ def emit_diff(catalog_path: Path, new_entry: Eliza1CatalogEntry) -> str:
     )
     return "".join(diff_lines)
 
-
 def _entry_with_header(entry: Eliza1CatalogEntry, catalog_hint: str) -> str:
     return (
         f"// Add this entry to the `MODEL_CATALOG` array in:\n"
@@ -343,7 +335,6 @@ def _entry_with_header(entry: Eliza1CatalogEntry, catalog_hint: str) -> str:
         f"// in the same file (that is what marks it default-eligible).\n"
         f"{entry.to_ts_literal()}"
     )
-
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
@@ -417,7 +408,6 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(header)
         sys.stdout.write(diff)
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

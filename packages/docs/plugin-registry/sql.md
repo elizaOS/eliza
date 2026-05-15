@@ -166,5 +166,5 @@ await runtime.setComponent(userId, "userPreferences", {
 ## Related
 
 - [Knowledge Plugin](/plugin-registry/documents) — Uses SQL for embedding storage
-- [Secrets (runtime)](/runtime/services#secrets-secrets-service) — Persists secrets via SQL
+- [Secrets API](/rest/secrets) — Persists secrets via SQL-backed configuration
 - [Cron Plugin](/plugin-registry/cron) — Core message processing

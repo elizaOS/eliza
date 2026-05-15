@@ -93,7 +93,6 @@ See `packages/inference/AGENTS.md §2` for the full bundle contract.
 | 9b        | `bundles/9b/`                                                    |
 | 27b       | `bundles/27b/`                                                   |
 | 27b-256k  | `bundles/27b-256k/`                                              |
-| 27b-1m    | `bundles/27b-1m/` (planned; not yet published)                   |
 
 Per-quant variants (Q4_K_M / Q6_K / Q8_0) live inside the same tier as
 sibling files under `bundles/<tier>/text/`. vLLM-specific quants (FP8,

@@ -88,6 +88,26 @@ renderer reads this via
 and the `RuntimeSettingsSection` hides the Local picker option so users
 cannot try to provision an on-device agent that physically isn't there.
 
+### Mobile bridge policy
+
+Android and iOS now share the same renderer-level contract: native
+local-agent traffic is a platform bridge concern, not a WebView
+networking contract.
+
+- Play Store Android (`android-cloud`) has no local agent endpoint, no
+  local runtime payload, and global cleartext disabled.
+- Sideload/AOSP Android may still expose the native agent service
+  internally, but UI API calls must route through the Capacitor `Agent`
+  plugin request bridge. New renderer code must not add direct
+  `fetch("http://127.0.0.1:31337/...")` paths.
+- iOS local mode uses `eliza-local-agent://ipc` and the
+  `ElizaBunRuntime.call("http_request")` bridge in store/full-Bun
+  builds. The JSContext ITTP path is development/sideload compatibility
+  only.
+- The remaining Android local backend startup blocker is dependency
+  resolution for `isomorphic-git/http/node`; that is below the UI
+  transport layer.
+
 ## `build:android` — sideload-only debug
 
 ```bash
@@ -108,7 +128,9 @@ on-device agent staged via
 the AOSP-aimed permission set, and the same App Actions/static shortcuts
 metadata used by the Play build. `ElizaAssistActivity` handles
 `android.intent.action.ASSIST` for sideload/AOSP assistant-role testing;
-the Play build strips that activity.
+the Play build strips that activity. The loopback URL remains a stable
+local-agent identity for persisted profiles, but renderer requests are
+expected to enter native code through the Capacitor bridge.
 
 ## `build:android:system` — AOSP privileged platform-signed APK
 

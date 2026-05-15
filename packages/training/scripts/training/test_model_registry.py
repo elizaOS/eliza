@@ -11,13 +11,14 @@ import pytest
 
 from scripts.training.model_registry import (
     DFLASH_DRAFTER_BASE,
+    ELIZA1_REQUIRED_QUANTIZATION_AFTER,
     REGISTRY,
     Tier,
     by_tier,
     get,
     summary_table,
 )
-
+from scripts import dump_registry_json
 
 VERIFIED_KEYS = (
     "qwen3.5-0.8b",
@@ -35,7 +36,6 @@ VERIFIED_PUBLIC_NAMES = (
     "eliza-1-27b",
 )
 
-
 # The eliza-1 fused-model line uses Qwen3.5 for active 0.8B/2B/4B/9B text
 # tiers and Qwen3.6 for the active 27B tier. The legacy Qwen3.5 27B lookup is
 # retained for experiments but is not publish/default eligible.
@@ -46,12 +46,10 @@ LARGE_PUBLIC_NAMES = ("eliza-1-2b", "eliza-1-4b", "eliza-1-9b", "eliza-1-27b")
 ALL_KEYS = SMALL_KEYS + LARGE_KEYS
 ALL_PUBLIC_NAMES = SMALL_PUBLIC_NAMES + LARGE_PUBLIC_NAMES
 
-
 def test_registry_is_the_eliza_1_size_ladder() -> None:
     assert set(REGISTRY) == set(VERIFIED_KEYS), (
         f"REGISTRY drifted from the eliza-1 size ladder: {sorted(REGISTRY)}"
     )
-
 
 def test_every_entry_has_publish_metadata() -> None:
     active_public_keys = (
@@ -67,18 +65,15 @@ def test_every_entry_has_publish_metadata() -> None:
         assert e.eliza_repo_id == "elizaos/eliza-1"
         assert e.abliteration_repo_id == ""
 
-
 def test_verified_bases_are_not_flagged_unverified() -> None:
     for key in VERIFIED_KEYS:
         assert getattr(get(key), "unverified_base", False) is False, (
             f"{key} base ({get(key).hf_id}) should be a real published checkpoint"
         )
 
-
 def test_no_entries_are_flagged_unverified() -> None:
     for key in VERIFIED_KEYS:
         assert getattr(get(key), "unverified_base", False) is False
-
 
 def test_tier_assignments() -> None:
     assert get("qwen3.5-0.8b").tier == Tier.LOCAL
@@ -88,7 +83,6 @@ def test_tier_assignments() -> None:
     assert get("qwen3.5-27b").tier == Tier.CLOUD
     assert get("qwen3.6-27b").tier == Tier.CLOUD
 
-
 def test_by_tier_partitions_the_ladder() -> None:
     # LOCAL: qwen3.5-0.8b/2b/4b = 3
     assert len(by_tier(Tier.LOCAL)) == 3
@@ -97,7 +91,6 @@ def test_by_tier_partitions_the_ladder() -> None:
     # CLOUD: canonical qwen3.6-27b; qwen3.5-27b is legacy unless requested.
     assert len(by_tier(Tier.CLOUD)) == 1
     assert len(by_tier(Tier.CLOUD, include_legacy=True)) == 2
-
 
 def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("Qwen/Qwen3.5-0.8B").short_name == "qwen3.5-0.8b"
@@ -112,14 +105,9 @@ def test_lookup_by_hf_id_short_name_or_eliza_name() -> None:
     assert get("eliza-1-27b").short_name == "qwen3.6-27b"
     assert get("27b").short_name == "qwen3.6-27b"
     assert get("27b-256k").short_name == "qwen3.6-27b"
-    assert get("27b-1m").short_name == "qwen3.6-27b"
     assert get("qwen3.6-27b-256k").short_name == "qwen3.6-27b"
-    assert get("qwen3.6-27b-1m").short_name == "qwen3.6-27b"
     assert get("Qwen/Qwen3.6-27B-256K").short_name == "qwen3.6-27b"
-    assert get("Qwen/Qwen3.6-27B-1M").short_name == "qwen3.6-27b"
     assert get("eliza-1-27b-256k").short_name == "qwen3.6-27b"
-    assert get("eliza-1-27b-1m").short_name == "qwen3.6-27b"
-
 
 def test_qwen36_lower_tiers_fall_back_to_qwen35_bases() -> None:
     assert get("qwen3.6-0.8b").short_name == "qwen3.5-0.8b"
@@ -130,7 +118,6 @@ def test_qwen36_lower_tiers_fall_back_to_qwen35_bases() -> None:
     assert get("Qwen/Qwen3.6-4B").short_name == "qwen3.5-4b"
     assert get("qwen3.6-9b").short_name == "qwen3.5-9b"
     assert get("Qwen/Qwen3.6-9B").short_name == "qwen3.5-9b"
-
 
 def test_dflash_drafter_base_is_qwen3_5_for_active_targets() -> None:
     # The Qwen3.5/Qwen3.6 target tiers draft from the Qwen3.5-0.8B-Base
@@ -147,18 +134,15 @@ def test_dflash_drafter_base_is_qwen3_5_for_active_targets() -> None:
         "eliza-1-9b",
         "eliza-1-27b",
         "eliza-1-27b-256k",
-        "eliza-1-27b-1m",
     ):
         assert DFLASH_DRAFTER_BASE[tier] == "Qwen/Qwen3.5-0.8B-Base"
     # Deprecated Qwen3 tiers have no drafter entries.
     assert "eliza-1-0_6b" not in DFLASH_DRAFTER_BASE
     assert "eliza-1-1_7b" not in DFLASH_DRAFTER_BASE
 
-
 def test_unknown_model_raises_keyerror() -> None:
     with pytest.raises(KeyError):
         get("not-a-real-model")
-
 
 def test_inference_budgets_back_filled() -> None:
     # The _entry helper computes infer_mem_gb_*; both must be > 0 once the
@@ -169,10 +153,8 @@ def test_inference_budgets_back_filled() -> None:
         assert e.infer_mem_gb_quantized > 0
         assert e.infer_mem_gb_quantized < e.infer_mem_gb_bf16_fullkv
 
-
 def test_27b_fits_on_48gb_quantized() -> None:
     assert get("qwen3.6-27b").infer_mem_gb_quantized < 48.0
-
 
 def test_27b_default_seq_len_leaves_real_headroom() -> None:
     """Gap M35: 27B default seq_len at 147k left ~1% headroom on the 2× B6000
@@ -186,13 +168,11 @@ def test_27b_default_seq_len_leaves_real_headroom() -> None:
         "via `--max-seq-len` per run instead."
     )
 
-
 def test_2b_and_9b_seq_len_defaults_unchanged_by_m35() -> None:
     """M35 only lowered the 27B default. 2B and 9B defaults must stay where
     they are — those tiers have plenty of headroom at the documented budgets."""
     assert get("qwen3.5-2b").seq_len == 8192
     assert get("qwen3.5-9b").seq_len == 16384
-
 
 def test_small_real_tiers_fit_a_consumer_gpu() -> None:
     """The qwen3.5-0.8b small tier is the only "fine-tune on a 16 GB
@@ -204,7 +184,6 @@ def test_small_real_tiers_fit_a_consumer_gpu() -> None:
     assert e.seq_len <= 8192
     assert e.train_mem_gb_budget <= 24.0
 
-
 def test_summary_table_includes_every_entry() -> None:
     table = summary_table()
     for public_name in VERIFIED_PUBLIC_NAMES:
@@ -212,10 +191,26 @@ def test_summary_table_includes_every_entry() -> None:
     assert "Qwen/Qwen3.6-27B" in table or "eliza-1-27b" in table
     assert "qwen3.5-27b" not in table
 
-
-def test_quantization_matrix_includes_gguf_q4_q6_q8() -> None:
+def test_quantization_matrix_includes_complete_gguf_ladder() -> None:
     for key in VERIFIED_KEYS:
         e = get(key)
-        assert "gguf-q4_k_m" in e.quantization_after
-        assert "gguf-q6_k" in e.quantization_after
-        assert "gguf-q8_0" in e.quantization_after
+        assert e.quantization_after == ELIZA1_REQUIRED_QUANTIZATION_AFTER
+
+def test_registry_dump_exposes_every_runtime_tier_and_single_hf_repo(capsys) -> None:
+    assert dump_registry_json.main() == 0
+    import json
+
+    payload = json.loads(capsys.readouterr().out)
+    assert set(payload) == {
+        "eliza-1-0_8b",
+        "eliza-1-2b",
+        "eliza-1-4b",
+        "eliza-1-9b",
+        "eliza-1-27b",
+        "eliza-1-27b-256k",
+    }
+    for entry in payload.values():
+        assert entry["eliza_repo_id"] == "elizaos/eliza-1"
+        assert entry["gguf_repo_id"] == "elizaos/eliza-1"
+        assert entry["quantization_after"] == list(ELIZA1_REQUIRED_QUANTIZATION_AFTER)
+    assert payload["eliza-1-27b-256k"]["base_hf_id"] == "Qwen/Qwen3.6-27B"

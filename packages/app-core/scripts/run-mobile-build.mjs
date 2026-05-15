@@ -632,119 +632,142 @@ export function applyIosAppIdentity({
 
 // ── Phase 2: Build web bundle ───────────────────────────────────────────
 
-export function resolveMobileBuildPolicy(platform) {
-  const capacitorTarget =
-    platform === "android-system" ||
-    platform === "android-cloud" ||
-    platform === "android-cloud-debug"
-      ? "android"
-      : platform === "ios-overlay" || platform === "ios-local"
-        ? "ios"
-        : platform;
-  // Android runtime mode mirrors the iOS runtime mode pattern: `cloud`
-  // means the renderer should treat Eliza Cloud as the only hosting target
-  // (Play-Store-compliant thin client; no on-device agent), while `local`
-  // is the default sideload/AOSP behavior. Surfaced to the renderer via
-  // VITE_ELIZA_ANDROID_RUNTIME_MODE so it can hide the Local picker option.
-  const androidRuntimeMode =
-    platform === "android-cloud" || platform === "android-cloud-debug"
-      ? "cloud"
-      : platform === "android" || platform === "android-system"
-        ? "local"
-        : null;
-  const iosRuntimeMode =
-    platform === "ios-local"
-      ? "local"
-      : platform === "ios"
-        ? "cloud-hybrid"
-        : platform === "ios-overlay"
-          ? "cloud"
-          : null;
-  const runtimeExecutionMode =
-    platform === "android-cloud" || platform === "android-cloud-debug"
-      ? "cloud"
-      : platform === "android" || platform === "android-system"
-        ? "local-yolo"
-        : platform === "ios-local"
-          ? "local-safe"
-          : platform === "ios"
-            ? "local-safe"
-            : platform === "ios-overlay"
-              ? "cloud"
-              : null;
-  const buildVariant =
-    platform === "android-cloud" || platform === "ios" ? "store" : "direct";
-  const releaseAuthority =
-    platform === "android-cloud"
-      ? "google-play"
-      : platform === "android"
-        ? "github-release-android-package-installer"
-        : platform === "android-system"
-          ? "aosp-ota"
-          : platform === "ios"
-            ? "apple-app-store"
-            : platform === "ios-local"
-              ? "developer-toolchain"
-              : platform === "android-cloud-debug"
-                ? "developer-debug"
-                : "developer-toolchain";
-  return {
-    capacitorTarget,
-    buildVariant,
-    androidRuntimeMode,
-    iosRuntimeMode,
-    runtimeExecutionMode,
-    releaseAuthority,
+const MOBILE_BUILD_POLICIES = {
+  android: {
+    capacitorTarget: "android",
+    buildVariant: "direct",
+    androidRuntimeMode: "local",
+    iosRuntimeMode: null,
+    runtimeExecutionMode: "local-yolo",
+    releaseAuthority: "github-release-android-package-installer",
     appControlledOta: false,
+  },
+  "android-cloud": {
+    capacitorTarget: "android",
+    buildVariant: "store",
+    androidRuntimeMode: "cloud",
+    iosRuntimeMode: null,
+    runtimeExecutionMode: "cloud",
+    releaseAuthority: "google-play",
+    appControlledOta: false,
+  },
+  "android-cloud-debug": {
+    capacitorTarget: "android",
+    buildVariant: "direct",
+    androidRuntimeMode: "cloud",
+    iosRuntimeMode: null,
+    runtimeExecutionMode: "cloud",
+    releaseAuthority: "developer-debug",
+    appControlledOta: false,
+  },
+  "android-system": {
+    capacitorTarget: "android",
+    buildVariant: "direct",
+    androidRuntimeMode: "local",
+    iosRuntimeMode: null,
+    runtimeExecutionMode: "local-yolo",
+    releaseAuthority: "aosp-ota",
+    appControlledOta: false,
+  },
+  ios: {
+    capacitorTarget: "ios",
+    buildVariant: "store",
+    androidRuntimeMode: null,
+    iosRuntimeMode: "cloud-hybrid",
+    runtimeExecutionMode: "local-safe",
+    releaseAuthority: "apple-app-store",
+    appControlledOta: false,
+  },
+  "ios-local": {
+    capacitorTarget: "ios",
+    buildVariant: "direct",
+    androidRuntimeMode: null,
+    iosRuntimeMode: "local",
+    runtimeExecutionMode: "local-safe",
+    releaseAuthority: "developer-toolchain",
+    appControlledOta: false,
+  },
+  "ios-overlay": {
+    capacitorTarget: "ios",
+    buildVariant: "direct",
+    androidRuntimeMode: null,
+    iosRuntimeMode: "cloud",
+    runtimeExecutionMode: "cloud",
+    releaseAuthority: "developer-toolchain",
+    appControlledOta: false,
+  },
+};
+
+function mobileRuntimeModeForPolicy(policy) {
+  return policy.iosRuntimeMode ?? policy.androidRuntimeMode ?? null;
+}
+
+export function resolveMobileBuildPolicy(platform) {
+  const policy = MOBILE_BUILD_POLICIES[platform];
+  if (!policy) {
+    throw new Error(`Unknown mobile build target: ${platform}`);
+  }
+  return { ...policy };
+}
+
+export function resolveMobileBuildEnv(platform, baseEnv = process.env) {
+  const policy = resolveMobileBuildPolicy(platform);
+  const mobileRuntimeMode = mobileRuntimeModeForPolicy(policy);
+  const env = {
+    ...baseEnv,
+    ELIZA_CAPACITOR_BUILD_TARGET: policy.capacitorTarget,
+    ELIZA_BUILD_VARIANT: baseEnv.ELIZA_BUILD_VARIANT || policy.buildVariant,
+    ELIZA_RELEASE_AUTHORITY:
+      baseEnv.ELIZA_RELEASE_AUTHORITY || policy.releaseAuthority,
+    ...(policy.androidRuntimeMode
+      ? {
+          VITE_ELIZA_ANDROID_RUNTIME_MODE: policy.androidRuntimeMode,
+        }
+      : {}),
+    ...(policy.iosRuntimeMode
+      ? {
+          ELIZA_IOS_RUNTIME_MODE: policy.iosRuntimeMode,
+          VITE_ELIZA_IOS_RUNTIME_MODE: policy.iosRuntimeMode,
+        }
+      : {}),
+    ...(mobileRuntimeMode
+      ? {
+          VITE_ELIZA_MOBILE_RUNTIME_MODE: mobileRuntimeMode,
+        }
+      : {}),
+    ...(policy.runtimeExecutionMode
+      ? {
+          ELIZA_RUNTIME_MODE: policy.runtimeExecutionMode,
+          RUNTIME_MODE: policy.runtimeExecutionMode,
+          LOCAL_RUNTIME_MODE: policy.runtimeExecutionMode,
+          VITE_ELIZA_RUNTIME_MODE: policy.runtimeExecutionMode,
+        }
+      : {}),
   };
+
+  if (
+    (platform === "ios" || platform === "ios-local") &&
+    shouldIncludeIosFullBunEngine(env)
+  ) {
+    env.VITE_ELIZA_IOS_FULL_BUN_AVAILABLE = "1";
+  }
+  if (platform === "ios-local" && isFullIosBunEngineRequested(env)) {
+    env.VITE_ELIZA_IOS_FULL_BUN_STRICT = "1";
+  }
+
+  return env;
+}
+
+export function allowsAndroidCleartextForMobilePolicy(platform) {
+  const policy = resolveMobileBuildPolicy(platform);
+  return (
+    policy.capacitorTarget === "android" &&
+    policy.androidRuntimeMode === "local"
+  );
 }
 
 async function buildWeb(platform) {
-  const {
-    capacitorTarget,
-    buildVariant,
-    androidRuntimeMode,
-    iosRuntimeMode,
-    runtimeExecutionMode,
-    releaseAuthority,
-  } = resolveMobileBuildPolicy(platform);
-  const env = {
-    ...process.env,
-    ELIZA_CAPACITOR_BUILD_TARGET: capacitorTarget,
-    ELIZA_BUILD_VARIANT: process.env.ELIZA_BUILD_VARIANT || buildVariant,
-    ELIZA_RELEASE_AUTHORITY:
-      process.env.ELIZA_RELEASE_AUTHORITY || releaseAuthority,
-    ...(androidRuntimeMode
-      ? {
-          VITE_ELIZA_ANDROID_RUNTIME_MODE: androidRuntimeMode,
-        }
-      : {}),
-    ...(iosRuntimeMode
-      ? {
-          ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
-          VITE_ELIZA_IOS_RUNTIME_MODE: iosRuntimeMode,
-        }
-      : {}),
-    ...(runtimeExecutionMode
-      ? {
-          ELIZA_RUNTIME_MODE: runtimeExecutionMode,
-          RUNTIME_MODE: runtimeExecutionMode,
-          LOCAL_RUNTIME_MODE: runtimeExecutionMode,
-          VITE_ELIZA_RUNTIME_MODE: runtimeExecutionMode,
-        }
-      : {}),
-    ...((platform === "ios" || platform === "ios-local") &&
-    shouldIncludeIosFullBunEngine(process.env)
-      ? {
-          VITE_ELIZA_IOS_FULL_BUN_AVAILABLE: "1",
-        }
-      : {}),
-    ...(platform === "ios-local" && isFullIosBunEngineRequested(process.env)
-      ? {
-          VITE_ELIZA_IOS_FULL_BUN_STRICT: "1",
-        }
-      : {}),
-  };
+  const env = resolveMobileBuildEnv(platform, process.env);
   const bun = resolveBunExecutable();
   if (bun) {
     await run(bun, ["run", "build:web"], { cwd: appDir, env });
@@ -884,6 +907,7 @@ export const ANDROID_PERMISSIONS = [
   "FOREGROUND_SERVICE",
   "FOREGROUND_SERVICE_DATA_SYNC",
   "FOREGROUND_SERVICE_MEDIA_PROJECTION",
+  "FOREGROUND_SERVICE_MICROPHONE",
   "FOREGROUND_SERVICE_SPECIAL_USE",
   "POST_NOTIFICATIONS",
   "WAKE_LOCK",
@@ -1329,11 +1353,15 @@ function escapeRegExp(value) {
 
 function removeApplicationComponentBlock(xml, componentName) {
   const escapedName = escapeRegExp(componentName);
-  const componentRe = new RegExp(
+  const selfClosingRe = new RegExp(
+    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="${escapedName}")[^>]*/>\\s*`,
+    "g",
+  );
+  const pairedRe = new RegExp(
     `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="${escapedName}")[\\s\\S]*?<\\/\\1>\\s*`,
     "g",
   );
-  return xml.replace(componentRe, "\n");
+  return xml.replace(selfClosingRe, "\n").replace(pairedRe, "\n");
 }
 
 function removeApplicationComponentClassBlock(xml, className) {
@@ -1346,7 +1374,7 @@ function removeApplicationComponentClassBlock(xml, className) {
     `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="[^"]*\\.?${escapedName}")[^>]*/>\\s*`,
     "g",
   );
-  return xml.replace(pairedRe, "\n").replace(selfClosingRe, "\n");
+  return xml.replace(selfClosingRe, "\n").replace(pairedRe, "\n");
 }
 
 function removeStaleAndroidJavaSourceRoots(dstJava) {
@@ -1699,7 +1727,7 @@ function writeAndroidCleartextPolicy({ allowCleartext, label }) {
   if (patched !== xml) {
     fs.writeFileSync(manifestPath, patched, "utf8");
     console.log(
-      `[mobile-build] Android ${label} cleartext policy: ${allowCleartext ? "enabled for local loopback" : "disabled"}.`,
+      `[mobile-build] Android ${label} cleartext policy: ${allowCleartext ? "enabled for native local-agent service" : "disabled"}.`,
     );
   }
 }
@@ -1921,6 +1949,7 @@ function overlayAndroid() {
       "ElizaMmsReceiver",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaVoiceCaptureService",
       "ElizaBootReceiver",
       "ElizaBrowserActivity",
       "ElizaContactsActivity",
@@ -1947,6 +1976,7 @@ function overlayAndroid() {
       "ElizaMmsReceiver",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaVoiceCaptureService",
       "ElizaBootReceiver",
       "ElizaBrowserActivity",
       "ElizaContactsActivity",
@@ -1960,6 +1990,7 @@ function overlayAndroid() {
       "ElizaMmsReceiver",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaVoiceCaptureService",
       "ElizaBootReceiver",
     ]) {
       const nextXml = removeApplicationComponentClassBlock(xml, component);
@@ -2117,6 +2148,15 @@ function overlayAndroid() {
     );
     xml = appendMissingApplicationBlock(
       xml,
+      `${androidPackage}.ElizaVoiceCaptureService`,
+      `
+        <service
+            android:name="${androidPackage}.ElizaVoiceCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="microphone" />`,
+    );
+    xml = appendMissingApplicationBlock(
+      xml,
       `${androidPackage}.ElizaBootReceiver`,
       `
         <receiver
@@ -2126,6 +2166,7 @@ function overlayAndroid() {
             <intent-filter>
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>`,
     );
@@ -4737,7 +4778,7 @@ async function buildAndroid() {
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
   auditAndroidSystemSource("pre-gradle", { requireCapabilityManifest: false });
   writeAndroidCleartextPolicy({
-    allowCleartext: true,
+    allowCleartext: allowsAndroidCleartextForMobilePolicy("android"),
     label: "sideload",
   });
   await stageAndroidAgentRuntime({
@@ -4876,7 +4917,9 @@ async function buildAndroidCloud({ debug = false } = {}) {
   overlayAndroid();
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
   writeAndroidCleartextPolicy({
-    allowCleartext: false,
+    allowCleartext: allowsAndroidCleartextForMobilePolicy(
+      debug ? "android-cloud-debug" : "android-cloud",
+    ),
     label: debug ? "cloud-debug" : "cloud",
   });
   // The cloud target is a thin Capacitor client backed by Eliza Cloud.
@@ -5004,7 +5047,7 @@ async function buildAndroidSystem() {
   overlayAndroid();
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
   writeAndroidCleartextPolicy({
-    allowCleartext: true,
+    allowCleartext: allowsAndroidCleartextForMobilePolicy("android-system"),
     label: "AOSP",
   });
   await stageAndroidAgentRuntime({
@@ -5048,6 +5091,13 @@ function setDefaultProcessEnv(key, value) {
   }
 }
 
+function setDefaultMobileBuildEnv(platform) {
+  const env = resolveMobileBuildEnv(platform, {});
+  for (const [key, value] of Object.entries(env)) {
+    setDefaultProcessEnv(key, value);
+  }
+}
+
 function resolveRubyUserGemBin() {
   const result = spawnSync("ruby", ["-rrubygems", "-e", "print Gem.user_dir"], {
     encoding: "utf8",
@@ -5080,12 +5130,7 @@ function withCocoaPodsEnv(baseEnv = process.env) {
 }
 
 function configureIosLocalBuildDefaults() {
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "local");
-  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
+  setDefaultMobileBuildEnv("ios-local");
   setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
@@ -5095,14 +5140,7 @@ function configureIosLocalBuildDefaults() {
 }
 
 export function configureIosAppStoreBuildDefaults() {
-  setDefaultProcessEnv("ELIZA_BUILD_VARIANT", "store");
-  setDefaultProcessEnv("ELIZA_RELEASE_AUTHORITY", "apple-app-store");
-  setDefaultProcessEnv("ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
-  setDefaultProcessEnv("VITE_ELIZA_IOS_RUNTIME_MODE", "cloud-hybrid");
-  setDefaultProcessEnv("ELIZA_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
+  setDefaultMobileBuildEnv("ios");
 }
 
 async function buildIos({ local = false } = {}) {

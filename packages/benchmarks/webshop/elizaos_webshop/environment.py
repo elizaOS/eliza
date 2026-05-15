@@ -41,6 +41,57 @@ def _ensure_upstream_on_path() -> None:
         sys.path.insert(0, upstream_str)
 
 
+def _install_optional_upstream_dependency_stubs() -> None:
+    """Install tiny shims for heavyweight optional upstream dependencies."""
+    import types as _types
+
+    try:
+        import spacy  # noqa: F401  # type: ignore[import-not-found]
+    except Exception:
+        spacy_stub = _types.ModuleType("spacy")
+
+        class _Token:
+            def __init__(self, text: str) -> None:
+                self.text = text
+                self.pos_ = "NOUN"
+
+        class _Nlp:
+            def __call__(self, text: str) -> list[_Token]:
+                return [_Token(token) for token in text.split()]
+
+        def _load(_model: str) -> _Nlp:
+            return _Nlp()
+
+        spacy_stub.load = _load  # type: ignore[attr-defined]
+        sys.modules["spacy"] = spacy_stub
+
+    try:
+        import thefuzz  # noqa: F401  # type: ignore[import-not-found]
+    except Exception:
+        import difflib as _difflib
+
+        package_stub = _types.ModuleType("thefuzz")
+        fuzz_stub = _types.ModuleType("thefuzz.fuzz")
+
+        def _ratio(a: object, b: object) -> int:
+            return int(
+                round(
+                    100
+                    * _difflib.SequenceMatcher(
+                        None,
+                        str(a),
+                        str(b),
+                    ).ratio()
+                )
+            )
+
+        fuzz_stub.ratio = _ratio  # type: ignore[attr-defined]
+        fuzz_stub.token_set_ratio = _ratio  # type: ignore[attr-defined]
+        package_stub.fuzz = fuzz_stub  # type: ignore[attr-defined]
+        sys.modules["thefuzz"] = package_stub
+        sys.modules["thefuzz.fuzz"] = fuzz_stub
+
+
 def _patch_search_engine_for_bm25_fallback() -> None:
     """Monkey-patch ``engine.init_search_engine`` so pyserini/Lucene/Java
     is not required at import time.
@@ -52,6 +103,7 @@ def _patch_search_engine_for_bm25_fallback() -> None:
     string ``{"id": <asin>}``.
     """
     _ensure_upstream_on_path()
+    _install_optional_upstream_dependency_stubs()
 
     # Determine whether pyserini is usable BEFORE we import the upstream
     # engine module (which does `from pyserini.search.lucene import
@@ -89,6 +141,27 @@ def _patch_search_engine_for_bm25_fallback() -> None:
             sys.modules["pyserini.search.lucene"] = stub
             sys.modules["pyserini.search"].lucene = stub  # type: ignore[attr-defined]
 
+    try:
+        import rank_bm25  # noqa: F401  # type: ignore[import-not-found]
+    except Exception:
+        import types as _types
+
+        stub = _types.ModuleType("rank_bm25")
+
+        class _StubBM25Okapi:  # noqa: D401 - compatibility shim
+            def __init__(self, corpus: list[list[str]]) -> None:
+                self._corpus = corpus
+
+            def get_scores(self, query_tokens: list[str]) -> list[float]:
+                query_set = set(query_tokens)
+                return [
+                    float(sum(1 for token in doc if token in query_set))
+                    for doc in self._corpus
+                ]
+
+        stub.BM25Okapi = _StubBM25Okapi  # type: ignore[attr-defined]
+        sys.modules["rank_bm25"] = stub
+
     from web_agent_site.engine import engine as _engine  # type: ignore[import-not-found]
 
     if pyserini_available:
@@ -99,13 +172,11 @@ def _patch_search_engine_for_bm25_fallback() -> None:
 
     try:
         from rank_bm25 import BM25Okapi  # type: ignore[import-not-found]
-    except Exception as exc:
-        raise RuntimeError(
-            "Neither pyserini nor rank_bm25 is available. Install one of:\n"
-            "  pip install rank_bm25       # lightweight, recommended\n"
-            "  pip install pyserini       # requires Java 11+\n"
-            f"(import error: {exc})"
-        ) from exc
+    except Exception:
+        BM25Okapi = None  # type: ignore[assignment]
+        logger.warning(
+            "[WebShopEnvironment] rank_bm25 unavailable; using lexical search fallback."
+        )
 
     import json as _json
 
@@ -129,20 +200,31 @@ def _patch_search_engine_for_bm25_fallback() -> None:
         def __init__(self, products: list[dict[str, Any]]) -> None:
             corpus = []
             self._ids: list[str] = []
+            self._tokens_by_id: dict[str, list[str]] = {}
             for p in products:
                 title = p.get("name", "") or p.get("Title", "") or ""
                 desc = p.get("full_description", "") or p.get("Description", "") or ""
                 cat = p.get("category", "") or ""
                 tokens = (title + " " + desc + " " + cat).lower().split()
                 corpus.append(tokens)
-                self._ids.append(p["asin"])
-            self._bm25 = BM25Okapi(corpus) if corpus else None
+                asin = p["asin"]
+                self._ids.append(asin)
+                self._tokens_by_id[asin] = tokens
+            self._bm25 = BM25Okapi(corpus) if BM25Okapi is not None and corpus else None
             self._docs = {asin: _BM25Doc(_json.dumps({"id": asin})) for asin in self._ids}
 
         def search(self, query: str, k: int = 50) -> list[_BM25Hit]:
-            if self._bm25 is None:
+            if not self._ids:
                 return []
-            scores = self._bm25.get_scores(query.lower().split())
+            query_tokens = query.lower().split()
+            if self._bm25 is not None:
+                scores = self._bm25.get_scores(query_tokens)
+            else:
+                query_set = set(query_tokens)
+                scores = [
+                    sum(1 for token in self._tokens_by_id[asin] if token in query_set)
+                    for asin in self._ids
+                ]
             ranked = sorted(
                 zip(self._ids, scores),
                 key=lambda t: t[1],

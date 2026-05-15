@@ -25,6 +25,7 @@ Apache-2.0 attribution preserved for compatibility with upstream semantics.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import time
 from typing import Any, Optional
 
 
@@ -179,6 +180,7 @@ class RESTRunner:
 
         client = self._ensure_client()
 
+        started_at = time.perf_counter()
         try:
             response = client.request(
                 spec.method,
@@ -201,6 +203,13 @@ class RESTRunner:
                 f"Rate-limited (HTTP 429) by {spec.url}"
             )
 
+        elapsed_seconds = time.perf_counter() - started_at
+        try:
+            elapsed_seconds = response.elapsed.total_seconds()
+        except RuntimeError:
+            # httpx.MockTransport responses do not always have elapsed set.
+            pass
+
         try:
             json_body = response.json()
         except Exception:
@@ -210,7 +219,7 @@ class RESTRunner:
             status_code=response.status_code,
             json_body=json_body,
             text=response.text,
-            elapsed_seconds=response.elapsed.total_seconds(),
+            elapsed_seconds=elapsed_seconds,
             headers=dict(response.headers),
         )
 

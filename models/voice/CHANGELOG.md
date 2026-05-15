@@ -29,7 +29,7 @@ Stable model ids:
 
 G4 pushed all voice sub-model repos to HuggingFace. Each repo at
 `elizaos/eliza-1-voice-<id>` now has a README.md + manifest.json committed.
-The `elizaos/eliza-1` main bundle `bundles/27b-1m/` deleted (54 files) per
+The `elizaos/eliza-1` main bundle `bundles/` deleted (54 files) per
 G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 (text + vision + asr + vad + manifest all reachable, HEAD check ≤500ms each).
 
@@ -45,7 +45,6 @@ G1 tier retirement. End-to-end install smoke PASS for 0_8b tier
 | elizaos/eliza-1-voice-kokoro | da4b5d73d4c1f8e37e86a4e0d51d7e4141e8f855 |
 | elizaos/eliza-1-voice-omnivoice | cc5e5d856fc5f05c1a01b787d3e8602d2f05ba9c |
 | elizaos/eliza-1-voice-embedding | eb96371b6d4b87eee6f84303408fd1603fa6cde2 |
-| elizaos/eliza-1 (27b-1m delete) | 824d6f2cc353feccf421dd71bf0c4ac0d12d7a87 |
 
 ---
 

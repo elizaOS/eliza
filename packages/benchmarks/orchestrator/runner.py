@@ -862,6 +862,15 @@ def _build_latest_matrix_contract(
     }
 
 
+def _latest_index_updated_at(rows: list[dict[str, Any]]) -> str:
+    timestamps = [
+        str(row.get("ended_at") or row.get("started_at") or "")
+        for row in rows
+        if row.get("ended_at") or row.get("started_at")
+    ]
+    return max(timestamps) if timestamps else _utc_now()
+
+
 def _rebuild_latest_result_snapshots(
     conn,
     output_root: Path,
@@ -932,6 +941,8 @@ def _rebuild_latest_result_snapshots(
         key = (benchmark_id, agent)
         if key not in latest_by_key:
             latest_by_key[key] = row
+        if is_synthetic:
+            continue
         signature = str(row.get("signature") or "")
         if signature:
             signature_key = (signature, benchmark_id, agent)
@@ -962,7 +973,9 @@ def _rebuild_latest_result_snapshots(
         adapters=adapters,
     )
     index: dict[str, Any] = {
-        "updated_at": _utc_now(),
+        "updated_at": _latest_index_updated_at(
+            [*latest_by_key.values(), *quarantine_by_key.values()]
+        ),
         "latest": {},
         "latest_by_signature": {},
         "latest_by_comparison_signature": {},

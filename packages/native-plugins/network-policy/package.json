@@ -19,10 +19,8 @@
     "android/src/main/",
     "android/build.gradle",
     "ios/Sources/",
-    "ios/Package.swift",
     "ElizaosCapacitorNetworkPolicy.podspec",
-    "dist/",
-    "dist"
+    "dist/"
   ],
   "scripts": {
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",

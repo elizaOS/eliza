@@ -190,12 +190,12 @@ describe("selectGpuConfig — bundle-aware overrides", () => {
 		expect(res?.flags.ctx_size).toBe(32768);
 	});
 
-	it("H200 + eliza-1-27b-1m -> 2 parallel @ 1M", () => {
+	it("H200 + eliza-1-27b-256k -> 6 parallel @ 256k", () => {
 		const res = selectGpuConfig(info("NVIDIA H200", 141248), {
-			bundleId: "eliza-1-27b-1m",
+			bundleId: "eliza-1-27b-256k",
 		});
-		expect(res?.flags.n_parallel).toBe(2);
-		expect(res?.flags.ctx_size).toBe(1_048_576);
+		expect(res?.flags.n_parallel).toBe(6);
+		expect(res?.flags.ctx_size).toBe(262144);
 	});
 
 	it("voice bundle narrows batch / ubatch on every card", () => {

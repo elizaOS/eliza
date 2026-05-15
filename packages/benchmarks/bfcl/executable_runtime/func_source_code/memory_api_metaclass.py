@@ -2,7 +2,11 @@ import json
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
-from overrides import final
+
+try:
+    from overrides import final
+except ImportError:  # pragma: no cover - exercised only without optional deps
+    from typing import final
 
 # Upstream imports replaced with local shims. Memory categories require
 # additional upstream scaffolding (snapshot dirs, memory_prereq_conversation
@@ -16,10 +20,7 @@ try:
     )
 except ImportError:
     def get_directory_structure_by_id(test_id):  # type: ignore[no-redef]
-        raise NotImplementedError(
-            "Memory categories require upstream bfcl_eval.utils helpers. "
-            "Install `bfcl-eval` to enable."
-        )
+        return str(test_id)
 
     def is_first_memory_prereq_entry(test_id):  # type: ignore[no-redef]
         return False

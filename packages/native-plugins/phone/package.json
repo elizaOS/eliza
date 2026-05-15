@@ -18,8 +18,7 @@
   "files": [
     "android/src/main/",
     "android/build.gradle",
-    "dist/",
-    "dist"
+    "dist/"
   ],
   "scripts": {
     "build": "bun run clean && tsc && rollup -c rollup.config.mjs",

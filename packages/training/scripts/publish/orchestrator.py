@@ -223,11 +223,9 @@ DEFAULT_RAM_BUDGET_MB: Mapping[str, tuple[int, int]] = {
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("publish.orchestrator")
 
-
 # ---------------------------------------------------------------------------
 # Errors
 # ---------------------------------------------------------------------------
-
 
 class OrchestratorError(Exception):
     """Raised when a publish stage fails. Carries an exit code."""
@@ -236,11 +234,9 @@ class OrchestratorError(Exception):
         super().__init__(message)
         self.exit_code = exit_code
 
-
 # ---------------------------------------------------------------------------
 # Inputs
 # ---------------------------------------------------------------------------
-
 
 @dataclass(frozen=True)
 class PublishContext:
@@ -263,11 +259,9 @@ class PublishContext:
     # Artifacts populated as stages run (kept here so tests can introspect).
     layout_files: dict[str, list[Path]] = field(default_factory=dict)
 
-
 # ---------------------------------------------------------------------------
 # Stage 1 — layout
 # ---------------------------------------------------------------------------
-
 
 def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
     h = hashlib.sha256()
@@ -275,7 +269,6 @@ def _sha256_file(path: Path, chunk: int = 1024 * 1024) -> str:
         for block in iter(lambda: fh.read(chunk), b""):
             h.update(block)
     return h.hexdigest()
-
 
 def _read_sidecar(path: Path) -> dict[str, Any]:
     if not path.is_file():
@@ -296,7 +289,6 @@ def _read_sidecar(path: Path) -> dict[str, Any]:
         )
     return data
 
-
 def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
     for name in names:
         for base in (
@@ -311,10 +303,8 @@ def _find_sidecar(bundle: Path, names: Sequence[str]) -> Path | None:
                 return candidate
     return None
 
-
 def _find_sidecar_by_name(bundle: Path, name: str) -> Path | None:
     return _find_sidecar(bundle, (name,))
-
 
 def _kernel_targets(kernel_manifest: Mapping[str, Any]) -> set[str]:
     targets = kernel_manifest.get("kernel_target")
@@ -323,7 +313,6 @@ def _kernel_targets(kernel_manifest: Mapping[str, Any]) -> set[str]:
     if isinstance(targets, list):
         return {str(target) for target in targets}
     return set()
-
 
 def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
     found: list[Path] = []
@@ -421,14 +410,12 @@ def _validate_quantization_sidecars(bundle: Path) -> list[Path]:
             found.append(sidecar)
     return found
 
-
 def _license_files_for_layout(layout: Mapping[str, Sequence[Path]]) -> tuple[str, ...]:
     names = list(REQUIRED_LICENSE_FILES)
     for kind, name in COMPONENT_LICENSE_FILES.items():
         if layout.get(kind):
             names.append(name)
     return tuple(names)
-
 
 def _validate_dflash_release_metadata(
     ctx: PublishContext,
@@ -574,7 +561,6 @@ def _validate_dflash_release_metadata(
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
 
-
 def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
     """Enforce the §2 layout. Populates ``ctx.layout_files`` and returns it.
 
@@ -706,7 +692,6 @@ def validate_bundle_layout(ctx: PublishContext) -> dict[str, list[Path]]:
 
     return out
 
-
 def validate_destination_repo(ctx: PublishContext) -> None:
     expected = ELIZA_1_HF_REPO
     if ctx.repo_id != expected:
@@ -716,15 +701,12 @@ def validate_destination_repo(ctx: PublishContext) -> None:
             EXIT_USAGE,
         )
 
-
 # ---------------------------------------------------------------------------
 # Stage 1b — release evidence
 # ---------------------------------------------------------------------------
 
-
 def _relative_file_paths(paths: Sequence[Path], bundle_root: Path) -> list[str]:
     return [str(p.relative_to(bundle_root)) for p in paths]
-
 
 def _expected_payload_paths(
     ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
@@ -770,7 +752,6 @@ def _expected_payload_paths(
 
     return sorted(set(expected))
 
-
 def _parse_sha256s(path: Path) -> dict[str, str]:
     """Parse a standard ``sha256sum`` file.
 
@@ -803,7 +784,6 @@ def _parse_sha256s(path: Path) -> dict[str, str]:
             )
         out[rel] = sha
     return out
-
 
 def _assert_checksum_coverage(
     ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
@@ -841,7 +821,6 @@ def _assert_checksum_coverage(
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
 
-
 def _write_checksum_manifest(
     ctx: PublishContext,
     layout: Mapping[str, Sequence[Path]],
@@ -856,7 +835,6 @@ def _write_checksum_manifest(
     ]
     checksum_path.write_text("\n".join(lines) + "\n")
     return checksum_path
-
 
 def _require_existing_json_report(
     ctx: PublishContext,
@@ -917,7 +895,6 @@ def _require_existing_json_report(
         _validate_platform_report(rel_path, data, target=target)
     return data
 
-
 def _required_provenance_slots(
     layout: Mapping[str, Sequence[Path]],
 ) -> tuple[str, ...]:
@@ -926,7 +903,6 @@ def _required_provenance_slots(
         if layout.get(slot):
             slots.append(slot)
     return tuple(slots)
-
 
 def _provenance_from_release_evidence(
     evidence: Mapping[str, Any],
@@ -945,7 +921,6 @@ def _provenance_from_release_evidence(
             if isinstance(source, Mapping)
         },
     }
-
 
 def _validate_base_v1_provenance(
     *,
@@ -983,7 +958,6 @@ def _validate_base_v1_provenance(
             errors.append(
                 f"sourceModels.{slot} required for releaseState='base-v1'"
             )
-
 
 def _validate_runtime_dispatch_report(rel_path: str, data: Mapping[str, Any]) -> None:
     errors: list[str] = []
@@ -1036,7 +1010,6 @@ def _validate_runtime_dispatch_report(rel_path: str, data: Mapping[str, Any]) ->
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
 
-
 def _validate_platform_report(
     rel_path: str,
     data: Mapping[str, Any],
@@ -1064,7 +1037,6 @@ def _validate_platform_report(
             + "\n  - ".join(errors),
             EXIT_RELEASE_EVIDENCE_FAIL,
         )
-
 
 def validate_release_evidence(
     ctx: PublishContext,
@@ -1305,11 +1277,9 @@ def validate_release_evidence(
     _assert_checksum_coverage(ctx, layout)
     return evidence
 
-
 # ---------------------------------------------------------------------------
 # Stage 2 — kernel verification
 # ---------------------------------------------------------------------------
-
 
 def _verify_dir(ctx: PublishContext) -> Path:
     """Resolve the native local-inference verify harness."""
@@ -1318,7 +1288,6 @@ def _verify_dir(ctx: PublishContext) -> Path:
     if (native / "Makefile").is_file():
         return native
     return ctx.training_repo_root.parent / "inference" / "verify"
-
 
 def _read_recorded_report(path: Path, expected_backend: str) -> KernelVerification:
     if not path.is_file():
@@ -1350,7 +1319,6 @@ def _read_recorded_report(path: Path, expected_backend: str) -> KernelVerificati
         )
     return KernelVerification(status="pass", at_commit=at_commit, report=report)
 
-
 def _run_reference_test(verify_dir: Path) -> None:
     """Run ``make -C verify reference-test``. CI-safe per Makefile."""
     if not (verify_dir / "Makefile").is_file():
@@ -1375,7 +1343,6 @@ def _run_reference_test(verify_dir: Path) -> None:
             EXIT_KERNEL_VERIFY_FAIL,
         )
 
-
 def _git_short_sha(repo_root: Path) -> str:
     """Best-effort training-repo HEAD hash for the verified backend record."""
     try:
@@ -1390,7 +1357,6 @@ def _git_short_sha(repo_root: Path) -> str:
     except FileNotFoundError:
         pass
     return "unknown"
-
 
 def run_kernel_verification(
     ctx: PublishContext,
@@ -1467,11 +1433,9 @@ def run_kernel_verification(
 
     return out
 
-
 # ---------------------------------------------------------------------------
 # Stage 3 — eval gates
 # ---------------------------------------------------------------------------
-
 
 def run_eval_gates(ctx: PublishContext) -> tuple[GateReport, dict[str, Any]]:
     """Apply the tier gates to ``evals/aggregate.json``.
@@ -1564,7 +1528,6 @@ def run_eval_gates(ctx: PublishContext) -> tuple[GateReport, dict[str, Any]]:
 
     return report, eval_blob
 
-
 def _read_prior_aggregate(ctx: PublishContext) -> Mapping[str, Any] | None:
     """Return the prior bundle's ``results`` dict, or ``None`` to skip.
 
@@ -1592,11 +1555,9 @@ def _read_prior_aggregate(ctx: PublishContext) -> Mapping[str, Any] | None:
         return blob["results"]
     return blob
 
-
 # ---------------------------------------------------------------------------
 # Stage 4 — manifest
 # ---------------------------------------------------------------------------
-
 
 def _collect_files_for_manifest(
     layout: Mapping[str, Sequence[Path]],
@@ -1643,7 +1604,6 @@ def _collect_files_for_manifest(
             files[kind_dst].append(entry)
 
     return files
-
 
 def _build_lineage(
     tier: str,
@@ -1704,7 +1664,6 @@ def _build_lineage(
             )
     return out
 
-
 def _required_kernels_for(tier: str, layout: Mapping[str, Sequence[Path]]) -> tuple[
     list[str], list[str]
 ]:
@@ -1722,12 +1681,10 @@ def _required_kernels_for(tier: str, layout: Mapping[str, Sequence[Path]]) -> tu
                 req.append("turbo3_tcq")
     return req, opt
 
-
 def _published_at_now() -> str:
     from datetime import datetime, timezone
 
     return datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
 
 def _kernel_manifest_fragments_from_layout(
     layout: Mapping[str, Sequence[Path]],
@@ -1748,7 +1705,6 @@ def _kernel_manifest_fragments_from_layout(
             fragments.append(kernel_manifest)
     return fragments
 
-
 def _optional_float(value: Any) -> float | None:
     if isinstance(value, bool) or value is None:
         return None
@@ -1756,14 +1712,12 @@ def _optional_float(value: Any) -> float | None:
         return float(value)
     return None
 
-
 def _dflash_report_eval(ctx: PublishContext) -> Mapping[str, Any]:
     report_path = ctx.bundle_dir / "evals" / "dflash-accept.json"
     if not report_path.is_file():
         return {}
     data = json.loads(report_path.read_text())
     return data if isinstance(data, dict) else {}
-
 
 def assemble_manifest(
     ctx: PublishContext,
@@ -1915,7 +1869,6 @@ def assemble_manifest(
             EXIT_MANIFEST_INVALID,
         )
 
-
 def _gate_passed(report: GateReport, name: str) -> bool:
     for g in report.gates:
         if g.name == name:
@@ -1923,14 +1876,12 @@ def _gate_passed(report: GateReport, name: str) -> bool:
     # Gate not configured for this tier → treat as pass.
     return True
 
-
 # Operator opt-in for collapsing two independent contract booleans onto
 # a single observed measurement. Set to "1" to allow the orchestrator
 # to source ``e2e_loop_ok`` from the ``thirty_turn_ok`` measurement when
 # the eval blob doesn't carry an ``e2e_loop_ok`` key. Without the opt-in,
 # a missing key is publish-blocking.
 PUBLISH_ALLOW_GATE_ALIAS_ENV = "ELIZA_PUBLISH_ALLOW_GATE_ALIAS"
-
 
 def _read_independent_bool(
     results: Mapping[str, Any],
@@ -2000,11 +1951,9 @@ def _read_independent_bool(
     )
     return aliased
 
-
 # ---------------------------------------------------------------------------
 # Stage 5 — README render
 # ---------------------------------------------------------------------------
-
 
 def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
     """Render the bundle README from the manifest.
@@ -2125,23 +2074,18 @@ def render_readme(ctx: PublishContext, manifest: Mapping[str, Any]) -> str:
         voice_cache=voice_cache,
     )
 
-
 # ---------------------------------------------------------------------------
 # Stage 6 — HF push + tag
 # ---------------------------------------------------------------------------
 
-
 def _hf_token() -> str | None:
     return os.environ.get("HF_TOKEN") or os.environ.get("HUGGINGFACE_HUB_TOKEN")
-
 
 def _bundle_repo_prefix(ctx: PublishContext) -> str:
     return f"bundles/{ctx.tier}"
 
-
 def _bundle_repo_path(ctx: PublishContext, rel_path: str) -> str:
     return f"{_bundle_repo_prefix(ctx)}/{rel_path}"
-
 
 def _build_upload_list(
     ctx: PublishContext, layout: Mapping[str, Sequence[Path]]
@@ -2203,7 +2147,6 @@ def _build_upload_list(
                 existing_targets.add(target)
 
     return pairs
-
 
 def push_to_hf(
     ctx: PublishContext,
@@ -2280,7 +2223,6 @@ def push_to_hf(
         uploaded_paths=uploaded_paths,
     )
 
-
 def _upload_evidence_from_commit(
     ctx: PublishContext,
     *,
@@ -2309,7 +2251,6 @@ def _upload_evidence_from_commit(
         "url": str(url),
         "uploadedPaths": sorted(set(uploaded_paths)),
     }
-
 
 def finalize_release_evidence(
     ctx: PublishContext,
@@ -2343,7 +2284,6 @@ def finalize_release_evidence(
     checksum_path = _write_checksum_manifest(ctx, layout)
     validate_release_evidence(ctx, layout, allow_uploaded_evidence=True)
     return release_path, checksum_path
-
 
 def push_final_release_evidence(
     ctx: PublishContext,
@@ -2386,7 +2326,6 @@ def push_final_release_evidence(
         commit_message=f"eliza-1-{ctx.tier}: finalize release evidence",
     )
 
-
 def tag_training_repo(
     ctx: PublishContext, version: str, dry_run: bool
 ) -> str | None:
@@ -2423,11 +2362,9 @@ def tag_training_repo(
         )
     return tag_name
 
-
 # ---------------------------------------------------------------------------
 # Top-level driver
 # ---------------------------------------------------------------------------
-
 
 def _read_version(ctx: PublishContext) -> str:
     """Read the bundle version from ``bundle/VERSION`` or default to 1.0.0."""
@@ -2437,7 +2374,6 @@ def _read_version(ctx: PublishContext) -> str:
         if v:
             return v
     return "1.0.0"
-
 
 def run(ctx: PublishContext) -> int:
     """Run every stage. Returns an exit code; never raises."""
@@ -2509,11 +2445,9 @@ def run(ctx: PublishContext) -> int:
         log.error("orchestrator error: %s", exc)
         return exc.exit_code
 
-
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
-
 
 def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
     ap = argparse.ArgumentParser(
@@ -2622,11 +2556,9 @@ def _parse_args(argv: Sequence[str] | None = None) -> PublishContext:
         regression_tolerance=args.regression_tolerance,
     )
 
-
 def main(argv: Sequence[str] | None = None) -> int:
     ctx = _parse_args(argv)
     return run(ctx)
-
 
 if __name__ == "__main__":
     sys.exit(main())

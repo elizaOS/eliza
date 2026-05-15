@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Optional
 
-ElizaOneModelSize = Literal["0.8b", "2b", "9b", "27b", "27b-1m"]
+ElizaOneModelSize = Literal["0.8b", "2b", "9b", "27b"]
 ElizaOneReleaseState = Literal["local-standin", "candidate", "final"]
 
 ELIZA_ONE_MODEL_SIZES: tuple[ElizaOneModelSize, ...] = (
@@ -31,7 +31,6 @@ ELIZA_ONE_MODEL_SIZES: tuple[ElizaOneModelSize, ...] = (
     "2b",
     "9b",
     "27b",
-    "27b-1m",
 )
 
 ELIZA_ONE_RELEASE_STATES: tuple[ElizaOneReleaseState, ...] = (
@@ -40,11 +39,9 @@ ELIZA_ONE_RELEASE_STATES: tuple[ElizaOneReleaseState, ...] = (
     "final",
 )
 
-
 @dataclass(frozen=True)
 class ElizaOneBundleFinal:
     weights: bool
-
 
 @dataclass(frozen=True)
 class ElizaOneBundleManifest:
@@ -57,7 +54,6 @@ class ElizaOneBundleManifest:
     sha256: str
     drafters_path: Optional[str] = None
 
-
 def _expand_home(value: str) -> str:
     if not value:
         return value
@@ -66,7 +62,6 @@ def _expand_home(value: str) -> str:
     if value.startswith("~/"):
         return os.path.join(os.path.expanduser("~"), value[2:])
     return value
-
 
 def read_eliza_one_bundle(bundle_path: str) -> ElizaOneBundleManifest:
     """Read and validate ``manifest.json`` inside an eliza-1 bundle directory.
@@ -183,7 +178,6 @@ def read_eliza_one_bundle(bundle_path: str) -> ElizaOneBundleManifest:
         sha256=sha256,
     )
 
-
 def bundle_is_pre_release(manifest: ElizaOneBundleManifest) -> bool:
     """Return True when the bundle MUST be labeled ``pre-release`` downstream.
 
@@ -198,7 +192,6 @@ def bundle_is_pre_release(manifest: ElizaOneBundleManifest) -> bool:
     if not manifest.final.weights:
         return True
     return False
-
 
 __all__ = [
     "ELIZA_ONE_MODEL_SIZES",

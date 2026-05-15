@@ -24,7 +24,6 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-computeruse": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/ui": "workspace:*",
     "lucide-react": "^1.0.0"
   },
   "peerDependencies": {
@@ -83,6 +82,7 @@
     "dist"
   ],
   "devDependencies": {
-    "tsup": "^8.5.1"
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3"
   }
 }

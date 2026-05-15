@@ -6,7 +6,20 @@ from typing import Dict, List, Tuple
 from benchmarks.bfcl.executable_runtime.func_source_code.memory_api_metaclass import (
     MemoryAPI,
 )
-from rank_bm25 import BM25Plus
+
+try:
+    from rank_bm25 import BM25Plus
+except ImportError:  # pragma: no cover - exercised only without optional deps
+    class BM25Plus:
+        def __init__(self, tokenized_corpus):
+            self.tokenized_corpus = tokenized_corpus
+
+        def get_scores(self, tokenized_query):
+            query_terms = set(tokenized_query)
+            return [
+                float(sum(1 for term in document if term in query_terms))
+                for document in self.tokenized_corpus
+            ]
 
 # https://lilianweng.github.io/posts/2023-06-23-agent/#component-two-memory
 MAX_CORE_MEMORY_SIZE = 7

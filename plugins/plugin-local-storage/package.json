@@ -20,16 +20,15 @@
     },
     "./*.css": "./dist/*.css",
     "./*": {
+      "types": "./dist/*.d.ts",
       "import": "./dist/*.js",
-      "default": "./dist/*.js",
-      "types": "./dist/*.d.ts"
+      "default": "./dist/*.js"
     }
   },
   "files": [
     "dist"
   ],
   "dependencies": {
-    "@brighter/storage": "^1.6.3",
     "@brighter/storage-adapter-local": "^1.6.3",
     "@elizaos/core": "workspace:*"
   },

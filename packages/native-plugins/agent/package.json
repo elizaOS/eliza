@@ -27,8 +27,7 @@
     "android/build.gradle",
     "dist/",
     "ios/Sources/",
-    "*.podspec",
-    "dist"
+    "*.podspec"
   ],
   "author": "elizaOS",
   "license": "MIT",

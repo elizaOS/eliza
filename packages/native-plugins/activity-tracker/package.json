@@ -18,8 +18,7 @@
   "files": [
     "dist/",
     "native/macos/activity-collector",
-    "native/macos/activity-collector.swift",
-    "dist"
+    "native/macos/activity-collector.swift"
   ],
   "scripts": {
     "build": "node ../../../scripts/rm-path-recursive.mjs dist && tsc -p tsconfig.json",

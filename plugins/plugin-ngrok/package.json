@@ -49,7 +49,6 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-tunnel": "workspace:*",
-    "@ngrok/ngrok": "^1.5.1",
     "zod": "^4.4.2"
   },
   "devDependencies": {
