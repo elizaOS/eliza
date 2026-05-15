@@ -29,7 +29,7 @@ export async function executeRawSql(
   rows: Record<string, unknown>[];
   columns: string[];
 }> {
-  const db = runtime.adapter?.db as
+  const db = runtime.adapter.db as
     | {
         execute: (query: { queryChunks: unknown[] }) => Promise<{
           rows: Record<string, unknown>[];

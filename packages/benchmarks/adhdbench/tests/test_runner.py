@@ -2,7 +2,6 @@
 
 from elizaos_adhdbench.config import ADHDBenchConfig
 from elizaos_adhdbench.scenarios import ALL_SCENARIOS, get_scenarios, SCENARIO_BY_ID
-from elizaos_adhdbench.types import ScalePoint, ScenarioLevel
 
 
 def test_all_scenarios_count() -> None:

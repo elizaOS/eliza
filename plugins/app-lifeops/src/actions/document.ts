@@ -694,11 +694,11 @@ export const ownerDocumentsAction: Action & {
     "surface:internal",
   ],
   description:
-    "Manage the owner's document workflow surface: signature requests, approvals, deadline tracking, portal uploads, ID/form collection, and request close-out. Subactions: request_signature, request_approval, track_deadline, upload_asset, collect_id, close_request.",
+    "Owner documents: signature requests, approvals, deadlines, portal uploads, ID/form collection, close-out. Ops: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request.",
   descriptionCompressed:
-    "docs: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request; deadline-aware; owner-gated for signature+upload",
+    "OWNER_DOCUMENTS signature|approval|deadline|upload_asset|collect_id|close_request",
   routingHint:
-    'owner document signature/approval/upload/portal/ID-form intent ("get this signed", "send for approval", "upload deck to portal", "track NDA deadline", "close out the doc request") -> OWNER_DOCUMENTS; approval queue resolution stays on RESOLVE_REQUEST',
+    'owner document signature/approval/upload/portal/ID-form ("get signed", "send approval", "upload deck", "track NDA deadline", "close doc") -> OWNER_DOCUMENTS; approval queue resolution -> RESOLVE_REQUEST',
   contexts: ["docs", "tasks", "calendar", "contacts"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -707,68 +707,66 @@ export const ownerDocumentsAction: Action & {
     {
       name: "action",
       description:
-        "Canonical document operation: request_signature | request_approval | track_deadline | upload_asset | collect_id | close_request.",
+        "Document op: request_signature|request_approval|track_deadline|upload_asset|collect_id|close_request.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
       name: "documentRequestId",
       description:
-        "Existing DocumentRequest id. Required for track_deadline and close_request.",
+        "Existing DocumentRequest id; required track_deadline/close_request.",
       schema: { type: "string" as const },
     },
     {
       name: "requesteeEntityId",
       description:
-        "Entity id of the person we are asking. Required for request_signature and collect_id.",
+        "Requestee Entity id; required request_signature/collect_id.",
       schema: { type: "string" as const },
     },
     {
       name: "documentTitle",
-      description: "Short human-readable label for the document.",
+      description: "Short doc label.",
       schema: { type: "string" as const },
     },
     {
       name: "deadline",
-      description: "ISO-8601 deadline for the request.",
+      description: "Deadline ISO-8601.",
       schema: { type: "string" as const },
     },
     {
       name: "portalUrl",
-      description:
-        "Portal endpoint for upload_asset and (optionally) collect_id.",
+      description: "Portal URL; required upload_asset, optional collect_id.",
       schema: { type: "string" as const },
     },
     {
       name: "assetPath",
-      description:
-        "Local path or URL of the asset to upload. Required for upload_asset.",
+      description: "Asset path/URL; required upload_asset.",
       schema: { type: "string" as const },
     },
     {
       name: "assetKind",
       description:
-        "What kind of asset: deck, headshot, id, form, etc. Required for upload_asset and collect_id.",
+        "Asset kind deck|headshot|id|form|etc.; required upload_asset/collect_id.",
       schema: { type: "string" as const },
     },
     {
       name: "signatureUrl",
-      description: "Optional signing portal URL (DocuSign / HelloSign / etc.).",
+      description: "Optional signing portal URL: DocuSign|HelloSign|etc.",
       schema: { type: "string" as const },
     },
     {
       name: "approvalReason",
-      description: "Reason label for request_approval.",
+      description: "request_approval reason label.",
       schema: { type: "string" as const },
     },
     {
       name: "note",
-      description: "Free-form note recorded on the DocumentRequest.",
+      description: "Free-form DocumentRequest note.",
       schema: { type: "string" as const },
     },
     {
       name: "resolution",
       description:
-        "close_request only: completed | expired | cancelled. Defaults to completed.",
+        "close_request only: completed|expired|cancelled; default completed.",
       schema: {
         type: "string" as const,
         enum: ["completed", "expired", "cancelled"],

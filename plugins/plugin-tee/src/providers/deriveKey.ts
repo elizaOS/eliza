@@ -166,7 +166,6 @@ export const phalaDeriveKeyProvider: Provider = {
     const teeModeRaw = runtime.getSetting("TEE_MODE");
     if (!teeModeRaw) {
       return {
-        data: null,
         values: {},
         text: "TEE_MODE is not configured",
       };
@@ -178,7 +177,6 @@ export const phalaDeriveKeyProvider: Provider = {
     if (!secretSaltRaw) {
       logger.error("WALLET_SECRET_SALT is not configured");
       return {
-        data: null,
         values: {},
         text: "WALLET_SECRET_SALT is not configured in settings",
       };
@@ -222,7 +220,6 @@ export const phalaDeriveKeyProvider: Provider = {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`Error in derive key provider: ${message}`);
       return {
-        data: null,
         values: {},
         text: `Failed to derive keys: ${message}`,
       };

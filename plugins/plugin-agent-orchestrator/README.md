@@ -4,7 +4,7 @@
 [![CI](https://github.com/elizaos/eliza/actions/workflows/ci.yml/badge.svg)](https://github.com/elizaos/eliza/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The canonical orchestration plugin for ElizaOS task agents. Spawns local coding agents (codex, claude, gemini, ...) via the [`acpx`](https://github.com/0xouroboros/acp) CLI using the structured Agent Client Protocol, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
+The canonical orchestration plugin for ElizaOS task agents. Spawns local coding agents (codex, claude, opencode) via the [`acpx`](https://github.com/0xouroboros/acp) CLI using the structured Agent Client Protocol, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
 
 > Naming: this plugin is *not* the same thing as `@elizaos/plugin-acp`. That package is Shaw's ACP gateway client (IDE bridge over a remote ACP gateway). `@elizaos/plugin-agent-orchestrator` is the *task backend* that uses `acpx` to run coding agents as subprocesses on the same host as the runtime.
 
@@ -24,7 +24,7 @@ npm install -g acpx@latest
 acpx --version
 ```
 
-You also need at least one ACP-compatible agent CLI (`codex`, `claude`, or `gemini`) installed and authenticated.
+You also need at least one ACP-compatible agent CLI (`codex`, `claude`, or `opencode`) installed and authenticated.
 
 ## Quick start
 
@@ -46,7 +46,7 @@ export default {
 | `STOP_AGENT` | Cooperatively cancel + close a session. |
 | `LIST_AGENTS` | List active and persisted sessions. |
 | `CANCEL_TASK` | Cancel an in-flight task while preserving history. |
-| `TASK_HISTORY` / `TASK_CONTROL` / `TASK_SHARE` | Task lifecycle ops over the coordinator surface. |
+| `TASK_HISTORY` / `TASK_CONTROL` / `TASK_SHARE` | ACP session lifecycle and sharing helpers. |
 | `PROVISION_WORKSPACE` / `FINALIZE_WORKSPACE` | Git workspace setup, commit, push, PR open. |
 | `MANAGE_ISSUES` | GitHub issue create/list/update/close. |
 
@@ -61,7 +61,6 @@ export default {
 
 - `AcpService` — ACP subprocess lifecycle, NDJSON parsing, session state, event emission. Registers under `ACP_SUBPROCESS_SERVICE`.
 - `SubAgentRouter` (canonical) — subscribes to `AcpService.onSessionEvent`, posts terminal-event synthetic memories to `runtime.messageService.handleMessage`. Per-session round-trip cap (`ACPX_SUB_AGENT_ROUND_TRIP_CAP`, default 32) force-stops runaway loops. Disable with `ACPX_SUB_AGENT_ROUTER_DISABLED=1`.
-- `PTYService` — PTY-based spawn surface. Bound to `pty-manager`.
 - `CodingWorkspaceService` — git workspace lifecycle helpers.
 
 ```ts
@@ -114,10 +113,8 @@ All configuration is via environment variables. Sensible defaults; most users on
 | `ELIZA_ACP_DEFAULT_AGENT` | `codex` | Default agent type. |
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `1800000` (30m) | Per-prompt timeout. |
-| `ELIZA_ACP_AUTH_TIMEOUT_MS` | `120000` | Auth handshake timeout. |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acpx` | Where to persist session state when no runtime DB. |
 | `ACPX_DEFAULT_CWD` | runtime cwd | Base directory for spawned agent workdirs. |
-| `ELIZA_ACP_LOG_LEVEL` | `info` | `debug` \| `info` \| `warn` \| `error`. |
 | `ELIZA_ACP_MAX_SESSIONS` | `8` | Concurrent session cap. |
 | `ACPX_SUB_AGENT_ROUTER_DISABLED` | unset | Set to `1` to keep the router service registered but unbound (test/staging). |
 | `ACPX_SUB_AGENT_ROUND_TRIP_CAP` | `32` | Per-session inject cap before force-stop to prevent ping-pong loops. |
@@ -149,7 +146,7 @@ RUN_LIVE_ACPX=1 bun run test
 
 ## Status
 
-`0.2.0` — consolidated package. ACP subprocess sessions are the primary spawn path; PTY services remain available for terminal-backed route handlers and coordinator tooling.
+`0.2.0` — package. ACP subprocess sessions are the only task-agent spawn path.
 
 ## Contributing
 

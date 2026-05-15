@@ -7,69 +7,13 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type {
+  BenchmarkResult,
+  ScenarioResult,
+} from "./typescript/src/metrics.ts";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-interface LatencyStats {
-  min_ms: number;
-  max_ms: number;
-  avg_ms: number;
-  median_ms: number;
-  p95_ms: number;
-  p99_ms: number;
-  stddev_ms: number;
-}
-
-interface ThroughputStats {
-  messages_per_second: number;
-  total_messages: number;
-  total_time_ms: number;
-}
-
-interface PipelineBreakdown {
-  compose_state_avg_ms: number;
-  provider_execution_avg_ms: number;
-  should_respond_avg_ms: number;
-  model_call_avg_ms: number;
-  action_dispatch_avg_ms: number;
-  evaluator_avg_ms: number;
-  memory_create_avg_ms: number;
-  memory_get_avg_ms: number;
-}
-
-interface ResourceStats {
-  memory_rss_start_mb: number;
-  memory_rss_peak_mb: number;
-  memory_rss_end_mb: number;
-  memory_delta_mb: number;
-}
-
-interface ScenarioResult {
-  iterations: number;
-  warmup: number;
-  latency: LatencyStats;
-  throughput: ThroughputStats;
-  pipeline: PipelineBreakdown;
-  resources: ResourceStats;
-}
-
-interface SystemInfo {
-  os: string;
-  arch: string;
-  cpus: number;
-  memory_gb: number;
-  runtime_version: string;
-}
-
-interface BenchmarkResult {
-  runtime: string;
-  timestamp: string;
-  system: SystemInfo;
-  scenarios: Record<string, ScenarioResult>;
-  binary_size_bytes?: number;
-}
-
-type RuntimeName = "typescript" | "python" | "rust";
+type RuntimeName = BenchmarkResult["runtime"];
+type PipelineBreakdown = ScenarioResult["pipeline"];
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -228,6 +172,8 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
     if (scenarioResults.size === 0) continue;
 
     const activeRuntimes = Array.from(scenarioResults.keys());
+    const getScenario = (rt: RuntimeName): ScenarioResult =>
+      scenarioResults.get(rt)!;
 
     console.log(
       `━━━ ${scenarioId} ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`.slice(
@@ -245,17 +191,17 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
     // Latency metrics
     const avgValues = activeRuntimes.map(
-      (rt) => scenarioResults.get(rt)?.latency.avg_ms,
+      (rt) => getScenario(rt).latency.avg_ms,
     );
     const bestAvg = Math.min(...avgValues.filter((v) => v > 0));
 
     const p95Values = activeRuntimes.map(
-      (rt) => scenarioResults.get(rt)?.latency.p95_ms,
+      (rt) => getScenario(rt).latency.p95_ms,
     );
     const bestP95 = Math.min(...p95Values.filter((v) => v > 0));
 
     const p99Values = activeRuntimes.map(
-      (rt) => scenarioResults.get(rt)?.latency.p99_ms,
+      (rt) => getScenario(rt).latency.p99_ms,
     );
     const bestP99 = Math.min(...p99Values.filter((v) => v > 0));
 
@@ -295,7 +241,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
     // Throughput
     const tpValues = activeRuntimes.map(
-      (rt) => scenarioResults.get(rt)?.throughput.messages_per_second,
+      (rt) => getScenario(rt).throughput.messages_per_second,
     );
     const bestTp = Math.max(...tpValues.filter((v) => v > 0));
 
@@ -313,7 +259,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
     // Memory
     const memValues = activeRuntimes.map(
-      (rt) => scenarioResults.get(rt)?.resources.memory_rss_peak_mb,
+      (rt) => getScenario(rt).resources.memory_rss_peak_mb,
     );
     const bestMem = Math.min(...memValues.filter((v) => v > 0));
 
@@ -331,7 +277,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
     // Pipeline breakdown (if any non-zero values)
     const hasPipeline = activeRuntimes.some((rt) => {
-      const pl = scenarioResults.get(rt)?.pipeline;
+      const pl = getScenario(rt).pipeline;
       return pl.compose_state_avg_ms > 0 || pl.model_call_avg_ms > 0;
     });
 
@@ -346,7 +292,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
 
       for (const [label, key] of pipelineMetrics) {
         const vals = activeRuntimes.map(
-          (rt) => scenarioResults.get(rt)?.pipeline[key] as number,
+          (rt) => getScenario(rt).pipeline[key],
         );
         if (vals.every((v) => v === 0)) continue;
         const _best = Math.min(...vals.filter((v) => v > 0));
@@ -376,7 +322,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
     let bestRt: RuntimeName = runtimes[0];
     let bestVal = Infinity;
     for (const rt of runtimes) {
-      const val = results.get(rt)?.scenarios[singleMsg].latency.avg_ms;
+      const val = results.get(rt)!.scenarios[singleMsg].latency.avg_ms;
       if (val > 0 && val < bestVal) {
         bestVal = val;
         bestRt = rt;
@@ -392,7 +338,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
     let bestVal = 0;
     for (const rt of runtimes) {
       const val =
-        results.get(rt)?.scenarios[burst].throughput.messages_per_second;
+        results.get(rt)!.scenarios[burst].throughput.messages_per_second;
       if (val > bestVal) {
         bestVal = val;
         bestRt = rt;
@@ -407,7 +353,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
     let bestVal = Infinity;
     for (const rt of runtimes) {
       const val =
-        results.get(rt)?.scenarios[singleMsg].resources.memory_rss_peak_mb;
+        results.get(rt)!.scenarios[singleMsg].resources.memory_rss_peak_mb;
       if (val > 0 && val < bestVal) {
         bestVal = val;
         bestRt = rt;
@@ -422,7 +368,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
     let bestRt: RuntimeName = runtimes[0];
     let bestVal = Infinity;
     for (const rt of runtimes) {
-      const val = results.get(rt)?.scenarios[startup].latency.avg_ms;
+      const val = results.get(rt)!.scenarios[startup].latency.avg_ms;
       if (val > 0 && val < bestVal) {
         bestVal = val;
         bestRt = rt;

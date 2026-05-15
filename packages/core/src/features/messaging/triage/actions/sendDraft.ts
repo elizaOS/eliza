@@ -221,7 +221,7 @@ export const sendDraftAction: Action = {
 	description:
 		"Create or send an owner-scoped outbound message draft. Use this for first-turn requests like 'send a Telegram message to Jane saying I am late', 'DM Bob on Discord', 'email Alice the notes', and 'text Sam that I am outside'. Without confirmed=true it only creates or previews the draft and asks for confirmation; it never sends directly.",
 	descriptionCompressed:
-		"owner outbound message draft/send confirmation-gated; use for Telegram Signal Discord email SMS/iMessage/DM send requests; never sends without confirmed=true",
+		"outbound draft/send Telegram|Signal|Discord|email|SMS|iMessage|DM; requires confirmed=true",
 	similes: [
 		"DISPATCH_DRAFT",
 		"CONFIRM_AND_SEND",

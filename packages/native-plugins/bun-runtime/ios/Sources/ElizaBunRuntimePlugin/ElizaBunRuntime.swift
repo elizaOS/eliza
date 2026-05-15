@@ -222,7 +222,8 @@ public final class ElizaBunRuntime {
         argv: [String],
         env: [String: String]
     ) throws {
-        let requestedEngine = engine.lowercased()
+        let requestedEngine = IosRuntimePolicy.normalizeEngine(engine)
+        let runtimeEnv = IosRuntimePolicy.sanitizeEnvironment(env)
         if requestedEngine == "bun" || requestedEngine == "auto" || requestedEngine.isEmpty {
             let host = FullBunEngineHost.shared
             do {
@@ -241,7 +242,7 @@ public final class ElizaBunRuntime {
                     atPath: pgliteDir,
                     withIntermediateDirectories: true
                 )
-                var fullBunEnv = env
+                var fullBunEnv = runtimeEnv
                 fullBunEnv["HOME"] = appSupportDir
                 fullBunEnv["ELIZA_HOME"] = appSupportDir
                 fullBunEnv["ELIZA_STATE_DIR"] = appSupportDir
@@ -274,6 +275,12 @@ public final class ElizaBunRuntime {
             }
         }
 
+        guard IosRuntimePolicy.allowsJSContextCompatibilityFallback else {
+            throw makeError(
+                "JSContext compatibility fallback is disabled outside iOS DEBUG/development builds; request engine=bun"
+            )
+        }
+
         let ctx = JSContext(virtualMachine: virtualMachine)!
         ctx.name = "ElizaBunRuntime"
         ctx.exceptionHandler = { _, exception in
@@ -294,7 +301,7 @@ public final class ElizaBunRuntime {
             paths: SandboxPaths(),
             plugin: pluginRef,
             argv: argv,
-            env: env,
+            env: runtimeEnv,
             runtime: self
         )
         self.bridges = kit
@@ -543,5 +550,70 @@ public final class ElizaBunRuntime {
             code: -1,
             userInfo: [NSLocalizedDescriptionKey: "Runtime has been deallocated"]
         )
+    }
+}
+
+enum IosRuntimePolicy {
+    static let defaultEngine = "auto"
+    static let safeLocalExecutionMode = "local-safe"
+#if DEBUG
+    static let allowsJSContextCompatibilityFallback = true
+#else
+    static let allowsJSContextCompatibilityFallback = false
+#endif
+
+    private static let executionModeKeys = [
+        "ELIZA_RUNTIME_MODE",
+        "RUNTIME_MODE",
+        "LOCAL_RUNTIME_MODE",
+    ]
+
+    static func normalizeEngine(_ value: String) -> String {
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "bun":
+            return "bun"
+        case "auto", "":
+            return "auto"
+        case "compat":
+            return "compat"
+        default:
+            return defaultEngine
+        }
+    }
+
+    static func sanitizeEnvironment(_ env: [String: String]) -> [String: String] {
+        var sanitized = env.filter { key, _ in
+            !key.uppercased().hasPrefix("DYLD_")
+        }
+
+        sanitized["ELIZA_PLATFORM"] = "ios"
+        sanitized["ELIZA_MOBILE_PLATFORM"] = "ios"
+
+        let resolvedMode = executionModeKeys
+            .compactMap { normalizeExecutionMode(sanitized[$0]) }
+            .first ?? safeLocalExecutionMode
+        let clampedMode = resolvedMode == "local-yolo" ? safeLocalExecutionMode : resolvedMode
+        for key in executionModeKeys {
+            sanitized[key] = clampedMode
+        }
+
+        sanitized["ELIZA_IOS_RUNTIME_POLICY"] = safeLocalExecutionMode
+        sanitized["ELIZA_IOS_JAVASCRIPT_ENGINE"] = "javascriptcore"
+        sanitized["ELIZA_IOS_JIT"] = "0"
+        sanitized["ELIZA_IOS_DYNAMIC_CODE_SIGNING"] = "0"
+        return sanitized
+    }
+
+    private static func normalizeExecutionMode(_ value: String?) -> String? {
+        switch value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "cloud":
+            return "cloud"
+        case "local-safe":
+            return safeLocalExecutionMode
+        case "local-yolo":
+            return "local-yolo"
+        default:
+            return nil
+        }
     }
 }

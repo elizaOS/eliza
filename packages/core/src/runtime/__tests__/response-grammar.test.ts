@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { normalizeActionJsonSchema } from "../../actions/action-schema";
 import type { Action } from "../../types";
 import type { ResponseSkeleton } from "../../types/model";
@@ -32,8 +32,33 @@ const field = (
 	...overrides,
 });
 
+const RESPONSE_GRAMMAR_ENV_KEYS = ["ELIZA_LOCAL_GUIDED_DECODE"] as const;
+const responseGrammarEnvSnapshot: Record<string, string | undefined> = {};
+for (const key of RESPONSE_GRAMMAR_ENV_KEYS) {
+	responseGrammarEnvSnapshot[key] = process.env[key];
+}
+
+function restoreResponseGrammarTestState(): void {
+	clearResponseGrammarCache();
+	for (const key of RESPONSE_GRAMMAR_ENV_KEYS) {
+		if (responseGrammarEnvSnapshot[key] === undefined) {
+			delete process.env[key];
+		} else {
+			process.env[key] = responseGrammarEnvSnapshot[key];
+		}
+	}
+}
+
+beforeEach(() => {
+	restoreResponseGrammarTestState();
+});
+
+afterEach(() => {
+	restoreResponseGrammarTestState();
+});
+
 describe("buildResponseGrammar — Stage-1 envelope", () => {
-	it("emits fixed envelope key order matching HANDLE_RESPONSE_SCHEMA (non-direct)", () => {
+	it("defaults to the canonical response-handler field envelope", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
 			{ actions: [] },
@@ -45,14 +70,14 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 			.map((s) => s.key);
 		expect(keyOrder).toEqual([
 			"shouldRespond",
-			"thought",
-			"replyText",
 			"contexts",
-			"contextSlices",
-			"candidateActions",
-			"parentActionHints",
-			"requiresTool",
-			"extract",
+			"intents",
+			"replyText",
+			"candidateActionNames",
+			"facts",
+			"relationships",
+			"addressedTo",
+			"emotion",
 		]);
 		// First span opens the JSON object with the first key.
 		expect(responseSkeleton.spans[0]).toEqual({
@@ -77,20 +102,22 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(grammar).toContain("contextsarray ::=");
 	});
 
-	it("drops shouldRespond on non-voice direct channels (DM/API/SELF)", () => {
+	it("keeps the canonical envelope on direct channels", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton, grammar } = buildResponseGrammar(
 			{ actions: [] },
 			{ contexts: ["general"], channelType: "DM" },
 		);
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
-			false,
+			true,
 		);
 		expect(responseSkeleton.spans[0]).toEqual({
 			kind: "literal",
-			value: '{"thought":',
+			value: '{"shouldRespond":',
 		});
-		expect(grammar).not.toContain("shouldrespond ::=");
+		expect(grammar).toContain(
+			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
+		);
 	});
 
 	it("keeps shouldRespond on voice channels", () => {
@@ -102,7 +129,9 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		expect(responseSkeleton.spans.some((s) => s.key === "shouldRespond")).toBe(
 			true,
 		);
-		expect(grammar).toContain("shouldrespond ::=");
+		expect(grammar).toContain(
+			'"\\"RESPOND\\"" | "\\"IGNORE\\"" | "\\"STOP\\""',
+		);
 	});
 
 	it("always merges `simple` and `general` into the contexts element enum", () => {
@@ -599,6 +628,89 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		expect(r.grammar).toMatch(/^jsonstring ::= /m);
 	});
 
+	it("compiles a simple anchored regex pattern into the parameter grammar", () => {
+		clearResponseGrammarCache();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("TASK", {
+				parameters: [
+					{
+						name: "id",
+						description: "task id",
+						required: true,
+						schema: { type: "string", pattern: "^task-[0-9]+$" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_TASK_p_id ::= "\\"id\\":" "task-" \[0-9\]\+/,
+		);
+		expect(r.grammar).not.toMatch(
+			/paramsofaction_TASK_p_id ::= "\\"id\\":" jsonstring/,
+		);
+	});
+
+	it("expands bounded repeat counts in anchored regex patterns", () => {
+		clearResponseGrammarCache();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("CODE", {
+				parameters: [
+					{
+						name: "code",
+						description: "code",
+						required: true,
+						schema: { type: "string", pattern: "^[A-Z]{2}[0-9]{4}$" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_CODE_p_code ::= "\\"code\\":" \[A-Z\] \[A-Z\] \[0-9\] \[0-9\] \[0-9\] \[0-9\]/,
+		);
+	});
+
+	it("falls back to validation-backed string grammar for unsupported regex features", () => {
+		clearResponseGrammarCache();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("WILDCARD", {
+				parameters: [
+					{
+						name: "id",
+						description: "task id",
+						required: true,
+						schema: { type: "string", pattern: "^task-.*$" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_WILDCARD_p_id ::= "\\"id\\":" jsonstring/,
+		);
+	});
+
+	it("falls back when alternation is not explicitly grouped", () => {
+		clearResponseGrammarCache();
+		const r = buildPlannerActionGrammarStrict([
+			makeAction("ALT", {
+				parameters: [
+					{
+						name: "id",
+						description: "task id",
+						required: true,
+						schema: { type: "string", pattern: "^foo|bar$" },
+					},
+				],
+			}),
+		]);
+		if (r === null) throw new Error("expected grammar");
+		expect(r.grammar).toMatch(
+			/paramsofaction_ALT_p_id ::= "\\"id\\":" jsonstring/,
+		);
+	});
+
 	it("recurses into object-typed properties with declared sub-properties", () => {
 		// Mirrors paymentContext in real actions: object with enum-typed
 		// sub-properties. The strict grammar should pin the sub-property
@@ -1012,10 +1124,7 @@ describe("buildPlannerActionGrammarStrict — realistic action set (P2-4 product
 });
 
 describe("withGuidedDecodeProviderOptions", () => {
-	const ENV_KEYS = [
-		"MILADY_LOCAL_GUIDED_DECODE",
-		"ELIZA_LOCAL_GUIDED_DECODE",
-	] as const;
+	const ENV_KEYS = ["ELIZA_LOCAL_GUIDED_DECODE"] as const;
 	const saved: Record<string, string | undefined> = {};
 	for (const k of ENV_KEYS) saved[k] = process.env[k];
 	afterEach(() => {
@@ -1046,12 +1155,6 @@ describe("withGuidedDecodeProviderOptions", () => {
 		expect((opts as { eliza?: { guidedDecode?: unknown } }).eliza).toEqual({
 			guidedDecode: true,
 		});
-	});
-
-	it("is a no-op when the operator opts out via MILADY_LOCAL_GUIDED_DECODE=0", () => {
-		process.env.MILADY_LOCAL_GUIDED_DECODE = "0";
-		const opts = withGuidedDecodeProviderOptions({} as Record<string, unknown>);
-		expect((opts as { eliza?: unknown }).eliza).toBeUndefined();
 	});
 
 	it("is a no-op when ELIZA_LOCAL_GUIDED_DECODE=false", () => {
@@ -1088,8 +1191,8 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 					key: "shouldRespond",
 					enumValues: ["RESPOND", "IGNORE", "STOP"],
 				},
-				{ kind: "literal", value: ',"thought":' },
-				{ kind: "free-string", key: "thought" },
+				{ kind: "literal", value: ',"replyText":' },
+				{ kind: "free-string", key: "replyText" },
 				{ kind: "literal", value: "}" },
 			],
 		};
@@ -1105,8 +1208,8 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 			spans: [
 				{ kind: "literal", value: '{"count":' },
 				{ kind: "number", key: "count" },
-				{ kind: "literal", value: ',"requiresTool":' },
-				{ kind: "boolean", key: "requiresTool" },
+				{ kind: "literal", value: ',"shouldStream":' },
+				{ kind: "boolean", key: "shouldStream" },
 				{ kind: "literal", value: ',"replyText":' },
 				{ kind: "free-string", key: "replyText" },
 				{ kind: "literal", value: "}" },
@@ -1123,10 +1226,10 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 		const skeleton: ResponseSkeleton = {
 			id: "test#all-free",
 			spans: [
-				{ kind: "literal", value: '{"thought":' },
-				{ kind: "free-string", key: "thought" },
-				{ kind: "literal", value: ',"extract":' },
-				{ kind: "free-json", key: "extract" },
+				{ kind: "literal", value: '{"replyText":' },
+				{ kind: "free-string", key: "replyText" },
+				{ kind: "literal", value: ',"facts":' },
+				{ kind: "free-json", key: "facts" },
 				{ kind: "literal", value: "}" },
 			],
 		};
@@ -1148,14 +1251,14 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 		expect(plan.overrides).toEqual([]);
 	});
 
-	it("covers the canonical Stage-1 envelope (shouldRespond enum + requiresTool boolean)", () => {
+	it("covers the canonical Stage-1 envelope enum decisions", () => {
 		clearResponseGrammarCache();
 		const { responseSkeleton } = buildResponseGrammar(
 			{ actions: [] },
 			{ contexts: ["general"] },
 		);
 		const plan = buildSpanSamplerPlan(responseSkeleton);
-		// shouldRespond gets an override; replyText / thought / contexts do not.
+		// shouldRespond and emotion get overrides; replyText / contexts do not.
 		const overriddenKinds = plan.overrides.map(
 			(o) => responseSkeleton.spans[o.spanIndex].kind,
 		);
@@ -1164,6 +1267,7 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 		);
 		expect(overriddenKinds).toContain("enum");
 		expect(overriddenKeys).toContain("shouldRespond");
+		expect(overriddenKeys).toContain("emotion");
 		// Every override carries T=0 and topK=1 — the user's explicit rule.
 		for (const o of plan.overrides) {
 			expect(o.temperature).toBe(0);
@@ -1171,8 +1275,7 @@ describe("buildSpanSamplerPlan — per-span argmax policy", () => {
 		}
 		// Free-string / free-json spans are not overridden.
 		expect(overriddenKeys).not.toContain("replyText");
-		expect(overriddenKeys).not.toContain("thought");
-		expect(overriddenKeys).not.toContain("extract");
+		expect(overriddenKeys).not.toContain("contexts");
 	});
 
 	it("returns an empty plan (no overrides) for a skeleton with only free spans", () => {
@@ -1404,5 +1507,174 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		if (!result) return;
 		// For 301 values (> 200), should fall back to jsonnumber.
 		expect(result.grammar).toContain("jsonnumber");
+	});
+});
+
+describe("buildBoundedNumberRule — boundary, single-value, and degenerate ranges", () => {
+	it("emits a literal-alternation rule for a 200-difference integer range [1, 200] (at the threshold)", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("BOUNDARY200", {
+			parameters: [
+				{
+					name: "count",
+					description: "exactly 200 values",
+					required: true,
+					schema: { type: "integer", minimum: 1, maximum: 200 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// max - min = 199 (just under the 200 threshold) → bounded rule emitted.
+		const boundedRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_count_bounded ::="));
+		expect(boundedRule).toBeDefined();
+		// 200 alternatives separated by " | "
+		const alternatives = (boundedRule ?? "").split(" | ");
+		expect(alternatives.length).toBe(200);
+		// First and last and a spot-check middle value all present.
+		expect(result.grammar).toContain('"\\"1\\""');
+		expect(result.grammar).toContain('"\\"100\\""');
+		expect(result.grammar).toContain('"\\"200\\""');
+		// The parameter rule references the bounded rule, not the unbounded jsonnumber.
+		const paramRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_p_count ::="));
+		expect(paramRule).toBeDefined();
+		expect(paramRule).toContain("_count_bounded");
+		expect(paramRule).not.toContain("jsonnumber");
+	});
+
+	it("falls back to bare jsonnumber for a very large integer range [0, 10000]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("HUGECOUNT", {
+			parameters: [
+				{
+					name: "count",
+					description: "huge count",
+					required: true,
+					schema: { type: "integer", minimum: 0, maximum: 10000 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// No bounded rule should be emitted at all — the parameter resolves
+		// straight to the shared unbounded jsonnumber.
+		expect(result.grammar).not.toContain("_count_bounded");
+		const paramRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_p_count ::="));
+		expect(paramRule).toBeDefined();
+		// The parameter line is exactly `"\"count\":" jsonnumber` — i.e. the
+		// value part is just the shared rule, with no extra references.
+		expect(paramRule).toMatch(/::= "\\"count\\":" jsonnumber$/);
+	});
+
+	it("falls back to jsonnumber for a unit-interval float schema with no bounded rule emitted", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("UNITRATIO", {
+			parameters: [
+				{
+					name: "ratio",
+					description: "unit ratio",
+					required: true,
+					schema: { type: "number", minimum: 0, maximum: 1 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// Float ranges never emit a bounded rule — the value part references
+		// jsonnumber directly. Server-side validates the actual numeric bounds.
+		expect(result.grammar).not.toContain("_ratio_bounded");
+		expect(result.grammar).toContain("jsonnumber");
+		const paramRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_p_ratio ::="));
+		expect(paramRule).toBeDefined();
+		expect(paramRule).toMatch(/::= "\\"ratio\\":" jsonnumber$/);
+	});
+
+	it("emits every signed alternative for a small negative-to-positive integer range [-5, 5]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("SIGNED5", {
+			parameters: [
+				{
+					name: "delta",
+					description: "signed delta",
+					required: true,
+					schema: { type: "integer", minimum: -5, maximum: 5 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		const boundedRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_delta_bounded ::="));
+		expect(boundedRule).toBeDefined();
+		const alternatives = (boundedRule ?? "").split(" | ");
+		// 11 values: -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5
+		expect(alternatives.length).toBe(11);
+		for (const value of [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5]) {
+			expect(result.grammar).toContain(`"\\"${value}\\""`);
+		}
+	});
+
+	it("collapses a single-value integer range [7, 7] to one literal alternative", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("FIXED7", {
+			parameters: [
+				{
+					name: "pin",
+					description: "pinned value",
+					required: true,
+					schema: { type: "integer", minimum: 7, maximum: 7 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		const boundedRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_pin_bounded ::="));
+		expect(boundedRule).toBeDefined();
+		// Exactly one alternative, the literal `"7"` — no alternation pipe.
+		expect(boundedRule).toBe('paramsofaction_FIXED7_pin_bounded ::= "\\"7\\""');
+		expect(boundedRule).not.toContain(" | ");
+	});
+
+	it("falls back to jsonnumber for an inverted integer range [10, 5]", () => {
+		clearResponseGrammarCache();
+		const action = makeAction("INVERTED", {
+			parameters: [
+				{
+					name: "bad",
+					description: "min > max",
+					required: true,
+					schema: { type: "integer", minimum: 10, maximum: 5 },
+				},
+			],
+		});
+		const result = buildPlannerActionGrammarStrict([action]);
+		expect(result).not.toBeNull();
+		if (!result) return;
+		// Inverted range fix landed: min > max is unsatisfiable, so the impl
+		// falls back to the shared `jsonnumber` rule (same shape as the large-
+		// range and float cases) instead of emitting an empty rule body that
+		// would produce malformed GBNF.
+		expect(result.grammar).not.toContain("_bad_bounded");
+		const paramRule = result.grammar
+			.split("\n")
+			.find((l) => l.includes("_p_bad ::="));
+		expect(paramRule).toBeDefined();
+		expect(paramRule).toMatch(/::= "\\"bad\\":" jsonnumber$/);
 	});
 });

@@ -805,7 +805,7 @@ export const pluginAction: Action = {
     "in, log out, verify account, list account status), use the `CONNECTOR` " +
     "action instead.",
   descriptionCompressed:
-    "package-level plugin+connector lifecycle install uninstall update sync eject reinject configure read_config toggle list disconnect type=plugin|connector; for account login/logout use CONNECTOR",
+    "plugin/connector package install|uninstall|update|sync|eject|configure|toggle|list",
   validate: async (runtime) => getPluginManager(runtime) !== null,
   handler: async (
     runtime: IAgentRuntime,

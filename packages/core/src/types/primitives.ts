@@ -1,11 +1,10 @@
 /**
  * JSON-serializable primitive value.
  */
+export type JsonPrimitive = string | number | boolean | null;
+
 export type JsonValue =
-	| string
-	| number
-	| boolean
-	| null
+	| JsonPrimitive
 	| JsonValue[]
 	| { [key: string]: JsonValue };
 
@@ -13,6 +12,12 @@ export type JsonValue =
  * JSON-serializable object (used for dynamic properties).
  */
 export type JsonObject = { [key: string]: JsonValue };
+
+/**
+ * Minimal process-like environment shape for packages that also run in
+ * browsers, workers, or tests where `process.env` may not exist.
+ */
+export type ProcessEnvLike = Record<string, string | undefined>;
 
 /**
  * Defines a UUID as a string for protobuf interoperability.

@@ -3,7 +3,7 @@
  *
  * Store-distributed builds (Mac App Store, Microsoft Store, Flathub) run in
  * an OS sandbox that forbids forking arbitrary user-installed binaries. The
- * orchestrator's spawn paths (claude / codex / opencode CLIs via PTY) are
+ * orchestrator's spawn paths (claude / codex / opencode CLIs via ACP) are
  * therefore not viable in those builds, so we replace the TASKS action with
  * a single stub that explains the limitation and points the user at the
  * direct-download artifact.
@@ -12,7 +12,7 @@
  *   - validate(): always true — we want this stub to win whenever the
  *     planner reaches for any coding-agent simile under sandbox.
  *   - handler(): returns a single user-facing error result; no spawn
- *     attempt, no workspace allocation, no PTY.
+ *     attempt, no workspace allocation, no subprocess session.
  */
 
 import type {

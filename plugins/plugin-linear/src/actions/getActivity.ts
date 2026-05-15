@@ -46,7 +46,7 @@ export const getActivityAction: Action = {
   contexts: ["tasks", "connectors", "automation"],
   contextGate: { anyOf: ["tasks", "connectors", "automation"] },
   roleGate: { minRole: "USER" },
-  description: "Get recent Linear activity log with optional filters",
+  description: "Get recent Linear activity log with filters.",
   descriptionCompressed: "get recent Linear activity log w/ optional filter",
   similes: [
     "get-linear-activity",
@@ -58,13 +58,13 @@ export const getActivityAction: Action = {
     {
       name: "filters",
       description:
-        "Optional activity filters, e.g. fromDate ISO timestamp, action, resource_type, resource_id, or success.",
+        "Activity filters: fromDate ISO timestamp, action, resource_type, resource_id, success.",
       required: false,
       schema: { type: "object" as const },
     },
     {
       name: "limit",
-      description: "Maximum number of activity log entries to return.",
+      description: "Max activity entries.",
       required: false,
       schema: { type: "number" as const },
     },

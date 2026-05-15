@@ -11,6 +11,7 @@ import type {
 } from "@elizaos/shared";
 import {
   PostWorkbenchVfsCompilePluginRequestSchema,
+  PostWorkbenchVfsGitRequestSchema,
   PostWorkbenchVfsLoadPluginRequestSchema,
   PostWorkbenchVfsProjectRequestSchema,
   PostWorkbenchVfsPromoteToCloudRequestSchema,
@@ -27,6 +28,7 @@ import {
   createPluginCompiler,
   type PluginCompilerFormat,
 } from "../services/plugin-compiler.ts";
+import { createVfsGitService, VfsGitError } from "../services/vfs-git.ts";
 import {
   createVirtualFilesystemService,
   VirtualFilesystemError,
@@ -140,6 +142,23 @@ export async function handleWorkbenchVfsRoutes(
         return true;
       }
       json(res, { rollback: await vfs.rollback(parsed.data.snapshotId) });
+      return true;
+    }
+
+    if (method === "POST" && section === "git") {
+      const raw = await readJsonBody<Record<string, unknown>>(req, res);
+      if (raw === null) return true;
+      const parsed = PostWorkbenchVfsGitRequestSchema.safeParse(raw);
+      if (!parsed.success) {
+        error(
+          res,
+          parsed.error.issues[0]?.message ?? "Invalid VFS Git request",
+          400,
+        );
+        return true;
+      }
+      const git = createVfsGitService(vfs);
+      json(res, { git: await git.run(parsed.data) });
       return true;
     }
 
@@ -444,6 +463,18 @@ function sendVfsError(ctx: WorkbenchRouteContext, err: unknown): void {
         : err.code === "QUOTA_EXCEEDED"
           ? 413
           : 400;
+    ctx.error(ctx.res, err.message, status);
+    return;
+  }
+  if (err instanceof VfsGitError) {
+    const status =
+      err.code === "SYMLINK_DENIED"
+        ? 422
+        : err.code === "INVALID_GIT_URL" ||
+            err.code === "INVALID_GIT_PATH" ||
+            err.code === "MISSING_ARGUMENT"
+          ? 400
+          : 500;
     ctx.error(ctx.res, err.message, status);
     return;
   }

@@ -156,7 +156,7 @@ function makeOwnerLifeAction(args: {
     similes: args.similes,
     description: args.description,
     descriptionCompressed: args.descriptionCompressed,
-    routingHint: `${args.descriptionCompressed} -> ${args.name}; owner-only LifeOps surface`,
+    routingHint: `${args.descriptionCompressed} -> ${args.name}; owner-only LifeOps`,
     tags: OWNER_OPERATION_TAGS,
     contexts: OWNER_OPERATION_CONTEXTS,
     roleGate: OWNER_OPERATION_ROLE_GATE,
@@ -166,20 +166,19 @@ function makeOwnerLifeAction(args: {
     parameters: [
       {
         name: "action",
-        description: `Owner item operation: ${allowedActions.join(", ")}.`,
+        description: `Owner item op: ${allowedActions.join("|")}.`,
         required: false,
         schema: { type: "string" as const, enum: [...allowedActions] },
       },
       {
         name: "kind",
-        description:
-          "Optional override. Defaults to the owner surface's backing kind.",
+        description: "Optional backing kind override.",
         required: false,
         schema: { type: "string" as const, enum: ["definition", "goal"] },
       },
       {
         name: "intent",
-        description: "Free-form owner request used for extraction and replies.",
+        description: "Free-form owner request.",
         required: false,
         schema: { type: "string" as const },
       },
@@ -192,20 +191,19 @@ function makeOwnerLifeAction(args: {
       {
         name: "target",
         description:
-          "Existing item id or title for update/delete/complete/skip/snooze/review.",
+          "Existing item id/title for update/delete/complete/skip/snooze/review.",
         required: false,
         schema: { type: "string" as const },
       },
       {
         name: "minutes",
-        description: "Minutes to snooze, when action=snooze.",
+        description: "Snooze minutes when action=snooze.",
         required: false,
         schema: { type: "number" as const },
       },
       {
         name: "details",
-        description:
-          "Structured schedule, cadence, notes, or other extracted details.",
+        description: "Structured schedule/cadence/notes/details.",
         required: false,
         schema: { type: "object" as const, additionalProperties: true },
       },
@@ -241,7 +239,7 @@ export const ownerRemindersAction: Action = {
       "REMIND_ME_TO",
     ],
     description:
-      "Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
+      "Owner reminders: create/update/delete/complete/skip/snooze/review one-off/recurring.",
     descriptionCompressed:
       "owner reminders: action=create|update|delete|complete|skip|snooze|review",
     defaultKind: "definition",
@@ -255,7 +253,7 @@ export const ownerRemindersAction: Action = {
     "REMIND_ME_TO",
   ],
   description:
-    "Owner reminders: create, update, delete, complete, skip, snooze, or review one-off and recurring reminders.",
+    "Owner reminders: create/update/delete/complete/skip/snooze/review one-off/recurring.",
   descriptionCompressed:
     "owner reminders: action=create|update|delete|complete|skip|snooze|review",
 };
@@ -265,7 +263,7 @@ export const ownerAlarmsAction: Action = {
     name: "OWNER_ALARMS",
     similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
     description:
-      "Owner alarms: create, update, delete, complete, skip, snooze, or review alarm-like reminders.",
+      "Owner alarms: create/update/delete/complete/skip/snooze/review alarm reminders.",
     descriptionCompressed:
       "owner alarms: action=create|update|delete|complete|skip|snooze|review",
     defaultKind: "definition",
@@ -273,7 +271,7 @@ export const ownerAlarmsAction: Action = {
   name: "OWNER_ALARMS",
   similes: ["ALARM", "ALARMS", "WAKE_ME", "WAKE_UP"],
   description:
-    "Owner alarms: create, update, delete, complete, skip, snooze, or review alarm-like reminders.",
+    "Owner alarms: create/update/delete/complete/skip/snooze/review alarm reminders.",
   descriptionCompressed:
     "owner alarms: action=create|update|delete|complete|skip|snooze|review",
 };
@@ -282,8 +280,7 @@ export const ownerGoalsAction: Action = {
   ...makeOwnerLifeAction({
     name: "OWNER_GOALS",
     similes: ["GOAL", "GOALS", "LONG_TERM_GOAL"],
-    description:
-      "Owner goals: create, update, delete, or review long-term goals and progress.",
+    description: "Owner goals: create/update/delete/review goals/progress.",
     descriptionCompressed:
       "owner goals: action=create|update|delete|review; backing kind=goal",
     defaultKind: "goal",
@@ -291,8 +288,7 @@ export const ownerGoalsAction: Action = {
   }),
   name: "OWNER_GOALS",
   similes: ["GOAL", "GOALS", "LONG_TERM_GOAL"],
-  description:
-    "Owner goals: create, update, delete, or review long-term goals and progress.",
+  description: "Owner goals: create/update/delete/review goals/progress.",
   descriptionCompressed:
     "owner goals: action=create|update|delete|review; backing kind=goal",
 };
@@ -307,7 +303,7 @@ export const ownerTodosAction: Action = {
     name: "OWNER_TODOS",
     similes: ["OWNER_TODO", "PERSONAL_TODO", "PERSONAL_TODOS", "PERSONAL_TASK"],
     description:
-      "Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
+      "Owner todos: create/update/delete/complete/skip/snooze/review personal.",
     descriptionCompressed:
       "owner todos: action=create|update|delete|complete|skip|snooze|review",
     defaultKind: "definition",
@@ -315,7 +311,7 @@ export const ownerTodosAction: Action = {
   name: "OWNER_TODOS",
   similes: ["OWNER_TODO", "PERSONAL_TODO", "PERSONAL_TODOS", "PERSONAL_TASK"],
   description:
-    "Owner todos: create, update, delete, complete, skip, snooze, or review personal todos.",
+    "Owner todos: create/update/delete/complete/skip/snooze/review personal.",
   descriptionCompressed:
     "owner todos: action=create|update|delete|complete|skip|snooze|review",
 };
@@ -358,9 +354,9 @@ export const ownerRoutinesAction: Action = {
       "WEEKLY_TASK",
     ],
     description:
-      "Owner routines and habits: create or manage recurring routines, and inspect passive schedule inference.",
+      "Owner routines/habits: recurring routines; passive schedule inference.",
     descriptionCompressed:
-      "owner routines: action=create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect",
+      "owner routines create|update|delete|complete|skip|snooze|review|schedule_summary|inspect",
     defaultKind: "definition",
   }),
   name: "OWNER_ROUTINES",
@@ -373,14 +369,14 @@ export const ownerRoutinesAction: Action = {
     "WEEKLY_TASK",
   ],
   description:
-    "Owner routines and habits: create or manage recurring routines, and inspect passive schedule inference.",
+    "Owner routines/habits: recurring routines; passive schedule inference.",
   descriptionCompressed:
-    "owner routines: action=create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect",
+    "owner routines create|update|delete|complete|skip|snooze|review|schedule_summary|inspect",
   parameters: [
     {
       name: "action",
       description:
-        "Routine operation: create, update, delete, complete, skip, snooze, review, schedule_summary, or schedule_inspect.",
+        "Routine op: create|update|delete|complete|skip|snooze|review|schedule_summary|schedule_inspect.",
       required: false,
       schema: { type: "string" as const, enum: [...OWNER_ROUTINE_ACTIONS] },
     },
@@ -388,8 +384,8 @@ export const ownerRoutinesAction: Action = {
       makeOwnerLifeAction({
         name: "OWNER_ROUTINES",
         similes: [],
-        description: "",
-        descriptionCompressed: "",
+        description: "Owner routines: recurring habits and scheduled routine occurrences.",
+        descriptionCompressed: "owner routines create|update|delete|complete|skip|snooze|review|schedule",
         defaultKind: "definition",
       }).parameters ?? []
     ).filter((parameter) => parameter.name !== "action"),
@@ -430,7 +426,7 @@ export const ownerHealthAction: Action = {
   name: "OWNER_HEALTH",
   similes: ["HEALTH", "FITNESS", "WELLNESS", ...HEALTH_SIMILES],
   description:
-    "Owner health telemetry reads across HealthKit, Google Fit, Strava, Fitbit, Withings, or Oura. Actions: today, trend, by_metric, status.",
+    "Owner health telemetry reads: HealthKit, Google Fit, Strava, Fitbit, Withings, Oura. Ops: today|trend|by_metric|status.",
   descriptionCompressed:
     "owner health: today|trend|by_metric|status; read-only telemetry",
   routingHint:
@@ -438,8 +434,7 @@ export const ownerHealthAction: Action = {
   parameters: [
     {
       name: "action",
-      description:
-        "Owner health read action: today, trend, by_metric, or status.",
+      description: "Owner health read op: today|trend|by_metric|status.",
       required: false,
       schema: { type: "string" as const, enum: [...OWNER_HEALTH_ACTIONS] },
     },
@@ -465,13 +460,13 @@ export const ownerScreenTimeAction: Action = {
     ...SCREEN_TIME_SIMILES,
   ],
   description:
-    "Owner screen-time and activity analytics across local activity, app usage, and browser reports.",
+    "Owner screen-time/activity analytics: local activity, app usage, browser.",
   descriptionCompressed:
-    "owner screentime: summary|today|weekly|by_app|by_website|activity_report|time_on_app|time_on_site|browser_activity",
+    "owner screentime summary|today|weekly|by_app|by_website|activity|time_on_app|time_on_site",
   parameters: [
     {
       name: "action",
-      description: "Owner screentime read action.",
+      description: "Owner screentime op.",
       required: false,
       schema: { type: "string" as const, enum: [...OWNER_SCREENTIME_ACTIONS] },
     },
@@ -494,13 +489,13 @@ export const ownerFinancesAction: Action = {
   name: "OWNER_FINANCES",
   similes: ["FINANCES", ...OWNER_FINANCE_SIMILES],
   description:
-    "Owner finances: payment sources, transaction imports, spending summaries, recurring charges, and subscription audits.",
+    "Owner finances: sources, imports, spending, recurring charges, subscriptions.",
   descriptionCompressed:
-    "owner finances: dashboard|list_sources|add_source|remove_source|import_csv|list_transactions|spending_summary|recurring_charges|subscription_audit|subscription_cancel|subscription_status",
+    "owner finances dashboard|sources|csv|transactions|spending|recurring|subscription",
   parameters: [
     {
       name: "action",
-      description: "Owner finance action.",
+      description: "Owner finance op.",
       required: false,
       schema: { type: "string" as const, enum: [...OWNER_FINANCE_ACTIONS] },
     },
@@ -619,7 +614,7 @@ export const personalAssistantAction: Action = {
     "TRAVEL_REBOOK_AFTER_CONFLICT",
   ],
   description:
-    "Owner personal-assistant workflows. Use action=book_travel for real travel booking, action=scheduling for scheduling negotiation, and action=sign_document for document-signature flows that must be queued for owner approval.",
+    "Owner personal-assistant workflows: action=book_travel travel booking; action=scheduling negotiation; action=sign_document signature, owner approval queue.",
   descriptionCompressed:
     "personal assistant workflows: action=book_travel|scheduling|sign_document",
   contexts: ["general", "calendar", "travel", "tasks"],
@@ -629,7 +624,7 @@ export const personalAssistantAction: Action = {
   parameters: [
     {
       name: "action",
-      description: "Assistant workflow to run.",
+      description: "Assistant op: book_travel|scheduling|sign_document.",
       required: true,
       schema: {
         type: "string" as const,

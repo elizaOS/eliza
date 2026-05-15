@@ -16,7 +16,10 @@
  *   4. Stops the sidecar on app shutdown
  */
 
-import type { StewardSidecar, StewardSidecarStatus } from "@elizaos/app-core";
+import type {
+	StewardSidecar,
+	StewardSidecarStatus,
+} from "../../../../src/services/steward-sidecar";
 import { getBrandConfig } from "../brand-config";
 import { logger } from "../logger";
 

@@ -52,6 +52,7 @@ log = logging.getLogger("benchmarks.standard.humaneval")
 BENCHMARK_ID = "humaneval"
 DATASET_VERSION = "openai_humaneval@1.0"
 DATASET_NAME = "openai_humaneval"
+DEFAULT_MAX_TOKENS = 2048
 
 SYSTEM_PROMPT = (
     "You are an expert Python programmer. The user will give you a "
@@ -293,7 +294,7 @@ class HumanEvalRunner:
         self,
         *,
         examples: Iterable[dict[str, object]] | None = None,
-        max_tokens: int = 768,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
         timeout_s: float = 10.0,
     ) -> None:
         self._examples = list(examples) if examples is not None else None
@@ -326,6 +327,7 @@ class HumanEvalRunner:
 
         passed = 0
         n = 0
+        empty_outputs = 0
         failures: list[dict[str, object]] = []
 
         for i, item in enumerate(examples):
@@ -341,6 +343,9 @@ class HumanEvalRunner:
             except Exception as exc:  # noqa: BLE001
                 log.warning("generation failed (idx=%d): %s", i, exc)
                 continue
+            empty_output = not gen.text.strip()
+            if empty_output:
+                empty_outputs += 1
             program = _build_program(prompt, gen.text, test, entry)
             ok, err = _execute_program(program, self._timeout_s)
             n += 1
@@ -352,11 +357,17 @@ class HumanEvalRunner:
                         "task_id": item.get("task_id"),
                         "completion": gen.text[:400],
                         "error": err,
+                        "empty_visible_output": empty_output,
                     }
                 )
 
         if n == 0:
             raise RuntimeError("HumanEval evaluated zero examples — model returned no output")
+        if empty_outputs == n:
+            raise RuntimeError(
+                f"HumanEval generated empty visible output for all {n} evaluated examples; "
+                "treating this as a harness/model transport error rather than pass@1=0"
+            )
         pass_at_1 = passed / n
         return BenchmarkResult(
             benchmark=BENCHMARK_ID,
@@ -370,7 +381,7 @@ class HumanEvalRunner:
                 "passed": float(passed),
                 "n": float(n),
             },
-            raw_json={"timeout_s": self._timeout_s},
+            raw_json={"timeout_s": self._timeout_s, "empty_outputs": empty_outputs},
             failures=failures,
             elapsed_s=stats.elapsed(),
         )
@@ -384,7 +395,7 @@ class _HumanEvalFactory(RunnerFactory):
         parser.add_argument(
             "--max-tokens",
             type=int,
-            default=768,
+            default=DEFAULT_MAX_TOKENS,
             help="Cap on generated tokens per problem",
         )
         parser.add_argument(

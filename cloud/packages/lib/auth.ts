@@ -272,9 +272,6 @@ export async function requireAuthWithOrg(
   };
 }
 
-/** Same as {@link requireAuthWithOrg} — explicit name for "session + org only" handlers. */
-export const requireSessionAuthWithOrg: typeof requireAuthWithOrg = requireAuthWithOrg;
-
 /**
  * Require user to belong to a specific organization.
  */

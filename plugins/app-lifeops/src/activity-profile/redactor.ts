@@ -1,14 +1,13 @@
 /**
  * Window-title PII redactor for the T8d activity tracker.
  *
- * Stripped when `ACTIVITY_REDACT_TITLES` is "1" or unset (default on):
+ * Always stripped before reporting:
  *  - Email addresses          → [redacted-email]
  *  - Phone numbers (e.164 / 10-digit US)  → [redacted-phone]
  *  - Credit-card-like digit runs (13–19 contiguous digits, optional separators) → [redacted-cc]
  *
  * Redaction is applied in the reporting layer before results leave the
- * process. The raw title stays in the database so the user can disable
- * redaction retroactively.
+ * process.
  */
 
 const EMAIL = /[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+/g;
@@ -22,24 +21,19 @@ const CC_LIKE = /(?:\d[ -]?){13,19}/g;
 const PHONE =
   /(?<!\d)(?:\+\d{7,15}|(?:\+1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})(?!\d)/g;
 
-export interface RedactorConfig {
-  enabled: boolean;
-}
+export type RedactorConfig = Record<string, never>;
 
 export function resolveRedactorConfigFromEnv(
-  env: NodeJS.ProcessEnv = process.env,
+  _env: NodeJS.ProcessEnv = process.env,
 ): RedactorConfig {
-  const raw = env.ACTIVITY_REDACT_TITLES;
-  if (raw === undefined) return { enabled: true };
-  return { enabled: raw === "1" || raw.toLowerCase() === "true" };
+  return {};
 }
 
 export function redactWindowTitle(
   title: string | null | undefined,
-  config: RedactorConfig,
+  _config: RedactorConfig,
 ): string | null {
   if (title === null || title === undefined) return null;
-  if (!config.enabled) return title;
   let out = title;
   out = out.replace(CC_LIKE, (match) => {
     const digitCount = (match.match(/\d/g) ?? []).length;

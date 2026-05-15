@@ -6,6 +6,19 @@ import Security
 enum ScreenTimeSupport {
     private static let familyControlsEntitlement = "com.apple.developer.family-controls"
     private static let requiredFrameworks = ["FamilyControls", "DeviceActivity"]
+    private static let deviceActivityMonitorExtensionPoint = "com.apple.deviceactivity.monitor-extension"
+    private static let deviceActivityReportExtensionPoint = "com.apple.deviceactivityui.report-extension"
+
+    private struct ExtensionInspection {
+        let monitor: Bool
+        let report: Bool
+        let inspected: String
+        let bundles: [[String: Any]]
+
+        var complete: Bool {
+            monitor && report
+        }
+    }
 
     private struct EntitlementInspection {
         let familyControls: Bool
@@ -23,6 +36,7 @@ enum ScreenTimeSupport {
 
     static func buildStatus(reasonOverride: String? = nil) -> [String: Any] {
         let entitlementInspection = inspectEntitlements()
+        let extensionInspection = inspectBundledExtensions()
         let familyControlsEnabled = entitlementInspection.familyControls
         let authorizationEntitlementAvailable = entitlementInspection.canAttemptAuthorization
         let authorizationStatus = authorizationStatusString()
@@ -30,11 +44,14 @@ enum ScreenTimeSupport {
 
         let reason = reasonOverride ?? derivedReason(
             familyControlsEnabled: authorizationEntitlementAvailable,
-            authorizationStatus: authorizationStatus
+            authorizationStatus: authorizationStatus,
+            extensionInspection: extensionInspection
         )
         let provisioningReason: Any = provisioningSatisfied
             ? NSNull()
             : (entitlementInspection.reason ?? reason)
+        let reportAvailable = extensionInspection.report && authorizationStatus == "approved"
+        let thresholdEventsAvailable = extensionInspection.monitor && authorizationStatus == "approved"
 
         return [
             "supported": provisioningSatisfied || entitlementInspection.inspected == "not-inspectable",
@@ -43,8 +60,10 @@ enum ScreenTimeSupport {
                     "familyControls": familyControlsEntitlement,
                 ],
                 "frameworks": requiredFrameworks,
-                "deviceActivityReportExtension": false,
-                "deviceActivityMonitorExtension": false,
+                "deviceActivityReportExtension": true,
+                "deviceActivityMonitorExtension": true,
+                "deviceActivityReportExtensionPoint": deviceActivityReportExtensionPoint,
+                "deviceActivityMonitorExtensionPoint": deviceActivityMonitorExtensionPoint,
             ],
             "entitlements": [
                 "familyControls": familyControlsEnabled,
@@ -61,9 +80,15 @@ enum ScreenTimeSupport {
                     authorizationStatus: authorizationStatus
                 ),
             ],
-            "reportAvailable": false,
-            "coarseSummaryAvailable": false,
-            "thresholdEventsAvailable": false,
+            "extensions": [
+                "deviceActivityReportExtension": extensionInspection.report,
+                "deviceActivityMonitorExtension": extensionInspection.monitor,
+                "inspected": extensionInspection.inspected,
+                "bundles": extensionInspection.bundles,
+            ],
+            "reportAvailable": reportAvailable,
+            "coarseSummaryAvailable": reportAvailable,
+            "thresholdEventsAvailable": thresholdEventsAvailable,
             "rawUsageExportAvailable": false,
             "reason": reason,
         ]
@@ -141,10 +166,20 @@ enum ScreenTimeSupport {
 
     private static func derivedReason(
         familyControlsEnabled: Bool,
-        authorizationStatus: String
+        authorizationStatus: String,
+        extensionInspection: ExtensionInspection
     ) -> String {
         if !familyControlsEnabled {
             return "Family Controls entitlement is missing from the app bundle."
+        }
+        if !extensionInspection.complete {
+            if !extensionInspection.report && !extensionInspection.monitor {
+                return "DeviceActivity report and monitor extensions are not bundled with the app."
+            }
+            if !extensionInspection.report {
+                return "DeviceActivity report extension is not bundled with the app."
+            }
+            return "DeviceActivity monitor extension is not bundled with the app."
         }
         if authorizationStatus == "not-determined" {
             return "Screen Time authorization has not been granted yet."
@@ -152,7 +187,56 @@ enum ScreenTimeSupport {
         if authorizationStatus == "denied" {
             return "Screen Time authorization was denied on this device."
         }
-        return "DeviceActivity report and monitor extensions are not wired in this checkout."
+        return "Screen Time DeviceActivity support is available."
+    }
+
+    private static func inspectBundledExtensions() -> ExtensionInspection {
+        guard let plugInsURL = Bundle.main.builtInPlugInsURL else {
+            return ExtensionInspection(
+                monitor: false,
+                report: false,
+                inspected: "bundle-plug-ins",
+                bundles: []
+            )
+        }
+
+        let extensionURLs = (
+            try? FileManager.default.contentsOfDirectory(
+                at: plugInsURL,
+                includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles]
+            )
+        ) ?? []
+
+        var monitor = false
+        var report = false
+        var bundles: [[String: Any]] = []
+
+        for extensionURL in extensionURLs where extensionURL.pathExtension == "appex" {
+            guard let bundle = Bundle(url: extensionURL) else {
+                continue
+            }
+            let extensionInfo = bundle.object(forInfoDictionaryKey: "NSExtension") as? [String: Any]
+            let extensionPoint = extensionInfo?["NSExtensionPointIdentifier"] as? String
+            if extensionPoint == deviceActivityMonitorExtensionPoint {
+                monitor = true
+            }
+            if extensionPoint == deviceActivityReportExtensionPoint {
+                report = true
+            }
+            bundles.append([
+                "bundleIdentifier": bundle.bundleIdentifier ?? extensionURL.deletingPathExtension().lastPathComponent,
+                "extensionPoint": extensionPoint ?? NSNull(),
+                "path": extensionURL.lastPathComponent,
+            ])
+        }
+
+        return ExtensionInspection(
+            monitor: monitor,
+            report: report,
+            inspected: "bundle-plug-ins",
+            bundles: bundles
+        )
     }
 
     private static func inspectEntitlements() -> EntitlementInspection {

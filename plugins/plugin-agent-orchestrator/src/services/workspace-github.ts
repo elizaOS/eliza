@@ -137,7 +137,7 @@ export async function performOAuthFlow(
   if (!delivered) {
     throw new Error(
       "GitHub OAuth device flow requires an immediate chat delivery path before polling. " +
-        "Wire the SwarmCoordinator chat callback or set GITHUB_TOKEN.",
+        "Wire an authPromptCallback or set GITHUB_TOKEN.",
     );
   }
 

@@ -11,7 +11,6 @@ import json
 import logging
 import os
 import time
-from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -25,7 +24,6 @@ from benchmarks.mind2web.types import (
     Mind2WebConfig,
     Mind2WebReport,
     Mind2WebResult,
-    Mind2WebSplit,
     Mind2WebTask,
 )
 
@@ -209,7 +207,7 @@ class Mind2WebRunner:
             ranker_recalls = getattr(agent, "ranker_recalls", None)
 
             # Evaluate predictions
-            result = self.evaluator.evaluate_task(
+            return self.evaluator.evaluate_task(
                 task,
                 predictions,
                 trial_number=trial_number,
@@ -217,7 +215,6 @@ class Mind2WebRunner:
                 ranker_recalls=ranker_recalls,
             )
 
-            return result
 
         except asyncio.TimeoutError:
             return Mind2WebResult(

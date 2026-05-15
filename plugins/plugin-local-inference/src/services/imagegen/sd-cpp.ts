@@ -184,8 +184,7 @@ export async function loadSdCppImageGenBackend(
 					"[imagegen/sd-cpp] prompt is empty",
 				);
 			}
-			const seed =
-				typeof req.seed === "number" && req.seed >= 0 ? req.seed : pickSeed();
+			const seed = resolveSeed(req.seed);
 			const width = req.width ?? 512;
 			const height = req.height ?? 512;
 			const steps = req.steps ?? 20;
@@ -240,7 +239,7 @@ export async function loadSdCppImageGenBackend(
 			// Defensive: if the binary wrote a non-PNG (e.g. someone passed
 			// `-o foo.jpg`) we still report `image/png` because the catalog
 			// pins PNG; mismatch is a configuration bug, not a runtime case.
-			assertPngHeader(bytes);
+			assertPngOutput(bytes, "sd-cpp", "subprocess_failed");
 			const elapsed = Math.max(1, now() - startMs);
 			return {
 				image: bytes,
@@ -304,10 +303,7 @@ function runSimple(
 	spawnImpl?: SdCppSpawnLike,
 ): Promise<number | null> {
 	return new Promise<number | null>((resolve, reject) => {
-		const proc = (spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(
-			binary,
-			args,
-		);
+		const proc = defaultSpawn(spawnImpl)(binary, args);
 		proc.on("error", (err: Error) => reject(err));
 		proc.on("exit", (code: number | null) => resolve(code));
 	});
@@ -324,11 +320,9 @@ async function runSdCpp(
 	},
 ): Promise<void> {
 	await new Promise<void>((resolve, reject) => {
-		const proc = (opts.spawnImpl ?? (spawn as unknown as SdCppSpawnLike))(
-			binary,
-			args,
-			{ signal: opts.signal },
-		);
+		const proc = defaultSpawn(opts.spawnImpl)(binary, args, {
+			signal: opts.signal,
+		});
 		const stderr = proc.stderr;
 		// stable-diffusion.cpp prints `step: N/M` lines to stderr at each
 		// denoise iteration. Tail the stream and forward as progress chunks
@@ -422,30 +416,54 @@ function buildArgs(input: {
 	return args;
 }
 
-function pickSeed(): number {
-	// 31-bit positive integer — sd-cpp stores seed as int32.
+/** 31-bit positive integer — sd-cpp stores seed as int32. */
+export function pickSeed(): number {
 	return Math.floor(Math.random() * 0x7fffffff);
 }
 
-const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
+/** Resolve a caller-supplied seed or pick a random one. */
+export function resolveSeed(seed: number | undefined): number {
+	return typeof seed === "number" && seed >= 0 ? seed : pickSeed();
+}
 
-function assertPngHeader(bytes: Uint8Array): void {
+export const PNG_SIGNATURE = [
+	0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+] as const;
+
+/**
+ * Assert `bytes` begins with the PNG magic number. `label` is the
+ * `[imagegen/<backend>]` prefix used in the error message.
+ */
+export function assertPngOutput(
+	bytes: Uint8Array,
+	label: string,
+	errorCode: ConstructorParameters<typeof ImageGenBackendUnavailableError>[1],
+): void {
 	if (bytes.length < PNG_SIGNATURE.length) {
 		throw new ImageGenBackendUnavailableError(
-			"sd-cpp",
-			"subprocess_failed",
-			`[imagegen/sd-cpp] output too short (${bytes.length} bytes); not a PNG`,
+			label,
+			errorCode,
+			`[imagegen/${label}] output too short (${bytes.length} bytes); not a PNG`,
 		);
 	}
 	for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
 		if (bytes[i] !== PNG_SIGNATURE[i]) {
 			throw new ImageGenBackendUnavailableError(
-				"sd-cpp",
-				"subprocess_failed",
-				"[imagegen/sd-cpp] output missing PNG signature; binary may have written a different format",
+				label,
+				errorCode,
+				`[imagegen/${label}] output missing PNG signature`,
 			);
 		}
 	}
 }
 
-export { PNG_SIGNATURE };
+/**
+ * Wrap Node's `spawn` in the narrower `SdCppSpawnLike` shape that the
+ * subprocess backends share. The cast is centralised here so call sites
+ * don't each need their own `as unknown as` escape.
+ */
+export function defaultSpawn(
+	spawnImpl: SdCppSpawnLike | undefined,
+): SdCppSpawnLike {
+	return spawnImpl ?? (spawn as unknown as SdCppSpawnLike);
+}

@@ -27,6 +27,23 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function frontmatterValue(
+  frontmatter: SkillFrontmatter,
+  kebabKey: string,
+  snakeKey: string,
+): unknown {
+  return frontmatter[kebabKey] ?? frontmatter[snakeKey];
+}
+
+function stringList(value: unknown, transform: (value: string) => string) {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  return value
+    .filter((item): item is string => typeof item === "string")
+    .map(transform);
+}
+
 /**
  * Extract YAML frontmatter block from content
  * Frontmatter must start with --- on the first line and end with --- on its own line
@@ -90,35 +107,37 @@ export function resolveSkillMetadata(
 ): SkillMetadata {
   const metadata: SkillMetadata = {};
 
-  // Primary environment
-  const primaryEnv = frontmatter["primary-env"] ?? frontmatter.primary_env;
+  const primaryEnv = frontmatterValue(
+    frontmatter,
+    "primary-env",
+    "primary_env",
+  );
   if (typeof primaryEnv === "string" && primaryEnv.trim()) {
     metadata.primaryEnv = primaryEnv.trim();
   }
 
-  // Required operating systems
-  const requiredOs = frontmatter["required-os"] ?? frontmatter.required_os;
-  if (Array.isArray(requiredOs)) {
-    metadata.requiredOs = requiredOs
-      .filter((os): os is string => typeof os === "string")
-      .map((os) => os.trim().toLowerCase());
+  const requiredOs = stringList(
+    frontmatterValue(frontmatter, "required-os", "required_os"),
+    (os) => os.trim().toLowerCase(),
+  );
+  if (requiredOs) {
+    metadata.requiredOs = requiredOs;
   }
 
-  // Required binaries
-  const requiredBins =
-    frontmatter["required-bins"] ?? frontmatter.required_bins;
-  if (Array.isArray(requiredBins)) {
-    metadata.requiredBins = requiredBins
-      .filter((bin): bin is string => typeof bin === "string")
-      .map((bin) => bin.trim());
+  const requiredBins = stringList(
+    frontmatterValue(frontmatter, "required-bins", "required_bins"),
+    (bin) => bin.trim(),
+  );
+  if (requiredBins) {
+    metadata.requiredBins = requiredBins;
   }
 
-  // Required environment variables
-  const requiredEnv = frontmatter["required-env"] ?? frontmatter.required_env;
-  if (Array.isArray(requiredEnv)) {
-    metadata.requiredEnv = requiredEnv
-      .filter((env): env is string => typeof env === "string")
-      .map((env) => env.trim());
+  const requiredEnv = stringList(
+    frontmatterValue(frontmatter, "required-env", "required_env"),
+    (env) => env.trim(),
+  );
+  if (requiredEnv) {
+    metadata.requiredEnv = requiredEnv;
   }
 
   return metadata;
@@ -135,17 +154,20 @@ export function resolveSkillInvocationPolicy(
 ): SkillInvocationPolicy {
   const policy: SkillInvocationPolicy = {};
 
-  // Disable model invocation (snake_case and kebab-case)
-  const disableModelInvocation =
-    frontmatter["disable-model-invocation"] ??
-    frontmatter.disable_model_invocation;
+  const disableModelInvocation = frontmatterValue(
+    frontmatter,
+    "disable-model-invocation",
+    "disable_model_invocation",
+  );
   if (disableModelInvocation === true) {
     policy.disableModelInvocation = true;
   }
 
-  // User invocable (snake_case and kebab-case)
-  const userInvocable =
-    frontmatter["user-invocable"] ?? frontmatter.user_invocable;
+  const userInvocable = frontmatterValue(
+    frontmatter,
+    "user-invocable",
+    "user_invocable",
+  );
   if (userInvocable === false) {
     policy.userInvocable = false;
   }

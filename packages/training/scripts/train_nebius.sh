@@ -29,7 +29,7 @@
 #   REGISTRY_KEY=qwen3.5-2b   → eliza-1-2b     (single H200 — fits seq 8k)
 #   REGISTRY_KEY=qwen3.5-4b   → eliza-1-4b     (single H200)
 #   REGISTRY_KEY=qwen3.5-9b   → eliza-1-9b     (single H200, ~80 GB peak)
-#   REGISTRY_KEY=qwen3.5-27b  → eliza-1-27b    (single H200 — apollo_mini fits 141 GB)
+#   REGISTRY_KEY=qwen3.6-27b  → eliza-1-27b    (8× H200 fallback; prefer Vast)
 #   (legacy Qwen3 line: qwen3-0.6b, qwen3-1.7b, qwen3-4b — kept addressable for
 #   compatibility but the eliza-1 fused-kernel stack only validates Qwen3.5.)
 #
@@ -56,7 +56,7 @@
 #                              #   (instead of rsyncing the prebuilt 940 MB combined
 #                              #   splits). Default 0.
 #   QUANTIZE_AFTER             # passed to run_pipeline.py --quantizers
-#                              #   (default: polarquant,fused_turboquant,qjl)
+#                              #   (default: polarquant,turboquant,fused_turboquant,qjl)
 #   BENCHMARK_AFTER            # 1 = base-vs-finetuned bench (default 1); 0 skips base bench
 #   PUSH_AFTER                 # 1 = run_pipeline.py --publish at the tail (default 0 — fetch + publish locally)
 #   MAX_STEPS                  # hard cap on remote SFT step count (forwarded
@@ -97,7 +97,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REMOTE_TRAIN_DIR="/opt/training"
 REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-0.8b}"
 RUN_NAME="${RUN_NAME:-${REGISTRY_KEY//./-}-apollo-$(date +%s)}"
-QUANTIZE_AFTER="${QUANTIZE_AFTER:-polarquant,fused_turboquant,qjl}"
+QUANTIZE_AFTER="${QUANTIZE_AFTER:-polarquant,turboquant,fused_turboquant,qjl}"
 BENCHMARK_AFTER="${BENCHMARK_AFTER:-1}"
 PUSH_AFTER="${PUSH_AFTER:-0}"
 SYNC_FULLCORPUS_SOURCES="${SYNC_FULLCORPUS_SOURCES:-0}"
@@ -115,11 +115,15 @@ case "$NEBIUS_VM_PRESET" in
 esac
 FSDP_WORLD_SIZE="${FSDP_WORLD_SIZE:-$DEFAULT_WORLD}"
 
-# The transformer decoder-layer class FSDP wraps. Every entry in the
-# Qwen3.5-only model registry (qwen3.5-0.8b/2b/4b/9b/27b) uses
-# Qwen3_5DecoderLayer; the legacy Qwen3 dense bases (which would have used
-# Qwen3DecoderLayer) were dropped on 2026-05-12.
-FSDP_WRAP_CLS="Qwen3_5DecoderLayer"
+# The transformer decoder-layer class FSDP wraps. Qwen3.5 tiers use
+# Qwen3_5DecoderLayer; the active 27B-class Qwen3.6 tier uses
+# Qwen3_6DecoderLayer. Allow an operator override for emergency transformer
+# releases that rename the class before this launcher is updated.
+case "$REGISTRY_KEY" in
+  qwen3.6-27b) DEFAULT_FSDP_WRAP_CLS="Qwen3_6DecoderLayer" ;;
+  *)           DEFAULT_FSDP_WRAP_CLS="Qwen3_5DecoderLayer" ;;
+esac
+FSDP_WRAP_CLS="${FSDP_WRAP_CLS:-$DEFAULT_FSDP_WRAP_CLS}"
 
 cmd="${1:-help}"
 
@@ -494,7 +498,7 @@ fetch() {
 #   DFLASH_TARGET_MODEL_ID   (optional) canonical Eliza-1 target model id.
 #                            Defaults to the tier's entry in
 #                            distill_dflash_drafter.py::DEFAULT_TARGET_MODEL
-#                            (e.g. elizaos/eliza-1/bundles/2b for tier=2b).
+#                            (e.g. elizalabs/eliza-1/bundles/2b for tier=2b).
 #   DFLASH_STUDENT_BASE      HF id of the student base. Defaults to
 #                            Qwen/Qwen3.5-0.8B-Base (the Eliza-1 mandated
 #                            student for every active tier — keep this aligned

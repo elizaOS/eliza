@@ -3,11 +3,11 @@
  * engine path.
  *
  * The canonical contract lives in `@elizaos/core` `GenerateTextParams`
- * (`prefill`, `responseSkeleton`, `grammar`, `streamStructured`) — W3 owns
- * those field definitions and threads them through `useModel` → router. This
- * module is the local-inference-layer mirror of the relevant subset plus the
- * GBNF compilation that turns a `ResponseSkeleton` into a *lazy* grammar so
- * the model only ever samples the free positions of the response envelope
+ * (`prefill`, `responseSkeleton`, `grammar`, `streamStructured`) and is
+ * threaded through `useModel` → router. This module is the
+ * local-inference-layer mirror of the relevant subset plus the GBNF
+ * compilation that turns a `ResponseSkeleton` into a *lazy* grammar so the
+ * model only ever samples the free positions of the response envelope
  * (single-value enums collapse to literals — no tokens spent on the scaffold).
  *
  * Nothing here is local-model-specific in shape; cloud adapters never read
@@ -71,7 +71,7 @@ export interface StructuredGenerateParams {
 	responseSchema?: JSONSchema;
 	/**
 	 * Explicit GBNF grammar string. When both `grammar` and `responseSkeleton`
-	 * are present, the explicit `grammar` wins (W3 contract).
+	 * are present, the explicit `grammar` wins.
 	 */
 	grammar?: string;
 	/**

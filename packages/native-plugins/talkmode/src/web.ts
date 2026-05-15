@@ -1,55 +1,17 @@
 import { WebPlugin } from "@capacitor/core";
 import type {
+  SpeechRecognitionCtor,
+  SpeechRecognitionInstance,
+  SpeechRecognitionResultEvent,
+  SpeechRecognitionWindow,
+} from "@elizaos/native-plugin-shared-types";
+import type {
   SpeakOptions,
   SpeakResult,
   TalkModeConfig,
   TalkModePermissionStatus,
   TalkModeState,
 } from "./definitions";
-
-/** Minimal interface for the SpeechRecognition instance used by TalkMode */
-interface SpeechRecognitionInstance extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onstart: ((this: SpeechRecognitionInstance) => void) | null;
-  onend: ((this: SpeechRecognitionInstance) => void) | null;
-  onerror:
-    | ((
-        this: SpeechRecognitionInstance,
-        event: { error: string; message?: string },
-      ) => void)
-    | null;
-  onresult:
-    | ((
-        this: SpeechRecognitionInstance,
-        event: SpeechRecognitionResultEvent,
-      ) => void)
-    | null;
-  start(): void;
-  stop(): void;
-  abort(): void;
-}
-
-interface SpeechRecognitionResultEvent {
-  results: SpeechRecognitionResultList;
-  resultIndex: number;
-}
-
-interface SpeechRecognitionResultList {
-  length: number;
-  [index: number]: {
-    isFinal: boolean;
-    0: { transcript: string; confidence: number };
-  };
-}
-
-type SpeechRecognitionCtor = new () => SpeechRecognitionInstance;
-
-interface SpeechRecognitionWindow {
-  SpeechRecognition?: SpeechRecognitionCtor;
-  webkitSpeechRecognition?: SpeechRecognitionCtor;
-}
 
 /**
  * Web implementation of TalkMode plugin

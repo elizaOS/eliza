@@ -8,12 +8,16 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-from typing import Any
 from unittest.mock import patch
 
 import pytest
 
-from hermes_adapter.client import HermesClient, MessageResponse, _build_openai_messages
+from hermes_adapter.client import (
+    HermesClient,
+    MessageResponse,
+    _assistant_text_and_thought,
+    _build_openai_messages,
+)
 
 
 def _fake_completed(
@@ -200,6 +204,21 @@ def test_client_send_message_raises_on_subprocess_failure(
             client_with_fake_venv.send_message("hi")
 
 
+def test_client_send_message_raises_on_silent_adapter_error(
+    client_with_fake_venv: HermesClient,
+) -> None:
+    payload = {
+        "text": "",
+        "thought": None,
+        "actions": [],
+        "params": {"error": "openai not installed in venv"},
+    }
+    with patch("hermes_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(stdout=json.dumps(payload) + "\n", rc=0)
+        with pytest.raises(RuntimeError, match="adapter error"):
+            client_with_fake_venv.send_message("hi")
+
+
 def test_client_reset_records_state(client_with_fake_venv: HermesClient) -> None:
     out = client_with_fake_venv.reset("task-1", "tblite")
     assert out["task_id"] == "task-1"
@@ -247,6 +266,75 @@ def test_client_send_message_payload_includes_generation_options(tmp_path: Path)
     assert payload["max_tokens"] == 1024
 
 
+def test_client_defaults_gpt_oss_reasoning_effort_to_low_when_unset(
+    tmp_path: Path,
+) -> None:
+    client = HermesClient(
+        repo_path=tmp_path,
+        api_key="test-key",
+        base_url="https://test.example/v1",
+    )
+
+    payload = client.build_send_message_payload("hi", {})
+
+    assert payload["reasoning_effort"] == "low"
+
+
+def test_assistant_text_falls_back_to_vendor_reasoning_when_content_empty() -> None:
+    class _Msg:
+        content = ""
+        reasoning_content = None
+        reasoning = "vendor reasoning"
+
+    text, thought = _assistant_text_and_thought(_Msg())
+
+    assert text == "vendor reasoning"
+    assert thought == "vendor reasoning"
+
+
+def test_client_send_message_falls_back_to_reasoning_and_flattens_usage_cache_fields(
+    client_with_fake_venv: HermesClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    telemetry = tmp_path / "telemetry.jsonl"
+    monkeypatch.setenv("BENCHMARK_TELEMETRY_JSONL", str(telemetry))
+
+    response = {
+        "text": "",
+        "thought": "vendor reasoning",
+        "actions": [],
+        "params": {
+            "usage": {
+                "prompt_tokens": 100,
+                "completion_tokens": 12,
+                "total_tokens": 112,
+                "prompt_tokens_details": {"cached_tokens": 0},
+                "input_token_details": {
+                    "cached_tokens": 25,
+                    "cache_creation_input_tokens": 8,
+                },
+            }
+        },
+    }
+
+    with patch("hermes_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(stdout=json.dumps(response) + "\n", rc=0)
+        result = client_with_fake_venv.send_message("hello")
+
+    assert result.text == "vendor reasoning"
+    assert result.thought == "vendor reasoning"
+    assert result.params["usage"]["cache_read_input_tokens"] == 0
+    assert result.params["usage"]["cache_creation_input_tokens"] == 8
+
+    record = json.loads(telemetry.read_text().strip())
+    assert record["response_text"] == "vendor reasoning"
+    assert record["cache_read_input_tokens"] == 0
+    assert record["cache_creation_input_tokens"] == 8
+    assert record["usage"]["cache_read_input_tokens"] == 0
+    assert record["usage"]["cache_creation_input_tokens"] == 8
+
+
 def test_client_provider_specific_env_defaults(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -289,6 +377,23 @@ def test_build_openai_messages_does_not_duplicate_identical_system_prompt() -> N
     assert [
         msg for msg in messages if msg.get("role") == "system"
     ] == [{"role": "system", "content": "Benchmark instructions"}]
+
+
+def test_build_openai_messages_replaces_system_prompt_when_context_augmented() -> None:
+    augmented = "Benchmark instructions\n\nBenchmark context:\ncase_id:\n\"mmlu-1\""
+    messages = _build_openai_messages(
+        raw_messages=[
+            {"role": "system", "content": "Benchmark instructions"},
+            {"role": "user", "content": "last turn"},
+        ],
+        system_prompt=augmented,
+        fallback_user_text="fallback",
+    )
+
+    assert [msg for msg in messages if msg.get("role") == "system"] == [
+        {"role": "system", "content": augmented}
+    ]
+    assert messages[1] == {"role": "user", "content": "last turn"}
 
 
 def test_client_is_ready_returns_bool(client_with_fake_venv: HermesClient) -> None:

@@ -31,6 +31,7 @@ import {
   listEnabledSignalAccounts,
   normalizeAccountId as normalizeSignalAccountId,
   resolveDefaultSignalAccountId,
+  type ResolvedSignalAccount,
 } from "./accounts";
 import {
   createSignalEventStream,
@@ -81,6 +82,19 @@ type ConnectorUserLookupParams = {
   handle?: string;
   query?: string;
   target?: TargetInfo;
+};
+
+type SignalStartupConfig = {
+  defaultAuthDir: string;
+  configuredCliPath: string;
+  startupTimeoutMs: number;
+};
+
+type SignalReactionTarget = {
+  recipient: string;
+  accountId: string;
+  targetTimestamp: number;
+  targetAuthor: string;
 };
 
 type ExtendedMessageConnectorRegistration = MessageConnectorRegistration & {
@@ -555,9 +569,7 @@ export class SignalService extends Service implements ISignalService {
       : `signal-${kind}-${accountId}-${value}`;
   }
 
-  static async start(runtime: IAgentRuntime): Promise<SignalService> {
-    const service = new SignalService(runtime);
-    const accounts = listEnabledSignalAccounts(runtime);
+  private static resolveStartupConfig(runtime: IAgentRuntime): SignalStartupConfig {
     const rawAuthDir = runtime.getSetting("SIGNAL_AUTH_DIR") as string | undefined;
     const defaultAuthDir =
       typeof rawAuthDir === "string" && rawAuthDir.trim().length > 0
@@ -574,6 +586,99 @@ export class SignalService extends Service implements ISignalService {
         ? Math.min(parsedStartupTimeout, 120_000)
         : DEFAULT_SIGNAL_DAEMON_STARTUP_TIMEOUT_MS;
 
+    return { defaultAuthDir, configuredCliPath, startupTimeoutMs };
+  }
+
+  private async initializeConfiguredAccount(
+    account: ResolvedSignalAccount,
+    config: SignalStartupConfig
+  ): Promise<void> {
+    const accountNumber = account.account;
+    if (!accountNumber) {
+      this.runtime.logger.warn(
+        { src: "plugin:signal", agentId: this.runtime.agentId, accountId: account.accountId },
+        "Signal account is missing account number, skipping"
+      );
+      return;
+    }
+
+    const normalizedNumber = normalizeE164(accountNumber);
+    if (!normalizedNumber) {
+      this.runtime.logger.error(
+        {
+          src: "plugin:signal",
+          agentId: this.runtime.agentId,
+          accountId: account.accountId,
+          accountNumber,
+        },
+        "Invalid Signal account number format"
+      );
+      return;
+    }
+
+    const baseUrl = normalizeBaseUrl(account.baseUrl);
+    const authDir = account.config.authDir?.trim() || config.defaultAuthDir;
+    const accountCliPath = account.config.cliPath?.trim() || config.configuredCliPath;
+    if (
+      !account.config.httpUrl?.trim() &&
+      !(await this.ensureAccountDaemon(account, accountCliPath, authDir, baseUrl, config))
+    ) {
+      return;
+    }
+
+    const client = new SignalApiClient(baseUrl, normalizedNumber);
+    this.clients.set(account.accountId, client);
+    this.accountNumbers.set(account.accountId, normalizedNumber);
+    if (account.accountId === this.defaultAccountId || !this.client) {
+      this.client = client;
+      this.accountNumber = normalizedNumber;
+    }
+  }
+
+  private async ensureAccountDaemon(
+    account: ResolvedSignalAccount,
+    cliPath: string,
+    authDir: string,
+    baseUrl: string,
+    config: SignalStartupConfig
+  ): Promise<boolean> {
+    if (!fs.existsSync(authDir)) {
+      this.runtime.logger.warn(
+        {
+          src: "plugin:signal",
+          agentId: this.runtime.agentId,
+          accountId: account.accountId,
+          authDir,
+        },
+        "Signal auth directory does not exist yet — run `signal-cli -a <number> link` (or set SIGNAL_AUTH_DIR to a pre-existing install) before starting the plugin"
+      );
+      return false;
+    }
+
+    try {
+      await this.ensureDaemonRunning(cliPath, authDir, baseUrl, config.startupTimeoutMs);
+      return true;
+    } catch (error) {
+      this.runtime.logger.error(
+        {
+          src: "plugin:signal",
+          agentId: this.runtime.agentId,
+          accountId: account.accountId,
+          error: String(error),
+          authDir,
+          cliPath,
+        },
+        "Failed to start signal-cli daemon"
+      );
+      return false;
+    }
+  }
+
+  static async start(runtime: IAgentRuntime): Promise<SignalService> {
+    const service = new SignalService(runtime);
+    const accounts = listEnabledSignalAccounts(runtime);
+    const startupConfig = SignalService.resolveStartupConfig(runtime);
+
     if (accounts.length === 0) {
       runtime.logger.warn(
         { src: "plugin:signal", agentId: runtime.agentId },
@@ -585,77 +690,7 @@ export class SignalService extends Service implements ISignalService {
     service.defaultAccountId = resolveDefaultSignalAccountId(runtime);
 
     for (const account of accounts) {
-      const accountNumber = account.account;
-      if (!accountNumber) {
-        runtime.logger.warn(
-          { src: "plugin:signal", agentId: runtime.agentId, accountId: account.accountId },
-          "Signal account is missing account number, skipping"
-        );
-        continue;
-      }
-
-      const normalizedNumber = normalizeE164(accountNumber);
-      if (!normalizedNumber) {
-        runtime.logger.error(
-          {
-            src: "plugin:signal",
-            agentId: runtime.agentId,
-            accountId: account.accountId,
-            accountNumber,
-          },
-          "Invalid Signal account number format"
-        );
-        continue;
-      }
-
-      const baseUrl = normalizeBaseUrl(account.baseUrl);
-      const explicitHttpUrl = Boolean(account.config.httpUrl?.trim());
-      const authDir = account.config.authDir?.trim() || defaultAuthDir;
-      const accountCliPath = account.config.cliPath?.trim() || configuredCliPath;
-
-      if (!explicitHttpUrl) {
-        // authDir is now guaranteed non-empty (falls back to defaultSignalAuthDir()).
-        // If the directory does not exist, signal-cli would fail on startup with
-        // a confusing "No linked devices" error — pre-empt that with a clearer
-        // warning that points at the user's next action.
-        if (!fs.existsSync(authDir)) {
-          runtime.logger.warn(
-            {
-              src: "plugin:signal",
-              agentId: runtime.agentId,
-              accountId: account.accountId,
-              authDir,
-            },
-            "Signal auth directory does not exist yet — run `signal-cli -a <number> link` (or set SIGNAL_AUTH_DIR to a pre-existing install) before starting the plugin"
-          );
-          continue;
-        }
-
-        try {
-          await service.ensureDaemonRunning(accountCliPath, authDir, baseUrl, startupTimeoutMs);
-        } catch (error) {
-          runtime.logger.error(
-            {
-              src: "plugin:signal",
-              agentId: runtime.agentId,
-              accountId: account.accountId,
-              error: String(error),
-              authDir,
-              cliPath: accountCliPath,
-            },
-            "Failed to start signal-cli daemon"
-          );
-          continue;
-        }
-      }
-
-      const client = new SignalApiClient(baseUrl, normalizedNumber);
-      service.clients.set(account.accountId, client);
-      service.accountNumbers.set(account.accountId, normalizedNumber);
-      if (account.accountId === service.defaultAccountId || !service.client) {
-        service.client = client;
-        service.accountNumber = normalizedNumber;
-      }
+      await service.initializeConfiguredAccount(account, startupConfig);
     }
 
     if (service.clients.size === 0) {
@@ -774,7 +809,7 @@ export class SignalService extends Service implements ISignalService {
             const groups = await service.listConnectorGroups(connectorAccountId);
             const recentMessages = await service
               .getRecentMessages(30, connectorAccountId)
-              .catch(() => []);
+              .catch((): SignalRecentMessage[] => []);
             const recentTargets = recentMessages
               .map((recent) => ({
                 recent,
@@ -816,7 +851,9 @@ export class SignalService extends Service implements ISignalService {
               .slice(0, 12);
           },
           listRecentTargets: async () => {
-            const recent = await service.getRecentMessages(12, connectorAccountId).catch(() => []);
+            const recent = await service
+              .getRecentMessages(12, connectorAccountId)
+              .catch((): SignalRecentMessage[] => []);
             return recent.map((message) =>
               signalRecentToConnectorTarget(message, connectorAccountId)
             );
@@ -891,9 +928,10 @@ export class SignalService extends Service implements ISignalService {
               return null;
             }
 
-            const recentMessages = (
-              await service.getRecentMessages(50, targetAccountId).catch(() => [])
-            )
+            const signalRecentMessages: SignalRecentMessage[] = await service
+              .getRecentMessages(50, targetAccountId)
+              .catch((): SignalRecentMessage[] => []);
+            const recentMessages = signalRecentMessages
               .filter((recent) => recent.channelId === channelId || recent.roomId === target.roomId)
               .slice(0, 10)
               .map((recent) => ({
@@ -1173,25 +1211,31 @@ export class SignalService extends Service implements ISignalService {
    */
   static unwrapEnvelope(raw: Record<string, unknown>): SignalMessage | null {
     if (!("envelope" in raw)) {
-      if (typeof raw.sender !== "string" || typeof raw.timestamp !== "number") {
-        return null;
-      }
-      return {
-        sender: raw.sender,
-        senderUuid: typeof raw.senderUuid === "string" ? raw.senderUuid : undefined,
-        message: typeof raw.message === "string" ? raw.message : undefined,
-        timestamp: raw.timestamp,
-        groupId: typeof raw.groupId === "string" ? raw.groupId : undefined,
-        attachments: Array.isArray(raw.attachments) ? (raw.attachments as SignalAttachment[]) : [],
-        reaction: raw.reaction as SignalReactionInfo | undefined,
-        expiresInSeconds:
-          typeof raw.expiresInSeconds === "number" ? raw.expiresInSeconds : undefined,
-        viewOnce: raw.viewOnce === true,
-        quote: raw.quote as SignalQuote | undefined,
-      };
+      return SignalService.unwrapFlatMessage(raw);
     }
+    return SignalService.unwrapEnvelopeMessage(raw.envelope as Record<string, unknown>);
+  }
 
-    const env = raw.envelope as Record<string, unknown>;
+  private static unwrapFlatMessage(raw: Record<string, unknown>): SignalMessage | null {
+    if (typeof raw.sender !== "string" || typeof raw.timestamp !== "number") {
+      return null;
+    }
+    return {
+      sender: raw.sender,
+      senderUuid: typeof raw.senderUuid === "string" ? raw.senderUuid : undefined,
+      message: typeof raw.message === "string" ? raw.message : undefined,
+      timestamp: raw.timestamp,
+      groupId: typeof raw.groupId === "string" ? raw.groupId : undefined,
+      attachments: Array.isArray(raw.attachments) ? (raw.attachments as SignalAttachment[]) : [],
+      reaction: raw.reaction as SignalReactionInfo | undefined,
+      expiresInSeconds:
+        typeof raw.expiresInSeconds === "number" ? raw.expiresInSeconds : undefined,
+      viewOnce: raw.viewOnce === true,
+      quote: raw.quote as SignalQuote | undefined,
+    };
+  }
+
+  private static unwrapEnvelopeMessage(env: Record<string, unknown>): SignalMessage | null {
     const dm = (env.dataMessage || {}) as Record<string, unknown>;
     const groupInfo = dm.groupInfo as Record<string, unknown> | undefined;
 
@@ -2047,6 +2091,35 @@ export class SignalService extends Service implements ISignalService {
     runtime: IAgentRuntime,
     params: ConnectorReactionParams
   ): Promise<void> {
+    const reactionTarget = await this.resolveReactionTarget(runtime, params);
+
+    if (!params.emoji) {
+      throw new Error("Signal reaction requires emoji, targetTimestamp, and targetAuthor.");
+    }
+
+    if (params.remove) {
+      await this.removeReaction(
+        reactionTarget.recipient,
+        params.emoji,
+        reactionTarget.targetTimestamp,
+        reactionTarget.targetAuthor,
+        reactionTarget.accountId
+      );
+      return;
+    }
+    await this.sendReaction(
+      reactionTarget.recipient,
+      params.emoji,
+      reactionTarget.targetTimestamp,
+      reactionTarget.targetAuthor,
+      reactionTarget.accountId
+    );
+  }
+
+  private async resolveReactionTarget(
+    runtime: IAgentRuntime,
+    params: ConnectorReactionParams
+  ): Promise<SignalReactionTarget> {
     const target = params.target;
     const accountId = this.normalizeAccountId(target?.accountId);
     const room =
@@ -2058,33 +2131,32 @@ export class SignalService extends Service implements ISignalService {
       throw new Error("Signal reaction requires a target recipient or room.");
     }
 
-    let targetTimestamp = params.targetTimestamp;
-    let targetAuthor = params.targetAuthor;
-    if ((!targetTimestamp || !targetAuthor) && params.messageId) {
-      const memory = await runtime.getMemoryById(params.messageId as UUID).catch(() => null);
-      const metadata = memory?.metadata as Record<string, unknown> | undefined;
-      const sender = metadata?.sender as Record<string, unknown> | undefined;
-      targetTimestamp =
-        targetTimestamp ??
-        Number(metadata?.messageIdFull ?? metadata?.timestamp ?? memory?.createdAt);
-      targetAuthor =
-        targetAuthor ??
-        (typeof sender?.id === "string"
-          ? sender.id
-          : typeof metadata?.fromId === "string"
-            ? metadata.fromId
-            : undefined);
-    }
-
-    if (!params.emoji || !targetTimestamp || !targetAuthor) {
+    const fallback = params.messageId
+      ? await this.lookupReactionTargetFromMemory(runtime, params.messageId as UUID)
+      : {};
+    const targetTimestamp = params.targetTimestamp ?? fallback.targetTimestamp;
+    const targetAuthor = params.targetAuthor ?? fallback.targetAuthor;
+    if (!targetTimestamp || !targetAuthor) {
       throw new Error("Signal reaction requires emoji, targetTimestamp, and targetAuthor.");
     }
+    return { recipient, accountId, targetTimestamp, targetAuthor };
+  }
 
-    if (params.remove) {
-      await this.removeReaction(recipient, params.emoji, targetTimestamp, targetAuthor, accountId);
-      return;
-    }
-    await this.sendReaction(recipient, params.emoji, targetTimestamp, targetAuthor, accountId);
+  private async lookupReactionTargetFromMemory(
+    runtime: IAgentRuntime,
+    messageId: UUID
+  ): Promise<Partial<Pick<SignalReactionTarget, "targetTimestamp" | "targetAuthor">>> {
+    const memory = await runtime.getMemoryById(messageId).catch(() => null);
+    const metadata = memory?.metadata as Record<string, unknown> | undefined;
+    const sender = metadata?.sender as Record<string, unknown> | undefined;
+    const targetTimestamp = Number(metadata?.messageIdFull ?? metadata?.timestamp ?? memory?.createdAt);
+    const targetAuthor =
+      typeof sender?.id === "string"
+        ? sender.id
+        : typeof metadata?.fromId === "string"
+          ? metadata.fromId
+          : undefined;
+    return { targetTimestamp, targetAuthor };
   }
 
   async getConnectorUser(

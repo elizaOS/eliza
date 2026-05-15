@@ -31,12 +31,9 @@
  * on this host".
  *
  * Detection inputs (in priority order):
- *   1. `MILADY_INFERENCE_MODE` env var. Values: `spawn` / `ffi` /
+ *   1. `ELIZA_INFERENCE_MODE` env var. Values: `spawn` / `ffi` /
  *      `native-bridge`. Wins over every heuristic so operators can force a
  *      branch from a CI shell or a debug build without recompiling.
- *      `ELIZA_INFERENCE_MODE` is accepted as a legacy alias for the same
- *      knob (the rest of the app uses both `MILADY_*` and `ELIZA_*` prefixes
- *      interchangeably; see CLAUDE.md §Environment variables).
  *   2. Capacitor native marker — when `globalThis.Capacitor.isNativePlatform()`
  *      returns `true`, we are inside a Capacitor shell on iOS or Android.
  *      Force `"ffi"` regardless of Node's `process.platform` (which on iOS
@@ -92,24 +89,19 @@ export interface InferenceRuntimeModeInput {
 	isCapacitorNative?: boolean;
 	/**
 	 * Environment-variable bag. Defaults to `process.env`. The function
-	 * reads `MILADY_INFERENCE_MODE` (canonical) and falls back to
-	 * `ELIZA_INFERENCE_MODE` (legacy alias) for the override.
+	 * reads `ELIZA_INFERENCE_MODE` for the override.
 	 */
 	env?: NodeJS.ProcessEnv;
 }
 
 /**
- * Read and normalise the `MILADY_INFERENCE_MODE` / `ELIZA_INFERENCE_MODE`
- * env override. Returns `null` when unset or unrecognised — callers must
- * not silently fall through on a typo, so an unknown value is treated the
- * same as unset (callers can warn upstream if they want).
+ * Read and normalise the `ELIZA_INFERENCE_MODE` env override. Returns `null`
+ * when unset or unrecognised.
  */
 export function readRuntimeModeEnvOverride(
 	env: NodeJS.ProcessEnv = process.env,
 ): InferenceRuntimeMode | null {
-	const raw = (env.MILADY_INFERENCE_MODE ?? env.ELIZA_INFERENCE_MODE ?? "")
-		.trim()
-		.toLowerCase();
+	const raw = (env.ELIZA_INFERENCE_MODE ?? "").trim().toLowerCase();
 	if (raw === "") return null;
 	if (raw === "spawn" || raw === "http" || raw === "http-server") {
 		return "spawn";
@@ -171,7 +163,7 @@ export function inferenceRuntimeMode(
 		return "spawn";
 	}
 	// Exotic / unknown — default to spawn so the existing desktop fallbacks
-	// keep working. Operators who need otherwise set MILADY_INFERENCE_MODE.
+	// keep working. Operators who need otherwise set ELIZA_INFERENCE_MODE.
 	return "spawn";
 }
 

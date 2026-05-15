@@ -1,4 +1,7 @@
-import type { IAgentRuntime } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  AppPackageRouteContext as RouteContext,
+} from "@elizaos/core";
 import type {
   AppLaunchDiagnostic,
   AppLaunchPreparation,
@@ -22,21 +25,6 @@ const APP_NAME = "@elizaos/app-babylon";
 const APP_DISPLAY_NAME = "Babylon";
 const BABYLON_AGENT_SESSION_TOKEN_KEY = "BABYLON_AGENT_SESSION_TOKEN";
 const BABYLON_AGENT_SESSION_EXPIRES_AT_KEY = "BABYLON_AGENT_SESSION_EXPIRES_AT";
-
-// ---------------------------------------------------------------------------
-// Route context type (mirrors AppPackageRouteContext)
-// ---------------------------------------------------------------------------
-
-interface RouteContext {
-  method: string;
-  pathname: string;
-  url: URL;
-  runtime: unknown | null;
-  res: unknown;
-  error: (response: unknown, message: string, status?: number) => void;
-  json: (response: unknown, data: unknown, status?: number) => void;
-  readJsonBody: () => Promise<unknown>;
-}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -519,17 +507,6 @@ export async function resolveViewerAuthMessage(ctx: {
     agentId,
     characterId: agentId,
   };
-}
-
-/**
- * Called by the host app-manager when the user stops the Babylon run.
- * Babylon is a stateless proxy to the external Babylon A2A API — there
- * are no local resources (WebSockets, timers, processes) to tear down.
- * Iframe unmount is sufficient. This hook is present so the app-manager
- * lifecycle path stays uniform across all game apps.
- */
-export async function stopRun(): Promise<void> {
-  // Intentional no-op — no server-side state to clean up.
 }
 
 // ---------------------------------------------------------------------------

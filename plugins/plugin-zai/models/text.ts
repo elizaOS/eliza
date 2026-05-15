@@ -29,7 +29,7 @@ function resolveTextParams(
   modelName: ModelName,
   thinking: ZaiThinkingConfig | null
 ): ResolvedTextParams {
-  const prompt = params.prompt;
+  const prompt = params.prompt ?? "";
   const stopSequences = (params.stopSequences ?? []).slice(0, 1);
   const frequencyPenalty = params.frequencyPenalty ?? 0.7;
   const presencePenalty = params.presencePenalty ?? 0.7;

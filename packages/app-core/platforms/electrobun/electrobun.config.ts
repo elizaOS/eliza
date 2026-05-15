@@ -210,6 +210,34 @@ function trimEnv(name: string): string {
 	return (process.env[name] ?? "").trim();
 }
 
+export function resolveElectrobunCopyMap({
+	buildVariant,
+	runtimeDistDir,
+}: {
+	buildVariant: "store" | "direct";
+	runtimeDistDir: string;
+}): Record<string, string> {
+	const copy: Record<string, string> = {
+		[rendererDistDir]: "renderer",
+		"src/preload.js": "bun/preload.js",
+		"assets/appIcon.png": "assets/appIcon.png",
+		"assets/appIcon.ico": "assets/appIcon.ico",
+	};
+
+	if (buildVariant !== "store") {
+		copy[runtimeBundleDistDir] = runtimeDistDir;
+		if (fs.existsSync(runtimeBundleNodeModulesPath)) {
+			copy[runtimeBundleNodeModulesDir] = `${runtimeDistDir}/node_modules`;
+		}
+		if (fs.existsSync(path.join(repoRoot, "plugins.json"))) {
+			copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`;
+		}
+		copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
+	}
+
+	return copy;
+}
+
 function resolveBrandConfigCopySource({
 	appName,
 	appId,
@@ -363,20 +391,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 			// 2. Electrobun-native Dawn for Bun-side GpuWindow / <electrobun-wgpu>
 			//    surfaces and future native compute workloads.
 			copy: {
-				[rendererDistDir]: "renderer",
-				"src/preload.js": "bun/preload.js",
-				[runtimeBundleDistDir]: runtimeDistDir,
-				...(fs.existsSync(runtimeBundleNodeModulesPath)
-					? {
-							[runtimeBundleNodeModulesDir]: `${runtimeDistDir}/node_modules`,
-						}
-					: {}),
-				...(fs.existsSync(path.join(repoRoot, "plugins.json"))
-					? { [repoPluginsJsonPath]: `${runtimeDistDir}/plugins.json` }
-					: {}),
-				[repoPackageJsonPath]: `${runtimeDistDir}/package.json`,
-				"assets/appIcon.png": "assets/appIcon.png",
-				"assets/appIcon.ico": "assets/appIcon.ico",
+				...resolveElectrobunCopyMap({ buildVariant, runtimeDistDir }),
 				[brandConfigCopySource]: "brand-config.json",
 				...(process.platform === "darwin" &&
 				fs.existsSync(libMacWindowEffectsDylib)

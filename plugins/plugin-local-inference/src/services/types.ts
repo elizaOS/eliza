@@ -35,7 +35,9 @@ export {
 	type ModelBucket,
 	type ModelCategory,
 	type ModelHubSnapshot,
+	type OpenVinoDeviceKind,
+	type OpenVinoHardwareProbe,
 	TEXT_GENERATION_SLOTS,
 	type TextGenerationSlot,
 	type TokenizerFamily,
-} from "@elizaos/shared";
+} from "@elizaos/shared/local-inference";

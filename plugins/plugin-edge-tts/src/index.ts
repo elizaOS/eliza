@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
-import { EdgeTTS } from "node-edge-tts";
+import { EdgeTTS, type EdgeTTSOptions } from "node-edge-tts";
 
 /**
  * Edge TTS voice settings configuration
@@ -55,6 +55,8 @@ const VOICE_PRESETS: Record<string, string> = {
   // Direct Edge TTS voice names pass through
 };
 
+function getSetting(runtime: IAgentRuntime, key: string): string | undefined;
+function getSetting(runtime: IAgentRuntime, key: string, fallback: string): string;
 function getSetting(runtime: IAgentRuntime, key: string, fallback?: string): string | undefined {
   const envValue =
     typeof process !== "undefined" && (process as { env?: Record<string, string> }).env
@@ -65,17 +67,21 @@ function getSetting(runtime: IAgentRuntime, key: string, fallback?: string): str
 
 function getEdgeTTSSettings(runtime: IAgentRuntime): EdgeTTSSettings {
   const timeoutStr = getSetting(runtime, "EDGE_TTS_TIMEOUT_MS");
-  return {
-    voice: getSetting(runtime, "EDGE_TTS_VOICE", DEFAULT_VOICE) ?? DEFAULT_VOICE,
-    lang: getSetting(runtime, "EDGE_TTS_LANG", DEFAULT_LANG) ?? DEFAULT_LANG,
-    outputFormat:
-      getSetting(runtime, "EDGE_TTS_OUTPUT_FORMAT", DEFAULT_OUTPUT_FORMAT) ?? DEFAULT_OUTPUT_FORMAT,
-    rate: getSetting(runtime, "EDGE_TTS_RATE"),
-    pitch: getSetting(runtime, "EDGE_TTS_PITCH"),
-    volume: getSetting(runtime, "EDGE_TTS_VOLUME"),
-    proxy: getSetting(runtime, "EDGE_TTS_PROXY"),
+  const settings: EdgeTTSSettings = {
+    voice: getSetting(runtime, "EDGE_TTS_VOICE", DEFAULT_VOICE),
+    lang: getSetting(runtime, "EDGE_TTS_LANG", DEFAULT_LANG),
+    outputFormat: getSetting(runtime, "EDGE_TTS_OUTPUT_FORMAT", DEFAULT_OUTPUT_FORMAT),
     timeoutMs: timeoutStr ? Number.parseInt(timeoutStr, 10) : DEFAULT_TIMEOUT_MS,
   };
+  const rate = getSetting(runtime, "EDGE_TTS_RATE");
+  if (rate !== undefined) settings.rate = rate;
+  const pitch = getSetting(runtime, "EDGE_TTS_PITCH");
+  if (pitch !== undefined) settings.pitch = pitch;
+  const volume = getSetting(runtime, "EDGE_TTS_VOLUME");
+  if (volume !== undefined) settings.volume = volume;
+  const proxy = getSetting(runtime, "EDGE_TTS_PROXY");
+  if (proxy !== undefined) settings.proxy = proxy;
+  return settings;
 }
 
 /**
@@ -129,17 +135,19 @@ async function generateSpeech(settings: EdgeTTSSettings, params: EdgeTTSParams):
 
   logger.debug(`[EdgeTTS] Generating speech with voice: ${voice}, lang: ${lang}`);
 
-  const tts = new EdgeTTS({
+  const options: EdgeTTSOptions = {
     voice,
     lang,
     outputFormat,
     saveSubtitles: false,
-    proxy: settings.proxy,
-    rate,
-    pitch,
-    volume,
     timeout: settings.timeoutMs,
-  });
+  };
+  if (settings.proxy !== undefined) options.proxy = settings.proxy;
+  if (rate !== undefined) options.rate = rate;
+  if (pitch !== undefined) options.pitch = pitch;
+  if (volume !== undefined) options.volume = volume;
+
+  const tts = new EdgeTTS(options);
 
   // Create temp directory for output
   const tempDir = mkdtempSync(path.join(tmpdir(), "edge-tts-"));

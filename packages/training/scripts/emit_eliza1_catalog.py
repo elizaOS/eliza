@@ -124,6 +124,24 @@ KNOWN_BASE_MODELS = {
         "min_ram_gb": 48,
         "size_gb_estimate": 16.8,
     },
+    "elizaos/eliza-1/bundles/27b-256k": {
+        "params": "27B",
+        "context_length": 262144,
+        "tokenizer_family": "eliza1",
+        "category": "chat",
+        "bucket": "large",
+        "min_ram_gb": 96,
+        "size_gb_estimate": 16.8,
+    },
+    "elizaos/eliza-1/bundles/27b-1m": {
+        "params": "27B",
+        "context_length": 1048576,
+        "tokenizer_family": "eliza1",
+        "category": "chat",
+        "bucket": "large",
+        "min_ram_gb": 160,
+        "size_gb_estimate": 16.8,
+    },
 }
 
 

@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -20,8 +21,6 @@ import { requireAdminWithResponse } from "@/lib/auth/admin";
 import { getOrgTier, invalidateOrgTierCache } from "@/lib/services/org-rate-limits";
 import { logger } from "@/lib/utils/logger";
 
-type RouteContext = { params: Promise<{ orgId: string }> };
-
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function validateOrgId(orgId: string): Response | null {
@@ -31,7 +30,7 @@ function validateOrgId(orgId: string): Response | null {
   return null;
 }
 
-async function __hono_GET(request: Request, context: RouteContext) {
+async function __hono_GET(request: Request, context: RouteContext<{ orgId: string }>) {
   const authResult = await requireAdminWithResponse(request, "[Admin] Org rate limits auth error");
   if (authResult instanceof Response) return authResult;
 
@@ -65,7 +64,7 @@ const PatchSchema = z.object({
   note: z.string().max(500).nullable().optional(),
 });
 
-async function __hono_PATCH(request: Request, context: RouteContext) {
+async function __hono_PATCH(request: Request, context: RouteContext<{ orgId: string }>) {
   const authResult = await requireAdminWithResponse(request, "[Admin] Org rate limits auth error");
   if (authResult instanceof Response) return authResult;
 
@@ -141,7 +140,7 @@ async function __hono_PATCH(request: Request, context: RouteContext) {
   }
 }
 
-async function __hono_DELETE(request: Request, context: RouteContext) {
+async function __hono_DELETE(request: Request, context: RouteContext<{ orgId: string }>) {
   const authResult = await requireAdminWithResponse(request, "[Admin] Org rate limits auth error");
   if (authResult instanceof Response) return authResult;
 

@@ -21,18 +21,8 @@ import {
 import { z } from "zod";
 import { logger } from "../logger";
 
-/**
- * Maximum request body size in bytes (defense-in-depth, mirrors gateway 64KB guard).
- *
- * Not enforced at the route level because Elysia auto-parses JSON bodies before
- * the handler executes, making raw buffer inspection impractical. The gateway
- * already enforces this limit upstream via Content-Length fast-path +
- * Buffer.byteLength check. Exported for documentation and test assertions.
- */
-export const MAX_EVENT_BODY_BYTES = 64 * 1024;
-
 type JsonPrimitive = string | number | boolean | null;
-export type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
+type JsonValue = JsonPrimitive | JsonObject | JsonValue[];
 export interface JsonObject {
   [key: string]: JsonValue;
 }
@@ -68,8 +58,6 @@ export const EventBodySchema = z.object({
   type: z.enum(["cron", "notification", "system"] as const),
   payload: JsonObjectSchema,
 });
-
-export type AgentEvent = z.infer<typeof EventBodySchema>;
 
 /**
  * Dispatch result returned by each per-type handler, merged into the

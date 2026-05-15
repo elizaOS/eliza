@@ -11,9 +11,6 @@
  */
 
 import { AgentRuntime } from "@elizaos/core";
-import discordPlugin from "@elizaos/plugin-discord";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
 import { config } from "dotenv";
 
 import { character } from "./character";
@@ -62,6 +59,13 @@ async function main(): Promise<void> {
   console.log("🤖 Starting Discord Agent...\n");
 
   validateEnvironment();
+
+  const [{ default: sqlPlugin }, { openaiPlugin }, { default: discordPlugin }] =
+    await Promise.all([
+      import("@elizaos/plugin-sql"),
+      import("@elizaos/plugin-openai"),
+      import("@elizaos/plugin-discord"),
+    ]);
 
   // Create the runtime with all required plugins
   const runtime = new AgentRuntime({

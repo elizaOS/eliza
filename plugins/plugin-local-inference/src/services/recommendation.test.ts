@@ -368,6 +368,31 @@ describe("canBundleBeDefaultOnDevice", () => {
 		);
 	});
 
+	it("does not treat OpenVINO NPU availability as an Eliza-1 chat backend", () => {
+		const openvinoProbe = hardware({
+			totalRamGb: 16,
+			gpu: null,
+			openvino: {
+				runtimeAvailable: true,
+				devices: ["CPU", "NPU"],
+				gpu: {
+					renderNodes: [],
+					computeRuntimeReady: false,
+					missingLinuxPackages: [],
+				},
+				npu: { accelNodes: ["/dev/accel/accel0"] },
+				recommendedAsrDevice: "NPU",
+				warnings: [],
+			},
+		});
+
+		expect(classifyRecommendationPlatform(openvinoProbe)).toBe("linux-cpu");
+		expect(deviceCapsFromProbe(openvinoProbe)).toEqual({
+			availableBackends: ["cpu"],
+			ramMb: 16 * 1024,
+		});
+	});
+
 	it("allows a verified, default-eligible bundle on a device with a matching backend", () => {
 		const r = canBundleBeDefaultOnDevice(installedFixture(), probe, {
 			manifestLoader: () => fixtureManifest(),

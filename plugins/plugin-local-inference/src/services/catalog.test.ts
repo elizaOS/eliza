@@ -44,7 +44,7 @@ describe("local inference catalog", () => {
 		}
 	});
 
-	it("uses the single elizaOS HuggingFace repo for every visible Eliza-1 tier", () => {
+	it("uses the single elizaos HuggingFace repo for every visible Eliza-1 tier", () => {
 		for (const model of MODEL_CATALOG.filter((m) => !m.hiddenFromCatalog)) {
 			const tier = model.id.slice("eliza-1-".length);
 			expect(model.hfRepo).toBe("elizaos/eliza-1");
@@ -175,6 +175,9 @@ describe("local inference catalog", () => {
 					"turbo3_tcq",
 				);
 			}
+			expect(model?.runtime?.optimizations?.requiresKernel).not.toContain(
+				"openvino",
+			);
 		}
 	});
 

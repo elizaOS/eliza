@@ -1,9 +1,4 @@
 import {
-  normalizeCloudSecret as normalizeSecret,
-  resolveCloudApiBaseUrl,
-  resolveCloudApiKey,
-} from "@elizaos/plugin-elizacloud";
-import {
   DEFAULT_WALLET_RPC_SELECTIONS,
   isElizaCloudServiceSelectedInConfig,
   migrateLegacyRuntimeConfig,
@@ -14,6 +9,12 @@ import {
   type WalletRpcSelections,
 } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
+
+const {
+  normalizeCloudSecret: normalizeSecret,
+  resolveCloudApiBaseUrl,
+  resolveCloudApiKey,
+} = await import("@elizaos/plugin-elizacloud");
 
 // Cloud-auth helpers (`resolveCloudApiKey`, `resolveCloudApiBaseUrl`,
 // `DEFAULT_CLOUD_API_BASE_URL`, `CloudApiKeyRuntimeLike`) live in

@@ -119,7 +119,7 @@ export function readCalendlyAccounts(
   runtime: IAgentRuntime,
 ): CalendlyAccountConfig[] {
   const accounts = new Map<string, CalendlyAccountConfig>();
-  const characterConfig = runtime.character?.settings?.calendly as
+  const characterConfig = runtime.character.settings?.calendly as
     | { accounts?: unknown }
     | undefined;
   const characterAccounts = characterConfig?.accounts;

@@ -658,6 +658,7 @@ export class AttachmentManager {
 
 		if (
 			typeof videoService.isVideoUrl === "function" &&
+			typeof videoService.processVideo === "function" &&
 			videoService.isVideoUrl(attachment.url)
 		) {
 			const videoInfo = await videoService.processVideo(

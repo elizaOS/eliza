@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { cache } from "@/lib/cache/client";
 import {
   type ManagedLaunchSessionPayload,
@@ -30,9 +31,7 @@ async function __hono_OPTIONS(request: Request) {
   });
 }
 
-type RouteParams = { params: Promise<{ sessionId: string }> };
-
-async function __hono_GET(request: Request, { params }: RouteParams) {
+async function __hono_GET(request: Request, { params }: RouteContext<{ sessionId: string }>) {
   const { sessionId } = await params;
   const headers = getCorsHeaders(request.headers.get("origin"));
   const payload = await cache.getAndDelete<ManagedLaunchSessionPayload>(

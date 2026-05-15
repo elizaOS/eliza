@@ -17,7 +17,6 @@
  */
 
 import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent";
-import { setEntryMeta } from "@elizaos/vault";
 import { sharedVault } from "../services/vault-mirror";
 import { deriveAgentVaultId } from "./agent-vault-id";
 import type { SecureStoreSecretKind } from "./platform-secure-store";
@@ -61,8 +60,6 @@ export async function deleteWalletSecretsFromOsStore(): Promise<void> {
 export type MigrateWalletPrivateKeysToOsStoreResult = {
   migrated: string[];
   failed: string[];
-  /** Reserved for compat — vault writes are always available. Always undefined now. */
-  unavailable?: boolean;
 };
 
 /**
@@ -142,10 +139,3 @@ export async function migrateWalletPrivateKeysToOsStore(): Promise<MigrateWallet
 
   return { migrated, failed };
 }
-
-/**
- * Re-export for callers that want to write the wallet metadata explicitly
- * (currently unused by external code; the inventory categorizer already
- * recognizes `EVM_PRIVATE_KEY` / `SOLANA_PRIVATE_KEY` via heuristic).
- */
-export { setEntryMeta };

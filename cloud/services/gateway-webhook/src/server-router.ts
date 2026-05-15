@@ -9,7 +9,6 @@ const RETRY_ATTEMPTS = 5;
 const RETRY_BASE_DELAY_MS = 2_000;
 const RETRY_INCREMENT_MS = 1_000;
 const IDENTITY_CACHE_TTL_SECONDS = 300;
-const IDENTITY_NEGATIVE_CACHE_TTL_SECONDS = 30;
 
 interface ServerRoute {
   serverName: string;
@@ -39,33 +38,60 @@ export async function resolveIdentity(
     return cached;
   }
 
-  let url = `${cloudBaseUrl}/api/internal/identity/resolve?platform=${encodeURIComponent(platform)}&platformId=${encodeURIComponent(platformId)}`;
-  if (platformName) url += `&platformName=${encodeURIComponent(platformName)}`;
+  const url = `${cloudBaseUrl}/api/internal/identity/resolve`;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), FORWARD_TIMEOUT_MS);
 
   try {
     const res = await fetch(url, {
+      method: "POST",
       headers: authHeader,
+      body: JSON.stringify({
+        platform,
+        platformId,
+        ...(platformName ? { platformName } : {}),
+      }),
       signal: controller.signal,
     });
     if (res.status === 404) {
-      await redis.set(cacheKey, JSON.stringify({ notFound: true }), {
-        ex: IDENTITY_NEGATIVE_CACHE_TTL_SECONDS,
-      });
       return null;
     }
     if (!res.ok) throw new Error(`Identity resolve failed: ${res.status}`);
 
-    const data = (await res.json()) as {
-      userId: string;
-      organizationId: string;
-      agentId: string;
-    };
+    const data = (await res.json()) as
+      | {
+          userId?: string;
+          organizationId?: string;
+          agentId?: string;
+          data?: {
+            user?: { id?: string; organizationId?: string };
+            agent?: { id?: string | null };
+          };
+        }
+      | {
+          success?: boolean;
+        };
+    const userId =
+      "userId" in data ? data.userId : "data" in data ? data.data?.user?.id : undefined;
+    const organizationId =
+      "organizationId" in data
+        ? data.organizationId
+        : "data" in data
+          ? data.data?.user?.organizationId
+          : undefined;
+    const agentId =
+      "agentId" in data
+        ? data.agentId
+        : "data" in data
+          ? (data.data?.agent?.id ?? undefined)
+          : undefined;
+    if (!userId || !organizationId || !agentId) {
+      throw new Error("Identity resolve response missing userId, organizationId, or agentId");
+    }
     const identity: ResolvedIdentity = {
-      userId: data.userId,
-      organizationId: data.organizationId,
-      agentId: data.agentId,
+      userId,
+      organizationId,
+      agentId,
     };
     await redis.set(cacheKey, JSON.stringify(identity), {
       ex: IDENTITY_CACHE_TTL_SECONDS,
@@ -130,7 +156,7 @@ function parseNamespaceFromUrl(serverUrl: string): string | null {
   return match?.[1] ?? null;
 }
 
-export async function wakeServer(serverName: string, serverUrl: string): Promise<void> {
+async function wakeServer(serverName: string, serverUrl: string): Promise<void> {
   const token = getK8sToken();
   if (!token) return;
 

@@ -140,7 +140,6 @@ class SandboxRunner:
         """
         import base64
         import mimetypes
-        from pathlib import Path
 
         import httpx
 

@@ -12,13 +12,26 @@ import {
   type RuntimeRouteHostContext,
   setRuntimeRouteHostContext,
 } from "@elizaos/core";
-import {
-  createPaymentAwareHandler,
-  isRoutePaymentWrapped,
-} from "@elizaos/plugin-x402";
 import { readJsonBody } from "@elizaos/shared";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
+
+type X402RoutesModule = {
+  createPaymentAwareHandler: (
+    route: PaymentEnabledRoute,
+  ) => NonNullable<Route["handler"]>;
+  isRoutePaymentWrapped: (route: Route) => boolean;
+};
+type RuntimePluginRouteHandler = NonNullable<Route["handler"]>;
+
+let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
+
+function getX402RoutesModule(): Promise<X402RoutesModule> {
+  x402RoutesModulePromise ??= import(
+    "@elizaos/plugin-x402"
+  ) as unknown as Promise<X402RoutesModule>;
+  return x402RoutesModulePromise;
+}
 
 export function matchPluginRoutePath(
   pattern: string,
@@ -234,10 +247,18 @@ export async function tryHandleRuntimePluginRoute(options: {
       return true;
     }
 
-    const effectiveHandler =
-      route.x402 != null && !isRoutePaymentWrapped(route)
-        ? createPaymentAwareHandler(route as PaymentEnabledRoute)
-        : handler;
+    let effectiveHandler: RuntimePluginRouteHandler =
+      handler as RuntimePluginRouteHandler;
+    if (route.x402 != null) {
+      const { createPaymentAwareHandler, isRoutePaymentWrapped } =
+        await getX402RoutesModule();
+      if (!isRoutePaymentWrapped(route)) {
+        const wrapped = createPaymentAwareHandler(route as PaymentEnabledRoute);
+        if (wrapped) {
+          effectiveHandler = wrapped;
+        }
+      }
+    }
 
     const restoreHostContext = hostContext
       ? setRuntimeRouteHostContext(runtime, hostContext)

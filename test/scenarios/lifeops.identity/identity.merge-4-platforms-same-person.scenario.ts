@@ -89,7 +89,7 @@ export default scenario({
           "discord",
         ],
       }),
-      responseIncludesAny: ["Jordan", "merged", "consolidated"],
+      responseIncludesAny: ["Jordan", "merged"],
       responseJudge: {
         minimumScore: 0.7,
         rubric:

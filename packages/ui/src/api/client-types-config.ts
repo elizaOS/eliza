@@ -13,15 +13,6 @@ import type {
 } from "./client-types-core";
 
 export type {
-  BrowserBridgeCompanionPackageStatus,
-  BrowserBridgeCompanionStatus,
-  BrowserBridgePageContext,
-  BrowserBridgeSettings,
-  BrowserBridgeTabSummary,
-  SyncBrowserBridgeStateRequest,
-  UpdateBrowserBridgeSettingsRequest,
-} from "@elizaos/plugin-browser";
-export type {
   CloudCodingAgent,
   CloudCodingContainerSession,
   CloudCodingContainerStatus,
@@ -79,6 +70,15 @@ export type {
   UpdateLifeOpsDefinitionRequest,
   UpdateLifeOpsGoalRequest,
 } from "@elizaos/shared";
+export type {
+  BrowserBridgeCompanionPackageStatus,
+  BrowserBridgeCompanionStatus,
+  BrowserBridgePageContext,
+  BrowserBridgeSettings,
+  BrowserBridgeTabSummary,
+  SyncBrowserBridgeStateRequest,
+  UpdateBrowserBridgeSettingsRequest,
+} from "./browser-contracts";
 
 export interface SecretInfo {
   key: string;

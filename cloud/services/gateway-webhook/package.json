@@ -15,7 +15,6 @@
     "docker:build": "docker build -t gateway-webhook:local ."
   },
   "dependencies": {
-    "@elizaos/billing": "workspace:*",
     "@upstash/redis": "^1.37.0",
     "hashring": "^3.2.0",
     "hono": "4.12.18",

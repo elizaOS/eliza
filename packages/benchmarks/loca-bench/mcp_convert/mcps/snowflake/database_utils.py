@@ -6,11 +6,10 @@ to simulate Snowflake's database/schema/table hierarchy.
 """
 
 import os
-import sys
 import sqlite3
 import json
 import re
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any
 
 
 class SimpleJsonDatabase:
@@ -449,8 +448,7 @@ class SnowflakeDatabase:
                 return f'"{self._get_physical_table_name(database, schema, table)}"'
             return full_name
         
-        translated = re.sub(pattern, replace_table_name, query)
-        return translated
+        return re.sub(pattern, replace_table_name, query)
     
     def add_insight(self, insight: str):
         """Add a data insight to the memo"""
@@ -583,7 +581,7 @@ class SnowflakeDatabase:
                 try:
                     cursor.execute(insert_stmt, values)
                     inserted_count += 1
-                except sqlite3.IntegrityError as e:
+                except sqlite3.IntegrityError:
                     # Skip rows that violate constraints
                     skipped_count += 1
                     continue

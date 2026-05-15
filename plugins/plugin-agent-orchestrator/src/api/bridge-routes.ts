@@ -1,231 +1,235 @@
 /**
- * Sub-agent bridge routes — read-only HTTP endpoints exposing parent state.
+ * Sub-agent credential bridge — additive credential endpoints.
  *
- * Spawned coding sub-agents (Claude Code, Codex) live in sealed PTY workspaces
- * with no direct access to the parent Eliza runtime's memory, character, or
- * room context. These routes give them a constrained read channel so they can
- * resolve pronouns ("the user's dad") and align with parent context the
- * orchestrator's task brief didn't surface.
+ * These routes complement the existing read-only parent-context bridge
+ * (`parent-context-routes.ts`) by giving a spawned coding sub-agent a way
+ * to *request* a missing credential from the parent. The parent collects
+ * the value from the owner via the standard REQUEST_SECRET sensitive-request
+ * flow (owner-only actor policy, DM or owner-app-inline target), encrypts
+ * it under a one-time symmetric key, and the child long-polls the GET
+ * endpoint with the bearer token it received at scope declaration.
  *
- * Endpoints (loopback-only, agentId-authed via the path):
+ * Endpoints (loopback-only):
  *
- *   GET /api/coding-agents/:sessionId/parent-context
- *   GET /api/coding-agents/:sessionId/memory?q=<query>&limit=<N>
- *   GET /api/coding-agents/:sessionId/active-workspaces
+ *   POST /api/coding-agents/:sessionId/credentials/request
+ *     body: { credentialKeys: string[] }
+ *     → { credentialScopeId, scopedToken, expiresAt, sensitiveRequestIds }
  *
- * All responses are read-only. Mutations stay with the orchestrator —
- * sub-agents can't write parent state through the bridge.
+ *   GET  /api/coding-agents/:sessionId/credentials/:key?token=<scopedToken>
+ *     long-poll up to 5 minutes for the encrypted value, one-shot redemption.
+ *     → { key, value, retrievedAt }  // value plaintext, recovered by the
+ *                                   //  service's decrypt-on-retrieve
  *
- * Validation: every request's :sessionId is checked against the coordinator's
- * `tasks` map. Unknown / stale sessions get 404. Tasks in stopped/error/completed
- * status get 410 (so the sub-agent can fall back to no-parent-context mode
- * cleanly).
- *
- * @module api/bridge-routes
+ * The orchestrator wires this module via `routes.ts`; see Wave F's wiring
+ * follow-up for the dispatcher hookup. The implementation is intentionally
+ * decoupled from the credential-tunnel service: callers pass a small
+ * `BridgeCredentialAdapter` so the same routes can be wired against a
+ * test-time mock or the production `CredentialTunnelService`.
  */
 
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { TaskContext } from "../services/swarm-coordinator.js";
 import type { RouteContext } from "./route-utils.js";
-import { sendError, sendJson } from "./route-utils.js";
+import { parseBody, sendJson } from "./route-utils.js";
 
-const SESSION_ID_PATTERN = /^pty-\d+-[0-9a-f]+$/;
+const POST_PATH = /^\/api\/coding-agents\/([^/]+)\/credentials\/request\/?$/;
+const GET_PATH = /^\/api\/coding-agents\/([^/]+)\/credentials\/([^/?]+)\/?$/;
 
-/** Bridge endpoint path matcher. */
-const BRIDGE_PATH =
-  /^\/api\/coding-agents\/(pty-\d+-[0-9a-f]+)\/(parent-context|memory|active-workspaces)\/?$/;
-
-/**
- * Parsed bridge request.
- */
-interface BridgeRequest {
-  sessionId: string;
-  endpoint: "parent-context" | "memory" | "active-workspaces";
-  query: URLSearchParams;
-}
-
-function parseBridgeRequest(
-  pathname: string,
-  rawUrl: string | undefined,
-): BridgeRequest | null {
-  const match = pathname.match(BRIDGE_PATH);
-  if (!match) return null;
-  const sessionId = match[1];
-  const endpoint = match[2] as BridgeRequest["endpoint"];
-  const fullUrl = rawUrl ?? "";
-  const queryStart = fullUrl.indexOf("?");
-  const query =
-    queryStart >= 0
-      ? new URLSearchParams(fullUrl.slice(queryStart + 1))
-      : new URLSearchParams();
-  return { sessionId, endpoint, query };
-}
+const DEFAULT_LONG_POLL_MS = 5 * 60 * 1000;
+const POLL_INTERVAL_MS = 250;
 
 /**
- * Resolve the TaskContext for a sessionId from the coordinator. Returns the
- * task plus a "freshness" indicator the caller uses to decide between 200,
- * 404 (unknown), and 410 (stale).
+ * Adapter surface the bridge routes need from the parent runtime. The
+ * concrete implementation lives in app-core (`CredentialTunnelService`) and
+ * is registered into the parent runtime out-of-band; the route layer never
+ * imports it directly.
  */
-function resolveTaskContext(
+export interface BridgeCredentialAdapter {
+  requestCredentials(input: {
+    childSessionId: string;
+    credentialKeys: readonly string[];
+  }): Promise<{
+    credentialScopeId: string;
+    scopedToken: string;
+    expiresAt: number;
+    sensitiveRequestIds: readonly string[];
+  }>;
+  tryRetrieveCredential(input: {
+    childSessionId: string;
+    key: string;
+    scopedToken: string;
+  }): Promise<
+    | { status: "pending" }
+    | { status: "ready"; value: string }
+    | { status: "expired" }
+    | { status: "rejected"; reason: string }
+  >;
+}
+
+function isLoopback(remoteAddress: string | null | undefined): boolean {
+  if (!remoteAddress) return false;
+  const normalized = remoteAddress.trim().toLowerCase();
+  return (
+    normalized === "127.0.0.1" ||
+    normalized === "::1" ||
+    normalized === "::ffff:127.0.0.1" ||
+    normalized === "::ffff:0:127.0.0.1"
+  );
+}
+
+function decodeSegment(raw: string): string | null {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+  if (!decoded || decoded.includes("/") || decoded.includes("..")) return null;
+  return decoded;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Resolve the per-runtime credential adapter. The orchestrator registers it
+ * as a runtime service under the well-known key below. Returning null lets
+ * the routes respond with 503 cleanly when the parent runtime doesn't
+ * support credential tunneling (e.g. a stripped-down test harness).
+ */
+const BRIDGE_CREDENTIAL_ADAPTER_SERVICE = "SubAgentCredentialBridgeAdapter";
+
+function getAdapter(ctx: RouteContext): BridgeCredentialAdapter | null {
+  return (ctx.runtime.getService(BRIDGE_CREDENTIAL_ADAPTER_SERVICE) ??
+    null) as unknown as BridgeCredentialAdapter | null;
+}
+
+async function handlePost(
+  req: IncomingMessage,
+  res: ServerResponse,
   ctx: RouteContext,
   sessionId: string,
-): { task: TaskContext | null; status: "active" | "stale" | "unknown" } {
-  if (!SESSION_ID_PATTERN.test(sessionId)) {
-    return { task: null, status: "unknown" };
-  }
-  const coordinator = ctx.coordinator;
-  if (!coordinator) {
-    return { task: null, status: "unknown" };
-  }
-  const task = coordinator.tasks.get(sessionId) ?? null;
-  if (!task) {
-    return { task: null, status: "unknown" };
-  }
-  const stale =
-    task.status === "stopped" ||
-    task.status === "error" ||
-    task.status === "completed";
-  return { task, status: stale ? "stale" : "active" };
-}
-
-/**
- * GET /api/coding-agents/:sessionId/parent-context
- *
- * Returns the agent's character profile, the originating room (so the
- * sub-agent knows where its work eventually surfaces), and the task's spawn
- * metadata.
- */
-async function handleParentContext(
-  res: ServerResponse,
-  ctx: RouteContext,
-  task: TaskContext,
 ): Promise<void> {
-  const character = ctx.runtime.character;
-  const thread = task.threadId
-    ? await ctx.coordinator?.taskRegistry
-        .getThread(task.threadId)
-        .catch(() => null)
-    : null;
+  const adapter = getAdapter(ctx);
+  if (!adapter) {
+    sendJson(
+      res,
+      { error: "credential bridge unavailable", code: "no_adapter" },
+      503,
+    );
+    return;
+  }
+  let body: Record<string, unknown>;
+  try {
+    body = await parseBody(req);
+  } catch (error) {
+    sendJson(
+      res,
+      {
+        error: error instanceof Error ? error.message : "invalid body",
+        code: "invalid_body",
+      },
+      400,
+    );
+    return;
+  }
+  const rawKeys = body.credentialKeys;
+  if (
+    !Array.isArray(rawKeys) ||
+    rawKeys.length === 0 ||
+    rawKeys.some((k) => typeof k !== "string" || k.trim().length === 0)
+  ) {
+    sendJson(
+      res,
+      {
+        error: "credentialKeys must be a non-empty array of strings",
+        code: "invalid_credential_keys",
+      },
+      400,
+    );
+    return;
+  }
+  const result = await adapter.requestCredentials({
+    childSessionId: sessionId,
+    credentialKeys: rawKeys as readonly string[],
+  });
   sendJson(res, {
-    session_id: task.sessionId,
-    agent_label: task.label,
-    workdir: task.workdir,
-    repo: task.repo ?? null,
-    agent_type: task.agentType,
-    character: {
-      name: character?.name ?? null,
-      bio: Array.isArray(character?.bio)
-        ? character.bio
-        : typeof character?.bio === "string"
-          ? [character.bio]
-          : [],
-      topics: Array.isArray(character?.topics) ? character.topics : [],
-    },
-    room: thread?.roomId
-      ? {
-          id: thread.roomId,
-          thread_id: task.threadId,
-        }
-      : null,
-    original_task: task.originalTask ?? null,
+    credentialScopeId: result.credentialScopeId,
+    scopedToken: result.scopedToken,
+    expiresAt: result.expiresAt,
+    sensitiveRequestIds: [...result.sensitiveRequestIds],
   });
 }
 
-/**
- * GET /api/coding-agents/:sessionId/memory?q=<query>&limit=<N>
- *
- * Returns recent messages from the originating room, optionally filtered by
- * a substring query. Useful for the sub-agent to resolve pronouns or recover
- * context the task brief didn't capture. Read-only — no write API exists.
- */
-async function handleMemory(
+async function handleGet(
+  req: IncomingMessage,
   res: ServerResponse,
   ctx: RouteContext,
-  task: TaskContext,
-  query: URLSearchParams,
+  sessionId: string,
+  key: string,
 ): Promise<void> {
-  const thread = task.threadId
-    ? await ctx.coordinator?.taskRegistry
-        .getThread(task.threadId)
-        .catch(() => null)
-    : null;
-  if (!thread?.roomId) {
-    sendJson(res, { messages: [], count: 0, room_id: null });
+  const adapter = getAdapter(ctx);
+  if (!adapter) {
+    sendJson(
+      res,
+      { error: "credential bridge unavailable", code: "no_adapter" },
+      503,
+    );
     return;
   }
-
-  const rawLimit = Number(query.get("limit") ?? "10");
-  const limit = Math.max(
-    1,
-    Math.min(50, Number.isFinite(rawLimit) ? rawLimit : 10),
-  );
-  const queryText = (query.get("q") ?? "").trim().toLowerCase();
-
-  const memories = await ctx.runtime
-    .getMemories({
-      roomId: thread.roomId,
-      count: limit * 2,
-      tableName: "messages",
-    })
-    .catch(() => []);
-
-  const matched = memories
-    .map((m) => {
-      const text = (m.content as { text?: string }).text;
-      if (typeof text !== "string" || text.length === 0) return null;
-      if (queryText && !text.toLowerCase().includes(queryText)) return null;
-      return {
-        speaker: m.entityId === ctx.runtime.agentId ? "agent" : "user",
-        text: text.length > 600 ? `${text.slice(0, 600)}...` : text,
-        created_at: m.createdAt ? new Date(m.createdAt).toISOString() : null,
-      };
-    })
-    .filter((x): x is NonNullable<typeof x> => x !== null)
-    .slice(0, limit);
-
-  sendJson(res, {
-    room_id: thread.roomId,
-    query: queryText || null,
-    count: matched.length,
-    messages: matched.reverse(),
-  });
+  const url = new URL(req.url ?? "", "http://localhost");
+  const scopedToken = (url.searchParams.get("token") ?? "").trim();
+  if (!scopedToken) {
+    sendJson(
+      res,
+      { error: "missing token query parameter", code: "missing_token" },
+      400,
+    );
+    return;
+  }
+  const deadline = Date.now() + DEFAULT_LONG_POLL_MS;
+  // Long-poll loop. Bail early on expired / rejected — these are terminal.
+  // Keep client-disconnected detection cheap: we short-circuit the loop if
+  // the response has already been destroyed.
+  while (!res.writableEnded && Date.now() < deadline) {
+    const outcome = await adapter.tryRetrieveCredential({
+      childSessionId: sessionId,
+      key,
+      scopedToken,
+    });
+    if (outcome.status === "ready") {
+      sendJson(res, {
+        key,
+        value: outcome.value,
+        retrievedAt: Date.now(),
+      });
+      return;
+    }
+    if (outcome.status === "expired") {
+      sendJson(res, { error: "scope expired", code: "scope_expired" }, 410);
+      return;
+    }
+    if (outcome.status === "rejected") {
+      sendJson(res, { error: outcome.reason, code: "rejected" }, 403);
+      return;
+    }
+    await delay(POLL_INTERVAL_MS);
+  }
+  if (!res.writableEnded) {
+    sendJson(
+      res,
+      { error: "credential not delivered before deadline", code: "timeout" },
+      504,
+    );
+  }
 }
 
 /**
- * GET /api/coding-agents/:sessionId/active-workspaces
+ * Dispatcher for the credential bridge routes. Returns true when the path
+ * matches one of our patterns (whether or not the response is a success).
  *
- * Returns the orchestrator's currently-active task workspaces (other than
- * the requesting one). Lets a sub-agent see its siblings when running under
- * a swarm without parsing the injected CLAUDE.md.
- */
-function handleActiveWorkspaces(
-  res: ServerResponse,
-  ctx: RouteContext,
-  requesting: TaskContext,
-): void {
-  const coordinator = ctx.coordinator;
-  if (!coordinator) {
-    sendJson(res, { workspaces: [], count: 0 });
-    return;
-  }
-  const peers = [...coordinator.tasks.values()]
-    .filter(
-      (t) =>
-        t.sessionId !== requesting.sessionId &&
-        (t.status === "active" || t.status === "tool_running"),
-    )
-    .map((t) => ({
-      session_id: t.sessionId,
-      label: t.label,
-      agent_type: t.agentType,
-      workdir: t.workdir,
-      repo: t.repo ?? null,
-    }));
-  sendJson(res, { workspaces: peers, count: peers.length });
-}
-
-/**
- * Entry point — dispatches to the right handler based on parsed path.
+ * Hook this from `routes.ts` after the parent-context dispatcher:
+ *   if (await handleBridgeRoutes(req, res, normalizedPathname, ctx)) return true;
  */
 export async function handleBridgeRoutes(
   req: IncomingMessage,
@@ -233,37 +237,61 @@ export async function handleBridgeRoutes(
   pathname: string,
   ctx: RouteContext,
 ): Promise<boolean> {
-  const parsed = parseBridgeRequest(pathname, req.url);
-  if (!parsed) return false;
+  const postMatch = pathname.match(POST_PATH);
+  const getMatch = postMatch ? null : pathname.match(GET_PATH);
+  if (!postMatch && !getMatch) return false;
 
-  if ((req.method ?? "").toUpperCase() !== "GET") {
-    sendError(res, "Bridge endpoints are GET-only", 405);
-    return true;
-  }
-
-  const { task, status } = resolveTaskContext(ctx, parsed.sessionId);
-  if (status === "unknown" || !task) {
-    sendError(res, `Unknown sessionId ${parsed.sessionId}`, 404);
-    return true;
-  }
-  if (status === "stale") {
-    sendError(
+  if (!isLoopback(req.socket.remoteAddress)) {
+    sendJson(
       res,
-      `Session ${parsed.sessionId} is in terminal state (${task.status}); no parent context available`,
-      410,
+      {
+        error: "credential bridge is loopback-only",
+        code: "loopback_only",
+      },
+      403,
     );
     return true;
   }
 
-  switch (parsed.endpoint) {
-    case "parent-context":
-      await handleParentContext(res, ctx, task);
+  const method = (req.method ?? "").toUpperCase();
+  if (postMatch) {
+    if (method !== "POST") {
+      sendJson(
+        res,
+        { error: "expected POST", code: "method_not_allowed" },
+        405,
+      );
       return true;
-    case "memory":
-      await handleMemory(res, ctx, task, parsed.query);
+    }
+    const sessionId = decodeSegment(postMatch[1]);
+    if (!sessionId) {
+      sendJson(
+        res,
+        { error: "invalid session id", code: "invalid_session_id" },
+        400,
+      );
       return true;
-    case "active-workspaces":
-      handleActiveWorkspaces(res, ctx, task);
-      return true;
+    }
+    await handlePost(req, res, ctx, sessionId);
+    return true;
   }
+  if (getMatch) {
+    if (method !== "GET") {
+      sendJson(res, { error: "expected GET", code: "method_not_allowed" }, 405);
+      return true;
+    }
+    const sessionId = decodeSegment(getMatch[1]);
+    const key = decodeSegment(getMatch[2]);
+    if (!sessionId || !key) {
+      sendJson(
+        res,
+        { error: "invalid path segment", code: "invalid_path" },
+        400,
+      );
+      return true;
+    }
+    await handleGet(req, res, ctx, sessionId, key);
+    return true;
+  }
+  return false;
 }

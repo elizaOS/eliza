@@ -88,3 +88,31 @@ try:
     __all__.append("build_lifeops_bench_agent_fn")
 except Exception:  # noqa: BLE001 — keep the package importable if a stub is missing
     pass
+
+try:
+    from hermes_adapter.action_calling import build_action_calling_agent_fn  # noqa: F401, E402
+
+    __all__.append("build_action_calling_agent_fn")
+except Exception:  # noqa: BLE001
+    pass
+
+try:
+    from hermes_adapter.agentbench import build_agentbench_agent_fn  # noqa: F401, E402
+
+    __all__.append("build_agentbench_agent_fn")
+except Exception:  # noqa: BLE001
+    pass
+
+try:
+    from hermes_adapter.mind2web import build_mind2web_agent_fn  # noqa: F401, E402
+
+    __all__.append("build_mind2web_agent_fn")
+except Exception:  # noqa: BLE001
+    pass
+
+try:
+    from hermes_adapter.mint import build_mint_agent_fn  # noqa: F401, E402
+
+    __all__.append("build_mint_agent_fn")
+except Exception:  # noqa: BLE001
+    pass

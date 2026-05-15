@@ -1,5 +1,5 @@
 import type { ServerWebSocket } from "bun";
-import type { BotAction, BotWorldState } from "./types.js";
+import type { BotAction, BotWorldState } from "../sdk/types.js";
 
 // ── Public interface ────────────────────────────────────────────────
 

@@ -1,13 +1,13 @@
 {
   "schemaVersion": "registry-v2",
-  "lastUpdatedAt": "2026-05-11T13:58:00.202Z",
+  "lastUpdatedAt": "2026-05-14T11:58:58.830Z",
   "counts": {
-    "total": 104,
-    "builtin": 104,
+    "total": 107,
+    "builtin": 107,
     "thirdParty": 0,
-    "app": 23,
+    "app": 25,
     "connector": 17,
-    "plugin": 64
+    "plugin": 65
   },
   "packages": [
     {
@@ -15,7 +15,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-2004scape"
     },
@@ -24,7 +24,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-babylon"
     },
@@ -33,7 +33,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-clawville"
     },
@@ -42,7 +42,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-companion"
     },
@@ -51,7 +51,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-contacts"
     },
@@ -60,16 +60,25 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-defense-of-the-agents"
+    },
+    {
+      "name": "@elizaos/app-device-settings",
+      "kind": "app",
+      "origin": "builtin",
+      "support": "first-party",
+      "npmVersion": "2.0.0-beta.2",
+      "repository": "github:elizaos/eliza",
+      "directory": "plugins/app-device-settings"
     },
     {
       "name": "@elizaos/app-documents",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-documents"
     },
@@ -78,7 +87,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-elizamaker"
     },
@@ -87,7 +96,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-hyperliquid"
     },
@@ -96,7 +105,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-hyperscape"
     },
@@ -105,16 +114,25 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-lifeops"
+    },
+    {
+      "name": "@elizaos/app-messages",
+      "kind": "app",
+      "origin": "builtin",
+      "support": "first-party",
+      "npmVersion": "2.0.0-beta.2",
+      "repository": "github:elizaos/eliza",
+      "directory": "plugins/app-messages"
     },
     {
       "name": "@elizaos/app-phone",
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-phone"
     },
@@ -123,7 +141,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-polymarket"
     },
@@ -132,7 +150,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-scape"
     },
@@ -141,7 +159,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-screenshare"
     },
@@ -150,7 +168,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-shopify"
     },
@@ -159,7 +177,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-steward"
     },
@@ -168,7 +186,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-task-coordinator"
     },
@@ -177,7 +195,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-training"
     },
@@ -186,7 +204,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-trajectory-logger"
     },
@@ -195,7 +213,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-vincent"
     },
@@ -204,7 +222,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-wallet"
     },
@@ -213,7 +231,7 @@
       "kind": "app",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/app-wifi"
     },
@@ -222,7 +240,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-agent-orchestrator"
     },
@@ -231,7 +249,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-agent-skills"
     },
@@ -240,7 +258,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-anthropic"
     },
@@ -249,7 +267,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-aosp-local-inference"
     },
@@ -258,7 +276,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-app-control"
     },
@@ -267,16 +285,25 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-background-runner"
+    },
+    {
+      "name": "@elizaos/plugin-benchmarks",
+      "kind": "plugin",
+      "origin": "builtin",
+      "support": "first-party",
+      "npmVersion": "2.0.0-beta.0",
+      "repository": "github:elizaos/eliza",
+      "directory": "plugins/plugin-benchmarks"
     },
     {
       "name": "@elizaos/plugin-bluebubbles",
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-bluebubbles"
     },
@@ -285,7 +312,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-bluesky"
     },
@@ -294,7 +321,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-browser"
     },
@@ -303,7 +330,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-calendly"
     },
@@ -312,7 +339,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-capacitor-bridge"
     },
@@ -321,7 +348,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-cli"
     },
@@ -330,7 +357,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-codex-cli"
     },
@@ -339,7 +366,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-coding-tools"
     },
@@ -348,7 +375,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-commands"
     },
@@ -357,9 +384,18 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-computeruse"
+    },
+    {
+      "name": "@elizaos/plugin-device-filesystem",
+      "kind": "plugin",
+      "origin": "builtin",
+      "support": "first-party",
+      "npmVersion": "2.0.0-beta.2",
+      "repository": "github:elizaos/eliza",
+      "directory": "plugins/plugin-device-filesystem"
     },
     {
       "name": "@elizaos/plugin-discord",
@@ -375,7 +411,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-discord-local"
     },
@@ -384,7 +420,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-edge-tts"
     },
@@ -393,7 +429,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-elevenlabs"
     },
@@ -402,7 +438,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-eliza-classic"
     },
@@ -411,7 +447,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-elizacloud"
     },
@@ -420,7 +456,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-farcaster"
     },
@@ -429,7 +465,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-feishu"
     },
@@ -438,7 +474,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-form"
     },
@@ -447,7 +483,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-github"
     },
@@ -456,7 +492,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-google"
     },
@@ -465,7 +501,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-google-chat"
     },
@@ -474,7 +510,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-google-genai"
     },
@@ -483,7 +519,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-groq"
     },
@@ -492,7 +528,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-health"
     },
@@ -501,7 +537,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-imessage"
     },
@@ -510,7 +546,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-inmemorydb"
     },
@@ -519,7 +555,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-instagram"
     },
@@ -528,7 +564,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-line"
     },
@@ -537,7 +573,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-linear"
     },
@@ -546,34 +582,16 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-lmstudio"
-    },
-    {
-      "name": "@elizaos/plugin-local-ai",
-      "kind": "plugin",
-      "origin": "builtin",
-      "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
-      "repository": "github:elizaos/eliza",
-      "directory": "plugins/plugin-local-ai"
-    },
-    {
-      "name": "@elizaos/plugin-local-embedding",
-      "kind": "plugin",
-      "origin": "builtin",
-      "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
-      "repository": "github:elizaos/eliza",
-      "directory": "plugins/plugin-local-embedding"
     },
     {
       "name": "@elizaos/plugin-local-inference",
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-local-inference"
     },
@@ -582,7 +600,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-local-storage"
     },
@@ -591,7 +609,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-localdb"
     },
@@ -600,7 +618,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-matrix"
     },
@@ -609,7 +627,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-mcp"
     },
@@ -618,7 +636,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-minecraft"
     },
@@ -627,7 +645,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-mlx"
     },
@@ -636,7 +654,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-music"
     },
@@ -645,7 +663,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-mysticism"
     },
@@ -654,7 +672,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-ngrok"
     },
@@ -663,7 +681,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-nostr"
     },
@@ -672,16 +690,25 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-ollama"
+    },
+    {
+      "name": "@elizaos/plugin-omnivoice",
+      "kind": "plugin",
+      "origin": "builtin",
+      "support": "first-party",
+      "npmVersion": "2.0.0-beta.2",
+      "repository": "github:elizaos/eliza",
+      "directory": "plugins/plugin-omnivoice"
     },
     {
       "name": "@elizaos/plugin-openai",
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-openai"
     },
@@ -690,7 +717,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-openrouter"
     },
@@ -699,7 +726,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-pdf"
     },
@@ -708,7 +735,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-rlm"
     },
@@ -717,7 +744,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-roblox"
     },
@@ -726,7 +753,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-shell"
     },
@@ -735,7 +762,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-shopify"
     },
@@ -744,7 +771,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-signal"
     },
@@ -753,7 +780,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-slack"
     },
@@ -762,7 +789,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-social-alpha"
     },
@@ -771,7 +798,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-sql"
     },
@@ -780,7 +807,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-streaming"
     },
@@ -789,7 +816,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-suno"
     },
@@ -798,7 +825,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-tailscale"
     },
@@ -807,7 +834,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-tee"
     },
@@ -816,7 +843,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-telegram"
     },
@@ -825,7 +852,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-todos"
     },
@@ -834,7 +861,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-tunnel"
     },
@@ -843,7 +870,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-twitch"
     },
@@ -852,7 +879,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-video"
     },
@@ -861,7 +888,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-vision"
     },
@@ -870,7 +897,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-wallet"
     },
@@ -879,7 +906,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-web-search"
     },
@@ -888,7 +915,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-wechat"
     },
@@ -897,7 +924,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-whatsapp"
     },
@@ -906,7 +933,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-workflow"
     },
@@ -915,7 +942,7 @@
       "kind": "connector",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-x"
     },
@@ -924,7 +951,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-x402"
     },
@@ -933,7 +960,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-xai"
     },
@@ -942,7 +969,7 @@
       "kind": "plugin",
       "origin": "builtin",
       "support": "first-party",
-      "npmVersion": "2.0.0-beta.1",
+      "npmVersion": "2.0.0-beta.2",
       "repository": "github:elizaos/eliza",
       "directory": "plugins/plugin-zai"
     }

@@ -677,7 +677,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
         await this.db.transaction(async (tx) => {
           // Handle settings update if present
-          if (agent?.settings) {
+          if (agent.settings) {
             agent.settings = await this.mergeAgentSettings(tx, agentId, agent.settings);
           }
 
@@ -1058,7 +1058,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     try {
       const existingEntities = await this.getEntitiesByIds([entity.id]);
 
-      if (!existingEntities?.length) {
+      if (!existingEntities.length) {
         return (await this.createEntities([entity])).length > 0;
       }
 
@@ -1373,7 +1373,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     worldId?: UUID;
   }): Promise<Memory[]> {
     const { entityId, agentId, roomId, worldId, unique, start, end, offset } = params;
-    const tableName = params.tableName ?? "messages";
+    const tableName = params.tableName;
 
     if (offset !== undefined && offset < 0) {
       throw new Error("offset must be a non-negative number");
@@ -2021,7 +2021,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           GROUP BY body->>'runId'
         `);
 
-        const actionRows = (actionSummary.rows ?? []) as Array<{
+        const actionRows = actionSummary.rows as Array<{
           runId: string;
           actions: number | string;
           errors: number | string;
@@ -2031,9 +2031,9 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         for (const row of actionRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
-          counts.actions += Number(row.actions ?? 0);
-          counts.errors += Number(row.errors ?? 0);
-          counts.modelCalls += Number(row.modelCalls ?? 0);
+          counts.actions += Number(row.actions);
+          counts.errors += Number(row.errors);
+          counts.modelCalls += Number(row.modelCalls);
         }
 
         const evaluatorSummary = await this.db.execute(sql`
@@ -2046,7 +2046,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           GROUP BY body->>'runId'
         `);
 
-        const evaluatorRows = (evaluatorSummary.rows ?? []) as Array<{
+        const evaluatorRows = evaluatorSummary.rows as Array<{
           runId: string;
           evaluators: number | string;
         }>;
@@ -2054,7 +2054,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         for (const row of evaluatorRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
-          counts.evaluators += Number(row.evaluators ?? 0);
+          counts.evaluators += Number(row.evaluators);
         }
 
         const genericSummary = await this.db.execute(sql`
@@ -2068,7 +2068,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           GROUP BY body->>'runId'
         `);
 
-        const genericRows = (genericSummary.rows ?? []) as Array<{
+        const genericRows = genericSummary.rows as Array<{
           runId: string;
           modelLogs: number | string;
           embeddingErrors: number | string;
@@ -2077,8 +2077,8 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         for (const row of genericRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
-          counts.modelCalls += Number(row.modelLogs ?? 0);
-          counts.errors += Number(row.embeddingErrors ?? 0);
+          counts.modelCalls += Number(row.modelLogs);
+          counts.errors += Number(row.embeddingErrors);
         }
       }
 
@@ -2144,7 +2144,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
       worldId: params.worldId,
       entityId: params.entityId,
       unique: params.unique,
-      tableName: params.tableName ?? "messages",
+      tableName: params.tableName,
     });
   }
 
@@ -2273,7 +2273,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
     // Ensure we always pass a JSON string to the SQL placeholder – if we pass an
     // object directly PG sees `[object Object]` and fails the `::jsonb` cast.
     const contentToInsert =
-      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content ?? {});
+      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
 
     const metadataToInsert =
       typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
@@ -2330,9 +2330,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
           // Update memory content if provided
           if (memory.content) {
             const contentToUpdate =
-              typeof memory.content === "string"
-                ? memory.content
-                : JSON.stringify(memory.content ?? {});
+              typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
 
             const metadataToUpdate =
               typeof memory.metadata === "string"
@@ -2353,7 +2351,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
             const metadataToUpdate =
               typeof memory.metadata === "string"
                 ? memory.metadata
-                : JSON.stringify(memory.metadata ?? {});
+                : JSON.stringify(memory.metadata);
 
             await tx
               .update(memoryTable)
@@ -2617,7 +2615,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
         .where(and(...conditions));
 
       const result0 = result[0];
-      return Number(result0?.count ?? 0);
+      return Number(result0?.count);
     });
   }
 
@@ -2908,7 +2906,7 @@ export abstract class BaseDrizzleAdapter extends DatabaseAdapter<DrizzleDatabase
 
       const entities = await this.getEntitiesByIds([entityId]);
 
-      if (!entities?.length) {
+      if (!entities.length) {
         return [];
       }
 

@@ -17,7 +17,6 @@
  */
 import type http from "node:http";
 import type { AgentRuntime } from "@elizaos/core";
-import type { CloudVoiceCatalogEntry } from "@elizaos/plugin-elizacloud";
 import { ensureRouteAuthorized as defaultEnsureRouteAuthorized } from "./auth.ts";
 import type { CompatRuntimeState } from "./compat-route-shared";
 import {
@@ -26,6 +25,15 @@ import {
 } from "./response";
 
 const ROUTE_PATH = "/api/cloud/voices";
+
+export interface CloudVoiceCatalogEntry {
+  id: string;
+  name: string;
+  gender?: string;
+  preview?: string;
+  category?: string;
+  language?: string;
+}
 
 export interface CloudVoiceRouteDeps {
   /**

@@ -11,6 +11,8 @@ from benchmarks.standard._base import MockClient
 from benchmarks.standard._cli import main_entry
 from benchmarks.standard.mt_bench import (
     BENCHMARK_ID,
+    DEFAULT_JUDGE_MAX_TOKENS,
+    DEFAULT_MAX_TOKENS,
     SMOKE_QUESTIONS,
     MTBenchRunner,
     _extract_rating,
@@ -148,6 +150,30 @@ def test_mt_bench_runner_retries_unparseable_judge_rating(tmp_path: Path) -> Non
 
     assert result.n == 2
     assert result.metrics["mean_rating"] == 7.0
+
+
+def test_mt_bench_runner_raises_when_all_candidate_outputs_empty(tmp_path: Path) -> None:
+    candidate = MockClient([""])
+    judge = MockClient(["Rating: [[1]]" for _ in range(len(SMOKE_QUESTIONS) * 2)])
+    runner = MTBenchRunner(
+        judge=judge,
+        judge_model="judge",
+        questions=list(SMOKE_QUESTIONS),
+    )
+
+    with pytest.raises(RuntimeError, match="empty visible output for all"):
+        runner.run(
+            client=candidate,
+            model="cand",
+            endpoint="http://mock",
+            output_dir=tmp_path,
+            limit=None,
+        )
+
+
+def test_mt_bench_default_token_budgets_allow_reasoning_models() -> None:
+    assert DEFAULT_MAX_TOKENS >= 4096
+    assert DEFAULT_JUDGE_MAX_TOKENS >= 1024
 
 
 def test_mt_bench_cli_end_to_end(tmp_path: Path) -> None:

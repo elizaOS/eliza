@@ -983,17 +983,7 @@ export async function ensureTrajectoriesTable(
       // ignore when column already exists
     }
 
-    // Dedicated trajectory_steps table — replaces the JSONB steps_json blob.
-    //
-    // Migration direction: forward only. Existing trajectories with steps
-    // in `trajectories.steps_json` are migrated into `trajectory_steps`
-    // rows by `forwardMigrateStepsJsonToRows` (called below when both
-    // tables are present). `trajectories.steps_json` is kept as a
-    // best-effort fallback for read paths that have not yet been
-    // migrated, but writes go through the new table.
-    //
-    // Script column has no length cap (legacy 4096-char cap applied only
-    // to JSON storage; the dedicated TEXT column has none).
+    // Per-step rows; script column is unbounded TEXT (no legacy 4096-char cap).
     await executeRawSql(
       runtime,
       `CREATE TABLE IF NOT EXISTS trajectory_steps (
@@ -1103,7 +1093,9 @@ async function forwardMigrateStepsJsonToRows(
         const endedAt = startedAt;
         const kindRaw = toText(step.kind, "");
         const stepType =
-          kindRaw === "llm" || kindRaw === "action" ? kindRaw : "llm";
+          kindRaw === "llm" || kindRaw === "action" || kindRaw === "evaluator"
+            ? kindRaw
+            : "llm";
         const script =
           typeof step.script === "string" && step.script.length > 0
             ? step.script
@@ -1152,10 +1144,7 @@ async function forwardMigrateStepsJsonToRows(
       );
     }
   } catch (err) {
-    // Migration is best-effort. Failures here do not prevent the
-    // dedicated table from being used for new writes; the
-    // legacy JSONB fallback remains for existing rows until
-    // migration succeeds on a subsequent boot.
+    // Best-effort: failure here doesn't block new writes; legacy steps_json remains readable.
     warnRuntime(
       runtime,
       "forwardMigrateStepsJsonToRows: migration query failed; legacy steps_json still readable",
@@ -1651,7 +1640,10 @@ function stepRowToPersistedStep(row: Record<string, unknown>): PersistedStep {
   const startedAt = toOptionalNumber(readRecordValue(row, ["started_at"]));
   const endedAt = toOptionalNumber(readRecordValue(row, ["ended_at"]));
   const kindRaw = toText(readRecordValue(row, ["step_type"]), "");
-  const kind = kindRaw === "llm" || kindRaw === "action" ? kindRaw : undefined;
+  const kind =
+    kindRaw === "llm" || kindRaw === "action" || kindRaw === "evaluator"
+      ? kindRaw
+      : undefined;
   const scriptValue = readRecordValue(row, ["script"]);
   const script =
     typeof scriptValue === "string" && scriptValue.length > 0
@@ -1938,7 +1930,9 @@ async function replaceStepsForTrajectoryInternal(
   );
   for (const step of steps) {
     const stepType =
-      step.kind === "llm" || step.kind === "action" ? step.kind : "llm";
+      step.kind === "llm" || step.kind === "action" || step.kind === "evaluator"
+        ? step.kind
+        : "llm";
     const script =
       typeof step.script === "string" && step.script.length > 0
         ? step.script

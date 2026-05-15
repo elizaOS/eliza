@@ -13,8 +13,14 @@
  *      follow-up ping at +30 min, then `expired`.
  */
 
-import type { ScheduledTaskSeed } from "./contract-stubs.js";
 import type { DefaultPack } from "./registry-types.js";
+import {
+  compileTaskDefinition,
+  compileTaskDefinitions,
+  type CheckInTaskDefinition,
+  type FollowUpTaskDefinition,
+  type ReminderTaskDefinition,
+} from "./task-definitions.js";
 
 export const DAILY_RHYTHM_PACK_KEY = "daily-rhythm";
 
@@ -29,8 +35,8 @@ export const DAILY_RHYTHM_RECORD_IDS = {
   checkinFollowup: "default-pack:daily-rhythm:morning-checkin-followup",
 } as const;
 
-const gmRecord: ScheduledTaskSeed = {
-  kind: "reminder",
+const gmDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
   promptInstructions:
     "Send a gentle good-morning to the owner. Acknowledge they are starting the day. Keep it short and warm; no questions, no checklist, no agenda.",
   contextRequest: {
@@ -54,8 +60,8 @@ const gmRecord: ScheduledTaskSeed = {
   },
 };
 
-const gnRecord: ScheduledTaskSeed = {
-  kind: "reminder",
+const gnDefinition: ReminderTaskDefinition = {
+  definitionKind: "reminder",
   promptInstructions:
     "Send a gentle good-night to the owner near their bedtime. One sentence; warm, no agenda, no questions, no recap.",
   contextRequest: {
@@ -83,8 +89,8 @@ const gnRecord: ScheduledTaskSeed = {
  * the daily check-in within the `user_replied_within` window. After this
  * fires, the parent task transitions to `expired` per §8.10.
  */
-const checkinFollowupRecord: ScheduledTaskSeed = {
-  kind: "followup",
+const checkinFollowupDefinition: FollowUpTaskDefinition = {
+  definitionKind: "followup",
   promptInstructions:
     "The owner did not respond to the morning check-in. Send one short follow-up nudge — no recap, no list. Acknowledge they may be busy and leave the door open.",
   contextRequest: {
@@ -106,8 +112,10 @@ const checkinFollowupRecord: ScheduledTaskSeed = {
   },
 };
 
-const checkinRecord: ScheduledTaskSeed = {
-  kind: "checkin",
+const checkinFollowupRecord = compileTaskDefinition(checkinFollowupDefinition);
+
+const checkinDefinition: CheckInTaskDefinition = {
+  definitionKind: "checkin",
   promptInstructions:
     "Run the morning check-in for the owner. Use the assembled briefing (overdue todos, today's meetings, yesterday's wins, tracked habits, inbox/calendar/contacts/promises sections) to deliver one concise start-of-day message. Ask one open question at the end so the owner can reply.",
   contextRequest: {
@@ -150,7 +158,12 @@ export const dailyRhythmPack: DefaultPack = {
   description:
     "A gentle morning hello, an evening goodnight, and one start-of-day check-in. Three records — the agent's heartbeat.",
   defaultEnabled: true,
-  records: [gmRecord, gnRecord, checkinRecord],
+  requiredCapabilities: [],
+  records: compileTaskDefinitions([
+    gmDefinition,
+    gnDefinition,
+    checkinDefinition,
+  ]),
   uiHints: {
     summaryOnDayOne:
       "gm at wake, daily check-in 30 min later, gn at bedtime — three messages.",

@@ -25,7 +25,7 @@ export class MemoryStore implements Store {
     worldId?: UUID;
   }): Promise<Memory[]> {
     const { entityId, agentId, roomId, worldId, unique, start, end, offset } = params;
-    const tableName = params.tableName ?? "messages";
+    const tableName = params.tableName;
 
     if (offset !== undefined && offset < 0) {
       throw new Error("offset must be a non-negative number");
@@ -101,7 +101,7 @@ export class MemoryStore implements Store {
   }): Promise<Memory[]> {
     return this.ctx.withRetry(async () => {
       if (params.roomIds.length === 0) return [];
-      const tableName = params.tableName ?? "messages";
+      const tableName = params.tableName;
 
       const conditions = [
         eq(memoryTable.type, tableName),
@@ -229,7 +229,7 @@ export class MemoryStore implements Store {
     }
   ): Promise<Memory[]> {
     return this.ctx.withRetry(async () => {
-      const tableName = params.tableName ?? "messages";
+      const tableName = params.tableName;
       const cleanVector = embedding.map((n) => (Number.isFinite(n) ? Number(n.toFixed(6)) : 0));
 
       const similarity = sql<number>`1 - (${cosineDistance(
@@ -299,7 +299,7 @@ export class MemoryStore implements Store {
     }
 
     const contentToInsert =
-      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content ?? {});
+      typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
 
     const metadataToInsert =
       typeof memory.metadata === "string" ? memory.metadata : JSON.stringify(memory.metadata ?? {});
@@ -340,9 +340,7 @@ export class MemoryStore implements Store {
         await this.db.transaction(async (tx) => {
           if (memory.content) {
             const contentToUpdate =
-              typeof memory.content === "string"
-                ? memory.content
-                : JSON.stringify(memory.content ?? {});
+              typeof memory.content === "string" ? memory.content : JSON.stringify(memory.content);
 
             const metadataToUpdate =
               typeof memory.metadata === "string"
@@ -362,7 +360,7 @@ export class MemoryStore implements Store {
             const metadataToUpdate =
               typeof memory.metadata === "string"
                 ? memory.metadata
-                : JSON.stringify(memory.metadata ?? {});
+                : JSON.stringify(memory.metadata);
 
             await tx
               .update(memoryTable)

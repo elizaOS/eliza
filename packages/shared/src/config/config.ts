@@ -24,7 +24,7 @@ export function isCloudActiveFromProviders(
 export function migrateCloudEnabledToProviders(
   config: LegacyCloudConfig,
 ): LegacyCloudConfig {
-  const cloudEnabled = config?.cloud?.enabled === true;
+  const cloudEnabled = config.cloud?.enabled === true;
   if (!cloudEnabled) {
     return config;
   }

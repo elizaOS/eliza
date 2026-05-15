@@ -442,7 +442,6 @@ def _read_image(p: Path, screen_size: str | None) -> dict:
 def _read_video(p: Path, req: ReadMediaRequest) -> dict:
     """Read a video file: probe metadata and extract frames via ffmpeg."""
     from PIL import Image
-    import io
     import json as _json
     import tempfile
 

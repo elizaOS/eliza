@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { logger } from "../../../logger.ts";
 import { runWithActionRoutingContext } from "../../../runtime/action-routing-context.ts";
+import { parseJsonObject } from "../../../runtime/json-output.ts";
 import {
 	type ActionContext,
 	type ActionParameters,
@@ -16,6 +17,7 @@ import {
 	type State,
 	type UUID,
 } from "../../../types/index.ts";
+import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 import type { JsonValue, PlanningContext, RetryPolicy } from "../types.ts";
 
 type ExtendedHandlerOptions = HandlerOptions & {
@@ -48,27 +50,7 @@ function formatPromptData(value: unknown): string {
 }
 
 function parseJsonRecord(response: string): Record<string, unknown> {
-	const trimmed = response.trim();
-	const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
-	const candidate = fenced ? fenced[1]?.trim() : trimmed;
-
-	try {
-		const parsed = JSON.parse(candidate) as unknown;
-		return isRecord(parsed) ? parsed : {};
-	} catch {
-		const start = candidate.indexOf("{");
-		const end = candidate.lastIndexOf("}");
-		if (start === -1 || end <= start) {
-			return {};
-		}
-
-		try {
-			const parsed = JSON.parse(candidate.slice(start, end + 1)) as unknown;
-			return isRecord(parsed) ? parsed : {};
-		} catch {
-			return {};
-		}
-	}
+	return parseJsonObject<Record<string, unknown>>(response) ?? {};
 }
 
 interface PlanState {
@@ -103,10 +85,6 @@ interface PlanExecutionResult {
 
 type WorkingMemory = Record<string, JsonValue>;
 type RuntimeAction = IAgentRuntime["actions"][number];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function normalizeActionParameters(value: unknown): ActionParameters {
 	if (isRecord(value)) {

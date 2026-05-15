@@ -23,9 +23,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import logging
-import os
-import time
-from typing import Any, Final, Optional
+from typing import Any, Final
 
 from hermes_adapter.client import HermesClient, MessageResponse
 

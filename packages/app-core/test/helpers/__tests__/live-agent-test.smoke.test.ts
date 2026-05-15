@@ -5,7 +5,7 @@
  * agent "What is 2+2?" through the full message pipeline and assert "4".
  *
  * Secondary scenarios: each newly supported provider (`ollama`, `xai`,
- * `nvidiacloud`, `elizacloud`, `cerebras`) registers a describe block whose
+ * `elizacloud`, `cerebras`) registers a describe block whose
  * default required-env keys force a clean skip when the corresponding
  * credentials are absent. We don't try to verify pass-with-key for providers
  * we don't have access to — the goal is "no silent failure, clear yellow
@@ -48,17 +48,6 @@ await describeLive(
   { provider: "xai", requiredEnv: [] },
   ({ harness }) => {
     it("answers a simple math question via xai", async () => {
-      const reply = await harness().runAgentTurn("What is 2+2? Reply briefly.");
-      expect(reply.length).toBeGreaterThan(0);
-    }, 120_000);
-  },
-);
-
-await describeLive(
-  "live-agent-test smoke (nvidiacloud)",
-  { provider: "nvidiacloud", requiredEnv: [] },
-  ({ harness }) => {
-    it("answers a simple math question via nvidiacloud", async () => {
       const reply = await harness().runAgentTurn("What is 2+2? Reply briefly.");
       expect(reply.length).toBeGreaterThan(0);
     }, 120_000);

@@ -17,6 +17,7 @@ Supports the full v3/v4 category taxonomy:
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Iterator, Optional
 
@@ -32,6 +33,45 @@ from benchmarks.bfcl.types import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+_DEFAULT_RE = re.compile(
+    r"\bdefault(?:\s+value)?\s*(?:is|:)?\s*['\"]?([^'\".,;)\n]+)",
+    re.IGNORECASE,
+)
+
+
+def _infer_default_from_description(
+    description: str,
+    param_type: str,
+) -> str | int | float | bool | None:
+    """Recover BFCL defaults encoded only in parameter prose."""
+    match = _DEFAULT_RE.search(description)
+    if not match:
+        return None
+    raw = match.group(1).strip().strip("`'\"")
+    if not raw:
+        return None
+
+    kind = param_type.lower()
+    if kind in {"integer", "int"}:
+        try:
+            return int(raw)
+        except ValueError:
+            return None
+    if kind in {"number", "float"}:
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+    if kind in {"boolean", "bool"}:
+        lowered = raw.lower()
+        if lowered in {"true", "1", "yes"}:
+            return True
+        if lowered in {"false", "0", "no"}:
+            return False
+        return None
+    return raw
 
 
 class BFCLDataset:
@@ -712,13 +752,18 @@ class BFCLDataset:
             for param_name, param_info in properties.items():
                 if not isinstance(param_info, dict):
                     continue
+                param_type = str(param_info.get("type", "string"))
+                description = str(param_info.get("description", ""))
+                default = param_info.get("default")
+                if default is None:
+                    default = _infer_default_from_description(description, param_type)
                 parameters[param_name] = FunctionParameter(
                     name=param_name,
-                    param_type=str(param_info.get("type", "string")),
-                    description=str(param_info.get("description", "")),
+                    param_type=param_type,
+                    description=description,
                     required=param_name in required,
                     enum=param_info.get("enum"),
-                    default=param_info.get("default"),
+                    default=default,
                     items=param_info.get("items"),
                     properties=param_info.get("properties"),
                 )
@@ -749,12 +794,18 @@ class BFCLDataset:
 
                 arguments: dict[str, object] = {}
                 for param_name, param_values in params.items():
-                    if isinstance(param_values, list) and len(param_values) > 0:
-                        value = param_values[0]
-                        if value == "":
-                            if len(param_values) > 1:
-                                value = param_values[1]
-                        arguments[param_name] = value
+                    if isinstance(param_values, list):
+                        # BFCL possible-answer payloads encode acceptable
+                        # alternatives as lists. Preserve that structure so
+                        # the scorer can accept any listed value instead of
+                        # collapsing to the first one.
+                        non_empty_values = [value for value in param_values if value != ""]
+                        if len(non_empty_values) == 1:
+                            arguments[param_name] = non_empty_values[0]
+                        elif non_empty_values:
+                            arguments[param_name] = non_empty_values
+                        else:
+                            arguments[param_name] = param_values
                     else:
                         arguments[param_name] = param_values
 
@@ -828,39 +879,56 @@ class BFCLDataset:
         n: int,
         categories: Optional[list[BFCLCategory]] = None,
         require_ground_truth: bool = True,
+        seed: int | None = 0,
     ) -> list[BFCLTestCase]:
         """Get a stratified sample of test cases."""
         import random
 
+        rng = random.Random(seed)
         if categories is None:
             categories = self.get_categories()
         if not categories:
             return []
 
-        samples_per_category = max(1, n // len(categories))
+        ordered_categories = sorted(categories, key=lambda c: c.value)
+        if n < len(ordered_categories):
+            ordered_categories = sorted(
+                rng.sample(ordered_categories, n),
+                key=lambda c: c.value,
+            )
+
+        samples_per_category = max(1, n // len(ordered_categories))
         samples: list[BFCLTestCase] = []
 
-        for category in categories:
-            category_cases = [
-                tc
-                for tc in self.get_by_category(category)
-                if not require_ground_truth or tc.has_ground_truth
-            ]
+        for category in ordered_categories:
+            category_cases = sorted(
+                [
+                    tc
+                    for tc in self.get_by_category(category)
+                    if not require_ground_truth or tc.has_ground_truth
+                ],
+                key=lambda tc: tc.id,
+            )
             if category_cases:
                 sample_size = min(samples_per_category, len(category_cases))
-                samples.extend(random.sample(category_cases, sample_size))
+                samples.extend(rng.sample(category_cases, sample_size))
 
         # If we need more samples, add randomly
         remaining = n - len(samples)
         if remaining > 0:
-            remaining_cases = [
-                tc
-                for tc in self._test_cases
-                if tc not in samples and (not require_ground_truth or tc.has_ground_truth)
-            ]
+            sample_ids = {tc.id for tc in samples}
+            remaining_cases = sorted(
+                [
+                    tc
+                    for tc in self._test_cases
+                    if tc.id not in sample_ids
+                    and (not require_ground_truth or tc.has_ground_truth)
+                ],
+                key=lambda tc: (tc.category.value, tc.id),
+            )
             if remaining_cases:
                 samples.extend(
-                    random.sample(remaining_cases, min(remaining, len(remaining_cases)))
+                    rng.sample(remaining_cases, min(remaining, len(remaining_cases)))
                 )
 
         return samples[:n]

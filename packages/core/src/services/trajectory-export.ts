@@ -27,10 +27,23 @@ type TrajectoryArtRow = {
 	metrics: Record<string, number>;
 };
 
+type TrajectoryMetadataPrimitive = string | number | boolean | null;
+
 function asRecord(value: unknown): Record<string, unknown> | null {
 	return value && typeof value === "object" && !Array.isArray(value)
 		? (value as Record<string, unknown>)
 		: null;
+}
+
+function isTrajectoryMetadataPrimitive(
+	value: unknown,
+): value is TrajectoryMetadataPrimitive {
+	return (
+		typeof value === "string" ||
+		typeof value === "number" ||
+		typeof value === "boolean" ||
+		value === null
+	);
 }
 
 function toFiniteNumber(value: unknown, fallback = 0): number {
@@ -66,20 +79,14 @@ function toExactOptionalString(value: unknown): string | undefined {
 
 function primitiveTrajectoryMetadata(
 	value: unknown,
-): Record<string, string | number | boolean | null> {
+): Record<string, TrajectoryMetadataPrimitive> {
 	const record = asRecord(value);
 	if (!record) {
 		return {};
 	}
-	const out: Record<string, string | number | boolean | null> = {};
+	const out: Record<string, TrajectoryMetadataPrimitive> = {};
 	for (const [key, item] of Object.entries(record)) {
-		if (item === null) {
-			out[key] = null;
-		} else if (
-			typeof item === "string" ||
-			typeof item === "number" ||
-			typeof item === "boolean"
-		) {
+		if (isTrajectoryMetadataPrimitive(item)) {
 			out[key] = item;
 		}
 	}

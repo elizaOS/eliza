@@ -22,7 +22,6 @@ import argparse
 import asyncio
 import json
 import re
-import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone

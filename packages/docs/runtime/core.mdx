@@ -120,16 +120,16 @@ let result = runtime.message_service()
 | Stop | `await runtime.stop()` | `await runtime.stop()` | `runtime.stop().await` |
 
 <CardGroup cols={2}>
-  <Card title="Add Capabilities" icon="puzzle-piece" href="/plugins/components">
+  <Card title="Add Capabilities" icon="puzzle-piece" href="/plugins/architecture">
     Actions, Providers, and Evaluators
   </Card>
   <Card title="Define Personality" icon="user" href="/agents/character-interface">
     Character configuration
   </Card>
-  <Card title="Deploy Anywhere" icon="cloud" href="/guides/deploy-a-project">
+  <Card title="Deploy Anywhere" icon="cloud" href="/deployment">
     Local, Docker, Serverless, Edge
   </Card>
-  <Card title="Connect Platforms" icon="plug" href="/plugin-registry/overview">
+  <Card title="Connect Platforms" icon="plug" href="/plugins/registry">
     Discord, Telegram, X, and more
   </Card>
 </CardGroup>
@@ -807,7 +807,7 @@ addEmbeddingToMemory(memory: Memory): Promise<Memory>;
 - `normal` - Default priority (conversations)
 - `low` - Background processing (bulk imports)
 
-In `@elizaos/core`, the embedding-generation service drains that queue through a **shared batch-queue pipeline** (priority queue, bounded concurrency, retries, repeat `EMBEDDING_DRAIN` task) so this path does not diverge from other queue-and-drain workloads. **Why:** one composable subsystem instead of multiple bespoke queue implementations as features grow. See [Batch queue subsystem](/runtime/batch-queue) (also `packages/core/docs/BATCH_QUEUE.md` in the monorepo).
+In `@elizaos/core`, the embedding-generation service drains that queue through a **shared batch-queue pipeline** (priority queue, bounded concurrency, retries, repeat `EMBEDDING_DRAIN` task) so this path does not diverge from other queue-and-drain workloads. **Why:** one composable subsystem instead of multiple bespoke queue implementations as features grow. See [Batch queue subsystem](/runtime/core) (also `packages/core/docs/BATCH_QUEUE.md` in the monorepo).
 
 ```typescript
 // Queue high-priority embedding for user query
@@ -1003,20 +1003,20 @@ await runtime.sendMessageToTarget(
 <Card
   title="Streaming Responses"
   icon="wave-pulse"
-  href="/guides/streaming-responses"
+  href="/runtime/action-callback-streaming"
 >
   Implement real-time streaming with SSE/WebSocket
 </Card>
 
-<Card title="Action Planning" icon="list-check" href="/guides/action-planning">
+<Card title="Action Planning" icon="list-check" href="/runtime/core">
   Build multi-step action workflows
 </Card>
 
-<Card title="Background Tasks" icon="clock" href="/guides/background-tasks">
+<Card title="Background Tasks" icon="clock" href="/runtime/services">
   Run async operations with task workers
 </Card>
 
-  <Card title="Deploy to Cloud" icon="cloud" href="/guides/deploy-to-cloud">
+  <Card title="Deploy to Cloud" icon="cloud" href="/eliza-cloud-deployment">
     Ship your agent to production in minutes
   </Card>
 </CardGroup>

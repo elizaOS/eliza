@@ -32,7 +32,7 @@ ELIZA_1_MANIFEST_SCHEMA_VERSION: Final[str] = "1"
 ELIZA_1_MANIFEST_SCHEMA_URL: Final[str] = (
     "https://elizaos.ai/schemas/eliza-1.manifest.v1.json"
 )
-ELIZA_1_HF_REPO: Final[str] = "elizaos/eliza-1"
+ELIZA_1_HF_REPO: Final[str] = "elizalabs/eliza-1"
 
 # The canonical current Eliza-1 release tiers.
 ELIZA_1_TIERS: Final[tuple[str, ...]] = (
@@ -115,6 +115,39 @@ QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
     "asr": QWEN3_ASR_GGUF_REPOS,
     "embedding": QWEN3_EMBEDDING_GGUF_REPOS,
 }
+CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    "0_8b": (
+        "Qwen/Qwen3.5-0.8B",
+        "Qwen/Qwen3.5-0.8B-Base",
+        "unsloth/Qwen3.5-0.8B-GGUF",
+    ),
+    "2b": (
+        "Qwen/Qwen3.5-2B",
+        "Qwen/Qwen3.5-2B-Base",
+        "unsloth/Qwen3.5-2B-GGUF",
+    ),
+    "4b": (
+        "Qwen/Qwen3.5-4B",
+        "Qwen/Qwen3.5-4B-Base",
+        "unsloth/Qwen3.5-4B-GGUF",
+    ),
+    "9b": (
+        "Qwen/Qwen3.5-9B",
+        "unsloth/Qwen3.5-9B-GGUF",
+    ),
+    "27b": (
+        "Qwen/Qwen3.6-27B",
+        "unsloth/Qwen3.6-27B-GGUF",
+    ),
+    "27b-256k": (
+        "Qwen/Qwen3.6-27B",
+        "unsloth/Qwen3.6-27B-GGUF",
+    ),
+    "27b-1m": (
+        "Qwen/Qwen3.6-27B",
+        "unsloth/Qwen3.6-27B-GGUF",
+    ),
+}
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
@@ -156,6 +189,14 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     ),
 }
 
+RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
+    "turboquant_q3": ("turbo3",),
+    "turboquant_q4": ("turbo4",),
+    "qjl": ("qjl1_256",),
+    "polarquant": ("polar_q4",),
+    "turbo3_tcq": ("turbo3_tcq",),
+}
+
 SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("metal", "vulkan", "cpu"),
     "2b": ("metal", "vulkan", "cpu"),
@@ -180,16 +221,12 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
 # of ``OMNIVOICE_QUANT_LADDER_BY_TIER`` in
 # ``packages/shared/src/local-inference/catalog.ts``. The downloader picks
 # the appropriate level from this ladder at install time based on the
-# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Tiers whose
-# default voice backend is Kokoro (0_8b/2b/4b currently) publish no
-# OmniVoice ladder; the empty tuple signals "no voice ladder, runtime
-# uses Kokoro instead". OmniVoice's ``tools/quantize.cpp`` already supports
-# Q2_K..Q8_0; this curated subset matches the device-class budgets in the
-# voice-quant matrix doc (``docs/inference/voice-quant-matrix.md``).
+# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Small tiers keep
+# the OmniVoice ladder narrow and retain Kokoro as their low-latency fallback.
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (),
-    "2b": (),
-    "4b": (),
+    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
@@ -197,10 +234,10 @@ VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("kokoro",),
-    "2b": ("kokoro",),
-    "4b": ("kokoro",),
-    "9b": ("kokoro", "omnivoice"),
+    "0_8b": ("omnivoice", "kokoro"),
+    "2b": ("omnivoice", "kokoro"),
+    "4b": ("omnivoice", "kokoro"),
+    "9b": ("omnivoice", "kokoro"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
     "27b-1m": ("omnivoice",),
@@ -217,9 +254,9 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line uses Kokoro as the required/default backend for 0.8B, 2B,
-    and 4B. The 9B tier ships Kokoro first plus OmniVoice. The 27B
-    long-context tiers ship OmniVoice only.
+    release line uses OmniVoice as the required/default backend for active
+    0_8b, 2b, 4b, and 9b tiers, keeps Kokoro as their low-latency fallback,
+    and ships OmniVoice only for 27B-class tiers.
     """
 
     out: list[str] = []
@@ -581,6 +618,7 @@ def validate_manifest(
     kernels = manifest["kernels"]
     declared_required: tuple[str, ...] = ()
     backends: Mapping[str, Any] = {}
+    recipe_manifest_map: Mapping[str, Any] = {}
     if not _is_object(kernels):
         errors.append("kernels: must be an object")
     else:
@@ -629,6 +667,7 @@ def validate_manifest(
             elif not recipe_manifest:
                 errors.append("kernels.recipeManifest: must be non-empty when present")
             else:
+                recipe_manifest_map = recipe_manifest
                 for target, pins in recipe_manifest.items():
                     if not _is_object(pins):
                         errors.append(
@@ -882,7 +921,9 @@ def validate_manifest(
                             f"provenance.sourceModels.{slot}.repo: required non-empty string"
                         )
                     elif rs == "base-v1":
-                        repo_error = canonical_qwen_source_repo_error(slot, repo)
+                        repo_error = canonical_qwen_source_repo_error(
+                            slot, repo, tier=manifest.get("tier")
+                        )
                         if repo_error is not None:
                             errors.append(
                                 f"provenance.sourceModels.{slot}.repo: {repo_error}"
@@ -906,6 +947,19 @@ def validate_manifest(
         if k not in declared_set:
             errors.append(
                 f"kernels.required: missing required kernel for tier {tier}: {k}"
+            )
+
+    must_have_recipe_manifest = require_publish_ready or manifest["defaultEligible"]
+    if must_have_recipe_manifest:
+        missing_recipe_targets: list[str] = []
+        for kernel in declared_required:
+            for target in RECIPE_TARGETS_BY_REQUIRED_KERNEL.get(kernel, ()):
+                if target not in recipe_manifest_map:
+                    missing_recipe_targets.append(f"{kernel}->{target}")
+        if missing_recipe_targets:
+            errors.append(
+                "kernels.recipeManifest: missing recipe metadata for required "
+                f"kernel target(s): {sorted(missing_recipe_targets)}"
             )
 
     has_long_ctx = any(
@@ -1067,15 +1121,24 @@ def validate_manifest(
     return tuple(errors)
 
 
-def canonical_qwen_source_repo_error(slot: str, repo: str) -> str | None:
+def canonical_qwen_source_repo_error(
+    slot: str,
+    repo: str,
+    *,
+    tier: str | None = None,
+) -> str | None:
     """Return an error for known Qwen ASR/embedding provenance misspellings.
 
-    Text tiers are Qwen3.5, but ASR and embedding are separate Qwen3
-    components with their own published GGUF repos. The release pipeline must
-    not invent matching Qwen3.5 or tier-mirrored ASR/embedding names.
+    Text tiers are tier-specific: 0_8b/2b/4b/9b are Qwen3.5, while the 27B
+    release family is Qwen3.6. ASR and embedding are separate Qwen3 components
+    with their own published GGUF repos. The release pipeline must not invent
+    matching Qwen3.5/Qwen3.6 ASR/embedding names.
     """
 
-    allowed = QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT.get(slot)
+    if slot == "text" and isinstance(tier, str):
+        allowed = CANONICAL_TEXT_SOURCE_REPOS_BY_TIER.get(tier)
+    else:
+        allowed = QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT.get(slot)
     if allowed is None or repo in allowed:
         return None
     allowed_list = ", ".join(allowed)

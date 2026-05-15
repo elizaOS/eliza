@@ -276,7 +276,6 @@ def _default_env(workspace_root: Path, request: RunRequest) -> dict[str, str]:
     env["CEREBRAS_MODEL"] = model_name
     env["CEREBRAS_LARGE_MODEL"] = model_name
     env["CEREBRAS_SMALL_MODEL"] = model_name
-    env.setdefault("ELIZA_ACTION_COMPACTION", "true")
     env.setdefault("ELIZA_CONVERSATION_COMPACTOR", "structured-state")
     env.setdefault("MAX_CONVERSATION_TOKENS", "120000")
     env.setdefault("BENCHMARK_CAPTURE_TRAJECTORIES", "1")

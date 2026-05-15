@@ -487,7 +487,7 @@ const elizagotchiAction: ElizaAction = {
   description:
     "Play the Elizagotchi virtual pet game. Use `action` to tick, check status, show help, reset, export/import saves, rename, feed, play, clean, sleep, give medicine, discipline, or toggle lights.",
   descriptionCompressed:
-    "Elizagotchi virtual pet. action=tick/status/help/reset/export/import/name/feed/play/clean/sleep/medicine/discipline/light_toggle.",
+    "Elizagotchi tick|status|reset|export|import|name|feed|play|clean|sleep|medicine|light",
   contexts: [...ELIZAGOTCHI_CONTEXTS],
   contextGate: ELIZAGOTCHI_CONTEXT_GATE,
   roleGate: { minRole: "USER" },

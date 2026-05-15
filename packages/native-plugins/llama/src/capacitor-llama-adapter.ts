@@ -12,9 +12,12 @@ import type {
   EmbedResult,
   GenerateOptions,
   GenerateResult,
+  GenerateStreamOptions,
+  GenerationEvent,
   HardwareInfo,
   LlamaAdapter,
   LoadOptions,
+  SamplerStage,
   SetSpecTypeArgs,
 } from "./definitions";
 
@@ -393,6 +396,18 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
   private tokenIndex = 0;
   private tokenListeners = new Set<(token: string, index: number) => void>();
   private pluginListenerHandle: PluginListenerHandle | null = null;
+  /**
+   * Latest native completion stats captured by `generateStream`. Read by
+   * the `generate()` wrapper to populate `GenerateResult` without
+   * re-issuing the native call. Cleared at the start of every
+   * `generateStream` invocation.
+   */
+  private lastCompletionStats: {
+    text: string;
+    promptTokens: number;
+    outputTokens: number;
+    durationMs: number;
+  } | null = null;
 
   private requireContextId(): number {
     if (this.contextId === null) {
@@ -594,6 +609,51 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
       contextId: this.contextId,
       params,
     });
+
+    // Fork builds expose a separate `setSpecType` bridge that configures
+    // the DFlash drafter after the main context is up. Stock builds lack
+    // the method and the setter is a warn-no-op. We auto-call here so
+    // callers only need to pass `draftModelPath` once via load() — the
+    // adapter then handles both the params-bag path (stock fallback) and
+    // the explicit setSpecType path (fork build) in one shot.
+    if (options.draftModelPath && typeof plugin.setSpecType === "function") {
+      try {
+        await plugin.setSpecType({
+          target: options.modelPath,
+          drafter: options.draftModelPath,
+          specType: "dflash",
+          draftMin: options.draftMin ?? 1,
+          draftMax: options.draftMax ?? 3,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          "[capacitor-llama] setSpecType failed; spec decode disabled",
+          { error: message },
+        );
+      }
+    }
+
+    // Same pattern for cache_type_k/v: fork builds may surface a separate
+    // setCacheType bridge; stock builds rely on the params bag only.
+    if (
+      (options.cacheTypeK || options.cacheTypeV) &&
+      typeof plugin.setCacheType === "function"
+    ) {
+      try {
+        await plugin.setCacheType({
+          cacheTypeK: options.cacheTypeK ?? "f16",
+          cacheTypeV: options.cacheTypeV ?? "f16",
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(
+          "[capacitor-llama] setCacheType failed; cache types may be unchanged",
+          { error: message },
+        );
+      }
+    }
+
     this.loadedPath = options.modelPath;
   }
 
@@ -611,12 +671,12 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
     this.loadedPath = null;
   }
 
-  async generate(options: GenerateOptions): Promise<GenerateResult> {
-    if (!this.plugin || !this.loadedPath) {
-      throw new Error("No model loaded. Call load() first.");
-    }
-    this.tokenIndex = 0;
-
+  /**
+   * Build the params object for the native completion call. Shared between
+   * the legacy `generate()` path and the new `generateStream()` path so the
+   * cache-key + stop-sequence wiring lives in one place.
+   */
+  private buildNativeParams(options: GenerateOptions): NativeGenerateParams {
     const params: NativeGenerateParams = {
       n_predict: resolveMobileMaxTokens(options.maxTokens),
       temperature: options.temperature ?? 0.7,
@@ -647,12 +707,26 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         }
       ).slot_id = slotId;
     }
+    return params;
+  }
 
+  /**
+   * Invoke the native completion (or generateText) entry point with a
+   * pre-built params bag. Returns the raw native result; callers map this
+   * to `GenerateResult` or to a `done` event.
+   */
+  private async runNativeCompletion(
+    options: GenerateOptions,
+    params: NativeGenerateParams,
+  ): Promise<NativeCompletionResult> {
+    const plugin = this.plugin;
+    if (!plugin) {
+      throw new Error("No model loaded. Call load() first.");
+    }
     const contextId = this.requireContextId();
-    const started = Date.now();
     const result =
-      typeof this.plugin.completion === "function"
-        ? await this.plugin.completion({
+      typeof plugin.completion === "function"
+        ? await plugin.completion({
             contextId,
             params: {
               prompt: options.prompt,
@@ -660,7 +734,7 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
               ...params,
             },
           })
-        : await this.plugin.generateText?.({
+        : await plugin.generateText?.({
             contextId,
             prompt: options.prompt,
             params,
@@ -670,17 +744,229 @@ export class CapacitorLlamaAdapter implements LlamaAdapter {
         "llama-cpp-capacitor did not expose completion() or generateText()",
       );
     }
-    const duration =
-      result.timings?.predicted_ms != null
-        ? Math.round(result.timings.predicted_ms)
-        : Date.now() - started;
+    return result;
+  }
 
+  /**
+   * Native bridges currently don't honour per-generation sampler-stage
+   * injection — the Swift / Kotlin side needs separate wiring. Until that
+   * lands we log once per stage and otherwise pass through. The stages
+   * remain in the options object so downstream observers (telemetry,
+   * tests) can still see them.
+   */
+  private logUnwiredSamplerStages(stages: SamplerStage[] | undefined): void {
+    if (!stages || stages.length === 0) return;
+    for (const stage of stages) {
+      console.debug(
+        `[capacitor-llama] sampler stage "${stage.kind}" received but not yet wired in native bridge`,
+      );
+    }
+  }
+
+  async generate(options: GenerateOptions): Promise<GenerateResult> {
+    // Wrapper over `generateStream` so the cache-key, stop-sequence, and
+    // native-call wiring lives in exactly one place. Drains the stream
+    // into the legacy `GenerateResult` shape; per-token events surface to
+    // any `onToken` listener via the native event bridge (unchanged).
+    let text = "";
+    let promptTokens = 0;
+    let outputTokens = 0;
+    let durationMs = 0;
+    let lastError: string | null = null;
+    for await (const event of this.generateStream(options)) {
+      if (event.kind === "token") {
+        text += event.text;
+      } else if (event.kind === "telemetry") {
+        // Native bridge currently emits no telemetry events; ignored here
+        // because the final `done` event carries the authoritative totals.
+      } else if (event.kind === "error") {
+        lastError = event.message;
+      } else if (event.kind === "done") {
+        // The done payload's authoritative fields come from the
+        // closed-over scope below — set when the native call returns.
+      }
+    }
+    if (lastError) throw new Error(lastError);
+    // Re-read native counters from the cached completion result. We stored
+    // them on `this.lastCompletionStats` inside the stream's lifecycle.
+    const stats = this.lastCompletionStats;
+    if (stats) {
+      promptTokens = stats.promptTokens;
+      outputTokens = stats.outputTokens;
+      durationMs = stats.durationMs;
+      if (stats.text) {
+        // The native call's authoritative text. Use it instead of the
+        // token-event-assembled string so callers see exactly what the
+        // bridge produced (some bridges only emit tokens, others emit
+        // partial+final; assembled text isn't always equal).
+        text = stats.text;
+      }
+    }
     return {
-      text: result.text,
-      promptTokens: result.tokens_evaluated,
-      outputTokens: result.tokens_predicted,
-      durationMs: duration,
+      text,
+      promptTokens,
+      outputTokens,
+      durationMs,
     };
+  }
+
+  /**
+   * Streaming generation. Subscribes to the native token event bridge,
+   * starts the completion call, and yields typed `GenerationEvent`s as
+   * tokens arrive. The stream ends with exactly one `done` event (or one
+   * terminal `error`) once the native call resolves.
+   *
+   * Sampler-stage injection (`samplerStages`) and the per-generation
+   * spec-decode toggle (`specDecode`) are accepted but currently a no-op
+   * on the JS side — the Swift / Kotlin bridge wiring is tracked
+   * separately. They flow through as part of the options bag so the
+   * native side can pick them up without an interface change.
+   */
+  async *generateStream(
+    options: GenerateStreamOptions,
+  ): AsyncIterable<GenerationEvent> {
+    if (!this.plugin || !this.loadedPath) {
+      throw new Error("No model loaded. Call load() first.");
+    }
+    this.tokenIndex = 0;
+    this.lastCompletionStats = null;
+    this.logUnwiredSamplerStages(options.samplerStages);
+
+    const queue: GenerationEvent[] = [];
+    let waiter: (() => void) | null = null;
+    const wake = (): void => {
+      if (waiter) {
+        const w = waiter;
+        waiter = null;
+        w();
+      }
+    };
+    const push = (event: GenerationEvent): void => {
+      queue.push(event);
+      wake();
+    };
+
+    // Subscribe to per-token events. The native bridge fires
+    // `@LlamaCpp_onToken`; our existing class-level listener forwards into
+    // every `onToken(listener)` consumer. We register one more listener
+    // here, scoped to this stream, that converts strings into `token`
+    // events.
+    const unsubscribe = this.onToken((tokenText, index) => {
+      push({ kind: "token", text: tokenText, index });
+    });
+
+    const params = this.buildNativeParams({
+      ...options,
+      // generateStream implies streaming — force on so the bridge emits
+      // partial completions even when the caller didn't set `stream: true`
+      // on the legacy options bag.
+      stream: true,
+    });
+
+    const started = Date.now();
+    let completionPromise: Promise<NativeCompletionResult>;
+    try {
+      completionPromise = this.runNativeCompletion(options, params);
+    } catch (err) {
+      unsubscribe();
+      const message = err instanceof Error ? err.message : String(err);
+      yield { kind: "error", message, recoverable: false };
+      yield { kind: "done", finishReason: "error" };
+      return;
+    }
+
+    // Wrapped in an object so TS's control-flow analysis doesn't widen the
+    // closed-over assignments back to `null`/`never` when we read them
+    // after the loop. (Plain `let` with `null` init narrows badly after
+    // an async assignment.)
+    const completionState: {
+      result: NativeCompletionResult | null;
+      error: { message: string } | null;
+      done: boolean;
+    } = { result: null, error: null, done: false };
+    completionPromise
+      .then((result) => {
+        completionState.result = result;
+      })
+      .catch((err: unknown) => {
+        completionState.error =
+          err instanceof Error ? err : { message: String(err) };
+      })
+      .finally(() => {
+        completionState.done = true;
+        wake();
+      });
+
+    try {
+      while (true) {
+        if (queue.length > 0) {
+          yield queue.shift()!;
+          continue;
+        }
+        if (completionState.done) break;
+        await new Promise<void>((resolve) => {
+          waiter = resolve;
+        });
+      }
+    } finally {
+      unsubscribe();
+    }
+
+    if (completionState.error) {
+      yield {
+        kind: "error",
+        message: completionState.error.message,
+        recoverable: false,
+      };
+      yield { kind: "done", finishReason: "error" };
+      return;
+    }
+
+    if (completionState.result) {
+      const r = completionState.result;
+      const duration =
+        r.timings?.predicted_ms != null
+          ? Math.round(r.timings.predicted_ms)
+          : Date.now() - started;
+      this.lastCompletionStats = {
+        text: r.text,
+        promptTokens: r.tokens_evaluated,
+        outputTokens: r.tokens_predicted,
+        durationMs: duration,
+      };
+      // Reason heuristic: native fork doesn't expose a finish-reason
+      // enum yet. "stop" is the dominant case; "length" when we hit the
+      // requested n_predict ceiling exactly. Tool/cancel/error are
+      // emitted by the explicit paths above and aren't reachable here.
+      const requested = resolveMobileMaxTokens(options.maxTokens);
+      const finishReason: "stop" | "length" =
+        r.tokens_predicted >= requested ? "length" : "stop";
+      yield { kind: "done", finishReason };
+      return;
+    }
+
+    // Native call resolved with no payload and no error — defensive
+    // terminal event so the consumer's `for await` always ends cleanly.
+    yield { kind: "done", finishReason: "stop" };
+  }
+
+  async setDrafter(drafterPath: string | null): Promise<void> {
+    // The native bridge has no live-swap entry point yet; the drafter is
+    // bound at `load()` time via `LoadOptions.draftModelPath`. Log so the
+    // call-site is observable, and warn-and-no-op otherwise.
+    console.warn(
+      `[capacitor-llama] setDrafter(${drafterPath ?? "null"}) not yet supported by native bridge; pass draftModelPath to load() instead`,
+    );
+  }
+
+  async trimMemory(level: "minor" | "major"): Promise<void> {
+    // No native hook yet — log so the runtime's pressure plumbing can see
+    // the adapter received the signal. Major pressure also clears the
+    // token-listener bookkeeping to drop any orphaned callbacks.
+    if (level === "major") {
+      this.tokenListeners.clear();
+    }
+    console.debug(`[capacitor-llama] trimMemory(${level}) — bridge no-op`);
   }
 
   async cancelGenerate(): Promise<void> {

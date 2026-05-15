@@ -29,7 +29,7 @@ export const listCommentsAction: Action = {
     },
     {
       name: "limit",
-      description: "Maximum number of comments to return (default 25, max 100).",
+      description: "Max comments. Default 25, max 100.",
       required: false,
       schema: { type: "number" },
     },

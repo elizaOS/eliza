@@ -291,11 +291,11 @@ export const prioritizeAction: Action & {
     "surface:internal",
   ],
   description:
-    "Rank the owner's open todos, message threads, or pending decisions by urgency × importance via an LLM compose pass. Subactions: rank_todos, rank_threads, rank_decisions.",
+    "Rank owner open todos, message threads, pending decisions by urgency × importance. LLM pass. Subactions: rank_todos, rank_threads, rank_decisions.",
   descriptionCompressed:
     "prioritize: rank_todos|rank_threads|rank_decisions; topN ranking by urgency × importance",
   routingHint:
-    'prioritization intent ("what should I focus on", "rank my today", "which thread first", "what matters most") -> PRIORITIZE; do not use for a plain list (that\'s OWNER_TODOS.list / MESSAGE.list_inbox)',
+    'prioritization ("focus on", "rank today", "which thread first", "what matters most") -> PRIORITIZE; do not use plain list -> OWNER_TODOS.list / MESSAGE.list_inbox',
   contexts: ["focus", "tasks", "inbox", "approvals"],
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
@@ -304,13 +304,13 @@ export const prioritizeAction: Action & {
     {
       name: "action",
       description:
-        "Canonical prioritization operation: rank_todos | rank_threads | rank_decisions.",
+        "Prioritize op: rank_todos | rank_threads | rank_decisions.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {
       name: "subject",
       description:
-        "Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
+        "Alt selector: todos | threads | decisions. Maps to subaction.",
       schema: {
         type: "string" as const,
         enum: ["todos", "threads", "decisions"],
@@ -318,13 +318,12 @@ export const prioritizeAction: Action & {
     },
     {
       name: "topN",
-      description: "How many items to return at the top. Defaults to 5.",
+      description: "Top item count. Default 5.",
       schema: { type: "number" as const },
     },
     {
       name: "criteria",
-      description:
-        "Free-form additional weighting criteria the owner wants applied.",
+      description: "Owner weighting criteria.",
       schema: { type: "string" as const },
     },
   ],

@@ -43,10 +43,11 @@
     "clean": "rm -rf dist .turbo node_modules",
     "lint": "echo \"Lint skipped\"",
     "lint:check": "bun run lint",
-    "test": "echo \"No tests\""
+    "test": "bun test __tests__"
   },
   "dependencies": {
-    "@elizaos/core": "workspace:*"
+    "@elizaos/core": "workspace:*",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.0.3",

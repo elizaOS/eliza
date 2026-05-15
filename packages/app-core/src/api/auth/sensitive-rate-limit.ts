@@ -85,10 +85,7 @@ export function getSensitiveLimiter(name: string): SensitiveRateLimiter {
   return limiter;
 }
 
-/**
- * Bootstrap exchange limiter — kept as a named export so existing P0
- * callers don't churn. New code should prefer `getSensitiveLimiter(name)`.
- */
+/** Bootstrap exchange limiter. New code should prefer `getSensitiveLimiter(name)`. */
 export const bootstrapExchangeLimiter = getSensitiveLimiter(
   "auth.bootstrap.exchange",
 );

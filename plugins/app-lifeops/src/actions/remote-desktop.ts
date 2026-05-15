@@ -35,37 +35,35 @@ interface RemoteParams {
 const SUBACTIONS: SubactionsMap<RemoteSubaction> = {
   start: {
     description:
-      "Open a remote-control session via RemoteSessionService. Requires confirmed: true. " +
-      "If running in local mode (ELIZA_REMOTE_LOCAL_MODE=1) no pairing code is needed; " +
-      "otherwise a valid 6-digit pairing code is required.",
+      "Open remote-control session via RemoteSessionService. Requires confirmed:true. " +
+      "Local ELIZA_REMOTE_LOCAL_MODE=1 skips pairingCode; cloud requires 6-digit pairingCode.",
     descriptionCompressed:
       "open remote session confirmed-true 6-digit-pairing local-mode-skips",
     required: ["confirmed"],
     optional: ["pairingCode"],
   },
   status: {
-    description:
-      "Look up one remote session by id via the stored session backend.",
+    description: "Lookup remote session by sessionId via stored backend.",
     descriptionCompressed:
       "lookup remote session sessionId stored-session-backend",
     required: ["sessionId"],
   },
   end: {
-    description: "Close a remote session by id via the stored session backend.",
+    description: "Close remote session by sessionId via stored backend.",
     descriptionCompressed:
       "close remote session sessionId stored-session-backend",
     required: ["sessionId"],
   },
   list: {
     description:
-      "List active remote sessions via RemoteSessionService with ids, statuses, ingress URLs, and local-mode hints.",
+      "List active remote sessions via RemoteSessionService: ids, status, ingress URLs, local-mode hints.",
     descriptionCompressed:
       "list active remote sessions ids+status+ingress+local-mode-hint",
     required: [],
   },
   revoke: {
     description:
-      "Revoke an active remote session by id via RemoteSessionService.",
+      "Revoke active remote session by sessionId via RemoteSessionService.",
     descriptionCompressed: "revoke active remote session sessionId",
     required: ["sessionId"],
   },
@@ -314,10 +312,10 @@ export const remoteDesktopAction: Action & {
     "CONNECT_FROM_PHONE",
   ],
   description:
-    "Manage remote-desktop sessions so the owner can connect to this machine from another device. " +
-    "Subactions: start (open a session — requires confirmed:true and a pairing code in cloud mode), status (lookup by sessionId), end (close by sessionId), list (active sessions), revoke (revoke an active session by sessionId).",
+    "Remote-desktop sessions; owner connects to this machine from another device. " +
+    "Subactions start confirmed:true cloud pairingCode; status|end|revoke sessionId; list active.",
   descriptionCompressed:
-    "remote-desktop sessions: start|status|end|list|revoke; start requires confirmed:true (+ pairing code in cloud mode)",
+    "REMOTE_DESKTOP start|status|end|list|revoke; start confirmed:true; cloud pairingCode",
   tags: [
     "domain:meta",
     "capability:read",
@@ -337,7 +335,7 @@ export const remoteDesktopAction: Action & {
   parameters: [
     {
       name: "action",
-      description: "One of: start, status, end, list, revoke.",
+      description: "start | status | end | list | revoke.",
       descriptionCompressed:
         "remote-desktop action: start|status|end|list|revoke",
       required: false,
@@ -349,7 +347,7 @@ export const remoteDesktopAction: Action & {
     },
     {
       name: "sessionId",
-      description: "Session id - required for status, end, and revoke actions.",
+      description: "Session id. Required status|end|revoke.",
       descriptionCompressed: "session id (status|end|revoke)",
       required: false,
       schema: { type: "string" as const },
@@ -357,7 +355,7 @@ export const remoteDesktopAction: Action & {
     },
     {
       name: "confirmed",
-      description: "Must be true for start (security sensitive).",
+      description: "true required for start; security gate.",
       descriptionCompressed: "true required for start (security)",
       required: false,
       schema: { type: "boolean" as const },
@@ -365,7 +363,7 @@ export const remoteDesktopAction: Action & {
     {
       name: "pairingCode",
       description:
-        "6-digit one-time pairing code for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
+        "6-digit pairingCode for start. Required unless ELIZA_REMOTE_LOCAL_MODE=1.",
       descriptionCompressed:
         "6-digit pairing code (start; skipped in local mode)",
       required: false,
@@ -374,16 +372,14 @@ export const remoteDesktopAction: Action & {
     },
     {
       name: "requesterIdentity",
-      description:
-        "Identifier for who is asking (entity id, friend name, device id). Logged for audit on start.",
+      description: "Requester id/name/device. Audit start.",
       descriptionCompressed: "audit: requester id (start)",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "intent",
-      description:
-        "Freeform owner intent / reason for the session. Logged for audit.",
+      description: "Owner intent/reason. Audit.",
       descriptionCompressed: "audit: owner reason",
       required: false,
       schema: { type: "string" as const },

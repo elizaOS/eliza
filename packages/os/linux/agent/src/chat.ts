@@ -16,10 +16,9 @@
  * Calibration writes ONLY happen here (in `commitCalibration`); the UI
  * never touches `~/.eliza/calibration.toml`.
  *
- * Until v10 the agent's onboarding was env-gated behind
- * `USBELIZA_SERVER_ONBOARDING=1` because elizad-side JS also ran its own
- * 5-question CALIBRATION_QUESTIONS array. That duplicated state was slop —
- * we removed the JS-side flow and the gate together so there's one
+ * Until v10 the agent's onboarding was env-gated because elizad-side JS also
+ * ran its own 5-question CALIBRATION_QUESTIONS array. That duplicated state
+ * was slop — we removed the JS-side flow and the gate together so there's one
  * deterministic path.
  */
 

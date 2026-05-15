@@ -9,12 +9,7 @@
 
 import type http from "node:http";
 import { type Service, sendJsonError } from "@elizaos/core";
-import {
-  normalizeCloudSiteUrl,
-  resolveCloudApiKey,
-  validateCloudBaseUrl,
-} from "@elizaos/plugin-elizacloud";
-import { sendJson } from "@elizaos/shared";
+import { normalizeCloudSiteUrl, sendJson } from "@elizaos/shared";
 import type { ElizaConfig } from "../config/config.ts";
 import type { CloudProxyConfigLike } from "../types/config-like.ts";
 
@@ -36,16 +31,33 @@ const PROXY_TIMEOUT_MS = 30_000;
 const MAX_BODY_BYTES = 1_048_576;
 const X_RELAY_PATH_RE = /^\/api\/cloud\/x(\/.*)$/;
 
+interface CloudHelperModule {
+  resolveCloudApiKey: (
+    config: ElizaConfig,
+    runtime?: XRelayRuntime | null,
+  ) => string | null;
+  validateCloudBaseUrl: (
+    baseUrl: string,
+  ) => Promise<string | null> | string | null;
+}
+
+let cloudHelpersPromise: Promise<CloudHelperModule> | null = null;
+
 interface CloudAuthApiKeyService {
   isAuthenticated: () => boolean;
   getApiKey?: () => string | undefined;
 }
 
+function getCloudHelpers(): Promise<CloudHelperModule> {
+  cloudHelpersPromise ??= import("@elizaos/plugin-elizacloud");
+  return cloudHelpersPromise;
+}
+
 function isCloudAuthApiKeyService(
-  value: Service | null,
+  value: Service | null | undefined,
 ): value is Service & CloudAuthApiKeyService {
   return (
-    value !== null &&
+    value != null &&
     typeof (value as Partial<CloudAuthApiKeyService>).isAuthenticated ===
       "function"
   );
@@ -54,13 +66,13 @@ function isCloudAuthApiKeyService(
 function normalizeCloudApiKey(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") {
-    return null;
-  }
+  if (!trimmed || trimmed.toUpperCase() === "[REDACTED]") return null;
   return trimmed;
 }
 
-function resolveProxyApiKey(state: XRelayRouteState): string | null {
+async function resolveProxyApiKey(
+  state: XRelayRouteState,
+): Promise<string | null> {
   const cloudAuth = state.runtime
     ? state.runtime.getService("CLOUD_AUTH")
     : null;
@@ -68,6 +80,7 @@ function resolveProxyApiKey(state: XRelayRouteState): string | null {
     isCloudAuthApiKeyService(cloudAuth) && cloudAuth.isAuthenticated() === true
       ? normalizeCloudApiKey(cloudAuth.getApiKey?.())
       : null;
+  const { resolveCloudApiKey } = await getCloudHelpers();
   return runtimeApiKey ?? resolveCloudApiKey(state.config, state.runtime);
 }
 
@@ -139,7 +152,7 @@ export async function handleXRelayRoute(
     return true;
   }
 
-  const apiKey = resolveProxyApiKey(state);
+  const apiKey = await resolveProxyApiKey(state);
   if (!apiKey) {
     sendJsonError(
       res,
@@ -150,6 +163,7 @@ export async function handleXRelayRoute(
   }
 
   const baseUrl = normalizeCloudSiteUrl(state.config.cloud?.baseUrl);
+  const { validateCloudBaseUrl } = await getCloudHelpers();
   const urlError = await validateCloudBaseUrl(baseUrl);
   if (urlError) {
     sendJsonError(res, urlError, 502);

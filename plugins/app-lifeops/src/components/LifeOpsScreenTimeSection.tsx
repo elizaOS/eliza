@@ -51,7 +51,7 @@ type WebsiteBlockerStatus = Awaited<
 type AppBlockerStatus = Awaited<ReturnType<typeof client.getAppBlockerStatus>>;
 type SocialDataSource = LifeOpsSocialHabitSummary["dataSources"][number];
 
-type UnifiedSocialBlockStatus = {
+type SocialBlockStatus = {
   active: boolean;
   label: string;
   details: string[];
@@ -150,10 +150,10 @@ function summarizeAppBlock(status: AppBlockerStatus): string {
     : `Apps: ${countLabel}${platform}`;
 }
 
-function buildUnifiedSocialBlockStatus(
+function buildSocialBlockStatus(
   website: WebsiteBlockerStatus,
   app: AppBlockerStatus,
-): UnifiedSocialBlockStatus {
+): SocialBlockStatus {
   const websiteActive = website.available && website.active;
   const appActive = app.available && app.active;
   if (websiteActive && appActive) {
@@ -285,7 +285,7 @@ export function LifeOpsScreenTimeSection({
   const [range, setRange] = useState<RangeKey>("today");
   const [data, setData] = useState<RangeData | null>(null);
   const [blockStatus, setBlockStatus] =
-    useState<UnifiedSocialBlockStatus | null>(null);
+    useState<SocialBlockStatus | null>(null);
   const [blockStatusError, setBlockStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -344,7 +344,7 @@ export function LifeOpsScreenTimeSection({
       unavailableWebsiteBlockerStatus(websiteResult.error);
     const app =
       appResult.status ?? unavailableAppBlockerStatus(appResult.error);
-    setBlockStatus(buildUnifiedSocialBlockStatus(website, app));
+    setBlockStatus(buildSocialBlockStatus(website, app));
     setBlockStatusError(
       [websiteResult, appResult]
         .filter((result) => result.error)

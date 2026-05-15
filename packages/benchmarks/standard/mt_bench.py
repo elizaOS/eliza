@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import argparse
 import logging
-import os
 import re
 from collections.abc import Iterable, Sequence
 from pathlib import Path
@@ -50,6 +49,8 @@ log = logging.getLogger("benchmarks.standard.mt_bench")
 
 BENCHMARK_ID = "mt_bench"
 DATASET_VERSION = "lmsys/mt_bench_human_judgments@v1"
+DEFAULT_MAX_TOKENS = 4096
+DEFAULT_JUDGE_MAX_TOKENS = 1024
 
 # Built-in question set used for the smoke test and as a fallback when
 # the lmsys dataset can't be fetched. Each entry is one MT-Bench
@@ -203,8 +204,8 @@ class MTBenchRunner:
         judge: OpenAICompatibleClient,
         judge_model: str,
         questions: Iterable[dict[str, object]] | None = None,
-        max_tokens: int = 1024,
-        judge_max_tokens: int = 384,
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        judge_max_tokens: int = DEFAULT_JUDGE_MAX_TOKENS,
     ) -> None:
         self._judge = judge
         self._judge_model = judge_model
@@ -240,6 +241,8 @@ class MTBenchRunner:
         ratings: list[float] = []
         per_category: dict[str, list[float]] = {}
         per_turn: dict[str, list[float]] = {"turn_1": [], "turn_2": []}
+        candidate_generations = 0
+        empty_candidate_generations = 0
         failures: list[dict[str, object]] = []
 
         for item in questions:
@@ -256,6 +259,10 @@ class MTBenchRunner:
             except Exception as exc:  # noqa: BLE001
                 log.warning("candidate turn-1 failed: %s", exc)
                 continue
+            candidate_generations += 1
+            empty_1 = not gen_1.text.strip()
+            if empty_1:
+                empty_candidate_generations += 1
 
             # Turn 2 (multi-turn — include candidate's turn-1 answer).
             history_t2 = [
@@ -268,6 +275,10 @@ class MTBenchRunner:
             except Exception as exc:  # noqa: BLE001
                 log.warning("candidate turn-2 failed: %s", exc)
                 continue
+            candidate_generations += 1
+            empty_2 = not gen_2.text.strip()
+            if empty_2:
+                empty_candidate_generations += 1
 
             # Judge each turn separately.
             rating_1 = self._judge_turn(turn_1, gen_1.text, turn=1, cfg=judge_cfg)
@@ -289,10 +300,18 @@ class MTBenchRunner:
                         "rating_2": rating_2,
                         "answer_1": gen_1.text[:200],
                         "answer_2": gen_2.text[:200],
+                        "empty_answer_1": empty_1,
+                        "empty_answer_2": empty_2,
                     }
                 )
 
         n = len(ratings)
+        if candidate_generations > 0 and empty_candidate_generations == candidate_generations:
+            raise RuntimeError(
+                "MT-Bench candidate generated empty visible output for all "
+                f"{candidate_generations} turns; treating this as a harness/model "
+                "transport error rather than a judge-scored result"
+            )
         if n == 0:
             raise RuntimeError("MT-Bench produced zero valid ratings")
         mean_rating = sum(ratings) / n
@@ -316,6 +335,8 @@ class MTBenchRunner:
             },
             raw_json={
                 "judge_model": self._judge_model,
+                "empty_candidate_generations": empty_candidate_generations,
+                "candidate_generations": candidate_generations,
                 "category_mean": {
                     cat: round(sum(xs) / len(xs), 4) for cat, xs in per_category.items()
                 },
@@ -391,13 +412,13 @@ class _MTBenchFactory(RunnerFactory):
         parser.add_argument(
             "--max-tokens",
             type=int,
-            default=1024,
+            default=DEFAULT_MAX_TOKENS,
             help="Cap on candidate generation per turn",
         )
         parser.add_argument(
             "--judge-max-tokens",
             type=int,
-            default=384,
+            default=DEFAULT_JUDGE_MAX_TOKENS,
             help="Cap on judge generation per rating",
         )
 

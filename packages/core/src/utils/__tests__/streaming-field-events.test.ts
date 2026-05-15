@@ -9,7 +9,7 @@ const schema: SchemaRow[] = [
 	{ field: "thought", description: "internal reasoning" },
 	{ field: "replyText", description: "user-facing reply", streamField: true },
 	{ field: "contexts", description: "context ids" },
-	{ field: "extract", description: "durable facts", type: "object" },
+	{ field: "facts", description: "durable facts", type: "array" },
 ];
 
 function feed(extractor: StructuredFieldStreamExtractor, text: string): void {
@@ -40,17 +40,17 @@ describe("StructuredFieldStreamExtractor per-field events", () => {
 				"thought: routing to a simple reply",
 				"replyText: Hello there, friend.",
 				'contexts: ["simple"]',
-				"extract: {}",
+				"facts: []",
 			].join("\n"),
 		);
 		extractor.flush();
 
-		expect(starts).toEqual(["thought", "replyText", "contexts", "extract"]);
+		expect(starts).toEqual(["thought", "replyText", "contexts", "facts"]);
 		expect(dones.map(([f]) => f)).toEqual([
 			"thought",
 			"replyText",
 			"contexts",
-			"extract",
+			"facts",
 		]);
 		// Decoded values arrive on onFieldDone.
 		const replyDone = dones.find(([f]) => f === "replyText");
@@ -106,12 +106,12 @@ describe("StructuredFieldStreamExtractor per-field events", () => {
 
 		feed(
 			extractor,
-			["replyText: hi", 'contexts: ["simple"]', "extract: {}"].join("\n"),
+			["replyText: hi", 'contexts: ["simple"]', "facts: []"].join("\n"),
 		);
 		extractor.flush();
 		// flush() must not re-fire done for fields already closed by the next key.
-		expect(starts).toEqual(["replyText", "contexts", "extract"]);
-		expect(dones).toEqual(["replyText", "contexts", "extract"]);
+		expect(starts).toEqual(["replyText", "contexts", "facts"]);
+		expect(dones).toEqual(["replyText", "contexts", "facts"]);
 	});
 
 	it("works when no event callbacks are supplied (back-compat)", () => {

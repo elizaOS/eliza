@@ -11,7 +11,7 @@ import type { ChatMemberUpdated, Message, Update } from "telegraf/types";
 import type { App } from "@/db/repositories/apps";
 import { telegramChatsRepository } from "@/db/repositories/telegram-chats";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { nextStyleParams } from "@/lib/api/hono-next-style-params";
+import { nextStyleParams, type RouteContext } from "@/lib/api/hono-next-style-params";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { agentGatewayRouterService } from "@/lib/services/agent-gateway-router";
 import { telegramAutomationService } from "@/lib/services/telegram-automation";
@@ -20,11 +20,10 @@ import { logger } from "@/lib/utils/logger";
 import { isCommand } from "@/lib/utils/telegram-helpers";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-interface RouteParams {
-  params: Promise<{ orgId: string }>;
-}
-
-async function handleTelegramWebhook(request: Request, context?: RouteParams): Promise<Response> {
+async function handleTelegramWebhook(
+  request: Request,
+  context?: RouteContext<{ orgId: string }>,
+): Promise<Response> {
   const { params } = context || { params: Promise.resolve({ orgId: "" }) };
   const { orgId } = await params;
 

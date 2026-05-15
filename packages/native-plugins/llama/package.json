@@ -31,9 +31,11 @@
   "author": "elizaOS",
   "license": "MIT",
   "scripts": {
-    "build": "bun run clean && tsc && bun --bun rollup -c rollup.config.mjs",
+    "build": "bun run clean && tsc && rollup -c rollup.config.mjs",
     "clean": "node ../../../scripts/rm-path-recursive.mjs dist",
+    "test": "vitest run --config ./vitest.config.ts",
     "prepublishOnly": "bun run build",
+    "test": "vitest run --config vitest.config.ts",
     "watch": "tsc --watch"
   },
   "dependencies": {
@@ -41,10 +43,9 @@
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "@rollup/plugin-node-resolve": "^16.0.0",
-    "rimraf": "^6.0.0",
     "rollup": "^4.60.2",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.0.17"
   },
   "peerDependencies": {
     "@capacitor/core": "^8.3.1"

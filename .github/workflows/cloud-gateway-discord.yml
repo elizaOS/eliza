@@ -1,6 +1,6 @@
 name: Cloud Gateway Discord
 
-# Unified workflow for Gateway Discord infrastructure (Terraform) and application (Docker/Helm).
+# Workflow for Gateway Discord infrastructure (Terraform) and application (Docker/Helm).
 # Auto-detects what changed and runs appropriate jobs in sequence.
 #
 # Source: cloud/.github/workflows/gateway-discord.yml in the original elizaOS/cloud repo.

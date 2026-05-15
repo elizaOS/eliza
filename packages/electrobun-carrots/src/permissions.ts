@@ -12,15 +12,15 @@ import {
 
 export type CarrotBunWorkerPermissions = Record<BunPermission, boolean>;
 
-function isHostPermission(value: string): value is HostPermission {
+export function isHostPermission(value: string): value is HostPermission {
   return HOST_PERMISSIONS.includes(value as HostPermission);
 }
 
-function isBunPermission(value: string): value is BunPermission {
+export function isBunPermission(value: string): value is BunPermission {
   return BUN_PERMISSIONS.includes(value as BunPermission);
 }
 
-function isCarrotIsolation(value: string): value is CarrotIsolation {
+export function isCarrotIsolation(value: string): value is CarrotIsolation {
   return CARROT_ISOLATIONS.includes(value as CarrotIsolation);
 }
 
@@ -119,21 +119,21 @@ export function hasBunPermission(
 export function toBunWorkerPermissions(
   permissions: CarrotPermissionGrant,
 ): CarrotBunWorkerPermissions {
-  return {
-    read: hasBunPermission(permissions, "read"),
-    write: hasBunPermission(permissions, "write"),
-    env: hasBunPermission(permissions, "env"),
-    run: hasBunPermission(permissions, "run"),
-    ffi: hasBunPermission(permissions, "ffi"),
-    addons: hasBunPermission(permissions, "addons"),
-    worker: hasBunPermission(permissions, "worker"),
-  };
+  const normalized = normalizeCarrotPermissions(permissions);
+  return Object.fromEntries(
+    BUN_PERMISSIONS.map((permission) => [
+      permission,
+      normalized.bun?.[permission] === true,
+    ]),
+  ) as CarrotBunWorkerPermissions;
 }
 
 export function parseCarrotPermissionTag(
   tag: string,
 ): CarrotPermissionTag | null {
-  const [scope, value] = tag.split(":");
+  const parts = tag.split(":");
+  if (parts.length !== 2) return null;
+  const [scope, value] = parts;
   if (scope === "host" && value && isHostPermission(value)) {
     return `host:${value}`;
   }

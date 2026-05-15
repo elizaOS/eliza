@@ -58,7 +58,7 @@ export const KV_SPILL_TEXT_LATENCY_BUDGET_MS = 1500;
  * gate fails closed, so under-estimating bandwidth only makes us refuse more
  * aggressively, never serve something too slow.
  *
- *   - `cpu`/`apple` : Apple Silicon unified memory — "spilling to CPU" is
+ *   - `cpu`/`apple` : Apple Silicon shared memory — "spilling to CPU" is
  *                     mostly an accounting move (same physical RAM, different
  *                     residency bookkeeping); effective restore bandwidth is
  *                     high.

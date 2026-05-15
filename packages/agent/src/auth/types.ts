@@ -80,14 +80,18 @@ export const ACCOUNT_CREDENTIAL_PROVIDER_IDS = [
 export function isSubscriptionProvider(
   value: unknown,
 ): value is SubscriptionProvider {
-  return (SUBSCRIPTION_PROVIDER_IDS as readonly unknown[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (SUBSCRIPTION_PROVIDER_IDS as readonly string[]).includes(value)
+  );
 }
 
 export function isOAuthSubscriptionProvider(
   value: unknown,
 ): value is OAuthSubscriptionProvider {
-  return (OAUTH_SUBSCRIPTION_PROVIDER_IDS as readonly unknown[]).includes(
-    value,
+  return (
+    typeof value === "string" &&
+    (OAUTH_SUBSCRIPTION_PROVIDER_IDS as readonly string[]).includes(value)
   );
 }
 
@@ -95,31 +99,39 @@ export function isCodingPlanKeySubscriptionProvider(
   value: unknown,
 ): value is CodingPlanKeySubscriptionProvider {
   return (
-    CODING_PLAN_KEY_SUBSCRIPTION_PROVIDER_IDS as readonly unknown[]
-  ).includes(value);
+    typeof value === "string" &&
+    (CODING_PLAN_KEY_SUBSCRIPTION_PROVIDER_IDS as readonly string[]).includes(
+      value,
+    )
+  );
 }
 
 export function isExternalCliSubscriptionProvider(
   value: unknown,
 ): value is ExternalCliSubscriptionProvider {
   return (
-    EXTERNAL_CLI_SUBSCRIPTION_PROVIDER_IDS as readonly unknown[]
-  ).includes(value);
+    typeof value === "string" &&
+    (EXTERNAL_CLI_SUBSCRIPTION_PROVIDER_IDS as readonly string[]).includes(
+      value,
+    )
+  );
 }
 
 export function isUnavailableSubscriptionProvider(
   value: unknown,
 ): value is UnavailableSubscriptionProvider {
-  return (UNAVAILABLE_SUBSCRIPTION_PROVIDER_IDS as readonly unknown[]).includes(
-    value,
+  return (
+    typeof value === "string" &&
+    (UNAVAILABLE_SUBSCRIPTION_PROVIDER_IDS as readonly string[]).includes(value)
   );
 }
 
 export function isAccountCredentialProvider(
   value: unknown,
 ): value is AccountCredentialProvider {
-  return (ACCOUNT_CREDENTIAL_PROVIDER_IDS as readonly unknown[]).includes(
-    value,
+  return (
+    typeof value === "string" &&
+    (ACCOUNT_CREDENTIAL_PROVIDER_IDS as readonly string[]).includes(value)
   );
 }
 

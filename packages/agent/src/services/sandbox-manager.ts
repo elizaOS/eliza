@@ -2,7 +2,7 @@
 
 import { mkdirSync } from "node:fs";
 import os from "node:os";
-import { join } from "node:path";
+import path, { join } from "node:path";
 import {
   createEngine,
   detectBestEngine,
@@ -163,8 +163,40 @@ export class SandboxManager {
     return this.config.mode;
   }
 
+  getWorkspaceRoot(): string {
+    return this.resolveWorkspaceRoot();
+  }
+
+  getContainerWorkspacePath(hostPath: string): string | null {
+    const workspaceRoot = path.resolve(this.resolveWorkspaceRoot());
+    const absoluteHostPath = path.resolve(hostPath);
+    const relative = path.relative(workspaceRoot, absoluteHostPath);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      return null;
+    }
+
+    const containerWorkdir = this.config.workdir ?? "/workspace";
+    if (!relative) return containerWorkdir;
+    return path.posix.join(
+      containerWorkdir.replace(/\\/g, "/"),
+      relative.replace(/\\/g, "/"),
+    );
+  }
+
   isReady(): boolean {
     return this.state === "ready";
+  }
+
+  private resolveWorkspaceRoot(): string {
+    const wsRoot =
+      this.config.workspaceRoot ??
+      join(
+        process.env.HOME ?? process.env.USERPROFILE ?? os.tmpdir(),
+        ".eliza",
+        "sandbox-workspace",
+      );
+    mkdirSync(wsRoot, { recursive: true });
+    return wsRoot;
   }
 
   private getMainContainerConfig(): {
@@ -180,14 +212,7 @@ export class SandboxManager {
     const workdir = this.config.workdir ?? "/workspace";
     const network = this.config.network ?? "none";
     const user = this.config.user ?? "1000:1000";
-    const wsRoot =
-      this.config.workspaceRoot ??
-      join(
-        process.env.HOME ?? process.env.USERPROFILE ?? os.tmpdir(),
-        ".eliza",
-        "sandbox-workspace",
-      );
-    mkdirSync(wsRoot, { recursive: true });
+    const wsRoot = this.resolveWorkspaceRoot();
     return { image, containerPrefix, workdir, network, user, wsRoot };
   }
 

@@ -18,14 +18,10 @@
  * Source of truth:
  *   `ResponseHandlerFieldRegistry.composeSchema()`
  *   (`./response-handler-field-registry.ts`) is canonical. Production Stage 1
- *   sends that composed schema as the HANDLE_RESPONSE tool's `parameters`, and
- *   when registered field evaluators are supplied here `buildResponseGrammar`
- *   emits the *same* field-registry envelope in priority order — schema, prompt
- *   slices, and GBNF skeleton all derive from one registered set. The legacy
- *   fixed W3 envelope (`STAGE1_ENVELOPE_KEYS` below, mirroring
- *   `HANDLE_RESPONSE_SCHEMA` in `../actions/to-tool.ts`) remains only as a
- *   compatibility fallback for tests or older callers that do not pass field
- *   evaluators. See the `TODO(consolidate)` block on `HANDLE_RESPONSE_SCHEMA`.
+ *   sends that composed schema as the HANDLE_RESPONSE tool's `parameters`.
+ *   `buildResponseGrammar` emits the same field-registry envelope in priority
+ *   order; when a caller omits fields, this module defaults to the builtin
+ *   field evaluator set.
  *
  * Caching: `buildResponseGrammar` is pure given the runtime registries
  * snapshot. The result is byte-stable across turns when the registries haven't
@@ -47,56 +43,7 @@ import type {
 	SpanSamplerOverride,
 	SpanSamplerPlan,
 } from "../types/model.js";
-
-// ---------------------------------------------------------------------------
-// Stage-1 envelope (FALLBACK ONLY): fixed key order matching the legacy W3
-// `HANDLE_RESPONSE_SCHEMA` in `../actions/to-tool.ts`. Used only when no Stage-1
-// field evaluators are registered (tests / older callers). Production always
-// has the builtin evaluators registered, so the field-registry path below wins.
-// ---------------------------------------------------------------------------
-
-/** `shouldRespond` enum values, in the order the model should try them. */
-const SHOULD_RESPOND_VALUES = ["RESPOND", "IGNORE", "STOP"] as const;
-
-/**
- * Channel types that drop the explicit `shouldRespond` flag (DM / API / SELF).
- * Voice is intentionally excluded: turn-taking can be IGNORE when VAD/STT says
- * the user is mid-utterance or the next speaker is not the agent.
- */
-const DIRECT_CHANNEL_TYPES: ReadonlySet<string> = new Set([
-	"DM",
-	"API",
-	"SELF",
-]);
-
-/**
- * Fixed top-level keys of the W3 flat envelope, in emit order. `shouldRespond`
- * is prepended only on the non-direct path.
- */
-const STAGE1_ENVELOPE_KEYS = [
-	"thought",
-	"replyText",
-	"contexts",
-	"contextSlices",
-	"candidateActions",
-	"parentActionHints",
-	"requiresTool",
-	"extract",
-] as const;
-
-/** Which envelope keys are string-valued (free-string spans). */
-const STAGE1_STRING_KEYS: ReadonlySet<string> = new Set([
-	"thought",
-	"replyText",
-]);
-/** Which envelope keys are array-of-string (free-json arrays). */
-const STAGE1_STRING_ARRAY_KEYS: ReadonlySet<string> = new Set([
-	"contextSlices",
-	"candidateActions",
-	"parentActionHints",
-]);
-/** Which envelope keys are boolean (free-json — `true` / `false`). */
-const STAGE1_BOOLEAN_KEYS: ReadonlySet<string> = new Set(["requiresTool"]);
+import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "./builtin-field-evaluators.js";
 
 // ---------------------------------------------------------------------------
 // Inputs
@@ -206,7 +153,8 @@ function gbnfJsonStringLiteral(value: string): string {
 
 /** Shared GBNF rule bodies, inlined so the grammar is self-contained. */
 const GBNF_RULE_BODIES: Record<string, string> = {
-	jsonstring: '"\\"" ( [^"\\\\] | "\\\\" . )* "\\""',
+	jsonstring:
+		'"\\"" ( [^"\\\\\\x00-\\x1F] | "\\\\" ( ["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] ) )* "\\""',
 	jsonvalue:
 		'jsonobject | jsonarray | jsonstring | jsonnumber | "true" | "false" | "null"',
 	jsonobject:
@@ -218,6 +166,500 @@ const GBNF_RULE_BODIES: Record<string, string> = {
 	jsonbool: '"true" | "false"',
 	ws: "[ \\t\\n\\r]*",
 };
+
+type SimpleRegexQuantifier =
+	| { kind: "zeroOrOne" }
+	| { kind: "zeroOrMore" }
+	| { kind: "oneOrMore" }
+	| { kind: "repeat"; min: number; max: number | null };
+
+type SimpleRegexAtom =
+	| { kind: "literal"; value: string }
+	| { kind: "class"; value: string }
+	| { kind: "group"; value: SimpleRegexNode };
+
+interface SimpleRegexTerm {
+	atom: SimpleRegexAtom;
+	quantifier?: SimpleRegexQuantifier;
+}
+
+type SimpleRegexNode =
+	| { kind: "sequence"; terms: SimpleRegexTerm[] }
+	| { kind: "alternation"; branches: SimpleRegexNode[] };
+
+interface SimpleRegexParserState {
+	source: string;
+	index: number;
+	end: number;
+}
+
+function compileSimplePatternToGbnf(pattern: string): string | null {
+	if (pattern.length < 2 || pattern[0] !== "^" || pattern.at(-1) !== "$") {
+		return null;
+	}
+
+	const state: SimpleRegexParserState = {
+		source: pattern,
+		index: 1,
+		end: pattern.length - 1,
+	};
+	const parsed = parseSimpleRegexSequence(state, false);
+	if (parsed === null || state.index !== state.end) return null;
+	return compileSimpleRegexNode(parsed);
+}
+
+function parseSimpleRegexAlternation(
+	state: SimpleRegexParserState,
+	stopAtParen: boolean,
+): SimpleRegexNode | null {
+	const branches: SimpleRegexNode[] = [];
+
+	while (true) {
+		const sequence = parseSimpleRegexSequence(state, stopAtParen);
+		if (sequence === null) return null;
+		branches.push(sequence);
+
+		if (state.index >= state.end) break;
+		const ch = state.source[state.index];
+		if (ch === "|") {
+			state.index += 1;
+			continue;
+		}
+		if (stopAtParen && ch === ")") break;
+		return null;
+	}
+
+	return branches.length === 1
+		? branches[0]
+		: { kind: "alternation", branches };
+}
+
+function parseSimpleRegexSequence(
+	state: SimpleRegexParserState,
+	stopAtParen: boolean,
+): SimpleRegexNode | null {
+	const terms: SimpleRegexTerm[] = [];
+
+	while (state.index < state.end) {
+		const ch = state.source[state.index];
+		if (ch === "|" || (stopAtParen && ch === ")")) break;
+		const term = parseSimpleRegexTerm(state, stopAtParen);
+		if (term === null) return null;
+		terms.push(term);
+	}
+
+	return { kind: "sequence", terms };
+}
+
+function parseSimpleRegexTerm(
+	state: SimpleRegexParserState,
+	stopAtParen: boolean,
+): SimpleRegexTerm | null {
+	const atom = parseSimpleRegexAtom(state, stopAtParen);
+	if (atom === null) return null;
+
+	const quantifier = parseSimpleRegexQuantifier(state);
+	if (quantifier === null) return null;
+	return quantifier === undefined ? { atom } : { atom, quantifier };
+}
+
+function parseSimpleRegexAtom(
+	state: SimpleRegexParserState,
+	stopAtParen: boolean,
+): SimpleRegexAtom | null {
+	const ch = state.source[state.index];
+	if (ch === undefined) return null;
+
+	if (ch === "(") {
+		state.index += 1;
+		if (
+			state.source[state.index] === "?" &&
+			state.source[state.index + 1] === ":"
+		) {
+			state.index += 2;
+		} else if (state.source[state.index] === "?") {
+			return null;
+		}
+		const inner = parseSimpleRegexAlternation(state, true);
+		if (inner === null || state.source[state.index] !== ")") return null;
+		state.index += 1;
+		return { kind: "group", value: inner };
+	}
+
+	if (ch === "[") {
+		return parseSimpleRegexClass(state);
+	}
+
+	if (ch === "\\") {
+		return parseSimpleRegexEscape(state);
+	}
+
+	if (
+		ch === "." ||
+		ch === "^" ||
+		ch === "$" ||
+		ch === "|" ||
+		ch === ")" ||
+		ch === "{" ||
+		ch === "}" ||
+		ch === "?" ||
+		ch === "*" ||
+		ch === "+" ||
+		ch === "]"
+	) {
+		return null;
+	}
+
+	const start = state.index;
+	while (state.index < state.end) {
+		const current = state.source[state.index];
+		if (
+			current === "(" ||
+			current === ")" ||
+			current === "[" ||
+			current === "]" ||
+			current === "{" ||
+			current === "}" ||
+			current === "|" ||
+			current === "\\" ||
+			current === "." ||
+			current === "^" ||
+			current === "$" ||
+			current === "?" ||
+			current === "*" ||
+			current === "+"
+		) {
+			break;
+		}
+		if (stopAtParen && current === ")") break;
+		if (current === "|") break;
+		state.index += 1;
+	}
+
+	if (state.index === start) return null;
+	return { kind: "literal", value: state.source.slice(start, state.index) };
+}
+
+function parseSimpleRegexEscape(
+	state: SimpleRegexParserState,
+): SimpleRegexAtom | null {
+	state.index += 1;
+	const escaped = state.source[state.index];
+	if (escaped === undefined || state.index >= state.end) return null;
+	state.index += 1;
+
+	switch (escaped) {
+		case "d":
+			return { kind: "class", value: "0-9" };
+		case "w":
+			return { kind: "class", value: "A-Za-z0-9_" };
+		case "s":
+			return { kind: "class", value: " \\t\\n\\r" };
+		case "t":
+			return { kind: "literal", value: "\t" };
+		case "n":
+			return { kind: "literal", value: "\n" };
+		case "r":
+			return { kind: "literal", value: "\r" };
+		case "f":
+			return { kind: "literal", value: "\f" };
+		case "v":
+			return { kind: "literal", value: "\v" };
+		case "x":
+			return parseSimpleRegexHexEscape(state, 2);
+		case "u":
+			return parseSimpleRegexHexEscape(state, 4);
+		default:
+			if (!/[A-Za-z0-9]/.test(escaped)) {
+				return { kind: "literal", value: escaped };
+			}
+			return null;
+	}
+}
+
+function parseSimpleRegexHexEscape(
+	state: SimpleRegexParserState,
+	digits: number,
+): SimpleRegexAtom | null {
+	if (state.index + digits > state.end) return null;
+	const raw = state.source.slice(state.index, state.index + digits);
+	if (!/^[0-9A-Fa-f]+$/.test(raw)) return null;
+	const code = Number.parseInt(raw, 16);
+	if (!Number.isFinite(code)) return null;
+	state.index += digits;
+	return { kind: "literal", value: String.fromCodePoint(code) };
+}
+
+function parseSimpleRegexClass(
+	state: SimpleRegexParserState,
+): SimpleRegexAtom | null {
+	state.index += 1;
+	if (state.source[state.index] === "^") return null;
+
+	let content = "";
+	let first = true;
+	while (state.index < state.end) {
+		const ch = state.source[state.index];
+		if (ch === "]" && !first) {
+			state.index += 1;
+			if (content.length === 0) return null;
+			return { kind: "class", value: content };
+		}
+
+		const literal = parseSimpleRegexClassUnit(state);
+		if (literal === null) return null;
+
+		if (
+			literal.single &&
+			literal.value !== "-" &&
+			state.source[state.index] === "-" &&
+			state.source[state.index + 1] !== "]"
+		) {
+			const savedIndex = state.index;
+			state.index += 1;
+			const rangeEnd = parseSimpleRegexClassUnit(state);
+			if (rangeEnd?.single) {
+				content += `${escapeGbnfClassChar(literal.value)}-${escapeGbnfClassChar(
+					rangeEnd.value,
+				)}`;
+				first = false;
+				continue;
+			}
+			state.index = savedIndex;
+		}
+
+		content += escapeGbnfClassChar(literal.value);
+		first = false;
+	}
+
+	return null;
+}
+
+function parseSimpleRegexClassUnit(
+	state: SimpleRegexParserState,
+): { value: string; single: boolean } | null {
+	const ch = state.source[state.index];
+	if (ch === undefined || ch === "]") return null;
+
+	if (ch === "\\") {
+		state.index += 1;
+		const escaped = state.source[state.index];
+		if (escaped === undefined || state.index >= state.end) return null;
+		state.index += 1;
+		switch (escaped) {
+			case "d":
+				return { value: "0-9", single: false };
+			case "w":
+				return { value: "A-Za-z0-9_", single: false };
+			case "s":
+				return { value: " \\t\\n\\r", single: false };
+			case "t":
+				return { value: "\t", single: true };
+			case "n":
+				return { value: "\n", single: true };
+			case "r":
+				return { value: "\r", single: true };
+			case "f":
+				return { value: "\f", single: true };
+			case "v":
+				return { value: "\v", single: true };
+			case "x":
+				return parseSimpleRegexHexUnit(state, 2);
+			case "u":
+				return parseSimpleRegexHexUnit(state, 4);
+			default:
+				if (!/[A-Za-z0-9]/.test(escaped)) {
+					return { value: escaped, single: true };
+				}
+				return null;
+		}
+	}
+
+	state.index += 1;
+	return { value: ch, single: true };
+}
+
+function parseSimpleRegexHexUnit(
+	state: SimpleRegexParserState,
+	digits: number,
+): { value: string; single: boolean } | null {
+	if (state.index + digits > state.end) return null;
+	const raw = state.source.slice(state.index, state.index + digits);
+	if (!/^[0-9A-Fa-f]+$/.test(raw)) return null;
+	const code = Number.parseInt(raw, 16);
+	if (!Number.isFinite(code)) return null;
+	state.index += digits;
+	return { value: String.fromCodePoint(code), single: true };
+}
+
+function parseSimpleRegexQuantifier(
+	state: SimpleRegexParserState,
+): SimpleRegexQuantifier | undefined | null {
+	const ch = state.source[state.index];
+	if (ch === undefined) return undefined;
+
+	switch (ch) {
+		case "?":
+			state.index += 1;
+			return { kind: "zeroOrOne" };
+		case "*":
+			state.index += 1;
+			return { kind: "zeroOrMore" };
+		case "+":
+			state.index += 1;
+			return { kind: "oneOrMore" };
+		case "{":
+			return parseSimpleRegexBracedQuantifier(state);
+		default:
+			return undefined;
+	}
+}
+
+function parseSimpleRegexBracedQuantifier(
+	state: SimpleRegexParserState,
+): SimpleRegexQuantifier | null {
+	const start = state.index;
+	state.index += 1;
+	const min = parseSimpleRegexDecimal(state);
+	if (min === null) {
+		state.index = start;
+		return null;
+	}
+
+	let max: number | null = min;
+	if (state.source[state.index] === ",") {
+		state.index += 1;
+		if (state.source[state.index] === "}") {
+			max = null;
+		} else {
+			max = parseSimpleRegexDecimal(state);
+			if (max === null) {
+				state.index = start;
+				return null;
+			}
+		}
+	}
+
+	if (state.source[state.index] !== "}") {
+		state.index = start;
+		return null;
+	}
+
+	state.index += 1;
+	if (max !== null && max < min) {
+		state.index = start;
+		return null;
+	}
+	if (max !== null && max - min > 32) {
+		state.index = start;
+		return null;
+	}
+	return { kind: "repeat", min, max };
+}
+
+function parseSimpleRegexDecimal(state: SimpleRegexParserState): number | null {
+	const start = state.index;
+	while (state.index < state.end && /[0-9]/.test(state.source[state.index])) {
+		state.index += 1;
+	}
+	if (state.index === start) return null;
+	return Number.parseInt(state.source.slice(start, state.index), 10);
+}
+
+function compileSimpleRegexNode(node: SimpleRegexNode): string {
+	if (node.kind === "alternation") {
+		const branches = node.branches.map((branch) =>
+			compileSimpleRegexNode(branch),
+		);
+		return branches.length === 1 ? branches[0] : `( ${branches.join(" | ")} )`;
+	}
+
+	if (node.terms.length === 0) return gbnfLiteral("");
+	return node.terms.map((term) => compileSimpleRegexTerm(term)).join(" ");
+}
+
+function compileSimpleRegexTerm(term: SimpleRegexTerm): string {
+	const atom = compileSimpleRegexAtom(term.atom);
+	if (term.quantifier === undefined) return atom;
+
+	switch (term.quantifier.kind) {
+		case "zeroOrOne":
+			return `${atom}?`;
+		case "zeroOrMore":
+			return `${atom}*`;
+		case "oneOrMore":
+			return `${atom}+`;
+		case "repeat":
+			return compileSimpleRegexRepeat(
+				atom,
+				term.quantifier.min,
+				term.quantifier.max,
+			);
+	}
+}
+
+function compileSimpleRegexRepeat(
+	atom: string,
+	min: number,
+	max: number | null,
+): string {
+	if (min === 0 && max === 0) return gbnfLiteral("");
+	const parts: string[] = [];
+	for (let i = 0; i < min; i++) parts.push(atom);
+	if (max === null) {
+		if (min === 0) return `${atom}*`;
+		parts.push(`${atom}*`);
+		return parts.join(" ");
+	}
+	for (let i = min; i < max; i++) parts.push(`${atom}?`);
+	return parts.join(" ");
+}
+
+function compileSimpleRegexAtom(atom: SimpleRegexAtom): string {
+	switch (atom.kind) {
+		case "literal":
+			return gbnfLiteral(atom.value);
+		case "class":
+			return `[${atom.value}]`;
+		case "group":
+			return `( ${compileSimpleRegexNode(atom.value)} )`;
+	}
+}
+
+function escapeGbnfClassChar(value: string): string {
+	let out = "";
+	for (const ch of value) {
+		switch (ch) {
+			case "\\":
+				out += "\\\\";
+				break;
+			case "]":
+				out += "\\]";
+				break;
+			case "-":
+				out += "\\-";
+				break;
+			case "^":
+				out += "\\^";
+				break;
+			case "\n":
+				out += "\\n";
+				break;
+			case "\r":
+				out += "\\r";
+				break;
+			case "\t":
+				out += "\\t";
+				break;
+			default: {
+				const code = ch.codePointAt(0) ?? 0;
+				if (code < 0x20) out += `\\x${code.toString(16).padStart(2, "0")}`;
+				else out += ch;
+			}
+		}
+	}
+	return out;
+}
 
 /**
  * Tiny GBNF builder: collects named rules + a root, dedupes, and pulls in the
@@ -321,15 +763,6 @@ function normalizeContextIds(contexts: ReadonlyArray<string>): string[] {
 }
 
 /**
- * Skeleton span kind for an envelope key's value.
- */
-function spanKindForKey(key: string): ResponseSkeletonSpan["kind"] {
-	if (STAGE1_STRING_KEYS.has(key)) return "free-string";
-	// Arrays / booleans / objects all sample as a free JSON sub-document.
-	return "free-json";
-}
-
-/**
  * Skeleton span kind for a registered field evaluator's value, derived from its
  * declared JSON schema. Typed primitives (`number` / `integer` / `boolean`) are
  * tagged with their own span kinds so the per-span sampler plan can force
@@ -363,25 +796,6 @@ function stringEnumValuesForFieldSchema(schema: JSONSchema): string[] {
 		enumValues.every((v): v is string => typeof v === "string")
 		? enumValues.map(String)
 		: [];
-}
-
-/** GBNF rule reference for an envelope key's value. */
-function gbnfRefForKey(builder: GbnfBuilder, key: string): string {
-	if (STAGE1_STRING_KEYS.has(key)) {
-		builder.useShared("jsonstring");
-		return "jsonstring";
-	}
-	if (STAGE1_STRING_ARRAY_KEYS.has(key)) {
-		builder.useShared("jsonstringarray");
-		return "jsonstringarray";
-	}
-	if (STAGE1_BOOLEAN_KEYS.has(key)) {
-		builder.useShared("jsonbool");
-		return "jsonbool";
-	}
-	// extract — a free JSON object.
-	builder.useShared("jsonvalue");
-	return "jsonvalue";
 }
 
 /** GBNF rule reference for a registered field evaluator's value. */
@@ -431,33 +845,22 @@ function gbnfRefForFieldSchema(
  *
  * The skeleton's spans, in order:
  *   `{` literal
- * Field-registry path:
  *   [one span per registered field evaluator, priority-ordered]
- *
- * Legacy fallback path (only when no fields are supplied):
- *   [non-direct only] `"shouldRespond":` literal → enum span (RESPOND/IGNORE/STOP)
- *   `,"thought":` (or `{"thought":` when direct) literal → free-string span
- *   `,"replyText":` literal → free-string span
- *   `,"contexts":` literal → free-json span (the grammar pins it to an
- *      array-of-enum; the skeleton can't express that, so it is the looser
- *      free-json there — engines that drive the skeleton get a free JSON array)
- *   `,"contextSlices":` literal → free-json span (string array)
- *   `,"candidateActions":` … `,"parentActionHints":` … `,"requiresTool":` …
- *   `,"extract":` literal → free-json span (object)
  *   `}` literal
  *
  * Single-value enums (e.g. a field evaluator whose schema is a one-element
- * string enum) lower to literal spans here — no tokens spent. The
- * `shouldRespond` enum stays an `enum` span (3 values).
+ * string enum) lower to literal spans here — no tokens spent.
  */
 export function buildResponseGrammar(
 	runtime: ResponseGrammarRuntimeView,
 	options: BuildResponseGrammarOptions,
 ): ResponseGrammarResult {
-	const direct =
-		options.channelType !== undefined &&
-		DIRECT_CHANNEL_TYPES.has(options.channelType);
-	const fields = sortFields(runtime.responseHandlerFields ?? []);
+	const suppliedFields = runtime.responseHandlerFields ?? [];
+	const fields = sortFields(
+		suppliedFields.length > 0
+			? suppliedFields
+			: BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+	);
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(
 		new Set(
@@ -471,7 +874,6 @@ export function buildResponseGrammar(
 
 	const cacheKey = [
 		"stage1",
-		direct ? "direct" : "full",
 		hashStringSet(contextIds),
 		hashStringSet(actionNames),
 		fieldSignature,
@@ -483,114 +885,22 @@ export function buildResponseGrammar(
 	const builder = new GbnfBuilder();
 	const rootParts: string[] = [];
 
-	if (fields.length > 0) {
-		const firstField = fields[0];
-		const open = `{"${firstField.name}":`;
-		spans.push({ kind: "literal", value: open });
-		rootParts.push(gbnfLiteral(open));
-
-		for (let i = 0; i < fields.length; i += 1) {
-			const field = fields[i];
-			if (i > 0) {
-				const glue = `,"${field.name}":`;
-				spans.push({ kind: "literal", value: glue });
-				rootParts.push(gbnfLiteral(glue));
-			}
-			if (field.name === "contexts") {
-				spans.push({
-					kind: "free-json",
-					key: "contexts",
-					rule: "contextsarray",
-				});
-				if (contextIds.length === 0) {
-					builder.useShared("jsonstringarray");
-					rootParts.push("jsonstringarray");
-				} else {
-					const enumRule = "contextid";
-					builder.rule(
-						enumRule,
-						contextIds.map((id) => gbnfJsonStringLiteral(id)).join(" | "),
-					);
-					builder.useShared("ws");
-					builder.rule(
-						"contextsarray",
-						`"[" ws ( ${enumRule} ( ws "," ws ${enumRule} )* )? ws "]"`,
-					);
-					rootParts.push("contextsarray");
-				}
-				continue;
-			}
-			const kind = spanKindForFieldSchema(field.schema);
-			if (kind === "literal") {
-				const enumValues = (field.schema as { enum?: unknown[] }).enum ?? [];
-				const value = JSON.stringify(String(enumValues[0] ?? ""));
-				spans.push({ kind: "literal", key: field.name, value });
-				rootParts.push(gbnfLiteral(value));
-			} else if (kind === "enum") {
-				spans.push({
-					kind,
-					key: field.name,
-					enumValues: stringEnumValuesForFieldSchema(field.schema),
-				});
-				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
-			} else {
-				spans.push({ kind, key: field.name });
-				rootParts.push(gbnfRefForFieldSchema(builder, field.schema));
-			}
-		}
-		spans.push({ kind: "literal", value: "}" });
-		rootParts.push(gbnfLiteral("}"));
-		builder.root(rootParts);
-		const grammar = builder.build();
-		const skeleton: ResponseSkeleton = { spans, id: cacheKey };
-		const result: ResponseGrammarResult = {
-			responseSkeleton: skeleton,
-			grammar,
-		};
-		stage1Cache.set(cacheKey, result);
-		return result;
+	const firstField = fields[0];
+	if (!firstField) {
+		throw new Error("buildResponseGrammar requires response-handler fields");
 	}
-
-	// Opening brace + first key glue. The first literal is the "trigger" the
-	// engine uses to start a lazy grammar; we make it the JSON open + the first
-	// key so generation only constrains the envelope, not any prose preceding
-	// it (irrelevant for tool-call args, where the whole turn is JSON, but it
-	// keeps the compiled-skeleton path lazy-friendly).
-	const firstKey = direct ? "thought" : "shouldRespond";
-	const open = `{"${firstKey}":`;
+	const open = `{"${firstField.name}":`;
 	spans.push({ kind: "literal", value: open });
 	rootParts.push(gbnfLiteral(open));
 
-	if (!direct) {
-		// shouldRespond enum span.
-		spans.push({
-			kind: "enum",
-			key: "shouldRespond",
-			enumValues: [...SHOULD_RESPOND_VALUES],
-		});
-		const ruleName = "shouldrespond";
-		builder.rule(
-			ruleName,
-			SHOULD_RESPOND_VALUES.map((v) => gbnfJsonStringLiteral(v)).join(" | "),
-		);
-		rootParts.push(ruleName);
-		// Glue to `thought`.
-		spans.push({ kind: "literal", value: ',"thought":' });
-		rootParts.push(gbnfLiteral(',"thought":'));
-	}
-
-	// Walk the fixed envelope keys. The first one (`thought`) already had its
-	// key glue emitted (either as the trailing part of `open` on the direct
-	// path, or right after the shouldRespond enum on the non-direct path).
-	for (let i = 0; i < STAGE1_ENVELOPE_KEYS.length; i += 1) {
-		const key = STAGE1_ENVELOPE_KEYS[i];
+	for (let i = 0; i < fields.length; i += 1) {
+		const field = fields[i];
 		if (i > 0) {
-			const glue = `,"${key}":`;
+			const glue = `,"${field.name}":`;
 			spans.push({ kind: "literal", value: glue });
 			rootParts.push(gbnfLiteral(glue));
 		}
-		if (key === "contexts") {
-			// Skeleton: free-json (an array). Grammar: array of context-id enum.
+		if (field.name === "contexts") {
 			spans.push({ kind: "free-json", key: "contexts", rule: "contextsarray" });
 			if (contextIds.length === 0) {
 				builder.useShared("jsonstringarray");
@@ -610,18 +920,8 @@ export function buildResponseGrammar(
 			}
 			continue;
 		}
-		spans.push({ kind: spanKindForKey(key), key });
-		rootParts.push(gbnfRefForKey(builder, key));
-	}
-
-	// Registered field evaluators, priority-ordered, appended after `extract`.
-	for (const field of fields) {
-		const glue = `,"${field.name}":`;
-		spans.push({ kind: "literal", value: glue });
-		rootParts.push(gbnfLiteral(glue));
 		const kind = spanKindForFieldSchema(field.schema);
 		if (kind === "literal") {
-			// Single-value string enum → its JSON-quoted form, no tokens.
 			const enumValues = (field.schema as { enum?: unknown[] }).enum ?? [];
 			const value = JSON.stringify(String(enumValues[0] ?? ""));
 			spans.push({ kind: "literal", key: field.name, value });
@@ -663,16 +963,12 @@ export function clearResponseGrammarCache(): void {
  * deterministic-token prefill-plan fast-forward layered on top of the GBNF
  * constrained decode) is **on by default** for the Stage-1 response handler and
  * the Stage-2 planner — those are the calls that always carry a forced skeleton.
- * Set `MILADY_LOCAL_GUIDED_DECODE=0` (or `ELIZA_LOCAL_GUIDED_DECODE=0` /
- * `false` / `off` / `no`) to disable. Cloud adapters ignore
+ * Set `ELIZA_LOCAL_GUIDED_DECODE=0` (`false` / `off` / `no`) to disable.
+ * Cloud adapters ignore
  * `providerOptions.eliza.guidedDecode` entirely, so this is a no-op for them.
  */
 function guidedDecodeEnabledByDefault(): boolean {
-	const raw = (
-		process.env.MILADY_LOCAL_GUIDED_DECODE ??
-		process.env.ELIZA_LOCAL_GUIDED_DECODE ??
-		""
-	)
+	const raw = (process.env.ELIZA_LOCAL_GUIDED_DECODE ?? "")
 		.trim()
 		.toLowerCase();
 	return raw !== "0" && raw !== "false" && raw !== "off" && raw !== "no";
@@ -686,7 +982,7 @@ function guidedDecodeEnabledByDefault(): boolean {
  * fewer `decode()` calls (the fork-side fast-forward consumes the plan; without
  * it the runtime degrades to grammar-only / byte-identical output). Idempotent;
  * returns the same object reference with `eliza.guidedDecode` set. When the
- * operator opted out via `MILADY_LOCAL_GUIDED_DECODE=0` this is a no-op so an
+ * operator opted out via `ELIZA_LOCAL_GUIDED_DECODE=0` this is a no-op so an
  * existing `providerOptions.eliza.guidedDecode` (likely absent) is left alone.
  */
 export function withGuidedDecodeProviderOptions<
@@ -908,9 +1204,9 @@ export function buildPlannerActionGrammar(
  *
  * The returned `responseSkeleton` is intentionally minimal — the grammar
  * carries the entire structural contract, so the engine's prefill plan has
- * nothing useful to inject statically. Cloud adapters still ignore the
- * skeleton + grammar per the W3 contract; `tools` carries the equivalent
- * unforced contract for them.
+ * nothing useful to inject statically. Adapters that do not honor local
+ * skeleton/grammar hints still receive the equivalent portable `tools`
+ * contract.
  *
  * Returns `null` when no actions are exposed.
  */
@@ -1126,6 +1422,19 @@ function buildBoundedNumberRule(
 		return "jsonnumber";
 	}
 
+	// Inverted range (min > max) is unsatisfiable — enumerating it would emit an
+	// empty rule body, producing malformed GBNF that llama.cpp rejects at
+	// grammar-load time. Fall back to the shared `jsonnumber` rule; server-side
+	// validation surfaces the bad bound rather than crashing the decoder.
+	if (
+		typeof minimum === "number" &&
+		typeof maximum === "number" &&
+		minimum > maximum
+	) {
+		builder.useShared("jsonnumber");
+		return "jsonnumber";
+	}
+
 	// For integers, emit a rule that matches only in-range values.
 	if (type === "integer") {
 		const min =
@@ -1189,6 +1498,13 @@ function propertyValueGbnf(
 			return `( ${enumValues
 				.map((v) => gbnfJsonStringLiteral(v))
 				.join(" | ")} )`;
+		}
+		const pattern = (propSchema as { pattern?: unknown }).pattern;
+		if (typeof pattern === "string") {
+			const compiledPattern = compileSimplePatternToGbnf(pattern);
+			if (compiledPattern !== null) {
+				return compiledPattern;
+			}
 		}
 		builder.useShared("jsonstring");
 		return "jsonstring";

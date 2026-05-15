@@ -27,11 +27,12 @@ except ImportError:
 def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="bfcl:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="bfcl:root"), ctx="bfcl:metrics")
+    metadata_raw = get_optional(root, "metadata")
+    metadata = metadata_raw if isinstance(metadata_raw, dict) else {}
     overall = expect_float(get_required(metrics, "overall_score", ctx="bfcl:metrics"), ctx="bfcl:overall_score")
     total_tests = get_optional(metrics, "total_tests") or 0
     error_analysis = get_optional(metrics, "error_analysis")
     if total_tests == 0:
-        raise ValueError("bfcl: zero-task score is not publishable")
         no_ground_truth = 0
         if isinstance(error_analysis, dict):
             raw_no_gt = error_analysis.get("no_ground_truth")
@@ -42,19 +43,35 @@ def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
                 "bfcl: sample produced no evaluable ground-truth tests "
                 f"(no_ground_truth={no_ground_truth})"
             )
+        raise ValueError("bfcl: zero-task score is not publishable")
 
+    sample_ids_raw = metadata.get("sample_ids")
+    sample_ids = (
+        [str(item) for item in sample_ids_raw]
+        if isinstance(sample_ids_raw, list)
+        else []
+    )
+    sample_seed = metadata.get("sample_seed")
+    sample_size = metadata.get("sample_size")
+    extracted_metrics: dict[str, JSONValue] = {
+        "overall_score": overall,
+        "ast_accuracy": get_optional(metrics, "ast_accuracy") or 0,
+        "exec_accuracy": get_optional(metrics, "exec_accuracy") or 0,
+        "relevance_accuracy": get_optional(metrics, "relevance_accuracy") or 0,
+        "total_tests": total_tests,
+        "error_analysis": error_analysis or {},
+    }
+    if sample_ids:
+        extracted_metrics["sample_ids"] = sample_ids
+    if isinstance(sample_seed, (int, float)):
+        extracted_metrics["sample_seed"] = sample_seed
+    if isinstance(sample_size, (int, float)):
+        extracted_metrics["sample_size"] = sample_size
     return ScoreExtraction(
         score=overall,
         unit="ratio",
         higher_is_better=True,
-        metrics={
-            "overall_score": overall,
-            "ast_accuracy": get_optional(metrics, "ast_accuracy") or 0,
-            "exec_accuracy": get_optional(metrics, "exec_accuracy") or 0,
-            "relevance_accuracy": get_optional(metrics, "relevance_accuracy") or 0,
-            "total_tests": total_tests,
-            "error_analysis": error_analysis or {},
-        },
+        metrics=extracted_metrics,
     )
 
 

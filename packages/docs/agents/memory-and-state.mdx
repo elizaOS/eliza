@@ -331,7 +331,7 @@ async function consolidateToLongTerm(
         ...memory.metadata,
         type: "long_term",
         importance: calculateImportance(memory),
-        consolidatedAt: Date.now(),
+        canonicalAt: Date.now(),
       },
     });
   }

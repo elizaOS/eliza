@@ -6901,8 +6901,8 @@
     {
       "type": "function",
       "function": {
-        "name": "INBOX_UNIFIED",
-        "description": "unified inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
+        "name": "INBOX",
+        "description": "inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
         "parameters": {
           "type": "object",
           "properties": {
@@ -6968,8 +6968,8 @@
     {
       "type": "function",
       "function": {
-        "name": "INBOX_UNIFIED_LIST",
-        "description": "unified inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
+        "name": "INBOX_LIST",
+        "description": "inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7035,8 +7035,8 @@
     {
       "type": "function",
       "function": {
-        "name": "INBOX_UNIFIED_SEARCH",
-        "description": "unified inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
+        "name": "INBOX_SEARCH",
+        "description": "inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
         "parameters": {
           "type": "object",
           "properties": {
@@ -7102,8 +7102,8 @@
     {
       "type": "function",
       "function": {
-        "name": "INBOX_UNIFIED_SUMMARIZE",
-        "description": "unified inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
+        "name": "INBOX_SUMMARIZE",
+        "description": "inbox: list|search|summarize across gmail|slack|discord|telegram|signal|imessage|whatsapp; dedupe by id+thread topic",
         "parameters": {
           "type": "object",
           "properties": {

@@ -18,13 +18,6 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import {
-  elizaClassicPlugin,
-  generateElizaResponse,
-} from "@elizaos/plugin-eliza-classic";
-import inmemorydbPlugin from "@elizaos/plugin-inmemorydb";
-import { openaiPlugin } from "@elizaos/plugin-openai";
-import sqlPlugin from "@elizaos/plugin-sql";
 import express, {
   type NextFunction,
   type Request,
@@ -53,6 +46,9 @@ let runtime: AgentRuntime | null = null;
 const sessions: Map<string, { roomId: UUID; userId: UUID }> = new Map();
 const worldId = stringToUuid("a2a-world");
 const messageServerId = stringToUuid("a2a-server");
+let generateFallbackResponse:
+  | ((message: string) => string | Promise<string>)
+  | null = null;
 
 type JsonObject = Record<string, ContentValue>;
 
@@ -67,19 +63,42 @@ function shouldUseOpenAi(): boolean {
   return typeof key === "string" && key.trim().length > 0;
 }
 
+async function generateFallback(message: string): Promise<string> {
+  if (!generateFallbackResponse) {
+    await initializeRuntime();
+  }
+  if (!generateFallbackResponse) {
+    throw new Error("ELIZA fallback response generator not initialized");
+  }
+  return generateFallbackResponse(message);
+}
+
 async function initializeRuntime(): Promise<AgentRuntime> {
   if (runtime) return runtime;
 
   console.log("🚀 Initializing elizaOS runtime...");
+
+  const plugins = shouldUseOpenAi()
+    ? await Promise.all([
+        import("@elizaos/plugin-sql").then((mod) => mod.default),
+        import("@elizaos/plugin-openai").then((mod) => mod.openaiPlugin),
+      ])
+    : await Promise.all([
+        import("@elizaos/plugin-inmemorydb").then((mod) => mod.default),
+        import("@elizaos/plugin-eliza-classic").then(
+          ({ elizaClassicPlugin, generateElizaResponse }) => {
+            generateFallbackResponse = generateElizaResponse;
+            return elizaClassicPlugin;
+          },
+        ),
+      ]);
 
   runtime = new AgentRuntime({
     character: CHARACTER,
     enableDocuments: shouldUseOpenAi(),
     enableRelationships: shouldUseOpenAi(),
     enableTrajectories: shouldUseOpenAi(),
-    plugins: shouldUseOpenAi()
-      ? ([sqlPlugin, openaiPlugin] as Plugin[])
-      : ([inmemorydbPlugin, elizaClassicPlugin] as Plugin[]),
+    plugins: plugins as Plugin[],
   });
 
   await runtime.initialize();
@@ -106,7 +125,7 @@ async function handleChat(
   opts?: { callerAgentId?: string; context?: JsonObject },
 ): Promise<string> {
   if (!shouldUseOpenAi()) {
-    return generateElizaResponse(message);
+    return generateFallback(message);
   }
 
   const rt = await initializeRuntime();
@@ -304,7 +323,7 @@ export function createApp(): express.Express {
 
       if (!shouldUseOpenAi()) {
         res.write(
-          `data: ${JSON.stringify({ text: generateElizaResponse(message) })}\n\n`,
+          `data: ${JSON.stringify({ text: await generateFallback(message) })}\n\n`,
         );
         res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
         res.end();

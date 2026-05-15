@@ -13,7 +13,7 @@
  *   - **MAX** — all voice + LM models can be **parallelized** and held
  *     resident at once (~24 GB effective model RAM AND ≥ 16 GB free at
  *     session start AND a dGPU with ≥ 16 GB VRAM OR an Apple Silicon
- *     Pro/Max/Ultra with ≥ 32 GB unified RAM).
+ *     Pro/Max/Ultra with ≥ 32 GB shared RAM).
  *   - **GOOD** — all models can be loaded into memory and run, but
  *     serialized (~12 GB effective model RAM AND ≥ 8 GB free at session
  *     start AND a dGPU with ≥ 8 GB VRAM, OR Apple Silicon base ≥ 16 GB,
@@ -54,13 +54,13 @@ export const DEVICE_TIER_THRESHOLDS = {
 		effectiveModelMemoryGb: 24,
 		freeRamGbAtSession: 16,
 		dGpuMinVramGb: 16,
-		appleSiliconMinUnifiedGb: 32,
+		appleSiliconMinMemoryGb: 32,
 	},
 	GOOD: {
 		effectiveModelMemoryGb: 12,
 		freeRamGbAtSession: 8,
 		dGpuMinVramGb: 8,
-		appleSiliconMinUnifiedGb: 16,
+		appleSiliconMinMemoryGb: 16,
 		x86CpuOnlyMinTotalGb: 32,
 	},
 	OKAY: {
@@ -103,7 +103,7 @@ const MB_PER_GB = 1024;
 
 /**
  * Compute the memory the model can actually use, in GB. Apple Silicon uses
- * unified memory; discrete-GPU x86 weights VRAM; CPU-only halves total RAM.
+ * shared memory; discrete-GPU x86 weights VRAM; CPU-only halves total RAM.
  * Mirrors `recommendation.ts:effectiveMemoryGb`.
  */
 export function effectiveModelMemoryGb(probe: HardwareProbe): number {
@@ -268,7 +268,7 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 	const meetsMaxFree = freeRamGb >= max.freeRamGbAtSession;
 	const meetsMaxGpu = vramGb >= max.dGpuMinVramGb;
 	const meetsMaxAppleSilicon =
-		probe.appleSilicon && totalRamGb >= max.appleSiliconMinUnifiedGb;
+		probe.appleSilicon && totalRamGb >= max.appleSiliconMinMemoryGb;
 
 	if (
 		!mobile &&
@@ -279,7 +279,7 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 		reasons.push(
 			`${effective.toFixed(1)} GB effective model RAM, ${freeRamGb.toFixed(1)} GB free, ${
 				meetsMaxAppleSilicon
-					? `Apple Silicon ${totalRamGb.toFixed(0)} GB unified`
+					? `Apple Silicon ${totalRamGb.toFixed(0)} GB shared`
 					: `${vramGb} GB VRAM`
 			}`,
 		);
@@ -291,7 +291,7 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 	const meetsGoodFree = freeRamGb >= good.freeRamGbAtSession;
 	const meetsGoodGpu = vramGb >= good.dGpuMinVramGb;
 	const meetsGoodAppleSilicon =
-		probe.appleSilicon && totalRamGb >= good.appleSiliconMinUnifiedGb;
+		probe.appleSilicon && totalRamGb >= good.appleSiliconMinMemoryGb;
 	const meetsGoodCpu =
 		!probe.gpu &&
 		!probe.appleSilicon &&
@@ -307,7 +307,7 @@ function classifyRawTier(args: ClassifyArgs): DeviceTier {
 		reasons.push(
 			`${effective.toFixed(1)} GB effective model RAM, ${freeRamGb.toFixed(1)} GB free, ${
 				meetsGoodAppleSilicon
-					? `Apple Silicon ${totalRamGb.toFixed(0)} GB unified`
+					? `Apple Silicon ${totalRamGb.toFixed(0)} GB shared`
 					: meetsGoodGpu
 						? `${vramGb} GB VRAM`
 						: `${totalRamGb.toFixed(0)} GB RAM, ${cpuCores} cores`

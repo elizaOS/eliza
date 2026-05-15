@@ -104,7 +104,7 @@ function isValidIntent(str: string): str is FormIntent {
 }
 
 // ============================================================================
-// EVALUATOR HELPERS — schema, prompt, parse for the unified evaluator pass
+// EVALUATOR HELPERS — schema, prompt, parse for the evaluator pass
 // ============================================================================
 
 /**
@@ -145,7 +145,7 @@ export function buildFormExtractorSchema(): JSONSchema {
 /**
  * Build the prompt section for the form-extractor evaluator.
  *
- * The unified evaluator prompt inlines this string and asks the model to
+ * The evaluator prompt inlines this string and asks the model to
  * populate `{ formIntent, formExtractions }` for the active form.
  */
 export function buildFormExtractorPromptSection(params: {
@@ -176,7 +176,7 @@ export function buildFormExtractorPromptSection(params: {
     };
   });
 
-  return `Extract form intent and field values for the active form session.
+  return `Extract active form intent + field values.
 
 Context JSON:
 ${JSON.stringify(
@@ -194,7 +194,7 @@ ${JSON.stringify(
   2,
 )}
 
-Populate this evaluator's section as:
+Return:
 {
   "formIntent": "one of intent_options",
   "formExtractions": [
@@ -204,14 +204,14 @@ Populate this evaluator's section as:
 
 Rules:
 - Choose exactly one intent.
-- For fill_form, extract every mentioned field value.
-- Use an empty formExtractions array when no fields were extracted.
-- Confidence is a number from 0.0 to 1.0.`;
+- fill_form: extract every mentioned field value.
+- No fields -> formExtractions=[].
+- confidence 0.0-1.0.`;
 }
 
 /**
  * Parse the raw `{ formIntent, formExtractions }` object produced by the
- * unified evaluator pass into a typed `IntentResult`. Type coercion and
+ * evaluator pass into a typed `IntentResult`. Type coercion and
  * validation against control rules happen later (in the processor) where
  * the form definition is in scope.
  */
@@ -312,7 +312,7 @@ export function coerceExtractionsAgainstControls(
  * Extract a specific field value from a user message with a focused prompt.
  *
  * Used when the agent has just asked for a specific field and expects a
- * direct answer. Independent of the unified evaluator pass.
+ * direct answer. Independent of the evaluator pass.
  */
 export async function extractSingleField(
   runtime: IAgentRuntime,

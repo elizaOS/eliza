@@ -154,7 +154,7 @@ function readTextParam(
 const baseDescription = spec.description ?? "";
 const extendedDescription = baseDescription.includes("questions[]")
 	? baseDescription
-	: `${baseDescription} Use to reply with text, or to ask the user a structured question by passing questions[] (1-4 items, optional multi-choice options).`.trim();
+	: `${baseDescription} Reply text or ask structured questions[] (1-4 items, optional multi-choice options).`.trim();
 
 const baseDescriptionCompressed =
 	(spec as { descriptionCompressed?: string }).descriptionCompressed ??
@@ -163,7 +163,7 @@ const extendedDescriptionCompressed = baseDescriptionCompressed.includes(
 	"questions",
 )
 	? baseDescriptionCompressed
-	: `${baseDescriptionCompressed}; pass questions[] (1-4) to broadcast a structured question instead of free text`;
+	: `${baseDescriptionCompressed}; questions[] (1-4) asks structured question`;
 
 export const replyAction = {
 	name: spec.name,
@@ -177,14 +177,14 @@ export const replyAction = {
 		{
 			name: "text",
 			description:
-				"Optional reply text. If omitted (and `questions` is also omitted), the action composes a reply from current state.",
+				"Reply text. Omit with questions absent to compose from state.",
 			required: false,
 			schema: { type: "string" },
 		},
 		{
 			name: "questions",
 			description:
-				"Optional. Array of 1-4 structured question objects: { question, header, options?: Array<{label, description?, preview?}>, multiSelect? }. When provided, REPLY broadcasts the structured questions and returns requiresUserInteraction: true (UI integration pending; non-blocking).",
+				"1-4 structured questions: { question, header, options?: [{label, description?, preview?}], multiSelect? }. Returns requiresUserInteraction: true.",
 			required: false,
 			schema: {
 				type: "array",

@@ -1,8 +1,9 @@
 /**
  * Default-pack registration shapes.
  *
- * `DefaultPack` is the envelope type for a curated set of `ScheduledTask`
- * records, consolidation policies, and escalation ladders shipped with the agent.
+ * `DefaultPack` is the envelope type for a curated set of compiled
+ * `ScheduledTask` records, consolidation policies, and escalation ladders
+ * shipped with the agent.
  * `DefaultPackRegistry` is the runtime registration surface.
  */
 
@@ -14,9 +15,10 @@ import type {
 } from "./contract-stubs.js";
 
 /**
- * A "default pack" is a curated set of `ScheduledTask` records — and any
- * registry contributions (consolidation policies, escalation ladders) — that
- * ships with the agent.
+ * A "default pack" is a curated set of compiled `ScheduledTask` records — and
+ * any registry contributions (consolidation policies, escalation ladders) —
+ * that ships with the agent. Pack authors should define typed task definitions
+ * and compile them into this persisted primitive at registration time.
  *
  * `defaultEnabled = true` means the records auto-seed when first-run runs the
  * defaults path; `false` means the pack is **offered** at first-run customize
@@ -34,8 +36,8 @@ export interface DefaultPack {
    * If `false`, the pack is offered at customize time only.
    */
   defaultEnabled: boolean;
-  /** Optional capability gate; pack is offered only if registry has all of these. */
-  requiredCapabilities?: string[];
+  /** Capability gate; pack is offered only if registry has all of these. */
+  requiredCapabilities: string[];
   /** ScheduledTask seeds (no `taskId`, no `state`). */
   records: ScheduledTaskSeed[];
   /** Anchor consolidation policies the pack contributes. */

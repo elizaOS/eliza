@@ -227,6 +227,11 @@ export {
 export * from "./runtime-composition";
 export * from "./runtime-env";
 export * from "./runtime-route-context";
+export {
+	_setAppBundleRootForTests,
+	assertDlopenPathAllowed,
+	isPathInsideAppBundle,
+} from "./sandbox/dlopen-gate";
 export * from "./sandbox-policy";
 // Export character schemas
 export * from "./schemas/character";
@@ -292,7 +297,7 @@ export * from "./types/message-service";
 // Export onboarding types and utilities
 export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
-export type { JsonObject, JsonValue } from "./types/primitives";
+export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
 /** Single implementation — see `utils/batch-queue/semaphore.ts` (was duplicated on `runtime.ts`). */
@@ -315,17 +320,21 @@ export * from "./utils/description-compressed-lint";
 // Export browser-compatible utilities
 export * from "./utils/environment";
 export { formatError } from "./utils/format-error";
+// Export Node-specific utilities
+export * from "./utils/plugin-loader";
 export * from "./utils/prompt-compression";
 // Canonical env-var reader with legacy-alias back-compat (ELIZA_* preferred, MILADY_* honored)
 export * from "./utils/read-env";
-// Export Node-specific utilities
-export * from "./utils/plugin-loader";
 export * from "./utils/server-health";
 // Eliza state-dir resolution (ELIZA_STATE_DIR, with the legacy MILADY_STATE_DIR honored → ~/.${ELIZA_NAMESPACE ?? "eliza"})
 export * from "./utils/state-dir";
 // Export streaming utilities
 export * from "./utils/streaming";
 export { ResponseSkeletonStreamExtractor } from "./utils/streaming";
+// User-chosen workspace folder persisted in <stateDir>/workspace-folder.json,
+// shared between the Electrobun renderer (writes via desktop RPC) and the
+// agent runtime (reads at boot to seed ELIZA_WORKSPACE_DIR for store builds).
+export * from "./utils/workspace-folder-config";
 // Export validation utilities
 export * from "./validation";
 

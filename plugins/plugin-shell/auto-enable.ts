@@ -15,10 +15,6 @@ function isFeatureEnabled(config: PluginAutoEnableContext["config"], key: string
   return false;
 }
 
-function isTruthy(value: string | undefined): boolean {
-  return ["1", "true", "yes", "on"].includes((value ?? "").trim().toLowerCase());
-}
-
 function terminalSupportedByEnv(ctx: PluginAutoEnableContext): boolean {
   const env = ctx.env;
   const variant = (env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();
@@ -32,7 +28,7 @@ function terminalSupportedByEnv(ctx: PluginAutoEnableContext): boolean {
   const mode = (env.ELIZA_RUNTIME_MODE ?? env.RUNTIME_MODE ?? env.LOCAL_RUNTIME_MODE ?? "")
     .trim()
     .toLowerCase();
-  return platform === "android" && isTruthy(env.ELIZA_AOSP_BUILD) && mode === "local-yolo";
+  return platform === "android" && mode === "local-yolo";
 }
 
 /** Enable when `config.features.shell` is truthy / not explicitly disabled. */

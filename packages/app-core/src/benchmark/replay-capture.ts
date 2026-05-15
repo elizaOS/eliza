@@ -47,7 +47,7 @@ const ReplayOutcomeSchema = z
 export const ReplayArtifactSchema = z
   .object({
     schema_version: z.literal("1.0"),
-    source: z.literal("parallax_debug_capture"),
+    source: z.literal("eliza_debug_capture"),
     run: z
       .object({
         run_id: z.string().min(1),
@@ -231,7 +231,7 @@ function normalizeEvent(
   });
 }
 
-export function normalizeParallaxCapture(input: unknown): ReplayArtifact {
+export function normalizeElizaCapture(input: unknown): ReplayArtifact {
   const root = asRecord(input) ?? {};
   const events = extractEvents(input).map((event, index) =>
     normalizeEvent(event, index),
@@ -252,7 +252,7 @@ export function normalizeParallaxCapture(input: unknown): ReplayArtifact {
 
   return ReplayArtifactSchema.parse({
     schema_version: "1.0",
-    source: "parallax_debug_capture",
+    source: "eliza_debug_capture",
     run: {
       run_id: runId,
       captured_at: capturedAt,

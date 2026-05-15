@@ -44,18 +44,14 @@ async function readErrorBody(response: Response): Promise<string> {
 export function resolveBrowserWorkspaceBridgeConfig(
   env: NodeJS.ProcessEnv = process.env,
 ): BrowserWorkspaceBridgeConfig | null {
-  const baseUrl =
-    normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_URL) ??
-    normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_URL);
+  const baseUrl = normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_URL);
   if (!baseUrl) {
     return null;
   }
 
   return {
     baseUrl: baseUrl.replace(/\/{1,1024}$/, ""),
-    token:
-      normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_TOKEN) ??
-      normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_TOKEN),
+    token: normalizeEnvValue(env.ELIZA_BROWSER_WORKSPACE_TOKEN),
   };
 }
 

@@ -35,12 +35,11 @@ import { emitModelUsageEvent } from "../utils/events";
 
 const RESPONSES_ROUTED_PREFIXES = ["openai/", "anthropic/"] as const;
 const NO_SAMPLING_MODEL_PATTERNS = ["o1", "o3", "o4", "gpt-5", "gpt-5-mini"] as const;
-const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as ModelTypeName;
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeName;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
-  "RESPONSE_HANDLER") as ModelTypeName;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as ModelTypeName;
+const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as ModelTypeName;
+const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as ModelTypeName;
+const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as ModelTypeName;
+const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as ModelTypeName;
 type ChatAttachment = {
   data: string | Uint8Array | URL;
   mediaType: string;
@@ -97,7 +96,11 @@ function buildUserContent(params: GenerateTextParamsWithAttachments): UserConten
         mediaType: string;
         filename?: string;
       }
-  > = [{ type: "text", text: params.prompt }];
+  > = [];
+
+  if (typeof params.prompt === "string" && params.prompt.length > 0) {
+    content.push({ type: "text", text: params.prompt });
+  }
 
   for (const attachment of params.attachments ?? []) {
     content.push({
@@ -109,6 +112,26 @@ function buildUserContent(params: GenerateTextParamsWithAttachments): UserConten
   }
 
   return content;
+}
+
+function textFromMessages(messages: ModelMessage[] | undefined): string {
+  if (!messages || messages.length === 0) return "";
+  return messages
+    .map((message) => {
+      const content = message.content;
+      if (typeof content === "string") return content;
+      if (!Array.isArray(content)) return "";
+      return content
+        .map((part) =>
+          part && typeof part === "object" && "text" in part && typeof part.text === "string"
+            ? part.text
+            : ""
+        )
+        .filter(Boolean)
+        .join("\n");
+    })
+    .filter(Boolean)
+    .join("\n");
 }
 
 function supportsSamplingParameters(modelName: string): boolean {
@@ -217,7 +240,8 @@ function buildGenerateParams(
   params: GenerateTextParams
 ) {
   const paramsWithAttachments = params as GenerateTextParamsWithAttachments;
-  const { prompt } = params;
+  const prompt = typeof params.prompt === "string" ? params.prompt : undefined;
+  const usagePrompt = prompt ?? textFromMessages(paramsWithAttachments.messages);
   const paramsWithMax = params as GenerateTextParams & {
     maxOutputTokens?: number;
     maxTokens?: number;
@@ -253,10 +277,20 @@ function buildGenerateParams(
       ? { messages: wireMessages }
       : userContent
         ? { messages: [{ role: "user" as const, content: userContent }] }
-        : { prompt }
+        : prompt !== undefined
+          ? { prompt }
+          : (() => {
+              throw new Error(
+                "OpenRouter text generation requires prompt, messages, or attachments"
+              );
+            })()
     : userContent
       ? { messages: [{ role: "user" as const, content: userContent }] }
-      : { prompt };
+      : prompt !== undefined
+        ? { prompt }
+        : (() => {
+            throw new Error("OpenRouter text generation requires prompt, messages, or attachments");
+          })();
   // Resolve providerOptions: forward any caller-supplied options and merge in
   // the openrouter.promptCacheKey when present. OpenRouter passes prompt_cache_key
   // through to the underlying model provider for prefix caching.
@@ -300,7 +334,7 @@ function buildGenerateParams(
     generateParams,
     modelName,
     modelLabel,
-    prompt,
+    prompt: usagePrompt,
     shouldReturnNativeResult: usesNativeTextResult(paramsWithAttachments),
   };
 }

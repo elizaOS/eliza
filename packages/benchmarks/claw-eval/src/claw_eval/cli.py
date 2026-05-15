@@ -96,7 +96,6 @@ def _grade_with_optional_params(
     Returns (scores, judge_calls) where judge_calls is a list of dicts
     captured from the LLMJudge call log (empty if judge has no logging).
     """
-    from .graders.base import AbstractGrader
 
     if hasattr(judge, "reset_call_log"):
         judge.reset_call_log()
@@ -157,7 +156,7 @@ def _collect_env_snapshot(sandbox_url: str, task) -> dict:
                 snapshot[f"cmd:{cmd}"] = cmd_result
                 # Debug: show command results
                 exit_code = cmd_result.get("exit_code", "?")
-                stdout = (cmd_result.get("stdout") or "")[:200]
+                (cmd_result.get("stdout") or "")[:200]
                 stderr = (cmd_result.get("stderr") or "")[:200]
                 print(f"[env_snapshot] cmd exit={exit_code}: {cmd[:80]}")
                 if stderr:
@@ -1147,14 +1146,13 @@ def cmd_batch(args: argparse.Namespace) -> None:
     # --continue: scan existing trace dir for completed trials
     continue_dir = getattr(args, "continue_dir", None)
     completed_trials: dict[str, int] = {}
-    continue_prev_results: list[dict] = []
     if continue_dir:
         continue_path = Path(continue_dir)
         if not continue_path.exists():
             print(f"Continue directory not found: {continue_path}")
             sys.exit(1)
         completed_trials = _scan_completed_trials(continue_path)
-        continue_prev_results = _load_completed_results(continue_path)
+        _load_completed_results(continue_path)
         total_completed = sum(completed_trials.values())
         print(f"[continue] Scanning {continue_path} — found {total_completed} completed trial(s) "
               f"across {len(completed_trials)} task(s)")

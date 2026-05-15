@@ -43,11 +43,10 @@ export function formatApiDevSettingsBannerText(
       setting: "Listen (actual)",
       effective: `${sec.bindHost}:${actualPort}`,
       source: "derived — process bound",
-      change:
-        "set ELIZA_API_BIND / ELIZA_API_BIND and ELIZA_API_PORT / ELIZA_* before start",
+      change: "set ELIZA_API_BIND and ELIZA_API_PORT / ELIZA_PORT before start",
     },
     {
-      setting: "ELIZA_API_BIND / ELIZA_API_BIND",
+      setting: "ELIZA_API_BIND",
       effective: sec.bindHost,
       source: bindWin
         ? `env set — ${bindWin.key}=${bindWin.value}`
@@ -55,7 +54,7 @@ export function formatApiDevSettingsBannerText(
       change: "export ELIZA_API_BIND=127.0.0.1; unset both for default",
     },
     {
-      setting: "ELIZA_API_TOKEN / ELIZA_API_TOKEN",
+      setting: "ELIZA_API_TOKEN",
       effective: token ? "set (redacted)" : "unset",
       source: token
         ? hadUser
@@ -71,8 +70,7 @@ export function formatApiDevSettingsBannerText(
       source: originsWin
         ? `env set — ${originsWin.key}`
         : "default (unset — empty list)",
-      change:
-        "export ELIZA_ALLOWED_ORIGINS=a,b (or ELIZA_ALLOWED_ORIGINS, CORS_ORIGINS)",
+      change: "export ELIZA_ALLOWED_ORIGINS=a,b (or CORS_ORIGINS)",
     },
     {
       setting: "ELIZA_ALLOWED_HOSTS",
@@ -81,14 +79,6 @@ export function formatApiDevSettingsBannerText(
         ? `env set — ${hostsWin.key}`
         : "default (unset — empty list)",
       change: "export ELIZA_ALLOWED_HOSTS=host1,host2",
-    },
-    {
-      setting: "ELIZA_ALLOW_NULL_ORIGIN / ELIZA_ALLOW_NULL_ORIGIN",
-      effective: sec.allowNullOrigin ? "on" : "off",
-      source: sec.allowNullOrigin
-        ? "env set — flag enabled"
-        : "default (unset — off)",
-      change: "export ELIZA_ALLOW_NULL_ORIGIN=1 to allow; unset to default off",
     },
     {
       setting: "ELIZA_DISABLE_AUTO_API_TOKEN",

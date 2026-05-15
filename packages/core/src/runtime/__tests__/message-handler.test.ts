@@ -69,7 +69,7 @@ describe("v5 message handler routing", () => {
 		}
 	});
 
-	it("preserves requiresTool through parsing", () => {
+	it("does not parse retired requiresTool from the model envelope", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
 				shouldRespond: "RESPOND",
@@ -79,7 +79,7 @@ describe("v5 message handler routing", () => {
 				requiresTool: true,
 			}),
 		);
-		expect(parsed?.plan?.requiresTool).toBe(true);
+		expect(parsed?.plan?.requiresTool).toBeUndefined();
 	});
 
 	it("strips 'simple' from a mixed selection before planning", () => {
@@ -102,81 +102,95 @@ describe("v5 message handler routing", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
 				shouldRespond: "RESPOND",
-				thought: "Direct.",
 				replyText: "Done.",
 				contexts: ["simple"],
-				requiresTool: false,
 			}),
 		);
 		expect(parsed).toMatchObject({
 			processMessage: "RESPOND",
-			thought: "Direct.",
-			plan: { contexts: ["simple"], reply: "Done.", requiresTool: false },
+			thought: "",
+			plan: { contexts: ["simple"], reply: "Done." },
 		});
 	});
 
-	it("uses a flat envelope with contexts directly after replyText in the Stage 1 tool schema", () => {
+	it("uses the canonical response-handler field envelope in the Stage 1 tool schema", () => {
 		const props = HANDLE_RESPONSE_SCHEMA.properties as Record<string, unknown>;
 		const keys = Object.keys(props);
 		expect(keys).toEqual([
 			"shouldRespond",
-			"thought",
-			"replyText",
 			"contexts",
-			"contextSlices",
-			"candidateActions",
-			"parentActionHints",
-			"requiresTool",
-			"extract",
+			"intents",
+			"replyText",
+			"candidateActionNames",
+			"facts",
+			"relationships",
+			"addressedTo",
+			"emotion",
 		]);
-		// `contexts` comes directly after `replyText`.
-		expect(keys.indexOf("contexts")).toBe(keys.indexOf("replyText") + 1);
 		expect(HANDLE_RESPONSE_SCHEMA.required).toEqual([
 			"shouldRespond",
-			"replyText",
 			"contexts",
+			"intents",
+			"replyText",
+			"candidateActionNames",
+			"facts",
+			"relationships",
+			"addressedTo",
+			"emotion",
 		]);
-		// No legacy `plan` nesting in the schema anymore.
 		expect(props.plan).toBeUndefined();
+		expect(props.contextSlices).toBeUndefined();
+		expect(props.candidateActions).toBeUndefined();
+		expect(props.parentActionHints).toBeUndefined();
+		expect(props.requiresTool).toBeUndefined();
+		expect(props.extract).toBeUndefined();
 	});
 
 	it("parses the flat HANDLE_RESPONSE envelope (shouldRespond/replyText/contexts)", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
 				shouldRespond: "RESPOND",
-				thought: "Direct.",
 				replyText: "Hello there.",
 				contexts: ["simple"],
-				requiresTool: false,
 			}),
 		);
 		expect(parsed?.processMessage).toBe("RESPOND");
-		expect(parsed?.thought).toBe("Direct.");
+		expect(parsed?.thought).toBe("");
 		expect(parsed?.plan.contexts).toEqual(["simple"]);
 		expect(parsed?.plan.reply).toBe("Hello there.");
-		expect(parsed?.plan.requiresTool).toBe(false);
+		expect(parsed?.plan.requiresTool).toBeUndefined();
 	});
 
-	it("parses the flat envelope with planning hints and extract at the top level", () => {
+	it("does not pass JSON structural punctuation through as reply text", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
 				shouldRespond: "RESPOND",
-				thought: "Needs the calendar.",
+				replyText: "}",
+				contexts: ["simple"],
+			}),
+		);
+
+		expect(parsed?.plan.reply).toBe("");
+	});
+
+	it("parses the canonical field envelope with action hints and memory fields", () => {
+		const parsed = parseMessageHandlerOutput(
+			JSON.stringify({
+				shouldRespond: "RESPOND",
 				replyText: "On it.",
 				contexts: ["calendar"],
-				candidateActions: ["calendar_create_event"],
-				parentActionHints: ["CALENDAR"],
-				contextSlices: ["slice:1"],
-				requiresTool: true,
-				extract: { facts: ["the user prefers morning meetings"] },
+				candidateActionNames: ["calendar_create_event"],
+				facts: ["the user prefers morning meetings"],
+				relationships: [],
+				addressedTo: [],
 			}),
 		);
 		expect(parsed?.plan.contexts).toEqual(["calendar"]);
 		expect(parsed?.plan.reply).toBe("On it.");
 		expect(parsed?.plan.candidateActions).toEqual(["calendar_create_event"]);
-		expect(parsed?.plan.parentActionHints).toEqual(["CALENDAR"]);
-		expect(parsed?.plan.contextSlices).toEqual(["slice:1"]);
-		expect(parsed?.plan.requiresTool).toBe(true);
+		expect(parsed?.plan.parentActionHints).toBeUndefined();
+		expect(parsed?.plan.contextSlices).toBeUndefined();
+		expect(parsed?.plan.requiresTool).toBeUndefined();
 		expect(parsed?.extract?.facts).toEqual([
 			"the user prefers morning meetings",
 		]);
@@ -233,16 +247,13 @@ describe("v5 message handler routing", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
 				shouldRespond: "RESPOND",
-				thought: "Capturing user fact.",
 				replyText: "",
 				contexts: ["memory"],
-				extract: {
-					facts: ["the user's birthday is 1990-03-05", "  ", ""],
-					relationships: [
-						{ subject: "user", predicate: "works_with", object: "Alice" },
-						{ subject: "user", predicate: "", object: "Bob" },
-					],
-				},
+				facts: ["the user's birthday is 1990-03-05", "  ", ""],
+				relationships: [
+					{ subject: "user", predicate: "works_with", object: "Alice" },
+					{ subject: "user", predicate: "", object: "Bob" },
+				],
 			}),
 		);
 		expect(parsed?.extract?.facts).toEqual([
@@ -257,7 +268,6 @@ describe("v5 message handler routing", () => {
 		const parsed = parseMessageHandlerOutput(
 			JSON.stringify({
 				shouldRespond: "RESPOND",
-				thought: "No durable info.",
 				replyText: "hi",
 				contexts: ["simple"],
 			}),

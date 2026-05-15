@@ -1,10 +1,10 @@
 /**
  * Eliza-curated local model catalog.
  *
- * Default local inference is restricted to the active Eliza-1 line, all on
- * Qwen3.5 bases: 0.8B, 2B, 4B, 9B, and 27B (including long-context 27B
- * variants at 256k and 1M). The 2026-05-12 mandate retired the legacy
- * Qwen3 bases and any Qwen3.6 references; see
+ * Default local inference is restricted to the active Eliza-1 line: Qwen3.5
+ * bases for 0.8B, 2B, 4B, and 9B, plus Qwen3.6 for the active 27B family
+ * (including long-context variants at 256k and 1M). The 2026-05-12 mandate
+ * retired the legacy Qwen3 bases; see
  * packages/training/scripts/training/model_registry.py for the active
  * registry. External Hub search remains custom/opt-in and never enters
  * first-run or default eligibility.
@@ -17,7 +17,7 @@ import type {
   LocalRuntimeKernel,
 } from "./types.js";
 
-export const ELIZA_1_HF_REPO = "elizaos/eliza-1" as const;
+export const ELIZA_1_HF_REPO = "elizalabs/eliza-1" as const;
 
 export const ELIZA_1_TIER_IDS = [
   "eliza-1-0_8b",
@@ -86,12 +86,12 @@ function readPublishStatusOverride(
 ): "published" | "pending" | undefined {
   const raw =
     typeof process !== "undefined"
-      ? process.env?.ELIZA_PUBLISH_STATUS_OVERRIDES
+      ? process.env.ELIZA_PUBLISH_STATUS_OVERRIDES
       : undefined;
   if (!raw) return undefined;
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const value = parsed?.[id];
+    const value = parsed[id];
     if (value === "published" || value === "pending") return value;
   } catch {
     // Malformed override JSON is non-fatal — fall back to the static
@@ -113,15 +113,10 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * Entries beyond the first are also bundled; tiers that ship only one
  * backend have a single-element array.
  *
- * Policy (Wave-2):
- *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Kokoro is ~310 MB
- *     fp32 / ~80 MB int8 and hits ~97ms CPU TTFB, which dominates the
- *     time budget on small/mobile devices. OmniVoice is not shipped in
- *     these bundles — callers that need voice cloning must use a larger
- *     tier or the standalone (legacy) plugin-omnivoice.
- *   - 9b → both supported, Kokoro first. 9b is the boundary tier where
- *     either makes sense depending on the workload (Kokoro for low TTFB,
- *     OmniVoice for higher quality / cloning).
+ * Policy:
+ *   - Small tiers (0_8b / 2b / 4b / 9b) → OmniVoice first with Kokoro
+ *     fallback. The fused expressive TTS path stays default, while Kokoro
+ *     remains available for low-latency/thermal fallback on constrained hosts.
  *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
@@ -130,10 +125,10 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["kokoro"],
-  "eliza-1-2b": ["kokoro"],
-  "eliza-1-4b": ["kokoro"],
-  "eliza-1-9b": ["kokoro", "omnivoice"],
+  "eliza-1-0_8b": ["omnivoice", "kokoro"],
+  "eliza-1-2b": ["omnivoice", "kokoro"],
+  "eliza-1-4b": ["omnivoice", "kokoro"],
+  "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
   "eliza-1-27b-1m": ["omnivoice"],
@@ -210,7 +205,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     drafterParams: "0.8B",
     drafterSizeGb: 0.5,
     drafterMinRamGb: 4,
-    hasEmbedding: true,
     // WS2: vision enabled — the 2B tier is the standard "small-phone"
     // default for first-run users, so camera-to-reaction and screen
     // analysis must work here. The mmproj is ~320 MB Q8_0; the arbiter
@@ -255,7 +249,7 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     hasVision: true,
     // WS3: 9B is the boundary tier where Z-Image-Turbo Q4_K_M (~3.4 GB)
     // becomes the default. FLUX.1 schnell remains opt-in for >=24 GB
-    // unified RAM / >=12 GB VRAM.
+    // shared RAM / >=12 GB VRAM.
     hasImageGen: true,
   },
   "eliza-1-27b": {
@@ -376,7 +370,7 @@ export type OmniVoiceQuantLevel =
 /**
  * Default OmniVoice K-quant the runtime picks per tier when no
  * device-class override applies. Mobile-class tiers (0_8b/2b/4b) default
- * to Q4_K_M (~4.5 bits/weight, the canonical sweet spot for llama.cpp /
+ * to Q4_K_M (~4.5 bits/weight, the common sweet spot for llama.cpp /
  * Ollama / LM Studio). Desktop / workstation tiers default to Q8_0 (≈8
  * bits/weight, near-bf16 quality) because RAM headroom permits it.
  */
@@ -392,23 +386,18 @@ function voiceQuantForTier(id: Eliza1TierId): OmniVoiceQuantLevel {
  * from this list. The ladder is monotonically decreasing in bits-per-weight
  * (smallest first): {@link OmniVoiceQuantLevel}.
  *
- * Mobile tiers ship Q3_K_M..Q5_K_M (the host won't fit Q6/Q8 comfortably
- * alongside the text LM + ASR). Desktop / workstation tiers ship the
- * full Q3..Q8 ladder so a `--memory-budget okay` host can step down to
+ * Every active tier publishes an OmniVoice ladder. Small tiers keep the
+ * ladder narrow so the installer can stay inside mobile RAM budgets while
+ * still defaulting to the fused OmniVoice path. 9B and 27B-class tiers ship
+ * the full Q3..Q8 ladder so a `--memory-budget okay` host can step down to
  * Q3_K_M and a `--memory-budget good` host can take Q6_K.
- *
- * Tiers whose default voice backend is Kokoro (0_8b/2b/4b currently) do
- * not publish an OmniVoice ladder — the empty list signals "no voice
- * ladder for this tier". The publish wiring (stage_eliza1_bundle_assets.py)
- * skips OmniVoice staging entirely for these tiers; the runtime serves
- * Kokoro at `tts/kokoro/model_q4.onnx`.
  */
 const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   Record<Eliza1TierId, ReadonlyArray<OmniVoiceQuantLevel>>
 > = {
-  "eliza-1-0_8b": [],
-  "eliza-1-2b": [],
-  "eliza-1-4b": [],
+  "eliza-1-0_8b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-2b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
+  "eliza-1-4b": ["Q3_K_M", "Q4_K_M", "Q5_K_M"],
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
@@ -480,7 +469,7 @@ function runtimeForTier(
     },
     kvCache: {
       typeK: "qjl1_256",
-      typeV: "q4_polar",
+      typeV: "tbq3_0",
       requiresFork: "buun-llama-cpp",
     },
     dflash: {

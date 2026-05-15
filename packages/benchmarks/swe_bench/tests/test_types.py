@@ -11,7 +11,6 @@ from benchmarks.swe_bench.types import (
     RepoStats,
     SWEBenchConfig,
     SWEBenchInstance,
-    SWEBenchReport,
     SWEBenchResult,
     SWEBenchVariant,
 )

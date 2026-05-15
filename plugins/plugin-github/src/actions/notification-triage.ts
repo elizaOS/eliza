@@ -92,7 +92,7 @@ export const notificationTriageAction: Action = {
   description:
     "Returns unread GitHub notifications sorted by a priority score derived from reason, subject type, and repo freshness.",
   descriptionCompressed:
-    "return unread GitHub notification sort priority score derive reason, subject type, repo freshness",
+    "unread GitHub notifications sorted by reason|subject|repo freshness",
   parameters: [
     {
       name: "as",

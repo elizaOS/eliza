@@ -1,10 +1,8 @@
 /**
  * Local inference shared types.
  *
- * Canonical source of truth for every type that the server-side service
- * in `@elizaos/app-core` and the UI client in `@elizaos/ui` reference.
- * Both packages re-export from here through one-line shims so existing
- * import paths keep working.
+ * Shared contracts referenced by the server-side service in
+ * `@elizaos/app-core` and the UI client in `@elizaos/ui`.
  *
  * Server-only logic (KV cache management, llama-server lifecycle,
  * conversation registry, metrics scraping) stays in `app-core`; only
@@ -46,8 +44,7 @@ export const TEXT_GENERATION_SLOTS: TextGenerationSlot[] = [
 export type ModelAssignments = Partial<Record<AgentModelSlot, string>>;
 
 /**
- * Installed-model registry entry. The on-disk format is JSON; this is the
- * canonical TypeScript shape both packages parse against.
+ * Installed-model registry entry. The on-disk format is JSON.
  */
 export interface InstalledModel {
   /** Matches CatalogModel.id when installed from the curated catalog. */
@@ -116,10 +113,45 @@ export type ModelCategory =
 
 export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
 
+export type OpenVinoDeviceKind = "CPU" | "GPU" | "NPU";
+
+export interface OpenVinoHardwareProbe {
+  /**
+   * True when an OpenVINO runtime install is discoverable from env vars or
+   * common Linux install paths. CPU execution still requires this runtime.
+   */
+  runtimeAvailable: boolean;
+  devices: OpenVinoDeviceKind[];
+  /**
+   * Intel GPU plugin candidates. On Linux these are `/dev/dri/renderD*`
+   * render nodes plus the Intel Compute Runtime userspace libraries.
+   */
+  gpu: {
+    renderNodes: string[];
+    computeRuntimeReady: boolean;
+    missingLinuxPackages: string[];
+  };
+  /**
+   * Intel NPU plugin candidates. On Linux these are `/dev/accel/accel*`
+   * nodes; their presence only means the device is wireable, not validated.
+   */
+  npu: {
+    accelNodes: string[];
+  };
+  /** Best-known OpenVINO device for static-graph ASR workloads. */
+  recommendedAsrDevice: OpenVinoDeviceKind | null;
+  warnings: string[];
+}
+
 /**
- * Specialised llama.cpp kernels shipped by the buun-llama-cpp / DFlash fork.
+ * Runtime kernel/capability handles advertised by llama-server
+ * `CAPABILITIES.json`. Most entries are specialised kernels shipped by the
+ * buun-llama-cpp / DFlash fork. `openvino` is the upstream ggml-openvino
+ * backend capability; it selects CPU/GPU/NPU at runtime via
+ * `GGML_OPENVINO_DEVICE` and does not satisfy the Eliza-1 W4-B kernel set.
+ *
  * Models that declare a `requiresKernel` advertise that they only run
- * correctly under llama-server when the matching kernel is present.
+ * correctly under llama-server when the matching capability is present.
  *
  * The set must stay in sync with `inference/AGENTS.md` §3 mandatory
  * optimizations and with `DflashBinaryCapabilities.kernels` below — the
@@ -131,8 +163,8 @@ export type LocalRuntimeBackend = "node-llama-cpp" | "llama-server";
  * (`@elizaos/app-core/src/services/local-inference/manifest/schema`):
  * `turboquant_q3↔turbo3`, `turboquant_q4↔turbo4`, `qjl↔qjl_full`, with
  * `polarquant` / `dflash` / `turbo3_tcq` shared by name. The translation is
- * codified there by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL` —
- * route any manifest↔runtime kernel conversion through those.
+ * codified there by `ELIZA1_TO_RUNTIME_KERNEL` / `RUNTIME_TO_ELIZA1_KERNEL`.
+ * `openvino` intentionally has no manifest-level Eliza-1 kernel equivalent.
  */
 export type LocalRuntimeKernel =
   | "dflash"
@@ -140,7 +172,8 @@ export type LocalRuntimeKernel =
   | "turbo4"
   | "turbo3_tcq"
   | "qjl_full"
-  | "polarquant";
+  | "polarquant"
+  | "openvino";
 
 /**
  * llama.cpp optimization knobs that the dispatcher can wire into a
@@ -297,7 +330,7 @@ export interface CatalogModel {
   displayName: string;
   /** Hosting backend. Defaults to Hugging Face when omitted. */
   hub?: CatalogHub;
-  /** HuggingFace repo slug, e.g. "elizaos/eliza-1". */
+  /** HuggingFace repo slug, e.g. "elizalabs/eliza-1". */
   hfRepo: string;
   /**
    * Optional path prefix inside `hfRepo`. Eliza-1 publishes every tier under
@@ -452,6 +485,8 @@ export interface HardwareProbe {
   recommendedBucket: ModelBucket;
   /** Source of the probe; "node-llama-cpp" when GPU values come from the binding. */
   source: "node-llama-cpp" | "os-fallback";
+  /** OpenVINO CPU/GPU/NPU availability hints for Intel hosts. */
+  openvino?: OpenVinoHardwareProbe;
   /** Mobile-only details used for minspec, storage, and native DFlash gating. */
   mobile?: MobileHardwareProbe;
 }

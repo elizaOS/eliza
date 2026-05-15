@@ -5,8 +5,7 @@
  * project's ~500 LOC guideline.
  */
 
-export type AgentTab = "claude" | "gemini" | "codex" | "aider";
-export type AiderProvider = "anthropic" | "openai" | "google";
+export type AgentTab = "claude" | "codex" | "opencode";
 export type ApprovalPreset =
   | "readonly"
   | "standard"
@@ -15,7 +14,7 @@ export type ApprovalPreset =
 export type AgentSelectionStrategy = "fixed" | "ranked";
 export type LlmProvider = "subscription" | "api_keys" | "cloud";
 
-export const AGENT_TABS: AgentTab[] = ["claude", "gemini", "codex", "aider"];
+export const AGENT_TABS: AgentTab[] = ["claude", "codex", "opencode"];
 
 export const APPROVAL_PRESETS: {
   value: ApprovalPreset;
@@ -51,15 +50,8 @@ export interface ModelOption {
 
 export const AGENT_PROVIDER_MAP: Record<AgentTab, string> = {
   claude: "anthropic",
-  gemini: "google-genai",
   codex: "openai",
-  aider: "anthropic",
-};
-
-export const AIDER_PROVIDER_MAP: Record<AiderProvider, string> = {
-  anthropic: "anthropic",
-  openai: "openai",
-  google: "google-genai",
+  opencode: "openai",
 };
 
 export const FALLBACK_MODELS: Record<string, ModelOption[]> = {
@@ -68,10 +60,6 @@ export const FALLBACK_MODELS: Record<string, ModelOption[]> = {
     { value: "claude-sonnet-4-6", label: "Claude Sonnet 4.6" },
     { value: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" },
   ],
-  "google-genai": [
-    { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro" },
-    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash" },
-  ],
   openai: [
     { value: "o3", label: "o3" },
     { value: "o4-mini", label: "o4-mini" },
@@ -79,44 +67,26 @@ export const FALLBACK_MODELS: Record<string, ModelOption[]> = {
   ],
 };
 
-/** Aider uses short aliases that auto-resolve to the latest model version. */
-export const AIDER_MODELS: Record<string, ModelOption[]> = {
-  anthropic: [
-    { value: "opus", label: "Claude Opus" },
-    { value: "sonnet", label: "Claude Sonnet" },
-    { value: "haiku", label: "Claude Haiku" },
-  ],
-  "google-genai": [{ value: "gemini", label: "Gemini" }],
-  openai: [
-    { value: "o3", label: "o3" },
-    { value: "4o", label: "GPT-4o" },
-    { value: "o4-mini", label: "o4-mini" },
-  ],
-};
-
 export const AGENT_LABELS: Record<AgentTab, string> = {
   claude: "Claude",
-  gemini: "Gemini",
   codex: "Codex",
-  aider: "Aider",
+  opencode: "OpenCode",
 };
 
 /** Map full adapter names from the preflight API to short tab keys. */
 export const ADAPTER_NAME_TO_TAB: Record<string, AgentTab> = {
   "claude code": "claude",
-  "google gemini": "gemini",
   "openai codex": "codex",
-  aider: "aider",
+  "open code": "opencode",
+  opencode: "opencode",
   claude: "claude",
-  gemini: "gemini",
   codex: "codex",
 };
 
 export const ENV_PREFIX: Record<AgentTab, string> = {
   claude: "ELIZA_CLAUDE",
-  gemini: "ELIZA_GEMINI",
   codex: "ELIZA_CODEX",
-  aider: "ELIZA_AIDER",
+  opencode: "ELIZA_OPENCODE",
 };
 
 export interface AuthResult {

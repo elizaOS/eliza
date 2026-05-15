@@ -8,7 +8,7 @@ import json
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 import argparse
 import warnings

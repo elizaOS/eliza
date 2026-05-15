@@ -15,7 +15,6 @@
  */
 
 import { Crown, Mic, Sparkles, Volume2 } from "lucide-react";
-// biome-ignore lint/correctness/noUnusedImports: required for JSX transform.
 import * as React from "react";
 import type {
   VoiceCaptureSession,
@@ -491,7 +490,7 @@ function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
 
 // ── Step 7 — Family ──────────────────────────────────────────────────────
 
-function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
+function FamilyStep(_props: VoicePrefixStepsProps): React.ReactElement {
   const [family, setFamily] = React.useState<VoiceProfile[]>([]);
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-family">

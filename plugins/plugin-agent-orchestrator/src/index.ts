@@ -28,12 +28,12 @@ import {
   tasksSandboxStubAction,
 } from "./actions/sandbox-stub.js";
 import { tasksAction } from "./actions/tasks.js";
+import { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
 import { codingAgentExamplesProvider } from "./providers/action-examples.js";
 import { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 import { activeWorkspaceContextProvider } from "./providers/active-workspace-context.js";
 import { availableAgentsProvider } from "./providers/available-agents.js";
 import { AcpService } from "./services/acp-service.js";
-import { PTYService } from "./services/pty-service.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
 import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
@@ -72,7 +72,6 @@ export function createAgentOrchestratorPlugin(): Plugin {
     ? [
         serviceClass(AcpService),
         serviceClass(SubAgentRouter),
-        serviceClass(PTYService),
         serviceClass(CodingWorkspaceService),
       ]
     : [];
@@ -97,14 +96,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
           overrides: {
             spawn_agent: {
               description:
-                "Delegate a coding task to a dedicated coding sub-agent (claude / codex / opencode / gemini / aider — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
+                "Delegate a coding task to a dedicated ACP coding sub-agent (claude / codex / opencode — selected from configured providers). USE THIS when the user explicitly asks to delegate coding work, use a coding adapter by name, or run substantial multi-step coding work that benefits from a dedicated workspace and its own tool loop. The coding sub-agent runs in its own workspace, can read / write / edit files and run tests, and reports back when done. Prefer this over inline FILE / BASH tools whenever delegation is the user's intent — even for single-file tasks if delegation is explicitly requested.",
               // Compressed blurb is what the planner sees in tier-A
               // summaries; if we don't override it, it inherits the
               // generic parent enum dump and the planner can't tell
               // `TASKS_SPAWN_AGENT` apart from inline `FILE.write` for
               // delegation requests. See the parent comment above.
               descriptionCompressed:
-                "delegate coding work to a coding sub-agent (claude/codex/opencode/gemini/aider) — use when the user asks to delegate coding work / use an adapter by name / for any multi-step dev work; prefer over inline FILE/BASH when delegation is the user's intent",
+                "delegate ACP coding sub-agent claude|codex|opencode; adapter/multi-step",
             },
           },
         }),
@@ -130,10 +129,13 @@ export function createAgentOrchestratorPlugin(): Plugin {
       ? "Orchestrate coding sub-agents via the Agent Client Protocol (acpx) with workspace operations, GitHub integration, task history, sub-agent routing, and skill-recommender support. Single TASKS parent action covers create / spawn_agent / send / stop_agent / list_agents / cancel / history / control / share / provision_workspace / submit_workspace / manage_issues / archive / reopen."
       : (terminalSupport.message ??
         "Coding-agent orchestrator is unavailable in this runtime. Exposes a single TASKS stub that explains the limitation when the planner reaches for a coding-agent action."),
-    // Services manage ACPX subprocesses, PTY sessions, workspaces, and sub-agent routing.
+    // Services manage ACPX subprocesses, workspaces, and sub-agent routing.
     services: orchestratorServices,
     actions: orchestratorActions,
     providers: orchestratorProviders,
+    responseHandlerEvaluators: codeExecutionAllowed
+      ? [subAgentCompletionResponseEvaluator]
+      : [],
   };
 }
 
@@ -184,6 +186,7 @@ export {
   createTaskAgentRouteHandler,
   handleCodingAgentRoutes,
 } from "./api/routes.js";
+export { subAgentCompletionResponseEvaluator } from "./evaluators/sub-agent-completion.js";
 // Providers
 export { activeSubAgentsProvider } from "./providers/active-sub-agents.js";
 export {
@@ -193,16 +196,6 @@ export {
 
 // ACP service surface.
 export { AcpService } from "./services/acp-service.js";
-// PTY service surface.
-export { cleanForChat } from "./services/ansi-utils.js";
-export type {
-  CodingAgentType,
-  PTYServiceConfig,
-  SessionEventName as PTYSessionEventName,
-  SessionInfo as PTYSessionInfo,
-  SpawnSessionOptions as PTYSpawnSessionOptions,
-} from "./services/pty-service.js";
-export { getCoordinator, PTYService } from "./services/pty-service.js";
 export {
   AcpSessionStore,
   FileSessionStore,
@@ -210,27 +203,6 @@ export {
   RuntimeDbSessionStore,
 } from "./services/session-store.js";
 export { SubAgentRouter } from "./services/sub-agent-router.js";
-export type {
-  AgentDecisionCallback,
-  ChatMessageCallback,
-  CoordinationDecision,
-  PendingDecision,
-  SupervisionLevel,
-  SwarmCompleteCallback,
-  SwarmEvent,
-  TaskCompletionSummary,
-  TaskContext,
-  WsBroadcastCallback,
-} from "./services/swarm-coordinator.js";
-export { SwarmCoordinator } from "./services/swarm-coordinator.js";
-export type {
-  CoordinationLLMResponse,
-  SharedDecision,
-} from "./services/swarm-coordinator-prompts.js";
-export {
-  buildBlockedEventMessage,
-  buildTurnCompleteEventMessage,
-} from "./services/swarm-coordinator-prompts.js";
 // ACP types
 export type {
   AcpEventCallback,

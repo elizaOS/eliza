@@ -110,8 +110,8 @@ describe("EvaluatorService", () => {
 			expect(params.responseSchema.properties).toHaveProperty("first");
 			expect(params.responseSchema.properties).toHaveProperty("second");
 			expect(params.responseFormat).toEqual({ type: "json_object" });
-			expect(params.prompt).toContain("### first");
-			expect(params.prompt).toContain("### second");
+			expect(params.messages?.[0]?.content).toContain("### first");
+			expect(params.messages?.[0]?.content).toContain("### second");
 			return {
 				first: { ok: true },
 				second: { ok: true },
@@ -219,6 +219,131 @@ describe("EvaluatorService", () => {
 					error: "processor failed",
 				}),
 			]),
+		);
+	});
+
+	it("retries without responseSchema when the provider rejects structured schemas", async () => {
+		const runtime = makeRuntime();
+		const processed: string[] = [];
+
+		runtime.registerEvaluator({
+			name: "ok",
+			description: "ok section",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract ok.",
+			parse: (output) => output as never,
+			processors: [
+				{
+					name: "storeOk",
+					process: async () => {
+						processed.push("ok");
+						return { success: true };
+					},
+				},
+			],
+		});
+
+		const useModel = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("Bad Request"))
+			.mockResolvedValueOnce({ ok: { ok: true } });
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+
+		expect(useModel).toHaveBeenCalledTimes(2);
+		expect(useModel.mock.calls[0]?.[1]).toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[1]?.[1]).not.toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[1]?.[1]?.responseFormat).toEqual({
+			type: "json_object",
+		});
+		expect(processed).toEqual(["ok"]);
+		expect(result.errors).toEqual([]);
+	});
+
+	it("falls back to a plain JSON prompt when JSON-object mode is also rejected", async () => {
+		const runtime = makeRuntime();
+		const processed: string[] = [];
+
+		runtime.registerEvaluator({
+			name: "ok",
+			description: "ok section",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract ok.",
+			parse: (output) => output as never,
+			processors: [
+				{
+					name: "storeOk",
+					process: async () => {
+						processed.push("ok");
+						return { success: true };
+					},
+				},
+			],
+		});
+
+		const useModel = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("Bad Request"))
+			.mockRejectedValueOnce(new Error("Bad Request"))
+			.mockResolvedValueOnce('{"ok":{"ok":true}}');
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+
+		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(useModel.mock.calls[0]?.[1]).toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[1]?.[1]).toHaveProperty("responseFormat");
+		expect(useModel.mock.calls[2]?.[1]).not.toHaveProperty("responseSchema");
+		expect(useModel.mock.calls[2]?.[1]).not.toHaveProperty("responseFormat");
+		expect(processed).toEqual(["ok"]);
+		expect(result.errors).toEqual([]);
+	});
+
+	it("contains provider generation failures as post-turn evaluator errors", async () => {
+		const runtime = makeRuntime();
+
+		runtime.registerEvaluator({
+			name: "ok",
+			description: "ok section",
+			schema: schema(),
+			shouldRun: async () => true,
+			prompt: () => "Extract ok.",
+			parse: (output) => output as never,
+			processors: [
+				{
+					name: "storeOk",
+					process: async () => ({ success: true }),
+				},
+			],
+		});
+
+		const useModel = vi
+			.fn()
+			.mockRejectedValueOnce(new Error("Bad Request"))
+			.mockRejectedValueOnce(new Error("Bad Request"))
+			.mockRejectedValueOnce(new Error("Bad Request"));
+		runtime.useModel = useModel as AgentRuntime["useModel"];
+
+		const result = await new EvaluatorService(runtime).run(makeMessage());
+
+		expect(useModel).toHaveBeenCalledTimes(3);
+		expect(result.processedEvaluators).toEqual([]);
+		expect(result.results).toEqual([]);
+		expect(result.errors).toEqual([
+			{
+				evaluatorName: "post_turn",
+				error: "Bad Request",
+			},
+		]);
+		expect(runtime.emitEvent).toHaveBeenCalledWith(
+			expect.anything(),
+			expect.objectContaining({
+				evaluatorName: "post_turn",
+				completed: false,
+			}),
 		);
 	});
 });

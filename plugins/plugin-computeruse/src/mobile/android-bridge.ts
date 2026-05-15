@@ -31,7 +31,7 @@
 // ── Result envelope ───────────────────────────────────────────────────────────
 
 /**
- * Unified result envelope mirroring IosBridgeResult<T> from ios-bridge.ts.
+ * Standard result envelope mirroring IosBridgeResult<T> from ios-bridge.ts.
  * `ok=true` means the native side completed and `data` is shaped per-method.
  * `ok=false` carries a machine-readable `code` and human-readable `message`.
  */
@@ -129,6 +129,14 @@ export interface GlobalActionResult {
   readonly ok: boolean;
 }
 
+export interface SetTextArgs {
+  readonly text: string;
+}
+
+export interface SetTextResult {
+  readonly ok: boolean;
+}
+
 // ── 5. UsageStats / app enumeration ──────────────────────────────────────────
 
 /**
@@ -217,6 +225,9 @@ export interface AndroidBridgeProbe {
  * resolves to `Capacitor.Plugins.ComputerUse` on Android and iOS alike.
  */
 export interface AndroidComputerUseBridge {
+  // --- Probe ---
+  readonly probe: () => Promise<AndroidBridgeResult<AndroidBridgeProbe>>;
+
   // --- MediaProjection ---
   /** Triggers the system screen-capture consent dialog, then starts the service. */
   readonly startMediaProjection: (
@@ -233,6 +244,7 @@ export interface AndroidComputerUseBridge {
   readonly performGlobalAction: (
     args: { readonly action: GlobalAction },
   ) => Promise<AndroidBridgeResult<GlobalActionResult>>;
+  readonly setText: (args: SetTextArgs) => Promise<AndroidBridgeResult<SetTextResult>>;
 
   // --- UsageStats ---
   readonly enumerateApps: () => Promise<AndroidBridgeResult<EnumerateAppsResult>>;

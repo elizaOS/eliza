@@ -13,10 +13,20 @@ type ParamsFromSpec<TSpec extends readonly RouteParamEntry[]> = {
   [Entry in TSpec[number] as Entry["name"]]: Entry["splat"] extends true ? string[] : string;
 };
 
+export type RouteParams<
+  TParams extends Record<string, string | string[]> = Record<string, string | string[]>,
+> = {
+  params: Promise<TParams>;
+};
+
+export type RouteContext<
+  TParams extends Record<string, string | string[]> = Record<string, string | string[]>,
+> = RouteParams<TParams>;
+
 export function nextStyleParams<const TSpec extends readonly RouteParamEntry[]>(
   c: Context<AppEnv>,
   spec: TSpec,
-): { params: Promise<ParamsFromSpec<TSpec>> } {
+): RouteParams<ParamsFromSpec<TSpec>> {
   const obj: Record<string, string | string[]> = {};
   for (const { name, splat } of spec) {
     if (splat) {

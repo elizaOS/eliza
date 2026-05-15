@@ -39,6 +39,11 @@ export {
   resolveCloudApiKey,
 } from "./cloud/cloud-api-key";
 export {
+  isCloudAuthApiKeyService,
+  normalizeCloudApiKey,
+  type CloudAuthApiKeyService,
+} from "./cloud/auth-service-types";
+export {
   clearCloudSecrets,
   getCloudSecret,
   scrubCloudSecretsFromEnv,

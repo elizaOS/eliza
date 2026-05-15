@@ -113,26 +113,38 @@ const LAUNCH_SCRIPT = `#!/system/bin/sh
 # it off; without that adb shell / Service.onCreate parents reap it.
 #
 # Required env vars:
-#   DEVICE_DIR  Absolute path on the device that holds bun + musl + bundle.
+#   DEVICE_DIR  Absolute path on the device that holds bun + musl.
 #   LD_NAME     Per-ABI musl loader filename (ld-musl-{x86_64,aarch64}.so.1).
 #   PORT        Loopback port for Bun.serve() to bind 127.0.0.1 on.
 #
 # Optional:
-#   AGENT_BUNDLE  Defaults to "agent-bundle.js" in DEVICE_DIR.
-#   LOG_FILE      Defaults to "agent.log" in DEVICE_DIR.
+#   AGENT_ROOT         Directory that holds agent-bundle.js; defaults DEVICE_DIR.
+#   RUNTIME_DIR        Directory that holds bun + runtime libs; defaults DEVICE_DIR.
+#   BUN_PATH           Absolute bun executable path; defaults RUNTIME_DIR/bun.
+#   LD_PATH            Absolute musl-loader path; defaults RUNTIME_DIR/LD_NAME.
+#   AGENT_BUNDLE       Bundle filename; defaults agent-bundle.js.
+#   AGENT_BUNDLE_PATH  Absolute bundle path; defaults AGENT_ROOT/AGENT_BUNDLE.
+#   LOG_FILE           Defaults to agent.log in AGENT_ROOT.
 
 DEVICE_DIR=\${DEVICE_DIR:-/data/local/tmp}
+RUNTIME_DIR=\${RUNTIME_DIR:-\${DEVICE_DIR}}
+AGENT_ROOT=\${AGENT_ROOT:-\${DEVICE_DIR}}
 LD_NAME=\${LD_NAME:-ld-musl-x86_64.so.1}
 PORT=\${PORT:-31337}
 AGENT_BUNDLE=\${AGENT_BUNDLE:-agent-bundle.js}
-LOG_FILE=\${LOG_FILE:-\${DEVICE_DIR}/agent.log}
+BUN_PATH=\${BUN_PATH:-\${RUNTIME_DIR}/bun}
+LD_PATH=\${LD_PATH:-\${RUNTIME_DIR}/\${LD_NAME}}
+AGENT_BUNDLE_PATH=\${AGENT_BUNDLE_PATH:-\${AGENT_ROOT}/\${AGENT_BUNDLE}}
+LOG_FILE=\${LOG_FILE:-\${AGENT_ROOT}/agent.log}
+RUNTIME_LD_LIBRARY_PATH=\${LD_LIBRARY_PATH:-\${RUNTIME_DIR}}
 
-cd "$DEVICE_DIR" || exit 1
-pkill -f "\${DEVICE_DIR}/bun" 2>/dev/null
+cd "$AGENT_ROOT" || exit 1
+pkill -f "\${BUN_PATH}" 2>/dev/null
+pkill -f "\${AGENT_BUNDLE_PATH}" 2>/dev/null
 sleep 1
 
 (
-  setsid sh -c "exec </dev/null >\\"$LOG_FILE\\" 2>&1; LD_LIBRARY_PATH=\\"$DEVICE_DIR\\" PORT=\\"$PORT\\" exec \\"$DEVICE_DIR/$LD_NAME\\" \\"$DEVICE_DIR/bun\\" \\"$DEVICE_DIR/$AGENT_BUNDLE\\"" &
+  setsid sh -c "exec </dev/null >\\"$LOG_FILE\\" 2>&1; cd \\"$AGENT_ROOT\\" || exit 1; LD_LIBRARY_PATH=\\"$RUNTIME_LD_LIBRARY_PATH\\" PORT=\\"$PORT\\" exec \\"$LD_PATH\\" \\"$BUN_PATH\\" \\"$AGENT_BUNDLE_PATH\\"" &
 ) &
 disown 2>/dev/null || true
 exit 0

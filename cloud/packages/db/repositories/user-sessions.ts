@@ -1,10 +1,18 @@
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNull, type SQL, sql } from "drizzle-orm";
 import { mutateRowCount } from "../execute-helpers";
 import { dbRead, dbWrite } from "../helpers";
 import { type NewUserSession, type UserSession, userSessions } from "../schemas/user-sessions";
 import { jsonbParam } from "../utils/jsonb";
 
 export type { NewUserSession, UserSession };
+
+type UserSessionMetricsUpdate = {
+  last_activity_at: Date;
+  updated_at: Date;
+  credits_used?: string | SQL;
+  requests_made?: number | SQL;
+  tokens_consumed?: number | SQL;
+};
 
 /**
  * Repository for user session database operations.
@@ -144,7 +152,7 @@ export class UserSessionsRepository {
       tokens_consumed?: number;
     },
   ): Promise<UserSession | undefined> {
-    const updateFields: Record<string, any> = {
+    const updateFields: UserSessionMetricsUpdate = {
       last_activity_at: new Date(),
       updated_at: new Date(),
     };
@@ -180,7 +188,7 @@ export class UserSessionsRepository {
       tokens_consumed?: number;
     },
   ): Promise<UserSession | undefined> {
-    const updateFields: Record<string, any> = {
+    const updateFields: UserSessionMetricsUpdate = {
       last_activity_at: new Date(),
       updated_at: new Date(),
     };

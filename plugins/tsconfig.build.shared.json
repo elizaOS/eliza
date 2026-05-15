@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
     "strict": false,
+    "strictNullChecks": true,
     "skipLibCheck": true,
     "ignoreDeprecations": "6.0",
     "esModuleInterop": true,
@@ -27,13 +28,12 @@
       ],
       "@elizaos/app-task-coordinator/*": ["./app-task-coordinator/dist/*"],
       "@elizaos/app-core": ["../packages/app-core/dist/index.d.ts"],
+      "@elizaos/app-core/*": ["../packages/app-core/dist/*"],
       "@elizaos/agent": [
         "../packages/agent/dist/packages/agent/src/index.d.ts"
       ],
       "@elizaos/agent/*": ["../packages/agent/dist/packages/agent/src/*"],
-      "@elizaos/plugin-discord": [
-        "./plugin-discord/dist/index.d.ts"
-      ],
+      "@elizaos/plugin-discord": ["./plugin-discord/dist/index.d.ts"],
       "@elizaos/plugin-discord/*": ["./plugin-discord/dist/*"],
       "@elizaos/plugin-wallet": ["../plugins/plugin-wallet/dist/index.d.mts"],
       "@elizaos/plugin-wallet/*": ["../plugins/plugin-wallet/dist/*"],

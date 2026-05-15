@@ -204,7 +204,7 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
       ) as rls_enabled
     `);
 
-    const rlsEnabled = checkResult.rows?.[0]?.rls_enabled;
+    const rlsEnabled = checkResult.rows[0]?.rls_enabled;
 
     if (!rlsEnabled) {
       logger.debug({ src: "plugin:sql" }, "RLS not installed, skipping cleanup");

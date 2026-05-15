@@ -10,14 +10,14 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import {
-  elizaClassicPlugin,
-  getElizaGreeting,
-} from "@elizaos/plugin-eliza-classic";
-import localdbPlugin from "@elizaos/plugin-localdb";
 import { v4 as uuidv4 } from "uuid";
 import type { AppConfig, ChatMessage, ProviderMode } from "./types";
 import { getEffectiveMode } from "./types";
+
+const { elizaClassicPlugin, getElizaGreeting } = await import(
+  "@elizaos/plugin-eliza-classic"
+);
+const { default: localdbPlugin } = await import("@elizaos/plugin-localdb");
 
 type RuntimeBundle = {
   runtime: AgentRuntime;
@@ -132,19 +132,43 @@ async function buildPlugins(mode: ProviderMode): Promise<Plugin[]> {
     case "elizaClassic":
       return [...base, elizaClassicPlugin as unknown as Plugin];
     case "openai":
-      return [...base, (await import("@elizaos/plugin-openai")).default as unknown as Plugin];
+      return [
+        ...base,
+        (await import("@elizaos/plugin-openai")).default as unknown as Plugin,
+      ];
     case "anthropic":
-      return [...base, (await import("@elizaos/plugin-anthropic")).default as unknown as Plugin];
+      return [
+        ...base,
+        (await import("@elizaos/plugin-anthropic"))
+          .default as unknown as Plugin,
+      ];
     case "xai":
-      return [...base, (await import("@elizaos/plugin-openai")).default as unknown as Plugin];
+      return [
+        ...base,
+        (await import("@elizaos/plugin-openai")).default as unknown as Plugin,
+      ];
     case "gemini":
-      return [...base, (await import("@elizaos/plugin-google-genai")).default as unknown as Plugin];
+      return [
+        ...base,
+        (await import("@elizaos/plugin-google-genai"))
+          .default as unknown as Plugin,
+      ];
     case "groq":
-      return [...base, (await import("@elizaos/plugin-groq")).default as unknown as Plugin];
+      return [
+        ...base,
+        (await import("@elizaos/plugin-groq")).default as unknown as Plugin,
+      ];
     case "openrouter":
-      return [...base, (await import("@elizaos/plugin-openrouter")).default as unknown as Plugin];
+      return [
+        ...base,
+        (await import("@elizaos/plugin-openrouter"))
+          .default as unknown as Plugin,
+      ];
     case "ollama":
-      return [...base, (await import("@elizaos/plugin-ollama")).default as unknown as Plugin];
+      return [
+        ...base,
+        (await import("@elizaos/plugin-ollama")).default as unknown as Plugin,
+      ];
     default:
       return [...base, elizaClassicPlugin as unknown as Plugin];
   }

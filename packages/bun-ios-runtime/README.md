@@ -65,6 +65,32 @@ do not link or require the full engine. When the framework exists, `start()`
 defaults to `engine: "auto"` and will boot the full engine. Passing
 `engine: "bun"` requires the framework and returns an error if it is missing.
 
+## App Store execution profile
+
+Device/App Store builds of `ElizaBunEngine.xcframework` must be no-JIT and
+must not depend on unsigned executable memory, downloaded native code, helper
+executables, or arbitrary dynamic library loading. The framework metadata
+declares this with:
+
+```text
+ElizaBunEngineNoJIT = true
+ElizaBunEngineExecutionProfile = ios-app-store-nojit
+```
+
+The build and verifier reject engine binaries that import local code-loading or
+JIT-sensitive symbols such as `dlopen`, `dlsym`, `posix_spawn`, `fork`,
+`execve`, `system`, `pthread_jit_write_protect_np`, `mach_vm_protect`, or
+`vm_protect`. Regular file-backed model/runtime assets remain allowed; they are
+data inputs to the signed in-process runtime, not executable payloads.
+
+```bash
+# Verify the staged xcframework.
+bun run --cwd packages/bun-ios-runtime verify:app-store
+
+# Verify a signed .app bundle and its embedded ElizaBunEngine framework.
+bun run --cwd packages/bun-ios-runtime verify:app-store -- --app=/path/to/App.app
+```
+
 ## Build workflow
 
 ```bash
@@ -155,5 +181,7 @@ Still required in the Bun fork:
 - Produce `ElizaBunEngine.xcframework`.
 - Export `bun_start(...)` compatible with `src/ios/bun_ios.h`, or export the
   Eliza ABI directly.
+- Keep Bun FFI/native-plugin loading disabled or compiled out for iOS App Store
+  slices so the engine does not import arbitrary dynamic-loader symbols.
 - Run simulator smoke against `public/agent/agent-bundle.js`, then repeat on a
   developer-signed sideload/device build.

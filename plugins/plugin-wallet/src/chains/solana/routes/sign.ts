@@ -13,14 +13,18 @@
  * arbitrary dApp pages whose origin is not knowable in advance.
  */
 
-import type { IAgentRuntime, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  LegacyRouteHandler,
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import { Connection, type SendOptions, Transaction, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { resolveWalletBackend } from "../../../wallet/select-backend";
 import type { SolanaService } from "../service";
-
-type RouteHandler = NonNullable<Route["handler"]>;
 
 interface JsonResponse {
   status: (code: number) => JsonResponse;
@@ -108,7 +112,7 @@ function serializeTransaction(tx: Transaction | VersionedTransaction): Uint8Arra
   return new Uint8Array(tx.serialize({ requireAllSignatures: false, verifySignatures: false }));
 }
 
-const pubkeyHandler: RouteHandler = async (req, res, runtime) => {
+const pubkeyHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
     const backend = await resolveWalletBackend(runtime);
@@ -124,7 +128,7 @@ const pubkeyHandler: RouteHandler = async (req, res, runtime) => {
   }
 };
 
-const signTransactionHandler: RouteHandler = async (req, res, runtime) => {
+const signTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
     const body = (req.body ?? {}) as { transactionBase64?: unknown };
@@ -146,7 +150,7 @@ const signTransactionHandler: RouteHandler = async (req, res, runtime) => {
   }
 };
 
-const signAllTransactionsHandler: RouteHandler = async (req, res, runtime) => {
+const signAllTransactionsHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
     const body = (req.body ?? {}) as { transactionsBase64?: unknown };
@@ -171,7 +175,7 @@ const signAllTransactionsHandler: RouteHandler = async (req, res, runtime) => {
   }
 };
 
-const signMessageHandler: RouteHandler = async (req, res, runtime) => {
+const signMessageHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
     const body = (req.body ?? {}) as { messageBase64?: unknown };
@@ -194,7 +198,7 @@ const signMessageHandler: RouteHandler = async (req, res, runtime) => {
   }
 };
 
-const signAndSendHandler: RouteHandler = async (req, res, runtime) => {
+const signAndSendHandler: LegacyRouteHandler = async (req, res, runtime) => {
   if (!authorize(req, res, runtime)) return;
   try {
     const body = (req.body ?? {}) as {

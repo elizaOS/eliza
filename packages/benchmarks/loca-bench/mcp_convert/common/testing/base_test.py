@@ -7,8 +7,7 @@ Provides common testing functionality for all MCP implementations.
 import pytest
 import asyncio
 import json
-from typing import Any, Dict, List, Optional
-from unittest.mock import Mock, patch
+from typing import Any, Dict, List
 import mcp.types as types
 
 

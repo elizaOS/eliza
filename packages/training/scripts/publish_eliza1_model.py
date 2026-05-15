@@ -10,7 +10,8 @@ at a time. The elizaos repos contain the **fused** stack
 (Q4_POLAR + QJL1_256 K + TBQ V + DFlash) in a single file.
 
 Refuses to ship stock-format GGUFs: every file the script publishes must
-declare both `Q4_POLAR` *and* `qjl1_256` in its GGUF tensor type table.
+declare `Q4_POLAR`, `qjl1_256`, and a TurboQuant V-cache type (`tbq3_0` or
+`tbq4_0`) in its GGUF tensor type table.
 This is the safety rail that keeps an accidentally-mislabeled K-quant
 out of the elizaos org.
 
@@ -55,9 +56,10 @@ log = logging.getLogger("publish_eliza1_model")
 
 
 # ---------------------------------------------------------------------------
-# Required GGUF metadata markers. Both must appear somewhere in the GGUF
-# tensor type / metadata header for the file to be considered "fused-kernel
-# optimized" and pushable to elizaos.
+# Required GGUF metadata markers. All mandatory markers, plus at least one
+# marker from each alternative group, must appear somewhere in the GGUF tensor
+# type / metadata header for the file to be considered "fused-kernel optimized"
+# and pushable to elizaos.
 #
 # We grep the binary header directly rather than parse with gguf-py because
 # (a) gguf-py is not a hard dependency of this repo, and (b) the header
@@ -67,6 +69,9 @@ log = logging.getLogger("publish_eliza1_model")
 # ---------------------------------------------------------------------------
 
 REQUIRED_GGUF_MARKERS: tuple[bytes, ...] = (b"q4_polar", b"qjl1_256")
+REQUIRED_GGUF_MARKER_ALTERNATIVES: tuple[tuple[bytes, ...], ...] = (
+    (b"tbq3_0", b"tbq4_0"),
+)
 ELIZA_1_HF_ORG = "elizaos"
 
 # How many bytes of the GGUF header to scan. The tensor type table lives
@@ -135,8 +140,16 @@ def _find_gguf(model_dir: Path) -> Path:
     return gguf
 
 
+def _all_marker_needles() -> tuple[bytes, ...]:
+    return REQUIRED_GGUF_MARKERS + tuple(
+        marker
+        for group in REQUIRED_GGUF_MARKER_ALTERNATIVES
+        for marker in group
+    )
+
+
 def _scan_for_markers(gguf_path: Path) -> set[bytes]:
-    """Return the subset of REQUIRED_GGUF_MARKERS present in the file.
+    """Return the subset of required marker strings present in the file.
 
     Scans the leading 4 MB and the trailing 1 MB. If markers appear, the
     file declares those tensor types or carries them in the metadata
@@ -146,7 +159,7 @@ def _scan_for_markers(gguf_path: Path) -> set[bytes]:
     size = gguf_path.stat().st_size
     with gguf_path.open("rb") as fh:
         head = fh.read(min(GGUF_HEADER_SCAN_BYTES, size))
-        for marker in REQUIRED_GGUF_MARKERS:
+        for marker in _all_marker_needles():
             if marker in head.lower():
                 found.add(marker)
 
@@ -154,7 +167,7 @@ def _scan_for_markers(gguf_path: Path) -> set[bytes]:
             tail_start = max(0, size - GGUF_TAIL_SCAN_BYTES)
             fh.seek(tail_start)
             tail = fh.read(size - tail_start)
-            for marker in REQUIRED_GGUF_MARKERS:
+            for marker in _all_marker_needles():
                 if marker in tail.lower():
                     found.add(marker)
     return found
@@ -171,6 +184,9 @@ def _validate_optimized_gguf(gguf_path: Path, skip: bool) -> None:
         return
     found = _scan_for_markers(gguf_path)
     missing = [m.decode() for m in REQUIRED_GGUF_MARKERS if m not in found]
+    for group in REQUIRED_GGUF_MARKER_ALTERNATIVES:
+        if not any(marker in found for marker in group):
+            missing.append("one of " + "/".join(marker.decode() for marker in group))
     if missing:
         raise SystemExit(
             f"refusing to publish {gguf_path.name}: GGUF header is missing "

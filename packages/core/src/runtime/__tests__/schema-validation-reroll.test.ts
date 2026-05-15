@@ -94,6 +94,15 @@ const INVALID_RESPONSE = JSON.stringify({
 	parameters: {},
 });
 
+const PATTERN_SCHEMA: JsonSchema = {
+	type: "object",
+	properties: {
+		id: { type: "string", pattern: "^task-[0-9]+$" },
+	},
+	required: ["id"],
+	additionalProperties: false,
+};
+
 // ─── parseAndValidate ─────────────────────────────────────────────────────
 
 describe("parseAndValidate", () => {
@@ -125,6 +134,17 @@ describe("parseAndValidate", () => {
 		expect(result.parsed).toBeNull();
 		expect(result.parseError).toMatch(/parse/i);
 		expect(result.errors[0]).toMatch(/parse/i);
+	});
+
+	it("enforces string pattern constraints even when they are not grammar-compiled", () => {
+		const result = parseAndValidate(
+			JSON.stringify({ id: "project-123" }),
+			PATTERN_SCHEMA,
+		);
+
+		expect(result.valid).toBe(false);
+		expect(result.failedSchemaPath).toBe("id");
+		expect(result.errors[0]).toContain("does not match pattern ^task-[0-9]+$");
 	});
 });
 

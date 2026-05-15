@@ -46,9 +46,7 @@ function loadProfileEnv(): void {
     if (applied > 0) {
       console.log(`[live] loaded ${applied} env vars from ~/.profile`);
     }
-  } catch {
-    // ignore profile load failures
-  }
+  } catch {}
 }
 
 export function installTestEnv(): { cleanup: () => void; tempHome: string } {
@@ -140,9 +138,7 @@ export function installTestEnv(): { cleanup: () => void; tempHome: string } {
     restoreEnv(restore);
     try {
       fs.rmSync(tempHome, { recursive: true, force: true });
-    } catch {
-      // ignore cleanup errors
-    }
+    } catch {}
   };
 
   return { cleanup, tempHome };

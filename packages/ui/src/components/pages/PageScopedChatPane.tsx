@@ -19,6 +19,7 @@ import type {
 } from "../../api/client-types";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
+import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { useApp } from "../../state";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
 import { ConnectorAccountPicker } from "../chat/ConnectorAccountPicker";
@@ -422,6 +423,7 @@ export function PageScopedChatPane({
     async (options?: {
       channelType?: ConversationChannelType;
       images?: ImageAttachment[];
+      metadata?: Record<string, unknown>;
       text?: string;
     }) => {
       const raw = (options?.text ?? input).trim();
@@ -447,7 +449,7 @@ export function PageScopedChatPane({
           sourceConversationId,
         });
       const metadata = mergeConnectorSendAsMetadata(
-        routingMetadata,
+        { ...routingMetadata, ...(options?.metadata ?? {}) },
         sendAsMetadata,
       );
 
@@ -662,6 +664,31 @@ export function PageScopedChatPane({
       window.removeEventListener(CHAT_PREFILL_EVENT, handlePrefill);
     };
   }, [voice.isListening, voice.stopListening]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || scope !== "page-lifeops") return;
+    if (!conversation || sending) return;
+
+    const consumeLaunchPayload = () => {
+      void consumeAssistantLaunchPayloadFromHash(window.location.hash, {
+        allowedRoutes: ["lifeops"],
+        onSendFailure: (payload) => {
+          setInput(payload.text);
+        },
+        sendText: (text, options) =>
+          handleSend({
+            metadata: options.metadata,
+            text,
+          }),
+      });
+    };
+
+    consumeLaunchPayload();
+    window.addEventListener("hashchange", consumeLaunchPayload);
+    return () => {
+      window.removeEventListener("hashchange", consumeLaunchPayload);
+    };
+  }, [conversation, handleSend, scope, sending]);
 
   const handleInputChange = useCallback(
     (value: string) => {

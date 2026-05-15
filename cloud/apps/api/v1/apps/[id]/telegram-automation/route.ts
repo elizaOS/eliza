@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -15,10 +16,6 @@ import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { telegramAppAutomationService } from "@/lib/services/telegram-automation/app-automation";
 import { logger } from "@/lib/utils/logger";
 
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
-
 const automationConfigSchema = z.object({
   enabled: z.boolean().optional(),
   channelId: z.string().optional(),
@@ -32,7 +29,10 @@ const automationConfigSchema = z.object({
   agentCharacterId: z.string().uuid().optional(), // Character voice for posts
 });
 
-async function __hono_GET(request: Request, { params }: RouteParams): Promise<Response> {
+async function __hono_GET(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id: appId } = await params;
 
@@ -54,7 +54,10 @@ async function __hono_GET(request: Request, { params }: RouteParams): Promise<Re
   }
 }
 
-async function __hono_POST(request: Request, { params }: RouteParams): Promise<Response> {
+async function __hono_POST(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id: appId } = await params;
 
@@ -134,7 +137,10 @@ async function __hono_POST(request: Request, { params }: RouteParams): Promise<R
   }
 }
 
-async function __hono_DELETE(request: Request, { params }: RouteParams): Promise<Response> {
+async function __hono_DELETE(
+  request: Request,
+  { params }: RouteContext<{ id: string }>,
+): Promise<Response> {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id: appId } = await params;
 

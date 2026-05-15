@@ -2,7 +2,7 @@
   "name": "@elizaos/plugin-browser",
   "version": "2.0.0-beta.2",
   "type": "module",
-  "description": "Browser plugin: unified BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
+  "description": "Browser plugin: BROWSER action and MANAGE_BROWSER_BRIDGE management action. Owns the workspace browser (electrobun-embedded + jsdom fallback) and the Chrome/Safari companion bridge. Targets are registered with the BrowserService; the agent uses what is available.",
   "main": "./dist/index.js",
   "exports": {
     "./package.json": "./package.json",
@@ -20,6 +20,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",

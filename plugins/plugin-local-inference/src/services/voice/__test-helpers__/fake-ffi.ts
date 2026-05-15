@@ -53,6 +53,7 @@ export function fakeFfi(
 		},
 		cancelTts: () => {},
 		setVerifierCallback: () => ({ close: () => {} }),
+		encodeReferenceSupported: () => false,
 		vadSupported: () => vadSupported,
 		vadOpen: () => 2n,
 		vadProcess: ({ pcm }) => {

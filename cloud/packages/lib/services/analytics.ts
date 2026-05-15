@@ -410,14 +410,11 @@ export class AnalyticsService {
 // Export singleton instance
 export const analyticsService = new AnalyticsService();
 
-// Export individual functions for backward compatibility with existing code
-// These delegate to the service instance
+// Convenience function wrappers for direct import usage
 export const getUsageStats = (
   organizationId: string,
   options?: { startDate?: Date; endDate?: Date },
 ) => analyticsService.getUsageStats(organizationId, options);
-
-export const getUsageStatsSafe = getUsageStats; // Alias for backward compatibility
 
 export const getUsageTimeSeries = (
   organizationId: string,

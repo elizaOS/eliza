@@ -20,8 +20,6 @@
   "dependencies": {
     "@elizaos/core": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "@xterm/addon-fit": "^0.11.0",
-    "@xterm/xterm": "^6.0.0",
     "lucide-react": "^1.0.0"
   },
   "elizaos": {
@@ -37,7 +35,8 @@
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "test:e2e:manual": "vitest run --config ../../vitest.config.ts test/*.live.e2e.test.ts"
   },
   "files": [
     "dist"

@@ -95,6 +95,8 @@ export interface BenchmarkLlmCallUsage {
   completionTokens: number;
   totalTokens: number;
   cachedTokens?: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
 }
 
 /**
@@ -107,6 +109,8 @@ export interface BenchmarkTurnUsage {
   completionTokens: number;
   totalTokens: number;
   cachedTokens: number;
+  cacheReadInputTokens?: number;
+  cacheCreationInputTokens?: number;
   cacheHitRatio: number;
   callCount: number;
   calls: BenchmarkLlmCallUsage[];
@@ -190,6 +194,247 @@ export interface CuaServiceLike {
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function toFiniteNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function pickNumber(
+  record: Record<string, unknown>,
+  keys: string[],
+): number | undefined {
+  for (const key of keys) {
+    const value = toFiniteNumber(record[key]);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function pickRecord(
+  record: Record<string, unknown>,
+  keys: string[],
+): Record<string, unknown> | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (isRecord(value)) return value;
+  }
+  return undefined;
+}
+
+function pickNumberFromSources(
+  sources: Array<Record<string, unknown> | undefined>,
+  keys: string[],
+): number | undefined {
+  for (const source of sources) {
+    if (!source) continue;
+    const value = pickNumber(source, keys);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+export function normalizeBenchmarkModelUsage(
+  payload: unknown,
+): BenchmarkLlmCallUsage | null {
+  if (!isRecord(payload)) return null;
+
+  const tokens = isRecord(payload.tokens) ? payload.tokens : payload;
+  const promptTokens =
+    pickNumberFromSources(
+      [tokens, payload],
+      [
+        "prompt",
+        "promptTokens",
+        "prompt_tokens",
+        "inputTokens",
+        "input_tokens",
+      ],
+    ) ?? 0;
+  const completionTokens =
+    pickNumberFromSources(
+      [tokens, payload],
+      [
+        "completion",
+        "completionTokens",
+        "completion_tokens",
+        "outputTokens",
+        "output_tokens",
+      ],
+    ) ?? 0;
+  const totalTokens =
+    pickNumberFromSources(
+      [tokens, payload],
+      ["total", "totalTokens", "total_tokens"],
+    ) ?? promptTokens + completionTokens;
+  const promptTokenDetails =
+    pickRecord(tokens, ["prompt_tokens_details"]) ??
+    pickRecord(payload, ["prompt_tokens_details"]);
+  const inputTokenDetails =
+    pickRecord(tokens, ["inputTokenDetails", "input_tokens_details"]) ??
+    pickRecord(payload, ["inputTokenDetails", "input_tokens_details"]);
+  const cacheReadInputTokens =
+    pickNumberFromSources(
+      [tokens, payload],
+      [
+        "cacheReadInputTokens",
+        "cache_read_input_tokens",
+        "cacheRead",
+        "cacheReadTokens",
+        "cachedTokens",
+        "cachedInputTokens",
+        "cached_input_tokens",
+        "cached",
+        "cached_tokens",
+      ],
+    ) ??
+    pickNumberFromSources(
+      [promptTokenDetails, inputTokenDetails],
+      [
+        "cached_tokens",
+        "cache_read_input_tokens",
+        "cacheReadInputTokens",
+        "cacheRead",
+        "cacheReadTokens",
+        "cachedTokens",
+        "cachedInputTokens",
+        "cached_input_tokens",
+      ],
+    );
+  const cacheCreationInputTokens =
+    pickNumberFromSources(
+      [tokens, payload],
+      [
+        "cacheCreationInputTokens",
+        "cache_creation_input_tokens",
+        "cacheWrite",
+        "cacheWriteInputTokens",
+        "cacheWriteTokens",
+        "cache_write_input_tokens",
+        "cache_write_tokens",
+      ],
+    ) ??
+    pickNumberFromSources(
+      [promptTokenDetails, inputTokenDetails],
+      [
+        "cache_creation_input_tokens",
+        "cacheCreationInputTokens",
+        "cacheWrite",
+        "cacheWriteInputTokens",
+        "cacheWriteTokens",
+        "cache_write_input_tokens",
+        "cache_write_tokens",
+      ],
+    );
+
+  if (
+    promptTokens === 0 &&
+    completionTokens === 0 &&
+    totalTokens === 0 &&
+    cacheReadInputTokens === undefined &&
+    cacheCreationInputTokens === undefined
+  ) {
+    const hasTokenSignal =
+      pickNumberFromSources(
+        [tokens, payload],
+        [
+          "prompt",
+          "promptTokens",
+          "prompt_tokens",
+          "inputTokens",
+          "input_tokens",
+          "completion",
+          "completionTokens",
+          "completion_tokens",
+          "outputTokens",
+          "output_tokens",
+          "total",
+          "totalTokens",
+          "total_tokens",
+        ],
+      ) !== undefined;
+    if (!hasTokenSignal) return null;
+  }
+
+  const provider =
+    typeof payload.provider === "string" && payload.provider.trim().length > 0
+      ? payload.provider.trim()
+      : typeof payload.source === "string" && payload.source.trim().length > 0
+        ? payload.source.trim()
+        : undefined;
+
+  const modelType =
+    typeof payload.type === "string" && payload.type.trim().length > 0
+      ? payload.type.trim()
+      : typeof payload.modelType === "string" &&
+          payload.modelType.trim().length > 0
+        ? payload.modelType.trim()
+        : "unknown";
+
+  return {
+    modelType,
+    ...(provider ? { provider } : {}),
+    ...(typeof payload.source === "string" && payload.source.trim().length > 0
+      ? { source: payload.source.trim() }
+      : {}),
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    ...(cacheReadInputTokens !== undefined
+      ? {
+          cachedTokens: cacheReadInputTokens,
+          cacheReadInputTokens,
+        }
+      : {}),
+    ...(cacheCreationInputTokens !== undefined
+      ? { cacheCreationInputTokens }
+      : {}),
+  };
+}
+
+export function summarizeBenchmarkTurnUsage(
+  calls: BenchmarkLlmCallUsage[],
+): BenchmarkTurnUsage {
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let totalTokens = 0;
+  let cacheReadInputTokens = 0;
+  let cacheCreationInputTokens = 0;
+  let hasCacheReadInputTokens = false;
+  let hasCacheCreationInputTokens = false;
+
+  for (const call of calls) {
+    promptTokens += call.promptTokens;
+    completionTokens += call.completionTokens;
+    totalTokens += call.totalTokens;
+    if (typeof call.cacheReadInputTokens === "number") {
+      cacheReadInputTokens += call.cacheReadInputTokens;
+      hasCacheReadInputTokens = true;
+    } else if (typeof call.cachedTokens === "number") {
+      cacheReadInputTokens += call.cachedTokens;
+      hasCacheReadInputTokens = true;
+    }
+    if (typeof call.cacheCreationInputTokens === "number") {
+      cacheCreationInputTokens += call.cacheCreationInputTokens;
+      hasCacheCreationInputTokens = true;
+    }
+  }
+
+  const cachedTokens = hasCacheReadInputTokens ? cacheReadInputTokens : 0;
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+    cachedTokens,
+    ...(hasCacheReadInputTokens ? { cacheReadInputTokens: cachedTokens } : {}),
+    ...(hasCacheCreationInputTokens ? { cacheCreationInputTokens } : {}),
+    cacheHitRatio: promptTokens > 0 ? cachedTokens / promptTokens : 0,
+    callCount: calls.length,
+    calls,
+  };
 }
 
 export function envFlag(name: string): boolean {

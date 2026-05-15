@@ -1145,8 +1145,8 @@ export interface CodingAgentStatus {
   frameworks?: CodingAgentFrameworkAvailability[];
 }
 
-/** Raw PTY session shape returned by /api/coding-agents. */
-export interface RawPtySession {
+/** Raw ACP session shape returned by /api/coding-agents. */
+export interface RawAcpSession {
   id: string;
   name?: string;
   agentType?: string;
@@ -1156,14 +1156,14 @@ export interface RawPtySession {
 }
 
 /**
- * Maps raw PTY sessions from /api/coding-agents into CodingAgentSession[].
+ * Maps raw ACP sessions from /api/coding-agents into CodingAgentSession[].
  * Extracted as a pure function so it can be unit-tested without instantiating
  * the full ElizaClient.
  */
-export function mapPtySessionsToCodingAgentSessions(
-  ptySessions: RawPtySession[],
+export function mapAcpSessionsToCodingAgentSessions(
+  acpSessions: RawAcpSession[],
 ): CodingAgentSession[] {
-  return ptySessions.map((s) => ({
+  return acpSessions.map((s) => ({
     sessionId: s.id,
     agentType: s.agentType ?? "claude",
     label: (s.metadata?.label as string) ?? s.name ?? s.agentType ?? "Agent",
@@ -1185,7 +1185,7 @@ export function mapPtySessionsToCodingAgentSessions(
   }));
 }
 
-/** Maps persisted coordinator task threads into the existing CodingAgentSession UI shape. */
+/** Maps persisted task threads into the existing CodingAgentSession UI shape. */
 export function mapTaskThreadsToCodingAgentSessions(
   taskThreads: CodingAgentTaskThread[],
 ): CodingAgentSession[] {

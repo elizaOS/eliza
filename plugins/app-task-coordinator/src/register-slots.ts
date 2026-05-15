@@ -3,7 +3,7 @@
  * with app-core's slot registry at import time.
  *
  * The root app loads this module from its main entry so app-core's slot
- * wrappers — CodingAgentSettingsSection, PtyConsoleBase,
+ * wrappers — CodingAgentSettingsSection,
  * CodingAgentTasksPanel, CodingAgentControlChip — render the real
  * components. Without this import they render as `null` placeholders.
  *

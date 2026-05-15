@@ -4,12 +4,9 @@ Trenches Chat Dataset - Interactive Explorer
 Explore specific aspects of the Trenches Discord chat dataset
 """
 
-import json
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from datetime import datetime, timedelta
-from pathlib import Path
 import argparse
 
 # Set style for better plots

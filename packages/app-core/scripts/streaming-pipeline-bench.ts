@@ -27,10 +27,6 @@ import { InMemoryDatabaseAdapter } from "../../core/src/database/inMemoryAdapter
 import { AgentRuntime } from "../../core/src/runtime";
 import { runWithStreamingContext } from "../../core/src/streaming-context";
 import { ModelType } from "../../core/src/types";
-import {
-	type AcceptedToken,
-	PhraseChunker,
-} from "@elizaos/plugin-local-inference/services";
 import { PhraseChunkedTts } from "../src/services/phrase-chunked-tts";
 
 // ---------------------------------------------------------------------------
@@ -80,7 +76,7 @@ function pct(samples: number[], p: number): number | null {
     sorted.length - 1,
     Math.max(0, Math.ceil((p / 100) * sorted.length) - 1),
   );
-  return sorted[idx]!;
+  return sorted[idx] ?? null;
 }
 
 interface SampleSummary {
@@ -221,6 +217,9 @@ async function runOneTurn(
   _expectedTokens: number,
   useParamsChunk: boolean,
 ): Promise<RunResult> {
+  const { PhraseChunker } = await import(
+    "@elizaos/plugin-local-inference/services"
+  );
   const chunker = new PhraseChunker({
     chunkOn: "punctuation",
     maxTokensPerPhrase: 30,
@@ -246,7 +245,7 @@ async function runOneTurn(
     if (lastChunkAt > 0) interTokenSamples.push(now - lastChunkAt);
     lastChunkAt = now;
 
-    const acceptedToken: AcceptedToken = {
+    const acceptedToken = {
       index: tokenIndex++,
       text: chunk,
       acceptedAt: now,

@@ -161,7 +161,7 @@ function toDate(value: unknown, fallback?: Date): Date {
 }
 
 function getMemoryText(memory: Memory): string {
-  return typeof memory.content?.text === "string" ? memory.content.text : "";
+  return typeof memory.content.text === "string" ? memory.content.text : "";
 }
 
 function getAdvancedMemoryEnvelope(memory: Memory): AdvancedMemoryEnvelope | null {

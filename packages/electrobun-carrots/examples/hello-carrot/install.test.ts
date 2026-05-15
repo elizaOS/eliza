@@ -43,7 +43,8 @@ describe("hello-carrot example", () => {
       const reloaded = loadInstalledCarrot(storeRoot, "hello-carrot");
       expect(reloaded).not.toBeNull();
       expect(reloaded?.viewUrl).toBe("views://view/index.html");
-      expect(dirname(reloaded!.bundleWorkerPath)).toBe(installed.currentDir);
+      if (!reloaded) throw new Error("Expected hello-carrot to reload.");
+      expect(dirname(reloaded.bundleWorkerPath)).toBe(installed.currentDir);
     } finally {
       rmSync(storeRoot, { recursive: true, force: true });
     }
@@ -83,8 +84,7 @@ describe("hello-carrot example", () => {
 
       worker.terminate();
 
-      // Bootstrap-generated context paths
-      const stateDir = join(installed.stateDir);
+      const stateDir = installed.stateDir;
       const statePath = join(stateDir, "state.json");
       const logsPath = join(stateDir, "logs.txt");
 

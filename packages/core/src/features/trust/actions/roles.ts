@@ -12,6 +12,7 @@ import {
 	type UUID,
 	type World,
 } from "../../../types/index.ts";
+import { isObjectRecord as isRecord } from "../../../utils/type-guards.ts";
 
 const canModifyRole = (
 	currentRole: Role,
@@ -25,10 +26,6 @@ const canModifyRole = (
 interface RoleAssignment {
 	entityId: string;
 	newRole: Role;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeRole(value: unknown): Role | null {

@@ -19,7 +19,6 @@
  * @module first-time-setup
  */
 
-import type { CloudOnboardingResult } from "@elizaos/plugin-elizacloud";
 import type { StylePreset } from "@elizaos/shared";
 import {
   buildDefaultElizaCloudServiceRouting,
@@ -45,6 +44,13 @@ import { pickRandomNames } from "./onboarding-names.ts";
 // ---------------------------------------------------------------------------
 
 type FirstTimeSetupCloudResult = CloudOnboardingResult;
+
+interface CloudOnboardingResult {
+  apiKey: string;
+  agentId: string | undefined;
+  baseUrl: string;
+  bridgeUrl?: string;
+}
 
 // Lazy: calling getStylePresets() at module init triggers a TDZ on
 // DEFAULT_LANGUAGE inside onboarding-presets.ts via a circular import. Defer

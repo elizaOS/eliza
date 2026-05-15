@@ -393,6 +393,15 @@ def _make_fused_gguf(path: Path) -> None:
     path.write_bytes(
         b"GGUF\x03\x00\x00\x00"
         + b"\x00" * 64
+        + b"tensor_type: q4_polar block_type qjl1_256 cache_type tbq3_0\n"
+        + b"\x00" * 1024,
+    )
+
+
+def _make_missing_tbq_gguf(path: Path) -> None:
+    path.write_bytes(
+        b"GGUF\x03\x00\x00\x00"
+        + b"\x00" * 64
         + b"tensor_type: q4_polar block_type qjl1_256\n"
         + b"\x00" * 1024,
     )
@@ -475,6 +484,21 @@ def test_eliza1_refuses_stock_gguf(publish_eliza1, tmp_path, monkeypatch):
         ])
     msg = str(excinfo.value)
     assert "q4_polar" in msg.lower() or "qjl1_256" in msg.lower()
+
+
+def test_eliza1_refuses_missing_turboquant_marker(publish_eliza1, tmp_path, monkeypatch):
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    bundle = tmp_path / "qwen3.5-4b-optimized"
+    _make_eliza1_bundle(bundle, fused=True)
+    _make_missing_tbq_gguf(bundle / f"{bundle.name}.gguf")
+
+    with pytest.raises(SystemExit) as excinfo:
+        publish_eliza1.main([
+            "--model-dir", str(bundle),
+            "--repo-id", "elizaos/qwen3.5-4b-optimized",
+            "--dry-run",
+        ])
+    assert "tbq3_0" in str(excinfo.value).lower()
 
 
 def test_eliza1_refuses_non_elizaos_org(publish_eliza1, tmp_path):

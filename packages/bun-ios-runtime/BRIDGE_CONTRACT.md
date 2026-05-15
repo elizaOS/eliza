@@ -25,6 +25,16 @@ ElizaBunEngine.framework/ElizaBunEngine
 The app loads the framework with `dlopen` and resolves the symbols below with
 `dlsym`.
 
+This is the only dynamic loading allowed for the iOS full-Bun path: loading the
+signed `ElizaBunEngine.framework` already embedded in the app bundle. The engine
+binary itself must not import arbitrary dynamic loader, process-spawn, JIT, or
+executable-memory permission APIs. App Store-compatible builds must declare:
+
+```text
+ElizaBunEngineNoJIT = true
+ElizaBunEngineExecutionProfile = ios-app-store-nojit
+```
+
 ## ABI
 
 All strings are UTF-8. JSON inputs are UTF-8 JSON strings. Functions return
@@ -133,6 +143,12 @@ The full engine must support:
 - PGlite WASM assets staged next to `agent-bundle.js`.
 - The existing llama bridge surface for local inference.
 - Enough Node stream/stdin/stdout compatibility for `ios-bridge --stdio`.
+
+The full engine must not require `Bun.ffi`, `dlopen`, `dlsym`, `posix_spawn`,
+`fork`, `execve`, `system`, `MAP_JIT`, `pthread_jit_write_protect_np`,
+`mach_vm_protect`, or `vm_protect` in App Store slices. Local model and runtime
+assets may be opened as data files, but they must not be executable payloads or
+downloaded native code.
 
 The current `ios-bridge` dispatches high-traffic foreground routes in process,
 buffers legacy local-inference HTTP handlers when needed, and serves native

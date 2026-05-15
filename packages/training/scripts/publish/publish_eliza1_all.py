@@ -9,13 +9,13 @@ do publish (the privacy-filtered SFT datasets, the eval/bench results, the
 honest pending-status cards on the bundle repos) and prints a single summary.
 
 Publishable today (no fork build / no held-out-quality gate needed):
-  - dataset ``elizaos/eliza-1-training``  (the broader SFT corpus — refreshed
+  - dataset ``elizalabs/eliza-1-training``  (the broader SFT corpus — refreshed
     only if ``data/final/{train,val,test}.jsonl`` exists locally)
-  - dataset ``elizaos/eliza-1-evals``     (the eval/bench results, kernel-verify
+  - dataset ``elizalabs/eliza-1-evals``     (the eval/bench results, kernel-verify
     evidence, the ``eliza1_gates.yaml`` thresholds, throughput snapshots)
 
 Gated (this script reports the blocker, never bypasses it):
-  - the active device bundles ``elizaos/eliza-1/bundles/<tier>`` — gated on the
+  - the active device bundles ``elizalabs/eliza-1/bundles/<tier>`` — gated on the
     fork-built GGUFs + per-backend dispatch/verify evidence + the runnable-on-
     base evals + the released license review (orchestrator stage 2/3/4).
   - the fine-tuned ``recommended``-channel weights — gated on the full-corpus
@@ -49,13 +49,14 @@ if str(TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
-ORG = "elizaos"
+ORG = "elizalabs"
+MODEL_REPO_ID = M.ELIZA_1_HF_REPO
 
 # Active Eliza-1 device bundles. Retired Qwen3 size-specific repos are handled
 # by deprecation tooling, not by the current release publisher.
 BUNDLE_TIERS = M.ELIZA_1_TIERS
 
-# Where the staged bundles live on a dev box (see RELEASE_V1.md). The path can
+# Where the staged bundles live on a dev box (see docs/eliza-1-pipeline/06-test-matrix.md). The path can
 # be overridden with --bundles-root.
 DEFAULT_BUNDLES_ROOT = Path.home() / ".eliza" / "local-inference" / "models"
 
@@ -150,12 +151,12 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
 
 def _bundle_dry_run(tier: str, bundle_dir: Path) -> Outcome:
     """Dry-run the bundle orchestrator and turn its verdict into an Outcome."""
-    repo = f"{ORG}/eliza-1"
+    repo = MODEL_REPO_ID
     remote = f"bundles/{tier}/"
     if not bundle_dir.is_dir():
         return Outcome(repo, "model-bundle", "pending",
                        f"{remote}: no staged bundle at {bundle_dir} — assemble it "
-                       "(RELEASE_V1.md), then the orchestrator dry-run reports the gate")
+                       "(docs/eliza-1-pipeline/06-test-matrix.md), then the orchestrator dry-run reports the gate")
     cmd = [sys.executable, "-m", "scripts.publish.orchestrator",
            "--tier", tier, "--bundle-dir", str(bundle_dir), "--dry-run"]
     proc = subprocess.run(cmd, cwd=str(TRAINING_ROOT), capture_output=True, text=True)
@@ -192,7 +193,7 @@ def _bundle_status(bundles_root: Path) -> list[Outcome]:
 def _sft_weights_status(tier: str = "0_8b") -> Outcome:
     """Report whether a full-corpus active-tier SFT is done + cleared its gate."""
     ckpt_root = TRAINING_ROOT / "checkpoints"
-    repo = f"{ORG}/eliza-1"
+    repo = MODEL_REPO_ID
     runs = sorted(ckpt_root.glob(f"eliza-1-{tier}-apollo-fullcorpus-*")) if ckpt_root.is_dir() else []
     if not runs:
         return Outcome(repo, "model-weights", "pending",

@@ -19,8 +19,11 @@ import {
   type CheckinSourceService,
 } from "../lifeops/checkin/checkin-service.js";
 import type { CheckinKind, CheckinReport } from "../lifeops/checkin/types.js";
-import type { ScheduledTaskSeed } from "./contract-stubs.js";
 import type { DefaultPack } from "./registry-types.js";
+import {
+  compileTaskDefinition,
+  type RecapTaskDefinition,
+} from "./task-definitions.js";
 
 export const MORNING_BRIEF_PACK_KEY = "morning-brief";
 
@@ -28,8 +31,8 @@ export const MORNING_BRIEF_RECORD_IDS = {
   brief: "default-pack:morning-brief:assembler",
 } as const;
 
-const morningBriefRecord: ScheduledTaskSeed = {
-  kind: "recap",
+const morningBriefDefinition: RecapTaskDefinition = {
+  definitionKind: "recap",
   promptInstructions:
     "Assemble the owner's morning brief from LifeOps source data: overdue todos, today's meetings, yesterday's wins, tracked habits, inbox/calendar/contacts/promises. Rank for genuinely interesting, important, reply-needed, or schedule-changing items. Keep it concise. No invented facts; if a source is unavailable, say so in one clause. Use the existing morning-checkin assembler — do not regenerate the briefing structure.",
   contextRequest: {
@@ -54,12 +57,15 @@ const morningBriefRecord: ScheduledTaskSeed = {
   },
 };
 
+const morningBriefRecord = compileTaskDefinition(morningBriefDefinition);
+
 export const morningBriefPack: DefaultPack = {
   key: MORNING_BRIEF_PACK_KEY,
   label: "Morning brief",
   description:
     "Assembled morning briefing on wake — overdue todos, meetings, wins, inbox, calendar, contacts, promises. Delegates assembly to the scheduled briefing service, so a fresh user gets the same content the planner would.",
   defaultEnabled: true,
+  requiredCapabilities: [],
   records: [morningBriefRecord],
   uiHints: {
     summaryOnDayOne:

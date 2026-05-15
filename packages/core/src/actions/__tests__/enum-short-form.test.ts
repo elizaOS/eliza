@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	executePlannedToolCall,
 	expandEnumShortForm,
@@ -47,13 +47,6 @@ function makeRuntime(actions: Action[]): IAgentRuntime {
 }
 
 describe("Wave 2-D enum short-form completion", () => {
-	beforeEach(() => {
-		process.env.ELIZA_SHORT_FORM_ENUMS = "1";
-	});
-	afterEach(() => {
-		delete process.env.ELIZA_SHORT_FORM_ENUMS;
-	});
-
 	it("expands { parameters: '<enum>' } into the canonical shape", () => {
 		const action = makeAction({});
 		const expanded = expandEnumShortForm(action, {
@@ -68,15 +61,6 @@ describe("Wave 2-D enum short-form completion", () => {
 		const action = makeAction({});
 		const expanded = expandEnumShortForm(action, { mode: "decline" });
 		expect(expanded).toEqual({ mode: "decline" });
-	});
-
-	it("does nothing when the flag is unset", () => {
-		delete process.env.ELIZA_SHORT_FORM_ENUMS;
-		const action = makeAction({});
-		const expanded = expandEnumShortForm(action, {
-			parameters: "accept",
-		});
-		expect(expanded).toEqual({ parameters: "accept" });
 	});
 
 	it("does nothing when the action has multiple parameters", () => {

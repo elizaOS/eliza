@@ -82,7 +82,15 @@ DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.gguf",
 )
-VISION_TIERS: Final[set[str]] = {"4b"}
+VISION_TIERS: Final[set[str]] = {
+    "0_8b",
+    "2b",
+    "4b",
+    "9b",
+    "27b",
+    "27b-256k",
+    "27b-1m",
+}
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "0_8b": (2500, 3700),
@@ -966,7 +974,7 @@ def _write_release_evidence(
     # NON-PUBLISHABLE bundle (stand-in bytes, no eval/kernel evidence), so
     # `publishEligible` and all the `final.*` (except `hashes`) stay false and
     # the `publishBlockingReasons` are kept. A real `base-v1` publish requires
-    # the runbook in RELEASE_V1.md (real fork-built GGUFs, real quant sidecars,
+    # the runbook in docs/eliza-1-pipeline/06-test-matrix.md (real fork-built GGUFs, real quant sidecars,
     # real evals, real platform evidence) — only then do the `final.*` flags
     # flip true and `evidence/release.json` becomes `publishEligible: true`.
     release_state = "local-standin"
@@ -1040,7 +1048,7 @@ def _write_release_evidence(
             f"release shape `{release_state}` requested, but this is a local "
             "staging bundle: bytes are stand-ins, not fork-built GGUFs / real "
             "quant sidecars; eval and platform evidence are missing. Run the "
-            "RELEASE_V1.md runbook to produce a publishable bundle.",
+            "docs/eliza-1-pipeline/06-test-matrix.md runbook to produce a publishable bundle.",
             *reasons,
         ]
     _json_write(bundle_dir / "evidence" / "release.json", evidence)
@@ -1380,7 +1388,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "Requires --source-models so per-component provenance can be "
             "recorded. NOTE: this staging helper still produces a "
             "NON-PUBLISHABLE bundle (stand-in bytes, no eval/kernel evidence) "
-            "— see RELEASE_V1.md for the real publish path."
+            "-- see docs/eliza-1-pipeline/06-test-matrix.md for the real publish path."
         ),
     )
     ap.add_argument(

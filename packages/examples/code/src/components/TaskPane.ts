@@ -137,10 +137,7 @@ export class TaskPane implements Focusable {
     this.props = props;
   }
 
-  resize(width: number, height: number): void {
-    void width;
-    void height;
-  }
+  resize(_width: number, _height: number): void {}
 
   syncFocus(focused: boolean): void {
     this.focused = focused;

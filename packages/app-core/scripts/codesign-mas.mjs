@@ -3,9 +3,11 @@
  * Mac App Store post-package codesign.
  *
  * Walks a built .app bundle bottom-up, signing every Mach-O binary with the
- * child entitlements (mas-child.entitlements: app-sandbox + cs.inherit), then
- * signs the outer .app with the parent entitlements (mas.entitlements). Final
- * step verifies the bundle and (optionally) productbuilds a .pkg installer.
+ * narrowest applicable entitlements. Most nested code gets
+ * mas-child.entitlements (app-sandbox + cs.inherit). The bundled Bun helper,
+ * which imports Apple's JIT write-protection APIs on macOS, gets
+ * mas-bun.entitlements (child entitlements + allow-jit). The outer .app gets
+ * mas.entitlements and does not receive broad code-signing exceptions.
  *
  * Apple TN2206 mandates inside-out signing: deepest binaries first, then
  * frameworks (sealing their resources), then the outer .app. Anything not in
@@ -24,7 +26,7 @@
  *   ELIZA_MAS_INSTALLER_IDENTITY
  *   ELIZA_APPLE_TEAM_ID
  *
- * Exits non-zero on any signing or verification failure. No try/catch sludge.
+ * Exits non-zero on any signing or verification failure.
  */
 
 import { spawnSync } from "node:child_process";
@@ -39,6 +41,13 @@ import {
 } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  assertMasEntitlementRuntimeEvidence,
+  assertReviewedEntitlementsFile,
+  assertReviewedEntitlementsText,
+  loadEntitlementReviewManifest,
+  scanAppleAppBundleForNativeRuntimeSignals,
+} from "./lib/apple-entitlement-audit.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -51,6 +60,7 @@ const CHILD_ENTITLEMENTS = path.join(
   ENTITLEMENTS_DIR,
   "mas-child.entitlements",
 );
+const BUN_ENTITLEMENTS = path.join(ENTITLEMENTS_DIR, "mas-bun.entitlements");
 
 const MACHO_MAGIC = new Set([
   0xfeedface,
@@ -60,6 +70,56 @@ const MACHO_MAGIC = new Set([
   0xcafebabe,
   0xbebafeca, // fat
 ]);
+
+const FORBIDDEN_MAS_CODE_SIGNING_EXCEPTIONS = [
+  "com.apple.security.cs.allow-unsigned-executable-memory",
+  "com.apple.security.cs.disable-library-validation",
+  "com.apple.security.cs.allow-dyld-environment-variables",
+];
+
+/**
+ * Mach-O basenames that get the Bun-specific MAS entitlements
+ * (`mas-bun.entitlements`: app-sandbox + cs.inherit + allow-jit).
+ *
+ * Kept as a Set keyed by basename so the smoke harness and the signer agree
+ * on which binaries are "the Bun helper". Today there is exactly one entry
+ * because we ship one Bun runtime; if a fat-bundle ever ships a renamed Bun
+ * helper, add the basename here.
+ */
+export const BUN_HELPER_BINARY_NAMES = new Set(["bun"]);
+
+/**
+ * True when `target` is the Bun runtime helper inside `appPath` — the only
+ * Mach-O that should receive `mas-bun.entitlements`.
+ *
+ * Anchors on the relative location `Contents/MacOS/<basename>` so a stray
+ * `bun`-named binary buried deeper in the bundle does not silently pick up
+ * the JIT entitlement.
+ */
+export function isBunHelperBinary(target, appPath) {
+  const rel = path.relative(appPath, target).split(path.sep).join("/");
+  const basename = path.basename(rel);
+  if (!BUN_HELPER_BINARY_NAMES.has(basename)) return false;
+  return rel === `Contents/MacOS/${basename}`;
+}
+
+function parentAppExecutablePath(appPath) {
+  const infoPlist = path.join(appPath, "Contents", "Info.plist");
+  if (!existsSync(infoPlist)) return null;
+  const content = readFileSync(infoPlist, "utf8");
+  const match = content.match(
+    /<key>CFBundleExecutable<\/key>\s*<string>([^<]+)<\/string>/,
+  );
+  const executable = match?.[1]?.trim();
+  return executable
+    ? path.join(appPath, "Contents", "MacOS", executable)
+    : null;
+}
+
+function isParentAppExecutable(target, appPath) {
+  const executablePath = parentAppExecutablePath(appPath);
+  return executablePath ? path.resolve(target) === path.resolve(executablePath) : false;
+}
 
 function parseArgs(argv) {
   const out = {};
@@ -161,6 +221,21 @@ function runOrPrint(cmd, args, dryRun) {
   return result;
 }
 
+function runCapture(cmd, args) {
+  const display = `${cmd} ${args.map((a) => (a.includes(" ") ? `"${a}"` : a)).join(" ")}`;
+  const result = spawnSync(cmd, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  if (result.status !== 0) {
+    process.stderr.write(result.stderr ?? "");
+    process.stdout.write(result.stdout ?? "");
+    process.exitCode = result.status ?? 1;
+    throw new Error(`Command failed (${result.status}): ${display}`);
+  }
+  return result.stdout;
+}
+
 function plistLint(filePath) {
   if (!existsSync(filePath)) {
     throw new Error(`Entitlements file missing: ${filePath}`);
@@ -172,6 +247,66 @@ function plistLint(filePath) {
   if (!/<plist\b[^>]*>[\s\S]*<\/plist>/i.test(content)) {
     throw new Error(`Entitlements not a well-formed plist: ${filePath}`);
   }
+}
+
+function assertSourceEntitlementsReviewed(manifest) {
+  assertReviewedEntitlementsFile({
+    filePath: PARENT_ENTITLEMENTS,
+    targetId: "macos-mas-app",
+    manifest,
+    label: "macOS MAS parent entitlements",
+  });
+  assertReviewedEntitlementsFile({
+    filePath: CHILD_ENTITLEMENTS,
+    targetId: "macos-mas-child",
+    manifest,
+    label: "macOS MAS child entitlements",
+  });
+  assertReviewedEntitlementsFile({
+    filePath: BUN_ENTITLEMENTS,
+    targetId: "macos-mas-bun",
+    manifest,
+    label: "macOS MAS Bun helper entitlements",
+  });
+}
+
+function assertNoForbiddenMasExceptions(filePath) {
+  const content = readFileSync(filePath, "utf8");
+  const forbidden = FORBIDDEN_MAS_CODE_SIGNING_EXCEPTIONS.filter((key) =>
+    content.includes(key),
+  );
+  if (forbidden.length === 0) return;
+  throw new Error(
+    `MAS entitlements file contains forbidden code-signing exception(s): ${filePath}\n` +
+      forbidden.map((key) => `  - ${key}`).join("\n"),
+  );
+}
+
+function assertSignedEntitlements(
+  target,
+  targetId,
+  label,
+  manifest,
+  { allowAbsent = false } = {},
+) {
+  const entitlementsXml = runCapture("codesign", [
+    "-d",
+    "--entitlements",
+    ":-",
+    target,
+  ]);
+  if (!/<dict\b/i.test(entitlementsXml)) {
+    if (allowAbsent) {
+      return null;
+    }
+    throw new Error(`${label}: signed code has no readable entitlements`);
+  }
+  return assertReviewedEntitlementsText({
+    plistXml: entitlementsXml,
+    targetId,
+    manifest,
+    label,
+  });
 }
 
 function sign(target, entitlements, identity, dryRun) {
@@ -190,6 +325,21 @@ function sign(target, entitlements, identity, dryRun) {
     ],
     dryRun,
   );
+}
+
+function entitlementsForMacho(target, appPath) {
+  return isBunHelperBinary(target, appPath)
+    ? BUN_ENTITLEMENTS
+    : CHILD_ENTITLEMENTS;
+}
+
+function entitlementTargetIdForMacho(target, appPath) {
+  if (isParentAppExecutable(target, appPath)) {
+    return "macos-mas-app";
+  }
+  return isBunHelperBinary(target, appPath)
+    ? "macos-mas-bun"
+    : "macos-mas-child";
 }
 
 function main() {
@@ -231,6 +381,12 @@ function main() {
 
   plistLint(PARENT_ENTITLEMENTS);
   plistLint(CHILD_ENTITLEMENTS);
+  plistLint(BUN_ENTITLEMENTS);
+  assertNoForbiddenMasExceptions(PARENT_ENTITLEMENTS);
+  assertNoForbiddenMasExceptions(CHILD_ENTITLEMENTS);
+  assertNoForbiddenMasExceptions(BUN_ENTITLEMENTS);
+  const entitlementManifest = loadEntitlementReviewManifest();
+  assertSourceEntitlementsReviewed(entitlementManifest);
 
   console.log(`MAS codesign for ${appPath}`);
   console.log(`  identity: ${identity}`);
@@ -239,16 +395,16 @@ function main() {
   }
   console.log(`  parent entitlements: ${PARENT_ENTITLEMENTS}`);
   console.log(`  child entitlements:  ${CHILD_ENTITLEMENTS}`);
+  console.log(`  bun entitlements:    ${BUN_ENTITLEMENTS}`);
   if (dryRun) console.log("  mode: DRY RUN — no commands will execute");
 
   const { machos, bundles } = findSigningUnits(appPath);
 
-  // 1. Sign all loose Mach-O binaries with child entitlements (deepest first).
-  console.log(
-    `\nSigning ${machos.length} Mach-O binaries (child entitlements):`,
-  );
+  // 1. Sign all loose Mach-O binaries with the narrowest matching
+  // entitlements (deepest first).
+  console.log(`\nSigning ${machos.length} Mach-O binaries:`);
   for (const target of machos) {
-    sign(target, CHILD_ENTITLEMENTS, identity, dryRun);
+    sign(target, entitlementsForMacho(target, appPath), identity, dryRun);
   }
 
   // 2. Sign nested bundles (frameworks, helper apps, xpc, .bundle) deepest-first.
@@ -270,6 +426,50 @@ function main() {
     ["--verify", "--deep", "--strict", "--verbose=2", appPath],
     dryRun,
   );
+
+  if (!dryRun) {
+    console.log(`\nAuditing signed entitlements:`);
+    const nativeScan = scanAppleAppBundleForNativeRuntimeSignals(appPath);
+    for (const target of machos) {
+      const targetId = entitlementTargetIdForMacho(target, appPath);
+      const entitlements = assertSignedEntitlements(
+        target,
+        targetId,
+        `signed Mach-O ${path.relative(appPath, target)}`,
+        entitlementManifest,
+        { allowAbsent: /\.(dylib|so|node)$/i.test(target) },
+      );
+      if (!entitlements) continue;
+      assertMasEntitlementRuntimeEvidence({
+        entitlements,
+        scan: nativeScan,
+        label: `signed Mach-O ${path.relative(appPath, target)}`,
+      });
+    }
+    for (const target of bundles) {
+      assertSignedEntitlements(
+        target,
+        "macos-mas-child",
+        `signed nested bundle ${path.relative(appPath, target)}`,
+        entitlementManifest,
+      );
+    }
+    assertSignedEntitlements(
+      appPath,
+      "macos-mas-app",
+      `signed parent app ${path.basename(appPath)}`,
+      entitlementManifest,
+    );
+
+    console.log(`\nNative runtime evidence scan:`);
+    console.log(`  Mach-O files: ${nativeScan.machOCount}`);
+    console.log(
+      `  JIT/executable-memory findings: ${nativeScan.jitExecutableMemory.length}`,
+    );
+    console.log(
+      `  native library findings: ${nativeScan.dynamicLibraryLoading.length}`,
+    );
+  }
 
   // 5. Optional productbuild for MAS submission.
   if (installerIdentity) {
@@ -294,4 +494,8 @@ function main() {
   console.log(`\n${dryRun ? "[dry-run] " : ""}Done.`);
 }
 
-main();
+// Run only when invoked as a script; the smoke harness imports
+// `BUN_HELPER_BINARY_NAMES` / `isBunHelperBinary` from this module.
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  main();
+}

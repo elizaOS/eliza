@@ -316,7 +316,6 @@ class GoogleCloudDatabase:
     
     def _execute_simple_query(self, query: str) -> List[Dict[str, Any]]:
         """Execute a real SQL query against local data"""
-        import re
         
         # Parse table reference
         table_ref = self._parse_table_reference(query)
@@ -1039,7 +1038,7 @@ class GoogleCloudDatabase:
     
     def get_database_stats(self) -> Dict[str, Any]:
         """Get database statistics"""
-        stats = {
+        return {
             'bigquery_datasets': len(self.list_bigquery_datasets()),
             'bigquery_tables': len(self.json_db.load_data(self.bigquery_tables_file)),
             'storage_buckets': len(self.list_storage_buckets()),
@@ -1050,5 +1049,3 @@ class GoogleCloudDatabase:
             'log_buckets': len(self.list_log_buckets()),
             'log_sinks': len(self.list_log_sinks())
         }
-        
-        return stats

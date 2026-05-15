@@ -61,7 +61,7 @@ function isRelationshipsServiceLike(
   return (
     typeof service === "object" &&
     service !== null &&
-    typeof (service as { getContact?: unknown }).getContact === "function"
+    typeof (service as { getContact?: () => unknown }).getContact === "function"
   );
 }
 

@@ -380,7 +380,6 @@ Write-Host "Smoke LOCALAPPDATA: $($env:LOCALAPPDATA)"
 
 Stop-ElizaProcesses
 $env:ELECTROBUN_CONSOLE = "1"
-$env:ELIZA_FORCE_AUTOSTART_AGENT = "1"
 $env:ELIZA_STARTUP_SESSION_ID = $startupSessionId
 $env:ELIZA_STARTUP_SESSION_ID = $startupSessionId
 $env:ELIZA_STARTUP_STATE_FILE = $startupStateFile

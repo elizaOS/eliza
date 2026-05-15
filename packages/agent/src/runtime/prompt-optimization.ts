@@ -83,13 +83,6 @@ const ELIZA_CAPTURE_PROMPTS =
 
 let promptCaptureSeq = 0;
 
-/** When false, context-aware action compaction is skipped entirely. Default: enabled. */
-const ELIZA_ACTION_COMPACTION = (() => {
-  const raw = process.env.ELIZA_ACTION_COMPACTION?.toLowerCase();
-  if (raw === "0" || raw === "false") return false;
-  return true;
-})();
-
 // Track which runtimes have been wrapped to prevent double-installation.
 const installedRuntimes = new WeakSet<AgentRuntime>();
 const usageCaptureInstalledRuntimes = new WeakSet<AgentRuntime>();
@@ -1396,7 +1389,7 @@ export function installPromptOptimizations(
       : renderMessagesForTelemetry(originalMessages ?? []);
     const promptOptimizationTelemetry: PromptOptimizationTelemetry = {
       mode: ELIZA_PROMPT_OPT_MODE,
-      actionCompactionEnabled: ELIZA_ACTION_COMPACTION,
+      actionCompactionEnabled: true,
       originalPromptChars: originalPrompt.length,
       finalPromptChars: originalPrompt.length,
       originalPromptTokens: estimateTokenCount(originalPrompt),
@@ -1435,9 +1428,7 @@ export function installPromptOptimizations(
       // --- Context-aware action compaction (when enabled) ---
       // Strips param detail from actions not relevant to the user's intent.
       // All action names remain visible — only param detail is stripped.
-      let workingPrompt = ELIZA_ACTION_COMPACTION
-        ? compactActionsForIntent(originalPrompt)
-        : originalPrompt;
+      let workingPrompt = compactActionsForIntent(originalPrompt);
       if (workingPrompt !== originalPrompt) {
         promptOptimizationTelemetry.transformations.push(
           `action-compaction:${originalPrompt.length}->${workingPrompt.length}`,
@@ -1447,21 +1438,19 @@ export function installPromptOptimizations(
       // Strip coding agent examples when no coding intent is detected.
       // These are ~4k chars of provider-injected examples that are only
       // useful when the user is asking about code/repos/agents.
-      if (ELIZA_ACTION_COMPACTION) {
-        const beforeCoding = workingPrompt;
-        workingPrompt = compactCodingExamplesForIntent(workingPrompt);
-        if (workingPrompt !== beforeCoding) {
-          promptOptimizationTelemetry.transformations.push(
-            `coding-example-compaction:${beforeCoding.length}->${workingPrompt.length}`,
-          );
-        }
-        const beforeHistory = workingPrompt;
-        workingPrompt = compactConversationHistory(workingPrompt);
-        if (workingPrompt !== beforeHistory) {
-          promptOptimizationTelemetry.transformations.push(
-            `conversation-history-presentation-compaction:${beforeHistory.length}->${workingPrompt.length}`,
-          );
-        }
+      const beforeCoding = workingPrompt;
+      workingPrompt = compactCodingExamplesForIntent(workingPrompt);
+      if (workingPrompt !== beforeCoding) {
+        promptOptimizationTelemetry.transformations.push(
+          `coding-example-compaction:${beforeCoding.length}->${workingPrompt.length}`,
+        );
+      }
+      const beforeHistory = workingPrompt;
+      workingPrompt = compactConversationHistory(workingPrompt);
+      if (workingPrompt !== beforeHistory) {
+        promptOptimizationTelemetry.transformations.push(
+          `conversation-history-presentation-compaction:${beforeHistory.length}->${workingPrompt.length}`,
+        );
       }
 
       // --- Full prompt compaction (compact mode only) ---

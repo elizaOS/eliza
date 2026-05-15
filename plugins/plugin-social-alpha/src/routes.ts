@@ -1,33 +1,54 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { IAgentRuntime, Route } from "@elizaos/core";
+import type {
+	IAgentRuntime,
+	Route,
+	RouteRequest,
+	RouteResponse,
+} from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { CommunityInvestorService } from "./service";
 import { ServiceType } from "./types";
 
+type JsonResponseBody = Record<string, unknown> | unknown[];
+type NodeStyleRouteResponse = RouteResponse & {
+	writeHead(status: number, headers: Record<string, string>): void;
+	end(chunk?: string): RouteResponse;
+};
+
+function errorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function nodeResponse(res: RouteResponse): NodeStyleRouteResponse {
+	return res as NodeStyleRouteResponse;
+}
+
 // Helper to send success response
-function sendSuccess(res: any, data: any, status = 200) {
-	res.writeHead(status, { "Content-Type": "application/json" });
-	res.end(JSON.stringify({ success: true, data }));
+function sendSuccess(res: RouteResponse, data: JsonResponseBody, status = 200) {
+	const nodeRes = nodeResponse(res);
+	nodeRes.writeHead(status, { "Content-Type": "application/json" });
+	nodeRes.end(JSON.stringify({ success: true, data }));
 }
 
 // Helper to send error response
 function sendError(
-	res: any,
+	res: RouteResponse,
 	status: number,
 	code: string,
 	message: string,
 	details?: string,
 ) {
-	res.writeHead(status, { "Content-Type": "application/json" });
-	res.end(
+	const nodeRes = nodeResponse(res);
+	nodeRes.writeHead(status, { "Content-Type": "application/json" });
+	nodeRes.end(
 		JSON.stringify({ success: false, error: { code, message, details } }),
 	);
 }
 
 async function getLeaderboardDataHandler(
-	_req: any,
-	res: any,
+	_req: RouteRequest,
+	res: RouteResponse,
 	runtime: IAgentRuntime,
 ) {
 	const service = runtime.getService<CommunityInvestorService>(
@@ -45,23 +66,26 @@ async function getLeaderboardDataHandler(
 		const leaderboardData = await service.getLeaderboardData(runtime);
 		// Return the leaderboard data directly as an array, not wrapped in an object
 		sendSuccess(res, leaderboardData);
-	} catch (error: any) {
-		logger.error("[API /leaderboard] Error fetching leaderboard data:", error);
+	} catch (error: unknown) {
+		logger.error(
+			`[API /leaderboard] Error fetching leaderboard data: ${errorMessage(error)}`,
+		);
 		sendError(
 			res,
 			500,
 			"LEADERBOARD_ERROR",
 			"Failed to fetch leaderboard data",
-			error.message,
+			errorMessage(error),
 		);
 	}
 }
 
 async function communityInvestorPanelHandler(
-	_req: any,
-	res: any,
+	_req: RouteRequest,
+	res: RouteResponse,
 	runtime: IAgentRuntime,
 ) {
+	const nodeRes = nodeResponse(res);
 	try {
 		const pluginDistPath = path.dirname(
 			new URL(import.meta.url).pathname.replace(/^\/[A-Z]:/, ""),
@@ -93,8 +117,8 @@ async function communityInvestorPanelHandler(
 			logger.debug(
 				`[COMMUNITY INVESTOR PANEL] Serving HTML (first 250 chars after potential injection): ${html.substring(0, 250)}`,
 			);
-			res.writeHead(200, { "Content-Type": "text/html" });
-			res.end(html);
+			nodeRes.writeHead(200, { "Content-Type": "text/html" });
+			nodeRes.end(html);
 		} else {
 			logger.error(
 				`[COMMUNITY INVESTOR PANEL] Frontend index.html not found at ${indexPath}`,
@@ -127,32 +151,33 @@ async function communityInvestorPanelHandler(
     </div>
 </body>
 </html>`;
-			res.writeHead(200, { "Content-Type": "text/html" });
-			res.end(html);
+			nodeRes.writeHead(200, { "Content-Type": "text/html" });
+			nodeRes.end(html);
 		}
-	} catch (error: any) {
+	} catch (error: unknown) {
 		logger.error(
-			"[COMMUNITY INVESTOR PANEL] Error serving leaderboard panel:",
-			error,
+			`[COMMUNITY INVESTOR PANEL] Error serving leaderboard panel: ${errorMessage(error)}`,
 		);
 		sendError(
 			res,
 			500,
 			"PANEL_ERROR",
 			"Failed to load leaderboard panel",
-			error.message,
+			errorMessage(error),
 		);
 	}
 }
 
 async function communityInvestorAssetsHandler(
-	req: any,
-	res: any,
+	req: RouteRequest,
+	res: RouteResponse,
 	_runtime: IAgentRuntime,
 ) {
+	const nodeRes = nodeResponse(res);
 	try {
+		const requestedAssetPath = req.path ?? "";
 		logger.debug(
-			`[COMMUNITY INVESTOR ASSET HANDLER] Called with req.path: ${req.path}, req.originalUrl: ${req.originalUrl}`,
+			`[COMMUNITY INVESTOR ASSET HANDLER] Called with req.path: ${requestedAssetPath}, req.originalUrl: ${req.url ?? ""}`,
 		);
 		const pluginDistPath = path.dirname(
 			new URL(import.meta.url).pathname.replace(/^\/[A-Z]:/, ""),
@@ -161,7 +186,6 @@ async function communityInvestorAssetsHandler(
 		// Assets are in a subfolder 'assets' within this dist directory.
 		const assetsBasePath = path.join(pluginDistPath, "assets");
 
-		const requestedAssetPath = req.path;
 		const assetsMarker = "/assets/";
 		const assetsStartIndex = requestedAssetPath.indexOf(assetsMarker);
 
@@ -199,20 +223,25 @@ async function communityInvestorAssetsHandler(
 			else if (assetPath.endsWith(".woff")) contentType = "font/woff";
 			else if (assetPath.endsWith(".woff2")) contentType = "font/woff2";
 
-			res.writeHead(200, { "Content-Type": contentType });
-			fileStream.pipe(res);
+			nodeRes.writeHead(200, { "Content-Type": contentType });
+			fileStream.pipe(nodeRes as unknown as NodeJS.WritableStream);
 		} else {
 			logger.warn(
 				`[COMMUNITY INVESTOR ASSET HANDLER] Asset not found: ${assetPath}`,
 			);
 			sendError(res, 404, "NOT_FOUND", `Asset not found: ${assetName}`);
 		}
-	} catch (error: any) {
+	} catch (error: unknown) {
 		logger.error(
-			`[COMMUNITY INVESTOR ASSET HANDLER] Error serving asset ${req.path}:`,
-			error,
+			`[COMMUNITY INVESTOR ASSET HANDLER] Error serving asset ${req.path ?? ""}: ${errorMessage(error)}`,
 		);
-		sendError(res, 500, "ASSET_ERROR", "Failed to load asset", error.message);
+		sendError(
+			res,
+			500,
+			"ASSET_ERROR",
+			"Failed to load asset",
+			errorMessage(error),
+		);
 	}
 }
 
@@ -229,10 +258,11 @@ export const communityInvestorRoutes: Route[] = [
 		handler: communityInvestorPanelHandler,
 		public: true, // Show the leaderboard panel
 	},
-	{
-		type: "GET",
-		path: "/assets/*", // To serve frontend assets
-		handler: communityInvestorAssetsHandler,
-		public: true, // Assets need to be public - REINSTATED
+		{
+			type: "GET",
+			name: "Trust Assets",
+			path: "/assets/*", // To serve frontend assets
+			handler: communityInvestorAssetsHandler,
+			public: true, // Assets need to be public - REINSTATED
 	},
 ];

@@ -2,9 +2,7 @@
  * FeatureFlagRegistry.
  *
  * Lifts the closed `LifeOpsFeatureKey` literal union into an open registry of
- * gateable feature keys. Every primitive in LifeOps is registry-driven so the
- * agent can extend its own surface area at runtime without source-code edits
- * (see `docs/audit/rigidity-hunt-audit.md` Audit C top-1 finding).
+ * gateable feature keys, allowing 3rd-party plugin contributions at runtime.
  *
  * The closed `LifeOpsFeatureKey` literal union still encodes the canonical
  * built-ins shipped with the plugin (their compile-time `BASE_FEATURE_DEFAULTS`

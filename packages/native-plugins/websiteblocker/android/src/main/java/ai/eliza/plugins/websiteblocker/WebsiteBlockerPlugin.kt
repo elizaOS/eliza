@@ -98,6 +98,9 @@ class WebsiteBlockerPlugin : Plugin() {
         if (activity == null) {
             call.resolve(JSObject().apply {
                 put("opened", false)
+                put("target", "vpn")
+                put("actualTarget", "vpn")
+                put("reason", "Android activity is unavailable.")
             })
             return
         }
@@ -105,6 +108,9 @@ class WebsiteBlockerPlugin : Plugin() {
         activity.startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
         call.resolve(JSObject().apply {
             put("opened", true)
+            put("target", "vpn")
+            put("actualTarget", "vpn")
+            put("reason", null)
         })
     }
 
@@ -192,6 +198,9 @@ class WebsiteBlockerPlugin : Plugin() {
         return JSObject().apply {
             put("status", if (granted) "granted" else "not-determined")
             put("canRequest", !granted)
+            put("canOpenSettings", true)
+            put("settingsTarget", "vpn")
+            put("engine", "vpn-dns")
             if (!granted) {
                 put(
                     "reason",
@@ -204,9 +213,11 @@ class WebsiteBlockerPlugin : Plugin() {
     private fun buildStatus(): JSObject {
         val saved = WebsiteBlockerStateStore.load(context)
         val permission = buildPermissionResult()
+        val active = saved != null
         return JSObject().apply {
+            put("status", if (active) "active" else "inactive")
             put("available", true)
-            put("active", saved != null)
+            put("active", active)
             put("hostsFilePath", null)
             put(
                 "endsAt",
@@ -227,6 +238,9 @@ class WebsiteBlockerPlugin : Plugin() {
                 if (permissionRequiresConsent()) "vpn-consent" else null,
             )
             put("permissionStatus", permission.getString("status"))
+            put("canRequest", permission.getBool("canRequest"))
+            put("canOpenSettings", permission.getBool("canOpenSettings"))
+            put("settingsTarget", permission.opt("settingsTarget"))
             put("canRequestPermission", permission.getBool("canRequest"))
             put("canOpenSystemSettings", true)
             val reason = when {

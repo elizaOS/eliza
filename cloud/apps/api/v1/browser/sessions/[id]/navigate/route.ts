@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { getErrorStatusCode, getSafeErrorMessage } from "@/lib/api/errors";
-import { nextStyleParams } from "@/lib/api/hono-next-style-params";
+import { nextStyleParams, type RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { RateLimitPresets, rateLimit } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import {
@@ -11,15 +11,11 @@ import {
 } from "@/lib/services/browser-tools";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
-type RouteContext = {
-  params: Promise<{ id: string }>;
-};
-
 const navigateSchema = z.object({
   url: z.string().trim().url().max(2_000),
 });
 
-async function handlePOST(request: Request, context: RouteContext) {
+async function handlePOST(request: Request, context: RouteContext<{ id: string }>) {
   try {
     const authResult = await requireAuthOrApiKeyWithOrg(request);
     const { id } = await context.params;

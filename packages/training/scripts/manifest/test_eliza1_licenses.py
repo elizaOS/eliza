@@ -30,7 +30,8 @@ def test_every_attestation_has_a_loadable_verbatim_text() -> None:
 
 
 def test_components_select_the_right_attestations() -> None:
-    # Lite tier: no embedding, no vision, but ships the wakeword license note.
+    # Legacy/no-vision bundle shape: no embedding, no vision, but ships the
+    # wakeword license note.
     lite = {a.bundle_file for a in attestations_for_components(
         ["text", "voice", "asr", "vad", "dflash", "wakeword"]
     )}
@@ -90,7 +91,9 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
     bundle = root / f"eliza-1-{tier}.bundle"
     payloads = {
         f"text/eliza-1-{tier}-32k.gguf": b"\x00gguf\x00",
-        "tts/omnivoice-base-Q4_K_M.gguf": b"voice",
+        "tts/kokoro/model_q4.onnx": b"kokoro-model",
+        "tts/kokoro/tokenizer.json": b"kokoro-tokenizer",
+        "tts/kokoro/voices/af_bella.bin": b"kokoro-voice",
         f"dflash/drafter-{tier}.gguf": b"drafter",
         "asr/eliza-1-asr.gguf": b"asr",
         "vad/silero-vad-v5.1.2.ggml.bin": b"vad",
@@ -109,14 +112,18 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
         "publishedAt": "2026-05-12T00:00:00Z",
         "lineage": {
             "text": {"base": "local-text", "license": "apache-2.0"},
-            "voice": {"base": "local-voice", "license": "apache-2.0"},
+            "voice": {"base": "local-kokoro", "license": "apache-2.0"},
             "drafter": {"base": "local-drafter", "license": "apache-2.0"},
             "asr": {"base": "local-asr", "license": "apache-2.0"},
             "vad": {"base": "local-vad", "license": "mit"},
         },
         "files": {
             "text": [{"path": f"text/eliza-1-{tier}-32k.gguf", "sha256": sha[f"text/eliza-1-{tier}-32k.gguf"], "ctx": 32768}],
-            "voice": [{"path": "tts/omnivoice-base-Q4_K_M.gguf", "sha256": sha["tts/omnivoice-base-Q4_K_M.gguf"]}],
+            "voice": [
+                {"path": "tts/kokoro/model_q4.onnx", "sha256": sha["tts/kokoro/model_q4.onnx"]},
+                {"path": "tts/kokoro/tokenizer.json", "sha256": sha["tts/kokoro/tokenizer.json"]},
+                {"path": "tts/kokoro/voices/af_bella.bin", "sha256": sha["tts/kokoro/voices/af_bella.bin"]},
+            ],
             "asr": [{"path": "asr/eliza-1-asr.gguf", "sha256": sha["asr/eliza-1-asr.gguf"]}],
             "vision": [],
             "dflash": [{"path": f"dflash/drafter-{tier}.gguf", "sha256": sha[f"dflash/drafter-{tier}.gguf"]}],
@@ -158,7 +165,7 @@ def _minimal_staged_bundle(root: Path, tier: str) -> Path:
     }))
     (bundle / "evidence").mkdir(parents=True)
     (bundle / "evidence" / "release.json").write_text(json.dumps({
-        "schemaVersion": 1, "tier": tier, "repoId": "elizaos/eliza-1",
+        "schemaVersion": 1, "tier": tier, "repoId": "elizalabs/eliza-1",
         "repoPath": f"bundles/{tier}",
         "releaseState": "weights-staged",
         "final": {"weights": True, "hashes": False, "evals": False, "licenses": False,

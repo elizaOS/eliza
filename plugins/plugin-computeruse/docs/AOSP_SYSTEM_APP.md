@@ -12,6 +12,35 @@ Deploying Milady as a privileged system app in a custom AOSP build removes all t
 The `aosp` build flavor enables the `AospPrivilegedBridge` implementation; the `consumer` flavor
 ships the stub that always returns `null` from `createIfAvailable()`.
 
+The AOSP image must make Eliza the platform assistant, not merely another app
+that can open a chat screen. The system build path therefore owns:
+
+- `ROLE_ASSISTANT` through `config_defaultAssistant` in the framework-res
+  overlay.
+- `ACTION_ASSIST` and `VOICE_COMMAND` intent filters on
+  `ElizaAssistActivity`.
+- Usage stats through `PACKAGE_USAGE_STATS` plus the `GET_USAGE_STATS` appop
+  grant performed by `ElizaBootReceiver`.
+- Screen capture through `MediaProjection` for consented consumer capture and
+  `SurfaceControl.captureDisplay()` with `READ_FRAME_BUFFER` for privileged
+  AOSP capture.
+- Input control through Accessibility gestures for consumer installs and
+  `InputManager.injectInputEvent()` with `INJECT_EVENTS` for privileged AOSP
+  builds.
+- Boot/direct-boot recovery through the direct-boot-aware boot receiver.
+- Foreground service declarations for the local agent runtime, gateway sync,
+  voice capture, and MediaProjection.
+- AOSP-only `ElizaAccessibilityService` and
+  `ElizaNotificationListenerService` components. Their contract is recorded in
+  `/product/etc/eliza/aosp-assistant-full-control.json`, and the cloud/Play
+  build strips the services, Java sources, and accessibility-service resource.
+
+Being the system assistant does not change LifeOps persistence. Assistant-role
+entry points may wake Eliza and pass an utterance into the app/runtime, but
+reminders, check-ins, follow-ups, watchers, recaps, and approvals must still be
+created as LifeOps `ScheduledTask` records. Do not add a privileged native
+reminder path that bypasses the scheduled-task runner.
+
 ## Required AOSP setup
 
 ### 1. `vendor/elizaos` or `device/elizaos` overlay
@@ -60,6 +89,8 @@ android_app {
         <permission name="android.permission.READ_FRAME_BUFFER" />
         <permission name="android.permission.INJECT_EVENTS" />
         <permission name="android.permission.REAL_GET_TASKS" />
+        <permission name="android.permission.PACKAGE_USAGE_STATS" />
+        <permission name="android.permission.MANAGE_APP_OPS_MODES" />
     </privapp-permissions>
 </permissions>
 ```
@@ -115,8 +146,55 @@ Add `sharedUserId` and `protectionLevel` declarations alongside the existing man
     <uses-permission android:name="android.permission.READ_FRAME_BUFFER" />
     <uses-permission android:name="android.permission.INJECT_EVENTS" />
     <uses-permission android:name="android.permission.REAL_GET_TASKS" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <uses-permission android:name="android.permission.MANAGE_APP_OPS_MODES" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     ...
 </manifest>
+```
+
+`ElizaAssistActivity` must include both assistant entry points:
+
+```xml
+<intent-filter>
+    <action android:name="android.intent.action.ASSIST" />
+    <category android:name="android.intent.category.DEFAULT" />
+</intent-filter>
+<intent-filter>
+    <action android:name="android.intent.action.VOICE_COMMAND" />
+    <category android:name="android.intent.category.DEFAULT" />
+</intent-filter>
+```
+
+Do not place these privileged declarations in the Google Play/cloud target.
+`build:android:cloud` strips the assistant/default-role components, boot
+receiver, screen-capture plugin, local agent runtime, and privileged
+permissions after Capacitor sync.
+
+The AOSP-only APK also declares accessibility and notification listener
+services:
+
+```xml
+<service
+    android:name="ai.elizaos.app.ElizaAccessibilityService"
+    android:exported="true"
+    android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+    <intent-filter>
+        <action android:name="android.accessibilityservice.AccessibilityService" />
+    </intent-filter>
+    <meta-data
+        android:name="android.accessibilityservice"
+        android:resource="@xml/eliza_accessibility_service" />
+</service>
+
+<service
+    android:name="ai.elizaos.app.ElizaNotificationListenerService"
+    android:exported="true"
+    android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+    <intent-filter>
+        <action android:name="android.service.notification.NotificationListenerService" />
+    </intent-filter>
+</service>
 ```
 
 ## Kotlin implementation notes (aosp flavor)
@@ -186,6 +264,29 @@ For a full system image build:
 m -j$(nproc)
 fastboot flashall -w
 ```
+
+## Assistant-role validation
+
+On a flashed AOSP image:
+
+1. Confirm `ROLE_ASSISTANT` resolves to Eliza:
+   `adb shell settings get secure assistant`.
+2. Trigger the assistant activity:
+   `adb shell am start -a android.intent.action.ASSIST -n ai.elizaos.app/ai.elizaos.app.ElizaAssistActivity`.
+3. Trigger voice command routing:
+   `adb shell am start -a android.intent.action.VOICE_COMMAND -n ai.elizaos.app/ai.elizaos.app.ElizaAssistActivity`.
+4. Confirm boot/direct-boot and privileged grants:
+   `adb shell dumpsys package ai.elizaos.app | grep -E 'directBootAware|PACKAGE_USAGE_STATS|READ_FRAME_BUFFER|INJECT_EVENTS|REAL_GET_TASKS'`.
+5. Confirm foreground service declarations:
+   `adb shell dumpsys package ai.elizaos.app | grep -E 'ElizaAgentService|GatewayConnectionService|ElizaVoiceCaptureService|foregroundServiceType'`.
+6. Confirm accessibility and notification-listener declarations:
+   `adb shell dumpsys package ai.elizaos.app | grep -E 'ElizaAccessibilityService|ElizaNotificationListenerService|BIND_ACCESSIBILITY_SERVICE|BIND_NOTIFICATION_LISTENER_SERVICE'`.
+7. Confirm the system-image capability manifest is present:
+   `adb shell cat /product/etc/eliza/aosp-assistant-full-control.json`.
+8. Ask for a reminder, a check-in, and a follow-up. Verify the app/runtime
+   creates LifeOps `ScheduledTask` records for each request.
+9. Verify privileged capture/input (`SurfaceControl` / `InputManager`) does not
+   introduce a separate scheduling or notification store.
 
 ## Sepolicy considerations
 

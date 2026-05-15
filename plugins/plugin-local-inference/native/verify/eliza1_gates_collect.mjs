@@ -68,6 +68,16 @@ const DEFAULT_GATES = path.join(
   "benchmarks",
   "eliza1_gates.yaml",
 );
+const ACTIVE_VISION_TIERS = new Set([
+  "0_8b",
+  "2b",
+  "4b",
+  "9b",
+  "27b",
+  "27b-256k",
+  "27b-1m",
+]);
+
 function timestamp() {
   return new Date()
     .toISOString()
@@ -789,11 +799,19 @@ async function main() {
   }
 
   const requiredKernelNames = ["turbo3", "turbo4", "qjl", "polar"];
+  const runtimeKernelReady = (dispatch, name) => {
+    if (dispatch?.data?.kernels?.[name]?.runtimeReady === true) return true;
+    const targets = dispatch?.data?.targets;
+    if (!targets || typeof targets !== "object") return false;
+    return Object.values(targets).some(
+      (target) => target?.kernels?.[name]?.runtimeReady === true,
+    );
+  };
   const metalKernelReady = requiredKernelNames.every(
-    (name) => metalDispatch?.data?.kernels?.[name]?.runtimeReady === true,
+    (name) => runtimeKernelReady(metalDispatch, name),
   );
   const vulkanKernelReady = requiredKernelNames.every(
-    (name) => vulkanDispatch?.data?.kernels?.[name]?.runtimeReady === true,
+    (name) => runtimeKernelReady(vulkanDispatch, name),
   );
   const cpuSimdEvidence = cpuSimd ? extractCpuSimd(cpuSimd.data) : null;
   const cpuKernelReady = Boolean(cpuSimdEvidence?.qjlReady && cpuSimdEvidence?.polarReady);
@@ -808,14 +826,26 @@ async function main() {
   const e2eOptimizations = e2eLoop?.data?.summary?.requiredOptimizations ?? e2eLoop?.data?.requiredOptimizations;
   const streamingTtsActive = boolOrNull(e2eOptimizations?.streamingTtsActive);
   const dflashDraftingActive = boolOrNull(e2eOptimizations?.dflashDraftingActive);
+  const requiresVision = ACTIVE_VISION_TIERS.has(args.tier);
   const visionStatus =
-    visionSmoke?.data?.status === "not-applicable"
-      ? "not-applicable"
-      : visionSmoke?.data?.passed === true
-        ? "pass"
-        : visionSmoke
+    visionSmoke?.data?.passed === true
+      ? "pass"
+      : visionSmoke
+        ? requiresVision
           ? "fail"
-          : "needs-data";
+          : visionSmoke.data?.status === "not-applicable"
+            ? "not-applicable"
+            : "fail"
+        : "needs-data";
+  const visionReason =
+    visionStatus === "pass"
+      ? "vision smoke passed"
+      : visionSmoke?.data?.status === "not-applicable" && requiresVision
+        ? "active Eliza-1 tier requires vision; stale not-applicable vision evidence is invalid"
+        : (visionSmoke?.data?.reason ??
+          (requiresVision
+            ? "configured vision tier has no vision smoke evidence"
+            : "no vision smoke evidence for this tier"));
   const iosStatus = iosSmoke?.data?.status === "passed" ? "pass" : iosSmoke ? "fail" : "needs-data";
   const iosBlocker = iosSmoke?.data?.blocker;
   const localVoiceLoopbackPass =
@@ -1008,12 +1038,10 @@ async function main() {
       area: "worker-output",
       gate: "vision_smoke",
       status: visionStatus,
-      blocking: visionStatus === "fail",
+      blocking: requiresVision ? visionStatus !== "pass" : visionStatus === "fail",
       measured: visionSmoke?.data?.status ?? null,
-      threshold: ["0_8b", "2b"].includes(args.tier) ? "not-applicable" : "pass",
-      reason:
-        visionSmoke?.data?.reason ??
-        (visionStatus === "needs-data" ? "no vision smoke evidence for this tier" : "vision smoke passed"),
+      threshold: requiresVision ? "pass" : "not-applicable",
+      reason: visionReason,
       source: sourcePath(visionSmoke),
     },
     {

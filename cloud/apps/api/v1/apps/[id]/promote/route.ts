@@ -1,13 +1,10 @@
 import { Hono } from "hono";
 import { z } from "zod";
+import type { RouteContext } from "@/lib/api/hono-next-style-params";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { appPromotionService, type PromotionConfig } from "@/lib/services/app-promotion";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
-
-interface RouteParams {
-  params: Promise<{ id: string }>;
-}
 
 const SocialPlatformSchema = z.enum([
   "twitter",
@@ -104,7 +101,7 @@ const PromotionConfigSchema = z.object({
     .optional(),
 });
 
-async function __hono_GET(request: Request, { params }: RouteParams) {
+async function __hono_GET(request: Request, { params }: RouteContext<{ id: string }>) {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 
@@ -121,7 +118,7 @@ async function __hono_GET(request: Request, { params }: RouteParams) {
   return Response.json(suggestions);
 }
 
-async function __hono_POST(request: Request, { params }: RouteParams) {
+async function __hono_POST(request: Request, { params }: RouteContext<{ id: string }>) {
   const { user } = await requireAuthOrApiKeyWithOrg(request);
   const { id } = await params;
 

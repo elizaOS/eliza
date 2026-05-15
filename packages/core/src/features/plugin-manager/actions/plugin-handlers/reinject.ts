@@ -1,7 +1,7 @@
 /**
  * @module features/plugin-manager/actions/plugin-handlers/reinject
  *
- * `reinject` sub-mode of the unified PLUGIN action. Removes an ejected
+ * `reinject` sub-mode of the PLUGIN action. Removes an ejected
  * plugin's local copy so the agent falls back to the npm-installed version.
  */
 

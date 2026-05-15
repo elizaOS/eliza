@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Skill Packager - Creates a distributable .skill file of a skill folder
+Create a distributable .skill archive from a skill folder.
 
 Usage:
     python utils/package_skill.py <path/to/skill-folder> [output-directory]
@@ -30,7 +30,6 @@ def package_skill(skill_path, output_dir=None):
     """
     skill_path = Path(skill_path).resolve()
 
-    # Validate skill folder exists
     if not skill_path.exists():
         print(f"[ERROR] Skill folder not found: {skill_path}")
         return None
@@ -39,13 +38,11 @@ def package_skill(skill_path, output_dir=None):
         print(f"[ERROR] Path is not a directory: {skill_path}")
         return None
 
-    # Validate SKILL.md exists
     skill_md = skill_path / "SKILL.md"
     if not skill_md.exists():
         print(f"[ERROR] SKILL.md not found in {skill_path}")
         return None
 
-    # Run validation before packaging
     print("Validating skill...")
     valid, message = validate_skill(skill_path)
     if not valid:
@@ -54,7 +51,6 @@ def package_skill(skill_path, output_dir=None):
         return None
     print(f"[OK] {message}\n")
 
-    # Determine output location
     skill_name = skill_path.name
     if output_dir:
         output_path = Path(output_dir).resolve()
@@ -64,13 +60,10 @@ def package_skill(skill_path, output_dir=None):
 
     skill_filename = output_path / f"{skill_name}.skill"
 
-    # Create the .skill file (zip format)
     try:
         with zipfile.ZipFile(skill_filename, "w", zipfile.ZIP_DEFLATED) as zipf:
-            # Walk through the skill directory
             for file_path in skill_path.rglob("*"):
                 if file_path.is_file():
-                    # Calculate the relative path within the zip
                     arcname = file_path.relative_to(skill_path.parent)
                     zipf.write(file_path, arcname)
                     print(f"  Added: {arcname}")

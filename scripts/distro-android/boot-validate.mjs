@@ -43,6 +43,59 @@ const REQUIRED_GRANTED_PERMISSIONS = [
   "android.permission.POST_NOTIFICATIONS",
 ];
 
+const REQUIRED_PRIVILEGED_PERMISSIONS = [
+  "android.permission.PACKAGE_USAGE_STATS",
+  "android.permission.MANAGE_APP_OPS_MODES",
+  "android.permission.MANAGE_VIRTUAL_MACHINE",
+  "android.permission.READ_FRAME_BUFFER",
+  "android.permission.INJECT_EVENTS",
+  "android.permission.REAL_GET_TASKS",
+];
+
+const REQUIRED_ASSISTANT_INTENT_ACTIONS = [
+  "android.intent.action.ASSIST",
+  "android.intent.action.VOICE_COMMAND",
+];
+
+const REQUIRED_FULL_CONTROL_RUNTIME_PERMISSIONS = [
+  "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+  "android.permission.FOREGROUND_SERVICE_MICROPHONE",
+  "android.permission.FOREGROUND_SERVICE_SPECIAL_USE",
+  "android.permission.RECEIVE_BOOT_COMPLETED",
+];
+
+const REQUIRED_CLOUD_STRIPPED_COMPONENTS = [
+  "AgentService",
+  "AccessibilityService",
+  "AssistActivity",
+  "BootReceiver",
+  "NotificationListenerService",
+  "VoiceCaptureService",
+];
+
+const REQUIRED_CLOUD_STRIPPED_PERMISSIONS = [
+  ...REQUIRED_FULL_CONTROL_RUNTIME_PERMISSIONS,
+  ...REQUIRED_PRIVILEGED_PERMISSIONS,
+  "android.permission.BIND_ACCESSIBILITY_SERVICE",
+  "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+];
+
+const REQUIRED_CLOUD_STRIPPED_PLUGINS = [
+  "@elizaos/capacitor-agent",
+  "@elizaos/capacitor-bun-runtime",
+  "@elizaos/capacitor-screencapture",
+  "@elizaos/capacitor-system",
+];
+
+const REQUIRED_ASSISTANT_API_CONSTANTS = {
+  assistantRole: ["RoleManager.ROLE_ASSISTANT", "android.app.role.ASSISTANT"],
+  assistAction: ["Intent.ACTION_ASSIST", "android.intent.action.ASSIST"],
+  voiceCommandAction: [
+    "Intent.ACTION_VOICE_COMMAND",
+    "android.intent.action.VOICE_COMMAND",
+  ],
+};
+
 const FORBIDDEN_STOCK_PACKAGES = [
   "com.android.browser",
   "com.android.calendar",
@@ -213,6 +266,266 @@ function shell(adb, serial, command) {
   return runAdb(adb, serial, ["shell", command]);
 }
 
+function parseJsonDocument(raw, label) {
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    throw new Error(`${label} is not valid JSON: ${error.message}`);
+  }
+}
+
+function assertJsonValue(value, expected, label) {
+  if (value !== expected) {
+    throw new Error(`${label} must be ${expected}; found ${String(value)}`);
+  }
+}
+
+function assertStringArrayIncludes(value, expected, label) {
+  if (!Array.isArray(value)) {
+    throw new Error(`${label} must be an array`);
+  }
+  const seen = new Set();
+  for (const item of value) {
+    if (typeof item !== "string") {
+      throw new Error(`${label} must contain only strings`);
+    }
+    if (seen.has(item)) {
+      throw new Error(`${label} contains duplicate ${item}`);
+    }
+    seen.add(item);
+  }
+  for (const item of expected) {
+    if (!value.includes(item)) {
+      throw new Error(`${label} is missing ${item}`);
+    }
+  }
+}
+
+function assertStringArrayEquals(value, expected, label) {
+  assertStringArrayIncludes(value, expected, label);
+  const extras = value.filter((item) => !expected.includes(item));
+  if (extras.length > 0 || value.length !== expected.length) {
+    throw new Error(
+      `${label} has unexpected entries: ${extras.join(", ") || "<none>"}`,
+    );
+  }
+}
+
+export function validateCapabilityManifestDocument(
+  document,
+  brand,
+  label = "AOSP assistant/full-control capability manifest",
+) {
+  const manifest =
+    typeof document === "string"
+      ? parseJsonDocument(document, label)
+      : document;
+  if (!manifest || typeof manifest !== "object" || Array.isArray(manifest)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+
+  assertJsonValue(manifest.schemaVersion, 1, `${label} schemaVersion`);
+  assertJsonValue(
+    manifest.packageName,
+    brand.packageName,
+    `${label} packageName`,
+  );
+  assertJsonValue(
+    manifest.buildTarget,
+    "aosp-system-privileged",
+    `${label} buildTarget`,
+  );
+  assertJsonValue(
+    manifest.roleDefaults?.["android.app.role.ASSISTANT"],
+    brand.packageName,
+    `${label} ROLE_ASSISTANT holder`,
+  );
+  for (const [name, [symbol, value]] of Object.entries(
+    REQUIRED_ASSISTANT_API_CONSTANTS,
+  )) {
+    assertJsonValue(
+      manifest.apiConstants?.[name]?.symbol,
+      symbol,
+      `${label} apiConstants.${name}.symbol`,
+    );
+    assertJsonValue(
+      manifest.apiConstants?.[name]?.value,
+      value,
+      `${label} apiConstants.${name}.value`,
+    );
+  }
+  assertStringArrayEquals(
+    manifest.assistantEntryPoints,
+    REQUIRED_ASSISTANT_INTENT_ACTIONS,
+    `${label} assistantEntryPoints`,
+  );
+  assertJsonValue(
+    manifest.assistantResolution?.role,
+    "android.app.role.ASSISTANT",
+    `${label} assistantResolution.role`,
+  );
+  assertJsonValue(
+    manifest.assistantResolution?.defaultHolderResource,
+    "config_defaultAssistant",
+    `${label} assistantResolution.defaultHolderResource`,
+  );
+  assertJsonValue(
+    manifest.assistantResolution?.defaultHolder,
+    brand.packageName,
+    `${label} assistantResolution.defaultHolder`,
+  );
+  assertJsonValue(
+    manifest.assistantResolution?.activity,
+    `${brand.packageName}.${brand.classPrefix}AssistActivity`,
+    `${label} assistantResolution.activity`,
+  );
+  assertStringArrayEquals(
+    manifest.assistantResolution?.intentActions,
+    REQUIRED_ASSISTANT_INTENT_ACTIONS,
+    `${label} assistantResolution.intentActions`,
+  );
+  assertJsonValue(
+    manifest.directBoot?.receiver,
+    `${brand.classPrefix}BootReceiver`,
+    `${label} directBoot.receiver`,
+  );
+  assertJsonValue(
+    manifest.directBoot?.directBootAware,
+    true,
+    `${label} directBoot.directBootAware`,
+  );
+  assertStringArrayIncludes(
+    manifest.directBoot?.actions,
+    [
+      "android.intent.action.LOCKED_BOOT_COMPLETED",
+      "android.intent.action.BOOT_COMPLETED",
+      "android.intent.action.MY_PACKAGE_REPLACED",
+    ],
+    `${label} directBoot.actions`,
+  );
+  assertStringArrayIncludes(
+    manifest.privilegedPermissions,
+    REQUIRED_PRIVILEGED_PERMISSIONS,
+    `${label} privilegedPermissions`,
+  );
+  assertStringArrayIncludes(
+    manifest.runtimeAndNormalPermissions,
+    REQUIRED_FULL_CONTROL_RUNTIME_PERMISSIONS,
+    `${label} runtimeAndNormalPermissions`,
+  );
+  for (const [component, type] of [
+    [`${brand.classPrefix}AgentService`, "specialUse"],
+    ["GatewayConnectionService", "dataSync"],
+    [`${brand.classPrefix}VoiceCaptureService`, "microphone"],
+    ["ScreenCapture", "mediaProjection"],
+  ]) {
+    const found = manifest.foregroundServices?.some(
+      (service) => service?.component === component && service?.type === type,
+    );
+    if (!found) {
+      throw new Error(
+        `${label} foregroundServices is missing ${component}/${type}`,
+      );
+    }
+  }
+  for (const capability of [
+    "accessibility",
+    "notificationListener",
+    "screenCapture",
+    "inputControl",
+    "appInventory",
+    "voiceCommand",
+  ]) {
+    if (!manifest.capabilityDeclarations?.[capability]) {
+      throw new Error(`${label} is missing ${capability} declaration`);
+    }
+  }
+  assertJsonValue(
+    manifest.capabilityDeclarations?.accessibility?.component,
+    `${brand.classPrefix}AccessibilityService`,
+    `${label} capabilityDeclarations.accessibility.component`,
+  );
+  assertJsonValue(
+    manifest.capabilityDeclarations?.accessibility?.intentAction,
+    "android.accessibilityservice.AccessibilityService",
+    `${label} capabilityDeclarations.accessibility.intentAction`,
+  );
+  assertJsonValue(
+    manifest.capabilityDeclarations?.accessibility?.permission,
+    "android.permission.BIND_ACCESSIBILITY_SERVICE",
+    `${label} capabilityDeclarations.accessibility.permission`,
+  );
+  assertJsonValue(
+    manifest.capabilityDeclarations?.accessibility?.metadata,
+    "@xml/eliza_accessibility_service",
+    `${label} capabilityDeclarations.accessibility.metadata`,
+  );
+  assertJsonValue(
+    manifest.capabilityDeclarations?.notificationListener?.component,
+    `${brand.classPrefix}NotificationListenerService`,
+    `${label} capabilityDeclarations.notificationListener.component`,
+  );
+  assertJsonValue(
+    manifest.capabilityDeclarations?.notificationListener?.intentAction,
+    "android.service.notification.NotificationListenerService",
+    `${label} capabilityDeclarations.notificationListener.intentAction`,
+  );
+  assertJsonValue(
+    manifest.capabilityDeclarations?.notificationListener?.permission,
+    "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
+    `${label} capabilityDeclarations.notificationListener.permission`,
+  );
+  assertJsonValue(
+    manifest.systemImageRequirements?.installPath,
+    `/system/priv-app/${brand.appName}/${brand.appName}.apk`,
+    `${label} systemImageRequirements.installPath`,
+  );
+  assertJsonValue(
+    manifest.systemImageRequirements?.soong?.privileged,
+    true,
+    `${label} systemImageRequirements.soong.privileged`,
+  );
+  assertJsonValue(
+    manifest.systemImageRequirements?.soong?.certificate,
+    "platform",
+    `${label} systemImageRequirements.soong.certificate`,
+  );
+  assertJsonValue(
+    manifest.systemImageRequirements?.artifactPath,
+    "/product/etc/eliza/aosp-assistant-full-control.json",
+    `${label} systemImageRequirements.artifactPath`,
+  );
+  assertJsonValue(
+    manifest.playStorePolicy?.allowed,
+    false,
+    `${label} playStorePolicy.allowed`,
+  );
+  assertJsonValue(
+    manifest.playStorePolicy?.stripTarget,
+    "android-cloud",
+    `${label} playStorePolicy.stripTarget`,
+  );
+  assertStringArrayIncludes(
+    manifest.playStorePolicy?.mustStripComponents,
+    REQUIRED_CLOUD_STRIPPED_COMPONENTS.map(
+      (component) => `${brand.classPrefix}${component}`,
+    ),
+    `${label} playStorePolicy.mustStripComponents`,
+  );
+  assertStringArrayIncludes(
+    manifest.playStorePolicy?.mustStripPermissions,
+    REQUIRED_CLOUD_STRIPPED_PERMISSIONS,
+    `${label} playStorePolicy.mustStripPermissions`,
+  );
+  assertStringArrayIncludes(
+    manifest.playStorePolicy?.mustStripPlugins,
+    REQUIRED_CLOUD_STRIPPED_PLUGINS,
+    `${label} playStorePolicy.mustStripPlugins`,
+  );
+
+  return manifest;
+}
+
 async function sleep(ms) {
   await new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -289,6 +602,27 @@ function validateHomeResolution(adb, serial, brand) {
   );
   assertIncludes(resolved, brand.packageName, "HOME activity resolution");
   return resolved;
+}
+
+function validateAssistantResolutions(adb, serial, brand) {
+  const resolutions = {};
+  for (const action of [
+    "android.intent.action.ASSIST",
+    "android.intent.action.VOICE_COMMAND",
+  ]) {
+    const resolved = shell(
+      adb,
+      serial,
+      `cmd package resolve-activity --brief -a ${action}`,
+    );
+    if (!resolved.includes(brand.packageName)) {
+      throw new Error(
+        `${action} did not resolve to ${brand.packageName}; got:\n${resolved}`,
+      );
+    }
+    resolutions[action] = resolved;
+  }
+  return resolutions;
 }
 
 /**
@@ -380,7 +714,32 @@ function validatePackageFlagsAndPermissions(adb, serial, brand) {
       `${permission} grant`,
     );
   }
+  for (const permission of REQUIRED_PRIVILEGED_PERMISSIONS) {
+    assertMatches(
+      dump,
+      new RegExp(`${escapeRegExp(permission)}[^\\n]*granted=true`, "i"),
+      `${permission} privileged grant`,
+    );
+  }
+  for (const component of [
+    `${brand.packageName}.${brand.classPrefix}AssistActivity`,
+    `${brand.packageName}.${brand.classPrefix}AccessibilityService`,
+    `${brand.packageName}.${brand.classPrefix}BootReceiver`,
+    `${brand.packageName}.${brand.classPrefix}AgentService`,
+    `${brand.packageName}.${brand.classPrefix}NotificationListenerService`,
+    `${brand.packageName}.${brand.classPrefix}VoiceCaptureService`,
+    `${brand.packageName}.GatewayConnectionService`,
+  ]) {
+    assertIncludes(dump, component, `${brand.appName} package component`);
+  }
   return dump;
+}
+
+function validateCapabilityManifest(adb, serial, brand) {
+  const manifestPath = "/product/etc/eliza/aosp-assistant-full-control.json";
+  const manifest = shell(adb, serial, `cat ${manifestPath}`);
+  validateCapabilityManifestDocument(manifest, brand, manifestPath);
+  return manifestPath;
 }
 
 function validateAppOps(adb, serial, brand) {
@@ -447,8 +806,10 @@ export async function validateBootedDevice(options, brand) {
     bootProperties: validateBootProperties(adb, serial, brand),
     packagePath: validatePackagePath(adb, serial, brand),
     homeResolution: validateHomeResolution(adb, serial, brand),
+    assistantResolutions: validateAssistantResolutions(adb, serial, brand),
     replacementIntents: validateReplacementIntents(adb, serial, brand),
     roles: validateRoles(adb, serial, brand),
+    capabilityManifest: validateCapabilityManifest(adb, serial, brand),
     appOps: validateAppOps(adb, serial, brand),
     forbiddenPackages: validateForbiddenPackages(adb, serial),
     logcat: options.skipLogcat ? "skipped" : validateLogcat(adb, serial, brand),

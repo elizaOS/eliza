@@ -4,7 +4,7 @@ Tool utilities for MCP servers
 Provides utilities for defining and managing MCP tools.
 """
 
-from typing import Any, Dict, List, Callable, Optional
+from typing import Any, Dict, List, Callable
 import mcp.types as types
 from dataclasses import dataclass
 

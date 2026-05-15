@@ -346,9 +346,9 @@ export const browserAction: Action = {
     "SIGN_IN_TO_SITE",
   ],
   description:
-    "Single BROWSER action — control whichever browser target is registered. Targets are pluggable: `workspace` (electrobun-embedded BrowserView, the default; falls back to a JSDOM web mode when the desktop bridge isn't configured), `bridge` (the user's real Chrome/Safari via the Agent Browser Bridge companion extension), and `computeruse` (a local puppeteer-driven Chromium via plugin-computeruse). The agent uses what is available — the BrowserService picks the active target when none is specified. Use `action: \"autofill_login\"` with `domain` (and optional `username`, `submit`) to vault-gated autofill into an open workspace tab.",
+    "BROWSER action. Control registered target: workspace default, bridge Chrome/Safari, computeruse Chromium. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
   descriptionCompressed:
-    "Browser tab/page control: open/navigate/click/type/screenshot/state; action autofill_login + domain autofill vault-gated credential into workspace tab pre-authorized in Settings Vault Logins. Bridge settings/status use MANAGE_BROWSER_BRIDGE.",
+    "Browser open|navigate|click|type|screenshot|state|autofill_login; bridge status elsewhere",
   validate: async () => true,
   handler: async (runtime, message, _state, options) => {
     const params = (options as HandlerOptions | undefined)?.parameters as
@@ -426,7 +426,7 @@ export const browserAction: Action = {
     {
       name: "action",
       description:
-        "Browser action to perform. Snake_case values are canonical; legacy kebab-case and subaction are also accepted.",
+        "Browser action. Snake_case canonical; legacy kebab-case and subaction accepted.",
       required: false,
       schema: {
         type: "string" as const,
@@ -477,21 +477,21 @@ export const browserAction: Action = {
     {
       name: "domain",
       description:
-        "Required when action is autofill_login: registrable hostname (e.g. `github.com`).",
+        "Required for action=autofill_login: registrable hostname, e.g. github.com.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "username",
       description:
-        "When using autofill-login: specific saved login; omit for most recently modified.",
+        "For autofill-login: saved login username; omit for latest.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "submit",
       description:
-        "When using autofill-login: submit the form after filling (default false).",
+        "For autofill-login: submit after filling. Default false.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -546,7 +546,7 @@ export const browserAction: Action = {
     {
       name: "watchMode",
       description:
-        "Hint that the user is watching; prefers realistic-* subactions for click/fill so the cursor moves visibly and pointer events fire faithfully.",
+        "User watching hint; prefer realistic-* click/fill, visible cursor, pointer events.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -565,7 +565,7 @@ export const browserAction: Action = {
     {
       name: "replace",
       description:
-        "Replace existing input value when filling (vs append) — applies to realistic-fill",
+        "For realistic-fill: replace existing input, not append.",
       required: false,
       schema: { type: "boolean" as const },
     },

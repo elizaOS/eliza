@@ -30,11 +30,12 @@
  */
 
 import type http from "node:http";
+import type { RouteHelpers, RouteRequestMeta } from "@elizaos/core";
 
 /**
- * Minimal structural copy of the agent's RouteHelpers / RouteRequestMeta
- * surface, inlined here so this file can live inside @elizaos/plugin-imessage
- * without taking a build-time dependency on @elizaos/agent.
+ * Route helper options accepted by the host. This plugin depends on core, not
+ * the agent package, so the route file stays usable without importing agent
+ * internals.
  */
 export interface ReadJsonBodyOptions {
   maxBytes?: number;
@@ -45,23 +46,6 @@ export interface ReadJsonBodyOptions {
   readErrorMessage?: string;
   nonObjectMessage?: string;
   parseErrorMessage?: string;
-}
-
-export interface RouteRequestMeta {
-  req: http.IncomingMessage;
-  res: http.ServerResponse;
-  method: string;
-  pathname: string;
-}
-
-export interface RouteHelpers {
-  json: (res: http.ServerResponse, data: unknown, status?: number) => void;
-  error: (res: http.ServerResponse, message: string, status?: number) => void;
-  readJsonBody: <T extends object>(
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-    options?: ReadJsonBodyOptions
-  ) => Promise<T | null>;
 }
 
 /**

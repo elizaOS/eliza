@@ -2293,7 +2293,9 @@ function statusLine(
 
 async function queueCompanionDownloads(model: CatalogModel): Promise<void> {
   if (!model.companionModelIds?.length) return;
-  const installed = await listInstalledModels().catch(() => []);
+  const installed: InstalledModel[] = await listInstalledModels().catch(
+    () => [],
+  );
   for (const companionId of model.companionModelIds) {
     const companion = findCatalogModel(companionId);
     if (!companion) continue;

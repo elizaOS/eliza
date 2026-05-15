@@ -60,12 +60,11 @@ import { getBaseURL, getLargeModel, getSmallModel } from "../utils/config";
 import { detectLMStudio } from "../utils/detect";
 import { emitModelUsed, estimateUsage, normalizeTokenUsage } from "../utils/model-usage";
 
-const TEXT_NANO_MODEL_TYPE = (ModelType.TEXT_NANO ?? "TEXT_NANO") as ModelTypeName;
-const TEXT_MEDIUM_MODEL_TYPE = (ModelType.TEXT_MEDIUM ?? "TEXT_MEDIUM") as ModelTypeName;
-const TEXT_MEGA_MODEL_TYPE = (ModelType.TEXT_MEGA ?? "TEXT_MEGA") as ModelTypeName;
-const RESPONSE_HANDLER_MODEL_TYPE = (ModelType.RESPONSE_HANDLER ??
-  "RESPONSE_HANDLER") as ModelTypeName;
-const ACTION_PLANNER_MODEL_TYPE = (ModelType.ACTION_PLANNER ?? "ACTION_PLANNER") as ModelTypeName;
+const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as ModelTypeName;
+const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as ModelTypeName;
+const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as ModelTypeName;
+const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as ModelTypeName;
+const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as ModelTypeName;
 
 type TextModelType =
   | typeof TEXT_NANO_MODEL_TYPE
@@ -126,7 +125,7 @@ async function resolveModelForType(
     pending = (async (): Promise<string | null> => {
       const result = await detectLMStudio({
         baseURL: getBaseURL(runtime),
-        fetcher: runtime.fetch ?? undefined,
+        ...(runtime.fetch ? { fetcher: runtime.fetch } : {}),
       });
       if (!result.available || !result.models || result.models.length === 0) {
         return null;
@@ -216,7 +215,7 @@ function serializeStructuredResult(result: { text: string; output: unknown }): s
   if (result.output !== undefined && result.output !== null) {
     return typeof result.output === "string" ? result.output : JSON.stringify(result.output);
   }
-  const trimmed = result.text?.trim() ?? "";
+  const trimmed = result.text.trim();
   if (trimmed) return trimmed;
   throw new Error("[LMStudio] Structured generation returned no text or output.");
 }
@@ -467,7 +466,7 @@ function buildNativeResultCast(
   const payload: GenerateTextResult = {
     text: result.text,
     toolCalls: mapToolCalls(result.toolCalls as unknown[] | undefined),
-    finishReason: String(result.finishReason ?? ""),
+    finishReason: String(result.finishReason),
     usage,
     providerMetadata: { modelName },
   };
@@ -582,7 +581,7 @@ async function handleTextWithModelType(
     const renderedPrompt = hasChatMessages
       ? ""
       : (renderChatMessagesForPrompt(params.messages, {
-          omitDuplicateSystem: system,
+          ...(system ? { omitDuplicateSystem: system } : {}),
         }) ??
         prompt ??
         "");
@@ -603,7 +602,7 @@ async function handleTextWithModelType(
     const baseArgs = {
       model: client(model) as LanguageModel,
       ...promptOrMessages,
-      system,
+      ...(system ? { system } : {}),
       temperature,
       maxOutputTokens: maxTokens,
       frequencyPenalty,

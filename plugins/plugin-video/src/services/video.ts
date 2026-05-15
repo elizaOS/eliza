@@ -307,8 +307,8 @@ export class VideoService extends IVideoService {
         if (parsed.formats?.length) {
           return parsed.formats.map((format: YtDlpFormatRow) => ({
             formatId: format.format_id ?? "",
-            url: format.url,
-            extension: format.ext,
+            url: format.url ?? "",
+            extension: format.ext ?? "",
             quality:
               format.quality !== undefined && format.quality !== ""
                 ? String(format.quality)

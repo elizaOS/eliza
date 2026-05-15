@@ -13,6 +13,7 @@ import type { EndpointType } from "@/lib/services/org-rate-limits";
 import { getOrgRpmForEndpoint } from "@/lib/services/org-rate-limits";
 import { logger } from "@/lib/utils/logger";
 import { getRequestCookie } from "@/lib/utils/request-cookie";
+import type { RouteParams } from "../api/hono-next-style-params";
 import { checkRateLimitRedis, type RateLimitResult } from "./rate-limit-redis";
 
 interface RateLimitConfig {
@@ -333,23 +334,25 @@ export async function enforceOrgRateLimit(
  * Uses Redis-backed rate limiting when REDIS_RATE_LIMITING=true (production)
  * Falls back to in-memory rate limiting for local development
  */
-type RouteContext<T> = { params: Promise<T> };
 type StaticRouteHandler = (request: Request) => Promise<Response>;
-type DynamicRouteHandler<T> = (request: Request, context: RouteContext<T>) => Promise<Response>;
+type DynamicRouteHandler<T extends Record<string, string | string[]>> = (
+  request: Request,
+  context: RouteParams<T>,
+) => Promise<Response>;
 
 export function withRateLimit(
   handler: StaticRouteHandler,
   config: RateLimitConfig,
 ): StaticRouteHandler;
-export function withRateLimit<T = Record<string, string>>(
+export function withRateLimit<T extends Record<string, string | string[]> = Record<string, string>>(
   handler: DynamicRouteHandler<T>,
   config: RateLimitConfig,
 ): DynamicRouteHandler<T>;
-export function withRateLimit<T = Record<string, string>>(
+export function withRateLimit<T extends Record<string, string | string[]> = Record<string, string>>(
   handler: StaticRouteHandler | DynamicRouteHandler<T>,
   config: RateLimitConfig,
 ) {
-  return async (request: Request, context?: { params: Promise<T> }): Promise<Response> => {
+  return async (request: Request, context?: RouteParams<T>): Promise<Response> => {
     const useRedis = process.env.REDIS_RATE_LIMITING === "true";
     const keyGenerator = config.keyGenerator || getDefaultKey;
     const key = keyGenerator(request);

@@ -16,7 +16,7 @@ import type {
   State,
 } from "@elizaos/core";
 
-export const CONTACTS_PROVIDER_NAME = "androidContacts";
+const CONTACTS_PROVIDER_NAME = "androidContacts";
 
 const CONTACTS_PROVIDER_LIMIT = 50;
 

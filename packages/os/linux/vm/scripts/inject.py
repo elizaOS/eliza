@@ -43,7 +43,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 QMP_SOCK = REPO_ROOT / "vm/snapshots/qmp.sock"
-INPUT_SOCK = REPO_ROOT / "vm/snapshots/input.sock"  # unused now; kept for compatibility
 SSH_KEY = REPO_ROOT / "vm/.ssh/usbeliza_dev_ed25519"
 SSH_PORT = 2222
 SSH_USER = "eliza"
@@ -77,6 +76,21 @@ def _ssh(cmd: str, *, timeout: int = 30) -> int:
 def _shquote(text: str) -> str:
     """Single-quote escape for safe shell embedding."""
     return "'" + text.replace("'", "'\\''") + "'"
+
+
+def _wayland_env_script() -> str:
+    """Remote shell snippet that exposes the active Wayland socket."""
+    return (
+        "export XDG_RUNTIME_DIR=/run/user/1000; "
+        "for s in $XDG_RUNTIME_DIR/wayland-[0-9]*; do "
+        '  [ -S "$s" ] && export WAYLAND_DISPLAY=$(basename "$s") && break; '
+        "done; "
+    )
+
+
+def _wayland_env_chain() -> str:
+    """Remote shell snippet for use after a preceding `&&` command."""
+    return _wayland_env_script().replace("; ", " && ", 1)
 
 
 def _qmp_command(method: str, args: dict | None = None) -> dict:
@@ -124,25 +138,13 @@ def cmd_type(text: str) -> int:
     depending on whether PAM scrubbed the env we tried to pin earlier.
     """
     quoted = _shquote(text)
-    remote = (
-        "export XDG_RUNTIME_DIR=/run/user/1000; "
-        "for s in $XDG_RUNTIME_DIR/wayland-[0-9]*; do "
-        '  [ -S "$s" ] && export WAYLAND_DISPLAY=$(basename "$s") && break; '
-        "done; "
-        f"wtype {quoted}"
-    )
+    remote = _wayland_env_script() + f"wtype {quoted}"
     return _ssh(remote)
 
 
 def cmd_submit() -> int:
     """Press Return in the focused window."""
-    remote = (
-        "export XDG_RUNTIME_DIR=/run/user/1000; "
-        "for s in $XDG_RUNTIME_DIR/wayland-[0-9]*; do "
-        '  [ -S "$s" ] && export WAYLAND_DISPLAY=$(basename "$s") && break; '
-        "done; "
-        "wtype -k Return"
-    )
+    remote = _wayland_env_script() + "wtype -k Return"
     return _ssh(remote)
 
 
@@ -169,11 +171,8 @@ def cmd_guest_screenshot(tag: str) -> int:
     safe_tag = "".join(c for c in tag if c.isalnum() or c in "-_") or "screen"
     remote = (
         "sudo install -d -m 0777 /var/tmp/usbeliza-screenshots && "
-        "export XDG_RUNTIME_DIR=/run/user/1000 && "
-        "for s in $XDG_RUNTIME_DIR/wayland-[0-9]*; do "
-        '  [ -S "$s" ] && export WAYLAND_DISPLAY=$(basename "$s") && break; '
-        "done && "
-        f"grim /var/tmp/usbeliza-screenshots/$(date +%s)-{safe_tag}.png"
+        + _wayland_env_chain()
+        + f"grim /var/tmp/usbeliza-screenshots/$(date +%s)-{safe_tag}.png"
     )
     return _ssh(remote)
 

@@ -835,7 +835,7 @@ app.post("/api/v1/containers", (c) =>
     const created = await client.createContainer(toCreateInput(body, auth));
 
     await client.monitorInflight().catch((error) => {
-      console.warn(
+      logger.warn(
         "[container-control-plane] immediate deployment monitor failed",
         error instanceof Error ? error.message : String(error),
       );
@@ -943,4 +943,4 @@ Bun.serve({
   port,
 });
 
-console.log(`[container-control-plane] listening on ${process.env.HOST ?? "127.0.0.1"}:${port}`);
+logger.info(`[container-control-plane] listening on ${process.env.HOST ?? "127.0.0.1"}:${port}`);

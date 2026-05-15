@@ -19,24 +19,14 @@ import {
   resolveFeatureCloudRoute,
   toRuntimeSettings,
 } from "./resolve.ts";
-import type { RouteSpec } from "./types.ts";
+import type { CloudRouteSource, RouteSpec } from "./types.ts";
 
 function runtime(settings: Record<string, unknown>): RuntimeSettings {
-  return {
+  return toRuntimeSettings({
     getSetting(key) {
-      const value = settings[key];
-      if (
-        typeof value === "string" ||
-        typeof value === "boolean" ||
-        typeof value === "number" ||
-        value === null ||
-        value === undefined
-      ) {
-        return value;
-      }
-      return String(value);
+      return settings[key];
     },
-  };
+  });
 }
 
 const spec: RouteSpec = {
@@ -190,7 +180,6 @@ describe("getFeaturePolicy", () => {
   });
 
   it("falls back to the default policy for unknown feature ids", () => {
-    // Persisted value for a key the registry doesn't know about is ignored.
     expect(
       getFeaturePolicy(
         runtime({ ELIZAOS_CLOUD_ROUTING_LLM: "local" }),
@@ -230,15 +219,10 @@ interface ResolveFixture {
   policy: FeaturePolicy;
   localKeySet: boolean;
   cloudConnected: boolean;
-  expectSource: "local-key" | "cloud-proxy" | "disabled";
+  expectSource: CloudRouteSource;
 }
 
-/**
- * The full truth table for per-feature resolution. Three policies x
- * two local-key states x two cloud-connection states = 12 cases.
- */
 const FIXTURES: ResolveFixture[] = [
-  // policy=local
   {
     label: "policy=local + local key set + cloud connected → local-key",
     feature: "llm",
@@ -272,7 +256,6 @@ const FIXTURES: ResolveFixture[] = [
     cloudConnected: false,
     expectSource: "disabled",
   },
-  // policy=cloud
   {
     label:
       "policy=cloud + local key set + cloud connected → cloud-proxy (ignores local key)",
@@ -307,7 +290,6 @@ const FIXTURES: ResolveFixture[] = [
     cloudConnected: false,
     expectSource: "disabled",
   },
-  // policy=auto
   {
     label:
       "policy=auto + local key set + cloud connected → local-key (local wins)",
@@ -347,10 +329,8 @@ describe("resolveFeatureCloudRoute", () => {
   for (const fixture of FIXTURES) {
     it(fixture.label, () => {
       const def = getFeature(fixture.feature);
-      // Registry must contain every feature we're testing.
       expect(def).not.toBeNull();
       const settings: Record<string, unknown> = {
-        // Per-feature policy comes from the registry-defined setting key.
         ...(def ? { [def.settingKey]: fixture.policy } : {}),
         ...(fixture.localKeySet
           ? { [spec.localKeySetting]: "local-secret" }
@@ -424,7 +404,6 @@ describe("resolveFeatureCloudRoute", () => {
   });
 
   it("preserves the feature id and policy in every result branch", () => {
-    // disabled branch
     const disabled = resolveFeatureCloudRoute(
       runtime({}),
       "llm",
@@ -440,9 +419,6 @@ describe("resolveFeatureCloudRoute", () => {
   });
 
   it("dispatches off the registry without hard-coding feature ids", () => {
-    // Resolving every registered feature with policy=auto must not throw
-    // and must echo the feature id back. This is the contract that lets
-    // us add features without touching resolve.ts.
     for (const id of FEATURE_IDS) {
       const route = resolveFeatureCloudRoute(runtime({}), id, spec, "auto");
       expect(route.feature).toBe(id);

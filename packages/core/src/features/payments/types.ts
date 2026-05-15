@@ -1,5 +1,5 @@
 /**
- * Payment-action types for the consolidated PAYMENT action.
+ * Payment-action types for the PAYMENT action.
  *
  * These types describe the runtime contract between the PAYMENT action
  * subactions and the cloud services that own persistence

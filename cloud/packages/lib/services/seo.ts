@@ -620,20 +620,6 @@ export class SeoService {
           throw new Error(`Unsupported SEO request type: ${request.type}`);
       }
 
-      if (process.env.SEO_SKIP_DB_PERSIST === "true") {
-        return {
-          request: {
-            ...request,
-            status: "completed",
-            total_cost: String(totalCost),
-            updated_at: new Date(),
-            completed_at: new Date(),
-          },
-          artifacts,
-          providerCalls,
-        };
-      }
-
       await db
         .update(seoRequests)
         .set({

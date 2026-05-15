@@ -296,16 +296,18 @@ class HarnessClient:
         serialized = [{"role": m.role, "content": m.content} for m in messages]
         user_text = next((m.content for m in reversed(messages) if m.role == "user"), "")
         system_prompt = next((m.content for m in messages if m.role == "system"), "")
+        context: dict[str, object] = {
+            "messages": serialized,
+            "benchmark": "standard",
+            "max_tokens": config.max_tokens,
+            "tools": [dict(tool) for tool in config.tools],
+            "tool_choice": config.tool_choice or "auto",
+        }
+        if system_prompt and self._harness != "hermes":
+            context["system_prompt"] = system_prompt
         response = self._client.send_message(
             user_text,
-            context={
-                "messages": serialized,
-                "system_prompt": system_prompt,
-                "benchmark": "standard",
-                "max_tokens": config.max_tokens,
-                "tools": [dict(tool) for tool in config.tools],
-                "tool_choice": config.tool_choice or "auto",
-            },
+            context=context,
         )
         usage = response.params.get("usage")
         usage_obj = usage if isinstance(usage, dict) else {}

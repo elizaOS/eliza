@@ -369,13 +369,6 @@ async function probeCloudAgentReachable(
   }
 }
 
-// TODO: replace with real onboarding artwork per runtime choice
-// const CHOICE_IMAGE_PATH: Record<RuntimeChoice, string> = {
-//   cloud: "app-heroes/agentDOD.png",
-//   local: "app-heroes/runtime-debugger.png",
-//   remote: "app-heroes/log-viewer.png",
-// };
-
 export function resolveRuntimeChoices(args: {
   isAndroid: boolean;
   isIOS: boolean;
@@ -2211,11 +2204,11 @@ function WelcomeChooser({
             type="button"
             onClick={() => setAdvancedOpen((open) => !open)}
             aria-expanded={advancedOpen}
-            className="inline-flex items-center gap-1.5 text-3xs uppercase tracking-[0.2em] text-[#ffe600]/75 transition-colors hover:text-[#ffe600]"
+            className="inline-flex items-center gap-1.5 text-xs tracking-wide text-[#ffe600]/75 underline-offset-2 transition-colors hover:text-[#ffe600] hover:underline"
             style={{ fontFamily: MONO_FONT }}
           >
             {t("runtimegate.welcomeAdvancedToggle", {
-              defaultValue: "I want to run it myself",
+              defaultValue: "Run it myself",
             })}
             <span aria-hidden="true">{advancedOpen ? "▴" : "▾"}</span>
           </button>
@@ -2241,7 +2234,7 @@ function WelcomeChooser({
                       "Bring your own AI provider key. The agent runs on your hardware. Privacy-first.",
                   })}
                   ctaLabel={t("runtimegate.welcomeLocalCta", {
-                    defaultValue: "Use local",
+                    defaultValue: "Set up on this machine",
                   })}
                   onClick={onUseLocal}
                 />

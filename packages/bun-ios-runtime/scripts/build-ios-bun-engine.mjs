@@ -5,10 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { argValue, fail, run, runCapture } from "./script-utils.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(__dirname, "..");
-const repoRoot = path.resolve(packageRoot, "..", "..");
 const defaultSourceDir = path.join(packageRoot, "vendor", "bun");
 const defaultArtifact = path.join(
   packageRoot,
@@ -40,39 +40,40 @@ const requiredSymbols = [
   "_eliza_bun_engine_free",
 ];
 const allowedExportedSymbols = new Set(requiredSymbols);
+const appStoreExecutionProfile = "ios-app-store-nojit";
+const forbiddenRuntimeImports = [
+  "_dlopen",
+  "_dlsym",
+  "_posix_spawn",
+  "_fork",
+  "_execve",
+  "_system",
+  "_pthread_jit_write_protect_np",
+  "_mach_vm_protect",
+  "_vm_protect",
+];
+const forbiddenRuntimeStringPatterns = [
+  /\bMAP_JIT\b/i,
+  /\ballow-jit\b/i,
+  /\bdynamic-codesigning\b/i,
+  /\bunsigned-executable-memory\b/i,
+];
 
-function argValue(name, fallback = null) {
-  const prefix = `${name}=`;
-  for (const arg of process.argv.slice(2)) {
-    if (arg === name) return "1";
-    if (arg.startsWith(prefix)) return arg.slice(prefix.length);
-  }
-  return fallback;
-}
-
-function run(command, args, options = {}) {
+function runMaybeCapture(command, args, options = {}) {
   const result = spawnSync(command, args, {
-    cwd: options.cwd ?? repoRoot,
+    cwd: options.cwd,
     env: options.env ?? process.env,
-    stdio: options.stdio ?? "inherit",
-    encoding: options.encoding,
-    maxBuffer: options.maxBuffer,
-  });
-  if (result.status !== 0) {
-    throw new Error(
-      `${command} ${args.join(" ")} failed with ${result.status}`,
-    );
-  }
-  return result;
-}
-
-function runCapture(command, args, options = {}) {
-  return run(command, args, {
-    ...options,
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
     maxBuffer: options.maxBuffer ?? 256 * 1024 * 1024,
   });
+  return {
+    status: result.status ?? (result.error ? 1 : 0),
+    stdout: result.stdout ?? "",
+    stderr:
+      result.stderr ??
+      (result.error ? `${result.error.name}: ${result.error.message}` : ""),
+  };
 }
 
 function targetInfo(raw) {
@@ -104,11 +105,6 @@ function targetInfo(raw) {
         xcframeworkLibraryIdentifier: "ios-arm64-simulator",
         sourceToolchainName: "ios-simulator.cmake",
       };
-}
-
-function fail(message) {
-  console.error(`[bun-ios-runtime] ${message}`);
-  process.exit(1);
 }
 
 const info = targetInfo(argValue("--target", "simulator"));
@@ -198,6 +194,7 @@ function validateEngineBinary(binary) {
         .join(", ")}${unexpected.length > 24 ? ", ..." : ""}`,
     );
   }
+  validateAppStoreRuntimeBinary(binary);
 }
 
 function validateEngineFrameworkMetadata(frameworkDir) {
@@ -211,6 +208,14 @@ function validateEngineFrameworkMetadata(frameworkDir) {
       `${infoPlist} has ElizaBunEngineABIVersion=${String(
         plist.ElizaBunEngineABIVersion,
       )}; expected ${expectedEngineAbiVersion}`,
+    );
+  }
+  if (plist.ElizaBunEngineNoJIT !== true) {
+    fail(`${infoPlist} must declare ElizaBunEngineNoJIT=true`);
+  }
+  if (plist.ElizaBunEngineExecutionProfile !== appStoreExecutionProfile) {
+    fail(
+      `${infoPlist} must declare ElizaBunEngineExecutionProfile=${appStoreExecutionProfile}`,
     );
   }
 }
@@ -230,6 +235,74 @@ function parsePlistJson(plistPath) {
       `failed to parse ${plistPath} as JSON plist: ${
         err instanceof Error ? err.message : String(err)
       }`,
+    );
+  }
+}
+
+function validateAppStoreRuntimeBinary(binary) {
+  const imports = runMaybeCapture("nm", ["-u", binary]);
+  const importOutput = `${imports.stdout}\n${imports.stderr}`;
+  if (imports.status !== 0) {
+    fail(`failed to inspect imported symbols for ${binary}: ${importOutput.trim()}`);
+  }
+  const forbiddenImports = forbiddenRuntimeImports.filter((symbol) =>
+    new RegExp(`(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
+      importOutput,
+    ),
+  );
+  if (forbiddenImports.length > 0) {
+    fail(
+      `${binary} imports App Store-sensitive runtime/code-loading symbols: ${forbiddenImports.join(", ")}`,
+    );
+  }
+
+  const strings = runMaybeCapture("strings", [binary]);
+  const stringOutput = `${strings.stdout}\n${strings.stderr}`;
+  if (strings.status !== 0) {
+    fail(`failed to inspect strings for ${binary}: ${stringOutput.trim()}`);
+  }
+  const forbiddenStrings = forbiddenRuntimeStringPatterns
+    .filter((pattern) => pattern.test(stringOutput))
+    .map((pattern) => pattern.source);
+  if (forbiddenStrings.length > 0) {
+    fail(
+      `${binary} contains App Store-sensitive executable-memory markers: ${forbiddenStrings.join(", ")}`,
+    );
+  }
+}
+
+function isExecutableFile(file) {
+  try {
+    return (fs.statSync(file).mode & 0o111) !== 0;
+  } catch {
+    return false;
+  }
+}
+
+function validateNoNestedExecutablePayloads(frameworkDir, expectedBinary) {
+  const expected = path.resolve(expectedBinary);
+  const stack = [frameworkDir];
+  const unexpected = [];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+      const candidate = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === "_CodeSignature") continue;
+        stack.push(candidate);
+        continue;
+      }
+      if (
+        path.resolve(candidate) !== expected &&
+        (/\.(dylib|so|bundle)$/i.test(entry.name) || isExecutableFile(candidate))
+      ) {
+        unexpected.push(candidate);
+      }
+    }
+  }
+  if (unexpected.length > 0) {
+    fail(
+      `${frameworkDir} contains nested executable payloads not allowed in the iOS App Store runtime: ${unexpected.join(", ")}`,
     );
   }
 }
@@ -318,6 +391,7 @@ function validateXcframework(root) {
   for (const binary of binaries) {
     validateEngineFrameworkMetadata(path.dirname(binary));
     validateEngineBinary(binary);
+    validateNoNestedExecutablePayloads(path.dirname(binary), binary);
   }
   console.log(
     `[bun-ios-runtime] Validated ${selected.libraryIdentifier} ABI symbols`,
@@ -423,6 +497,11 @@ const env = {
   ELIZA_BUN_IOS_SDK: info.sdk,
   ELIZA_BUN_IOS_PLATFORM: info.platform,
   ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK: artifact,
+  ELIZA_IOS_APP_STORE_LOCAL_EXECUTION: "1",
+  ELIZA_IOS_NO_JIT: "1",
+  JSC_useJIT: "0",
+  JSC_jitPolicyScale: "0",
+  BUN_JSC_useJIT: "0",
 };
 
 function selectBackend() {
@@ -761,6 +840,8 @@ function writeFrameworkMetadata(frameworkDir) {
       "  <key>CFBundleShortVersionString</key><string>0.0.0</string>",
       "  <key>CFBundleVersion</key><string>0</string>",
       `  <key>ElizaBunEngineABIVersion</key><string>${expectedEngineAbiVersion}</string>`,
+      "  <key>ElizaBunEngineNoJIT</key><true/>",
+      `  <key>ElizaBunEngineExecutionProfile</key><string>${appStoreExecutionProfile}</string>`,
       "  <key>MinimumOSVersion</key><string>16.0</string>",
       "</dict>",
       "</plist>",
@@ -802,6 +883,8 @@ function linkFramework({ buildDir, webkitPath, info }) {
     info.minVersionFlag,
     "-fapplication-extension",
     "-fvisibility=hidden",
+    "-DELIZA_IOS_APP_STORE_LOCAL_EXECUTION=1",
+    "-DELIZA_IOS_NO_JIT=1",
     "-I",
     path.join(sourceDir, "src", "ios"),
     "-I",
@@ -902,6 +985,10 @@ function buildWithCmake() {
       `-DCMAKE_CXX_COMPILER_TARGET=${info.clangTarget}`,
       "-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY",
       "-DENABLE_LLVM=OFF",
+      "-DENABLE_JIT=OFF",
+      "-DENABLE_DFG_JIT=OFF",
+      "-DENABLE_FTL_JIT=OFF",
+      "-DENABLE_WEBASSEMBLY_BBQJIT=OFF",
       `-DWEBKIT_PATH=${webkitPath}`,
       ...parseExtraArgs(process.env.ELIZA_BUN_IOS_CMAKE_ARGS),
     ],

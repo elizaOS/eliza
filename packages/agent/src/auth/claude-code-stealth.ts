@@ -7,7 +7,7 @@ const CLAUDE_CODE_SYSTEM_PREFIX =
 const ANTHROPIC_BETA =
   "claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,context-management-2025-06-27,prompt-caching-scope-2026-01-05,advanced-tool-use-2025-11-20,effort-2025-11-24";
 
-type FetchWithPreconnect = typeof fetch & { preconnect?: unknown };
+type FetchWithPreconnect = typeof fetch & { preconnect?: () => void };
 type FetchInput = Parameters<typeof fetch>[0];
 
 function isSetupToken(value: string | null): value is string {
@@ -28,36 +28,37 @@ function getUrl(input: FetchInput | URL): URL | null {
   }
 }
 
-function addSystemPrefix(body: unknown): unknown {
-  if (!body || typeof body !== "object") {
-    return body;
-  }
+type AnthropicSystemBlock = { type?: string; text?: string };
+type AnthropicRequestBody = {
+  model?: string;
+  system?: string | AnthropicSystemBlock[];
+  [key: string]: unknown;
+};
 
-  const next = body as {
-    model?: string;
-    system?: string | Array<{ type?: string; text?: string }>;
+function addSystemPrefix(body: AnthropicRequestBody): AnthropicRequestBody {
+  const prefix: AnthropicSystemBlock = {
+    type: "text",
+    text: CLAUDE_CODE_SYSTEM_PREFIX,
   };
 
-  const prefix = { type: "text", text: CLAUDE_CODE_SYSTEM_PREFIX };
-
-  if (Array.isArray(next.system)) {
-    const hasPrefix = next.system.some((block) =>
+  if (Array.isArray(body.system)) {
+    const hasPrefix = body.system.some((block) =>
       block?.text?.startsWith("You are Claude Code"),
     );
     if (!hasPrefix) {
-      next.system.unshift(prefix);
+      body.system.unshift(prefix);
     }
-  } else if (typeof next.system === "string") {
-    next.system = [prefix, { type: "text", text: next.system }];
+  } else if (typeof body.system === "string") {
+    body.system = [prefix, { type: "text", text: body.system }];
   } else {
-    next.system = [prefix];
+    body.system = [prefix];
   }
 
-  return next;
+  return body;
 }
 
 export function installClaudeCodeStealthFetchInterceptor(): void {
-  if ((globalThis as Record<symbol, unknown>)[STEALTH_GUARD]) {
+  if ((globalThis as Record<symbol, boolean>)[STEALTH_GUARD]) {
     return;
   }
 
@@ -109,9 +110,8 @@ export function installClaudeCodeStealthFetchInterceptor(): void {
 
     if (typeof body === "string") {
       try {
-        const parsed = JSON.parse(body) as Record<string, unknown>;
-        const updated = addSystemPrefix(parsed) as Record<string, unknown>;
-        body = JSON.stringify(updated);
+        const parsed = JSON.parse(body) as AnthropicRequestBody;
+        body = JSON.stringify(addSystemPrefix(parsed));
       } catch {
         logger.debug(
           "[stealth] Anthropic request body was not JSON; skipping system prefix",
@@ -150,5 +150,5 @@ export function installClaudeCodeStealthFetchInterceptor(): void {
 
   globalThis.fetch = stealthFetch as typeof globalThis.fetch;
 
-  (globalThis as Record<symbol, unknown>)[STEALTH_GUARD] = true;
+  (globalThis as Record<symbol, boolean>)[STEALTH_GUARD] = true;
 }

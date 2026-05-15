@@ -18,13 +18,23 @@ export type WebsiteBlockerElevationMethod =
   | "system-settings"
   | null;
 
+export type WebsiteBlockerSettingsTarget =
+  | "vpn"
+  | "contentBlocker"
+  | "systemSettings"
+  | "runtime";
+
 export interface WebsiteBlockerPermissionResult {
   status: WebsiteBlockerPermissionStatus;
   canRequest: boolean;
+  canOpenSettings: boolean;
+  settingsTarget: WebsiteBlockerSettingsTarget | null;
+  engine: WebsiteBlockerEngine;
   reason?: string;
 }
 
 export interface WebsiteBlockerStatus {
+  status: "active" | "inactive" | "unavailable";
   available: boolean;
   active: boolean;
   hostsFilePath: string | null;
@@ -41,9 +51,19 @@ export interface WebsiteBlockerStatus {
   supportsElevationPrompt: boolean;
   elevationPromptMethod: WebsiteBlockerElevationMethod;
   permissionStatus?: WebsiteBlockerPermissionStatus;
+  canRequest?: boolean;
+  canOpenSettings?: boolean;
+  settingsTarget?: WebsiteBlockerSettingsTarget | null;
   canRequestPermission?: boolean;
   canOpenSystemSettings?: boolean;
   reason?: string;
+}
+
+export interface WebsiteBlockerOpenSettingsResult {
+  opened: boolean;
+  target: WebsiteBlockerSettingsTarget;
+  actualTarget: WebsiteBlockerSettingsTarget;
+  reason: string | null;
 }
 
 export interface StartWebsiteBlockOptions {
@@ -104,5 +124,5 @@ export interface WebsiteBlockerPlugin {
   stopBlock(): Promise<StopWebsiteBlockResult>;
   checkPermissions(): Promise<WebsiteBlockerPermissionResult>;
   requestPermissions(): Promise<WebsiteBlockerPermissionResult>;
-  openSettings(): Promise<{ opened: boolean }>;
+  openSettings(): Promise<WebsiteBlockerOpenSettingsResult>;
 }

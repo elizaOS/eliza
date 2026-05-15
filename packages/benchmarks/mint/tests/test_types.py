@@ -5,7 +5,6 @@ These cover the rebuilt 8-subtask taxonomy. The previous 4-bucket category
 enum was invented — its tests have been replaced.
 """
 
-import pytest
 
 from benchmarks.mint.types import (
     MINTSubtask,
@@ -18,7 +17,6 @@ from benchmarks.mint.types import (
     MINTTrajectory,
     Turn,
     TurnType,
-    EvaluationMetric,
     LEADERBOARD_SCORES,
     PAPER_RESULTS_URL,
     MINTCategory,  # back-compat alias

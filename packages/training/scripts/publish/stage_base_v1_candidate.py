@@ -2,7 +2,7 @@
 
 Unlike `scripts/publish/orchestrator.py` (which refuses to push unless every
 release-blocking gate is green), this stages a *candidate* bundle: a real
-fine-tuned text GGUF + the frozen `elizaos/eliza-1-assets` voice/ASR/VAD bytes
+fine-tuned text GGUF + the frozen `elizalabs/eliza-1-assets` voice/ASR/VAD bytes
 + an honestly-labelled drafter, with the eval suite run and folded in. The
 resulting bundle is installable on a device whose backend the manifest verified
 `pass` (post-commit `ae7c9e5fcd` to the runtime validator) but is NOT
@@ -60,9 +60,9 @@ TEXT_BASE_BY_TIER = {
     "2b": "Qwen/Qwen3.5-2B",
     "4b": "Qwen/Qwen3.5-4B",
     "9b": "Qwen/Qwen3.5-9B",
-    "27b": "Qwen/Qwen3.5-27B",
-    "27b-256k": "Qwen/Qwen3.5-27B",
-    "27b-1m": "Qwen/Qwen3.5-27B",
+    "27b": "Qwen/Qwen3.6-27B",
+    "27b-256k": "Qwen/Qwen3.6-27B",
+    "27b-1m": "Qwen/Qwen3.6-27B",
 }
 TEXT_CONTEXT_BY_TIER = {
     tier: PP.CONTEXTS_BY_TIER[tier][0]
@@ -74,8 +74,8 @@ TEXT_CTX_BY_TIER = {
 }
 
 # Frozen eliza-1-assets bytes (tier-agnostic voice/ASR/VAD/cache) from
-# evidence/bundle-assets.json on elizaos/eliza-1-assets.
-ASSETS_REPO = "elizaos/eliza-1-assets"
+# evidence/bundle-assets.json on elizalabs/eliza-1-assets.
+ASSETS_REPO = "elizalabs/eliza-1-assets"
 ASSETS_TIER = "2b"
 
 
@@ -222,8 +222,8 @@ def main(argv: list[str] | None = None) -> int:
             "sha256": drafter_sha,
             "source": args.drafter_source,
             "note": (
-                f"DFlash drafter for the {tier} Qwen3.5 text target. "
-                "It must share the 248320-token Qwen3.5 tokenizer with the target "
+                f"DFlash drafter for the {tier} Qwen3.5/Qwen3.6 text target. "
+                "It must share the 248320-token Qwen3.5-family tokenizer with the target "
                 "so speculative decoding is correct. See the drafter source repo "
                 "for whether this candidate is distilled or a tokenizer-compatible "
                 "smoke artifact."
@@ -465,6 +465,7 @@ def main(argv: list[str] | None = None) -> int:
         recipe_manifest={
             "turbo3": {"blockLayoutVersion": "block_turbo3_0:v1", "codebookHash": "turbo_centroids_3bit:8xfp32:seed42:v1", "perBlockTolerance": 0.05},
             "turbo4": {"blockLayoutVersion": "block_turbo4_0:v1", "codebookHash": "turbo_centroids_4bit:16xfp32:seed42:v1", "perBlockTolerance": 0.01},
+            "turbo3_tcq": {"blockLayoutVersion": "block_turbo3_tcq:v1", "codebookHash": "turbo3_tcq_codebook:512xfp32:seed42:v1", "perBlockTolerance": 0.03},
             "qjl1_256": {"blockLayoutVersion": "block_qjl1_256:v1:34bytes:packed", "codebookHash": "qjl1_256_layout:34bytes:lsb_first:bf16_norm:v1", "perBlockTolerance": 0.05},
             "polar_q4": {"blockLayoutVersion": "block_q4_polar:v1:82bytes:packed", "codebookHash": "polar_q4_centroids:16xfp32:lloyd_max_niter100:v1", "perBlockTolerance": 0.001},
         },
@@ -542,7 +543,7 @@ library_name: gguf
 tags: [eliza, elizaos, eliza-1, gguf, on-device, candidate]
 ---
 
-# elizaos/eliza-1-{tier} — base-v1 candidate bundle
+# elizalabs/eliza-1/bundles/{tier} - base-v1 candidate bundle
 
 This is the Eliza-1 **{tier}** on-device bundle, published as a
 **`base-v1-candidate`** (`defaultEligible: false`). The runtime can download

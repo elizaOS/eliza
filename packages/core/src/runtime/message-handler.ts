@@ -37,11 +37,11 @@ export const SIMPLE_CONTEXT_ID = "simple";
 /**
  * Parse a HANDLE_RESPONSE payload into the internal {@link MessageHandlerResult}.
  *
- * Expects the canonical flat envelope `{ shouldRespond, thought?, replyText,
- * contexts, contextSlices?, candidateActions?, parentActionHints?,
- * requiresTool?, extract? }` (what Eliza-1 / the current `HANDLE_RESPONSE_SCHEMA`
- * emit). The internal result still carries the `plan` sub-object so the rest of
- * the message pipeline is unchanged.
+ * Expects the canonical response-handler field-registry envelope:
+ * `{ shouldRespond, contexts, intents, replyText, candidateActionNames, facts,
+ * relationships, addressedTo, emotion }`. The internal result still carries
+ * the `plan` sub-object because the downstream runtime contract has not been
+ * renamed.
  */
 export function parseMessageHandlerOutput(
 	raw: string,
@@ -56,14 +56,15 @@ export function parseMessageHandlerOutput(
 		? parsed.contexts.map((context) => String(context).trim()).filter(Boolean)
 		: [];
 	const replyRaw =
-		typeof parsed.replyText === "string" ? parsed.replyText : undefined;
-	const requiresTool =
-		typeof parsed.requiresTool === "boolean" ? parsed.requiresTool : undefined;
-	const contextSlices = normalizeStringHints(parsed.contextSlices, 12);
-	const candidateActions = normalizeStringHints(parsed.candidateActions, 12);
-	const parentActionHints = normalizeStringHints(parsed.parentActionHints, 6);
+		typeof parsed.replyText === "string"
+			? stripJsonStructuralJunkReply(parsed.replyText)
+			: undefined;
+	const candidateActions = normalizeStringHints(
+		parsed.candidateActionNames,
+		12,
+	);
 
-	const extract = parseExtract(parsed.extract);
+	const extract = parseExtract(parsed);
 
 	// Refusal suppression for the planning path (elizaOS/eliza#7620).
 	// When the model routes to a non-simple context OR populates candidate
@@ -85,24 +86,23 @@ export function parseMessageHandlerOutput(
 	const normalizedPlan: V5MessageHandlerOutput["plan"] = {
 		contexts,
 		reply,
-		...(requiresTool !== undefined ? { requiresTool } : {}),
 	};
-	if (contextSlices.length > 0) {
-		normalizedPlan.contextSlices = contextSlices;
-	}
 	if (candidateActions.length > 0) {
 		normalizedPlan.candidateActions = candidateActions;
-	}
-	if (parentActionHints.length > 0) {
-		normalizedPlan.parentActionHints = parentActionHints;
 	}
 
 	return {
 		processMessage,
 		plan: normalizedPlan,
-		thought: typeof parsed.thought === "string" ? parsed.thought : "",
+		thought: "",
 		...(extract ? { extract } : {}),
 	};
+}
+
+function stripJsonStructuralJunkReply(value: string): string {
+	const trimmed = value.trim();
+	if (!trimmed) return "";
+	return /^[\s{}[\]":,]+$/.test(trimmed) ? "" : trimmed;
 }
 
 function normalizeStringHints(raw: unknown, maxItems: number): string[] {
