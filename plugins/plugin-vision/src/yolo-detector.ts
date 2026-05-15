@@ -224,9 +224,6 @@ interface Detection {
   height: number;
 }
 
-/** Approximate VRAM/RAM cost for YOLOv8n (model + activations). */
-export const YOLO_MEMORY_BYTES = 60 * 1024 * 1024;
-
 export class YOLODetector {
   private session: OnnxSession | null = null;
   private onnx: OnnxRuntime | null = null;

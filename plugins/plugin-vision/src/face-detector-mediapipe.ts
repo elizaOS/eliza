@@ -138,8 +138,6 @@ async function ensureModel(
   await fs.writeFile(dest, buf);
 }
 
-export const MEDIAPIPE_FACE_MEMORY_BYTES = 5 * 1024 * 1024;
-
 export class MediaPipeFaceDetector {
   private session: OnnxSession | null = null;
   private onnx: OnnxRuntime | null = null;

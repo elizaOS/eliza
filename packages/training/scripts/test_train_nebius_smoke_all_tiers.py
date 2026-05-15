@@ -24,7 +24,6 @@ fake `nebius` script staged on a tmp PATH.
 from __future__ import annotations
 
 import os
-import shutil
 import stat
 import subprocess
 import sys

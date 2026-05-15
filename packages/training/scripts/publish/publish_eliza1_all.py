@@ -9,13 +9,13 @@ do publish (the privacy-filtered SFT datasets, the eval/bench results, the
 honest pending-status cards on the bundle repos) and prints a single summary.
 
 Publishable today (no fork build / no held-out-quality gate needed):
-  - dataset ``elizalabs/eliza-1-training``  (the broader SFT corpus — refreshed
+  - dataset ``elizaos/eliza-1-training``  (the broader SFT corpus — refreshed
     only if ``data/final/{train,val,test}.jsonl`` exists locally)
-  - dataset ``elizalabs/eliza-1-evals``     (the eval/bench results, kernel-verify
+  - dataset ``elizaos/eliza-1-evals``     (the eval/bench results, kernel-verify
     evidence, the ``eliza1_gates.yaml`` thresholds, throughput snapshots)
 
 Gated (this script reports the blocker, never bypasses it):
-  - the active device bundles ``elizalabs/eliza-1/bundles/<tier>`` — gated on the
+  - the active device bundles ``elizaos/eliza-1/bundles/<tier>`` — gated on the
     fork-built GGUFs + per-backend dispatch/verify evidence + the runnable-on-
     base evals + the released license review (orchestrator stage 2/3/4).
   - the fine-tuned ``recommended``-channel weights — gated on the full-corpus
@@ -49,7 +49,7 @@ if str(TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest import eliza1_manifest as M  # noqa: E402
 
-ORG = "elizalabs"
+ORG = "elizaos"
 MODEL_REPO_ID = M.ELIZA_1_HF_REPO
 
 # Active Eliza-1 device bundles. Retired Qwen3 size-specific repos are handled

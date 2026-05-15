@@ -20,6 +20,12 @@ import { dflashLlamaServer, getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
+import { createVisionCapabilityRegistration } from "./vision";
+import type {
+	VisionDescribeBackend,
+	VisionDescribeRequest,
+	VisionDescribeResult,
+} from "./vision/types";
 import { searchHuggingFaceGguf, searchModelHubGguf } from "./hf-search";
 import {
 	MemoryArbiter,
@@ -369,6 +375,56 @@ export class LocalInferenceService {
 		arbiter.start();
 		setMemoryArbiter(arbiter);
 		this.memoryArbiter = arbiter;
+		// WS2: register the vision-describe capability so plugin-vision and
+		// the IMAGE_DESCRIPTION runtime handler dispatch through llama.cpp's
+		// mtmd path (the running llama-server's `--mmproj`-loaded projector).
+		// The backend is a thin wrapper over `localInferenceEngine.describeImage`
+		// — there is no separate model load: the projector is co-resident with
+		// the active text bundle and lives or dies with it. Florence-2 has been
+		// removed entirely (see VISION_MIGRATION.md).
+		arbiter.registerCapability(
+			createVisionCapabilityRegistration({
+				arbiterCache: arbiter,
+				estimatedMb: 600,
+				loader: async () => {
+					const backend: VisionDescribeBackend = {
+						id: "llama-server",
+						async describe(
+							request: VisionDescribeRequest,
+						): Promise<VisionDescribeResult> {
+							const { resolveImageBytes } = await import("./vision/hash");
+							const { bytes, mimeType } = resolveImageBytes(request.image);
+							const result = await localInferenceEngine.describeImage({
+								bytes,
+								mimeType,
+								prompt: request.prompt,
+								maxTokens: request.maxTokens,
+								temperature: request.temperature,
+								signal: request.signal,
+							});
+							const trimmed = result.text.trim();
+							if (!trimmed) {
+								throw new Error(
+									"[vision/llama-server] describe returned empty text",
+								);
+							}
+							const title = trimmed.split(/[.!?]/, 1)[0]?.trim() || "Image";
+							return {
+								title,
+								description: trimmed,
+								projectorMs: result.projectorMs,
+								decodeMs: result.decodeMs,
+								cacheHit: false,
+							};
+						},
+						async dispose() {
+							// Lifetime owned by the engine; nothing to free here.
+						},
+					};
+					return backend;
+				},
+			}),
+		);
 		return arbiter;
 	}
 

@@ -11,9 +11,9 @@ function createRuntime() {
     flushWriteQueue: vi.fn(),
     logLlmCall: vi.fn(),
   };
-  const useModel = vi.fn(
-    async (_t: string, _args: unknown) => ({ description: "A tidy desk." }),
-  );
+  const useModel = vi.fn(async (_t: string, _args: unknown) => ({
+    description: "A tidy desk.",
+  }));
   const runtime = Object.assign(Object.create(null) as IAgentRuntime, {
     agentId: "agent-vision",
     character: {},

@@ -134,6 +134,10 @@ const AppsPageView = lazyNamedView(
   () => import("./components/pages/AppsPageView"),
   "AppsPageView",
 );
+const ViewManagerPage = lazyNamedView(
+  () => import("./components/pages/ViewManagerPage"),
+  "ViewManagerPage",
+);
 const AutomationsFeed = lazyNamedView(
   () => import("./components/pages/AutomationsFeed"),
   "AutomationsFeed",
@@ -844,6 +848,32 @@ export function App() {
     return () =>
       document.removeEventListener(FOCUS_CONNECTOR_EVENT, handleFocusConnector);
   }, [setTab]);
+
+  // Handle agent-dispatched view navigation events.
+  // The VIEWS action (and future agent commands) dispatch this event to navigate
+  // the user to a specific view by path or view ID.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleNavigateView = (event: Event) => {
+      const detail = (event as CustomEvent<{ viewId?: string; viewPath?: string }>).detail;
+      if (!detail) return;
+      const path = detail.viewPath ?? (detail.viewId ? `/apps/${detail.viewId}` : null);
+      if (!path) return;
+      try {
+        if (window.location.protocol === "file:") {
+          window.location.hash = path;
+        } else {
+          window.history.pushState(null, "", path);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+      } catch {
+        // sandboxed — ignore
+      }
+    };
+    window.addEventListener("eliza:navigate:view", handleNavigateView);
+    return () =>
+      window.removeEventListener("eliza:navigate:view", handleNavigateView);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

@@ -251,8 +251,8 @@ import {
   type SignalSettings,
 } from "./types";
 
-export const DEFAULT_SIGNAL_HTTP_HOST = "127.0.0.1";
-export const DEFAULT_SIGNAL_HTTP_PORT = 8080;
+const DEFAULT_SIGNAL_HTTP_HOST = "127.0.0.1";
+const DEFAULT_SIGNAL_HTTP_PORT = 8080;
 const DEFAULT_SIGNAL_DAEMON_STARTUP_TIMEOUT_MS = 30_000;
 export const DEFAULT_SIGNAL_CLI_PATH = "signal-cli";
 const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
@@ -267,7 +267,7 @@ const BREW_OPENJDK_HOME = "/opt/homebrew/opt/openjdk";
  *
  * Override with `SIGNAL_AUTH_DIR` to point at a custom install.
  */
-export function defaultSignalAuthDir(): string {
+function defaultSignalAuthDir(): string {
   const home = os.homedir();
   return path.join(home, ".local", "share", "signal-cli");
 }

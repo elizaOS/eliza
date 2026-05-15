@@ -1,9 +1,8 @@
 import type { UUID } from "@elizaos/core";
 
 export const ROBLOX_SERVICE_NAME = "roblox";
-export const ROBLOX_SOURCE = "roblox";
 
-export type JsonPrimitive = string | number | boolean | null;
+type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 export type JsonValueOrUndefined = JsonValue | undefined;
 
@@ -25,14 +24,14 @@ export interface RobloxUser {
   isBanned?: boolean;
 }
 
-export interface RobloxPlayerSession {
+interface RobloxPlayerSession {
   user: RobloxUser;
   jobId: string;
   placeId: string;
   joinedAt: Date;
 }
 
-export interface RobloxGameMessage {
+interface RobloxGameMessage {
   id: string;
   user: RobloxUser;
   content: string;
@@ -42,7 +41,7 @@ export interface RobloxGameMessage {
   context?: Record<string, string>;
 }
 
-export interface RobloxResponse {
+interface RobloxResponse {
   content: string;
   action?: RobloxGameAction;
   flagged?: boolean;
@@ -62,7 +61,7 @@ export interface DataStoreEntry<T = JsonValue> {
   updatedAt: Date;
 }
 
-export type MessagingServiceDataValue = JsonValueOrUndefined;
+type MessagingServiceDataValue = JsonValueOrUndefined;
 
 export interface MessagingServiceMessage {
   topic: string;
@@ -73,7 +72,7 @@ export interface MessagingServiceMessage {
   };
 }
 
-export enum RobloxEventType {
+enum RobloxEventType {
   PLAYER_JOINED = "roblox:player_joined",
   PLAYER_LEFT = "roblox:player_left",
   PLAYER_MESSAGE = "roblox:player_message",
@@ -81,7 +80,7 @@ export enum RobloxEventType {
   WEBHOOK_RECEIVED = "roblox:webhook_received",
 }
 
-export interface RobloxEventTypes {
+interface RobloxEventTypes {
   [RobloxEventType.PLAYER_JOINED]: {
     session: RobloxPlayerSession;
   };
@@ -103,7 +102,7 @@ export interface RobloxEventTypes {
   };
 }
 
-export interface RobloxServerInfo {
+interface RobloxServerInfo {
   jobId: string;
   placeId: string;
   playerCount: number;

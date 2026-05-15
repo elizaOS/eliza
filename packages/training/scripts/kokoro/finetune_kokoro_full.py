@@ -82,6 +82,11 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT))
+# Add the parent scripts dir at the END so `training.optimizer` resolves but
+# the local `kokoro/` dir doesn't shadow the pip-installed `kokoro` package.
+_SCRIPTS_DIR = str(ROOT.parent)
+if _SCRIPTS_DIR not in sys.path:
+    sys.path.append(_SCRIPTS_DIR)
 from _config import load_config  # noqa: E402
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -520,7 +525,7 @@ def _build_pairs(
             log.warning("missing wav %s; skipping", wav_path)
             continue
         wav = _load_wav_mono(wav_path, target_sr=sample_rate)
-        target_mel = _audio_to_logmel(torch.from_numpy(wav).float(), mel_fn).to(device)
+        target_mel = _audio_to_logmel(torch.from_numpy(wav).float().to(device), mel_fn)
         try:
             phonemes = _phonemize_transcript(text, lang=voice_lang)
         except Exception as exc:  # noqa: BLE001
@@ -647,7 +652,8 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:  # noqa: 
 
     log.info("initialized ref_s from voice %s (no grad)", args.init_from_voice)
 
-    optimizer = _build_optimizer(stack, list(model.parameters()), cfg)
+    # APOLLO factory needs a model object (for named_parameters), not a param list.
+    optimizer = _build_optimizer(stack, model, cfg)
     log.info(
         "optimizer=%s lr=%.2e weight_decay=%.4f anchor_weight=%.4e",
         cfg["optimizer"],
@@ -704,7 +710,7 @@ def _real_train(args: argparse.Namespace, cfg: dict[str, Any]) -> int:  # noqa: 
                 torch.cuda.empty_cache()
                 step += 1
                 continue
-            synth_mel = _audio_to_logmel(synth_audio, mel_fn)
+            synth_mel = _audio_to_logmel(synth_audio.to(device), mel_fn)
             t_min = min(synth_mel.shape[-1], target_mel.shape[-1])
             recon_loss = (synth_mel[..., :t_min] - target_mel[..., :t_min]).abs().mean()
             # Anchor regularization across every parameter.
