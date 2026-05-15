@@ -128,6 +128,16 @@ const ROUTES: DevRouteEntry[] = [
     platformGate: null,
   },
   {
+    tabId: "views",
+    path: "/views",
+    label: "Views",
+    group: "Apps",
+    visibility: "all",
+    featureFlag: "VITE_ENABLE_APPS",
+    requiresAuth: true,
+    platformGate: null,
+  },
+  {
     tabId: "lifeops",
     path: "/apps/lifeops",
     label: "LifeOps",
