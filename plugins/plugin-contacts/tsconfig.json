@@ -3,6 +3,7 @@
   "compilerOptions": {
     "composite": false,
     "jsx": "react-jsx",
+    "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
     "skipLibCheck": true,
