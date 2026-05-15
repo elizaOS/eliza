@@ -576,6 +576,35 @@ export interface EngineVoiceBridgeOptions {
 	 * mmap-evict).
 	 */
 	kokoroOnly?: KokoroEngineDiscoveryResult;
+	/**
+	 * Optional voice-profile store for speaker-attribution. When set, the
+	 * bridge constructs a `VoiceAttributionPipeline` and runs attribution
+	 * in parallel with ASR on every turn via `runVoiceTurn`. Callers receive
+	 * the resolved `VoiceAttributionOutput` via `onAttribution` in the turn
+	 * events passed to `runVoiceTurn`.
+	 *
+	 * When absent, attribution is skipped and the pipeline operates exactly
+	 * as before (no diarizer / encoder overhead).
+	 */
+	profileStore?: VoiceProfileStore;
+}
+
+/**
+ * Per-turn events that include the optional attribution result alongside
+ * the existing `VoicePipelineEvents`. The attribution runs in parallel
+ * with ASR; it resolves some time after `onAsrComplete` and before
+ * `onComplete`.
+ */
+export interface VoiceTurnEvents extends VoicePipelineEvents {
+	/**
+	 * Called once per turn when the `VoiceAttributionPipeline` resolves
+	 * (diarizer + encoder + profile-store match). Only fired when the
+	 * bridge was constructed with a `profileStore`. May arrive after
+	 * `onAsrComplete` but before `onComplete`. Fire-and-forget from the
+	 * bridge's perspective — callers attach the metadata to the turn's
+	 * transcript asynchronously.
+	 */
+	onAttribution?(output: VoiceAttributionOutput): void;
 }
 
 /**
@@ -600,6 +629,13 @@ export class EngineVoiceBridge {
 	private readonly phraseCache: PhraseCache;
 	/** In-flight fused turn (`runVoiceTurn`), if any — cancelled on barge-in. */
 	private activePipeline: VoicePipeline | null = null;
+	/**
+	 * Optional attribution pipeline. Populated when the bridge was created
+	 * with a `profileStore` option. When present, `runVoiceTurn` fires
+	 * attribution in parallel with ASR and delivers the result via
+	 * `VoiceTurnEvents.onAttribution`.
+	 */
+	private readonly attributionPipeline: VoiceAttributionPipeline | null;
 
 	private constructor(
 		scheduler: VoiceScheduler,
@@ -610,6 +646,7 @@ export class EngineVoiceBridge {
 		ffiContextRef: FfiContextRef | null,
 		asrAvailable: boolean,
 		phraseCache: PhraseCache,
+		attributionPipeline: VoiceAttributionPipeline | null = null,
 	) {
 		this.scheduler = scheduler;
 		this.backend = backend;
@@ -619,6 +656,7 @@ export class EngineVoiceBridge {
 		this.ffiContextRef = ffiContextRef;
 		this.asrAvailable = asrAvailable;
 		this.phraseCache = phraseCache;
+		this.attributionPipeline = attributionPipeline;
 	}
 
 	get ffiCtx(): ElizaInferenceContextHandle | null {
