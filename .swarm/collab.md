@@ -646,3 +646,40 @@ read from `HF_TOKEN` env. Never commit it.
   GPU VRAM: 14.9 GB / 16.3 GB allocated during training — eval must wait until
   training pause or completion. Loss trajectory: step=0:0.0899 → step=500:0.6016
   (convergent, warmup spike then decreasing).
+
+
+## M-emotion-final — re-dispatch close (2026-05-15)
+
+- 2026-05-15 03:32 M-emotion-final phase=done:
+  Path B (G-emotion best.pt re-export, cls7 aux-head ONNX) clears the gate.
+  Final test macro-F1 = 0.3550 ≥ 0.35 (RAVDESS, 126 clip test split).
+  HF: pushed `elizaos/eliza-1-voice-emotion` (public, NEW repo —
+  was deleted in H5 consolidation, re-created here). Revision
+  `384e896725da9358b2f3bb9b31e30a3565998ecd`. Also already in the
+  consolidated `elizaos/eliza-1` repo from earlier rounds.
+  Artifacts: wav2small-cls7-int8.onnx (524,750 bytes, sha256
+  cba2c4e49707ac20da8b1420814b80735f700e917905c46d8cb880b95d97c953).
+  Runtime adapter contract change (cls7 auto-detect) already on
+  develop (commit `36149ac834`) — 17 tests green.
+  CHANGELOG.md updated. Impl report at .swarm/impl/M-emotion-final.md.
+  Commits this round: 20e14e449b, 769e359aea, 0ce44167df. Pushed to develop.
+
+
+## L-kokoro-distill — re-dispatch close (2026-05-15)
+
+- 2026-05-15 L-kokoro-distill phase=done (L5 failure outcome):
+  All three independent Kokoro `same` FT attempts collapse —
+  F-kokoro 4-anchor sweep (real 3.5-min corpus), L-kokoro-distill
+  4-anchor sweep (95-min OmniVoice-synthesized corpus,
+  `packages/training/data/voice/sam-distill/`, 1090 clips), and
+  H1's G3-retry 8000-step run (lr=3e-5, anchor=5e-4, APOLLO-Mini,
+  bf16) all hit WER=1.0 / UTMOS ≈2.3 / SpkSim ≈0.10–0.15 against
+  real `same/`. Baseline `af_same.bin` itself only scores SpkSim
+  -0.075 — the 0.55 gate is structurally unreachable on this corpus
+  (ECAPA self-cosine ceiling 0.56) on Kokoro's thin embedding-
+  adaptation architecture. **No HF push** —
+  `elizaos/eliza-1-voice-kokoro-same-v01` confirmed nonexistent.
+  Shipping path remains OmniVoice ELZ2 v2 'same' preset
+  (`elizaos/eliza-1-voice-omnivoice-same-v01@fd0d04439d`,
+  `voice-models.ts` `omnivoice` 0.2.0). Impl report:
+  `.swarm/impl/L-kokoro-distill.md`. Commit: `3f505127c1`.
