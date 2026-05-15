@@ -416,7 +416,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
       },
     ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — kokoro 82M voice-embedding af_bella preset.",
+    changelogEntry:
+      "Initial release — kokoro 82M voice-embedding af_bella preset.",
     minBundleVersion: "0.0.0",
   },
   {
