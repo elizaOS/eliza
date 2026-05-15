@@ -2,20 +2,21 @@
 
 ## J3 — Single-runtime finalizer phase=impl-done
 
-2026-05-15 J3 phase=impl-done (partial — compute-gated on J1/J2 native ports).
-- J1 and J2 processes (PIDs 2695199, 2696510) exited without posting impl-done.
-  All 5 ONNX voice sub-models remain on ONNX resolved path. Native C stubs
-  still return -ENOSYS. ONNX dep cannot be removed from package.json yet.
+2026-05-15 J3 phase=impl-done (partial — compute-gated on remaining ONNX ports).
+- J1.d (GGUF turn-detector) already committed at HEAD: `eot-classifier-ggml.ts`
+  implements `LiveKitGgmlTurnDetector` via `node-llama-cpp` (fork). `engine.ts`
+  wires it into the EOT chain ahead of legacy ONNX. Production chain:
+  Eliza1Eot → GgmlTurnDetector → LiveKitTurnDetector (ONNX, last resort) → Heuristic.
+- 4 ONNX-active paths remain: Wav2Small, WeSpeaker, pyannote-3 (voice-classifier-cpp
+  stubs return -ENOSYS), Kokoro (LLM_ARCH_KOKORO stub, StyleTTS-2 graph not implemented).
 - AGENTS.md updated: `plugins/plugin-local-inference/native/AGENTS.md` §11 +
-  `packages/native-plugins/voice-classifier-cpp/AGENTS.md` header — both
-  document the deprecation status and per-head compute gates.
-- State matrix and compute-gate next steps committed to `.swarm/impl/J3-finalize.md`.
-- No-ONNX lsof proof deferred: not meaningful until ONNX paths removed.
-- lsof artifact placeholder: `artifacts/j3-no-onnx-proof/` (empty).
+  `packages/native-plugins/voice-classifier-cpp/AGENTS.md` header.
+- State matrix committed to `.swarm/impl/J3-finalize.md`.
+- No-ONNX lsof proof deferred: 4 ONNX-active models still load libonnxruntime.so.
 - Submodule pin current at `5da0f068a` — no bump needed this wave.
-- Next: J1 must implement the 3 voice-classifier-cpp heads + pyannote diarizer;
+- Next: J1 must port Wav2Small + WeSpeaker + pyannote voice-classifier-cpp heads;
   J2 must implement `llama_model_kokoro::build_graph`. When both post impl-done,
-  re-open J3 to complete ONNX removal, lsof proof, and dep cleanup.
+  re-open J3 to complete ONNX removal from package.json, lsof proof, dep cleanup.
 - Report: `.swarm/impl/J3-finalize.md`
 
 ## W3-5 — Emotion roundtrip validation phase=impl-done

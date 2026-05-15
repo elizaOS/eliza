@@ -12,15 +12,18 @@
 
 J3 was scoped to remove ONNX dep paths after J1 (4 simpler native ports)
 and J2 (Kokoro port) landed. Neither J1 nor J2 posted `phase=impl-done`
-to `collab.md` — their processes exited without completing the native C
-implementations (all 5 ONNX-backed model heads still return `-ENOSYS`
-from `voice-classifier-cpp` stubs, Kokoro GGUF graph not implemented in
-the fork). ONNX cannot be removed from `package.json` without breaking
-the voice pipeline.
+to `collab.md` — their processes exited without completing all native C
+implementations. However J1 DID complete the GGUF-backed turn-detector
+port (J1.d): `eot-classifier-ggml.ts` now implements `LiveKitGgmlTurnDetector`
+backed by `node-llama-cpp` (fork), and `engine.ts` wires it into the
+fallback chain ahead of the ONNX path. Three voice-classifier-cpp heads
+still return `-ENOSYS` (Wav2Small, WeSpeaker, pyannote), and Kokoro's
+StyleTTS-2 graph is not yet implemented. ONNX cannot be fully removed
+from `package.json` yet.
 
 This document records:
 1. The honest state matrix (§A).
-2. What J3 CAN do without J1/J2 (§B) — done.
+2. What J3 did (§B) — done.
 3. What remains compute-gated (§C).
 4. Verification of no regression (§D).
 
@@ -33,8 +36,8 @@ This document records:
 | Wav2Small emotion (cls7) | `voice-emotion-classifier.ts` → `onnxruntime-node` | ONNX (active) | `voice-classifier-cpp/src/voice_emotion_*.c` returns `-ENOSYS` | J1: implement ggml graph in `voice_classifier_stub.c` replacement |
 | WeSpeaker R34-LM | `speaker/encoder.ts` → `onnxruntime-node` | ONNX (active) | `voice-classifier-cpp/src/voice_speaker_*.c` returns `-ENOSYS` | J1: implement ggml ResNet34 graph |
 | pyannote-3 diarizer | `speaker/diarizer.ts` → `onnxruntime-node` | ONNX (active) | No ggml scaffold exists yet | J1: new `voice_diarizer_*.c` TU; SincNet+Transformer |
-| LiveKit turn-detector (text-side) | `eot-classifier.ts::LiveKitTurnDetector` → `onnxruntime-node` | ONNX (fallback only) | `Eliza1EotClassifier` (fork, node-llama-cpp) is preferred when text model loaded | Port complete for the preferred path; ONNX path remains as fallback when text model unavailable |
-| turn-detector GGUF (dedicated) | Not wired | NOT WIRED | `turn-detector-en-q8.gguf` / `turn-detector-intl-q8.gguf` live on HF; no llama-server route in TS | Future: `createBundledGgufTurnDetector` loading GGUF via llama-server `/v1/completions` |
+| LiveKit turn-detector (text-side ONNX) | `eot-classifier.ts::LiveKitTurnDetector` → `onnxruntime-node` | ONNX (last-resort fallback only) | `Eliza1EotClassifier` preferred (fork text model); `LiveKitGgmlTurnDetector` (J1.d) preferred over ONNX when GGUF on disk | Remove once GGUF is verified on all bundles |
+| LiveKit turn-detector (GGUF — J1.d) | `eot-classifier-ggml.ts::LiveKitGgmlTurnDetector` → `node-llama-cpp` (fork) | **DONE** (J1.d, already committed) | GGUF must be staged on disk | Shipped; wired in engine.ts chain |
 | Kokoro TTS | `kokoro/kokoro-runtime.ts` → `onnxruntime-node` | ONNX (active) | `LLM_ARCH_KOKORO` enum + stub loader in fork (W3-1); StyleTTS-2 graph NOT implemented | J2: `llama_model_kokoro::build_graph` + decoder dispatch in `llama-server` |
 | OmniVoice TTS | fork FFI `libelizainference` | **DONE** (W3-3) | — | Shipped |
 | Silero VAD | fork FFI `eliza_inference_vad_*` | **DONE** (I1 audit) | — | Shipped |
@@ -42,10 +45,10 @@ This document records:
 | ASR (Qwen3-ASR) | fork FFI `eliza_pick_asr_files()` | **DONE** (T-asr) | — | Shipped; Qwen3-ASR via fused `libelizainference` |
 | DFlash speculative decoding | fork `llama-server` (`--spec-type dflash`) | **DONE** | — | Shipped |
 
-**Summary:** 5 of 10 paths on the fork. 4 ONNX paths remain (Wav2Small,
-WeSpeaker, pyannote-3, Kokoro). 1 ONNX path is `fallback-only`
-(LiveKit turn-detector, overridden by `Eliza1EotClassifier` when text model
-loaded).
+**Summary:** 6 of 11 paths on the fork (including J1.d GGUF turn-detector). 4 ONNX
+paths remain active (Wav2Small, WeSpeaker, pyannote-3, Kokoro). 1 ONNX path is
+last-resort fallback (LiveKit turn-detector ONNX — overridden by Eliza1Eot when text
+model loaded, and by GgmlTurnDetector when GGUF is staged on disk).
 
 ---
 
@@ -66,12 +69,36 @@ Updated `plugins/plugin-local-inference/native/AGENTS.md` and
 This document committed to `.swarm/impl/J3-finalize.md` with the authoritative
 per-model status table.
 
-### B.3 No-ONNX proof (partial)
+### B.3 J1.d already landed at HEAD
 
-`lsof` proof is **NOT possible today** — the runtime will always map
+The GGUF-backed turn-detector was committed before J3 ran (J1's work landed
+via checkpoint commits). Key files at HEAD:
+
+- `plugins/plugin-local-inference/src/services/voice/eot-classifier-ggml.ts`
+  — `LiveKitGgmlTurnDetector` class + `createBundledLiveKitGgmlTurnDetector`
+  resolver; uses `node-llama-cpp` (fork wrapper) to load the GGUF and read
+  `P(<|im_end|>)` from next-token logits.
+- `plugins/plugin-local-inference/src/services/engine.ts`
+  — `eotGgmlMod` dynamically imported alongside `eotMod`; `ggmlTurnDetector`
+  resolved at voice session start and inserted in the priority chain before
+  the legacy ONNX path.
+
+**Production turn-detection chain (as of HEAD):**
+1. `Eliza1EotClassifier` — uses the already-loaded text model (fork). Always
+   on the fork path when a text model is resident.
+2. `LiveKitGgmlTurnDetector` (J1.d) — dedicated GGUF via `node-llama-cpp`
+   (fork). Active when `turn-detector-en-q8.gguf` or
+   `turn-detector-intl-q8.gguf` is staged on disk.
+3. `LiveKitTurnDetector` — legacy ONNX. One-release deprecation runway.
+4. `HeuristicEotClassifier` — deterministic, zero-dep final fallback.
+
+### B.4 No-ONNX proof (partial)
+
+`lsof` proof is **NOT possible today** — the runtime will still map
 `libonnxruntime.so` for the Wav2Small / WeSpeaker / pyannote / Kokoro ONNX
 sessions on any voice-enabled boot. The brief mandates `lsof` proof only
-after J1+J2 land. This section will be populated when those ports complete.
+after all ONNX-active models are removed. This section will be populated
+when J1 (Wav2Small + WeSpeaker + pyannote) and J2 (Kokoro) complete.
 
 **Artifact placeholder:** `artifacts/j3-no-onnx-proof/<run-id>/lsof.txt`
 (empty — not meaningful until ONNX paths removed from resolved runtime).
