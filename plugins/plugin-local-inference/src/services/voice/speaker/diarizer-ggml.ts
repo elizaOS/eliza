@@ -1,17 +1,16 @@
 /**
- * Pyannote-3 diarizer — ggml-backed binding (J1.c).
+ * Pyannote-3 diarizer — ggml-backed binding (K3 end-to-end real).
  *
  * Replaces `diarizer.ts` (onnxruntime-node pyannote-3 ONNX path) with
  * a `bun:ffi` binding to the `voice-classifier-cpp` SHARED library at
  * `packages/native-plugins/voice-classifier-cpp/`.
  *
- * Status today (J1.c infrastructure landed):
- *   - The native library now ships as `libvoice_classifier.{so,dylib,dll}`.
- *   - `voice_diarizer_open` is a REAL implementation: parses + validates
- *     the GGUF metadata block, returns a real handle.
- *   - `voice_diarizer_segment` returns `-ENOSYS` until the
- *     SincNet + LSTM + 7-class powerset graph is ported to ggml
- *     (J1.c follow-up).
+ * K3 lands the forward pass: `voice_diarizer_segment` runs the full
+ * SincNet + 4× BiLSTM + 3-layer linear head + 7-class powerset argmax
+ * in pure C, with 100 % per-frame label agreement against the ONNX
+ * reference on the W3-6 fixture suite. The previous J1.c
+ * `-ENOSYS / forward-not-implemented` branch is now unreachable when
+ * the GGUF is on disk.
  *
  * 7-class powerset output (per the upstream pyannote-3 contract — see
  * H2.b for the correctness rationale):
@@ -43,11 +42,14 @@ export const DIARIZER_GGML_NUM_CLASSES = 7;
 /** Required input sample rate. */
 export const DIARIZER_GGML_SAMPLE_RATE = 16_000;
 
-/** Minimum useful window — pyannote-3 was trained on 10 s windows. */
+/** Minimum useful window — pyannote-3 was trained on 5 s windows. */
 export const DIARIZER_GGML_MIN_SAMPLES = 16_000;
 
-/** Soft maximum: a single window is 10 s. */
-export const DIARIZER_GGML_WINDOW_SAMPLES = 16_000 * 10;
+/** Window size matches the ONNX export: 5 s @ 16 kHz = 80 000 samples. */
+export const DIARIZER_GGML_WINDOW_SAMPLES = 16_000 * 5;
+
+/** Frame rate of the head: 293 labels per 5-s window. */
+export const DIARIZER_GGML_FRAMES_PER_WINDOW = 293;
 
 export class DiarizerGgmlUnavailableError extends Error {
 	readonly code:
@@ -245,8 +247,8 @@ export class DiarizerGgml {
 		this.lib = lib;
 	}
 
-	/** Segment a 10 s window into a per-frame powerset label sequence.
-	 *  Throws until the J1.c-forward ggml graph lands. */
+	/** Segment a 5 s window into a per-frame powerset label sequence.
+	 *  K3 lands the forward pass: returns ~293 labels per 5 s window. */
 	async segment(pcm: Float32Array): Promise<DiarizerGgmlOutput> {
 		if (!(pcm instanceof Float32Array)) {
 			throw new DiarizerGgmlUnavailableError(
@@ -268,9 +270,9 @@ export class DiarizerGgml {
 			);
 		}
 
-		// Pyannote-3 emits ~1.7 labels/frame at 16 kHz hop; a 10 s window
-		// produces ~589 frames. Allocate a generous upper bound and let
-		// the library report the actual frame count back.
+		// Pyannote-3 emits 293 labels per 5-s window at 16 kHz. Allocate
+		// a generous upper bound and let the library report the actual
+		// frame count back via *frames_capacity_inout.
 		const labelsView = new Int8Array(2048);
 		const capacityView = new BigUint64Array(1);
 		capacityView[0] = BigInt(labelsView.length);

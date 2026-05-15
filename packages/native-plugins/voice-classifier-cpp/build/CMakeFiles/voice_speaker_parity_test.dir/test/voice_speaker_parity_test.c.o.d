@@ -1,5 +1,5 @@
-CMakeFiles/voice_classifier_shared.dir/src/voice_speaker.c.o: \
- /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_speaker.c \
+CMakeFiles/voice_speaker_parity_test.dir/test/voice_speaker_parity_test.c.o: \
+ /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/test/voice_speaker_parity_test.c \
  /usr/include/stdc-predef.h \
  /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/include/voice_classifier/voice_classifier.h \
  /usr/lib/gcc/x86_64-linux-gnu/13/include/stddef.h \
@@ -18,13 +18,8 @@ CMakeFiles/voice_classifier_shared.dir/src/voice_speaker.c.o: \
  /usr/include/x86_64-linux-gnu/bits/wchar.h \
  /usr/include/x86_64-linux-gnu/bits/stdint-intn.h \
  /usr/include/x86_64-linux-gnu/bits/stdint-uintn.h \
- /usr/include/x86_64-linux-gnu/bits/stdint-least.h \
- /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_loader.h \
- /home/shaw/milady/eliza/packages/native-plugins/voice-classifier-cpp/src/voice_gguf_tensors.h \
- /usr/include/errno.h /usr/include/x86_64-linux-gnu/bits/errno.h \
- /usr/include/linux/errno.h /usr/include/x86_64-linux-gnu/asm/errno.h \
- /usr/include/asm-generic/errno.h /usr/include/asm-generic/errno-base.h \
- /usr/include/math.h /usr/include/x86_64-linux-gnu/bits/math-vector.h \
+ /usr/include/x86_64-linux-gnu/bits/stdint-least.h /usr/include/math.h \
+ /usr/include/x86_64-linux-gnu/bits/math-vector.h \
  /usr/include/x86_64-linux-gnu/bits/libm-simd-decl-stubs.h \
  /usr/include/x86_64-linux-gnu/bits/floatn.h \
  /usr/include/x86_64-linux-gnu/bits/floatn-common.h \
