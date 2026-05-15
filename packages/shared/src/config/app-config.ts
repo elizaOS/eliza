@@ -292,6 +292,34 @@ export interface AppConfig {
 }
 
 /**
+ * Framework default app configuration used by apps that do not provide a
+ * white-label `app.config.ts`. Forks can still override any field by shipping
+ * their own config through the app-core config loader.
+ */
+export const DEFAULT_APP_CONFIG: AppConfig = {
+  appName: "Eliza",
+  appId: "app.eliza",
+  orgName: "elizaos",
+  repoName: "eliza",
+  cliName: "eliza",
+  description: "Open-source AI agents for everyone",
+  branding: {},
+  envPrefix: "ELIZA",
+  namespace: "eliza",
+  defaultApps: ["@elizaos/plugin-lifeops"],
+  desktop: {
+    bundleId: "app.eliza",
+    urlScheme: "elizaos",
+  },
+  web: {
+    shortName: "Eliza",
+    themeColor: "#08080a",
+    backgroundColor: "#0a0a0a",
+    shareImagePath: "/og-image.png",
+  },
+};
+
+/**
  * Resolve a full BrandingConfig from an AppConfig.
  * Merges app-specific overrides with the framework defaults.
  */
