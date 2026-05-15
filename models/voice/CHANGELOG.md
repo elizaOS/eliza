@@ -25,6 +25,99 @@ Stable model ids:
 
 ---
 
+## I1 — 2026-05-15 — single-runtime policy audit (no ONNX, no upstream node-llama-cpp)
+
+User directive 2026-05-15: every local-inference path must run through
+the elizaOS llama.cpp fork; no ONNX, no external model runtimes; the
+only `node-llama-cpp` package allowed is the canonical wrapper for our
+fork's `libllama` + `llama-server`.
+
+Audit summary (see `.swarm/impl/I1-single-runtime.md` for the full
+table):
+
+- **DONE.** Silero VAD + hey-eliza wake-word resolved-runtime paths
+  already route through the fork's FFI
+  (`eliza_inference_vad_*` / `eliza_inference_wakeword_*` on
+  `libelizainference`). ONNX kept on HF for the one-release
+  deprecation runway.
+- **`compute-gated`.** Five voice sub-models still hit ONNX in the
+  resolved path because the native ggml graphs are stubbed:
+  - Wav2Small (`voice-classifier-cpp/src/voice_emotion_stub.c`,
+    `-ENOSYS`),
+  - WeSpeaker R34-LM (`voice_speaker_stub`, `-ENOSYS`),
+  - pyannote-3 diarizer (no native scaffold yet),
+  - Kokoro TTS (`LLM_ARCH_KOKORO` arch loader stubbed in W3-1, graph
+    not yet implemented in the fork),
+  - LiveKit turn-detector (GGUF live on HF as of H4; runtime resolver
+    still defaults to the ONNX path).
+- The TS-side GGML surfaces exist
+  (`voice-emotion-classifier-ggml.ts`, `speaker/encoder-ggml.ts`,
+  `eot-classifier-ggml.ts`, `vad-ggml.ts`, `wake-word-ggml.ts`) and
+  every one throws a structured `*Unavailable` / `*-stub` error
+  rather than silently falling back — AGENTS.md §3 compliance is
+  intact today even though the fork side returns `-ENOSYS`.
+- `node-llama-cpp@3.18.1` (the optional dep in
+  `plugin-local-inference/package.json`) stays — it is the canonical
+  npm wrapper for the fork's `llama-server` + FFI per native/AGENTS.md.
+
+ONNX deprecation runway: every voice sub-model HF repo keeps its ONNX
+payload for the I1+1 release; the next release after each port lands
+removes the ONNX file from the repo and bumps `voice-models.ts` to
+prefer the GGUF.
+
+## kokoro
+
+### 0.2.0 — 2026-05-15 (I2 — sam ship per user override)
+
+**af_sam.bin** shipped to `elizaos/eliza-1-voice-kokoro:voices/af_sam.bin` per explicit user
+override of the H1 NO-SHIP decision. The user's directive: "We dont care if its perfect
+or it sounds like her at all. its fine."
+
+**Source checkpoint:** `packages/training/out/kokoro-same-sweep/anchor-0.2/af_same-anchor-0.2.bin`
+(mel-fit voice clone, anchor=0.2, lr=0.01, 1200 steps, init af_bella, corpus 58 real clips / 3.5 min).
+Selected as best available by SpkSim among the 4-anchor sweep (anchor-0.2 = 0.15 vs anchor-0.0 = 0.10).
+
+**Eval numbers (from sweep run, cuda, 6 val clips):**
+
+| Metric | Shipped value | Gate | Gate result |
+|--------|--------------|------|-------------|
+| UTMOS | 2.32 | ≥ 3.8 | FAIL |
+| WER | 1.00 | ≤ 0.08 | FAIL |
+| SpkSim | 0.15 | ≥ 0.55 | FAIL |
+| RTF | 124.8× | ≥ 5.0 | PASS |
+| beatsBaseline | false | required | FAIL |
+
+**Why all gates fail (structural — not fixable within this corpus):**
+The real `sam/` corpus (58 clips / 3.5 min) has an ECAPA-TDNN self-cosine ceiling of 0.561.
+The mel-fit optimization cannot bridge the gap between Kokoro's base speaker manifold and
+the real sam voice identity. WER=1.0 is characteristic of a quality-degraded embedding
+causing unintelligible output. No configuration change can fix this without ≥3h of clean
+corpus + speaker-embedding loss objective.
+
+**User decision:** ship regardless. Gate failure is documented and honest.
+
+**Production sam voice:** the OmniVoice ELZ2 v2 frozen preset (`elizaos/eliza-1-voice-omnivoice`,
+`presets/voice-preset-same.bin`) remains the user-facing sam voice. `af_sam.bin` is a Kokoro
+voice slot, marked `evalGatePass: false`, for developer/experimental use only.
+
+**Compute-gated follow-up:** real sam quality requires ≥3h clean corpus + ECAPA-TDNN speaker
+loss objective or F5-TTS/XTTS-v2 zero-shot cloning.
+
+| Field | Value |
+|-------|-------|
+| HF repo | `elizaos/eliza-1-voice-kokoro` |
+| HF revision | `4b8809b197aa90ae486f83c1e0a5dc7effb6b285` |
+| File | `voices/af_sam.bin` |
+| sha256 | `6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b` |
+| sizeBytes | 522240 |
+| Synthesis smoke | PASS (3.2s audio, max amplitude 0.085, non-silent) |
+| evalGatePass | false (user override) |
+| Net improvement | false (quality regression vs baseline af_bella) |
+
+Artifact: `artifacts/i2-kokoro-ship/20260515T112744Z/`
+
+---
+
 ## M-emotion-final — 2026-05-15 — voice-emotion v0.2.0 gate cleared + standalone HF mirror
 
 Voice-emotion v0.2.0 (Wav2Small cls7 head, distilled from
