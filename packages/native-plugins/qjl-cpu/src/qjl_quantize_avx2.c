@@ -108,3 +108,6 @@ void qjl_dequantize_row_avx2(const qjl_block_qjl1_256 *blk, const float *prj,
 }
 
 #endif /* __AVX2__ */
+
+/* Avoid ISO C "empty translation unit" pedantic diagnostics when __AVX2__ is undefined. */
+typedef int qjl_quantize_avx2_iso_c_tu_stub;

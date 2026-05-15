@@ -54,6 +54,7 @@ import { handlerRegistry } from "../services/handler-registry";
 import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { listInstalledModels } from "../services/registry";
 import { installRouterHandler } from "../services/router-handler";
+import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 import {
 	type ElizaHarnessSchema,
 	elizaHarnessSchemaFromSkeleton,
@@ -1044,13 +1045,19 @@ export async function ensureLocalInferenceHandler(
 				? DEVICE_BRIDGE_PROVIDER
 				: LOCAL_INFERENCE_PROVIDER;
 
-	const slots: Array<
+	const textGenerationSlots: Array<
 		[(typeof ModelType)[keyof typeof ModelType], AgentModelSlot]
 	> = [
 		[ModelType.TEXT_SMALL, "TEXT_SMALL"],
 		[ModelType.TEXT_LARGE, "TEXT_LARGE"],
+		// V5 chat calls semantic text model types directly. Register them as
+		// first-class local handlers so structured streaming sees the concrete
+		// local provider instead of falling through TEXT_SMALL via the router.
+		[ModelType.RESPONSE_HANDLER, "TEXT_SMALL"],
+		[ModelType.ACTION_PLANNER, "TEXT_SMALL"],
+		[ModelType.TEXT_COMPLETION, "TEXT_SMALL"],
 	];
-	for (const [modelType, slot] of slots) {
+	for (const [modelType, slot] of textGenerationSlots) {
 		try {
 			runtimeWithRegistration.registerModel(
 				modelType,
@@ -1087,8 +1094,9 @@ export async function ensureLocalInferenceHandler(
 		| { embed?: unknown }
 		| null
 		| undefined;
-	const embeddingHandler =
-		loaderForEmbed && typeof loaderForEmbed.embed === "function"
+	const embeddingHandler = isLocalEmbeddingDisabledByEnv()
+		? null
+		: loaderForEmbed && typeof loaderForEmbed.embed === "function"
 			? makeEmbeddingHandler()
 			: provider === LOCAL_INFERENCE_PROVIDER
 				? makeEngineEmbeddingHandler()
@@ -1110,6 +1118,10 @@ export async function ensureLocalInferenceHandler(
 				err instanceof Error ? err.message : String(err),
 			);
 		}
+	} else if (isLocalEmbeddingDisabledByEnv()) {
+		logger.info(
+			"[local-inference] Local TEXT_EMBEDDING handler disabled by ELIZA_DISABLE_LOCAL_EMBEDDINGS",
+		);
 	}
 
 	try {
@@ -1151,7 +1163,7 @@ export async function ensureLocalInferenceHandler(
 	}
 
 	logger.info(
-		`[local-inference] Registered ${provider} llama.cpp handler for TEXT_SMALL / TEXT_LARGE at priority ${LOCAL_INFERENCE_PRIORITY}`,
+		`[local-inference] Registered ${provider} llama.cpp text handlers at priority ${LOCAL_INFERENCE_PRIORITY}`,
 	);
 
 	// Install the top-priority router AFTER everything else has registered.

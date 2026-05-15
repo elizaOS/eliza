@@ -1,2 +1,2 @@
-export * from "./FineTuningView";
-export * from "./fine-tuning-panels";
+export * from "./FineTuningView.js";
+export * from "./fine-tuning-panels.js";

@@ -64,4 +64,29 @@ describe("detectOpenVinoDevices", () => {
 			"Intel accelerator nodes are present, but OpenVINO Runtime was not found; source setupvars.sh or set OpenVINO_DIR.",
 		);
 	});
+
+	it("treats sandbox-denied optional system paths as unavailable", () => {
+		const existsSync = (path: string): boolean => {
+			throw Object.assign(
+				new Error(`mobile-fs-shim: path escapes workspace root: ${path}`),
+				{ code: "EACCES" },
+			);
+		};
+		const readdirSync = (path: string): string[] => {
+			throw new Error(`unexpected readdir for ${path}`);
+		};
+
+		const probe = detectOpenVinoDevices({
+			platform: "linux",
+			env: {},
+			existsSync,
+			readdirSync,
+		});
+
+		expect(probe.runtimeAvailable).toBe(false);
+		expect(probe.devices).toEqual([]);
+		expect(probe.gpu.renderNodes).toEqual([]);
+		expect(probe.npu.accelNodes).toEqual([]);
+		expect(probe.recommendedAsrDevice).toBeNull();
+	});
 });

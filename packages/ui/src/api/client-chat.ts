@@ -423,6 +423,10 @@ declare module "./client-base" {
       failureKind?: ChatFailureKind;
       localInference?: LocalInferenceChatMetadata;
     }>;
+    abortConversationTurn(
+      roomId: string,
+      reason?: string,
+    ): Promise<{ aborted: boolean; roomId: string; reason: string }>;
     requestGreeting(
       id: string,
       lang?: string,
@@ -1058,6 +1062,18 @@ ElizaClient.prototype.sendConversationMessageStream = async function (
     images,
     metadata,
   );
+};
+
+ElizaClient.prototype.abortConversationTurn = async function (
+  this: ElizaClient,
+  roomId,
+  reason = "ui-abort",
+) {
+  return this.fetch(`/api/turns/${encodeURIComponent(roomId)}/abort`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reason }),
+  });
 };
 
 ElizaClient.prototype.requestGreeting = async function (

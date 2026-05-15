@@ -50,6 +50,7 @@ const REQUIRED_PUBLIC_OMNIVOICE_SYMBOLS = Object.freeze([
   "ov_free",
   "ov_log_set",
   "ov_synthesize",
+  "ov_encode_reference",
   "ov_duration_sec_to_tokens",
 ]);
 
@@ -1341,9 +1342,8 @@ int eliza_inference_encode_reference(
     }
     if (sample_rate_hz != 24000) {
         eliza_set_error(out_error,
-            "[libelizainference] encode_reference: sample_rate_hz must be 24000 (got %d); "
-            "caller is responsible for upstream resample",
-            sample_rate_hz);
+            "[libelizainference] encode_reference: sample_rate_hz must be 24000 (got " +
+            std::to_string(sample_rate_hz) + "); caller is responsible for upstream resample");
         return ELIZA_ERR_INVALID_ARG;
     }
 
@@ -1510,6 +1510,190 @@ function inspectPreparedOmnivoiceSurface({ graftRoot }) {
   };
 }
 
+function replaceOmnivoiceAnchor(source, from, to, label) {
+  if (!source.includes(from)) {
+    throw new Error(
+      `[omnivoice-fuse] compatibility patch anchor not found: ${label}`,
+    );
+  }
+  return source.replace(from, to);
+}
+
+function applyOmnivoiceReferenceEncodeApi({ graftRoot }) {
+  const srcRoot = path.join(graftRoot, "src");
+
+  const ttsHeaderPath = path.join(srcRoot, "pipeline-tts.h");
+  let ttsHeader = fs.readFileSync(ttsHeaderPath, "utf8");
+  if (!ttsHeader.includes("pipeline_tts_encode_reference")) {
+    const anchor = `int pipeline_tts_duration_sec_to_tokens(const PipelineCodec * pc, float duration_sec);
+
+// Public TTS synthesis entry.`;
+    const replacement = `int pipeline_tts_duration_sec_to_tokens(const PipelineCodec * pc, float duration_sec);
+
+// Encode a 24 kHz mono reference waveform into row-major [K, ref_T] RVQ
+// tokens using the same HuBERT + codec preprocessing path as synthesis.
+// Returns an empty vector and sets ov_last_error on failure.
+std::vector<int32_t> pipeline_tts_encode_reference(PipelineTTS *     pt,
+                                                   PipelineCodec *   pc,
+                                                   const float *     ref_audio_24k,
+                                                   int               ref_n_samples,
+                                                   int *             out_K,
+                                                   int *             out_ref_T,
+                                                   const char *      dump_dir = nullptr);
+
+// Public TTS synthesis entry.`;
+    ttsHeader = replaceOmnivoiceAnchor(
+      ttsHeader,
+      anchor,
+      replacement,
+      "pipeline-tts.h reference encode declaration",
+    );
+    fs.writeFileSync(ttsHeaderPath, ttsHeader, "utf8");
+  }
+
+  const ttsImplPath = path.join(srcRoot, "pipeline-tts.cpp");
+  let ttsImpl = fs.readFileSync(ttsImplPath, "utf8");
+  if (!ttsImpl.includes("pipeline_tts_encode_reference")) {
+    const anchor = `    return r;
+}
+
+ov_status pipeline_tts_synthesize(`;
+    const replacement = `    return r;
+}
+
+std::vector<int32_t> pipeline_tts_encode_reference(PipelineTTS * pt,
+                                                   PipelineCodec * pc,
+                                                   const float * ref_audio_24k,
+                                                   int ref_n_samples,
+                                                   int * out_K,
+                                                   int * out_ref_T,
+                                                   const char * dump_dir) {
+    if (!pt || !pc || !ref_audio_24k || ref_n_samples <= 0) {
+        ov_set_error("pipeline_tts_encode_reference : invalid arguments");
+        return {};
+    }
+
+    RefEncoded re = tts_encode_ref(pt, pc, ref_audio_24k, ref_n_samples,
+                                   "", true, dump_dir);
+    if (!re.has_ref || re.ref_codes.empty()) {
+        ov_set_error("pipeline_tts_encode_reference : reference encoding failed");
+        return {};
+    }
+
+    if (out_K) {
+        *out_K = pt->lm.num_audio_codebook;
+    }
+    if (out_ref_T) {
+        *out_ref_T = re.ref_T;
+    }
+    return re.ref_codes;
+}
+
+ov_status pipeline_tts_synthesize(`;
+    ttsImpl = replaceOmnivoiceAnchor(
+      ttsImpl,
+      anchor,
+      replacement,
+      "pipeline-tts.cpp reference encode implementation",
+    );
+    fs.writeFileSync(ttsImplPath, ttsImpl, "utf8");
+  }
+
+  const headerPath = path.join(srcRoot, "omnivoice.h");
+  let header = fs.readFileSync(headerPath, "utf8");
+  if (!header.includes("ov_encode_reference")) {
+    const anchor = `OV_API enum ov_status ov_synthesize(struct ov_context * ov, const struct ov_tts_params * params, struct ov_audio * out);
+
+// Convert a duration in seconds to a frame count using the bundled codec`;
+    const replacement = `OV_API enum ov_status ov_synthesize(struct ov_context * ov, const struct ov_tts_params * params, struct ov_audio * out);
+
+// Encode a 24 kHz mono fp32 reference waveform through the OmniVoice
+// tokenizer and return row-major [K, ref_T] int32 RVQ tokens. The returned
+// buffer is malloc-allocated by the library and must be released with free()
+// by callers that bind this low-level OmniVoice ABI directly.
+OV_API enum ov_status ov_encode_reference(struct ov_context * ov,
+                                          const float * pcm,
+                                          int n_samples,
+                                          int32_t ** out_tokens,
+                                          int * out_K,
+                                          int * out_ref_T);
+
+// Convert a duration in seconds to a frame count using the bundled codec`;
+    header = replaceOmnivoiceAnchor(
+      header,
+      anchor,
+      replacement,
+      "omnivoice.h reference encode declaration",
+    );
+    fs.writeFileSync(headerPath, header, "utf8");
+  }
+
+  const implPath = path.join(srcRoot, "omnivoice.cpp");
+  let impl = fs.readFileSync(implPath, "utf8");
+  if (!impl.includes("#include <vector>")) {
+    impl = replaceOmnivoiceAnchor(
+      impl,
+      "#include <string>\n",
+      "#include <string>\n#include <vector>\n",
+      "omnivoice.cpp vector include",
+    );
+  }
+  if (!impl.includes("ov_encode_reference")) {
+    const anchor = `int ov_duration_sec_to_tokens(const struct ov_context * ov, float duration_sec) {`;
+    const replacement = `enum ov_status ov_encode_reference(struct ov_context * ov,
+                                   const float * pcm,
+                                   int n_samples,
+                                   int32_t ** out_tokens,
+                                   int * out_K,
+                                   int * out_ref_T) {
+    if (!ov || !pcm || n_samples <= 0 || !out_tokens || !out_K || !out_ref_T) {
+        ov_set_error("ov_encode_reference : invalid arguments");
+        return OV_STATUS_INVALID_PARAMS;
+    }
+    if (!ov->codec_loaded) {
+        ov_set_error("ov_encode_reference : codec not loaded (pass codec_path to ov_init)");
+        ov_log(OV_LOG_ERROR, "[OmniVoice] ov_encode_reference requires a codec-loaded handle");
+        return OV_STATUS_INVALID_PARAMS;
+    }
+
+    try {
+        int K = 0;
+        int ref_T = 0;
+        std::vector<int32_t> tokens =
+            pipeline_tts_encode_reference(&ov->pt, &ov->pc, pcm, n_samples,
+                                          &K, &ref_T, nullptr);
+        if (tokens.empty() || K <= 0 || ref_T <= 0) {
+            return OV_STATUS_GENERATE_FAILED;
+        }
+        const size_t n_tokens = tokens.size();
+        int32_t * copy = (int32_t *) std::malloc(n_tokens * sizeof(int32_t));
+        if (!copy) {
+            ov_set_error("ov_encode_reference : out of memory");
+            return OV_STATUS_GENERATE_FAILED;
+        }
+        std::memcpy(copy, tokens.data(), n_tokens * sizeof(int32_t));
+        *out_tokens = copy;
+        *out_K = K;
+        *out_ref_T = ref_T;
+        return OV_STATUS_OK;
+    } catch (const std::exception & e) {
+        ov_set_error("%s", e.what());
+        ov_log(OV_LOG_ERROR, "[OmniVoice] %s", e.what());
+        return OV_STATUS_GENERATE_FAILED;
+    }
+}
+
+int ov_duration_sec_to_tokens(const struct ov_context * ov, float duration_sec) {`;
+    impl = replaceOmnivoiceAnchor(
+      impl,
+      anchor,
+      replacement,
+      "omnivoice.cpp reference encode implementation",
+    );
+  }
+  fs.writeFileSync(implPath, impl, "utf8");
+}
+
 function applyElizaGgmlCompatibility({ graftRoot, commit }) {
   const dacPath = path.join(graftRoot, "src", "dac-decoder.h");
   let source = fs.readFileSync(dacPath, "utf8");
@@ -1670,6 +1854,8 @@ static struct ggml_tensor * dac_conv_t1d(struct ggml_context * ctx,
     "    pc->sched = backend_sched_new(codec_bp, 4096);",
   );
   fs.writeFileSync(codecPath, codecSource, "utf8");
+
+  applyOmnivoiceReferenceEncodeApi({ graftRoot });
 
   fs.writeFileSync(
     path.join(graftRoot, "src", "version.h"),

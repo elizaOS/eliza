@@ -1,10 +1,10 @@
-import en from "./locales/en.json";
-import es from "./locales/es.json";
-import ko from "./locales/ko.json";
-import pt from "./locales/pt.json";
-import tl from "./locales/tl.json";
-import vi from "./locales/vi.json";
-import zhCN from "./locales/zh-CN.json";
+import en from "./locales/en.json" with { type: "json" };
+import es from "./locales/es.json" with { type: "json" };
+import ko from "./locales/ko.json" with { type: "json" };
+import pt from "./locales/pt.json" with { type: "json" };
+import tl from "./locales/tl.json" with { type: "json" };
+import vi from "./locales/vi.json" with { type: "json" };
+import zhCN from "./locales/zh-CN.json" with { type: "json" };
 
 export const UI_LANGUAGES = [
   "en",

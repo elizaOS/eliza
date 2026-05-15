@@ -101,7 +101,7 @@ function readableEntries(
   host: Required<Pick<OpenVinoDetectionHost, "existsSync" | "readdirSync">>,
   prefix: string,
 ): string[] {
-  if (!host.existsSync(dir)) return [];
+  if (!pathExists(dir, host.existsSync)) return [];
   try {
     return host
       .readdirSync(dir)
@@ -112,11 +112,22 @@ function readableEntries(
   }
 }
 
+function pathExists(
+  path: string,
+  existsSync: Required<OpenVinoDetectionHost>["existsSync"],
+): boolean {
+  try {
+    return existsSync(path);
+  } catch {
+    return false;
+  }
+}
+
 function hasAny(
   paths: string[],
   existsSync: Required<OpenVinoDetectionHost>["existsSync"],
 ): boolean {
-  return paths.some((candidate) => existsSync(candidate));
+  return paths.some((candidate) => pathExists(candidate, existsSync));
 }
 
 export function detectOpenVinoDevices(

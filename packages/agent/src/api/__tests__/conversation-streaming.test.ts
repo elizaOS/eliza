@@ -13,7 +13,10 @@ import {
   stringToUuid,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import { generateChatResponse } from "../chat-routes.js";
+import {
+  generateChatResponse,
+  generateConversationTitle,
+} from "../chat-routes.js";
 
 type RuntimeOverrides = Partial<AgentRuntime> & {
   messageService?: NonNullable<AgentRuntime["messageService"]>;
@@ -156,5 +159,89 @@ describe("generateChatResponse token streaming", () => {
 
     expect(runningTotal).toBe("alpha beta gamma");
     expect(result.text).toBe("alpha beta gamma");
+  });
+
+  it("aborts the message runtime when the chat generation timeout fires", async () => {
+    let signalFromOptions: AbortSignal | undefined;
+    let observedAbort: (() => void) | undefined;
+    const abortObserved = new Promise<void>((resolve) => {
+      observedAbort = resolve;
+    });
+
+    const runtime = createRuntime({
+      messageService: {
+        async handleMessage(_runtime, _message, _callback, options) {
+          signalFromOptions = options?.abortSignal;
+          await new Promise<void>((resolve) => {
+            options?.abortSignal?.addEventListener(
+              "abort",
+              () => {
+                observedAbort?.();
+                resolve();
+              },
+              { once: true },
+            );
+          });
+          return {
+            didRespond: false,
+            responseContent: null,
+            responseMessages: [],
+          };
+        },
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    await expect(
+      generateChatResponse(runtime, createChatMessage("timeout"), "Streaming Agent", {
+        timeoutDuration: 10,
+      }),
+    ).rejects.toThrow("Chat generation timed out after 10ms");
+
+    await abortObserved;
+    expect(signalFromOptions?.aborted).toBe(true);
+  });
+});
+
+describe("generateConversationTitle", () => {
+  it("passes caller cancellation into the title model request", async () => {
+    const controller = new AbortController();
+    let signalFromParams: AbortSignal | undefined;
+    const runtime = createRuntime({
+      useModel: vi.fn(
+        async (
+          _modelType: unknown,
+          params: { signal?: AbortSignal },
+        ): Promise<string> => {
+          signalFromParams = params.signal;
+          await new Promise((_resolve, reject) => {
+            params.signal?.addEventListener(
+              "abort",
+              () => reject(params.signal?.reason ?? new Error("aborted")),
+              { once: true },
+            );
+          });
+          return "unused";
+        },
+      ) as unknown as AgentRuntime["useModel"],
+    });
+
+    const pending = generateConversationTitle(
+      runtime,
+      "Could you say hello?",
+      "Streaming Agent",
+      { signal: controller.signal, timeoutMs: 30_000 },
+    );
+
+    controller.abort(new DOMException("client left", "AbortError"));
+
+    await expect(pending).resolves.toBeNull();
+    expect(signalFromParams?.aborted).toBe(true);
   });
 });

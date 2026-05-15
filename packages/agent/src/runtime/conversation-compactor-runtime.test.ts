@@ -746,8 +746,7 @@ describe("message-history compaction hook", () => {
         i % 2 ? AGENT_ID : USER_ID,
       ),
     );
-    const updatedRoomRef: { current?: { metadata?: Record<string, unknown> } } =
-      {};
+    const updatedRooms: Array<{ metadata?: Record<string, unknown> }> = [];
     const runtime = {
       agentId: AGENT_ID,
       character: { name: "Eliza" },
@@ -759,7 +758,7 @@ describe("message-history compaction hook", () => {
         metadata: {},
       }),
       updateRoom: async (room: { metadata?: Record<string, unknown> }) => {
-        updatedRoomRef.current = room;
+        updatedRooms.push(room);
       },
     };
 
@@ -771,10 +770,11 @@ describe("message-history compaction hook", () => {
     });
 
     expect(result.telemetry?.didCompact).toBe(true);
-    expect(updatedRoomRef.current?.metadata?.lastCompactionAt).toBe(
+    const persistedRoom = updatedRooms[0];
+    expect(persistedRoom?.metadata?.lastCompactionAt).toBe(
       (memories[11]?.createdAt ?? 0) + 1,
     );
-    expect(updatedRoomRef.current?.metadata?.lastCompactionAt).toBeLessThan(
+    expect(persistedRoom?.metadata?.lastCompactionAt).toBeLessThan(
       memories[12]?.createdAt ?? 0,
     );
   });
