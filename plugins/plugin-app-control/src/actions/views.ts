@@ -47,7 +47,9 @@ export type ViewsMode =
 	| "create"
 	| "edit"
 	| "delete"
-	| "remove";
+	| "remove"
+	| "pin"
+	| "window";
 
 const MODES: readonly ViewsMode[] = [
 	"list",
@@ -61,6 +63,8 @@ const MODES: readonly ViewsMode[] = [
 	"edit",
 	"delete",
 	"remove",
+	"pin",
+	"window",
 ] as const;
 
 // Intent regexes — order matters: more specific first.
@@ -89,6 +93,10 @@ const EDIT_VERBS_RE =
 	/\b(edit|update|modify|change|fix|improve|rewrite)\b.{0,30}\b(view|plugin)\b/i;
 const DELETE_VERBS_RE =
 	/\b(delete|remove|uninstall|destroy|drop)\b.{0,30}\b(view|plugin)\b/i;
+const PIN_VERBS =
+	/\b(pin|pin as tab|add.*tab|pin.*desktop|keep.*tab|dock)\b.{0,40}\bview\b/i;
+const WINDOW_VERBS =
+	/\b(open in.*window|new window|separate window|pop.?out|detach)\b.{0,40}\bview\b|\bview\b.{0,40}\b(new window|separate window|pop.?out|detach)\b/i;
 
 type OwnerAccessFn = (
 	runtime: IAgentRuntime,
@@ -125,6 +133,8 @@ function inferMode(
 	if (DELETE_VERBS_RE.test(trimmed)) return "delete";
 	if (CREATE_VERBS.test(trimmed)) return "create";
 	if (EDIT_VERBS_RE.test(trimmed)) return "edit";
+	if (PIN_VERBS.test(trimmed)) return "pin";
+	if (WINDOW_VERBS.test(trimmed)) return "window";
 	if (INTERACT_VERBS.test(trimmed)) return "interact";
 	if (BROADCAST_VERBS.test(trimmed)) return "broadcast";
 	if (MANAGER_VERBS.test(trimmed)) return "manager";
@@ -489,6 +499,48 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				case "remove": {
 					const views = await client.listViews();
 					return runViewsDelete({ runtime, message, options, views, callback, repoRoot });
+				}
+
+				case "pin": {
+					const pinViewId =
+						readStringOption(options, "view") ??
+						readStringOption(options, "id") ??
+						readStringOption(options, "name");
+					if (!pinViewId) {
+						const reply =
+							"Specify which view to pin as a desktop tab, e.g. action=pin view=wallet.";
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+					const pinResultText = await pinViewAsTab(pinViewId);
+					await callback?.({ text: pinResultText });
+					return {
+						success: true,
+						text: pinResultText,
+						values: { mode: "pin", viewId: pinViewId },
+						data: { viewId: pinViewId },
+					};
+				}
+
+				case "window": {
+					const windowViewId =
+						readStringOption(options, "view") ??
+						readStringOption(options, "id") ??
+						readStringOption(options, "name");
+					if (!windowViewId) {
+						const reply =
+							"Specify which view to open in a new window, e.g. action=window view=wallet.";
+						await callback?.({ text: reply });
+						return { success: false, text: reply };
+					}
+					const windowResultText = await openViewInWindow(windowViewId);
+					await callback?.({ text: windowResultText });
+					return {
+						success: true,
+						text: windowResultText,
+						values: { mode: "window", viewId: windowViewId },
+						data: { viewId: windowViewId },
+					};
 				}
 			}
 		},

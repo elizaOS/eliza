@@ -148,7 +148,7 @@ describe("GET /api/views", () => {
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views");
-    await handleViewsRoutes(ctx);
+    const handled = await handleViewsRoutes(ctx);
 
     expect(handled).toBe(true);
     expect(json).toHaveBeenCalledOnce();
@@ -654,7 +654,7 @@ describe("handleViewsRoutes route fallthrough", () => {
     const { ctx, json } = makeCtx("POST", "/api/views");
     // POST /api/views is not a registered route; should fall through or return handled=false
     // The actual handler only handles GET /api/views exactly.
-    const handled = await handleViewsRoutes(ctx);
+    await handleViewsRoutes(ctx);
     // POST to /api/views should not be handled (no matching route)
     expect(json).not.toHaveBeenCalled();
     // handled may be true or false — the important thing is no json response on POST /api/views

@@ -389,7 +389,7 @@ export function collectPluginNames(
   // ElizaOS-only: add the system-surface overlay app plugins (WiFi,
   // Contacts, Phone). These wrap privileged Android system APIs available
   // only in the custom AOSP build, not in the stock Android APK. The overlay
-  // UI registration happens in the renderer via @elizaos/app-*/register
+  // UI registration happens in the renderer via @elizaos/plugin-*/register
   // imports — these are the *runtime* plugin halves that expose actions
   // to the agent for `Connect to wifi`, `Find contact`, `Call so-and-so`.
   if (onElizaOsAndroid) {
