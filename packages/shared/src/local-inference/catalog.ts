@@ -497,8 +497,10 @@ function runtimeForTier(
 }
 
 const QUANT_SUFFIX: Record<CatalogQuantizationId, string> = {
+  q3_k_m: "q3_k_m",
   q4_0: "Q4_0",
   q4_k_m: "q4_k_m",
+  q5_k_m: "q5_k_m",
   q6_k: "q6_k",
   q8_0: "q8_0",
 };
