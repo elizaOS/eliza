@@ -236,7 +236,7 @@ export interface ElizaInferenceFfi {
 	/**
 	 * True when this build exports the OmniVoice reference-encode symbols
 	 * (`eliza_inference_encode_reference`). The freeze CLI uses this to
-	 * pre-encode sam reference audio into the persisted voice preset;
+	 * pre-encode same reference audio into the persisted voice preset;
 	 * the runtime synthesis path never calls it (it reads pre-encoded
 	 * tokens from the preset file).
 	 */
