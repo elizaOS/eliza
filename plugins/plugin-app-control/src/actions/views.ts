@@ -431,6 +431,32 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			[
 				{
 					name: "{{user1}}",
+					content: { text: "click the submit button in the wallet view" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: 'Interacted with view "wallet.inventory" — capability "focus-element": {"focused":true,"selector":"submit"}.',
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
+					content: { text: "get the state of the settings view" },
+				},
+				{
+					name: "{{agentName}}",
+					content: {
+						text: 'Interacted with view "settings" — capability "get-state": {"theme":"dark","language":"en"}.',
+						action: "VIEWS",
+					},
+				},
+			],
+			[
+				{
+					name: "{{user1}}",
 					content: { text: "what views are available?" },
 				},
 				{
@@ -486,6 +512,75 @@ async function navigateToPath(path: string, label: string): Promise<string> {
 	}
 
 	return `Opened ${label} at ${path}.`;
+}
+
+/**
+ * POST /api/views/:id/interact — invoke a capability on a mounted view and
+ * return the result.  Waits up to timeoutMs for the frontend to respond.
+ */
+async function interactWithView(
+	viewId: string,
+	capability: string,
+	params: Record<string, unknown> | undefined,
+	timeoutMs: number,
+): Promise<string> {
+	const { resolveServerOnlyPort } = await import("@elizaos/core");
+	const port = resolveServerOnlyPort(process.env);
+	const base = `http://127.0.0.1:${port}`;
+
+	let resp: Response;
+	try {
+		resp = await fetch(
+			`${base}/api/views/${encodeURIComponent(viewId)}/interact`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ capability, params, timeoutMs }),
+				signal: AbortSignal.timeout(timeoutMs + 1_000),
+			},
+		);
+	} catch (err) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/interact network error: ${err instanceof Error ? err.message : String(err)}`,
+		);
+		return `Failed to interact with view "${viewId}": network error.`;
+	}
+
+	if (resp.status === 504) {
+		return `View "${viewId}" did not respond to capability "${capability}" within ${timeoutMs}ms.`;
+	}
+	if (resp.status === 404) {
+		return `View "${viewId}" not found or not mounted.`;
+	}
+	if (resp.status === 400) {
+		let detail = "";
+		try {
+			const body = (await resp.json()) as Record<string, unknown>;
+			detail = typeof body.error === "string" ? ` — ${body.error}` : "";
+		} catch {
+			/* ignore */
+		}
+		return `Cannot invoke capability "${capability}" on view "${viewId}"${detail}.`;
+	}
+	if (!resp.ok) {
+		logger.warn(
+			`[plugin-app-control] VIEWS/interact returned ${resp.status} for view "${viewId}"`,
+		);
+		return `Interact with view "${viewId}" failed (HTTP ${resp.status}).`;
+	}
+
+	let result: unknown;
+	try {
+		result = await resp.json();
+	} catch {
+		return `Interacted with view "${viewId}" (capability "${capability}") — no parseable result.`;
+	}
+
+	const resultStr =
+		result !== null && result !== undefined
+			? JSON.stringify(result)
+			: "null";
+	return `Interacted with view "${viewId}" — capability "${capability}": ${resultStr}.`;
 }
 
 /**

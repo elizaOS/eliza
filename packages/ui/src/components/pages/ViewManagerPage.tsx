@@ -147,10 +147,12 @@ function ViewSection({
   title,
   views,
   onViewClick,
+  onViewPin,
 }: {
   title: string;
   views: ViewRegistryEntry[];
   onViewClick: (view: ViewRegistryEntry) => void;
+  onViewPin: (view: ViewRegistryEntry) => void;
 }) {
   if (views.length === 0) return null;
   return (
@@ -160,7 +162,12 @@ function ViewSection({
       </h2>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {views.map((view) => (
-          <ViewCard key={view.id} view={view} onClick={onViewClick} />
+          <ViewCard
+            key={view.id}
+            view={view}
+            onClick={onViewClick}
+            onPin={onViewPin}
+          />
         ))}
       </div>
     </div>
@@ -213,6 +220,22 @@ export function ViewManagerPage() {
     }
   }
 
+  function handleViewPin(view: ViewRegistryEntry) {
+    // Dispatch a navigate event with action="pin-tab" so the App shell's
+    // eliza:navigate:view handler adds this view to the desktop tab bar.
+    if (typeof window === "undefined") return;
+    window.dispatchEvent(
+      new CustomEvent("eliza:navigate:view", {
+        detail: {
+          viewId: view.id,
+          viewPath: view.path ?? `/apps/${view.id}`,
+          viewLabel: view.label,
+          action: "pin-tab",
+        },
+      }),
+    );
+  }
+
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       {/* Header */}
@@ -255,11 +278,13 @@ export function ViewManagerPage() {
               title="Core"
               views={builtinViews}
               onViewClick={handleViewClick}
+              onViewPin={handleViewPin}
             />
             <ViewSection
               title="Plugins"
               views={pluginViews}
               onViewClick={handleViewClick}
+              onViewPin={handleViewPin}
             />
           </>
         )}
