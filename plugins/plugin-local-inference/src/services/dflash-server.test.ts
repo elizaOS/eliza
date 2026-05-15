@@ -23,7 +23,6 @@ import {
 	estimateOutputTokensForDflashEvidence,
 	extractStreamingChatDelta,
 	extractVerifierRejectRange,
-	findBundleOmnivoiceAssets,
 	getDflashRuntimeStatus,
 	logDflashDevDisabledWarning,
 	parseDflashMetrics,
@@ -362,30 +361,6 @@ describe("fused-vs-two-process spawn selection", () => {
 		expect(resolveDflashBinary()).toBe(explicit);
 	});
 
-	it("findBundleOmnivoiceAssets resolves tts/ GGUFs from the text model path", () => {
-		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-bundle-test-"));
-		const bundle = path.join(root, "eliza-1-2b.bundle");
-		fs.mkdirSync(path.join(bundle, "text"), { recursive: true });
-		fs.mkdirSync(path.join(bundle, "tts"), { recursive: true });
-		fs.writeFileSync(path.join(bundle, "text", "eliza-1-2b-32k.gguf"), "x");
-		fs.writeFileSync(path.join(bundle, "tts", "omnivoice-0.8b.gguf"), "x");
-		fs.writeFileSync(
-			path.join(bundle, "tts", "omnivoice-tokenizer-0.8b.gguf"),
-			"x",
-		);
-		const assets = findBundleOmnivoiceAssets(
-			path.join(bundle, "text", "eliza-1-2b-32k.gguf"),
-		);
-		expect(assets).not.toBeNull();
-		expect(assets?.modelPath).toBe(
-			path.join(bundle, "tts", "omnivoice-0.8b.gguf"),
-		);
-		expect(assets?.codecPath).toBe(
-			path.join(bundle, "tts", "omnivoice-tokenizer-0.8b.gguf"),
-		);
-		// A non-bundle layout (no text/ parent) returns null.
-		expect(findBundleOmnivoiceAssets(path.join(root, "model.gguf"))).toBeNull();
-	});
 });
 
 describe("DflashLlamaServer runtime load config", () => {
