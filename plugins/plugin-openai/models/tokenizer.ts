@@ -1,5 +1,4 @@
 import type { DetokenizeTextParams, IAgentRuntime, TokenizeTextParams } from "@elizaos/core";
-import { ModelType } from "@elizaos/core";
 import { detokenizeText, tokenizeText } from "../utils/tokenization";
 
 export async function handleTokenizerEncode(
@@ -9,7 +8,7 @@ export async function handleTokenizerEncode(
   if (!params.prompt) {
     throw new Error("Tokenization requires a non-empty prompt");
   }
-  const modelType = params.modelType ?? ModelType.TEXT_LARGE;
+  const modelType = params.modelType;
   return tokenizeText(runtime, modelType, params.prompt);
 }
 
@@ -29,6 +28,6 @@ export async function handleTokenizerDecode(
       throw new Error(`Invalid token at index ${i}: expected number`);
     }
   }
-  const modelType = params.modelType ?? ModelType.TEXT_LARGE;
+  const modelType = params.modelType;
   return detokenizeText(runtime, modelType, params.tokens);
 }

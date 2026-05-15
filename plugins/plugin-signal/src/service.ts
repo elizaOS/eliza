@@ -774,7 +774,7 @@ export class SignalService extends Service implements ISignalService {
             const groups = await service.listConnectorGroups(connectorAccountId);
             const recentMessages = await service
               .getRecentMessages(30, connectorAccountId)
-              .catch(() => []);
+              .catch((): SignalRecentMessage[] => []);
             const recentTargets = recentMessages
               .map((recent) => ({
                 recent,
@@ -816,7 +816,9 @@ export class SignalService extends Service implements ISignalService {
               .slice(0, 12);
           },
           listRecentTargets: async () => {
-            const recent = await service.getRecentMessages(12, connectorAccountId).catch(() => []);
+            const recent = await service
+              .getRecentMessages(12, connectorAccountId)
+              .catch((): SignalRecentMessage[] => []);
             return recent.map((message) =>
               signalRecentToConnectorTarget(message, connectorAccountId)
             );

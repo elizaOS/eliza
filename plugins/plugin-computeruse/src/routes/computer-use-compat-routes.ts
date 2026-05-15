@@ -32,7 +32,7 @@ function firstHeaderValue(value: string | string[] | undefined): string | null {
 function isTrustedLocalRequest(
   req: Pick<http.IncomingMessage, "headers" | "socket">,
 ): boolean {
-  const remoteAddress = req.socket?.remoteAddress?.trim().toLowerCase();
+  const remoteAddress = req.socket.remoteAddress?.trim().toLowerCase();
   if (
     remoteAddress &&
     remoteAddress !== "127.0.0.1" &&

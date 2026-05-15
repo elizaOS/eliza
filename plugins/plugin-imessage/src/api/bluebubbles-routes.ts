@@ -1,5 +1,5 @@
 import type http from "node:http";
-import type { RouteHelpers } from "./imessage-routes.js";
+import type { RouteHelpers } from "@elizaos/core";
 
 const BLUEBUBBLES_SERVICE_NAME = "bluebubbles";
 const DEFAULT_WEBHOOK_PATH = "/webhooks/bluebubbles";

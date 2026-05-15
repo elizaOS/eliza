@@ -18,6 +18,12 @@ function isFeatureEnabled(
   return false;
 }
 
+function isTruthy(value: string | undefined): boolean {
+  return ["1", "true", "yes", "on"].includes(
+    (value ?? "").trim().toLowerCase(),
+  );
+}
+
 function terminalSupportedByEnv(ctx: PluginAutoEnableContext): boolean {
   const env = ctx.env;
   const variant = (env.ELIZA_BUILD_VARIANT ?? "").trim().toLowerCase();

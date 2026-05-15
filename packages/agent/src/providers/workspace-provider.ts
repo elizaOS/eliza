@@ -16,7 +16,6 @@ import {
   type ProviderResult,
   type State,
 } from "@elizaos/core";
-import type { CodingAgentContext } from "@elizaos/plugin-coding-tools";
 import { hasAdminAccess } from "../security/access.ts";
 import {
   filterInitFilesForSession,
@@ -30,6 +29,38 @@ const DEFAULT_MAX_CHARS = 20_000;
 /** Hard cap on total workspace context to prevent prompt explosion. */
 const MAX_TOTAL_WORKSPACE_CHARS = 100_000;
 const CACHE_TTL_MS = 60_000;
+
+interface CodingAgentContext {
+  taskDescription: string;
+  workingDirectory: string;
+  connector: {
+    type: string;
+    available: boolean;
+  };
+  interactionMode: string;
+  active: boolean;
+  iterations: Array<{
+    errors: Array<{
+      category: string;
+      message: string;
+      filePath?: string;
+      line?: number;
+    }>;
+    commandResults: Array<{
+      command: string;
+      success: boolean;
+      exitCode?: number | null;
+      stdout?: string;
+      stderr?: string;
+    }>;
+  }>;
+  allFeedback: Array<{
+    iterationRef?: number;
+    type?: string;
+    text?: string;
+    message?: string;
+  }>;
+}
 
 // Per-workspace cache so multi-agent doesn't thrash.
 const cache = new Map<string, { files: WorkspaceInitFile[]; at: number }>();

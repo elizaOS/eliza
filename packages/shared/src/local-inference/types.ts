@@ -213,8 +213,8 @@ export interface LocalRuntimeOptimizations {
   ubatchSize?: number;
   /** Continuous batching toggle (`--cont-batching` / `--no-cont-batching`). */
   contBatching?: boolean;
-  /** KV cache toggle (`--kv-unified` / `--no-kv-unified`). */
-  kvShared?: boolean;
+  /** Unified KV cache toggle (`--kv-unified` / `--no-kv-unified`). */
+  kvUnified?: boolean;
   /**
    * Number of runtime context checkpoints the cache bridge should keep for
    * interruption/resume. Maps to the fused llama-server checkpoint support.

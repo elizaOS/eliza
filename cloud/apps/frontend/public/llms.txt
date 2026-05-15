@@ -61,8 +61,6 @@ llms-full.txt: https://elizacloud.ai/.well-known/llms-full.txt
   https://elizacloud.ai/docs/authentication
 - Billing & Credits — Understand elizaOS Cloud pricing, credits system, and billing management.
   https://elizacloud.ai/docs/billing
-- Build AI Agents Faster. Ship Them Instantly. Introducing Eliza Cloud. — Eliza Cloud is a low-code platform for building and deploying AI agents. Focus on what your agent does - we handle everything else.
-  https://elizacloud.ai/docs/blog/introducing-eliza-cloud
 - Changelog — Latest updates, new features, and improvements to elizaOS Cloud.
   https://elizacloud.ai/docs/changelog
 - Character JSON — Complete reference for elizaOS character JSON configuration. Define agent personality, behavior, and settings.

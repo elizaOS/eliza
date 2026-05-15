@@ -327,7 +327,7 @@ async function fetchEventTypeDurationMinutes(
   const response = await calendlyRequest<{
     resource: CalendlyRawEventType;
   }>(creds, eventTypeUri);
-  const duration = Number(response.resource?.duration);
+  const duration = Number(response.resource.duration);
   if (!Number.isFinite(duration) || duration <= 0) {
     throw new CalendlyError(
       `Calendly event type ${eventTypeUri} did not return a usable duration`,
@@ -363,7 +363,7 @@ export async function getCalendlyAvailability(
     string,
     Array<{ startTime: string; endTime: string }>
   >();
-  for (const slot of response.collection ?? []) {
+  for (const slot of response.collection) {
     if (slot.status !== "available") continue;
     const start = new Date(slot.start_time);
     const dateKey = toDateKey(start, opts.timezone);

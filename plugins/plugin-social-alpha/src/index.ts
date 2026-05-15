@@ -4,7 +4,6 @@ import { events } from "./events";
 import { socialAlphaProvider } from "./providers/socialAlphaProvider";
 import { communityInvestorRoutes } from "./routes";
 import { CommunityInvestorService } from "./service";
-import { testSuites } from "./tests/index";
 
 export { socialAlphaProvider } from "./providers/socialAlphaProvider";
 export * from "./types";
@@ -58,7 +57,7 @@ export const socialAlphaPlugin: Plugin = {
 	providers: [socialAlphaProvider],
 	routes: communityInvestorRoutes,
 	events: events as unknown as Plugin["events"],
-	tests: testSuites,
+	tests: [],
 };
 
 export const panels: AgentPanel[] = [

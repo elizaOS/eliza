@@ -53,7 +53,7 @@
   },
   "scripts": {
     "dev": "bun --hot build.ts",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist .turbo",

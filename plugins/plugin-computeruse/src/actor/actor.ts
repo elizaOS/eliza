@@ -95,16 +95,18 @@ export function resolveReference(
     if (axMatch) return toAxTarget(axMatch);
   }
   // Fall back to hint-based label match. Prefer the requested display.
-  const lc = (hint ?? "").trim().toLowerCase();
+  const lc = hint.trim().toLowerCase();
   if (lc.length === 0) return null;
   const ocrCandidates = scene.ocr
     .filter((b) => b.text.toLowerCase().includes(lc))
     .sort((a, b) => preferenceScore(b, preferredDisplay) - preferenceScore(a, preferredDisplay));
-  if (ocrCandidates.length > 0) return toOcrTarget(ocrCandidates[0]!);
+  const bestOcr = ocrCandidates[0];
+  if (bestOcr) return toOcrTarget(bestOcr);
   const axCandidates = scene.ax
     .filter((n) => (n.label ?? "").toLowerCase().includes(lc))
     .sort((a, b) => preferenceScoreAx(b, preferredDisplay) - preferenceScoreAx(a, preferredDisplay));
-  if (axCandidates.length > 0) return toAxTarget(axCandidates[0]!);
+  const bestAx = axCandidates[0];
+  if (bestAx) return toAxTarget(bestAx);
   return null;
 }
 

@@ -82,9 +82,10 @@ src/lifeops/
 
 ## Default packs
 
-Default packs are bundles of `ScheduledTask` records (and sometimes
-anchor-consolidation policies, escalation ladders, autofill whitelists).
-LifeOps-owned packs live in `src/default-packs/`:
+Default packs are bundles of typed task definitions compiled into
+`ScheduledTask` records (and sometimes anchor-consolidation policies,
+escalation ladders, autofill whitelists). LifeOps-owned packs live in
+`src/default-packs/`:
 
 - `daily-rhythm` — gm, gn, daily check-in.
 - `morning-brief` — fired on `wake.confirmed`.
@@ -102,15 +103,20 @@ registers them when a health connector pairs.
 
 1. Add a file under `src/default-packs/<name>.ts` that exports a
    `DefaultPack` matching `registry-types.ts`.
-2. Import and append it to `DEFAULT_PACKS` in `src/default-packs/index.ts`.
-3. If the pack should be **auto-enabled**, list it in
+2. Define `ReminderTaskDefinition`, `CheckInTaskDefinition`,
+   `WatcherTaskDefinition`, `ApprovalTaskDefinition`, `RecapTaskDefinition`,
+   or `OutputTaskDefinition` values and compile them with
+   `compileTaskDefinition` / `compileTaskDefinitions`. Pack files should not
+   construct raw `ScheduledTaskSeed` records.
+3. Import and append it to `DEFAULT_PACKS` in `src/default-packs/index.ts`.
+4. If the pack should be **auto-enabled**, list it in
    `getDefaultEnabledPacks`. If it should be **offered** during first-run
    customize, list it in `getOfferedDefaultPacks`. If neither, the pack
    only seeds when invoked explicitly.
-4. Run `bun run lint:default-packs` (also runs as `pretest`). The lint
+5. Run `bun run lint:default-packs` (also runs as `pretest`). The lint
    rules live in `docs/audit/prompt-content-lint.md`. CI rejects packs
-   that violate them.
-5. Add a record-id constant export so consumers can target the records by
+   that violate them, including raw `ScheduledTask` construction.
+6. Add a record-id constant export so consumers can target the records by
    stable ID.
 
 The runtime never seeds packs by name string-match; everything goes through

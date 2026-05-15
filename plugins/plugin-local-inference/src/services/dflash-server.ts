@@ -2481,7 +2481,7 @@ export function appendOptimizationFlags(
 		args,
 		"--kv-unified",
 		"--no-kv-unified",
-		readBoolFlag("ELIZA_LOCAL_KV_UNIFIED") ?? optimizations?.kvShared,
+		readBoolFlag("ELIZA_LOCAL_KV_UNIFIED") ?? optimizations?.kvUnified,
 	);
 	appendBooleanFlag(
 		args,

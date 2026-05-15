@@ -218,6 +218,40 @@ function containsUncheckedElementAccess(node) {
   return found;
 }
 
+function identifierOriginatesFromElementAccess(checker, node) {
+  if (!checker || !ts.isIdentifier(node)) return false;
+  const symbol = checker.getSymbolAtLocation(node);
+  const declarations = symbol?.declarations ?? [];
+  return declarations.some((declaration) => {
+    if (
+      ts.isVariableDeclaration(declaration) &&
+      declaration.initializer &&
+      containsUncheckedElementAccess(declaration.initializer)
+    ) {
+      return true;
+    }
+    if (
+      ts.isBindingElement(declaration) &&
+      declaration.parent &&
+      containsUncheckedElementAccess(declaration.parent)
+    ) {
+      return true;
+    }
+    return false;
+  });
+}
+
+function identifierOriginatesFromOptionalParameter(checker, node) {
+  if (!checker || !ts.isIdentifier(node)) return false;
+  const symbol = checker.getSymbolAtLocation(node);
+  const declarations = symbol?.declarations ?? [];
+  return declarations.some(
+    (declaration) =>
+      ts.isParameter(declaration) &&
+      (Boolean(declaration.questionToken) || declaration.initializer !== undefined),
+  );
+}
+
 function containsTypeAssertion(node) {
   let found = false;
   function visit(current) {
@@ -303,7 +337,20 @@ function collectCandidates(sourceFiles, files, checker) {
     function visit(node) {
       if (ts.isNonNullExpression(node)) {
         const operandType = apparentType(checker, node.expression);
-        const removable = checker ? !includesNullish(operandType) : false;
+        const uncheckedIndex =
+          containsUncheckedElementAccess(node.expression) ||
+          identifierOriginatesFromElementAccess(checker, node.expression);
+        const optionalParameter = identifierOriginatesFromOptionalParameter(
+          checker,
+          node.expression,
+        );
+        const assertedType = containsTypeAssertion(node.expression);
+        const removable = checker
+          ? !uncheckedIndex &&
+            !optionalParameter &&
+            !assertedType &&
+            !includesNullish(operandType)
+          : false;
         records.push(
           makeRecord(sf, checker, "non-null-assertion", node, {
             classification: checker
@@ -312,7 +359,13 @@ function collectCandidates(sourceFiles, files, checker) {
                 : "type-required-or-unknown"
               : "syntax-inventory",
             reason: checker
-              ? removable
+              ? uncheckedIndex
+                ? "operand includes indexed access; noUncheckedIndexedAccess is not required here"
+                : optionalParameter
+                  ? "operand is an optional/defaulted parameter"
+                : assertedType
+                  ? "operand includes a type assertion that may mask nullish runtime values"
+                  : removable
               ? "operand type excludes null and undefined"
                 : "operand type includes null/undefined/any/unknown"
               : "run with --type-aware to classify by TypeScript types",
@@ -338,14 +391,25 @@ function collectCandidates(sourceFiles, files, checker) {
       ) {
         const receiver = ts.isCallExpression(node) ? node.expression : node.expression;
         const receiverType = apparentType(checker, receiver);
-        const uncheckedIndex = containsUncheckedElementAccess(receiver);
-        const removable = checker ? !uncheckedIndex && !includesNullish(receiverType) : false;
+        const uncheckedIndex =
+          containsUncheckedElementAccess(receiver) ||
+          identifierOriginatesFromElementAccess(checker, receiver);
+        const optionalParameter = identifierOriginatesFromOptionalParameter(checker, receiver);
+        const assertedType = containsTypeAssertion(receiver);
+        const removable = checker
+          ? !uncheckedIndex &&
+            !optionalParameter &&
+            !assertedType &&
+            !includesNullish(receiverType)
+          : false;
         let edit = null;
         if (removable) {
           const tokenStart = questionDotToken.getStart(sf);
+          const editStart = sf.text[tokenStart - 1] === "?" ? tokenStart - 1 : tokenStart;
           const tokenEnd = questionDotToken.getEnd();
-          const replacement = ts.isElementAccessExpression(node) ? "" : ".";
-          edit = replacementEdit(sf, tokenStart, tokenEnd, replacement);
+          const replacement =
+            ts.isCallExpression(node) || ts.isElementAccessExpression(node) ? "" : ".";
+          edit = replacementEdit(sf, editStart, tokenEnd, replacement);
         }
         records.push(
           makeRecord(sf, checker, "optional-chain", node, {
@@ -358,6 +422,10 @@ function collectCandidates(sourceFiles, files, checker) {
             reason: checker
               ? uncheckedIndex
                 ? "receiver includes indexed access; noUncheckedIndexedAccess is not required here"
+                : optionalParameter
+                  ? "receiver is an optional/defaulted parameter"
+                : assertedType
+                  ? "receiver includes a type assertion that may mask nullish runtime values"
                 : removable
               ? "receiver type excludes null and undefined"
                 : "receiver type includes null/undefined/any/unknown"
@@ -408,10 +476,19 @@ function collectCandidates(sourceFiles, files, checker) {
         let edit = null;
 
         if (node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken) {
-          const uncheckedIndex = containsUncheckedElementAccess(node.left);
+          const uncheckedIndex =
+            containsUncheckedElementAccess(node.left) ||
+            identifierOriginatesFromElementAccess(checker, node.left);
+          const optionalParameter = identifierOriginatesFromOptionalParameter(
+            checker,
+            node.left,
+          );
           const assertedType = containsTypeAssertion(node.left);
           const removable = checker
-            ? !uncheckedIndex && !assertedType && !includesNullish(leftType)
+            ? !uncheckedIndex &&
+              !optionalParameter &&
+              !assertedType &&
+              !includesNullish(leftType)
             : false;
           classification = checker
             ? removable
@@ -421,6 +498,8 @@ function collectCandidates(sourceFiles, files, checker) {
           reason = checker
             ? uncheckedIndex
               ? "left-hand side includes indexed access; noUncheckedIndexedAccess is not required here"
+              : optionalParameter
+                ? "left-hand side is an optional/defaulted parameter"
               : assertedType
                 ? "left-hand side includes a type assertion that may mask nullish runtime values"
               : removable

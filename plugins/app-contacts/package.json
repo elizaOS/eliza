@@ -5,13 +5,13 @@
   "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
   "main": "./dist/index.js",
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "bunx tsc --noEmit -p tsconfig.json",
     "lint": "biome check src/",
     "test": "bunx vitest run --config ./vitest.config.ts",
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json"
+    "build:types": "bunx tsc --noCheck -p tsconfig.build.json"
   },
   "exports": {
     "./package.json": "./package.json",

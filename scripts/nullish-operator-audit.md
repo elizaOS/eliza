@@ -1,13 +1,13 @@
 # Nullish Operator Audit Report
 
-Generated: 2026-05-14T13:13:21.487Z
+Generated: 2026-05-14T23:43:33.136Z
 
 ## Summary
 
 | Metric | Count |
 | --- | ---: |
-| TypeScript files scanned | 7733 |
-| Operators found | 151441 |
+| TypeScript files scanned | 8037 |
+| Operators found | 153675 |
 | Type-obvious removable | 0 |
 | Applied edits | 0 |
 
@@ -15,21 +15,21 @@ Generated: 2026-05-14T13:13:21.487Z
 
 | Kind | Count |
 | --- | ---: |
-| `binary-??` | 26007 |
-| `binary-&&` | 23677 |
-| `binary-\|\|` | 25516 |
-| `definite-assignment-assertion` | 53 |
-| `non-null-assertion` | 594 |
-| `optional-chain` | 24395 |
-| `optional-declaration` | 51199 |
+| `binary-??` | 26154 |
+| `binary-&&` | 24230 |
+| `binary-\|\|` | 25989 |
+| `definite-assignment-assertion` | 55 |
+| `non-null-assertion` | 551 |
+| `optional-chain` | 24795 |
+| `optional-declaration` | 51901 |
 
 ## By Classification
 
 | Classification | Count |
 | --- | ---: |
-| `review-required` | 49246 |
-| `syntax-inventory` | 50996 |
-| `upstream-type-review` | 51199 |
+| `review-required` | 50274 |
+| `syntax-inventory` | 51500 |
+| `upstream-type-review` | 51901 |
 
 ## Type-Obvious Removable Examples
 

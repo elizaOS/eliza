@@ -36,6 +36,11 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   exit 0
 fi
 
+if ! xcodebuild -version >/dev/null 2>&1 || ! xcrun --sdk iphoneos --show-sdk-path >/dev/null 2>&1; then
+  printf '\033[33m[build-ios]\033[0m skipping iOS xcframework build: requires full Xcode with the iOS SDK; active developer tools are insufficient.\n'
+  exit 0
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$SCRIPT_DIR"
 SRC_DIR="$ROOT_DIR/src"
@@ -89,8 +94,11 @@ ensure_source_checkout() {
     else \
       git remote add origin "$LLAMA_CPP_REPO"; \
     fi \
-    && (git fetch --depth 1 origin "$PINNED_REF" || git fetch --depth 200 origin main) \
-    && git checkout --quiet "$PINNED_REF" ) \
+    && (git fetch --depth 1 origin "$PINNED_REF" \
+      || { matched_ref="$(git ls-remote origin | awk -v ref="$PINNED_REF" 'index($1, ref) == 1 { print $2; exit }')" \
+        && [[ -n "$matched_ref" ]] \
+        && git fetch --depth 1 origin "$matched_ref"; }) \
+    && git checkout --quiet FETCH_HEAD ) \
     || die "fetch/checkout failed; verify '$PINNED_REF' exists at $LLAMA_CPP_REPO"
 }
 
