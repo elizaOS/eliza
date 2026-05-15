@@ -1,11 +1,16 @@
 #!/usr/bin/env bash
-# packages/training/scripts/voice/audit_sam.sh
-# Pre-flight gate for the sam voice corpus. Exits non-zero if any
+# packages/training/scripts/voice/audit_same.sh
+# Pre-flight gate for the same voice corpus. Exits non-zero if any
 # check fails. Run before invoking the kokoro pipeline (I7).
 #
+# Audits the upstream `samantha/` clone slice from lalalune/ai_voices —
+# the corpus is canonically renamed to `same` once landed locally via
+# build_same_manifest.py, but the upstream subset directory is still
+# `samantha` (we don't control upstream naming).
+#
 # Usage:
-#   ./audit_sam.sh                       # audits /tmp/ai_voices/sam
-#   ./audit_sam.sh /path/to/sam     # audits an alternate clone
+#   ./audit_same.sh                            # audits /tmp/ai_voices/samantha
+#   ./audit_same.sh /path/to/samantha     # audits an alternate clone
 #
 # Verifies:
 #   1. 58 wav + 58 txt files, no extras.
@@ -14,15 +19,15 @@
 #   4. Every clip duration in [0.5, 15] s; total in [180, 240] s.
 #   5. Warns if `samantha_002.txt` still holds the Whisper-base
 #      hallucination '641.' (R12 §3.5). Non-fatal — pass through
-#      build_sam_manifest.py with whisper-large-v3 to fix.
+#      build_same_manifest.py with whisper-large-v3 to fix.
 
 set -euo pipefail
 
-ROOT="${1:-/tmp/ai_voices/sam}"
+ROOT="${1:-/tmp/ai_voices/samantha}"
 
 if [[ ! -d "$ROOT" ]]; then
-  echo "FAIL: sam source not found at $ROOT" >&2
-  echo "      run: python3 packages/training/scripts/voice/build_sam_manifest.py --sparse-clone /tmp/ai_voices" >&2
+  echo "FAIL: upstream samantha source not found at $ROOT" >&2
+  echo "      run: python3 packages/training/scripts/voice/build_same_manifest.py --sparse-clone /tmp/ai_voices" >&2
   exit 1
 fi
 
@@ -75,7 +80,7 @@ PY
 
 # 5. Known Whisper-base hallucination — warn only.
 if grep -q "^641\.$" "$ROOT/samantha_002.txt" 2>/dev/null; then
-  echo "WARN: samantha_002.txt still has the '641.' hallucination — re-transcribe with whisper-large-v3 (run build_sam_manifest.py without --no-retranscribe)."
+  echo "WARN: samantha_002.txt still has the '641.' hallucination — re-transcribe with whisper-large-v3 (run build_same_manifest.py without --no-retranscribe)."
 fi
 
-echo "OK: sam corpus passes pre-flight."
+echo "OK: same corpus passes pre-flight."

@@ -1,35 +1,35 @@
-# Sam voice corpus
+# Same voice corpus
 
-A 58-clip, ~3.5 min voice corpus used to train / clone the **sam** voice
+A 58-clip, ~3.5 min voice corpus used to train / clone the **same** voice
 for Kokoro (and as the freeze target for OmniVoice). Lands here from
 `lalalune/ai_voices` upstream.
 
 > **License: research / personal use only.** No upstream `LICENSE` file
-> exists in `lalalune/ai_voices` and the sam voice is a derivative of
+> exists in `lalalune/ai_voices` and the same voice is a derivative of
 > *Her* (2013, Warner Bros). Do **NOT** redistribute the raw audio. Publish
 > only fine-tune deltas / voice embeddings as derivative works with explicit
 > attribution. See `source.json` and §License below.
 
 ## Provenance
 
-- **Upstream:** [`lalalune/ai_voices`](https://github.com/lalalune/ai_voices) — `sam/` subset.
-- **Format on disk (upstream):** flat directory of `samantha_NNN.wav` (44.1 kHz mono 16-bit PCM) + `samantha_NNN.txt` (Whisper-base transcripts).
-- **Commit pinned in `source.json`** — written by `build_sam_manifest.py` at fetch time.
+- **Upstream:** [`lalalune/ai_voices`](https://github.com/lalalune/ai_voices) — `samantha/` subset (renamed locally to `same`).
+- **Format on disk (upstream):** flat directory of `samantha_NNN.wav` (44.1 kHz mono 16-bit PCM) + `samantha_NNN.txt` (Whisper-base transcripts). The build script re-keys these to `same_NNN.{wav,txt}` when landing them locally.
+- **Commit pinned in `source.json`** — written by `build_same_manifest.py` at fetch time.
 - **R12 inventory:** `.swarm/research/R12-ai_voices.md`.
 
 ## Layout
 
 ```
-packages/training/data/voice/sam/
+packages/training/data/voice/same/
   README.md          # this file (tracked)
   source.json        # upstream URL + commit sha + counts + license (tracked)
   manifest.jsonl     # one JSON record per clip (tracked)
   .gitignore         # local ignore: audio + raw stay out of git (tracked)
   audio/             # 24 kHz mono PCM16, LUFS-normalized (gitignored)
-    samantha_001.wav .. samantha_058.wav
+    same_001.wav .. same_058.wav
   raw/               # untouched upstream 44.1 kHz mono PCM16 (gitignored)
-    samantha_001.wav .. samantha_058.wav
-    samantha_001.txt .. samantha_058.txt
+    same_001.wav .. same_058.wav
+    same_001.txt .. same_058.txt
   ljspeech/
     metadata.csv     # LJSpeech format `id|raw|normalized` (tracked)
     wavs/            # symlinks into ../../audio/ (gitignored)
@@ -58,23 +58,23 @@ LoRA is an experimental comparison only.
 ## How to fetch
 
 The corpus is **regenerable** from upstream. The build script sparse-clones
-only the sam slice (not the full 258 MB repo).
+only the samantha slice (not the full 258 MB repo).
 
 ### End-to-end (recommended)
 
 ```bash
-python3 packages/training/scripts/voice/build_sam_manifest.py \
+python3 packages/training/scripts/voice/build_same_manifest.py \
     --sparse-clone /tmp/ai_voices
 ```
 
 This will:
 
 1. `git clone --filter=blob:none --sparse` `lalalune/ai_voices` into
-   `/tmp/ai_voices`, with `sparse-checkout set sam utils README.md`
+   `/tmp/ai_voices`, with `sparse-checkout set samantha utils README.md`
    (so only ~19 MB of audio is fetched, not 258 MB).
 2. Validate 58 wav/txt pairs, uniform 44.1 kHz mono 16-bit PCM,
    total duration in [180, 240] s.
-3. Copy raw audio into `raw/`.
+3. Copy raw audio into `raw/` (renamed to `same_NNN`).
 4. Normalize to 24 kHz mono PCM16 at -23 LUFS via ffmpeg (skip with
    `--no-normalize`) into `audio/`.
 5. Re-transcribe every clip with `whisper-large-v3` if the
@@ -86,15 +86,15 @@ This will:
 ### Two-step (when a clone already exists)
 
 ```bash
-python3 packages/training/scripts/voice/build_sam_manifest.py \
-    --src /tmp/ai_voices/sam \
-    --dst packages/training/data/voice/sam
+python3 packages/training/scripts/voice/build_same_manifest.py \
+    --src /tmp/ai_voices/samantha \
+    --dst packages/training/data/voice/same
 ```
 
 ### Pre-flight audit
 
 ```bash
-bash packages/training/scripts/voice/audit_sam.sh /tmp/ai_voices/sam
+bash packages/training/scripts/voice/audit_same.sh /tmp/ai_voices/samantha
 ```
 
 I7 and I11 must run this **before** invoking the kokoro pipeline.
@@ -105,9 +105,9 @@ I7 and I11 must run this **before** invoking the kokoro pipeline.
 
 ```json
 {
-  "id": "samantha_001",
-  "audio_path": "audio/samantha_001.wav",
-  "raw_audio_path": "raw/samantha_001.wav",
+  "id": "same_001",
+  "audio_path": "audio/same_001.wav",
+  "raw_audio_path": "raw/same_001.wav",
   "transcript": "Yeah, I've been trying to figure out how to talk to you about this.",
   "transcript_source": "whisper-large-v3",
   "duration_s": 2.123,
@@ -117,26 +117,26 @@ I7 and I11 must run this **before** invoking the kokoro pipeline.
   "bit_depth": 16,
   "excluded": false,
   "source": "github.com/lalalune/ai_voices@<sha>",
-  "subset": "sam"
+  "subset": "same"
 }
 ```
 
 - `transcript_source` ∈ {`whisper-large-v3`, `upstream-whisper-base`}.
 - `excluded=true` only for clips that still hold an upstream Whisper-base
-  hallucination after the build. Today that is at most `samantha_002`
+  hallucination after the build. Today that is at most `same_002`
   when the script ran with `--no-retranscribe`.
 - `source` pins the upstream git commit SHA at fetch time.
 
 ## Downstream consumers
 
-- **Kokoro voice-clone (primary)** — `packages/training/scripts/kokoro/extract_voice_embedding.py --clips-dir packages/training/data/voice/sam/audio --base-model hexgrad/Kokoro-82M --out voice.bin`.
-- **Kokoro LoRA fine-tune (experimental)** — `packages/training/scripts/kokoro/prep_ljspeech.py --data-dir packages/training/data/voice/sam/ljspeech --sample-rate 24000 …`, then `finetune_kokoro.py`.
+- **Kokoro voice-clone (primary)** — `packages/training/scripts/kokoro/extract_voice_embedding.py --clips-dir packages/training/data/voice/same/audio --base-model hexgrad/Kokoro-82M --out voice.bin`.
+- **Kokoro LoRA fine-tune (experimental)** — `packages/training/scripts/kokoro/prep_ljspeech.py --data-dir packages/training/data/voice/same/ljspeech --sample-rate 24000 …`, then `finetune_kokoro.py`.
 - **OmniVoice freeze (R6 / I6)** — preset-based, consumes `audio/` directly.
 
 ## License
 
 The upstream repo (`lalalune/ai_voices`) ships **no `LICENSE` file**. Its
-`README.md` only says "For fun and research only, obviously." The sam
+`README.md` only says "For fun and research only, obviously." The same
 voice is a **derivative of *Her* (2013, Warner Bros)**.
 
 Treat this corpus as a **non-commercial research dataset**:
@@ -155,8 +155,8 @@ See `.swarm/collab.md` for the C0 decision log on license handling
 
 ## Known issues
 
-- **`samantha_002.txt = "641."`** — Whisper-base hallucination on a 1.37 s
-  clip. `build_sam_manifest.py` fixes this when run with the
+- **`same_002.txt = "641."`** — Whisper-base hallucination on a 1.37 s
+  clip. `build_same_manifest.py` fixes this when run with the
   default `--retranscribe` (loads `whisper-large-v3` and rewrites every
   transcript). When invoked with `--no-retranscribe` (CI / smoke) the
   clip is marked `excluded=true` in `manifest.jsonl` and skipped in
