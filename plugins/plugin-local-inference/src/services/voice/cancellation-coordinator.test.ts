@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { BargeInController } from "./barge-in";
 import {
 	type CoordinatorRuntime,
 	VoiceCancellationCoordinator,
