@@ -26,7 +26,7 @@ import {
 } from "@elizaos/core";
 import { readShopifyAccounts } from "./accounts.js";
 
-export const SHOPIFY_PROVIDER_NAME = "shopify";
+const SHOPIFY_PROVIDER_NAME = "shopify";
 
 const DEFAULT_PURPOSES: ConnectorAccountPurpose[] = [
   "admin" as ConnectorAccountPurpose,

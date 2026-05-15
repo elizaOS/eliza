@@ -18,7 +18,7 @@ import type {
 // Reaction Configuration
 // ============================================================
 
-export type SignalReactionNotificationMode = "off" | "own" | "all" | "allowlist";
+type SignalReactionNotificationMode = "off" | "own" | "all" | "allowlist";
 export type SignalReactionLevel = "off" | "ack" | "minimal" | "extensive";
 
 // ============================================================
@@ -34,7 +34,7 @@ export type SignalActionConfig = {
 // Account Configuration
 // ============================================================
 
-export type SignalAccountConfig = {
+type SignalAccountConfig = {
   /** Optional display name for this account (used in CLI/UI lists). */
   name?: string;
   /** Optional provider capability tags used for agent/runtime guidance. */
