@@ -310,6 +310,7 @@ export interface PlatformCapabilities {
   browser: { available: boolean; tool: string };
   terminal: { available: boolean; tool: string };
   fileSystem: { available: boolean; tool: string };
+  clipboard: { available: boolean; tool: string };
 }
 
 export interface ActionHistoryEntry {
