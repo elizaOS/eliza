@@ -24,7 +24,7 @@
  */
 
 import { execFileSync, execSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { currentPlatform } from "./helpers.js";
 
 export interface ProcessInfo {
@@ -112,7 +112,7 @@ export function parsePsOutput(text: string): ProcessInfo[] {
 function listWindows(): ProcessInfo[] {
   try {
     const text = execSync(
-      "powershell -NoProfile -Command \"Get-Process | Select-Object Id,ProcessName | ConvertTo-Json -Compress\"",
+      'powershell -NoProfile -Command "Get-Process | Select-Object Id,ProcessName | ConvertTo-Json -Compress"',
       { timeout: 8000, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
     );
     return parseWindowsProcessJson(text);

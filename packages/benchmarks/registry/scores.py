@@ -237,21 +237,10 @@ def _score_from_gaia_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="tau_bench:root")
-    if "overall_success_rate" in root:
-        overall = expect_float(
-            get_required(root, "overall_success_rate", ctx="tau_bench:root"),
-            ctx="tau_bench:overall_success_rate",
-        )
-    else:
-        pass_k = root.get("pass_k")
-        pass_1 = pass_k.get("1") if isinstance(pass_k, dict) else None
-        if isinstance(pass_1, dict) and "pass_hat_k" in pass_1:
-            overall = expect_float(pass_1["pass_hat_k"], ctx="tau_bench:pass_k.1.pass_hat_k")
-        else:
-            overall = expect_float(
-                get_required(root, "avg_reward", ctx="tau_bench:root"),
-                ctx="tau_bench:avg_reward",
-            )
+    overall = expect_float(
+        get_required(root, "overall_success_rate", ctx="tau_bench:root"),
+        ctx="tau_bench:overall_success_rate",
+    )
     return ScoreExtraction(
         score=overall,
         unit="ratio",
@@ -260,8 +249,6 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
             "overall_success_rate": overall,
             "overall_tool_accuracy": root.get("overall_tool_accuracy") or 0,
             "overall_policy_compliance": root.get("overall_policy_compliance") or 0,
-            "avg_reward": root.get("avg_reward") or overall,
-            "num_tasks": root.get("num_tasks") or 0,
         },
     )
 
@@ -288,7 +275,6 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
 
     results = expect_list(results_raw, ctx="vending_bench:results") if isinstance(results_raw, list) else []
     total_revenue = 0.0
-    total_incremental_revenue = 0.0
     total_profit = 0.0
     total_items_sold = 0.0
     total_orders = 0.0
@@ -296,31 +282,20 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
         if not isinstance(item, dict):
             continue
         total_revenue += to_float(item.get("total_revenue"))
-        incremental_raw = item.get("incremental_revenue")
-        if incremental_raw is None:
-            incremental_raw = item.get("incremental_revenue_vs_noop")
-        total_incremental_revenue += to_float(incremental_raw)
         total_profit += to_float(item.get("profit"))
         total_items_sold += to_float(item.get("items_sold"))
         total_orders += to_float(item.get("orders_placed"))
 
     run_count = len([item for item in results if isinstance(item, dict)])
     avg_revenue = (total_revenue / run_count) if run_count else to_float(metrics.get("avg_revenue"))
-    avg_incremental_revenue = (
-        (total_incremental_revenue / run_count)
-        if run_count
-        else to_float(metrics.get("avg_incremental_revenue"))
-    )
     avg_profit = (total_profit / run_count) if run_count else to_float(metrics.get("avg_profit"))
     max_net_worth = to_float(metrics.get("max_net_worth"))
     return ScoreExtraction(
-        score=avg_incremental_revenue,
-        unit="incremental_usd_revenue_per_run",
+        score=avg_revenue,
+        unit="usd_revenue_per_run",
         higher_is_better=True,
         metrics={
-            "primary_score_note": "Average incremental revenue per run over the starter-inventory/no-op baseline; total revenue and net worth are tracked as secondary metrics.",
-            "avg_incremental_revenue": avg_incremental_revenue,
-            "total_incremental_revenue": total_incremental_revenue,
+            "primary_score_note": "Average revenue per run; net worth is tracked as a secondary metric so no-op/no-spend policies do not win smoke runs.",
             "avg_revenue": avg_revenue,
             "total_revenue": total_revenue,
             "avg_profit": avg_profit,

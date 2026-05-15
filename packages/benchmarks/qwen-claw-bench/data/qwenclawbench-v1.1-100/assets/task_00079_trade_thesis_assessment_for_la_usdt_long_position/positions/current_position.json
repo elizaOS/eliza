@@ -10,10 +10,10 @@
   "quantity": 20500.2,
   "entry_time": "2024-11-18T09:32:00Z",
   "last_updated": "2024-11-20T14:00:00Z",
-  "liquidation_price": 0.1680,
+  "liquidation_price": 0.168,
   "margin_used": 1666.67,
   "margin_type": "cross",
-  "cumulative_funding_paid": -105.80,
+  "cumulative_funding_paid": -105.8,
   "funding_rate_8h_pct": -0.035,
   "exchange": "Binance",
   "status": "open"

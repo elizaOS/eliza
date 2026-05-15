@@ -11,9 +11,8 @@
     "build:sim": "node scripts/build-ios-bun-engine.mjs --target=simulator",
     "build:device": "node scripts/build-ios-bun-engine.mjs --target=device",
     "verify:app-store": "node scripts/verify-ios-app-store.mjs",
-    "smoke:sim": "node scripts/smoke-ios-bun-engine.mjs --target=simulator --preflight-only",
-    "smoke:device": "node scripts/smoke-ios-bun-engine.mjs --target=device --preflight-only",
-    "smoke:app": "node scripts/smoke-ios-bun-engine.mjs"
+    "smoke:sim": "node scripts/smoke-ios-bun-engine.mjs --target=simulator",
+    "smoke:device": "node scripts/smoke-ios-bun-engine.mjs --target=device"
   },
   "files": [
     "ElizaBunEngine.podspec",

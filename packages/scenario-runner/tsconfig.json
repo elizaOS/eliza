@@ -16,6 +16,7 @@
     "paths": {
       "@elizaos/core": ["../core/src/index.node.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/ui": ["../ui/dist/index.d.ts"],
       "@elizaos/vault": ["../vault/src/index.ts"],
       "@elizaos/app-core": ["../app-core/src/index.ts"],

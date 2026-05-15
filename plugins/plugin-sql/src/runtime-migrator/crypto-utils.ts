@@ -4,6 +4,20 @@
  */
 
 /**
+ * Simple synchronous hash function for change detection
+ * This is NOT cryptographic - it's just for comparing snapshots
+ * Uses djb2 hash algorithm for speed and simplicity
+ */
+export function simpleHash(str: string): string {
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 33) ^ str.charCodeAt(i);
+  }
+  // Convert to unsigned 32-bit integer and then to hex
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
  * Create a longer hash by combining multiple passes
  * This provides better distribution for larger inputs
  */
@@ -23,6 +37,37 @@ function hashWithSeed(str: string, seed: number): string {
     hash = (hash * 33) ^ str.charCodeAt(i);
   }
   return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * Convert string to Uint8Array
+ */
+function stringToBytes(str: string): Uint8Array {
+  const encoder = new TextEncoder();
+  return encoder.encode(str);
+}
+
+/**
+ * Convert ArrayBuffer to hex string
+ */
+function bufferToHex(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let hex = "";
+  for (let i = 0; i < bytes.length; i++) {
+    hex += bytes[i].toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+/**
+ * Async SHA-256 hash using Web Crypto API
+ * Works in both browsers and Node.js (v15+)
+ */
+export async function sha256Async(data: string): Promise<string> {
+  const bytes = stringToBytes(data);
+  // Cast to ArrayBuffer to satisfy TypeScript's strict BufferSource typing
+  const hashBuffer = await crypto.subtle.digest("SHA-256", bytes.buffer as ArrayBuffer);
+  return bufferToHex(hashBuffer);
 }
 
 /**

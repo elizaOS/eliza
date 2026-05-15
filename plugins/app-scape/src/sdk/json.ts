@@ -13,12 +13,12 @@
 
 import type { ClientFrame, ServerFrame } from "./types.js";
 
-interface CodecOk<T> {
+export interface CodecOk<T> {
   ok: true;
   value: T;
 }
 
-interface CodecError {
+export interface CodecError {
   ok: false;
   error: string;
 }

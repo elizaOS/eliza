@@ -3,7 +3,7 @@
  * recovery (e.g. "fallback to cloud TTS when omnivoice missing") trivial.
  */
 
-const BUILD_INSTRUCTIONS = [
+export const BUILD_INSTRUCTIONS = [
   "libomnivoice shared library not found.",
   "Build it with:",
   "  node packages/inference/build-omnivoice.mjs",

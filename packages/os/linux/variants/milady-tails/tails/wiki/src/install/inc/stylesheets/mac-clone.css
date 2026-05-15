@@ -1,10 +1,15 @@
 @import url("clone.css");
 
-span.mac-clone, a.mac-clone {
+span.mac-clone,
+a.mac-clone {
   display: inline;
 }
 
-div.mac-clone, img.mac-clone, p.mac-clone, h1.mac-clone, h2.mac-clone {
+div.mac-clone,
+img.mac-clone,
+p.mac-clone,
+h1.mac-clone,
+h2.mac-clone {
   display: block;
 }
 
@@ -12,6 +17,7 @@ li.mac-clone {
   display: list-item;
 }
 
-h1.step:before, span.next-counter:before {
-  content: counter(step)'/6';
+h1.step:before,
+span.next-counter:before {
+  content: counter(step) "/6";
 }

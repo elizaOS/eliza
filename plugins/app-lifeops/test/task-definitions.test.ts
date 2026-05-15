@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  compileTaskDefinition,
   type ApprovalTaskDefinition,
   type CheckInTaskDefinition,
+  compileTaskDefinition,
   type OutputTaskDefinition,
   type ReminderTaskDefinition,
   validateTaskDefinition,

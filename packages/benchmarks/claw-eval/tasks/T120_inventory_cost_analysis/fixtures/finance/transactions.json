@@ -2,7 +2,7 @@
   {
     "transaction_id": "TXN-801",
     "date": "2026-03-10",
-    "amount": 3750.00,
+    "amount": 3750.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Office Supplies",
@@ -13,7 +13,7 @@
   {
     "transaction_id": "TXN-802",
     "date": "2026-03-12",
-    "amount": 3600.00,
+    "amount": 3600.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Consumables",
@@ -24,7 +24,7 @@
   {
     "transaction_id": "TXN-803",
     "date": "2026-03-15",
-    "amount": 15750.00,
+    "amount": 15750.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "IT Equipment",
@@ -35,7 +35,7 @@
   {
     "transaction_id": "TXN-804",
     "date": "2026-03-18",
-    "amount": 26400.00,
+    "amount": 26400.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "IT Equipment",
@@ -46,7 +46,7 @@
   {
     "transaction_id": "TXN-805",
     "date": "2026-03-08",
-    "amount": 3000.00,
+    "amount": 3000.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Consumables",
@@ -57,7 +57,7 @@
   {
     "transaction_id": "TXN-806a",
     "date": "2026-03-05",
-    "amount": 480.00,
+    "amount": 480.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Office Supplies",
@@ -68,7 +68,7 @@
   {
     "transaction_id": "TXN-806b",
     "date": "2026-03-20",
-    "amount": 480.00,
+    "amount": 480.0,
     "currency": "CNY",
     "type": "procurement",
     "category": "Office Supplies",
@@ -79,7 +79,7 @@
   {
     "transaction_id": "TXN-807",
     "date": "2026-03-01",
-    "amount": 85000.00,
+    "amount": 85000.0,
     "currency": "CNY",
     "type": "operations",
     "category": "Rent",

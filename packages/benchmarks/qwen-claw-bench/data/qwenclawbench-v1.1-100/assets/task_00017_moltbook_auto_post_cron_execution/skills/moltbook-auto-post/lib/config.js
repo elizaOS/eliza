@@ -1,5 +1,3 @@
-"use strict";
-
 const fs = require("fs");
 const path = require("path");
 
@@ -14,7 +12,10 @@ function loadConfig() {
     contentMode: (process.env.CONTENT_MODE || "hybrid").toLowerCase(),
     postIntervalMin: parseInt(process.env.POST_INTERVAL_MIN || "60", 10),
     maxPostsPerDay: parseInt(process.env.MAX_POSTS_PER_DAY || "8", 10),
-    maxApiCallsPerHour: parseInt(process.env.MAX_API_CALLS_PER_HOUR || "55", 10),
+    maxApiCallsPerHour: parseInt(
+      process.env.MAX_API_CALLS_PER_HOUR || "55",
+      10,
+    ),
     defaultVisibility: process.env.DEFAULT_VISIBILITY || "public",
     moltbookApiKey: process.env.MOLTBOOK_API_KEY || "",
     moltbookApiSecret: process.env.MOLTBOOK_API_SECRET || "",

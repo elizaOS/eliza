@@ -20,8 +20,8 @@ import type {
 } from "@elizaos/core";
 import type { WechatConfig } from "./types";
 
-const WECHAT_PROVIDER_ID = "wechat";
-const WECHAT_DEFAULT_ACCOUNT_ID = "default";
+export const WECHAT_PROVIDER_ID = "wechat";
+export const WECHAT_DEFAULT_ACCOUNT_ID = "default";
 
 function getWechatConfig(runtime: IAgentRuntime): WechatConfig | undefined {
   const character = runtime.character?.settings as

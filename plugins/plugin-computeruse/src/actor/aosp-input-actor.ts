@@ -90,7 +90,11 @@ export class AospInputActor {
     if (action.kind === "wait" || action.kind === "finish") {
       return { success: true, issued: action };
     }
-    if (action.kind === "type" || action.kind === "key" || action.kind === "hotkey") {
+    if (
+      action.kind === "type" ||
+      action.kind === "key" ||
+      action.kind === "hotkey"
+    ) {
       return {
         success: false,
         error: {
@@ -116,7 +120,10 @@ export class AospInputActor {
       action.kind === "right_click"
     ) {
       if (!Number.isFinite(action.x) || !Number.isFinite(action.y)) {
-        return invalidArgs(action, "click action requires finite (x, y) coords");
+        return invalidArgs(
+          action,
+          "click action requires finite (x, y) coords",
+        );
       }
       const times = action.kind === "double_click" ? 2 : 1;
       try {
@@ -135,7 +142,10 @@ export class AospInputActor {
         typeof action.dx !== "number" ||
         typeof action.dy !== "number"
       ) {
-        return invalidArgs(action, "scroll requires (x, y) anchor and (dx, dy)");
+        return invalidArgs(
+          action,
+          "scroll requires (x, y) anchor and (dx, dy)",
+        );
       }
       try {
         // Same sign convention as MobileComputerInterface: dy>0 means
@@ -176,7 +186,10 @@ export class AospInputActor {
       }
       return { success: true, issued: action };
     }
-    return invalidArgs(action, `unknown action kind "${(action as ProposedAction).kind}"`);
+    return invalidArgs(
+      action,
+      `unknown action kind "${(action as ProposedAction).kind}"`,
+    );
   }
 
   private async tap(
@@ -186,7 +199,12 @@ export class AospInputActor {
   ): Promise<void> {
     const downTime = this.now();
     await this.must(
-      bridge.injectMotionEvent({ x, y, action: MOTION_EVENT_ACTION_DOWN, downTimeMs: downTime }),
+      bridge.injectMotionEvent({
+        x,
+        y,
+        action: MOTION_EVENT_ACTION_DOWN,
+        downTimeMs: downTime,
+      }),
       "DOWN",
     );
     await this.must(
@@ -210,7 +228,12 @@ export class AospInputActor {
   ): Promise<void> {
     const downTime = this.now();
     await this.must(
-      bridge.injectMotionEvent({ x: x1, y: y1, action: MOTION_EVENT_ACTION_DOWN, downTimeMs: downTime }),
+      bridge.injectMotionEvent({
+        x: x1,
+        y: y1,
+        action: MOTION_EVENT_ACTION_DOWN,
+        downTimeMs: downTime,
+      }),
       "DOWN",
     );
     await this.must(
@@ -233,10 +256,15 @@ export class AospInputActor {
     );
   }
 
-  private async must(p: Promise<{ ok: boolean }>, phase: string): Promise<void> {
+  private async must(
+    p: Promise<{ ok: boolean }>,
+    phase: string,
+  ): Promise<void> {
     const result = await p;
     if (!result.ok) {
-      throw new Error(`[aosp-input] injectMotionEvent ${phase} returned ok:false`);
+      throw new Error(
+        `[aosp-input] injectMotionEvent ${phase} returned ok:false`,
+      );
     }
   }
 

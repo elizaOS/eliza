@@ -1,8 +1,7 @@
 // VisionServiceLifecycleManager
 //
 // Manages dynamic load/unload of vision sub-services (YOLO, RapidOCR,
-// MediaPipe face, MoveNet pose, Florence2). Two ownership signals drive
-// release:
+// MediaPipe face, MoveNet pose). Two ownership signals drive release:
 //
 //   1. **Idle watchdog** — if a sub-service hasn't been queried for
 //      `idleUnloadMs` (default 60s), it's released.
@@ -264,7 +263,7 @@ function isWS1ArbiterLike(value: unknown): value is WS1ArbiterLike {
  * via `acquire(capability, modelKey)` and emits `memory_pressure` events on
  * `onEvent`) into the per-holder, byte-budget `IModelArbiter` contract that
  * `VisionServiceLifecycleManager` uses to track sub-services (YOLO, OCR,
- * Florence2). The WS1 arbiter has no per-holder byte ledger, so the bridge
+ * face). The WS1 arbiter has no per-holder byte ledger, so the bridge
  * `acquire`/`release` are no-ops that always succeed — the WS1 side handles
  * eviction at capability granularity, and the vision lifecycle drives
  * sub-service release through the pressure callback. This is the seam that

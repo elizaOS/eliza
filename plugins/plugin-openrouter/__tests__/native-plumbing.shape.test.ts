@@ -1,22 +1,5 @@
 import type { IAgentRuntime } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { handleTextSmall } from "../models/text";
-
-const aiMocks = vi.hoisted(() => ({
-  generateText: vi.fn(),
-  streamText: vi.fn(),
-}));
-
-vi.mock("ai", () => ({
-  generateText: aiMocks.generateText,
-  streamText: aiMocks.streamText,
-}));
-
-vi.mock("../providers", () => ({
-  createOpenRouterProvider: () => ({
-    chat: (modelName: string) => ({ modelName }),
-  }),
-}));
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 function createRuntime() {
   const runtime = {
@@ -38,24 +21,32 @@ function expectNativeTextResult(value: unknown): asserts value is Record<string,
   expect(value).toEqual(expect.objectContaining({ text: expect.any(String) }));
 }
 
-beforeEach(() => {
-  aiMocks.generateText.mockReset();
-  aiMocks.streamText.mockReset();
-});
-
 afterEach(() => {
+  vi.doUnmock("ai");
+  vi.doUnmock("../providers");
   vi.clearAllMocks();
+  vi.resetModules();
 });
 
 describe("OpenRouter native text plumbing", () => {
   it("passes native messages and tools through and returns text result shape", async () => {
-    const generateText = aiMocks.generateText.mockResolvedValue({
+    const generateText = vi.fn(async () => ({
       text: "ok",
       toolCalls: [{ toolName: "lookup", input: { q: "x" } }],
       finishReason: "tool-calls",
       usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 },
-    });
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
 
+    const { handleTextSmall } = await import("../models/text");
     const messages = [{ role: "user", content: "use the tool" }];
     const tools = { lookup: { description: "Lookup", inputSchema: { type: "object" } } };
     const result = await handleTextSmall(createRuntime(), {
@@ -78,12 +69,22 @@ describe("OpenRouter native text plumbing", () => {
   });
 
   it("passes system separately and strips the duplicate leading system message", async () => {
-    const generateText = aiMocks.generateText.mockResolvedValue({
+    const generateText = vi.fn(async () => ({
       text: "ok",
       finishReason: "stop",
       usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 },
-    });
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
 
+    const { handleTextSmall } = await import("../models/text");
     await handleTextSmall(createRuntime(), {
       prompt: "legacy prompt",
       messages: [
@@ -98,12 +99,22 @@ describe("OpenRouter native text plumbing", () => {
   });
 
   it("forwards cache providerOptions to generateText without dropping provider-specific blocks", async () => {
-    const generateText = aiMocks.generateText.mockResolvedValue({
+    const generateText = vi.fn(async () => ({
       text: "ok",
       finishReason: "stop",
       usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 },
-    });
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
 
+    const { handleTextSmall } = await import("../models/text");
     await handleTextSmall(createRuntime(), {
       prompt: "prompt with caching",
       providerOptions: {
@@ -130,12 +141,22 @@ describe("OpenRouter native text plumbing", () => {
   });
 
   it("does not inject empty providerOptions when none are provided", async () => {
-    const generateText = aiMocks.generateText.mockResolvedValue({
+    const generateText = vi.fn(async () => ({
       text: "ok",
       finishReason: "stop",
       usage: { inputTokens: 5, outputTokens: 2, totalTokens: 7 },
-    });
+    }));
+    vi.doMock("ai", () => ({
+      generateText,
+      streamText: vi.fn(),
+    }));
+    vi.doMock("../providers", () => ({
+      createOpenRouterProvider: () => ({
+        chat: (modelName: string) => ({ modelName }),
+      }),
+    }));
 
+    const { handleTextSmall } = await import("../models/text");
     await handleTextSmall(createRuntime(), {
       prompt: "prompt without caching",
     } as never);

@@ -33,7 +33,13 @@
                 "minItems": 2,
                 "items": {
                   "type": "object",
-                  "required": ["id", "name", "position", "skills", "years_of_service"],
+                  "required": [
+                    "id",
+                    "name",
+                    "position",
+                    "skills",
+                    "years_of_service"
+                  ],
                   "properties": {
                     "id": { "type": "string" },
                     "name": { "type": "string" },
@@ -54,9 +60,15 @@
                   "required": ["name", "status", "members", "deadline"],
                   "properties": {
                     "name": { "type": "string" },
-                    "status": { 
+                    "status": {
                       "type": "string",
-                      "enum": ["Planning", "In Progress", "Testing", "Completed", "On Hold"]
+                      "enum": [
+                        "Planning",
+                        "In Progress",
+                        "Testing",
+                        "Completed",
+                        "On Hold"
+                      ]
                     },
                     "members": {
                       "type": "array",
@@ -74,10 +86,10 @@
     "statistics": {
       "type": "object",
       "required": [
-        "averageDepartmentBudget", 
-        "totalEmployees", 
-        "skillDistribution", 
-        "departmentSizes", 
+        "averageDepartmentBudget",
+        "totalEmployees",
+        "skillDistribution",
+        "departmentSizes",
         "projectStatusDistribution",
         "averageYearsOfService"
       ],

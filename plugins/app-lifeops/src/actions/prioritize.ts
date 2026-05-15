@@ -303,8 +303,7 @@ export const prioritizeAction: Action & {
   parameters: [
     {
       name: "action",
-      description:
-        "Prioritize op: rank_todos | rank_threads | rank_decisions.",
+      description: "Prioritize op: rank_todos | rank_threads | rank_decisions.",
       schema: { type: "string" as const, enum: [...SUBACTIONS] },
     },
     {

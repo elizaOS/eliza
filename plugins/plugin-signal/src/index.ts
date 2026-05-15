@@ -120,6 +120,12 @@ export {
   type SignalMultiAccountConfig,
   type SignalReactionNotificationMode,
 } from "./accounts";
+// Channel configuration types
+export type {
+  SignalActionConfig,
+  SignalConfig,
+  SignalReactionLevel,
+} from "./config";
 // ConnectorAccountManager provider exports
 export {
   createSignalConnectorAccountProvider,

@@ -1,6 +1,70 @@
 import type { UserV2 } from "twitter-api-v2";
 import type { RequestApiResult } from "./api-types";
 import type { TwitterAuth } from "./auth";
+import type { TwitterApiErrorRaw } from "./errors";
+
+/**
+ * Interface representing the raw user profile payload returned by X.
+ * @property {string} [created_at] - The date the user was created.
+ * @property {string} [description] - The user's description.
+ * @property {Object} [entities] - Additional entities associated with the user.
+ * @property {Object} [url] - The URL associated with the user.
+ * @property {Object[]} [urls] - Array of URLs associated with the user.
+ * @property {string} [expanded_url] - The expanded URL.
+ * @property {number} [favourites_count] - The number of favorited items.
+ * @property {number} [followers_count] - The number of followers.
+ * @property {number} [friends_count] - The number of friends.
+ * @property {number} [media_count] - The number of media items.
+ * @property {number} [statuses_count] - The number of statuses.
+ * @property {string} [id_str] - The user ID as a string.
+ * @property {number} [listed_count] - The number of lists the user is listed in.
+ * @property {string} [name] - The user's name.
+ * @property {string} location - The user's location.
+ * @property {boolean} [geo_enabled] - Indicates if geo locations are enabled.
+ * @property {string[]} [pinned_tweet_ids_str] - Array of pinned tweet IDs as strings.
+ * @property {string} [profile_background_color] - The background color of the user's profile.
+ * @property {string} [profile_banner_url] - The URL of the user's profile banner.
+ * @property {string} [profile_image_url_https] - The URL of the user's profile image (HTTPS).
+ * @property {boolean} [protected] - Indicates if the user's account is protected.
+ * @property {string} [screen_name] - The user's screen name.
+ * @property {boolean} [verified] - Indicates if the user is verified.
+ * @property {boolean} [has_custom_timelines] - Indicates if the user has custom timelines.
+ * @property {boolean} [has_extended_profile] - Indicates if the user has an extended profile.
+ * @property {string} [url] - The user's URL.
+ * @property {boolean} [can_dm] - Indicates if direct messages are enabled for the user.
+ */
+export interface TwitterProfileRaw {
+  created_at?: string;
+  description?: string;
+  entities?: {
+    url?: {
+      urls?: {
+        expanded_url?: string;
+      }[];
+    };
+  };
+  favourites_count?: number;
+  followers_count?: number;
+  friends_count?: number;
+  media_count?: number;
+  statuses_count?: number;
+  id_str?: string;
+  listed_count?: number;
+  name?: string;
+  location: string;
+  geo_enabled?: boolean;
+  pinned_tweet_ids_str?: string[];
+  profile_background_color?: string;
+  profile_banner_url?: string;
+  profile_image_url_https?: string;
+  protected?: boolean;
+  screen_name?: string;
+  verified?: boolean;
+  has_custom_timelines?: boolean;
+  has_extended_profile?: boolean;
+  url?: string;
+  can_dm?: boolean;
+}
 
 /**
  * A parsed profile object.
@@ -60,8 +124,60 @@ export interface Profile {
   canDm?: boolean;
 }
 
+export interface UserRaw {
+  data: {
+    user: {
+      result: {
+        rest_id?: string;
+        is_blue_verified?: boolean;
+        legacy: TwitterProfileRaw;
+      };
+    };
+  };
+  errors?: TwitterApiErrorRaw[];
+}
+
 function getAvatarOriginalSizeUrl(avatarUrl: string | undefined) {
   return avatarUrl ? avatarUrl.replace("_normal", "") : undefined;
+}
+
+export function parseProfile(
+  user: TwitterProfileRaw,
+  isBlueVerified?: boolean,
+): Profile {
+  const profile: Profile = {
+    avatar: getAvatarOriginalSizeUrl(user.profile_image_url_https),
+    banner: user.profile_banner_url,
+    biography: user.description,
+    followersCount: user.followers_count,
+    followingCount: user.friends_count,
+    friendsCount: user.friends_count,
+    mediaCount: user.media_count,
+    isPrivate: user.protected ?? false,
+    isVerified: user.verified,
+    likesCount: user.favourites_count,
+    listedCount: user.listed_count,
+    location: user.location,
+    name: user.name,
+    pinnedTweetIds: user.pinned_tweet_ids_str,
+    tweetsCount: user.statuses_count,
+    url: `https://twitter.com/${user.screen_name}`,
+    userId: user.id_str,
+    username: user.screen_name,
+    isBlueVerified: isBlueVerified ?? false,
+    canDm: user.can_dm,
+  };
+
+  if (user.created_at != null) {
+    profile.joined = new Date(Date.parse(user.created_at));
+  }
+
+  const urls = user.entities?.url?.urls;
+  if (urls?.length != null && urls?.length > 0) {
+    profile.website = urls[0].expanded_url;
+  }
+
+  return profile;
 }
 
 /**

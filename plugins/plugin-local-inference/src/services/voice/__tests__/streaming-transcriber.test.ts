@@ -179,9 +179,6 @@ describe("FfiStreamingTranscriber — frame-by-frame", () => {
 		expect(final.partial).toBe("hello there how are you");
 		expect(final.isFinal).toBe(true);
 		expect(final.tokens).toEqual([11, 22, 33, 44, 55]);
-		expect(final.voiceEmotion).toMatchObject({
-			modelNativeEmotion: false,
-		});
 		expect(state.closed).toBe(true);
 	});
 

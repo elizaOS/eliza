@@ -2286,7 +2286,9 @@ export async function main(argv: readonly string[]): Promise<number> {
       `[harness] strategy=${summary.strategy} accuracy=${(summary.overallAccuracy * 100).toFixed(1)}% ` +
         `compactions=${summary.totalCompactions} tokensSaved=${summary.totalTokensSaved} ` +
         `probes=${summary.totalProbes}${
-          args.dryRun ? " (dry-run: no output artifact written)" : ` → ${args.output}`
+          args.dryRun
+            ? " (dry-run: no output artifact written)"
+            : ` → ${args.output}`
         }\n`,
     );
   }

@@ -118,7 +118,9 @@ function parentAppExecutablePath(appPath) {
 
 function isParentAppExecutable(target, appPath) {
   const executablePath = parentAppExecutablePath(appPath);
-  return executablePath ? path.resolve(target) === path.resolve(executablePath) : false;
+  return executablePath
+    ? path.resolve(target) === path.resolve(executablePath)
+    : false;
 }
 
 function parseArgs(argv) {

@@ -449,138 +449,138 @@ export async function runProposeMeetingTimesHandler(
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-    const respond = makeSchedulingRespond({
-      runtime,
-      message,
-      state,
-      callback,
-      actionName: "PROPOSE_MEETING_TIMES",
-    });
+  const respond = makeSchedulingRespond({
+    runtime,
+    message,
+    state,
+    callback,
+    actionName: "PROPOSE_MEETING_TIMES",
+  });
 
-    if (await denyIfNoAccess(runtime, message)) {
+  if (await denyIfNoAccess(runtime, message)) {
+    return respond({
+      success: false,
+      scenario: "scheduling_access_denied",
+      fallback:
+        "Scheduling actions are restricted to the owner and authorized users.",
+      data: { error: "PERMISSION_DENIED" },
+    });
+  }
+
+  const params = getParams<ProposeMeetingTimesParameters>(options);
+  const preferences = await readLifeOpsMeetingPreferences(runtime);
+  const messageBody =
+    typeof message.content?.text === "string" ? message.content.text : "";
+  const inferredTimeZone =
+    (typeof params.timeZone === "string" && params.timeZone.trim().length > 0
+      ? params.timeZone.trim()
+      : null) ?? inferTimeZoneFromLocationText(messageBody);
+  const effectivePreferences = inferredTimeZone
+    ? { ...preferences, timeZone: inferredTimeZone }
+    : preferences;
+  const counterparties =
+    Array.isArray(params.counterparties) && params.counterparties.length > 0
+      ? params.counterparties
+      : extractBundledMeetingCounterparties(messageBody);
+  const bundleLocationLabel = deriveBundleLocationLabel(messageBody);
+  const durationMinutes =
+    typeof params.durationMinutes === "number" &&
+    params.durationMinutes >= 5 &&
+    params.durationMinutes <= 480
+      ? Math.floor(params.durationMinutes)
+      : effectivePreferences.defaultDurationMinutes;
+  const slotCount =
+    typeof params.slotCount === "number" &&
+    params.slotCount >= 1 &&
+    params.slotCount <= 10
+      ? Math.floor(params.slotCount)
+      : DEFAULT_SLOTS_COUNT;
+  const daysAhead =
+    typeof params.daysAhead === "number" &&
+    params.daysAhead >= 1 &&
+    params.daysAhead <= MAX_DAYS_LOOKAHEAD
+      ? Math.floor(params.daysAhead)
+      : DEFAULT_DAYS_LOOKAHEAD;
+
+  const now = new Date();
+  const explicitStart = parseOptionalIso(params.windowStart);
+  const explicitEnd = parseOptionalIso(params.windowEnd);
+  const windowStart = explicitStart ?? now;
+  const windowEnd =
+    explicitEnd ??
+    new Date(windowStart.getTime() + daysAhead * 24 * 60 * 60_000);
+
+  const service = new LifeOpsService(runtime);
+  let events: readonly LifeOpsCalendarEvent[] = [];
+  try {
+    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+      includeHiddenCalendars: true,
+      timeMin: windowStart.toISOString(),
+      timeMax: windowEnd.toISOString(),
+      timeZone: effectivePreferences.timeZone,
+    });
+    events = feed.events;
+  } catch (error) {
+    if (error instanceof LifeOpsServiceError) {
+      const fallback =
+        error.status === 403
+          ? "I can't propose times yet because calendar access is not available. Grant Apple Calendar access or connect Google Calendar and try again."
+          : `I couldn't read your calendar (${error.message}).`;
       return respond({
         success: false,
-        scenario: "scheduling_access_denied",
-        fallback:
-          "Scheduling actions are restricted to the owner and authorized users.",
-        data: { error: "PERMISSION_DENIED" },
+        scenario: "scheduling_calendar_unavailable",
+        fallback,
+        context: { status: error.status, detail: error.message },
+        data: {
+          error: "CALENDAR_UNAVAILABLE",
+          status: error.status,
+          detail: error.message,
+        },
       });
     }
+    throw error;
+  }
 
-    const params = getParams<ProposeMeetingTimesParameters>(options);
-    const preferences = await readLifeOpsMeetingPreferences(runtime);
-    const messageBody =
-      typeof message.content?.text === "string" ? message.content.text : "";
-    const inferredTimeZone =
-      (typeof params.timeZone === "string" && params.timeZone.trim().length > 0
-        ? params.timeZone.trim()
-        : null) ?? inferTimeZoneFromLocationText(messageBody);
-    const effectivePreferences = inferredTimeZone
-      ? { ...preferences, timeZone: inferredTimeZone }
-      : preferences;
-    const counterparties =
-      Array.isArray(params.counterparties) && params.counterparties.length > 0
-        ? params.counterparties
-        : extractBundledMeetingCounterparties(messageBody);
-    const bundleLocationLabel = deriveBundleLocationLabel(messageBody);
-    const durationMinutes =
-      typeof params.durationMinutes === "number" &&
-      params.durationMinutes >= 5 &&
-      params.durationMinutes <= 480
-        ? Math.floor(params.durationMinutes)
-        : effectivePreferences.defaultDurationMinutes;
-    const slotCount =
-      typeof params.slotCount === "number" &&
-      params.slotCount >= 1 &&
-      params.slotCount <= 10
-        ? Math.floor(params.slotCount)
-        : DEFAULT_SLOTS_COUNT;
-    const daysAhead =
-      typeof params.daysAhead === "number" &&
-      params.daysAhead >= 1 &&
-      params.daysAhead <= MAX_DAYS_LOOKAHEAD
-        ? Math.floor(params.daysAhead)
-        : DEFAULT_DAYS_LOOKAHEAD;
+  const slots = computeProposedSlots({
+    now,
+    windowStart,
+    windowEnd,
+    durationMinutes,
+    slotCount,
+    preferences: effectivePreferences,
+    events,
+  });
 
-    const now = new Date();
-    const explicitStart = parseOptionalIso(params.windowStart);
-    const explicitEnd = parseOptionalIso(params.windowEnd);
-    const windowStart = explicitStart ?? now;
-    const windowEnd =
-      explicitEnd ??
-      new Date(windowStart.getTime() + daysAhead * 24 * 60 * 60_000);
-
-    const service = new LifeOpsService(runtime);
-    let events: readonly LifeOpsCalendarEvent[] = [];
-    try {
-      const feed = await service.getCalendarFeed(INTERNAL_URL, {
-        includeHiddenCalendars: true,
-        timeMin: windowStart.toISOString(),
-        timeMax: windowEnd.toISOString(),
-        timeZone: effectivePreferences.timeZone,
-      });
-      events = feed.events;
-    } catch (error) {
-      if (error instanceof LifeOpsServiceError) {
-        const fallback =
-          error.status === 403
-            ? "I can't propose times yet because calendar access is not available. Grant Apple Calendar access or connect Google Calendar and try again."
-            : `I couldn't read your calendar (${error.message}).`;
-        return respond({
-          success: false,
-          scenario: "scheduling_calendar_unavailable",
-          fallback,
-          context: { status: error.status, detail: error.message },
-          data: {
-            error: "CALENDAR_UNAVAILABLE",
-            status: error.status,
-            detail: error.message,
-          },
-        });
-      }
-      throw error;
-    }
-
-    const slots = computeProposedSlots({
-      now,
-      windowStart,
-      windowEnd,
+  const fallback = formatProposedSlotsReply({
+    slots,
+    context: {
+      counterparties,
+      bundleLocationLabel,
+      timeZone: effectivePreferences.timeZone,
+    },
+  });
+  return respond({
+    success: true,
+    scenario: "scheduling_proposed_slots",
+    fallback,
+    context: {
+      slotCount: slots.length,
       durationMinutes,
-      slotCount,
-      preferences: effectivePreferences,
-      events,
-    });
-
-    const fallback = formatProposedSlotsReply({
+      timeZone: effectivePreferences.timeZone,
+      counterparties,
+      bundleLocationLabel,
+    },
+    data: {
       slots,
-      context: {
-        counterparties,
-        bundleLocationLabel,
-        timeZone: effectivePreferences.timeZone,
-      },
-    });
-    return respond({
-      success: true,
-      scenario: "scheduling_proposed_slots",
-      fallback,
-      context: {
-        slotCount: slots.length,
-        durationMinutes,
-        timeZone: effectivePreferences.timeZone,
-        counterparties,
-        bundleLocationLabel,
-      },
-      data: {
-        slots,
-        durationMinutes,
-        windowStart: windowStart.toISOString(),
-        windowEnd: windowEnd.toISOString(),
-        timeZone: effectivePreferences.timeZone,
-        preferences: effectivePreferences,
-        counterparties,
-        bundleLocationLabel,
-      },
-    });
+      durationMinutes,
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+      timeZone: effectivePreferences.timeZone,
+      preferences: effectivePreferences,
+      counterparties,
+      bundleLocationLabel,
+    },
+  });
 }
 
 // Dispatched from the CALENDAR umbrella (action=check_availability).
@@ -592,104 +592,104 @@ export async function runCheckAvailabilityHandler(
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-    const respond = makeSchedulingRespond({
-      runtime,
-      message,
-      state,
-      callback,
-      actionName: "CHECK_AVAILABILITY",
-    });
+  const respond = makeSchedulingRespond({
+    runtime,
+    message,
+    state,
+    callback,
+    actionName: "CHECK_AVAILABILITY",
+  });
 
-    if (await denyIfNoAccess(runtime, message)) {
-      return respond({
-        success: false,
-        scenario: "scheduling_access_denied",
-        fallback:
-          "Scheduling actions are restricted to the owner and authorized users.",
-        data: { error: "PERMISSION_DENIED" },
-      });
-    }
-
-    const params = getParams<CheckAvailabilityParameters>(options);
-    const windowStart = parseOptionalIso(params.startAt);
-    const windowEnd = parseOptionalIso(params.endAt);
-    if (!windowStart || !windowEnd || windowEnd <= windowStart) {
-      return respond({
-        success: false,
-        scenario: "scheduling_invalid_window",
-        fallback:
-          "I need a valid ISO start and end time to check availability (end must be after start).",
-        data: { error: "INVALID_WINDOW" },
-      });
-    }
-
-    const preferences = await readLifeOpsMeetingPreferences(runtime);
-    const service = new LifeOpsService(runtime);
-    let events: readonly LifeOpsCalendarEvent[] = [];
-    try {
-      const feed = await service.getCalendarFeed(INTERNAL_URL, {
-        includeHiddenCalendars: true,
-        timeMin: windowStart.toISOString(),
-        timeMax: windowEnd.toISOString(),
-        timeZone: preferences.timeZone,
-      });
-      events = feed.events;
-    } catch (error) {
-      if (error instanceof LifeOpsServiceError) {
-        const fallback =
-          error.status === 403
-            ? "I can't check availability because calendar access is not available. Grant Apple Calendar access or connect Google Calendar."
-            : `I couldn't read your calendar (${error.message}).`;
-        return respond({
-          success: false,
-          scenario: "scheduling_calendar_unavailable",
-          fallback,
-          context: { status: error.status, detail: error.message },
-          data: {
-            error: "CALENDAR_UNAVAILABLE",
-            status: error.status,
-            detail: error.message,
-          },
-        });
-      }
-      throw error;
-    }
-
-    const windowStartMs = windowStart.getTime();
-    const windowEndMs = windowEnd.getTime();
-    const conflicts = events.filter((event) => {
-      const s = Date.parse(event.startAt);
-      const e = Date.parse(event.endAt);
-      return s < windowEndMs && e > windowStartMs;
-    });
-
-    const isFree = conflicts.length === 0;
-    const fallback = isFree
-      ? `You're free from ${formatLocalForDisplay(windowStart.toISOString(), preferences.timeZone)} to ${formatLocalForDisplay(windowEnd.toISOString(), preferences.timeZone)}.`
-      : `You have ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} in that window: ${conflicts.map((c) => c.title || "Untitled").join(", ")}.`;
-
+  if (await denyIfNoAccess(runtime, message)) {
     return respond({
-      success: true,
-      scenario: isFree ? "scheduling_window_free" : "scheduling_window_busy",
-      fallback,
-      context: {
-        isFree,
-        conflictCount: conflicts.length,
-        timeZone: preferences.timeZone,
-      },
-      data: {
-        isFree,
-        windowStart: windowStart.toISOString(),
-        windowEnd: windowEnd.toISOString(),
-        conflicts: conflicts.map((c) => ({
-          id: c.id,
-          title: c.title,
-          startAt: c.startAt,
-          endAt: c.endAt,
-        })),
-        timeZone: preferences.timeZone,
-      },
+      success: false,
+      scenario: "scheduling_access_denied",
+      fallback:
+        "Scheduling actions are restricted to the owner and authorized users.",
+      data: { error: "PERMISSION_DENIED" },
     });
+  }
+
+  const params = getParams<CheckAvailabilityParameters>(options);
+  const windowStart = parseOptionalIso(params.startAt);
+  const windowEnd = parseOptionalIso(params.endAt);
+  if (!windowStart || !windowEnd || windowEnd <= windowStart) {
+    return respond({
+      success: false,
+      scenario: "scheduling_invalid_window",
+      fallback:
+        "I need a valid ISO start and end time to check availability (end must be after start).",
+      data: { error: "INVALID_WINDOW" },
+    });
+  }
+
+  const preferences = await readLifeOpsMeetingPreferences(runtime);
+  const service = new LifeOpsService(runtime);
+  let events: readonly LifeOpsCalendarEvent[] = [];
+  try {
+    const feed = await service.getCalendarFeed(INTERNAL_URL, {
+      includeHiddenCalendars: true,
+      timeMin: windowStart.toISOString(),
+      timeMax: windowEnd.toISOString(),
+      timeZone: preferences.timeZone,
+    });
+    events = feed.events;
+  } catch (error) {
+    if (error instanceof LifeOpsServiceError) {
+      const fallback =
+        error.status === 403
+          ? "I can't check availability because calendar access is not available. Grant Apple Calendar access or connect Google Calendar."
+          : `I couldn't read your calendar (${error.message}).`;
+      return respond({
+        success: false,
+        scenario: "scheduling_calendar_unavailable",
+        fallback,
+        context: { status: error.status, detail: error.message },
+        data: {
+          error: "CALENDAR_UNAVAILABLE",
+          status: error.status,
+          detail: error.message,
+        },
+      });
+    }
+    throw error;
+  }
+
+  const windowStartMs = windowStart.getTime();
+  const windowEndMs = windowEnd.getTime();
+  const conflicts = events.filter((event) => {
+    const s = Date.parse(event.startAt);
+    const e = Date.parse(event.endAt);
+    return s < windowEndMs && e > windowStartMs;
+  });
+
+  const isFree = conflicts.length === 0;
+  const fallback = isFree
+    ? `You're free from ${formatLocalForDisplay(windowStart.toISOString(), preferences.timeZone)} to ${formatLocalForDisplay(windowEnd.toISOString(), preferences.timeZone)}.`
+    : `You have ${conflicts.length} conflict${conflicts.length === 1 ? "" : "s"} in that window: ${conflicts.map((c) => c.title || "Untitled").join(", ")}.`;
+
+  return respond({
+    success: true,
+    scenario: isFree ? "scheduling_window_free" : "scheduling_window_busy",
+    fallback,
+    context: {
+      isFree,
+      conflictCount: conflicts.length,
+      timeZone: preferences.timeZone,
+    },
+    data: {
+      isFree,
+      windowStart: windowStart.toISOString(),
+      windowEnd: windowEnd.toISOString(),
+      conflicts: conflicts.map((c) => ({
+        id: c.id,
+        title: c.title,
+        startAt: c.startAt,
+        endAt: c.endAt,
+      })),
+      timeZone: preferences.timeZone,
+    },
+  });
 }
 
 // Dispatched from the CALENDAR umbrella (action=update_preferences).
@@ -701,63 +701,63 @@ export async function runUpdateMeetingPreferencesHandler(
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-    const respond = makeSchedulingRespond({
-      runtime,
-      message,
-      state,
-      callback,
-      actionName: "UPDATE_MEETING_PREFERENCES",
-    });
+  const respond = makeSchedulingRespond({
+    runtime,
+    message,
+    state,
+    callback,
+    actionName: "UPDATE_MEETING_PREFERENCES",
+  });
 
-    if (await denyIfNoAccess(runtime, message)) {
-      return respond({
-        success: false,
-        scenario: "scheduling_access_denied",
-        fallback:
-          "Scheduling actions are restricted to the owner and authorized users.",
-        data: { error: "PERMISSION_DENIED" },
-      });
-    }
-
-    const params = getParams<Record<string, unknown>>(options);
-    const patch: LifeOpsMeetingPreferencesPatch =
-      normalizeLifeOpsMeetingPreferencesPatch(params);
-
-    if (Object.keys(patch).length === 0) {
-      return respond({
-        success: false,
-        scenario: "scheduling_preferences_no_fields",
-        fallback:
-          "No valid preference fields were provided. Supply preferredStartLocal/preferredEndLocal as HH:MM, numeric defaultDurationMinutes/travelBufferMinutes, or a blackoutWindows array.",
-        data: { error: "NO_FIELDS" },
-      });
-    }
-
-    const updated = await updateLifeOpsMeetingPreferences(runtime, patch);
-    if (!updated) {
-      return respond({
-        success: false,
-        scenario: "scheduling_preferences_update_failed",
-        fallback: "Could not persist meeting preferences.",
-        data: { error: "PREFERENCES_UPDATE_FAILED" },
-      });
-    }
-
-    const fallback = `Updated meeting preferences (${updated.preferredStartLocal}–${updated.preferredEndLocal} ${updated.timeZone}, default ${updated.defaultDurationMinutes} min, travel buffer ${updated.travelBufferMinutes} min, ${updated.blackoutWindows.length} blackout window${updated.blackoutWindows.length === 1 ? "" : "s"}).`;
+  if (await denyIfNoAccess(runtime, message)) {
     return respond({
-      success: true,
-      scenario: "scheduling_preferences_updated",
-      fallback,
-      context: {
-        preferredStartLocal: updated.preferredStartLocal,
-        preferredEndLocal: updated.preferredEndLocal,
-        timeZone: updated.timeZone,
-        defaultDurationMinutes: updated.defaultDurationMinutes,
-        travelBufferMinutes: updated.travelBufferMinutes,
-        blackoutWindowCount: updated.blackoutWindows.length,
-      },
-      data: { preferences: updated, updatedFields: Object.keys(patch) },
+      success: false,
+      scenario: "scheduling_access_denied",
+      fallback:
+        "Scheduling actions are restricted to the owner and authorized users.",
+      data: { error: "PERMISSION_DENIED" },
     });
+  }
+
+  const params = getParams<Record<string, unknown>>(options);
+  const patch: LifeOpsMeetingPreferencesPatch =
+    normalizeLifeOpsMeetingPreferencesPatch(params);
+
+  if (Object.keys(patch).length === 0) {
+    return respond({
+      success: false,
+      scenario: "scheduling_preferences_no_fields",
+      fallback:
+        "No valid preference fields were provided. Supply preferredStartLocal/preferredEndLocal as HH:MM, numeric defaultDurationMinutes/travelBufferMinutes, or a blackoutWindows array.",
+      data: { error: "NO_FIELDS" },
+    });
+  }
+
+  const updated = await updateLifeOpsMeetingPreferences(runtime, patch);
+  if (!updated) {
+    return respond({
+      success: false,
+      scenario: "scheduling_preferences_update_failed",
+      fallback: "Could not persist meeting preferences.",
+      data: { error: "PREFERENCES_UPDATE_FAILED" },
+    });
+  }
+
+  const fallback = `Updated meeting preferences (${updated.preferredStartLocal}–${updated.preferredEndLocal} ${updated.timeZone}, default ${updated.defaultDurationMinutes} min, travel buffer ${updated.travelBufferMinutes} min, ${updated.blackoutWindows.length} blackout window${updated.blackoutWindows.length === 1 ? "" : "s"}).`;
+  return respond({
+    success: true,
+    scenario: "scheduling_preferences_updated",
+    fallback,
+    context: {
+      preferredStartLocal: updated.preferredStartLocal,
+      preferredEndLocal: updated.preferredEndLocal,
+      timeZone: updated.timeZone,
+      defaultDurationMinutes: updated.defaultDurationMinutes,
+      travelBufferMinutes: updated.travelBufferMinutes,
+      blackoutWindowCount: updated.blackoutWindows.length,
+    },
+    data: { preferences: updated, updatedFields: Object.keys(patch) },
+  });
 }
 
 // ── Multi-turn scheduling negotiation action ─────────────────────────────

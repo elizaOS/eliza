@@ -861,33 +861,6 @@ async function ensurePlatform(platform) {
 
 // ── Phase 4: Android native overlay ─────────────────────────────────────
 
-function resetAndroidGeneratedManifestFromTemplate() {
-  const templateManifestPath = path.join(
-    platformsDir,
-    "android",
-    "app",
-    "src",
-    "main",
-    "AndroidManifest.xml",
-  );
-  const generatedManifestPath = path.join(
-    androidDir,
-    "app",
-    "src",
-    "main",
-    "AndroidManifest.xml",
-  );
-  if (!fs.existsSync(templateManifestPath)) return;
-  fs.mkdirSync(path.dirname(generatedManifestPath), { recursive: true });
-  const next = fs.readFileSync(templateManifestPath, "utf8");
-  const current = fs.existsSync(generatedManifestPath)
-    ? fs.readFileSync(generatedManifestPath, "utf8")
-    : null;
-  if (current === next) return;
-  fs.writeFileSync(generatedManifestPath, next, "utf8");
-  console.log("[mobile-build] Reset AndroidManifest.xml from template.");
-}
-
 /** Permissions that Capacitor sync doesn't generate (it only adds INTERNET). */
 export const ANDROID_PERMISSIONS = [
   "READ_CONTACTS",
@@ -1354,105 +1327,26 @@ function escapeRegExp(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function removeApplicationComponents(xml, shouldRemove) {
-  const componentStartRe =
-    /\n\s*<(activity|service|receiver)\b[^>]*android:name="([^"]+)"[^>]*>/g;
-  let next = "";
-  let cursor = 0;
-  let removed = false;
-  let match = componentStartRe.exec(xml);
-  while (match !== null) {
-    const [openingTag, tagName, componentName] = match;
-    if (!shouldRemove(componentName)) {
-      match = componentStartRe.exec(xml);
-      continue;
-    }
-
-    const openingEnd = match.index + openingTag.length;
-    let removalEnd = openingEnd;
-    if (!openingTag.trimEnd().endsWith("/>")) {
-      const closeRe = new RegExp(`<\\/${tagName}>\\s*`, "g");
-      closeRe.lastIndex = openingEnd;
-      const closeMatch = closeRe.exec(xml);
-      if (!closeMatch) {
-        match = componentStartRe.exec(xml);
-        continue;
-      }
-      removalEnd = closeMatch.index + closeMatch[0].length;
-    }
-
-    next += xml.slice(cursor, match.index);
-    next += "\n";
-    cursor = removalEnd;
-    componentStartRe.lastIndex = removalEnd;
-    removed = true;
-    match = componentStartRe.exec(xml);
-  }
-  return removed ? next + xml.slice(cursor) : xml;
+function removeApplicationComponentBlock(xml, componentName) {
+  const escapedName = escapeRegExp(componentName);
+  const componentRe = new RegExp(
+    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="${escapedName}")[\\s\\S]*?<\\/\\1>\\s*`,
+    "g",
+  );
+  return xml.replace(componentRe, "\n");
 }
 
-export function removeApplicationComponentBlock(xml, componentName) {
-  return removeApplicationComponents(xml, (candidate) => {
-    return candidate === componentName;
-  });
-}
-
-export function removeApplicationComponentClassBlock(xml, className) {
-  return removeApplicationComponents(xml, (candidate) => {
-    return candidate === className || candidate.endsWith(`.${className}`);
-  });
-}
-
-export function repairAndroidManifestApplicationStructure(xml) {
-  let next = xml;
-  if (!next.includes("</application>")) {
-    const firstManifestLevelNode = next.search(
-      /\n\s*<(uses-permission|uses-feature)\b/,
-    );
-    if (firstManifestLevelNode >= 0) {
-      next =
-        `${next.slice(0, firstManifestLevelNode)}\n    </application>` +
-        next.slice(firstManifestLevelNode);
-    }
-  }
-  if (
-    next.includes("</application>") &&
-    !next.includes("androidx.core.content.FileProvider")
-  ) {
-    next = next.replace(
-      "</application>",
-      `        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="\${applicationId}.fileprovider"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/file_paths"></meta-data>
-        </provider>
-    </application>`,
-    );
-  }
-  return next;
-}
-
-export function removeAndroidIntentFiltersWithCategory(xml, categoryName) {
-  const filterRe = /\n\s*<intent-filter\b[\s\S]*?<\/intent-filter>\s*/g;
-  let next = "";
-  let cursor = 0;
-  let removed = false;
-  let match = filterRe.exec(xml);
-  while (match !== null) {
-    const [filterBlock] = match;
-    if (filterBlock.includes(`android:name="${categoryName}"`)) {
-      next += xml.slice(cursor, match.index);
-      next += "\n";
-      cursor = match.index + filterBlock.length;
-      removed = true;
-    }
-    match = filterRe.exec(xml);
-  }
-  return removed ? next + xml.slice(cursor) : xml;
+function removeApplicationComponentClassBlock(xml, className) {
+  const escapedName = escapeRegExp(className);
+  const pairedRe = new RegExp(
+    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="[^"]*\\.?${escapedName}")[\\s\\S]*?<\\/\\1>\\s*`,
+    "g",
+  );
+  const selfClosingRe = new RegExp(
+    `\\n\\s*<(activity|service|receiver)\\b(?=[^>]*android:name="[^"]*\\.?${escapedName}")[^>]*/>\\s*`,
+    "g",
+  );
+  return xml.replace(pairedRe, "\n").replace(selfClosingRe, "\n");
 }
 
 function removeStaleAndroidJavaSourceRoots(dstJava) {
@@ -1753,22 +1647,11 @@ function syncAndroidAppActionsResources() {
   for (const relPath of resourceFiles) {
     const templatePath = path.join(templateResDir, relPath);
     const targetPath = path.join(targetResDir, relPath);
-    if (!fs.existsSync(templatePath)) continue;
+    if (!fs.existsSync(templatePath) || fs.existsSync(targetPath)) continue;
     fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-    let next = fs.readFileSync(templatePath, "utf8");
-    if (relPath === path.join("xml", "shortcuts.xml")) {
-      next = patchAndroidAppActionsXmlResource(next, {
-        androidPackage: APP.appId,
-        urlScheme: APP.urlScheme,
-      });
-    }
-    const current = fs.existsSync(targetPath)
-      ? fs.readFileSync(targetPath, "utf8")
-      : null;
-    if (current === next) continue;
-    fs.writeFileSync(targetPath, next, "utf8");
+    fs.copyFileSync(templatePath, targetPath);
     console.log(
-      `[mobile-build] Synced Android App Actions resource ${relPath}.`,
+      `[mobile-build] Added Android App Actions resource ${relPath}.`,
     );
   }
 
@@ -4208,6 +4091,7 @@ ${cloudBrandUserAgentMarkerLines()}
             WebView.setWebContentsDebuggingEnabled(true);
         }
 
+        registerPlugin(AgentPlugin.class);
         super.onCreate(savedInstanceState);
 
         if (getBridge() != null && getBridge().getWebView() != null) {
@@ -4522,7 +4406,6 @@ function auditAndroidCloudSource(phase) {
       }
     }
     for (const forbidden of [
-      "android.intent.category.HOME",
       "android.intent.action.ASSIST",
       "android.intent.action.VOICE_COMMAND",
       "android.app.role.ASSISTANT",
@@ -4728,19 +4611,7 @@ function stripAndroidForCloud() {
         `${androidPackage}.${component}`,
       );
       xml = removeApplicationComponentClassBlock(xml, component);
-      xml = xml.replace(
-        new RegExp(
-          `\\n\\s*<!--[\\s\\S]*?${escapeRegExp(component)}[\\s\\S]*?-->\\s*`,
-          "g",
-        ),
-        "\n",
-      );
     }
-
-    xml = removeAndroidIntentFiltersWithCategory(
-      xml,
-      "android.intent.category.HOME",
-    );
 
     for (const perm of ANDROID_CLOUD_STRIPPED_PERMISSIONS) {
       const escaped = escapeRegExp(`android.permission.${perm}`);
@@ -4751,7 +4622,6 @@ function stripAndroidForCloud() {
       xml = xml.replace(re, "\n");
     }
     xml = applyAndroidCleartextPolicy(xml, { allowCleartext: false });
-    xml = repairAndroidManifestApplicationStructure(xml);
 
     if (xml !== original) {
       fs.writeFileSync(manifestPath, xml, "utf8");
@@ -4861,7 +4731,6 @@ async function buildAndroid() {
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
 
-  resetAndroidGeneratedManifestFromTemplate();
   patchAndroidGradle();
   await generateAndroidBrandAssets();
   overlayAndroid();
@@ -5002,7 +4871,6 @@ async function buildAndroidCloud({ debug = false } = {}) {
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
 
-  resetAndroidGeneratedManifestFromTemplate();
   patchAndroidGradle();
   await generateAndroidBrandAssets();
   overlayAndroid();
@@ -5131,7 +4999,6 @@ async function buildAndroidSystem() {
   await ensurePlatform("android");
   await runCapacitor(["sync", "android"]);
 
-  resetAndroidGeneratedManifestFromTemplate();
   patchAndroidGradle();
   await generateAndroidBrandAssets();
   overlayAndroid();

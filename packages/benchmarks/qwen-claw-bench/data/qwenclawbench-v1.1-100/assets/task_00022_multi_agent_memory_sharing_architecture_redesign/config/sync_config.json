@@ -41,7 +41,11 @@
     "analytics_agent": {
       "sync_interval_seconds": 300,
       "priority": "normal",
-      "namespaces": ["/shared/knowledge_base", "/shared/entity_store", "/shared/config_cache"],
+      "namespaces": [
+        "/shared/knowledge_base",
+        "/shared/entity_store",
+        "/shared/config_cache"
+      ],
       "max_payload_size_kb": 2048,
       "notes": "Analytics agent pulls large datasets for reporting"
     },

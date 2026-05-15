@@ -24,15 +24,15 @@
  * LOGIN_CLAUDE) so tests don't pull GGUFs over the network.
  */
 
-import { mkdir, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { Action, ActionExample, IAgentRuntime } from "@elizaos/core";
 
 import {
-    buildHuggingFaceResolveUrl,
-    type CatalogModel,
-    MODEL_CATALOG,
+  buildHuggingFaceResolveUrl,
+  type CatalogModel,
+  MODEL_CATALOG,
 } from "../../local-inference/catalog.ts";
 import { recommendModelTier } from "../../local-inference/picker.ts";
 import { normalize } from "../match.ts";
@@ -45,47 +45,58 @@ import { normalize } from "../match.ts";
  * matches (caller falls back to `recommendModelTier`).
  */
 export function resolveRequestedModel(
-    userText: string,
-    catalog: readonly CatalogModel[] = MODEL_CATALOG,
+  userText: string,
+  catalog: readonly CatalogModel[] = MODEL_CATALOG,
 ): CatalogModel | null {
-    const msgTokens = new Set(
-        normalize(userText).filter(
-            (t) => !["download", "get", "pull", "install", "model", "a", "the", "me", "give"].includes(t),
-        ),
-    );
-    if (msgTokens.size === 0) return null;
+  const msgTokens = new Set(
+    normalize(userText).filter(
+      (t) =>
+        ![
+          "download",
+          "get",
+          "pull",
+          "install",
+          "model",
+          "a",
+          "the",
+          "me",
+          "give",
+        ].includes(t),
+    ),
+  );
+  if (msgTokens.size === 0) return null;
 
-    let best: { model: CatalogModel; score: number } | null = null;
-    for (const model of catalog) {
-        if (model.category !== "chat") continue;
-        const nameTokens = new Set([
-            ...normalize(model.displayName),
-            ...normalize(model.id.replace(/[-_]/g, " ")),
-        ]);
-        let shared = 0;
-        for (const t of msgTokens) if (nameTokens.has(t)) shared++;
-        if (shared === 0) continue;
-        if (best === null || shared > best.score) {
-            best = { model, score: shared };
-        }
+  let best: { model: CatalogModel; score: number } | null = null;
+  for (const model of catalog) {
+    if (model.category !== "chat") continue;
+    const nameTokens = new Set([
+      ...normalize(model.displayName),
+      ...normalize(model.id.replace(/[-_]/g, " ")),
+    ]);
+    let shared = 0;
+    for (const t of msgTokens) if (nameTokens.has(t)) shared++;
+    if (shared === 0) continue;
+    if (best === null || shared > best.score) {
+      best = { model, score: shared };
     }
-    return best?.model ?? null;
+  }
+  return best?.model ?? null;
 }
 
 /** Where downloaded GGUFs land. Honors `USBELIZA_MODELS_DIR` for tests. */
 export function modelsDir(): string {
-    const explicit = Bun.env.USBELIZA_MODELS_DIR;
-    if (explicit !== undefined && explicit !== "") return explicit;
-    const home = Bun.env.HOME ?? "/home/eliza";
-    return `${home}/.eliza/models`;
+  const explicit = Bun.env.USBELIZA_MODELS_DIR;
+  if (explicit !== undefined && explicit !== "") return explicit;
+  const home = Bun.env.HOME ?? "/home/eliza";
+  return `${home}/.eliza/models`;
 }
 
 /** Where the "active model" pointer lives. */
 export function activeModelTomlPath(): string {
-    const explicit = Bun.env.USBELIZA_ACTIVE_MODEL_TOML;
-    if (explicit !== undefined && explicit !== "") return explicit;
-    const home = Bun.env.HOME ?? "/home/eliza";
-    return `${home}/.eliza/active-model.toml`;
+  const explicit = Bun.env.USBELIZA_ACTIVE_MODEL_TOML;
+  if (explicit !== undefined && explicit !== "") return explicit;
+  const home = Bun.env.HOME ?? "/home/eliza";
+  return `${home}/.eliza/active-model.toml`;
 }
 
 /**
@@ -98,22 +109,25 @@ export function activeModelTomlPath(): string {
  * the latest line. Exported for tests.
  */
 export function parseCurlPercent(line: string): number | null {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) return null;
-    const m = /^(\d+)\b/.exec(trimmed);
-    if (m === null || m[1] === undefined) return null;
-    const v = parseInt(m[1], 10);
-    if (Number.isNaN(v) || v < 0 || v > 100) return null;
-    return v;
+  const trimmed = line.trim();
+  if (trimmed.length === 0) return null;
+  const m = /^(\d+)\b/.exec(trimmed);
+  if (m === null || m[1] === undefined) return null;
+  const v = parseInt(m[1], 10);
+  if (Number.isNaN(v) || v < 0 || v > 100) return null;
+  return v;
 }
 
 export interface SpawnStream {
-    readonly stderr: AsyncIterable<string>;
-    readonly exit: Promise<number | null>;
-    kill(): void;
+  readonly stderr: AsyncIterable<string>;
+  readonly exit: Promise<number | null>;
+  kill(): void;
 }
 
-export type SpawnStreamFn = (cmd: string, args: readonly string[]) => SpawnStream;
+export type SpawnStreamFn = (
+  cmd: string,
+  args: readonly string[],
+) => SpawnStream;
 
 /**
  * Production spawn using Bun.spawn. We pipe stderr through a
@@ -122,76 +136,76 @@ export type SpawnStreamFn = (cmd: string, args: readonly string[]) => SpawnStrea
  * an immediate exit=null result so callers can detect them.
  */
 function defaultSpawn(cmd: string, args: readonly string[]): SpawnStream {
-    let proc: Bun.Subprocess<"ignore", "ignore", "pipe"> | null = null;
-    try {
-        proc = Bun.spawn([cmd, ...args], {
-            stdin: "ignore",
-            stdout: "ignore",
-            stderr: "pipe",
-        });
-    } catch {
-        // Fall through with an empty handle below.
-    }
-    if (proc === null) {
-        return {
-            stderr: (async function* () {})(),
-            exit: Promise.resolve(null),
-            kill: () => {},
-        };
-    }
-    const child = proc;
-    const decoder = new TextDecoder();
-    async function* lines(): AsyncIterable<string> {
-        let buffer = "";
-        const reader = child.stderr.getReader();
-        try {
-            for (;;) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                buffer += decoder.decode(value, { stream: true });
-                // curl uses both \n and \r (carriage return overprint) to
-                // refresh the progress line. Split on either.
-                const parts = buffer.split(/[\r\n]/);
-                buffer = parts.pop() ?? "";
-                for (const part of parts) {
-                    if (part.length > 0) yield part;
-                }
-            }
-            if (buffer.length > 0) yield buffer;
-        } finally {
-            reader.releaseLock();
-        }
-    }
+  let proc: Bun.Subprocess<"ignore", "ignore", "pipe"> | null = null;
+  try {
+    proc = Bun.spawn([cmd, ...args], {
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "pipe",
+    });
+  } catch {
+    // Fall through with an empty handle below.
+  }
+  if (proc === null) {
     return {
-        stderr: lines(),
-        exit: child.exited.then((code) => (typeof code === "number" ? code : null)),
-        kill: () => {
-            try {
-                child.kill();
-            } catch {
-                // Already exited.
-            }
-        },
+      stderr: (async function* () {})(),
+      exit: Promise.resolve(null),
+      kill: () => {},
     };
+  }
+  const child = proc;
+  const decoder = new TextDecoder();
+  async function* lines(): AsyncIterable<string> {
+    let buffer = "";
+    const reader = child.stderr.getReader();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // curl uses both \n and \r (carriage return overprint) to
+        // refresh the progress line. Split on either.
+        const parts = buffer.split(/[\r\n]/);
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          if (part.length > 0) yield part;
+        }
+      }
+      if (buffer.length > 0) yield buffer;
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  return {
+    stderr: lines(),
+    exit: child.exited.then((code) => (typeof code === "number" ? code : null)),
+    kill: () => {
+      try {
+        child.kill();
+      } catch {
+        // Already exited.
+      }
+    },
+  };
 }
 
 export interface DownloadOptions {
-    readonly spawnFn?: SpawnStreamFn;
-    /** Called whenever curl reports a new integer percent value. */
-    readonly onProgress?: (percent: number) => void | Promise<void>;
-    /**
-     * Throttle the per-percent callback to at most one call per N points
-     * (default 5) so we don't flood the chat with 100 messages. The first
-     * and last percent always fire.
-     */
-    readonly progressStepPercent?: number;
+  readonly spawnFn?: SpawnStreamFn;
+  /** Called whenever curl reports a new integer percent value. */
+  readonly onProgress?: (percent: number) => void | Promise<void>;
+  /**
+   * Throttle the per-percent callback to at most one call per N points
+   * (default 5) so we don't flood the chat with 100 messages. The first
+   * and last percent always fire.
+   */
+  readonly progressStepPercent?: number;
 }
 
 export interface DownloadResult {
-    readonly status: "ok" | "spawn-failed" | "curl-failed";
-    readonly destPath: string;
-    readonly exitCode: number | null;
-    readonly lastStderr: string;
+  readonly status: "ok" | "spawn-failed" | "curl-failed";
+  readonly destPath: string;
+  readonly exitCode: number | null;
+  readonly lastStderr: string;
 }
 
 /**
@@ -200,61 +214,67 @@ export interface DownloadResult {
  * success — partial downloads don't shadow real files.
  */
 export async function downloadGguf(
-    url: string,
-    destPath: string,
-    options: DownloadOptions = {},
+  url: string,
+  destPath: string,
+  options: DownloadOptions = {},
 ): Promise<DownloadResult> {
-    await mkdir(dirname(destPath), { recursive: true });
-    const partPath = `${destPath}.part`;
-    const spawnFn = options.spawnFn ?? defaultSpawn;
-    const step = options.progressStepPercent ?? 5;
+  await mkdir(dirname(destPath), { recursive: true });
+  const partPath = `${destPath}.part`;
+  const spawnFn = options.spawnFn ?? defaultSpawn;
+  const step = options.progressStepPercent ?? 5;
 
-    const handle = spawnFn("curl", ["-fL", "--progress-bar", url, "-o", partPath]);
+  const handle = spawnFn("curl", [
+    "-fL",
+    "--progress-bar",
+    url,
+    "-o",
+    partPath,
+  ]);
 
-    let lastReportedPercent = -1;
-    let lastStderr = "";
-    let sawProgressLine = false;
-    for await (const line of handle.stderr) {
-        lastStderr = line;
-        const percent = parseCurlPercent(line);
-        if (percent === null) continue;
-        sawProgressLine = true;
-        if (
-            percent === 0 ||
-            percent === 100 ||
-            percent - lastReportedPercent >= step
-        ) {
-            lastReportedPercent = percent;
-            if (options.onProgress !== undefined) {
-                await options.onProgress(percent);
-            }
-        }
+  let lastReportedPercent = -1;
+  let lastStderr = "";
+  let sawProgressLine = false;
+  for await (const line of handle.stderr) {
+    lastStderr = line;
+    const percent = parseCurlPercent(line);
+    if (percent === null) continue;
+    sawProgressLine = true;
+    if (
+      percent === 0 ||
+      percent === 100 ||
+      percent - lastReportedPercent >= step
+    ) {
+      lastReportedPercent = percent;
+      if (options.onProgress !== undefined) {
+        await options.onProgress(percent);
+      }
     }
-    const exitCode = await handle.exit;
+  }
+  const exitCode = await handle.exit;
 
-    if (exitCode === null && !sawProgressLine && lastStderr === "") {
-        return {
-            status: "spawn-failed",
-            destPath,
-            exitCode,
-            lastStderr,
-        };
-    }
-    if (exitCode !== 0) {
-        return { status: "curl-failed", destPath, exitCode, lastStderr };
-    }
-    // Move the .part file to its final destination.
-    await rename(partPath, destPath);
-    return { status: "ok", destPath, exitCode, lastStderr };
+  if (exitCode === null && !sawProgressLine && lastStderr === "") {
+    return {
+      status: "spawn-failed",
+      destPath,
+      exitCode,
+      lastStderr,
+    };
+  }
+  if (exitCode !== 0) {
+    return { status: "curl-failed", destPath, exitCode, lastStderr };
+  }
+  // Move the .part file to its final destination.
+  await rename(partPath, destPath);
+  return { status: "ok", destPath, exitCode, lastStderr };
 }
 
 /** Format `path = "<abs>"` into the tiny active-model TOML file. */
 export function buildActiveModelToml(absPath: string): string {
-    // TOML: strings are double-quoted with backslash escaping for `"` and
-    // `\`. Catalog paths are ASCII filenames under our control, but
-    // escape defensively anyway.
-    const escaped = absPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    return `path = "${escaped}"\n`;
+  // TOML: strings are double-quoted with backslash escaping for `"` and
+  // `\`. Catalog paths are ASCII filenames under our control, but
+  // escape defensively anyway.
+  const escaped = absPath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return `path = "${escaped}"\n`;
 }
 
 /**
@@ -263,206 +283,209 @@ export function buildActiveModelToml(absPath: string): string {
  * a final fallback to `eliza-1-2b` when /proc/meminfo can't be read).
  */
 function resolveTargetModel(userText: string): {
-    model: CatalogModel;
-    reason: "requested" | "recommended" | "fallback";
+  model: CatalogModel;
+  reason: "requested" | "recommended" | "fallback";
 } {
-    const requested = resolveRequestedModel(userText);
-    if (requested !== null) return { model: requested, reason: "requested" };
-    try {
-        const pick = recommendModelTier();
-        return { model: pick.recommended, reason: "recommended" };
-    } catch {
-        // Hosts without /proc/meminfo (containers, mocked filesystems):
-        // pick the recommended small Eliza-1 tier as a safe default.
-        const fallback = MODEL_CATALOG.find((m) => m.id === "eliza-1-2b");
-        if (fallback === undefined) {
-            // catalog mis-shape — re-throw via the next caller.
-            throw new Error("catalog missing eliza-1-2b fallback");
-        }
-        return { model: fallback, reason: "fallback" };
+  const requested = resolveRequestedModel(userText);
+  if (requested !== null) return { model: requested, reason: "requested" };
+  try {
+    const pick = recommendModelTier();
+    return { model: pick.recommended, reason: "recommended" };
+  } catch {
+    // Hosts without /proc/meminfo (containers, mocked filesystems):
+    // pick the recommended small Eliza-1 tier as a safe default.
+    const fallback = MODEL_CATALOG.find((m) => m.id === "eliza-1-2b");
+    if (fallback === undefined) {
+      // catalog mis-shape — re-throw via the next caller.
+      throw new Error("catalog missing eliza-1-2b fallback");
     }
+    return { model: fallback, reason: "fallback" };
+  }
 }
 
 interface DownloadRuntimeOptions {
-    spawnFn?: SpawnStreamFn;
-    progressStepPercent?: number;
-    /** Test hook — when set, skips writing to disk and just returns. */
-    skipPersist?: boolean;
+  spawnFn?: SpawnStreamFn;
+  progressStepPercent?: number;
+  /** Test hook — when set, skips writing to disk and just returns. */
+  skipPersist?: boolean;
 }
 
 function readDownloadOptions(options: unknown): DownloadRuntimeOptions {
-    if (typeof options !== "object" || options === null) return {};
-    const o = options as Record<string, unknown>;
-    const out: DownloadRuntimeOptions = {};
-    if (typeof o.spawnFn === "function") out.spawnFn = o.spawnFn as SpawnStreamFn;
-    if (typeof o.progressStepPercent === "number") {
-        out.progressStepPercent = o.progressStepPercent;
-    }
-    if (typeof o.skipPersist === "boolean") out.skipPersist = o.skipPersist;
-    return out;
+  if (typeof options !== "object" || options === null) return {};
+  const o = options as Record<string, unknown>;
+  const out: DownloadRuntimeOptions = {};
+  if (typeof o.spawnFn === "function") out.spawnFn = o.spawnFn as SpawnStreamFn;
+  if (typeof o.progressStepPercent === "number") {
+    out.progressStepPercent = o.progressStepPercent;
+  }
+  if (typeof o.skipPersist === "boolean") out.skipPersist = o.skipPersist;
+  return out;
 }
 
 interface RestartableRuntime extends IAgentRuntime {
-    restartAgent?: () => Promise<void> | void;
+  restartAgent?: () => Promise<void> | void;
 }
 
 const EXAMPLES: ActionExample[][] = [
-    [
-        { name: "{{user}}", content: { text: "download a model" } },
-        {
-            name: "Eliza",
-            content: {
-                text: "Downloading eliza-1-9b (5.4 GB). I'll keep you posted.",
-            },
-        },
-    ],
-    [
-        { name: "{{user}}", content: { text: "download eliza 4b" } },
-        {
-            name: "Eliza",
-            content: { text: "Downloading eliza-1-4b (2.6 GB)." },
-        },
-    ],
-    [
-        { name: "{{user}}", content: { text: "give me a bigger model" } },
-        {
-            name: "Eliza",
-            content: {
-                text:
-                    "Downloaded eliza-1-9b (5.4 GB). I'll load it on the next restart.",
-            },
-        },
-    ],
+  [
+    { name: "{{user}}", content: { text: "download a model" } },
+    {
+      name: "Eliza",
+      content: {
+        text: "Downloading eliza-1-9b (5.4 GB). I'll keep you posted.",
+      },
+    },
+  ],
+  [
+    { name: "{{user}}", content: { text: "download eliza 4b" } },
+    {
+      name: "Eliza",
+      content: { text: "Downloading eliza-1-4b (2.6 GB)." },
+    },
+  ],
+  [
+    { name: "{{user}}", content: { text: "give me a bigger model" } },
+    {
+      name: "Eliza",
+      content: {
+        text: "Downloaded eliza-1-9b (5.4 GB). I'll load it on the next restart.",
+      },
+    },
+  ],
 ];
 
 export const DOWNLOAD_MODEL_ACTION: Action = {
-    name: "DOWNLOAD_MODEL",
-    similes: [
-        "download a model",
-        "get a better model",
-        "download eliza",
-        "download eliza-1",
-        "download model",
-        "install model",
-        "install eliza",
-        "give me a bigger model",
-        "switch to a bigger model",
-        "switch model",
-        "upgrade my model",
-        "upgrade model",
-        "pull a model",
-        "install a model",
-    ],
-    description:
-        "Download a larger local LLM from HuggingFace and pin it as the default. " +
-        "Used when the user says 'download a model', 'get a better model', " +
-        "'download eliza 4b', 'give me a bigger model', etc.",
+  name: "DOWNLOAD_MODEL",
+  similes: [
+    "download a model",
+    "get a better model",
+    "download eliza",
+    "download eliza-1",
+    "download model",
+    "install model",
+    "install eliza",
+    "give me a bigger model",
+    "switch to a bigger model",
+    "switch model",
+    "upgrade my model",
+    "upgrade model",
+    "pull a model",
+    "install a model",
+  ],
+  description:
+    "Download a larger local LLM from HuggingFace and pin it as the default. " +
+    "Used when the user says 'download a model', 'get a better model', " +
+    "'download eliza 4b', 'give me a bigger model', etc.",
 
-    validate: async () => true,
+  validate: async () => true,
 
-    handler: async (runtime, message, _state, options, callback) => {
-        const userText =
-            typeof message.content?.text === "string" ? message.content.text : "";
-        const opts = readDownloadOptions(options);
+  handler: async (runtime, message, _state, options, callback) => {
+    const userText =
+      typeof message.content?.text === "string" ? message.content.text : "";
+    const opts = readDownloadOptions(options);
 
-        let target: { model: CatalogModel; reason: "requested" | "recommended" | "fallback" };
-        try {
-            target = resolveTargetModel(userText);
-        } catch (err) {
-            const text = `I couldn't pick a model to download: ${(err as Error).message}.`;
-            if (callback) await callback({ text, actions: ["DOWNLOAD_MODEL"] });
-            return { success: false, text };
+    let target: {
+      model: CatalogModel;
+      reason: "requested" | "recommended" | "fallback";
+    };
+    try {
+      target = resolveTargetModel(userText);
+    } catch (err) {
+      const text = `I couldn't pick a model to download: ${(err as Error).message}.`;
+      if (callback) await callback({ text, actions: ["DOWNLOAD_MODEL"] });
+      return { success: false, text };
+    }
+    const { model } = target;
+
+    const url = buildHuggingFaceResolveUrl(model);
+    const destFile = model.ggufFile.split("/").pop() ?? model.ggufFile;
+    const destPath = join(modelsDir(), destFile);
+
+    if (existsSync(destPath) && opts.skipPersist !== true) {
+      // Already downloaded — just pin it.
+      await mkdir(dirname(activeModelTomlPath()), { recursive: true });
+      await writeFile(activeModelTomlPath(), buildActiveModelToml(destPath));
+      const text =
+        `You already have ${model.displayName} on disk. Pinned it as the default — ` +
+        "I'll load it on the next restart.";
+      if (callback) await callback({ text, actions: ["DOWNLOAD_MODEL"] });
+      return {
+        success: true,
+        text,
+        data: { actionName: "DOWNLOAD_MODEL", modelId: model.id, destPath },
+      };
+    }
+
+    const startText = `Downloading ${model.displayName} (${model.sizeGb.toFixed(1)} GB).`;
+    if (callback)
+      await callback({ text: startText, actions: ["DOWNLOAD_MODEL"] });
+
+    const downloadOpts: DownloadOptions = {
+      ...(opts.spawnFn !== undefined ? { spawnFn: opts.spawnFn } : {}),
+      ...(opts.progressStepPercent !== undefined
+        ? { progressStepPercent: opts.progressStepPercent }
+        : {}),
+      onProgress: async (percent) => {
+        if (callback) {
+          await callback({
+            text: `Downloading ${model.displayName} — ${percent}%`,
+            actions: ["DOWNLOAD_MODEL"],
+          });
         }
-        const { model } = target;
+      },
+    };
 
-        const url = buildHuggingFaceResolveUrl(model);
-        const destFile = model.ggufFile.split("/").pop() ?? model.ggufFile;
-        const destPath = join(modelsDir(), destFile);
+    const result = await downloadGguf(url, destPath, downloadOpts);
+    if (result.status !== "ok") {
+      const detail =
+        result.lastStderr.trim().length > 0
+          ? ` (curl: "${result.lastStderr.trim().slice(0, 160)}")`
+          : "";
+      const text =
+        `I couldn't download ${model.displayName}${detail}. ` +
+        "Check your network with 'am i online' and try again.";
+      if (callback) await callback({ text, actions: ["DOWNLOAD_MODEL"] });
+      return {
+        success: false,
+        text,
+        data: { actionName: "DOWNLOAD_MODEL", status: result.status },
+      };
+    }
 
-        if (existsSync(destPath) && opts.skipPersist !== true) {
-            // Already downloaded — just pin it.
-            await mkdir(dirname(activeModelTomlPath()), { recursive: true });
-            await writeFile(activeModelTomlPath(), buildActiveModelToml(destPath));
-            const text =
-                `You already have ${model.displayName} on disk. Pinned it as the default — ` +
-                "I'll load it on the next restart.";
-            if (callback) await callback({ text, actions: ["DOWNLOAD_MODEL"] });
-            return {
-                success: true,
-                text,
-                data: { actionName: "DOWNLOAD_MODEL", modelId: model.id, destPath },
-            };
-        }
+    // Pin as the default.
+    if (opts.skipPersist !== true) {
+      await mkdir(dirname(activeModelTomlPath()), { recursive: true });
+      await writeFile(activeModelTomlPath(), buildActiveModelToml(destPath));
+    }
 
-        const startText = `Downloading ${model.displayName} (${model.sizeGb.toFixed(1)} GB).`;
-        if (callback) await callback({ text: startText, actions: ["DOWNLOAD_MODEL"] });
+    // Best-effort runtime reload — the runtime may not implement
+    // restartAgent. We don't await reliably because the call might
+    // tear down our own process; log and move on.
+    const r = runtime as RestartableRuntime;
+    if (typeof r.restartAgent === "function") {
+      try {
+        await r.restartAgent();
+      } catch {
+        // Restart hook is best-effort; the next manual restart picks
+        // up active-model.toml regardless.
+      }
+    }
 
-        const downloadOpts: DownloadOptions = {
-            ...(opts.spawnFn !== undefined ? { spawnFn: opts.spawnFn } : {}),
-            ...(opts.progressStepPercent !== undefined
-                ? { progressStepPercent: opts.progressStepPercent }
-                : {}),
-            onProgress: async (percent) => {
-                if (callback) {
-                    await callback({
-                        text: `Downloading ${model.displayName} — ${percent}%`,
-                        actions: ["DOWNLOAD_MODEL"],
-                    });
-                }
-            },
-        };
+    const text =
+      `Downloaded ${model.displayName} (${model.sizeGb.toFixed(1)} GB). ` +
+      "Restarting my local model now.";
+    if (callback) await callback({ text, actions: ["DOWNLOAD_MODEL"] });
+    return {
+      success: true,
+      text,
+      data: {
+        actionName: "DOWNLOAD_MODEL",
+        modelId: model.id,
+        destPath,
+        activeModelToml: activeModelTomlPath(),
+      },
+    };
+  },
 
-        const result = await downloadGguf(url, destPath, downloadOpts);
-        if (result.status !== "ok") {
-            const detail =
-                result.lastStderr.trim().length > 0
-                    ? ` (curl: "${result.lastStderr.trim().slice(0, 160)}")`
-                    : "";
-            const text =
-                `I couldn't download ${model.displayName}${detail}. ` +
-                "Check your network with 'am i online' and try again.";
-            if (callback) await callback({ text, actions: ["DOWNLOAD_MODEL"] });
-            return {
-                success: false,
-                text,
-                data: { actionName: "DOWNLOAD_MODEL", status: result.status },
-            };
-        }
-
-        // Pin as the default.
-        if (opts.skipPersist !== true) {
-            await mkdir(dirname(activeModelTomlPath()), { recursive: true });
-            await writeFile(activeModelTomlPath(), buildActiveModelToml(destPath));
-        }
-
-        // Best-effort runtime reload — the runtime may not implement
-        // restartAgent. We don't await reliably because the call might
-        // tear down our own process; log and move on.
-        const r = runtime as RestartableRuntime;
-        if (typeof r.restartAgent === "function") {
-            try {
-                await r.restartAgent();
-            } catch {
-                // Restart hook is best-effort; the next manual restart picks
-                // up active-model.toml regardless.
-            }
-        }
-
-        const text =
-            `Downloaded ${model.displayName} (${model.sizeGb.toFixed(1)} GB). ` +
-            "Restarting my local model now.";
-        if (callback) await callback({ text, actions: ["DOWNLOAD_MODEL"] });
-        return {
-            success: true,
-            text,
-            data: {
-                actionName: "DOWNLOAD_MODEL",
-                modelId: model.id,
-                destPath,
-                activeModelToml: activeModelTomlPath(),
-            },
-        };
-    },
-
-    examples: EXAMPLES,
+  examples: EXAMPLES,
 };

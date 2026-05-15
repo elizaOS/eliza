@@ -1,5 +1,12 @@
 import crypto from "node:crypto";
 import type {
+  GetLifeOpsGmailSearchRequest,
+  LifeOpsConnectorGrant,
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+  LifeOpsGmailSearchFeed,
+} from "../contracts/index.js";
+import type {
   EmailSubscriptionScanResult,
   EmailSubscriptionSender,
   EmailUnsubscribeMethod,
@@ -9,13 +16,6 @@ import type {
   EmailUnsubscribeScanRequest,
   EmailUnsubscribeStatus,
 } from "./email-unsubscribe-types.js";
-import type {
-  GetLifeOpsGmailSearchRequest,
-  LifeOpsConnectorGrant,
-  LifeOpsConnectorMode,
-  LifeOpsConnectorSide,
-  LifeOpsGmailSearchFeed,
-} from "../contracts/index.js";
 import {
   accountIdForGrant,
   requireGoogleServiceMethod,

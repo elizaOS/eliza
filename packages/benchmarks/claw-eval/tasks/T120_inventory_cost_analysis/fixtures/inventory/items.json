@@ -5,7 +5,7 @@
     "category": "Stationery",
     "quantity": 150,
     "unit": "box",
-    "unit_cost": 25.00,
+    "unit_cost": 25.0,
     "location": "Warehouse A-01",
     "reorder_level": 50,
     "supplier": "Office Easy"
@@ -16,7 +16,7 @@
     "category": "Consumables",
     "quantity": 20,
     "unit": "unit",
-    "unit_cost": 180.00,
+    "unit_cost": 180.0,
     "location": "Warehouse A-02",
     "reorder_level": 10,
     "supplier": "HP Authorized"
@@ -27,7 +27,7 @@
     "category": "IT Equipment",
     "quantity": 45,
     "unit": "unit",
-    "unit_cost": 350.00,
+    "unit_cost": 350.0,
     "location": "Warehouse B-01",
     "reorder_level": 15,
     "supplier": "JD Enterprise"
@@ -38,7 +38,7 @@
     "category": "IT Equipment",
     "quantity": 12,
     "unit": "unit",
-    "unit_cost": 1500.00,
+    "unit_cost": 1500.0,
     "location": "Warehouse B-02",
     "reorder_level": 5,
     "supplier": "Dell Direct"
@@ -49,7 +49,7 @@
     "category": "Consumables",
     "quantity": 200,
     "unit": "piece",
-    "unit_cost": 15.00,
+    "unit_cost": 15.0,
     "location": "Warehouse A-03",
     "reorder_level": 50,
     "supplier": "Office Easy"
@@ -60,7 +60,7 @@
     "category": "Stationery",
     "quantity": 100,
     "unit": "unit",
-    "unit_cost": 8.00,
+    "unit_cost": 8.0,
     "location": "Warehouse A-01",
     "reorder_level": 30,
     "supplier": "Office Easy"

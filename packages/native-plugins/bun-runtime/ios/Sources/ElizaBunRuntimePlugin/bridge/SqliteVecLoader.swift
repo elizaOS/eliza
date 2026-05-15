@@ -9,10 +9,14 @@ import SQLite3
 /// the `vec0` virtual table module and the `vec_distance_*` SQL helpers
 /// are registered.
 ///
-/// App Store/full-engine builds must not import dynamic loader symbols, so
-/// sqlite-vec is either linked at build time with `ELIZA_IOS_INCLUDE_SQLITE_VEC`
-/// or disabled. Development compatibility builds may still probe with `dlsym`
-/// so the same pod can run without the optional static archive.
+/// When sqlite-vec is *not* linked (e.g. simulator builds without the
+/// vendor-deps step), the loader is a no-op and `versionString` is nil.
+/// Vector queries against tables that need the extension will fail with
+/// SQLite's standard "no such module: vec0" error.
+///
+/// We detect availability at runtime via `dlsym(RTLD_DEFAULT, ...)` so the
+/// loader compiles cleanly even when the .a is absent. This avoids forcing
+/// every consumer of the bun-runtime pod to ship sqlite-vec.
 public final class SqliteVecLoader {
     public static let shared = SqliteVecLoader()
 
@@ -32,22 +36,6 @@ public final class SqliteVecLoader {
     private let versionFn: VecVersionFn?
 
     private init() {
-#if ELIZA_IOS_INCLUDE_SQLITE_VEC
-        let loadedInitFn: VecInitFn = { db, errMsg, api in
-            sqlite3_vec_init(db, errMsg, api)
-        }
-        let loadedVersionFn: VecVersionFn = {
-            sqlite3_vec_version()
-        }
-        self.initFn = loadedInitFn
-        self.versionFn = loadedVersionFn
-        if let cstr = loadedVersionFn() {
-            self.versionString = String(cString: cstr)
-        }
-#elseif ELIZA_IOS_FULL_BUN_ENGINE
-        self.initFn = nil
-        self.versionFn = nil
-#else
         let handle: UnsafeMutableRawPointer? = nil  // RTLD_DEFAULT
         if let sym = dlsym(handle, "sqlite3_vec_init") {
             self.initFn = unsafeBitCast(sym, to: VecInitFn.self)
@@ -63,7 +51,6 @@ public final class SqliteVecLoader {
         } else {
             self.versionFn = nil
         }
-#endif
     }
 
     /// Returns true iff the static lib is linked. Useful for logging and
@@ -88,15 +75,3 @@ public final class SqliteVecLoader {
         }
     }
 }
-
-#if ELIZA_IOS_INCLUDE_SQLITE_VEC
-@_silgen_name("sqlite3_vec_init")
-private func sqlite3_vec_init(
-    _ db: OpaquePointer?,
-    _ pzErrMsg: UnsafeMutablePointer<UnsafeMutablePointer<Int8>?>?,
-    _ pApi: UnsafePointer<sqlite3_api_routines>?
-) -> Int32
-
-@_silgen_name("sqlite3_vec_version")
-private func sqlite3_vec_version() -> UnsafePointer<Int8>?
-#endif

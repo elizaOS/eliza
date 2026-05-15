@@ -4,7 +4,7 @@ import {
   resolveShopifyAccountId,
 } from "../accounts.js";
 
-function getShopifyActionOptions(
+export function getShopifyActionOptions(
   options?: HandlerOptions | Record<string, unknown>,
 ): Record<string, unknown> {
   const direct = (options ?? {}) as Record<string, unknown>;

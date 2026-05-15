@@ -91,11 +91,27 @@ Backbones (do not change without explicit human approval):
 
   **Canonical voice engine: fused `libelizainference`.** The strategic
   on-device voice engine is the fused-FFI `libelizainference` library
-  built by `packages/app-core/scripts/omnivoice-fuse/`, which grafts the
-  omnivoice.cpp sources into the elizaOS/llama.cpp fork at fuse time
-  and exposes them through the ABI v3 `eliza_inference_*` surface
-  (`ffi.h`). This is what `services/voice/` calls; this is what the
-  manifest's `voice` and `asr` entries are activated through.
+  built directly from the merged llama.cpp fork tree at
+  `plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/`.
+  This is what `services/voice/` calls; this is what the manifest's
+  `voice` and `asr` entries are activated through.
+
+  **W3-3 (OmniVoice → llama.cpp literal merge, v1.0.1-eliza, 2026-05-14):**
+  the OmniVoice sources, FFI bridge, and streaming optimizations now
+  live INSIDE the fork at `tools/omnivoice/`. The pre-merge graft path
+  (clone `elizaOS/omnivoice.cpp` at build time, copy sources into
+  `omnivoice/` at fork root, append `ELIZA-OMNIVOICE-FUSION-GRAFT-V1`
+  CMake block via `packages/app-core/scripts/omnivoice-fuse/` —
+  driven by `ELIZA_FUSE_OMNIVOICE=ON`) is **deprecated** and stays for
+  ONE release as a runway. Setting `OMNIVOICE_INSIDE_LLAMA_CPP=0`
+  (build-script env) opts back into the legacy graft. The default is
+  the merged path (`OMNIVOICE_INSIDE_LLAMA_CPP=1`). The build flag is
+  now `-DLLAMA_BUILD_OMNIVOICE=ON -DOMNIVOICE_SHARED=ON`;
+  `ELIZA_FUSE_OMNIVOICE=ON` is a back-compat alias that emits a
+  deprecation warning and redirects.
+
+  After the v1.0.2-eliza release, `OMNIVOICE_INSIDE_LLAMA_CPP=0` is
+  removed and `packages/app-core/scripts/omnivoice-fuse/` is deleted.
 
   The standalone `plugins/plugin-omnivoice/` plugin (separate ABI v2
   `ov_*` symbols, separate `libomnivoice.{so,dylib,dll}`, separate
@@ -404,6 +420,29 @@ mic / file → ASR → text tokens
   TTS PCM ring buffer MUST drain immediately, the phrase chunker queue
   MUST flush, and any in-flight TTS forward pass MUST be cancelled at
   the next kernel boundary.
+- **Voice cancellation contract (W3-9).** One `VoiceCancellationToken`
+  per voice turn is the canonical handle. It lives in
+  `@elizaos/shared/voice/voice-cancellation-token`, is owned by the
+  `VoiceCancellationCoordinator` in
+  `plugins/plugin-local-inference/src/services/voice/cancellation-coordinator.ts`,
+  and is the sole legitimate way to fan an abort across these four
+  layers:
+  1. The runtime's `TurnControllerRegistry.abortTurn(roomId, reason)`
+     so the planner-loop / action handlers / streaming `useModel`
+     calls see the abort within one tick.
+  2. The LM slot — via the registered `slotAbort(slotId, reason)`
+     callback (today: HTTP-fetch close on the in-flight stream; on a
+     fork that exposes a slot-cancel REST route, the REST call).
+  3. The TTS pipeline — via the registered `ttsStop(reason)` callback
+     (today: `EngineVoiceBridge.triggerBargeIn` → audio-sink drain +
+     FFI/HTTP synthesis cancel).
+  4. Any fetch / model / FFI consumer of `token.signal` (a standard
+     `AbortSignal`).
+  The token is idempotent (first reason wins) and fires every
+  `onAbort` listener synchronously. Optimistic LM start is gated by
+  `OptimisticGenerationPolicy` — default true on plugged-in /
+  unknown, false on battery, with explicit user override.
+  Full contract: `plugins/plugin-local-inference/docs/voice-cancellation-contract.md`.
 - **Speaker preset caching.** The default voice ships as a precomputed
   speaker embedding in `cache/voice-preset-default.bin`. Loading a
   voice MUST NOT re-extract the embedding from raw audio on every

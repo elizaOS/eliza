@@ -7,7 +7,6 @@
 import path from "node:path";
 import { createElizaPlugin } from "@elizaos/agent";
 import { documentsPlugin } from "@elizaos/app-documents";
-import { config as loadEnv } from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../../../test/helpers/conditional-tests.ts";
 import {
@@ -29,7 +28,12 @@ const envPath = path.resolve(
   "..",
   ".env",
 );
-loadEnv({ path: envPath });
+try {
+  const { config } = await import("dotenv");
+  config({ path: envPath });
+} catch {
+  // dotenv may not be available.
+}
 
 const LIVE_PROVIDER =
   selectLiveProvider("cerebras") ??

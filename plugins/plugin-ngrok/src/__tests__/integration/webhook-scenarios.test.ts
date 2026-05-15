@@ -1,7 +1,8 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { spawn } from 'node:child_process';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
+import type { Server } from 'node:http';
 import * as https from 'node:https';
+import express from 'express';
 import { NgrokService } from '../../services/NgrokService';
 import { testConfig, testDelay } from '../test-config';
 import { createMockRuntime } from '../test-utils';
@@ -21,6 +22,7 @@ const _isNgrokInstalled = async (): Promise<boolean> => {
 
 describe('Webhook Integration Scenarios', () => {
   let service: NgrokService;
+  let app: express.Application;
   let server: Server;
   let webhookUrl: string | null = null;
   let webhookPort: number;
@@ -45,8 +47,27 @@ describe('Webhook Integration Scenarios', () => {
     // Add delay before starting the test suite
     await testDelay(testConfig.execution.suitesDelay);
 
-    server = createServer(async (req, res) => {
-      await handleWebhookTestRequest(req, res, receivedWebhooks);
+    // Setup webhook server
+    app = express();
+    app.use(express.json());
+    app.use(express.urlencoded({ extended: true }));
+
+    // Generic webhook handler
+    app.all('/webhook/*', (req, res) => {
+      receivedWebhooks.push({
+        method: req.method,
+        path: req.path,
+        headers: req.headers,
+        body: req.body,
+        query: req.query,
+        timestamp: Date.now(),
+      });
+      res.status(200).json({ received: true });
+    });
+
+    // Health check endpoint
+    app.get('/health', (_req, res) => {
+      res.json({ status: 'ok', webhooks: receivedWebhooks.length });
     });
 
     // Start server on random port
@@ -375,54 +396,6 @@ describe('Webhook Integration Scenarios', () => {
     testConfig.execution.integrationTimeout
   );
 });
-
-async function handleWebhookTestRequest(
-  req: IncomingMessage,
-  res: ServerResponse,
-  receivedWebhooks: Array<Record<string, unknown>>
-): Promise<void> {
-  const requestUrl = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-
-  if (req.method === 'GET' && requestUrl.pathname === '/health') {
-    writeJson(res, 200, { status: 'ok', webhooks: receivedWebhooks.length });
-    return;
-  }
-
-  if (requestUrl.pathname.startsWith('/webhook/')) {
-    receivedWebhooks.push({
-      method: req.method,
-      path: requestUrl.pathname,
-      headers: req.headers,
-      body: await readJsonBody(req),
-      query: Object.fromEntries(requestUrl.searchParams.entries()),
-      timestamp: Date.now(),
-    });
-    writeJson(res, 200, { received: true });
-    return;
-  }
-
-  writeJson(res, 404, { error: 'not found' });
-}
-
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-
-  const body = Buffer.concat(chunks).toString();
-  if (!body) return null;
-  return JSON.parse(body) as unknown;
-}
-
-function writeJson(res: ServerResponse, statusCode: number, body: unknown): void {
-  const payload = JSON.stringify(body);
-  res.writeHead(statusCode, {
-    'Content-Type': 'application/json',
-    'Content-Length': Buffer.byteLength(payload),
-  });
-  res.end(payload);
-}
 
 // Helper function to send webhooks
 async function sendWebhook(

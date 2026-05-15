@@ -25,6 +25,13 @@ onnx = [
 test = [
   "pytest>=8.0.0",
 ]
+roundtrip = [
+  "onnxruntime>=1.20.0",
+  "scipy>=1.11.0",
+  "torch>=2.0.0",
+  "transformers>=4.40.0",
+  "kokoro>=0.9.0",
+]
 
 [project.scripts]
 voice-emotion-bench = "elizaos_voice_emotion.__main__:main"

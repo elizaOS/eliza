@@ -47,80 +47,56 @@
       "passenger_id": "p001",
       "pickup": "hospital",
       "dropoff": "suburb",
-      "time_window": [
-        11.5,
-        11.016666666666667
-      ],
+      "time_window": [11.5, 11.016666666666667],
       "deadline": 46
     },
     {
       "passenger_id": "p002",
       "pickup": "suburb",
       "dropoff": "downtown",
-      "time_window": [
-        16.25,
-        16.933333333333334
-      ],
+      "time_window": [16.25, 16.933333333333334],
       "deadline": 50
     },
     {
       "passenger_id": "p003",
       "pickup": "suburb",
       "dropoff": "hospital",
-      "time_window": [
-        10.25,
-        10.933333333333334
-      ],
+      "time_window": [10.25, 10.933333333333334],
       "deadline": 44
     },
     {
       "passenger_id": "p004",
       "pickup": "downtown",
       "dropoff": "suburb",
-      "time_window": [
-        12.75,
-        12.483333333333333
-      ],
+      "time_window": [12.75, 12.483333333333333],
       "deadline": 53
     },
     {
       "passenger_id": "p005",
       "pickup": "university",
       "dropoff": "airport",
-      "time_window": [
-        9.0,
-        9.333333333333334
-      ],
+      "time_window": [9.0, 9.333333333333334],
       "deadline": 57
     },
     {
       "passenger_id": "p006",
       "pickup": "airport",
       "dropoff": "suburb",
-      "time_window": [
-        13.75,
-        13.083333333333334
-      ],
+      "time_window": [13.75, 13.083333333333334],
       "deadline": 36
     },
     {
       "passenger_id": "p007",
       "pickup": "university",
       "dropoff": "suburb",
-      "time_window": [
-        13.75,
-        13.083333333333334
-      ],
+      "time_window": [13.75, 13.083333333333334],
       "deadline": 20
     },
     {
       "passenger_id": "p008",
       "pickup": "downtown",
       "dropoff": "university",
-      "time_window": [
-        11.75,
-        11.1
-      ],
+      "time_window": [11.75, 11.1],
       "deadline": 31
     }
   ],

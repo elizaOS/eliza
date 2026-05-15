@@ -138,7 +138,7 @@ export interface Mention {
  * @property {string} url - The URL for the photo image.
  * @property {string} [alt_text] - The alternative text for the photo image. Optional.
  */
-interface Photo {
+export interface Photo {
   id: string;
   url: string;
   alt_text: string | undefined;
@@ -152,7 +152,7 @@ interface Photo {
  * @property {string} [url] - The optional URL for the video.
  */
 
-interface Video {
+export interface Video {
   id: string;
   preview: string;
   url?: string;
@@ -171,7 +171,7 @@ interface Video {
  * @property {string} [bounding_box.type] - The type of the bounding box.
  * @property {number[][][]} [bounding_box.coordinates] - The coordinates of the bounding box in an array format.
  */
-interface PlaceRaw {
+export interface PlaceRaw {
   id?: string;
   place_type?: string;
   name?: string;
@@ -208,7 +208,7 @@ export interface PollData {
  * @property {string} label - The label of the option.
  * @property {number} [votes] - The number of votes for the option.
  */
-interface PollOption {
+export interface PollOption {
   position?: number;
   label: string;
   votes?: number;
@@ -309,7 +309,7 @@ export type TweetQuery =
   | Partial<Tweet>
   | ((tweet: Tweet) => boolean | Promise<boolean>);
 
-async function fetchTweets(
+export async function fetchTweets(
   userId: string,
   maxTweets: number,
   cursor: string | undefined,
@@ -358,7 +358,7 @@ async function fetchTweets(
   }
 }
 
-async function fetchTweetsAndReplies(
+export async function fetchTweetsAndReplies(
   userId: string,
   maxTweets: number,
   cursor: string | undefined,
@@ -824,7 +824,7 @@ export async function* getTweetsAndRepliesByUserId(
   }
 }
 
-async function fetchLikedTweets(
+export async function fetchLikedTweets(
   userId: string,
   maxTweets: number,
   cursor: string | undefined,
@@ -1058,7 +1058,7 @@ export async function getTweetsV2(
   }
 }
 
-async function getTweetAnonymous(
+export async function getTweetAnonymous(
   id: string,
   auth: TwitterAuth,
 ): Promise<Tweet | null> {
@@ -1177,7 +1177,7 @@ export async function createCreateLongTweetRequest(
  * Logs each user's description in the process.
  * All comments must remain in English.
  */
-async function fetchRetweetersPage(
+export async function fetchRetweetersPage(
   _tweetId: string,
   _auth: TwitterAuth,
   _cursor?: string,

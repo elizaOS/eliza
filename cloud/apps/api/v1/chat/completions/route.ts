@@ -21,7 +21,6 @@ import {
   RetryError,
   streamText,
 } from "ai";
-import type { SharedV3ProviderOptions } from "@ai-sdk/provider";
 import { getErrorStatusCode } from "@/lib/api/errors";
 import { requireAuthOrApiKeyWithOrg } from "@/lib/auth";
 import { createPreflightResponse } from "@/lib/middleware/cors-apps";
@@ -185,10 +184,6 @@ interface ChatRequest {
           strict?: boolean;
         };
       };
-  promptCacheKey?: string;
-  prompt_cache_key?: string;
-  providerOptions?: Record<string, unknown>;
-  provider_options?: Record<string, unknown>;
   /** Enable provider-native web search. Defaults to false. */
   webSearchEnabled?: boolean;
   /** Optional max search budget for provider-native web search. */
@@ -210,7 +205,7 @@ function addCorsHeaders(response: Response): Response {
   headers.set("Access-Control-Allow-Methods", "POST, OPTIONS");
   headers.set(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-API-Key, X-App-Id, X-Request-ID, X-Eliza-Span-Samplers",
+    "Content-Type, Authorization, X-API-Key, X-App-Id, X-Request-ID",
   );
   headers.set("Access-Control-Max-Age", "86400");
   return new Response(response.body, {
@@ -535,94 +530,6 @@ function firstNumber(...values: unknown[]): number | undefined {
   return undefined;
 }
 
-function asPlainRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function firstNonEmptyString(...values: unknown[]): string | undefined {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim();
-    }
-  }
-  return undefined;
-}
-
-function resolveRequestProviderOptions(request: ChatRequest): Record<string, unknown> {
-  return {
-    ...asPlainRecord(request.providerOptions),
-    ...asPlainRecord(request.provider_options),
-  };
-}
-
-function buildAiSdkProviderOptions(request: ChatRequest): SharedV3ProviderOptions | undefined {
-  const providerOptions = resolveRequestProviderOptions(request);
-  const elizaOptions = asPlainRecord(providerOptions.eliza);
-  const openaiOptions = asPlainRecord(providerOptions.openai);
-  const openrouterOptions = asPlainRecord(providerOptions.openrouter);
-  const cerebrasOptions = asPlainRecord(providerOptions.cerebras);
-  const promptCacheKey = firstNonEmptyString(
-    request.promptCacheKey,
-    request.prompt_cache_key,
-    providerOptions.promptCacheKey,
-    providerOptions.prompt_cache_key,
-    elizaOptions.promptCacheKey,
-    elizaOptions.prompt_cache_key,
-    openaiOptions.promptCacheKey,
-    openaiOptions.prompt_cache_key,
-    openrouterOptions.promptCacheKey,
-    openrouterOptions.prompt_cache_key,
-    cerebrasOptions.promptCacheKey,
-    cerebrasOptions.prompt_cache_key,
-  );
-
-  const out: Record<string, unknown> = { ...providerOptions };
-  if (promptCacheKey) {
-    out.openai = {
-      ...openaiOptions,
-      promptCacheKey,
-    };
-  }
-
-  return Object.keys(out).length > 0 ? (out as SharedV3ProviderOptions) : undefined;
-}
-
-function encodeGuidanceHeader(value: unknown): string | undefined {
-  if (value === undefined || value === null) return undefined;
-  return typeof value === "string" ? value : JSON.stringify(value);
-}
-
-function buildElizaGuidanceHeaders(
-  req: Request,
-  request: ChatRequest,
-): Record<string, string> | undefined {
-  const providerOptions = resolveRequestProviderOptions(request);
-  const elizaOptions = asPlainRecord(providerOptions.eliza);
-  const headers: Record<string, string> = {};
-  const mappings: Array<[string, unknown]> = [
-    ["x-eliza-prefill-plan", elizaOptions.prefillPlan ?? elizaOptions.prefill_plan],
-    ["x-eliza-guided-decode", elizaOptions.guidedDecode ?? elizaOptions.guided_decode],
-    [
-      "x-eliza-planner-action-schemas",
-      elizaOptions.plannerActionSchemas ?? elizaOptions.planner_action_schemas,
-    ],
-  ];
-
-  for (const [header, value] of mappings) {
-    const encoded = encodeGuidanceHeader(value);
-    if (encoded) headers[header] = encoded;
-  }
-
-  const spanSamplers = req.headers.get("x-eliza-span-samplers");
-  if (spanSamplers && spanSamplers.trim().length > 0) {
-    headers["x-eliza-span-samplers"] = spanSamplers;
-  }
-
-  return Object.keys(headers).length > 0 ? headers : undefined;
-}
-
 function getMessageContent(msg: ChatMessage): string {
   if (msg.content == null) return "";
   if (typeof msg.content === "string") return msg.content;
@@ -799,8 +706,6 @@ export async function handleChatCompletionsPOST(
     const provider = getProviderFromModel(model);
     const normalizedModel = normalizeModelName(model);
     const billingSource = resolveAiProviderSource(model) ?? "gateway";
-    const upstreamProviderOptions = buildAiSdkProviderOptions(request);
-    const upstreamHeaders = buildElizaGuidanceHeaders(req, request);
     const cotBudget = resolveAnthropicThinkingBudgetTokens(model, process.env);
     const cotOptions =
       cotBudget != null ? mergeAnthropicCotProviderOptions(model, process.env, cotBudget) : {};
@@ -970,8 +875,6 @@ export async function handleChatCompletionsPOST(
         effectiveMaxTokens,
         webSearchOptions,
         billingSource,
-        upstreamProviderOptions,
-        upstreamHeaders,
       );
     } else {
       return await handleNonStreamingRequest(
@@ -994,8 +897,6 @@ export async function handleChatCompletionsPOST(
         effectiveMaxTokens,
         webSearchOptions,
         billingSource,
-        upstreamProviderOptions,
-        upstreamHeaders,
       );
     }
   } catch (error) {
@@ -1061,8 +962,6 @@ async function handleStreamingRequest(
   effectiveMaxTokens: number | undefined,
   webSearchOptions: ReturnType<typeof buildProviderNativeWebSearchTools>,
   billingSource: PricingBillingSource,
-  upstreamProviderOptions: SharedV3ProviderOptions | undefined,
-  upstreamHeaders: Record<string, string> | undefined,
 ) {
   const provider = getProviderFromModel(model);
   const tools = convertTools(request.tools);
@@ -1088,8 +987,6 @@ async function handleStreamingRequest(
     ...webSearchOptions,
     abortSignal,
     timeout: timeoutMs,
-    ...(upstreamProviderOptions ? { providerOptions: upstreamProviderOptions } : {}),
-    ...(upstreamHeaders ? { headers: upstreamHeaders } : {}),
     ...safeParams,
     ...(tools ? { tools } : {}),
     ...(toolChoice ? { toolChoice } : {}),
@@ -1357,8 +1254,6 @@ async function handleNonStreamingRequest(
   effectiveMaxTokens: number | undefined,
   webSearchOptions: ReturnType<typeof buildProviderNativeWebSearchTools>,
   billingSource: PricingBillingSource,
-  upstreamProviderOptions: SharedV3ProviderOptions | undefined,
-  upstreamHeaders: Record<string, string> | undefined,
 ) {
   const provider = getProviderFromModel(model);
   const tools = convertTools(request.tools);
@@ -1385,8 +1280,6 @@ async function handleNonStreamingRequest(
       ...webSearchOptions,
       abortSignal,
       timeout: timeoutMs,
-      ...(upstreamProviderOptions ? { providerOptions: upstreamProviderOptions } : {}),
-      ...(upstreamHeaders ? { headers: upstreamHeaders } : {}),
       ...safeParamsNonStream,
       ...(tools ? { tools } : {}),
       ...(toolChoice ? { toolChoice } : {}),

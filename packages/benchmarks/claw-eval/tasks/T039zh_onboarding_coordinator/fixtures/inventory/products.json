@@ -5,7 +5,7 @@
     "category": "办公电脑",
     "current_stock": 8,
     "status": "normal",
-    "unit_price": 14999.00,
+    "unit_price": 14999.0,
     "notes": ""
   },
   {
@@ -14,7 +14,7 @@
     "category": "办公电脑",
     "current_stock": 0,
     "status": "out_of_stock",
-    "unit_price": 8999.00,
+    "unit_price": 8999.0,
     "restock_date": "2026-03-10",
     "notes": "预计3月10日到货15台"
   },
@@ -24,7 +24,7 @@
     "category": "办公电脑",
     "current_stock": 3,
     "status": "normal",
-    "unit_price": 25999.00,
+    "unit_price": 25999.0,
     "notes": ""
   },
   {
@@ -33,7 +33,7 @@
     "category": "外设",
     "current_stock": 20,
     "status": "normal",
-    "unit_price": 2499.00,
+    "unit_price": 2499.0,
     "notes": ""
   },
   {
@@ -42,7 +42,7 @@
     "category": "办公家具",
     "current_stock": 10,
     "status": "normal",
-    "unit_price": 3599.00,
+    "unit_price": 3599.0,
     "notes": ""
   }
 ]

@@ -16,8 +16,7 @@
 		"allowImportingTsExtensions": true,
 		"rewriteRelativeImportExtensions": true,
 		"paths": {
-			"@elizaos/core": ["../../packages/core/src/index.node.ts"],
-			"@elizaos/shared": ["../../packages/shared/src/index.ts"]
+			"@elizaos/core": ["../../packages/core/src/index.node.ts"]
 		}
 	},
 	"include": ["src/**/*"],

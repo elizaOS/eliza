@@ -168,10 +168,7 @@ async function runSpeech(args, outDir) {
       "  2. Run `--variant singing` and use the singing model for both codepaths.",
   );
   if (args.dryRun) {
-    log(
-      "info",
-      "Dry run — would invoke speech wrapper here once it lands.",
-    );
+    log("info", "Dry run — would invoke speech wrapper here once it lands.");
     return;
   }
   throw new Error(

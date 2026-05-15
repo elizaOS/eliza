@@ -28,7 +28,7 @@ import {
   waitBrowser,
 } from "../platform/browser.js";
 import { detectPlatformCapabilities } from "../platform/capabilities.js";
-import { capturePrimaryDisplay, captureDisplay } from "../platform/capture.js";
+import { captureDisplay, capturePrimaryDisplay } from "../platform/capture.js";
 import { localToGlobalDefault } from "../platform/coords.js";
 import { getPrimaryDisplay, listDisplays } from "../platform/displays.js";
 import {
@@ -77,6 +77,8 @@ import {
   restoreWindow,
   switchWindow,
 } from "../platform/windows-list.js";
+import { SceneBuilder, type SceneUpdateEvent } from "../scene/scene-builder.js";
+import type { Scene } from "../scene/scene-types.js";
 import type {
   ActionHistoryEntry,
   ApprovalMode,
@@ -98,11 +100,6 @@ import type {
   WindowActionParams,
   WindowActionResult,
 } from "../types.js";
-import {
-  SceneBuilder,
-  type SceneUpdateEvent,
-} from "../scene/scene-builder.js";
-import type { Scene } from "../scene/scene-types.js";
 
 const MAX_RECENT_ACTIONS = 10;
 const BROWSER_NOT_OPEN_ERROR = "Browser not open";
@@ -1530,7 +1527,9 @@ export class ComputerUseService extends Service {
    * SceneBuilder ticks only on explicit `refreshScene` calls — subscribers
    * are notified whenever a tick completes.
    */
-  subscribeToSceneUpdates(handler: (event: SceneUpdateEvent) => void): () => void {
+  subscribeToSceneUpdates(
+    handler: (event: SceneUpdateEvent) => void,
+  ): () => void {
     return this.sceneBuilder.subscribe(handler);
   }
 

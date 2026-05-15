@@ -386,43 +386,6 @@ function installRequireGuard(): void {
   g.require = guarded;
 }
 
-function installProcessExecutionGuard(): void {
-  if (process.env.ELIZA_PLATFORM?.trim().toLowerCase() !== "ios") return;
-
-  const bunGlobal = (
-    globalThis as typeof globalThis & {
-      Bun?: Record<string, unknown>;
-    }
-  ).Bun;
-  if (!bunGlobal || typeof bunGlobal !== "object") return;
-
-  const blocked = () => {
-    throw accessError(
-      "Bun.spawn",
-      "mobile-fs-shim: process execution is blocked in iOS App Store builds",
-    );
-  };
-
-  for (const key of ["spawn", "spawnSync", "which"] as const) {
-    if (key in bunGlobal) {
-      try {
-        Object.defineProperty(bunGlobal, key, {
-          configurable: false,
-          enumerable: true,
-          value: blocked,
-          writable: false,
-        });
-      } catch {
-        try {
-          bunGlobal[key] = blocked;
-        } catch {
-          /* best effort */
-        }
-      }
-    }
-  }
-}
-
 // ---------------------------------------------------------------------------
 // fs sync API patch helpers
 // ---------------------------------------------------------------------------
@@ -956,7 +919,6 @@ export function installMobileFsShim(workspaceRoot: string): void {
 
   patchFsModule();
   installRequireGuard();
-  installProcessExecutionGuard();
 
   // Expose the workspace root on the environment for downstream consumers
   // (e.g. PGlite, trajectory logger) that read it from process.env.

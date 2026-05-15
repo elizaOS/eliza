@@ -253,30 +253,6 @@ describe("FfiBatchTranscriber sliding-window — incremental partial emission", 
 		transcriber.dispose();
 	});
 
-	it("attaches non-native voice-emotion attribution to final transcripts", async () => {
-		const ffi = makeBatchFfi(() => "I am worried this might break");
-		const transcriber = new FfiBatchTranscriber({
-			ffi,
-			getContext: () => 1n,
-			stepSeconds: 0.01,
-		});
-
-		transcriber.feed(makePcmFrame(Math.round(1.1 * ASR_SAMPLE_RATE), 0));
-		const final = await transcriber.flush();
-
-		expect(final.voiceEmotion).toMatchObject({
-			emotion: "nervous",
-			method: "text_audio_heuristic",
-			modelNativeEmotion: false,
-		});
-		expect(
-			final.voiceEmotion?.evidence.some(
-				(row) => row.source === "asr_transcript",
-			),
-		).toBe(true);
-		transcriber.dispose();
-	});
-
 	it("multiple flush() calls each commit independently (segment reset between)", async () => {
 		let callIdx = 0;
 		const scripts = ["first utterance", "second utterance"];

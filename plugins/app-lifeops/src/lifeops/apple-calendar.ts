@@ -140,19 +140,6 @@ function hasNodeDarwinProcess(): boolean {
   return typeof process !== "undefined" && process.platform === "darwin";
 }
 
-function isIosMobileRuntime(): boolean {
-  if (
-    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios" ||
-    process.env.ELIZA_MOBILE_PLATFORM?.trim().toLowerCase() === "ios"
-  ) {
-    return true;
-  }
-  const capacitor = (
-    globalThis as { Capacitor?: { getPlatform?: () => string } }
-  ).Capacitor;
-  return capacitor?.getPlatform?.() === "ios";
-}
-
 function cStringBuffer(value: string): Buffer {
   const bytes = Buffer.from(value, "utf8");
   const buffer = Buffer.alloc(bytes.byteLength + 1);
@@ -177,7 +164,7 @@ async function loadMacCalendarBridge(): Promise<MacCalendarBridge | null> {
   }
   if (macCalendarBridge !== undefined) return macCalendarBridge;
   macCalendarBridge = null;
-  if (!hasNodeDarwinProcess() || isIosMobileRuntime()) return null;
+  if (!hasNodeDarwinProcess()) return null;
 
   for (const candidate of nativeDylibCandidates()) {
     const dylibPath = resolveNativeLibraryCandidate(candidate, {

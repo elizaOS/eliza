@@ -27,11 +27,21 @@ import type {
 import { toRecord } from "./utils.js";
 
 const INTERCEPTOR_MARKER = Symbol.for("scenario-runner.interceptor-wrapped");
+const RUNTIME_CAPTURE_HOOK = Symbol.for("scenario-runner.capture-hooks");
+const APPROVAL_QUEUE_PATCH_MARKER = Symbol.for(
+  "scenario-runner.approval-queue-patched",
+);
 
 interface WrappedHandler {
   (...args: unknown[]): Promise<unknown>;
   [INTERCEPTOR_MARKER]?: true;
 }
+
+type RuntimeCaptureHooks = {
+  approvalRequests: CapturedApprovalRequest[];
+  connectorDispatches: CapturedConnectorDispatch[];
+  stateTransitions: CapturedStateTransition[];
+};
 
 export interface ActionInterceptor {
   readonly actions: CapturedAction[];
@@ -51,6 +61,181 @@ function isCallable(value: unknown): value is (...args: unknown[]) => unknown {
 function errorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+function getRuntimeCaptureHooks(
+  runtime: IAgentRuntime,
+): RuntimeCaptureHooks | null {
+  const hooks = (runtime as { [RUNTIME_CAPTURE_HOOK]?: unknown })[
+    RUNTIME_CAPTURE_HOOK
+  ];
+  if (!hooks || typeof hooks !== "object") {
+    return null;
+  }
+  const record = hooks as Partial<RuntimeCaptureHooks>;
+  if (
+    !Array.isArray(record.approvalRequests) ||
+    !Array.isArray(record.connectorDispatches) ||
+    !Array.isArray(record.stateTransitions)
+  ) {
+    return null;
+  }
+  return record as RuntimeCaptureHooks;
+}
+
+function normalizeCapturedApprovalRequest(
+  value: unknown,
+): CapturedApprovalRequest | null {
+  const record = toRecord(value);
+  if (
+    !record ||
+    typeof record.id !== "string" ||
+    typeof record.state !== "string"
+  ) {
+    return null;
+  }
+  const actionRaw =
+    typeof record.action === "string"
+      ? record.action
+      : typeof record.actionName === "string"
+        ? record.actionName
+        : null;
+  if (!actionRaw) {
+    return null;
+  }
+  return {
+    id: record.id,
+    state: record.state as CapturedApprovalRequest["state"],
+    actionName: actionRaw,
+    source:
+      typeof record.requestedBy === "string" ? record.requestedBy : undefined,
+    command: typeof record.reason === "string" ? record.reason : undefined,
+    channel: typeof record.channel === "string" ? record.channel : undefined,
+    payload: record.payload,
+    createdAt:
+      record.createdAt instanceof Date
+        ? record.createdAt.toISOString()
+        : typeof record.createdAt === "string"
+          ? record.createdAt
+          : undefined,
+    decidedAt:
+      record.resolvedAt instanceof Date
+        ? record.resolvedAt.toISOString()
+        : typeof record.resolvedAt === "string"
+          ? record.resolvedAt
+          : undefined,
+  };
+}
+
+function upsertApprovalRequest(
+  list: CapturedApprovalRequest[],
+  next: CapturedApprovalRequest,
+): void {
+  const index = list.findIndex((entry) => entry.id === next.id);
+  if (index === -1) {
+    list.push(next);
+    return;
+  }
+  list[index] = next;
+}
+
+function recordApprovalTransition(
+  hooks: RuntimeCaptureHooks,
+  request: CapturedApprovalRequest,
+  from: string | undefined,
+): void {
+  if (!from || from === request.state) {
+    return;
+  }
+  hooks.stateTransitions.push({
+    subject: "approval",
+    from,
+    to: request.state,
+    actionName: request.actionName,
+    requestId: request.id,
+    at: request.decidedAt ?? new Date().toISOString(),
+  });
+}
+
+let approvalQueuePatchPromise: Promise<void> | null = null;
+
+export async function ensureInterceptorRuntimeHooks(): Promise<void> {
+  if (approvalQueuePatchPromise) {
+    return approvalQueuePatchPromise;
+  }
+  approvalQueuePatchPromise = (async () => {
+    try {
+      const approvalQueueUrl = new URL(
+        "../../../plugins/app-lifeops/src/lifeops/approval-queue.ts",
+        import.meta.url,
+      );
+      const moduleRecord = (await import(approvalQueueUrl.href)) as Record<
+        string,
+        unknown
+      >;
+      const PgApprovalQueue = moduleRecord.PgApprovalQueue as
+        | { prototype?: Record<string, unknown> }
+        | undefined;
+      const prototype = PgApprovalQueue?.prototype;
+      if (
+        !prototype ||
+        (prototype as Record<PropertyKey, unknown>)[APPROVAL_QUEUE_PATCH_MARKER]
+      ) {
+        return;
+      }
+
+      const wrapMethod = (name: string) => {
+        const original = prototype[name];
+        if (typeof original !== "function") {
+          return;
+        }
+        prototype[name] = async function (
+          this: { runtime?: IAgentRuntime },
+          ...args: unknown[]
+        ): Promise<unknown> {
+          const runtime = this.runtime;
+          const hooks =
+            runtime && typeof runtime === "object"
+              ? getRuntimeCaptureHooks(runtime)
+              : null;
+          const previousState =
+            hooks && typeof args[0] === "string"
+              ? hooks.approvalRequests.find((entry) => entry.id === args[0])
+                  ?.state
+              : undefined;
+          const result = await original.apply(this, args);
+          if (!hooks) {
+            return result;
+          }
+          const normalized = normalizeCapturedApprovalRequest(result);
+          if (!normalized) {
+            return result;
+          }
+          upsertApprovalRequest(hooks.approvalRequests, normalized);
+          recordApprovalTransition(hooks, normalized, previousState);
+          return result;
+        };
+      };
+
+      for (const methodName of [
+        "enqueue",
+        "approve",
+        "reject",
+        "markExecuting",
+        "markDone",
+        "markExpired",
+      ]) {
+        wrapMethod(methodName);
+      }
+
+      (prototype as Record<PropertyKey, unknown>)[APPROVAL_QUEUE_PATCH_MARKER] =
+        true;
+    } catch {
+      // Scenario runner also lives outside the app-lifeops repo surface.
+      // Absence of the optional app module should not break generic usage.
+    }
+  })();
+  return approvalQueuePatchPromise;
 }
 
 function captureArtifact(
@@ -328,6 +513,14 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
   // Wrap actions registered on this runtime.
   const restoreFns: Array<() => void> = [];
 
+  (runtime as { [RUNTIME_CAPTURE_HOOK]?: RuntimeCaptureHooks })[
+    RUNTIME_CAPTURE_HOOK
+  ] = {
+    approvalRequests,
+    connectorDispatches,
+    stateTransitions,
+  } satisfies RuntimeCaptureHooks;
+
   const actionList = (runtime as { actions?: Action[] }).actions ?? [];
   for (const action of actionList) {
     const original = action.handler;
@@ -495,6 +688,9 @@ export function attachInterceptor(runtime: IAgentRuntime): ActionInterceptor {
       artifacts.length = 0;
     },
     detach(): void {
+      delete (runtime as { [RUNTIME_CAPTURE_HOOK]?: RuntimeCaptureHooks })[
+        RUNTIME_CAPTURE_HOOK
+      ];
       for (const restore of restoreFns) restore();
       restoreFns.length = 0;
     },

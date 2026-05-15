@@ -430,60 +430,6 @@ def test_calendar_time_min_max_aliases_score_like_start_end() -> None:
     assert compare_actions(predicted, ground_truth) == pytest.approx(1.0)
 
 
-def test_calendar_search_window_scores_like_availability_check() -> None:
-    """Searching the exact empty/free-busy window is a valid availability check."""
-    predicted = [
-        Action(
-            name="CALENDAR",
-            kwargs={
-                "action": "search_events",
-                "startAt": "2026-05-14T09:00:00Z",
-                "endAt": "2026-05-14T10:00:00Z",
-                "query": "",
-            },
-        )
-    ]
-    ground_truth = [
-        Action(
-            name="CALENDAR",
-            kwargs={
-                "subaction": "check_availability",
-                "startAt": "2026-05-14T09:00:00Z",
-                "endAt": "2026-05-14T10:00:00Z",
-            },
-        )
-    ]
-
-    assert compare_actions(predicted, ground_truth) == pytest.approx(1.0)
-
-
-def test_calendar_search_with_filter_does_not_score_like_availability_check() -> None:
-    """Filtered calendar search is not equivalent to free/busy availability."""
-    predicted = [
-        Action(
-            name="CALENDAR",
-            kwargs={
-                "subaction": "search_events",
-                "start": "2026-05-14T09:00:00Z",
-                "end": "2026-05-14T10:00:00Z",
-                "query": "pitch",
-            },
-        )
-    ]
-    ground_truth = [
-        Action(
-            name="CALENDAR",
-            kwargs={
-                "subaction": "check_availability",
-                "startAt": "2026-05-14T09:00:00Z",
-                "endAt": "2026-05-14T10:00:00Z",
-            },
-        )
-    ]
-
-    assert compare_actions(predicted, ground_truth) == pytest.approx(0.5)
-
-
 def test_output_substring_match_accepts_archived_for_archive() -> None:
     matches = output_substring_match(
         [MessageTurn(role="assistant", content="The thread has been archived.")],
@@ -974,18 +920,6 @@ def test_canonicalize_unknown_owner_surface_is_noop() -> None:
         ("SCHEDULED_TASK_DISMISS", "SCHEDULED_TASK", "dismiss"),
         ("SCHEDULED_TASK_REOPEN", "SCHEDULED_TASK", "reopen"),
         ("SCHEDULED_TASK_HISTORY", "SCHEDULED_TASK", "history"),
-        # Plural spellings are what runner.supported_actions() exposes for
-        # these state/read operations. They must score like the singular
-        # scorer umbrella aliases, not as unrelated action names.
-        ("SCHEDULED_TASKS_GET", "SCHEDULED_TASK", "get"),
-        ("SCHEDULED_TASKS_LIST", "SCHEDULED_TASK", "list"),
-        ("SCHEDULED_TASKS_HISTORY", "SCHEDULED_TASK", "history"),
-        ("SCHEDULED_TASKS_ACKNOWLEDGE", "SCHEDULED_TASK", "acknowledge"),
-        ("SCHEDULED_TASKS_DISMISS", "SCHEDULED_TASK", "dismiss"),
-        ("SCHEDULED_TASKS_REOPEN", "SCHEDULED_TASK", "reopen"),
-        ("SCHEDULED_TASKS_SKIP", "SCHEDULED_TASK", "skip"),
-        ("SCHEDULED_TASKS_CANCEL", "SCHEDULED_TASK", "cancel"),
-        ("SCHEDULED_TASKS_COMPLETE", "SCHEDULED_TASK", "complete"),
         # ENTITY set_relationship surface emitted by some agents.
         ("ENTITY_SET_RELATIONSHIP", "ENTITY", "set_relationship"),
     ],
@@ -1047,13 +981,6 @@ def test_compare_actions_scheduled_task_acknowledge_full_credit() -> None:
     """SCHEDULED_TASK_ACKNOWLEDGE folds to the umbrella."""
     gt = [Action(name="SCHEDULED_TASK", kwargs={"subaction": "acknowledge"})]
     predicted = [Action(name="SCHEDULED_TASK_ACKNOWLEDGE", kwargs={})]
-    assert compare_actions(predicted, gt) == pytest.approx(1.0)
-
-
-def test_compare_actions_plural_scheduled_task_acknowledge_full_credit() -> None:
-    """Runner-exposed SCHEDULED_TASKS_* names fold to the scheduled-task umbrella."""
-    gt = [Action(name="SCHEDULED_TASK", kwargs={"subaction": "acknowledge"})]
-    predicted = [Action(name="SCHEDULED_TASKS_ACKNOWLEDGE", kwargs={})]
     assert compare_actions(predicted, gt) == pytest.approx(1.0)
 
 
@@ -1362,28 +1289,6 @@ def test_p0_8_read_scenario_correct_kwargs_full_credit() -> None:
     score = score_scenario(result, scenario)
     # 0.1 + 0.7 + 0.2 = 1.0
     assert score == pytest.approx(1.0)
-
-
-def test_p0_8_plural_scheduled_task_read_wrong_kwargs_is_trivial() -> None:
-    """Plural scheduled-task read aliases are hash-inert after canonicalization."""
-    scenario = _scenario(
-        ground_truth_actions=[
-            Action(
-                name="SCHEDULED_TASKS_LIST",
-                kwargs={"kind": "reminder"},
-            )
-        ]
-    )
-    result = _result(
-        state_hash_match=True,
-        agent_actions=[
-            Action(
-                name="SCHEDULED_TASKS_LIST",
-                kwargs={"kind": "alarm"},
-            )
-        ],
-    )
-    assert score_scenario(result, scenario) == pytest.approx(0.0)
 
 
 def test_p0_8_write_scenario_correct_action_holds_at_1() -> None:

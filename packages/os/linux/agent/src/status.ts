@@ -17,18 +17,18 @@
 export type AgentStatus = "booting" | "ready" | "crashed";
 
 export interface AgentStatusResponse {
-    /** Schema version for forward compatibility. Bump on shape change. */
-    schema_version: 1;
-    /** Current supervisor-visible state. */
-    state: AgentStatus;
-    /**
-     * Network reachability hint. `true` when nmcli reports an active
-     * IPv4 address that isn't loopback; `false` when nmcli reports
-     * offline; omitted when nmcli isn't available (host dev mode).
-     */
-    network?: { online: boolean; ssid?: string };
+  /** Schema version for forward compatibility. Bump on shape change. */
+  schema_version: 1;
+  /** Current supervisor-visible state. */
+  state: AgentStatus;
+  /**
+   * Network reachability hint. `true` when nmcli reports an active
+   * IPv4 address that isn't loopback; `false` when nmcli reports
+   * offline; omitted when nmcli isn't available (host dev mode).
+   */
+  network?: { online: boolean; ssid?: string };
 }
 
 export function agentStatusResponse(state: AgentStatus): AgentStatusResponse {
-    return { schema_version: 1, state };
+  return { schema_version: 1, state };
 }

@@ -4151,11 +4151,6 @@ export function buildChatCompletionBody(
 		cache_prompt: true,
 		slot_id: slotId,
 	};
-	if (args.thinking === "off") {
-		payload.chat_template_kwargs = { enable_thinking: false };
-	} else if (args.thinking === "on") {
-		payload.chat_template_kwargs = { enable_thinking: true };
-	}
 	if (effectivePrefill.length > 0) {
 		// Continue the partial assistant turn instead of opening a new one.
 		payload.continue_final_message = true;

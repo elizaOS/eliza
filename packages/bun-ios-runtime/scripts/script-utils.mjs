@@ -24,7 +24,9 @@ export function run(command, args, options = {}) {
     maxBuffer: options.maxBuffer,
   });
   if (options.check !== false && result.status !== 0) {
-    throw new Error(`${command} ${args.join(" ")} failed with ${result.status}`);
+    throw new Error(
+      `${command} ${args.join(" ")} failed with ${result.status}`,
+    );
   }
   return result;
 }

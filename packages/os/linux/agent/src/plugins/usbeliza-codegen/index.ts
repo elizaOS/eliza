@@ -20,29 +20,33 @@ import type { CalibrationBlock } from "../../persona.ts";
  * Available code generation backends. Phase 0 ships only `claude`. Phase 1
  * adds `codex` and `local-llama`. Phase 1.5 adds `managed-proxy`.
  */
-export type CodeGeneratorBackend = "claude" | "codex" | "local-llama" | "managed-proxy";
+export type CodeGeneratorBackend =
+  | "claude"
+  | "codex"
+  | "local-llama"
+  | "managed-proxy";
 
 export interface GenerationBrief {
-    /** Stable slug for the app. URL-safe; used as a directory name. */
-    slug: string;
-    /** Free-text user intent that triggered this generation. */
-    intent: string;
-    /** Optional existing source for an in-place rebuild/patch. */
-    existingSrc?: string;
-    /**
-     * The user's calibration block — fed to the LLM so generated apps match
-     * the user's tone, theme bias, and tool-density preference.
-     */
-    calibration: CalibrationBlock | null;
+  /** Stable slug for the app. URL-safe; used as a directory name. */
+  slug: string;
+  /** Free-text user intent that triggered this generation. */
+  intent: string;
+  /** Optional existing source for an in-place rebuild/patch. */
+  existingSrc?: string;
+  /**
+   * The user's calibration block — fed to the LLM so generated apps match
+   * the user's tone, theme bias, and tool-density preference.
+   */
+  calibration: CalibrationBlock | null;
 }
 
 export interface GenerationOutput {
-    /** The slug the LLM produced output for (echoes the brief on success). */
-    slug: string;
-    /** Path to the resulting `manifest.json` on disk. */
-    manifestPath: string;
-    /** Path to the resulting `src/` directory on disk. */
-    srcPath: string;
-    /** The backend that produced this output. */
-    backend: CodeGeneratorBackend;
+  /** The slug the LLM produced output for (echoes the brief on success). */
+  slug: string;
+  /** Path to the resulting `manifest.json` on disk. */
+  manifestPath: string;
+  /** Path to the resulting `src/` directory on disk. */
+  srcPath: string;
+  /** The backend that produced this output. */
+  backend: CodeGeneratorBackend;
 }

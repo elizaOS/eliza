@@ -33,81 +33,82 @@
  */
 
 import {
-    chmodSync,
-    existsSync,
-    mkdirSync,
-    readFileSync,
-    writeFileSync,
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
 } from "node:fs";
 
 export type AuthProvider = "claude" | "codex";
 
 export interface AuthMarker {
-    readonly provider: AuthProvider;
-    readonly status: "signed-in" | "signed-out";
-    /** ISO-8601 timestamp of the detection. */
-    readonly detectedAt: string;
+  readonly provider: AuthProvider;
+  readonly status: "signed-in" | "signed-out";
+  /** ISO-8601 timestamp of the detection. */
+  readonly detectedAt: string;
 }
 
 function authDir(): string {
-    // Honor an explicit override so tests can write to a tmp dir.
-    const explicit = (globalThis as { Bun?: { env?: Record<string, string | undefined> } }).Bun?.env?.[
-        "USBELIZA_AUTH_ROOT"
-    ];
-    if (typeof explicit === "string" && explicit !== "") return explicit;
-    const home =
-        (globalThis as { Bun?: { env?: Record<string, string | undefined> } }).Bun?.env?.["HOME"] ??
-        process.env["HOME"] ??
-        "/tmp";
-    return `${home}/.eliza/auth`;
+  // Honor an explicit override so tests can write to a tmp dir.
+  const explicit = (
+    globalThis as { Bun?: { env?: Record<string, string | undefined> } }
+  ).Bun?.env?.["USBELIZA_AUTH_ROOT"];
+  if (typeof explicit === "string" && explicit !== "") return explicit;
+  const home =
+    (globalThis as { Bun?: { env?: Record<string, string | undefined> } }).Bun
+      ?.env?.["HOME"] ??
+    process.env["HOME"] ??
+    "/tmp";
+  return `${home}/.eliza/auth`;
 }
 
 function markerPath(provider: AuthProvider): string {
-    return `${authDir()}/${provider}.json`;
+  return `${authDir()}/${provider}.json`;
 }
 
 function ensureDir(): void {
-    const dir = authDir();
-    if (!existsSync(dir)) {
-        mkdirSync(dir, { recursive: true, mode: 0o700 });
-    }
+  const dir = authDir();
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+  }
 }
 
 function writeMarker(marker: AuthMarker): void {
-    ensureDir();
-    const path = markerPath(marker.provider);
-    // JSON.stringify with 2-space indent makes the file readable when the
-    // user opens a TTY and `cat`s it — the same shape that future "tell me
-    // what's signed in" affordances will read.
-    writeFileSync(path, JSON.stringify(marker, null, 2) + "\n", {
-        mode: 0o600,
-    });
-    // Some umasks would strip mode bits — force a chmod after write so the
-    // file ends up 0600 even if the user's umask is permissive.
-    try {
-        chmodSync(path, 0o600);
-    } catch {
-        // Best-effort. On exotic filesystems chmod can fail; the data is
-        // still on disk.
-    }
+  ensureDir();
+  const path = markerPath(marker.provider);
+  // JSON.stringify with 2-space indent makes the file readable when the
+  // user opens a TTY and `cat`s it — the same shape that future "tell me
+  // what's signed in" affordances will read.
+  writeFileSync(path, JSON.stringify(marker, null, 2) + "\n", {
+    mode: 0o600,
+  });
+  // Some umasks would strip mode bits — force a chmod after write so the
+  // file ends up 0600 even if the user's umask is permissive.
+  try {
+    chmodSync(path, 0o600);
+  } catch {
+    // Best-effort. On exotic filesystems chmod can fail; the data is
+    // still on disk.
+  }
 }
 
 /** Record that `provider` is signed in as of now. */
 export function markSignedIn(provider: AuthProvider): void {
-    writeMarker({
-        provider,
-        status: "signed-in",
-        detectedAt: new Date().toISOString(),
-    });
+  writeMarker({
+    provider,
+    status: "signed-in",
+    detectedAt: new Date().toISOString(),
+  });
 }
 
 /** Record that `provider` is signed out as of now. */
 export function markSignedOut(provider: AuthProvider): void {
-    writeMarker({
-        provider,
-        status: "signed-out",
-        detectedAt: new Date().toISOString(),
-    });
+  writeMarker({
+    provider,
+    status: "signed-out",
+    detectedAt: new Date().toISOString(),
+  });
 }
 
 /**
@@ -116,31 +117,32 @@ export function markSignedOut(provider: AuthProvider): void {
  * "signed out" should call `readMarker` directly.
  */
 export function isSignedIn(provider: AuthProvider): boolean {
-    const marker = readMarker(provider);
-    return marker !== null && marker.status === "signed-in";
+  const marker = readMarker(provider);
+  return marker !== null && marker.status === "signed-in";
 }
 
 /** Read the raw marker. Returns null if missing or malformed. */
 export function readMarker(provider: AuthProvider): AuthMarker | null {
-    const path = markerPath(provider);
-    if (!existsSync(path)) return null;
-    try {
-        const raw = readFileSync(path, "utf8");
-        const parsed = JSON.parse(raw) as Partial<AuthMarker>;
-        if (parsed.provider !== provider) return null;
-        if (parsed.status !== "signed-in" && parsed.status !== "signed-out") return null;
-        if (typeof parsed.detectedAt !== "string") return null;
-        return {
-            provider,
-            status: parsed.status,
-            detectedAt: parsed.detectedAt,
-        };
-    } catch {
-        return null;
-    }
+  const path = markerPath(provider);
+  if (!existsSync(path)) return null;
+  try {
+    const raw = readFileSync(path, "utf8");
+    const parsed = JSON.parse(raw) as Partial<AuthMarker>;
+    if (parsed.provider !== provider) return null;
+    if (parsed.status !== "signed-in" && parsed.status !== "signed-out")
+      return null;
+    if (typeof parsed.detectedAt !== "string") return null;
+    return {
+      provider,
+      status: parsed.status,
+      detectedAt: parsed.detectedAt,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Test-only: expose the resolved path for assertion. */
 export function __markerPathFor(provider: AuthProvider): string {
-    return markerPath(provider);
+  return markerPath(provider);
 }

@@ -30,9 +30,9 @@ import type { CalibrationBlock } from "../persona.ts";
 
 /** Result of trying to apply one of the three system-level fields. */
 export interface ApplyResult {
-    readonly field: "keyboard" | "locale" | "timezone";
-    readonly applied: boolean;
-    readonly message: string;
+  readonly field: "keyboard" | "locale" | "timezone";
+  readonly applied: boolean;
+  readonly message: string;
 }
 
 /**
@@ -41,47 +41,47 @@ export interface ApplyResult {
  * surfaces as `{ code: -1, stderr: "..." }`.
  */
 function runCommand(
-    cmd: string,
-    args: readonly string[],
-    timeoutMs = 5_000,
+  cmd: string,
+  args: readonly string[],
+  timeoutMs = 5_000,
 ): Promise<{ code: number; stderr: string }> {
-    return new Promise((resolve) => {
-        let settled = false;
-        const child = spawn(cmd, [...args], { stdio: ["ignore", "pipe", "pipe"] });
-        let stderr = "";
-        const timer = setTimeout(() => {
-            if (!settled) {
-                child.kill("SIGKILL");
-                settled = true;
-                resolve({ code: -1, stderr: `timeout after ${timeoutMs}ms` });
-            }
-        }, timeoutMs);
-        child.stderr?.on("data", (chunk: Buffer) => {
-            stderr += chunk.toString();
-        });
-        child.on("error", (err) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve({ code: -1, stderr: String(err) });
-        });
-        child.on("close", (code) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve({ code: code ?? -1, stderr });
-        });
+  return new Promise((resolve) => {
+    let settled = false;
+    const child = spawn(cmd, [...args], { stdio: ["ignore", "pipe", "pipe"] });
+    let stderr = "";
+    const timer = setTimeout(() => {
+      if (!settled) {
+        child.kill("SIGKILL");
+        settled = true;
+        resolve({ code: -1, stderr: `timeout after ${timeoutMs}ms` });
+      }
+    }, timeoutMs);
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
     });
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code: -1, stderr: String(err) });
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ code: code ?? -1, stderr });
+    });
+  });
 }
 
 export interface ApplyOptions {
-    /** Inject a fake `runCommand` for tests. */
-    readonly run?: (
-        cmd: string,
-        args: readonly string[],
-    ) => Promise<{ code: number; stderr: string }>;
-    /** Skip all spawns; only log what we WOULD do. Useful for the test suite. */
-    readonly dryRun?: boolean;
+  /** Inject a fake `runCommand` for tests. */
+  readonly run?: (
+    cmd: string,
+    args: readonly string[],
+  ) => Promise<{ code: number; stderr: string }>;
+  /** Skip all spawns; only log what we WOULD do. Useful for the test suite. */
+  readonly dryRun?: boolean;
 }
 
 /**
@@ -91,51 +91,72 @@ export interface ApplyOptions {
  * fall back to `loadkeys` which only updates the console keymap and
  * doesn't persist — better than nothing.
  */
-async function applyKeyboard(layout: string, run: NonNullable<ApplyOptions["run"]>): Promise<ApplyResult> {
-    const primary = await run("sudo", ["localectl", "set-keymap", layout]);
-    if (primary.code === 0) {
-        return { field: "keyboard", applied: true, message: `localectl set-keymap ${layout}` };
-    }
-    // Fallback: loadkeys (console-only, not persistent). On a live ISO
-    // the systemd boot-time apply unit reruns set-keymap so persistence
-    // comes from there.
-    const fallback = await run("sudo", ["loadkeys", layout]);
-    if (fallback.code === 0) {
-        return {
-            field: "keyboard",
-            applied: true,
-            message: `loadkeys ${layout} (localectl failed: ${primary.stderr.trim().slice(0, 120)})`,
-        };
-    }
+async function applyKeyboard(
+  layout: string,
+  run: NonNullable<ApplyOptions["run"]>,
+): Promise<ApplyResult> {
+  const primary = await run("sudo", ["localectl", "set-keymap", layout]);
+  if (primary.code === 0) {
     return {
-        field: "keyboard",
-        applied: false,
-        message: `both localectl and loadkeys failed: ${primary.stderr.trim().slice(0, 120)}`,
+      field: "keyboard",
+      applied: true,
+      message: `localectl set-keymap ${layout}`,
     };
+  }
+  // Fallback: loadkeys (console-only, not persistent). On a live ISO
+  // the systemd boot-time apply unit reruns set-keymap so persistence
+  // comes from there.
+  const fallback = await run("sudo", ["loadkeys", layout]);
+  if (fallback.code === 0) {
+    return {
+      field: "keyboard",
+      applied: true,
+      message: `loadkeys ${layout} (localectl failed: ${primary.stderr.trim().slice(0, 120)})`,
+    };
+  }
+  return {
+    field: "keyboard",
+    applied: false,
+    message: `both localectl and loadkeys failed: ${primary.stderr.trim().slice(0, 120)}`,
+  };
 }
 
-async function applyLocale(lang: string, run: NonNullable<ApplyOptions["run"]>): Promise<ApplyResult> {
-    const res = await run("sudo", ["localectl", "set-locale", `LANG=${lang}`]);
-    if (res.code === 0) {
-        return { field: "locale", applied: true, message: `localectl set-locale LANG=${lang}` };
-    }
+async function applyLocale(
+  lang: string,
+  run: NonNullable<ApplyOptions["run"]>,
+): Promise<ApplyResult> {
+  const res = await run("sudo", ["localectl", "set-locale", `LANG=${lang}`]);
+  if (res.code === 0) {
     return {
-        field: "locale",
-        applied: false,
-        message: `localectl set-locale failed: ${res.stderr.trim().slice(0, 120)}`,
+      field: "locale",
+      applied: true,
+      message: `localectl set-locale LANG=${lang}`,
     };
+  }
+  return {
+    field: "locale",
+    applied: false,
+    message: `localectl set-locale failed: ${res.stderr.trim().slice(0, 120)}`,
+  };
 }
 
-async function applyTimezone(tz: string, run: NonNullable<ApplyOptions["run"]>): Promise<ApplyResult> {
-    const res = await run("sudo", ["timedatectl", "set-timezone", tz]);
-    if (res.code === 0) {
-        return { field: "timezone", applied: true, message: `timedatectl set-timezone ${tz}` };
-    }
+async function applyTimezone(
+  tz: string,
+  run: NonNullable<ApplyOptions["run"]>,
+): Promise<ApplyResult> {
+  const res = await run("sudo", ["timedatectl", "set-timezone", tz]);
+  if (res.code === 0) {
     return {
-        field: "timezone",
-        applied: false,
-        message: `timedatectl set-timezone failed: ${res.stderr.trim().slice(0, 120)}`,
+      field: "timezone",
+      applied: true,
+      message: `timedatectl set-timezone ${tz}`,
     };
+  }
+  return {
+    field: "timezone",
+    applied: false,
+    message: `timedatectl set-timezone failed: ${res.stderr.trim().slice(0, 120)}`,
+  };
 }
 
 /**
@@ -150,47 +171,62 @@ async function applyTimezone(tz: string, run: NonNullable<ApplyOptions["run"]>):
  * already `us` is a harmless no-op but spends 200ms on a slow stick.
  */
 export async function applySystemCalibration(
-    c: CalibrationBlock,
-    options: ApplyOptions = {},
+  c: CalibrationBlock,
+  options: ApplyOptions = {},
 ): Promise<ApplyResult[]> {
-    const run = options.run ?? runCommand;
-    if (options.dryRun === true) {
-        const dryRun: NonNullable<ApplyOptions["run"]> = async () => ({ code: 0, stderr: "" });
-        return applySystemCalibration(c, { run: dryRun });
+  const run = options.run ?? runCommand;
+  if (options.dryRun === true) {
+    const dryRun: NonNullable<ApplyOptions["run"]> = async () => ({
+      code: 0,
+      stderr: "",
+    });
+    return applySystemCalibration(c, { run: dryRun });
+  }
+  const out: ApplyResult[] = [];
+  if (
+    typeof c.keyboardLayout === "string" &&
+    c.keyboardLayout !== "" &&
+    c.keyboardLayout !== "us"
+  ) {
+    try {
+      out.push(await applyKeyboard(c.keyboardLayout, run));
+    } catch (err) {
+      out.push({
+        field: "keyboard",
+        applied: false,
+        message: `apply threw: ${(err as Error).message}`,
+      });
     }
-    const out: ApplyResult[] = [];
-    if (typeof c.keyboardLayout === "string" && c.keyboardLayout !== "" && c.keyboardLayout !== "us") {
-        try {
-            out.push(await applyKeyboard(c.keyboardLayout, run));
-        } catch (err) {
-            out.push({
-                field: "keyboard",
-                applied: false,
-                message: `apply threw: ${(err as Error).message}`,
-            });
-        }
+  }
+  if (
+    typeof c.language === "string" &&
+    c.language !== "" &&
+    c.language !== "en_US.UTF-8"
+  ) {
+    try {
+      out.push(await applyLocale(c.language, run));
+    } catch (err) {
+      out.push({
+        field: "locale",
+        applied: false,
+        message: `apply threw: ${(err as Error).message}`,
+      });
     }
-    if (typeof c.language === "string" && c.language !== "" && c.language !== "en_US.UTF-8") {
-        try {
-            out.push(await applyLocale(c.language, run));
-        } catch (err) {
-            out.push({
-                field: "locale",
-                applied: false,
-                message: `apply threw: ${(err as Error).message}`,
-            });
-        }
+  }
+  if (
+    typeof c.timezone === "string" &&
+    c.timezone !== "" &&
+    c.timezone !== "UTC"
+  ) {
+    try {
+      out.push(await applyTimezone(c.timezone, run));
+    } catch (err) {
+      out.push({
+        field: "timezone",
+        applied: false,
+        message: `apply threw: ${(err as Error).message}`,
+      });
     }
-    if (typeof c.timezone === "string" && c.timezone !== "" && c.timezone !== "UTC") {
-        try {
-            out.push(await applyTimezone(c.timezone, run));
-        } catch (err) {
-            out.push({
-                field: "timezone",
-                applied: false,
-                message: `apply threw: ${(err as Error).message}`,
-            });
-        }
-    }
-    return out;
+  }
+  return out;
 }

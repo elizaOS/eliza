@@ -64,7 +64,9 @@ export class MobileScreenCaptureSource {
    * any other id throws — mirrors `captureDisplay`'s unknown-display
    * behavior on desktop.
    */
-  async captureDisplay(displayId: number = ANDROID_LOGICAL_DISPLAY_ID): Promise<DisplayCapture> {
+  async captureDisplay(
+    displayId: number = ANDROID_LOGICAL_DISPLAY_ID,
+  ): Promise<DisplayCapture> {
     if (displayId !== ANDROID_LOGICAL_DISPLAY_ID) {
       throw new Error(
         `[computeruse/mobile-capture] unknown Android displayId ${displayId}; only ${ANDROID_LOGICAL_DISPLAY_ID} is supported`,

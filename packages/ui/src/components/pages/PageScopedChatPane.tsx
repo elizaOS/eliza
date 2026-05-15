@@ -18,9 +18,18 @@ import type {
   ImageAttachment,
 } from "../../api/client-types";
 import { useConnectorSendAsAccount } from "../../hooks/useConnectorSendAsAccount";
+import { useContinuousChat } from "../../hooks/useContinuousChat";
 import { useVoiceChat } from "../../hooks/useVoiceChat";
 import { consumeAssistantLaunchPayloadFromHash } from "../../platform/assistant-launch-payload";
 import { useApp } from "../../state";
+import {
+  loadContinuousChatMode,
+  saveContinuousChatMode,
+} from "../../state/persistence";
+import type {
+  VoiceContinuousMode,
+  VoiceSpeakerMetadata,
+} from "../../voice/voice-chat-types";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
 import { ConnectorAccountPicker } from "../chat/ConnectorAccountPicker";
 import {
@@ -30,6 +39,8 @@ import {
   isLikelyAccountRequiredError,
   mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
+import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
+import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import { ChatComposer } from "../composites/chat/chat-composer";
 import { Spinner } from "../ui/spinner";
@@ -184,6 +195,18 @@ export function PageScopedChatPane({
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const [imageDragOver, setImageDragOver] = useState(false);
   const [voicePreview, setVoicePreview] = useState("");
+  const [voiceSpeaker, setVoiceSpeaker] = useState<VoiceSpeakerMetadata | null>(
+    null,
+  );
+  const [continuousChatMode, setContinuousChatMode] =
+    useState<VoiceContinuousMode>(loadContinuousChatMode);
+  const handleContinuousChatModeChange = useCallback(
+    (next: VoiceContinuousMode) => {
+      setContinuousChatMode(next);
+      saveContinuousChatMode(next);
+    },
+    [],
+  );
   const [sending, setSending] = useState(false);
   const [firstTokenReceived, setFirstTokenReceived] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -620,9 +643,11 @@ export function PageScopedChatPane({
       app.elizaCloudVoiceProxyAvailable || app.elizaCloudConnected || false,
     interruptOnSpeech: false,
     lang: resolveSpeechLocale(app.uiLanguage),
-    onTranscript: (text) => {
+    onTranscript: (text, event) => {
       const transcript = text.trim();
       if (!transcript) return;
+      const speaker = event?.speaker ?? event?.turn.speaker ?? null;
+      if (speaker) setVoiceSpeaker(speaker);
       setVoicePreview("");
       void handleSend({
         channelType: "VOICE_DM",
@@ -630,9 +655,19 @@ export function PageScopedChatPane({
         text: transcript,
       });
     },
-    onTranscriptPreview: (text) => {
+    onTranscriptPreview: (text, event) => {
+      const speaker = event?.speaker ?? null;
+      if (speaker) setVoiceSpeaker(speaker);
       setVoicePreview(text);
     },
+  });
+
+  const continuous = useContinuousChat({
+    voice,
+    mode: continuousChatMode,
+    disabled: disabled || sending,
+    speaker: voiceSpeaker,
+    assistantGenerating: sending && !firstTokenReceived,
   });
 
   const hasClearableContent =
@@ -961,6 +996,33 @@ export function PageScopedChatPane({
             onReconnectAccount={handleReconnectSendAsAccount}
             onSelectAccount={handleSelectSendAsAccount}
           />
+        ) : null}
+        {voice.supported &&
+        (continuousChatMode !== "off" ||
+          voice.isListening ||
+          voice.isSpeaking ||
+          Boolean(voiceSpeaker) ||
+          Boolean(continuous.interimTranscript)) ? (
+          <ChatVoiceStatusBar
+            status={continuous.status}
+            interimTranscript={continuous.interimTranscript}
+            speaker={voiceSpeaker}
+            latency={continuous.latency}
+            visible
+            className="mb-1"
+            data-testid={`page-scoped-chat-voice-status-bar-${scope}`}
+          />
+        ) : null}
+        {voice.supported ? (
+          <div className="mb-1 flex justify-end px-1">
+            <ContinuousChatToggle
+              compact
+              value={continuousChatMode}
+              onChange={handleContinuousChatModeChange}
+              disabled={disabled || sending}
+              data-testid={`page-scoped-chat-continuous-toggle-${scope}`}
+            />
+          </div>
         ) : null}
         <div data-testid={`page-scoped-chat-composer-${scope}`}>
           <ChatComposer

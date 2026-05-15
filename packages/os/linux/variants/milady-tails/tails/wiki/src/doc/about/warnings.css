@@ -37,11 +37,13 @@
 
 /* You must always use this together with .button */
 #columns .button-revealed {
-  background: var(--medium-light-green) url(../../lib/go-up.png) no-repeat right 8px center !important;
+  background: var(--medium-light-green) url(../../lib/go-up.png) no-repeat right
+    8px center !important;
 }
 
 #columns .button-revealed:hover {
-  background: var(--medium-dark-green) url(../../lib/go-up.png) no-repeat right 8px center !important;
+  background: var(--medium-dark-green) url(../../lib/go-up.png) no-repeat right
+    8px center !important;
 }
 
 #columns .button a {

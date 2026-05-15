@@ -12,6 +12,10 @@ import {
 import { agentTable } from "./agent";
 import { entityTable } from "./entity";
 
+/**
+ * Defines the relationshipTable containing information about relationships between entities and agents.
+ * @type {import('knex').TableBuilder}
+ */
 export const relationshipTable = pgTable(
   "relationships",
   {

@@ -26,8 +26,6 @@ const iosFullBunSmoke = process.argv.includes("--ios-full-bun-smoke");
 const androidSelectLocal = process.argv.includes("--android-select-local");
 const androidBackground = process.argv.includes("--android-background");
 const iosBackground = process.argv.includes("--ios-background");
-const androidSerialArg =
-  argValue("--android-serial") ?? process.env.ANDROID_SERIAL;
 const iosBackgroundTaskId =
   argValue("--ios-background-task-id") ?? "ai.eliza.tasks.refresh";
 const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
@@ -54,8 +52,6 @@ const ANDROID_CONFLICTING_AGENT_PACKAGES = [
   "ai.milady.milady",
   "ai.elizaos.eliza",
 ];
-const ANDROID_LOCAL_AGENT_DEVICE_FORWARD = "tcp:31337";
-const ANDROID_LOCAL_AGENT_TOKEN_PATH = "files/auth/local-agent-token";
 
 function printHelp() {
   console.log(`Usage: node packages/app/scripts/mobile-local-chat-smoke.mjs [options]
@@ -68,8 +64,7 @@ Options:
   --auth-token TOKEN               Bearer token for protected app-core API routes
   --ios-select-local               Pre-seed iOS onboarding/runtime state for Local mode before launch
   --ios-full-bun-smoke             Run a WebView-executed full Bun backend smoke in the iOS app
-  --android-select-local           Pre-seed Android first-run Local runtime selection
-  --android-serial SERIAL          Android device/emulator serial to target (default: ANDROID_SERIAL or first emulator)
+  --android-select-local           Tap through Android first-run Local runtime selection
   --android-background             Background Android, force-fire the WorkManager job, and poll /api/health
   --ios-background                 Background iOS, fire a BGTaskScheduler task via LLDB, and poll /api/health
   --ios-background-task-id ID      iOS BGTask identifier to simulate (default: ai.eliza.tasks.refresh)
@@ -444,27 +439,13 @@ function androidDeviceSerial(adb) {
     ["devices"],
     "No Android device or emulator is available.",
   );
-  const connected = devices
+  const line = devices
     .split("\n")
     .slice(1)
     .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      const [serial, state] = entry.split(/\s+/, 2);
-      return { serial, state };
-    })
-    .filter((entry) => entry.serial && entry.state === "device");
-  const requestedSerial = androidSerialArg?.trim();
-  if (requestedSerial) {
-    return connected.some((entry) => entry.serial === requestedSerial)
-      ? requestedSerial
-      : null;
-  }
-  return (
-    connected.find((entry) => entry.serial.startsWith("emulator-"))?.serial ??
-    connected[0]?.serial ??
-    null
-  );
+    .find((entry) => entry.endsWith("\tdevice"));
+  if (!line) return null;
+  return line.split(/\s+/)[0];
 }
 
 function launchAndroidEmulatorApp() {
@@ -495,10 +476,8 @@ function launchAndroidEmulatorApp() {
   }
 
   const context = { adb, serial, installed: true };
-  cleanupAndroidAgentForwards(context, "pre-launch");
   if (androidSelectLocal) {
     forceStopConflictingAndroidAgents(context);
-    clearAndroidLocalAgentStartupArtifacts(context);
     preseedAndroidLocalRuntime(context);
   }
 
@@ -590,29 +569,6 @@ function forceStopConflictingAndroidAgents(context) {
   }
 }
 
-function clearAndroidLocalAgentStartupArtifacts(context) {
-  if (!context?.installed) return;
-  const script = [
-    `rm -f ${shellQuote(ANDROID_LOCAL_AGENT_TOKEN_PATH)}`,
-    "rm -f files/auth/local-agent-token.tmp 2>/dev/null || true",
-  ].join(" && ");
-  const cleared = tryExec(
-    context.adb,
-    [
-      "-s",
-      context.serial,
-      "shell",
-      `run-as ${shellQuote(appId())} sh -c ${shellQuote(script)}`,
-    ],
-    { allowFailure: true },
-  );
-  if (cleared !== null) {
-    console.log(
-      "[local-chat-smoke] Cleared stale Android local-agent startup artifacts.",
-    );
-  }
-}
-
 function preseedAndroidLocalRuntime(context) {
   const activeServer = JSON.stringify({
     id: "local:android",
@@ -674,32 +630,10 @@ function readAndroidLocalAgentToken(context) {
       "run-as",
       appId(),
       "cat",
-      ANDROID_LOCAL_AGENT_TOKEN_PATH,
+      "files/auth/local-agent-token",
     ],
     { allowFailure: true },
   );
-}
-
-function listAndroidAgentForwards(context) {
-  if (!context?.installed) return [];
-  const output = tryExec(
-    context.adb,
-    ["-s", context.serial, "forward", "--list"],
-    { allowFailure: true },
-  );
-  if (!output) return [];
-  const forwards = [];
-  for (const line of output.split("\n")) {
-    const parts = line.trim().split(/\s+/);
-    if (
-      parts.length >= 3 &&
-      parts[0] === context.serial &&
-      parts[2] === ANDROID_LOCAL_AGENT_DEVICE_FORWARD
-    ) {
-      forwards.push(parts[1]);
-    }
-  }
-  return forwards;
 }
 
 function removeAndroidForward(context, localPort) {
@@ -712,12 +646,9 @@ function removeAndroidForward(context, localPort) {
 
 function cleanupAndroidAgentForwards(context, reason) {
   if (!context?.installed) return;
-  const forwardedPorts = Array.from(
-    new Set([
-      ...(context.localAgentForward ? [context.localAgentForward] : []),
-      ...listAndroidAgentForwards(context),
-    ]),
-  );
+  const forwardedPorts = context.localAgentForward
+    ? [context.localAgentForward]
+    : [];
   for (const localPort of forwardedPorts) {
     removeAndroidForward(context, localPort);
   }
@@ -727,109 +658,6 @@ function cleanupAndroidAgentForwards(context, reason) {
       `[local-chat-smoke] Removed Android adb forward(s) for tcp:31337 (${reason}): ${forwardedPorts.join(", ")}.`,
     );
   }
-}
-
-function compactDiagnostic(value, max = 4000) {
-  if (!value) return "<empty>";
-  const trimmed = String(value).trim();
-  if (trimmed.length <= max) return trimmed;
-  return `${trimmed.slice(0, max)}\n… <truncated ${trimmed.length - max} chars>`;
-}
-
-function tokenSummary(token) {
-  const trimmed = token?.trim();
-  if (!trimmed) return "absent";
-  return `present length=${trimmed.length}`;
-}
-
-function androidShell(context, command, max = 4000) {
-  const output = tryExec(
-    context.adb,
-    ["-s", context.serial, "shell", command],
-    { allowFailure: true },
-  );
-  return compactDiagnostic(output, max);
-}
-
-function _collectAndroidAgentDiagnostics(
-  context,
-  { forwardedApiBase = null, token = null, lastError = null } = {},
-) {
-  if (!context?.installed) return "Android app is not installed.";
-  const id = appId();
-  const forwards = tryExec(
-    context.adb,
-    ["-s", context.serial, "forward", "--list"],
-    { allowFailure: true },
-  );
-  const serviceDump = tryExec(
-    context.adb,
-    ["-s", context.serial, "shell", "dumpsys", "activity", "services", id],
-    { allowFailure: true },
-  );
-  const appFiles = tryExec(
-    context.adb,
-    [
-      "-s",
-      context.serial,
-      "shell",
-      `run-as ${shellQuote(id)} sh -c ${shellQuote(
-        [
-          `ls -l ${ANDROID_LOCAL_AGENT_TOKEN_PATH} files/agent/agent.log files/.eliza/logs/agent.log 2>&1`,
-          "tail -n 40 files/agent/agent.log 2>/dev/null || true",
-          "tail -n 80 files/.eliza/logs/agent.log 2>/dev/null || true",
-        ].join("; "),
-      )}`,
-    ],
-    { allowFailure: true },
-  );
-  const portState = androidShell(
-    context,
-    [
-      "(toybox ss -ltnp 2>/dev/null || ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null || cat /proc/net/tcp /proc/net/tcp6 2>/dev/null)",
-      "| grep -E '(:31337|:7A69|7A69)' || true",
-    ].join(" "),
-    2000,
-  );
-  const processState = androidShell(
-    context,
-    [
-      "ps -A -o USER,PID,PPID,NAME,ARGS 2>/dev/null",
-      `| grep -E ${shellQuote(`(${id}|ElizaAgent|bun|agent-bundle)`)}`,
-      "| grep -v grep || true",
-    ].join(" "),
-    3000,
-  );
-  const logcat = tryExec(
-    context.adb,
-    [
-      "-s",
-      context.serial,
-      "shell",
-      "logcat",
-      "-d",
-      "-t",
-      "160",
-      "-s",
-      "ElizaAgent",
-      "ElizaMainActivity",
-    ],
-    { allowFailure: true },
-  );
-
-  return [
-    `serial=${context.serial}`,
-    `package=${id}`,
-    `forwardedApiBase=${forwardedApiBase ?? "<none>"}`,
-    `token=${tokenSummary(token)}`,
-    `lastError=${lastError ?? "<none>"}`,
-    `adb forwards:\n${compactDiagnostic(forwards, 2000)}`,
-    `device port 31337:\n${portState}`,
-    `processes:\n${processState}`,
-    `services:\n${compactDiagnostic(serviceDump, 3000)}`,
-    `app-owned logs/files:\n${compactDiagnostic(appFiles, 4000)}`,
-    `logcat:\n${compactDiagnostic(logcat, 4000)}`,
-  ].join("\n\n");
 }
 
 async function selectAndroidLocalRuntime(context) {

@@ -2,4 +2,6 @@
 
 /* We are hiding the "Remember this key" option so this section of the
    settings is irrelevant. */
-#torOnionServiceKeys {display: none !important}
+#torOnionServiceKeys {
+  display: none !important;
+}

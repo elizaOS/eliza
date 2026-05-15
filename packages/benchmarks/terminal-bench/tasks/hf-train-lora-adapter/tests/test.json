@@ -98,12 +98,7 @@
   {
     "id": 408,
     "question": "Which protein is known for its role in regulating glucose metabolism in the human body?",
-    "options": [
-      "A. Hemoglobin",
-      "B. Insulin",
-      "C. Lactase",
-      "D. Pepsin"
-    ],
+    "options": ["A. Hemoglobin", "B. Insulin", "C. Lactase", "D. Pepsin"],
     "answer": "B",
     "is_few_shot": 0
   },
@@ -242,12 +237,7 @@
   {
     "id": 420,
     "question": "Which element must be present for a compound to be considered organic?",
-    "options": [
-      "A. Nitrogen",
-      "B. Carbon",
-      "C. Oxygen",
-      "D. Hydrogen"
-    ],
+    "options": ["A. Nitrogen", "B. Carbon", "C. Oxygen", "D. Hydrogen"],
     "answer": "B",
     "is_few_shot": 0
   },
@@ -422,12 +412,7 @@
   {
     "id": 435,
     "question": "What percentage of the total water on Earth is fresh water, readily available for living organisms?",
-    "options": [
-      "A. 50%",
-      "B. 75%",
-      "C. 90%",
-      "D. 2%"
-    ],
+    "options": ["A. 50%", "B. 75%", "C. 90%", "D. 2%"],
     "answer": "D",
     "is_few_shot": 0
   },
@@ -506,12 +491,7 @@
   {
     "id": 442,
     "question": "Which percentage of the nervous system is made up of neurons?",
-    "options": [
-      "A. 90%",
-      "B. 10%",
-      "C. 50%",
-      "D. 80%"
-    ],
+    "options": ["A. 90%", "B. 10%", "C. 50%", "D. 80%"],
     "answer": "B",
     "is_few_shot": 0
   },
@@ -566,12 +546,7 @@
   {
     "id": 447,
     "question": "Which nucleotide is incorporated into RNA in place of thymine when transcribing DNA into RNA?",
-    "options": [
-      "A. Adenine",
-      "B. Cytosine",
-      "C. Guanine",
-      "D. Uracil"
-    ],
+    "options": ["A. Adenine", "B. Cytosine", "C. Guanine", "D. Uracil"],
     "answer": "D",
     "is_few_shot": 0
   },
@@ -674,12 +649,7 @@
   {
     "id": 456,
     "question": "Which organelle in a neuron is responsible for protein synthesis and is located in the endoplasmic reticulum?",
-    "options": [
-      "A. Dendrites",
-      "B. Nucleolus",
-      "C. Cell body",
-      "D. Axon"
-    ],
+    "options": ["A. Dendrites", "B. Nucleolus", "C. Cell body", "D. Axon"],
     "answer": "C",
     "is_few_shot": 0
   },
@@ -914,12 +884,7 @@
   {
     "id": 476,
     "question": "Which process makes a memory more recallable in the future when it is accessed for retrieval?",
-    "options": [
-      "A. Encoding",
-      "B. Storage",
-      "C. Retrieval",
-      "D. Interference"
-    ],
+    "options": ["A. Encoding", "B. Storage", "C. Retrieval", "D. Interference"],
     "answer": "C",
     "is_few_shot": 0
   },
@@ -974,12 +939,7 @@
   {
     "id": 481,
     "question": "Which protein is involved in the first checkpoint of the cell cycle, preventing the cell from entering the cycle unless DNA is intact?",
-    "options": [
-      "A. p53.",
-      "B. Rb protein.",
-      "C. Cyclins.",
-      "D. Cdk."
-    ],
+    "options": ["A. p53.", "B. Rb protein.", "C. Cyclins.", "D. Cdk."],
     "answer": "B",
     "is_few_shot": 0
   },
@@ -1166,12 +1126,7 @@
   {
     "id": 497,
     "question": "Which immunoglobulin subclass has the longest cytoplasmic tail?",
-    "options": [
-      "A. IgG1",
-      "B. IgG2",
-      "C. IgG3",
-      "D. IgG4"
-    ],
+    "options": ["A. IgG1", "B. IgG2", "C. IgG3", "D. IgG4"],
     "answer": "A",
     "is_few_shot": 0
   },

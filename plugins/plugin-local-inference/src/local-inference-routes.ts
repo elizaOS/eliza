@@ -1085,7 +1085,25 @@ export async function handleLocalInferenceRoutes(
 		);
 		if (await handleVoiceOnboardingRoutes(req, res)) return true;
 	}
+	// Family-member capture route lives under /v1/voice/onboarding/family-member.
+	if (pathname === "/v1/voice/onboarding/family-member") {
+		const { handleFamilyMemberRoute } = await import(
+			"./routes/family-member-route.js"
+		);
+		if (await handleFamilyMemberRoute(req, res)) return true;
+	}
 	if (!pathname.startsWith("/api/local-inference/")) return false;
+
+	// Voice-sub-model auto-updater compat namespace
+	// (R5-versioning §3 + §4 + §5). The route module owns its own
+	// path-prefix check and returns false on miss so non-voice-model
+	// /api/local-inference/* paths fall through to the handlers below.
+	if (pathname.startsWith("/api/local-inference/voice-models")) {
+		const { handleVoiceModelsRoutes } = await import(
+			"./routes/voice-models-routes.js"
+		);
+		if (await handleVoiceModelsRoutes(req, res)) return true;
+	}
 
 	if (
 		method === "GET" &&

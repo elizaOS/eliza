@@ -236,9 +236,6 @@ export function nativeModuleStubPlugin(
     // specifier into the output bundle.
     "chalk",
     "drizzle-orm",
-    // Server-side secrets/vault implementation. Renderer/mobile builds talk to
-    // the app-core API instead of loading keychain/PGlite vault internals.
-    "@elizaos/vault",
   ]);
   if (!isCapacitorMobileBuild) {
     // Mobile-only Capacitor llama.cpp runtime. Web/Electrobun builds stub it,
@@ -470,78 +467,6 @@ export function nativeModuleStubPlugin(
           "    );",
           "  }",
           "}",
-        ].join("\n");
-      }
-
-      if (
-        strippedId === "@elizaos/vault" ||
-        strippedId.startsWith("@elizaos/vault/")
-      ) {
-        return [
-          "class VaultMissError extends Error { constructor(message = 'Vault entry not found') { super(message); this.name = 'VaultMissError'; } }",
-          "class MasterKeyUnavailableError extends Error { constructor(message = 'Vault master key unavailable in renderer build') { super(message); this.name = 'MasterKeyUnavailableError'; } }",
-          "class BackendNotSignedInError extends Error { constructor(message = 'Password manager is unavailable in renderer build') { super(message); this.name = 'BackendNotSignedInError'; } }",
-          "class PasswordManagerError extends Error { constructor(message = 'Password manager is unavailable in renderer build') { super(message); this.name = 'PasswordManagerError'; } }",
-          "class CryptoError extends Error { constructor(message = 'Vault crypto is unavailable in renderer build') { super(message); this.name = 'CryptoError'; } }",
-          "const asyncUndefined = async () => undefined;",
-          "const asyncNull = async () => null;",
-          "const asyncFalse = async () => false;",
-          "const asyncArray = async () => [];",
-          "const asyncObject = async () => ({});",
-          "const noop = () => undefined;",
-          "const vault = { get: asyncUndefined, set: asyncUndefined, delete: asyncUndefined, list: asyncArray, has: asyncFalse };",
-          "const manager = { vault, secrets: vault, getVault: () => vault };",
-          "const createVault = () => vault;",
-          "const createManager = () => manager;",
-          "const createTestVault = () => vault;",
-          "const KEY_BYTES = 32;",
-          "const META_PREFIX = 'meta:';",
-          "const PROFILE_SEGMENT = 'profiles';",
-          "const ROUTING_KEY = 'routing';",
-          "const DEFAULT_PREFERENCES = {};",
-          "const BACKEND_INSTALL_SPECS = {};",
-          "export { VaultMissError, MasterKeyUnavailableError, BackendNotSignedInError, PasswordManagerError, CryptoError };",
-          "export { createVault, createManager, createTestVault };",
-          "export { KEY_BYTES, META_PREFIX, PROFILE_SEGMENT, ROUTING_KEY, DEFAULT_PREFERENCES, BACKEND_INSTALL_SPECS };",
-          "export const defaultPgliteVaultDataDir = noop;",
-          "export class PgliteVaultImpl { constructor() { return vault; } }",
-          "export const createTestManager = createManager;",
-          "export const getAutofillAllowed = asyncFalse;",
-          "export const getSavedLogin = asyncNull;",
-          "export const listSavedLogins = asyncArray;",
-          "export const setAutofillAllowed = asyncUndefined;",
-          "export const setSavedLogin = asyncUndefined;",
-          "export const deleteSavedLogin = asyncUndefined;",
-          "export const categorizeKey = (key) => ({ key, category: 'unknown' });",
-          "export const inferProviderId = () => null;",
-          "export const listVaultInventory = asyncArray;",
-          "export const profileStorageKey = (profileId, key) => profileId ? `${profileId}:${key}` : key;",
-          "export const readEntryMeta = asyncNull;",
-          "export const setEntryMeta = asyncUndefined;",
-          "export const removeEntryMeta = asyncUndefined;",
-          "export const readRoutingConfig = asyncObject;",
-          "export const writeRoutingConfig = asyncUndefined;",
-          "export const resolveActiveValue = asyncNull;",
-          "export const decrypt = asyncUndefined;",
-          "export const encrypt = asyncUndefined;",
-          "export const generateMasterKey = () => new Uint8Array(KEY_BYTES);",
-          "export const defaultMasterKey = noop;",
-          "export const inMemoryMasterKey = noop;",
-          "export const osKeychainMasterKey = noop;",
-          "export const passphraseMasterKey = noop;",
-          "export const passphraseMasterKeyFromEnv = noop;",
-          "export const resolveReference = asyncNull;",
-          "export const defaultExecFn = asyncObject;",
-          "export const listBitwardenLogins = asyncArray;",
-          "export const listOnePasswordLogins = asyncArray;",
-          "export const revealBitwardenLogin = asyncNull;",
-          "export const revealOnePasswordLogin = asyncNull;",
-          "export const buildInstallCommand = () => '';",
-          "export const currentPlatform = () => 'browser';",
-          "export const detectPackageManagers = asyncArray;",
-          "export const resetInstallerCache = noop;",
-          "export const resolveRunnableMethods = asyncArray;",
-          "export default { createVault, createManager, createTestVault, VaultMissError };",
         ].join("\n");
       }
 

@@ -49,8 +49,8 @@ describe("local inference recommendations", () => {
       freeRamGb: 96,
       gpu: {
         backend: "cuda",
-        totalVramGb: 112,
-        freeVramGb: 96,
+        totalVramGb: 128,
+        freeVramGb: 110,
       },
       source: "node-llama-cpp",
     });
@@ -58,23 +58,6 @@ describe("local inference recommendations", () => {
     const recommended = selectRecommendedModels(probe);
 
     expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-256k");
-  });
-
-  it("picks the 27B 1M tier on H200-class GPU headroom", () => {
-    const probe = hardware({
-      totalRamGb: 256,
-      freeRamGb: 192,
-      gpu: {
-        backend: "cuda",
-        totalVramGb: 141,
-        freeVramGb: 128,
-      },
-      source: "node-llama-cpp",
-    });
-
-    const recommended = selectRecommendedModels(probe);
-
-    expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b-1m");
   });
 
   it("uses the mobile platform ladder and prefers the small Eliza-1 tier when it fits", () => {

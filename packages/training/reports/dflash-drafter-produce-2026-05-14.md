@@ -1,16 +1,5 @@
 # DFlash drafter production — status, blockers, launch plan (2026-05-14)
 
-> **2026-05-15 update.** `eliza-1-0_8b` is now an explicit
-> fail-open/no-drafter tier. The current 0.8B smoke proved the candidate
-> artifact is not release-valid: it is not smaller than the target, is
-> missing `dflash-draft.target_checkpoint_sha256`, and
-> `dflash/target-meta.json` does not prove
-> `drafter.matchesTargetCheckpoint=true`. Rather than bless that as a
-> fake drafter, release evidence for 0_8b is
-> `dflash/dflash-disabled-0_8b.release-policy.json`, and runtime must use
-> normal target decoding. All other active tiers remain fail-closed until
-> trained, stamped, validated, and benchmarked.
-
 > **TL;DR.** Zero new Qwen3.5 drafter GGUFs were produced this run.
 > Every tier that needs a drafter (`eliza-1-{2b,4b,9b,27b,27b-256k,27b-1m}`)
 > is blocked on an upstream prerequisite — there is no SFT'd target text
@@ -35,7 +24,7 @@ near lines 84-121).
 
 | eliza-1 tier      | needs drafter? | student base                  | distill target            | KD recipe                                | acceptance gate | GGUF output |
 |-------------------|:--------------:|--------------------------------|---------------------------|-------------------------------------------|:---------------:|-------------|
-| `eliza-1-0_8b`    | **NO — disabled by policy** | n/a | n/a | fail open to normal target decode | n/a | `dflash-disabled-0_8b.release-policy.json`; no `drafter-0_8b.gguf` |
+| `eliza-1-0_8b`    | **NO**         | n/a (it _is_ the drafter base) | n/a                       | n/a                                       | n/a             | n/a         |
 | `eliza-1-2b`      | YES            | `Qwen/Qwen3.5-0.8B-Base`       | `elizaos/eliza-1/bundles/2b` (SFT'd `Qwen/Qwen3.5-2B-Base`) | top-k forward KL + 0.1 CE floor, APOLLO/APOLLO-Mini | 0.48 | `drafter-2b.gguf` (Q4_K_M after quant; script writes f16 by default — re-quant to Q4_K_M post-distill) |
 | `eliza-1-4b`      | YES            | `Qwen/Qwen3.5-0.8B-Base`       | `elizaos/eliza-1/bundles/4b`                                | same                                                | 0.52 | `drafter-4b.gguf`  |
 | `eliza-1-9b`      | YES            | `Qwen/Qwen3.5-0.8B-Base`       | `elizaos/eliza-1/bundles/9b`                                | same                                                | 0.52 | `drafter-9b.gguf`  |
@@ -344,73 +333,5 @@ distillation in the cloud.
   state record.
 
 No GGUFs, manifests, or runtime catalog entries changed in this run.
-
-## Section 8 — 2026-05-15 DFlash policy patch
-
-### 8.1 Release policy now enforced by DFlash-owned tooling
-
-- `0_8b` is DFlash-disabled. The distiller writes
-  `dflash-disabled-0_8b.release-policy.json` and refuses a
-  `drafter-0_8b.gguf`.
-- `validate_drafter.py --tier 0_8b` passes only when no drafter artifact
-  is present; if a drafter file exists, it exits non-zero as a policy
-  violation.
-- `dflash_drafter_runtime_smoke.mjs --tier 0_8b --dflash-policy disabled`
-  reports `metadataStatus=dflash_disabled` with no drafter. If a stale
-  drafter path exists, it reports `policy_violation`.
-- Required tiers still gate on target hash stamp, tokenizer metadata,
-  smaller-than-target, target-meta proof, and acceptance.
-
-### 8.2 Required-tier Nebius invocation
-
-```sh
-cd packages/training
-export TARGET_CHECKPOINT_ROOT=/data/checkpoints
-export TARGET_GGUF_ROOT=/data/eliza-1-final-gguf
-export DATASET_ROOT=/data/distill-datasets
-export OUTPUT_ROOT=/data/dflash-out
-
-# First required release target.
-bash scripts/dflash/nebius/launch_all_tiers.sh --tiers 2b
-
-# Then the rest, once their SFT targets and final GGUFs exist.
-bash scripts/dflash/nebius/launch_all_tiers.sh --tiers 4b,9b
-bash scripts/dflash/nebius/launch_all_tiers.sh --tiers 27b,27b-256k,27b-1m
-```
-
-Expected artifact path per required tier:
-`$OUTPUT_ROOT/<tier>-<timestamp>/drafter-<tier>-h200.distill.json`, with
-bundle manifest path `dflash/drafter-<tier>.distill.json`.
-
-### 8.3 Vast fallback invocation
-
-Vast remains a fallback for required tiers when a 96 GB Blackwell/B200
-offer is cheaper than Nebius H200. Use the same repo checkout and the
-same H200 launcher inside the Vast box; do not use `0_8b`.
-
-```sh
-cd packages/training
-ELIZA_VAST_GPU_PREFERENCE=B200,H200,BLACKWELL6000 \
-REGISTRY_KEY=qwen3.5-2b \
-bash scripts/train_vast.sh provision
-bash scripts/train_vast.sh sync
-
-# On the Vast host, after sync:
-TARGET_CHECKPOINT_ROOT=/data/checkpoints \
-TARGET_GGUF_ROOT=/data/eliza-1-final-gguf \
-DATASET_ROOT=/data/distill-datasets \
-OUTPUT_ROOT=/data/dflash-out \
-bash scripts/dflash/nebius/launch_all_tiers.sh --tiers 2b
-```
-
-### 8.4 Remaining blockers
-
-- No active-tier SFT target checkpoints are present locally.
-- No final active-tier target GGUFs are present locally, so no
-  `dflash-draft.target_checkpoint_sha256` stamps can be generated.
-- No acceptance/speedup hardware reports exist for required-tier
-  drafters because no required-tier drafter GGUF has been produced.
-- Existing 0_8b drafter artifacts, if present in a bundle, must be
-  removed or ignored by a target-meta/policy path before release.
 
 End of report.

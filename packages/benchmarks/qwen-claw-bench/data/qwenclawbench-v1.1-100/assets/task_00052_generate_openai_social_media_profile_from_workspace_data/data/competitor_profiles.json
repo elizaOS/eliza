@@ -11,7 +11,13 @@
     "mbti_type": "INFJ",
     "location": "美国",
     "occupation": "AI安全研究",
-    "topics_of_interest": ["AI安全", "对齐研究", "负责任AI", "机器学习", "AI伦理"]
+    "topics_of_interest": [
+      "AI安全",
+      "对齐研究",
+      "负责任AI",
+      "机器学习",
+      "AI伦理"
+    ]
   },
   {
     "entity_name": "DeepMind",
@@ -25,7 +31,13 @@
     "mbti_type": "INTJ",
     "location": "英国",
     "occupation": "AI研究",
-    "topics_of_interest": ["人工智能", "科学发现", "蛋白质折叠", "强化学习", "神经科学"]
+    "topics_of_interest": [
+      "人工智能",
+      "科学发现",
+      "蛋白质折叠",
+      "强化学习",
+      "神经科学"
+    ]
   },
   {
     "entity_name": "Meta AI",
@@ -39,7 +51,13 @@
     "mbti": "ENTP",
     "country": "美国",
     "profession": "AI研究与开源开发",
-    "interested_topics": ["开源AI", "大语言模型", "计算机视觉", "自监督学习", "AI社区"]
+    "interested_topics": [
+      "开源AI",
+      "大语言模型",
+      "计算机视觉",
+      "自监督学习",
+      "AI社区"
+    ]
   },
   {
     "entity_name": "Stability AI",
@@ -53,7 +71,13 @@
     "mbti": "ENFP",
     "country": "英国",
     "profession": "生成式AI",
-    "interested_topics": ["AI艺术", "图像生成", "开源模型", "创意工具", "数字艺术"]
+    "interested_topics": [
+      "AI艺术",
+      "图像生成",
+      "开源模型",
+      "创意工具",
+      "数字艺术"
+    ]
   },
   {
     "entity_name": "Cohere",
@@ -67,6 +91,12 @@
     "mbti": "ISTJ",
     "country": "加拿大",
     "profession": "企业AI解决方案",
-    "interested_topics": ["自然语言处理", "企业AI", "语义搜索", "文本生成", "AI商业应用"]
+    "interested_topics": [
+      "自然语言处理",
+      "企业AI",
+      "语义搜索",
+      "文本生成",
+      "AI商业应用"
+    ]
   }
 ]

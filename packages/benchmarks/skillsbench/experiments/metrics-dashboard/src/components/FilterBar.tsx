@@ -1,31 +1,34 @@
-import type { TrialStatus } from '../types/metrics'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Search, X } from 'lucide-react'
+import { Search, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import type { TrialStatus } from "../types/metrics";
 
 interface FilterBarProps {
-  searchQuery: string
-  onSearchChange: (query: string) => void
-  agents: string[]
-  selectedAgents: string[]
-  onAgentsChange: (agents: string[]) => void
-  models: string[]
-  selectedModels: string[]
-  onModelsChange: (models: string[]) => void
-  statuses: TrialStatus[]
-  selectedStatuses: TrialStatus[]
-  onStatusesChange: (statuses: TrialStatus[]) => void
-  hasActiveFilters: boolean
-  onClearFilters: () => void
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
+  agents: string[];
+  selectedAgents: string[];
+  onAgentsChange: (agents: string[]) => void;
+  models: string[];
+  selectedModels: string[];
+  onModelsChange: (models: string[]) => void;
+  statuses: TrialStatus[];
+  selectedStatuses: TrialStatus[];
+  onStatusesChange: (statuses: TrialStatus[]) => void;
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
 }
 
-const statusVariant: Record<TrialStatus, 'success' | 'destructive' | 'warning' | 'error'> = {
-  pass: 'success',
-  fail: 'destructive',
-  error: 'error',
-  timeout: 'warning',
-}
+const statusVariant: Record<
+  TrialStatus,
+  "success" | "destructive" | "warning" | "error"
+> = {
+  pass: "success",
+  fail: "destructive",
+  error: "error",
+  timeout: "warning",
+};
 
 export function FilterBar({
   searchQuery,
@@ -41,31 +44,31 @@ export function FilterBar({
   hasActiveFilters,
   onClearFilters,
 }: FilterBarProps) {
-  const allStatuses: TrialStatus[] = ['pass', 'fail', 'error', 'timeout']
+  const allStatuses: TrialStatus[] = ["pass", "fail", "error", "timeout"];
 
   const toggleAgent = (agent: string) => {
     if (selectedAgents.includes(agent)) {
-      onAgentsChange(selectedAgents.filter((a) => a !== agent))
+      onAgentsChange(selectedAgents.filter((a) => a !== agent));
     } else {
-      onAgentsChange([...selectedAgents, agent])
+      onAgentsChange([...selectedAgents, agent]);
     }
-  }
+  };
 
   const toggleModel = (model: string) => {
     if (selectedModels.includes(model)) {
-      onModelsChange(selectedModels.filter((m) => m !== model))
+      onModelsChange(selectedModels.filter((m) => m !== model));
     } else {
-      onModelsChange([...selectedModels, model])
+      onModelsChange([...selectedModels, model]);
     }
-  }
+  };
 
   const toggleStatus = (status: TrialStatus) => {
     if (selectedStatuses.includes(status)) {
-      onStatusesChange(selectedStatuses.filter((s) => s !== status))
+      onStatusesChange(selectedStatuses.filter((s) => s !== status));
     } else {
-      onStatusesChange([...selectedStatuses, status])
+      onStatusesChange([...selectedStatuses, status]);
     }
-  }
+  };
 
   return (
     <div className="space-y-3 mb-6">
@@ -94,7 +97,9 @@ export function FilterBar({
       <div className="flex flex-wrap gap-4">
         {/* Status filters */}
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground uppercase tracking-wide">Status:</span>
+          <span className="text-xs text-muted-foreground uppercase tracking-wide">
+            Status:
+          </span>
           <div className="flex gap-1">
             {allStatuses.map((status) => (
               <button
@@ -103,7 +108,11 @@ export function FilterBar({
                 className="focus:outline-none"
               >
                 <Badge
-                  variant={selectedStatuses.includes(status) ? statusVariant[status] : 'outline'}
+                  variant={
+                    selectedStatuses.includes(status)
+                      ? statusVariant[status]
+                      : "outline"
+                  }
                   className="cursor-pointer hover:opacity-80"
                 >
                   {status}
@@ -116,7 +125,9 @@ export function FilterBar({
         {/* Agent filters */}
         {agents.length > 0 && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Agent:</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
+              Agent:
+            </span>
             <div className="flex gap-1 flex-wrap">
               {agents.map((agent) => (
                 <button
@@ -125,7 +136,9 @@ export function FilterBar({
                   className="focus:outline-none"
                 >
                   <Badge
-                    variant={selectedAgents.includes(agent) ? 'default' : 'outline'}
+                    variant={
+                      selectedAgents.includes(agent) ? "default" : "outline"
+                    }
                     className="cursor-pointer hover:opacity-80"
                   >
                     {agent}
@@ -139,7 +152,9 @@ export function FilterBar({
         {/* Model filters */}
         {models.length > 0 && (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground uppercase tracking-wide">Model:</span>
+            <span className="text-xs text-muted-foreground uppercase tracking-wide">
+              Model:
+            </span>
             <div className="flex gap-1 flex-wrap">
               {models.map((model) => (
                 <button
@@ -148,10 +163,12 @@ export function FilterBar({
                   className="focus:outline-none"
                 >
                   <Badge
-                    variant={selectedModels.includes(model) ? 'secondary' : 'outline'}
+                    variant={
+                      selectedModels.includes(model) ? "secondary" : "outline"
+                    }
                     className="cursor-pointer hover:opacity-80"
                   >
-                    {model.split('@')[0]}
+                    {model.split("@")[0]}
                   </Badge>
                 </button>
               ))}
@@ -160,5 +177,5 @@ export function FilterBar({
         )}
       </div>
     </div>
-  )
+  );
 }

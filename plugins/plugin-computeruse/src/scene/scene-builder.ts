@@ -27,9 +27,13 @@
  */
 
 import { EventEmitter } from "node:events";
-import { findDisplay, listDisplays } from "../platform/displays.js";
-import { captureAllDisplays, captureDisplay, captureDisplayRegion } from "../platform/capture.js";
 import type { DisplayCapture } from "../platform/capture.js";
+import {
+  captureAllDisplays,
+  captureDisplay,
+  captureDisplayRegion,
+} from "../platform/capture.js";
+import { findDisplay, listDisplays } from "../platform/displays.js";
 import type { DisplayDescriptor } from "../types.js";
 import {
   type AccessibilityProvider,
@@ -46,8 +50,8 @@ import {
   pngDimensions,
 } from "./dhash.js";
 import {
-  type OcrAdapterIdState,
   makeOcrIdState,
+  type OcrAdapterIdState,
   runOcrOnPng,
   runOcrOnRegions,
   setOcrLoggingHook,
@@ -160,7 +164,9 @@ export class SceneBuilder extends EventEmitter {
    *
    * Returns the produced Scene. Subscribers are notified after.
    */
-  async tick(mode: "idle" | "active" | "agent-turn" = "active"): Promise<Scene> {
+  async tick(
+    mode: "idle" | "active" | "agent-turn" = "active",
+  ): Promise<Scene> {
     if (this.inFlight) return this.inFlight;
     const promise = this.run(mode);
     this.inFlight = promise;
@@ -243,7 +249,9 @@ export class SceneBuilder extends EventEmitter {
         dirty !== null &&
         dirty.length === 0
       ) {
-        const cached = state.lastScene.scene.ocr.filter((b) => b.displayId === displayId);
+        const cached = state.lastScene.scene.ocr.filter(
+          (b) => b.displayId === displayId,
+        );
         ocr.push(...cached);
       } else if (wantOcr) {
         // 2. Dirty-block fast path: only re-capture + re-OCR the changed
@@ -257,7 +265,12 @@ export class SceneBuilder extends EventEmitter {
           dirtyFraction < 0.5 &&
           prevOcr.length > 0
         ) {
-          const rects = coalesceDirtyBlocks(dirty, grid, dims.width, dims.height);
+          const rects = coalesceDirtyBlocks(
+            dirty,
+            grid,
+            dims.width,
+            dims.height,
+          );
           const crops: Array<{
             png: Buffer;
             bbox: [number, number, number, number];
@@ -289,7 +302,8 @@ export class SceneBuilder extends EventEmitter {
             );
             // Drop previous OCR boxes that intersect any dirty rect; keep the rest.
             const keep = prevOcr.filter(
-              (b) => b.displayId === displayId && !intersectsAnyRect(b.bbox, rects),
+              (b) =>
+                b.displayId === displayId && !intersectsAnyRect(b.bbox, rects),
             );
             ocr.push(...keep, ...refreshed);
           } else {
@@ -312,9 +326,7 @@ export class SceneBuilder extends EventEmitter {
         state.lastBlockGrid = grid ?? state.lastBlockGrid;
       } else if (state.lastScene.scene.ocr) {
         ocr.push(
-          ...state.lastScene.scene.ocr.filter(
-            (b) => b.displayId === displayId,
-          ),
+          ...state.lastScene.scene.ocr.filter((b) => b.displayId === displayId),
         );
       }
 
@@ -444,7 +456,8 @@ function inferFocusedWindow(
   }
   if (!bestAx) return null;
   // Resolve display.
-  const display = displays.find((d) => d.id === bestAx.displayId) ?? displays[0];
+  const display =
+    displays.find((d) => d.id === bestAx.displayId) ?? displays[0];
   if (!display) return null;
   // Try to find a matching app via title contains.
   const lcLabel = (bestAx.label ?? "").toLowerCase();
@@ -482,7 +495,8 @@ function intersectsAnyRect(
   const [bx, by, bw, bh] = bbox;
   for (const r of rects) {
     const [rx, ry, rw, rh] = r.bbox;
-    const overlap = bx < rx + rw && bx + bw > rx && by < ry + rh && by + bh > ry;
+    const overlap =
+      bx < rx + rw && bx + bw > rx && by < ry + rh && by + bh > ry;
     if (overlap) return true;
   }
   return false;

@@ -72,7 +72,9 @@ const MAX_ERROR_MSG = 256;
  * Emit a `computeruse.android.action` log entry. Returns the payload so
  * callers can also forward it elsewhere (e.g. in-memory replay buffer).
  */
-export function emitAndroidAction(event: AndroidTrajectoryActionEvent): AndroidTrajectoryActionEvent {
+export function emitAndroidAction(
+  event: AndroidTrajectoryActionEvent,
+): AndroidTrajectoryActionEvent {
   const trimmed: AndroidTrajectoryActionEvent = { ...event };
   if (trimmed.errorMessage) {
     trimmed.errorMessage = trimmed.errorMessage.slice(0, MAX_ERROR_MSG);
@@ -93,7 +95,9 @@ export function emitAndroidAction(event: AndroidTrajectoryActionEvent): AndroidT
  * The shape mirrors what the desktop loop emits in `use-computer-agent.ts`
  * so the trajectory logger can union the two streams.
  */
-export function emitAndroidAgentStep(event: AndroidTrajectoryStepEvent): AndroidTrajectoryStepEvent {
+export function emitAndroidAgentStep(
+  event: AndroidTrajectoryStepEvent,
+): AndroidTrajectoryStepEvent {
   logger.info(
     {
       evt: "computeruse.agent.step",

@@ -21,7 +21,7 @@ import { searchIssuesAction } from "./searchIssues";
 import { handleUpdateComment } from "./updateComment";
 import { handleUpdateIssue } from "./updateIssue";
 
-const LINEAR_CONTEXT = "linear";
+export const LINEAR_CONTEXT = "linear";
 
 type LinearOp =
   | "create_issue"

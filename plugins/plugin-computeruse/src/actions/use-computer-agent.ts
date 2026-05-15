@@ -22,22 +22,22 @@
  */
 
 import {
-  logger,
   type Action,
   type ActionResult,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
 } from "@elizaos/core";
 import { Brain } from "../actor/brain.js";
 import { Cascade } from "../actor/cascade.js";
-import { dispatch } from "../actor/dispatch.js";
 import {
-  makeComputerInterface,
   type ComputerInterface,
+  makeComputerInterface,
 } from "../actor/computer-interface.js";
+import { dispatch } from "../actor/dispatch.js";
 import {
   getRegisteredActor,
   OcrCoordinateGroundingActor,
@@ -93,10 +93,15 @@ export async function runComputerUseAgentLoop(
   service: ComputerUseService,
   deps: AgentDeps = {},
 ): Promise<ComputerUseAgentReport> {
-  const maxSteps = Math.max(1, Math.min(params.maxSteps ?? DEFAULT_MAX_STEPS, 20));
+  const maxSteps = Math.max(
+    1,
+    Math.min(params.maxSteps ?? DEFAULT_MAX_STEPS, 20),
+  );
   const goal = params.goal;
   const brain = deps.brain ?? new Brain(runtime);
-  const actor = getRegisteredActor() ?? new OcrCoordinateGroundingActor(() => service.getCurrentScene());
+  const actor =
+    getRegisteredActor() ??
+    new OcrCoordinateGroundingActor(() => service.getCurrentScene());
   const computer =
     deps.computerInterface ??
     makeComputerInterface({ getScene: () => service.getCurrentScene() });
@@ -173,9 +178,6 @@ export async function runComputerUseAgentLoop(
       return report;
     }
     if (proposed.proposed.kind === "wait") {
-      // Yield without sleeping; the next refreshScene tick will pull fresh
-      // state. A real implementation can plug a delay knob here.
-      continue;
     }
   }
   return report;
@@ -218,8 +220,7 @@ export const computerUseAgentAction: Action = {
   parameters: [
     {
       name: "goal",
-      description:
-        "Natural-language goal, e.g. click save button in dialog.",
+      description: "Natural-language goal, e.g. click save button in dialog.",
       required: true,
       schema: { type: "string" },
     },
@@ -227,7 +228,12 @@ export const computerUseAgentAction: Action = {
       name: "maxSteps",
       description: "Max Brain->dispatch cycles before giving up. Default 5.",
       required: false,
-      schema: { type: "number", minimum: 1, maximum: 20, default: DEFAULT_MAX_STEPS },
+      schema: {
+        type: "number",
+        minimum: 1,
+        maximum: 20,
+        default: DEFAULT_MAX_STEPS,
+      },
     },
   ],
   validate: async (runtime: IAgentRuntime): Promise<boolean> => {
@@ -240,7 +246,10 @@ export const computerUseAgentAction: Action = {
     options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const params = resolveActionParams<ComputerUseAgentParams>(message, options);
+    const params = resolveActionParams<ComputerUseAgentParams>(
+      message,
+      options,
+    );
     if (!params.goal || typeof params.goal !== "string") {
       return {
         success: false,
@@ -278,7 +287,10 @@ export const computerUseAgentAction: Action = {
     [
       {
         name: "{{name1}}",
-        content: { text: "Click the save button in the dialog", source: "chat" },
+        content: {
+          text: "Click the save button in the dialog",
+          source: "chat",
+        },
       },
       {
         name: "{{agentName}}",

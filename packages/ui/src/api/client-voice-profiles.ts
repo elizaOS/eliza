@@ -81,6 +81,31 @@ export interface VoiceProfilePatch {
   retentionDays?: number | null;
 }
 
+export interface FamilyMemberCapturePayload {
+  /** Raw base64-encoded audio blob (webm / wav / ogg). */
+  audioBase64: string;
+  /** Client-measured capture duration in milliseconds. */
+  durationMs: number;
+  /** Display name for the family member, e.g. "Alex". */
+  displayName: string;
+  /** Free-form relationship label, e.g. "spouse", "colleague". */
+  relationship: string;
+  /** Owner entity id — stored as the relationship source on the profile. */
+  ownerEntityId?: string | null;
+}
+
+export interface FamilyMemberCaptureResult {
+  /** Content-addressed voice profile id (`vp_<sha>`). */
+  profileId: string;
+  /** Newly minted entity id for the family member. */
+  entityId: string;
+  displayName: string;
+  relationship: string;
+  /** Canonical relationship tag written to profile metadata. */
+  relationshipTag: "family_of";
+  ownerEntityId: string | null;
+}
+
 /**
  * Single failure context used by every adapter call so the UI can render a
  * stable empty state instead of a generic toast/spinner.
@@ -193,6 +218,43 @@ export class VoiceProfilesClient {
       }
       throw new VoiceProfilesUnavailableError(
         "/api/voice/onboarding/profile/finalize",
+        err,
+      );
+    }
+  }
+
+  /**
+   * Capture a family member's voice and create a bound non-OWNER entity.
+   *
+   * Calls `POST /v1/voice/onboarding/family-member`. On 404 / 503 (encoder
+   * not available) falls back gracefully so onboarding is never blocked.
+   */
+  async captureFamilyMember(
+    payload: FamilyMemberCapturePayload,
+  ): Promise<FamilyMemberCaptureResult> {
+    try {
+      return await this.client.fetch<FamilyMemberCaptureResult>(
+        "/v1/voice/onboarding/family-member",
+        {
+          method: "POST",
+          body: JSON.stringify(payload),
+          headers: { "content-type": "application/json" },
+        },
+      );
+    } catch (err) {
+      if (isMissingEndpointError(err)) {
+        // Graceful fallback — encoder not live or route not registered yet.
+        return {
+          profileId: `family-stub-${Date.now().toString(36)}`,
+          entityId: `family-entity-stub-${Date.now().toString(36)}`,
+          displayName: payload.displayName,
+          relationship: payload.relationship,
+          relationshipTag: "family_of",
+          ownerEntityId: payload.ownerEntityId ?? null,
+        };
+      }
+      throw new VoiceProfilesUnavailableError(
+        "/v1/voice/onboarding/family-member",
         err,
       );
     }

@@ -11,11 +11,8 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-  serializeTokenTree,
-  deserializeTokenTree,
-} from "./token-tree-codec";
 import type { TokenTreeDescriptor } from "./definitions";
+import { deserializeTokenTree, serializeTokenTree } from "./token-tree-codec";
 
 function leavesAsSets(d: TokenTreeDescriptor): Set<string> {
   return new Set(d.leaves.map((l) => l.tokens.join(",")));

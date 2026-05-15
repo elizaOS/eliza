@@ -37,7 +37,7 @@ const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;
 const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as string;
 const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as string;
 
-const openrouterPlugin: Plugin = {
+export const openrouterPlugin: Plugin = {
   name: "openrouter",
   description: "OpenRouter multi-model AI gateway plugin",
   autoEnable: {

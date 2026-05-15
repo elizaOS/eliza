@@ -116,21 +116,6 @@ def test_client_health_reports_missing_binary(tmp_path: Path) -> None:
     assert "not found" in str(result["error"])
 
 
-def test_direct_openai_health_does_not_require_binary(tmp_path: Path) -> None:
-    c = OpenClawClient(
-        binary_path=tmp_path / "missing",
-        direct_openai_compatible=True,
-        provider="cerebras",
-        model="gpt-oss-120b",
-    )
-
-    result = c.health()
-
-    assert result["status"] == "ready"
-    assert result["transport"] == "direct_openai_compatible"
-    assert c.is_ready() is True
-
-
 def test_client_health_reports_error_on_nonzero(
     client: OpenClawClient,
     monkeypatch: pytest.MonkeyPatch,

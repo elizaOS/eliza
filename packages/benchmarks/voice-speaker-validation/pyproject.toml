@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "voice-speaker-validation"
+version = "0.1.0"
+description = "W3-6 multi-speaker audio validation: diarization, speaker ID, entity creation, LRU latency, async search"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "soundfile>=0.12",
+    "librosa>=0.10",
+    "torch>=2.0",
+    "torchaudio>=2.0",
+    "speechbrain>=1.0",
+    "scikit-learn>=1.3",
+    "onnxruntime>=1.16",
+    "pytest>=8.0",
+    "pytest-timeout>=2.2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+timeout = 300
+addopts = [
+    "-v",
+    "--tb=short",
+    "--no-header",
+]

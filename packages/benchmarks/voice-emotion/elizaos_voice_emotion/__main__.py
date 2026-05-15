@@ -1,4 +1,4 @@
-"""CLI entrypoint — `voice-emotion-bench {intrinsic, fidelity, text-intrinsic}`.
+"""CLI entrypoint — `voice-emotion-bench {intrinsic, fidelity, text-intrinsic, roundtrip}`.
 
 Heavy phases (running the Wav2Small ONNX over a real corpus, driving the
 duet harness, loading the GoEmotions test split) live in `runner.py`. This
@@ -19,6 +19,7 @@ from elizaos_voice_emotion.runner import (
     run_intrinsic,
     run_text_intrinsic,
 )
+from elizaos_voice_emotion.roundtrip import run_roundtrip
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -63,6 +64,40 @@ def _build_parser() -> argparse.ArgumentParser:
     text_intrinsic.add_argument("--api-base", default=None)
     text_intrinsic.add_argument("--out", type=pathlib.Path, default=pathlib.Path("bench-text.json"))
 
+    roundtrip = sub.add_parser(
+        "roundtrip",
+        help="W3-5 emotion roundtrip: TTS → audio → classifier → match score.",
+    )
+    roundtrip.add_argument(
+        "--tts-backend",
+        choices=["auto", "kokoro", "mms-tts"],
+        default="auto",
+        help="TTS backend to use (default: auto-detect).",
+    )
+    roundtrip.add_argument(
+        "--onnx",
+        type=pathlib.Path,
+        required=False,
+        help="Path to the Wav2Small ONNX (optional; falls back to SUPERB proxy).",
+    )
+    roundtrip.add_argument(
+        "--voice",
+        default="af_bella",
+        help="Kokoro voice id (default: af_bella).",
+    )
+    roundtrip.add_argument(
+        "--artifact-dir",
+        type=pathlib.Path,
+        required=False,
+        help="Directory for WAV + predictions.json artifacts.",
+    )
+    roundtrip.add_argument(
+        "--out",
+        type=pathlib.Path,
+        default=pathlib.Path("bench-roundtrip.json"),
+        help="Path to write the summary JSON (in addition to artifact-dir).",
+    )
+
     return p
 
 
@@ -95,6 +130,26 @@ def main(argv: list[str] | None = None) -> int:
             corpus_manifest=args.corpus_manifest,
             api_base=args.api_base,
         )
+    elif args.command == "roundtrip":
+        import json as _json
+
+        report = run_roundtrip(
+            artifact_dir=args.artifact_dir,
+            tts_backend=args.tts_backend,
+            onnx_path=args.onnx,
+            tts_voice=args.voice,
+        )
+        target = args.out
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(_json.dumps(report.as_dict(), indent=2, sort_keys=True) + "\n")
+        sys.stderr.write(
+            f"voice-emotion-bench roundtrip: top1={report.top1_match_rate:.1%} "
+            f"n={report.n_total} matched={report.n_matched} "
+            f"macroF1={report.macro_f1_7class:.3f} "
+            f"elapsed={report.elapsed_seconds:.2f}s "
+            f"artifacts={report.artifact_dir}\n"
+        )
+        return 0
     else:
         raise RuntimeError(f"unknown command: {args.command!r}")
     out.elapsed_seconds = round(time.time() - started, 3)

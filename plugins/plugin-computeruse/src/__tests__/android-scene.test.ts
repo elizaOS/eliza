@@ -21,13 +21,13 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { resolveReference } from "../actor/actor.js";
 import {
   androidAxIdToSceneId,
   normalizeAndroidAxNode,
   parseAndroidAxTree,
   sceneAxToAndroidAxNode,
 } from "../mobile/android-scene.js";
-import { resolveReference } from "../actor/actor.js";
 import { ANDROID_LOGICAL_DISPLAY_ID } from "../mobile/mobile-screen-capture.js";
 import type { Scene } from "../scene/scene-types.js";
 
@@ -66,7 +66,10 @@ const KOTLIN_AX_JSON = JSON.stringify([
 
 describe("parseAndroidAxTree", () => {
   it("normalizes the Kotlin shape into the WS6 SceneAxNode shape", () => {
-    const nodes = parseAndroidAxTree(KOTLIN_AX_JSON, ANDROID_LOGICAL_DISPLAY_ID);
+    const nodes = parseAndroidAxTree(
+      KOTLIN_AX_JSON,
+      ANDROID_LOGICAL_DISPLAY_ID,
+    );
     expect(nodes).toHaveLength(3);
     expect(nodes[0]).toMatchObject({
       id: "a0-0",
@@ -98,9 +101,18 @@ describe("parseAndroidAxTree", () => {
 
   it("drops malformed entries instead of throwing", () => {
     const bad = JSON.stringify([
-      { id: "1", role: "Button", bbox: { x: 0, y: 0, w: 10, h: 10 }, actions: [] },
+      {
+        id: "1",
+        role: "Button",
+        bbox: { x: 0, y: 0, w: 10, h: 10 },
+        actions: [],
+      },
       { id: 99, role: "no-string-id" }, // dropped
-      { id: "2", role: "X", bbox: { x: 0, y: 0, w: "bad" as unknown as number, h: 10 } }, // dropped
+      {
+        id: "2",
+        role: "X",
+        bbox: { x: 0, y: 0, w: "bad" as unknown as number, h: 10 },
+      }, // dropped
       "not an object", // dropped
     ]);
     const nodes = parseAndroidAxTree(bad, 0);

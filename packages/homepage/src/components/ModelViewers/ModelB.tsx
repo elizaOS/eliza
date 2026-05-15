@@ -34,7 +34,7 @@ export interface ModelBHandle {
   slideDown: () => void;
 }
 
-interface ModelBProps {
+export interface ModelBProps {
   tryActive?: boolean;
   switcherOpen?: boolean;
   onWaitingChange?: (waiting: boolean) => void;

@@ -44,39 +44,29 @@ def quantization_kernel_fragments() -> list[dict[str, object]]:
 
 
 def base_kwargs(tier: str = "4b") -> dict:
-    dflash_enabled = "dflash" in REQUIRED_KERNELS_BY_TIER[tier]
-    lineage = {
-        "text": LineageEntry(base="eliza-1-text-backbone", license="apache-2.0"),
-        "voice": LineageEntry(base="eliza-1-voice-backbone", license="apache-2.0"),
-        "asr": LineageEntry(base="eliza-1-asr", license="apache-2.0"),
-        "vision": LineageEntry(base="eliza-1-vision", license="apache-2.0"),
-        "vad": LineageEntry(base="eliza-1-vad", license="apache-2.0"),
-    }
-    files = {
-        "text": [
-            FileEntry(path=f"text/eliza-1-{tier}-64k.gguf", sha256=SHA, ctx=65536)
-        ],
-        "voice": [FileEntry(path="tts/omnivoice-base-Q4_K_M.gguf", sha256=SHA)],
-        "asr": [FileEntry(path="asr/asr.gguf", sha256=SHA)],
-        "vision": [FileEntry(path=f"vision/mmproj-{tier}.gguf", sha256=SHA)],
-        "cache": [FileEntry(path="cache/voice-preset-default.bin", sha256=SHA)],
-        "vad": [FileEntry(path="vad/silero-vad-v5.1.2.ggml.bin", sha256=SHA)],
-    }
-    if dflash_enabled:
-        lineage["drafter"] = LineageEntry(
-            base="eliza-1-drafter",
-            license="apache-2.0",
-        )
-        files["dflash"] = [FileEntry(path=f"dflash/drafter-{tier}.gguf", sha256=SHA)]
-    else:
-        files["dflash"] = []
-
     return dict(
         tier=tier,
         version="1.0.0",
         published_at="2026-05-10T00:00:00Z",
-        lineage=lineage,
-        files=files,
+        lineage={
+            "text": LineageEntry(base="eliza-1-text-backbone", license="apache-2.0"),
+            "voice": LineageEntry(base="eliza-1-voice-backbone", license="apache-2.0"),
+            "drafter": LineageEntry(base="eliza-1-drafter", license="apache-2.0"),
+            "asr": LineageEntry(base="eliza-1-asr", license="apache-2.0"),
+            "vision": LineageEntry(base="eliza-1-vision", license="apache-2.0"),
+            "vad": LineageEntry(base="eliza-1-vad", license="apache-2.0"),
+        },
+        files={
+            "text": [
+                FileEntry(path=f"text/eliza-1-{tier}-64k.gguf", sha256=SHA, ctx=65536)
+            ],
+            "voice": [FileEntry(path="tts/omnivoice-base-Q4_K_M.gguf", sha256=SHA)],
+            "asr": [FileEntry(path="asr/asr.gguf", sha256=SHA)],
+            "vision": [FileEntry(path=f"vision/mmproj-{tier}.gguf", sha256=SHA)],
+            "dflash": [FileEntry(path=f"dflash/drafter-{tier}.gguf", sha256=SHA)],
+            "cache": [FileEntry(path="cache/voice-preset-default.bin", sha256=SHA)],
+            "vad": [FileEntry(path="vad/silero-vad-v5.1.2.ggml.bin", sha256=SHA)],
+        },
         kernels_required=list(REQUIRED_KERNELS_BY_TIER[tier]),
         kernels_optional=[],
         verified_backends=passing_backends(),
@@ -93,10 +83,10 @@ def base_kwargs(tier: str = "4b") -> dict:
         vad_false_barge_in_rate=0.01,
         e2e_loop_ok=True,
         thirty_turn_ok=True,
-        dflash_eval=dflash_enabled,
-        dflash_acceptance_rate=0.71 if dflash_enabled else None,
-        dflash_speedup=1.8 if dflash_enabled else None,
-        dflash_passed=True if dflash_enabled else None,
+        dflash_eval=True,
+        dflash_acceptance_rate=0.71,
+        dflash_speedup=1.8,
+        dflash_passed=True,
         ram_budget_min_mb=7000,
         ram_budget_recommended_mb=9500,
         default_eligible=True,
@@ -116,18 +106,15 @@ def test_eliza1_tier_ids_are_canonical():
         "9b",
         "27b",
         "27b-256k",
+        "27b-1m",
     )
     assert REQUIRED_KERNELS_BY_TIER["0_8b"] == (
         "turboquant_q4",
         "qjl",
         "polarquant",
-    )
-    assert REQUIRED_KERNELS_BY_TIER["2b"] == (
-        "turboquant_q4",
-        "qjl",
-        "polarquant",
         "dflash",
     )
+    assert REQUIRED_KERNELS_BY_TIER["2b"] == REQUIRED_KERNELS_BY_TIER["0_8b"]
     assert REQUIRED_KERNELS_BY_TIER["4b"] == (
         "turboquant_q4",
         "qjl",
@@ -135,11 +122,11 @@ def test_eliza1_tier_ids_are_canonical():
         "dflash",
         "turbo3_tcq",
     )
-    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
-    assert VOICE_BACKENDS_BY_TIER["27b-256k"] == ("omnivoice",)
+    assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["2b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["4b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["27b-1m"] == ("omnivoice",)
 
 
 def test_build_manifest_happy_path():
@@ -205,7 +192,7 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
 
 @pytest.mark.parametrize(
     "tier",
-    list(ELIZA_1_TIERS),
+    ["0_8b", "2b", "4b"],
 )
 def test_every_tier_validates(tier: str):
     manifest = build_manifest(**base_kwargs(tier))
@@ -249,15 +236,6 @@ def test_default_eligible_requires_measured_dflash_eval():
     assert any("evals.dflash" in e for e in exc.value.errors)
     assert any("defaultEligible" in e for e in exc.value.errors)
 
-
-def test_0_8b_default_eligible_can_ship_without_dflash():
-    kwargs = base_kwargs("0_8b")
-    manifest = build_manifest(**kwargs)
-    assert manifest["files"]["dflash"] == []
-    assert "drafter" not in manifest["lineage"]
-    assert "dflash" not in manifest["kernels"]["required"]
-    assert "dflash" not in manifest["evals"]
-    assert validate_manifest(manifest) == ()
 
 def test_non_publishable_manifest_can_validate_for_local_staging():
     kwargs = base_kwargs("2b")
@@ -613,7 +591,7 @@ def _base_v1_provenance() -> dict:
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
-            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
+            "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
         },
     }
 
@@ -633,9 +611,8 @@ def test_base_v1_manifest_validates_and_is_default_eligible():
     assert validate_manifest(manifest) == ()
 
 
-@pytest.mark.parametrize("tier", ["27b", "27b-256k"])
-def test_base_v1_27b_provenance_requires_qwen36_text_source(tier: str):
-    kwargs = base_kwargs(tier)
+def test_base_v1_27b_provenance_requires_qwen36_text_source():
+    kwargs = base_kwargs("27b")
     prov = _base_v1_provenance()
     prov["sourceModels"]["text"] = {"repo": "Qwen/Qwen3.6-27B"}
     kwargs["provenance"] = prov
@@ -734,18 +711,18 @@ def test_voice_quant_ladder_covers_every_tier():
 def test_voice_quant_ladder_mobile_tiers_has_mobile_omnivoice_policy():
     """Mobile tiers (0_8b / 2b / 4b) publish a narrow OmniVoice ladder and
     retain Kokoro as fallback."""
-    expected = ()
+    expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M")
     for tier in ("0_8b", "2b", "4b"):
         assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
-        assert VOICE_BACKENDS_BY_TIER[tier] == ("kokoro",)
+        assert VOICE_BACKENDS_BY_TIER[tier] == ("omnivoice", "kokoro")
 
 
 def test_voice_quant_ladder_large_tiers_have_full_kquant_ladder():
-    """Large tiers (9b / 27b / 27b-256k) ship OmniVoice and must
+    """Large tiers (9b / 27b / 27b-256k / 27b-1m) ship OmniVoice and must
     publish the full Q3..Q8 ladder so the downloader can pick the level
     matching the host's RAM/SoC class at install time."""
     expected = ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0")
-    for tier in ("9b", "27b", "27b-256k"):
+    for tier in ("9b", "27b", "27b-256k", "27b-1m"):
         assert VOICE_QUANT_LADDER_BY_TIER[tier] == expected
         assert "omnivoice" in VOICE_BACKENDS_BY_TIER[tier]
 

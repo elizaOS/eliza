@@ -50,7 +50,14 @@ function makeScene(): Scene {
     {
       name: "Firefox",
       pid: 1234,
-      windows: [{ id: "w1", title: "Eliza Dashboard", bounds: [0, 0, 1920, 1080], displayId: 0 }],
+      windows: [
+        {
+          id: "w1",
+          title: "Eliza Dashboard",
+          bounds: [0, 0, 1920, 1080],
+          displayId: 0,
+        },
+      ],
     },
   ];
   return {
@@ -92,7 +99,8 @@ function makeRuntime(
       }),
   };
   return {
-    getService: (name: string) => (name === "computeruse" ? (service as unknown) : undefined),
+    getService: (name: string) =>
+      name === "computeruse" ? (service as unknown) : undefined,
   } as unknown as IAgentRuntime;
 }
 
@@ -102,7 +110,11 @@ const dummyState: State = {} as State;
 describe("sceneProvider", () => {
   it("returns parsed text + data for an existing scene", async () => {
     const scene = makeScene();
-    const result = await sceneProvider.get(makeRuntime(scene), dummyMessage, dummyState);
+    const result = await sceneProvider.get(
+      makeRuntime(scene),
+      dummyMessage,
+      dummyState,
+    );
     expect(result.text).toContain("```json");
     expect(result.text).toContain('"id": "t0-1"');
     expect(result.text).toContain("Firefox");

@@ -28,9 +28,8 @@ function dispatchIttpRouteKernel(
  * In-thread transport protocol adapter.
  *
  * It lets a fetch-shaped route kernel satisfy ElizaClient requests without
- * opening a TCP listener. iOS uses this path for the WebView compatibility
- * local agent; Android foreground requests use native Capacitor IPC before the
- * native layer forwards to the app-owned local service.
+ * opening a TCP listener. Android can keep using loopback while iOS uses this
+ * path for its in-WebView local agent.
  *
  * Hono apps expose the same `app.fetch(request)` shape, so they can be passed
  * directly once a real shared route kernel exists.

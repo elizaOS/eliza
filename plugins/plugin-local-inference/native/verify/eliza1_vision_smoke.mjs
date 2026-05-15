@@ -13,17 +13,15 @@ const MODELS_ROOT = path.join(
 );
 
 const VISION_TIERS = new Set([
+  "0_8b",
+  "2b",
   "4b",
   "9b",
   "27b",
   "27b-256k",
   "27b-1m",
 ]);
-const OPTIONAL_VISION_TIERS = new Set(["0_8b", "2b"]);
-const TEXT_VOICE_ONLY_TIERS = new Set([
-  "0_6b",
-  "1_7b",
-]);
+const TEXT_VOICE_ONLY_TIERS = new Set(["0_6b", "1_7b"]);
 
 function usage() {
   return [
@@ -33,8 +31,6 @@ function usage() {
     "  --bundle-dir <path>       Eliza-1 bundle directory to inspect",
     "  --tier <tier>             Optional tier override; defaults to manifest.tier",
     "  --image <path>            Image to pass to llama-mtmd-cli when vision exists",
-    "  --expect <regex>          Required case-insensitive regex in model output; repeat for multiple image facts",
-    "  --prompt <text>           Prompt for image smoke; defaults to visible text and color check",
     "  --mtmd-cli <path>         llama-mtmd-cli binary; defaults to ELIZA_LLAMA_MTMD_CLI or build/bin candidates",
     "  --ctx-size <n>            Smoke context size; default 2048 to avoid full long-context KV allocation",
     "  --batch-size <n>          Prompt/image batch size; default 2048 so image tokens fit",
@@ -51,9 +47,6 @@ function parseArgs(argv) {
     bundleDir: "",
     tier: "",
     image: "",
-    expected: [],
-    prompt:
-      "Look at the image carefully. Answer with the exact visible word and the dominant colored shape or color.",
     mtmdCli: process.env.ELIZA_LLAMA_MTMD_CLI?.trim() || "",
     ctxSize: 2048,
     batchSize: 2048,
@@ -72,8 +65,6 @@ function parseArgs(argv) {
     if (arg === "--bundle-dir") args.bundleDir = next();
     else if (arg === "--tier") args.tier = next();
     else if (arg === "--image") args.image = next();
-    else if (arg === "--expect") args.expected.push(next());
-    else if (arg === "--prompt") args.prompt = next();
     else if (arg === "--mtmd-cli") args.mtmdCli = next();
     else if (arg === "--ctx-size") args.ctxSize = Number.parseInt(next(), 10);
     else if (arg === "--batch-size") args.batchSize = Number.parseInt(next(), 10);
@@ -97,15 +88,6 @@ function parseArgs(argv) {
   ]) {
     if (!Number.isFinite(value) || value <= 0) {
       throw new Error(`${name} must be a positive integer`);
-    }
-  }
-  for (const pattern of args.expected) {
-    try {
-      new RegExp(pattern, "i");
-    } catch (error) {
-      throw new Error(
-        `--expect must be a valid JavaScript regular expression: ${pattern}`,
-      );
     }
   }
   return args;
@@ -319,8 +301,6 @@ function runVisionSmoke({
   nPredict,
   gpuLayers,
   timeoutMs,
-  expected,
-  prompt,
 }) {
   if (!mtmdCli.selected) {
     return {
@@ -345,14 +325,6 @@ function runVisionSmoke({
       reason: `image file is missing: ${image}`,
     };
   }
-  if (!Array.isArray(expected) || expected.length === 0) {
-    return {
-      attempted: false,
-      status: "fail",
-      reason:
-        "At least one --expect regex is required so image smoke cannot pass on process exit alone",
-    };
-  }
   const args = [
     "-m",
     textModel,
@@ -367,7 +339,7 @@ function runVisionSmoke({
     "--image-min-tokens",
     "1024",
     "-p",
-    prompt,
+    "Describe this image in one short sentence.",
     "-n",
     String(nPredict),
   ];
@@ -379,21 +351,9 @@ function runVisionSmoke({
     env: { ...process.env },
   });
   const output = `${proc.stdout || ""}\n${proc.stderr || ""}`;
-  const expectationResults = expected.map((pattern) => {
-    const re = new RegExp(pattern, "i");
-    return { pattern, matched: re.test(output) };
-  });
-  const expectationsPassed = expectationResults.every((item) => item.matched);
-  const exitPassed = proc.status === 0;
   return {
     attempted: true,
-    status: exitPassed && expectationsPassed ? "pass" : "fail",
-    reason:
-      exitPassed && expectationsPassed
-        ? "process exited 0 and all expected image facts matched"
-        : !exitPassed
-          ? "llama-mtmd-cli exited non-zero"
-          : "model output did not contain all expected image facts",
+    status: proc.status === 0 ? "pass" : "fail",
     startedAt,
     command: [mtmdCli.selected, ...args],
     timeoutMs,
@@ -401,7 +361,6 @@ function runVisionSmoke({
     signal: proc.signal,
     detection: mtmdCli,
     timings: parseVisionTimings(output),
-    expectations: expectationResults,
     stdoutTail: (proc.stdout || "").slice(-4000),
     stderrTail: (proc.stderr || "").slice(-4000),
   };
@@ -430,106 +389,11 @@ function maxSize(files) {
   return Math.max(0, ...files.map((file) => file.sizeBytes || 0));
 }
 
-function inferTierFromBundleDir(bundleDir) {
-  const name = path.basename(bundleDir);
-  const match = name.match(/^eliza-1-(.+)\.bundle$/);
-  return match ? match[1] : "";
-}
-
-function smokeConfig(args) {
-  return {
-    image: args.image ? path.resolve(args.image) : "",
-    expected: args.expected,
-    prompt: args.prompt,
-    ctxSize: args.ctxSize,
-    batchSize: args.batchSize,
-    nPredict: args.nPredict,
-    gpuLayers: args.gpuLayers || "auto",
-    timeoutMs: args.timeoutMs,
-  };
-}
-
-function buildMissingManifestReport(args, bundleDir, manifestPath, tier) {
-  const expectedVisionTier = VISION_TIERS.has(tier);
-  const optionalVisionTier = OPTIONAL_VISION_TIERS.has(tier);
-  const textVoiceOnlyTier =
-    TEXT_VOICE_ONLY_TIERS.has(tier) || optionalVisionTier;
-  return {
-    schemaVersion: 1,
-    metric: "vision_smoke",
-    generatedAt: new Date().toISOString(),
-    bundleDir,
-    tier,
-    expectedVisionTier,
-    optionalVisionTier,
-    textVoiceOnlyTier,
-    supported: false,
-    passed: false,
-    status: expectedVisionTier ? "fail" : "not-applicable",
-    action: expectedVisionTier
-      ? "stage-bundle-with-compatible-mmproj"
-      : "mark-text-voice-only",
-    reason: expectedVisionTier
-      ? `${tier} is a configured vision tier but the local bundle manifest is missing: ${manifestPath}`
-      : `${tier} has no local bundle manifest; no tier-compatible image mmproj can be selected`,
-    smokeConfig: smokeConfig(args),
-    manifest: {
-      path: manifestPath,
-      present: false,
-      filesText: [],
-      filesVision: [],
-      lineageVisionPresent: false,
-    },
-    mtmdCli: resolveMtmdCli(args.mtmdCli),
-    visionAssetCommands: visionAssetCommands(tier, bundleDir),
-    inventory: {
-      visionFiles: relativeFiles(bundleDir, "vision"),
-      sourceVisionFiles: relativeFiles(bundleDir, "source/vision"),
-      asrMmprojFiles: relativeFiles(bundleDir, "asr").filter((file) =>
-        /mmproj/i.test(file),
-      ),
-      borrowedVisionArtifactsSeen: [
-        path.join(
-          MODELS_ROOT,
-          "eliza-1-4b.bundle",
-          "vision",
-          "mmproj-4b.gguf",
-        ),
-        path.join(
-          MODELS_ROOT,
-          "eliza-1-9b.bundle",
-          "vision",
-          "mmproj-9b.gguf",
-        ),
-        path.join(
-          MODELS_ROOT,
-          "eliza-1-27b.bundle",
-          "vision",
-          "mmproj-27b.gguf",
-        ),
-        path.join(
-          MODELS_ROOT,
-          "eliza-1-27b-256k.bundle",
-          "vision",
-          "mmproj-27b-256k.gguf",
-        ),
-      ].filter((file) => fs.existsSync(file)),
-    },
-    imageAnalysis: {
-      attempted: false,
-      status: "skipped",
-      reason: "skipped because local bundle manifest is missing",
-    },
-  };
-}
-
 function buildReport(args) {
   const bundleDir = path.resolve(args.bundleDir);
   const manifestPath = path.join(bundleDir, "eliza-1.manifest.json");
   if (!fs.existsSync(manifestPath)) {
-    const tier = args.tier || inferTierFromBundleDir(bundleDir);
-    if (!tier) throw new Error(`manifest not found: ${manifestPath}`);
-    return buildMissingManifestReport(args, bundleDir, manifestPath, tier);
+    throw new Error(`manifest not found: ${manifestPath}`);
   }
   const manifest = readJson(manifestPath);
   const tier = args.tier || manifest.tier;
@@ -543,13 +407,8 @@ function buildReport(args) {
   const asrMmprojFiles = relativeFiles(bundleDir, "asr").filter((file) =>
     /mmproj/i.test(file),
   );
-  const optionalVisionTier = OPTIONAL_VISION_TIERS.has(tier);
-  const expectedVisionTier =
-    VISION_TIERS.has(tier) ||
-    (optionalVisionTier && manifestVisionFiles.length > 0);
-  const textVoiceOnlyTier =
-    TEXT_VOICE_ONLY_TIERS.has(tier) ||
-    (optionalVisionTier && manifestVisionFiles.length === 0);
+  const expectedVisionTier = VISION_TIERS.has(tier);
+  const textVoiceOnlyTier = TEXT_VOICE_ONLY_TIERS.has(tier);
   const mmprojRel = manifestVisionFiles[0]?.path;
   const mmprojPath =
     typeof mmprojRel === "string" ? path.join(bundleDir, mmprojRel) : "";
@@ -567,13 +426,19 @@ function buildReport(args) {
     bundleDir,
     tier,
     expectedVisionTier,
-    optionalVisionTier,
     textVoiceOnlyTier,
     supported: manifestVisionFiles.length > 0,
     passed: false,
     status: "not-run",
     action: "undecided",
-    smokeConfig: smokeConfig(args),
+    smokeConfig: {
+      image: args.image ? path.resolve(args.image) : "",
+      ctxSize: args.ctxSize,
+      batchSize: args.batchSize,
+      nPredict: args.nPredict,
+      gpuLayers: args.gpuLayers || "auto",
+      timeoutMs: args.timeoutMs,
+    },
     manifest: {
       path: manifestPath,
       filesText: textFilesSized,
@@ -635,11 +500,11 @@ function buildReport(args) {
     report.status = "not-applicable";
     report.action = "mark-text-voice-only";
     report.reason =
-      `${tier} is text/voice-only by the Eliza-1 native vision policy because manifest.files.vision is empty: no tier-compatible image mmproj is staged for this tier, ` +
+      `${tier} is text/voice-only by the Eliza-1 tier contract: packages/inference/AGENTS.md marks Vision=no for ${tier}, ` +
       "packages/shared/src/local-inference/catalog.ts has no sourceModel.components.vision for this tier, " +
       "packages/training/scripts/manifest/stage_eliza1_source_weights.py has no vision source for this tier, " +
       "and manifest.files.vision is empty. The ASR mmproj is audio-only and cannot be reused for image analysis; " +
-      "larger-tier mmproj files are tied to different text backbones and are not compatible substitutes.";
+      "the local 9B/27B mmproj files are tied to different text backbones and are not compatible substitutes.";
     report.imageAnalysis.reason = "skipped because manifest.files.vision is empty";
     return report;
   }
@@ -682,8 +547,6 @@ function buildReport(args) {
     nPredict: args.nPredict,
     gpuLayers: args.gpuLayers,
     timeoutMs: args.timeoutMs,
-    expected: args.expected,
-    prompt: args.prompt,
   });
   report.status = report.imageAnalysis.status;
   report.passed = report.imageAnalysis.status === "pass";

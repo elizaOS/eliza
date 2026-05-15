@@ -1,7 +1,7 @@
 import type { Memory } from "@elizaos/core";
 import type { DocumentVisibilityScope } from "./service-loader.js";
 
-type DocumentProvenanceKind =
+export type DocumentProvenanceKind =
   | "upload"
   | "learned"
   | "character"
@@ -187,7 +187,7 @@ function isGenericFilename(
   return false;
 }
 
-function normalizeDocumentSource(
+export function normalizeDocumentSource(
   source: unknown,
 ): DocumentProvenanceKind {
   switch (source) {
@@ -243,7 +243,7 @@ export function getDocumentProvenance(
   }
 }
 
-function getDocumentContentType(
+export function getDocumentContentType(
   metadata: Record<string, unknown> | undefined,
 ): string {
   return (
@@ -283,7 +283,7 @@ export function getDocumentVisibilityScope(
     : "global";
 }
 
-function isDocumentTextBacked(memory: Memory): boolean {
+export function isDocumentTextBacked(memory: Memory): boolean {
   const metadata = asRecord(memory.metadata);
   if (typeof metadata?.textBacked === "boolean") {
     return metadata.textBacked;
@@ -303,7 +303,7 @@ function isDocumentTextBacked(memory: Memory): boolean {
   return !looksLikeBase64(contentText);
 }
 
-function getDocumentPreviewText(memory: Memory): string | undefined {
+export function getDocumentPreviewText(memory: Memory): string | undefined {
   const contentText = memory.content?.text;
   if (typeof contentText !== "string") return undefined;
   const trimmed = contentText.trim();

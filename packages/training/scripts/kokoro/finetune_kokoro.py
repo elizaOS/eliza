@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Fine-tune Kokoro-82M (StyleTTS-2 family) on a prepared LJSpeech-format run.
+"""Fine-tune a Kokoro-style TTS voice on a prepared LJSpeech-format run.
 
 Inputs:
 
   --run-dir   <prep_ljspeech.py output>/  containing processed/train_list.txt,
                                           processed/val_list.txt, etc.
-  --config    YAML config (lora or full mode)
+  --config    YAML config
+  --mode      {full-finetune, lora-experimental}  (default: full-finetune)
 
 Outputs:
 
@@ -14,17 +15,24 @@ Outputs:
       ├── best.pt                  # best val-loss checkpoint
       └── train_manifest.json      # hyperparams, dataset hashes, training commit
 
-Mode = `lora`:
-  - Attach PEFT LoRA adapters to the prosody predictor + style projection.
-  - Text encoder + iSTFTNet decoder weights stay frozen.
-  - Saves the LoRA delta only; the base model is reloaded from `base_model`
-    at export time. Fits on 16 GB VRAM.
+Mode = `full-finetune` (DEFAULT, publish path):
+  - Drives the vendored trainer at
+    plugins/plugin-local-inference/native/kokoro_training/ via
+    plugins/plugin-local-inference/native/kokoro_training/milady_adapter/.
+  - Trains a Kokoro-inspired encoder-decoder transformer end-to-end on the
+    samantha (or other) LJSpeech-format corpus. Vendor provides the model
+    architecture + dataset loader + training loop; the adapter swaps in our
+    APOLLO optimizer and our manifest emission.
+  - Output checkpoints are NOT drop-in for the hexgrad/Kokoro-82M runtime
+    backend (architectural difference) — they are a separate voice asset.
+    Shipping path is the same eval_kokoro.py + push_voice_to_hf.py.
 
-Mode = `full`:
-  - Unfreeze every parameter.
-  - Stage 1 (until adversarial_warmup_step): mel + duration + F0 loss.
-  - Stage 2 (from adversarial_warmup_step on, if adversarial_loss_weight > 0):
-    add the WavLM discriminator adversarial loss.
+Mode = `lora-experimental`:
+  - Attempts to attach PEFT LoRA adapters to the prosody predictor + style
+    projection of an installed `kokoro>=0.9.4` `KModel`.
+  - Gated on `KModel.forward_train` existing (which it does NOT on current
+    PyPI releases — see .swarm/impl/I7-kokoro.md). Useful only when the
+    vendored trainer fork ever gets pip-installed against `KModel`.
 
 Optimizer: APOLLO (apollo_mini by default — same choice as our text fine-tunes
 and the DFlash drafter distiller). Mixed precision: bf16 if CUDA available, else

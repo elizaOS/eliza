@@ -1,0 +1,24 @@
+# Turn detector fine-tune config — multilingual tier (4b / 9b / 27b).
+#
+# Targets the LiveKit `v0.4.1-intl` revision (Qwen2.5-0.5B-pruned, 14
+# languages). Bundle target is ~396 MB Q8 ONNX — significant footprint;
+# only published on tiers with ≥16 GB RAM budgets per .swarm/research/R1-turn.md §3.
+#
+# Per repo policy (packages/training/AGENTS.md §1): APOLLO optimizer only.
+
+tier: 4b
+teacher_repo: livekit/turn-detector
+teacher_revision: v0.4.1-intl
+
+lora_rank: 16
+optimizer: apollo
+epochs: 3
+learning_rate: 5.0e-5
+
+train_data:
+  - packages/training/data/turn/dailydialog.jsonl
+eval_data:
+  - packages/training/data/turn/dailydialog.eval.jsonl
+
+f1_gate: 0.85
+mean_latency_ms_gate: 30.0

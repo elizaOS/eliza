@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+
 /**
  * Moltbook Auto Post
  *
@@ -6,9 +7,9 @@
  * Invoked by cron or manually: node post.js [--dry-run] [--show-history]
  */
 
-import { readFile, writeFile, appendFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { appendFile, readdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -20,7 +21,7 @@ try {
   dayjs = (await import("dayjs")).default;
 } catch (err) {
   console.error(
-    "[FATAL] Missing dependencies. Run: cd skills/moltbook-auto-post && npm install"
+    "[FATAL] Missing dependencies. Run: cd skills/moltbook-auto-post && npm install",
   );
   process.exit(1);
 }
@@ -83,7 +84,7 @@ function checkRateLimit(history, config) {
   // Check daily cap
   const todayStart = now.startOf("day");
   const todayPosts = history.posts.filter((p) =>
-    dayjs(p.timestamp).isAfter(todayStart)
+    dayjs(p.timestamp).isAfter(todayStart),
   );
   if (todayPosts.length >= maxPostsPerDay) {
     return {
@@ -126,8 +127,14 @@ function generateHashtags(topic, max) {
 }
 
 async function generateContent(config) {
-  const { topics, templateDir, style, maxLength, includeHashtags, maxHashtags } =
-    config.content;
+  const {
+    topics,
+    templateDir,
+    style,
+    maxLength,
+    includeHashtags,
+    maxHashtags,
+  } = config.content;
 
   const topic = pickRandom(topics);
   const templates = await loadTemplates(templateDir);
@@ -177,11 +184,12 @@ async function generateContent(config) {
 
 // ── Moltbook API ──────────────────────────────────────────────────────
 async function publishPost(config, content) {
-  const { apiBase, accessToken, profileId, defaultVisibility } = config.moltbook;
+  const { apiBase, accessToken, profileId, defaultVisibility } =
+    config.moltbook;
 
   if (!accessToken) {
     throw new Error(
-      "No access token configured. Set moltbook.accessToken in config.json or MOLTBOOK_TOKEN env var."
+      "No access token configured. Set moltbook.accessToken in config.json or MOLTBOOK_TOKEN env var.",
     );
   }
 
@@ -240,7 +248,10 @@ async function main() {
 
   // Generate content
   const content = await generateContent(config);
-  await log("info", `Generated post (topic: ${content.topic}, ${content.body.length} chars)`);
+  await log(
+    "info",
+    `Generated post (topic: ${content.topic}, ${content.body.length} chars)`,
+  );
   await log("info", `Content preview: ${content.body.slice(0, 120)}...`);
 
   if (dryRun) {
@@ -254,7 +265,7 @@ async function main() {
     const result = await publishPost(config, content);
     await log(
       "info",
-      `Published successfully! Post ID: ${result.id || result.postId || "unknown"}`
+      `Published successfully! Post ID: ${result.id || result.postId || "unknown"}`,
     );
 
     // Update history

@@ -418,9 +418,6 @@ def _required_env_for_request(adapter: BenchmarkAdapter, request: RunRequest) ->
         return ()
 
     provider = request.provider.strip().lower()
-    if adapter.id == "voicebench_quality":
-        provider_key = PROVIDER_KEY_ENV.get(provider, "CEREBRAS_API_KEY")
-        return tuple(dict.fromkeys(("GROQ_API_KEY", provider_key, "CEREBRAS_API_KEY")))
     required = list(adapter.required_env)
     provider_key = PROVIDER_KEY_ENV.get(provider)
     if provider_key:
@@ -935,25 +932,24 @@ def _rebuild_latest_result_snapshots(
         key = (benchmark_id, agent)
         if key not in latest_by_key:
             latest_by_key[key] = row
-        if not is_synthetic:
-            signature = str(row.get("signature") or "")
-            if signature:
-                signature_key = (signature, benchmark_id, agent)
-                if signature_key not in latest_by_signature:
-                    latest_by_signature[signature_key] = row
-            comparison_signature = _comparison_signature_from_parts(
-                benchmark_id=benchmark_id,
-                benchmark_directory=str(row.get("benchmark_directory") or benchmark_id),
-                agent=agent,
-                provider=str(row.get("provider") or ""),
-                model=str(row.get("model") or ""),
-                extra_config=row.get("extra_config")
-                if isinstance(row.get("extra_config"), dict)
-                else {},
-            )
-            comparison_key = (comparison_signature, benchmark_id, agent)
-            if comparison_key not in latest_by_comparison_signature:
-                latest_by_comparison_signature[comparison_key] = (row, comparison_signature)
+        signature = str(row.get("signature") or "")
+        if signature:
+            signature_key = (signature, benchmark_id, agent)
+            if signature_key not in latest_by_signature:
+                latest_by_signature[signature_key] = row
+        comparison_signature = _comparison_signature_from_parts(
+            benchmark_id=benchmark_id,
+            benchmark_directory=str(row.get("benchmark_directory") or benchmark_id),
+            agent=agent,
+            provider=str(row.get("provider") or ""),
+            model=str(row.get("model") or ""),
+            extra_config=row.get("extra_config")
+            if isinstance(row.get("extra_config"), dict)
+            else {},
+        )
+        comparison_key = (comparison_signature, benchmark_id, agent)
+        if comparison_key not in latest_by_comparison_signature:
+            latest_by_comparison_signature[comparison_key] = (row, comparison_signature)
 
     expected_by_dir: dict[Path, set[Path]] = {
         latest_dir: set(),
@@ -966,13 +962,12 @@ def _rebuild_latest_result_snapshots(
         adapters=adapters,
     )
     index: dict[str, Any] = {
-        "updated_at": None,
+        "updated_at": _utc_now(),
         "latest": {},
         "latest_by_signature": {},
         "latest_by_comparison_signature": {},
         "matrix_contract": matrix_contract,
     }
-    index_updated_at_candidates: list[str] = []
     for (benchmark_id, agent), row in sorted(latest_by_key.items()):
         metrics = row.get("metrics") or {}
         token_metrics = row.get("token_metrics") or {}
@@ -999,11 +994,8 @@ def _rebuild_latest_result_snapshots(
         )
         snapshot_path = target_dir / f"{_sanitize_name(benchmark_id)}__{_sanitize_name(agent)}.json"
         expected_by_dir[target_dir].add(snapshot_path)
-        row_updated_at = row.get("ended_at") or row.get("started_at")
-        if row_updated_at:
-            index_updated_at_candidates.append(str(row_updated_at))
         payload: dict[str, Any] = {
-            "updated_at": row_updated_at or _utc_now(),
+            "updated_at": row.get("ended_at") or row.get("started_at") or _utc_now(),
             "benchmark_id": benchmark_id,
             "benchmark_directory": row.get("benchmark_directory"),
             "run_group_id": row.get("run_group_id"),
@@ -1068,11 +1060,8 @@ def _rebuild_latest_result_snapshots(
         ) or "unsucceeded_run"
         snapshot_path = quarantine_dir / f"{_sanitize_name(benchmark_id)}__{_sanitize_name(agent)}.json"
         expected_by_dir[quarantine_dir].add(snapshot_path)
-        row_updated_at = row.get("ended_at") or row.get("started_at")
-        if row_updated_at:
-            index_updated_at_candidates.append(str(row_updated_at))
         payload = {
-            "updated_at": row_updated_at or _utc_now(),
+            "updated_at": row.get("ended_at") or row.get("started_at") or _utc_now(),
             "benchmark_id": benchmark_id,
             "benchmark_directory": row.get("benchmark_directory"),
             "run_group_id": row.get("run_group_id"),
@@ -1143,11 +1132,6 @@ def _rebuild_latest_result_snapshots(
         }
 
     _annotate_latest_index_comparability(index)
-    index["updated_at"] = (
-        max(index_updated_at_candidates)
-        if index_updated_at_candidates
-        else _utc_now()
-    )
 
     # Prune stale files from each managed dir (only files we own).
     for d, expected in expected_by_dir.items():

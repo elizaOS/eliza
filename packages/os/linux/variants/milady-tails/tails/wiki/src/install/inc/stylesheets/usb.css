@@ -1,10 +1,15 @@
 @import url("hide.css");
 
-span.usb, a.usb {
+span.usb,
+a.usb {
   display: inline;
 }
 
-div.usb, img.usb, p.usb, h1.usb, h2.usb {
+div.usb,
+img.usb,
+p.usb,
+h1.usb,
+h2.usb {
   display: block;
 }
 

@@ -60,7 +60,12 @@ const MESSAGES_INTENTS: readonly IntentSpec[] = [
     summary:
       "Send an iMessage or SMS to one or more recipients via the Messages app.",
     parameters: [
-      param("recipients", "string", true, "Comma-separated phone numbers or Apple IDs."),
+      param(
+        "recipients",
+        "string",
+        true,
+        "Comma-separated phone numbers or Apple IDs.",
+      ),
       param("body", "string", true, "Message text."),
     ],
     source: "system",
@@ -119,13 +124,12 @@ const REMINDERS_INTENTS: readonly IntentSpec[] = [
       param("notes", "string", false, "Optional notes."),
       param("dueDate", "date", false, "Optional due date (ISO 8601)."),
       param("listName", "string", false, "Target reminder list."),
-      param(
-        "priority",
-        "enum",
-        false,
-        "Reminder priority.",
-        ["none", "low", "medium", "high"],
-      ),
+      param("priority", "enum", false, "Reminder priority.", [
+        "none",
+        "low",
+        "medium",
+        "high",
+      ]),
     ],
     source: "system",
   },
@@ -153,13 +157,12 @@ const MUSIC_INTENTS: readonly IntentSpec[] = [
     summary: "Play a song, album, artist, or playlist in Apple Music.",
     parameters: [
       param("query", "string", true, "Search query (song / album / artist)."),
-      param(
-        "kind",
-        "enum",
-        false,
-        "Restrict the type of media to play.",
-        ["song", "album", "artist", "playlist"],
-      ),
+      param("kind", "enum", false, "Restrict the type of media to play.", [
+        "song",
+        "album",
+        "artist",
+        "playlist",
+      ]),
       param("shuffle", "boolean", false, "Shuffle the queue. Default false."),
     ],
     source: "system",
@@ -193,14 +196,18 @@ const MAPS_INTENTS: readonly IntentSpec[] = [
     summary: "Open Apple Maps with directions to a destination.",
     parameters: [
       param("destination", "string", true, "Address or place name."),
-      param("origin", "string", false, "Starting address. Defaults to current location."),
       param(
-        "transport",
-        "enum",
+        "origin",
+        "string",
         false,
-        "Transport mode.",
-        ["driving", "walking", "transit", "cycling"],
+        "Starting address. Defaults to current location.",
       ),
+      param("transport", "enum", false, "Transport mode.", [
+        "driving",
+        "walking",
+        "transit",
+        "cycling",
+      ]),
     ],
     source: "system",
   },
@@ -229,7 +236,12 @@ const SAFARI_INTENTS: readonly IntentSpec[] = [
     summary: "Open a URL in Mobile Safari.",
     parameters: [
       param("url", "url", true, "Absolute URL to open."),
-      param("inPrivateMode", "boolean", false, "Use private browsing. Default false."),
+      param(
+        "inPrivateMode",
+        "boolean",
+        false,
+        "Use private browsing. Default false.",
+      ),
     ],
     source: "system",
   },
@@ -248,16 +260,17 @@ const SAFARI_INTENTS: readonly IntentSpec[] = [
 
 // ── Registry ─────────────────────────────────────────────────────────────────
 
-export const IOS_APP_INTENT_REGISTRY: Readonly<Record<string, readonly IntentSpec[]>> =
-  Object.freeze({
-    "com.apple.mobilemail": MAIL_INTENTS,
-    "com.apple.MobileSMS": MESSAGES_INTENTS,
-    "com.apple.mobilenotes": NOTES_INTENTS,
-    "com.apple.reminders": REMINDERS_INTENTS,
-    "com.apple.Music": MUSIC_INTENTS,
-    "com.apple.Maps": MAPS_INTENTS,
-    "com.apple.mobilesafari": SAFARI_INTENTS,
-  });
+export const IOS_APP_INTENT_REGISTRY: Readonly<
+  Record<string, readonly IntentSpec[]>
+> = Object.freeze({
+  "com.apple.mobilemail": MAIL_INTENTS,
+  "com.apple.MobileSMS": MESSAGES_INTENTS,
+  "com.apple.mobilenotes": NOTES_INTENTS,
+  "com.apple.reminders": REMINDERS_INTENTS,
+  "com.apple.Music": MUSIC_INTENTS,
+  "com.apple.Maps": MAPS_INTENTS,
+  "com.apple.mobilesafari": SAFARI_INTENTS,
+});
 
 export const IOS_APP_INTENT_BUNDLE_IDS: readonly string[] = Object.freeze(
   Object.keys(IOS_APP_INTENT_REGISTRY),

@@ -1,29 +1,27 @@
-import { useState } from 'react'
 import {
-  ColumnDef,
-  ColumnFiltersState,
-  SortingState,
-  VisibilityState,
+  type ColumnDef,
+  type ColumnFiltersState,
   flexRender,
+  type GroupingState,
   getCoreRowModel,
+  getExpandedRowModel,
   getFilteredRowModel,
   getGroupedRowModel,
-  getSortedRowModel,
   getPaginationRowModel,
-  getExpandedRowModel,
+  getSortedRowModel,
+  type SortingState,
   useReactTable,
-  GroupingState,
-} from '@tanstack/react-table'
+  type VisibilityState,
+} from "@tanstack/react-table";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+  ChevronDown,
+  ChevronRight,
+  Columns3,
+  Group,
+  Search,
+} from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -31,39 +29,47 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select'
-import { ChevronDown, ChevronRight, Columns3, Group, Search } from 'lucide-react'
-import { cn } from '@/lib/utils'
+} from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { cn } from "@/lib/utils";
 
 interface DataTableProps<TData, TValue> {
-  columns: ColumnDef<TData, TValue>[]
-  data: TData[]
-  searchKey?: string
-  searchPlaceholder?: string
-  groupableColumns?: string[]
-  onRowClick?: (row: TData) => void
+  columns: ColumnDef<TData, TValue>[];
+  data: TData[];
+  searchKey?: string;
+  searchPlaceholder?: string;
+  groupableColumns?: string[];
+  onRowClick?: (row: TData) => void;
 }
 
 export function DataTable<TData, TValue>({
   columns,
   data,
   searchKey,
-  searchPlaceholder = 'Search...',
+  searchPlaceholder = "Search...",
   groupableColumns = [],
   onRowClick,
 }: DataTableProps<TData, TValue>) {
-  const [sorting, setSorting] = useState<SortingState>([])
-  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
-  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({})
-  const [grouping, setGrouping] = useState<GroupingState>([])
-  const [expanded, setExpanded] = useState({})
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
+  const [columnVisibility, setColumnVisibility] = useState<VisibilityState>({});
+  const [grouping, setGrouping] = useState<GroupingState>([]);
+  const [expanded, setExpanded] = useState({});
 
   const table = useReactTable({
     data,
@@ -91,7 +97,7 @@ export function DataTable<TData, TValue>({
         pageSize: 50,
       },
     },
-  })
+  });
 
   return (
     <div className="space-y-4">
@@ -103,7 +109,9 @@ export function DataTable<TData, TValue>({
               <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder={searchPlaceholder}
-                value={(table.getColumn(searchKey)?.getFilterValue() as string) ?? ''}
+                value={
+                  (table.getColumn(searchKey)?.getFilterValue() as string) ?? ""
+                }
                 onChange={(event) =>
                   table.getColumn(searchKey)?.setFilterValue(event.target.value)
                 }
@@ -117,10 +125,10 @@ export function DataTable<TData, TValue>({
           {/* Group by */}
           {groupableColumns.length > 0 && (
             <Select
-              value={grouping[0] || ''}
+              value={grouping[0] || ""}
               onValueChange={(value) => {
-                setGrouping(value ? [value] : [])
-                setExpanded({})
+                setGrouping(value ? [value] : []);
+                setExpanded({});
               }}
             >
               <SelectTrigger className="w-[150px]">
@@ -158,11 +166,13 @@ export function DataTable<TData, TValue>({
                       key={column.id}
                       className="capitalize"
                       checked={column.getIsVisible()}
-                      onCheckedChange={(value) => column.toggleVisibility(!!value)}
+                      onCheckedChange={(value) =>
+                        column.toggleVisibility(!!value)
+                      }
                     >
                       {column.id}
                     </DropdownMenuCheckboxItem>
-                  )
+                  );
                 })}
             </DropdownMenuContent>
           </DropdownMenu>
@@ -180,7 +190,8 @@ export function DataTable<TData, TValue>({
                     <TableHead
                       key={header.id}
                       className={cn(
-                        header.column.getCanSort() && 'cursor-pointer select-none'
+                        header.column.getCanSort() &&
+                          "cursor-pointer select-none",
                       )}
                       onClick={header.column.getToggleSortingHandler()}
                     >
@@ -188,14 +199,14 @@ export function DataTable<TData, TValue>({
                         <div className="flex items-center gap-2">
                           {flexRender(
                             header.column.columnDef.header,
-                            header.getContext()
+                            header.getContext(),
                           )}
-                          {header.column.getIsSorted() === 'asc' && ' ↑'}
-                          {header.column.getIsSorted() === 'desc' && ' ↓'}
+                          {header.column.getIsSorted() === "asc" && " ↑"}
+                          {header.column.getIsSorted() === "desc" && " ↓"}
                         </div>
                       )}
                     </TableHead>
-                  )
+                  );
                 })}
               </TableRow>
             ))}
@@ -205,16 +216,16 @@ export function DataTable<TData, TValue>({
               table.getRowModel().rows.map((row) => (
                 <TableRow
                   key={row.id}
-                  data-state={row.getIsSelected() && 'selected'}
+                  data-state={row.getIsSelected() && "selected"}
                   className={cn(
-                    onRowClick && !row.getIsGrouped() && 'cursor-pointer',
-                    row.getIsGrouped() && 'bg-muted/50 font-medium'
+                    onRowClick && !row.getIsGrouped() && "cursor-pointer",
+                    row.getIsGrouped() && "bg-muted/50 font-medium",
                   )}
                   onClick={() => {
                     if (row.getIsGrouped()) {
-                      row.toggleExpanded()
+                      row.toggleExpanded();
                     } else if (onRowClick) {
-                      onRowClick(row.original)
+                      onRowClick(row.original);
                     }
                   }}
                 >
@@ -227,7 +238,10 @@ export function DataTable<TData, TValue>({
                           ) : (
                             <ChevronRight className="h-4 w-4" />
                           )}
-                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
                           <span className="text-muted-foreground">
                             ({row.subRows.length})
                           </span>
@@ -236,10 +250,13 @@ export function DataTable<TData, TValue>({
                         flexRender(
                           cell.column.columnDef.aggregatedCell ??
                             cell.column.columnDef.cell,
-                          cell.getContext()
+                          cell.getContext(),
                         )
                       ) : cell.getIsPlaceholder() ? null : (
-                        flexRender(cell.column.columnDef.cell, cell.getContext())
+                        flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext(),
+                        )
                       )}
                     </TableCell>
                   ))}
@@ -247,7 +264,10 @@ export function DataTable<TData, TValue>({
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={columns.length} className="h-24 text-center">
+                <TableCell
+                  colSpan={columns.length}
+                  className="h-24 text-center"
+                >
                   No results.
                 </TableCell>
               </TableRow>
@@ -271,7 +291,7 @@ export function DataTable<TData, TValue>({
             Previous
           </Button>
           <span className="text-sm text-muted-foreground">
-            Page {table.getState().pagination.pageIndex + 1} of{' '}
+            Page {table.getState().pagination.pageIndex + 1} of{" "}
             {table.getPageCount()}
           </span>
           <Button
@@ -285,5 +305,5 @@ export function DataTable<TData, TValue>({
         </div>
       </div>
     </div>
-  )
+  );
 }

@@ -30,128 +30,130 @@
  * is offline-capable from boot.
  */
 
-import {
-    type IAgentRuntime,
-    ModelType,
-    type Plugin,
-} from "@elizaos/core";
-import {
-    getLlama,
-    type Llama,
-    LlamaChatSession,
-    type LlamaContext,
-    type LlamaModel,
-} from "node-llama-cpp";
 import { existsSync } from "node:fs";
+import { type IAgentRuntime, ModelType, type Plugin } from "@elizaos/core";
+import {
+  getLlama,
+  type Llama,
+  LlamaChatSession,
+  type LlamaContext,
+  type LlamaModel,
+} from "node-llama-cpp";
 
 interface TextParams {
-    prompt?: string;
-    system?: string;
-    stopSequences?: string[];
-    temperature?: number;
-    maxTokens?: number;
+  prompt?: string;
+  system?: string;
+  stopSequences?: string[];
+  temperature?: number;
+  maxTokens?: number;
 }
 
 interface ResolvedModel {
-    llama: Llama;
-    model: LlamaModel;
-    context: LlamaContext;
+  llama: Llama;
+  model: LlamaModel;
+  context: LlamaContext;
 }
 
 let _resolved: Promise<ResolvedModel> | null = null;
 
 function modelPath(runtime: IAgentRuntime): string {
-    // Resolve order matches plugin-local-ai's conventions:
-    //   1. Env (USBELIZA_GGUF / LOCAL_LARGE_MODEL) — explicit override.
-    //      WINS absolutely: if set, we return it whether or not the file
-    //      exists. `resolveModel` surfaces the error to the user. This
-    //      lets tests pin a non-existent path to skip the model load.
-    //   2. Character settings — bound at boot from env at construction.
-    //   3. ISO default — `/usr/share/usbeliza/models/`.
-    //   4. Dev fallback — `~/.cache/usbeliza-models/`.
-    const explicitEnv = Bun.env.USBELIZA_GGUF ?? Bun.env.LOCAL_LARGE_MODEL;
-    if (typeof explicitEnv === "string" && explicitEnv.length > 0) return explicitEnv;
+  // Resolve order matches plugin-local-ai's conventions:
+  //   1. Env (USBELIZA_GGUF / LOCAL_LARGE_MODEL) — explicit override.
+  //      WINS absolutely: if set, we return it whether or not the file
+  //      exists. `resolveModel` surfaces the error to the user. This
+  //      lets tests pin a non-existent path to skip the model load.
+  //   2. Character settings — bound at boot from env at construction.
+  //   3. ISO default — `/usr/share/usbeliza/models/`.
+  //   4. Dev fallback — `~/.cache/usbeliza-models/`.
+  const explicitEnv = Bun.env.USBELIZA_GGUF ?? Bun.env.LOCAL_LARGE_MODEL;
+  if (typeof explicitEnv === "string" && explicitEnv.length > 0)
+    return explicitEnv;
 
-    const explicitSetting =
-        runtime.getSetting("LOCAL_LARGE_MODEL") ?? runtime.getSetting("USBELIZA_GGUF");
-    if (typeof explicitSetting === "string" && explicitSetting.length > 0) return explicitSetting;
+  const explicitSetting =
+    runtime.getSetting("LOCAL_LARGE_MODEL") ??
+    runtime.getSetting("USBELIZA_GGUF");
+  if (typeof explicitSetting === "string" && explicitSetting.length > 0)
+    return explicitSetting;
 
-    const iso = "/usr/share/usbeliza/models/eliza-1-0_8b-32k.gguf";
-    if (existsSync(iso)) return iso;
+  const iso = "/usr/share/usbeliza/models/eliza-1-0_8b-32k.gguf";
+  if (existsSync(iso)) return iso;
 
-    const home = Bun.env.HOME ?? "/home/eliza";
-    return `${home}/.cache/usbeliza-models/eliza-1-0_8b-32k.gguf`;
+  const home = Bun.env.HOME ?? "/home/eliza";
+  return `${home}/.cache/usbeliza-models/eliza-1-0_8b-32k.gguf`;
 }
 
 async function resolveModel(runtime: IAgentRuntime): Promise<ResolvedModel> {
-    if (_resolved !== null) return _resolved;
-    _resolved = (async () => {
-        const path = modelPath(runtime);
-        if (!existsSync(path)) {
-            throw new Error(
-                `usbeliza-local-llama: GGUF not found at ${path}. ` +
-                    "On the live ISO the chroot hook bakes one into /usr/share/usbeliza/models/; " +
-                    "on a dev machine, run `just iso-cache-model`.",
-            );
-        }
-        const llama = await getLlama({ build: "never" });
-        const model = await llama.loadModel({ modelPath: path });
-        // sequences=8 lets up to eight chat sessions share the context pool.
-        // Each createSession() / generate() call grabs a sequence via
-        // `context.getSequence()` and DISPOSES it after the prompt completes —
-        // see `generate()` below. Without the dispose, sequences leak and the
-        // pool hits "No sequences left" after one (default=1) or eight turns.
-        const context = await model.createContext({ contextSize: 4096, sequences: 8 });
-        return { llama, model, context };
-    })();
-    return _resolved;
+  if (_resolved !== null) return _resolved;
+  _resolved = (async () => {
+    const path = modelPath(runtime);
+    if (!existsSync(path)) {
+      throw new Error(
+        `usbeliza-local-llama: GGUF not found at ${path}. ` +
+          "On the live ISO the chroot hook bakes one into /usr/share/usbeliza/models/; " +
+          "on a dev machine, run `just iso-cache-model`.",
+      );
+    }
+    const llama = await getLlama({ build: "never" });
+    const model = await llama.loadModel({ modelPath: path });
+    // sequences=8 lets up to eight chat sessions share the context pool.
+    // Each createSession() / generate() call grabs a sequence via
+    // `context.getSequence()` and DISPOSES it after the prompt completes —
+    // see `generate()` below. Without the dispose, sequences leak and the
+    // pool hits "No sequences left" after one (default=1) or eight turns.
+    const context = await model.createContext({
+      contextSize: 4096,
+      sequences: 8,
+    });
+    return { llama, model, context };
+  })();
+  return _resolved;
 }
 
 export async function generateViaLocalLlama(
-    runtime: IAgentRuntime,
-    params: TextParams,
+  runtime: IAgentRuntime,
+  params: TextParams,
 ): Promise<string> {
-    const { context } = await resolveModel(runtime);
-    // Get a fresh sequence per call and dispose it when the prompt completes.
-    // Forgetting to dispose leaks the slot until the agent restarts → users
-    // see "No sequences left" on the 9th turn (or 2nd, with sequences=1).
-    const sequence = context.getSequence();
-    try {
-        const sessionOpts: ConstructorParameters<typeof LlamaChatSession>[0] = {
-            contextSequence: sequence,
-        };
-        if (typeof params.system === "string" && params.system.length > 0) {
-            sessionOpts.systemPrompt = params.system;
-        }
-        const session = new LlamaChatSession(sessionOpts);
-
-        const prompt = params.prompt ?? "";
-        if (prompt.trim().length === 0) return "";
-
-        const response = await session.prompt(prompt, {
-            maxTokens: params.maxTokens ?? 512,
-            temperature: params.temperature ?? 0.7,
-            ...(params.stopSequences !== undefined && params.stopSequences.length > 0
-                ? { customStopTriggers: params.stopSequences }
-                : {}),
-        });
-        return response.trim();
-    } finally {
-        sequence.dispose();
+  const { context } = await resolveModel(runtime);
+  // Get a fresh sequence per call and dispose it when the prompt completes.
+  // Forgetting to dispose leaks the slot until the agent restarts → users
+  // see "No sequences left" on the 9th turn (or 2nd, with sequences=1).
+  const sequence = context.getSequence();
+  try {
+    const sessionOpts: ConstructorParameters<typeof LlamaChatSession>[0] = {
+      contextSequence: sequence,
+    };
+    if (typeof params.system === "string" && params.system.length > 0) {
+      sessionOpts.systemPrompt = params.system;
     }
+    const session = new LlamaChatSession(sessionOpts);
+
+    const prompt = params.prompt ?? "";
+    if (prompt.trim().length === 0) return "";
+
+    const response = await session.prompt(prompt, {
+      maxTokens: params.maxTokens ?? 512,
+      temperature: params.temperature ?? 0.7,
+      ...(params.stopSequences !== undefined && params.stopSequences.length > 0
+        ? { customStopTriggers: params.stopSequences }
+        : {}),
+    });
+    return response.trim();
+  } finally {
+    sequence.dispose();
+  }
 }
 
 export const localLlamaPlugin: Plugin = {
-    name: "usbeliza-local-llama",
-    description:
-        "Shaw's llama.cpp stack — local GGUF inference via node-llama-cpp. " +
-        "Replaces the Ollama daemon path; no subprocess, just libllama.so " +
-        "loaded into the agent. Backs the chat-fallthrough path when no " +
-        "Action matches.",
-    models: {
-        [ModelType.TEXT_SMALL]: async (runtime, params) =>
-            generateViaLocalLlama(runtime, params as unknown as TextParams),
-        [ModelType.TEXT_LARGE]: async (runtime, params) =>
-            generateViaLocalLlama(runtime, params as unknown as TextParams),
-    },
+  name: "usbeliza-local-llama",
+  description:
+    "Shaw's llama.cpp stack — local GGUF inference via node-llama-cpp. " +
+    "Replaces the Ollama daemon path; no subprocess, just libllama.so " +
+    "loaded into the agent. Backs the chat-fallthrough path when no " +
+    "Action matches.",
+  models: {
+    [ModelType.TEXT_SMALL]: async (runtime, params) =>
+      generateViaLocalLlama(runtime, params as unknown as TextParams),
+    [ModelType.TEXT_LARGE]: async (runtime, params) =>
+      generateViaLocalLlama(runtime, params as unknown as TextParams),
+  },
 };

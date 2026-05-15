@@ -6,7 +6,6 @@ import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.io.ByteArrayOutputStream
-import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -17,9 +16,6 @@ private const val MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
 private const val MAX_RESPONSE_BODY_BYTES = 10 * 1024 * 1024
 private const val DEFAULT_REQUEST_TIMEOUT_MS = 10_000
 private const val MAX_REQUEST_TIMEOUT_MS = 600_000
-private const val STARTUP_POLL_INTERVAL_MS = 250L
-private const val STARTUP_TOKEN_WAIT_MS = 30_000L
-private const val STARTUP_REQUEST_RETRY_MS = 60_000L
 
 /**
  * Eliza Agent Plugin — Android bridge.
@@ -63,20 +59,13 @@ class AgentPlugin : Plugin() {
         Thread {
             try {
                 val result = forwardLocalRequest("/api/status", "GET", JSObject(), null, 1_500, token)
-                val httpStatus = result.getInt("status")
-                if (httpStatus < 200 || httpStatus >= 300) {
-                    call.resolve(agentStatus("starting", "Local agent status HTTP $httpStatus"))
-                    return@Thread
-                }
                 val json = JSONObject(result.getString("body") ?: "{}")
                 call.resolve(agentStatus(
                     json.optString("state", "running"),
                     json.optString("error").takeIf { it.isNotBlank() },
                 ))
             } catch (error: Exception) {
-                val message = error.message ?: "Local agent status unavailable"
-                val state = if (isTransientLoopbackStartupError(error)) "starting" else "error"
-                call.resolve(agentStatus(state, message))
+                call.resolve(agentStatus("error", error.message ?: "Local agent status unavailable"))
             }
         }.start()
     }
@@ -108,11 +97,11 @@ class AgentPlugin : Plugin() {
             .coerceIn(1_000, MAX_REQUEST_TIMEOUT_MS)
         val body = call.getString("body")
         val headers = call.getObject("headers") ?: JSObject()
+        val token = readLocalAgentToken()
 
         Thread {
             try {
-                val token = ensureLocalAgentToken(timeoutMs)
-                val result = forwardLocalRequestWithStartupRetry(path, method, headers, body, timeoutMs, token)
+                val result = forwardLocalRequest(path, method, headers, body, timeoutMs, token)
                 call.resolve(result)
             } catch (error: Exception) {
                 call.reject(error.message ?: "Local agent request failed")
@@ -131,98 +120,18 @@ class AgentPlugin : Plugin() {
     }
 
     private fun invokeAgentService(methodName: String) {
-        val serviceClass = resolveAgentServiceClass()
+        val serviceClass = Class.forName("${context.packageName}.ElizaAgentService")
         val method = serviceClass.getMethod(methodName, android.content.Context::class.java)
         method.invoke(null, context)
     }
 
-    private fun resolveAgentServiceClass(): Class<*> {
-        val packageNames = listOfNotNull(
-            context.packageName,
-            context.applicationContext?.packageName,
-            "ai.elizaos.app",
-        ).map { it.trim() }
-            .filter { it.isNotEmpty() }
-            .distinct()
-
-        var lastError: ClassNotFoundException? = null
-        for (packageName in packageNames) {
-            try {
-                return Class.forName("$packageName.ElizaAgentService")
-            } catch (error: ClassNotFoundException) {
-                lastError = error
-            }
-        }
-        throw lastError ?: ClassNotFoundException("ElizaAgentService")
-    }
-
-    private fun isTransientLoopbackStartupError(error: Exception): Boolean {
-        if (error is IOException) return true
-        val message = error.message?.lowercase(Locale.US) ?: return false
-        return message.contains("connection refused") ||
-            message.contains("failed to connect") ||
-            message.contains("timed out") ||
-            message.contains("unexpected end of stream")
-    }
-
     private fun readLocalAgentToken(): String? {
         return try {
-            val serviceClass = resolveAgentServiceClass()
+            val serviceClass = Class.forName("${context.packageName}.ElizaAgentService")
             val method = serviceClass.getMethod("localAgentToken")
             (method.invoke(null) as? String)?.trim()?.takeIf { it.isNotEmpty() }
         } catch (_: Exception) {
             null
-        }
-    }
-
-    private fun ensureLocalAgentToken(timeoutMs: Int): String? {
-        readLocalAgentToken()?.let { return it }
-        invokeAgentService("start")
-
-        val waitMs = minOf(timeoutMs.toLong(), STARTUP_TOKEN_WAIT_MS)
-        val deadline = System.currentTimeMillis() + waitMs
-        while (System.currentTimeMillis() < deadline) {
-            readLocalAgentToken()?.let { return it }
-            try {
-                Thread.sleep(STARTUP_POLL_INTERVAL_MS)
-            } catch (error: InterruptedException) {
-                Thread.currentThread().interrupt()
-                throw IOException("Interrupted while waiting for local agent token", error)
-            }
-        }
-        return readLocalAgentToken()
-    }
-
-    private fun forwardLocalRequestWithStartupRetry(
-        path: String,
-        method: String,
-        headers: JSObject,
-        body: String?,
-        timeoutMs: Int,
-        initialToken: String?,
-    ): JSObject {
-        var token = initialToken
-        val retryMs = minOf(timeoutMs.toLong(), STARTUP_REQUEST_RETRY_MS)
-        val deadline = System.currentTimeMillis() + retryMs
-
-        while (true) {
-            try {
-                return forwardLocalRequest(path, method, headers, body, timeoutMs, token)
-            } catch (error: Exception) {
-                if (!isTransientLoopbackStartupError(error)) {
-                    throw error
-                }
-                if (System.currentTimeMillis() >= deadline) {
-                    throw error
-                }
-                token = token ?: readLocalAgentToken()
-                try {
-                    Thread.sleep(STARTUP_POLL_INTERVAL_MS)
-                } catch (interrupted: InterruptedException) {
-                    Thread.currentThread().interrupt()
-                    throw IOException("Interrupted while waiting for local agent", interrupted)
-                }
-            }
         }
     }
 
@@ -250,8 +159,7 @@ class AgentPlugin : Plugin() {
         for (key in headers.keys()) {
             if (key.equals("host", ignoreCase = true) ||
                 key.equals("connection", ignoreCase = true) ||
-                key.equals("content-length", ignoreCase = true) ||
-                key.equals("authorization", ignoreCase = true)
+                key.equals("content-length", ignoreCase = true)
             ) {
                 continue
             }
@@ -261,7 +169,7 @@ class AgentPlugin : Plugin() {
             }
         }
 
-        if (token != null) {
+        if (token != null && connection.getRequestProperty("Authorization").isNullOrBlank()) {
             connection.setRequestProperty("Authorization", "Bearer $token")
         }
 

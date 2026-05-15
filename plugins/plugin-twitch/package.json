@@ -49,8 +49,7 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@types/bun": "^1.1.0",
-    "typescript": "^6.0.3",
-    "vitest": "^4.0.0"
+    "typescript": "^6.0.3"
   },
   "eliza": {
     "platforms": [

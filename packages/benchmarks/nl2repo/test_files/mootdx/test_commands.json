@@ -1,1 +1,5 @@
-["pip install -e .","pip install requests","pytest --continue-on-collection-errors tests"]
+[
+  "pip install -e .",
+  "pip install requests",
+  "pytest --continue-on-collection-errors tests"
+]

@@ -26,24 +26,26 @@ import type { CalibrationBlock } from "../persona.ts";
 
 /** One step in the conversational onboarding ladder. */
 export interface OnboardingQuestion {
-    /** Stable identifier — also the key in the persisted partial calibration. */
-    readonly id: keyof CalibrationBlock;
-    /** What Eliza says to elicit the answer. */
-    readonly prompt: string;
-    /** Optional follow-up sentence when the user gives a one-word answer. */
-    readonly follow?: string;
-    /**
-     * Parse the user's reply into the calibration value. Returns
-     * `undefined` if the answer is ambiguous — the dispatcher will
-     * re-ask with a clarifying hint.
-     */
-    readonly parse: (reply: string) => CalibrationBlock[OnboardingQuestion["id"]] | undefined;
-    /**
-     * Optional clarifying re-ask shown when `parse` returns undefined.
-     * Helps the user understand what kind of answer fits. Defaults to
-     * just repeating the prompt verbatim.
-     */
-    readonly clarify?: string;
+  /** Stable identifier — also the key in the persisted partial calibration. */
+  readonly id: keyof CalibrationBlock;
+  /** What Eliza says to elicit the answer. */
+  readonly prompt: string;
+  /** Optional follow-up sentence when the user gives a one-word answer. */
+  readonly follow?: string;
+  /**
+   * Parse the user's reply into the calibration value. Returns
+   * `undefined` if the answer is ambiguous — the dispatcher will
+   * re-ask with a clarifying hint.
+   */
+  readonly parse: (
+    reply: string,
+  ) => CalibrationBlock[OnboardingQuestion["id"]] | undefined;
+  /**
+   * Optional clarifying re-ask shown when `parse` returns undefined.
+   * Helps the user understand what kind of answer fits. Defaults to
+   * just repeating the prompt verbatim.
+   */
+  readonly clarify?: string;
 }
 
 /**
@@ -54,23 +56,23 @@ export interface OnboardingQuestion {
  * re-asks with the question's clarify text.
  */
 function parseOffer(reply: string): boolean | undefined {
-    const norm = reply.trim().toLowerCase();
-    if (norm === "") return undefined;
-    if (
-        /^(y|yes|yeah|yep|yup|sure|ok|okay|please|let'?s|go|do it|connect|wifi|sign in|log in|login)/.test(
-            norm,
-        )
-    ) {
-        return true;
-    }
-    if (
-        /^(n|no|nope|nah|not now|later|skip|stay (offline|local)|local|offline|maybe later)/.test(
-            norm,
-        )
-    ) {
-        return false;
-    }
-    return undefined;
+  const norm = reply.trim().toLowerCase();
+  if (norm === "") return undefined;
+  if (
+    /^(y|yes|yeah|yep|yup|sure|ok|okay|please|let'?s|go|do it|connect|wifi|sign in|log in|login)/.test(
+      norm,
+    )
+  ) {
+    return true;
+  }
+  if (
+    /^(n|no|nope|nah|not now|later|skip|stay (offline|local)|local|offline|maybe later)/.test(
+      norm,
+    )
+  ) {
+    return false;
+  }
+  return undefined;
 }
 
 /**
@@ -101,42 +103,42 @@ function parseOffer(reply: string): boolean | undefined {
  * still parse because every non-name field is optional.
  */
 export const QUESTIONS: readonly OnboardingQuestion[] = [
-    {
-        id: "name",
-        prompt: "Hi. I'm Eliza. What should I call you?",
-        parse: (reply: string) => {
-            // Anything reasonable — trim, cap length, reject empty.
-            const text = reply.trim().replace(/^[\W_]+|[\W_]+$/g, "");
-            if (text.length === 0 || text.length > 64) return undefined;
-            return text;
-        },
-        clarify: "Just a name or a handle — whatever you'd like me to use.",
+  {
+    id: "name",
+    prompt: "Hi. I'm Eliza. What should I call you?",
+    parse: (reply: string) => {
+      // Anything reasonable — trim, cap length, reject empty.
+      const text = reply.trim().replace(/^[\W_]+|[\W_]+$/g, "");
+      if (text.length === 0 || text.length > 64) return undefined;
+      return text;
     },
-    {
-        id: "claudeOfferAccepted",
-        prompt:
-            "Want to sign into Claude? It's the difference between me writing " +
-            "apps you'll actually use and me writing apps that mostly work. " +
-            "I'll open a browser; you log in there, then paste the code back here. " +
-            "Or skip and stay on the local model — that's fine too.",
-        parse: parseOffer,
-        clarify: "Yes to sign in, no to stay local-only. Up to you.",
+    clarify: "Just a name or a handle — whatever you'd like me to use.",
+  },
+  {
+    id: "claudeOfferAccepted",
+    prompt:
+      "Want to sign into Claude? It's the difference between me writing " +
+      "apps you'll actually use and me writing apps that mostly work. " +
+      "I'll open a browser; you log in there, then paste the code back here. " +
+      "Or skip and stay on the local model — that's fine too.",
+    parse: parseOffer,
+    clarify: "Yes to sign in, no to stay local-only. Up to you.",
+  },
+  {
+    id: "buildIntent",
+    prompt:
+      "Last question. What do you want me to build first? Could be a clock, " +
+      "a notes app, a calculator, a calendar — whatever feels useful. " +
+      'Or say "nothing yet" and we can just chat.',
+    parse: (reply: string) => {
+      const text = reply.trim();
+      if (text.length === 0 || text.length > 256) return undefined;
+      return text;
     },
-    {
-        id: "buildIntent",
-        prompt:
-            "Last question. What do you want me to build first? Could be a clock, " +
-            "a notes app, a calculator, a calendar — whatever feels useful. " +
-            "Or say \"nothing yet\" and we can just chat.",
-        parse: (reply: string) => {
-            const text = reply.trim();
-            if (text.length === 0 || text.length > 256) return undefined;
-            return text;
-        },
-        clarify:
-            "Just describe one thing in a sentence — e.g. \"a sticky-notes app\" " +
-            "or \"a timer\". Say \"nothing yet\" to skip.",
-    },
+    clarify:
+      'Just describe one thing in a sentence — e.g. "a sticky-notes app" ' +
+      'or "a timer". Say "nothing yet" to skip.',
+  },
 ] as const;
 /**
  * Build the warm completion message after the last calibration question.
@@ -149,42 +151,43 @@ export const QUESTIONS: readonly OnboardingQuestion[] = [
  * gentle next step. Multi-step setup happens later, conversationally.
  */
 export function completionMessage(answers: Partial<CalibrationBlock>): string {
-    const name = typeof answers.name === "string" ? answers.name : "there";
-    const intent = typeof answers.buildIntent === "string" ? answers.buildIntent.trim() : "";
-    const intentLower = intent.toLowerCase();
-    const skipped =
-        intentLower === "" ||
-        /^(nothing|skip|later|nah|no|none|nope|not now|not yet|nope nothing|nothing yet)\b/.test(
-            intentLower,
-        );
-
-    if (skipped) {
-        // No build requested. Open-ended invitation — chat is the desktop.
-        return `OK, ${name}. Ready when you are. Say "build me X" anytime — a clock, a notes app, anything you can think of — and I'll make it.`;
-    }
-
-    // Build IS in flight (the dispatcher fired BUILD_APP async). Frame the
-    // wait time honestly so the user doesn't wonder if it's stuck:
-    // claude-codegen runs ~20-60s with claude signed in, ~2-5 min on the
-    // local 1B if not.
-    //
-    // Don't try to grammar-fix the user's phrasing — they already said
-    // "a clock" or "calendar" or "build me a notes app"; we strip the
-    // leading "build me" / "make me" if they used it but otherwise
-    // leave the words alone. The slug for "open <thing>" is the last
-    // meaningful word so they don't have to remember articles.
-    const cleanedIntent =
-        intent.replace(/^(build me|make me|build|make)\s+/i, "").trim() || intent;
-    const lastWord =
-        cleanedIntent
-            .split(/\s+/)
-            .filter((w) => w.length > 0 && !/^(a|an|the|some|me|my)$/i.test(w))
-            .pop() ?? cleanedIntent;
-    return (
-        `OK, ${name}. I'm building ${cleanedIntent} now — should take ` +
-        `about 30 seconds. When it's ready, say "open ${lastWord}" ` +
-        `and I'll pop it open. Anything else you want to chat about while I work?`
+  const name = typeof answers.name === "string" ? answers.name : "there";
+  const intent =
+    typeof answers.buildIntent === "string" ? answers.buildIntent.trim() : "";
+  const intentLower = intent.toLowerCase();
+  const skipped =
+    intentLower === "" ||
+    /^(nothing|skip|later|nah|no|none|nope|not now|not yet|nope nothing|nothing yet)\b/.test(
+      intentLower,
     );
+
+  if (skipped) {
+    // No build requested. Open-ended invitation — chat is the desktop.
+    return `OK, ${name}. Ready when you are. Say "build me X" anytime — a clock, a notes app, anything you can think of — and I'll make it.`;
+  }
+
+  // Build IS in flight (the dispatcher fired BUILD_APP async). Frame the
+  // wait time honestly so the user doesn't wonder if it's stuck:
+  // claude-codegen runs ~20-60s with claude signed in, ~2-5 min on the
+  // local 1B if not.
+  //
+  // Don't try to grammar-fix the user's phrasing — they already said
+  // "a clock" or "calendar" or "build me a notes app"; we strip the
+  // leading "build me" / "make me" if they used it but otherwise
+  // leave the words alone. The slug for "open <thing>" is the last
+  // meaningful word so they don't have to remember articles.
+  const cleanedIntent =
+    intent.replace(/^(build me|make me|build|make)\s+/i, "").trim() || intent;
+  const lastWord =
+    cleanedIntent
+      .split(/\s+/)
+      .filter((w) => w.length > 0 && !/^(a|an|the|some|me|my)$/i.test(w))
+      .pop() ?? cleanedIntent;
+  return (
+    `OK, ${name}. I'm building ${cleanedIntent} now — should take ` +
+    `about 30 seconds. When it's ready, say "open ${lastWord}" ` +
+    `and I'll pop it open. Anything else you want to chat about while I work?`
+  );
 }
 
 /**

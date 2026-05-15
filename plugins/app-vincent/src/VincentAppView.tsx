@@ -13,7 +13,13 @@
 
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
-import { ArrowLeft, RefreshCw, ShieldCheck, TrendingUp, Wallet } from "lucide-react";
+import {
+  ArrowLeft,
+  RefreshCw,
+  ShieldCheck,
+  TrendingUp,
+  Wallet,
+} from "lucide-react";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";
 import { useVincentDashboard } from "./useVincentDashboard";

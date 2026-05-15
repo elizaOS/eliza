@@ -22,74 +22,6 @@ let openAIClient: {
 let openRouterClient: ReturnType<typeof createOpenAI> | null = null;
 let anthropicClient: ReturnType<typeof createAnthropic> | null = null;
 let vercelAIGatewayClient: GatewayProvider | null = null;
-type OpenAIProviderSettings = NonNullable<Parameters<typeof createOpenAI>[0]>;
-type OpenAIFetch = NonNullable<OpenAIProviderSettings["fetch"]>;
-
-const VAST_ELIZA_GUIDANCE_HEADERS = [
-  ["x-eliza-prefill-plan", "eliza_prefill_plan"],
-  ["x-eliza-guided-decode", "eliza_guided_decode"],
-  ["x-eliza-planner-action-schemas", "eliza_planner_action_schemas"],
-  ["x-eliza-span-samplers", "eliza_span_samplers"],
-] as const;
-
-function decodeGuidanceHeader(value: string): unknown {
-  try {
-    return JSON.parse(value) as unknown;
-  } catch {
-    return value;
-  }
-}
-
-function parseJsonRequestBody(body: BodyInit | null | undefined): Record<string, unknown> | null {
-  if (!body) return null;
-  try {
-    const raw =
-      typeof body === "string"
-        ? body
-        : body instanceof ArrayBuffer
-          ? new TextDecoder().decode(body)
-          : ArrayBuffer.isView(body)
-            ? new TextDecoder().decode(body)
-            : null;
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function createVastElizaGuidanceFetch(): OpenAIProviderSettings["fetch"] {
-  const vastFetch = async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
-    const headers = new Headers(init?.headers);
-    const guidance: Record<string, unknown> = {};
-
-    for (const [headerName, bodyKey] of VAST_ELIZA_GUIDANCE_HEADERS) {
-      const value = headers.get(headerName);
-      if (value == null || value.trim().length === 0) continue;
-      guidance[bodyKey] = decodeGuidanceHeader(value);
-      headers.delete(headerName);
-    }
-
-    if (Object.keys(guidance).length === 0) {
-      return fetch(input, init);
-    }
-
-    const body = parseJsonRequestBody(init?.body);
-    if (!body) {
-      return fetch(input, init);
-    }
-
-    return fetch(input, {
-      ...init,
-      headers,
-      body: JSON.stringify({ ...body, ...guidance }),
-    });
-  };
-  return vastFetch as unknown as OpenAIFetch;
-}
 
 function getGroqClient() {
   if (!groqClient) {
@@ -120,7 +52,6 @@ function getVastClient(model: string) {
   const client = createOpenAI({
     apiKey: config.apiKey,
     baseURL: `${config.baseUrl}/v1`,
-    fetch: createVastElizaGuidanceFetch(),
   });
   vastClients.set(cacheKey, client);
   return { client, apiModelId: config.apiModelId };

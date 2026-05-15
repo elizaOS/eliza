@@ -10,9 +10,7 @@ type ScheduledTaskSeedBase = Omit<ScheduledTaskSeed, "kind">;
 
 export type CompiledTaskDefinition = ScheduledTaskSeed;
 
-export type ValidationResult =
-  | { ok: true }
-  | { ok: false; errors: string[] };
+export type ValidationResult = { ok: true } | { ok: false; errors: string[] };
 
 interface TaskDefinitionBase {
   promptInstructions: string;
@@ -46,7 +44,9 @@ type OutputDefinition = NonNullable<ScheduledTaskSeed["output"]> & {
 
 export interface ReminderTaskDefinition extends TaskDefinitionBase {
   definitionKind: "reminder";
-  completionCheck?: CompletionCheck<"user_acknowledged" | "user_replied_within">;
+  completionCheck?: CompletionCheck<
+    "user_acknowledged" | "user_replied_within"
+  >;
   output?: ScheduledTaskSeedBase["output"];
 }
 
@@ -58,9 +58,14 @@ export interface CheckInTaskDefinition extends TaskDefinitionBase {
 
 export interface FollowUpTaskDefinition extends TaskDefinitionBase {
   definitionKind: "followup";
-  completionCheck?: CompletionCheck<"subject_updated" | "user_replied_within" | "user_acknowledged">;
+  completionCheck?: CompletionCheck<
+    "subject_updated" | "user_replied_within" | "user_acknowledged"
+  >;
   subject?: {
-    kind: Extract<ScheduledTaskSubjectKind, "entity" | "relationship" | "thread">;
+    kind: Extract<
+      ScheduledTaskSubjectKind,
+      "entity" | "relationship" | "thread"
+    >;
     id: string;
   };
   output?: ScheduledTaskSeedBase["output"];
@@ -74,7 +79,9 @@ export interface WatcherTaskDefinition extends TaskDefinitionBase {
 
 export interface RecapTaskDefinition extends TaskDefinitionBase {
   definitionKind: "recap";
-  completionCheck?: CompletionCheck<"user_acknowledged" | "user_replied_within">;
+  completionCheck?: CompletionCheck<
+    "user_acknowledged" | "user_replied_within"
+  >;
   output?: ScheduledTaskSeedBase["output"];
 }
 
@@ -82,7 +89,10 @@ export interface ApprovalTaskDefinition extends TaskDefinitionBase {
   definitionKind: "approval";
   completionCheck: CompletionCheck<"approval_resolved" | "user_replied_within">;
   subject: {
-    kind: Extract<ScheduledTaskSubjectKind, "entity" | "relationship" | "thread" | "document" | "calendar_event">;
+    kind: Extract<
+      ScheduledTaskSubjectKind,
+      "entity" | "relationship" | "thread" | "document" | "calendar_event"
+    >;
     id: string;
   };
   output: OutputDefinition;
@@ -108,10 +118,17 @@ export interface TaskCompiler<T extends TaskDefinition> {
   compile(definition: T): ScheduledTaskSeed;
 }
 
-const allowedCompletionChecks: Record<TaskDefinition["definitionKind"], Set<string>> = {
+const allowedCompletionChecks: Record<
+  TaskDefinition["definitionKind"],
+  Set<string>
+> = {
   reminder: new Set(["user_acknowledged", "user_replied_within"]),
   checkin: new Set(["user_replied_within", "user_acknowledged"]),
-  followup: new Set(["subject_updated", "user_replied_within", "user_acknowledged"]),
+  followup: new Set([
+    "subject_updated",
+    "user_replied_within",
+    "user_acknowledged",
+  ]),
   watcher: new Set([]),
   recap: new Set(["user_acknowledged", "user_replied_within"]),
   approval: new Set(["approval_resolved", "user_replied_within"]),
@@ -133,7 +150,8 @@ export function validateTaskDefinition(
   }
 
   const triggerNeedsGate =
-    definition.trigger.kind === "event" || definition.trigger.kind === "interval";
+    definition.trigger.kind === "event" ||
+    definition.trigger.kind === "interval";
   if (triggerNeedsGate && !definition.shouldFire) {
     errors.push(
       `${definition.definitionKind} task with ${definition.trigger.kind} trigger must declare shouldFire gates.`,
@@ -149,11 +167,18 @@ export function validateTaskDefinition(
       definition.definitionKind === "output") &&
     !definition.output
   ) {
-    errors.push(`${definition.definitionKind} task definitions require output.`);
+    errors.push(
+      `${definition.definitionKind} task definitions require output.`,
+    );
   }
 
-  if (definition.output?.destination === "channel" && !definition.output.target) {
-    errors.push("channel output requires output.target connector/channel metadata.");
+  if (
+    definition.output?.destination === "channel" &&
+    !definition.output.target
+  ) {
+    errors.push(
+      "channel output requires output.target connector/channel metadata.",
+    );
   }
 
   if (
@@ -164,7 +189,9 @@ export function validateTaskDefinition(
   }
 
   const completionKind =
-    "completionCheck" in definition ? definition.completionCheck?.kind : undefined;
+    "completionCheck" in definition
+      ? definition.completionCheck?.kind
+      : undefined;
   if (completionKind) {
     const allowed = allowedCompletionChecks[definition.definitionKind];
     if (!allowed.has(completionKind)) {
@@ -176,7 +203,9 @@ export function validateTaskDefinition(
     definition.definitionKind === "checkin" ||
     definition.definitionKind === "approval"
   ) {
-    errors.push(`${definition.definitionKind} task definitions require completionCheck.`);
+    errors.push(
+      `${definition.definitionKind} task definitions require completionCheck.`,
+    );
   }
 
   if (
@@ -184,7 +213,9 @@ export function validateTaskDefinition(
     definition.completionCheck?.kind === "subject_updated" &&
     !definition.subject
   ) {
-    errors.push("followup task definitions using subject_updated require subject.");
+    errors.push(
+      "followup task definitions using subject_updated require subject.",
+    );
   }
 
   return errors.length === 0 ? { ok: true } : { ok: false, errors };

@@ -6,12 +6,12 @@ export type AudioFormat = "mp3" | "wav" | "webm" | "ogg" | "flac" | "mp4";
 /**
  * Supported response formats for transcription
  */
-type TranscriptionResponseFormat = "json" | "text" | "srt" | "verbose_json" | "vtt";
+export type TranscriptionResponseFormat = "json" | "text" | "srt" | "verbose_json" | "vtt";
 
 /**
  * Timestamp granularity options for transcription
  */
-type TimestampGranularity = "word" | "segment";
+export type TimestampGranularity = "word" | "segment";
 
 /**
  * Supported TTS output formats
@@ -90,6 +90,17 @@ export interface TextToSpeechParams {
 /**
  * Parameters for embedding generation
  */
+export interface EmbeddingParams {
+  /** The text to embed */
+  text: string;
+
+  /** The model to use */
+  model?: string;
+
+  /** The number of dimensions for the embedding */
+  dimensions?: number;
+}
+
 /**
  * Parameters for image generation
  */
@@ -127,6 +138,71 @@ export interface ImageDescriptionParams {
 /**
  * Parameters for text generation
  */
+export interface TextGenerationParams {
+  /** The prompt for generation */
+  prompt: string;
+
+  /** System message for the model */
+  system?: string;
+
+  /** Temperature for sampling (0-2) */
+  temperature?: number;
+
+  /** Maximum output tokens */
+  maxTokens?: number;
+
+  /** Frequency penalty (-2 to 2) */
+  frequencyPenalty?: number;
+
+  /** Presence penalty (-2 to 2) */
+  presencePenalty?: number;
+
+  /** Stop sequences */
+  stopSequences?: string[];
+
+  /** Whether to stream the response */
+  stream?: boolean;
+
+  /** Callback for streaming chunks */
+  onStreamChunk?: (chunk: string) => void;
+
+  /** Stable key for OpenAI prompt cache routing */
+  promptCacheKey?: string;
+
+  /** Optional OpenAI cache retention mode */
+  promptCacheRetention?: "in_memory" | "24h";
+
+  /** Provider-specific options for OpenAI requests */
+  providerOptions?: {
+    openai?: {
+      promptCacheKey?: string;
+      promptCacheRetention?: "in_memory" | "24h";
+    };
+  };
+}
+
+/**
+ * Parameters for tokenization
+ */
+export interface TokenizeParams {
+  /** The text to tokenize */
+  prompt: string;
+
+  /** The model whose tokenizer to use */
+  modelType?: string;
+}
+
+/**
+ * Parameters for detokenization
+ */
+export interface DetokenizeParams {
+  /** The tokens to decode */
+  tokens: number[];
+
+  /** The model whose tokenizer to use */
+  modelType?: string;
+}
+
 /**
  * Result of image description/analysis
  */
@@ -280,6 +356,16 @@ export interface OpenAITranscriptionResponse {
 /**
  * OpenAI models list response
  */
+export interface OpenAIModelsResponse {
+  object: "list";
+  data: Array<{
+    id: string;
+    object: "model";
+    created: number;
+    owned_by: string;
+  }>;
+}
+
 /**
  * OpenAI plugin configuration settings
  */
@@ -348,3 +434,53 @@ export interface OpenAIPluginConfig {
 /**
  * Validates that a string is non-empty
  */
+export function requireNonEmptyString(value: string, fieldName: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    throw new Error(`${fieldName} must be a non-empty string`);
+  }
+  return trimmed;
+}
+
+/**
+ * Validates that a number is within a range
+ */
+export function requireNumberInRange(
+  value: number,
+  min: number,
+  max: number,
+  fieldName: string
+): number {
+  if (!Number.isFinite(value)) {
+    throw new Error(`${fieldName} must be a finite number`);
+  }
+  if (value < min || value > max) {
+    throw new Error(`${fieldName} must be between ${min} and ${max}`);
+  }
+  return value;
+}
+
+/**
+ * Validates that an array is non-empty
+ */
+export function requireNonEmptyArray<T>(arr: T[], fieldName: string): T[] {
+  if (arr.length === 0) {
+    throw new Error(`${fieldName} must be a non-empty array`);
+  }
+  return arr;
+}
+
+/**
+ * Validates embedding dimensions
+ */
+export function validateEmbeddingDimension(
+  dimension: number,
+  validDimensions: readonly number[]
+): number {
+  if (!validDimensions.includes(dimension)) {
+    throw new Error(
+      `Invalid embedding dimension: ${dimension}. Must be one of: ${validDimensions.join(", ")}`
+    );
+  }
+  return dimension;
+}

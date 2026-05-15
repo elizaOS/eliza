@@ -15,110 +15,110 @@
  */
 
 export const CODEGEN_OUTPUT_SCHEMA = {
-    $schema: "http://json-schema.org/draft-07/schema#",
-    title: "UsbelizaCodegenOutput",
-    type: "object",
-    additionalProperties: false,
-    required: ["manifest", "files"],
-    properties: {
-        manifest: {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  title: "UsbelizaCodegenOutput",
+  type: "object",
+  additionalProperties: false,
+  required: ["manifest", "files"],
+  properties: {
+    manifest: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "schema_version",
+        "slug",
+        "title",
+        "intent",
+        "runtime",
+        "entry",
+        "capabilities",
+        "version",
+        "last_built_by",
+        "last_built_at",
+      ],
+      properties: {
+        schema_version: { type: "integer", const: 1 },
+        slug: { type: "string", pattern: "^[a-z0-9][a-z0-9-]*$" },
+        title: { type: "string", minLength: 1 },
+        intent: { type: "string", minLength: 1 },
+        runtime: {
+          enum: [
+            "webview",
+            "gtk4",
+            "terminal",
+            "wallpaper",
+            "panel-top",
+            "panel-bottom",
+            "panel-left",
+            "panel-right",
+            "dock",
+            "widget",
+          ],
+        },
+        entry: { type: "string", minLength: 1 },
+        capabilities: {
+          type: "array",
+          items: {
             type: "object",
-            additionalProperties: false,
-            required: [
-                "schema_version",
-                "slug",
-                "title",
-                "intent",
-                "runtime",
-                "entry",
-                "capabilities",
-                "version",
-                "last_built_by",
-                "last_built_at",
-            ],
+            required: ["kind"],
             properties: {
-                schema_version: { type: "integer", const: 1 },
-                slug: { type: "string", pattern: "^[a-z0-9][a-z0-9-]*$" },
-                title: { type: "string", minLength: 1 },
-                intent: { type: "string", minLength: 1 },
-                runtime: {
-                    enum: [
-                        "webview",
-                        "gtk4",
-                        "terminal",
-                        "wallpaper",
-                        "panel-top",
-                        "panel-bottom",
-                        "panel-left",
-                        "panel-right",
-                        "dock",
-                        "widget",
-                    ],
-                },
-                entry: { type: "string", minLength: 1 },
-                capabilities: {
-                    type: "array",
-                    items: {
-                        type: "object",
-                        required: ["kind"],
-                        properties: {
-                            kind: {
-                                enum: [
-                                    "time:read",
-                                    "storage:scoped",
-                                    "notifications:write",
-                                    "network:fetch",
-                                    "clipboard:read",
-                                    "clipboard:write",
-                                    "files:open-dialog",
-                                    "agent:ask",
-                                    "media:play",
-                                    "print:emit",
-                                ],
-                            },
-                            allowlist: {
-                                type: "array",
-                                items: { type: "string" },
-                            },
-                        },
-                    },
-                },
-                version: { type: "integer", minimum: 1 },
-                last_built_by: { type: "string", minLength: 1 },
-                last_built_at: { type: "string", minLength: 1 },
+              kind: {
+                enum: [
+                  "time:read",
+                  "storage:scoped",
+                  "notifications:write",
+                  "network:fetch",
+                  "clipboard:read",
+                  "clipboard:write",
+                  "files:open-dialog",
+                  "agent:ask",
+                  "media:play",
+                  "print:emit",
+                ],
+              },
+              allowlist: {
+                type: "array",
+                items: { type: "string" },
+              },
             },
+          },
         },
-        files: {
-            type: "object",
-            additionalProperties: { type: "string" },
-            minProperties: 1,
-        },
+        version: { type: "integer", minimum: 1 },
+        last_built_by: { type: "string", minLength: 1 },
+        last_built_at: { type: "string", minLength: 1 },
+      },
     },
+    files: {
+      type: "object",
+      additionalProperties: { type: "string" },
+      minProperties: 1,
+    },
+  },
 } as const;
 
 /** TypeScript echo of the schema so the generator and writer stay in sync. */
 export interface CodegenOutput {
-    manifest: {
-        schema_version: 1;
-        slug: string;
-        title: string;
-        intent: string;
-        runtime:
-            | "webview"
-            | "gtk4"
-            | "terminal"
-            | "wallpaper"
-            | "panel-top"
-            | "panel-bottom"
-            | "panel-left"
-            | "panel-right"
-            | "dock"
-            | "widget";
-        entry: string;
-        capabilities: Array<{ kind: string; allowlist?: string[] }>;
-        version: number;
-        last_built_by: string;
-        last_built_at: string;
-    };
-    files: Record<string, string>;
+  manifest: {
+    schema_version: 1;
+    slug: string;
+    title: string;
+    intent: string;
+    runtime:
+      | "webview"
+      | "gtk4"
+      | "terminal"
+      | "wallpaper"
+      | "panel-top"
+      | "panel-bottom"
+      | "panel-left"
+      | "panel-right"
+      | "dock"
+      | "widget";
+    entry: string;
+    capabilities: Array<{ kind: string; allowlist?: string[] }>;
+    version: number;
+    last_built_by: string;
+    last_built_at: string;
+  };
+  files: Record<string, string>;
 }

@@ -71,8 +71,6 @@ export class StreamingAudioCaptureService extends EventEmitter {
 
   private async startContinuousCapture(): Promise<void> {
     const platform = process.platform;
-    const sampleRate = String(this.config.sampleRate ?? 16000);
-    const channels = String(this.config.channels ?? 1);
     let command: string;
     let args: string[];
 
@@ -82,9 +80,9 @@ export class StreamingAudioCaptureService extends EventEmitter {
       args = [
         "-d", // default input device
         "-r",
-        sampleRate,
+        this.config.sampleRate?.toString(),
         "-c",
-        channels,
+        this.config.channels?.toString(),
         "-b",
         "16",
         "-e",
@@ -102,9 +100,9 @@ export class StreamingAudioCaptureService extends EventEmitter {
         "-f",
         "S16_LE",
         "-r",
-        sampleRate,
+        this.config.sampleRate?.toString(),
         "-c",
-        channels,
+        this.config.channels?.toString(),
         "-t",
         "raw",
         "-", // output to stdout
@@ -120,9 +118,9 @@ export class StreamingAudioCaptureService extends EventEmitter {
         "-acodec",
         "pcm_s16le",
         "-ar",
-        sampleRate,
+        this.config.sampleRate?.toString(),
         "-ac",
-        channels,
+        this.config.channels?.toString(),
         "-f",
         "s16le",
         "pipe:1", // output to stdout

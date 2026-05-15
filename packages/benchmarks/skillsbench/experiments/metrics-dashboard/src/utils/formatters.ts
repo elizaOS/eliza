@@ -1,5 +1,5 @@
 export function formatDuration(ms: number): string {
-  if (ms === null || ms === undefined || isNaN(ms)) return '-';
+  if (ms === null || ms === undefined || isNaN(ms)) return "-";
   if (ms < 1000) return `${ms.toFixed(0)}ms`;
   const seconds = ms / 1000;
   if (seconds < 60) return `${seconds.toFixed(1)}s`;
@@ -9,37 +9,37 @@ export function formatDuration(ms: number): string {
 }
 
 export function formatCost(usd: number | null | undefined): string {
-  if (usd === null || usd === undefined) return '-';
+  if (usd === null || usd === undefined) return "-";
   return `$${usd.toFixed(4)}`;
 }
 
 export function formatTokens(count: number | null | undefined): string {
-  if (count === null || count === undefined) return '-';
+  if (count === null || count === undefined) return "-";
   if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
   if (count >= 1_000) return `${(count / 1_000).toFixed(1)}K`;
   return count.toString();
 }
 
 export function formatPercent(value: number): string {
-  if (value === null || value === undefined || isNaN(value)) return '-';
+  if (value === null || value === undefined || isNaN(value)) return "-";
   return `${(value * 100).toFixed(1)}%`;
 }
 
 export function formatDate(isoString: string): string {
   const date = new Date(isoString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
 export function formatDateShort(isoString: string): string {
   const date = new Date(isoString);
-  return date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
   });
 }
 

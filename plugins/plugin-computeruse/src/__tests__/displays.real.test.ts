@@ -9,7 +9,12 @@
 
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { clampToDisplay, globalToLocal, localToGlobal, localToGlobalDefault } from "../platform/coords.js";
+import {
+  clampToDisplay,
+  globalToLocal,
+  localToGlobal,
+  localToGlobalDefault,
+} from "../platform/coords.js";
 import {
   findDisplay,
   getPrimaryDisplay,
@@ -108,7 +113,9 @@ describe("displays — xrandr parser", () => {
     if (!live) return;
     const parsed = parseXrandrMonitors(live);
     expect(parsed.length).toBeGreaterThan(0);
-    expect(parsed.every((d) => Number.isFinite(d.bounds[2]) && d.bounds[2] > 0)).toBe(true);
+    expect(
+      parsed.every((d) => Number.isFinite(d.bounds[2]) && d.bounds[2] > 0),
+    ).toBe(true);
     expect(parsed.filter((d) => d.primary)).toHaveLength(1);
   });
 });
@@ -141,8 +148,26 @@ describe("displays — Hyprland parser", () => {
 
   it("parses a dual-monitor Hyprland snapshot", () => {
     const fixture = JSON.stringify([
-      { id: 0, name: "eDP-1", x: 0, y: 0, width: 2560, height: 1600, scale: 1.5, focused: true },
-      { id: 1, name: "DP-2", x: 2560, y: 0, width: 3840, height: 2160, scale: 1, focused: false },
+      {
+        id: 0,
+        name: "eDP-1",
+        x: 0,
+        y: 0,
+        width: 2560,
+        height: 1600,
+        scale: 1.5,
+        focused: true,
+      },
+      {
+        id: 1,
+        name: "DP-2",
+        x: 2560,
+        y: 0,
+        width: 3840,
+        height: 2160,
+        scale: 1,
+        focused: false,
+      },
     ]);
     const parsed = parseHyprlandMonitors(fixture);
     expect(parsed).toHaveLength(2);
@@ -303,7 +328,9 @@ describe("displays — live enumeration on this host", () => {
     const displays = refreshDisplays();
     expect(displays.length).toBeGreaterThan(0);
     expect(displays.filter((d) => d.primary)).toHaveLength(1);
-    expect(displays.every((d) => d.bounds[2] > 0 && d.bounds[3] > 0)).toBe(true);
+    expect(displays.every((d) => d.bounds[2] > 0 && d.bounds[3] > 0)).toBe(
+      true,
+    );
   });
 
   it("getPrimaryDisplay matches a listDisplays entry", () => {
@@ -362,8 +389,8 @@ describe("coords — translation", () => {
   });
 
   it("rejects unknown displayId", () => {
-    expect(() =>
-      localToGlobal({ displayId: 999_999_999, x: 0, y: 0 }),
-    ).toThrow(/Unknown displayId/);
+    expect(() => localToGlobal({ displayId: 999_999_999, x: 0, y: 0 })).toThrow(
+      /Unknown displayId/,
+    );
   });
 });

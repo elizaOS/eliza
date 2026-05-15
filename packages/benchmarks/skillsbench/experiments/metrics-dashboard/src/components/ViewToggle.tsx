@@ -1,15 +1,19 @@
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Badge } from '@/components/ui/badge'
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-export type ViewMode = 'table' | 'errors' | 'error-types'
+export type ViewMode = "table" | "errors" | "error-types";
 
 interface ViewToggleProps {
-  viewMode: ViewMode
-  onViewChange: (mode: ViewMode) => void
-  errorCount: number
+  viewMode: ViewMode;
+  onViewChange: (mode: ViewMode) => void;
+  errorCount: number;
 }
 
-export function ViewToggle({ viewMode, onViewChange, errorCount }: ViewToggleProps) {
+export function ViewToggle({
+  viewMode,
+  onViewChange,
+  errorCount,
+}: ViewToggleProps) {
   return (
     <Tabs value={viewMode} onValueChange={(v) => onViewChange(v as ViewMode)}>
       <TabsList>
@@ -25,5 +29,5 @@ export function ViewToggle({ viewMode, onViewChange, errorCount }: ViewTogglePro
         <TabsTrigger value="error-types">All Error Types</TabsTrigger>
       </TabsList>
     </Tabs>
-  )
+  );
 }

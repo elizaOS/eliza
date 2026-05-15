@@ -388,7 +388,9 @@ endif()
  */
 export function appendKokoroCmakeGraft({ llamaCppRoot } = {}) {
   if (!llamaCppRoot) {
-    throw new Error("[omnivoice-fuse] appendKokoroCmakeGraft: llamaCppRoot is required");
+    throw new Error(
+      "[omnivoice-fuse] appendKokoroCmakeGraft: llamaCppRoot is required",
+    );
   }
   const cmakePath = path.join(llamaCppRoot, "CMakeLists.txt");
   const original = fs.readFileSync(cmakePath, "utf8");
@@ -445,16 +447,32 @@ export { KOKORO_SENTINEL as KOKORO_CMAKE_GRAFT_SENTINEL };
 /**
  * Names of CMake build targets the fused build must produce. Caller
  * passes these to `cmake --build … --target …`.
+ *
+ * W3-3 (v1.0.1-eliza): the legacy `omnivoice/` graft tree was deleted
+ * from the fork — there is no more `omnivoice-core` or `llama-omnivoice-
+ * server` target. The fork's `tools/omnivoice/CMakeLists.txt` declares
+ * `omnivoice_lib` (STATIC, underscore not hyphen), `elizainference`
+ * (SHARED), `omnivoice-tts` / `omnivoice-codec` (CLIs), and patches the
+ * /v1/audio/speech route into `llama-server`.
+ *
+ * The `legacy` flag is retained for one release as a deprecation
+ * runway. Setting it currently has no effect on the produced target
+ * list (the underlying CMake produces the merged-tree targets either
+ * way — `ELIZA_FUSE_OMNIVOICE=ON` redirects to
+ * `LLAMA_BUILD_OMNIVOICE=ON` in the fork's root CMakeLists.txt).
+ * Callers still passing `legacy: true` get a warning logged at the
+ * call site.
  */
-export function fusedCmakeBuildTargets() {
+export function fusedCmakeBuildTargets({ legacy: _legacy = false } = {}) {
   return [
     "llama-server",
     "llama-cli",
     "llama-speculative-simple",
     "llama-mtmd-cli",
-    "omnivoice-core",
+    "omnivoice_lib",
     "elizainference",
-    "llama-omnivoice-server",
+    "omnivoice-tts",
+    "omnivoice-codec",
   ];
 }
 

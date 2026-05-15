@@ -1,8 +1,4 @@
 import {
-  isLoopbackLocalAgentHost,
-  parseMobileNativeLocalAgentUrl,
-} from "../api/mobile-native-agent-url";
-import {
   IOS_LOCAL_AGENT_IPC_BASE,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_LOCAL_AGENT_LABEL,
@@ -29,10 +25,18 @@ export function isLocalAgentApiBase(value: string | null | undefined): boolean {
   if (!apiBase) return false;
   if (apiBase === MOBILE_LOCAL_AGENT_API_BASE) return true;
   if (apiBase === IOS_LOCAL_AGENT_IPC_BASE) return true;
-  if (parseMobileNativeLocalAgentUrl(apiBase) !== null) return true;
   try {
     const url = new URL(apiBase);
-    return isLoopbackLocalAgentHost(url.hostname);
+    if (url.protocol === "eliza-local-agent:" && url.hostname === "ipc") {
+      return true;
+    }
+    const hostname = url.hostname.toLowerCase();
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname === "[::1]"
+    );
   } catch {
     return false;
   }

@@ -77,35 +77,12 @@ export interface KokoroPhonemeSequence {
 	phonemes: string;
 }
 
-/** Kokoro's BERT encoder is exported with a fixed max sequence length. */
-export const KOKORO_MAX_PHONEME_LENGTH = 510;
-
 /** Raised when the on-disk model layout is missing or malformed. */
 export class KokoroModelMissingError extends Error {
 	readonly code = "kokoro-model-missing" as const;
 	constructor(message: string) {
 		super(message);
 		this.name = "KokoroModelMissingError";
-	}
-}
-
-/** Raised when a phoneme sequence exceeds Kokoro's fixed encoder length. */
-export class KokoroInputTooLongError extends Error {
-	readonly code = "kokoro-input-too-long" as const;
-	readonly actualLength: number;
-	readonly maxLength: number;
-
-	constructor(
-		actualLength: number,
-		maxLength: number = KOKORO_MAX_PHONEME_LENGTH,
-	) {
-		super(
-			`[kokoro] phoneme sequence is too long: ${actualLength} > ${maxLength}. ` +
-				`The Kokoro ONNX export caps the BERT encoder at ${maxLength} tokens; split the input into shorter chunks before synthesizing.`,
-		);
-		this.name = "KokoroInputTooLongError";
-		this.actualLength = actualLength;
-		this.maxLength = maxLength;
 	}
 }
 

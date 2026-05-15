@@ -29,12 +29,18 @@
 import { existsSync, readdirSync, statSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import type { IAgentRuntime } from "@elizaos/core";
+import type { VoiceCancellationReason } from "@elizaos/shared";
 import {
 	type KokoroEngineDiscoveryResult,
 	KokoroOnnxRuntime,
 	KokoroTtsBackend,
 } from "@elizaos/shared/local-inference";
 import { localInferenceRoot } from "../paths";
+import {
+	type CoordinatorRuntime,
+	VoiceCancellationCoordinator,
+} from "./cancellation-coordinator";
 import { VoiceStartupError } from "./errors";
 import type {
 	ElizaInferenceContextHandle,
@@ -47,6 +53,11 @@ import {
 	VoiceLifecycleError,
 	type VoiceLifecycleLoaders,
 } from "./lifecycle";
+import {
+	OptimisticGenerationPolicy,
+	type OptimisticPolicyOptions,
+	resolvePowerSourceState,
+} from "./optimistic-policy";
 import {
 	type CachedPhraseAudio,
 	DEFAULT_PHRASE_CACHE_SEED,
@@ -65,11 +76,16 @@ import {
 	LlamaServerTargetVerifier,
 	MissingAsrTranscriber,
 } from "./pipeline-impls";
+import type { VoiceProfileStore } from "./profile-store";
 import { type SchedulerEvents, VoiceScheduler } from "./scheduler";
 import {
 	type MmapRegionHandle,
 	SharedResourceRegistry,
 } from "./shared-resources";
+import {
+	type VoiceAttributionOutput,
+	VoiceAttributionPipeline,
+} from "./speaker/attribution-pipeline";
 import {
 	DEFAULT_VOICE_PRESET_REL_PATH,
 	SpeakerPresetCache,
@@ -576,6 +592,126 @@ export interface EngineVoiceBridgeOptions {
 	 * mmap-evict).
 	 */
 	kokoroOnly?: KokoroEngineDiscoveryResult;
+	/**
+	 * Optional voice-profile store for speaker-attribution. When set, the
+	 * bridge constructs a `VoiceAttributionPipeline` and runs attribution
+	 * in parallel with ASR on every turn via `runVoiceTurn`. Callers receive
+	 * the resolved `VoiceAttributionOutput` via `onAttribution` in the turn
+	 * events passed to `runVoiceTurn`.
+	 *
+	 * When absent, attribution is skipped and the pipeline operates exactly
+	 * as before (no diarizer / encoder overhead).
+	 */
+	profileStore?: VoiceProfileStore;
+	/**
+	 * W3-9 / F1 — the agent runtime. When supplied, the bridge constructs a
+	 * `VoiceCancellationCoordinator` and an `OptimisticGenerationPolicy`
+	 * scoped to this voice session. The coordinator owns one cancellation
+	 * token per `roomId` and fans abort out to:
+	 *   1. `runtime.turnControllers.abortTurn(roomId, reason)` — the
+	 *      planner-loop / action handlers / streaming `useModel` see the
+	 *      abort within one tick.
+	 *   2. The slot-abort callback (`slotAbort`) when the LM slot id is
+	 *      registered with the turn.
+	 *   3. The TTS hard-stop callback (`ttsStop`), which the bridge wires
+	 *      to its existing `triggerBargeIn()` (audio sink drain + FFI/HTTP
+	 *      synthesis cancel).
+	 *   4. The standard `AbortSignal` every fetch / `useModel` / FFI call
+	 *      that took `token.signal` honours.
+	 *
+	 * The reverse direction (runtime → voice) is wired symmetrically via
+	 * the coordinator's `runtime.turnControllers.onEvent` subscription.
+	 *
+	 * Omit to keep the prior behaviour — the bridge then exposes no
+	 * coordinator / policy and callers fall back to the legacy
+	 * `BargeInController` + `triggerBargeIn()` surface.
+	 *
+	 * Structural type — `CoordinatorRuntime` is the minimum surface the
+	 * coordinator needs (`turnControllers.{abortTurn, onEvent}`). Production
+	 * passes a full `IAgentRuntime`; tests can pass a fake matching the
+	 * structural shape.
+	 */
+	runtime?: IAgentRuntime | CoordinatorRuntime;
+	/**
+	 * W3-9 / F1 — optional `OptimisticGenerationPolicy` overrides. When
+	 * `runtime` is set and `optimisticPolicyOptions` is omitted, the bridge
+	 * constructs a default policy gated on the resolved power source
+	 * (plugged-in / battery / unknown) and the canonical EOT threshold.
+	 */
+	optimisticPolicyOptions?: OptimisticPolicyOptions;
+	/**
+	 * W3-9 / F1 — optional LM slot-abort callback for the cancellation
+	 * coordinator. Production wires this to `DflashLlamaServer.abortSlot`
+	 * once a slot id is known per turn. The bridge passes this directly
+	 * into the coordinator; the bridge itself does not own slot ids.
+	 *
+	 * Has no effect when `runtime` is unset (no coordinator is constructed).
+	 */
+	slotAbort?: (slotId: number, reason: VoiceCancellationReason) => void;
+}
+
+/**
+ * Per-turn events that include the optional attribution result alongside
+ * the existing `VoicePipelineEvents`. The attribution runs in parallel
+ * with ASR; it resolves some time after `onAsrComplete` and before
+ * `onComplete`.
+ */
+export interface VoiceTurnEvents extends VoicePipelineEvents {
+	/**
+	 * Called once per turn when the `VoiceAttributionPipeline` resolves
+	 * (diarizer + encoder + profile-store match). Only fired when the
+	 * bridge was constructed with a `profileStore`. May arrive after
+	 * `onAsrComplete` but before `onComplete`. Fire-and-forget from the
+	 * bridge's perspective — callers attach the metadata to the turn's
+	 * transcript asynchronously.
+	 */
+	onAttribution?(output: VoiceAttributionOutput): void;
+}
+
+/**
+ * Internal helper: construct the W3-9 cancellation coordinator + the
+ * optimistic-generation policy for a session, given the bridge options.
+ * Returns null/null when no runtime was supplied (the bridge then operates
+ * without the W3-9 surface — back-compat for callers that haven't adopted
+ * the canonical cancellation token yet).
+ *
+ * Lives outside the class so both `start()` and `startKokoroOnly()` can
+ * share it without duplicating the construction order (the coordinator's
+ * `ttsStop` callback closes over the to-be-constructed bridge — we plumb
+ * that through `setTtsStop` after the bridge is built).
+ */
+interface PendingCancellationWiring {
+	coordinator: VoiceCancellationCoordinator;
+	policy: OptimisticGenerationPolicy;
+	/** Wire the bridge's `triggerBargeIn` as the ttsStop callback. */
+	bindTtsStop(stop: () => void): void;
+}
+
+function buildCancellationWiring(
+	opts: EngineVoiceBridgeOptions,
+): PendingCancellationWiring | null {
+	if (!opts.runtime) return null;
+	let ttsStopHandler: (() => void) | null = null;
+	const coordinator = new VoiceCancellationCoordinator({
+		runtime: opts.runtime,
+		...(opts.slotAbort ? { slotAbort: opts.slotAbort } : {}),
+		ttsStop: () => {
+			if (ttsStopHandler) {
+				ttsStopHandler();
+			}
+		},
+	});
+	const policy = new OptimisticGenerationPolicy(
+		opts.optimisticPolicyOptions ?? {},
+	);
+	policy.setPowerSource(resolvePowerSourceState());
+	return {
+		coordinator,
+		policy,
+		bindTtsStop(stop) {
+			ttsStopHandler = stop;
+		},
+	};
 }
 
 /**
@@ -600,6 +736,36 @@ export class EngineVoiceBridge {
 	private readonly phraseCache: PhraseCache;
 	/** In-flight fused turn (`runVoiceTurn`), if any — cancelled on barge-in. */
 	private activePipeline: VoicePipeline | null = null;
+	/**
+	 * Optional attribution pipeline. Populated when the bridge was created
+	 * with a `profileStore` option. When present, `runVoiceTurn` fires
+	 * attribution in parallel with ASR and delivers the result via
+	 * `VoiceTurnEvents.onAttribution`.
+	 */
+	private readonly attributionPipeline: VoiceAttributionPipeline | null;
+	/**
+	 * W3-9 / F1 — voice cancellation coordinator. Populated when the bridge
+	 * was created with a `runtime` option. Owns one
+	 * `VoiceCancellationToken` per active `roomId` and fans abort out to
+	 * the runtime turn controller, the LM slot, the TTS pipeline, and the
+	 * standard `AbortSignal`. See `cancellation-coordinator.ts` for the
+	 * full contract.
+	 */
+	private readonly cancellationCoordinator: VoiceCancellationCoordinator | null;
+	/**
+	 * W3-9 / F1 — optimistic-generation policy. Constructed once per
+	 * session when `runtime` is supplied. Gates the speculative LM prefill
+	 * at the `firePrefill` site (see `voice-state-machine.ts`). Hot-swappable
+	 * via `setPowerSource()` / `setOverride()` from Settings or a device-
+	 * event listener.
+	 */
+	private readonly optimisticGenerationPolicy: OptimisticGenerationPolicy | null;
+	/**
+	 * W3-9 / F1 — per-room `BargeInController` bindings the bridge owns.
+	 * Holds the unsubscribe handle returned by
+	 * `coordinator.bindBargeInController` so `dispose()` can tear them down.
+	 */
+	private readonly bargeInBindings = new Map<string, () => void>();
 
 	private constructor(
 		scheduler: VoiceScheduler,
@@ -610,6 +776,9 @@ export class EngineVoiceBridge {
 		ffiContextRef: FfiContextRef | null,
 		asrAvailable: boolean,
 		phraseCache: PhraseCache,
+		attributionPipeline: VoiceAttributionPipeline | null = null,
+		cancellationCoordinator: VoiceCancellationCoordinator | null = null,
+		optimisticGenerationPolicy: OptimisticGenerationPolicy | null = null,
 	) {
 		this.scheduler = scheduler;
 		this.backend = backend;
@@ -619,6 +788,9 @@ export class EngineVoiceBridge {
 		this.ffiContextRef = ffiContextRef;
 		this.asrAvailable = asrAvailable;
 		this.phraseCache = phraseCache;
+		this.attributionPipeline = attributionPipeline;
+		this.cancellationCoordinator = cancellationCoordinator;
+		this.optimisticGenerationPolicy = optimisticGenerationPolicy;
 	}
 
 	get ffiCtx(): ElizaInferenceContextHandle | null {
@@ -631,6 +803,24 @@ export class EngineVoiceBridge {
 	 * resources, then `dispose()` to close the FFI handle.
 	 */
 	dispose(): void {
+		// W3-9 / F1 — tear down barge-in bindings + the cancellation
+		// coordinator first so any armed turn aborts with reason=external
+		// before the FFI context goes away.
+		for (const unsub of Array.from(this.bargeInBindings.values())) {
+			try {
+				unsub();
+			} catch {
+				// Best-effort teardown.
+			}
+		}
+		this.bargeInBindings.clear();
+		if (this.cancellationCoordinator) {
+			try {
+				this.cancellationCoordinator.dispose();
+			} catch {
+				// Coordinator dispose must not block FFI teardown.
+			}
+		}
 		if (this.ffi) {
 			const ctx = this.ffiContextRef?.current ?? null;
 			if (ctx !== null) {
@@ -781,7 +971,58 @@ export class EngineVoiceBridge {
 			defaultLifecycleLoaders(opts.bundleRoot, ffiHandle, ffiContextRef);
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
-		return new EngineVoiceBridge(
+		// Wire speaker-attribution when a profile store is provided.
+		// The attribution pipeline wraps the encoder + diarizer + profile-store;
+		// encoder errors (SpeakerEncoderUnavailableError) are caught at the
+		// runVoiceTurn level and treated as attribution-miss rather than turn
+		// failure (AGENTS.md §3: attribution is best-effort, voice turn is not).
+		// The real WespeakerEncoder is loaded lazily on first encode() call.
+		let attributionPipeline: VoiceAttributionPipeline | null = null;
+		if (opts.profileStore) {
+			const bundleRootForEncoder = opts.bundleRoot;
+			// Lazy encoder: resolves on first encode() call so the sync start()
+			// path doesn't block on ORT initialization.
+			let resolvedEncoder: import("./speaker/encoder").SpeakerEncoder | null =
+				null;
+			let encoderLoadError: Error | null = null;
+			const lazyEncoder: import("./speaker/encoder").SpeakerEncoder = {
+				// Constants matching WespeakerEncoder static values.
+				modelId:
+					"wespeaker/resnet34-lm-int8" as import("./speaker/encoder").WespeakerModelId,
+				embeddingDim: 256,
+				sampleRate: 16_000,
+				async encode(pcm: Float32Array): Promise<Float32Array> {
+					if (encoderLoadError) throw encoderLoadError;
+					if (!resolvedEncoder) {
+						const { WespeakerEncoder } = await import("./speaker/encoder");
+						const modelPath = `${bundleRootForEncoder}/speaker/encoder.onnx`;
+						try {
+							resolvedEncoder = await WespeakerEncoder.load(modelPath);
+						} catch (err) {
+							encoderLoadError =
+								err instanceof Error ? err : new Error(String(err));
+							throw encoderLoadError;
+						}
+					}
+					return resolvedEncoder.encode(pcm);
+				},
+				async dispose(): Promise<void> {
+					await resolvedEncoder?.dispose();
+				},
+			};
+			attributionPipeline = new VoiceAttributionPipeline({
+				encoder: lazyEncoder,
+				profileStore: opts.profileStore,
+			});
+		}
+
+		// W3-9 / F1 — construct the cancellation coordinator + optimistic policy
+		// when a runtime is supplied. The coordinator's ttsStop callback closes
+		// over `bridge.triggerBargeIn()`, which is wired below once the bridge
+		// is constructed.
+		const wiring = buildCancellationWiring(opts);
+
+		const bridge = new EngineVoiceBridge(
 			scheduler,
 			backend,
 			opts.bundleRoot,
@@ -790,7 +1031,12 @@ export class EngineVoiceBridge {
 			ffiContextRef,
 			asrAvailable,
 			phraseCache,
+			attributionPipeline,
+			wiring?.coordinator ?? null,
+			wiring?.policy ?? null,
 		);
+		if (wiring) wiring.bindTtsStop(() => bridge.triggerBargeIn());
+		return bridge;
 	}
 
 	/**
@@ -870,7 +1116,9 @@ export class EngineVoiceBridge {
 		const loaders = opts.lifecycleLoaders ?? kokoroOnlyLifecycleLoaders();
 		const lifecycle = new VoiceLifecycle({ registry, loaders });
 
-		return new EngineVoiceBridge(
+		const wiring = buildCancellationWiring(opts);
+
+		const bridge = new EngineVoiceBridge(
 			scheduler,
 			backend,
 			workDir,
@@ -879,7 +1127,12 @@ export class EngineVoiceBridge {
 			null, // no FFI context on Kokoro-only
 			false, // ASR is not served from this path
 			phraseCache,
+			null, // no profile store on Kokoro-only
+			wiring?.coordinator ?? null,
+			wiring?.policy ?? null,
 		);
+		if (wiring) wiring.bindTtsStop(() => bridge.triggerBargeIn());
+		return bridge;
 	}
 
 	/**
@@ -956,6 +1209,65 @@ export class EngineVoiceBridge {
 		// sooner.
 		this.activePipeline?.cancel();
 		this.scheduler.bargeIn.onMicActive();
+	}
+
+	/**
+	 * W3-9 / F1 — the canonical voice cancellation coordinator for this
+	 * session, or `null` when the bridge was constructed without a
+	 * `runtime` option. Callers (turn controller, mic VAD source, UI cancel
+	 * route) use this to arm per-turn tokens, fire `bargeIn(roomId)` on
+	 * VAD speech-start, fire `revokeEot(roomId)` when the turn detector
+	 * revokes a tentative EOT, etc. See
+	 * `plugins/plugin-local-inference/docs/voice-cancellation-contract.md`.
+	 */
+	cancellationCoordinatorOrNull(): VoiceCancellationCoordinator | null {
+		return this.cancellationCoordinator;
+	}
+
+	/**
+	 * W3-9 / F1 — the optimistic-generation policy for this session, or
+	 * `null` when the bridge was constructed without a `runtime` option.
+	 * The bridge primes it with the resolved power source at construction
+	 * time; callers can mutate it via `setPowerSource()` / `setOverride()`
+	 * to respond to Settings toggles or battery-state events.
+	 */
+	optimisticPolicyOrNull(): OptimisticGenerationPolicy | null {
+		return this.optimisticGenerationPolicy;
+	}
+
+	/**
+	 * W3-9 / F1 — bind the scheduler's `BargeInController` into the
+	 * cancellation coordinator for `roomId`. Subsequent
+	 * `BargeInController.hardStop()` calls (typically fired by the
+	 * ASR-confirmed barge-in words ladder) translate into
+	 * `coordinator.bargeIn(roomId)` so the canonical token (and every
+	 * downstream consumer: runtime turn abort, LM slot abort, TTS stop,
+	 * AbortSignal) sees the abort.
+	 *
+	 * Idempotent per `roomId` — repeated calls for the same room return
+	 * the same unsubscribe handle (the prior binding is torn down first).
+	 *
+	 * No-op when the bridge was constructed without a `runtime` option;
+	 * returns a no-op unsubscribe. Callers should still call it
+	 * unconditionally — back-compat for the legacy path is automatic.
+	 */
+	bindBargeInControllerForRoom(roomId: string): () => void {
+		if (!this.cancellationCoordinator) {
+			return () => undefined;
+		}
+		const existing = this.bargeInBindings.get(roomId);
+		if (existing) existing();
+		const unsub = this.cancellationCoordinator.bindBargeInController(
+			roomId,
+			this.scheduler.bargeIn,
+		);
+		this.bargeInBindings.set(roomId, unsub);
+		return () => {
+			unsub();
+			if (this.bargeInBindings.get(roomId) === unsub) {
+				this.bargeInBindings.delete(roomId);
+			}
+		};
 	}
 
 	/**
@@ -1207,9 +1519,32 @@ export class EngineVoiceBridge {
 		audio: TranscriptionAudio,
 		textRunner: DflashTextRunner,
 		config: VoicePipelineConfig,
-		events?: VoicePipelineEvents,
+		events?: VoiceTurnEvents,
 	): Promise<"done" | "token-cap" | "cancelled"> {
 		this.assertVoiceOn("run a voice turn");
+		// If a profileStore was wired, kick off speaker-attribution in parallel
+		// with ASR. The attribution uses the same PCM buffer as the transcriber
+		// but runs through the diarizer + encoder + profile-store independently.
+		// It is fire-and-forget from the pipeline's perspective: the result
+		// arrives via `onAttribution` asynchronously (possibly after onComplete).
+		if (this.attributionPipeline && events?.onAttribution) {
+			const onAttribution = events.onAttribution;
+			const attribution = this.attributionPipeline;
+			const turnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+			void attribution
+				.attribute({
+					turnId,
+					pcm: audio.pcm,
+				})
+				.then(onAttribution)
+				.catch((err: unknown) => {
+					// Attribution failures must not crash the turn. Log and continue.
+					console.warn(
+						`[voice-bridge] speaker attribution failed for turn ${turnId}:`,
+						err instanceof Error ? err.message : String(err),
+					);
+				});
+		}
 		const pipeline = this.buildPipeline(textRunner, config, events);
 		this.activePipeline = pipeline;
 		try {

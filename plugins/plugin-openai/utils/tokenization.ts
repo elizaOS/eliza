@@ -50,7 +50,25 @@ export function detokenizeText(
   return encoder.decode(tokens);
 }
 
-function _countTokens(runtime: IAgentRuntime, modelType: ModelTypeName, text: string): number {
+export function countTokens(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeName,
+  text: string
+): number {
   const tokens = tokenizeText(runtime, modelType, text);
   return tokens.length;
+}
+
+export function truncateToTokenLimit(
+  runtime: IAgentRuntime,
+  modelType: ModelTypeName,
+  text: string,
+  maxTokens: number
+): string {
+  const tokens = tokenizeText(runtime, modelType, text);
+  if (tokens.length <= maxTokens) {
+    return text;
+  }
+  const truncatedTokens = tokens.slice(0, maxTokens);
+  return detokenizeText(runtime, modelType, truncatedTokens);
 }

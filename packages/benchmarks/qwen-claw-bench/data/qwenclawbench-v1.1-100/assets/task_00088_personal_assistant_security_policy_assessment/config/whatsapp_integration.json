@@ -20,14 +20,8 @@
     "allowed_ip_ranges": []
   },
   "message_handling": {
-    "allowed_phone_numbers": [
-      "+1-555-0142",
-      "+1-555-0187"
-    ],
-    "message_types_allowed": [
-      "text",
-      "voice_transcription"
-    ],
+    "allowed_phone_numbers": ["+1-555-0142", "+1-555-0187"],
+    "message_types_allowed": ["text", "voice_transcription"],
     "media_processing": false,
     "link_preview_processing": true,
     "max_message_length": 4096,

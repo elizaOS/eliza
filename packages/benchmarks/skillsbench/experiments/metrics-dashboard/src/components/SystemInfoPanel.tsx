@@ -1,233 +1,276 @@
-import { useState, useEffect } from 'react'
 import {
-  Server,
-  HardDrive,
-  Container,
-  Zap,
-  RefreshCw,
-  X,
-  Cpu,
-  Trash2,
-  FileWarning,
+  AlertTriangle,
   CheckCircle,
   ChevronDown,
   ChevronRight,
   Clock,
-  AlertTriangle,
-  Terminal,
+  Container,
+  Cpu,
+  ExternalLink,
+  FileWarning,
   FolderOpen,
-  ExternalLink
-} from 'lucide-react'
+  HardDrive,
+  RefreshCw,
+  Server,
+  Terminal,
+  Trash2,
+  X,
+  Zap,
+} from "lucide-react";
+import { useEffect, useState } from "react";
 
 interface SystemInfo {
-  cpuUsage: number
-  memory: { totalMb: number; usedMb: number; freeMb: number; availableMb: number }
-  disk: { total: string; used: string; available: string; usedPercent: number }
-  containers: Array<{ name: string; status: string; runningFor: string; image: string }>
-  harborProcesses: Array<{ pid: string; cpu: string; mem: string; command: string }>
-  gpus?: Array<{ name: string; memUsedMb: number; memTotalMb: number; utilizationPercent: number }>
+  cpuUsage: number;
+  memory: {
+    totalMb: number;
+    usedMb: number;
+    freeMb: number;
+    availableMb: number;
+  };
+  disk: { total: string; used: string; available: string; usedPercent: number };
+  containers: Array<{
+    name: string;
+    status: string;
+    runningFor: string;
+    image: string;
+  }>;
+  harborProcesses: Array<{
+    pid: string;
+    cpu: string;
+    mem: string;
+    command: string;
+  }>;
+  gpus?: Array<{
+    name: string;
+    memUsedMb: number;
+    memTotalMb: number;
+    utilizationPercent: number;
+  }>;
 }
 
 interface StuckContainer {
-  name: string
-  runningFor: string
-  runningForMs: number
-  status: string
-  image: string
-  taskName: string | null
-  trialId: string | null
-  jobName: string | null
-  trialPath: string | null
-  logs: string
+  name: string;
+  runningFor: string;
+  runningForMs: number;
+  status: string;
+  image: string;
+  taskName: string | null;
+  trialId: string | null;
+  jobName: string | null;
+  trialPath: string | null;
+  logs: string;
 }
 
 interface StaleTrial {
-  jobName: string
-  trialName: string
-  path: string
-  startedAt: string | null
-  lastModified: string
-  hasResultJson: boolean
-  resultJsonEmpty: boolean
-  ageDurationMs: number
+  jobName: string;
+  trialName: string;
+  path: string;
+  startedAt: string | null;
+  lastModified: string;
+  hasResultJson: boolean;
+  resultJsonEmpty: boolean;
+  ageDurationMs: number;
 }
 
 function formatDuration(ms: number): string {
-  const hours = Math.floor(ms / 3600000)
-  const mins = Math.floor((ms % 3600000) / 60000)
-  if (hours > 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`
-  if (hours > 0) return `${hours}h ${mins}m`
-  return `${mins}m`
+  const hours = Math.floor(ms / 3600000);
+  const mins = Math.floor((ms % 3600000) / 60000);
+  if (hours > 24) return `${Math.floor(hours / 24)}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
 }
 
 interface SystemInfoPanelProps {
-  type: 'system-info' | 'containers' | 'stale-trials'
-  onClose: () => void
-  onRefresh?: () => void
-  onFilesSelect?: (trialPath: string) => void
-  initialContainerTab?: 'all' | 'stuck'
+  type: "system-info" | "containers" | "stale-trials";
+  onClose: () => void;
+  onRefresh?: () => void;
+  onFilesSelect?: (trialPath: string) => void;
+  initialContainerTab?: "all" | "stuck";
 }
 
-export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initialContainerTab = 'all' }: SystemInfoPanelProps) {
-  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null)
-  const [staleTrials, setStaleTrials] = useState<{ count: number; trials: StaleTrial[] } | null>(null)
-  const [stuckContainers, setStuckContainers] = useState<StuckContainer[]>([])
-  const [loading, setLoading] = useState(true)
-  const [killing, setKilling] = useState<string | null>(null)
-  const [killingAll, setKillingAll] = useState(false)
-  const [containerTab, setContainerTab] = useState<'all' | 'stuck'>(initialContainerTab)
-  const [expandedContainers, setExpandedContainers] = useState<Set<string>>(new Set())
+export function SystemInfoPanel({
+  type,
+  onClose,
+  onRefresh,
+  onFilesSelect,
+  initialContainerTab = "all",
+}: SystemInfoPanelProps) {
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [staleTrials, setStaleTrials] = useState<{
+    count: number;
+    trials: StaleTrial[];
+  } | null>(null);
+  const [stuckContainers, setStuckContainers] = useState<StuckContainer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [killing, setKilling] = useState<string | null>(null);
+  const [killingAll, setKillingAll] = useState(false);
+  const [containerTab, setContainerTab] = useState<"all" | "stuck">(
+    initialContainerTab,
+  );
+  const [expandedContainers, setExpandedContainers] = useState<Set<string>>(
+    new Set(),
+  );
 
   const fetchData = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      if (type === 'stale-trials') {
-        const res = await fetch('/api/stale-trials')
-        const data = await res.json()
-        setStaleTrials(data)
-      } else if (type === 'containers') {
+      if (type === "stale-trials") {
+        const res = await fetch("/api/stale-trials");
+        const data = await res.json();
+        setStaleTrials(data);
+      } else if (type === "containers") {
         // Fetch both system info (for all containers) and stuck containers
         const [sysRes, stuckRes] = await Promise.all([
-          fetch('/api/system-info'),
-          fetch('/api/stuck-containers')
-        ])
-        const sysData = await sysRes.json()
-        const stuckData = await stuckRes.json()
-        setSystemInfo(sysData)
-        setStuckContainers(stuckData.containers || [])
+          fetch("/api/system-info"),
+          fetch("/api/stuck-containers"),
+        ]);
+        const sysData = await sysRes.json();
+        const stuckData = await stuckRes.json();
+        setSystemInfo(sysData);
+        setStuckContainers(stuckData.containers || []);
       } else {
-        const res = await fetch('/api/system-info')
-        const data = await res.json()
-        setSystemInfo(data)
+        const res = await fetch("/api/system-info");
+        const data = await res.json();
+        setSystemInfo(data);
       }
     } catch (err) {
-      console.error('Failed to fetch data:', err)
+      console.error("Failed to fetch data:", err);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
-    fetchData()
+    fetchData();
     // Auto-refresh every 5 seconds for containers, 10 for others
-    const interval = setInterval(fetchData, type === 'containers' ? 5000 : 10000)
-    return () => clearInterval(interval)
-  }, [type])
+    const interval = setInterval(
+      fetchData,
+      type === "containers" ? 5000 : 10000,
+    );
+    return () => clearInterval(interval);
+  }, [type]);
 
   // Reset tab when initialContainerTab changes
   useEffect(() => {
     if (initialContainerTab) {
-      setContainerTab(initialContainerTab)
+      setContainerTab(initialContainerTab);
     }
-  }, [initialContainerTab])
+  }, [initialContainerTab]);
 
   const toggleExpandContainer = (name: string) => {
-    setExpandedContainers(prev => {
-      const next = new Set(prev)
-      if (next.has(name)) next.delete(name)
-      else next.add(name)
-      return next
-    })
-  }
+    setExpandedContainers((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
 
   const markTrialDone = async (jobName: string, trialName: string) => {
-    if (!confirm(`Mark ${trialName} as done?`)) return
+    if (!confirm(`Mark ${trialName} as done?`)) return;
     try {
-      const res = await fetch('/api/mark-done', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobName, trialName })
-      })
-      const data = await res.json()
+      const res = await fetch("/api/mark-done", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobName, trialName }),
+      });
+      const data = await res.json();
       if (data.success) {
-        fetchData()
-        onRefresh?.()
+        fetchData();
+        onRefresh?.();
       } else {
-        alert(`Error: ${data.error}`)
+        alert(`Error: ${data.error}`);
       }
     } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      alert(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }
+  };
 
   const markAllDone = async () => {
-    if (!staleTrials || staleTrials.count === 0) return
-    if (!confirm(`Mark all ${staleTrials.count} stale trials as done?`)) return
+    if (!staleTrials || staleTrials.count === 0) return;
+    if (!confirm(`Mark all ${staleTrials.count} stale trials as done?`)) return;
 
     for (const trial of staleTrials.trials) {
       try {
-        await fetch('/api/mark-done', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jobName: trial.jobName, trialName: trial.trialName })
-        })
+        await fetch("/api/mark-done", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jobName: trial.jobName,
+            trialName: trial.trialName,
+          }),
+        });
       } catch {}
     }
-    fetchData()
-    onRefresh?.()
-  }
+    fetchData();
+    onRefresh?.();
+  };
 
   const killStuckContainers = async () => {
-    if (!confirm('Kill all stuck containers (running >1 hour)?')) return
-    setKillingAll(true)
+    if (!confirm("Kill all stuck containers (running >1 hour)?")) return;
+    setKillingAll(true);
     try {
-      const res = await fetch('/api/kill-stuck', { method: 'POST' })
-      const data = await res.json()
+      const res = await fetch("/api/kill-stuck", { method: "POST" });
+      const data = await res.json();
       if (data.success) {
-        alert(`Killed ${data.killedCount} containers`)
-        fetchData()
+        alert(`Killed ${data.killedCount} containers`);
+        fetchData();
       } else {
-        alert(`Error: ${data.error}`)
+        alert(`Error: ${data.error}`);
       }
     } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      alert(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
-      setKillingAll(false)
+      setKillingAll(false);
     }
-  }
+  };
 
   const killSingleContainer = async (name: string) => {
-    if (!confirm(`Stop container "${name}"?`)) return
-    setKilling(name)
+    if (!confirm(`Stop container "${name}"?`)) return;
+    setKilling(name);
     try {
-      const res = await fetch('/api/kill-container', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ containerName: name })
-      })
-      const data = await res.json()
+      const res = await fetch("/api/kill-container", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ containerName: name }),
+      });
+      const data = await res.json();
       if (data.success) {
-        setStuckContainers(prev => prev.filter(c => c.name !== name))
-        fetchData()
+        setStuckContainers((prev) => prev.filter((c) => c.name !== name));
+        fetchData();
       } else {
-        alert(`Error: ${data.error}`)
+        alert(`Error: ${data.error}`);
       }
     } catch (err) {
-      alert(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      alert(`Error: ${err instanceof Error ? err.message : "Unknown error"}`);
     } finally {
-      setKilling(null)
+      setKilling(null);
     }
-  }
+  };
 
   const titles = {
-    'system-info': 'System Information',
-    'containers': 'Docker Containers',
-    'stale-trials': 'Stale Trials'
-  }
+    "system-info": "System Information",
+    containers: "Docker Containers",
+    "stale-trials": "Stale Trials",
+  };
 
   return (
     <div className="border border-border rounded-lg bg-card overflow-hidden flex flex-col h-[calc(100vh-8rem)]">
       {/* Header */}
       <div className="px-4 py-3 border-b border-border flex items-center justify-between bg-muted/30 shrink-0">
         <div className="flex items-center gap-2">
-          {type === 'system-info' && <Server className="w-4 h-4" />}
-          {type === 'containers' && <Container className="w-4 h-4" />}
-          {type === 'stale-trials' && <FileWarning className="w-4 h-4" />}
+          {type === "system-info" && <Server className="w-4 h-4" />}
+          {type === "containers" && <Container className="w-4 h-4" />}
+          {type === "stale-trials" && <FileWarning className="w-4 h-4" />}
           <span className="font-medium text-sm">{titles[type]}</span>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={fetchData} className="p-1 hover:bg-muted rounded" title="Refresh">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <button
+            onClick={fetchData}
+            className="p-1 hover:bg-muted rounded"
+            title="Refresh"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
           </button>
           <button onClick={onClose} className="p-1 hover:bg-muted rounded">
             <X className="w-4 h-4" />
@@ -241,7 +284,7 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
           <div className="flex items-center justify-center py-8">
             <RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" />
           </div>
-        ) : type === 'system-info' && systemInfo ? (
+        ) : type === "system-info" && systemInfo ? (
           <div className="space-y-4">
             {/* CPU */}
             <div className="p-3 bg-muted/30 rounded-lg">
@@ -249,7 +292,9 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                 <Cpu className="w-4 h-4" />
                 <span className="font-medium">CPU</span>
               </div>
-              <div className="text-2xl font-bold">{systemInfo.cpuUsage?.toFixed(1) || 0}%</div>
+              <div className="text-2xl font-bold">
+                {systemInfo.cpuUsage?.toFixed(1) || 0}%
+              </div>
             </div>
 
             {/* Memory */}
@@ -259,15 +304,27 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                 <span className="font-medium">Memory</span>
               </div>
               <div className="grid grid-cols-2 gap-2 text-sm">
-                <div>Total: {Math.round((systemInfo.memory?.totalMb || 0) / 1024)} GB</div>
-                <div>Used: {Math.round((systemInfo.memory?.usedMb || 0) / 1024)} GB</div>
-                <div>Free: {Math.round((systemInfo.memory?.freeMb || 0) / 1024)} GB</div>
-                <div>Available: {Math.round((systemInfo.memory?.availableMb || 0) / 1024)} GB</div>
+                <div>
+                  Total: {Math.round((systemInfo.memory?.totalMb || 0) / 1024)}{" "}
+                  GB
+                </div>
+                <div>
+                  Used: {Math.round((systemInfo.memory?.usedMb || 0) / 1024)} GB
+                </div>
+                <div>
+                  Free: {Math.round((systemInfo.memory?.freeMb || 0) / 1024)} GB
+                </div>
+                <div>
+                  Available:{" "}
+                  {Math.round((systemInfo.memory?.availableMb || 0) / 1024)} GB
+                </div>
               </div>
               <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
                 <div
                   className="h-full bg-blue-500"
-                  style={{ width: `${systemInfo.memory?.totalMb ? (systemInfo.memory.usedMb / systemInfo.memory.totalMb) * 100 : 0}%` }}
+                  style={{
+                    width: `${systemInfo.memory?.totalMb ? (systemInfo.memory.usedMb / systemInfo.memory.totalMb) * 100 : 0}%`,
+                  }}
                 />
               </div>
             </div>
@@ -286,7 +343,7 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
               </div>
               <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${systemInfo.disk?.usedPercent > 80 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                  className={`h-full ${systemInfo.disk?.usedPercent > 80 ? "bg-yellow-500" : "bg-green-500"}`}
                   style={{ width: `${systemInfo.disk?.usedPercent || 0}%` }}
                 />
               </div>
@@ -296,7 +353,9 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
             <div className="p-3 bg-muted/30 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <Server className="w-4 h-4" />
-                <span className="font-medium">Harbor Processes ({systemInfo.harborProcesses?.length || 0})</span>
+                <span className="font-medium">
+                  Harbor Processes ({systemInfo.harborProcesses?.length || 0})
+                </span>
               </div>
               {systemInfo.harborProcesses?.length > 0 ? (
                 <div className="space-y-1 text-xs font-mono max-h-40 overflow-auto">
@@ -309,7 +368,9 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                   ))}
                 </div>
               ) : (
-                <div className="text-sm text-red-500">No harbor processes running</div>
+                <div className="text-sm text-red-500">
+                  No harbor processes running
+                </div>
               )}
             </div>
 
@@ -325,7 +386,8 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                     <div key={i} className="text-sm">
                       <div className="font-medium">{gpu.name}</div>
                       <div className="text-muted-foreground">
-                        Memory: {gpu.memUsedMb}/{gpu.memTotalMb} MB | Utilization: {gpu.utilizationPercent}%
+                        Memory: {gpu.memUsedMb}/{gpu.memTotalMb} MB |
+                        Utilization: {gpu.utilizationPercent}%
                       </div>
                     </div>
                   ))}
@@ -333,26 +395,26 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
               </div>
             )}
           </div>
-        ) : type === 'containers' && systemInfo ? (
+        ) : type === "containers" && systemInfo ? (
           <div className="space-y-3">
             {/* Tabs */}
             <div className="flex border-b border-border">
               <button
-                onClick={() => setContainerTab('all')}
+                onClick={() => setContainerTab("all")}
                 className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
-                  containerTab === 'all'
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                  containerTab === "all"
+                    ? "border-primary text-primary"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
                 All ({systemInfo.containers?.length || 0})
               </button>
               <button
-                onClick={() => setContainerTab('stuck')}
+                onClick={() => setContainerTab("stuck")}
                 className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-2 ${
-                  containerTab === 'stuck'
-                    ? 'border-yellow-500 text-yellow-500'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                  containerTab === "stuck"
+                    ? "border-yellow-500 text-yellow-500"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <AlertTriangle className="w-3 h-3" />
@@ -361,40 +423,57 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
             </div>
 
             {/* All Containers Tab */}
-            {containerTab === 'all' && (
+            {containerTab === "all" && (
               <>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">{systemInfo.containers?.length || 0} containers running</span>
+                  <span className="text-sm text-muted-foreground">
+                    {systemInfo.containers?.length || 0} containers running
+                  </span>
                   {stuckContainers.length > 0 && (
                     <button
                       onClick={killStuckContainers}
                       disabled={killingAll}
                       className="flex items-center gap-1 px-2 py-1 text-xs bg-red-500/20 text-red-500 rounded hover:bg-red-500/30 transition-colors disabled:opacity-50"
                     >
-                      {killingAll ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                      {killingAll ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3 h-3" />
+                      )}
                       Kill Stuck
                     </button>
                   )}
                 </div>
                 {systemInfo.containers?.length === 0 ? (
-                  <div className="text-muted-foreground py-4 text-center">No containers running</div>
+                  <div className="text-muted-foreground py-4 text-center">
+                    No containers running
+                  </div>
                 ) : (
                   <div className="space-y-2">
                     {systemInfo.containers?.map((c, i) => {
-                      const isStuck = c.runningFor?.includes('hour')
+                      const isStuck = c.runningFor?.includes("hour");
                       return (
-                        <div key={i} className={`p-3 rounded-lg ${isStuck ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-muted/30'}`}>
-                          <div className="font-medium text-sm truncate">{c.name}</div>
+                        <div
+                          key={i}
+                          className={`p-3 rounded-lg ${isStuck ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-muted/30"}`}
+                        >
+                          <div className="font-medium text-sm truncate">
+                            {c.name}
+                          </div>
                           <div className="text-xs text-muted-foreground mt-1">
                             <div className="truncate">{c.image}</div>
                             <div className="flex gap-2 mt-1">
-                              <span className={isStuck ? 'text-yellow-500' : ''}>{c.runningFor}</span>
+                              <span
+                                className={isStuck ? "text-yellow-500" : ""}
+                              >
+                                {c.runningFor}
+                              </span>
                               <span>|</span>
                               <span>{c.status}</span>
                             </div>
                           </div>
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 )}
@@ -402,17 +481,23 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
             )}
 
             {/* Stuck Containers Tab */}
-            {containerTab === 'stuck' && (
+            {containerTab === "stuck" && (
               <>
                 {stuckContainers.length > 0 && (
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">{stuckContainers.length} containers running &gt;1h</span>
+                    <span className="text-sm text-muted-foreground">
+                      {stuckContainers.length} containers running &gt;1h
+                    </span>
                     <button
                       onClick={killStuckContainers}
                       disabled={killingAll}
                       className="flex items-center gap-1 px-2 py-1 text-xs bg-red-500/20 text-red-500 rounded hover:bg-red-500/30 transition-colors disabled:opacity-50"
                     >
-                      {killingAll ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                      {killingAll ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="w-3 h-3" />
+                      )}
                       Stop All
                     </button>
                   </div>
@@ -425,14 +510,19 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                 ) : (
                   <div className="space-y-2">
                     {stuckContainers.map((container) => {
-                      const isExpanded = expandedContainers.has(container.name)
-                      const isKilling = killing === container.name
+                      const isExpanded = expandedContainers.has(container.name);
+                      const isKilling = killing === container.name;
                       return (
-                        <div key={container.name} className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg overflow-hidden">
+                        <div
+                          key={container.name}
+                          className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg overflow-hidden"
+                        >
                           {/* Container header */}
                           <div className="px-3 py-2 flex items-center gap-2">
                             <button
-                              onClick={() => toggleExpandContainer(container.name)}
+                              onClick={() =>
+                                toggleExpandContainer(container.name)
+                              }
                               className="p-1 hover:bg-muted rounded"
                             >
                               {isExpanded ? (
@@ -445,7 +535,10 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                             <AlertTriangle className="w-4 h-4 text-yellow-500 shrink-0" />
 
                             <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm truncate" title={container.name}>
+                              <div
+                                className="font-medium text-sm truncate"
+                                title={container.name}
+                              >
                                 {container.taskName || container.name}
                               </div>
                               <div className="text-xs text-muted-foreground flex items-center gap-3">
@@ -465,7 +558,9 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                             <div className="flex items-center gap-2 shrink-0">
                               {container.trialPath && onFilesSelect && (
                                 <button
-                                  onClick={() => onFilesSelect(container.trialPath!)}
+                                  onClick={() =>
+                                    onFilesSelect(container.trialPath!)
+                                  }
                                   className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-primary"
                                   title="View trial files"
                                 >
@@ -473,7 +568,9 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                                 </button>
                               )}
                               <button
-                                onClick={() => killSingleContainer(container.name)}
+                                onClick={() =>
+                                  killSingleContainer(container.name)
+                                }
                                 disabled={isKilling}
                                 className="p-1.5 rounded bg-red-500/20 text-red-500 hover:bg-red-500/30 disabled:opacity-50"
                                 title="Stop container"
@@ -493,30 +590,42 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                               {/* Container info */}
                               <div className="grid grid-cols-2 gap-2 text-sm">
                                 <div>
-                                  <span className="text-muted-foreground">Container:</span>
+                                  <span className="text-muted-foreground">
+                                    Container:
+                                  </span>
                                   <code className="ml-2 text-xs bg-muted px-1.5 py-0.5 rounded break-all">
                                     {container.name}
                                   </code>
                                 </div>
                                 <div>
-                                  <span className="text-muted-foreground">Status:</span>
-                                  <span className="ml-2">{container.status}</span>
+                                  <span className="text-muted-foreground">
+                                    Status:
+                                  </span>
+                                  <span className="ml-2">
+                                    {container.status}
+                                  </span>
                                 </div>
                                 <div className="col-span-2">
-                                  <span className="text-muted-foreground">Image:</span>
+                                  <span className="text-muted-foreground">
+                                    Image:
+                                  </span>
                                   <code className="ml-2 text-xs bg-muted px-1.5 py-0.5 rounded">
                                     {container.image}
                                   </code>
                                 </div>
                                 {container.trialPath && (
                                   <div className="col-span-2 flex items-center gap-2">
-                                    <span className="text-muted-foreground">Trial Path:</span>
+                                    <span className="text-muted-foreground">
+                                      Trial Path:
+                                    </span>
                                     <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
                                       {container.trialPath}
                                     </code>
                                     {onFilesSelect && (
                                       <button
-                                        onClick={() => onFilesSelect(container.trialPath!)}
+                                        onClick={() =>
+                                          onFilesSelect(container.trialPath!)
+                                        }
                                         className="text-primary hover:underline text-xs flex items-center gap-1"
                                       >
                                         <ExternalLink className="w-3 h-3" />
@@ -534,23 +643,25 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                                   Last 50 lines of logs
                                 </div>
                                 <pre className="text-xs bg-black/80 text-green-400 p-3 rounded overflow-auto max-h-64 whitespace-pre-wrap break-words font-mono">
-                                  {container.logs || '(No logs available)'}
+                                  {container.logs || "(No logs available)"}
                                 </pre>
                               </div>
                             </div>
                           )}
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 )}
               </>
             )}
           </div>
-        ) : type === 'stale-trials' && staleTrials ? (
+        ) : type === "stale-trials" && staleTrials ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">{staleTrials.count} stale trials</span>
+              <span className="text-sm text-muted-foreground">
+                {staleTrials.count} stale trials
+              </span>
               {staleTrials.count > 0 && (
                 <button
                   onClick={markAllDone}
@@ -572,27 +683,40 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
                   <div key={i} className="p-3 bg-muted/30 rounded-lg">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">{trial.trialName}</div>
+                        <div className="font-medium text-sm truncate">
+                          {trial.trialName}
+                        </div>
                         <div className="text-xs text-muted-foreground mt-1">
                           <div>Job: {trial.jobName}</div>
                           <div className="flex gap-2 mt-1">
-                            <span className={trial.ageDurationMs > 3600000 ? 'text-yellow-500' : ''}>
+                            <span
+                              className={
+                                trial.ageDurationMs > 3600000
+                                  ? "text-yellow-500"
+                                  : ""
+                              }
+                            >
                               Age: {formatDuration(trial.ageDurationMs)}
                             </span>
                             <span>|</span>
                             <span>
                               {trial.hasResultJson
-                                ? (trial.resultJsonEmpty ? 'Empty result.json' : 'Incomplete')
-                                : 'No result.json'}
+                                ? trial.resultJsonEmpty
+                                  ? "Empty result.json"
+                                  : "Incomplete"
+                                : "No result.json"}
                             </span>
                           </div>
                           <div className="text-xs mt-1">
-                            Last modified: {new Date(trial.lastModified).toLocaleString()}
+                            Last modified:{" "}
+                            {new Date(trial.lastModified).toLocaleString()}
                           </div>
                         </div>
                       </div>
                       <button
-                        onClick={() => markTrialDone(trial.jobName, trial.trialName)}
+                        onClick={() =>
+                          markTrialDone(trial.jobName, trial.trialName)
+                        }
                         className="px-2 py-1 text-xs bg-red-500/20 text-red-500 rounded hover:bg-red-500/30 transition-colors shrink-0"
                       >
                         Mark Done
@@ -604,9 +728,11 @@ export function SystemInfoPanel({ type, onClose, onRefresh, onFilesSelect, initi
             )}
           </div>
         ) : (
-          <div className="text-muted-foreground py-4 text-center">Failed to load data</div>
+          <div className="text-muted-foreground py-4 text-center">
+            Failed to load data
+          </div>
         )}
       </div>
     </div>
-  )
+  );
 }

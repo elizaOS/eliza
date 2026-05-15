@@ -203,7 +203,9 @@ function validateEngineFrameworkMetadata(frameworkDir) {
     fail(`${frameworkDir} is missing Info.plist`);
   }
   const plist = parsePlistJson(infoPlist);
-  if (String(plist.ElizaBunEngineABIVersion ?? "") !== expectedEngineAbiVersion) {
+  if (
+    String(plist.ElizaBunEngineABIVersion ?? "") !== expectedEngineAbiVersion
+  ) {
     fail(
       `${infoPlist} has ElizaBunEngineABIVersion=${String(
         plist.ElizaBunEngineABIVersion,
@@ -243,12 +245,14 @@ function validateAppStoreRuntimeBinary(binary) {
   const imports = runMaybeCapture("nm", ["-u", binary]);
   const importOutput = `${imports.stdout}\n${imports.stderr}`;
   if (imports.status !== 0) {
-    fail(`failed to inspect imported symbols for ${binary}: ${importOutput.trim()}`);
+    fail(
+      `failed to inspect imported symbols for ${binary}: ${importOutput.trim()}`,
+    );
   }
   const forbiddenImports = forbiddenRuntimeImports.filter((symbol) =>
-    new RegExp(`(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
-      importOutput,
-    ),
+    new RegExp(
+      `(^|\\s)${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+    ).test(importOutput),
   );
   if (forbiddenImports.length > 0) {
     fail(
@@ -294,7 +298,8 @@ function validateNoNestedExecutablePayloads(frameworkDir, expectedBinary) {
       }
       if (
         path.resolve(candidate) !== expected &&
-        (/\.(dylib|so|bundle)$/i.test(entry.name) || isExecutableFile(candidate))
+        (/\.(dylib|so|bundle)$/i.test(entry.name) ||
+          isExecutableFile(candidate))
       ) {
         unexpected.push(candidate);
       }
@@ -326,12 +331,13 @@ function resolveXcframeworkBinary(root, targetInfo = info) {
   if (!library?.LibraryIdentifier) {
     const requested = wantSimulator ? "iOS Simulator" : "iOS device";
     const available = libraries
-      .map((entry) =>
-        `${entry?.SupportedPlatform ?? "unknown"}${
-          entry?.SupportedPlatformVariant
-            ? `-${entry.SupportedPlatformVariant}`
-            : ""
-        }/${entry?.LibraryIdentifier ?? "missing-id"}`,
+      .map(
+        (entry) =>
+          `${entry?.SupportedPlatform ?? "unknown"}${
+            entry?.SupportedPlatformVariant
+              ? `-${entry.SupportedPlatformVariant}`
+              : ""
+          }/${entry?.LibraryIdentifier ?? "missing-id"}`,
       )
       .join(", ");
     fail(
@@ -355,75 +361,6 @@ function resolveXcframeworkBinary(root, targetInfo = info) {
     );
   }
   return { binary, frameworkDir, libraryIdentifier: library.LibraryIdentifier };
-}
-
-function xcframeworkHasRequestedLibrary(root, targetInfo = info) {
-  const infoPlist = path.join(root, "Info.plist");
-  if (!fs.existsSync(infoPlist)) return false;
-  let plist;
-  try {
-    plist = parsePlistJson(infoPlist);
-  } catch {
-    return false;
-  }
-  const libraries = Array.isArray(plist.AvailableLibraries)
-    ? plist.AvailableLibraries
-    : [];
-  return libraries.some((library) => {
-    if (!isSameRequestedTarget(library, targetInfo)) return false;
-    const libraryPath =
-      typeof library.LibraryPath === "string"
-        ? library.LibraryPath
-        : `${frameworkName}.framework`;
-    return fs.existsSync(
-      path.join(root, library.LibraryIdentifier, libraryPath, frameworkName),
-    );
-  });
-}
-
-function isSameRequestedTarget(library, targetInfo = info) {
-  if (!library || library.SupportedPlatform !== "ios") return false;
-  const wantSimulator = targetInfo.sdk === "iphonesimulator";
-  const variant = library.SupportedPlatformVariant;
-  return wantSimulator ? variant === "simulator" : !variant;
-}
-
-function collectPreservedXcframeworkFrameworks(root, targetInfo = info) {
-  if (!fs.existsSync(root)) return [];
-  const infoPlist = path.join(root, "Info.plist");
-  if (!fs.existsSync(infoPlist)) return [];
-  const plist = parsePlistJson(infoPlist);
-  const libraries = Array.isArray(plist.AvailableLibraries)
-    ? plist.AvailableLibraries
-    : [];
-  const keep = libraries.filter(
-    (library) =>
-      library?.SupportedPlatform === "ios" &&
-      !isSameRequestedTarget(library, targetInfo),
-  );
-  if (keep.length === 0) return [];
-
-  const stage = fs.mkdtempSync(
-    path.join(os.tmpdir(), "eliza-bun-ios-preserve-"),
-  );
-  const preserved = [];
-  for (const library of keep) {
-    const libraryPath =
-      typeof library.LibraryPath === "string"
-        ? library.LibraryPath
-        : `${frameworkName}.framework`;
-    const sourceFrameworkDir = path.join(root, library.LibraryIdentifier, libraryPath);
-    if (!fs.existsSync(path.join(sourceFrameworkDir, frameworkName))) continue;
-    const destFrameworkDir = path.join(
-      stage,
-      library.LibraryIdentifier,
-      path.basename(libraryPath),
-    );
-    fs.mkdirSync(path.dirname(destFrameworkDir), { recursive: true });
-    fs.cpSync(sourceFrameworkDir, destFrameworkDir, { recursive: true });
-    preserved.push(destFrameworkDir);
-  }
-  return preserved;
 }
 
 function findFrameworkBinaries(root) {
@@ -467,14 +404,10 @@ function validateXcframework(root) {
   );
 }
 
-if (fs.existsSync(artifact) && !rebuild && xcframeworkHasRequestedLibrary(artifact)) {
+if (fs.existsSync(artifact) && !rebuild) {
   validateXcframework(artifact);
   console.log(`[bun-ios-runtime] Found ${artifact}`);
   process.exit(0);
-} else if (fs.existsSync(artifact) && !rebuild) {
-  console.log(
-    `[bun-ios-runtime] Existing ${artifact} does not contain the requested ${info.platform} slice; building it now`,
-  );
 }
 
 if (verifyOnly) {
@@ -541,7 +474,9 @@ function applyPatchIfNeeded(root, patchFile, label) {
   fail(
     [
       `Cannot apply ${label} source patch ${patchFile}.`,
-      forward.stderr?.trim() || forward.stdout?.trim() || "git apply --check failed",
+      forward.stderr?.trim() ||
+        forward.stdout?.trim() ||
+        "git apply --check failed",
     ].join("\n"),
   );
 }
@@ -668,9 +603,13 @@ function stageWebKitIfRequested(info) {
     "inspector",
   );
   if (fs.existsSync(inspectorDerivedHeaders)) {
-    fs.cpSync(inspectorDerivedHeaders, path.join(staged, "include", "JavaScriptCore"), {
-      recursive: true,
-    });
+    fs.cpSync(
+      inspectorDerivedHeaders,
+      path.join(staged, "include", "JavaScriptCore"),
+      {
+        recursive: true,
+      },
+    );
   }
   const cmakeConfig = path.join(src, "cmakeconfig.h");
   if (fs.existsSync(cmakeConfig)) {
@@ -686,7 +625,10 @@ function validateStagedWebKit(webkitPath) {
     {
       name: "JavaScriptCore",
       path: path.join(webkitPath, "lib", "libJavaScriptCore.a"),
-      symbols: ["_JSEvaluateScript", "__ZN3JSC14JSGlobalObject14finishCreationERNS_2VME"],
+      symbols: [
+        "_JSEvaluateScript",
+        "__ZN3JSC14JSGlobalObject14finishCreationERNS_2VME",
+      ],
     },
     {
       name: "WTF",
@@ -703,12 +645,14 @@ function validateStagedWebKit(webkitPath) {
     if (!fs.existsSync(archive.path)) {
       fail(`${webkitPath} is missing required static archive ${archive.path}`);
     }
-    const archs = runCapture("lipo", ["-archs", archive.path]).stdout
-      .trim()
+    const archs = runCapture("lipo", ["-archs", archive.path])
+      .stdout.trim()
       .split(/\s+/)
       .filter(Boolean);
     if (!archs.includes("arm64")) {
-      fail(`${archive.path} does not contain an arm64 slice; archs=${archs.join(",") || "none"}`);
+      fail(
+        `${archive.path} does not contain an arm64 slice; archs=${archs.join(",") || "none"}`,
+      );
     }
     const symbols = runCapture("nm", ["-gU", archive.path], {
       maxBuffer: 256 * 1024 * 1024,
@@ -746,7 +690,9 @@ function validateStagedWebKit(webkitPath) {
       const define = contents.match(
         new RegExp(`#\\s*define\\s+${flag}\\s+(\\d+)\\b`),
       );
-      const cache = contents.match(new RegExp(`^${flag}(?::\\w+)?=([^\\r\\n]+)$`, "im"));
+      const cache = contents.match(
+        new RegExp(`^${flag}(?::\\w+)?=([^\\r\\n]+)$`, "im"),
+      );
       const raw = define?.[1] ?? cache?.[1]?.trim();
       if (raw == null) continue;
       observedFlags.set(flag, /^(1|ON|TRUE|YES)$/i.test(raw));
@@ -761,7 +707,9 @@ function validateStagedWebKit(webkitPath) {
   ];
   for (const [flag, expected] of requiredFlags) {
     if (!observedFlags.has(flag)) {
-      fail(`${webkitPath} does not expose ${flag}; cannot validate the staged iOS JSC build`);
+      fail(
+        `${webkitPath} does not expose ${flag}; cannot validate the staged iOS JSC build`,
+      );
     }
     const actual = observedFlags.get(flag);
     if (actual !== expected) {
@@ -773,7 +721,12 @@ function validateStagedWebKit(webkitPath) {
 }
 
 function webKitVersion() {
-  const setupWebKit = path.join(sourceDir, "cmake", "tools", "SetupWebKit.cmake");
+  const setupWebKit = path.join(
+    sourceDir,
+    "cmake",
+    "tools",
+    "SetupWebKit.cmake",
+  );
   if (!fs.existsSync(setupWebKit)) return "local-ios-jsc";
   const contents = fs.readFileSync(setupWebKit, "utf8");
   const match = contents.match(/set\(WEBKIT_VERSION\s+([^)]+)\)/);
@@ -868,7 +821,8 @@ function collectStaticInputs(buildDir, webkitPath) {
     path.join(webkitPath, "lib", "libWTF.a"),
     path.join(webkitPath, "lib", "libbmalloc.a"),
   ]) {
-    if (!fs.existsSync(input)) fail(`missing required static WebKit input ${input}`);
+    if (!fs.existsSync(input))
+      fail(`missing required static WebKit input ${input}`);
     inputs.push({ kind: "normal", path: input });
   }
   return inputs;
@@ -994,19 +948,15 @@ function linkFramework({ buildDir, webkitPath, info }) {
 }
 
 function createXcframework(frameworkDir) {
-  const preservedFrameworks = collectPreservedXcframeworkFrameworks(artifact, info);
   fs.rmSync(artifact, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(artifact), { recursive: true });
-  const args = [
+  run("xcodebuild", [
     "-create-xcframework",
     "-framework",
     frameworkDir,
-  ];
-  for (const preservedFramework of preservedFrameworks) {
-    args.push("-framework", preservedFramework);
-  }
-  args.push("-output", artifact);
-  run("xcodebuild", args);
+    "-output",
+    artifact,
+  ]);
   validateXcframework(artifact);
 }
 
@@ -1113,7 +1063,9 @@ function patchBunSetupZigForWrapper() {
     "endif()",
   ].join("\n");
   if (!contents.includes(original)) {
-    fail(`cannot patch ${setupZig}; expected ZIG_EXECUTABLE block was not found`);
+    fail(
+      `cannot patch ${setupZig}; expected ZIG_EXECUTABLE block was not found`,
+    );
   }
   contents = contents.replace(original, replacement);
   fs.writeFileSync(setupZig, contents);

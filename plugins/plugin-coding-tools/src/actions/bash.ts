@@ -140,8 +140,7 @@ export const shellAction: Action = {
     },
     {
       name: "command",
-      description:
-        "For action=run: shell command, executed via /bin/bash -c.",
+      description: "For action=run: shell command, executed via /bin/bash -c.",
       required: false,
       schema: { type: "string" },
     },
@@ -167,8 +166,7 @@ export const shellAction: Action = {
     },
     {
       name: "limit",
-      description:
-        "For action=view_history: max recorded commands.",
+      description: "For action=view_history: max recorded commands.",
       required: false,
       schema: { type: "number" },
     },

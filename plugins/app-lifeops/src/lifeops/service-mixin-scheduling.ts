@@ -85,9 +85,7 @@ export interface LifeOpsSchedulingService {
     timezone?: string;
     metadata?: Record<string, unknown>;
   }): Promise<LifeOpsSchedulingNegotiation>;
-  getNegotiation(
-    id: string,
-  ): Promise<LifeOpsSchedulingNegotiation | null>;
+  getNegotiation(id: string): Promise<LifeOpsSchedulingNegotiation | null>;
   listActiveNegotiations(opts?: {
     limit?: number;
   }): Promise<LifeOpsSchedulingNegotiation[]>;
@@ -107,9 +105,7 @@ export interface LifeOpsSchedulingService {
     acceptedProposalId: string,
   ): Promise<LifeOpsSchedulingNegotiation>;
   cancelNegotiation(id: string, reason?: string): Promise<void>;
-  listProposals(
-    negotiationId: string,
-  ): Promise<LifeOpsSchedulingProposal[]>;
+  listProposals(negotiationId: string): Promise<LifeOpsSchedulingProposal[]>;
 }
 
 function normalizeChannel(

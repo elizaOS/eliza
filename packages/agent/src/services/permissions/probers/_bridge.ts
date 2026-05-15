@@ -30,9 +30,6 @@ export const PLATFORM: PermissionPlatform =
   process.platform as PermissionPlatform;
 
 export const IS_DARWIN = PLATFORM === "darwin";
-export const IS_IOS_MOBILE =
-  process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios" ||
-  process.env.ELIZA_MOBILE_PLATFORM?.trim().toLowerCase() === "ios";
 
 /**
  * Build a `PermissionState` with sane defaults (`lastChecked = now`,
@@ -89,7 +86,7 @@ export async function runOsascript(
   script: string,
   timeoutMs = 5000,
 ): Promise<string | null> {
-  if (!IS_DARWIN || IS_IOS_MOBILE) return null;
+  if (!IS_DARWIN) return null;
   try {
     const proc = Bun.spawn(["osascript", "-e", script], {
       stdout: "pipe",

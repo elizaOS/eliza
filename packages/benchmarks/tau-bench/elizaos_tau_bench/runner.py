@@ -225,11 +225,7 @@ class TauBenchRunner:
 
     def run(self) -> BenchmarkReport:
         if self.config.use_sample_tasks:
-            task_iter = iter_sample_tasks(
-                self.config.domains,
-                self.config.task_split,
-                max_per_domain=self.config.max_tasks_per_domain,
-            )
+            task_iter = iter_sample_tasks(self.config.domains, self.config.task_split)
         else:
             task_iter = iter_tasks(
                 domains=self.config.domains,

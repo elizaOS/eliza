@@ -7,10 +7,10 @@
  */
 
 export function appsRoot(): string {
-    const explicit = Bun.env.USBELIZA_APPS_ROOT;
-    if (explicit !== undefined && explicit !== "") {
-        return explicit;
-    }
-    const home = Bun.env.HOME ?? "/tmp";
-    return `${home}/.eliza/apps`;
+  const explicit = Bun.env.USBELIZA_APPS_ROOT;
+  if (explicit !== undefined && explicit !== "") {
+    return explicit;
+  }
+  const home = Bun.env.HOME ?? "/tmp";
+  return `${home}/.eliza/apps`;
 }

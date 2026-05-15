@@ -1,20 +1,30 @@
 #!/usr/bin/env python3
 """Evaluate a fine-tuned Kokoro checkpoint.
 
-Computes four numbers and writes `<run-dir>/eval.json`:
+Computes four numbers and writes `<run-dir>/eval.json`. The canonical
+definitions live in `docs/inference/voice-quality-metrics.md`; this
+module is one of the consumers of that doc.
 
-1. **UTMOS** (predicted MOS via the SaruLab UTMOS model). Falls through to a
-   torchaudio SQUIM-MOS predictor if `utmos` isn't installed; both are
-   imperfect proxies for human MOS but stable enough to gate runs.
+1. **UTMOS** (predicted MOS ∈ [1, 5]). Primary path is the SaruLab `utmos`
+   PyPI package (the literal "U-Tokyo / SaruLab MOS" predictor). Fallback
+   is `torchaudio.pipelines.SQUIM_SUBJECTIVE` — a non-matching-reference
+   MOS predictor, also in [1, 5]. **NOT** SQUIM_OBJECTIVE: that returns
+   (STOI, PESQ, SI-SDR), and SI-SDR is in dB, NOT MOS (Q1-quality audit
+   §1.1). Both predictors run at 16 kHz; the eval resamples internally.
 
-2. **WER** (word error rate) via Whisper large-v3 round-trip: synthesize each
-   eval transcript, transcribe the synth, compute WER against the reference.
+2. **WER** (word error rate) ∈ [0, +∞), gate ≤ 0.08. Round-trip through
+   Whisper large-v3 (CUDA) / small (CPU): synthesize each eval transcript,
+   resample to 16 kHz, transcribe, normalize text (lowercase + strip
+   punctuation), Levenshtein WER against the reference.
 
-3. **Speaker similarity**: ECAPA-TDNN cosine between the synth and a held-out
-   reference clip. SpeechBrain provides the pretrained model.
+3. **Speaker similarity** ∈ [-1, 1], gate ≥ 0.65 (relaxed 0.55 for
+   small corpora — see `kokoro_samantha.yaml`). ECAPA-TDNN cosine
+   between synth + reference, both resampled to 16 kHz (the rate
+   speechbrain/spkrec-ecapa-voxceleb was trained on).
 
-4. **RTF** (real-time factor): synthesis throughput on the current device.
-   RTF = (synthesized audio seconds) / (wall clock seconds).
+4. **RTF** (real-time factor) ∈ [0, +∞), gate ≥ 5.0.
+   RTF = (synthesized audio seconds) / (wall clock seconds). Higher
+   is faster; Kokoro 82M on RTX 5080 → ~100×.
 
 The script applies the gates defined in the config (`config.gates`) and
 emits a `passed: true|false` summary plus per-metric pass/fail. If
@@ -219,7 +229,19 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
         run_opts={"device": device},
     )
 
-    # UTMOS — optional.
+    # UTMOS — predicted MOS. Three candidate predictors, ordered by fidelity:
+    #
+    #   1. `utmos` PyPI package — SaruLab UTMOS, the canonical predictor (the
+    #      "U" in UTMOS literally stands for "UTokyo-SaruLab MOS").
+    #      Returns MOS ∈ [1, 5].
+    #
+    #   2. `torchaudio.pipelines.SQUIM_SUBJECTIVE` — non-matching-reference
+    #      MOS predictor. Also returns MOS ∈ [1, 5]. Sample rate **16 kHz**.
+    #
+    #   3. **No** SQUIM_OBJECTIVE fallback. SQUIM_OBJECTIVE returns
+    #      (STOI, PESQ, SI-SDR); the third tensor is SI-SDR in dB, NOT MOS.
+    #      Using it was the source of the negative/30+ "UTMOS" numbers in
+    #      I7's run (see .swarm/impl/Q1-quality.md §1.1).
     try:
         from utmos import Score as UtmosScore  # type: ignore  # noqa: PLC0415
 
@@ -229,16 +251,40 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
             return float(utmos(audio, sr))
 
     except ImportError:
-        log.warning("utmos not installed; falling back to torchaudio SQUIM-MOS")
-        from torchaudio.pipelines import SQUIM_OBJECTIVE  # type: ignore  # noqa: PLC0415
+        log.warning(
+            "utmos not installed; falling back to torchaudio SQUIM_SUBJECTIVE "
+            "(MOS predictor with non-matching reference)"
+        )
+        from torchaudio.pipelines import SQUIM_SUBJECTIVE  # type: ignore  # noqa: PLC0415
 
-        squim = SQUIM_OBJECTIVE.get_model().to(device).eval()
+        squim_sr = int(SQUIM_SUBJECTIVE.sample_rate)
+        squim = SQUIM_SUBJECTIVE.get_model().to(device).eval()
+
+        # SQUIM_SUBJECTIVE needs a non-matching clean reference (any clean
+        # speech sample). We use the first val-set reference wav resampled
+        # to the SQUIM sample rate. This is a documented use of the pipeline.
+        first_ref_wav, _ = _load_wav_mono(
+            run_dir / "processed" / val_lines[0].split("|", 2)[0],
+            sr=squim_sr,
+        )
+        nmr_wav_t = torch.from_numpy(first_ref_wav).float().unsqueeze(0).to(device)
 
         def utmos_score(audio, sr):
-            wav_t = torch.from_numpy(audio).float().unsqueeze(0).to(device)
+            mono = _resample_audio(audio, src_sr=sr, dst_sr=squim_sr)
+            wav_t = torch.from_numpy(mono).float().unsqueeze(0).to(device)
             with torch.no_grad():
-                _stoi, _pesq, mos = squim(wav_t)
+                mos = squim(wav_t, nmr_wav_t)
             return float(mos.item())
+
+    # Whisper expects 16 kHz audio (see whisper.audio.log_mel_spectrogram
+    # docstring: "audio waveform in 16 kHz"). Kokoro emits 24 kHz; passing
+    # 24 kHz directly distorts pitch/time and inflates WER (Q1-quality §1.2).
+    asr_sr = 16000
+    # ECAPA-TDNN speechbrain/spkrec-ecapa-voxceleb is trained on 16 kHz
+    # VoxCeleb. Both synth + reference must be resampled to 16 kHz before
+    # encoding so the embeddings live on the same manifold the model
+    # was trained for (Q1-quality §1.3).
+    spk_sr = 16000
 
     # Iterate val set, collect metrics.
     wer_total = 0.0
@@ -253,14 +299,19 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
         prompts.append(ref)
 
         audio, sr = synth(ref)
-        # UTMOS
+        # UTMOS (consumes audio at whatever sample rate utmos_score requires —
+        # the SQUIM_SUBJECTIVE fallback resamples internally; the `utmos`
+        # PyPI package accepts a sample-rate arg).
         utmos_total += utmos_score(audio, sr)
-        # WER
-        transcribed = asr.transcribe(audio)["text"]
+        # WER — resample synth to 16 kHz for Whisper, normalize both ref
+        # and hyp text before computing edit distance.
+        asr_audio = _resample_audio(audio, src_sr=sr, dst_sr=asr_sr)
+        transcribed = asr.transcribe(asr_audio)["text"]
         wer_total += _word_error_rate(ref, transcribed)
-        # Speaker sim
-        synth_emb = speaker_model.encode_batch(torch.from_numpy(audio).unsqueeze(0))
-        ref_wav, _ = _load_wav_mono(run_dir / "processed" / wav_rel, sr=24000)
+        # Speaker sim — resample both sides to 16 kHz for ECAPA-TDNN.
+        synth_16k = _resample_audio(audio, src_sr=sr, dst_sr=spk_sr)
+        synth_emb = speaker_model.encode_batch(torch.from_numpy(synth_16k).unsqueeze(0))
+        ref_wav, _ = _load_wav_mono(run_dir / "processed" / wav_rel, sr=spk_sr)
         ref_emb = speaker_model.encode_batch(torch.from_numpy(ref_wav).unsqueeze(0))
         cos = torch.nn.functional.cosine_similarity(
             synth_emb.squeeze(), ref_emb.squeeze(), dim=-1
@@ -304,10 +355,39 @@ def _real_eval(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
     return 0
 
 
+# Punctuation we strip before WER computation. We deliberately keep
+# apostrophes (so "don't" stays one token, matching Whisper output).
+# `_PUNCT_RE` is module-level so the unit tests can import it.
+import re  # noqa: E402
+
+_PUNCT_RE = re.compile(r"[^\w\s']")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def _normalize_text_for_wer(s: str) -> str:
+    """Normalize text before WER computation.
+
+    Lowercase, strip punctuation (commas, periods, ellipses, quotes,
+    etc.) except apostrophes, and collapse whitespace. This matches
+    the behaviour of common WER tooling (jiwer's default
+    `RemovePunctuation` + `ToLowerCase`) and avoids penalizing the
+    model for punctuation it never produced.
+    """
+    s = s.lower()
+    s = _PUNCT_RE.sub(" ", s)
+    s = _WHITESPACE_RE.sub(" ", s).strip()
+    return s
+
+
 def _word_error_rate(ref: str, hyp: str) -> float:
-    """Simple Levenshtein WER on whitespace-split tokens."""
-    ref_tokens = ref.lower().split()
-    hyp_tokens = hyp.lower().split()
+    """Levenshtein WER on whitespace-split tokens after text normalization.
+
+    Returns WER ∈ [0, +∞). Most production runs report ≤ 1.0 (because
+    insertions + substitutions + deletions <= max(ref, hyp)), but a
+    pathological hyp can exceed 1.0 — that's the standard WER definition.
+    """
+    ref_tokens = _normalize_text_for_wer(ref).split()
+    hyp_tokens = _normalize_text_for_wer(hyp).split()
     if not ref_tokens:
         return 0.0 if not hyp_tokens else 1.0
     # Wagner–Fischer DP.
@@ -322,6 +402,21 @@ def _word_error_rate(ref: str, hyp: str) -> float:
             cost = 0 if ref_tokens[i - 1] == hyp_tokens[j - 1] else 1
             dp[i][j] = min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
     return dp[n][m] / float(n)
+
+
+def _resample_audio(audio, *, src_sr: int, dst_sr: int):
+    """Resample a 1-D numpy waveform from `src_sr` to `dst_sr`.
+
+    Identity-return when the rates match so callers can pass-through
+    without paying the librosa import + resample cost. Uses
+    `librosa.resample` with the default `kaiser_best` window — slow
+    but high-quality, which is what we want for eval (not realtime).
+    """
+    if src_sr == dst_sr:
+        return audio
+    import librosa  # noqa: PLC0415
+
+    return librosa.resample(audio, orig_sr=src_sr, target_sr=dst_sr)
 
 
 def _load_wav_mono(path: Path, *, sr: int):

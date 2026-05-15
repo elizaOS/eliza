@@ -29,10 +29,7 @@
             "target": {
               "type": "string",
               "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `action` (request_permission/release/list_active -> website), from app/website-only param shape, or from the user's text when omitted.",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "action": {
               "type": "string",
@@ -133,9 +130,7 @@
               "description": "Optional policy label for the block."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -168,9 +163,7 @@
         "capability:read",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device"
-      ],
+      "_surfaces": ["surface:device"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -185,10 +178,7 @@
             "target": {
               "type": "string",
               "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `action` (request_permission/release/list_active -> website), from app/website-only param shape, or from the user's text when omitted.",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "action": {
               "type": "string",
@@ -289,9 +279,7 @@
               "description": "Optional policy label for the block."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -324,9 +312,7 @@
         "capability:read",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device"
-      ],
+      "_surfaces": ["surface:device"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -341,10 +327,7 @@
             "target": {
               "type": "string",
               "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `action` (request_permission/release/list_active -> website), from app/website-only param shape, or from the user's text when omitted.",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "action": {
               "type": "string",
@@ -445,9 +428,7 @@
               "description": "Optional policy label for the block."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -480,9 +461,7 @@
         "capability:read",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device"
-      ],
+      "_surfaces": ["surface:device"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -497,10 +476,7 @@
             "target": {
               "type": "string",
               "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `action` (request_permission/release/list_active -> website), from app/website-only param shape, or from the user's text when omitted.",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "action": {
               "type": "string",
@@ -564,9 +540,7 @@
               "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -599,9 +573,7 @@
         "capability:read",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device"
-      ],
+      "_surfaces": ["surface:device"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -616,10 +588,7 @@
             "target": {
               "type": "string",
               "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `action` (request_permission/release/list_active -> website), from app/website-only param shape, or from the user's text when omitted.",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "action": {
               "type": "string",
@@ -720,9 +689,7 @@
               "description": "Optional policy label for the block."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -755,9 +722,7 @@
         "capability:read",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device"
-      ],
+      "_surfaces": ["surface:device"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -772,10 +737,7 @@
             "target": {
               "type": "string",
               "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `action` (request_permission/release/list_active -> website), from app/website-only param shape, or from the user's text when omitted.",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "action": {
               "type": "string",
@@ -876,9 +838,7 @@
               "description": "Optional policy label for the block."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -911,9 +871,7 @@
         "capability:read",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device"
-      ],
+      "_surfaces": ["surface:device"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -928,10 +886,7 @@
             "target": {
               "type": "string",
               "description": "Which surface to act on: 'app' (phone apps) or 'website' (desktop hosts-file/SelfControl). Inferred from `action` (request_permission/release/list_active -> website), from app/website-only param shape, or from the user's text when omitted.",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "action": {
               "type": "string",
@@ -995,9 +950,7 @@
               "description": "How long to block, in minutes. Omit/null for an indefinite block that stays active until manually removed."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -1030,9 +983,7 @@
         "capability:read",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device"
-      ],
+      "_surfaces": ["surface:device"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -1086,23 +1037,13 @@
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:travel",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:travel", "capability:read", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:travel",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -1117,20 +1058,12 @@
             "subaction": {
               "type": "string",
               "description": "Which brief to compose: compose_morning | compose_evening | compose_weekly.",
-              "enum": [
-                "compose_morning",
-                "compose_evening",
-                "compose_weekly"
-              ]
+              "enum": ["compose_morning", "compose_evening", "compose_weekly"]
             },
             "period": {
               "type": "string",
               "description": "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
-              "enum": [
-                "today",
-                "tomorrow",
-                "this_week"
-              ]
+              "enum": ["today", "tomorrow", "this_week"]
             },
             "include": {
               "type": "object",
@@ -1142,10 +1075,7 @@
             "format": {
               "type": "string",
               "description": "narrative renders the LLM compose pass; json returns only the structured LifeOpsBriefing. Defaults to narrative.",
-              "enum": [
-                "narrative",
-                "json"
-              ]
+              "enum": ["narrative", "json"]
             }
           },
           "required": [],
@@ -1160,22 +1090,12 @@
         "capability:compose",
         "surface:internal"
       ],
-      "_contexts": [
-        "briefing",
-        "calendar",
-        "inbox",
-        "tasks",
-        "finance"
-      ],
+      "_contexts": ["briefing", "calendar", "inbox", "tasks", "finance"],
       "_priority": 100,
       "_examples_count": 2,
       "_domain": null,
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -1190,20 +1110,12 @@
             "subaction": {
               "type": "string",
               "description": "Which brief to compose: compose_morning | compose_evening | compose_weekly.",
-              "enum": [
-                "compose_morning",
-                "compose_evening",
-                "compose_weekly"
-              ]
+              "enum": ["compose_morning", "compose_evening", "compose_weekly"]
             },
             "period": {
               "type": "string",
               "description": "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
-              "enum": [
-                "today",
-                "tomorrow",
-                "this_week"
-              ]
+              "enum": ["today", "tomorrow", "this_week"]
             },
             "include": {
               "type": "object",
@@ -1215,10 +1127,7 @@
             "format": {
               "type": "string",
               "description": "narrative renders the LLM compose pass; json returns only the structured LifeOpsBriefing. Defaults to narrative.",
-              "enum": [
-                "narrative",
-                "json"
-              ]
+              "enum": ["narrative", "json"]
             }
           },
           "required": [],
@@ -1233,22 +1142,12 @@
         "capability:compose",
         "surface:internal"
       ],
-      "_contexts": [
-        "briefing",
-        "calendar",
-        "inbox",
-        "tasks",
-        "finance"
-      ],
+      "_contexts": ["briefing", "calendar", "inbox", "tasks", "finance"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -1263,20 +1162,12 @@
             "subaction": {
               "type": "string",
               "description": "Which brief to compose: compose_morning | compose_evening | compose_weekly.",
-              "enum": [
-                "compose_morning",
-                "compose_evening",
-                "compose_weekly"
-              ]
+              "enum": ["compose_morning", "compose_evening", "compose_weekly"]
             },
             "period": {
               "type": "string",
               "description": "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
-              "enum": [
-                "today",
-                "tomorrow",
-                "this_week"
-              ]
+              "enum": ["today", "tomorrow", "this_week"]
             },
             "include": {
               "type": "object",
@@ -1288,10 +1179,7 @@
             "format": {
               "type": "string",
               "description": "narrative renders the LLM compose pass; json returns only the structured LifeOpsBriefing. Defaults to narrative.",
-              "enum": [
-                "narrative",
-                "json"
-              ]
+              "enum": ["narrative", "json"]
             }
           },
           "required": [],
@@ -1306,22 +1194,12 @@
         "capability:compose",
         "surface:internal"
       ],
-      "_contexts": [
-        "briefing",
-        "calendar",
-        "inbox",
-        "tasks",
-        "finance"
-      ],
+      "_contexts": ["briefing", "calendar", "inbox", "tasks", "finance"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -1336,20 +1214,12 @@
             "subaction": {
               "type": "string",
               "description": "Which brief to compose: compose_morning | compose_evening | compose_weekly.",
-              "enum": [
-                "compose_morning",
-                "compose_evening",
-                "compose_weekly"
-              ]
+              "enum": ["compose_morning", "compose_evening", "compose_weekly"]
             },
             "period": {
               "type": "string",
               "description": "Time window the brief covers: today | tomorrow | this_week. Defaults to the subaction's natural period.",
-              "enum": [
-                "today",
-                "tomorrow",
-                "this_week"
-              ]
+              "enum": ["today", "tomorrow", "this_week"]
             },
             "include": {
               "type": "object",
@@ -1361,10 +1231,7 @@
             "format": {
               "type": "string",
               "description": "narrative renders the LLM compose pass; json returns only the structured LifeOpsBriefing. Defaults to narrative.",
-              "enum": [
-                "narrative",
-                "json"
-              ]
+              "enum": ["narrative", "json"]
             }
           },
           "required": [],
@@ -1379,22 +1246,12 @@
         "capability:compose",
         "surface:internal"
       ],
-      "_contexts": [
-        "briefing",
-        "calendar",
-        "inbox",
-        "tasks",
-        "finance"
-      ],
+      "_contexts": ["briefing", "calendar", "inbox", "tasks", "finance"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -1581,11 +1438,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -1622,10 +1475,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -1812,11 +1662,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -1853,10 +1699,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -2043,11 +1886,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -2084,10 +1923,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -2274,11 +2110,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -2315,10 +2147,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -2505,11 +2334,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -2546,10 +2371,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -2736,11 +2558,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -2777,10 +2595,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -2967,11 +2782,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -3008,10 +2819,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -3198,11 +3006,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -3239,10 +3043,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -3429,11 +3230,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -3470,10 +3267,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -3660,11 +3454,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -3701,10 +3491,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -3891,11 +3678,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -3932,10 +3715,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -4122,11 +3902,7 @@
                     }
                   }
                 },
-                "required": [
-                  "label",
-                  "startLocal",
-                  "endLocal"
-                ],
+                "required": ["label", "startLocal", "endLocal"],
                 "additionalProperties": false
               }
             }
@@ -4163,10 +3939,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -4181,11 +3954,7 @@
             "subaction": {
               "type": "string",
               "description": "Which scan to run: scan_today | scan_week | scan_event_proposal.",
-              "enum": [
-                "scan_today",
-                "scan_week",
-                "scan_event_proposal"
-              ]
+              "enum": ["scan_today", "scan_week", "scan_event_proposal"]
             },
             "range": {
               "type": "object",
@@ -4214,20 +3983,12 @@
         "capability:scan",
         "surface:internal"
       ],
-      "_contexts": [
-        "calendar",
-        "scheduling",
-        "conflicts"
-      ],
+      "_contexts": ["calendar", "scheduling", "conflicts"],
       "_priority": 100,
       "_examples_count": 2,
       "_domain": "domain:calendar",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -4242,11 +4003,7 @@
             "subaction": {
               "type": "string",
               "description": "Which scan to run: scan_today | scan_week | scan_event_proposal.",
-              "enum": [
-                "scan_today",
-                "scan_week",
-                "scan_event_proposal"
-              ]
+              "enum": ["scan_today", "scan_week", "scan_event_proposal"]
             },
             "range": {
               "type": "object",
@@ -4275,20 +4032,12 @@
         "capability:scan",
         "surface:internal"
       ],
-      "_contexts": [
-        "calendar",
-        "scheduling",
-        "conflicts"
-      ],
+      "_contexts": ["calendar", "scheduling", "conflicts"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:calendar",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -4303,11 +4052,7 @@
             "subaction": {
               "type": "string",
               "description": "Which scan to run: scan_today | scan_week | scan_event_proposal.",
-              "enum": [
-                "scan_today",
-                "scan_week",
-                "scan_event_proposal"
-              ]
+              "enum": ["scan_today", "scan_week", "scan_event_proposal"]
             },
             "range": {
               "type": "object",
@@ -4336,20 +4081,12 @@
         "capability:scan",
         "surface:internal"
       ],
-      "_contexts": [
-        "calendar",
-        "scheduling",
-        "conflicts"
-      ],
+      "_contexts": ["calendar", "scheduling", "conflicts"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:calendar",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -4364,11 +4101,7 @@
             "subaction": {
               "type": "string",
               "description": "Which scan to run: scan_today | scan_week | scan_event_proposal.",
-              "enum": [
-                "scan_today",
-                "scan_week",
-                "scan_event_proposal"
-              ]
+              "enum": ["scan_today", "scan_week", "scan_event_proposal"]
             },
             "range": {
               "type": "object",
@@ -4397,20 +4130,12 @@
         "capability:scan",
         "surface:internal"
       ],
-      "_contexts": [
-        "calendar",
-        "scheduling",
-        "conflicts"
-      ],
+      "_contexts": ["calendar", "scheduling", "conflicts"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:calendar",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -4429,30 +4154,17 @@
             "action": {
               "type": "string",
               "description": "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
-              "enum": [
-                "connect",
-                "disconnect",
-                "verify",
-                "status",
-                "list"
-              ]
+              "enum": ["connect", "disconnect", "verify", "status", "list"]
             },
             "side": {
               "type": "string",
               "description": "owner | agent. Defaults to owner.",
-              "enum": [
-                "owner",
-                "agent"
-              ]
+              "enum": ["owner", "agent"]
             },
             "mode": {
               "type": "string",
               "description": "Connection mode: local | cloud_managed | remote. Defaults vary by connector.",
-              "enum": [
-                "local",
-                "cloud_managed",
-                "remote"
-              ]
+              "enum": ["local", "cloud_managed", "remote"]
             },
             "recentLimit": {
               "type": "number",
@@ -4473,10 +4185,7 @@
             "browser": {
               "type": "string",
               "description": "browser_bridge connect only — chrome | safari.",
-              "enum": [
-                "chrome",
-                "safari"
-              ]
+              "enum": ["chrome", "safari"]
             },
             "profileId": {
               "type": "string",
@@ -4525,10 +4234,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -4547,30 +4253,17 @@
             "action": {
               "type": "string",
               "description": "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
-              "enum": [
-                "connect",
-                "disconnect",
-                "verify",
-                "status",
-                "list"
-              ]
+              "enum": ["connect", "disconnect", "verify", "status", "list"]
             },
             "side": {
               "type": "string",
               "description": "owner | agent. Defaults to owner.",
-              "enum": [
-                "owner",
-                "agent"
-              ]
+              "enum": ["owner", "agent"]
             },
             "mode": {
               "type": "string",
               "description": "Connection mode: local | cloud_managed | remote. Defaults vary by connector.",
-              "enum": [
-                "local",
-                "cloud_managed",
-                "remote"
-              ]
+              "enum": ["local", "cloud_managed", "remote"]
             },
             "recentLimit": {
               "type": "number",
@@ -4591,10 +4284,7 @@
             "browser": {
               "type": "string",
               "description": "browser_bridge connect only — chrome | safari.",
-              "enum": [
-                "chrome",
-                "safari"
-              ]
+              "enum": ["chrome", "safari"]
             },
             "profileId": {
               "type": "string",
@@ -4643,10 +4333,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -4665,30 +4352,17 @@
             "action": {
               "type": "string",
               "description": "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
-              "enum": [
-                "connect",
-                "disconnect",
-                "verify",
-                "status",
-                "list"
-              ]
+              "enum": ["connect", "disconnect", "verify", "status", "list"]
             },
             "side": {
               "type": "string",
               "description": "owner | agent. Defaults to owner.",
-              "enum": [
-                "owner",
-                "agent"
-              ]
+              "enum": ["owner", "agent"]
             },
             "mode": {
               "type": "string",
               "description": "Connection mode: local | cloud_managed | remote. Defaults vary by connector.",
-              "enum": [
-                "local",
-                "cloud_managed",
-                "remote"
-              ]
+              "enum": ["local", "cloud_managed", "remote"]
             },
             "recentLimit": {
               "type": "number",
@@ -4709,10 +4383,7 @@
             "browser": {
               "type": "string",
               "description": "browser_bridge connect only — chrome | safari.",
-              "enum": [
-                "chrome",
-                "safari"
-              ]
+              "enum": ["chrome", "safari"]
             },
             "profileId": {
               "type": "string",
@@ -4761,10 +4432,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -4783,30 +4451,17 @@
             "action": {
               "type": "string",
               "description": "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
-              "enum": [
-                "connect",
-                "disconnect",
-                "verify",
-                "status",
-                "list"
-              ]
+              "enum": ["connect", "disconnect", "verify", "status", "list"]
             },
             "side": {
               "type": "string",
               "description": "owner | agent. Defaults to owner.",
-              "enum": [
-                "owner",
-                "agent"
-              ]
+              "enum": ["owner", "agent"]
             },
             "mode": {
               "type": "string",
               "description": "Connection mode: local | cloud_managed | remote. Defaults vary by connector.",
-              "enum": [
-                "local",
-                "cloud_managed",
-                "remote"
-              ]
+              "enum": ["local", "cloud_managed", "remote"]
             },
             "recentLimit": {
               "type": "number",
@@ -4827,10 +4482,7 @@
             "browser": {
               "type": "string",
               "description": "browser_bridge connect only — chrome | safari.",
-              "enum": [
-                "chrome",
-                "safari"
-              ]
+              "enum": ["chrome", "safari"]
             },
             "profileId": {
               "type": "string",
@@ -4879,10 +4531,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -4901,30 +4550,17 @@
             "action": {
               "type": "string",
               "description": "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
-              "enum": [
-                "connect",
-                "disconnect",
-                "verify",
-                "status",
-                "list"
-              ]
+              "enum": ["connect", "disconnect", "verify", "status", "list"]
             },
             "side": {
               "type": "string",
               "description": "owner | agent. Defaults to owner.",
-              "enum": [
-                "owner",
-                "agent"
-              ]
+              "enum": ["owner", "agent"]
             },
             "mode": {
               "type": "string",
               "description": "Connection mode: local | cloud_managed | remote. Defaults vary by connector.",
-              "enum": [
-                "local",
-                "cloud_managed",
-                "remote"
-              ]
+              "enum": ["local", "cloud_managed", "remote"]
             },
             "recentLimit": {
               "type": "number",
@@ -4945,10 +4581,7 @@
             "browser": {
               "type": "string",
               "description": "browser_bridge connect only — chrome | safari.",
-              "enum": [
-                "chrome",
-                "safari"
-              ]
+              "enum": ["chrome", "safari"]
             },
             "profileId": {
               "type": "string",
@@ -4997,10 +4630,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -5019,30 +4649,17 @@
             "action": {
               "type": "string",
               "description": "Lifecycle operation. connect (start auth/pairing); disconnect (revoke + clear grant); verify (active read/send probe where available). status/list are read-only diagnostics for explicit troubleshooting; prefer provider/core registry context when available. Strongly preferred - when omitted, the handler runs an LLM extraction over the conversation to recover it.",
-              "enum": [
-                "connect",
-                "disconnect",
-                "verify",
-                "status",
-                "list"
-              ]
+              "enum": ["connect", "disconnect", "verify", "status", "list"]
             },
             "side": {
               "type": "string",
               "description": "owner | agent. Defaults to owner.",
-              "enum": [
-                "owner",
-                "agent"
-              ]
+              "enum": ["owner", "agent"]
             },
             "mode": {
               "type": "string",
               "description": "Connection mode: local | cloud_managed | remote. Defaults vary by connector.",
-              "enum": [
-                "local",
-                "cloud_managed",
-                "remote"
-              ]
+              "enum": ["local", "cloud_managed", "remote"]
             },
             "recentLimit": {
               "type": "number",
@@ -5063,10 +4680,7 @@
             "browser": {
               "type": "string",
               "description": "browser_bridge connect only — chrome | safari.",
-              "enum": [
-                "chrome",
-                "safari"
-              ]
+              "enum": ["chrome", "safari"]
             },
             "profileId": {
               "type": "string",
@@ -5115,10 +4729,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:remote-api",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:remote-api", "surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -5176,9 +4787,7 @@
               "description": "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -5194,12 +4803,7 @@
         "surface:internal",
         "risk:irreversible"
       ],
-      "_contexts": [
-        "browser",
-        "secrets",
-        "settings",
-        "automation"
-      ],
+      "_contexts": ["browser", "secrets", "settings", "automation"],
       "_priority": 100,
       "_examples_count": 4,
       "_domain": "domain:meta",
@@ -5209,10 +4813,7 @@
         "capability:update",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:device", "surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -5270,9 +4871,7 @@
               "description": "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -5288,12 +4887,7 @@
         "surface:internal",
         "risk:irreversible"
       ],
-      "_contexts": [
-        "browser",
-        "secrets",
-        "settings",
-        "automation"
-      ],
+      "_contexts": ["browser", "secrets", "settings", "automation"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -5303,10 +4897,7 @@
         "capability:update",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:device", "surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -5364,9 +4955,7 @@
               "description": "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -5382,12 +4971,7 @@
         "surface:internal",
         "risk:irreversible"
       ],
-      "_contexts": [
-        "browser",
-        "secrets",
-        "settings",
-        "automation"
-      ],
+      "_contexts": ["browser", "secrets", "settings", "automation"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -5397,10 +4981,7 @@
         "capability:update",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:device", "surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -5458,9 +5039,7 @@
               "description": "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -5476,12 +5055,7 @@
         "surface:internal",
         "risk:irreversible"
       ],
-      "_contexts": [
-        "browser",
-        "secrets",
-        "settings",
-        "automation"
-      ],
+      "_contexts": ["browser", "secrets", "settings", "automation"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -5491,10 +5065,7 @@
         "capability:update",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:device", "surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -5552,9 +5123,7 @@
               "description": "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -5570,12 +5139,7 @@
         "surface:internal",
         "risk:irreversible"
       ],
-      "_contexts": [
-        "browser",
-        "secrets",
-        "settings",
-        "automation"
-      ],
+      "_contexts": ["browser", "secrets", "settings", "automation"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -5585,10 +5149,7 @@
         "capability:update",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:device", "surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -5646,9 +5207,7 @@
               "description": "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -5664,12 +5223,7 @@
         "surface:internal",
         "risk:irreversible"
       ],
-      "_contexts": [
-        "browser",
-        "secrets",
-        "settings",
-        "automation"
-      ],
+      "_contexts": ["browser", "secrets", "settings", "automation"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -5679,10 +5233,7 @@
         "capability:update",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:device", "surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -5740,9 +5291,7 @@
               "description": "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -5758,12 +5307,7 @@
         "surface:internal",
         "risk:irreversible"
       ],
-      "_contexts": [
-        "browser",
-        "secrets",
-        "settings",
-        "automation"
-      ],
+      "_contexts": ["browser", "secrets", "settings", "automation"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -5773,10 +5317,7 @@
         "capability:update",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:device", "surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -5834,9 +5375,7 @@
               "description": "Required true for whitelist_add and for either inject_* action. Ensures the owner approved the change."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -5852,12 +5391,7 @@
         "surface:internal",
         "risk:irreversible"
       ],
-      "_contexts": [
-        "browser",
-        "secrets",
-        "settings",
-        "automation"
-      ],
+      "_contexts": ["browser", "secrets", "settings", "automation"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -5867,10 +5401,7 @@
         "capability:update",
         "capability:execute"
       ],
-      "_surfaces": [
-        "surface:device",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:device", "surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -5949,11 +5480,7 @@
             "resolution": {
               "type": "string",
               "description": "close_request only: completed | expired | cancelled. Defaults to completed.",
-              "enum": [
-                "completed",
-                "expired",
-                "cancelled"
-              ]
+              "enum": ["completed", "expired", "cancelled"]
             }
           },
           "required": [],
@@ -5970,12 +5497,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "docs",
-        "tasks",
-        "calendar",
-        "contacts"
-      ],
+      "_contexts": ["docs", "tasks", "calendar", "contacts"],
       "_priority": 100,
       "_examples_count": 3,
       "_domain": null,
@@ -5985,9 +5507,7 @@
         "capability:update",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -6066,11 +5586,7 @@
             "resolution": {
               "type": "string",
               "description": "close_request only: completed | expired | cancelled. Defaults to completed.",
-              "enum": [
-                "completed",
-                "expired",
-                "cancelled"
-              ]
+              "enum": ["completed", "expired", "cancelled"]
             }
           },
           "required": [],
@@ -6087,12 +5603,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "docs",
-        "tasks",
-        "calendar",
-        "contacts"
-      ],
+      "_contexts": ["docs", "tasks", "calendar", "contacts"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -6102,9 +5613,7 @@
         "capability:update",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -6183,11 +5692,7 @@
             "resolution": {
               "type": "string",
               "description": "close_request only: completed | expired | cancelled. Defaults to completed.",
-              "enum": [
-                "completed",
-                "expired",
-                "cancelled"
-              ]
+              "enum": ["completed", "expired", "cancelled"]
             }
           },
           "required": [],
@@ -6204,12 +5709,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "docs",
-        "tasks",
-        "calendar",
-        "contacts"
-      ],
+      "_contexts": ["docs", "tasks", "calendar", "contacts"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -6219,9 +5719,7 @@
         "capability:update",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -6300,11 +5798,7 @@
             "resolution": {
               "type": "string",
               "description": "close_request only: completed | expired | cancelled. Defaults to completed.",
-              "enum": [
-                "completed",
-                "expired",
-                "cancelled"
-              ]
+              "enum": ["completed", "expired", "cancelled"]
             }
           },
           "required": [],
@@ -6321,12 +5815,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "docs",
-        "tasks",
-        "calendar",
-        "contacts"
-      ],
+      "_contexts": ["docs", "tasks", "calendar", "contacts"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -6336,9 +5825,7 @@
         "capability:update",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -6417,11 +5904,7 @@
             "resolution": {
               "type": "string",
               "description": "close_request only: completed | expired | cancelled. Defaults to completed.",
-              "enum": [
-                "completed",
-                "expired",
-                "cancelled"
-              ]
+              "enum": ["completed", "expired", "cancelled"]
             }
           },
           "required": [],
@@ -6438,12 +5921,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "docs",
-        "tasks",
-        "calendar",
-        "contacts"
-      ],
+      "_contexts": ["docs", "tasks", "calendar", "contacts"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -6453,9 +5931,7 @@
         "capability:update",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -6534,11 +6010,7 @@
             "resolution": {
               "type": "string",
               "description": "close_request only: completed | expired | cancelled. Defaults to completed.",
-              "enum": [
-                "completed",
-                "expired",
-                "cancelled"
-              ]
+              "enum": ["completed", "expired", "cancelled"]
             }
           },
           "required": [],
@@ -6555,12 +6027,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "docs",
-        "tasks",
-        "calendar",
-        "contacts"
-      ],
+      "_contexts": ["docs", "tasks", "calendar", "contacts"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -6570,9 +6037,7 @@
         "capability:update",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -6651,11 +6116,7 @@
             "resolution": {
               "type": "string",
               "description": "close_request only: completed | expired | cancelled. Defaults to completed.",
-              "enum": [
-                "completed",
-                "expired",
-                "cancelled"
-              ]
+              "enum": ["completed", "expired", "cancelled"]
             }
           },
           "required": [],
@@ -6672,12 +6133,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "docs",
-        "tasks",
-        "calendar",
-        "contacts"
-      ],
+      "_contexts": ["docs", "tasks", "calendar", "contacts"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -6687,9 +6143,7 @@
         "capability:update",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -6818,13 +6272,7 @@
         "capability:delete",
         "surface:internal"
       ],
-      "_contexts": [
-        "contacts",
-        "tasks",
-        "calendar",
-        "messaging",
-        "memory"
-      ],
+      "_contexts": ["contacts", "tasks", "calendar", "messaging", "memory"],
       "_priority": 100,
       "_examples_count": 4,
       "_domain": "domain:contacts",
@@ -6834,9 +6282,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -6851,11 +6297,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps HEALTH discriminator.",
-              "enum": [
-                "by_metric",
-                "summary",
-                "trends"
-              ]
+              "enum": ["by_metric", "summary", "trends"]
             },
             "intent": {
               "type": "string"
@@ -6870,31 +6312,19 @@
               "type": "number"
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:health",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:health", "capability:read", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:health",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -6909,11 +6339,7 @@
             "subaction": {
               "type": "string",
               "description": "Which operation: list | search | summarize.",
-              "enum": [
-                "list",
-                "search",
-                "summarize"
-              ]
+              "enum": ["list", "search", "summarize"]
             },
             "platforms": {
               "type": "array",
@@ -6948,20 +6374,12 @@
         "capability:summarize",
         "surface:internal"
       ],
-      "_contexts": [
-        "inbox",
-        "messaging",
-        "cross-channel"
-      ],
+      "_contexts": ["inbox", "messaging", "cross-channel"],
       "_priority": 100,
       "_examples_count": 2,
       "_domain": null,
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -6976,11 +6394,7 @@
             "subaction": {
               "type": "string",
               "description": "Which operation: list | search | summarize.",
-              "enum": [
-                "list",
-                "search",
-                "summarize"
-              ]
+              "enum": ["list", "search", "summarize"]
             },
             "platforms": {
               "type": "array",
@@ -7015,20 +6429,12 @@
         "capability:summarize",
         "surface:internal"
       ],
-      "_contexts": [
-        "inbox",
-        "messaging",
-        "cross-channel"
-      ],
+      "_contexts": ["inbox", "messaging", "cross-channel"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7043,11 +6449,7 @@
             "subaction": {
               "type": "string",
               "description": "Which operation: list | search | summarize.",
-              "enum": [
-                "list",
-                "search",
-                "summarize"
-              ]
+              "enum": ["list", "search", "summarize"]
             },
             "platforms": {
               "type": "array",
@@ -7082,20 +6484,12 @@
         "capability:summarize",
         "surface:internal"
       ],
-      "_contexts": [
-        "inbox",
-        "messaging",
-        "cross-channel"
-      ],
+      "_contexts": ["inbox", "messaging", "cross-channel"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7110,11 +6504,7 @@
             "subaction": {
               "type": "string",
               "description": "Which operation: list | search | summarize.",
-              "enum": [
-                "list",
-                "search",
-                "summarize"
-              ]
+              "enum": ["list", "search", "summarize"]
             },
             "platforms": {
               "type": "array",
@@ -7149,20 +6539,12 @@
         "capability:summarize",
         "surface:internal"
       ],
-      "_contexts": [
-        "inbox",
-        "messaging",
-        "cross-channel"
-      ],
+      "_contexts": ["inbox", "messaging", "cross-channel"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7197,31 +6579,19 @@
               "type": "string"
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:reminders",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:reminders", "capability:read", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7236,9 +6606,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps LIFE_COMPLETE discriminator.",
-              "enum": [
-                "complete"
-              ]
+              "enum": ["complete"]
             },
             "intent": {
               "type": "string"
@@ -7250,31 +6618,19 @@
               "type": "string"
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:reminders",
-        "capability:update",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:reminders", "capability:update", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
-      "_capabilities": [
-        "capability:update"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:update"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7289,9 +6645,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps LIFE_CREATE discriminator.",
-              "enum": [
-                "create"
-              ]
+              "enum": ["create"]
             },
             "intent": {
               "type": "string"
@@ -7307,9 +6661,7 @@
               "additionalProperties": true
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
@@ -7321,19 +6673,12 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general"
-      ],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
-      "_capabilities": [
-        "capability:write",
-        "capability:schedule"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:write", "capability:schedule"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7348,9 +6693,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps LIFE_DELETE discriminator.",
-              "enum": [
-                "delete"
-              ]
+              "enum": ["delete"]
             },
             "intent": {
               "type": "string"
@@ -7369,31 +6712,19 @@
               "additionalProperties": true
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:reminders",
-        "capability:delete",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:reminders", "capability:delete", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
-      "_capabilities": [
-        "capability:delete"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:delete"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7408,39 +6739,25 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps LIFE_REVIEW discriminator.",
-              "enum": [
-                "review"
-              ]
+              "enum": ["review"]
             },
             "intent": {
               "type": "string"
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:reminders",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:reminders", "capability:read", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7455,9 +6772,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps LIFE_SKIP discriminator.",
-              "enum": [
-                "skip"
-              ]
+              "enum": ["skip"]
             },
             "intent": {
               "type": "string"
@@ -7481,31 +6796,19 @@
               "description": "Reason recorded for the skip."
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:reminders",
-        "capability:update",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:reminders", "capability:update", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
-      "_capabilities": [
-        "capability:update"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:update"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7520,9 +6823,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps LIFE_SNOOZE discriminator.",
-              "enum": [
-                "snooze"
-              ]
+              "enum": ["snooze"]
             },
             "intent": {
               "type": "string"
@@ -7537,31 +6838,19 @@
               "type": "number"
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:reminders",
-        "capability:update",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:reminders", "capability:update", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
-      "_capabilities": [
-        "capability:update"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:update"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7576,9 +6865,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps LIFE_UPDATE discriminator.",
-              "enum": [
-                "update"
-              ]
+              "enum": ["update"]
             },
             "intent": {
               "type": "string"
@@ -7603,31 +6890,19 @@
               "additionalProperties": true
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:reminders",
-        "capability:update",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:reminders", "capability:update", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
-      "_capabilities": [
-        "capability:update"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:update"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -7877,11 +7152,7 @@
             "urgency": {
               "type": "string",
               "description": "Urgency for op=send: normal, important, urgent.",
-              "enum": [
-                "normal",
-                "important",
-                "urgent"
-              ]
+              "enum": ["normal", "important", "urgent"]
             },
             "persist": {
               "type": "boolean",
@@ -7894,10 +7165,7 @@
             "range": {
               "type": "string",
               "description": "For op=read_channel: \"recent\" (default) or \"dates\".",
-              "enum": [
-                "recent",
-                "dates"
-              ]
+              "enum": ["recent", "dates"]
             },
             "from": {
               "type": "string",
@@ -7959,12 +7227,7 @@
         "surface:remote-api",
         "risk:irreversible"
       ],
-      "_contexts": [
-        "messaging",
-        "email",
-        "contacts",
-        "connectors"
-      ],
+      "_contexts": ["messaging", "email", "contacts", "connectors"],
       "_priority": 100,
       "_examples_count": 1,
       "_domain": "domain:messages",
@@ -7976,9 +7239,7 @@
         "capability:send",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:remote-api"
-      ],
+      "_surfaces": ["surface:remote-api"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -7993,9 +7254,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps MONEY_DASHBOARD discriminator.",
-              "enum": [
-                "dashboard"
-              ]
+              "enum": ["dashboard"]
             },
             "intent": {
               "type": "string"
@@ -8004,31 +7263,19 @@
               "type": "number"
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8043,9 +7290,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps MONEY_LIST_TRANSACTIONS discriminator.",
-              "enum": [
-                "list_transactions"
-              ]
+              "enum": ["list_transactions"]
             },
             "intent": {
               "type": "string"
@@ -8060,31 +7305,19 @@
               "type": "boolean"
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8099,9 +7332,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps MONEY_RECURRING_CHARGES discriminator.",
-              "enum": [
-                "recurring_charges"
-              ]
+              "enum": ["recurring_charges"]
             },
             "intent": {
               "type": "string"
@@ -8110,31 +7341,19 @@
               "type": "number"
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8149,9 +7368,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps MONEY_SPENDING_SUMMARY discriminator.",
-              "enum": [
-                "spending_summary"
-              ]
+              "enum": ["spending_summary"]
             },
             "intent": {
               "type": "string"
@@ -8164,31 +7381,19 @@
               "description": "Optional grouping key for the spending summary."
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8203,9 +7408,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps MONEY_SUBSCRIPTION_AUDIT discriminator.",
-              "enum": [
-                "subscription_audit"
-              ]
+              "enum": ["subscription_audit"]
             },
             "intent": {
               "type": "string"
@@ -8218,31 +7421,19 @@
               "description": "Optional category filter for the subscription audit."
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8257,9 +7448,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps MONEY_SUBSCRIPTION_CANCEL discriminator.",
-              "enum": [
-                "subscription_cancel"
-              ]
+              "enum": ["subscription_cancel"]
             },
             "intent": {
               "type": "string"
@@ -8278,31 +7467,19 @@
               "description": "Optional benchmark-only candidate identifier for the cancellation flow."
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:delete",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:finance", "capability:delete", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:delete"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:delete"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8317,9 +7494,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps MONEY_SUBSCRIPTION_STATUS discriminator.",
-              "enum": [
-                "subscription_status"
-              ]
+              "enum": ["subscription_status"]
             },
             "intent": {
               "type": "string"
@@ -8331,31 +7506,19 @@
               "type": "string"
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "general"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8383,10 +7546,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -8427,13 +7587,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -8444,9 +7598,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8474,10 +7626,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -8518,13 +7667,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -8535,9 +7678,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8565,10 +7706,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -8609,13 +7747,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -8626,9 +7758,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8656,10 +7786,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -8700,13 +7827,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -8717,9 +7838,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8747,10 +7866,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -8791,13 +7907,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -8808,9 +7918,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8838,10 +7946,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -8882,13 +7987,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -8899,9 +7998,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -8929,10 +8026,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -8973,13 +8067,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -8990,9 +8078,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -9020,10 +8106,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -9064,13 +8147,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -9081,9 +8158,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -10706,20 +9781,12 @@
             "action": {
               "type": "string",
               "description": "Owner item operation: create, update, delete, review.",
-              "enum": [
-                "create",
-                "update",
-                "delete",
-                "review"
-              ]
+              "enum": ["create", "update", "delete", "review"]
             },
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -10760,13 +9827,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -10777,9 +9838,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -10794,20 +9853,12 @@
             "action": {
               "type": "string",
               "description": "Owner item operation: create, update, delete, review.",
-              "enum": [
-                "create",
-                "update",
-                "delete",
-                "review"
-              ]
+              "enum": ["create", "update", "delete", "review"]
             },
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -10848,13 +9899,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -10865,9 +9910,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -10882,20 +9925,12 @@
             "action": {
               "type": "string",
               "description": "Owner item operation: create, update, delete, review.",
-              "enum": [
-                "create",
-                "update",
-                "delete",
-                "review"
-              ]
+              "enum": ["create", "update", "delete", "review"]
             },
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -10936,13 +9971,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -10953,9 +9982,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -10970,20 +9997,12 @@
             "action": {
               "type": "string",
               "description": "Owner item operation: create, update, delete, review.",
-              "enum": [
-                "create",
-                "update",
-                "delete",
-                "review"
-              ]
+              "enum": ["create", "update", "delete", "review"]
             },
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -11024,13 +10043,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -11041,9 +10054,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -11058,20 +10069,12 @@
             "action": {
               "type": "string",
               "description": "Owner item operation: create, update, delete, review.",
-              "enum": [
-                "create",
-                "update",
-                "delete",
-                "review"
-              ]
+              "enum": ["create", "update", "delete", "review"]
             },
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -11112,13 +10115,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -11129,9 +10126,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -11146,12 +10141,7 @@
             "action": {
               "type": "string",
               "description": "Owner health read action: today, trend, by_metric, or status.",
-              "enum": [
-                "today",
-                "trend",
-                "by_metric",
-                "status"
-              ]
+              "enum": ["today", "trend", "by_metric", "status"]
             },
             "intent": {
               "type": "string",
@@ -11207,12 +10197,7 @@
             "action": {
               "type": "string",
               "description": "Owner health read action: today, trend, by_metric, or status.",
-              "enum": [
-                "today",
-                "trend",
-                "by_metric",
-                "status"
-              ]
+              "enum": ["today", "trend", "by_metric", "status"]
             },
             "intent": {
               "type": "string",
@@ -11268,12 +10253,7 @@
             "action": {
               "type": "string",
               "description": "Owner health read action: today, trend, by_metric, or status.",
-              "enum": [
-                "today",
-                "trend",
-                "by_metric",
-                "status"
-              ]
+              "enum": ["today", "trend", "by_metric", "status"]
             },
             "intent": {
               "type": "string",
@@ -11329,12 +10309,7 @@
             "action": {
               "type": "string",
               "description": "Owner health read action: today, trend, by_metric, or status.",
-              "enum": [
-                "today",
-                "trend",
-                "by_metric",
-                "status"
-              ]
+              "enum": ["today", "trend", "by_metric", "status"]
             },
             "intent": {
               "type": "string",
@@ -11390,12 +10365,7 @@
             "action": {
               "type": "string",
               "description": "Owner health read action: today, trend, by_metric, or status.",
-              "enum": [
-                "today",
-                "trend",
-                "by_metric",
-                "status"
-              ]
+              "enum": ["today", "trend", "by_metric", "status"]
             },
             "intent": {
               "type": "string",
@@ -11464,10 +10434,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -11508,13 +10475,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -11525,9 +10486,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -11555,10 +10514,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -11599,13 +10555,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -11616,9 +10566,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -11646,10 +10594,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -11690,13 +10635,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -11707,9 +10646,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -11737,10 +10674,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -11781,13 +10715,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -11798,9 +10726,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -11828,10 +10754,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -11872,13 +10795,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -11889,9 +10806,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -11919,10 +10834,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -11963,13 +10875,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -11980,9 +10886,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12010,10 +10914,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12054,13 +10955,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12071,9 +10966,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12101,10 +10994,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12145,13 +11035,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12162,9 +11046,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12194,10 +11076,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12238,13 +11117,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12255,9 +11128,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12287,10 +11158,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12331,13 +11199,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12348,9 +11210,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12380,10 +11240,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12424,13 +11281,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12441,9 +11292,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12473,10 +11322,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12517,13 +11363,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12534,9 +11374,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12566,10 +11404,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12610,13 +11445,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12627,9 +11456,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12659,10 +11486,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12703,13 +11527,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12720,9 +11538,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12752,10 +11568,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12796,13 +11609,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12813,9 +11620,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12845,10 +11650,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12889,13 +11691,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12906,9 +11702,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -12938,10 +11732,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -12982,13 +11773,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -12999,9 +11784,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -13031,10 +11814,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -13075,13 +11855,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -13092,9 +11866,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -13125,10 +11897,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -13210,10 +11979,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -13295,10 +12061,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -13380,10 +12143,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -13465,10 +12225,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -13550,10 +12307,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -13635,10 +12389,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -13720,10 +12471,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -13805,10 +12553,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -13890,10 +12635,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -13975,10 +12717,7 @@
             "source": {
               "type": "string",
               "description": "source filter: app|website",
-              "enum": [
-                "app",
-                "website"
-              ]
+              "enum": ["app", "website"]
             },
             "identifier": {
               "type": "string",
@@ -14057,10 +12796,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -14101,13 +12837,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -14118,9 +12848,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -14148,10 +12876,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -14192,13 +12917,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -14209,9 +12928,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -14239,10 +12956,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -14283,13 +12997,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -14300,9 +13008,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -14330,10 +13036,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -14374,13 +13077,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -14391,9 +13088,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -14421,10 +13116,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -14465,13 +13157,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -14482,9 +13168,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -14512,10 +13196,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -14556,13 +13237,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -14573,9 +13248,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -14603,10 +13276,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -14647,13 +13317,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -14664,9 +13328,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -14694,10 +13356,7 @@
             "kind": {
               "type": "string",
               "description": "Optional override. Defaults to the owner surface's backing kind.",
-              "enum": [
-                "definition",
-                "goal"
-              ]
+              "enum": ["definition", "goal"]
             },
             "intent": {
               "type": "string",
@@ -14738,13 +13397,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "general",
-        "tasks",
-        "todos",
-        "calendar",
-        "health"
-      ],
+      "_contexts": ["general", "tasks", "todos", "calendar", "health"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -14755,9 +13408,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -14772,28 +13423,17 @@
             "action": {
               "type": "string",
               "description": "Assistant workflow to run.",
-              "enum": [
-                "book_travel",
-                "scheduling",
-                "sign_document"
-              ]
+              "enum": ["book_travel", "scheduling", "sign_document"]
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [],
-      "_contexts": [
-        "general",
-        "calendar",
-        "travel",
-        "tasks"
-      ],
+      "_contexts": ["general", "calendar", "travel", "tasks"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -14813,28 +13453,17 @@
             "action": {
               "type": "string",
               "description": "Assistant workflow to run.",
-              "enum": [
-                "book_travel",
-                "scheduling",
-                "sign_document"
-              ]
+              "enum": ["book_travel", "scheduling", "sign_document"]
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [],
-      "_contexts": [
-        "general",
-        "calendar",
-        "travel",
-        "tasks"
-      ],
+      "_contexts": ["general", "calendar", "travel", "tasks"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -14854,28 +13483,17 @@
             "action": {
               "type": "string",
               "description": "Assistant workflow to run.",
-              "enum": [
-                "book_travel",
-                "scheduling",
-                "sign_document"
-              ]
+              "enum": ["book_travel", "scheduling", "sign_document"]
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [],
-      "_contexts": [
-        "general",
-        "calendar",
-        "travel",
-        "tasks"
-      ],
+      "_contexts": ["general", "calendar", "travel", "tasks"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -14895,28 +13513,17 @@
             "action": {
               "type": "string",
               "description": "Assistant workflow to run.",
-              "enum": [
-                "book_travel",
-                "scheduling",
-                "sign_document"
-              ]
+              "enum": ["book_travel", "scheduling", "sign_document"]
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [],
-      "_contexts": [
-        "general",
-        "calendar",
-        "travel",
-        "tasks"
-      ],
+      "_contexts": ["general", "calendar", "travel", "tasks"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -14936,20 +13543,12 @@
             "subaction": {
               "type": "string",
               "description": "Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
-              "enum": [
-                "rank_todos",
-                "rank_threads",
-                "rank_decisions"
-              ]
+              "enum": ["rank_todos", "rank_threads", "rank_decisions"]
             },
             "subject": {
               "type": "string",
               "description": "Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
-              "enum": [
-                "todos",
-                "threads",
-                "decisions"
-              ]
+              "enum": ["todos", "threads", "decisions"]
             },
             "topN": {
               "type": "number",
@@ -14972,21 +13571,12 @@
         "capability:rank",
         "surface:internal"
       ],
-      "_contexts": [
-        "focus",
-        "tasks",
-        "inbox",
-        "approvals"
-      ],
+      "_contexts": ["focus", "tasks", "inbox", "approvals"],
       "_priority": 100,
       "_examples_count": 2,
       "_domain": "domain:focus",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -15001,20 +13591,12 @@
             "subaction": {
               "type": "string",
               "description": "Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
-              "enum": [
-                "rank_todos",
-                "rank_threads",
-                "rank_decisions"
-              ]
+              "enum": ["rank_todos", "rank_threads", "rank_decisions"]
             },
             "subject": {
               "type": "string",
               "description": "Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
-              "enum": [
-                "todos",
-                "threads",
-                "decisions"
-              ]
+              "enum": ["todos", "threads", "decisions"]
             },
             "topN": {
               "type": "number",
@@ -15037,21 +13619,12 @@
         "capability:rank",
         "surface:internal"
       ],
-      "_contexts": [
-        "focus",
-        "tasks",
-        "inbox",
-        "approvals"
-      ],
+      "_contexts": ["focus", "tasks", "inbox", "approvals"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:focus",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -15066,20 +13639,12 @@
             "subaction": {
               "type": "string",
               "description": "Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
-              "enum": [
-                "rank_todos",
-                "rank_threads",
-                "rank_decisions"
-              ]
+              "enum": ["rank_todos", "rank_threads", "rank_decisions"]
             },
             "subject": {
               "type": "string",
               "description": "Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
-              "enum": [
-                "todos",
-                "threads",
-                "decisions"
-              ]
+              "enum": ["todos", "threads", "decisions"]
             },
             "topN": {
               "type": "number",
@@ -15102,21 +13667,12 @@
         "capability:rank",
         "surface:internal"
       ],
-      "_contexts": [
-        "focus",
-        "tasks",
-        "inbox",
-        "approvals"
-      ],
+      "_contexts": ["focus", "tasks", "inbox", "approvals"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:focus",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -15131,20 +13687,12 @@
             "subaction": {
               "type": "string",
               "description": "Which ranking to compute: rank_todos | rank_threads | rank_decisions.",
-              "enum": [
-                "rank_todos",
-                "rank_threads",
-                "rank_decisions"
-              ]
+              "enum": ["rank_todos", "rank_threads", "rank_decisions"]
             },
             "subject": {
               "type": "string",
               "description": "Alternative selector: todos | threads | decisions. Maps onto the matching subaction.",
-              "enum": [
-                "todos",
-                "threads",
-                "decisions"
-              ]
+              "enum": ["todos", "threads", "decisions"]
             },
             "topN": {
               "type": "number",
@@ -15167,21 +13715,12 @@
         "capability:rank",
         "surface:internal"
       ],
-      "_contexts": [
-        "focus",
-        "tasks",
-        "inbox",
-        "approvals"
-      ],
+      "_contexts": ["focus", "tasks", "inbox", "approvals"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:focus",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -15196,13 +13735,7 @@
             "action": {
               "type": "string",
               "description": "remote-desktop action: start|status|end|list|revoke (e.g. start, list, revoke)",
-              "enum": [
-                "start",
-                "status",
-                "end",
-                "list",
-                "revoke"
-              ]
+              "enum": ["start", "status", "end", "list", "revoke"]
             },
             "sessionId": {
               "type": "string",
@@ -15242,13 +13775,7 @@
         "surface:internal",
         "risk:irreversible"
       ],
-      "_contexts": [
-        "browser",
-        "automation",
-        "settings",
-        "admin",
-        "terminal"
-      ],
+      "_contexts": ["browser", "automation", "settings", "admin", "terminal"],
       "_priority": 100,
       "_examples_count": 3,
       "_domain": "domain:meta",
@@ -15258,10 +13785,7 @@
         "capability:execute",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:device",
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:device", "surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -15276,10 +13800,7 @@
             "action": {
               "type": "string",
               "description": "One of: approve, reject.",
-              "enum": [
-                "approve",
-                "reject"
-              ]
+              "enum": ["approve", "reject"]
             },
             "requestId": {
               "type": "string",
@@ -15317,13 +13838,8 @@
       "_priority": 100,
       "_examples_count": 2,
       "_domain": "domain:meta",
-      "_capabilities": [
-        "capability:execute",
-        "capability:update"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:execute", "capability:update"],
+      "_surfaces": ["surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -15338,10 +13854,7 @@
             "action": {
               "type": "string",
               "description": "One of: approve, reject.",
-              "enum": [
-                "approve",
-                "reject"
-              ]
+              "enum": ["approve", "reject"]
             },
             "requestId": {
               "type": "string",
@@ -15379,13 +13892,8 @@
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
-      "_capabilities": [
-        "capability:execute",
-        "capability:update"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:execute", "capability:update"],
+      "_surfaces": ["surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -15400,10 +13908,7 @@
             "action": {
               "type": "string",
               "description": "One of: approve, reject.",
-              "enum": [
-                "approve",
-                "reject"
-              ]
+              "enum": ["approve", "reject"]
             },
             "requestId": {
               "type": "string",
@@ -15441,13 +13946,8 @@
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
-      "_capabilities": [
-        "capability:execute",
-        "capability:update"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:execute", "capability:update"],
+      "_surfaces": ["surface:internal"],
       "_risk": "risk:irreversible",
       "_cost": null
     },
@@ -15568,11 +14068,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -15637,12 +14133,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 3,
       "_domain": "domain:reminders",
@@ -15653,9 +14144,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -15776,11 +14265,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -15845,12 +14330,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -15861,9 +14341,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -15984,11 +14462,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -16053,12 +14527,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -16069,9 +14538,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -16192,11 +14659,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -16261,12 +14724,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -16277,9 +14735,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -16400,11 +14856,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -16469,12 +14921,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -16485,9 +14932,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -16608,11 +15053,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -16677,12 +15118,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -16693,9 +15129,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -16816,11 +15250,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -16885,12 +15315,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -16901,9 +15326,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -17024,11 +15447,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -17093,12 +15512,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -17109,9 +15523,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -17232,11 +15644,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -17301,12 +15709,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -17317,9 +15720,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -17440,11 +15841,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -17509,12 +15906,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -17525,9 +15917,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -17648,11 +16038,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -17717,12 +16103,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -17733,9 +16114,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -17856,11 +16235,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -17925,12 +16300,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -17941,9 +16311,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -18064,11 +16432,7 @@
             "priority": {
               "type": "string",
               "description": "create-only: low | medium | high (default medium).",
-              "enum": [
-                "low",
-                "medium",
-                "high"
-              ]
+              "enum": ["low", "medium", "high"]
             },
             "respectsGlobalPause": {
               "type": "boolean",
@@ -18133,12 +16497,7 @@
         "capability:schedule",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "reminders",
-        "followups",
-        "calendar"
-      ],
+      "_contexts": ["tasks", "reminders", "followups", "calendar"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:reminders",
@@ -18149,9 +16508,7 @@
         "capability:delete",
         "capability:schedule"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -18166,9 +16523,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps SCHEDULED_TASK_CREATE discriminator.",
-              "enum": [
-                "create"
-              ]
+              "enum": ["create"]
             },
             "intent": {
               "type": "string"
@@ -18222,9 +16577,7 @@
               "additionalProperties": true
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
@@ -18236,19 +16589,12 @@
         "capability:write",
         "surface:internal"
       ],
-      "_contexts": [
-        "general"
-      ],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
-      "_capabilities": [
-        "capability:schedule",
-        "capability:write"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:schedule", "capability:write"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -18263,9 +16609,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps SCHEDULED_TASK_SNOOZE discriminator.",
-              "enum": [
-                "snooze"
-              ]
+              "enum": ["snooze"]
             },
             "intent": {
               "type": "string"
@@ -18280,9 +16624,7 @@
               "type": "string"
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
@@ -18294,19 +16636,12 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "general"
-      ],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
-      "_capabilities": [
-        "capability:schedule",
-        "capability:update"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:schedule", "capability:update"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -18321,9 +16656,7 @@
             "subaction": {
               "type": "string",
               "description": "LifeOps SCHEDULED_TASK_UPDATE discriminator.",
-              "enum": [
-                "update"
-              ]
+              "enum": ["update"]
             },
             "intent": {
               "type": "string"
@@ -18344,9 +16677,7 @@
               "additionalProperties": true
             }
           },
-          "required": [
-            "subaction"
-          ],
+          "required": ["subaction"],
           "additionalProperties": false
         },
         "strict": true
@@ -18358,19 +16689,12 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "general"
-      ],
+      "_contexts": ["general"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
-      "_capabilities": [
-        "capability:schedule",
-        "capability:update"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:schedule", "capability:update"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -18411,12 +16735,7 @@
             "status": {
               "type": "string",
               "description": "pending | in_progress | completed | cancelled.",
-              "enum": [
-                "pending",
-                "in_progress",
-                "completed",
-                "cancelled"
-              ]
+              "enum": ["pending", "in_progress", "completed", "cancelled"]
             },
             "parentTodoId": {
               "type": "string",
@@ -18436,21 +16755,13 @@
                   },
                   "status": {
                     "type": "string",
-                    "enum": [
-                      "pending",
-                      "in_progress",
-                      "completed",
-                      "cancelled"
-                    ]
+                    "enum": ["pending", "in_progress", "completed", "cancelled"]
                   },
                   "activeForm": {
                     "type": "string"
                   }
                 },
-                "required": [
-                  "content",
-                  "status"
-                ],
+                "required": ["content", "status"],
                 "additionalProperties": false
               }
             },
@@ -18463,9 +16774,7 @@
               "description": "Max rows to return for action=list."
             }
           },
-          "required": [
-            "action"
-          ],
+          "required": ["action"],
           "additionalProperties": false
         },
         "strict": true
@@ -18479,11 +16788,7 @@
         "capability:delete",
         "surface:internal"
       ],
-      "_contexts": [
-        "tasks",
-        "todos",
-        "automation"
-      ],
+      "_contexts": ["tasks", "todos", "automation"],
       "_priority": 100,
       "_examples_count": 3,
       "_domain": "domain:reminders",
@@ -18493,9 +16798,7 @@
         "capability:update",
         "capability:delete"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -18510,18 +16813,12 @@
             "action": {
               "type": "string",
               "description": "Single canonical verb: `dial`.",
-              "enum": [
-                "dial"
-              ]
+              "enum": ["dial"]
             },
             "recipientKind": {
               "type": "string",
               "description": "Recipient discriminator: `owner` (escalation; uses owner number env), `external` (third party; recipient name resolved via relationships, allow-list checked), or `e164` (raw E.164 phone in `phoneNumber`).",
-              "enum": [
-                "owner",
-                "external",
-                "e164"
-              ]
+              "enum": ["owner", "external", "e164"]
             },
             "phoneNumber": {
               "type": "string",
@@ -18544,9 +16841,7 @@
               "description": "Optional reason describing why the call is being placed (recorded with the approval task)."
             }
           },
-          "required": [
-            "recipientKind"
-          ],
+          "required": ["recipientKind"],
           "additionalProperties": false
         },
         "strict": true
@@ -18559,23 +16854,12 @@
         "surface:remote-api",
         "risk:user-visible"
       ],
-      "_contexts": [
-        "contacts",
-        "messaging",
-        "phone",
-        "tasks",
-        "automation"
-      ],
+      "_contexts": ["contacts", "messaging", "phone", "tasks", "automation"],
       "_priority": 100,
       "_examples_count": 3,
       "_domain": "domain:meta",
-      "_capabilities": [
-        "capability:execute",
-        "capability:send"
-      ],
-      "_surfaces": [
-        "surface:remote-api"
-      ],
+      "_capabilities": ["capability:execute", "capability:send"],
+      "_surfaces": ["surface:remote-api"],
       "_risk": "risk:user-visible",
       "_cost": null
     },
@@ -18590,18 +16874,12 @@
             "action": {
               "type": "string",
               "description": "Single canonical verb: `dial`.",
-              "enum": [
-                "dial"
-              ]
+              "enum": ["dial"]
             },
             "recipientKind": {
               "type": "string",
               "description": "Recipient discriminator: `owner` (escalation; uses owner number env), `external` (third party; recipient name resolved via relationships, allow-list checked), or `e164` (raw E.164 phone in `phoneNumber`).",
-              "enum": [
-                "owner",
-                "external",
-                "e164"
-              ]
+              "enum": ["owner", "external", "e164"]
             },
             "phoneNumber": {
               "type": "string",
@@ -18624,9 +16902,7 @@
               "description": "Optional reason describing why the call is being placed (recorded with the approval task)."
             }
           },
-          "required": [
-            "recipientKind"
-          ],
+          "required": ["recipientKind"],
           "additionalProperties": false
         },
         "strict": true
@@ -18639,23 +16915,12 @@
         "surface:remote-api",
         "risk:user-visible"
       ],
-      "_contexts": [
-        "contacts",
-        "messaging",
-        "phone",
-        "tasks",
-        "automation"
-      ],
+      "_contexts": ["contacts", "messaging", "phone", "tasks", "automation"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": "domain:meta",
-      "_capabilities": [
-        "capability:execute",
-        "capability:send"
-      ],
-      "_surfaces": [
-        "surface:remote-api"
-      ],
+      "_capabilities": ["capability:execute", "capability:send"],
+      "_surfaces": ["surface:remote-api"],
       "_risk": "risk:user-visible",
       "_cost": null
     },
@@ -18678,20 +16943,14 @@
               }
             }
           },
-          "required": [
-            "operations"
-          ],
+          "required": ["operations"],
           "additionalProperties": false
         },
         "strict": true
       },
       "_plugin": "@elizaos/app-lifeops",
       "_tags": [],
-      "_contexts": [
-        "tasks",
-        "messaging",
-        "automation"
-      ],
+      "_contexts": ["tasks", "messaging", "automation"],
       "_priority": 100,
       "_examples_count": 0,
       "_domain": null,
@@ -18699,7 +16958,6 @@
       "_surfaces": [],
       "_risk": null,
       "_cost": null
-
     },
     {
       "type": "function",
@@ -18728,24 +16986,13 @@
         "strict": true
       },
       "_plugin": "lifeops-bench",
-      "_tags": [
-        "domain:meta",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_tags": ["domain:meta", "capability:read", "surface:internal"],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -18788,10 +17035,7 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -18800,9 +17044,7 @@
         "capability:write",
         "capability:update"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -18840,10 +17082,7 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -18852,9 +17091,7 @@
         "capability:write",
         "capability:update"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -18896,10 +17133,7 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -18908,9 +17142,7 @@
         "capability:write",
         "capability:update"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -18937,24 +17169,13 @@
         "strict": true
       },
       "_plugin": "lifeops-bench",
-      "_tags": [
-        "domain:meta",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_tags": ["domain:meta", "capability:read", "surface:internal"],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19001,10 +17222,7 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -19013,9 +17231,7 @@
         "capability:write",
         "capability:update"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19067,10 +17283,7 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -19079,9 +17292,7 @@
         "capability:write",
         "capability:update"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19132,10 +17343,7 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -19144,9 +17352,7 @@
         "capability:write",
         "capability:update"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19181,24 +17387,13 @@
         "strict": true
       },
       "_plugin": "lifeops-bench",
-      "_tags": [
-        "domain:health",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_tags": ["domain:health", "capability:read", "surface:internal"],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:health",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19225,24 +17420,13 @@
         "strict": true
       },
       "_plugin": "lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19277,24 +17461,13 @@
         "strict": true
       },
       "_plugin": "lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19321,24 +17494,13 @@
         "strict": true
       },
       "_plugin": "lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19369,24 +17531,13 @@
         "strict": true
       },
       "_plugin": "lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19417,24 +17568,13 @@
         "strict": true
       },
       "_plugin": "lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19465,24 +17605,13 @@
         "strict": true
       },
       "_plugin": "lifeops-bench",
-      "_tags": [
-        "domain:finance",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_tags": ["domain:finance", "capability:read", "surface:internal"],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19527,20 +17656,12 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:finance",
-      "_capabilities": [
-        "capability:read",
-        "capability:update"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read", "capability:update"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19596,24 +17717,13 @@
         "strict": true
       },
       "_plugin": "lifeops-bench",
-      "_tags": [
-        "domain:travel",
-        "capability:read",
-        "surface:internal"
-      ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_tags": ["domain:travel", "capability:read", "surface:internal"],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:travel",
-      "_capabilities": [
-        "capability:read"
-      ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_capabilities": ["capability:read"],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19697,10 +17807,7 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -19709,9 +17816,7 @@
         "capability:write",
         "capability:update"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19753,10 +17858,7 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -19765,9 +17867,7 @@
         "capability:write",
         "capability:update"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
     },
@@ -19815,10 +17915,7 @@
         "capability:update",
         "surface:internal"
       ],
-      "_contexts": [
-        "benchmark",
-        "lifeops"
-      ],
+      "_contexts": ["benchmark", "lifeops"],
       "_priority": 10,
       "_examples_count": 0,
       "_domain": "domain:meta",
@@ -19827,12 +17924,9 @@
         "capability:write",
         "capability:update"
       ],
-      "_surfaces": [
-        "surface:internal"
-      ],
+      "_surfaces": ["surface:internal"],
       "_risk": null,
       "_cost": null
-
     }
   ]
 }

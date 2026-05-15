@@ -83,17 +83,10 @@ function cStringBuffer(value: string): Buffer {
   return buffer;
 }
 
-function isIosMobileRuntime(): boolean {
-  return (
-    process.env.ELIZA_PLATFORM?.trim().toLowerCase() === "ios" ||
-    process.env.ELIZA_MOBILE_PLATFORM?.trim().toLowerCase() === "ios"
-  );
-}
-
 async function loadNativeContactsBridge(): Promise<NativeContactsBridge | null> {
   if (nativeContactsBridge !== undefined) return nativeContactsBridge;
   nativeContactsBridge = null;
-  if (process.platform !== "darwin" || isIosMobileRuntime()) return null;
+  if (process.platform !== "darwin") return null;
 
   for (const candidate of NATIVE_DYLIB_CANDIDATES) {
     const dylibPath = path.isAbsolute(candidate)

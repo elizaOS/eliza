@@ -728,6 +728,20 @@ export class MemoryArbiter {
 		return this.enqueueRequest("speak", req.modelKey, req.payload);
 	}
 
+	/**
+	 * Alias for {@link requestSpeak} that matches the `requestTextToSpeech`
+	 * naming used by `provider.ts`'s `ModelType.TEXT_TO_SPEECH` handler and
+	 * by external WS5 callers that don't import the `ArbiterCapability` type.
+	 * Resolves through the same `"speak"` capability + queue — the two names
+	 * are interchangeable. Mirrors the `requestVisionDescribe` ergonomic.
+	 */
+	requestTextToSpeech<TRequest, TResult>(req: {
+		modelKey: string;
+		payload: TRequest;
+	}): Promise<TResult> {
+		return this.enqueueRequest("speak", req.modelKey, req.payload);
+	}
+
 	private async enqueueRequest<TRequest, TResult>(
 		capability: ArbiterCapability,
 		modelKey: string,
@@ -814,6 +828,58 @@ export class MemoryArbiter {
 		ttlMs?: number,
 	): void {
 		this.visionCache.set(hash, entry, ttlMs);
+	}
+
+	// ---------------------------------------------------------------------
+	// ASR transcript cache passthroughs.
+	//
+	// Re-transcribing the same audio is a frequent test/dev pattern (the
+	// dashboard's "play the WAV back" view, the streaming-audio handler
+	// flushing duplicate frames at segment boundaries). The cache is
+	// content-hashed by `services/asr/hash.ts`, with a hard cap so a long
+	// session can't memory-leak. Default TTL is 1 hour; entries are
+	// evicted on touch when stale.
+	// ---------------------------------------------------------------------
+
+	private readonly asrTranscriptCache = new Map<
+		string,
+		{ text: string; expiresAt: number }
+	>();
+	private static readonly ASR_TRANSCRIPT_CACHE_MAX = 256;
+	private static readonly ASR_TRANSCRIPT_DEFAULT_TTL_MS = 60 * 60 * 1000;
+
+	getCachedAsrTranscript(
+		hash: string,
+	): { text: string; live?: boolean } | null {
+		const entry = this.asrTranscriptCache.get(hash);
+		if (!entry) return null;
+		if (entry.expiresAt <= this.now()) {
+			this.asrTranscriptCache.delete(hash);
+			return null;
+		}
+		// Touch for LRU-ish ordering on Map iteration.
+		this.asrTranscriptCache.delete(hash);
+		this.asrTranscriptCache.set(hash, entry);
+		return { text: entry.text, live: true };
+	}
+
+	setCachedAsrTranscript(
+		hash: string,
+		entry: { text: string },
+		ttlMs?: number,
+	): void {
+		const ttl = ttlMs ?? MemoryArbiter.ASR_TRANSCRIPT_DEFAULT_TTL_MS;
+		this.asrTranscriptCache.set(hash, {
+			text: entry.text,
+			expiresAt: this.now() + ttl,
+		});
+		while (
+			this.asrTranscriptCache.size > MemoryArbiter.ASR_TRANSCRIPT_CACHE_MAX
+		) {
+			const oldest = this.asrTranscriptCache.keys().next().value;
+			if (oldest === undefined) break;
+			this.asrTranscriptCache.delete(oldest);
+		}
 	}
 }
 

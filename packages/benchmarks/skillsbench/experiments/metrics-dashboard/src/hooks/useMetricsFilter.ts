@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
-import type { ProcessedTrial, TrialStatus } from '../types/metrics';
+import { useCallback, useMemo, useState } from "react";
+import type { ProcessedTrial, TrialStatus } from "../types/metrics";
 
 export interface FilterState {
   jobName: string | null;
@@ -16,7 +16,7 @@ const initialFilterState: FilterState = {
   models: [],
   tasks: [],
   statuses: [],
-  searchQuery: '',
+  searchQuery: "",
 };
 
 export function useMetricsFilter(trials: ProcessedTrial[]) {
@@ -46,13 +46,18 @@ export function useMetricsFilter(trials: ProcessedTrial[]) {
   const filteredTrials = useMemo(() => {
     return trials.filter((trial) => {
       if (filters.jobName && trial.jobName !== filters.jobName) return false;
-      if (filters.agents.length && !filters.agents.includes(trial.agent)) return false;
-      if (filters.models.length && !filters.models.includes(trial.model)) return false;
-      if (filters.tasks.length && !filters.tasks.includes(trial.taskName)) return false;
-      if (filters.statuses.length && !filters.statuses.includes(trial.status)) return false;
+      if (filters.agents.length && !filters.agents.includes(trial.agent))
+        return false;
+      if (filters.models.length && !filters.models.includes(trial.model))
+        return false;
+      if (filters.tasks.length && !filters.tasks.includes(trial.taskName))
+        return false;
+      if (filters.statuses.length && !filters.statuses.includes(trial.status))
+        return false;
       if (filters.searchQuery) {
         const query = filters.searchQuery.toLowerCase();
-        const searchable = `${trial.taskName} ${trial.agent} ${trial.model} ${trial.trialName}`.toLowerCase();
+        const searchable =
+          `${trial.taskName} ${trial.agent} ${trial.model} ${trial.trialName}`.toLowerCase();
         if (!searchable.includes(query)) return false;
       }
       return true;
@@ -94,7 +99,7 @@ export function useMetricsFilter(trials: ProcessedTrial[]) {
       filters.models.length > 0 ||
       filters.tasks.length > 0 ||
       filters.statuses.length > 0 ||
-      filters.searchQuery !== ''
+      filters.searchQuery !== ""
     );
   }, [filters]);
 

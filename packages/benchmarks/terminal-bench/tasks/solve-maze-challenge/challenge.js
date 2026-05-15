@@ -2,7 +2,7 @@ function print_all(t) {
   for (var e = 0; e < t.length; e++) console.log(t[e]);
 }
 (game = {}),
-  (function (t) {
+  ((t) => {
     var e,
       n,
       i,
@@ -75,7 +75,7 @@ function print_all(t) {
         t.restore();
     }
     (t.noDraw = !1),
-      (function (t) {
+      ((t) => {
         var x,
           d,
           g,
@@ -102,14 +102,15 @@ function print_all(t) {
                 A.push(h),
                 console.log("DEBUG: WIN z=%d/%d turns=%d", z + 0, C, h),
                 $("h2").html(
-                  "You Won! Turns: " + h + " Javascript Time: " + (g - d)
+                  "You Won! Turns: " + h + " Javascript Time: " + (g - d),
                 ),
                 q.fillRect(0, 0, (++z / C) * 400, 18),
                 (t.turns = A.slice()),
                 (t.times = F.slice()),
                 (t.remainingTrials = C - z),
                 z < C
-                  ? (console.log("DEBUG: START next trial %d/%d", z + 1, C), O())
+                  ? (console.log("DEBUG: START next trial %d/%d", z + 1, C),
+                    O())
                   : ((t.results = { turns: A.slice(), times: F.slice() }),
                     (t.remainingTrials = 0),
                     (t.completed = !0),
@@ -121,7 +122,7 @@ function print_all(t) {
                         R(A) +
                         " turns, " +
                         R(F) +
-                        "ms"
+                        "ms",
                     )))
               : (e = setTimeout(I, T));
         }
@@ -139,7 +140,7 @@ function print_all(t) {
           return n / t.length;
         }
         function E(t, e, i, r) {
-          return !!(function (t, e) {
+          return !!((t, e) => {
             var i = new Y();
             i.add(new b(t.x, t.y, 0, n[t.y][t.x].level));
             var r,
@@ -236,14 +237,14 @@ function print_all(t) {
               return t;
             });
         }
-        (t.init = function () {
+        (t.init = () => {
           n = [];
           for (var t = 0; t < w; t++) {
             n[t] = [];
             for (var e = 0; e < m; e++)
               n[t][e] = new D(
                 0 == t || t == w - 1 || 0 == e || e == m - 1 ? v : 0,
-                0
+                0,
               );
           }
           M(y, 50, 1), M(v, 50, 0);
@@ -268,7 +269,7 @@ function print_all(t) {
           (g.src = "minitroll.png"),
             ((r = document.createElement("canvas")).width = a),
             (r.height = o),
-            (g.onload = function () {
+            (g.onload = () => {
               r.getContext("2d").drawImage(g, 0, 0, 100, 100, 0, 0, a, o), S();
             }),
             g.complete &&
@@ -276,7 +277,7 @@ function print_all(t) {
               S()),
             S();
         }),
-          (t.run = function (t) {
+          (t.run = (t) => {
             $("h2").html("Running Trials...."),
               ($("#progress")[0].width = $("#progress")[0].width),
               (q.fillStyle = "#09f"),
@@ -286,64 +287,56 @@ function print_all(t) {
               (F = []),
               O();
           }),
-          (t.pause = function () {
+          (t.pause = () => {
             e && (k ? ((k = !1), I()) : ((k = !0), clearTimeout(e)));
           }),
           (b.prototype.equals = function (t) {
             return t.x == this.x && t.y == this.y;
           });
       })(t),
-      (c.left = function () {
+      (c.left = () => {
         z(-1, 0);
       }),
-      (c.up = function () {
+      (c.up = () => {
         z(0, -1);
       }),
-      (c.right = function () {
+      (c.right = () => {
         z(1, 0);
       }),
-      (c.down = function () {
+      (c.down = () => {
         z(0, 1);
       }),
-      (c.pickup = function () {
-        return (
-          !u.carrying &&
-          n[u.y][u.x].type == y &&
-          ((u.carrying = !0),
-          (n[u.y][u.x].type = --n[u.y][u.x].level > 0 ? y : 0),
-          u.level--,
-          h++,
-          S(),
-          !0)
-        );
-      }),
-      (c.drop = function () {
-        return (
-          !!u.carrying &&
-          ((u.carrying = !1),
-          (n[u.y][u.x].type = y),
-          n[u.y][u.x].level++,
-          u.level++,
-          h++,
-          S(),
-          !0)
-        );
-      }),
-      (t.setDelay = function (t) {
+      (c.pickup = () =>
+        !u.carrying &&
+        n[u.y][u.x].type == y &&
+        ((u.carrying = !0),
+        (n[u.y][u.x].type = --n[u.y][u.x].level > 0 ? y : 0),
+        u.level--,
+        h++,
+        S(),
+        !0)),
+      (c.drop = () =>
+        !!u.carrying &&
+        ((u.carrying = !1),
+        (n[u.y][u.x].type = y),
+        n[u.y][u.x].level++,
+        u.level++,
+        h++,
+        S(),
+        !0)),
+      (t.setDelay = (t) => {
         T = t;
       }),
-      (t.getDelay = function () {
-        return T;
-      }),
-      (t.test = function (t) {
+      (t.getDelay = () => T),
+      (t.test = (t) => {
         37 == t.which
           ? z(-1, 0)
           : 38 == t.which
-          ? z(0, -1)
-          : 39 == t.which
-          ? z(1, 0)
-          : 40 == t.which
-          ? z(0, 1)
-          : 32 == t.which && (c.pickup() || c.drop());
+            ? z(0, -1)
+            : 39 == t.which
+              ? z(1, 0)
+              : 40 == t.which
+                ? z(0, 1)
+                : 32 == t.which && (c.pickup() || c.drop());
       });
   })(game);

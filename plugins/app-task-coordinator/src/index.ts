@@ -23,6 +23,8 @@ export interface PtyConsoleSidePanelProps {
   sessions?: ReadonlyArray<unknown>;
   onClose?: () => void;
 }
-export function PtyConsoleSidePanel(_props: PtyConsoleSidePanelProps): ReactNode {
+export function PtyConsoleSidePanel(
+  _props: PtyConsoleSidePanelProps,
+): ReactNode {
   return null;
 }

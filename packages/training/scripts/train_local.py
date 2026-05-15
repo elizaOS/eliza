@@ -5,7 +5,7 @@ to the loss). Checkpoints land under `training/checkpoints/<run_name>/`.
 
 The base model is resolved from `--registry-key` (see
 `training/model_registry.py`); pass `--model <hf-id>` to override. With no
-registry key the default is `Qwen/Qwen3.5-0.8B-Base` — the smallest published
+registry key the default is `Qwen/Qwen3.5-0.8B` — the smallest published
 eliza-1 target.
 
 Usage:
@@ -154,7 +154,7 @@ def build_dataset(
         # The Qwen3.5 chat template (and Qwen3.6) iterates
         # `tool_call.arguments | items`, which requires a mapping (dict).
         # OpenAI-ChatML ToolCalls (what format_for_training.py emits, what
-        # eliza-1-sft-0_8b carries) store `arguments` as a JSON-encoded
+        # eliza-1-sft-0_6b carries) store `arguments` as a JSON-encoded
         # string. Convert string → dict at render time so the template
         # renders cleanly. (2026-05-12 incident: SFT crashed at 76% of
         # dataset Map() with `TypeError: Can only get item pairs from a
@@ -252,7 +252,7 @@ def build_dataset(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B-Base")
+    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
     ap.add_argument("--train-file", default=str(ROOT / "data" / "final" / "train.jsonl"))
     ap.add_argument("--val-file", default=str(ROOT / "data" / "final" / "val.jsonl"))
     ap.add_argument("--out-dir", default=str(ROOT / "checkpoints"))

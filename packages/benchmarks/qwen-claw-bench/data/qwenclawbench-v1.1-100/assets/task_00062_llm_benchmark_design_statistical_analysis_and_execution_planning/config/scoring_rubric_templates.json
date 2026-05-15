@@ -11,7 +11,13 @@
   "open_ended": {
     "scoring_method": "rubric_based",
     "max_points": 5,
-    "rubric_dimensions": ["accuracy", "completeness", "clarity", "relevance", "depth"],
+    "rubric_dimensions": [
+      "accuracy",
+      "completeness",
+      "clarity",
+      "relevance",
+      "depth"
+    ],
     "automated_scoring_feasibility": "medium",
     "description": "Free-form response evaluated on multiple quality dimensions. Requires LLM-as-judge or human review.",
     "example_prompt_suffix": "Provide a detailed response.",
@@ -20,7 +26,11 @@
   "code_generation": {
     "scoring_method": "test_case_pass_rate",
     "max_points": 1,
-    "rubric_dimensions": ["functional_correctness", "edge_case_handling", "code_quality"],
+    "rubric_dimensions": [
+      "functional_correctness",
+      "edge_case_handling",
+      "code_quality"
+    ],
     "automated_scoring_feasibility": "high",
     "description": "Code evaluated by executing against hidden test cases. Primary metric is pass@1.",
     "example_prompt_suffix": "Write a function that solves the following problem.",
@@ -31,7 +41,13 @@
   "mathematical_proof": {
     "scoring_method": "rubric_based",
     "max_points": 5,
-    "rubric_dimensions": ["logical_validity", "completeness", "rigor", "notation_correctness", "final_answer"],
+    "rubric_dimensions": [
+      "logical_validity",
+      "completeness",
+      "rigor",
+      "notation_correctness",
+      "final_answer"
+    ],
     "automated_scoring_feasibility": "low",
     "description": "Mathematical proofs require expert review for logical validity. Automated checking limited to final numerical answers.",
     "example_prompt_suffix": "Prove the following statement. Show all steps.",
@@ -40,7 +56,13 @@
   "creative_writing": {
     "scoring_method": "rubric_based",
     "max_points": 5,
-    "rubric_dimensions": ["creativity", "coherence", "style", "engagement", "adherence_to_prompt"],
+    "rubric_dimensions": [
+      "creativity",
+      "coherence",
+      "style",
+      "engagement",
+      "adherence_to_prompt"
+    ],
     "automated_scoring_feasibility": "low",
     "description": "Subjective evaluation of creative output. High inter-rater variability expected.",
     "example_prompt_suffix": "Write a creative piece based on the following prompt.",
@@ -67,7 +89,13 @@
   "multi_turn_dialogue": {
     "scoring_method": "rubric_based",
     "max_points": 5,
-    "rubric_dimensions": ["context_retention", "coherence", "helpfulness", "instruction_adherence", "conversation_flow"],
+    "rubric_dimensions": [
+      "context_retention",
+      "coherence",
+      "helpfulness",
+      "instruction_adherence",
+      "conversation_flow"
+    ],
     "automated_scoring_feasibility": "medium",
     "description": "Multi-turn conversations evaluated for consistency and quality across turns. Requires stateful evaluation.",
     "example_prompt_suffix": "Continue the conversation naturally.",

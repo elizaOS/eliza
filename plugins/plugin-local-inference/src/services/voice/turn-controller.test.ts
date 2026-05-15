@@ -15,7 +15,6 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { VoiceEmotionAttribution } from "./emotion-attribution";
 import { StubOmniVoiceBackend } from "./engine-bridge";
 import type { EotClassifier } from "./eot-classifier";
 import { InMemoryAudioSink } from "./ring-buffer";
@@ -79,7 +78,6 @@ class FakeTranscriber implements StreamingTranscriber {
 	finalSpeaker: VoiceSpeaker | undefined;
 	finalSegments: VoiceSegment[] | undefined;
 	finalTurn: VoiceTurnMetadata | undefined;
-	finalVoiceEmotion: VoiceEmotionAttribution | undefined;
 	flushCalls = 0;
 	feed(): void {}
 	async flush(): Promise<TranscriptUpdate> {
@@ -91,9 +89,6 @@ class FakeTranscriber implements StreamingTranscriber {
 			...(this.finalSpeaker ? { speaker: this.finalSpeaker } : {}),
 			...(this.finalSegments ? { segments: this.finalSegments } : {}),
 			...(this.finalTurn ? { turn: this.finalTurn } : {}),
-			...(this.finalVoiceEmotion
-				? { voiceEmotion: this.finalVoiceEmotion }
-				: {}),
 		};
 	}
 	on(listener: TranscriberEventListener): () => void {
@@ -497,46 +492,6 @@ describe("VoiceTurnController", () => {
 			speaker,
 			segments,
 			turn,
-		});
-	});
-
-	it("passes final voice-emotion attribution into generate requests", async () => {
-		const h = makeHarness();
-		const voiceEmotion: VoiceEmotionAttribution = {
-			emotion: "nervous",
-			confidence: 0.34,
-			method: "text_audio_heuristic",
-			modelNativeEmotion: false,
-			evidence: [
-				{
-					source: "asr_transcript",
-					detail: "nervous: worried",
-					confidence: 0.34,
-				},
-			],
-			scores: {
-				happy: 0,
-				sad: 0,
-				angry: 0,
-				nervous: 0.34,
-				calm: 0,
-				excited: 0,
-				whisper: 0,
-			},
-		};
-
-		h.controller.start();
-		h.vad.emit(vadEvent({ type: "speech-start" }));
-		h.transcriber.finalText = "I am worried this might break";
-		h.transcriber.finalVoiceEmotion = voiceEmotion;
-		h.vad.emit(vadEvent({ type: "speech-end" }));
-		await new Promise((r) => setTimeout(r, 0));
-
-		expect(h.generateCalls).toHaveLength(1);
-		expect(h.generateCalls[0]).toMatchObject({
-			transcript: "I am worried this might break",
-			final: true,
-			voiceEmotion,
 		});
 	});
 

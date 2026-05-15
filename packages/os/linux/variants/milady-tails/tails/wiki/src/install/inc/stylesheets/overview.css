@@ -1,4 +1,5 @@
-#needs, #steps {
+#needs,
+#steps {
   display: flex;
   flex-wrap: wrap;
   justify-content: left;
@@ -6,12 +7,14 @@
   gap: 5px;
 }
 
-#needs div, #steps a {
+#needs div,
+#steps a {
   width: 150px;
   margin-right: 0px;
 }
 
-#needs > div > p, #steps a p {
+#needs > div > p,
+#steps a p {
   text-align: center;
   margin: 0;
 }

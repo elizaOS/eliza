@@ -1,10 +1,10 @@
 import { Capacitor } from "@capacitor/core";
-import {
-  isAndroidNativeLocalAgentUrl,
-  isMobileNativeLocalAgentUrl,
-} from "../api/mobile-native-agent-url";
 import { getBootConfig, setBootConfig } from "../config/boot-config";
 import { getElizaApiToken, setElizaApiToken } from "../utils/eliza-globals";
+import { IOS_LOCAL_AGENT_IPC_BASE } from "./mobile-runtime-mode";
+
+const LOCAL_AGENT_PORT = "31337";
+const LOCAL_AGENT_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 type AgentWithLocalToken = {
   getLocalAgentToken?: () => Promise<{
@@ -17,11 +17,25 @@ const agentPluginName = "Agent";
 const agentPluginId = "@elizaos/capacitor-agent";
 
 export function isMobileLocalAgentUrl(value: string): boolean {
-  return isMobileNativeLocalAgentUrl(value);
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc") {
+    return true;
+  }
+  return (
+    parsed.protocol === "http:" &&
+    parsed.port === LOCAL_AGENT_PORT &&
+    LOCAL_AGENT_HOSTS.has(parsed.hostname)
+  );
 }
 
 export function isAndroidLocalAgentUrl(value: string): boolean {
-  return isAndroidNativeLocalAgentUrl(value);
+  if (value.startsWith(IOS_LOCAL_AGENT_IPC_BASE)) return false;
+  return isMobileLocalAgentUrl(value);
 }
 
 function isNativeAndroid(): boolean {

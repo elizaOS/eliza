@@ -41,7 +41,9 @@ from scripts.turn_detector import finetune_turn_detector as fld
         ("9b", "v0.4.1-intl"),
         ("27b", "v0.4.1-intl"),
         ("27b-256k", "v0.4.1-intl"),
+        ("27b-1m", "v0.4.1-intl"),
         ("eliza-1-4b", "v0.4.1-intl"),
+        ("eliza-1-27b-1m", "v0.4.1-intl"),
     ],
 )
 def test_default_revision_for_tier(tier: str, expected: str) -> None:

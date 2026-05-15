@@ -5,7 +5,12 @@
       "gcc_version": "13.2.1",
       "llvm_support": true,
       "rust_target_triple": "thumbv6m-none-eabi",
-      "debugger_tools": ["GDB (arm-none-eabi-gdb)", "OpenOCD", "pyOCD", "J-Link GDB Server"],
+      "debugger_tools": [
+        "GDB (arm-none-eabi-gdb)",
+        "OpenOCD",
+        "pyOCD",
+        "J-Link GDB Server"
+      ],
       "emulators": ["QEMU (arm)", "Renode"],
       "typical_clock_mhz": 48,
       "fpu": false,
@@ -18,7 +23,13 @@
       "gcc_version": "13.2.1",
       "llvm_support": true,
       "rust_target_triple": "thumbv7em-none-eabihf",
-      "debugger_tools": ["GDB (arm-none-eabi-gdb)", "OpenOCD", "pyOCD", "J-Link GDB Server", "Black Magic Probe"],
+      "debugger_tools": [
+        "GDB (arm-none-eabi-gdb)",
+        "OpenOCD",
+        "pyOCD",
+        "J-Link GDB Server",
+        "Black Magic Probe"
+      ],
       "emulators": ["QEMU (arm)", "Renode"],
       "typical_clock_mhz": 168,
       "fpu": true,
@@ -31,7 +42,12 @@
       "gcc_version": "13.2.1",
       "llvm_support": true,
       "rust_target_triple": "thumbv7em-none-eabihf",
-      "debugger_tools": ["GDB (arm-none-eabi-gdb)", "OpenOCD", "J-Link GDB Server", "Lauterbach TRACE32"],
+      "debugger_tools": [
+        "GDB (arm-none-eabi-gdb)",
+        "OpenOCD",
+        "J-Link GDB Server",
+        "Lauterbach TRACE32"
+      ],
       "emulators": ["QEMU (arm)", "Renode"],
       "typical_clock_mhz": 480,
       "fpu": true,
@@ -44,7 +60,13 @@
       "gcc_version": "13.2.1",
       "llvm_support": true,
       "rust_target_triple": "aarch64-unknown-none",
-      "debugger_tools": ["GDB (aarch64-none-elf-gdb)", "OpenOCD", "J-Link GDB Server", "Lauterbach TRACE32", "ARM DS"],
+      "debugger_tools": [
+        "GDB (aarch64-none-elf-gdb)",
+        "OpenOCD",
+        "J-Link GDB Server",
+        "Lauterbach TRACE32",
+        "ARM DS"
+      ],
       "emulators": ["QEMU (aarch64)", "Renode"],
       "typical_clock_mhz": 1500,
       "fpu": true,
@@ -57,7 +79,13 @@
       "gcc_version": "13.2.1",
       "llvm_support": true,
       "rust_target_triple": "aarch64-unknown-none",
-      "debugger_tools": ["GDB (aarch64-none-elf-gdb)", "OpenOCD", "J-Link GDB Server", "Lauterbach TRACE32", "ARM DS"],
+      "debugger_tools": [
+        "GDB (aarch64-none-elf-gdb)",
+        "OpenOCD",
+        "J-Link GDB Server",
+        "Lauterbach TRACE32",
+        "ARM DS"
+      ],
       "emulators": ["QEMU (aarch64)"],
       "typical_clock_mhz": 2000,
       "fpu": true,
@@ -72,7 +100,11 @@
       "gcc_version": "13.2.0",
       "llvm_support": true,
       "rust_target_triple": "riscv32imac-unknown-none-elf",
-      "debugger_tools": ["GDB (riscv32-unknown-elf-gdb)", "OpenOCD", "J-Link GDB Server"],
+      "debugger_tools": [
+        "GDB (riscv32-unknown-elf-gdb)",
+        "OpenOCD",
+        "J-Link GDB Server"
+      ],
       "emulators": ["QEMU (riscv32)", "Renode"],
       "typical_clock_mhz": 160,
       "fpu": false,
@@ -85,7 +117,11 @@
       "gcc_version": "13.2.0",
       "llvm_support": true,
       "rust_target_triple": "riscv32imafc-unknown-none-elf",
-      "debugger_tools": ["GDB (riscv32-unknown-elf-gdb)", "OpenOCD", "J-Link GDB Server"],
+      "debugger_tools": [
+        "GDB (riscv32-unknown-elf-gdb)",
+        "OpenOCD",
+        "J-Link GDB Server"
+      ],
       "emulators": ["QEMU (riscv32)", "Renode"],
       "typical_clock_mhz": 240,
       "fpu": true,
@@ -98,7 +134,12 @@
       "gcc_version": "13.2.0",
       "llvm_support": true,
       "rust_target_triple": "riscv64gc-unknown-none-elf",
-      "debugger_tools": ["GDB (riscv64-unknown-elf-gdb)", "OpenOCD", "J-Link GDB Server", "Lauterbach TRACE32"],
+      "debugger_tools": [
+        "GDB (riscv64-unknown-elf-gdb)",
+        "OpenOCD",
+        "J-Link GDB Server",
+        "Lauterbach TRACE32"
+      ],
       "emulators": ["QEMU (riscv64)", "Renode"],
       "typical_clock_mhz": 1500,
       "fpu": true,

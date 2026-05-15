@@ -9,132 +9,136 @@
  */
 
 function createInteractiveTable(data) {
-    const container = d3.select('#table-container');
+  const container = d3.select("#table-container");
 
-    // Create table structure
-    const table = container.append('table')
-        .attr('id', 'data-table');
+  // Create table structure
+  const table = container.append("table").attr("id", "data-table");
 
-    // Define columns
-    const columns = [
-        {key: 'ticker', label: 'Ticker', format: d => d},
-        {key: 'name', label: 'Company Name', format: d => d},
-        {key: 'sector', label: 'Sector', format: d => d},
-        {key: 'marketCap', label: 'Market Cap', format: formatNumber}
-    ];
+  // Define columns
+  const columns = [
+    { key: "ticker", label: "Ticker", format: (d) => d },
+    { key: "name", label: "Company Name", format: (d) => d },
+    { key: "sector", label: "Sector", format: (d) => d },
+    { key: "marketCap", label: "Market Cap", format: formatNumber },
+  ];
 
-    // Create header
-    const thead = table.append('thead');
-    const headerRow = thead.append('tr');
+  // Create header
+  const thead = table.append("thead");
+  const headerRow = thead.append("tr");
 
-    headerRow.selectAll('th')
-        .data(columns)
-        .join('th')
-        .text(d => d.label)
-        .on('click', function(event, col) {
-            sortTable(data, col.key);
-        })
-        .style('cursor', 'pointer');
+  headerRow
+    .selectAll("th")
+    .data(columns)
+    .join("th")
+    .text((d) => d.label)
+    .on("click", (event, col) => {
+      sortTable(data, col.key);
+    })
+    .style("cursor", "pointer");
 
-    // Create body
-    const tbody = table.append('tbody');
+  // Create body
+  const tbody = table.append("tbody");
 
-    function renderTable(data) {
-        const rows = tbody.selectAll('tr')
-            .data(data, d => d.ticker)  // Key function for stable updates
-            .join('tr')
-            .on('click', function(event, d) {
-                selectRow(d.ticker);
-            });
+  function renderTable(data) {
+    const rows = tbody
+      .selectAll("tr")
+      .data(data, (d) => d.ticker) // Key function for stable updates
+      .join("tr")
+      .on("click", (event, d) => {
+        selectRow(d.ticker);
+      });
 
-        rows.selectAll('td')
-            .data(d => columns.map(col => ({
-                value: d[col.key],
-                format: col.format
-            })))
-            .join('td')
-            .text(d => d.format(d.value));
+    rows
+      .selectAll("td")
+      .data((d) =>
+        columns.map((col) => ({
+          value: d[col.key],
+          format: col.format,
+        })),
+      )
+      .join("td")
+      .text((d) => d.format(d.value));
+  }
+
+  renderTable(data);
+
+  // Sorting function
+  let sortAscending = true;
+  let sortKey = null;
+
+  function sortTable(data, key) {
+    if (sortKey === key) {
+      sortAscending = !sortAscending;
+    } else {
+      sortKey = key;
+      sortAscending = true;
     }
+
+    data.sort((a, b) => {
+      const aVal = a[key];
+      const bVal = b[key];
+
+      if (typeof aVal === "string") {
+        return sortAscending
+          ? aVal.localeCompare(bVal)
+          : bVal.localeCompare(aVal);
+      } else {
+        return sortAscending
+          ? (aVal || 0) - (bVal || 0)
+          : (bVal || 0) - (aVal || 0);
+      }
+    });
 
     renderTable(data);
+  }
 
-    // Sorting function
-    let sortAscending = true;
-    let sortKey = null;
-
-    function sortTable(data, key) {
-        if (sortKey === key) {
-            sortAscending = !sortAscending;
-        } else {
-            sortKey = key;
-            sortAscending = true;
-        }
-
-        data.sort((a, b) => {
-            const aVal = a[key];
-            const bVal = b[key];
-
-            if (typeof aVal === 'string') {
-                return sortAscending ?
-                    aVal.localeCompare(bVal) :
-                    bVal.localeCompare(aVal);
-            } else {
-                return sortAscending ?
-                    (aVal || 0) - (bVal || 0) :
-                    (bVal || 0) - (aVal || 0);
-            }
-        });
-
-        renderTable(data);
-    }
-
-    // Return table API
-    return {
-        update: renderTable,
-        sort: sortTable
-    };
+  // Return table API
+  return {
+    update: renderTable,
+    sort: sortTable,
+  };
 }
 
 function selectRow(ticker) {
-    // Highlight row
-    d3.selectAll('#data-table tbody tr')
-        .classed('selected', function(d) {
-            return d && d.ticker === ticker;
-        });
+  // Highlight row
+  d3.selectAll("#data-table tbody tr").classed(
+    "selected",
+    (d) => d && d.ticker === ticker,
+  );
 
-    // Trigger chart highlight if exists
-    if (typeof highlightBubble === 'function') {
-        highlightBubble(ticker);
-    }
+  // Trigger chart highlight if exists
+  if (typeof highlightBubble === "function") {
+    highlightBubble(ticker);
+  }
 }
 
 function highlightTableRow(ticker) {
-    d3.selectAll('#data-table tbody tr')
-        .classed('highlighted', function(d) {
-            return d && d.ticker === ticker;
-        });
+  d3.selectAll("#data-table tbody tr").classed(
+    "highlighted",
+    (d) => d && d.ticker === ticker,
+  );
 }
 
 // Number formatting utility
 function formatNumber(num) {
-    if (num === null || num === undefined || num === '') return '-';
+  if (num === null || num === undefined || num === "") return "-";
 
-    const absNum = Math.abs(num);
-    let formatted;
+  const absNum = Math.abs(num);
+  let formatted;
 
-    if (absNum >= 1e12) {
-        formatted = (num / 1e12).toFixed(2) + 'T';
-    } else if (absNum >= 1e9) {
-        formatted = (num / 1e9).toFixed(2) + 'B';
-    } else if (absNum >= 1e6) {
-        formatted = (num / 1e6).toFixed(2) + 'M';
-    } else if (absNum >= 1e3) {
-        formatted = (num / 1e3).toFixed(2) + 'K';
-    } else {
-        formatted = num.toFixed(2);
-    }
+  if (absNum >= 1e12) {
+    formatted = (num / 1e12).toFixed(2) + "T";
+  } else if (absNum >= 1e9) {
+    formatted = (num / 1e9).toFixed(2) + "B";
+  } else if (absNum >= 1e6) {
+    formatted = (num / 1e6).toFixed(2) + "M";
+  } else if (absNum >= 1e3) {
+    formatted = (num / 1e3).toFixed(2) + "K";
+  } else {
+    formatted = num.toFixed(2);
+  }
 
-    return num < 0 ? '-' + formatted : formatted;
+  return num < 0 ? "-" + formatted : formatted;
 }
 
 // CSS for table styling
@@ -179,8 +183,8 @@ tr.highlighted {
 `;
 
 // Inject styles
-if (typeof document !== 'undefined') {
-    const styleEl = document.createElement('div');
-    styleEl.innerHTML = tableStyles;
-    document.head.appendChild(styleEl.firstChild);
+if (typeof document !== "undefined") {
+  const styleEl = document.createElement("div");
+  styleEl.innerHTML = tableStyles;
+  document.head.appendChild(styleEl.firstChild);
 }

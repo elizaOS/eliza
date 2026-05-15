@@ -483,15 +483,13 @@ export const browserAction: Action = {
     },
     {
       name: "username",
-      description:
-        "For autofill-login: saved login username; omit for latest.",
+      description: "For autofill-login: saved login username; omit for latest.",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "submit",
-      description:
-        "For autofill-login: submit after filling. Default false.",
+      description: "For autofill-login: submit after filling. Default false.",
       required: false,
       schema: { type: "boolean" as const },
     },
@@ -564,8 +562,7 @@ export const browserAction: Action = {
     },
     {
       name: "replace",
-      description:
-        "For realistic-fill: replace existing input, not append.",
+      description: "For realistic-fill: replace existing input, not append.",
       required: false,
       schema: { type: "boolean" as const },
     },

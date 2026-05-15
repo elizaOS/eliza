@@ -272,3 +272,5 @@ export class OAuth2PKCEAuthProvider implements TwitterAuthProvider {
     return refreshed.access_token;
   }
 }
+
+export const OAUTH2_DEFAULT_SCOPES = DEFAULT_SCOPES;

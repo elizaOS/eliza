@@ -1,13 +1,7 @@
 {
   "instance_id": "p4_instance_035",
   "city_map": {
-    "locations": [
-      "university",
-      "hospital",
-      "downtown",
-      "park",
-      "stadium"
-    ],
+    "locations": ["university", "hospital", "downtown", "park", "stadium"],
     "distances": {
       "university-hospital": 24,
       "hospital-university": 24,
@@ -36,50 +30,35 @@
       "passenger_id": "p001",
       "pickup": "university",
       "dropoff": "stadium",
-      "time_window": [
-        13.0,
-        13.566666666666666
-      ],
+      "time_window": [13.0, 13.566666666666666],
       "deadline": 58
     },
     {
       "passenger_id": "p002",
       "pickup": "park",
       "dropoff": "university",
-      "time_window": [
-        14.5,
-        14.833333333333334
-      ],
+      "time_window": [14.5, 14.833333333333334],
       "deadline": 58
     },
     {
       "passenger_id": "p003",
       "pickup": "park",
       "dropoff": "downtown",
-      "time_window": [
-        12.25,
-        12.783333333333333
-      ],
+      "time_window": [12.25, 12.783333333333333],
       "deadline": 22
     },
     {
       "passenger_id": "p004",
       "pickup": "stadium",
       "dropoff": "hospital",
-      "time_window": [
-        13.5,
-        13.233333333333333
-      ],
+      "time_window": [13.5, 13.233333333333333],
       "deadline": 22
     },
     {
       "passenger_id": "p005",
       "pickup": "park",
       "dropoff": "stadium",
-      "time_window": [
-        13.0,
-        13.266666666666667
-      ],
+      "time_window": [13.0, 13.266666666666667],
       "deadline": 55
     }
   ],

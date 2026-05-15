@@ -223,7 +223,7 @@ if (( ! DRY_RUN )); then
   ssh -i "${SSH_KEY_FILE}" \
       -o StrictHostKeyChecking=no \
       "${NEBIUS_SSH_USER}@${PUBLIC_IP}" \
-      "mkdir -p ${REMOTE_REPO_PATH}/packages/training/scripts/dflash/nebius ${REMOTE_REPO_PATH}/packages/training/scripts/dflash"
+      "mkdir -p ${REMOTE_REPO_PATH}/packages/training/scripts/dflash/nebius"
 
   rsync -az --progress \
     -e "ssh -i ${SSH_KEY_FILE} -o StrictHostKeyChecking=no" \
@@ -234,16 +234,6 @@ if (( ! DRY_RUN )); then
     -e "ssh -i ${SSH_KEY_FILE} -o StrictHostKeyChecking=no" \
     "${SCRIPT_DIR}/../jobs/" \
     "${NEBIUS_SSH_USER}@${PUBLIC_IP}:${REMOTE_REPO_PATH}/packages/training/scripts/dflash/jobs/"
-
-  rsync -az \
-    -e "ssh -i ${SSH_KEY_FILE} -o StrictHostKeyChecking=no" \
-    "${SCRIPT_DIR}/../release_policy.py" \
-    "${NEBIUS_SSH_USER}@${PUBLIC_IP}:${REMOTE_REPO_PATH}/packages/training/scripts/dflash/release_policy.py"
-
-  rsync -az \
-    -e "ssh -i ${SSH_KEY_FILE} -o StrictHostKeyChecking=no" \
-    "${SCRIPT_DIR}/../../distill_dflash_drafter.py" \
-    "${NEBIUS_SSH_USER}@${PUBLIC_IP}:${REMOTE_REPO_PATH}/packages/training/scripts/distill_dflash_drafter.py"
 fi
 
 # ── build remote launch command ────────────────────────────────────────────────

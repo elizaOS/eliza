@@ -39,7 +39,14 @@
     "end_time": "2026-03-27T17:00:00+08:00",
     "location": "Main Conference Room",
     "organizer": "Wang Ming",
-    "attendees": ["Wang Ming", "Li Hua", "Zhao Lei", "Ma Qiang", "Zhang Wei", "Zhou Ming"],
+    "attendees": [
+      "Wang Ming",
+      "Li Hua",
+      "Zhao Lei",
+      "Ma Qiang",
+      "Zhang Wei",
+      "Zhou Ming"
+    ],
     "description": "This week's work summary and next week's plan",
     "status": "confirmed"
   }

@@ -32,9 +32,18 @@ import {
 	findCatalogModel,
 } from "../src/services/catalog.ts";
 
+/**
+ * Tiers that don't ship a dedicated 1024-dim Matryoshka embedding region —
+ * embeddings on these tiers are served by pooling the text backbone with
+ * `--pooling last` via a lazily-started llama-server embedding sidecar
+ * (see `services/voice/embedding-server.ts`). Today this is only
+ * `eliza-1-0_8b` (the smallest tier, where carrying a separate embedding
+ * GGUF would blow the RAM budget on the 2 GB-floor devices it targets).
+ * Every other tier ships `embedding/eliza-1-embedding.gguf` in the
+ * bundle.
+ */
 const TIERS_WITHOUT_DEDICATED_EMBEDDING: ReadonlySet<string> = new Set([
 	"eliza-1-0_8b",
-	"eliza-1-2b",
 ]);
 
 describe("per-tier text + embedding bundle resolution", () => {

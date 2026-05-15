@@ -21,22 +21,22 @@
 import { readFileSync } from "node:fs";
 
 import {
-    type CatalogModel,
-    findCatalogModel,
-    findDflashDrafter,
-    pickEligibleTiers,
-    BASELINE_MODEL_ID,
+  BASELINE_MODEL_ID,
+  type CatalogModel,
+  findCatalogModel,
+  findDflashDrafter,
+  pickEligibleTiers,
 } from "./catalog.ts";
 
 export interface PickResult {
-    /** Highest-tier model that fits the host (with DFlash drafter if applicable). */
-    readonly recommended: CatalogModel;
-    /** Optional drafter model when `recommended.dflashDrafter !== undefined`. */
-    readonly drafter?: CatalogModel;
-    /** Other tiers the user could pick instead, ordered largest-first. */
-    readonly alternatives: readonly CatalogModel[];
-    /** Probed host RAM in GB (rounded down). */
-    readonly hostRamGb: number;
+  /** Highest-tier model that fits the host (with DFlash drafter if applicable). */
+  readonly recommended: CatalogModel;
+  /** Optional drafter model when `recommended.dflashDrafter !== undefined`. */
+  readonly drafter?: CatalogModel;
+  /** Other tiers the user could pick instead, ordered largest-first. */
+  readonly alternatives: readonly CatalogModel[];
+  /** Probed host RAM in GB (rounded down). */
+  readonly hostRamGb: number;
 }
 
 /**
@@ -45,36 +45,36 @@ export interface PickResult {
  * {@link recommendModelTier} which probes `/proc/meminfo`.
  */
 export function recommendModelTierFor(memTotalGb: number): PickResult {
-    const eligible = pickEligibleTiers(memTotalGb);
-    if (eligible.length === 0) {
-        // pickEligibleTiers guarantees at least the baseline tier, but
-        // be defensive — a host so RAM-starved it can't even fit
-        // eliza-1-0_8b's 6 GB minimum (2 GB model + 4 GB headroom) is a real
-        // possibility on 4 GB low-end laptops. Surface baseline anyway;
-        // the agent will hard-fail at load time with a clear message
-        // rather than booting into a model picker with no options.
-        const baseline = findCatalogModel(BASELINE_MODEL_ID);
-        if (baseline === undefined) {
-            throw new Error(`catalog missing baseline tier ${BASELINE_MODEL_ID}`);
-        }
-        return {
-            recommended: baseline,
-            alternatives: [],
-            hostRamGb: memTotalGb,
-        };
+  const eligible = pickEligibleTiers(memTotalGb);
+  if (eligible.length === 0) {
+    // pickEligibleTiers guarantees at least the baseline tier, but
+    // be defensive — a host so RAM-starved it can't even fit
+    // eliza-1-0_8b's 6 GB minimum (2 GB model + 4 GB headroom) is a real
+    // possibility on 4 GB low-end laptops. Surface baseline anyway;
+    // the agent will hard-fail at load time with a clear message
+    // rather than booting into a model picker with no options.
+    const baseline = findCatalogModel(BASELINE_MODEL_ID);
+    if (baseline === undefined) {
+      throw new Error(`catalog missing baseline tier ${BASELINE_MODEL_ID}`);
     }
-    const recommended = eligible[0];
-    if (recommended === undefined) {
-        throw new Error("unreachable: pickEligibleTiers returned non-empty array");
-    }
-    const drafter = findDflashDrafter(recommended);
-    const alternatives = eligible.slice(1);
     return {
-        recommended,
-        ...(drafter !== undefined ? { drafter } : {}),
-        alternatives,
-        hostRamGb: memTotalGb,
+      recommended: baseline,
+      alternatives: [],
+      hostRamGb: memTotalGb,
     };
+  }
+  const recommended = eligible[0];
+  if (recommended === undefined) {
+    throw new Error("unreachable: pickEligibleTiers returned non-empty array");
+  }
+  const drafter = findDflashDrafter(recommended);
+  const alternatives = eligible.slice(1);
+  return {
+    recommended,
+    ...(drafter !== undefined ? { drafter } : {}),
+    alternatives,
+    hostRamGb: memTotalGb,
+  };
 }
 
 /**
@@ -84,17 +84,17 @@ export function recommendModelTierFor(memTotalGb: number): PickResult {
  * suggested a tier requiring 16.
  */
 export function recommendModelTier(): PickResult {
-    const memInfo = readFileSync("/proc/meminfo", "utf8");
-    const match = /^MemTotal:\s+(\d+)\s+kB/m.exec(memInfo);
-    if (match === null || match[1] === undefined) {
-        throw new Error("could not parse /proc/meminfo MemTotal");
-    }
-    const memTotalKb = parseInt(match[1], 10);
-    if (Number.isNaN(memTotalKb) || memTotalKb <= 0) {
-        throw new Error(`invalid MemTotal value: ${match[1]}`);
-    }
-    const memTotalGb = Math.floor(memTotalKb / (1024 * 1024));
-    return recommendModelTierFor(memTotalGb);
+  const memInfo = readFileSync("/proc/meminfo", "utf8");
+  const match = /^MemTotal:\s+(\d+)\s+kB/m.exec(memInfo);
+  if (match === null || match[1] === undefined) {
+    throw new Error("could not parse /proc/meminfo MemTotal");
+  }
+  const memTotalKb = parseInt(match[1], 10);
+  if (Number.isNaN(memTotalKb) || memTotalKb <= 0) {
+    throw new Error(`invalid MemTotal value: ${match[1]}`);
+  }
+  const memTotalGb = Math.floor(memTotalKb / (1024 * 1024));
+  return recommendModelTierFor(memTotalGb);
 }
 
 /**
@@ -103,22 +103,24 @@ export function recommendModelTier(): PickResult {
  * deterministic, testable shape.
  */
 export function formatPickResultForChat(result: PickResult): string {
-    const lines: string[] = [];
+  const lines: string[] = [];
+  lines.push(
+    `Detected ${result.hostRamGb} GB of RAM. Recommended: **${result.recommended.displayName}** (${result.recommended.sizeGb.toFixed(1)} GB).`,
+  );
+  lines.push(`> ${result.recommended.blurb}`);
+  if (result.drafter !== undefined) {
     lines.push(
-        `Detected ${result.hostRamGb} GB of RAM. Recommended: **${result.recommended.displayName}** (${result.recommended.sizeGb.toFixed(1)} GB).`,
+      `Will also download **${result.drafter.displayName}** (${result.drafter.sizeGb.toFixed(1)} GB) as the speculative-decoding drafter.`,
     );
-    lines.push(`> ${result.recommended.blurb}`);
-    if (result.drafter !== undefined) {
-        lines.push(
-            `Will also download **${result.drafter.displayName}** (${result.drafter.sizeGb.toFixed(1)} GB) as the speculative-decoding drafter.`,
-        );
+  }
+  if (result.alternatives.length > 0) {
+    lines.push("");
+    lines.push("Alternatives:");
+    for (const alt of result.alternatives) {
+      lines.push(
+        `- **${alt.displayName}** (${alt.sizeGb.toFixed(1)} GB) — ${alt.blurb}`,
+      );
     }
-    if (result.alternatives.length > 0) {
-        lines.push("");
-        lines.push("Alternatives:");
-        for (const alt of result.alternatives) {
-            lines.push(`- **${alt.displayName}** (${alt.sizeGb.toFixed(1)} GB) — ${alt.blurb}`);
-        }
-    }
-    return lines.join("\n");
+  }
+  return lines.join("\n");
 }

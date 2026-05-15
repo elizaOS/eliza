@@ -33,8 +33,6 @@ from pathlib import Path
 benchmark_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(benchmark_root))
 sys.path.insert(0, str(benchmark_root / "benchmarks" / "eliza-adapter"))
-sys.path.insert(0, str(benchmark_root / "benchmarks" / "hermes-adapter"))
-sys.path.insert(0, str(benchmark_root / "benchmarks" / "openclaw-adapter"))
 
 # Now we can import
 from benchmarks.mint.types import MINTSubtask, MINTConfig
@@ -156,21 +154,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=[
-            "mock",
-            "eliza",
-            "hermes",
-            "openclaw",
-            "openai",
-            "groq",
-            "openrouter",
-            "cerebras",
-        ],
+        choices=["mock", "eliza", "openai", "groq", "openrouter", "cerebras"],
         default="mock",
         help=(
-            "Agent provider to use: local mock, Eliza TS bridge, "
-            "Hermes/OpenClaw adapter, or direct OpenAI-compatible provider "
-            "(default: mock)"
+            "Agent provider to use: local mock, eliza TS benchmark bridge, "
+            "or direct OpenAI-compatible provider (default: mock)"
         ),
     )
     parser.add_argument(
@@ -460,28 +448,6 @@ async def run_benchmark(
             logging.getLogger(__name__).info(
                 "[mint] using ElizaMINTAgent (eliza TS benchmark bridge)"
             )
-        elif runtime_provider == "hermes":
-            from benchmarks.mint.agent import AgentFnMINTAgent
-            from hermes_adapter.mint import build_mint_agent_fn
-
-            runner.agent = AgentFnMINTAgent(
-                agent_fn=build_mint_agent_fn(model_name=model),
-                tool_executor=runner.executor,
-                feedback_generator=runner.feedback_generator,
-                temperature=config.temperature,
-            )
-            logging.getLogger(__name__).info("[mint] using Hermes MINT adapter")
-        elif runtime_provider == "openclaw":
-            from benchmarks.mint.agent import AgentFnMINTAgent
-            from openclaw_adapter.mint import build_mint_agent_fn
-
-            runner.agent = AgentFnMINTAgent(
-                agent_fn=build_mint_agent_fn(model_name=model),
-                tool_executor=runner.executor,
-                feedback_generator=runner.feedback_generator,
-                temperature=config.temperature,
-            )
-            logging.getLogger(__name__).info("[mint] using OpenClaw MINT adapter")
         elif direct_runtime is not None:
             logging.getLogger(__name__).info(
                 "[mint] using direct %s model provider", runtime_provider

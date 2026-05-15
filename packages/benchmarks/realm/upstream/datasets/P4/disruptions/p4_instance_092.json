@@ -1,13 +1,7 @@
 {
   "instance_id": "p4_instance_092",
   "city_map": {
-    "locations": [
-      "hospital",
-      "suburb",
-      "downtown",
-      "mall",
-      "stadium"
-    ],
+    "locations": ["hospital", "suburb", "downtown", "mall", "stadium"],
     "distances": {
       "hospital-suburb": 12,
       "suburb-hospital": 12,
@@ -36,70 +30,49 @@
       "passenger_id": "p001",
       "pickup": "mall",
       "dropoff": "stadium",
-      "time_window": [
-        9.5,
-        9.983333333333333
-      ],
+      "time_window": [9.5, 9.983333333333333],
       "deadline": 20
     },
     {
       "passenger_id": "p002",
       "pickup": "mall",
       "dropoff": "downtown",
-      "time_window": [
-        8.0,
-        8.283333333333333
-      ],
+      "time_window": [8.0, 8.283333333333333],
       "deadline": 50
     },
     {
       "passenger_id": "p003",
       "pickup": "downtown",
       "dropoff": "hospital",
-      "time_window": [
-        17.75,
-        17.166666666666668
-      ],
+      "time_window": [17.75, 17.166666666666668],
       "deadline": 25
     },
     {
       "passenger_id": "p004",
       "pickup": "downtown",
       "dropoff": "stadium",
-      "time_window": [
-        14.0,
-        14.566666666666666
-      ],
+      "time_window": [14.0, 14.566666666666666],
       "deadline": 48
     },
     {
       "passenger_id": "p005",
       "pickup": "mall",
       "dropoff": "downtown",
-      "time_window": [
-        16.25,
-        16.616666666666667
-      ],
+      "time_window": [16.25, 16.616666666666667],
       "deadline": 28
     },
     {
       "passenger_id": "p006",
       "pickup": "hospital",
       "dropoff": "downtown",
-      "time_window": [
-        8.25,
-        8.633333333333333
-      ],
+      "time_window": [8.25, 8.633333333333333],
       "deadline": 48
     },
     {
       "passenger_id": "p007",
       "pickup": "mall",
       "dropoff": "downtown",
-      "time_window": [
-        12.0,
-        12.6
-      ],
+      "time_window": [12.0, 12.6],
       "deadline": 33
     }
   ],

@@ -121,10 +121,18 @@
       "edge_computing_nodes": {
         "count": 12,
         "locations": [
-          "Field Site Alpha", "Field Site Beta", "Field Site Gamma",
-          "Field Site Delta", "Offshore Platform 1", "Offshore Platform 2",
-          "Offshore Platform 3", "Compressor Station A", "Compressor Station B",
-          "Pipeline Junction North", "Pipeline Junction South", "Central Processing Facility"
+          "Field Site Alpha",
+          "Field Site Beta",
+          "Field Site Gamma",
+          "Field Site Delta",
+          "Offshore Platform 1",
+          "Offshore Platform 2",
+          "Offshore Platform 3",
+          "Compressor Station A",
+          "Compressor Station B",
+          "Pipeline Junction North",
+          "Pipeline Junction South",
+          "Central Processing Facility"
         ],
         "spec_per_node": {
           "model": "NVIDIA Jetson AGX Orin",

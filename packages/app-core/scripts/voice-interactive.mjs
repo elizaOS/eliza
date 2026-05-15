@@ -65,7 +65,6 @@ function parseArgs(argv) {
     noAudio: false,
     noDflash: false,
     room: "voice-interactive",
-    modelId: null,
     help: false,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -78,7 +77,6 @@ function parseArgs(argv) {
     else if (a === "--say") out.say = argv[++i] ?? "";
     else if (a === "--wav") out.wav = argv[++i] ?? "";
     else if (a === "--room") out.room = argv[++i] ?? out.room;
-    else if (a === "--model") out.modelId = argv[++i] ?? "";
     else if (a === "--help" || a === "-h") out.help = true;
     else {
       console.error(`[voice-interactive] unknown argument: ${a}`);
@@ -97,8 +95,6 @@ const USAGE = `Usage: bun run voice:interactive [-- <options>]
                         needs-hardware/needs-SDK)
   --say "<text>"       skip ASR; inject <text> as a finalized transcript (LLM→TTS half)
   --wav <path>         feed a WAV file through the same path once (non-mic smoke)
-  --model <id>         tier bundle id for inspection/session (default first-run model;
-                       e.g. eliza-1-0_8b)
   --no-audio           don't play to speakers; write out-<ts>.wav instead
   --no-dflash          set ELIZA_DFLASH_DISABLE=1 (sanity compare; warns loudly)
   --room <id>          conversation/room id (default: voice-interactive)
@@ -1076,7 +1072,7 @@ async function bootStandaloneRuntime({ roomId }) {
   // The runtime needs plugin-sql (storage) + the local-inference model handler.
   // Core wires DefaultMessageService during initialize(). Fail loudly if a
   // piece is missing rather than half-booting.
-  const { AgentRuntime } = await import("@elizaos/core");
+  const { AgentRuntime, ModelType } = await import("@elizaos/core");
   let sqlPlugin;
   try {
     sqlPlugin =

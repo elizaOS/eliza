@@ -5,6 +5,11 @@ export {
 	type CancelSignal,
 } from "./barge-in";
 export {
+	type CoordinatorRuntime,
+	VoiceCancellationCoordinator,
+	type VoiceCancellationCoordinatorOptions,
+} from "./cancellation-coordinator";
+export {
 	type CheckpointHandle,
 	CheckpointHandleInvalidError,
 	CheckpointManager,
@@ -56,6 +61,7 @@ export {
 	encodeMonoPcm16Wav,
 	FfiOmniVoiceBackend,
 	StubOmniVoiceBackend,
+	type VoiceTurnEvents,
 } from "./engine-bridge";
 export {
 	createBundledLiveKitTurnDetector,
@@ -126,6 +132,15 @@ export {
 	pipeMicToRingBuffer,
 	resolveDesktopRecorder,
 } from "./mic-source";
+export {
+	DEFAULT_OPTIMISTIC_EOT_THRESHOLD,
+	OptimisticGenerationPolicy,
+	type OptimisticPolicyOptions,
+	type PowerSourceState,
+	type ResolveOptimisticPolicyArgs,
+	resolveOptimisticPolicyEnabled,
+	resolvePowerSourceState,
+} from "./optimistic-policy";
 export {
 	CharacterPhonemeStub,
 	type Phoneme,

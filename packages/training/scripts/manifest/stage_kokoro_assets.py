@@ -43,7 +43,7 @@ KOKORO_MODEL_BUNDLE_PATH: Final[str] = f"{KOKORO_RELEASE_ROOT}/model_q4.onnx"
 KOKORO_TOKENIZER_BUNDLE_PATH: Final[str] = f"{KOKORO_RELEASE_ROOT}/tokenizer.json"
 # Default voice-remote template: `voices/<voice>.bin` matches the upstream
 # `onnx-community/Kokoro-82M-v1.0-ONNX` layout. Per-voice HF repos (e.g.
-    # `elizaos/eliza-1-voice-kokoro-samantha-v01`) ship the file at the repo
+    # `elizalabs/eliza-1-voice-kokoro-samantha-v01`) ship the file at the repo
 # root as `voice.bin`. The `--voice-remote-template` flag lets the caller
 # override the lookup path while keeping the same `--repo-id` plumbing.
 DEFAULT_VOICE_REMOTE_TEMPLATE: Final[str] = "voices/{voice}.bin"
@@ -438,7 +438,7 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "Per-voice remote path template. Default `voices/{voice}.bin` matches "
             "the upstream onnx-community Kokoro repo. Per-voice HF repos that "
-            "ship the embedding at the root (e.g. `elizaos/eliza-1-voice-kokoro-samantha-v01`) "
+            "ship the embedding at the root (e.g. `elizalabs/eliza-1-voice-kokoro-samantha-v01`) "
             "should pass `voice.bin` (no `{voice}` placeholder needed since the "
             "repo only carries one voice)."
         ),

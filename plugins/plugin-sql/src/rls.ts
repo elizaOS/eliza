@@ -294,7 +294,7 @@ export async function uninstallRLS(adapter: IDatabaseAdapter): Promise<void> {
   }
 }
 
-async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
+export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
   logger.info("[Entity RLS] Installing entity RLS functions and policies...");
@@ -538,7 +538,7 @@ export async function applyEntityRLSToAllTables(adapter: IDatabaseAdapter): Prom
   }
 }
 
-async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
+export async function uninstallEntityRLS(adapter: IDatabaseAdapter): Promise<void> {
   const db = getDb(adapter);
 
   logger.info("[Entity RLS] Removing entity RLS policies and functions...");

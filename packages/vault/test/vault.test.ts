@@ -58,7 +58,9 @@ describe("vault — set / get / has / remove", () => {
 
   it("rejects empty / non-string keys", async () => {
     await expect(test.vault.set("", "v")).rejects.toThrow();
-    await expect(runtimeVaultCaller(test.vault).set(123, "v")).rejects.toThrow();
+    await expect(
+      runtimeVaultCaller(test.vault).set(123, "v"),
+    ).rejects.toThrow();
   });
 
   it("rejects non-string values", async () => {

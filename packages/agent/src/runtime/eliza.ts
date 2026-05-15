@@ -340,19 +340,12 @@ async function getPluginLocalEmbedding(): Promise<
   return _pluginLocalEmbeddingPromise;
 }
 
-let _optionalPluginCache: Map<string, Promise<unknown>> | undefined = new Map();
+const _optionalPluginCache = new Map<string, Promise<unknown>>();
 function getOptionalPlugin(packageName: string): Promise<unknown> {
-  // Mobile bundles can hit this through a circular runtime import before
-  // Bun's emitted module init assigns the hoisted cache variable.
-  let cache = _optionalPluginCache;
-  if (!cache) {
-    cache = new Map<string, Promise<unknown>>();
-    _optionalPluginCache = cache;
-  }
-  const cached = cache.get(packageName);
+  const cached = _optionalPluginCache.get(packageName);
   if (cached) return cached;
   const promise = loadOptionalPlugin(packageName);
-  cache.set(packageName, promise);
+  _optionalPluginCache.set(packageName, promise);
   return promise;
 }
 // Personality is bundled in @elizaos/core advanced capabilities (advancedCapabilities).

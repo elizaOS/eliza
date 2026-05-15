@@ -12,7 +12,7 @@ This wraps existing primitives — it does not duplicate them:
 |---|---|
 | `vast` | the `vastai` CLI (`pip install --user vastai`), `VAST_API_KEY` — implemented here for `build` / `kernel-verify` / `bench` |
 | `--task train --provider vast` | delegates to [`../train_vast.sh provision-and-train`](../CLOUD_VAST.md) (its GPU mapping, checkpoint pull, teardown) |
-| `--task train --provider nebius` | delegates to [`../train_nebius.sh full`](../train_nebius.sh) — H200 (`gpu-h200x1` for 0.8b/2b/4b/9b, `gpu-h200x2` + FSDP for 27b); requires `NEBIUS_PROJECT_ID`. Emergency fallback; Vast is canonical. |
+| `--task train --provider nebius` | delegates to [`../train_nebius.sh full`](../train_nebius.sh) — H200 (`gpu-h200x1` for 0.6b/1.7b/9b, `gpu-h200x2` + FSDP for 27b); requires `NEBIUS_PROJECT_ID`. Emergency fallback; Vast is canonical. |
 | `nebius` + `kernel-verify`/`bench` | not wired yet (extend `../lib/backends/nebius.py` + the `kernel-verify`/`bench` branch in `run-on-cloud.sh`) |
 
 The existing cloud backend abstraction (`../lib/backends/base.py`,
@@ -58,13 +58,13 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 bash packages/training/scripts/cloud/run-on-cloud.sh \
   --provider vast --task train --gpu b200 --tier 27b --yes-i-will-pay
 
-# Train the 0.8B tier on a Nebius H200 (delegates to train_nebius.sh full):
+# Train the 0.6B tier on a Nebius H200 (delegates to train_nebius.sh full):
 NEBIUS_PROJECT_ID=project-… HUGGING_FACE_HUB_TOKEN=… \
 bash packages/training/scripts/cloud/run-on-cloud.sh \
-  --provider nebius --task train --gpu h200 --tier 0_8b --yes-i-will-pay
+  --provider nebius --task train --gpu h200 --tier 0_6b --yes-i-will-pay
 # Plan only (no spend):
 bash packages/training/scripts/cloud/run-on-cloud.sh \
-  --provider nebius --task train --gpu h200 --tier 0_8b --dry-run
+  --provider nebius --task train --gpu h200 --tier 0_6b --dry-run
 
 # Plan only — prints what it WOULD provision, spends nothing:
 bash packages/training/scripts/cloud/run-on-cloud.sh \
@@ -78,7 +78,7 @@ bash packages/training/scripts/cloud/run-on-cloud.sh \
 | `--provider` | `vast` \| `nebius` | (required) |
 | `--task` | `build` \| `kernel-verify` \| `bench` \| `train` | (required) |
 | `--gpu` | `h100` `h200` `a100` `a100-80` `rtx4090` `rtx5090` `l40s` `b200` `blackwell6000` | `h100` |
-| `--tier` | `0_8b` `2b` `4b` `9b` `27b` `27b-256k` | `0_8b` |
+| `--tier` | `0_8b` `2b` `9b` `27b` `27b-256k` `27b-1m` | `0_8b` |
 | `--ssh-pubkey` | path | `~/.ssh/id_ed25519.pub` |
 | `--smoke-model` | path to a GGUF | none (parity-only) |
 | `--yes-i-will-pay` | (gate) — required for any real provisioning | off |

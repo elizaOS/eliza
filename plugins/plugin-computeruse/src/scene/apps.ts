@@ -22,10 +22,10 @@
  */
 
 import { execFileSync } from "node:child_process";
-import type { WindowInfo } from "../types.js";
 import { commandExists, currentPlatform } from "../platform/helpers.js";
 import { listProcesses } from "../platform/process-list.js";
 import { listWindows } from "../platform/windows-list.js";
+import type { WindowInfo } from "../types.js";
 import type { SceneApp, SceneAppWindow } from "./scene-types.js";
 
 export interface AppEnumerationDeps {
@@ -60,7 +60,9 @@ export function joinAppsAndWindows(
   platform: "linux" | "darwin" | "win32" | string,
 ): SceneApp[] {
   const linuxPidMap =
-    platform === "linux" && commandExists("wmctrl") ? linuxPidMapFromWmctrl() : new Map<string, number>();
+    platform === "linux" && commandExists("wmctrl")
+      ? linuxPidMapFromWmctrl()
+      : new Map<string, number>();
 
   const joined: WindowPidJoin[] = windows.map((win) => {
     let pid: number | null = null;
@@ -106,7 +108,8 @@ export function joinAppsAndWindows(
       bucket = buckets.get(`pid:${j.pid}`);
       if (!bucket) {
         bucket = {
-          name: j.win.app && j.win.app !== "unknown" ? j.win.app : `pid-${j.pid}`,
+          name:
+            j.win.app && j.win.app !== "unknown" ? j.win.app : `pid-${j.pid}`,
           pid: j.pid,
           windows: [],
         };

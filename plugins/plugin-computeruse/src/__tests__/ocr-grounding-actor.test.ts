@@ -25,16 +25,52 @@ function multiDisplayScene(): Scene {
   return {
     timestamp: 1,
     displays: [
-      { id: 0, bounds: [0, 0, 1920, 1080], scaleFactor: 1, primary: true, name: "p" },
-      { id: 1, bounds: [1920, 0, 2560, 1440], scaleFactor: 1, primary: false, name: "s" },
+      {
+        id: 0,
+        bounds: [0, 0, 1920, 1080],
+        scaleFactor: 1,
+        primary: true,
+        name: "p",
+      },
+      {
+        id: 1,
+        bounds: [1920, 0, 2560, 1440],
+        scaleFactor: 1,
+        primary: false,
+        name: "s",
+      },
     ],
     focused_window: null,
     apps: [],
     ocr: [
-      { id: "t0-1", text: "Save", bbox: [100, 100, 60, 24], conf: 0.95, displayId: 0 },
-      { id: "t0-2", text: "Cancel", bbox: [200, 100, 80, 24], conf: 0.95, displayId: 0 },
-      { id: "t0-3", text: "Open File", bbox: [300, 200, 100, 30], conf: 0.99, displayId: 0 },
-      { id: "t1-1", text: "Save", bbox: [50, 50, 60, 24], conf: 0.85, displayId: 1 },
+      {
+        id: "t0-1",
+        text: "Save",
+        bbox: [100, 100, 60, 24],
+        conf: 0.95,
+        displayId: 0,
+      },
+      {
+        id: "t0-2",
+        text: "Cancel",
+        bbox: [200, 100, 80, 24],
+        conf: 0.95,
+        displayId: 0,
+      },
+      {
+        id: "t0-3",
+        text: "Open File",
+        bbox: [300, 200, 100, 30],
+        conf: 0.99,
+        displayId: 0,
+      },
+      {
+        id: "t1-1",
+        text: "Save",
+        bbox: [50, 50, 60, 24],
+        conf: 0.85,
+        displayId: 1,
+      },
     ],
     ax: [
       {

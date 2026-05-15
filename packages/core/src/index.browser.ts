@@ -84,7 +84,6 @@ export * from "./types/message-service";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 // Export utils first to avoid circular dependency issues
 export * from "./utils";
-export { addHeader, composePromptFromState, parseKeyValueXml } from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export * from "./utils/description-compressed-lint";

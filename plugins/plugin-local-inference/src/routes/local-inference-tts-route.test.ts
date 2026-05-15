@@ -1,7 +1,6 @@
 import * as http from "node:http";
 import { Socket } from "node:net";
 import { describe, expect, it, vi } from "vitest";
-import { KokoroInputTooLongError } from "../services/voice/kokoro/types";
 import type { CompatRuntimeState } from "./compat-helpers";
 import {
 	handleLocalInferenceTtsRoute,
@@ -69,7 +68,7 @@ function fakeRes(): {
 	return {
 		res,
 		bodyBuffer: () => body,
-		status: () => res.statusCode || status,
+		status: () => status,
 		header: (name) => headers.get(name.toLowerCase()),
 	};
 }
@@ -146,27 +145,5 @@ describe("local inference TTS route", () => {
 
 		expect(aborted).toBe(true);
 		expect(out.bodyBuffer().length).toBe(0);
-	});
-
-	it("maps over-length Kokoro input failures to 413", async () => {
-		const useModel = vi
-			.fn()
-			.mockRejectedValue(new KokoroInputTooLongError(511));
-		const state: CompatRuntimeState = {
-			current: { useModel } as unknown as CompatRuntimeState["current"],
-		};
-		const out = fakeRes();
-
-		const handled = await handleLocalInferenceTtsRoute(
-			fakeReq({ text: "Hello" }),
-			out.res,
-			state,
-		);
-
-		expect(handled).toBe(true);
-		expect(out.status()).toBe(413);
-		expect(JSON.parse(out.bodyBuffer().toString("utf8")).error).toContain(
-			"phoneme sequence is too long: 511 > 510",
-		);
 	});
 });

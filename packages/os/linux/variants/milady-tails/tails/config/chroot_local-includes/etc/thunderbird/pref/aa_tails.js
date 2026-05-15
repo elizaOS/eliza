@@ -260,8 +260,8 @@ pref("datareporting.healthreport.service.enabled", false);
 pref("datareporting.healthreport.uploadEnabled", false);
 pref("datareporting.policy.dataSubmissionEnabled", false);
 pref("datareporting.healthreport.about.reportUrl", "data:text/plain,");
-pref('datareporting.healthreport.documentServerURI', "");
-pref('datareporting.healthreport.logging.consoleEnabled', false);
+pref("datareporting.healthreport.documentServerURI", "");
+pref("datareporting.healthreport.logging.consoleEnabled", false);
 
 // https://bugs.torproject.org/16254
 pref("browser.search.countryCode", "US");
@@ -322,8 +322,14 @@ pref("messenger.options.filterMode", 0);
 // On copying the content in the chat window, remove the time information.
 // See `comm-central/chat/locales/conversations.properties' for more information.
 pref("messenger.conversations.selections.systemMessagesTemplate", "%message%");
-pref("messenger.conversations.selections.contentMessagesTemplate", "%sender%: %message%");
-pref("messenger.conversations.selections.actionMessagesTemplate", "%sender% %message%");
+pref(
+  "messenger.conversations.selections.contentMessagesTemplate",
+  "%sender%: %message%",
+);
+pref(
+  "messenger.conversations.selections.actionMessagesTemplate",
+  "%sender% %message%",
+);
 
 // Mozilla Lightning.
 pref("calendar.useragent.extra", "");
@@ -365,8 +371,8 @@ pref("javascript.options.baselinejit", false);
 pref("javascript.options.native_regexp", false);
 pref("media.webaudio.enabled", false);
 pref("mathml.disabled", true);
-pref("gfx.font_rendering.opentype_svg.enabled",  false);
-pref("svg.disabled",  true);
+pref("gfx.font_rendering.opentype_svg.enabled", false);
+pref("svg.disabled", true);
 
 // Disable WebM, WAV, Ogg, PeerConnection.
 pref("media.navigator.enabled", false);

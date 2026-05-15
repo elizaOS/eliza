@@ -8,7 +8,7 @@ recipe is intentionally small:
   * `N_PER_NORMALIZED` rows per normalized dataset under
     `packages/training/data/normalized/<source>.jsonl` (deterministic
     sample by `random.Random(SEED).sample(...)`).
-  * `N_FROM_SFT_0_8B` rows from `datasets/eliza1-sft-0_8b/train.jsonl`
+  * `N_FROM_SFT_0_6B` rows from `datasets/eliza1-sft-0_6b/train.jsonl`
     so the chat_messages schema path is exercised.
   * `N_FROM_FINAL_MIX` rows from `data/final/train.jsonl` so the broad
     mixed-final pipeline is exercised.
@@ -51,13 +51,13 @@ from sample_native_trajectory_alignment import (  # noqa: E402
 )
 
 NORMALIZED_DIR = ROOT / "data" / "normalized"
-SFT_0_8B = ROOT / "datasets" / "eliza1-sft-0_8b" / "train.jsonl"
+SFT_0_6B = ROOT / "datasets" / "eliza1-sft-0_6b" / "train.jsonl"
 FINAL_TRAIN = ROOT / "data" / "final" / "train.jsonl"
 OUT_DIR = ROOT / "data" / "final-eliza1-smoke"
 
 SEED = 42
 N_PER_NORMALIZED = 3
-N_FROM_SFT_0_8B = 10
+N_FROM_SFT_0_6B = 10
 N_FROM_FINAL_MIX = 10
 TRAJECTORY_DAYS = 7
 TRAJECTORY_CAP = 100
@@ -266,13 +266,13 @@ def main() -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     normalized_rows, by_normalized = _sample_normalized()
-    sft_rows = _sample_jsonl_file(SFT_0_8B, N_FROM_SFT_0_8B, "datasets/eliza1-sft-0_8b/train.jsonl")
+    sft_rows = _sample_jsonl_file(SFT_0_6B, N_FROM_SFT_0_6B, "datasets/eliza1-sft-0_6b/train.jsonl")
     final_rows = _sample_jsonl_file(FINAL_TRAIN, N_FROM_FINAL_MIX, "data/final/train.jsonl")
     trajectory_rows, trajectory_info = _trajectory_rows()
 
     all_rows = normalized_rows + sft_rows + final_rows + trajectory_rows
     print(f"normalized rows: {len(normalized_rows)} from {len(by_normalized)} sources")
-    print(f"sft_0_8b rows: {len(sft_rows)}")
+    print(f"sft_0_6b rows: {len(sft_rows)}")
     print(f"final mix rows: {len(final_rows)}")
     print(f"trajectory rows: {len(trajectory_rows)} ({trajectory_info.get('skipped_reason') or 'ok'})")
     print(f"total before split: {len(all_rows)}")
@@ -311,8 +311,8 @@ def main() -> int:
                 "rows": len(normalized_rows),
                 "by_source": by_normalized,
             },
-            "eliza1_sft_0_8b": {
-                "path": str(SFT_0_8B.relative_to(ROOT)),
+            "eliza1_sft_0_6b": {
+                "path": str(SFT_0_6B.relative_to(ROOT)),
                 "rows": len(sft_rows),
             },
             "final_mix": {

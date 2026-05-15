@@ -28,19 +28,9 @@ async function loadTfModules(): Promise<boolean> {
   }
 }
 
-// Define types that are missing from types.ts
 export interface VisionModelConfig {
   enableObjectDetection?: boolean;
   enablePoseDetection?: boolean;
-  florence2?: {
-    baseUrl: string;
-    apiKey?: string;
-  };
-  vlm?: {
-    model: string;
-    temperature: number;
-    maxTokens: number;
-  };
 }
 
 export type Pose = "sitting" | "standing" | "lying" | "walking" | "unknown";
@@ -324,8 +314,9 @@ export class VisionModels {
       return [];
     }
 
-    const countMatch = peopleMatch[0]?.match(/\d+/)?.[0];
-    const count = countMatch ? Number.parseInt(countMatch, 10) : 1;
+    const count = peopleMatch[0].match(/\d+/)?.[0]
+      ? parseInt(peopleMatch[0].match(/\d+/)?.[0], 10)
+      : 1;
 
     // Analyze description for pose and facing information
     const poseKeywords = {

@@ -17,35 +17,31 @@
  */
 
 import { describe, expect, it } from "vitest";
+import {
+  type ComputerUseAgentReport,
+  runComputerUseAgentLoop,
+} from "../actions/use-computer-agent.js";
+import { OcrCoordinateGroundingActor } from "../actor/actor.js";
 import { Brain } from "../actor/brain.js";
 import { Cascade } from "../actor/cascade.js";
 import { dispatch } from "../actor/dispatch.js";
-import { OcrCoordinateGroundingActor } from "../actor/actor.js";
-import {
-  MobileComputerInterface,
-} from "../mobile/mobile-computer-interface.js";
-import {
-  ANDROID_LOGICAL_DISPLAY_ID,
-  MobileScreenCaptureSource,
-} from "../mobile/mobile-screen-capture.js";
-import { parseAndroidAxTree } from "../mobile/android-scene.js";
-import {
-  runComputerUseAgentLoop,
-  type ComputerUseAgentReport,
-} from "../actions/use-computer-agent.js";
 import type {
   AndroidComputerUseBridge,
   AndroidPressureLevel,
   CapturedScreenFrame,
   GestureArgs,
 } from "../mobile/android-bridge.js";
+import { parseAndroidAxTree } from "../mobile/android-scene.js";
+import { MobileComputerInterface } from "../mobile/mobile-computer-interface.js";
+import {
+  ANDROID_LOGICAL_DISPLAY_ID,
+  MobileScreenCaptureSource,
+} from "../mobile/mobile-screen-capture.js";
 import type { Scene } from "../scene/scene-types.js";
 import type { ComputerUseService } from "../services/computer-use-service.js";
 import type { DisplayDescriptor } from "../types.js";
 
-interface PressureListener {
-  (level: AndroidPressureLevel, freeMb?: number): void;
-}
+type PressureListener = (level: AndroidPressureLevel, freeMb?: number) => void;
 
 interface FakeAndroidBridgeOpts {
   axTreeJson?: string;
@@ -56,7 +52,9 @@ interface FakeAndroidBridgeOpts {
 
 function defaultFrame(): CapturedScreenFrame {
   return {
-    jpegBase64: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0xaa, 0xbb]).toString("base64"),
+    jpegBase64: Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0xaa, 0xbb]).toString(
+      "base64",
+    ),
     width: 1080,
     height: 1920,
     timestampMs: 0,
@@ -79,22 +77,33 @@ function makeFakeBridge(opts: FakeAndroidBridgeOpts = {}): {
   pressureEvents: Array<{ level: AndroidPressureLevel; freeMb?: number }>;
 } {
   const taps: GestureArgs[] = [];
-  const pressureEvents: Array<{ level: AndroidPressureLevel; freeMb?: number }> = [];
+  const pressureEvents: Array<{
+    level: AndroidPressureLevel;
+    freeMb?: number;
+  }> = [];
   const ax = opts.axTreeJson ?? DEFAULT_AX_JSON;
   const frame = opts.frame ?? defaultFrame();
-  const stub = <T,>(code = "internal_error" as const) =>
-    Promise.resolve({ ok: false as const, code, message: "stub" }) as Promise<{ ok: false; code: typeof code; message: string } & { data?: T }>;
+  const stub = <T>(code = "internal_error" as const) =>
+    Promise.resolve({ ok: false as const, code, message: "stub" }) as Promise<
+      { ok: false; code: typeof code; message: string } & { data?: T }
+    >;
   const bridge = {
     startMediaProjection: () => stub(),
     stopMediaProjection: () => stub(),
     captureFrame: async () => ({ ok: true as const, data: frame }),
-    getAccessibilityTree: async () => ({ ok: true as const, data: { nodes: ax } }),
+    getAccessibilityTree: async () => ({
+      ok: true as const,
+      data: { nodes: ax },
+    }),
     dispatchGesture: async (g: GestureArgs) => {
       taps.push(g);
       opts.onGesture?.(g);
       return { ok: true as const, data: { ok: true } };
     },
-    performGlobalAction: async () => ({ ok: true as const, data: { ok: true } }),
+    performGlobalAction: async () => ({
+      ok: true as const,
+      data: { ok: true },
+    }),
     setText: async () => ({ ok: true as const, data: { ok: true } }),
     enumerateApps: () => stub(),
     getMemoryPressureSnapshot: () => stub(),
@@ -111,7 +120,8 @@ function makeFakeBridge(opts: FakeAndroidBridgeOpts = {}): {
       return { ok: true as const, data: { ok: true } };
     },
     startCamera: () => stub(),
-    stopCamera: () => Promise.resolve({ ok: true as const, data: { ok: true } }),
+    stopCamera: () =>
+      Promise.resolve({ ok: true as const, data: { ok: true } }),
     captureFrameCamera: () => stub(),
   } as unknown as AndroidComputerUseBridge;
   return { bridge, taps, pressureEvents };
@@ -172,13 +182,22 @@ describe("Mobile cascade — end-to-end scene → brain → dispatch → tap", (
           scene_summary: "Save button visible",
           target_display_id: ANDROID_LOGICAL_DISPLAY_ID,
           roi: [],
-          proposed_action: { kind: "click", ref: "a0-1", rationale: "tap save" },
+          proposed_action: {
+            kind: "click",
+            ref: "a0-1",
+            rationale: "tap save",
+          },
         }),
     });
     const cascade = new Cascade({ brain, actor });
     const captures = new Map();
-    for (const c of await capture.captureAllDisplays()) captures.set(c.display.id, c);
-    const cascadeResult = await cascade.run({ scene, goal: "save the document", captures });
+    for (const c of await capture.captureAllDisplays())
+      captures.set(c.display.id, c);
+    const cascadeResult = await cascade.run({
+      scene,
+      goal: "save the document",
+      captures,
+    });
     expect(cascadeResult.proposed.kind).toBe("click");
     // bbox [200, 400, 200, 80] → center (300, 440)
     expect(cascadeResult.proposed.x).toBe(300);
@@ -209,7 +228,11 @@ describe("Mobile cascade — end-to-end scene → brain → dispatch → tap", (
             scene_summary: "Save button visible",
             target_display_id: ANDROID_LOGICAL_DISPLAY_ID,
             roi: [],
-            proposed_action: { kind: "click", ref: "a0-1", rationale: "tap save" },
+            proposed_action: {
+              kind: "click",
+              ref: "a0-1",
+              rationale: "tap save",
+            },
           });
         }
         return JSON.stringify({
@@ -242,14 +265,16 @@ describe("Mobile cascade — end-to-end scene → brain → dispatch → tap", (
   it("propagates a tap-failed bridge result as `reason: error`", async () => {
     const baseScene = buildScene();
     const failingBridge: AndroidComputerUseBridge = {
-      ...(makeFakeBridge().bridge),
+      ...makeFakeBridge().bridge,
       dispatchGesture: async () => ({
         ok: false,
         code: "accessibility_unavailable",
         message: "service off",
       }),
     } as AndroidComputerUseBridge;
-    const capture = new MobileScreenCaptureSource({ getBridge: () => failingBridge });
+    const capture = new MobileScreenCaptureSource({
+      getBridge: () => failingBridge,
+    });
     const computer = new MobileComputerInterface({
       getBridge: () => failingBridge,
       getDisplay: () => androidDisplay(),
@@ -261,7 +286,11 @@ describe("Mobile cascade — end-to-end scene → brain → dispatch → tap", (
           scene_summary: "S",
           target_display_id: ANDROID_LOGICAL_DISPLAY_ID,
           roi: [],
-          proposed_action: { kind: "click", ref: "a0-1", rationale: "tap save" },
+          proposed_action: {
+            kind: "click",
+            ref: "a0-1",
+            rationale: "tap save",
+          },
         }),
     });
     const report = await runComputerUseAgentLoop(
@@ -315,7 +344,10 @@ describe("Mobile cascade — onTrimMemory → arbiter eviction → Brain reload"
         // trim event from the bridge → JS layer.
         if (!pressureTriggered) {
           pressureTriggered = true;
-          await bridge.dispatchMemoryPressure({ level: "critical", freeMb: 32 });
+          await bridge.dispatchMemoryPressure({
+            level: "critical",
+            freeMb: 32,
+          });
         }
         // If the vision-describe model was evicted, the next Brain call
         // must reload it before responding — we model that as a Promise
@@ -335,7 +367,8 @@ describe("Mobile cascade — onTrimMemory → arbiter eviction → Brain reload"
 
     const cascade = new Cascade({ brain });
     const captures = new Map();
-    for (const c of await capture.captureAllDisplays()) captures.set(c.display.id, c);
+    for (const c of await capture.captureAllDisplays())
+      captures.set(c.display.id, c);
     // First run: triggers the trim event after the model call.
     await cascade.run({ scene, goal: "g", captures });
     // Second run: must re-invoke the Brain (reload path).

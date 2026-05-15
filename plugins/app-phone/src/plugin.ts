@@ -40,3 +40,5 @@ export const appPhonePlugin: Plugin = {
 };
 
 export default appPhonePlugin;
+
+export { phoneCallLogProvider } from "./providers/call-log";
