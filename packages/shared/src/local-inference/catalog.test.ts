@@ -21,14 +21,17 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("returns the mobile OmniVoice ladder for small tiers", () => {
-    const expected: OmniVoiceQuantLevel[] = ["Q3_K_M", "Q4_K_M", "Q5_K_M"];
+  it("returns a narrow OmniVoice ladder for small tiers", () => {
     for (const id of SMALL_TIERS) {
-      expect(voiceQuantLadderForTier(id)).toEqual(expected);
+      expect(voiceQuantLadderForTier(id)).toEqual([
+        "Q3_K_M",
+        "Q4_K_M",
+        "Q5_K_M",
+      ]);
     }
   });
 
-  it("returns the full Q3..Q8 ladder for large OmniVoice tiers", () => {
+  it("returns the full Q3..Q8 ladder for OmniVoice tiers", () => {
     const expected: OmniVoiceQuantLevel[] = [
       "Q3_K_M",
       "Q4_K_M",
