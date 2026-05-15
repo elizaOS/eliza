@@ -242,7 +242,7 @@ def insert_into_voice_models_ts(
     idx = ts_text.find(anchor)
     if idx == -1:
         raise RuntimeError(
-            f"VOICE_MODEL_VERSIONS anchor not found in voice-models.ts"
+            "VOICE_MODEL_VERSIONS anchor not found in voice-models.ts"
         )
     insert_at = idx + len(anchor)
     # Walk past trailing whitespace and one newline so we land immediately

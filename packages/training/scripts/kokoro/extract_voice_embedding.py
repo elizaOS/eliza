@@ -428,7 +428,7 @@ def _extract_with_style_encoder(args: argparse.Namespace, clips: list[Path]) -> 
 def _extract_with_kokoro(args: argparse.Namespace) -> int:
     try:
         import numpy as np  # noqa: PLC0415
-        import torch  # noqa: PLC0415
+        import torch  # noqa: F401, PLC0415
     except ImportError as exc:
         raise SystemExit(
             "Real extraction needs torch + the `kokoro` package. Install via "
