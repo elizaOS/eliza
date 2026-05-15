@@ -172,6 +172,17 @@ export { runBenchmark } from "./cli/benchmark.ts";
 export { CharacterSchema } from "./config/character-schema.ts";
 export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
 export * from "./config/index.ts";
+// === Phase 4F: plugin-routes / plugins-compat-routes moved to
+// @elizaos/plugin-registry — re-export internal helpers they consume so the
+// plugin can stay free of `agent/src/...` deep imports.
+export {
+  getPluginWidgets,
+  type PluginWidgetDeclarationServer,
+} from "./config/plugin-widgets.ts";
+export {
+  type PluginParamInfo,
+  validatePluginConfig,
+} from "./api/plugin-validation.ts";
 export { resolveUserPath } from "./config/paths.ts";
 // `contracts/awareness.js` adds the local-only (non-shared) contract surface.
 // Config media/custom-action contract types are exported from `./config/index.js`
