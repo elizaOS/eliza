@@ -63,7 +63,7 @@ export function normalizeTokenUsage(usage: unknown): NormalizedUsage | null {
   };
 }
 
-function estimateTokenCount(text: string): number {
+export function estimateTokenCount(text: string): number {
   return text.length === 0 ? 0 : Math.ceil(text.length / 4);
 }
 

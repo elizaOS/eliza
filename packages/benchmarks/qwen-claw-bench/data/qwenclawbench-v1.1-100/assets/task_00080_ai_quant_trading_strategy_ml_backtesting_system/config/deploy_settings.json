@@ -11,7 +11,7 @@
   "logging_level": "INFO",
   "heartbeat_interval_sec": 60,
   "auto_shutdown_on_drawdown": true,
-  "drawdown_threshold": -0.10,
+  "drawdown_threshold": -0.1,
   "_comment": "Backtest params below mirror live-trading scale; use these when validating backtests against production conditions",
   "backtest_params": {
     "initial_capital": 250000,

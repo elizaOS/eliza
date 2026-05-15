@@ -8,7 +8,6 @@ network calls. The actual ONNX byte transfer is mocked by patching
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 from typing import Any
@@ -88,7 +87,7 @@ def test_stage_turn_detector_livekit_intl_for_desktop_tiers(
 ) -> None:
     bundle_dir = tmp_path / "bundle"
     bundle_dir.mkdir()
-    for tier in ("4b", "9b", "27b", "27b-256k"):
+    for tier in ("4b", "9b", "27b", "27b-256k", "27b-1m"):
         _patch_copy.clear()
         report = stage.stage_turn_detector(
             tier=tier,

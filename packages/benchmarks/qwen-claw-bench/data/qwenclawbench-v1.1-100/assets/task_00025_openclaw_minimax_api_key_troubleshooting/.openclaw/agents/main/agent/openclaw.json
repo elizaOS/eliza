@@ -10,9 +10,7 @@
     "defaults": {
       "model": {
         "primary": "minimax/MiniMax-M2.5",
-        "fallbacks": [
-          "alibaba-cloud/qwen3-max-2026-01-23"
-        ]
+        "fallbacks": ["alibaba-cloud/qwen3-max-2026-01-23"]
       },
       "models": {
         "minimax/MiniMax-M2.5": { "alias": "minimax" },
@@ -35,7 +33,12 @@
             "name": "MiniMax M2.5",
             "reasoning": true,
             "input": ["text"],
-            "cost": { "input": 0.3, "output": 1.2, "cacheRead": 0.03, "cacheWrite": 0.12 },
+            "cost": {
+              "input": 0.3,
+              "output": 1.2,
+              "cacheRead": 0.03,
+              "cacheWrite": 0.12
+            },
             "contextWindow": 200000,
             "maxTokens": 8192
           }

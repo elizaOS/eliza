@@ -108,10 +108,7 @@ export type InboxFetcher = (args: {
   query?: string;
 }) => Promise<readonly InboxItem[]>;
 
-export type InboxFetchers = Record<
-  InboxPlatform,
-  InboxFetcher
->;
+export type InboxFetchers = Record<InboxPlatform, InboxFetcher>;
 
 const noopFetcher: InboxFetcher = async () => [];
 
@@ -127,9 +124,7 @@ const defaultFetchers: InboxFetchers = {
 
 let activeFetchers: InboxFetchers = { ...defaultFetchers };
 
-export function setInboxFetchers(
-  next: Partial<InboxFetchers>,
-): void {
+export function setInboxFetchers(next: Partial<InboxFetchers>): void {
   activeFetchers = { ...activeFetchers, ...next };
 }
 
@@ -137,9 +132,7 @@ export function __resetInboxFetchersForTests(): void {
   activeFetchers = { ...defaultFetchers };
 }
 
-function getParams(
-  options: HandlerOptions | undefined,
-): InboxActionParameters {
+function getParams(options: HandlerOptions | undefined): InboxActionParameters {
   const raw = (options as HandlerOptions | undefined)?.parameters;
   if (raw && typeof raw === "object") {
     return raw as InboxActionParameters;
@@ -157,9 +150,7 @@ function normalizeSubaction(value: unknown): Subaction | null {
     : null;
 }
 
-function resolveSubaction(
-  params: InboxActionParameters,
-): Subaction | null {
+function resolveSubaction(params: InboxActionParameters): Subaction | null {
   return (
     normalizeSubaction(params.subaction) ??
     normalizeSubaction(params.action) ??
@@ -196,9 +187,7 @@ function dedupeKey(item: InboxItem): string {
   return `id:${item.platform}::${item.id}`;
 }
 
-function dedupeAndOrder(
-  items: readonly InboxItem[],
-): readonly InboxItem[] {
+function dedupeAndOrder(items: readonly InboxItem[]): readonly InboxItem[] {
   const seen = new Map<string, InboxItem>();
   for (const item of items) {
     const key = dedupeKey(item);
@@ -391,8 +380,7 @@ export const inboxAction: Action & {
     );
     const flat = fetched.flat();
     const merged = dedupeAndOrder(flat);
-    const items: readonly InboxItem[] =
-      subaction === "summarize" ? [] : merged;
+    const items: readonly InboxItem[] = subaction === "summarize" ? [] : merged;
     const summary: readonly InboxSummaryEntry[] | undefined =
       subaction === "summarize" ? buildSummary(merged, platforms) : undefined;
 

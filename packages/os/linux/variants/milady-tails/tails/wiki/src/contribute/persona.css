@@ -1,11 +1,14 @@
-#summary, #details {
+#summary,
+#details {
   display: flex;
   flex-wrap: wrap;
   gap: 30px;
   align-items: center;
 }
 
-#image, #side, #details div {
+#image,
+#side,
+#details div {
   flex-basis: calc(50% - 15px);
 }
 
@@ -15,13 +18,14 @@ blockquote {
 }
 
 blockquote:before {
-  content: '« ';
+  content: "« ";
 }
 
 blockquote:after {
-  content: ' »';
+  content: " »";
 }
 
-#bio, #primary {
+#bio,
+#primary {
   font-weight: 600;
 }

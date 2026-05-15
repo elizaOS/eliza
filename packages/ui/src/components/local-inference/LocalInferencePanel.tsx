@@ -1,3 +1,4 @@
+import type { VoiceModelId } from "@elizaos/shared";
 import { CheckCircle2, Play } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { client } from "../../api";
@@ -25,10 +26,11 @@ import { FirstRunOffer } from "./FirstRunOffer";
 import { HardwareBadge } from "./HardwareBadge";
 import { displayModelName } from "./hub-utils";
 import { ModelHubView } from "./ModelHubView";
-import {
-  ModelUpdatesPanel,
-  useStaticVoiceUpdatePreferences,
+import type {
+  VoiceModelInstallationView,
+  VoiceUpdatePreferencesView,
 } from "./ModelUpdatesPanel";
+import { ModelUpdatesPanel } from "./ModelUpdatesPanel";
 import { SlotAssignments } from "./SlotAssignments";
 import { useDeviceBridgeStatus } from "./useDeviceBridgeStatus";
 
@@ -481,46 +483,138 @@ function appendTokenParam(url: string): string {
 /**
  * Voice sub-model auto-updater UI section (R5-versioning §5).
  *
- * The section is currently driven by the in-binary VOICE_MODEL_VERSIONS
- * catalog only. The live status / pin / update actions hit the
- * /api/local-inference/voice-models/* routes once those are mounted in
- * plugin-local-inference's compat-routes layer. Until then the buttons
- * surface but no-op via the warn-on-failure handlers so the UI is
- * inspectable in dev and storybooks.
+ * Driven by the live `/api/local-inference/voice-models/*` compat routes
+ * exposed by `plugin-local-inference/src/routes/voice-models-routes.ts`.
+ * The routes resolve installed versions from `<state-dir>/models/voice/`,
+ * walk the Cloud → GitHub → HF cascade for updates, and gate downloads
+ * on the network policy decision. Preferences land at
+ * `<state-dir>/local-inference/voice-update-prefs.json` and the
+ * cellular/metered toggles are OWNER-only.
  */
 function VoiceModelUpdatesSection() {
-  const { preferences, setPreferences } = useStaticVoiceUpdatePreferences();
+  const [preferences, setPreferences] = useState<VoiceUpdatePreferencesView>({
+    autoUpdateOnWifi: true,
+    autoUpdateOnCellular: false,
+    autoUpdateOnMetered: false,
+  });
+  const [isOwner, setIsOwner] = useState(false);
+  const [installations, setInstallations] = useState<
+    ReadonlyArray<VoiceModelInstallationView>
+  >([]);
   const [lastCheckedAt, setLastCheckedAt] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
-  const onCheckNow = useCallback(() => {
+  // Bootstrap from the live API.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [prefsResp, listResp] = await Promise.all([
+          client.getVoiceModelPreferences(),
+          client.listVoiceModels(),
+        ]);
+        if (cancelled) return;
+        setPreferences({
+          autoUpdateOnWifi: prefsResp.preferences.autoUpdateOnWifi,
+          autoUpdateOnCellular: prefsResp.preferences.autoUpdateOnCellular,
+          autoUpdateOnMetered: prefsResp.preferences.autoUpdateOnMetered,
+        });
+        setIsOwner(prefsResp.isOwner);
+        setInstallations(
+          listResp.installations.map((i) => ({
+            id: i.id,
+            installedVersion: i.installedVersion,
+            pinned: i.pinned,
+            lastError: i.lastError,
+          })),
+        );
+      } catch (err) {
+        console.warn("[voice-models] bootstrap failed", err);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onCheckNow = useCallback(async () => {
     setChecking(true);
-    setLastCheckedAt(new Date().toISOString());
-    // The runtime tick is in plugin-local-inference. When the compat route
-    // /api/local-inference/voice-models/check lands, swap this no-op for
-    // an actual fetch.
-    setTimeout(() => setChecking(false), 250);
+    try {
+      const res = await client.checkVoiceModelUpdates({ force: true });
+      setLastCheckedAt(res.lastCheckedAt);
+      const list = await client.listVoiceModels();
+      setInstallations(list.installations);
+    } catch (err) {
+      console.warn("[voice-models] check failed", err);
+    } finally {
+      setChecking(false);
+    }
   }, []);
 
-  const onUpdateNow = useCallback(() => {
-    /* mount route once /api/local-inference/voice-models/update lands */
+  const onUpdateNow = useCallback(async (id: VoiceModelId) => {
+    try {
+      await client.triggerVoiceModelUpdate(id);
+      const list = await client.listVoiceModels();
+      setInstallations(list.installations);
+    } catch (err) {
+      console.warn("[voice-models] update failed", err);
+    }
   }, []);
 
-  const onTogglePin = useCallback(() => {
-    /* mount route once /api/local-inference/voice-models/pin lands */
+  const onTogglePin = useCallback(async (id: VoiceModelId, pinned: boolean) => {
+    try {
+      await client.pinVoiceModel(id, pinned);
+      const list = await client.listVoiceModels();
+      setInstallations(list.installations);
+    } catch (err) {
+      console.warn("[voice-models] pin failed", err);
+    }
   }, []);
+
+  const onSetPreferences = useCallback(
+    async (next: VoiceUpdatePreferencesView) => {
+      // Optimistic update — revert on failure so the OWNER gate's 403 is visible.
+      setPreferences(next);
+      try {
+        const res = await client.setVoiceModelPreferences({
+          autoUpdateOnWifi: next.autoUpdateOnWifi,
+          autoUpdateOnCellular: next.autoUpdateOnCellular,
+          autoUpdateOnMetered: next.autoUpdateOnMetered,
+        });
+        setPreferences({
+          autoUpdateOnWifi: res.preferences.autoUpdateOnWifi,
+          autoUpdateOnCellular: res.preferences.autoUpdateOnCellular,
+          autoUpdateOnMetered: res.preferences.autoUpdateOnMetered,
+        });
+      } catch (err) {
+        console.warn("[voice-models] setPreferences failed", err);
+        // Refresh server state to undo the optimistic flip.
+        try {
+          const refreshed = await client.getVoiceModelPreferences();
+          setPreferences({
+            autoUpdateOnWifi: refreshed.preferences.autoUpdateOnWifi,
+            autoUpdateOnCellular: refreshed.preferences.autoUpdateOnCellular,
+            autoUpdateOnMetered: refreshed.preferences.autoUpdateOnMetered,
+          });
+        } catch {
+          /* ignore — UI keeps the optimistic value */
+        }
+      }
+    },
+    [],
+  );
 
   return (
     <ModelUpdatesPanel
-      installations={[]}
+      installations={installations}
       preferences={preferences}
-      isOwner={false}
+      isOwner={isOwner}
       lastCheckedAt={lastCheckedAt}
       checking={checking}
       onCheckNow={onCheckNow}
       onUpdateNow={onUpdateNow}
       onTogglePin={onTogglePin}
-      onSetPreferences={setPreferences}
+      onSetPreferences={onSetPreferences}
     />
   );
 }

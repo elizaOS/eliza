@@ -26,7 +26,7 @@
 #       --tier 9b \
 #       --allow-gate-fail "tracked under <issue/PR url>"
 #
-# Tiers must match the Eliza-1 catalog set: 0_8b 2b 4b 9b 27b 27b-256k.
+# Tiers must match the Eliza-1 catalog set: 0_8b 2b 4b 9b 27b 27b-256k 27b-1m.
 
 set -euo pipefail
 
@@ -37,7 +37,7 @@ readonly TRAINING_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 # `packages/shared/src/local-inference/catalog.ts` and with the manifest
 # module at `packages/training/scripts/manifest/eliza1_manifest.py:38-46`.
 # R7 §"side bugs" flagged the prior `4b` omission as a publish-blocking bug.
-readonly VALID_TIERS=("0_8b" "2b" "4b" "9b" "27b" "27b-256k")
+readonly VALID_TIERS=("0_8b" "2b" "4b" "9b" "27b" "27b-256k" "27b-1m")
 
 RELEASE_DIR=""
 BUNDLES_ROOT=""
@@ -130,6 +130,45 @@ cp -p "$RELEASE_DIR/kokoro.onnx" "$DEST/kokoro.onnx"
 cp -p "$RELEASE_DIR/voice-preset.json" "$DEST/voice-preset.json"
 cp -p "$RELEASE_DIR/manifest-fragment.json" "$DEST/manifest-fragment.json"
 cp -p "$RELEASE_DIR/eval.json" "$DEST/eval.json"
+
+# Append a new row to `VOICE_MODEL_VERSIONS` (machine twin) and a matching
+# H3 to `models/voice/CHANGELOG.md` (human-readable). The helper is
+# idempotent — re-running with the same (id, version) is a no-op.
+#
+# Inputs are derived from manifest-fragment.json + voice-preset.json so the
+# helper sees exactly what's been staged into the bundle. We default the id
+# to `kokoro` because this script is kokoro-specific; sub-model ids for the
+# other publish flows wire in their own helpers separately.
+APPEND_HELPER="${TRAINING_ROOT}/scripts/append_voice_model_version.py"
+if [ -x "$APPEND_HELPER" ] || command -v python3 >/dev/null; then
+  VERSION=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m['voice'].get('version','0.1.0'))" "$RELEASE_DIR/manifest-fragment.json")
+  PARENT_VERSION=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m['voice'].get('parentVersion',''))" "$RELEASE_DIR/manifest-fragment.json")
+  VOICE_BIN_SHA=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m.get('blob',{}).get('sha256',''))" "$RELEASE_DIR/voice-preset.json")
+  VOICE_BIN_SIZE=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m.get('blob',{}).get('sizeBytes','0'))" "$RELEASE_DIR/voice-preset.json")
+  VOICE_BIN_FILE=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m.get('blob',{}).get('filename','voice.bin'))" "$RELEASE_DIR/voice-preset.json")
+  HF_REPO=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m['voice'].get('hfRepo','elizaOS/eliza-1-voice-kokoro-samantha'))" "$RELEASE_DIR/manifest-fragment.json")
+  HF_REV=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m['voice'].get('hfRevision','main'))" "$RELEASE_DIR/manifest-fragment.json")
+  CHANGELOG_ENTRY=$(python3 -c "import json,sys; m=json.load(open(sys.argv[1])); print(m['voice'].get('changelogEntry', f\"Kokoro samantha clone v{m['voice'].get('version','?')}.\"))" "$RELEASE_DIR/manifest-fragment.json")
+
+  EXTRA_FLAGS=()
+  if [ -n "$PARENT_VERSION" ]; then
+    EXTRA_FLAGS+=("--parent-version" "$PARENT_VERSION" "--net-improvement" "true")
+  fi
+  if [ -n "$VOICE_BIN_SHA" ]; then
+    EXTRA_FLAGS+=("--asset" "${VOICE_BIN_FILE}:${VOICE_BIN_SHA}:${VOICE_BIN_SIZE}:fp16")
+  fi
+
+  python3 "$APPEND_HELPER" \
+    --id kokoro \
+    --version "$VERSION" \
+    --hf-repo "$HF_REPO" \
+    --hf-revision "$HF_REV" \
+    --min-bundle "0.0.0" \
+    --changelog-entry "$CHANGELOG_ENTRY" \
+    --append-changelog \
+    "${EXTRA_FLAGS[@]}" \
+    || echo "WARNING: append_voice_model_version.py failed; review manually." >&2
+fi
 
 cat <<EOF
 

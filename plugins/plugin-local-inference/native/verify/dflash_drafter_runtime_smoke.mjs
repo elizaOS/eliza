@@ -37,20 +37,6 @@ const DEFAULT_BIN = path.join(
   "darwin-arm64-metal",
   "llama-speculative-simple",
 );
-const ACTIVE_DFLASH_TIERS = new Set([
-  "0_8b",
-  "2b",
-  "4b",
-  "9b",
-  "27b",
-  "27b-256k",
-  "27b-1m",
-]);
-const DFLASH_DISABLED_TIERS = new Set(["0_8b"]);
-const DFLASH_DISABLED_REASONS = {
-  "0_8b":
-    "The 0_8b target is already the smallest Qwen3.5 text tier; a same-size DFlash drafter duplicates resident memory and has poor speedup economics.",
-};
 
 function timestamp() {
   return new Date()
@@ -98,8 +84,6 @@ function parseArgs(argv) {
         "dflash-bench",
         `dflash-bench-${timestamp()}.json`,
       ),
-    tier: process.env.ELIZA_DFLASH_TIER || "0_8b",
-    dflashPolicy: process.env.ELIZA_DFLASH_POLICY || "auto",
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -128,8 +112,6 @@ function parseArgs(argv) {
     else if (arg === "--bench-tokens")
       args.benchTokens = Number.parseInt(next(), 10);
     else if (arg === "--bench-report") args.benchReport = next();
-    else if (arg === "--tier") args.tier = next();
-    else if (arg === "--dflash-policy") args.dflashPolicy = next();
     else if (arg === "--help" || arg === "-h") {
       console.log(
         [
@@ -154,8 +136,6 @@ function parseArgs(argv) {
           "                                 record tok/s + DFlash acceptance rate to a speedup report",
           "  --bench-tokens <N>             Tokens to generate per bench run (default: 128)",
           "  --bench-report <path>          Speedup report JSON path (default: packages/inference/reports/dflash-bench/)",
-          "  --tier <tier>                  Eliza-1 tier policy to apply (default: 0_8b)",
-          "  --dflash-policy <auto|required|disabled>",
         ].join("\n"),
       );
       process.exit(0);
@@ -164,34 +144,7 @@ function parseArgs(argv) {
     }
   }
 
-  args.tier = normalizeTier(args.tier);
-  if (!ACTIVE_DFLASH_TIERS.has(args.tier)) {
-    throw new Error(`unknown Eliza-1 tier for DFlash policy: ${args.tier}`);
-  }
-  if (!["auto", "required", "disabled"].includes(args.dflashPolicy)) {
-    throw new Error(
-      `unknown --dflash-policy ${args.dflashPolicy}; expected auto|required|disabled`,
-    );
-  }
   return args;
-}
-
-function normalizeTier(value) {
-  return String(value || "")
-    .replace(/^eliza-1-/, "")
-    .trim();
-}
-
-function optionalModelPath(value) {
-  const normalized = String(value || "").trim();
-  return ["", "none", "null", "disabled"].includes(normalized.toLowerCase())
-    ? ""
-    : normalized;
-}
-
-function resolvedDflashPolicy(args) {
-  if (args.dflashPolicy !== "auto") return args.dflashPolicy;
-  return DFLASH_DISABLED_TIERS.has(args.tier) ? "disabled" : "required";
 }
 
 function escapeRegExp(value) {
@@ -1166,94 +1119,8 @@ function runDflashBench(args) {
   return report;
 }
 
-function buildDisabledPolicyReport(args) {
-  const targetModel = optionalModelPath(args.targetModel);
-  const drafterModel = optionalModelPath(args.drafterModel);
-  const targetExists = targetModel && fs.existsSync(targetModel);
-  const drafterExists = drafterModel && fs.existsSync(drafterModel);
-  const parsedTarget = targetExists ? parseGguf(targetModel) : null;
-  const targetMetaProbe = targetExists
-    ? drafterModel ||
-      path.join(
-        path.dirname(path.dirname(targetModel)),
-        "dflash",
-        `drafter-${args.tier}.gguf`,
-      )
-    : "";
-  const targetMeta =
-    targetExists && targetMetaProbe
-      ? readTargetMeta(targetModel, targetMetaProbe)
-      : { file: null, status: "not_required", data: null };
-  const policyFailures = [];
-  if (drafterExists) {
-    policyFailures.push(
-      `DFlash is disabled for tier ${args.tier}; drafter artifact must be omitted instead of shipped as a fake drafter: ${drafterModel}`,
-    );
-  }
-  const report = {
-    generatedAt: new Date().toISOString(),
-    verifier: path.relative(process.cwd(), __filename),
-    tier: args.tier,
-    dflashPolicy: "disabled",
-    targetModel: targetModel || null,
-    drafterModel: drafterModel || null,
-    checks: {
-      dflashDisabled: true,
-      targetPresent: Boolean(targetExists),
-      noDrafterArtifact: !drafterExists,
-      releaseEligibleWithoutDrafter: true,
-    },
-    metadata: {
-      target: parsedTarget
-        ? {
-            version: parsedTarget.version,
-            tensorCount: parsedTarget.tensorCount,
-            kvCount: parsedTarget.kvCount,
-            architecture: parsedTarget.metadata["general.architecture"],
-            name: parsedTarget.metadata["general.name"],
-          }
-        : null,
-      targetMeta,
-      policy: {
-        status: "disabled",
-        releaseMode: "fail-open-no-drafter",
-        requiresDrafter: false,
-        artifactManifestPath: `dflash/dflash-disabled-${args.tier}.release-policy.json`,
-        forbiddenArtifacts: [`dflash/drafter-${args.tier}.gguf`],
-        reason:
-          DFLASH_DISABLED_REASONS[args.tier] ||
-          "DFlash is disabled for this tier by release policy.",
-      },
-    },
-    runtimePolicy: {
-      requiresTrueDflashDrafting: false,
-      reason: "DFlash disabled by release policy; runtime must use normal target decoding",
-    },
-    runtime: [],
-    metadataStatus:
-      policyFailures.length === 0 ? "dflash_disabled" : "policy_violation",
-    metadataFailures: policyFailures,
-  };
-  return report;
-}
-
 function main() {
   const args = parseArgs(process.argv.slice(2));
-  args.targetModel = optionalModelPath(args.targetModel);
-  args.drafterModel = optionalModelPath(args.drafterModel);
-  const dflashPolicy = resolvedDflashPolicy(args);
-  if (dflashPolicy === "disabled") {
-    const report = buildDisabledPolicyReport(args);
-    fs.mkdirSync(path.dirname(args.report), { recursive: true });
-    fs.writeFileSync(args.report, `${JSON.stringify(report, null, 2)}\n`);
-    console.log(`wrote ${args.report}`);
-    console.log(`metadataStatus=${report.metadataStatus}`);
-    if (report.metadataFailures.length > 0) {
-      for (const failure of report.metadataFailures) console.log(failure);
-      process.exit(1);
-    }
-    return;
-  }
   const installedCliFeatures = detectCliFeatures(args.specBinary);
   const referenceCliFeatures = args.referenceBinary
     ? detectCliFeatures(args.referenceBinary, args.referenceLibraryPath)
@@ -1261,8 +1128,6 @@ function main() {
   const report = {
     generatedAt: new Date().toISOString(),
     verifier: path.relative(process.cwd(), __filename),
-    tier: args.tier,
-    dflashPolicy,
     targetModel: args.targetModel,
     drafterModel: args.drafterModel,
     cliFeatures: {

@@ -334,14 +334,14 @@ async function startIosBridgeBackend(): Promise<IosBridgeBackend> {
     (process.env.HOME
       ? `${process.env.HOME}/Library/Application Support/Eliza/workspace`
       : "/tmp/eliza-workspace");
-  process.env.ELIZA_PLATFORM = process.env.ELIZA_PLATFORM || "ios";
-  process.env.ELIZA_MOBILE_PLATFORM =
-    process.env.ELIZA_MOBILE_PLATFORM || "ios";
   installMobileFsShim(mobileWorkspaceRoot);
 
   (
     globalThis as { __ELIZA_DISABLE_DIRECT_RUN?: boolean }
   ).__ELIZA_DISABLE_DIRECT_RUN = true;
+  process.env.ELIZA_PLATFORM = process.env.ELIZA_PLATFORM || "ios";
+  process.env.ELIZA_MOBILE_PLATFORM =
+    process.env.ELIZA_MOBILE_PLATFORM || "ios";
   process.env.ELIZA_IOS_LOCAL_BACKEND =
     process.env.ELIZA_IOS_LOCAL_BACKEND || "1";
   process.env.ELIZA_DISABLE_DIRECT_RUN =

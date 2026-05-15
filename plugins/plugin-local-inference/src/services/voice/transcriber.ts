@@ -31,7 +31,6 @@
  * not the local-inference contract we ship.
  */
 
-import { attributeVoiceEmotion } from "./emotion-attribution";
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
@@ -75,7 +74,6 @@ export class AsrUnavailableError extends Error {
 
 const WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}'-]*/gu;
 const VAD_PREROLL_MAX_FRAMES = 10;
-const EMOTION_AUDIO_MAX_SAMPLES = ASR_SAMPLE_RATE * 60;
 
 function extractWords(text: string): string[] {
 	const out = text.match(WORD_RE);
@@ -116,7 +114,6 @@ export function resampleLinear(
 export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
 	private readonly listeners = new Set<TranscriberEventListener>();
 	private metadata: TranscriptMetadataDefaults;
-	private segmentPcm16k: Float32Array = new Float32Array(0);
 	/** True between `speech-start`/first-frame and the next `flush()`. */
 	protected segmentOpen = false;
 	/** Latched once `words` is emitted for the current segment. */
@@ -166,7 +163,6 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
 			this.segmentOpen = true;
 			this.wordsEmitted = false;
 		}
-		this.rememberSegmentAudio(frame);
 		this.onFrame(frame);
 	}
 
@@ -174,23 +170,16 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
 		if (this.disposed) {
 			throw new Error("[asr] flush() called on a disposed transcriber");
 		}
-		try {
-			const update = this.withMetadata(
-				this.withVoiceEmotion(await this.onFlush()),
-			);
-			this.segmentOpen = false;
-			this.wordsEmitted = false;
-			this.emit({ kind: "final", update });
-			return update;
-		} finally {
-			this.segmentPcm16k = new Float32Array(0);
-		}
+		const update = this.withMetadata(await this.onFlush());
+		this.segmentOpen = false;
+		this.wordsEmitted = false;
+		this.emit({ kind: "final", update });
+		return update;
 	}
 
 	dispose(): void {
 		if (this.disposed) return;
 		this.disposed = true;
-		this.segmentPcm16k = new Float32Array(0);
 		this.vadUnsub?.();
 		this.vadUnsub = null;
 		this.listeners.clear();
@@ -221,10 +210,7 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
 			this.segmentOpen = true;
 			this.wordsEmitted = false;
 		}
-		for (const frame of frames) {
-			this.rememberSegmentAudio(frame);
-			this.onFrame(frame);
-		}
+		for (const frame of frames) this.onFrame(frame);
 	}
 
 	/** Emit a running-partial event and (the first time it has words) a `words` event. */
@@ -278,43 +264,6 @@ export abstract class BaseStreamingTranscriber implements StreamingTranscriber {
 		};
 	}
 
-	private rememberSegmentAudio(frame: PcmFrame): void {
-		const pcm16k = resampleLinear(frame.pcm, frame.sampleRate, ASR_SAMPLE_RATE);
-		const merged = concatFloat32(this.segmentPcm16k, pcm16k);
-		if (merged.length <= EMOTION_AUDIO_MAX_SAMPLES) {
-			this.segmentPcm16k = merged;
-			return;
-		}
-		this.segmentPcm16k = merged.slice(
-			merged.length - EMOTION_AUDIO_MAX_SAMPLES,
-		);
-	}
-
-	private withVoiceEmotion(update: TranscriptUpdate): TranscriptUpdate {
-		if (!update.isFinal || update.voiceEmotion) return update;
-		const audio =
-			this.segmentPcm16k.length > 0
-				? audioFeaturesFromPcm16k(this.segmentPcm16k)
-				: undefined;
-		const asrMetadata = update as TranscriptUpdate & {
-			emotionLabel?: string | null;
-			emotion?: string | null;
-			emotionLabelSupported?: boolean;
-		};
-		return {
-			...update,
-			voiceEmotion: attributeVoiceEmotion({
-				text: update.partial,
-				asr: {
-					transcript: update.partial,
-					emotionLabel: asrMetadata.emotionLabel ?? asrMetadata.emotion ?? null,
-					emotionLabelSupported: asrMetadata.emotionLabelSupported === true,
-				},
-				...(audio ? { audio } : {}),
-			}),
-		};
-	}
-
 	private emit(event: TranscriberEvent): void {
 		for (const l of this.listeners) l(event);
 	}
@@ -347,29 +296,6 @@ export interface TranscriptMetadataDefaults {
 	source?: VoiceInputSource;
 	speaker?: VoiceSpeaker;
 	turn?: VoiceTurnMetadata;
-}
-
-function audioFeaturesFromPcm16k(pcm: Float32Array): {
-	durationMs: number;
-	rms: number;
-	zeroCrossingRate: number;
-} {
-	let sumSq = 0;
-	let zeroCrossings = 0;
-	let previousSign = 0;
-	for (const sample of pcm) {
-		sumSq += sample * sample;
-		const sign = sample > 0 ? 1 : sample < 0 ? -1 : previousSign;
-		if (previousSign !== 0 && sign !== 0 && sign !== previousSign) {
-			zeroCrossings += 1;
-		}
-		if (sign !== 0) previousSign = sign;
-	}
-	return {
-		durationMs: (pcm.length / ASR_SAMPLE_RATE) * 1000,
-		rms: Math.sqrt(sumSq / pcm.length),
-		zeroCrossingRate: pcm.length > 1 ? zeroCrossings / (pcm.length - 1) : 0,
-	};
 }
 
 /* ==================================================================== *

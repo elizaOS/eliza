@@ -35,10 +35,7 @@
       "android.intent.action.ASSIST",
       "android.intent.action.VOICE_COMMAND"
     ],
-    "stockAssistantPackagesStripped": [
-      "QuickSearchBox",
-      "SetupWizard"
-    ]
+    "stockAssistantPackagesStripped": ["QuickSearchBox", "SetupWizard"]
   },
   "directBoot": {
     "receiver": "ElizaBootReceiver",

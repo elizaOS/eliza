@@ -24,25 +24,25 @@
  */
 
 export type NnapiUnavailableReason =
-	| "not implemented"
-	| "ort build lacks nnapi ep"
-	| "android api below 27"
-	| "not android"
-	| "probe error";
+  | "not implemented"
+  | "ort build lacks nnapi ep"
+  | "android api below 27"
+  | "not android"
+  | "probe error";
 
 export interface NnapiAvailability {
-	available: boolean;
-	/**
-	 * Human-readable explanation. Present whether `available` is true or
-	 * false so callers can surface it in diagnostics without conditional
-	 * formatting.
-	 */
-	reason: NnapiUnavailableReason | "available";
-	/**
-	 * Android API level the probe observed. `null` when the host is not
-	 * Android or the level could not be determined.
-	 */
-	androidApiLevel: number | null;
+  available: boolean;
+  /**
+   * Human-readable explanation. Present whether `available` is true or
+   * false so callers can surface it in diagnostics without conditional
+   * formatting.
+   */
+  reason: NnapiUnavailableReason | "available";
+  /**
+   * Android API level the probe observed. `null` when the host is not
+   * Android or the level could not be determined.
+   */
+  androidApiLevel: number | null;
 }
 
 /**
@@ -61,9 +61,9 @@ export interface NnapiAvailability {
  * until the wiring PR lands.
  */
 export async function probeNnapiAvailability(): Promise<NnapiAvailability> {
-	return {
-		available: false,
-		reason: "not implemented",
-		androidApiLevel: null,
-	};
+  return {
+    available: false,
+    reason: "not implemented",
+    androidApiLevel: null,
+  };
 }

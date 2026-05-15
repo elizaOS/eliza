@@ -23,27 +23,19 @@
   "family_members": [
     {
       "id": "mom",
-      "skills": [
-        "turkey",
-        "gravy"
-      ],
+      "skills": ["turkey", "gravy"],
       "arrival": "home",
       "flight": null
     },
     {
       "id": "dad",
-      "skills": [
-        "potatoes"
-      ],
+      "skills": ["potatoes"],
       "arrival": "airport",
       "flight": "flight1"
     },
     {
       "id": "sister",
-      "skills": [
-        "vegetables",
-        "dessert"
-      ],
+      "skills": ["vegetables", "dessert"],
       "arrival": "airport",
       "flight": "flight2"
     }
@@ -59,14 +51,8 @@
     }
   },
   "cooking_dependencies": [
-    [
-      "turkey",
-      "gravy"
-    ],
-    [
-      "potatoes",
-      "mashed_potatoes"
-    ]
+    ["turkey", "gravy"],
+    ["potatoes", "mashed_potatoes"]
   ],
   "constraints": {
     "dinner_deadline": "18:00",

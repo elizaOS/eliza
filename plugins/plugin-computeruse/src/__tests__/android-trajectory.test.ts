@@ -7,8 +7,8 @@
  * stays in lock-step with the desktop emitter in `use-computer-agent.ts`.
  */
 
-import { describe, expect, it, vi } from "vitest";
 import { logger } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   emitAndroidAction,
   emitAndroidAgentStep,

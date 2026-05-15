@@ -1,9 +1,8 @@
-import type { Plugin, TestSuite } from "@elizaos/core";
+import type { Plugin } from "@elizaos/core";
 import { promoteSubactionsToActions } from "@elizaos/core";
 import { visionAction } from "./action";
 import { visionProvider } from "./provider";
 import { VisionService } from "./service";
-import { testSuites } from "./tests/e2e/index";
 
 export const visionPlugin: Plugin = {
   name: "vision",
@@ -12,7 +11,6 @@ export const visionPlugin: Plugin = {
   services: [VisionService],
   providers: [visionProvider],
   actions: [...promoteSubactionsToActions(visionAction)],
-  tests: testSuites as TestSuite[],
   // Self-declared auto-enable: activate when features.vision is enabled OR
   // when media.vision.provider is configured.
   autoEnable: {

@@ -291,9 +291,7 @@ function printComparison(results: Map<RuntimeName, BenchmarkResult>): void {
       ];
 
       for (const [label, key] of pipelineMetrics) {
-        const vals = activeRuntimes.map(
-          (rt) => getScenario(rt).pipeline[key],
-        );
+        const vals = activeRuntimes.map((rt) => getScenario(rt).pipeline[key]);
         if (vals.every((v) => v === 0)) continue;
         const _best = Math.min(...vals.filter((v) => v > 0));
         console.log(

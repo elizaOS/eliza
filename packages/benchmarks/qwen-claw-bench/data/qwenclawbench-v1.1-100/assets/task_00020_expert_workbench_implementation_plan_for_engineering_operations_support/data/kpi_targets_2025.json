@@ -164,7 +164,11 @@
   },
   "reporting_schedule": {
     "daily": ["response_times", "resolution_times", "system_uptime"],
-    "weekly": ["expert_utilization", "ai_assisted_resolution", "knowledge_reuse_rate"],
+    "weekly": [
+      "expert_utilization",
+      "ai_assisted_resolution",
+      "knowledge_reuse_rate"
+    ],
     "monthly": ["all_kpis_with_trend_analysis"],
     "quarterly": ["comprehensive_review_with_stakeholder_presentation"]
   }

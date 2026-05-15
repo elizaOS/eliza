@@ -226,7 +226,9 @@ async function captureOne({ browser, uiBase, app, viewportName, viewport }) {
   let interaction = "";
   try {
     await page.goto(url, { waitUntil: "domcontentloaded" });
-    await page.locator(app.ready).waitFor({ state: "visible", timeout: 60_000 });
+    await page
+      .locator(app.ready)
+      .waitFor({ state: "visible", timeout: 60_000 });
     readyOk = true;
     interaction = await interact(page, app.id);
     await page.waitForTimeout(250);
@@ -299,7 +301,8 @@ async function makeContactSheet(records, viewport) {
   for (let index = 0; index < rows.length; index += 1) {
     const record = rows[index];
     const left = gap + (index % columns) * (tileWidth + gap);
-    const top = gap + Math.floor(index / columns) * (tileHeight + labelHeight + gap);
+    const top =
+      gap + Math.floor(index / columns) * (tileHeight + labelHeight + gap);
     const image = await sharp(join(REPORT_DIR, record.screenshotRelPath))
       .resize(tileWidth, tileHeight, { fit: "contain", background: "#09090b" })
       .png()
@@ -348,7 +351,9 @@ async function main() {
     for (const app of APPS) {
       for (const [viewportName, viewport] of Object.entries(VIEWPORTS)) {
         await verifyStaticStack(uiBase);
-        records.push(await captureOne({ browser, uiBase, app, viewportName, viewport }));
+        records.push(
+          await captureOne({ browser, uiBase, app, viewportName, viewport }),
+        );
         await verifyStaticStack(uiBase);
       }
     }
@@ -363,7 +368,10 @@ async function main() {
     records,
     issueSummary: issueSummary(records),
   };
-  await writeFile(join(REPORT_DIR, "report.json"), JSON.stringify(report, null, 2));
+  await writeFile(
+    join(REPORT_DIR, "report.json"),
+    JSON.stringify(report, null, 2),
+  );
   await makeContactSheet(records, "desktop");
   await makeContactSheet(records, "mobile");
   console.log(REPORT_DIR);

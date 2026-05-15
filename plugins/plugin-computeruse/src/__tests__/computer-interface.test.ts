@@ -13,9 +13,9 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  type ComputerInterfaceDeps,
   DefaultComputerInterface,
   makeComputerInterface,
-  type ComputerInterfaceDeps,
 } from "../actor/computer-interface.js";
 import type { DisplayDescriptor } from "../types.js";
 
@@ -137,14 +137,26 @@ describe("DefaultComputerInterface — coord conversions", () => {
   it("rejects zero image dimensions", () => {
     const { iface } = makeIface();
     expect(() =>
-      iface.toScreenCoordinates({ displayId: 0, imgX: 1, imgY: 1, imgW: 0, imgH: 100 }),
+      iface.toScreenCoordinates({
+        displayId: 0,
+        imgX: 1,
+        imgY: 1,
+        imgW: 0,
+        imgH: 100,
+      }),
     ).toThrow(/positive image dimensions/);
   });
 
   it("throws on unknown display id for coord conversions", () => {
     const { iface } = makeIface();
     expect(() =>
-      iface.toScreenCoordinates({ displayId: 99, imgX: 1, imgY: 1, imgW: 100, imgH: 100 }),
+      iface.toScreenCoordinates({
+        displayId: 99,
+        imgX: 1,
+        imgY: 1,
+        imgW: 100,
+        imgH: 100,
+      }),
     ).toThrow(/unknown displayId/);
   });
 });
@@ -216,9 +228,9 @@ describe("DefaultComputerInterface — driver delegation", () => {
     const cursorState = { current: { displayId: 0, x: 5, y: 5 } };
     const { iface } = makeIface({ cursorState });
     cursorState.current = { displayId: 7, x: 5, y: 5 };
-    await expect(
-      iface.dragTo({ displayId: 0, x: 5, y: 5 }),
-    ).rejects.toThrow(/across displays/);
+    await expect(iface.dragTo({ displayId: 0, x: 5, y: 5 })).rejects.toThrow(
+      /across displays/,
+    );
   });
 
   it("drag rejects single-point paths", async () => {
@@ -251,12 +263,18 @@ describe("DefaultComputerInterface — driver delegation", () => {
   it("getCursorPosition tracks the last successful movement", async () => {
     const { iface } = makeIface();
     await iface.moveCursor({ displayId: 0, x: 42, y: 84 });
-    expect(iface.getCursorPosition()).toMatchObject({ displayId: 0, x: 42, y: 84 });
+    expect(iface.getCursorPosition()).toMatchObject({
+      displayId: 0,
+      x: 42,
+      y: 84,
+    });
   });
 
   it("hotkey requires at least one key", async () => {
     const { iface } = makeIface();
-    await expect(iface.hotkey({ keys: [] })).rejects.toThrow(/at least one key/);
+    await expect(iface.hotkey({ keys: [] })).rejects.toThrow(
+      /at least one key/,
+    );
   });
 
   it("getAccessibilityTree returns the current scene's AX nodes, filterable by display", () => {
@@ -268,8 +286,20 @@ describe("DefaultComputerInterface — driver delegation", () => {
         apps: [],
         ocr: [],
         ax: [
-          { id: "a0-1", role: "button", bbox: [0, 0, 10, 10], actions: [], displayId: 0 },
-          { id: "a1-1", role: "button", bbox: [0, 0, 10, 10], actions: [], displayId: 1 },
+          {
+            id: "a0-1",
+            role: "button",
+            bbox: [0, 0, 10, 10],
+            actions: [],
+            displayId: 0,
+          },
+          {
+            id: "a1-1",
+            role: "button",
+            bbox: [0, 0, 10, 10],
+            actions: [],
+            displayId: 1,
+          },
         ],
         vlm_scene: null,
         vlm_elements: null,

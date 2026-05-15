@@ -22,8 +22,8 @@ by the runtime model catalog (``packages/shared/src/local-inference/catalog.ts``
   - ``qwen3.5-0.8b`` → ``Qwen/Qwen3.5-0.8B-Base`` → ``eliza-1-0_8b``  (local tier; new "smallest" tier; full-param SFT on one consumer GPU; trains from the Base pretrain checkpoint, not the instruct release)
   - ``qwen3.5-2b``   → ``Qwen/Qwen3.5-2B-Base``   → ``eliza-1-2b``    (mid local tier; full-param SFT on a 16-24 GB GPU)
   - ``qwen3.5-4b``   → ``Qwen/Qwen3.5-4B-Base``   → ``eliza-1-4b``    (local/workstation tier; full-param SFT on a 24-28 GB GPU)
-  - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B-Base``   → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
-  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; also serves the ``eliza-1-27b-256k`` native-context variant)
+  - ``qwen3.5-9b``   → ``Qwen/Qwen3.5-9B``        → ``eliza-1-9b``    (workstation tier; 80 GB-class GPU)
+  - ``qwen3.6-27b``  → ``Qwen/Qwen3.6-27B``       → ``eliza-1-27b``   (cloud tier; dense 27B; gpu-h200x2; also serves ``eliza-1-27b-256k`` / ``eliza-1-27b-1m`` aliases)
 
 All active bases are published on the Hub. The 9b/27b tiers need workstation /
 cloud-class GPUs (or FSDP). Every Qwen3.5/Qwen3.6 target's DFlash
@@ -252,6 +252,7 @@ DFLASH_DRAFTER_BASE: dict[str, str] = {
     "eliza-1-9b": "Qwen/Qwen3.5-0.8B-Base",
     "eliza-1-27b": "Qwen/Qwen3.5-0.8B-Base",
     "eliza-1-27b-256k": "Qwen/Qwen3.5-0.8B-Base",
+    "eliza-1-27b-1m": "Qwen/Qwen3.5-0.8B-Base",
 }
 
 REGISTRY: dict[str, ModelEntry] = {
@@ -286,7 +287,7 @@ REGISTRY: dict[str, ModelEntry] = {
     # checkpoint (`Qwen/Qwen3.5-0.8B-Base`), not the instruct release —
     # same architecture/tokenizer, no chat-SFT pre-baked in.
     "qwen3.5-0.8b": _entry(
-        hf_id="Qwen/Qwen3.5-0.8B-Base", short_name="qwen3.5-0.8b",
+        hf_id="Qwen/Qwen3.5-0.8B", short_name="qwen3.5-0.8b",
         eliza_short_name="eliza-1-0_8b", eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
         params_billion=0.8, tier=Tier.LOCAL,
@@ -363,7 +364,7 @@ REGISTRY: dict[str, ModelEntry] = {
               "(shares the 248k tokenizer + dflash drafter base).",
     ),
     "qwen3.5-9b": _entry(
-        hf_id="Qwen/Qwen3.5-9B-Base", short_name="qwen3.5-9b",
+        hf_id="Qwen/Qwen3.5-9B", short_name="qwen3.5-9b",
         eliza_short_name="eliza-1-9b", eliza_repo_id="elizaos/eliza-1",
         abliteration_repo_id="",
         params_billion=9.0, tier=Tier.WORKSTATION,
@@ -424,8 +425,8 @@ REGISTRY: dict[str, ModelEntry] = {
             "gguf-q8_0",
         ),
         notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
-              "27B backbone. Use this for the 27B and 27B-256k release "
-              "families.",
+              "27B backbone. Use this for the 27B, 27B-256k, and 27B-1m "
+              "release families.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
     ),
 }
@@ -433,22 +434,16 @@ REGISTRY: dict[str, ModelEntry] = {
 
 ELIZA_1_27B_VARIANT_ALIASES: dict[str, str] = {
     "27b": "qwen3.6-27b",
-    "27b-128k": "qwen3.6-27b",
     "27b-256k": "qwen3.6-27b",
-    "qwen3.6-27b-128k": "qwen3.6-27b",
+    "27b-1m": "qwen3.6-27b",
     "qwen3.6-27b-256k": "qwen3.6-27b",
-    "qwen-qwen3.6-27b-128k": "qwen3.6-27b",
+    "qwen3.6-27b-1m": "qwen3.6-27b",
     "qwen-qwen3.6-27b-256k": "qwen3.6-27b",
-    "qwen/qwen3.6-27b-128k": "qwen3.6-27b",
+    "qwen-qwen3.6-27b-1m": "qwen3.6-27b",
     "qwen/qwen3.6-27b-256k": "qwen3.6-27b",
-    "qwen3.5-27b-128k": "qwen3.6-27b",
-    "qwen3.5-27b-256k": "qwen3.6-27b",
-    "qwen-qwen3.5-27b-128k": "qwen3.6-27b",
-    "qwen-qwen3.5-27b-256k": "qwen3.6-27b",
-    "qwen/qwen3.5-27b-128k": "qwen3.6-27b",
-    "qwen/qwen3.5-27b-256k": "qwen3.6-27b",
-    "eliza-1-27b-128k": "qwen3.6-27b",
+    "qwen/qwen3.6-27b-1m": "qwen3.6-27b",
     "eliza-1-27b-256k": "qwen3.6-27b",
+    "eliza-1-27b-1m": "qwen3.6-27b",
 }
 
 QWEN36_LOWER_TIER_FALLBACK_ALIASES: dict[str, str] = {
@@ -484,26 +479,6 @@ def get(name: str) -> ModelEntry:
     lowered = raw.lower()
     key = lowered.replace("/", "-").replace("_", "-")
     aliases = {
-        "qwen3.5-0.8b-base": "qwen3.5-0.8b",
-        "qwen-qwen3.5-0.8b": "qwen3.5-0.8b",
-        "qwen/qwen3.5-0.8b": "qwen3.5-0.8b",
-        "qwen-qwen3.5-0.8b-base": "qwen3.5-0.8b",
-        "qwen/qwen3.5-0.8b-base": "qwen3.5-0.8b",
-        "qwen3.5-2b-base": "qwen3.5-2b",
-        "qwen-qwen3.5-2b": "qwen3.5-2b",
-        "qwen/qwen3.5-2b": "qwen3.5-2b",
-        "qwen-qwen3.5-2b-base": "qwen3.5-2b",
-        "qwen/qwen3.5-2b-base": "qwen3.5-2b",
-        "qwen3.5-4b-base": "qwen3.5-4b",
-        "qwen-qwen3.5-4b": "qwen3.5-4b",
-        "qwen/qwen3.5-4b": "qwen3.5-4b",
-        "qwen-qwen3.5-4b-base": "qwen3.5-4b",
-        "qwen/qwen3.5-4b-base": "qwen3.5-4b",
-        "qwen3.5-9b-base": "qwen3.5-9b",
-        "qwen-qwen3.5-9b": "qwen3.5-9b",
-        "qwen/qwen3.5-9b": "qwen3.5-9b",
-        "qwen-qwen3.5-9b-base": "qwen3.5-9b",
-        "qwen/qwen3.5-9b-base": "qwen3.5-9b",
         "qwen3-4b": "qwen3.5-4b",
         "qwen-qwen3-4b": "qwen3.5-4b",
         "qwen/qwen3-4b": "qwen3.5-4b",

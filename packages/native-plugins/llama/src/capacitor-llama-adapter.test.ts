@@ -293,8 +293,9 @@ describe("CapacitorLlamaAdapter DFlash + cache type wiring", () => {
 
     // Replace the mock fn after import so we observe the rejection path.
     const llamaCppCapacitor = await import("llama-cpp-capacitor");
-    const plugin = (llamaCppCapacitor as unknown as { LlamaCpp: { setSpecType: unknown } })
-      .LlamaCpp;
+    const plugin = (
+      llamaCppCapacitor as unknown as { LlamaCpp: { setSpecType: unknown } }
+    ).LlamaCpp;
     (plugin as { setSpecType: unknown }).setSpecType = vi.fn(async () => {
       throw new Error("simulated fork bridge error");
     });

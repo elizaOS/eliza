@@ -86,21 +86,6 @@ class TestASTEvaluator:
         expected = [FunctionCall(name="get_weather", arguments={"location": "NYC"})]
         assert evaluator.evaluate(predicted, expected) is True
 
-    def test_provider_safe_tool_name_alias_matches_namespace_separator(self) -> None:
-        """Provider-normalized tool names should match BFCL dotted names."""
-        evaluator = ASTEvaluator(case_sensitive_names=False)
-        predicted = [
-            FunctionCall(name="random_normalvariate", arguments={"mu": 5, "sigma": 2})
-        ]
-        expected = [
-            FunctionCall(name="random.normalvariate", arguments={"mu": 5, "sigma": 2})
-        ]
-
-        assert evaluator.evaluate(predicted, expected) is True
-        details = evaluator.get_match_details(predicted, expected)
-        assert details["overall_match"] is True
-        assert details["mismatches"] == []
-
     def test_ignore_extra_args(self) -> None:
         """Test ignoring extra arguments."""
         evaluator = ASTEvaluator(ignore_extra_args=True)

@@ -25,7 +25,7 @@ const DEFAULT_BUNDLE = path.join(
   ".eliza",
   "local-inference",
   "models",
-  "eliza-1-0_8b.bundle",
+  "eliza-1-0_6b.bundle",
 );
 const DEFAULT_WAV = "/tmp/omnivoice-metal-fused-codec-cpu-fallback.wav";
 const DEFAULT_REPORT = path.join(
@@ -93,18 +93,6 @@ function typescriptRunner() {
     if (probe.status === 0) return { cmd, args: [] };
   }
   return null;
-}
-
-function bundleInfo(bundleDir) {
-  const basename = path.basename(path.resolve(bundleDir));
-  const match = /^eliza-1-(.+)\.bundle$/.exec(basename);
-  return {
-    ...(match ? { tier: match[1] } : {}),
-    bundle: {
-      ...(match ? { tier: match[1] } : {}),
-      dir: path.resolve(bundleDir),
-    },
-  };
 }
 
 function makeRunnerSource(args) {
@@ -360,13 +348,6 @@ async function runVad() {
 }
 
 const vad = await runVad();
-const ownerStartMs = vad.summary?.firstSpeechStartMs ?? 0;
-const ownerEndMs = Math.max(
-  vad.summary?.firstSpeechEndMs ?? ownerStartMs + 1000,
-  ownerStartMs + 1000,
-);
-const guestStartMs = ownerEndMs + 200;
-const guestEndMs = guestStartMs + 500;
 const source = {
   kind: "file",
   sourceId: wavPath,
@@ -405,8 +386,8 @@ const attribution = attributeVoiceImprintObservations({
       id: "obs-generated-owner-1",
       segmentId: "seg-generated-owner-1",
       text: "generated voice sample",
-      startMs: ownerStartMs,
-      endMs: ownerEndMs,
+      startMs: vad.summary?.firstSpeechStartMs ?? 0,
+      endMs: vad.summary?.firstSpeechEndMs ?? 1000,
       embedding: [0.99, 0.02, 0],
       embeddingModel: "eliza-voice-embed-v1",
       confidence: 0.9,
@@ -415,8 +396,8 @@ const attribution = attributeVoiceImprintObservations({
       id: "obs-generated-guest-1",
       segmentId: "seg-generated-guest-1",
       text: "second supplied segment embedding",
-      startMs: guestStartMs,
-      endMs: guestEndMs,
+      startMs: 0,
+      endMs: 1000,
       embedding: [0.01, 0.99, 0],
       embeddingModel: "eliza-voice-embed-v1",
       confidence: 0.88,
@@ -437,8 +418,6 @@ console.log(JSON.stringify({
   available: true,
   generatedAt: new Date().toISOString(),
   bundleRoot,
-  bundle: ${JSON.stringify(bundleInfo(args.bundle).bundle)},
-  tier: ${JSON.stringify(bundleInfo(args.bundle).tier ?? null)},
   vad,
   speakerAttribution: {
     mode: "attribution_only_supplied_embeddings",

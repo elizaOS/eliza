@@ -1,3 +1,8 @@
+import {
+  computePersonalBaseline,
+  computeSleepRegularity,
+  type SleepRegularityEpisodeLike,
+} from "@elizaos/plugin-health";
 import type {
   LifeOpsPersonalBaselineResponse,
   LifeOpsSleepHistoryEpisode,
@@ -7,11 +12,6 @@ import type {
 } from "@elizaos/shared";
 import { resolveDefaultTimeZone } from "./defaults.js";
 import type { Constructor, LifeOpsServiceBase } from "./service-mixin-core.js";
-import {
-  computePersonalBaseline,
-  computeSleepRegularity,
-  type SleepRegularityEpisodeLike,
-} from "@elizaos/plugin-health";
 
 const DEFAULT_HISTORY_WINDOW_DAYS = 365;
 const DEFAULT_REGULARITY_WINDOW_DAYS = 30;

@@ -55,6 +55,11 @@
   "notifications": {
     "enabled": false,
     "webhook_url": "",
-    "keywords_alert": ["profit warning", "suspension", "restructuring", "delisting"]
+    "keywords_alert": [
+      "profit warning",
+      "suspension",
+      "restructuring",
+      "delisting"
+    ]
   }
 }

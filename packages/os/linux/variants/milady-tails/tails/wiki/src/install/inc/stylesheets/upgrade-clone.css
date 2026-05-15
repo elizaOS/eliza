@@ -1,11 +1,16 @@
 @import url("upgrade.css");
 @import url("clone.css");
 
-span.upgrade-clone, a.upgrade-clone {
+span.upgrade-clone,
+a.upgrade-clone {
   display: inline;
 }
 
-div.upgrade-clone, img.upgrade-clone, p.upgrade-clone, h1.upgrade-clone, h2.upgrade-clone {
+div.upgrade-clone,
+img.upgrade-clone,
+p.upgrade-clone,
+h1.upgrade-clone,
+h2.upgrade-clone {
   display: block;
 }
 
@@ -13,6 +18,7 @@ li.upgrade-clone {
   display: list-item;
 }
 
-h1.step:before, span.next-counter:before {
-  content: counter(step)'/4';
+h1.step:before,
+span.next-counter:before {
+  content: counter(step) "/4";
 }

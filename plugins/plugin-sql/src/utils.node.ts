@@ -2,14 +2,14 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import dotenv from "dotenv";
 
-function expandTildePath(filepath: string): string {
+export function expandTildePath(filepath: string): string {
   if (filepath.startsWith("~")) {
     return path.join(process.cwd(), filepath.slice(1));
   }
   return filepath;
 }
 
-function resolveEnvFile(startDir: string = process.cwd()): string {
+export function resolveEnvFile(startDir: string = process.cwd()): string {
   let currentDir = startDir;
 
   while (true) {
@@ -52,4 +52,44 @@ export function resolvePgliteDir(dir?: string, fallbackDir?: string): string {
     path.join(process.cwd(), ".eliza", ".elizadb");
 
   return expandTildePath(base);
+}
+
+export function sanitizeJsonObject(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+  if (value === null || value === undefined) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const nullChar = String.fromCharCode(0);
+    const nullCharRegex = new RegExp(nullChar, "g");
+    return value
+      .replace(nullCharRegex, "")
+      .replace(/\\(?!["\\/bfnrtu])/g, "\\\\")
+      .replace(/\\u(?![0-9a-fA-F]{4})/g, "\\\\u");
+  }
+
+  if (typeof value === "object") {
+    if (seen.has(value as object)) {
+      return null;
+    }
+    seen.add(value as object);
+
+    if (Array.isArray(value)) {
+      return value.map((item) => sanitizeJsonObject(item, seen));
+    }
+
+    const result: Record<string, unknown> = {};
+    const nullChar = String.fromCharCode(0);
+    const nullCharRegex = new RegExp(nullChar, "g");
+    for (const [key, val] of Object.entries(value)) {
+      const sanitizedKey =
+        typeof key === "string"
+          ? key.replace(nullCharRegex, "").replace(/\\u(?![0-9a-fA-F]{4})/g, "\\\\u")
+          : key;
+      result[sanitizedKey] = sanitizeJsonObject(val, seen);
+    }
+    return result;
+  }
+
+  return value;
 }

@@ -290,7 +290,9 @@ export interface IosComputerUseBridge {
   readonly replayKitForegroundDrain: (args: {
     readonly sessionId: string;
     readonly max?: number;
-  }) => Promise<IosBridgeResult<{ readonly frames: readonly ReplayKitForegroundFrame[] }>>;
+  }) => Promise<
+    IosBridgeResult<{ readonly frames: readonly ReplayKitForegroundFrame[] }>
+  >;
 
   // --- Broadcast extension ---
   readonly broadcastExtensionHandshake: () => Promise<

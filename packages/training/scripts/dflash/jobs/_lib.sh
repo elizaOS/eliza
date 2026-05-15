@@ -5,9 +5,9 @@
 #   0_8b.sh    → eliza-1-0_8b
 #   2b.sh      → eliza-1-2b
 #   4b.sh      → eliza-1-4b
-#   9b.sh      → eliza-1-9b
-#   27b.sh     → eliza-1-27b
-#   27b-256k.sh → eliza-1-27b-256k
+# Hidden placeholder wrappers for larger tiers must fail closed until those
+# tiers are reintroduced with final base weights, drafters, evals, licenses,
+# and platform evidence.
 # Shared helpers for DFlash drafter distillation job scripts.
 #
 # Per-tier scripts source this file, set TIER + hyperparam env vars, and call
@@ -20,8 +20,8 @@
 #   - exits non-zero on any missing input so the job dies fast.
 #
 # All of these scripts also honor `--synthetic-smoke`: that flag bypasses the
-# input validation and runs the smoke path so CI can exercise the wiring
-# without weights.
+# input validation and runs the synthetic GGUF metadata-write path so CI can
+# exercise the wiring without weights.
 
 set -euo pipefail
 
@@ -36,10 +36,6 @@ dflash_log() {
 dflash_die() {
   dflash_log "FATAL: $*" >&2
   exit 1
-}
-
-dflash_tier_disabled() {
-  [[ "$1" == "0_8b" ]]
 }
 
 dflash_resolve_python() {
@@ -144,17 +140,6 @@ EOF
   local out_dir="${OUT_DIR:-${DFLASH_TRAINING_ROOT}/runs/${TIER}-${ts}}"
   mkdir -p "${out_dir}"
   local log_file="${out_dir}/distill.log"
-
-  if dflash_tier_disabled "${TIER}"; then
-    dflash_log "DFlash disabled for tier=${TIER}; writing no-drafter release policy -> ${out_dir}"
-    # shellcheck disable=SC2086
-    ${py} "${DFLASH_TRAINING_ROOT}/scripts/distill_dflash_drafter.py" \
-      --tier "${TIER}" \
-      --out-dir "${out_dir}" \
-      2>&1 | tee "${log_file}"
-    dflash_log "disabled policy complete: ${out_dir}/dflash-disabled-${TIER}.release-policy.json"
-    return 0
-  fi
 
   if (( synthetic )); then
     dflash_log "running synthetic smoke for tier=${TIER} -> ${out_dir}"

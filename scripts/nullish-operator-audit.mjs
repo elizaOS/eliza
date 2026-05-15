@@ -38,7 +38,8 @@ const JSON_FLAG = args.includes("--json");
 const APPLY = args.includes("--apply");
 const TYPE_AWARE = args.includes("--type-aware") || APPLY;
 const PROGRESS = args.includes("--progress");
-const INCLUDE_TESTS = !args.includes("--production") && !args.includes("--no-tests");
+const INCLUDE_TESTS =
+  !args.includes("--production") && !args.includes("--no-tests");
 const MAX_APPLY = Number(readArg("--max-apply") ?? Number.POSITIVE_INFINITY);
 const TSCONFIG = path.resolve(ROOT, readArg("--tsconfig") ?? "tsconfig.json");
 const ROOT_ARGS = readArg("--roots")
@@ -96,7 +97,11 @@ function walk(dir, acc) {
       continue;
     }
 
-    if (!entry.isFile() || !/\.(?:ts|tsx)$/.test(entry.name) || /\.d\.ts$/.test(entry.name)) {
+    if (
+      !entry.isFile() ||
+      !/\.(?:ts|tsx)$/.test(entry.name) ||
+      /\.d\.ts$/.test(entry.name)
+    ) {
       continue;
     }
 
@@ -190,14 +195,31 @@ function isDefinitelyTruthyType(type) {
   if (!type) return false;
   return typeParts(type).every((part) => {
     const flags = part.flags;
-    if ((flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown | ts.TypeFlags.Null | ts.TypeFlags.Undefined | ts.TypeFlags.Void)) !== 0) {
+    if (
+      (flags &
+        (ts.TypeFlags.Any |
+          ts.TypeFlags.Unknown |
+          ts.TypeFlags.Null |
+          ts.TypeFlags.Undefined |
+          ts.TypeFlags.Void)) !==
+      0
+    ) {
       return false;
     }
-    if ((flags & ts.TypeFlags.BooleanLiteral) !== 0) return part.intrinsicName === "true";
+    if ((flags & ts.TypeFlags.BooleanLiteral) !== 0)
+      return part.intrinsicName === "true";
     if ((flags & ts.TypeFlags.StringLiteral) !== 0) return part.value !== "";
     if ((flags & ts.TypeFlags.NumberLiteral) !== 0) return part.value !== 0;
-    if ((flags & ts.TypeFlags.BigIntLiteral) !== 0) return part.value?.base10Value !== "0";
-    if ((flags & (ts.TypeFlags.String | ts.TypeFlags.Number | ts.TypeFlags.BigInt | ts.TypeFlags.Boolean)) !== 0) {
+    if ((flags & ts.TypeFlags.BigIntLiteral) !== 0)
+      return part.value?.base10Value !== "0";
+    if (
+      (flags &
+        (ts.TypeFlags.String |
+          ts.TypeFlags.Number |
+          ts.TypeFlags.BigInt |
+          ts.TypeFlags.Boolean)) !==
+      0
+    ) {
       return false;
     }
     return true;
@@ -248,7 +270,8 @@ function identifierOriginatesFromOptionalParameter(checker, node) {
   return declarations.some(
     (declaration) =>
       ts.isParameter(declaration) &&
-      (Boolean(declaration.questionToken) || declaration.initializer !== undefined),
+      (Boolean(declaration.questionToken) ||
+        declaration.initializer !== undefined),
   );
 }
 
@@ -332,7 +355,8 @@ function collectCandidates(sourceFiles, files, checker) {
   const records = [];
 
   for (const sf of sourceFiles) {
-    if (sf.isDeclarationFile || !wanted.has(path.resolve(sf.fileName))) continue;
+    if (sf.isDeclarationFile || !wanted.has(path.resolve(sf.fileName)))
+      continue;
 
     function visit(node) {
       if (ts.isNonNullExpression(node)) {
@@ -363,11 +387,11 @@ function collectCandidates(sourceFiles, files, checker) {
                 ? "operand includes indexed access; noUncheckedIndexedAccess is not required here"
                 : optionalParameter
                   ? "operand is an optional/defaulted parameter"
-                : assertedType
-                  ? "operand includes a type assertion that may mask nullish runtime values"
-                  : removable
-              ? "operand type excludes null and undefined"
-                : "operand type includes null/undefined/any/unknown"
+                  : assertedType
+                    ? "operand includes a type assertion that may mask nullish runtime values"
+                    : removable
+                      ? "operand type excludes null and undefined"
+                      : "operand type includes null/undefined/any/unknown"
               : "run with --type-aware to classify by TypeScript types",
             type: typeText(checker, operandType),
             edit: removable
@@ -375,7 +399,10 @@ function collectCandidates(sourceFiles, files, checker) {
                   sf,
                   node.getStart(sf),
                   node.getEnd(),
-                  sf.text.slice(node.expression.getStart(sf), node.expression.getEnd()),
+                  sf.text.slice(
+                    node.expression.getStart(sf),
+                    node.expression.getEnd(),
+                  ),
                 )
               : null,
           }),
@@ -389,12 +416,17 @@ function collectCandidates(sourceFiles, files, checker) {
           ts.isElementAccessExpression(node) ||
           ts.isCallExpression(node))
       ) {
-        const receiver = ts.isCallExpression(node) ? node.expression : node.expression;
+        const receiver = ts.isCallExpression(node)
+          ? node.expression
+          : node.expression;
         const receiverType = apparentType(checker, receiver);
         const uncheckedIndex =
           containsUncheckedElementAccess(receiver) ||
           identifierOriginatesFromElementAccess(checker, receiver);
-        const optionalParameter = identifierOriginatesFromOptionalParameter(checker, receiver);
+        const optionalParameter = identifierOriginatesFromOptionalParameter(
+          checker,
+          receiver,
+        );
         const assertedType = containsTypeAssertion(receiver);
         const removable = checker
           ? !uncheckedIndex &&
@@ -405,10 +437,13 @@ function collectCandidates(sourceFiles, files, checker) {
         let edit = null;
         if (removable) {
           const tokenStart = questionDotToken.getStart(sf);
-          const editStart = sf.text[tokenStart - 1] === "?" ? tokenStart - 1 : tokenStart;
+          const editStart =
+            sf.text[tokenStart - 1] === "?" ? tokenStart - 1 : tokenStart;
           const tokenEnd = questionDotToken.getEnd();
           const replacement =
-            ts.isCallExpression(node) || ts.isElementAccessExpression(node) ? "" : ".";
+            ts.isCallExpression(node) || ts.isElementAccessExpression(node)
+              ? ""
+              : ".";
           edit = replacementEdit(sf, editStart, tokenEnd, replacement);
         }
         records.push(
@@ -424,11 +459,11 @@ function collectCandidates(sourceFiles, files, checker) {
                 ? "receiver includes indexed access; noUncheckedIndexedAccess is not required here"
                 : optionalParameter
                   ? "receiver is an optional/defaulted parameter"
-                : assertedType
-                  ? "receiver includes a type assertion that may mask nullish runtime values"
-                : removable
-              ? "receiver type excludes null and undefined"
-                : "receiver type includes null/undefined/any/unknown"
+                  : assertedType
+                    ? "receiver includes a type assertion that may mask nullish runtime values"
+                    : removable
+                      ? "receiver type excludes null and undefined"
+                      : "receiver type includes null/undefined/any/unknown"
               : "run with --type-aware to classify by TypeScript types",
             type: typeText(checker, receiverType),
             edit,
@@ -458,7 +493,8 @@ function collectCandidates(sourceFiles, files, checker) {
           makeRecord(sf, checker, "optional-declaration", node, {
             pos: node.questionToken.getStart(sf),
             classification: "upstream-type-review",
-            reason: "optional surface may require callers or implementers to change",
+            reason:
+              "optional surface may require callers or implementers to change",
           }),
         );
       }
@@ -500,11 +536,11 @@ function collectCandidates(sourceFiles, files, checker) {
               ? "left-hand side includes indexed access; noUncheckedIndexedAccess is not required here"
               : optionalParameter
                 ? "left-hand side is an optional/defaulted parameter"
-              : assertedType
-                ? "left-hand side includes a type assertion that may mask nullish runtime values"
-              : removable
-              ? "left-hand type excludes null and undefined"
-              : "left-hand type includes null/undefined/any/unknown"
+                : assertedType
+                  ? "left-hand side includes a type assertion that may mask nullish runtime values"
+                  : removable
+                    ? "left-hand type excludes null and undefined"
+                    : "left-hand type includes null/undefined/any/unknown"
             : "run with --type-aware to classify by TypeScript types";
           edit = removable
             ? replacementEdit(
@@ -516,7 +552,8 @@ function collectCandidates(sourceFiles, files, checker) {
             : null;
         } else if (checker && isDefinitelyTruthyType(leftType)) {
           classification = "truthy-left-review";
-          reason = "left-hand type appears always truthy, but removal may drop side effects";
+          reason =
+            "left-hand type appears always truthy, but removal may drop side effects";
         }
 
         records.push(
@@ -553,13 +590,21 @@ function collectSyntaxCandidates(files) {
 
 function groupCounts(records, key) {
   const counts = new Map();
-  for (const record of records) counts.set(record[key], (counts.get(record[key]) ?? 0) + 1);
-  return Object.fromEntries([...counts.entries()].sort((a, b) => String(a[0]).localeCompare(String(b[0]))));
+  for (const record of records)
+    counts.set(record[key], (counts.get(record[key]) ?? 0) + 1);
+  return Object.fromEntries(
+    [...counts.entries()].sort((a, b) =>
+      String(a[0]).localeCompare(String(b[0])),
+    ),
+  );
 }
 
 function applyEdits(records) {
   const candidates = records
-    .filter((record) => record.edit && record.classification === "type-obvious-removable")
+    .filter(
+      (record) =>
+        record.edit && record.classification === "type-obvious-removable",
+    )
     .sort((left, right) => {
       const byFile = left.edit.file.localeCompare(right.edit.file);
       if (byFile !== 0) return byFile;
@@ -607,7 +652,9 @@ function renderMarkdown(payload) {
   lines.push("| --- | ---: |");
   lines.push(`| TypeScript files scanned | ${payload.summary.filesScanned} |`);
   lines.push(`| Operators found | ${payload.summary.total} |`);
-  lines.push(`| Type-obvious removable | ${payload.summary.typeObviousRemovable} |`);
+  lines.push(
+    `| Type-obvious removable | ${payload.summary.typeObviousRemovable} |`,
+  );
   lines.push(`| Applied edits | ${payload.summary.appliedEdits} |`);
   lines.push("", "## By Kind", "");
   lines.push("| Kind | Count |");
@@ -618,7 +665,9 @@ function renderMarkdown(payload) {
   lines.push("", "## By Classification", "");
   lines.push("| Classification | Count |");
   lines.push("| --- | ---: |");
-  for (const [classification, count] of Object.entries(payload.byClassification)) {
+  for (const [classification, count] of Object.entries(
+    payload.byClassification,
+  )) {
     lines.push(`| \`${markdownEscape(classification)}\` | ${count} |`);
   }
 
@@ -633,7 +682,9 @@ function renderMarkdown(payload) {
       lines.push(
         `- \`${record.file}:${record.line}:${record.column}\` ${record.kind}: ${markdownEscape(record.text)}`,
       );
-      lines.push(`  - ${markdownEscape(record.reason)}; type: \`${markdownEscape(record.type)}\``);
+      lines.push(
+        `  - ${markdownEscape(record.reason)}; type: \`${markdownEscape(record.type)}\``,
+      );
     }
   }
 
@@ -670,9 +721,16 @@ const payload = {
 };
 
 fs.writeFileSync(OUTPUT_MD, renderMarkdown(payload));
-if (JSON_FLAG) fs.writeFileSync(OUTPUT_JSON, `${JSON.stringify(payload, null, 2)}\n`);
+if (JSON_FLAG)
+  fs.writeFileSync(OUTPUT_JSON, `${JSON.stringify(payload, null, 2)}\n`);
 
-console.log(`Scanned ${files.length} TypeScript files${TYPE_AWARE ? " with type information" : " with syntax-only AST parsing"}.`);
-console.log(`Found ${records.length} operators; ${payload.summary.typeObviousRemovable} are type-obvious removable.`);
+console.log(
+  `Scanned ${files.length} TypeScript files${TYPE_AWARE ? " with type information" : " with syntax-only AST parsing"}.`,
+);
+console.log(
+  `Found ${records.length} operators; ${payload.summary.typeObviousRemovable} are type-obvious removable.`,
+);
 if (APPLY) console.log(`Applied ${applied.length} edits.`);
-console.log(`Wrote ${relative(OUTPUT_MD)}${JSON_FLAG ? ` and ${relative(OUTPUT_JSON)}` : ""}.`);
+console.log(
+  `Wrote ${relative(OUTPUT_MD)}${JSON_FLAG ? ` and ${relative(OUTPUT_JSON)}` : ""}.`,
+);

@@ -83,10 +83,13 @@ DEFAULT_DRAFTER_STANDIN_CANDIDATES: Final[tuple[Path, ...]] = (
     LOCAL_MODEL_ROOT / "qwen3.5-4b-dflash-drafter-q4.gguf",
 )
 VISION_TIERS: Final[set[str]] = {
+    "0_8b",
+    "2b",
     "4b",
     "9b",
     "27b",
     "27b-256k",
+    "27b-1m",
 }
 
 DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
@@ -96,6 +99,7 @@ DEFAULT_RAM_BUDGET_MB: Final[Mapping[str, tuple[int, int]]] = {
     "9b": (10000, 14000),
     "27b": (24000, 32000),
     "27b-256k": (36000, 48000),
+    "27b-1m": (64000, 96000),
 }
 DEFAULT_VOICE_CAPABILITIES: Final[tuple[str, ...]] = (
     "tts",
@@ -310,13 +314,7 @@ def _publish_blocking_reasons(
     return reasons
 
 
-def _write_licenses(
-    bundle_dir: Path,
-    *,
-    tier: str,
-    force: bool,
-    has_vision: bool = False,
-) -> list[str]:
+def _write_licenses(bundle_dir: Path, *, tier: str, force: bool) -> list[str]:
     license_texts = {
         "LICENSE.text": (
             "Eliza-1 local text stand-in provenance note.\n\n"
@@ -337,7 +335,7 @@ def _write_licenses(
             "before any upload candidate is created.\n"
         ),
     }
-    if has_vision:
+    if tier in VISION_TIERS:
         license_texts["LICENSE.vision"] = (
             "Eliza-1 local vision stand-in provenance note.\n\n"
             "This bundle may use a source-only mmproj GGUF for runtime "
@@ -960,7 +958,6 @@ def _write_release_evidence(
             return []
         return sorted(str(p.relative_to(bundle_dir)) for p in root.iterdir() if p.is_file())
 
-    vision_weight_files = rels("vision")
     license_files = [
         "licenses/LICENSE.text",
         "licenses/LICENSE.voice",
@@ -969,7 +966,7 @@ def _write_release_evidence(
         "licenses/LICENSE.asr",
         "licenses/LICENSE.vad",
     ]
-    if vision_weight_files:
+    if tier in VISION_TIERS:
         license_files.append("licenses/LICENSE.vision")
 
     # When a non-default release shape (base-v1 / finetuned-v2) is requested,
@@ -1014,7 +1011,7 @@ def _write_release_evidence(
             *rels("tts"),
             *rels("asr"),
             *rels("vad"),
-            *vision_weight_files,
+            *rels("vision"),
             *rels("dflash"),
         ],
         "standIns": [asdict(item) for item in staged],
@@ -1238,16 +1235,8 @@ def stage_local_bundle(args: argparse.Namespace) -> dict[str, Any]:
             )
         )
 
+    _write_licenses(bundle_dir, tier=tier, force=args.force)
     vision_staged = next((item for item in staged if item.role == "vision"), None)
-    has_vision_component = vision_staged is not None or any(
-        p.is_file() for p in (bundle_dir / "vision").glob("*.gguf")
-    )
-    _write_licenses(
-        bundle_dir,
-        tier=tier,
-        force=args.force,
-        has_vision=has_vision_component,
-    )
     lineage = _write_lineage(
         bundle_dir=bundle_dir,
         text_file=text_staged[0],

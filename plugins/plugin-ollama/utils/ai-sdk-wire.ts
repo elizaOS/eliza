@@ -123,7 +123,7 @@ export function normalizeToolChoice(toolChoice: unknown): ToolChoice<ToolSet> | 
 }
 
 /** Parses JSON strings; returns non-strings unchanged (including `null` / `undefined`). */
-function parseJsonIfPossible(value: unknown): unknown {
+export function parseJsonIfPossible(value: unknown): unknown {
   if (typeof value !== "string") {
     return value;
   }

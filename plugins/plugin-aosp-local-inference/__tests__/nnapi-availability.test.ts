@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  probeNnapiAvailability,
   type NnapiAvailability,
+  probeNnapiAvailability,
 } from "../src/nnapi-availability";
 
 describe("probeNnapiAvailability", () => {

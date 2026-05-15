@@ -20,7 +20,6 @@ import {
   handleTextNano,
   handleTextSmall,
   handleTextToSpeech,
-  handleTranscription,
 } from "./models";
 // Cloud services
 import { CloudAuthService } from "./services/cloud-auth";
@@ -175,7 +174,6 @@ export const elizaOSCloudPlugin: Plugin = {
     [ModelType.IMAGE]: handleImageGeneration,
     [ModelType.IMAGE_DESCRIPTION]: handleImageDescription,
     [ModelType.TEXT_TO_SPEECH]: handleTextToSpeech,
-    [ModelType.TRANSCRIPTION]: handleTranscription,
   },
 
   tests: [

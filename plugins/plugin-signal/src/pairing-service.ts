@@ -284,7 +284,7 @@ export async function resolveSignalCliExecutable(
   return resolveExecutablePath(DEFAULT_SIGNAL_CLI_NAME, deps);
 }
 
-function signalCliInstallInstructions(platform: NodeJS.Platform): string {
+export function signalCliInstallInstructions(platform: NodeJS.Platform): string {
   if (platform === "darwin") {
     return "Eliza can auto-install the default Signal CLI on macOS when Homebrew is available (`brew install signal-cli`). Fallback: install signal-cli from https://github.com/AsamK/signal-cli/releases and set SIGNAL_CLI_PATH to its bin/signal-cli executable.";
   }

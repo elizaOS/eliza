@@ -6,7 +6,7 @@
 # `full` provisions+trains+fetches+tears-down ONE tier per VM lifecycle, this
 # driver loops over EVERY eliza-1 tier on a SINGLE VM lifecycle (~$30-40 on H200
 # at ~10h end-to-end) so a single billing window validates the full
-# 0.8B → 27B-256k chain on a small smoke corpus.
+# 0.8B → 27B-1m chain on a small smoke corpus.
 #
 # CONTROL FLOW (5 lines, matches the EXIT-trap pattern at line 615 of train_nebius.sh):
 #   1) provision (or reuse) ONE Nebius H200 VM
@@ -33,7 +33,7 @@
 #                                  (auto-detected at startup, snapshotted into
 #                                  REUSE_EXISTING_VM for the EXIT trap).
 #   TIERS                        space-separated tier list. Default:
-#                                  "0_8b 2b 4b 9b 27b 27b-256k"
+#                                  "0_8b 2b 4b 9b 27b 27b-256k 27b-1m"
 #                                  Each token maps to a registry key + optional
 #                                  --max-seq-len override:
 #                                    0_8b      → qwen3.5-0.8b   (registry seq_len)
@@ -42,6 +42,7 @@
 #                                    9b        → qwen3.5-9b
 #                                    27b       → qwen3.6-27b
 #                                    27b-256k  → qwen3.6-27b   --max-seq-len 262144
+#                                    27b-1m    → qwen3.6-27b   --max-seq-len 1048576
 #                                  Use a smaller list to test a subset:
 #                                    TIERS="0_8b 2b" bash ... smoke-all
 #   SMOKE_MAX_STEPS              hard step cap per tier. Default 50 (smoke).
@@ -85,7 +86,7 @@ NEBIUS_SCRIPT="$ROOT/scripts/train_nebius.sh"
 
 : "${NEBIUS_PROJECT_ID:?must export NEBIUS_PROJECT_ID}"
 : "${NEBIUS_VM_NAME:=eliza-train-h200-smoke-all}"
-: "${TIERS:=0_8b 2b 4b 9b 27b 27b-256k}"
+: "${TIERS:=0_8b 2b 4b 9b 27b 27b-256k 27b-1m}"
 : "${SMOKE_MAX_STEPS:=50}"
 : "${SMOKE_DATA_DIR:=data/final-eliza1-smoke}"
 : "${ELIZA_SMOKE_RUN_TAG:=smoke-all-$(date +%s)}"
@@ -124,6 +125,7 @@ _tier_args() {
     9b)       echo "qwen3.5-9b" ;;
     27b)      echo "qwen3.6-27b" ;;
     27b-256k) echo "qwen3.6-27b --max-seq-len 262144" ;;
+    27b-1m)   echo "qwen3.6-27b --max-seq-len 1048576" ;;
     *) return 1 ;;
   esac
 }
@@ -132,7 +134,7 @@ _tier_args() {
 # exceed the 141 GB H200 SXM single-GPU RAM budget for an apollo_mini SFT load
 # (190 GB needed per registry). Override with SKIP_FINETUNE_TIERS="" to attempt
 # real SFT on all tiers (will OOM on the 27B variants).
-: "${SKIP_FINETUNE_TIERS:=27b 27b-256k}"
+: "${SKIP_FINETUNE_TIERS:=27b 27b-256k 27b-1m}"
 _tier_skip_finetune() {
   local tier="$1" t
   for t in $SKIP_FINETUNE_TIERS; do
@@ -164,7 +166,7 @@ _remote() {
 
 _tier_run_name() {
   # Tier-stable, tag-scoped run name. Eliza public name comes from the registry
-  # lookup so 27b/27b-256k don't collide (both map to qwen3.6-27b).
+  # lookup so 27b/27b-256k/27b-1m don't collide (all map to qwen3.6-27b).
   local tier="$1" pub="$2"
   echo "${pub}-${ELIZA_SMOKE_RUN_TAG}-${tier}"
 }

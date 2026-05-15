@@ -103,13 +103,6 @@ export interface StructuredGenerateParams {
 	 * Producer: `@elizaos/core` `buildSpanSamplerPlan(skeleton)`.
 	 */
 	spanSamplerPlan?: SpanSamplerPlan;
-	/**
-	 * Per-request chat-template thinking control for reasoning-capable local
-	 * models. `off` is used for structure-only Stage 1 response handling so the
-	 * model starts directly in the JSON/tool envelope. Planner/action calls leave
-	 * this unset (or `auto`) so the model can use its template's reasoning path.
-	 */
-	thinking?: "auto" | "on" | "off";
 }
 
 /** True when `kind` is a span the model actually samples. */

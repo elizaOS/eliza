@@ -1,3 +1,86 @@
+import { logger } from "@elizaos/core";
+import { getTableConfig, type PgTable, pgSchema } from "drizzle-orm/pg-core";
+
+// Drizzle schema type - an object mapping names to tables or other schema objects
+type DrizzleSchema = Record<string, unknown>;
+
+// pgSchema object interface
+interface PgSchemaObject {
+  _schema?: string;
+  table?: (...args: unknown[]) => unknown;
+}
+
+/**
+ * Transform a plugin's schema to use the appropriate namespace
+ *
+ * @elizaos/plugin-sql uses 'public' schema (no transformation)
+ * Other plugins get their tables wrapped in a namespaced schema
+ */
+export function transformPluginSchema(pluginName: string, schema: DrizzleSchema): DrizzleSchema {
+  // Core plugin uses public schema - no transformation needed
+  if (pluginName === "@elizaos/plugin-sql") {
+    return schema;
+  }
+
+  // Derive schema name from plugin name
+  const schemaName = deriveSchemaName(pluginName);
+
+  // If schema is already using pgSchema, return as-is
+  if (isAlreadyNamespaced(schema, schemaName)) {
+    logger.debug(
+      { src: "plugin:sql", pluginName, schemaName },
+      "Plugin already uses expected schema"
+    );
+    return schema;
+  }
+
+  logger.info({ src: "plugin:sql", pluginName, schemaName }, "Transforming plugin to use schema");
+
+  // Transform the schema object
+  const transformed: DrizzleSchema = {};
+
+  for (const [key, value] of Object.entries(schema)) {
+    if (isPgTable(value)) {
+      // Get the table configuration
+      const config = getTableConfig(value as PgTable);
+
+      // If the table doesn't have a schema or is in public, warn about it
+      if (!config.schema || config.schema === "public") {
+        // Can't easily transform existing tables to different schema
+        // (would require reconstructing all column definitions, constraints, etc.)
+        logger.warn(
+          {
+            src: "plugin:sql",
+            tableName: config.name,
+            pluginName,
+            expectedSchema: schemaName,
+          },
+          "Table should use pgSchema for proper isolation - manual migration may be required"
+        );
+        transformed[key] = value;
+      } else {
+        // Table already has a schema, keep it as-is
+        transformed[key] = value;
+      }
+    } else if (typeof value === "object" && value !== null) {
+      // Check if this is a schema object (created with pgSchema)
+      const obj = value as PgSchemaObject;
+      if (obj._schema && obj.table) {
+        // This is already a pgSchema object, keep it
+        transformed[key] = value;
+      } else {
+        // Regular object, keep as-is
+        transformed[key] = value;
+      }
+    } else {
+      // Not a table, keep as-is
+      transformed[key] = value;
+    }
+  }
+
+  return transformed;
+}
+
 /**
  * Derive a valid PostgreSQL schema name from a plugin name
  */
@@ -69,4 +152,50 @@ function normalizeSchemaName(input: string): string {
   }
 
   return result.slice(start, end);
+}
+
+/**
+ * Check if a value is a PgTable
+ */
+function isPgTable(value: unknown): value is PgTable {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  // Check for table-like properties
+  // This is a heuristic since we can't use instanceof across module boundaries
+  try {
+    const config = getTableConfig(value as PgTable);
+    return config && typeof config.name === "string";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check if a schema is already properly namespaced
+ */
+function isAlreadyNamespaced(schema: DrizzleSchema, expectedSchemaName: string): boolean {
+  for (const value of Object.values(schema)) {
+    if (isPgTable(value)) {
+      try {
+        const config = getTableConfig(value);
+        if (config.schema === expectedSchemaName) {
+          return true;
+        }
+      } catch {
+        // Not a table, continue
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Create a namespaced schema helper for plugins
+ * This is what plugins should ideally use to define their tables
+ */
+export function createPluginSchema(pluginName: string) {
+  const schemaName = deriveSchemaName(pluginName);
+  return pgSchema(schemaName);
 }

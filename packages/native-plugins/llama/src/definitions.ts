@@ -124,7 +124,10 @@ export type GenerationEvent =
   | { kind: "decision"; key: string; value: unknown }
   | { kind: "telemetry"; tokensPerSec: number; spec?: SpecDecodeTelemetry }
   | { kind: "error"; message: string; recoverable: boolean }
-  | { kind: "done"; finishReason: "stop" | "length" | "tool" | "cancel" | "error" };
+  | {
+      kind: "done";
+      finishReason: "stop" | "length" | "tool" | "cancel" | "error";
+    };
 
 export interface GenerateStreamOptions extends GenerateOptions {
   /**

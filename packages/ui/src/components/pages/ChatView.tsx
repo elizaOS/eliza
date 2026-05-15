@@ -27,9 +27,14 @@ import {
 } from "../../slots/task-coordinator-slots.js";
 import { useChatComposer } from "../../state/ChatComposerContext";
 import { usePtySessions } from "../../state/PtySessionsContext";
+import {
+  loadContinuousChatMode,
+  saveContinuousChatMode,
+} from "../../state/persistence";
 import { useApp } from "../../state/useApp";
 import { getVrmPreviewUrl } from "../../state/vrm";
 import type { TranslateFn } from "../../types";
+import type { VoiceContinuousMode } from "../../voice/voice-chat-types";
 import { AccountRequiredCard } from "../chat/AccountRequiredCard";
 import { AgentActivityBox } from "../chat/AgentActivityBox";
 import { ConnectorAccountPicker } from "../chat/ConnectorAccountPicker";
@@ -40,6 +45,8 @@ import {
   mergeConnectorSendAsMetadata,
 } from "../chat/connector-send-as";
 import { MessageContent } from "../chat/MessageContent";
+import { ChatVoiceStatusBar } from "../composites/chat/ChatVoiceStatusBar";
+import { ContinuousChatToggle } from "../composites/chat/ContinuousChatToggle";
 import { ChatAttachmentStrip } from "../composites/chat/chat-attachment-strip";
 import { ChatComposer } from "../composites/chat/chat-composer";
 import { ChatComposerShell } from "../composites/chat/chat-composer-shell";
@@ -192,6 +199,15 @@ export function ChatView({
   const composerRef = useRef<HTMLDivElement>(null);
   const [composerHeight, setComposerHeight] = useState(0);
   const [imageDragOver, setImageDragOver] = useState(false);
+  const [continuousChatMode, setContinuousChatMode] =
+    useState<VoiceContinuousMode>(loadContinuousChatMode);
+  const handleContinuousChatModeChange = useCallback(
+    (next: VoiceContinuousMode) => {
+      setContinuousChatMode(next);
+      saveContinuousChatMode(next);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (isGameModal || typeof window === "undefined") return;
@@ -290,11 +306,13 @@ export function ChatView({
   const {
     beginVoiceCapture,
     endVoiceCapture,
+    continuous,
     handleEditMessage,
     handleSpeakMessage,
     stopSpeaking,
     voice,
     voiceLatency,
+    voiceSpeaker,
   } = useChatVoiceController({
     agentVoiceMuted,
     chatFirstTokenReceived,
@@ -311,6 +329,7 @@ export function ChatView({
     isGameModal,
     setState,
     uiLanguage,
+    continuousMode: continuousChatMode,
   });
   // Stop any in-flight voice playback when the user switches conversations.
   // useLayoutEffect (not useEffect): must run *before* useChatVoiceController's
@@ -566,8 +585,27 @@ export function ChatView({
       />
     );
 
+  const voiceStatusBarVisible =
+    voice.supported &&
+    (continuousChatMode !== "off" ||
+      voice.isListening ||
+      voice.isSpeaking ||
+      Boolean(voiceSpeaker) ||
+      Boolean(continuous.interimTranscript));
+
   const auxiliaryNode = (
     <>
+      {voiceStatusBarVisible ? (
+        <ChatVoiceStatusBar
+          status={continuous.status}
+          interimTranscript={continuous.interimTranscript}
+          speaker={voiceSpeaker}
+          latency={continuous.latency}
+          visible
+          className={`mb-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
+          data-testid="chat-view-voice-status-bar"
+        />
+      ) : null}
       {shareIngestNotice ? (
         <div
           className={`text-xs text-ok py-1 relative${isGameModal ? " pointer-events-auto" : ""}`}
@@ -645,6 +683,17 @@ export function ChatView({
       before={
         <>
           <CodingAgentControlChip />
+          {voice.supported ? (
+            <div className="flex justify-end px-1 pb-0.5">
+              <ContinuousChatToggle
+                compact
+                value={continuousChatMode}
+                onChange={handleContinuousChatModeChange}
+                disabled={isComposerLocked}
+                data-testid="chat-view-continuous-chat-toggle-game-modal"
+              />
+            </div>
+          ) : null}
           <AgentActivityBox
             sessions={ptySessions}
             onSessionClick={onPtySessionClick ?? focusTerminalSession}
@@ -693,7 +742,22 @@ export function ChatView({
       variant="default"
       className={defaultComposerShellClassName}
       style={defaultComposerShellStyle}
-      before={<CodingAgentControlChip />}
+      before={
+        <>
+          <CodingAgentControlChip />
+          {voice.supported ? (
+            <div className="flex justify-end px-1 pb-0.5">
+              <ContinuousChatToggle
+                compact
+                value={continuousChatMode}
+                onChange={handleContinuousChatModeChange}
+                disabled={isComposerLocked}
+                data-testid="chat-view-continuous-chat-toggle"
+              />
+            </div>
+          ) : null}
+        </>
+      }
     >
       <ChatComposer
         variant="default"

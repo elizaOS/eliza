@@ -1,8 +1,8 @@
 {
   "scoring_weights": {
-    "keyword_match": 0.40,
+    "keyword_match": 0.4,
     "recency_bias": 0.35,
-    "semantic_similarity": 0.20,
+    "semantic_similarity": 0.2,
     "frequency": 0.05
   },
   "description": "Weights used to compute final retrieval score for each candidate memory entry. The composite score is: keyword_match * w1 + recency_bias * w2 + semantic_similarity * w3 + frequency * w4. Recency bias is computed as 1.0 - (days_since_entry / max_days), giving recent entries significantly higher scores.",

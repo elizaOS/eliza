@@ -16,22 +16,17 @@ if (!rel) {
 const target = path.resolve(process.cwd(), rel);
 const retryableCodes = new Set(["EBUSY", "ENOTEMPTY", "EPERM"]);
 
-for (let attempt = 0; attempt < 10; attempt += 1) {
+for (let attempt = 0; attempt < 5; attempt += 1) {
   try {
-    rmSync(target, {
-      recursive: true,
-      force: true,
-      maxRetries: 5,
-      retryDelay: 100,
-    });
+    rmSync(target, { recursive: true, force: true });
     process.exit(0);
   } catch (e) {
     const code = e && typeof e === "object" && "code" in e ? e.code : undefined;
     if (code === "ENOENT") {
       process.exit(0);
     }
-    if (typeof code === "string" && retryableCodes.has(code) && attempt < 9) {
-      await delay(100 * (attempt + 1));
+    if (typeof code === "string" && retryableCodes.has(code) && attempt < 4) {
+      await delay(50 * (attempt + 1));
       continue;
     }
     throw e;

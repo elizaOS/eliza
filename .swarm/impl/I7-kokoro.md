@@ -469,6 +469,38 @@ voice-id resolves to a kokoro voice with an emotion request.
 - [x] `bun run typecheck` in `plugins/plugin-local-inference` green
   (no diagnostics; new `af_samantha` voice-presets entry typechecks).
 
+## Heavy phases landed (C-train-phases, 2026-05-14)
+
+`packages/training/scripts/kokoro/finetune_kokoro_full.py` already had
+the `_forward_with_grad` core path landed in the N2 work; the
+C-train-phases re-verification was about confirming the smoke test runs
+end-to-end on this branch.
+
+- **`pytest packages/training/scripts/kokoro/__tests__/test_finetune_kokoro_full.py
+  -v`** — 12 tests green (synthetic-smoke pipeline shape, eval-gate
+  decision logic `_decide_continue` / `_update_top_k`, CLI surface +
+  config loading, manifest stability across LoRA + full FT paths).
+  No changes were needed in this batch.
+- The `configs/kokoro_samantha_full.yaml` shipped with `mode=full`,
+  `learning_rate=5e-5`, `max_steps=1500`, `optimizer=apollo_mini`, and
+  the relaxed SpkSim gate (`speaker_similarity_min=0.55`). All matches
+  the test contract.
+
+Operator-run example (real GPU run, not smoke)::
+
+    python3 packages/training/scripts/kokoro/finetune_kokoro_full.py \
+        --run-dir /data/kokoro-runs/samantha-$(date +%Y%m%d-%H%M%S) \
+        --config kokoro_samantha_full.yaml \
+        --init-from-voice af_bella
+
+Third-party packages an operator needs:
+
+- `torch`, `transformers` — Kokoro PyTorch path.
+- `kokoro>=0.9.4` (PyPI) — KModel + KPipeline. The smoke path
+  `pytest.skip` cleanly when missing.
+- `apollo-torch` — APOLLO/APOLLO-Mini optimizer (repo policy).
+- `librosa`, `soundfile` — audio I/O.
+
 ### What's left for a publishable voice (out of I7 scope)
 
 The plumbing is end-to-end. The remaining is a model-quality problem
@@ -494,3 +526,147 @@ that needs one of:
 I7's deliverable per the brief — "produce af_samantha.bin, eval both
 paths, document" — is **complete**. The eval surfaced a quality
 regression that the next round of model-tuning will need to fix.
+
+---
+
+## Q1 re-eval (2026-05-14)
+
+After Q1-quality landed the metric fixes (`SQUIM_OBJECTIVE`→`SQUIM_SUBJECTIVE`,
+16 kHz resample for Whisper + ECAPA, text normalization for WER), we
+re-ran the same I7 pipeline (mel-fit, lr=0.01, anchor=0.5, 400 steps,
+init=af_bella) against a fresh prep of the same 48-clip filtered
+samantha corpus and re-evaled both baseline and candidate against the
+same 5 val clips.
+
+Run dir: `/tmp/kokoro-q1-rerun/`. Voice artifact:
+`/tmp/kokoro-q1-rerun/af_samantha.bin` (522,240 bytes, canonical
+`(510,1,256)` float32 LE layout, final loss 1.8254 / mean(last10)
+1.4029, ~28s wall).
+
+UTMOS path fell back to `SQUIM_SUBJECTIVE` because `utmos` PyPI does
+not install in this environment (the wheel pulls `fairseq` which
+fails on missing `fairseq/version.txt` during build). Q1 §5 already
+flagged this — SQUIM_SUBJECTIVE is the documented fallback and
+returns MOS in the same `[1, 5]` band.
+
+### Baseline (af_bella, 5 val clips, Q1-corrected metrics)
+
+```
+{
+  "metrics": {
+    "utmos": 4.4642,                  # PASS (≥3.8) — was 26.378 (SQUIM-Objective SI-SDR scale)
+    "wer": 0.00909,                   # PASS (≤0.08) — was 0.065
+    "speaker_similarity": -0.0723,    # FAIL relaxed gate (≥0.55) — af_bella vs samantha refs
+    "rtf": 100.40                     # PASS (≥5.0) — was 97.26
+  },
+  "gateResult": { "passed": false }   # spkSim still the af_bella↔samantha floor
+}
+```
+
+UTMOS finally lands in the valid MOS band (`[1, 5]`); previous
+`26.378` was SI-SDR in dB from the wrong SQUIM head. WER drops to
+~0% because af_bella synthesizes the val prompts cleanly and the
+new text normalizer no longer counts punctuation diffs as
+substitutions. SpkSim still negative (and slightly *more* negative
+than the pre-fix 0.46) — pre-fix value was inflated by the 24 kHz
+mismatch; the corrected 16 kHz cosine is honest. RTF unchanged.
+
+### Candidate (af_samantha mel-fit, lr=0.01, anchor=0.5, 400 steps, Q1-corrected)
+
+```
+{
+  "metrics": {
+    "utmos": 2.0311,                  # FAIL (≥3.8); Δ -2.43 from baseline
+    "wer": 1.0519,                    # FAIL (≤0.08); Δ +1.04 — Whisper can't transcribe
+    "speaker_similarity": 0.1987,     # FAIL (≥0.55); but Δ +0.27 from baseline
+    "rtf": 124.29                     # PASS (≥5.0); Δ +23.9
+  },
+  "gateResult": { "passed": false },
+  "comparison": {
+    "utmosDelta": -2.433,             # NEGATIVE — synth quality regressed
+    "werDelta": +1.043,               # POSITIVE — synth less intelligible
+    "speakerSimDelta": +0.271,        # POSITIVE — voice IS moving toward samantha
+    "rtfDelta": +23.89,               # POSITIVE — slightly faster
+    "speakerSimBeatThreshold": 0.05,
+    "beatsBaseline": false            # utmosΔ<0 + werΔ>0 fail the rule
+  }
+}
+```
+
+### Honest finding (post-Q1)
+
+The metric fix changes the story:
+
+**Direction matches expectations now.** The mel-fit voice clone IS
+moving the speaker centroid toward samantha (SpkSim Δ = +0.27, well
+past the +0.05 noise floor). I7's pre-fix report had this as Δ
+-0.21 (voice "moved away") because the 24 kHz mismatch inflated the
+ECAPA cosine on the baseline side. With both sides resampled to
+16 kHz the candidate genuinely sits closer to the samantha
+references than af_bella does.
+
+**Absolute quality is still bad.** UTMOS 2.03 is well below the 3.8
+gate; this is what audible distortion looks like in the SQUIM-MOS
+scale. WER 1.05 says Whisper transcribes garbage. The synthesis
+output is still recognizable as speech (RTF + audible playback at
+I7-cycle-time confirms) but the iSTFTNet decoder is producing
+audio the speech models can't reliably parse.
+
+**Net publish posture: still blocked, but the failure is now
+diagnosable.** Pre-fix the metrics said "the voice moved away from
+samantha and got worse" — a contradiction (you can't move *toward*
+samantha-degraded and *also* away from samantha-references). Post-
+fix the metrics agree with each other: "the voice is moving toward
+samantha but the decoder output quality is degraded enough that
+Whisper + UTMOS reject it." That's a coherent hyperparameter-tuning
+target.
+
+### Diagnosis + proposed next sweep
+
+The post-Q1 metrics point at **anchor weight too high**, not too
+low (the I7 §3 root-cause guess). With anchor=0.5 the prosody half
+of `ref_s` (`ref_s[128:]`) is locked near af_bella; the optimizer
+can only move the timbre half (`ref_s[:128]`) to chase the mel-fit
+loss. That gets us *some* speaker movement (+0.27 cosine, ✓) but
+the mismatched timbre/prosody pair confuses the decoder — when
+duration prediction expects af_bella timbre and the decoder sees
+samantha timbre, the output is audibly distorted (UTMOS 2.03, WER
+1.05).
+
+**Proposed sweep** for the next iteration (out of this scope, but
+recorded here so the operator has the recipe):
+
+1. **Lower anchor weight first** — let prosody co-move with timbre.
+   Try `anchor_weight ∈ {0.0, 0.05, 0.1, 0.2}`. I7's pre-fix run
+   with `anchor=0.0, lr=0.05` blew up (29s synth for a 5s phrase),
+   so keep `lr=0.01` and let the lower anchor do the work.
+2. **More steps** — 400 is short for a small corpus. Try `max_steps
+   ∈ {800, 1200, 1600}` with the new anchor sweep; the loss curve
+   was still descending at 400 (1.04 at step 390, mean(last10)
+   1.40).
+3. **Smaller learning rate** — alternative axis. If anchor=0.0
+   destabilizes, try `lr ∈ {0.005, 0.002}` with anchor=0.1 so
+   prosody can move but slowly.
+
+A 2×3 grid (anchor × lr) with 1200 steps each at ~85s per run is
+~10 minutes total on the RTX 5080 — cheap to sweep, expensive to
+*not* know.
+
+`utmos>=0.1.0` could not be installed in this environment (the
+wheel pulls fairseq which fails on a missing `fairseq/version.txt`
+during build). The SQUIM_SUBJECTIVE fallback is what the metric
+fix already targets; Q1 §5 marks this as a follow-up. The numbers
+above use SQUIM_SUBJECTIVE end-to-end.
+
+### Artifacts committed
+
+- `/tmp/kokoro-q1-rerun/af_samantha.bin` — the regenerated voice
+  artifact (not committed; 510 KB binary; reproducible via
+  `extract_voice_embedding.py --clips-dir /tmp/kokoro-q1-rerun/processed/wavs_norm --init-from-voice af_bella --steps 400 --lr 0.01 --anchor-weight 0.5`).
+- `/tmp/kokoro-q1-rerun/eval-baseline-af_bella.json` — baseline.
+- `/tmp/kokoro-q1-rerun/eval-kokoro-samantha-q1-rerun.json` —
+  candidate with `comparison` block.
+
+The two eval JSONs are persisted under
+`packages/training/out/eval-kokoro-samantha-q1-rerun/` (copied in
+the closing batch so the matrix in §"Q1 re-eval" stays reproducible).

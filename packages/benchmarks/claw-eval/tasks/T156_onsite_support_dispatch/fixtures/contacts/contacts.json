@@ -7,7 +7,12 @@
     "email": "maqiang@company.com",
     "phone": "13800121001",
     "location": "Shanghai HQ",
-    "skills": ["System troubleshooting", "Database operations", "Network diagnostics", "Server management"],
+    "skills": [
+      "System troubleshooting",
+      "Database operations",
+      "Network diagnostics",
+      "Server management"
+    ],
     "notes": "10 years ops experience, specializes in rapid production incident recovery, holds OCP and RHCE certifications"
   },
   {
@@ -18,7 +23,12 @@
     "email": "lihua@company.com",
     "phone": "13800121002",
     "location": "Shanghai HQ",
-    "skills": ["Architecture design", "Performance optimization", "Code review", "Microservices"],
+    "skills": [
+      "Architecture design",
+      "Performance optimization",
+      "Code review",
+      "Microservices"
+    ],
     "notes": "8 years development experience, leads system architecture design, specializes in performance tuning and code refactoring"
   },
   {

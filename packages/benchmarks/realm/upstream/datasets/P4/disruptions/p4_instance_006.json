@@ -1,13 +1,7 @@
 {
   "instance_id": "p4_instance_006",
   "city_map": {
-    "locations": [
-      "hospital",
-      "stadium",
-      "airport",
-      "suburb",
-      "downtown"
-    ],
+    "locations": ["hospital", "stadium", "airport", "suburb", "downtown"],
     "distances": {
       "hospital-stadium": 25,
       "stadium-hospital": 25,
@@ -36,80 +30,56 @@
       "passenger_id": "p001",
       "pickup": "stadium",
       "dropoff": "downtown",
-      "time_window": [
-        12.75,
-        12.1
-      ],
+      "time_window": [12.75, 12.1],
       "deadline": 42
     },
     {
       "passenger_id": "p002",
       "pickup": "hospital",
       "dropoff": "suburb",
-      "time_window": [
-        16.75,
-        16.216666666666665
-      ],
+      "time_window": [16.75, 16.216666666666665],
       "deadline": 56
     },
     {
       "passenger_id": "p003",
       "pickup": "stadium",
       "dropoff": "hospital",
-      "time_window": [
-        12.25,
-        12.683333333333334
-      ],
+      "time_window": [12.25, 12.683333333333334],
       "deadline": 50
     },
     {
       "passenger_id": "p004",
       "pickup": "suburb",
       "dropoff": "stadium",
-      "time_window": [
-        15.75,
-        15.083333333333334
-      ],
+      "time_window": [15.75, 15.083333333333334],
       "deadline": 36
     },
     {
       "passenger_id": "p005",
       "pickup": "suburb",
       "dropoff": "stadium",
-      "time_window": [
-        17.75,
-        17.316666666666666
-      ],
+      "time_window": [17.75, 17.316666666666666],
       "deadline": 47
     },
     {
       "passenger_id": "p006",
       "pickup": "stadium",
       "dropoff": "hospital",
-      "time_window": [
-        15.0,
-        15.6
-      ],
+      "time_window": [15.0, 15.6],
       "deadline": 50
     },
     {
       "passenger_id": "p007",
       "pickup": "hospital",
       "dropoff": "downtown",
-      "time_window": [
-        13.0,
-        13.433333333333334
-      ],
+      "time_window": [13.0, 13.433333333333334],
       "deadline": 30
     },
     {
       "passenger_id": "p008",
       "pickup": "hospital",
       "dropoff": "downtown",
-      "time_window": [
-        14.5,
-        14.2
-      ],
+      "time_window": [14.5, 14.2],
       "deadline": 57
     }
   ],

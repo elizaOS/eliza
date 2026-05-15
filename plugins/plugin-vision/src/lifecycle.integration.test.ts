@@ -42,7 +42,7 @@ describe("VisionServiceLifecycleManager — arbiter pressure integration", () =>
 
     const yoloUnload = vi.fn();
     const ocrUnload = vi.fn();
-    const florenceUnload = vi.fn();
+    const faceUnload = vi.fn();
 
     mgr.register({
       id: "vision:yolo",
@@ -55,14 +55,14 @@ describe("VisionServiceLifecycleManager — arbiter pressure integration", () =>
       unload: ocrUnload,
     });
     mgr.register({
-      id: "vision:florence2",
+      id: "vision:face",
       memoryBytes: 200 * 1024 * 1024,
-      unload: florenceUnload,
+      unload: faceUnload,
     });
 
-    // Mark Florence2 as recently used so the coldest-first ordering puts YOLO
-    // + OCR ahead of it.
-    await mgr.touch("vision:florence2");
+    // Mark face recognition as recently used so the coldest-first ordering
+    // puts YOLO + OCR ahead of it.
+    await mgr.touch("vision:face");
 
     // Targeted release: arbiter names exactly YOLO + OCR.
     fire(["vision:yolo", "vision:ocr"]);
@@ -70,12 +70,12 @@ describe("VisionServiceLifecycleManager — arbiter pressure integration", () =>
 
     expect(yoloUnload).toHaveBeenCalledTimes(1);
     expect(ocrUnload).toHaveBeenCalledTimes(1);
-    expect(florenceUnload).not.toHaveBeenCalled();
+    expect(faceUnload).not.toHaveBeenCalled();
 
     const snap = mgr.snapshot();
     expect(snap.find((s) => s.id === "vision:yolo")?.loaded).toBe(false);
     expect(snap.find((s) => s.id === "vision:ocr")?.loaded).toBe(false);
-    expect(snap.find((s) => s.id === "vision:florence2")?.loaded).toBe(true);
+    expect(snap.find((s) => s.id === "vision:face")?.loaded).toBe(true);
 
     await mgr.stop();
   });

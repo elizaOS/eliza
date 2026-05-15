@@ -535,16 +535,7 @@ _ACTION_NAME_ALIASES: dict[str, str] = {
     # Retired action names → canonical replacements.
     "DEVICE_INTENT": "BLOCK",
     "LIFEOPS": "LIFE",
-    "SCHEDULED_TASKS_ACKNOWLEDGE": "SCHEDULED_TASK_ACKNOWLEDGE",
-    "SCHEDULED_TASKS_CANCEL": "SCHEDULED_TASK_CANCEL",
-    "SCHEDULED_TASKS_COMPLETE": "SCHEDULED_TASK_COMPLETE",
     "SCHEDULED_TASKS_CREATE": "SCHEDULED_TASK_CREATE",
-    "SCHEDULED_TASKS_DISMISS": "SCHEDULED_TASK_DISMISS",
-    "SCHEDULED_TASKS_GET": "SCHEDULED_TASK_GET",
-    "SCHEDULED_TASKS_HISTORY": "SCHEDULED_TASK_HISTORY",
-    "SCHEDULED_TASKS_LIST": "SCHEDULED_TASK_LIST",
-    "SCHEDULED_TASKS_REOPEN": "SCHEDULED_TASK_REOPEN",
-    "SCHEDULED_TASKS_SKIP": "SCHEDULED_TASK_SKIP",
     "SCHEDULED_TASKS_SNOOZE": "SCHEDULED_TASK_SNOOZE",
     "SCHEDULED_TASKS_UPDATE": "SCHEDULED_TASK_UPDATE",
 }
@@ -607,7 +598,6 @@ _HASH_INERT_UMBRELLA_SUBACTIONS: dict[str, tuple[str, frozenset[str]]] = {
             }
         ),
     ),
-    "SCHEDULED_TASK": ("subaction", frozenset({"list", "get", "history"})),
 }
 
 
@@ -920,16 +910,6 @@ def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
         if key not in predicted:
             return False
         pred_value = predicted[key]
-        # A calendar availability check can be implemented by searching the
-        # exact requested window and treating zero returned events as "free".
-        # This is not equivalent to arbitrary event search: only accept the
-        # substitution when the expected op is check_availability, the
-        # predicted op is search_events, both have equivalent bounds, and no
-        # query/title filter is present.
-        if key == "subaction" and _availability_search_equivalent(
-            predicted, expected
-        ):
-            continue
         # passengers: accept integer count ↔ array-of-objects as equivalent
         # when the count matches. Agents often emit a bare integer while GT
         # scenarios use [{type:"adult"}, ...] or [{name:…, seat_class:…}, …].
@@ -944,44 +924,6 @@ def _kwargs_match(predicted: dict[str, Any], expected: dict[str, Any]) -> bool:
         if not _values_equivalent(pred_value, exp_value):
             return False
     return True
-
-
-def _availability_search_equivalent(
-    predicted: dict[str, Any],
-    expected: dict[str, Any],
-) -> bool:
-    if predicted.get("subaction") != "search_events":
-        return False
-    if expected.get("subaction") != "check_availability":
-        return False
-    if _has_calendar_search_filter(predicted) or _has_calendar_search_filter(expected):
-        return False
-    return _time_window_equivalent(predicted, expected)
-
-
-def _has_calendar_search_filter(kwargs: dict[str, Any]) -> bool:
-    for key in ("query", "queries", "title", "event_name"):
-        value = kwargs.get(key)
-        if value is None:
-            continue
-        if isinstance(value, str) and value.strip():
-            return True
-        if isinstance(value, list) and any(str(item).strip() for item in value):
-            return True
-    return False
-
-
-def _time_window_equivalent(
-    predicted: dict[str, Any],
-    expected: dict[str, Any],
-) -> bool:
-    pred_start = predicted.get("start") or predicted.get("window_start")
-    pred_end = predicted.get("end") or predicted.get("window_end")
-    exp_start = expected.get("start") or expected.get("window_start")
-    exp_end = expected.get("end") or expected.get("window_end")
-    return _values_equivalent(pred_start, exp_start) and _values_equivalent(
-        pred_end, exp_end
-    )
 
 
 def _action_is_hash_inert(action: Action) -> bool:

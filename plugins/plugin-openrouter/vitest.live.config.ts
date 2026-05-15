@@ -35,6 +35,5 @@ export default defineConfig({
     environment: "node",
     include: ["__tests__/**/*.live.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**"],
-    setupFiles: ["./__tests__/setup.ts"],
   },
 });

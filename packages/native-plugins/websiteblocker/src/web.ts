@@ -155,12 +155,11 @@ export class WebsiteBlockerWeb extends WebPlugin {
         reason: "Eliza API not available.",
       };
     }
-    const result = await this.requestJson<Partial<WebsiteBlockerOpenSettingsResult>>(
-      "/api/permissions/website-blocking/open-settings",
-      {
-        method: "POST",
-      },
-    );
+    const result = await this.requestJson<
+      Partial<WebsiteBlockerOpenSettingsResult>
+    >("/api/permissions/website-blocking/open-settings", {
+      method: "POST",
+    });
     return {
       opened: result.opened ?? false,
       target: result.target ?? "runtime",

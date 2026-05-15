@@ -38,7 +38,6 @@
  */
 
 import type { BargeInController } from "./barge-in";
-import type { VoiceEmotionAttribution } from "./emotion-attribution";
 import {
 	EOT_MID_CLAUSE_THRESHOLD,
 	type EotClassifier,
@@ -68,7 +67,6 @@ export interface VoiceTurnOutcome {
 	speaker?: VoiceSpeaker;
 	segments?: VoiceSegment[];
 	turn?: VoiceTurnMetadata;
-	voiceEmotion?: VoiceEmotionAttribution;
 	/** Final reply text the model produced (already streamed into TTS by the
 	 *  generate callee). May be empty for an IGNORE turn. */
 	replyText: string;
@@ -82,7 +80,6 @@ export interface VoiceGenerateRequest {
 	speaker?: VoiceSpeaker;
 	segments?: VoiceSegment[];
 	turn?: VoiceTurnMetadata;
-	voiceEmotion?: VoiceEmotionAttribution;
 	/** True for the finalized turn (post `speech-end` + `flush()`), false for
 	 *  a speculative pass off a partial. */
 	final: boolean;
@@ -588,16 +585,12 @@ function toError(err: unknown): Error {
 
 function voiceRequestMetadata(
 	update: TranscriptUpdate | null,
-): Pick<
-	VoiceGenerateRequest,
-	"source" | "speaker" | "segments" | "turn" | "voiceEmotion"
-> {
+): Pick<VoiceGenerateRequest, "source" | "speaker" | "segments" | "turn"> {
 	if (!update) return {};
 	return {
 		...(update.source ? { source: update.source } : {}),
 		...(update.speaker ? { speaker: update.speaker } : {}),
 		...(update.segments ? { segments: update.segments } : {}),
 		...(update.turn ? { turn: update.turn } : {}),
-		...(update.voiceEmotion ? { voiceEmotion: update.voiceEmotion } : {}),
 	};
 }

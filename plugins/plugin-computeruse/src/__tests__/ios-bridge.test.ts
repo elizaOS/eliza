@@ -11,10 +11,13 @@ import {
   createIosVisionOcrProvider,
   findIosAppIntent,
   findIosAppIntentsForBundle,
+  type IntentSpec,
   IOS_APP_GROUP_ID,
   IOS_APP_INTENT_BUNDLE_IDS,
   IOS_APP_INTENT_REGISTRY,
   IOS_BRIDGE_JS_NAME,
+  type IosBridgeResult,
+  type IosComputerUseBridge,
   listIosAppIntents,
   listOcrProviders,
   REPLAYKIT_FOREGROUND_MAX_BUFFER,
@@ -22,9 +25,6 @@ import {
   registerOcrProvider,
   selectOcrProvider,
   unregisterOcrProvider,
-  type IntentSpec,
-  type IosBridgeResult,
-  type IosComputerUseBridge,
   type VisionOcrResult,
 } from "../mobile/index.js";
 
@@ -61,7 +61,10 @@ describe("iOS AppIntent registry", () => {
   });
 
   it("returns frozen registry entries", () => {
-    const registry = IOS_APP_INTENT_REGISTRY as Record<string, readonly IntentSpec[]>;
+    const registry = IOS_APP_INTENT_REGISTRY as Record<
+      string,
+      readonly IntentSpec[]
+    >;
     for (const bundleId of IOS_APP_INTENT_BUNDLE_IDS) {
       expect(Array.isArray(registry[bundleId])).toBe(true);
       expect(registry[bundleId].length).toBeGreaterThan(0);
@@ -77,9 +80,14 @@ describe("iOS AppIntent registry", () => {
       expect(Array.isArray(intent.parameters)).toBe(true);
       for (const param of intent.parameters) {
         expect(typeof param.name).toBe("string");
-        expect(["string", "number", "boolean", "date", "url", "enum"]).toContain(
-          param.type,
-        );
+        expect([
+          "string",
+          "number",
+          "boolean",
+          "date",
+          "url",
+          "enum",
+        ]).toContain(param.type);
         expect(typeof param.required).toBe("boolean");
         if (param.type === "enum") {
           expect(Array.isArray(param.enumValues)).toBe(true);
@@ -112,7 +120,9 @@ describe("iOS AppIntent registry", () => {
     for (const intent of mail) {
       expect(intent.bundleId).toBe("com.apple.mobilemail");
     }
-    expect(findIosAppIntentsForBundle("com.example.does-not-exist")).toEqual([]);
+    expect(findIosAppIntentsForBundle("com.example.does-not-exist")).toEqual(
+      [],
+    );
   });
 
   it("Maps directions intent declares the expected transport enum", () => {
@@ -142,9 +152,10 @@ describe("iOS AppIntent registry", () => {
 // ── OCR provider chain ───────────────────────────────────────────────────────
 
 function fakeBridge(
-  visionImpl: (
-    args: { imageBase64: string; options?: unknown },
-  ) => Promise<IosBridgeResult<VisionOcrResult>>,
+  visionImpl: (args: {
+    imageBase64: string;
+    options?: unknown;
+  }) => Promise<IosBridgeResult<VisionOcrResult>>,
 ): IosComputerUseBridge {
   // Minimal mock: only `visionOcr` is exercised here.
   return {
@@ -173,8 +184,7 @@ function fakeBridge(
     broadcastExtensionHandshake: () =>
       Promise.resolve({ ok: false, code: "internal_error", message: "stub" }),
     visionOcr: visionImpl,
-    appIntentList: () =>
-      Promise.resolve({ ok: true, data: { intents: [] } }),
+    appIntentList: () => Promise.resolve({ ok: true, data: { intents: [] } }),
     appIntentInvoke: () =>
       Promise.resolve({ ok: false, code: "internal_error", message: "stub" }),
     accessibilitySnapshot: () =>

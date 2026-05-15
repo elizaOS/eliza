@@ -65,17 +65,16 @@ export function CodingAgentSettingsSection() {
     void (async () => {
       setLoading(true);
       try {
-        const [cfg, anthropicRes, openaiRes, preflightRes] =
-          await Promise.all([
-            client.getConfig(),
-            client.fetchModels("anthropic", false).catch(() => null),
-            client.fetchModels("openai", false).catch(() => null),
-            fetch("/api/coding-agents/preflight", {
-              signal: controller.signal,
-            })
-              .then((response) => (response.ok ? response.json() : null))
-              .catch(() => null),
-          ]);
+        const [cfg, anthropicRes, openaiRes, preflightRes] = await Promise.all([
+          client.getConfig(),
+          client.fetchModels("anthropic", false).catch(() => null),
+          client.fetchModels("openai", false).catch(() => null),
+          fetch("/api/coding-agents/preflight", {
+            signal: controller.signal,
+          })
+            .then((response) => (response.ok ? response.json() : null))
+            .catch(() => null),
+        ]);
 
         if (controller.signal.aborted) return;
 

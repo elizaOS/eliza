@@ -13,20 +13,20 @@
 import type { CalibrationBlock } from "../../persona.ts";
 
 export interface BriefInput {
-    /** Stable URL-safe slug; the directory name under ~/.eliza/apps/. */
-    slug: string;
-    /** Free-text user intent that triggered this generation. */
-    intent: string;
-    /** Prior version of `<slug>/src/` for rebuild flows. Absent on first build. */
-    existingSrc?: Record<string, string>;
-    /** User calibration — flavor knobs, not technical constraints. */
-    calibration: CalibrationBlock | null;
-    /** RFC 3339 timestamp to embed in the manifest's `last_built_at`. */
-    now: string;
-    /** Identifier of the generation backend (e.g., `claude-code-2.1.138`). */
-    builderId: string;
-    /** Optional critique appended after a previous attempt's failure. */
-    critique?: string;
+  /** Stable URL-safe slug; the directory name under ~/.eliza/apps/. */
+  slug: string;
+  /** Free-text user intent that triggered this generation. */
+  intent: string;
+  /** Prior version of `<slug>/src/` for rebuild flows. Absent on first build. */
+  existingSrc?: Record<string, string>;
+  /** User calibration — flavor knobs, not technical constraints. */
+  calibration: CalibrationBlock | null;
+  /** RFC 3339 timestamp to embed in the manifest's `last_built_at`. */
+  now: string;
+  /** Identifier of the generation backend (e.g., `claude-code-2.1.138`). */
+  builderId: string;
+  /** Optional critique appended after a previous attempt's failure. */
+  critique?: string;
 }
 
 const SYSTEM_PROMPT_BASE = `\
@@ -91,42 +91,47 @@ No additional fields, no surrounding prose, no markdown fences.
 `;
 
 export function buildSystemPrompt(): string {
-    return `${SYSTEM_PROMPT_BASE}\n${SYSTEM_PROMPT_OUTPUT_SHAPE}`.trim();
+  return `${SYSTEM_PROMPT_BASE}\n${SYSTEM_PROMPT_OUTPUT_SHAPE}`.trim();
 }
 
 export function buildUserPrompt(input: BriefInput): string {
-    const lines: string[] = [];
+  const lines: string[] = [];
 
-    lines.push(`Slug: ${input.slug}`);
-    lines.push(`Intent: ${input.intent}`);
-    lines.push(`Builder ID (use as last_built_by): ${input.builderId}`);
-    lines.push(`Timestamp (use as last_built_at): ${input.now}`);
+  lines.push(`Slug: ${input.slug}`);
+  lines.push(`Intent: ${input.intent}`);
+  lines.push(`Builder ID (use as last_built_by): ${input.builderId}`);
+  lines.push(`Timestamp (use as last_built_at): ${input.now}`);
 
-    if (input.calibration !== null) {
-        const cal = input.calibration;
-        lines.push("");
-        lines.push("User calibration (style hints, not technical constraints):");
-        lines.push(`- name: ${cal.name}`);
-        lines.push(`- chronotype: ${cal.chronotype}`);
-        lines.push(`- multitasking: ${cal.multitasking}`);
-        lines.push(`- error_communication: ${cal.errorCommunication}`);
+  if (input.calibration !== null) {
+    const cal = input.calibration;
+    lines.push("");
+    lines.push("User calibration (style hints, not technical constraints):");
+    lines.push(`- name: ${cal.name}`);
+    lines.push(`- chronotype: ${cal.chronotype}`);
+    lines.push(`- multitasking: ${cal.multitasking}`);
+    lines.push(`- error_communication: ${cal.errorCommunication}`);
+  }
+
+  if (
+    input.existingSrc !== undefined &&
+    Object.keys(input.existingSrc).length > 0
+  ) {
+    lines.push("");
+    lines.push(
+      "Existing source — patch this in place; do not rewrite from scratch unless asked:",
+    );
+    for (const [path, body] of Object.entries(input.existingSrc)) {
+      lines.push(`--- ${path} ---`);
+      lines.push(body);
+      lines.push(`--- end ${path} ---`);
     }
+  }
 
-    if (input.existingSrc !== undefined && Object.keys(input.existingSrc).length > 0) {
-        lines.push("");
-        lines.push("Existing source — patch this in place; do not rewrite from scratch unless asked:");
-        for (const [path, body] of Object.entries(input.existingSrc)) {
-            lines.push(`--- ${path} ---`);
-            lines.push(body);
-            lines.push(`--- end ${path} ---`);
-        }
-    }
+  if (input.critique !== undefined && input.critique.length > 0) {
+    lines.push("");
+    lines.push("Critique from previous attempt:");
+    lines.push(input.critique);
+  }
 
-    if (input.critique !== undefined && input.critique.length > 0) {
-        lines.push("");
-        lines.push("Critique from previous attempt:");
-        lines.push(input.critique);
-    }
-
-    return lines.join("\n");
+  return lines.join("\n");
 }

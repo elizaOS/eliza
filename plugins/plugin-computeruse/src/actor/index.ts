@@ -11,15 +11,15 @@ export {
   resolveReference,
 } from "./actor.js";
 export {
-  Brain,
-  BrainParseError,
   BRAIN_MAX_PIXELS,
   BRAIN_MAX_ROIS,
+  Brain,
+  type BrainDeps,
+  type BrainInput,
+  BrainParseError,
   brainPromptFor,
   encodeForBrain,
   parseBrainOutput,
-  type BrainDeps,
-  type BrainInput,
 } from "./brain.js";
 export {
   Cascade,
@@ -35,20 +35,20 @@ export {
   DefaultComputerInterface,
   type DisplayPoint,
   type DragPath,
-  makeComputerInterface,
   type MouseButton,
+  makeComputerInterface,
   type ScreenshotResult,
   type ScrollDelta,
 } from "./computer-interface.js";
-export { dispatch, type DispatchDeps } from "./dispatch.js";
-export {
-  type ActionResult as ActorActionResult,
-  type BrainActionKind,
-  type BrainOutput,
-  type BrainProposedAction,
-  type BrainRoi,
-  type CascadeResult,
-  type GroundingResult,
-  type ProposedAction,
-  type ReferenceTarget,
+export { type DispatchDeps, dispatch } from "./dispatch.js";
+export type {
+  ActionResult as ActorActionResult,
+  BrainActionKind,
+  BrainOutput,
+  BrainProposedAction,
+  BrainRoi,
+  CascadeResult,
+  GroundingResult,
+  ProposedAction,
+  ReferenceTarget,
 } from "./types.js";

@@ -15,8 +15,8 @@
 import type { RelationshipStoreStub } from "./contract-stubs.js";
 import type { DefaultPack } from "./registry-types.js";
 import {
-  compileTaskDefinition,
   type CompiledTaskDefinition,
+  compileTaskDefinition,
   type FollowUpTaskDefinition,
   type WatcherTaskDefinition,
 } from "./task-definitions.js";

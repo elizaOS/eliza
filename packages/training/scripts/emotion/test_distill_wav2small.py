@@ -140,20 +140,37 @@ class BudgetTests(unittest.TestCase):
 
 
 class HeavyPhasesTests(unittest.TestCase):
-    """The heavy phases must raise `NotImplementedError` until the operator
-    runs the full pipeline — that's the contract that keeps CI honest.
+    """The heavy phases are now implemented. They still require torch +
+    onnxruntime + a teacher checkpoint for the full run, but the contracts
+    below are enforced in pure Python: empty inputs no-op, missing teachers
+    fail loudly with the license-checked path, and the export rejects bad
+    output paths before touching ONNX.
     """
-
-    def test_teacher_pseudo_labels_real_path_raises(self) -> None:
-        with self.assertRaises(NotImplementedError):
-            dw.teacher_pseudo_labels(teacher=None, clips=[pathlib.Path("x.wav")])
 
     def test_teacher_pseudo_labels_empty_clips_returns_empty(self) -> None:
         # No-op when staging incomplete — operator gets a friendly path through.
         self.assertEqual(dw.teacher_pseudo_labels(teacher=None, clips=[]), [])
 
-    def test_train_student_raises(self) -> None:
-        with self.assertRaises(NotImplementedError):
+    def test_teacher_pseudo_labels_rejects_unlicensed_teacher(self) -> None:
+        """Passing a non-dict teacher (i.e. bypassing the license-checked
+        loader) must fail loudly — the audeering license guard runs inside
+        `load_teacher`, and `teacher_pseudo_labels` re-checks the shape so
+        operators can't sneak past the guard.
+        """
+        with self.assertRaisesRegex(RuntimeError, "load_teacher"):
+            dw.teacher_pseudo_labels(
+                teacher=None, clips=[pathlib.Path("/tmp/missing.wav")],
+            )
+        with self.assertRaisesRegex(RuntimeError, "license check"):
+            dw.teacher_pseudo_labels(
+                teacher={"foo": "bar"},  # missing model/processor
+                clips=[pathlib.Path("/tmp/missing.wav")],
+            )
+
+    def test_train_student_rejects_empty_labels(self) -> None:
+        """No labels means no-op — operator should be told loudly to
+        run `teacher_pseudo_labels` first."""
+        with self.assertRaisesRegex(RuntimeError, "empty teacher_labels"):
             dw.train_student(
                 student=None,
                 teacher_labels=[],
@@ -162,12 +179,66 @@ class HeavyPhasesTests(unittest.TestCase):
                 device="cpu",
             )
 
-    def test_export_onnx_raises(self) -> None:
-        with self.assertRaises(NotImplementedError):
+    def test_export_onnx_rejects_non_onnx_suffix(self) -> None:
+        """Suffix is part of the contract — the operator publish script
+        expects `<run-dir>/wav2small-int8.onnx`."""
+        with self.assertRaisesRegex(ValueError, "must end in"):
             dw.export_student_onnx(
                 student=None,
-                out_path=pathlib.Path("/tmp/wav2small.onnx"),
+                out_path=pathlib.Path("/tmp/wav2small.pt"),
             )
+
+    def test_macro_f1_empty_returns_zero(self) -> None:
+        """Helper: macro F1 of empty predictions is 0.0, not NaN."""
+        self.assertEqual(dw._macro_f1([], [], num_classes=7), 0.0)
+
+    def test_macro_f1_perfect(self) -> None:
+        self.assertAlmostEqual(
+            dw._macro_f1([0, 1, 2], [0, 1, 2], num_classes=7),
+            3 / 7,  # 3 perfect classes out of 7 averaged
+        )
+
+    def test_slice_windows_pads_short_clip(self) -> None:
+        """A clip shorter than one window is zero-padded to exactly one
+        window — never dropped. Operators training on short MELD clips
+        need every clip to produce ≥1 row."""
+        import numpy as np
+
+        short_pcm = np.zeros(int(2.0 * dw.WAV2SMALL_SAMPLE_RATE), dtype="float32")
+        windows = dw._slice_windows(
+            short_pcm, dw.TEACHER_WINDOW_SECONDS, dw.TEACHER_HOP_SECONDS,
+        )
+        self.assertEqual(len(windows), 1)
+        self.assertEqual(
+            windows[0].shape[0],
+            int(dw.TEACHER_WINDOW_SECONDS * dw.WAV2SMALL_SAMPLE_RATE),
+        )
+
+    def test_slice_windows_strides_long_clip(self) -> None:
+        """A clip ≫ window emits multiple striped windows."""
+        import numpy as np
+
+        long_pcm = np.zeros(int(20.0 * dw.WAV2SMALL_SAMPLE_RATE), dtype="float32")
+        windows = dw._slice_windows(long_pcm, 8.0, 4.0)
+        # 20-second clip with 8s window / 4s hop → starts at 0,4,8,12 then
+        # a tail-padded window at 16. = 5 windows.
+        self.assertEqual(len(windows), 5)
+
+    def test_provenance_extracts_corpus_split(self) -> None:
+        prov = dw._provenance_from_clip(
+            pathlib.Path("/data/MSP-Podcast/train/clip-001.wav"),
+        )
+        self.assertEqual(prov["corpus"], "MSP-Podcast")
+        self.assertEqual(prov["split"], "train")
+        self.assertEqual(prov["clip_id"], "clip-001")
+
+    def test_provenance_truly_bare_is_unknown(self) -> None:
+        # A bare filename (no parents) has both corpus and split set to
+        # "unknown" so the run is still well-formed.
+        prov = dw._provenance_from_clip(pathlib.Path("clip.wav"))
+        self.assertEqual(prov["corpus"], "unknown")
+        self.assertEqual(prov["split"], "unknown")
+        self.assertEqual(prov["clip_id"], "clip")
 
 
 class TagSyncTests(unittest.TestCase):

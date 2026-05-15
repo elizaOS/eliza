@@ -10,22 +10,22 @@
  */
 
 import { describe, expect, it } from "vitest";
-import {
-  IOS_LOGICAL_DISPLAY_ID,
-  IosComputerInterface,
-  makeIosComputerInterface,
-} from "../mobile/ios-computer-interface.js";
 import type {
   IntentInvocationRequest,
   IosBridgeResult,
   IosComputerUseBridge,
 } from "../mobile/ios-bridge.js";
+import {
+  IOS_LOGICAL_DISPLAY_ID,
+  IosComputerInterface,
+  makeIosComputerInterface,
+} from "../mobile/ios-computer-interface.js";
 import type { Scene } from "../scene/scene-types.js";
 
 function stubBridge(
   overrides: Partial<IosComputerUseBridge> = {},
 ): IosComputerUseBridge {
-  const generic = <T,>(): Promise<IosBridgeResult<T>> =>
+  const generic = <T>(): Promise<IosBridgeResult<T>> =>
     Promise.resolve({ ok: false, code: "internal_error", message: "stub" });
   return {
     probe: () =>
@@ -131,14 +131,14 @@ describe("IosComputerInterface — screenshot", () => {
       getBridge: () => bridge,
       getReplayKitSessionId: () => "rk-session-1",
     });
-    await expect(iface.screenshot()).rejects.toThrow(
-      /extension_died.*iOS-26/,
-    );
+    await expect(iface.screenshot()).rejects.toThrow(/extension_died.*iOS-26/);
   });
 });
 
 describe("IosComputerInterface — input refused with redirect", () => {
-  const cases: ReadonlyArray<readonly [string, (i: IosComputerInterface) => Promise<unknown>]> = [
+  const cases: ReadonlyArray<
+    readonly [string, (i: IosComputerInterface) => Promise<unknown>]
+  > = [
     ["leftClick", (i) => i.leftClick({ displayId: 0, x: 10, y: 20 })],
     ["rightClick", (i) => i.rightClick({ displayId: 0, x: 10, y: 20 })],
     ["doubleClick", (i) => i.doubleClick({ displayId: 0, x: 10, y: 20 })],
@@ -154,14 +154,8 @@ describe("IosComputerInterface — input refused with redirect", () => {
           ],
         }),
     ],
-    [
-      "scroll",
-      (i) => i.scroll({ displayId: 0, x: 10, y: 20, dx: 0, dy: 1 }),
-    ],
-    [
-      "scrollUp",
-      (i) => i.scrollUp({ displayId: 0, clicks: 1 }),
-    ],
+    ["scroll", (i) => i.scroll({ displayId: 0, x: 10, y: 20, dx: 0, dy: 1 })],
+    ["scrollUp", (i) => i.scrollUp({ displayId: 0, clicks: 1 })],
     ["typeText", (i) => i.typeText({ text: "hi" })],
     ["pressKey", (i) => i.pressKey({ key: "a" })],
     ["hotkey", (i) => i.hotkey({ keys: ["cmd", "a"] })],

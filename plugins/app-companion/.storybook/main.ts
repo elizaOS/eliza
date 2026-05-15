@@ -7,7 +7,7 @@ const elizaRoot = path.resolve(companionRoot, "../..");
 const config: StorybookConfig = {
   stories: ["../src/**/*.stories.@(ts|tsx)"],
   addons: [
-    "@storybook/addon-essentials",
+    "@storybook/addon-docs",
     "@storybook/addon-a11y",
     "@storybook/addon-themes",
   ],

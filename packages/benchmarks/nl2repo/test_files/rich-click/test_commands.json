@@ -1,1 +1,6 @@
-["pip install 'setuptools>=45'","pip install click","pip install --no-build-isolation -e .[dev]","pytest --continue-on-collection-errors tests"]
+[
+  "pip install 'setuptools>=45'",
+  "pip install click",
+  "pip install --no-build-isolation -e .[dev]",
+  "pytest --continue-on-collection-errors tests"
+]

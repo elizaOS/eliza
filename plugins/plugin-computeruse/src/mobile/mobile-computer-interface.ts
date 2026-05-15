@@ -30,13 +30,6 @@
  */
 
 import { logger } from "@elizaos/core";
-import type { Scene, SceneAxNode } from "../scene/scene-types.js";
-import type { DisplayDescriptor } from "../types.js";
-import type {
-  AndroidBridgeResult,
-  AndroidComputerUseBridge,
-  GestureArgs,
-} from "./android-bridge.js";
 import type {
   ComputerInterface,
   CursorPosition,
@@ -46,6 +39,13 @@ import type {
   ScreenshotResult,
   ScrollDelta,
 } from "../actor/computer-interface.js";
+import type { Scene, SceneAxNode } from "../scene/scene-types.js";
+import type { DisplayDescriptor } from "../types.js";
+import type {
+  AndroidBridgeResult,
+  AndroidComputerUseBridge,
+  GestureArgs,
+} from "./android-bridge.js";
 import { ANDROID_LOGICAL_DISPLAY_ID } from "./mobile-screen-capture.js";
 
 const SCROLL_PIXELS_PER_CLICK = 200;
@@ -70,7 +70,10 @@ export interface MobileComputerInterfaceDeps {
    * to an Android `performGlobalAction` invocation. Other keys throw —
    * Android has no equivalent of arbitrary keystrokes from a non-system app.
    */
-  globalActionMap?: ReadonlyMap<string, "back" | "home" | "recents" | "notifications">;
+  globalActionMap?: ReadonlyMap<
+    string,
+    "back" | "home" | "recents" | "notifications"
+  >;
 }
 
 export class MobileComputerInterface implements ComputerInterface {
@@ -79,19 +82,22 @@ export class MobileComputerInterface implements ComputerInterface {
 
   constructor(deps: MobileComputerInterfaceDeps) {
     this.deps = deps;
-    this.cursorState =
-      deps.cursorState ?? {
-        current: { displayId: ANDROID_LOGICAL_DISPLAY_ID, x: 0, y: 0 },
-      };
+    this.cursorState = deps.cursorState ?? {
+      current: { displayId: ANDROID_LOGICAL_DISPLAY_ID, x: 0, y: 0 },
+    };
   }
 
   // ── Screenshot ──────────────────────────────────────────────────────────────
 
-  async screenshot(opts: { displayId?: number } = {}): Promise<ScreenshotResult> {
+  async screenshot(
+    opts: { displayId?: number } = {},
+  ): Promise<ScreenshotResult> {
     this.requireDisplayId(opts.displayId);
     const bridge = this.requireBridge();
     const result = unwrap(await bridge.captureFrame(), "captureFrame");
-    const decoded = (this.deps.decodeJpeg ?? defaultDecodeJpeg)(result.jpegBase64);
+    const decoded = (this.deps.decodeJpeg ?? defaultDecodeJpeg)(
+      result.jpegBase64,
+    );
     return {
       displayId: ANDROID_LOGICAL_DISPLAY_ID,
       frame: decoded,
@@ -102,7 +108,9 @@ export class MobileComputerInterface implements ComputerInterface {
 
   // ── Mouse-style primitives (mapped to AccessibilityGestureDescription) ─────
 
-  async mouseDown(point: DisplayPoint & { button?: MouseButton }): Promise<void> {
+  async mouseDown(
+    point: DisplayPoint & { button?: MouseButton },
+  ): Promise<void> {
     // Android has no notion of a held-down pointer that survives an API call.
     // For Brain-issued primitives we fold to a synthetic moveCursor — the
     // higher-level cascade should prefer leftClick / drag.
@@ -169,7 +177,11 @@ export class MobileComputerInterface implements ComputerInterface {
       { displayId: path.displayId, x: start.x, y: start.y },
       { displayId: path.displayId, x: end.x, y: end.y },
     );
-    this.cursorState.current = { displayId: path.displayId, x: end.x, y: end.y };
+    this.cursorState.current = {
+      displayId: path.displayId,
+      x: end.x,
+      y: end.y,
+    };
   }
 
   // ── Keyboard / global actions ───────────────────────────────────────────────
@@ -202,7 +214,10 @@ export class MobileComputerInterface implements ComputerInterface {
       );
     }
     const bridge = this.requireBridge();
-    unwrap(await bridge.performGlobalAction({ action }), `performGlobalAction(${action})`);
+    unwrap(
+      await bridge.performGlobalAction({ action }),
+      `performGlobalAction(${action})`,
+    );
   }
 
   async hotkey(_args: { keys: string[] }): Promise<void> {
@@ -248,14 +263,26 @@ export class MobileComputerInterface implements ComputerInterface {
     const display = this.getDisplay();
     const cx = Math.round(display.bounds[2] / 2);
     const cy = Math.round(display.bounds[3] / 2);
-    await this.scroll({ displayId: args.displayId, x: cx, y: cy, dx: 0, dy: -Math.abs(args.clicks) });
+    await this.scroll({
+      displayId: args.displayId,
+      x: cx,
+      y: cy,
+      dx: 0,
+      dy: -Math.abs(args.clicks),
+    });
   }
 
   async scrollDown(args: { displayId: number; clicks: number }): Promise<void> {
     const display = this.getDisplay();
     const cx = Math.round(display.bounds[2] / 2);
     const cy = Math.round(display.bounds[3] / 2);
-    await this.scroll({ displayId: args.displayId, x: cx, y: cy, dx: 0, dy: Math.abs(args.clicks) });
+    await this.scroll({
+      displayId: args.displayId,
+      x: cx,
+      y: cy,
+      dx: 0,
+      dy: Math.abs(args.clicks),
+    });
   }
 
   // ── Metadata (no bridge call) ──────────────────────────────────────────────
@@ -331,7 +358,10 @@ export class MobileComputerInterface implements ComputerInterface {
     this.cursorState.current = { ...point };
   }
 
-  private async dispatchSwipe(from: DisplayPoint, to: DisplayPoint): Promise<void> {
+  private async dispatchSwipe(
+    from: DisplayPoint,
+    to: DisplayPoint,
+  ): Promise<void> {
     this.requireDisplayId(from.displayId);
     this.requireDisplayId(to.displayId);
     this.requireFiniteCoords(from);

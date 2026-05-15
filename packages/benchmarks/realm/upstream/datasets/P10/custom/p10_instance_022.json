@@ -16,13 +16,7 @@
       "cost_multiplier": 1.2
     }
   ],
-  "components": [
-    "gpu_chips",
-    "memory",
-    "cooling",
-    "power_supply",
-    "pcb"
-  ],
+  "components": ["gpu_chips", "memory", "cooling", "power_supply", "pcb"],
   "facilities": [
     {
       "facility_id": "assembly",
@@ -43,16 +37,7 @@
     "memory": 45,
     "cooling": 60
   },
-  "dependencies": [
-    [
-      "power_supply",
-      "assembly"
-    ],
-    [
-      "testing",
-      "packaging"
-    ]
-  ],
+  "dependencies": [["power_supply", "assembly"], ["testing", "packaging"]],
   "disruption_scenarios": [
     {
       "type": "resource_shortage",

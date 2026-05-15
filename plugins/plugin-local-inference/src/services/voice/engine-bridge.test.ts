@@ -143,7 +143,7 @@ describe("FfiOmniVoiceBackend — streaming TTS routing", () => {
 		expect(out.phraseId).toBe(1);
 	});
 
-	it("passes the default speaker preset id so OmniVoice uses the bundled default preset", async () => {
+	it("passes NULL for the default speaker preset so OmniVoice uses bundle defaults", async () => {
 		const speakerIds: Array<string | null> = [];
 		const base = fakeFfi("ignored", {
 			ttsSamples: 4,
@@ -164,37 +164,6 @@ describe("FfiOmniVoiceBackend — streaming TTS routing", () => {
 		await backend.synthesize({
 			phrase: phrase("hello"),
 			preset: preset(),
-			cancelSignal: { cancelled: false },
-		});
-
-		expect(speakerIds).toEqual(["default"]);
-	});
-
-	it("passes NULL only for a degenerate preset with no voice payload", async () => {
-		const speakerIds: Array<string | null> = [];
-		const base = fakeFfi("ignored", {
-			ttsSamples: 4,
-			ttsStreamSupported: true,
-		});
-		const backend = new FfiOmniVoiceBackend({
-			ffi: {
-				...base,
-				ttsSynthesizeStream: (args) => {
-					speakerIds.push(args.speakerPresetId);
-					return base.ttsSynthesizeStream(args);
-				},
-			},
-			ctx: 1n,
-			sampleRate: 24_000,
-		});
-
-		await backend.synthesize({
-			phrase: phrase("hello"),
-			preset: {
-				voiceId: "default",
-				embedding: new Float32Array(0),
-				bytes: new Uint8Array(0),
-			},
 			cancelSignal: { cancelled: false },
 		});
 

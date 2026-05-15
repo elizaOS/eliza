@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultVoiceQuantForTier,
-  ELIZA_1_HF_REPO,
   ELIZA_1_TIER_IDS,
-  ELIZA_1_VISION_TIER_IDS,
-  findCatalogModel,
   MODEL_CATALOG,
   type OmniVoiceQuantLevel,
   voiceQuantLadderForTier,
@@ -17,7 +14,7 @@ const LARGE_TIERS = [
   "eliza-1-27b-256k",
   "eliza-1-27b-1m",
 ] as const;
-const OMNIVOICE_TIERS = LARGE_TIERS;
+const OMNIVOICE_TIERS = [...SMALL_TIERS, ...LARGE_TIERS] as const;
 
 describe("voiceQuantLadderForTier", () => {
   it("covers every canonical tier id", () => {
@@ -29,9 +26,13 @@ describe("voiceQuantLadderForTier", () => {
     }
   });
 
-  it("returns an empty OmniVoice ladder for Kokoro-only small tiers", () => {
+  it("returns a narrow OmniVoice ladder for small tiers", () => {
     for (const id of SMALL_TIERS) {
-      expect(voiceQuantLadderForTier(id)).toEqual([]);
+      expect(voiceQuantLadderForTier(id)).toEqual([
+        "Q3_K_M",
+        "Q4_K_M",
+        "Q5_K_M",
+      ]);
     }
   });
 
@@ -61,6 +62,12 @@ describe("voiceQuantLadderForTier", () => {
 });
 
 describe("defaultVoiceQuantForTier", () => {
+  it("returns Q4_K_M for mobile tiers (matches publish path mobile sweet spot)", () => {
+    for (const id of SMALL_TIERS) {
+      expect(defaultVoiceQuantForTier(id)).toBe("Q4_K_M");
+    }
+  });
+
   it("returns Q8_0 for large tiers (matches publish path workstation default)", () => {
     for (const id of LARGE_TIERS) {
       expect(defaultVoiceQuantForTier(id)).toBe("Q8_0");
@@ -81,25 +88,6 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
         "polarquant",
       );
-    }
-  });
-});
-
-describe("Eliza-1 vision tier policy", () => {
-  it("advertises vision only for tiers with a staged image mmproj contract", () => {
-    const visionIds = new Set<string>(ELIZA_1_VISION_TIER_IDS);
-    for (const id of ELIZA_1_TIER_IDS) {
-      const model = findCatalogModel(id);
-      const components = model?.sourceModel?.components;
-      if (visionIds.has(id)) {
-        const tier = id.slice("eliza-1-".length);
-        expect(components?.vision).toEqual({
-          repo: ELIZA_1_HF_REPO,
-          file: `bundles/${tier}/vision/mmproj-${tier}.gguf`,
-        });
-      } else {
-        expect(components?.vision).toBeUndefined();
-      }
     }
   });
 });

@@ -1,8 +1,8 @@
-import { sql } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import { check, foreignKey, index, pgTable, timestamp, uuid, vector } from "drizzle-orm/pg-core";
 import { memoryTable } from "./memory";
 
-const VECTOR_DIMS = {
+export const VECTOR_DIMS = {
   SMALL: 384,
   MEDIUM: 512,
   LARGE: 768,
@@ -61,3 +61,13 @@ export type EmbeddingDimensionColumn =
   | "dim1024"
   | "dim1536"
   | "dim3072";
+
+/**
+ * Retrieve the type of a specific column in the EmbeddingTable based on the EmbeddingDimensionColumn key.
+ */
+export type EmbeddingTableColumn = (typeof embeddingTable._.columns)[EmbeddingDimensionColumn];
+
+// Relations - defined here to avoid circular dependency with memory.ts
+export const memoryRelations = relations(memoryTable, ({ one }) => ({
+  embedding: one(embeddingTable),
+}));

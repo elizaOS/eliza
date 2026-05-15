@@ -1,14 +1,9 @@
 {
   "config": {
-    "domains": [
-      "retail",
-      "airline"
-    ],
+    "domains": ["retail", "airline"],
     "task_split": "test",
     "num_trials": 1,
-    "pass_k_values": [
-      1
-    ],
+    "pass_k_values": [1],
     "task_ids": null,
     "start_index": 0,
     "end_index": -1,

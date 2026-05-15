@@ -4,8 +4,8 @@
  * assert the resulting `GenerationEvent` sequence.
  */
 
-import { describe, expect, it, vi } from "vitest";
 import type { PluginListenerHandle } from "@capacitor/core";
+import { describe, expect, it, vi } from "vitest";
 
 type TokenListener = (data: { token: string }) => void;
 
@@ -40,17 +40,15 @@ function installMockPlugin(): MockState {
           }),
       ),
       stopCompletion: vi.fn(async () => undefined),
-      addListener: vi.fn(
-        async (event: string, listener: TokenListener) => {
-          if (event === "@LlamaCpp_onToken") {
-            state.tokenListener = listener;
-          }
-          const handle: PluginListenerHandle = {
-            remove: async () => undefined,
-          };
-          return handle;
-        },
-      ),
+      addListener: vi.fn(async (event: string, listener: TokenListener) => {
+        if (event === "@LlamaCpp_onToken") {
+          state.tokenListener = listener;
+        }
+        const handle: PluginListenerHandle = {
+          remove: async () => undefined,
+        };
+        return handle;
+      }),
       getHardwareInfo: vi.fn(async () => ({
         platform: "android",
         deviceModel: "Pixel 9a",

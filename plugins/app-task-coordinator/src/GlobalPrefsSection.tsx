@@ -125,10 +125,7 @@ export function GlobalPrefsSection({
         <Select
           value={prefs.ELIZA_SCRATCH_RETENTION || "pending_decision"}
           onValueChange={(value: string) => {
-            if (
-              !prefs.ELIZA_SCRATCH_RETENTION &&
-              value === "pending_decision"
-            )
+            if (!prefs.ELIZA_SCRATCH_RETENTION && value === "pending_decision")
               return;
             setPref("ELIZA_SCRATCH_RETENTION", value);
           }}

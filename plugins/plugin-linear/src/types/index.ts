@@ -1,8 +1,16 @@
+export interface LinearConfig {
+  LINEAR_API_KEY: string;
+  LINEAR_WORKSPACE_ID?: string;
+  LINEAR_ACCOUNT_ID?: string;
+  LINEAR_DEFAULT_ACCOUNT_ID?: string;
+  LINEAR_ACCOUNTS?: string;
+}
+
 /** Primitive types allowed in activity details */
-type ActivityDetailPrimitive = string | number | boolean | null;
+export type ActivityDetailPrimitive = string | number | boolean | null;
 
 /** Array types allowed in activity details */
-type ActivityDetailArray = ActivityDetailPrimitive[];
+export type ActivityDetailArray = ActivityDetailPrimitive[];
 
 /** Nested object allowed in activity details (one level deep) */
 export type ActivityDetailObject = Record<string, ActivityDetailPrimitive | ActivityDetailArray>;
@@ -86,12 +94,11 @@ export interface SearchIssuesParameters {
   limit?: number;
 }
 
-interface LinearErrorResponse {
+export interface LinearErrorResponse {
   message?: string;
   errors?: Array<{ message: string; path?: string[] }>;
 }
-
-class LinearAPIError extends Error {
+export class LinearAPIError extends Error {
   constructor(
     message: string,
     public status?: number,
@@ -106,5 +113,15 @@ export class LinearAuthenticationError extends LinearAPIError {
   constructor(message: string) {
     super(message, 401);
     this.name = "LinearAuthenticationError";
+  }
+}
+
+export class LinearRateLimitError extends LinearAPIError {
+  constructor(
+    message: string,
+    public resetTime: number
+  ) {
+    super(message, 429);
+    this.name = "LinearRateLimitError";
   }
 }

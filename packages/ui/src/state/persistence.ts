@@ -688,6 +688,51 @@ export function saveWalletEnabled(value: boolean): void {
   }, undefined);
 }
 
+/* ── Continuous chat mode persistence ───────────────────────────────────── */
+const CONTINUOUS_CHAT_MODE_KEY = "eliza:voice:continuous-chat-mode";
+type ContinuousChatModeValue = "off" | "vad-gated" | "always-on";
+
+function normalizeContinuousChatMode(value: unknown): ContinuousChatModeValue {
+  if (value === "vad-gated" || value === "always-on") return value;
+  return "off";
+}
+
+export function loadContinuousChatMode(): ContinuousChatModeValue {
+  return tryLocalStorage(
+    () =>
+      normalizeContinuousChatMode(
+        localStorage.getItem(CONTINUOUS_CHAT_MODE_KEY),
+      ),
+    "off",
+  );
+}
+
+export function saveContinuousChatMode(mode: ContinuousChatModeValue): void {
+  tryLocalStorage(() => {
+    localStorage.setItem(CONTINUOUS_CHAT_MODE_KEY, mode);
+  }, undefined);
+}
+
+/* ── Voice prefix done persistence ─────────────────────────────────────── */
+const VOICE_PREFIX_DONE_KEY = "eliza:voice:prefix-done";
+
+export function loadVoicePrefixDone(): boolean {
+  return tryLocalStorage(
+    () => localStorage.getItem(VOICE_PREFIX_DONE_KEY) === "1",
+    false,
+  );
+}
+
+export function saveVoicePrefixDone(done: boolean): void {
+  tryLocalStorage(() => {
+    if (done) {
+      localStorage.setItem(VOICE_PREFIX_DONE_KEY, "1");
+    } else {
+      localStorage.removeItem(VOICE_PREFIX_DONE_KEY);
+    }
+  }, undefined);
+}
+
 /* ── Browser enabled persistence ────────────────────────────────────── */
 const BROWSER_ENABLED_KEY = "eliza:browser:enabled";
 

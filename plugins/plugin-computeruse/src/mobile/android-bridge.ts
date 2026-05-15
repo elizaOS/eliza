@@ -37,16 +37,20 @@
  */
 export type AndroidBridgeResult<T> =
   | { readonly ok: true; readonly data: T }
-  | { readonly ok: false; readonly code: AndroidBridgeErrorCode; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly code: AndroidBridgeErrorCode;
+      readonly message: string;
+    };
 
 export type AndroidBridgeErrorCode =
-  | "unsupported_platform"       // API level below minimum
-  | "permission_denied"          // runtime or special permission not granted
-  | "permission_pending"         // consent dialog shown, result pending
-  | "accessibility_unavailable"  // MiladyAccessibilityService not running
-  | "capture_unavailable"        // MediaProjection not started or no frame yet
-  | "camera_not_open"            // startCamera not called
-  | "invalid_argument"           // unknown gesture type / action name
+  | "unsupported_platform" // API level below minimum
+  | "permission_denied" // runtime or special permission not granted
+  | "permission_pending" // consent dialog shown, result pending
+  | "accessibility_unavailable" // MiladyAccessibilityService not running
+  | "capture_unavailable" // MediaProjection not started or no frame yet
+  | "camera_not_open" // startCamera not called
+  | "invalid_argument" // unknown gesture type / action name
   | "internal_error";
 
 // ── 1. MediaProjection screen capture ────────────────────────────────────────
@@ -86,7 +90,12 @@ export interface AndroidAxNode {
   readonly id: string;
   readonly role: string;
   readonly label: string | null;
-  readonly bbox: { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
+  readonly bbox: {
+    readonly x: number;
+    readonly y: number;
+    readonly w: number;
+    readonly h: number;
+  };
   readonly actions: readonly string[];
 }
 
@@ -233,24 +242,38 @@ export interface AndroidComputerUseBridge {
   readonly startMediaProjection: (
     options?: MediaProjectionStartOptions,
   ) => Promise<AndroidBridgeResult<MediaProjectionHandle>>;
-  readonly stopMediaProjection: () => Promise<AndroidBridgeResult<{ readonly stopped: boolean }>>;
+  readonly stopMediaProjection: () => Promise<
+    AndroidBridgeResult<{ readonly stopped: boolean }>
+  >;
   /** Drain the latest frame from the ImageReader ring-buffer. */
-  readonly captureFrame: () => Promise<AndroidBridgeResult<CapturedScreenFrame>>;
+  readonly captureFrame: () => Promise<
+    AndroidBridgeResult<CapturedScreenFrame>
+  >;
 
   // --- AccessibilityService ---
   /** Walk getRootInActiveWindow() and return compact JSON node array. */
-  readonly getAccessibilityTree: () => Promise<AndroidBridgeResult<AccessibilityTreeResult>>;
-  readonly dispatchGesture: (args: GestureArgs) => Promise<AndroidBridgeResult<GestureResult>>;
-  readonly performGlobalAction: (
-    args: { readonly action: GlobalAction },
-  ) => Promise<AndroidBridgeResult<GlobalActionResult>>;
-  readonly setText: (args: SetTextArgs) => Promise<AndroidBridgeResult<SetTextResult>>;
+  readonly getAccessibilityTree: () => Promise<
+    AndroidBridgeResult<AccessibilityTreeResult>
+  >;
+  readonly dispatchGesture: (
+    args: GestureArgs,
+  ) => Promise<AndroidBridgeResult<GestureResult>>;
+  readonly performGlobalAction: (args: {
+    readonly action: GlobalAction;
+  }) => Promise<AndroidBridgeResult<GlobalActionResult>>;
+  readonly setText: (
+    args: SetTextArgs,
+  ) => Promise<AndroidBridgeResult<SetTextResult>>;
 
   // --- UsageStats ---
-  readonly enumerateApps: () => Promise<AndroidBridgeResult<EnumerateAppsResult>>;
+  readonly enumerateApps: () => Promise<
+    AndroidBridgeResult<EnumerateAppsResult>
+  >;
 
   // --- Memory ---
-  readonly getMemoryPressureSnapshot: () => Promise<AndroidBridgeResult<AndroidMemoryPressureSnapshot>>;
+  readonly getMemoryPressureSnapshot: () => Promise<
+    AndroidBridgeResult<AndroidMemoryPressureSnapshot>
+  >;
   /**
    * Called from the onTrimMemory ComponentCallbacks2 listener to propagate
    * the pressure level to the JS-side WS1 MemoryArbiter.
@@ -261,16 +284,21 @@ export interface AndroidComputerUseBridge {
    *   → JS capacitorPressureSource.dispatch(level, freeMb)
    *   → MemoryArbiter pressure listener
    */
-  readonly dispatchMemoryPressure: (
-    args: { readonly level: AndroidPressureLevel; readonly freeMb?: number },
-  ) => Promise<AndroidBridgeResult<{ readonly ok: boolean }>>;
+  readonly dispatchMemoryPressure: (args: {
+    readonly level: AndroidPressureLevel;
+    readonly freeMb?: number;
+  }) => Promise<AndroidBridgeResult<{ readonly ok: boolean }>>;
 
   // --- Camera (MobileCameraSource) ---
   readonly startCamera: (
     options?: AndroidCameraOpenOptions,
   ) => Promise<AndroidBridgeResult<AndroidCameraOpenResult>>;
-  readonly stopCamera: () => Promise<AndroidBridgeResult<{ readonly ok: boolean }>>;
-  readonly captureFrameCamera: () => Promise<AndroidBridgeResult<AndroidCameraFrameResult>>;
+  readonly stopCamera: () => Promise<
+    AndroidBridgeResult<{ readonly ok: boolean }>
+  >;
+  readonly captureFrameCamera: () => Promise<
+    AndroidBridgeResult<AndroidCameraFrameResult>
+  >;
 }
 
 // ── Default constants ─────────────────────────────────────────────────────────

@@ -60,30 +60,21 @@
       "passenger_id": "p001",
       "pickup": "mall",
       "dropoff": "downtown",
-      "time_window": [
-        14.0,
-        14.716666666666667
-      ],
+      "time_window": [14.0, 14.716666666666667],
       "deadline": 31
     },
     {
       "passenger_id": "p002",
       "pickup": "mall",
       "dropoff": "university",
-      "time_window": [
-        12.0,
-        12.466666666666667
-      ],
+      "time_window": [12.0, 12.466666666666667],
       "deadline": 48
     },
     {
       "passenger_id": "p003",
       "pickup": "university",
       "dropoff": "downtown",
-      "time_window": [
-        16.5,
-        16.833333333333332
-      ],
+      "time_window": [16.5, 16.833333333333332],
       "deadline": 48
     }
   ],

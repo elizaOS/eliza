@@ -66,7 +66,8 @@ export async function dispatch(
     };
     try {
       if (action.kind === "click") await deps.interface.leftClick(displayPoint);
-      else if (action.kind === "double_click") await deps.interface.doubleClick(displayPoint);
+      else if (action.kind === "double_click")
+        await deps.interface.doubleClick(displayPoint);
       else await deps.interface.rightClick(displayPoint);
     } catch (err) {
       return driverError(err);
@@ -115,7 +116,11 @@ export async function dispatch(
       return unknownDisplay(action, displays);
     }
     const point = resolvePoint(action);
-    if (!point || typeof action.dx !== "number" || typeof action.dy !== "number") {
+    if (
+      !point ||
+      typeof action.dx !== "number" ||
+      typeof action.dy !== "number"
+    ) {
       return invalidArgs(
         action,
         "scroll action requires (x, y) anchor and (dx, dy)",
@@ -164,7 +169,10 @@ export async function dispatch(
     return { success: true, issued: action };
   }
 
-  return invalidArgs(action, `unknown action kind "${(action as ProposedAction).kind}"`);
+  return invalidArgs(
+    action,
+    `unknown action kind "${(action as ProposedAction).kind}"`,
+  );
 }
 
 function resolvePoint(action: ProposedAction): { x: number; y: number } | null {
@@ -177,7 +185,9 @@ function resolvePoint(action: ProposedAction): { x: number; y: number } | null {
     : null;
 }
 
-function resolveStartPoint(action: ProposedAction): { x: number; y: number } | null {
+function resolveStartPoint(
+  action: ProposedAction,
+): { x: number; y: number } | null {
   const { startX, startY } = action;
   return typeof startX === "number" &&
     Number.isFinite(startX) &&

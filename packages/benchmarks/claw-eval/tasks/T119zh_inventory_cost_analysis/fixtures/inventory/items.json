@@ -5,7 +5,7 @@
     "category": "文具",
     "quantity": 150,
     "unit": "箱",
-    "unit_cost": 25.00,
+    "unit_cost": 25.0,
     "location": "仓库A-01",
     "reorder_level": 50,
     "supplier": "办公易"
@@ -16,7 +16,7 @@
     "category": "耗材",
     "quantity": 20,
     "unit": "个",
-    "unit_cost": 180.00,
+    "unit_cost": 180.0,
     "location": "仓库A-02",
     "reorder_level": 10,
     "supplier": "惠普授权"
@@ -27,7 +27,7 @@
     "category": "IT设备",
     "quantity": 45,
     "unit": "个",
-    "unit_cost": 350.00,
+    "unit_cost": 350.0,
     "location": "仓库B-01",
     "reorder_level": 15,
     "supplier": "京东企业购"
@@ -38,7 +38,7 @@
     "category": "IT设备",
     "quantity": 12,
     "unit": "台",
-    "unit_cost": 1500.00,
+    "unit_cost": 1500.0,
     "location": "仓库B-02",
     "reorder_level": 5,
     "supplier": "戴尔直销"
@@ -49,7 +49,7 @@
     "category": "耗材",
     "quantity": 200,
     "unit": "根",
-    "unit_cost": 15.00,
+    "unit_cost": 15.0,
     "location": "仓库A-03",
     "reorder_level": 50,
     "supplier": "办公易"
@@ -60,7 +60,7 @@
     "category": "文具",
     "quantity": 100,
     "unit": "个",
-    "unit_cost": 8.00,
+    "unit_cost": 8.0,
     "location": "仓库A-01",
     "reorder_level": 30,
     "supplier": "办公易"

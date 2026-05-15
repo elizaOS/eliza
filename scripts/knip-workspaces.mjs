@@ -20,8 +20,6 @@ const DIRECTORY_SCOPED_WORKSPACES = new Set([
   "packages/app-core/deploy/cloud-agent-template",
   "packages/app-core/platforms/electrobun",
   "packages/core",
-  "packages/prompts",
-  "packages/shared",
   "packages/examples/farcaster-miniapp",
 ]);
 

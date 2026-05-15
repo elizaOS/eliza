@@ -148,7 +148,7 @@ async function main(): Promise<number> {
   }
 
   const liveProviderSpecifier = "@elizaos/core" as string;
-  const runtimeFactorySpecifier: string = "./runtime-factory.js";
+  const runtimeFactorySpecifier: string = "./runtime-factory.ts";
   const [
     { availableProviderNames },
     { runScenario },

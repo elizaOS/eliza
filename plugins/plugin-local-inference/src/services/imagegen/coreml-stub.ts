@@ -29,6 +29,40 @@
  * — but on iOS there is no fall-through (sd-cpp doesn't run on iOS,
  * mflux is macOS-only). A `coreml_unavailable` error there means
  * "this device does not support image-gen yet."
+ *
+ * Publishing pipeline (iOS 17+ / iOS 26+):
+ *
+ *   Build (.mlpackage per tier):
+ *     git clone https://github.com/apple/ml-stable-diffusion && cd ml-stable-diffusion
+ *     python3 -m venv venv && ./venv/bin/pip install -e .
+ *     # SD 1.5 — 512x512, attention=SPLIT_EINSUM_V2 for ANE on iPhone 15+
+ *     ./venv/bin/python -m python_coreml_stable_diffusion.torch2coreml \
+ *       --convert-unet --convert-vae-encoder --convert-vae-decoder \
+ *       --convert-text-encoder --bundle-resources-for-swift-cli \
+ *       --attention-implementation SPLIT_EINSUM_V2 \
+ *       --model-version runwayml/stable-diffusion-v1-5 \
+ *       --output-dir build/sd-1.5-coreml-512
+ *     # SDXL — 1024x1024, same pipeline at --model-version
+ *     # stabilityai/sdxl-turbo for the iPhone 16 Pro / iPad M-class path.
+ *     xcrun coremlc compile build/sd-1.5-coreml-512 build/sd-1.5-coreml-512-compiled
+ *   Sign:
+ *     codesign --force --options runtime --timestamp \
+ *       --sign "Apple Distribution: Eliza Labs Inc." \
+ *       build/sd-1.5-coreml-512/*.mlpackage
+ *   Drop (into the Capacitor app bundle's on-demand resources):
+ *     Tag with `nameOfResourcesODR=ImageGenSD15` so the App Store delivers
+ *     the package only when the runtime requests it via `NSBundleResource
+ *     Request`. Total compressed .mlpackage size is ~600 MB for SD 1.5
+ *     at SPLIT_EINSUM_V2 and ~3 GB for SDXL-turbo.
+ *   Notarize / submit:
+ *     The .mlpackages ship inside the signed IPA; notarization is the
+ *     standard `altool notarytool submit` step for the host IPA.
+ *   iOS 26 (forward-compat note):
+ *     iOS 26 adds the public `MLTensor` API and an updated ANE driver;
+ *     re-build the .mlpackage with `--attention-implementation
+ *     SPLIT_EINSUM_V2` on the iOS 26 SDK to pick up the latest ANE
+ *     scheduling improvements. The Swift bridge code in
+ *     `ImageGenBridge.swift` is the same across iOS 17/18/26.
  */
 
 import { ImageGenBackendUnavailableError } from "./errors";

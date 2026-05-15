@@ -1,16 +1,16 @@
-'use client';
+"use client";
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from "react";
 
-const API_URL = '';
+const API_URL = "";
 
 export default function Banner() {
-  const [promo, setPromo] = useState<string>('');
+  const [promo, setPromo] = useState<string>("");
 
   useEffect(() => {
     fetch(`${API_URL}/api/banner`)
-      .then(r => r.json())
-      .then(data => setPromo(data.text));
+      .then((r) => r.json())
+      .then((data) => setPromo(data.text));
   }, []);
 
   if (!promo) return null;

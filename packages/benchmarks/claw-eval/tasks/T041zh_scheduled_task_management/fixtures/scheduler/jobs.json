@@ -12,9 +12,21 @@
     "tags": ["backup", "database"],
     "created_at": "2025-06-15T10:00:00+08:00",
     "execution_history": [
-      {"run_time": "2026-03-01T02:00:00+08:00", "status": "success", "duration_seconds": 342},
-      {"run_time": "2026-02-28T02:00:00+08:00", "status": "success", "duration_seconds": 338},
-      {"run_time": "2026-02-27T02:00:00+08:00", "status": "success", "duration_seconds": 345}
+      {
+        "run_time": "2026-03-01T02:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 342
+      },
+      {
+        "run_time": "2026-02-28T02:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 338
+      },
+      {
+        "run_time": "2026-02-27T02:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 345
+      }
     ]
   },
   {
@@ -31,9 +43,22 @@
     "tags": ["report", "weekly"],
     "created_at": "2025-08-01T10:00:00+08:00",
     "execution_history": [
-      {"run_time": "2026-02-24T09:00:00+08:00", "status": "failed", "error": "磁盘空间不足：/data 分区使用率 95%", "duration_seconds": 12},
-      {"run_time": "2026-02-17T09:00:00+08:00", "status": "success", "duration_seconds": 156},
-      {"run_time": "2026-02-10T09:00:00+08:00", "status": "success", "duration_seconds": 149}
+      {
+        "run_time": "2026-02-24T09:00:00+08:00",
+        "status": "failed",
+        "error": "磁盘空间不足：/data 分区使用率 95%",
+        "duration_seconds": 12
+      },
+      {
+        "run_time": "2026-02-17T09:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 156
+      },
+      {
+        "run_time": "2026-02-10T09:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 149
+      }
     ]
   },
   {
@@ -50,9 +75,21 @@
     "tags": ["maintenance", "logs"],
     "created_at": "2025-06-15T10:00:00+08:00",
     "execution_history": [
-      {"run_time": "2026-02-15T03:00:00+08:00", "status": "success", "duration_seconds": 89},
-      {"run_time": "2026-02-14T03:00:00+08:00", "status": "success", "duration_seconds": 92},
-      {"run_time": "2026-02-13T03:00:00+08:00", "status": "success", "duration_seconds": 87}
+      {
+        "run_time": "2026-02-15T03:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 89
+      },
+      {
+        "run_time": "2026-02-14T03:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 92
+      },
+      {
+        "run_time": "2026-02-13T03:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 87
+      }
     ]
   },
   {
@@ -68,9 +105,21 @@
     "tags": ["sync", "database"],
     "created_at": "2025-09-01T10:00:00+08:00",
     "execution_history": [
-      {"run_time": "2026-03-01T10:30:00+08:00", "status": "success", "duration_seconds": 245},
-      {"run_time": "2026-03-01T10:00:00+08:00", "status": "success", "duration_seconds": 238},
-      {"run_time": "2026-03-01T09:30:00+08:00", "status": "success", "duration_seconds": 251}
+      {
+        "run_time": "2026-03-01T10:30:00+08:00",
+        "status": "success",
+        "duration_seconds": 245
+      },
+      {
+        "run_time": "2026-03-01T10:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 238
+      },
+      {
+        "run_time": "2026-03-01T09:30:00+08:00",
+        "status": "success",
+        "duration_seconds": 251
+      }
     ]
   },
   {
@@ -86,9 +135,21 @@
     "tags": ["sync", "database"],
     "created_at": "2025-11-20T10:00:00+08:00",
     "execution_history": [
-      {"run_time": "2026-03-01T10:30:00+08:00", "status": "success", "duration_seconds": 198},
-      {"run_time": "2026-03-01T10:00:00+08:00", "status": "success", "duration_seconds": 203},
-      {"run_time": "2026-03-01T09:30:00+08:00", "status": "success", "duration_seconds": 195}
+      {
+        "run_time": "2026-03-01T10:30:00+08:00",
+        "status": "success",
+        "duration_seconds": 198
+      },
+      {
+        "run_time": "2026-03-01T10:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 203
+      },
+      {
+        "run_time": "2026-03-01T09:30:00+08:00",
+        "status": "success",
+        "duration_seconds": 195
+      }
     ]
   },
   {
@@ -104,9 +165,21 @@
     "tags": ["monitoring", "health"],
     "created_at": "2025-06-15T10:00:00+08:00",
     "execution_history": [
-      {"run_time": "2026-03-01T10:55:00+08:00", "status": "success", "duration_seconds": 3},
-      {"run_time": "2026-03-01T10:50:00+08:00", "status": "success", "duration_seconds": 2},
-      {"run_time": "2026-03-01T10:45:00+08:00", "status": "success", "duration_seconds": 3}
+      {
+        "run_time": "2026-03-01T10:55:00+08:00",
+        "status": "success",
+        "duration_seconds": 3
+      },
+      {
+        "run_time": "2026-03-01T10:50:00+08:00",
+        "status": "success",
+        "duration_seconds": 2
+      },
+      {
+        "run_time": "2026-03-01T10:45:00+08:00",
+        "status": "success",
+        "duration_seconds": 3
+      }
     ]
   },
   {
@@ -123,9 +196,22 @@
     "tags": ["security", "certificate"],
     "created_at": "2025-07-01T10:00:00+08:00",
     "execution_history": [
-      {"run_time": "2026-03-01T00:00:00+08:00", "status": "failed", "error": "ACME rate limit exceeded", "duration_seconds": 45},
-      {"run_time": "2026-02-01T00:00:00+08:00", "status": "success", "duration_seconds": 120},
-      {"run_time": "2026-01-01T00:00:00+08:00", "status": "success", "duration_seconds": 115}
+      {
+        "run_time": "2026-03-01T00:00:00+08:00",
+        "status": "failed",
+        "error": "ACME rate limit exceeded",
+        "duration_seconds": 45
+      },
+      {
+        "run_time": "2026-02-01T00:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 120
+      },
+      {
+        "run_time": "2026-01-01T00:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 115
+      }
     ]
   },
   {
@@ -141,9 +227,21 @@
     "tags": ["temporary", "migration"],
     "created_at": "2026-01-15T10:00:00+08:00",
     "execution_history": [
-      {"run_time": "2026-03-01T04:00:00+08:00", "status": "success", "duration_seconds": 567},
-      {"run_time": "2026-02-28T04:00:00+08:00", "status": "success", "duration_seconds": 543},
-      {"run_time": "2026-02-27T04:00:00+08:00", "status": "success", "duration_seconds": 558}
+      {
+        "run_time": "2026-03-01T04:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 567
+      },
+      {
+        "run_time": "2026-02-28T04:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 543
+      },
+      {
+        "run_time": "2026-02-27T04:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 558
+      }
     ]
   }
 ]

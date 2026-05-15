@@ -25,6 +25,7 @@ import { useApp } from "../../state";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
 import { getOverlayApp } from "../apps/overlay-app-registry";
 import { CloudStatusBadge } from "../cloud/CloudStatusBadge";
+import { OwnerBadge } from "../composites/OwnerBadge";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";
@@ -120,6 +121,7 @@ export function Header({
     elizaCloudCreditsError,
     elizaCloudCreditsLow,
     loadDropStatus,
+    ownerName,
     plugins,
     setState,
     setTab,
@@ -533,6 +535,15 @@ export function Header({
       data-no-camera-drag="true"
     >
       {pageRightExtras}
+      {ownerName ? (
+        <OwnerBadge
+          isOwner
+          variant="inline"
+          size="sm"
+          tooltip={`OWNER: ${ownerName}`}
+          data-testid="header-owner-badge"
+        />
+      ) : null}
       {desktopTaskToggle}
       {showCloudStatus ? (
         <CloudStatusBadge

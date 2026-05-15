@@ -240,11 +240,7 @@ export interface BlockGrid {
  * changed" with very few false-negatives in practice, and stays cheap when
  * called every active-poll frame (4 Hz).
  */
-export function blockGrid(
-  png: Buffer,
-  cols = 16,
-  rows = 16,
-): BlockGrid | null {
+export function blockGrid(png: Buffer, cols = 16, rows = 16): BlockGrid | null {
   const decoded = decodePng(png);
   if (!decoded) return null;
   return blockGridFromImage(decoded, cols, rows);
@@ -285,11 +281,7 @@ export function blockGridFromImage(
 
 function sample(rgba: Buffer, width: number, x: number, y: number): number {
   const idx = (y * width + x) * 4;
-  return luminance(
-    rgba[idx] ?? 0,
-    rgba[idx + 1] ?? 0,
-    rgba[idx + 2] ?? 0,
-  );
+  return luminance(rgba[idx] ?? 0, rgba[idx + 1] ?? 0, rgba[idx + 2] ?? 0);
 }
 
 export interface DirtyBlock {
@@ -328,10 +320,16 @@ export function diffBlocks(
           ? [
               Math.floor((c * imageWidth) / cols),
               Math.floor((r * imageHeight) / rows),
-              Math.max(1, Math.floor(((c + 1) * imageWidth) / cols) -
-                Math.floor((c * imageWidth) / cols)),
-              Math.max(1, Math.floor(((r + 1) * imageHeight) / rows) -
-                Math.floor((r * imageHeight) / rows)),
+              Math.max(
+                1,
+                Math.floor(((c + 1) * imageWidth) / cols) -
+                  Math.floor((c * imageWidth) / cols),
+              ),
+              Math.max(
+                1,
+                Math.floor(((r + 1) * imageHeight) / rows) -
+                  Math.floor((r * imageHeight) / rows),
+              ),
             ]
           : [c, r, 1, 1];
       dirty.push({ col: c, row: r, bbox });
@@ -379,7 +377,12 @@ export function coalesceDirtyBlocks(
   }
 
   // Merge strips that share identical col extents in successive rows.
-  const merged: Array<{ row0: number; row1: number; col0: number; col1: number }> = [];
+  const merged: Array<{
+    row0: number;
+    row1: number;
+    col0: number;
+    col1: number;
+  }> = [];
   for (const strip of strips) {
     const last = merged[merged.length - 1];
     if (
@@ -391,7 +394,12 @@ export function coalesceDirtyBlocks(
       last.row1 = strip.row;
       continue;
     }
-    merged.push({ row0: strip.row, row1: strip.row, col0: strip.col0, col1: strip.col1 });
+    merged.push({
+      row0: strip.row,
+      row1: strip.row,
+      col0: strip.col0,
+      col1: strip.col1,
+    });
   }
 
   return merged.map(({ row0, row1, col0, col1 }) => {
@@ -424,17 +432,25 @@ export function coalesceDirtyBlocks(
  * Read PNG dimensions without inflating IDAT. Cheap — only the IHDR chunk is
  * touched. Returns null if the buffer isn't a recognizable PNG.
  */
-export function pngDimensions(png: Buffer): { width: number; height: number } | null {
+export function pngDimensions(
+  png: Buffer,
+): { width: number; height: number } | null {
   if (png.length < PNG_SIGNATURE.length + 8 + 13) return null;
   for (let i = 0; i < PNG_SIGNATURE.length; i += 1) {
     if (png[i] !== PNG_SIGNATURE[i]) return null;
   }
   // IHDR follows immediately after the signature: length(4) + "IHDR"(4) + width(4) + height(4) + ...
   const ihdrStart = PNG_SIGNATURE.length + 4;
-  if (png.subarray(ihdrStart, ihdrStart + 4).toString("ascii") !== "IHDR") return null;
+  if (png.subarray(ihdrStart, ihdrStart + 4).toString("ascii") !== "IHDR")
+    return null;
   const width = png.readUInt32BE(ihdrStart + 4);
   const height = png.readUInt32BE(ihdrStart + 8);
-  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
     return null;
   }
   return { width, height };

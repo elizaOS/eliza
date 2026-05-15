@@ -1,5 +1,3 @@
-"use strict";
-
 class RateLimiter {
   constructor(config, state) {
     this.config = config;

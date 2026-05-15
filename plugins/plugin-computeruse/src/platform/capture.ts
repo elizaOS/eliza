@@ -61,7 +61,9 @@ export async function captureAllDisplays(): Promise<DisplayCapture[]> {
 /**
  * Capture a specific display by id.
  */
-export async function captureDisplay(displayId: number): Promise<DisplayCapture> {
+export async function captureDisplay(
+  displayId: number,
+): Promise<DisplayCapture> {
   const display = findDisplay(displayId);
   if (!display) {
     throw new Error(
@@ -71,7 +73,10 @@ export async function captureDisplay(displayId: number): Promise<DisplayCapture>
     );
   }
   const os = currentPlatform();
-  const tmpFile = join(tmpdir(), `computeruse-display-${displayId}-${Date.now()}.png`);
+  const tmpFile = join(
+    tmpdir(),
+    `computeruse-display-${displayId}-${Date.now()}.png`,
+  );
   try {
     if (os === "darwin") captureDisplayDarwin(tmpFile, display);
     else if (os === "linux") captureDisplayLinux(tmpFile, display);
@@ -123,7 +128,10 @@ export async function captureDisplayRegion(
     height: region.height,
   };
   const os = currentPlatform();
-  const tmpFile = join(tmpdir(), `computeruse-region-${displayId}-${Date.now()}.png`);
+  const tmpFile = join(
+    tmpdir(),
+    `computeruse-region-${displayId}-${Date.now()}.png`,
+  );
   try {
     if (os === "darwin") captureRegionDarwin(tmpFile, globalRegion);
     else if (os === "linux") captureRegionLinux(tmpFile, globalRegion);
@@ -171,7 +179,11 @@ function captureDisplayDarwin(tmpFile: string, display: DisplayInfo): void {
 function captureRegionDarwin(tmpFile: string, region: ScreenRegion): void {
   runCommandBuffer(
     "screencapture",
-    [`-R${region.x},${region.y},${region.width},${region.height}`, "-x", tmpFile],
+    [
+      `-R${region.x},${region.y},${region.width},${region.height}`,
+      "-x",
+      tmpFile,
+    ],
     10000,
   );
 }
@@ -189,11 +201,7 @@ function captureDisplayLinux(tmpFile: string, display: DisplayInfo): void {
     return;
   }
   if (commandExists("scrot")) {
-    runCommandBuffer(
-      "scrot",
-      ["-a", `${x},${y},${w},${h}`, tmpFile],
-      10000,
-    );
+    runCommandBuffer("scrot", ["-a", `${x},${y},${w},${h}`, tmpFile], 10000);
     return;
   }
   if (commandExists("gnome-screenshot")) {
@@ -224,7 +232,11 @@ function captureRegionLinux(tmpFile: string, region: ScreenRegion): void {
   if (commandExists("scrot")) {
     runCommandBuffer(
       "scrot",
-      ["-a", `${region.x},${region.y},${region.width},${region.height}`, tmpFile],
+      [
+        "-a",
+        `${region.x},${region.y},${region.width},${region.height}`,
+        tmpFile,
+      ],
       10000,
     );
     return;

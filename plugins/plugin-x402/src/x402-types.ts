@@ -7,7 +7,7 @@
 /**
  * Field definition for input/output schema
  */
-type FieldDef = {
+export type FieldDef = {
   type?: string;
   required?: boolean | string[];
   description?: string;
@@ -18,7 +18,7 @@ type FieldDef = {
 /**
  * JSON Schema type for API output
  */
-type OutputSchemaType = {
+export type OutputSchemaType = {
   type?: "object" | "array" | "string" | "number" | "boolean" | "null";
   description?: string;
   properties?: Record<string, FieldDef>;
@@ -63,7 +63,7 @@ export type X402ScanNetwork =
 /**
  * EIP-712 domain information for EVM chains
  */
-type EIP712DomainInfo = {
+export type EIP712DomainInfo = {
   name: string;
   version: string;
   chainId: number;
@@ -119,7 +119,7 @@ export type X402Response = {
 /**
  * Validation result type
  */
-type ValidationResult = {
+export type ValidationResult = {
   valid: boolean;
   errors: string[];
 };

@@ -9,7 +9,12 @@
     "/Users/laixiang/projects/data-analysis"
   ],
   "filePatterns": ["*.qmd", "*.Qmd", "*.QMD"],
-  "excludePatterns": ["_freeze/**", "_site/**", ".quarto/**", "node_modules/**"],
+  "excludePatterns": [
+    "_freeze/**",
+    "_site/**",
+    ".quarto/**",
+    "node_modules/**"
+  ],
   "indexStorePath": "/Users/laixiang/openclaw/.index/qmd_manifest.json",
   "indexDbPath": "/Users/laixiang/openclaw/.index/qmd_index.db",
   "scheduling": {

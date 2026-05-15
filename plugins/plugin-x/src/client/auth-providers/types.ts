@@ -1,3 +1,6 @@
+import type { IAgentRuntime } from "@elizaos/core";
+import type { TwitterClientState } from "../../types";
+
 export type TwitterAuthMode = "env" | "oauth";
 
 /**
@@ -29,4 +32,9 @@ export interface OAuth1Credentials {
  */
 export interface TwitterOAuth1Provider extends TwitterAuthProvider {
   getOAuth1Credentials(): Promise<OAuth1Credentials>;
+}
+
+export interface TwitterAuthProviderFactoryOptions {
+  runtime: IAgentRuntime;
+  state?: TwitterClientState;
 }

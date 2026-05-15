@@ -191,16 +191,6 @@
       ],
       "ignore": ["dist/**"]
     },
-    "packages/benchmarks/solana/solana-gym-env/docs/trajectory-viewer": {
-      "entry": [
-        "src/**/*.{ts,tsx}",
-        "index.html",
-        "vite.config.ts"
-      ],
-      "project": ["src/**/*.{ts,tsx}", "vite.config.ts"],
-      "ignore": ["dist/**"],
-      "ignoreDependencies": ["vite"]
-    },
     "packages/registry": {
       "ignore": ["site/**"]
     },
@@ -219,90 +209,14 @@
       ],
       "ignore": ["dist/**"]
     },
-    "packages/homepage": {
-      "entry": [
-        "index.html",
-        "src/main.tsx",
-        "src/index.css",
-        "src/vite-env.d.ts",
-        "src/types/**/*.d.ts",
-        "vite.config.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx,d.ts}",
-        "src/**/*.css",
-        "vite.config.ts"
-      ],
-      "ignore": ["dist/**", ".turbo/**"],
-      "ignoreDependencies": [
-        "@fontsource-variable/geist",
-        "@fontsource-variable/geist-mono",
-        "tailwindcss",
-        "tw-animate-css"
-      ]
-    },
     "packages/native-plugins/gateway": {
       "ignoreBinaries": ["pod"]
     },
     "packages/native-plugins/activity-tracker": {
       "ignoreBinaries": ["swiftc"]
     },
-    "packages/native-plugins/websiteblocker": {
-      "ignoreBinaries": ["gradle"]
-    },
     "plugins/app-companion": {
-      "ignore": [
-        ".storybook-smoke/**",
-        "public/vrm-decoders/draco/*.js"
-      ]
-    },
-    "plugins/app-device-settings": {
-      "ignoreDependencies": ["@elizaos/shared"]
-    },
-    "plugins/app-hyperliquid": {
-      "entry": [
-        "src/index.ts",
-        "src/ui.ts",
-        "vitest.config.ts",
-        "__tests__/**/*.test.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx}",
-        "vitest.config.ts",
-        "__tests__/**/*.ts"
-      ],
-      "ignore": ["dist/**"]
-    },
-    "plugins/app-messages": {
-      "ignoreDependencies": ["@elizaos/shared"]
-    },
-    "plugins/app-polymarket": {
-      "entry": [
-        "src/index.ts",
-        "src/ui.ts"
-      ],
-      "project": ["src/**/*.{ts,tsx}"],
-      "ignore": ["dist/**"]
-    },
-    "plugins/plugin-edge-tts": {
-      "entry": [
-        "src/index.ts",
-        "src/index.browser.ts",
-        "src/index.node.ts",
-        "build.ts",
-        "auto-enable.ts",
-        "vitest.config.ts",
-        "__tests__/**/*.test.ts",
-        "__tests__/core-test-mock.ts"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "build.ts",
-        "auto-enable.ts",
-        "vitest.config.ts",
-        "__tests__/**/*.ts"
-      ],
-      "ignore": ["dist/**"]
+      "ignore": [".storybook-smoke/**", "public/vrm-decoders/draco/*.js"]
     },
     "plugins/plugin-ollama": {
       "entry": [
@@ -481,21 +395,6 @@
       "project": ["src/**/*.ts", "__tests__/**/*.ts", "auto-enable.ts", "build.ts"],
       "ignore": ["dist/**"]
     },
-    "plugins/plugin-wechat": {
-      "entry": ["src/index.ts", "src/**/*.test.ts", "auto-enable.ts", "tsup.config.ts", "vitest.config.ts"],
-      "project": ["src/**/*.ts", "auto-enable.ts", "tsup.config.ts", "vitest.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "plugins/plugin-workflow": {
-      "entry": [
-        "src/index.ts",
-        "src/**/*.test.ts",
-        "__tests__/**/*.test.ts",
-        "auto-enable.ts"
-      ],
-      "project": ["src/**/*.ts", "__tests__/**/*.ts", "auto-enable.ts"],
-      "ignore": ["dist/**"]
-    },
     "plugins/plugin-vision": {
       "entry": [
         "src/index.ts",
@@ -519,27 +418,6 @@
       ],
       "ignore": ["dist/**"]
     },
-    "plugins/plugin-lmstudio": {
-      "entry": [
-        "index.ts",
-        "plugin.ts",
-        "auto-enable.ts",
-        "build.ts",
-        "vitest.config.ts",
-        "__tests__/**/*.test.ts"
-      ],
-      "project": [
-        "index.ts",
-        "plugin.ts",
-        "auto-enable.ts",
-        "models/**/*.ts",
-        "types/**/*.ts",
-        "utils/**/*.ts",
-        "vitest.config.ts",
-        "__tests__/**/*.ts"
-      ],
-      "ignore": ["dist/**"]
-    },
     "plugins/plugin-wallet": {
       "entry": [
         "src/**/*.ts",
@@ -553,6 +431,26 @@
         "src/chains/evm/tests/**",
         "src/chains/evm/__tests__/integration/**"
       ]
+    },
+    "plugins/plugin-web-search": {
+      "entry": ["src/index.ts", "tsup.config.ts"],
+      "project": ["src/**/*.ts", "tsup.config.ts"],
+      "ignore": ["dist/**"]
+    },
+    "plugins/plugin-wechat": {
+      "entry": ["src/index.ts", "src/**/*.test.ts", "auto-enable.ts", "tsup.config.ts", "vitest.config.ts"],
+      "project": ["src/**/*.ts", "auto-enable.ts", "tsup.config.ts", "vitest.config.ts"],
+      "ignore": ["dist/**"]
+    },
+    "plugins/plugin-workflow": {
+      "entry": [
+        "src/index.ts",
+        "src/**/*.test.ts",
+        "__tests__/**/*.test.ts",
+        "auto-enable.ts"
+      ],
+      "project": ["src/**/*.ts", "__tests__/**/*.ts", "auto-enable.ts"],
+      "ignore": ["dist/**"]
     },
     "plugins/plugin-x": {
       "entry": [
@@ -580,9 +478,25 @@
         "vitest.config.ts",
         "__tests__/**/*.test.ts"
       ],
+      "project": ["*.ts", "models/**/*.ts", "__tests__/**/*.ts"],
+      "ignore": ["dist/**"]
+    },
+    "plugins/plugin-zai": {
+      "entry": [
+        "index.ts",
+        "index.node.ts",
+        "index.browser.ts",
+        "auto-enable.ts",
+        "build.ts",
+        "vitest.config.ts",
+        "__tests__/**/*.test.ts"
+      ],
       "project": [
         "*.ts",
         "models/**/*.ts",
+        "providers/**/*.ts",
+        "types/**/*.ts",
+        "utils/**/*.ts",
         "__tests__/**/*.ts"
       ],
       "ignore": ["dist/**"]
@@ -785,35 +699,6 @@
         "src/**/*.d.ts.map"
       ]
     },
-    "packages/prompts": {
-      "entry": [
-        "src/index.ts",
-        "scripts/*.js",
-        "test/**/*.js",
-        "specs/**/*.json",
-        "package.json"
-      ],
-      "project": [
-        "src/**/*.ts",
-        "scripts/*.js",
-        "test/**/*.js",
-        "specs/**/*.json"
-      ],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
-    "packages/shared": {
-      "entry": [
-        "src/**/*.{ts,tsx}",
-        "scripts/**/*.{mjs,js}",
-        "vitest.config.ts"
-      ],
-      "project": [
-        "src/**/*.{ts,tsx}",
-        "scripts/**/*.{mjs,js}",
-        "vitest.config.ts"
-      ],
-      "ignore": ["dist/**", ".turbo/**"]
-    },
     "plugins/plugin-tailscale": {
       "entry": ["src/index.ts"],
       "project": ["src/**/*.ts"]
@@ -835,27 +720,6 @@
         "zod"
       ],
       "ignore": ["dist/**", "storybook-static/**"]
-    },
-    "packages/vault": {
-      "entry": ["src/index.ts", "src/testing.ts", "test/**/*.test.ts", "vitest.config.ts"],
-      "project": ["src/**/*.ts", "test/**/*.test.ts", "vitest.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "packages/scenario-runner": {
-      "entry": [
-        "src/index.ts",
-        "src/cli.ts",
-        "src/runtime-factory.ts",
-        "src/**/*.test.ts",
-        "vitest.config.ts"
-      ],
-      "project": ["src/**/*.ts", "vitest.config.ts"],
-      "ignore": ["dist/**"]
-    },
-    "packages/os": {
-      "entry": ["package.json"],
-      "project": [],
-      "ignore": ["android/**", "linux/**"]
     },
     "plugins/plugin-local-inference/native": {
       "entry": [

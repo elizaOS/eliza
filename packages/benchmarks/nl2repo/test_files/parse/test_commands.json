@@ -1,1 +1,4 @@
-["pip install -e . & pip install -r tests/requirements.txt","pytest --continue-on-collection-errors"]
+[
+  "pip install -e . & pip install -r tests/requirements.txt",
+  "pytest --continue-on-collection-errors"
+]

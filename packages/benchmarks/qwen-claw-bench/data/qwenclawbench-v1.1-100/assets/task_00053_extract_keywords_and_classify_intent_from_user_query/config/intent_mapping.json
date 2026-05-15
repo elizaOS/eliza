@@ -10,7 +10,17 @@
     ]
   },
   "search_file": {
-    "triggers": ["文件", "图片", "视频", "文档", "表格", "项目文件", ".mp4", ".xlsx", ".docx"],
+    "triggers": [
+      "文件",
+      "图片",
+      "视频",
+      "文档",
+      "表格",
+      "项目文件",
+      ".mp4",
+      ".xlsx",
+      ".docx"
+    ],
     "description": "Queries about finding, referencing, or working with specific files",
     "priority_weight": 0.9,
     "examples": [
@@ -23,10 +33,6 @@
     "triggers": ["什么是", "如何", "帮我", "解释"],
     "description": "General information queries, how-to questions, and explanation requests",
     "priority_weight": 0.5,
-    "examples": [
-      "什么是关键帧动画",
-      "如何优化渲染设置",
-      "帮我解释一下色彩校正"
-    ]
+    "examples": ["什么是关键帧动画", "如何优化渲染设置", "帮我解释一下色彩校正"]
   }
 }

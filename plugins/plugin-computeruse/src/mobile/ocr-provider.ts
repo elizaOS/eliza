@@ -130,7 +130,10 @@ export function createIosVisionOcrProvider(
           ? { minimumTextHeight: recognizeOptions.minimumTextHeight }
           : {}),
       };
-      const result = await bridge.visionOcr({ imageBase64, options: visionOptions });
+      const result = await bridge.visionOcr({
+        imageBase64,
+        options: visionOptions,
+      });
       if (!result.ok) {
         // Narrow to the failure arm explicitly — some consumer tsconfigs
         // run with `strict: false`, which disables discriminated-union

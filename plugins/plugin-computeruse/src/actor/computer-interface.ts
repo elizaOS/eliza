@@ -46,8 +46,8 @@ import {
   driverScroll,
   driverType,
 } from "../platform/driver.js";
-import type { DisplayDescriptor } from "../types.js";
 import type { Scene, SceneAxNode } from "../scene/scene-types.js";
+import type { DisplayDescriptor } from "../types.js";
 
 /** A POSIX-style mouse button. */
 export type MouseButton = "left" | "middle" | "right";
@@ -183,7 +183,9 @@ export interface ComputerInterfaceDeps {
 }
 
 export class DefaultComputerInterface implements ComputerInterface {
-  private readonly deps: Required<Omit<ComputerInterfaceDeps, "driver" | "getScene">> & {
+  private readonly deps: Required<
+    Omit<ComputerInterfaceDeps, "driver" | "getScene">
+  > & {
     driver: ComputerInterfaceDeps["driver"];
     getScene: ComputerInterfaceDeps["getScene"];
   };
@@ -209,13 +211,16 @@ export class DefaultComputerInterface implements ComputerInterface {
             primary: d.primary,
             name: d.name,
           }))),
-      cursorState:
-        deps.cursorState ?? { current: { displayId: primary.id, x: 0, y: 0 } },
+      cursorState: deps.cursorState ?? {
+        current: { displayId: primary.id, x: 0, y: 0 },
+      },
       driver: deps.driver,
     };
   }
 
-  async screenshot(opts: { displayId?: number } = {}): Promise<ScreenshotResult> {
+  async screenshot(
+    opts: { displayId?: number } = {},
+  ): Promise<ScreenshotResult> {
     const displayId = opts.displayId ?? this.primaryId();
     const captured = await this.deps.capture(displayId);
     return {
@@ -226,13 +231,17 @@ export class DefaultComputerInterface implements ComputerInterface {
     };
   }
 
-  async mouseDown(point: DisplayPoint & { button?: MouseButton }): Promise<void> {
+  async mouseDown(
+    point: DisplayPoint & { button?: MouseButton },
+  ): Promise<void> {
     // Lower-level mouseDown/mouseUp aren't exposed by the existing driver
     // (which composes them into click/drag). For Brain-issued primitives we
     // route a synthetic mouse-move + click; the cascade rarely needs
     // separate down/up except for selection drags, which use `drag()`.
     await this.moveCursor(point);
-    logger.debug("[computeruse/actor] mouseDown synthesized as moveCursor + click pending");
+    logger.debug(
+      "[computeruse/actor] mouseDown synthesized as moveCursor + click pending",
+    );
   }
 
   async mouseUp(point: DisplayPoint & { button?: MouseButton }): Promise<void> {
@@ -296,11 +305,23 @@ export class DefaultComputerInterface implements ComputerInterface {
         "[computeruse/actor] drag path requires concrete start and end points",
       );
     }
-    const startG = this.toGlobalChecked({ displayId: args.displayId, x: start.x, y: start.y });
-    const endG = this.toGlobalChecked({ displayId: args.displayId, x: end.x, y: end.y });
+    const startG = this.toGlobalChecked({
+      displayId: args.displayId,
+      x: start.x,
+      y: start.y,
+    });
+    const endG = this.toGlobalChecked({
+      displayId: args.displayId,
+      x: end.x,
+      y: end.y,
+    });
     const fn = this.deps.driver?.drag ?? driverDrag;
     await fn(startG.x, startG.y, endG.x, endG.y);
-    this.deps.cursorState.current = { displayId: args.displayId, x: end.x, y: end.y };
+    this.deps.cursorState.current = {
+      displayId: args.displayId,
+      x: end.x,
+      y: end.y,
+    };
   }
 
   async keyDown(args: { key: string }): Promise<void> {
@@ -334,7 +355,11 @@ export class DefaultComputerInterface implements ComputerInterface {
   }
 
   async scroll(delta: ScrollDelta): Promise<void> {
-    const g = this.toGlobalChecked({ displayId: delta.displayId, x: delta.x, y: delta.y });
+    const g = this.toGlobalChecked({
+      displayId: delta.displayId,
+      x: delta.x,
+      y: delta.y,
+    });
     const fn = this.deps.driver?.scroll ?? driverScroll;
     if (delta.dy !== 0) {
       const direction = delta.dy > 0 ? "down" : "up";
@@ -350,14 +375,26 @@ export class DefaultComputerInterface implements ComputerInterface {
     const display = this.requireDisplay(args.displayId);
     const cx = Math.round(display.bounds[2] / 2);
     const cy = Math.round(display.bounds[3] / 2);
-    await this.scroll({ displayId: args.displayId, x: cx, y: cy, dx: 0, dy: -Math.abs(args.clicks) });
+    await this.scroll({
+      displayId: args.displayId,
+      x: cx,
+      y: cy,
+      dx: 0,
+      dy: -Math.abs(args.clicks),
+    });
   }
 
   async scrollDown(args: { displayId: number; clicks: number }): Promise<void> {
     const display = this.requireDisplay(args.displayId);
     const cx = Math.round(display.bounds[2] / 2);
     const cy = Math.round(display.bounds[3] / 2);
-    await this.scroll({ displayId: args.displayId, x: cx, y: cy, dx: 0, dy: Math.abs(args.clicks) });
+    await this.scroll({
+      displayId: args.displayId,
+      x: cx,
+      y: cy,
+      dx: 0,
+      dy: Math.abs(args.clicks),
+    });
   }
 
   getScreenSize(args: { displayId: number }): { w: number; h: number } {

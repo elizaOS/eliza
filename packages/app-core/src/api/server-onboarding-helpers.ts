@@ -24,7 +24,7 @@ import {
   PREMADE_VOICES,
   type ServiceRoutingConfig,
 } from "@elizaos/shared";
-import { getCompatApiToken } from "./auth.ts";
+import { getCompatApiToken } from "./auth";
 import { resolveProviderCredential } from "./credential-resolver";
 
 // ---------------------------------------------------------------------------

@@ -24,7 +24,7 @@ from .types import SUITES
 
 _AGENT_CHOICES = ("eliza", "hermes", "openclaw")
 _SUITE_CHOICES = ("all",) + SUITES
-_STT_CHOICES = ("groq",)
+_STT_CHOICES = ("groq", "eliza-runtime")
 
 
 def _build_parser() -> argparse.ArgumentParser:

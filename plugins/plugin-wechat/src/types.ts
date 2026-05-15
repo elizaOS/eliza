@@ -1,7 +1,7 @@
-type DeviceType = "ipad" | "mac";
-type LoginStatus = "waiting" | "need_verify" | "logged_in";
+export type DeviceType = "ipad" | "mac";
+export type LoginStatus = "waiting" | "need_verify" | "logged_in";
 
-interface WechatAccountConfig {
+export interface WechatAccountConfig {
   enabled?: boolean;
   name?: string;
   apiKey: string;

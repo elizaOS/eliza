@@ -1,21 +1,24 @@
-import type { ProcessedTrial } from '../types/metrics'
-import { formatDate, formatDuration } from '../utils/formatters'
-import { Card, CardContent, CardHeader } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { X, FileText } from 'lucide-react'
+import { FileText, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import type { ProcessedTrial } from "../types/metrics";
+import { formatDate, formatDuration } from "../utils/formatters";
 
 interface TracebackViewerProps {
-  trial: ProcessedTrial | null
-  onClose: () => void
+  trial: ProcessedTrial | null;
+  onClose: () => void;
 }
 
-const statusVariant: Record<string, 'success' | 'destructive' | 'warning' | 'error'> = {
-  pass: 'success',
-  fail: 'destructive',
-  error: 'error',
-  timeout: 'warning',
-}
+const statusVariant: Record<
+  string,
+  "success" | "destructive" | "warning" | "error"
+> = {
+  pass: "success",
+  fail: "destructive",
+  error: "error",
+  timeout: "warning",
+};
 
 export function TracebackViewer({ trial, onClose }: TracebackViewerProps) {
   if (!trial) {
@@ -28,7 +31,7 @@ export function TracebackViewer({ trial, onClose }: TracebackViewerProps) {
           </div>
         </CardContent>
       </Card>
-    )
+    );
   }
 
   return (
@@ -39,7 +42,12 @@ export function TracebackViewer({ trial, onClose }: TracebackViewerProps) {
           <Badge variant={statusVariant[trial.status]}>{trial.status}</Badge>
           <span className="font-medium truncate">{trial.trialName}</span>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose} className="h-8 w-8">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onClose}
+          className="h-8 w-8"
+        >
           <X className="w-4 h-4" />
         </Button>
       </CardHeader>
@@ -69,8 +77,10 @@ export function TracebackViewer({ trial, onClose }: TracebackViewerProps) {
           </div>
           <div>
             <span className="text-muted-foreground">Reward:</span>
-            <span className={`ml-2 font-medium ${trial.reward !== null && trial.reward >= 1.0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {trial.reward?.toFixed(2) ?? '-'}
+            <span
+              className={`ml-2 font-medium ${trial.reward !== null && trial.reward >= 1.0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}
+            >
+              {trial.reward?.toFixed(2) ?? "-"}
             </span>
           </div>
         </div>
@@ -81,7 +91,9 @@ export function TracebackViewer({ trial, onClose }: TracebackViewerProps) {
         <div className="flex-1 overflow-auto">
           <div className="px-4 py-3 border-b">
             <div className="flex items-center gap-2 mb-2">
-              <Badge variant="error">{trial.exceptionInfo.exception_type}</Badge>
+              <Badge variant="error">
+                {trial.exceptionInfo.exception_type}
+              </Badge>
               <span className="text-xs text-muted-foreground">
                 {formatDate(trial.exceptionInfo.occurred_at)}
               </span>
@@ -90,7 +102,9 @@ export function TracebackViewer({ trial, onClose }: TracebackViewerProps) {
           </div>
 
           <div className="p-4">
-            <h4 className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Traceback</h4>
+            <h4 className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+              Traceback
+            </h4>
             <div className="traceback bg-muted p-4 rounded-md border overflow-x-auto text-xs">
               {trial.exceptionInfo.exception_traceback}
             </div>
@@ -98,9 +112,11 @@ export function TracebackViewer({ trial, onClose }: TracebackViewerProps) {
         </div>
       ) : (
         <CardContent className="flex-1 flex items-center justify-center">
-          <p className="text-muted-foreground">No exception information available</p>
+          <p className="text-muted-foreground">
+            No exception information available
+          </p>
         </CardContent>
       )}
     </Card>
-  )
+  );
 }

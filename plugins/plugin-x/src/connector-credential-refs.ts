@@ -16,16 +16,16 @@ type JsonValue =
   | { readonly [key: string]: JsonValue };
 type JsonRecord = Record<string, JsonValue>;
 
-const OAUTH_TOKENS_CREDENTIAL_TYPE = "oauth.tokens";
+export const OAUTH_TOKENS_CREDENTIAL_TYPE = "oauth.tokens";
 
-interface ConnectorCredentialRefMetadata extends JsonRecord {
+export interface ConnectorCredentialRefMetadata extends JsonRecord {
   credentialType: string;
   vaultRef: string;
   expiresAt?: number;
   metadata?: JsonRecord;
 }
 
-interface ConnectorCredentialRefRecordLike {
+export interface ConnectorCredentialRefRecordLike {
   credentialType: string;
   vaultRef?: string | null;
   value?: string | null;
@@ -237,7 +237,7 @@ export async function getConnectorAccount(
   return null;
 }
 
-function credentialRefRecordsFromMetadata(
+export function credentialRefRecordsFromMetadata(
   metadata: unknown,
 ): ConnectorCredentialRefRecordLike[] {
   const record = asRecord(metadata);

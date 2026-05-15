@@ -5,14 +5,18 @@
   License: GPL v3
 */
 
-import * as Main from 'resource:///org/gnome/shell/ui/main.js';
+import * as Main from "resource:///org/gnome/shell/ui/main.js";
 
 export default class NoOverviewExtension {
-    enable() {
-        Main.layoutManager.connectObject('startup-complete', () => Main.overview.hide(), this);
-    }
+  enable() {
+    Main.layoutManager.connectObject(
+      "startup-complete",
+      () => Main.overview.hide(),
+      this,
+    );
+  }
 
-    disable() {
-        Main.layoutManager.disconnectObject(this);
-    }
+  disable() {
+    Main.layoutManager.disconnectObject(this);
+  }
 }

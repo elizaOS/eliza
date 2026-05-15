@@ -43,8 +43,6 @@ export class ElizaBunRuntimeWeb
   }
 
   async call(_options: CallOptions): Promise<CallResult> {
-    throw this.unavailable(
-      "ElizaBunRuntime.call is unavailable on web.",
-    );
+    throw this.unavailable("ElizaBunRuntime.call is unavailable on web.");
   }
 }

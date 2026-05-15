@@ -46,7 +46,7 @@
     "usdc_min_balance": 500.0,
     "max_slippage_bps": 50,
     "max_gas_gwei": 300,
-    "min_profit_usdc": 0.50,
+    "min_profit_usdc": 0.5,
     "max_position_usdc": 25000,
     "max_pending_age_min": 30
   },

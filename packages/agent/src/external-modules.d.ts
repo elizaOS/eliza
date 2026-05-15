@@ -527,6 +527,53 @@ declare module "jsdom" {
   }
 }
 
+// `isomorphic-git` is a runtime dep used by vfs-git.ts for VFS git operations.
+// Declared here so the agent typecheck does not require the package to be
+// installed as a peer in the local workspace (it may be unavailable in some
+// dev environments). Only the symbols actually imported by vfs-git.ts need
+// surface here.
+declare module "isomorphic-git" {
+  /** [filepath, head, workdir, stage] — numeric states: 0 = absent, 1 = unchanged, 2/3 = modified/added. */
+  export type StatusRow = [string, number, number, number];
+  export interface ReadCommitResult {
+    oid: string;
+    commit: {
+      message: string;
+      author: {
+        name: string;
+        email: string;
+        timestamp: number;
+        timezoneOffset: number;
+      };
+      committer: {
+        name: string;
+        email: string;
+        timestamp: number;
+        timezoneOffset: number;
+      };
+      parent: string[];
+      tree: string;
+    };
+    payload: string;
+  }
+  export type AuthCallback = (
+    url: string,
+    auth: { username?: string; password?: string },
+  ) =>
+    | { username?: string; password?: string }
+    | void
+    | Promise<{ username?: string; password?: string } | void>;
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for optional dep
+  const git: any;
+  export default git;
+}
+
+declare module "isomorphic-git/http/node" {
+  // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for optional dep
+  const http: any;
+  export default http;
+}
+
 declare module "@elizaos/plugin-discord" {
   import type { AgentRuntime } from "@elizaos/core";
 

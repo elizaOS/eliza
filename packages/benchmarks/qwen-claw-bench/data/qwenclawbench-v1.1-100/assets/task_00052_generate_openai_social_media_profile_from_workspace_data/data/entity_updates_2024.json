@@ -17,7 +17,15 @@
           "country": "United States"
         },
         "employee_count": 3500,
-        "products": ["ChatGPT", "GPT-4", "GPT-4 Turbo", "DALL-E 3", "Whisper", "Codex", "Sora"],
+        "products": [
+          "ChatGPT",
+          "GPT-4",
+          "GPT-4 Turbo",
+          "DALL-E 3",
+          "Whisper",
+          "Codex",
+          "Sora"
+        ],
         "ceo": "Sam Altman",
         "latest_valuation": "$86 billion",
         "status": "active",
@@ -35,7 +43,14 @@
       "name": "DeepMind",
       "updated_fields": {
         "employee_count": 2800,
-        "products": ["AlphaFold", "AlphaGo", "Gemini", "Gemini Ultra", "WaveNet", "AlphaGeometry"],
+        "products": [
+          "AlphaFold",
+          "AlphaGo",
+          "Gemini",
+          "Gemini Ultra",
+          "WaveNet",
+          "AlphaGeometry"
+        ],
         "recent_events": [
           "Launched Gemini multimodal model family",
           "AlphaGeometry solves olympiad-level geometry problems",
@@ -49,7 +64,13 @@
       "name": "Anthropic",
       "updated_fields": {
         "employee_count": 800,
-        "products": ["Claude", "Claude 2", "Claude 2.1", "Claude 3", "Constitutional AI"],
+        "products": [
+          "Claude",
+          "Claude 2",
+          "Claude 2.1",
+          "Claude 3",
+          "Constitutional AI"
+        ],
         "funding_status": "Private - Series C ($2B from Google)",
         "recent_events": [
           "Launched Claude 3 model family (Haiku, Sonnet, Opus)",
@@ -64,7 +85,15 @@
       "name": "Meta AI",
       "updated_fields": {
         "employee_count": 1500,
-        "products": ["LLaMA", "LLaMA 2", "Code Llama", "SAM", "ImageBind", "AudioCraft", "Emu"],
+        "products": [
+          "LLaMA",
+          "LLaMA 2",
+          "Code Llama",
+          "SAM",
+          "ImageBind",
+          "AudioCraft",
+          "Emu"
+        ],
         "recent_events": [
           "Released LLaMA 2 as open source",
           "Launched Code Llama for code generation",
@@ -78,7 +107,13 @@
       "name": "Stability AI",
       "updated_fields": {
         "employee_count": 180,
-        "products": ["Stable Diffusion", "Stable Diffusion XL", "StableLM", "Stable Audio", "Stable Video Diffusion"],
+        "products": [
+          "Stable Diffusion",
+          "Stable Diffusion XL",
+          "StableLM",
+          "Stable Audio",
+          "Stable Video Diffusion"
+        ],
         "status": "active - restructuring",
         "recent_events": [
           "CEO Emad Mostaque resigned",

@@ -77,7 +77,9 @@ describe("Android Assistant and App Actions routing source", () => {
       "packages/app-core/platforms/android/app/src/main/res/xml/shortcuts.xml",
     );
 
-    expect(shortcuts).toContain('android:name="actions.intent.OPEN_APP_FEATURE"');
+    expect(shortcuts).toContain(
+      'android:name="actions.intent.OPEN_APP_FEATURE"',
+    );
     expect(shortcuts).toContain('android:name="actions.intent.CREATE_MESSAGE"');
     expect(shortcuts).toContain('android:name="actions.intent.GET_THING"');
     expect(shortcuts).toContain('android:name="feature"');
@@ -88,13 +90,21 @@ describe("Android Assistant and App Actions routing source", () => {
     expect(shortcuts).toContain(
       'android:shortcutId="eliza_app_action_daily_brief"',
     );
-    expect(shortcuts).toContain('android:shortcutId="eliza_app_action_new_task"');
+    expect(shortcuts).toContain(
+      'android:shortcutId="eliza_app_action_new_task"',
+    );
     expect(shortcuts).toContain('android:shortcutId="eliza_app_action_tasks"');
     expect(shortcuts).toContain("source=android-app-actions");
     expect(shortcuts).toContain("source=android-static-shortcut");
-    expect(shortcuts).toContain("eliza://feature/open?source=android-app-actions");
-    expect(shortcuts).toContain("eliza://chat?source=android-app-actions&amp;action=chat");
-    expect(shortcuts).toContain("eliza://lifeops/task/new?source=android-static-shortcut");
+    expect(shortcuts).toContain(
+      "eliza://feature/open?source=android-app-actions",
+    );
+    expect(shortcuts).toContain(
+      "eliza://chat?source=android-app-actions&amp;action=chat",
+    );
+    expect(shortcuts).toContain(
+      "eliza://lifeops/task/new?source=android-static-shortcut",
+    );
     expect(shortcuts.toLowerCase()).not.toContain("notification");
     expect(shortcuts).not.toContain("assistant/open");
     expect(shortcuts).not.toContain("android.intent.action.ASSIST");
@@ -188,7 +198,14 @@ describe("GestureArgs discriminated union", () => {
   });
 
   it("swipe gesture has type='swipe' and target coords", () => {
-    const g: GestureArgs = { type: "swipe", x: 100, y: 800, x2: 100, y2: 200, durationMs: 400 };
+    const g: GestureArgs = {
+      type: "swipe",
+      x: 100,
+      y: 800,
+      x2: 100,
+      y2: 200,
+      durationMs: 400,
+    };
     if (g.type === "swipe") {
       expect(g.x2).toBe(100);
       expect(g.y2).toBe(200);
@@ -206,7 +223,12 @@ describe("GestureArgs discriminated union", () => {
 
 describe("GlobalAction", () => {
   it("covers the four required system actions", () => {
-    const actions: GlobalAction[] = ["back", "home", "recents", "notifications"];
+    const actions: GlobalAction[] = [
+      "back",
+      "home",
+      "recents",
+      "notifications",
+    ];
     expect(actions).toHaveLength(4);
   });
 });
@@ -336,7 +358,10 @@ describe("onTrimMemory → dispatchMemoryPressure call chain", () => {
         return { ok: true, data: { ok: true } };
       },
     });
-    const result = await fakeBridge.dispatchMemoryPressure({ level: "nominal", freeMb: 2048 });
+    const result = await fakeBridge.dispatchMemoryPressure({
+      level: "nominal",
+      freeMb: 2048,
+    });
     expect(result.ok).toBe(true);
   });
 
@@ -347,7 +372,9 @@ describe("onTrimMemory → dispatchMemoryPressure call chain", () => {
         return { ok: true, data: { ok: true } };
       },
     });
-    const result = await fakeBridge.dispatchMemoryPressure({ level: "critical" });
+    const result = await fakeBridge.dispatchMemoryPressure({
+      level: "critical",
+    });
     expect(result.ok).toBe(true);
   });
 
@@ -373,7 +400,9 @@ describe("onTrimMemory → dispatchMemoryPressure call chain", () => {
 function buildFakeAndroidBridge(
   overrides: Partial<AndroidComputerUseBridge> = {},
 ): AndroidComputerUseBridge {
-  const stub = <T>(code: AndroidBridgeErrorCode = "internal_error"): Promise<AndroidBridgeResult<T>> =>
+  const stub = <T>(
+    code: AndroidBridgeErrorCode = "internal_error",
+  ): Promise<AndroidBridgeResult<T>> =>
     Promise.resolve({ ok: false, code, message: "stub" });
 
   return {

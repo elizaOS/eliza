@@ -219,7 +219,7 @@ export async function isTweetProcessed(
 /**
  * Gets recent tweets to check for duplicates
  */
-async function getRecentTweets(
+export async function getRecentTweets(
   runtime: IAgentRuntime,
   username: string,
   _count: number = 10,

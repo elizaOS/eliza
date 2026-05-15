@@ -284,7 +284,11 @@ export function createWorkThreadStore(
 
     async merge(input): Promise<MergeWorkThreadsResult> {
       const sourceIds = [
-        ...new Set(input.sourceWorkThreadIds.filter((id) => id && id !== input.targetWorkThreadId)),
+        ...new Set(
+          input.sourceWorkThreadIds.filter(
+            (id) => id && id !== input.targetWorkThreadId,
+          ),
+        ),
       ];
       if (sourceIds.length === 0) {
         throw new MergeBlockedError({

@@ -41,7 +41,7 @@ const X_CONNECTOR_CAPABILITIES = [
 const X_USER_ID_PATTERN = /^\d+$/;
 const X_MAX_POST_LENGTH = 280;
 
-type XAccountCapability =
+export type XAccountCapability =
   | "x.read"
   | "x.write"
   | "x.dm.read"

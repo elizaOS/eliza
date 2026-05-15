@@ -60,10 +60,9 @@ The exported Eliza ABI is documented in `BRIDGE_CONTRACT.md`:
 - `eliza_bun_engine_call`
 - `eliza_bun_engine_free`
 
-App Store/full-engine builds link this framework directly so the shipped app
-does not import dynamic loader APIs. Compatibility development builds can omit
-the dependency and use the JSContext host instead. When the framework is linked,
-`start()` defaults to `engine: "auto"` and will boot the full engine. Passing
+The Capacitor runtime loads this framework dynamically, so compatibility builds
+do not link or require the full engine. When the framework exists, `start()`
+defaults to `engine: "auto"` and will boot the full engine. Passing
 `engine: "bun"` requires the framework and returns an error if it is missing.
 
 ## App Store execution profile
@@ -88,15 +87,8 @@ data inputs to the signed in-process runtime, not executable payloads.
 # Verify the staged xcframework.
 bun run --cwd packages/bun-ios-runtime verify:app-store
 
-# Run the simulator engine preflight used before app packaging.
-bun run --cwd packages/bun-ios-runtime smoke:sim
-
 # Verify a signed .app bundle and its embedded ElizaBunEngine framework.
 bun run --cwd packages/bun-ios-runtime verify:app-store -- --app=/path/to/App.app
-
-# Verify app smoke prerequisites, then run the in-app route smoke.
-bun run --cwd packages/bun-ios-runtime smoke:app -- --app=/path/to/App.app
-bun run --cwd packages/app test:sim:local-chat:ios:full-bun
 ```
 
 ## Build workflow

@@ -58,6 +58,22 @@ export interface ChatMessageReaction {
   users?: string[];
 }
 
+/**
+ * Voice speaker attribution metadata attached to a chat message. Populated
+ * when the user message was captured via voice and R2's speaker-id pipeline
+ * tagged the turn with an identified speaker.
+ */
+export interface ChatVoiceSpeaker {
+  /** Stable entity id for the speaker. */
+  entityId?: string;
+  /** Human-friendly display name shown in the bubble header. */
+  name?: string;
+  /** Connector username/handle (fallback when `name` is missing). */
+  userName?: string;
+  /** True when this speaker has the OWNER role on the device. */
+  isOwner?: boolean;
+}
+
 export interface ChatMessageData {
   avatarUrl?: string;
   from?: string;
@@ -71,6 +87,8 @@ export interface ChatMessageData {
   role: string;
   source?: string;
   text: string;
+  /** Voice speaker attribution when this message arrived via voice (R10 §4.1). */
+  voiceSpeaker?: ChatVoiceSpeaker;
 }
 
 export interface ChatMessageLabels extends ChatLabelSet {}

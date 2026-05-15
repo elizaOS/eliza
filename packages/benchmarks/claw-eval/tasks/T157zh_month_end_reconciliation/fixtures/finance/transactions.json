@@ -2,7 +2,7 @@
   {
     "transaction_id": "TXN-1301",
     "date": "2026-03-01",
-    "amount": 85000.00,
+    "amount": 85000.0,
     "currency": "CNY",
     "customer_id": "CUS-1301",
     "customer_name": "鼎盛信息技术有限公司",
@@ -14,7 +14,7 @@
   {
     "transaction_id": "TXN-1302",
     "date": "2026-03-01",
-    "amount": 85000.00,
+    "amount": 85000.0,
     "currency": "CNY",
     "customer_id": "CUS-1301",
     "customer_name": "鼎盛信息技术有限公司",
@@ -26,7 +26,7 @@
   {
     "transaction_id": "TXN-1303",
     "date": "2026-03-02",
-    "amount": 45000.00,
+    "amount": 45000.0,
     "currency": "CNY",
     "customer_id": "CUS-1302",
     "customer_name": "明远商贸有限公司",
@@ -38,7 +38,7 @@
   {
     "transaction_id": "TXN-1304",
     "date": "2026-03-03",
-    "amount": -12000.00,
+    "amount": -12000.0,
     "currency": "CNY",
     "customer_id": "CUS-1302",
     "customer_name": "明远商贸有限公司",
@@ -50,7 +50,7 @@
   {
     "transaction_id": "TXN-1305",
     "date": "2026-03-05",
-    "amount": -45000.00,
+    "amount": -45000.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -63,7 +63,7 @@
   {
     "transaction_id": "TXN-1306",
     "date": "2026-03-05",
-    "amount": -8000.00,
+    "amount": -8000.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -76,7 +76,7 @@
   {
     "transaction_id": "TXN-1307",
     "date": "2026-03-06",
-    "amount": 30000.00,
+    "amount": 30000.0,
     "currency": "CNY",
     "customer_id": "CUS-1304",
     "customer_name": "华创网络科技有限公司",
@@ -88,7 +88,7 @@
   {
     "transaction_id": "TXN-1308",
     "date": "2026-03-07",
-    "amount": 25000.00,
+    "amount": 25000.0,
     "currency": "CNY",
     "customer_id": "CUS-1305",
     "customer_name": "瑞安电子商务有限公司",
@@ -100,7 +100,7 @@
   {
     "transaction_id": "TXN-1309",
     "date": "2026-03-08",
-    "amount": -15000.00,
+    "amount": -15000.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -113,7 +113,7 @@
   {
     "transaction_id": "TXN-1310",
     "date": "2026-03-10",
-    "amount": 120000.00,
+    "amount": 120000.0,
     "currency": "CNY",
     "customer_id": "CUS-1303",
     "customer_name": "锦程国际物流有限公司",
@@ -125,7 +125,7 @@
   {
     "transaction_id": "TXN-1311",
     "date": "2026-03-11",
-    "amount": -6000.00,
+    "amount": -6000.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -138,7 +138,7 @@
   {
     "transaction_id": "TXN-1312",
     "date": "2026-03-12",
-    "amount": -3500.00,
+    "amount": -3500.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -151,7 +151,7 @@
   {
     "transaction_id": "TXN-1313",
     "date": "2026-03-13",
-    "amount": -2500.00,
+    "amount": -2500.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -164,7 +164,7 @@
   {
     "transaction_id": "TXN-1314",
     "date": "2026-03-15",
-    "amount": -85000.00,
+    "amount": -85000.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -176,7 +176,7 @@
   {
     "transaction_id": "TXN-1315",
     "date": "2026-03-16",
-    "amount": -32000.00,
+    "amount": -32000.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -188,7 +188,7 @@
   {
     "transaction_id": "TXN-1316",
     "date": "2026-03-18",
-    "amount": -4200.00,
+    "amount": -4200.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -201,7 +201,7 @@
   {
     "transaction_id": "TXN-1317",
     "date": "2026-03-19",
-    "amount": -9600.00,
+    "amount": -9600.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -214,7 +214,7 @@
   {
     "transaction_id": "TXN-1318",
     "date": "2026-03-20",
-    "amount": -5500.00,
+    "amount": -5500.0,
     "currency": "CNY",
     "customer_id": "CUS-1304",
     "customer_name": "华创网络科技有限公司",
@@ -226,7 +226,7 @@
   {
     "transaction_id": "TXN-1319",
     "date": "2026-03-22",
-    "amount": -18000.00,
+    "amount": -18000.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,
@@ -239,7 +239,7 @@
   {
     "transaction_id": "TXN-1320",
     "date": "2026-03-25",
-    "amount": -12000.00,
+    "amount": -12000.0,
     "currency": "CNY",
     "customer_id": null,
     "customer_name": null,

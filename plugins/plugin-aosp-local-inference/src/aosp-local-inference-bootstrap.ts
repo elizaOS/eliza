@@ -52,10 +52,10 @@ import {
   type TextToSpeechParams,
 } from "@elizaos/core";
 import {
-  KokoroOnnxRuntime,
   type KokoroEngineDiscoveryResult,
-  KokoroTtsBackend,
+  KokoroOnnxRuntime,
   type KokoroRuntime,
+  KokoroTtsBackend,
   resolveKokoroEngineConfig,
 } from "@elizaos/shared/local-inference";
 import { registerAospLlamaLoader } from "./aosp-llama-adapter.js";
@@ -363,7 +363,10 @@ type AospRecommendedModel = {
   expectedSizeBytes?: number;
 };
 
-const AOSP_RECOMMENDED_MODELS: Record<"chat" | "embedding", AospRecommendedModel> = {
+const AOSP_RECOMMENDED_MODELS: Record<
+  "chat" | "embedding",
+  AospRecommendedModel
+> = {
   chat: {
     id: "eliza-1-2b",
     hfRepo: "elizaos/eliza-1",
@@ -467,10 +470,7 @@ function fallbackFindBundledModels(modelsDir: string): {
     // before the broader Eliza-1 chat rule below.
     if (!embedding && lower.includes("embedding")) {
       embedding = abs;
-    } else if (
-      !chat &&
-      lower.includes("eliza-1")
-    ) {
+    } else if (!chat && lower.includes("eliza-1")) {
       chat = abs;
     }
   }
@@ -717,7 +717,9 @@ function extractSpeechText(params: TextToSpeechParams | string): string {
   );
 }
 
-function extractSpeechVoice(params: TextToSpeechParams | string): string | null {
+function extractSpeechVoice(
+  params: TextToSpeechParams | string,
+): string | null {
   return typeof params === "object" && params !== null
     ? (params.voice ?? null)
     : null;
@@ -950,7 +952,7 @@ export async function ensureAospLocalInferenceHandlers(
         ? makeEmbeddingHandler(loader, lifecycle)
         : modelType === ModelType.TEXT_TO_SPEECH
           ? makeKokoroTextToSpeechHandler()
-        : makeGenerateHandler(loader, lifecycle);
+          : makeGenerateHandler(loader, lifecycle);
     runtimeWithRegistration.registerModel(
       modelType,
       handler,

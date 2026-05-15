@@ -22,6 +22,11 @@ export default defineConfig({
               priority: 3,
             },
             {
+              name: "markdown",
+              test: /node_modules[\\/](?:\.bun[\\/])?(?:react-markdown|remark-|rehype-|micromark|mdast-|hast-|unified|vfile)/,
+              priority: 2,
+            },
+            {
               name: "router",
               test: /node_modules[\\/](?:\.bun[\\/])?react-router/,
               priority: 2,

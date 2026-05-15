@@ -284,8 +284,9 @@ export function LifeOpsScreenTimeSection({
 }) {
   const [range, setRange] = useState<RangeKey>("today");
   const [data, setData] = useState<RangeData | null>(null);
-  const [blockStatus, setBlockStatus] =
-    useState<SocialBlockStatus | null>(null);
+  const [blockStatus, setBlockStatus] = useState<SocialBlockStatus | null>(
+    null,
+  );
   const [blockStatusError, setBlockStatusError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

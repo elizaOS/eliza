@@ -34,7 +34,11 @@ export const DESKTOP_ONLY_PLUGINS: readonly string[] = [
  * AOSP-only FFI bridge (`@elizaos/plugin-aosp-local-inference`) when
  * `ELIZA_LOCAL_LLAMA=1`.
  */
-export const MOBILE_CORE_PLUGINS: readonly string[] = ["@elizaos/plugin-sql"];
+export const MOBILE_CORE_PLUGINS: readonly string[] = [
+  "@elizaos/plugin-sql",
+  "@elizaos/plugin-background-runner",
+  "@elizaos/plugin-device-filesystem",
+];
 
 /**
  * ElizaOS-only overlay app plugins. Used when the runtime is the custom

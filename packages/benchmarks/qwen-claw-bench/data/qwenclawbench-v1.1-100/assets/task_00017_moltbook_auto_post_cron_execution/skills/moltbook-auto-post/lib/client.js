@@ -1,5 +1,3 @@
-"use strict";
-
 /**
  * Stub client for benchmark workspace — no outbound calls are made when
  * CONTENT_MODE yields no draft (normal no_content path).

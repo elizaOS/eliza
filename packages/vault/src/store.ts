@@ -11,14 +11,14 @@ import type { StoredEntry } from "./types.js";
  * gates beyond a single integer.
  */
 
-const STORE_VERSION = 1;
+export const STORE_VERSION = 1;
 
 export interface StoreData {
   readonly version: number;
   readonly entries: Readonly<Record<string, StoredEntry>>;
 }
 
-class StoreFormatError extends Error {
+export class StoreFormatError extends Error {
   constructor(message: string) {
     super(`vault store: ${message}`);
     this.name = "StoreFormatError";

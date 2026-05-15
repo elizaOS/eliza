@@ -23,7 +23,7 @@
   "scripts": {
     "clean": "rm -rf dist",
     "build": "tsc --noCheck -p tsconfig.build.json",
-    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "dev": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
     "test": "bun test ./test",
     "prepublishOnly": "bun run clean && bun run build",
     "lint": "bunx @biomejs/biome check --write ./src",
@@ -58,7 +58,7 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "typescript": "^6.0.3"
+    "tsx": "^4.19.2"
   },
   "publishConfig": {
     "access": "public"

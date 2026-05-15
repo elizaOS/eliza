@@ -39,26 +39,26 @@ describe("WhatsApp Webhook E2E Tests", () => {
       } else {
         // If verify token doesn't match the server's config, that's expected
         // The test validates the endpoint exists and responds
-        expect([200, 403, 501, 502, 503]).toContain(response.status);
+        expect([200, 403, 501, 503]).toContain(response.status);
       }
     });
 
     it("returns 403 for wrong verify token", async () => {
       const url = `${WEBHOOK_URL}?hub.mode=subscribe&hub.verify_token=wrong_token&hub.challenge=123`;
       const response = await fetch(url);
-      expect([403, 501, 502, 503]).toContain(response.status);
+      expect([403, 501, 503]).toContain(response.status);
     });
 
     it("returns 403 for wrong mode", async () => {
       const url = `${WEBHOOK_URL}?hub.mode=unsubscribe&hub.verify_token=${VERIFY_TOKEN}&hub.challenge=123`;
       const response = await fetch(url);
-      expect([403, 501, 502, 503]).toContain(response.status);
+      expect([403, 501, 503]).toContain(response.status);
     });
 
     it("returns 403 when missing challenge", async () => {
       const url = `${WEBHOOK_URL}?hub.mode=subscribe&hub.verify_token=${VERIFY_TOKEN}`;
       const response = await fetch(url);
-      expect([403, 501, 502, 503]).toContain(response.status);
+      expect([403, 501, 503]).toContain(response.status);
     });
   });
 
@@ -78,7 +78,7 @@ describe("WhatsApp Webhook E2E Tests", () => {
         body: payload,
       });
 
-      expect([401, 501, 502, 503]).toContain(response.status);
+      expect([401, 501, 503]).toContain(response.status);
     });
 
     it("rejects malformed JSON", async () => {
@@ -95,7 +95,7 @@ describe("WhatsApp Webhook E2E Tests", () => {
       });
 
       // 400 (invalid JSON) or 401 (if sig check fails with real secret)
-      expect([400, 401, 501, 502, 503]).toContain(response.status);
+      expect([400, 401, 501, 503]).toContain(response.status);
     });
 
     it("rejects payload with wrong object type", async () => {
@@ -115,7 +115,7 @@ describe("WhatsApp Webhook E2E Tests", () => {
       });
 
       // 400 (invalid schema) or 401 (if sig check fails with real secret)
-      expect([400, 401, 501, 502, 503]).toContain(response.status);
+      expect([400, 401, 501, 503]).toContain(response.status);
     });
 
     it("accepts valid webhook payload with proper signature", async () => {
@@ -159,7 +159,7 @@ describe("WhatsApp Webhook E2E Tests", () => {
       });
 
       // 200 (success) or 401 (if using different app secret in prod)
-      expect([200, 401, 501, 502, 503]).toContain(response.status);
+      expect([200, 401, 501, 503]).toContain(response.status);
     });
   });
 });

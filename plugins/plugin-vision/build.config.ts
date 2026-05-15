@@ -25,6 +25,8 @@ export const buildConfig: BuildConfig = {
     "node:events",
     "node:url",
     "vitest",
+    "dotenv",
+    "zod",
     "@elizaos/core",
     "@elizaos/plugin-message-handling",
     "@tensorflow-models/coco-ssd",
@@ -43,7 +45,6 @@ export const buildConfig: BuildConfig = {
 export const workersConfig: BuildConfig = {
   entrypoints: [
     "./src/workers/screen-capture-worker.ts",
-    "./src/workers/florence2-worker.ts",
     "./src/workers/ocr-worker.ts",
   ],
   outdir: "./dist/workers",
@@ -68,6 +69,8 @@ export const workersConfig: BuildConfig = {
     "node:events",
     "node:url",
     "vitest",
+    "dotenv",
+    "zod",
     "@elizaos/core",
     "@elizaos/plugin-message-handling",
     "sharp",

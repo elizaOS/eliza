@@ -24,6 +24,29 @@ export interface RobloxUser {
   isBanned?: boolean;
 }
 
+interface RobloxPlayerSession {
+  user: RobloxUser;
+  jobId: string;
+  placeId: string;
+  joinedAt: Date;
+}
+
+interface RobloxGameMessage {
+  id: string;
+  user: RobloxUser;
+  content: string;
+  jobId: string;
+  placeId: string;
+  timestamp: Date;
+  context?: Record<string, string>;
+}
+
+interface RobloxResponse {
+  content: string;
+  action?: RobloxGameAction;
+  flagged?: boolean;
+}
+
 export interface RobloxGameAction {
   name: string;
   parameters: Record<string, string | number | boolean | null>;
@@ -47,6 +70,45 @@ export interface MessagingServiceMessage {
     agentId: UUID;
     agentName: string;
   };
+}
+
+enum RobloxEventType {
+  PLAYER_JOINED = "roblox:player_joined",
+  PLAYER_LEFT = "roblox:player_left",
+  PLAYER_MESSAGE = "roblox:player_message",
+  GAME_EVENT = "roblox:game_event",
+  WEBHOOK_RECEIVED = "roblox:webhook_received",
+}
+
+interface RobloxEventTypes {
+  [RobloxEventType.PLAYER_JOINED]: {
+    session: RobloxPlayerSession;
+  };
+  [RobloxEventType.PLAYER_LEFT]: {
+    session: RobloxPlayerSession;
+    duration: number;
+  };
+  [RobloxEventType.PLAYER_MESSAGE]: {
+    message: RobloxGameMessage;
+  };
+  [RobloxEventType.GAME_EVENT]: {
+    eventName: string;
+    data: Record<string, string | number | boolean | null>;
+    triggeredBy?: RobloxUser;
+  };
+  [RobloxEventType.WEBHOOK_RECEIVED]: {
+    type: string;
+    payload: Record<string, string | number | boolean | null>;
+  };
+}
+
+interface RobloxServerInfo {
+  jobId: string;
+  placeId: string;
+  playerCount: number;
+  maxPlayers: number;
+  region?: string;
+  uptime?: number;
 }
 
 export interface RobloxExperienceInfo {

@@ -1,9 +1,9 @@
+import type { LifeOpsBrowserSession } from "@elizaos/shared";
+import { BrowserBridgeRelayClient, RelayApiError } from "../src/api-client";
 import type {
   BrowserBridgeAction,
   BrowserBridgeSettings,
 } from "../src/browser-bridge-contracts";
-import type { LifeOpsBrowserSession } from "@elizaos/shared";
-import { BrowserBridgeRelayClient, RelayApiError } from "../src/api-client";
 import type {
   BackgroundState,
   CompanionAutoPairRequest,

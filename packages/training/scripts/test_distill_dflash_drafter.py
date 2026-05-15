@@ -13,9 +13,7 @@ from scripts.distill_dflash_drafter import (
     _build_manifest,
     _resolve_student_base,
     _tokenizer_parity_report,
-    main,
 )
-from scripts.dflash.release_policy import DFLASH_DISABLED_TIERS, DFLASH_REQUIRED_TIERS
 
 
 class FakeTokenizer:
@@ -57,7 +55,7 @@ class FakeTokenizer:
 
 def _args(**overrides) -> argparse.Namespace:
     base = {
-        "tier": "2b",
+        "tier": "0_8b",
         "student_base": None,
         "allow_non_default_student_base": False,
         "target_model_id": None,
@@ -126,10 +124,10 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
 
     manifest = _build_manifest(
         args=args,
-        student_base=DEFAULT_STUDENT_BASE["2b"],
-        target_model_id="elizaos/eliza-1/bundles/2b",
-        target_checkpoint=Path("checkpoints/eliza-1-2b/final"),
-        target_gguf=Path("out/eliza-1-2b/text/eliza-1-2b-32k.gguf"),
+        student_base=DEFAULT_STUDENT_BASE["0_8b"],
+        target_model_id="elizaos/eliza-1/bundles/0_8b",
+        target_checkpoint=Path("checkpoints/eliza-1-0_8b/final"),
+        target_gguf=Path("out/eliza-1-0_8b/text/eliza-1-0_8b-32k.gguf"),
         target_sha256="0" * 64,
         tokenizer_parity=parity,
         dataset_hash="1" * 64,
@@ -139,44 +137,20 @@ def test_manifest_records_exact_tokenizer_hashes() -> None:
         synthetic=False,
     )
 
-    assert manifest["targetModelId"] == "elizaos/eliza-1/bundles/2b"
+    assert manifest["targetModelId"] == "elizaos/eliza-1/bundles/0_8b"
     assert manifest["targetTokenizerSha256"] == parity["target"]["sha256"]
     assert manifest["studentTokenizerSha256"] == parity["student"]["sha256"]
     assert manifest["tokenizerParity"]["matches"] is True
 
 
 def test_active_tier_matrix_has_no_retired_defaults() -> None:
-    assert ACTIVE_TIERS == ("0_8b", "2b", "4b", "9b", "27b", "27b-256k")
-    assert DFLASH_DISABLED_TIERS == ("0_8b",)
-    assert DFLASH_REQUIRED_TIERS == ("2b", "4b", "9b", "27b", "27b-256k")
-    assert "0_8b" not in DEFAULT_STUDENT_BASE
+    assert ACTIVE_TIERS == ("0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m")
     assert "0_6b" not in DEFAULT_STUDENT_BASE
     assert "1_7b" not in DEFAULT_STUDENT_BASE
-    assert "0_8b" in DEFAULT_TARGET_MODEL
+    assert "0_6b" not in DEFAULT_TARGET_MODEL
+    assert "1_7b" not in DEFAULT_TARGET_MODEL
 
 
-@pytest.mark.parametrize("tier", ["2b", "4b", "9b", "27b", "27b-256k"])
+@pytest.mark.parametrize("tier", ["0_8b", "2b", "4b", "9b", "27b", "27b-256k", "27b-1m"])
 def test_qwen35_tiers_default_to_qwen35_student_base(tier: str) -> None:
     assert _resolve_student_base(_args(tier=tier)) == "Qwen/Qwen3.5-0.8B-Base"
-
-
-def test_0_8b_writes_disabled_policy_not_drafter(tmp_path: Path) -> None:
-    rc = main(["--tier", "0_8b", "--out-dir", str(tmp_path)])
-
-    assert rc == 0
-    policy_path = tmp_path / "dflash-disabled-0_8b.release-policy.json"
-    policy = json.loads(policy_path.read_text())
-    assert policy["status"] == "disabled"
-    assert policy["releaseMode"] == "fail-open-no-drafter"
-    assert policy["releaseEligibleWithoutDrafter"] is True
-    assert policy["drafter"] is None
-    assert not (tmp_path / "drafter-0_8b.gguf").exists()
-
-
-def test_0_8b_refuses_fake_drafter(tmp_path: Path) -> None:
-    fake = tmp_path / "drafter-0_8b.gguf"
-    fake.write_bytes(b"fake")
-
-    rc = main(["--tier", "0_8b", "--out-dir", str(tmp_path), "--drafter-gguf", str(fake)])
-
-    assert rc == 3

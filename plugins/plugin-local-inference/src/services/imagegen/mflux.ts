@@ -32,6 +32,31 @@
  *   through MLX. We have no Mac on this host — see
  *   `__tests__/imagegen-handler.test.ts` notes for the on-device check
  *   (M2 / M3 Max smoke for Z-Image-Turbo 4-step <2s 1024×1024).
+ *
+ * Publishing pipeline (macOS Apple Silicon only — Intel Mac falls back to
+ * sd-cpp Metal, see `sd-cpp.ts`):
+ *
+ *   Build:
+ *     python3 -m venv ${MODELS_DIR}/mlx/mflux
+ *     ${MODELS_DIR}/mlx/mflux/bin/pip install --upgrade pip
+ *     ${MODELS_DIR}/mlx/mflux/bin/pip install mflux           # arm64-only wheel
+ *   Sign:
+ *     codesign --force --options runtime --timestamp \
+ *       --sign "Developer ID Application: Eliza Labs Inc." \
+ *       ${MODELS_DIR}/mlx/mflux/bin/python3
+ *     codesign --force --options runtime --timestamp \
+ *       --sign "Developer ID Application: Eliza Labs Inc." \
+ *       ${MODELS_DIR}/mlx/mflux/bin/mflux-generate
+ *   Notarize:
+ *     ditto -c -k --keepParent ${MODELS_DIR}/mlx/mflux mflux-venv.zip
+ *     xcrun notarytool submit mflux-venv.zip \
+ *       --apple-id <ci-secret> --team-id <eliza-labs-team> --wait
+ *     xcrun stapler staple ${MODELS_DIR}/mlx/mflux/bin/mflux-generate
+ *   Drop:
+ *     releases.elizaos.ai/mflux/<version>/darwin-arm64/mflux-venv.tar.zst
+ *   The bundle installer untars the venv into the user's `${MODELS_DIR}/
+ *   mlx/mflux/` directory; the first launch runs `mflux-generate --help`
+ *   to warm up the cache.
  */
 
 import { existsSync, promises as fs, mkdtempSync } from "node:fs";

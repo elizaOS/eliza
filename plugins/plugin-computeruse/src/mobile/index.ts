@@ -10,7 +10,6 @@
  * Camera2, onTrimMemory pressure. See `docs/ANDROID_CONSTRAINTS.md`.
  */
 
-export { ANDROID_BRIDGE_JS_NAME, ANDROID_DEFAULT_FPS } from "./android-bridge.js";
 export type {
   AndroidAxNode,
   AndroidBridgeErrorCode,
@@ -34,31 +33,22 @@ export type {
   TapGestureArgs,
 } from "./android-bridge.js";
 export {
-  IOS_APP_INTENT_BUNDLE_IDS,
-  IOS_APP_INTENT_REGISTRY,
+  ANDROID_BRIDGE_JS_NAME,
+  ANDROID_DEFAULT_FPS,
+} from "./android-bridge.js";
+export {
   findIosAppIntent,
   findIosAppIntentsForBundle,
+  IOS_APP_INTENT_BUNDLE_IDS,
+  IOS_APP_INTENT_REGISTRY,
   listIosAppIntents,
 } from "./ios-app-intent-registry.js";
-export {
-  IOS_LOGICAL_DISPLAY_ID,
-  IosComputerInterface,
-  type IosComputerInterfaceDeps,
-  makeIosComputerInterface,
-} from "./ios-computer-interface.js";
-export {
-  IOS_APP_GROUP_ID,
-  IOS_BRIDGE_JS_NAME,
-  REPLAYKIT_FOREGROUND_MAX_BUFFER,
-  REPLAYKIT_FOREGROUND_MAX_SESSION_SEC,
-} from "./ios-bridge.js";
 export type {
   AccessibilitySnapshotNode,
   AccessibilitySnapshotResult,
   BroadcastHandshakeResult,
   FoundationModelOptions,
   FoundationModelResult,
-  IPressureSignal,
   IntentInvocationRequest,
   IntentInvocationResult,
   IntentParameterSpec,
@@ -68,6 +58,7 @@ export type {
   IosBridgeProbe,
   IosBridgeResult,
   IosComputerUseBridge,
+  IPressureSignal,
   MemoryPressureSample,
   ReplayKitForegroundFrame,
   ReplayKitForegroundHandle,
@@ -76,6 +67,18 @@ export type {
   VisionOcrOptions,
   VisionOcrResult,
 } from "./ios-bridge.js";
+export {
+  IOS_APP_GROUP_ID,
+  IOS_BRIDGE_JS_NAME,
+  REPLAYKIT_FOREGROUND_MAX_BUFFER,
+  REPLAYKIT_FOREGROUND_MAX_SESSION_SEC,
+} from "./ios-bridge.js";
+export {
+  IOS_LOGICAL_DISPLAY_ID,
+  IosComputerInterface,
+  type IosComputerInterfaceDeps,
+  makeIosComputerInterface,
+} from "./ios-computer-interface.js";
 export {
   _resetOcrProvidersForTests,
   createIosVisionOcrProvider,

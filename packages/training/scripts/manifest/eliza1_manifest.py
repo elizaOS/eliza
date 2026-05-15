@@ -42,13 +42,7 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "9b",
     "27b",
     "27b-256k",
-)
-ELIZA_1_DFLASH_TIERS: Final[tuple[str, ...]] = (
-    "2b",
-    "4b",
-    "9b",
-    "27b",
-    "27b-256k",
+    "27b-1m",
 )
 
 ELIZA_1_KERNELS: Final[tuple[str, ...]] = (
@@ -123,19 +117,22 @@ QWEN3_CANONICAL_SOURCE_REPOS_BY_SLOT: Final[Mapping[str, tuple[str, ...]]] = {
 }
 CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": (
+        "Qwen/Qwen3.5-0.8B",
         "Qwen/Qwen3.5-0.8B-Base",
         "unsloth/Qwen3.5-0.8B-GGUF",
     ),
     "2b": (
+        "Qwen/Qwen3.5-2B",
         "Qwen/Qwen3.5-2B-Base",
         "unsloth/Qwen3.5-2B-GGUF",
     ),
     "4b": (
+        "Qwen/Qwen3.5-4B",
         "Qwen/Qwen3.5-4B-Base",
         "unsloth/Qwen3.5-4B-GGUF",
     ),
     "9b": (
-        "Qwen/Qwen3.5-9B-Base",
+        "Qwen/Qwen3.5-9B",
         "unsloth/Qwen3.5-9B-GGUF",
     ),
     "27b": (
@@ -146,15 +143,50 @@ CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "Qwen/Qwen3.6-27B",
         "unsloth/Qwen3.6-27B-GGUF",
     ),
+    "27b-1m": (
+        "Qwen/Qwen3.6-27B",
+        "unsloth/Qwen3.6-27B-GGUF",
+    ),
 }
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("turboquant_q4", "qjl", "polarquant"),
+    "0_8b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
     "2b": ("turboquant_q4", "qjl", "polarquant", "dflash"),
-    "4b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
-    "9b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
-    "27b": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
-    "27b-256k": ("turboquant_q4", "qjl", "polarquant", "dflash", "turbo3_tcq"),
+    "4b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
+    "9b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
+    "27b": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
+    "27b-256k": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
+    "27b-1m": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
 }
 
 RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
@@ -172,6 +204,7 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    "27b-1m": ("cuda",),
 }
 
 VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
@@ -181,30 +214,33 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "9b": "Q8_0",
     "27b": "Q8_0",
     "27b-256k": "Q8_0",
+    "27b-1m": "Q8_0",
 }
 
 # Full K-quant ladder published per tier for the OmniVoice TTS GGUF. Mirror
 # of ``OMNIVOICE_QUANT_LADDER_BY_TIER`` in
 # ``packages/shared/src/local-inference/catalog.ts``. The downloader picks
 # the appropriate level from this ladder at install time based on the
-# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Small tiers are
-# Kokoro-only, so they publish no OmniVoice ladder.
+# host's RAM/SoC class (no silent fallback — AGENTS.md §3). Small tiers keep
+# the OmniVoice ladder narrow and retain Kokoro as their low-latency fallback.
 VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": (),
-    "2b": (),
-    "4b": (),
+    "0_8b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "2b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
+    "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
+    "27b-1m": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("kokoro",),
-    "2b": ("kokoro",),
-    "4b": ("kokoro",),
-    "9b": ("kokoro", "omnivoice"),
+    "0_8b": ("omnivoice", "kokoro"),
+    "2b": ("omnivoice", "kokoro"),
+    "4b": ("omnivoice", "kokoro"),
+    "9b": ("omnivoice", "kokoro"),
     "27b": ("omnivoice",),
     "27b-256k": ("omnivoice",),
+    "27b-1m": ("omnivoice",),
 }
 
 KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
@@ -218,8 +254,9 @@ def required_voice_artifacts_for_tier(tier: str) -> tuple[str, ...]:
     """Return the frozen TTS artifacts required for ``tier``.
 
     Paths are relative to the bundle's ``tts/`` directory. The active Eliza-1
-    release line uses Kokoro for 0_8b, 2b, and 4b, Kokoro plus OmniVoice for
-    9b, and OmniVoice only for 27B-class tiers.
+    release line uses OmniVoice as the required/default backend for active
+    0_8b, 2b, 4b, and 9b tiers, keeps Kokoro as their low-latency fallback,
+    and ships OmniVoice only for 27B-class tiers.
     """
 
     out: list[str] = []
@@ -249,20 +286,38 @@ _DATETIME_RE = re.compile(
 
 
 # Filename ctx-suffix parser, e.g. ``64k`` → 65536, ``256k`` → 262144,
-# ``256k`` → 262144. Lives here (not in the publish module) because both the
+# ``1m`` → 1048576. Lives here (not in the publish module) because both the
 # publish gate and the manifest builder must agree byte-for-byte on what
 # counts as a long-context text file. Format: <integer> followed by ``k``
-# (× 1024). The active Eliza-1 line does not publish ``1m`` suffixes.
-_CTX_SUFFIX_RE = re.compile(r"^(\d+)k$")
-_CTX_SUFFIX_SCALE: Final[int] = 1024
+# (× 1024) or ``m`` (× 1024²).
+_CTX_SUFFIX_RE = re.compile(r"^(\d+)([km])$")
+_CTX_SUFFIX_SCALE: Final[Mapping[str, int]] = {"k": 1024, "m": 1024 * 1024}
 
 
 def parse_ctx_string(s: str) -> int:
-    """Return the integer context length encoded by a ``<num>k`` suffix."""
+    """Return the integer context length encoded by a ``<num>k``/``<num>m`` suffix.
+
+    Examples
+    --------
+    >>> parse_ctx_string("64k")
+    65536
+    >>> parse_ctx_string("256k")
+    262144
+    >>> parse_ctx_string("1m")
+    1048576
+
+    Raises ``ValueError`` if the string is not exactly ``<digits>k`` or
+    ``<digits>m`` — bare integers, missing suffix, or any other shape are
+    invalid. The publish orchestrator and the manifest file builder both
+    call this so the long-context detection used at publish-blocking time
+    matches the bytes the manifest records.
+    """
     m = _CTX_SUFFIX_RE.match(s)
     if not m:
-        raise ValueError(f"context suffix must match `<digits>k`, got {s!r}")
-    return int(m.group(1)) * _CTX_SUFFIX_SCALE
+        raise ValueError(
+            f"context suffix must match `<digits>k` or `<digits>m`, got {s!r}"
+        )
+    return int(m.group(1)) * _CTX_SUFFIX_SCALE[m.group(2)]
 
 
 def parse_text_ctx_from_filename(p: Path) -> int | None:
@@ -496,10 +551,7 @@ def validate_manifest(
         errors.append("lineage: must be an object")
     else:
         # Required lineage entries.
-        required_lineage_slots = ["text", "voice"]
-        if tier in ELIZA_1_DFLASH_TIERS:
-            required_lineage_slots.append("drafter")
-        for slot in required_lineage_slots:
+        for slot in ("text", "voice", "drafter"):
             entry = lineage.get(slot)
             if not _is_object(entry):
                 errors.append(f"lineage.{slot}: must be an object")
@@ -526,7 +578,7 @@ def validate_manifest(
     if not _is_object(files):
         errors.append("files: must be an object")
     else:
-        kinds_min1 = ("text", "voice", "cache")
+        kinds_min1 = ("text", "voice", "dflash", "cache")
         kinds_optional = ("asr", "vision")
         # Wave-6 fully-optional file slots: missing key = "this bundle
         # does not ship this component". The validator does not require
@@ -561,27 +613,6 @@ def validate_manifest(
                     errors.append(
                         f"files.{kind}[{i}].ctx: must be a positive integer when set"
                     )
-        dflash_files = files.get("dflash")
-        if dflash_files is None:
-            dflash_files = []
-        elif not isinstance(dflash_files, list):
-            errors.append("files.dflash: must be an array")
-            dflash_files = []
-        if tier in ELIZA_1_DFLASH_TIERS and not dflash_files:
-            errors.append(f"files.dflash: required for tier {tier}")
-        if tier not in ELIZA_1_DFLASH_TIERS and dflash_files:
-            errors.append(f"files.dflash: not allowed for DFlash-disabled tier {tier}")
-        for i, entry in enumerate(dflash_files):
-            if not _is_object(entry):
-                errors.append(f"files.dflash[{i}]: must be an object")
-                continue
-            if not entry.get("path"):
-                errors.append(f"files.dflash[{i}].path: required")
-            sha = entry.get("sha256")
-            if not isinstance(sha, str) or not _SHA256_RE.match(sha):
-                errors.append(
-                    f"files.dflash[{i}].sha256: must be 64 lowercase hex chars"
-                )
 
     # ── kernels ──────────────────────────────────────────────────────────
     kernels = manifest["kernels"]
@@ -996,10 +1027,6 @@ def validate_manifest(
             errors.append(f"lineage.{slot}: required when files.{slot} is non-empty")
         if component_lineage and not component_files:
             errors.append(f"files.{slot}: required when lineage.{slot} is present")
-    if files.get("dflash") and not lineage.get("drafter"):
-        errors.append("lineage.drafter: required when files.dflash is non-empty")
-    if tier not in ELIZA_1_DFLASH_TIERS and lineage.get("drafter"):
-        errors.append(f"lineage.drafter: not allowed for DFlash-disabled tier {tier}")
 
     if files.get("asr"):
         gate = evals.get("asrWer")
@@ -1036,18 +1063,11 @@ def validate_manifest(
 
     # ── DFlash bench ────────────────────────────────────────────────────
     # Staging manifests may record a missing/failing DFlash measurement, but
-    # a default-eligible bundle that declares or requires DFlash must prove
-    # speculative decoding was measured and passed. The 0_8b low-memory tier
-    # may ship without a drafter; do not force a same-size stand-in drafter to
-    # become a release blocker.
-    if tier not in ELIZA_1_DFLASH_TIERS and "dflash" in declared_set:
-        errors.append(f"kernels.required: dflash not allowed for DFlash-disabled tier {tier}")
-    requires_dflash = tier in ELIZA_1_DFLASH_TIERS and (
-        "dflash" in declared_set or bool(files.get("dflash"))
-    )
+    # a default-eligible bundle must prove speculative decoding was measured
+    # and passed. Keep this in lockstep with the TS runtime validator.
     dflash_gate = evals.get("dflash")
     if not _is_object(dflash_gate):
-        if manifest["defaultEligible"] and requires_dflash:
+        if manifest["defaultEligible"]:
             errors.append("evals.dflash: required when defaultEligible=true")
     else:
         if dflash_gate["passed"] and (
@@ -1057,7 +1077,7 @@ def validate_manifest(
             errors.append(
                 "evals.dflash: passed=true but acceptanceRate/speedup is null"
             )
-        if manifest["defaultEligible"] and requires_dflash:
+        if manifest["defaultEligible"]:
             if not dflash_gate["passed"]:
                 readiness_errors.append(
                     "evals.dflash.passed: false for defaultEligible manifest"
@@ -1077,9 +1097,7 @@ def validate_manifest(
     if _is_object(provenance) and provenance.get("releaseState") == "base-v1":
         sources = provenance.get("sourceModels")
         if _is_object(sources):
-            required_slots = ["text", "voice"]
-            if files.get("dflash") or "dflash" in declared_set:
-                required_slots.append("drafter")
+            required_slots = ["text", "voice", "drafter"]
             for slot in ("asr", "vad", "embedding", "vision"):
                 if files.get(slot):
                     required_slots.append(slot)
@@ -1204,7 +1222,7 @@ def build_manifest(
     recipe_manifest: Mapping[str, Mapping[str, Any]] | None = None,
     # Optional provenance block. Pass for a `base-v1` bundle:
     #   {"releaseState": "base-v1", "finetuned": False,
-    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-4B-Base", "file": "..."},
+    #    "sourceModels": {"text": {"repo": "Qwen/Qwen3.5-4B", "file": "..."},
     #                     "voice": {"repo": "Serveurperso/OmniVoice-GGUF"}, ...}}
     provenance: Mapping[str, Any] | None = None,
     bundle_id: str | None = None,

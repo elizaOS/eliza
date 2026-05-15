@@ -1,6 +1,5 @@
 import type http from "node:http";
 import { type AgentRuntime, ModelType } from "@elizaos/core";
-import { KokoroInputTooLongError } from "../services/voice/kokoro/types";
 import {
 	type CompatRuntimeState,
 	ensureRouteAuthorized,
@@ -172,7 +171,7 @@ export async function handleLocalInferenceTtsRoute(
 		res.end(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength));
 	} catch (err) {
 		if (!clientClosed && !abortController.signal.aborted && !isClosed(res)) {
-			sendJson(res, err instanceof KokoroInputTooLongError ? 413 : 502, {
+			sendJson(res, 502, {
 				error: `Local inference TTS error: ${err instanceof Error ? err.message : String(err)}`,
 			});
 		}

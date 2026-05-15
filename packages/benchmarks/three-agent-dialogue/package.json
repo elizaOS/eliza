@@ -1,0 +1,26 @@
+{
+  "name": "@elizaos/three-agent-dialogue",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end three-agent dialogue harness — three Eliza agents, distinct voices, shared audio bus, diarization + emotion + turn-detection capture.",
+  "main": "./runner/run-dialogue.ts",
+  "types": "./runner/run-dialogue.ts",
+  "scripts": {
+    "bench": "bun run runner/run-dialogue.ts",
+    "bench:smoke": "THREE_AGENT_SMOKE=1 bun run runner/run-dialogue.ts",
+    "test": "bun x vitest run",
+    "test:watch": "bun x vitest",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "bun-types": "1.3.13",
+    "typescript": "^6.0.3",
+    "vitest": "4.1.5"
+  }
+}

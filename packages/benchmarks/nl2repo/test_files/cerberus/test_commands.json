@@ -1,1 +1,4 @@
-["pip install -e .","pytest --continue-on-collection-errors cerberus/tests cerberus/benchmarks/test_overall_performance_1.py cerberus/benchmarks/test_overall_performance_2.py"]
+[
+  "pip install -e .",
+  "pytest --continue-on-collection-errors cerberus/tests cerberus/benchmarks/test_overall_performance_1.py cerberus/benchmarks/test_overall_performance_2.py"
+]

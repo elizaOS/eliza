@@ -28,7 +28,11 @@
   ],
   "milestones": [
     { "name": "API v3 complete", "date": "2026-02-14", "status": "on_track" },
-    { "name": "UI redesign complete", "date": "2026-02-20", "status": "on_track" },
+    {
+      "name": "UI redesign complete",
+      "date": "2026-02-20",
+      "status": "on_track"
+    },
     { "name": "Analytics MVP", "date": "2026-02-25", "status": "on_track" },
     { "name": "Internal beta", "date": "2026-02-28", "status": "pending" },
     { "name": "Public launch", "date": "2026-03-01", "status": "pending" }

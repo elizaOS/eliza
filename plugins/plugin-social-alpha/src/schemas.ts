@@ -1,5 +1,8 @@
 import { z } from "zod";
-import type { Transaction, TransactionType as DomainTransactionType } from "./types";
+import type {
+	TransactionType as DomainTransactionType,
+	Transaction,
+} from "./types";
 
 /**
  * Core schema definitions for community-trader plugin

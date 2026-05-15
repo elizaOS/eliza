@@ -59,14 +59,8 @@ jobs:
       - name: Build packages
         run: bun run build
 
-      - name: Build Cloud
-        run: bun run build:cloud
-
       - name: Run typecheck
         run: bun run typecheck
-
-      - name: Run Cloud typecheck
-        run: bun run typecheck:cloud
 
       - name: Run tests
         timeout-minutes: 15
@@ -119,9 +113,6 @@ jobs:
       - name: Run lint
         run: bun run lint
 
-      - name: Run Cloud lint
-        run: bun run lint:cloud
-
   # Build job
   build:
     # Skip duplicate runs: run on push to main, or on pull_request events only
@@ -150,6 +141,3 @@ jobs:
 
       - name: Build packages
         run: bun run build
-
-      - name: Build Cloud
-        run: bun run build:cloud

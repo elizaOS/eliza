@@ -36,10 +36,7 @@ export interface LifeOpsXReadService {
     feedType: LifeOpsXFeedType,
     opts?: XFeedReadOpts,
   ): Promise<{ synced: number }>;
-  searchXPosts(
-    query: string,
-    opts?: XReadOpts,
-  ): Promise<LifeOpsXFeedItem[]>;
+  searchXPosts(query: string, opts?: XReadOpts): Promise<LifeOpsXFeedItem[]>;
   getXDms(opts?: {
     conversationId?: string;
     limit?: number;
@@ -244,8 +241,9 @@ function dedupeCachedSearchResults(
 export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
   Base: TBase,
 ): MixinClass<TBase, LifeOpsXReadService> {
-  const XReadBase =
-    Base as unknown as Constructor<LifeOpsServiceBase & OptionalXGrantResolver>;
+  const XReadBase = Base as unknown as Constructor<
+    LifeOpsServiceBase & OptionalXGrantResolver
+  >;
 
   class LifeOpsXReadServiceMixin extends XReadBase {
     async syncXDms(opts: XReadOpts = {}): Promise<{ synced: number }> {

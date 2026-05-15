@@ -1889,7 +1889,8 @@ function ensureCheckout(cacheDir, ref) {
       );
     }
   }
-  const hasSwaSpecDecodeFallback = sourceContainsSwaSpecDecodeFallback(cacheDir);
+  const hasSwaSpecDecodeFallback =
+    sourceContainsSwaSpecDecodeFallback(cacheDir);
   const swaFallback = spawnSync(
     "git",
     ["merge-base", "--is-ancestor", SWA_SPEC_DECODE_FALLBACK_COMMIT, "HEAD"],
@@ -3272,10 +3273,14 @@ function targetOutDir(target, override) {
 function cmakeBuildTargetsFor(target) {
   const { platform, backend, fused } = parseTarget(target);
   const isIos = platform === "ios";
+  // W3-3: resolve fused target list against the layout in use. The
+  // merged path (default) produces `omnivoice_lib` + `omnivoice-tts/codec`;
+  // the legacy graft path produces `omnivoice-core` + `llama-omnivoice-server`.
+  const legacyOmnivoiceGraft = process.env.OMNIVOICE_INSIDE_LLAMA_CPP === "0";
   const targets = isIos
     ? ["llama", "ggml", "ggml-base", "ggml-cpu", "ggml-metal"]
     : fused
-      ? fusedCmakeBuildTargets()
+      ? fusedCmakeBuildTargets({ legacy: legacyOmnivoiceGraft })
       : [
           "llama-server",
           "llama-cli",
@@ -3312,43 +3317,83 @@ function buildTarget({ target, args, ctx }) {
   }
   const flags = cmakeFlagsForTarget(target, ctx);
 
-  // Fused targets graft omnivoice.cpp's `src/` + `tools/` into the
-  // llama.cpp tree, append a CMake snippet that declares the fused
-  // shared library + server, and add `-DELIZA_FUSE_OMNIVOICE=ON`.
-  // The non-fused targets are unchanged.
+  // W3-3 OmniVoice → llama.cpp literal merge:
+  //
+  //   * `OMNIVOICE_INSIDE_LLAMA_CPP=1` (default in this script as of
+  //     v1.0.1-eliza) drives the canonical merged path. OmniVoice
+  //     sources live INSIDE the fork at `tools/omnivoice/`; the build
+  //     just sets `-DLLAMA_BUILD_OMNIVOICE=ON -DOMNIVOICE_SHARED=ON`
+  //     and the merged tree's CMakeLists produces libelizainference,
+  //     omnivoice-tts, omnivoice-codec, and wires the
+  //     /v1/audio/speech route into llama-server.
+  //
+  //   * The pre-W3-3 fallback (legacy graft) still works for ONE
+  //     release as a deprecation runway. Set
+  //     `OMNIVOICE_INSIDE_LLAMA_CPP=0` to opt back into the legacy
+  //     `prepareOmnivoiceFusion()` clone-and-graft path. The legacy
+  //     path will be removed in v1.0.2-eliza.
+  const omnivoiceInsideLlamaCpp =
+    process.env.OMNIVOICE_INSIDE_LLAMA_CPP !== "0";
   let omnivoiceInfo = null;
   if (fused) {
-    if (args.dryRun) {
-      console.log(`[dflash-build] (dry-run) target=${target} fused=true`);
-      console.log(
-        `  prepareOmnivoiceFusion ref=${OMNIVOICE_REF} llamaCppRoot=${args.cacheDir}`,
-      );
-      console.log(
-        `  appendCmakeGraft -> ${path.join(args.cacheDir, "CMakeLists.txt")}`,
+    if (omnivoiceInsideLlamaCpp) {
+      if (args.dryRun) {
+        console.log(
+          `[dflash-build] (dry-run) target=${target} fused=true (W3-3 merged path; OMNIVOICE_INSIDE_LLAMA_CPP=1)`,
+        );
+      } else {
+        console.log(
+          `[dflash-build] omnivoice merged path: building tools/omnivoice/ in-fork (W3-3 v1.0.1-eliza)`,
+        );
+      }
+      // Merged path: just turn on the CMake option. The fork's
+      // `tools/omnivoice/CMakeLists.txt` declares omnivoice_lib,
+      // elizainference, omnivoice-tts, omnivoice-codec, and the
+      // llama-server route mount.
+      flags.push(
+        "-DLLAMA_BUILD_OMNIVOICE=ON",
+        "-DOMNIVOICE_SHARED=ON",
+        "-DBUILD_SHARED_LIBS=ON",
       );
     } else {
-      omnivoiceInfo = prepareOmnivoiceFusion({
-        cacheRoot: path.dirname(args.cacheDir),
-        llamaCppRoot: args.cacheDir,
-      });
-      const grafted = appendCmakeGraft({ llamaCppRoot: args.cacheDir });
-      // Append the Kokoro graft block when Kokoro sources have been
-      // staged alongside the OmniVoice sources. The block FATAL_ERRORs
-      // if ELIZA_FUSE_OMNIVOICE is off, so the two grafts are coupled.
-      let kokoroGrafted = false;
-      if ((omnivoiceInfo.kokoroSourceCount ?? 0) > 0) {
-        kokoroGrafted = appendKokoroCmakeGraft({ llamaCppRoot: args.cacheDir });
+      // Legacy graft path (deprecated; one-release runway).
+      if (args.dryRun) {
+        console.log(
+          `[dflash-build] (dry-run) target=${target} fused=true legacy-graft=true (OMNIVOICE_INSIDE_LLAMA_CPP=0)`,
+        );
+        console.log(
+          `  prepareOmnivoiceFusion ref=${OMNIVOICE_REF} llamaCppRoot=${args.cacheDir}`,
+        );
+        console.log(
+          `  appendCmakeGraft -> ${path.join(args.cacheDir, "CMakeLists.txt")}`,
+        );
+      } else {
+        console.warn(
+          `[dflash-build] OMNIVOICE_INSIDE_LLAMA_CPP=0 — using DEPRECATED legacy graft. ` +
+            `Switch to the merged path (unset OMNIVOICE_INSIDE_LLAMA_CPP) before v1.0.2-eliza.`,
+        );
+        omnivoiceInfo = prepareOmnivoiceFusion({
+          cacheRoot: path.dirname(args.cacheDir),
+          llamaCppRoot: args.cacheDir,
+        });
+        const grafted = appendCmakeGraft({ llamaCppRoot: args.cacheDir });
+        let kokoroGrafted = false;
+        if ((omnivoiceInfo.kokoroSourceCount ?? 0) > 0) {
+          kokoroGrafted = appendKokoroCmakeGraft({
+            llamaCppRoot: args.cacheDir,
+          });
+        }
+        console.log(
+          `[dflash-build] omnivoice-fuse (legacy): pin=${omnivoiceInfo.commit} ` +
+            `ggmlSubmodule=${omnivoiceInfo.ggmlSubmoduleCommit} ` +
+            `sources=${omnivoiceInfo.sourceCount} ` +
+            `cmakeGraftAppended=${grafted} ` +
+            `kokoroSources=${omnivoiceInfo.kokoroSourceCount ?? 0} ` +
+            `kokoroGraftAppended=${kokoroGrafted}`,
+        );
       }
-      console.log(
-        `[dflash-build] omnivoice-fuse: pin=${omnivoiceInfo.commit} ` +
-          `ggmlSubmodule=${omnivoiceInfo.ggmlSubmoduleCommit} ` +
-          `sources=${omnivoiceInfo.sourceCount} ` +
-          `cmakeGraftAppended=${grafted} ` +
-          `kokoroSources=${omnivoiceInfo.kokoroSourceCount ?? 0} ` +
-          `kokoroGraftAppended=${kokoroGrafted}`,
-      );
+      flags.push(...fusedExtraCmakeFlags());
     }
-    flags.push(...fusedExtraCmakeFlags());
   }
 
   if (args.dryRun) {

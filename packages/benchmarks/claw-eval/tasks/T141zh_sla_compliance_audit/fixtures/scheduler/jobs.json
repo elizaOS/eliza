@@ -7,10 +7,7 @@
     "last_run": "2026-03-25T16:55:00Z",
     "last_status": "success",
     "description": "每5分钟检查未分配工单并自动分配",
-    "tags": [
-      "sla",
-      "automation"
-    ],
+    "tags": ["sla", "automation"],
     "cron_expression": "*/5 * * * *",
     "enabled": true,
     "action": "每5分钟检查未分配工单并自动分配",
@@ -34,10 +31,7 @@
     "last_status": "failed",
     "error_message": "邮件服务连接失败: SMTP timeout after 30s",
     "description": "每15分钟检查即将超时的工单并发送告警",
-    "tags": [
-      "sla",
-      "alert"
-    ],
+    "tags": ["sla", "alert"],
     "failure_count": 8,
     "first_failure": "2026-03-24T08:00:00",
     "cron_expression": "*/15 * * * *",
@@ -62,10 +56,7 @@
     "last_run": "2026-03-25T09:00:00Z",
     "last_status": "success",
     "description": "每天9点生成前一天的SLA达标报告",
-    "tags": [
-      "sla",
-      "report"
-    ],
+    "tags": ["sla", "report"],
     "cron_expression": "0 9 * * *",
     "enabled": true,
     "action": "每天9点生成前一天的SLA达标报告",

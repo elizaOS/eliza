@@ -1,4 +1,8 @@
 import type {
+  CompleteLifeOpsBrowserSessionRequest,
+  LifeOpsBrowserSession,
+} from "@elizaos/shared";
+import type {
   BrowserBridgeCompanionAutoPairResponse,
   BrowserBridgeCompanionConfig,
   BrowserBridgeSettings,
@@ -6,10 +10,6 @@ import type {
   SyncBrowserBridgeStateRequest,
   UpdateBrowserBridgeSessionProgressRequest,
 } from "./browser-bridge-contracts";
-import type {
-  CompleteLifeOpsBrowserSessionRequest,
-  LifeOpsBrowserSession,
-} from "@elizaos/shared";
 
 export type CompanionSyncRequest = SyncBrowserBridgeStateRequest;
 export type CompanionSession = LifeOpsBrowserSession;

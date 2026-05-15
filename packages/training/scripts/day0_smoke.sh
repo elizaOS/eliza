@@ -31,7 +31,7 @@ REGISTRY_KEY="${REGISTRY_KEY:-qwen3.5-2b}"
 # Per-size defaults (caller can override any of them via env).
 case "$REGISTRY_KEY" in
   qwen3.5-0.8b)
-    BASE_HF_ID="Qwen/Qwen3.5-0.8B-Base"
+    BASE_HF_ID="Qwen/Qwen3.5-0.8B"
     DEFAULT_FSDP_WORLD_SIZE=1
     DEFAULT_MAX_SAMPLES=48
     DEFAULT_MAX_SEQ_LEN=2048
@@ -39,7 +39,7 @@ case "$REGISTRY_KEY" in
     DEFAULT_OPTIMIZER=apollo_mini
     ;;
   qwen3.5-2b)
-    BASE_HF_ID="Qwen/Qwen3.5-2B-Base"
+    BASE_HF_ID="Qwen/Qwen3.5-2B"
     DEFAULT_FSDP_WORLD_SIZE=1
     DEFAULT_MAX_SAMPLES=32
     DEFAULT_MAX_SEQ_LEN=2048
@@ -47,7 +47,7 @@ case "$REGISTRY_KEY" in
     DEFAULT_OPTIMIZER=apollo_mini
     ;;
   qwen3.5-4b)
-    BASE_HF_ID="Qwen/Qwen3.5-4B-Base"
+    BASE_HF_ID="Qwen/Qwen3.5-4B"
     DEFAULT_FSDP_WORLD_SIZE=1
     DEFAULT_MAX_SAMPLES=16
     DEFAULT_MAX_SEQ_LEN=4096

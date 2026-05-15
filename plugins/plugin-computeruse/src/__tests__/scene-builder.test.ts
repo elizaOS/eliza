@@ -11,18 +11,15 @@
 
 import { deflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import type { AccessibilityProvider } from "../scene/a11y-provider.js";
 import type { DisplayCapture } from "../platform/capture.js";
-import type { DisplayDescriptor } from "../types.js";
-import {
-  SceneBuilder,
-  type SceneUpdateEvent,
-} from "../scene/scene-builder.js";
+import type { AccessibilityProvider } from "../scene/a11y-provider.js";
+import { SceneBuilder, type SceneUpdateEvent } from "../scene/scene-builder.js";
 import type {
   SceneApp,
   SceneAxNode,
   SceneOcrBox,
 } from "../scene/scene-types.js";
+import type { DisplayDescriptor } from "../types.js";
 
 // ── tiny PNG builder, shared with dhash test ────────────────────────────────
 
@@ -91,9 +88,7 @@ function makeFakeAxProvider(nodes: SceneAxNode[]): AccessibilityProvider {
   };
 }
 
-function makeFakeOcr(
-  perFrame: SceneOcrBox[][],
-): {
+function makeFakeOcr(perFrame: SceneOcrBox[][]): {
   fn: (
     png: Buffer,
     displayId: number,
@@ -131,7 +126,13 @@ function makeBuilder(
   const captures = options.captures ?? [
     [
       {
-        display: { id: 0, bounds: [0, 0, 1920, 1080], scaleFactor: 1, primary: true, name: "fake-1" },
+        display: {
+          id: 0,
+          bounds: [0, 0, 1920, 1080],
+          scaleFactor: 1,
+          primary: true,
+          name: "fake-1",
+        },
         frame: makePng(1),
       },
     ],
@@ -139,7 +140,9 @@ function makeBuilder(
   let i = 0;
   const ocr = makeFakeOcr(options.ocrBoxesPerCall ?? [[]]);
   const builder = new SceneBuilder({
-    captureAll: async () => captures[Math.min(i++, captures.length - 1)] ?? captures[captures.length - 1]!,
+    captureAll: async () =>
+      captures[Math.min(i++, captures.length - 1)] ??
+      captures[captures.length - 1]!,
     captureOne: async () => captures[0]![0]!,
     listDisplays: () => fakeDisplays,
     enumerateApps: () => options.apps ?? [],
@@ -159,7 +162,14 @@ describe("SceneBuilder — JSON shape", () => {
         {
           name: "Firefox",
           pid: 1234,
-          windows: [{ id: "w1", title: "GitHub", bounds: [0, 0, 800, 600], displayId: 0 }],
+          windows: [
+            {
+              id: "w1",
+              title: "GitHub",
+              bounds: [0, 0, 800, 600],
+              displayId: 0,
+            },
+          ],
         },
       ],
       ax: [
@@ -207,14 +217,28 @@ describe("SceneBuilder — dHash short-circuit", () => {
     const samePng = makePng(7);
     const cap: DisplayCapture[] = [
       {
-        display: { id: 0, bounds: [0, 0, 1920, 1080], scaleFactor: 1, primary: true, name: "fake-1" },
+        display: {
+          id: 0,
+          bounds: [0, 0, 1920, 1080],
+          scaleFactor: 1,
+          primary: true,
+          name: "fake-1",
+        },
         frame: samePng,
       },
     ];
     const { builder, ocrCalls } = makeBuilder({
       captures: [cap, cap, cap],
       ocrBoxesPerCall: [
-        [{ id: "x", text: "frame1", bbox: [0, 0, 10, 10], conf: 0.5, displayId: 0 }],
+        [
+          {
+            id: "x",
+            text: "frame1",
+            bbox: [0, 0, 10, 10],
+            conf: 0.5,
+            displayId: 0,
+          },
+        ],
       ],
     });
     await builder.tick("active");
@@ -231,21 +255,49 @@ describe("SceneBuilder — dHash short-circuit", () => {
   it("re-runs OCR when the frame dHash changes", async () => {
     const cap1: DisplayCapture[] = [
       {
-        display: { id: 0, bounds: [0, 0, 1920, 1080], scaleFactor: 1, primary: true, name: "fake-1" },
+        display: {
+          id: 0,
+          bounds: [0, 0, 1920, 1080],
+          scaleFactor: 1,
+          primary: true,
+          name: "fake-1",
+        },
         frame: makePng(1),
       },
     ];
     const cap2: DisplayCapture[] = [
       {
-        display: { id: 0, bounds: [0, 0, 1920, 1080], scaleFactor: 1, primary: true, name: "fake-1" },
+        display: {
+          id: 0,
+          bounds: [0, 0, 1920, 1080],
+          scaleFactor: 1,
+          primary: true,
+          name: "fake-1",
+        },
         frame: makePng(200),
       },
     ];
     const { builder, ocrCalls } = makeBuilder({
       captures: [cap1, cap2],
       ocrBoxesPerCall: [
-        [{ id: "a", text: "first", bbox: [0, 0, 10, 10], conf: 0.5, displayId: 0 }],
-        [{ id: "b", text: "second", bbox: [0, 0, 10, 10], conf: 0.5, displayId: 0 }],
+        [
+          {
+            id: "a",
+            text: "first",
+            bbox: [0, 0, 10, 10],
+            conf: 0.5,
+            displayId: 0,
+          },
+        ],
+        [
+          {
+            id: "b",
+            text: "second",
+            bbox: [0, 0, 10, 10],
+            conf: 0.5,
+            displayId: 0,
+          },
+        ],
       ],
     });
     await builder.tick("active");
@@ -272,7 +324,13 @@ describe("SceneBuilder — subscribers + onAgentTurn", () => {
     const samePng = makePng(11);
     const cap: DisplayCapture[] = [
       {
-        display: { id: 0, bounds: [0, 0, 1920, 1080], scaleFactor: 1, primary: true, name: "fake-1" },
+        display: {
+          id: 0,
+          bounds: [0, 0, 1920, 1080],
+          scaleFactor: 1,
+          primary: true,
+          name: "fake-1",
+        },
         frame: samePng,
       },
     ];
@@ -290,7 +348,15 @@ describe("SceneBuilder — display-local coords", () => {
   it("OCR bboxes are display-local (not OS-global)", async () => {
     const { builder } = makeBuilder({
       ocrBoxesPerCall: [
-        [{ id: "x", text: "Hello", bbox: [10, 20, 50, 24], conf: 0.9, displayId: 0 }],
+        [
+          {
+            id: "x",
+            text: "Hello",
+            bbox: [10, 20, 50, 24],
+            conf: 0.9,
+            displayId: 0,
+          },
+        ],
       ],
     });
     const scene = await builder.tick("active");

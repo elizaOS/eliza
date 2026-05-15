@@ -42,15 +42,27 @@
   {
     "query_id": "ref_006",
     "input_query": "记得我们之前讨论的Adobe Premiere编辑效率提升方案吗",
-    "extracted_keywords": ["记得", "之前", "讨论", "Adobe Premiere", "编辑效率", "提升方案"],
+    "extracted_keywords": [
+      "记得",
+      "之前",
+      "讨论",
+      "Adobe Premiere",
+      "编辑效率",
+      "提升方案"
+    ],
     "classified_intent": "general",
-    "confidence_score": 0.90,
+    "confidence_score": 0.9,
     "notes": "Memory recall query classified as general for broader response scope"
   },
   {
     "query_id": "ref_007",
     "input_query": "继续分析先前对话讨论过的视频项目project_v3.prproj的关键帧动画技能方案迭代优化",
-    "extracted_keywords": ["视频项目", "project_v3.prproj", "关键帧动画", "迭代优化"],
+    "extracted_keywords": [
+      "视频项目",
+      "project_v3.prproj",
+      "关键帧动画",
+      "迭代优化"
+    ],
     "classified_intent": "search_file",
     "confidence_score": 0.94,
     "notes": "File extension .prproj present in query triggers search_file (priority 2), which overrides co-occurring search_memory triggers (priority 1) per extraction_rules.yaml priority resolution"

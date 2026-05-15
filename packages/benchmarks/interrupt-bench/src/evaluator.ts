@@ -314,7 +314,10 @@ async function applyResponseToState(args: ApplyArgs): Promise<void> {
     trace.push("reply_emitted", { channel: message.channel, text: replyText });
   }
   // Boundary check: did any reply target a user outside the room where it was emitted?
-  if (replyEmitted && !scenario.setup.rooms.some((room) => room.id === message.channel)) {
+  if (
+    replyEmitted &&
+    !scenario.setup.rooms.some((room) => room.id === message.channel)
+  ) {
     trace.push("boundary_violation", {
       channel: message.channel,
       sender: message.sender,
@@ -357,7 +360,9 @@ function isUserInRoom(
 ): boolean {
   const normalizedUserId = userId.toLowerCase();
   if (normalizedUserId === scenario.setup.agentId.toLowerCase()) return true;
-  const room = scenario.setup.rooms.find((candidate) => candidate.id === roomId);
+  const room = scenario.setup.rooms.find(
+    (candidate) => candidate.id === roomId,
+  );
   if (!room) return false;
   if (room.owner?.toLowerCase() === normalizedUserId) return true;
   return (room.members ?? []).some(

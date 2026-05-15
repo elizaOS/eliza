@@ -131,10 +131,7 @@ async function runTurn(runtime: AgentRuntime): Promise<number> {
     sampleRateHz: 16_000,
   };
   const t0 = performance.now();
-  const out = await runtime.useModel(
-    ModelType.TRANSCRIPTION,
-    params as never,
-  );
+  const out = await runtime.useModel(ModelType.TRANSCRIPTION, params as never);
   const elapsed = performance.now() - t0;
   if (typeof out !== "string" || out.length === 0) {
     throw new Error(

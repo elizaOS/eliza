@@ -62,6 +62,8 @@ export function measurePreloadedScrollHeight(count: number): number {
   return total;
 }
 
+export const MESSAGE_COUNT = imessageMessages.length;
+
 export interface ExtraMessage {
   text: string;
   progress: number;
@@ -74,6 +76,9 @@ export const TYPING_BUBBLE_HEIGHT = 50;
 let currentRenderPlatform = "imessage";
 export function setChatPlatform(p: string) {
   currentRenderPlatform = p;
+}
+export function getChatPlatform() {
+  return currentRenderPlatform;
 }
 
 let wallpaperImg: HTMLImageElement | null = null;

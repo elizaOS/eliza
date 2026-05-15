@@ -6,7 +6,12 @@ h2 {
   margin: 1em 0 1em 0;
 }
 
-.benefits-1 section, .benefits-2 section, .ctas, .users, .recommended, .sponsors {
+.benefits-1 section,
+.benefits-2 section,
+.ctas,
+.users,
+.recommended,
+.sponsors {
   margin-top: 3em;
 }
 
@@ -44,14 +49,16 @@ h2 {
   }
 }
 
-.benefits-1, .benefits-2 {
+.benefits-1,
+.benefits-2 {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-evenly;
 }
 
 @media (min-width: 896px) {
-  .benefits-1, .benefits-2 {
+  .benefits-1,
+  .benefits-2 {
     justify-content: space-between;
   }
 }

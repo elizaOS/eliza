@@ -395,6 +395,24 @@ export function hashSnapshot(snapshot: SchemaSnapshot): string {
 }
 
 /**
+ * Create an empty snapshot for initial migration
+ */
+export function createEmptySnapshot(): SchemaSnapshot {
+  return {
+    version: "7",
+    dialect: "postgresql",
+    tables: {},
+    schemas: {},
+    enums: {},
+    _meta: {
+      schemas: {},
+      tables: {},
+      columns: {},
+    },
+  };
+}
+
+/**
  * Compare two snapshots and detect if there are changes
  */
 export function hasChanges(

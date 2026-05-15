@@ -46,7 +46,7 @@ describe("local inference recommendations", () => {
 		expect(recommended.TEXT_SMALL.model?.id).toBe("eliza-1-0_8b");
 		// assessFit on linux-gpu uses max(VRAM, RAM*0.5) = max(24, 32) = 32.
 		// 27b (minRam 32, size 16.8) fits; 27b-256k (minRam 96) does
-		// not. Ladder is 27b-256k -> 27b -> 9b -> 4b -> 2b, picks 27b.
+		// not. Ladder is 27b-1m -> 27b-256k -> 27b -> 9b -> 4b -> 2b, picks 27b.
 		expect(recommended.TEXT_LARGE.model?.id).toBe("eliza-1-27b");
 	});
 

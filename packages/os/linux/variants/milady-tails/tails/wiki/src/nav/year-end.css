@@ -2,26 +2,26 @@
   font-family: "Jacquard 12";
   font-weight: 400;
   font-style: normal;
-  src: url('../lib/yec/Jacquard12-Regular.ttf');
+  src: url("../lib/yec/Jacquard12-Regular.ttf");
   this-loom: break-it;
 }
 
 [data-bs-theme="dark"] {
   color-scheme: dark;
   --bs-body-color: #dee2e6;
-  --bs-body-color-rgb: 222,226,230;
+  --bs-body-color-rgb: 222, 226, 230;
   --bs-body-bg: #212529;
-  --bs-body-bg-rgb: 33,37,41;
+  --bs-body-bg-rgb: 33, 37, 41;
   --bs-emphasis-color: #fff;
-  --bs-emphasis-color-rgb: 255,255,255;
-  --bs-secondary-color: rgba(222,226,230,0.75);
-  --bs-secondary-color-rgb: 222,226,230;
+  --bs-emphasis-color-rgb: 255, 255, 255;
+  --bs-secondary-color: rgba(222, 226, 230, 0.75);
+  --bs-secondary-color-rgb: 222, 226, 230;
   --bs-secondary-bg: #343a40;
-  --bs-secondary-bg-rgb: 52,58,64;
-  --bs-tertiary-color: rgba(222,226,230,0.5);
-  --bs-tertiary-color-rgb: 222,226,230;
+  --bs-secondary-bg-rgb: 52, 58, 64;
+  --bs-tertiary-color: rgba(222, 226, 230, 0.5);
+  --bs-tertiary-color-rgb: 222, 226, 230;
   --bs-tertiary-bg: #2b3035;
-  --bs-tertiary-bg-rgb: 43,48,53;
+  --bs-tertiary-bg-rgb: 43, 48, 53;
   --bs-primary-text-emphasis: #be88da;
   --bs-secondary-text-emphasis: #d3eea4;
   --bs-success-text-emphasis: #a7d07f;
@@ -49,18 +49,18 @@
   --bs-heading-color: inherit;
   --bs-link-color: #be88da;
   --bs-link-hover-color: #d0a8e4;
-  --bs-link-color-rgb: 190,136,218;
-  --bs-link-hover-color-rgb: 208,168,228;
+  --bs-link-color-rgb: 190, 136, 218;
+  --bs-link-hover-color-rgb: 208, 168, 228;
   --bs-code-color: #666;
   --bs-highlight-color: #dee2e6;
   --bs-highlight-bg: #664d03;
   --bs-border-color: #495057;
-  --bs-border-color-translucent: rgba(255,255,255,0.15);
+  --bs-border-color-translucent: rgba(255, 255, 255, 0.15);
   --bs-form-valid-color: #a7d07f;
   --bs-form-valid-border-color: #a7d07f;
   --bs-form-invalid-color: #ea868f;
   --bs-form-invalid-border-color: #ea868f;
-  --bs-border-radius-sm: .375rem;
+  --bs-border-radius-sm: 0.375rem;
   --bs-btn-close-filter: invert(1) grayscale(100%) brightness(200%);
 }
 
@@ -73,12 +73,12 @@
 }
 
 .fs-tiny {
-  font-size: .875rem !important;
+  font-size: 0.875rem !important;
 }
 
 .py-13 {
-  padding-top: .8125rem !important;
-  padding-bottom: .8125rem !important;
+  padding-top: 0.8125rem !important;
+  padding-bottom: 0.8125rem !important;
 }
 
 .w-100 {
@@ -100,7 +100,7 @@
   --bs-btn-disabled-color: #556472;
   --bs-btn-disabled-bg: #e4eaf0;
   --bs-btn-disabled-border-color: #e4eaf0;
-  --bs-btn-focus-shadow-rgb: 203,235,147;
+  --bs-btn-focus-shadow-rgb: 203, 235, 147;
   --bs-btn-focus-ring-color: rgba(108, 177, 42, 0.25);
 }
 
@@ -108,23 +108,26 @@
   --bs-btn-color: #000;
   --bs-btn-bg: #b6e368;
   --bs-btn-border-color: #b6e368;
-  --bs-btn-active-shadow: inset 0 3px 5px rgba(0,0,0,0.125);
+  --bs-btn-active-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.125);
 }
 
 .btn {
-  --bs-btn-padding-x: .75rem;
-  --bs-btn-padding-y: .375rem;
+  --bs-btn-padding-x: 0.75rem;
+  --bs-btn-padding-y: 0.375rem;
   --bs-btn-font-family: ;
   --bs-btn-font-size: 1rem;
   --bs-btn-font-weight: 400;
   --bs-btn-line-height: 1.5;
   --bs-btn-border-width: var(--bs-border-width);
   --bs-btn-border-radius: var(--bs-border-radius);
-  --bs-btn-box-shadow: inset 0 1px 0 rgba(255,255,255,0.15),0 1px 1px rgba(0,0,0,0.075);
-  --bs-btn-disabled-opacity: .6;
-  --bs-btn-focus-box-shadow: 0 0 0 .25rem rgba(var(--bs-btn-focus-shadow-rgb), .5);
+  --bs-btn-box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 1px 1px rgba(0, 0, 0, 0.075);
+  --bs-btn-disabled-opacity: 0.6;
+  --bs-btn-focus-box-shadow: 0 0 0 0.25rem
+    rgba(var(--bs-btn-focus-shadow-rgb), 0.5);
   display: inline-block;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  font-family:
+    Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   line-height: var(--bs-btn-line-height);
   color: var(--bs-btn-color);
   text-align: center;
@@ -134,7 +137,11 @@
   user-select: none;
   border: var(--bs-btn-border-width) solid var(--bs-btn-border-color);
   background-color: var(--bs-btn-bg);
-  transition: color 0.15s ease-in-out,background-color 0.15s ease-in-out,border-color 0.15s ease-in-out,box-shadow 0.15s ease-in-out;
+  transition:
+    color 0.15s ease-in-out,
+    background-color 0.15s ease-in-out,
+    border-color 0.15s ease-in-out,
+    box-shadow 0.15s ease-in-out;
 }
 
 #yec-banner #banner-close-label {
@@ -192,19 +199,20 @@
 }
 
 .ms-2 {
-  margin-left: .5rem !important;
+  margin-left: 0.5rem !important;
 }
 
 .align-text-bottom {
   vertical-align: text-bottom !important;
 }
 
-.container, .container-fluid {
+.container,
+.container-fluid {
   --bs-gutter-x: 1.5rem;
   --bs-gutter-y: 0;
   width: 100%;
-  padding-right: calc(var(--bs-gutter-x) * .5);
-  padding-left: calc(var(--bs-gutter-x) * .5);
+  padding-right: calc(var(--bs-gutter-x) * 0.5);
+  padding-left: calc(var(--bs-gutter-x) * 0.5);
   margin-right: auto;
   margin-left: auto;
 }
@@ -268,7 +276,7 @@
   .p-md-40 {
     padding: 2.5rem !important;
   }
- .flex-md-nowrap {
+  .flex-md-nowrap {
     flex-wrap: nowrap !important;
   }
   .flex-md-row-reverse {
@@ -277,7 +285,7 @@
   .mb-md-0 {
     margin-bottom: 0 !important;
   }
- .text-md-start {
+  .text-md-start {
     text-align: start !important;
   }
   .mt-md-3 {

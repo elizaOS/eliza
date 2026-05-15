@@ -122,7 +122,9 @@ export function LlmProviderSection({
               type="password"
               placeholder="sk-..."
               value={prefs.ELIZA_OPENCODE_API_KEY || ""}
-              onChange={(e) => setPref("ELIZA_OPENCODE_API_KEY", e.target.value)}
+              onChange={(e) =>
+                setPref("ELIZA_OPENCODE_API_KEY", e.target.value)
+              }
             />
           </SettingsControls.Field>
           <SettingsControls.Field>

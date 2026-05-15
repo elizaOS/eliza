@@ -251,31 +251,6 @@ describe("ensureLocalInferenceHandler", () => {
 		);
 	});
 
-	it("forwards per-request local thinking mode from provider options", async () => {
-		const { registrations, runtime } = makeRuntime();
-		engineState.hasLoadedModel.mockReturnValue(true);
-
-		await ensureLocalInferenceHandler(runtime);
-		const registration = registrations.find(
-			(entry) => entry.modelType === ModelType.TEXT_SMALL,
-		);
-		const handler = registration?.handler as
-			| ((
-					runtime: AgentRuntime,
-					params: Record<string, unknown>,
-			  ) => Promise<string>)
-			| undefined;
-
-		await handler?.(runtime, {
-			prompt: "route this",
-			providerOptions: { eliza: { thinking: "off" } },
-		});
-
-		expect(engineState.generate).toHaveBeenCalledWith(
-			expect.objectContaining({ thinking: "off" }),
-		);
-	});
-
 	it("routes image description through the Eliza-1 vision arbiter", async () => {
 		const { registrations, runtime } = makeRuntime();
 

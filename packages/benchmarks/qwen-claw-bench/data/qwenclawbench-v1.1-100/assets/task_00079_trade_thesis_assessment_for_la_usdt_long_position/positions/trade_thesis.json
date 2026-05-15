@@ -5,8 +5,8 @@
   "thesis_summary": "LA token expected to rally on upcoming mainnet launch and increasing TVL. Strong support at 0.2350 level with bullish divergence on 4H RSI.",
   "entry_date": "2024-11-18",
   "entry_price": 0.2439,
-  "target_price": 0.2800,
-  "stop_loss": 0.2280,
+  "target_price": 0.28,
+  "stop_loss": 0.228,
   "risk_reward_ratio": 2.27,
   "invalidation_conditions": [
     {

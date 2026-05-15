@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import type { PostWorkbenchVfsGitRequest } from "@elizaos/shared";
 import git, {
@@ -7,8 +8,11 @@ import git, {
   type ReadCommitResult,
   type StatusRow,
 } from "isomorphic-git";
-import http from "isomorphic-git/http/node";
 import type { VirtualFilesystemService } from "./virtual-filesystem.ts";
+
+const require = createRequire(import.meta.url);
+const http =
+  require("isomorphic-git/http/node") as typeof import("isomorphic-git/http/node");
 
 export interface VfsGitStatusEntry {
   filepath: string;
@@ -116,7 +120,7 @@ class IsomorphicVfsGitService implements VfsGitService {
     return {
       action: "status",
       branch: await currentBranch(this.vfs.filesRoot),
-      clean: matrix.every((row) => isCleanStatus(row)),
+      clean: matrix.every((row: StatusRow) => isCleanStatus(row)),
       files: matrix.map(statusRowView),
     };
   }
@@ -333,7 +337,7 @@ function isCleanStatus(row: StatusRow): boolean {
 async function currentBranch(dir: string): Promise<string | null> {
   return git
     .currentBranch({ fs, dir, fullname: false })
-    .then((branch) => (typeof branch === "string" ? branch : null))
+    .then((branch: unknown) => (typeof branch === "string" ? branch : null))
     .catch(() => null);
 }
 

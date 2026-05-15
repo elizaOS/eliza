@@ -7,7 +7,7 @@ import type { TwitterAuthMode } from "./auth-providers/types";
 
 export const DEFAULT_X_ACCOUNT_ID = "default";
 
-interface XAccountCredentials {
+export interface XAccountCredentials {
   authMode?: TwitterAuthMode;
   apiKey?: string;
   apiSecretKey?: string;
@@ -18,7 +18,7 @@ interface XAccountCredentials {
   scopes?: string;
 }
 
-interface XConnectorAccountRecord {
+export interface XConnectorAccountRecord {
   [key: string]: unknown;
   accountId: string;
   source?: "x" | "twitter";
@@ -27,11 +27,11 @@ interface XConnectorAccountRecord {
   metadata?: Record<string, unknown>;
 }
 
-interface XConnectorAccountStore {
+export interface XConnectorAccountStore {
   getAccount(accountId: string): Promise<XConnectorAccountRecord | null>;
 }
 
-interface RuntimeWithXConnectorAccounts {
+export interface RuntimeWithXConnectorAccounts {
   getConnectorAccount?: (query: {
     source: "x";
     accountId: string;

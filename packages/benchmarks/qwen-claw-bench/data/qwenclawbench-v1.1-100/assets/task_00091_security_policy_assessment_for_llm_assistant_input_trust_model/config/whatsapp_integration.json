@@ -35,10 +35,7 @@
     "burst_action": "temporary_block",
     "burst_block_duration_minutes": 5
   },
-  "allowed_message_types": [
-    "text",
-    "voice_transcription"
-  ],
+  "allowed_message_types": ["text", "voice_transcription"],
   "blocked_message_types": [
     "image",
     "video",
@@ -61,8 +58,5 @@
     "log_path": "/var/log/whatsapp_integration/",
     "redact_sensitive_content": false
   },
-  "owner_phone_numbers": [
-    "ENV:OWNER_PHONE_PRIMARY",
-    "ENV:OWNER_PHONE_BACKUP"
-  ]
+  "owner_phone_numbers": ["ENV:OWNER_PHONE_PRIMARY", "ENV:OWNER_PHONE_BACKUP"]
 }

@@ -1,13 +1,7 @@
 {
   "instance_id": "p4_instance_074",
   "city_map": {
-    "locations": [
-      "hospital",
-      "suburb",
-      "downtown",
-      "stadium",
-      "airport"
-    ],
+    "locations": ["hospital", "suburb", "downtown", "stadium", "airport"],
     "distances": {
       "hospital-suburb": 12,
       "suburb-hospital": 12,
@@ -36,30 +30,21 @@
       "passenger_id": "p001",
       "pickup": "stadium",
       "dropoff": "downtown",
-      "time_window": [
-        13.5,
-        13.0
-      ],
+      "time_window": [13.5, 13.0],
       "deadline": 53
     },
     {
       "passenger_id": "p002",
       "pickup": "downtown",
       "dropoff": "airport",
-      "time_window": [
-        12.25,
-        12.683333333333334
-      ],
+      "time_window": [12.25, 12.683333333333334],
       "deadline": 50
     },
     {
       "passenger_id": "p003",
       "pickup": "airport",
       "dropoff": "suburb",
-      "time_window": [
-        10.0,
-        10.4
-      ],
+      "time_window": [10.0, 10.4],
       "deadline": 59
     }
   ],

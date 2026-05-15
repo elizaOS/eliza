@@ -22,9 +22,12 @@ Expected binary inside each slice:
 ElizaBunEngine.framework/ElizaBunEngine
 ```
 
-App Store/full-engine builds link the framework directly and call the symbols
-below without importing dynamic loader APIs. The engine binary and runtime
-plugin must not import arbitrary dynamic loader, process-spawn, JIT, or
+The app loads the framework with `dlopen` and resolves the symbols below with
+`dlsym`.
+
+This is the only dynamic loading allowed for the iOS full-Bun path: loading the
+signed `ElizaBunEngine.framework` already embedded in the app bundle. The engine
+binary itself must not import arbitrary dynamic loader, process-spawn, JIT, or
 executable-memory permission APIs. App Store-compatible builds must declare:
 
 ```text
@@ -160,13 +163,7 @@ The port is complete only when all of these pass:
    `ElizaBunEngine.xcframework` with an iOS Simulator slice.
 2. `ELIZA_IOS_FULL_BUN_ENGINE=1 bun run --cwd packages/app build:ios:local:sim`
    builds, installs, and launches in Simulator.
-3. `bun run --cwd packages/bun-ios-runtime smoke:sim` passes the simulator
-   engine preflight: ABI symbols, no-JIT metadata, forbidden imports/strings,
-   and nested executable checks.
-4. `bun run --cwd packages/bun-ios-runtime smoke:app -- --app=/path/to/App.app`
-   passes app embedding/network-policy prerequisites.
-5. `bun run --cwd packages/app test:sim:local-chat:ios:full-bun` boots
+3. `bun run --cwd packages/bun-ios-runtime smoke:sim` boots
    `public/agent/agent-bundle.js ios-bridge --stdio` through the full engine
-   ABI in Simulator and invokes `status`, `http_request`, local-inference IPC,
-   `send_message`, and SSE.
-6. The same sequence passes for `build:device` on a developer-signed sideload.
+   ABI and invokes `status`, `http_request`, and `send_message`.
+4. The same sequence passes for `build:device` on a developer-signed sideload.

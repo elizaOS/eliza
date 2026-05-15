@@ -4,11 +4,11 @@ import { execSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { assertReviewedAppleStoreEntitlements } from "./lib/apple-entitlement-audit.mjs";
 import {
   findLocalPackHotspots,
   shouldSkipExactPackDryRun,
 } from "./lib/release-check-pack-dry-run";
-import { assertReviewedAppleStoreEntitlements } from "./lib/apple-entitlement-audit.mjs";
 import { validateStaticAssetManifest } from "./lib/static-asset-manifest.mjs";
 
 type PackFile = { path: string };
@@ -311,8 +311,8 @@ const requiredElectrobunConfigSnippets = [
   'postBuild: "scripts/postwrap-sign-runtime-macos.ts"',
   'postWrap: "scripts/postwrap-diagnostics.ts"',
   "process.env.ELIZA_ELECTROBUN_NOTARIZE !==",
-  'copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`',
-  'copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`',
+  "copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`",
+  "copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`",
 ];
 const electrobunDirCandidates = [
   resolve("packages", "app-core", "platforms", "electrobun"),

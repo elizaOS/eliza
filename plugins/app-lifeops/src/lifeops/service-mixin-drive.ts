@@ -1,5 +1,8 @@
-import type { LifeOpsConnectorMode, LifeOpsConnectorSide } from "@elizaos/shared";
 import type { GoogleDriveFile } from "@elizaos/plugin-google";
+import type {
+  LifeOpsConnectorMode,
+  LifeOpsConnectorSide,
+} from "@elizaos/shared";
 import type {
   LifeOpsConnectorGrant,
   LifeOpsGoogleConnectorStatus,
@@ -232,7 +235,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         request.side,
         request.grantId,
       );
-      const searchFiles = requireGoogleServiceMethod(this.runtime, "searchFiles");
+      const searchFiles = requireGoogleServiceMethod(
+        this.runtime,
+        "searchFiles",
+      );
       const query = request.folderId
         ? `'${request.folderId}' in parents and trashed = false`
         : "'root' in parents and trashed = false";
@@ -282,7 +288,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         request.side,
         request.grantId,
       );
-      const searchFiles = requireGoogleServiceMethod(this.runtime, "searchFiles");
+      const searchFiles = requireGoogleServiceMethod(
+        this.runtime,
+        "searchFiles",
+      );
       const files = await searchFiles({
         accountId: accountIdForGrant(grant),
         query: request.query,
@@ -306,7 +315,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         request.side,
         request.grantId,
       );
-      const getDocContent = requireGoogleServiceMethod(this.runtime, "getDocContent");
+      const getDocContent = requireGoogleServiceMethod(
+        this.runtime,
+        "getDocContent",
+      );
       return getDocContent({
         accountId: accountIdForGrant(grant),
         documentId: request.documentId,
@@ -329,7 +341,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         request.side,
         request.grantId,
       );
-      const getSheetContent = requireGoogleServiceMethod(this.runtime, "getSheetContent");
+      const getSheetContent = requireGoogleServiceMethod(
+        this.runtime,
+        "getSheetContent",
+      );
       return getSheetContent({
         accountId: accountIdForGrant(grant),
         spreadsheetId: request.spreadsheetId,
@@ -355,7 +370,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         request.side,
         request.grantId,
       );
-      const createDriveFile = requireGoogleServiceMethod(this.runtime, "createDriveFile");
+      const createDriveFile = requireGoogleServiceMethod(
+        this.runtime,
+        "createDriveFile",
+      );
       return createDriveFile({
         accountId: accountIdForGrant(grant),
         name: request.name,
@@ -381,7 +399,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         request.side,
         request.grantId,
       );
-      const appendToDoc = requireGoogleServiceMethod(this.runtime, "appendToDoc");
+      const appendToDoc = requireGoogleServiceMethod(
+        this.runtime,
+        "appendToDoc",
+      );
       await appendToDoc({
         accountId: accountIdForGrant(grant),
         documentId: request.documentId,
@@ -406,7 +427,10 @@ export function withDrive<TBase extends Constructor<LifeOpsServiceBase>>(
         request.side,
         request.grantId,
       );
-      const updateSheetCells = requireGoogleServiceMethod(this.runtime, "updateSheetCells");
+      const updateSheetCells = requireGoogleServiceMethod(
+        this.runtime,
+        "updateSheetCells",
+      );
       return updateSheetCells({
         accountId: accountIdForGrant(grant),
         spreadsheetId: request.spreadsheetId,

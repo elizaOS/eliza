@@ -18,11 +18,11 @@ export {
 } from "./capacitor-llama-adapter";
 export * from "./definitions";
 export {
-  serializeTokenTree,
-  deserializeTokenTree,
-} from "./token-tree-codec";
-export {
   DeviceBridgeClient,
   type DeviceBridgeClientConfig,
   startDeviceBridgeClient,
 } from "./device-bridge-client";
+export {
+  deserializeTokenTree,
+  serializeTokenTree,
+} from "./token-tree-codec";

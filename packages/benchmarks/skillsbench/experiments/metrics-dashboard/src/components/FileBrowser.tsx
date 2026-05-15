@@ -1,134 +1,152 @@
-import { useState, useEffect } from 'react'
-import { Folder, File, ChevronRight, ArrowLeft, Loader2, FileJson, FileText, FileCode } from 'lucide-react'
-import { ResizablePanel } from './ResizablePanel'
+import {
+  ArrowLeft,
+  ChevronRight,
+  File,
+  FileCode,
+  FileJson,
+  FileText,
+  Folder,
+  Loader2,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { ResizablePanel } from "./ResizablePanel";
 
 interface FileEntry {
-  name: string
-  type: 'file' | 'directory'
-  size: number | null
+  name: string;
+  type: "file" | "directory";
+  size: number | null;
 }
 
 interface FileBrowserProps {
-  trialPath: string
+  trialPath: string;
 }
 
 export function FileBrowser({ trialPath }: FileBrowserProps) {
-  const [currentPath, setCurrentPath] = useState('')
-  const [files, setFiles] = useState<FileEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const [fileContent, setFileContent] = useState<string | null>(null)
-  const [fileLoading, setFileLoading] = useState(false)
+  const [currentPath, setCurrentPath] = useState("");
+  const [files, setFiles] = useState<FileEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [fileLoading, setFileLoading] = useState(false);
 
   // Load directory contents
   const loadDirectory = async (subpath: string) => {
-    setLoading(true)
-    setError(null)
+    setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`/api/files?path=${encodeURIComponent(trialPath)}&subpath=${encodeURIComponent(subpath)}`)
-      if (!res.ok) throw new Error('Failed to load directory')
-      const data = await res.json()
-      setFiles(data.files)
-      setCurrentPath(subpath)
+      const res = await fetch(
+        `/api/files?path=${encodeURIComponent(trialPath)}&subpath=${encodeURIComponent(subpath)}`,
+      );
+      if (!res.ok) throw new Error("Failed to load directory");
+      const data = await res.json();
+      setFiles(data.files);
+      setCurrentPath(subpath);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unknown error')
+      setError(e instanceof Error ? e.message : "Unknown error");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   // Load file contents
   const loadFile = async (filePath: string) => {
-    setFileLoading(true)
-    setSelectedFile(filePath)
-    setFileContent(null)
+    setFileLoading(true);
+    setSelectedFile(filePath);
+    setFileContent(null);
     try {
-      const res = await fetch(`/api/file?path=${encodeURIComponent(trialPath)}&file=${encodeURIComponent(filePath)}`)
-      if (!res.ok) throw new Error('Failed to load file')
+      const res = await fetch(
+        `/api/file?path=${encodeURIComponent(trialPath)}&file=${encodeURIComponent(filePath)}`,
+      );
+      if (!res.ok) throw new Error("Failed to load file");
 
-      const contentType = res.headers.get('content-type')
-      if (contentType?.includes('application/json')) {
-        const data = await res.json()
+      const contentType = res.headers.get("content-type");
+      if (contentType?.includes("application/json")) {
+        const data = await res.json();
         // If it's a wrapped text file
         if (data.content !== undefined) {
-          setFileContent(data.content)
+          setFileContent(data.content);
         } else {
           // It's a raw JSON file
-          setFileContent(JSON.stringify(data, null, 2))
+          setFileContent(JSON.stringify(data, null, 2));
         }
       } else {
-        const data = await res.json()
-        setFileContent(data.content)
+        const data = await res.json();
+        setFileContent(data.content);
       }
     } catch (e) {
-      setFileContent(`Error loading file: ${e instanceof Error ? e.message : 'Unknown error'}`)
+      setFileContent(
+        `Error loading file: ${e instanceof Error ? e.message : "Unknown error"}`,
+      );
     } finally {
-      setFileLoading(false)
+      setFileLoading(false);
     }
-  }
+  };
 
   // Initial load
   useEffect(() => {
-    loadDirectory('')
-  }, [trialPath])
+    loadDirectory("");
+  }, [trialPath]);
 
   const navigateUp = () => {
-    const parts = currentPath.split('/').filter(Boolean)
-    parts.pop()
-    loadDirectory(parts.join('/'))
-  }
+    const parts = currentPath.split("/").filter(Boolean);
+    parts.pop();
+    loadDirectory(parts.join("/"));
+  };
 
   const navigateTo = (dir: string) => {
-    const newPath = currentPath ? `${currentPath}/${dir}` : dir
-    loadDirectory(newPath)
-  }
+    const newPath = currentPath ? `${currentPath}/${dir}` : dir;
+    loadDirectory(newPath);
+  };
 
   const getFileIcon = (name: string, type: string) => {
-    if (type === 'directory') return <Folder className="w-4 h-4 text-blue-500" />
+    if (type === "directory")
+      return <Folder className="w-4 h-4 text-blue-500" />;
 
-    const ext = name.split('.').pop()?.toLowerCase()
+    const ext = name.split(".").pop()?.toLowerCase();
     switch (ext) {
-      case 'json':
-        return <FileJson className="w-4 h-4 text-yellow-500" />
-      case 'py':
-      case 'ts':
-      case 'tsx':
-      case 'js':
-        return <FileCode className="w-4 h-4 text-green-500" />
-      case 'txt':
-      case 'log':
-      case 'md':
-        return <FileText className="w-4 h-4 text-gray-500" />
+      case "json":
+        return <FileJson className="w-4 h-4 text-yellow-500" />;
+      case "py":
+      case "ts":
+      case "tsx":
+      case "js":
+        return <FileCode className="w-4 h-4 text-green-500" />;
+      case "txt":
+      case "log":
+      case "md":
+        return <FileText className="w-4 h-4 text-gray-500" />;
       default:
-        return <File className="w-4 h-4 text-gray-400" />
+        return <File className="w-4 h-4 text-gray-400" />;
     }
-  }
+  };
 
   const formatSize = (size: number | null) => {
-    if (size === null) return ''
-    if (size < 1024) return `${size} B`
-    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
-    return `${(size / (1024 * 1024)).toFixed(1)} MB`
-  }
+    if (size === null) return "";
+    if (size < 1024) return `${size} B`;
+    if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+    return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
-  const pathParts = currentPath.split('/').filter(Boolean)
+  const pathParts = currentPath.split("/").filter(Boolean);
 
   return (
     <div className="flex flex-col h-full">
       {/* Breadcrumb */}
       <div className="flex items-center gap-1 px-3 py-2 bg-muted/30 border-b border-border text-sm">
         <button
-          onClick={() => loadDirectory('')}
+          onClick={() => loadDirectory("")}
           className="hover:text-primary transition-colors font-medium"
         >
-          {trialPath.split('/').pop()}
+          {trialPath.split("/").pop()}
         </button>
         {pathParts.map((part, idx) => (
           <span key={idx} className="flex items-center gap-1">
             <ChevronRight className="w-3 h-3 text-muted-foreground" />
             <button
-              onClick={() => loadDirectory(pathParts.slice(0, idx + 1).join('/'))}
+              onClick={() =>
+                loadDirectory(pathParts.slice(0, idx + 1).join("/"))
+              }
               className="hover:text-primary transition-colors"
             >
               {part}
@@ -163,33 +181,37 @@ export function FileBrowser({ trialPath }: FileBrowserProps) {
               ) : (
                 <div className="divide-y divide-border/30">
                   {files.map((file) => {
-                    const filePath = currentPath ? `${currentPath}/${file.name}` : file.name
-                    const isSelected = selectedFile === filePath
+                    const filePath = currentPath
+                      ? `${currentPath}/${file.name}`
+                      : file.name;
+                    const isSelected = selectedFile === filePath;
 
                     return (
                       <button
                         key={file.name}
                         onClick={() => {
-                          if (file.type === 'directory') {
-                            navigateTo(file.name)
+                          if (file.type === "directory") {
+                            navigateTo(file.name);
                           } else {
-                            loadFile(filePath)
+                            loadFile(filePath);
                           }
                         }}
                         className={`w-full px-3 py-2 flex items-center gap-2 hover:bg-muted/50 transition-colors text-sm text-left ${
-                          isSelected ? 'bg-primary/10' : ''
+                          isSelected ? "bg-primary/10" : ""
                         }`}
                       >
                         {getFileIcon(file.name, file.type)}
                         <span className="flex-1 truncate">{file.name}</span>
-                        {file.type === 'file' && (
-                          <span className="text-xs text-muted-foreground">{formatSize(file.size)}</span>
+                        {file.type === "file" && (
+                          <span className="text-xs text-muted-foreground">
+                            {formatSize(file.size)}
+                          </span>
                         )}
-                        {file.type === 'directory' && (
+                        {file.type === "directory" && (
                           <ChevronRight className="w-3 h-3 text-muted-foreground" />
                         )}
                       </button>
-                    )
+                    );
                   })}
                   {files.length === 0 && !loading && (
                     <div className="p-3 text-sm text-muted-foreground text-center">
@@ -225,5 +247,5 @@ export function FileBrowser({ trialPath }: FileBrowserProps) {
         />
       </div>
     </div>
-  )
+  );
 }

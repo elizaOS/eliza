@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 
-function base64UrlEncode(input: Buffer): string {
+export function base64UrlEncode(input: Buffer): string {
   return input
     .toString("base64")
     .replace(/\+/g, "-")

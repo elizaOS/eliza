@@ -8,7 +8,6 @@
  */
 import path from "node:path";
 import { documentsPlugin } from "@elizaos/app-documents";
-import { config as loadEnv } from "dotenv";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import {
   type RuntimeHarness as Runtime,
@@ -20,7 +19,12 @@ import { req } from "../../../test/helpers/http";
 const LIVE = process.env.ELIZA_LIVE_TEST === "1";
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 
-loadEnv({ path: path.join(REPO_ROOT, ".env") });
+try {
+  const { config } = await import("dotenv");
+  config({ path: path.join(REPO_ROOT, ".env") });
+} catch {
+  /* dotenv optional */
+}
 
 describeIf(LIVE)("App Documents: API e2e", () => {
   let runtime: Runtime;
