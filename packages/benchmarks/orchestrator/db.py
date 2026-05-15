@@ -660,15 +660,75 @@ def repair_nonzero_returncode_statuses(conn: sqlite3.Connection) -> int:
             continue
         if not isinstance(metrics, dict):
             continue
-        return_code = metrics.get("return_code")
+        return_code = metrics.get("return_code", metrics.get("returncode"))
         if return_code in (None, 0):
             return_code = metrics.get("nonzero_return_code_with_result")
+        if return_code in (None, 0):
+            return_code = metrics.get("exit_code")
         if not isinstance(return_code, (int, float)) or int(return_code) == 0:
             continue
         error = row["error"] or (
             "Command produced a result JSON but exited with "
             f"return code {int(return_code)}"
         )
+        conn.execute(
+            """
+            UPDATE benchmark_runs
+            SET status = 'failed', error = ?
+            WHERE run_id = ?
+            """,
+            (error, row["run_id"]),
+        )
+        repaired += 1
+    if repaired:
+        conn.commit()
+    return repaired
+
+
+def repair_nonpublishable_success_statuses(conn: sqlite3.Connection) -> int:
+    """Mark legacy "successful" rows that never executed as failed.
+
+    This is intentionally narrow. Some deterministic/calibration benchmarks do
+    not emit LLM telemetry, but a Solana row with zero messages, zero reward
+    history, and zero discovered programs is an empty rollout artifact rather
+    than a scored agent attempt.
+    """
+
+    rows = conn.execute(
+        """
+        SELECT run_id, benchmark_id, metrics_json, token_metrics_json, trajectory_summary_json, error
+        FROM benchmark_runs
+        WHERE status = 'succeeded'
+        """
+    ).fetchall()
+    repaired = 0
+    for row in rows:
+        if row["benchmark_id"] != "solana":
+            continue
+        raw_metrics = row["metrics_json"]
+        if not isinstance(raw_metrics, str):
+            continue
+        try:
+            metrics = json.loads(raw_metrics)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(metrics, dict):
+            continue
+        messages = metrics.get("messages")
+        cumulative_rewards = metrics.get("cumulative_rewards")
+        final_programs = metrics.get("final_programs")
+        if final_programs is None and isinstance(metrics.get("programs_discovered"), dict):
+            final_programs = len(metrics["programs_discovered"])
+        empty_rollout = (
+            isinstance(messages, list)
+            and len(messages) == 0
+            and isinstance(cumulative_rewards, list)
+            and len(cumulative_rewards) == 0
+            and (final_programs in (None, 0, 0.0))
+        )
+        if not empty_rollout:
+            continue
+        error = row["error"] or "Solana benchmark produced an empty rollout artifact"
         conn.execute(
             """
             UPDATE benchmark_runs

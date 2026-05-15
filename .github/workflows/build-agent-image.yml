@@ -99,7 +99,7 @@ jobs:
         env:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
-          bun scripts/patch-tsup-dts.mjs || true
+          bun packages/scripts/patch-tsup-dts.mjs || true
           node packages/app-core/scripts/ensure-type-package-aliases.mjs
 
       - name: Build @elizaos/core, shared, ui
@@ -115,7 +115,7 @@ jobs:
           NODE_LLAMA_CPP_SKIP_DOWNLOAD: "true"
         run: |
           (cd packages/core && bun run build.ts --node-only)
-          for pkg in packages/shared cloud/packages/sdk packages/cloud-routing packages/ui; do
+          for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/ui; do
             if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then
               echo "::group::Building $pkg"
               (cd "$pkg" && bun install --no-frozen-lockfile --ignore-scripts && bun run build)
@@ -163,7 +163,7 @@ jobs:
               # global cache, wiping the earlier patch. Without this,
               # tsup's worker thread loads an un-patched rollup.js with
               # `await` at module-top-level → SyntaxError.
-              bun scripts/patch-tsup-dts.mjs >/dev/null || true
+              bun packages/scripts/patch-tsup-dts.mjs >/dev/null || true
               (cd "$plugin_dir" && bun run build)
               echo "::endgroup::"
             fi

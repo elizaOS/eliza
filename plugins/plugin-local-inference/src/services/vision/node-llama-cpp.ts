@@ -17,10 +17,9 @@
  *     computer-use can compile against a stable contract.
  *   - When the binding exposes the mtmd API, the backend dispatches
  *     through it.
- *   - Otherwise, the backend falls back to the existing
- *     `VisionManager` (Florence-2 via @huggingface/transformers) when
- *     it's available; that path is what the legacy
- *     `LocalAIManager.describeImage` already uses for IMAGE_DESCRIPTION.
+ *   - Otherwise, the backend falls back to an injected
+ *     `VisionManagerLike` implementation when one is supplied (kept as a
+ *     pluggable seam for tests and out-of-tree integrations).
  *   - When neither path is wired, `describe()` throws a structured
  *     `VisionBackendUnavailableError` the arbiter surfaces upward.
  *
@@ -89,11 +88,12 @@ export interface NodeLlamaCppMtmdHandle {
 }
 
 /**
- * Optional VisionManager-shape fallback. The existing
- * `adapters/node-llama-cpp/utils/visionManager.ts` exposes
- * `processImage(dataUrl)` — when neither the fork mtmd binding nor a
- * test injection is wired, the WS2 backend dispatches to it as the
- * last resort.
+ * Optional VisionManager-shape fallback. The legacy
+ * `adapters/node-llama-cpp/utils/visionManager.ts` (Florence-2 via
+ * @huggingface/transformers) has been removed, but the interface
+ * stays available as a pluggable injection point for tests and
+ * out-of-tree integrations that want to supply their own image
+ * captioning implementation.
  */
 export interface VisionManagerLike {
 	processImage(

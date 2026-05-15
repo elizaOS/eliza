@@ -9,6 +9,7 @@ node_modules
 .env.local
 .env.bak
 .env_main
+.env.preview.local
 
 .idea
 .zed
@@ -34,6 +35,13 @@ packages/app/android/
 packages/app/ios/
 packages/app/electrobun/
 
+# Capacitor native plugin build output and local Gradle state.
+packages/capacitor/**/android/build/
+packages/capacitor/**/android/.gradle/
+packages/capacitor/**/ios/build/
+packages/capacitor/**/ios/Pods/
+packages/capacitor/**/DerivedData/
+
 dist/
 
 # Stray declaration emit (canonical declarations live under dist/)
@@ -49,6 +57,10 @@ plugins/plugin-discord/**/*.d.ts.map
 # Accidental JS/sourcemap emit next to TS in @elizaos/core (build output is dist/)
 packages/core/src/**/*.js
 packages/core/src/**/*.js.map
+
+# Accidental declaration emit next to TS in @elizaos/contracts (build output is dist/)
+packages/contracts/src/**/*.d.ts
+packages/contracts/src/**/*.d.ts.map
 
 *.gguf
 *.onnx
@@ -66,11 +78,6 @@ characters/**/private/
 
 cache/*
 models/*
-# Track the voice sub-model changelog (R5-versioning §2.1) alongside the
-# weights staging dir — the file is the human-readable twin of
-# packages/shared/src/local-inference/voice-models.ts.
-!models/voice/
-!models/voice/CHANGELOG.md
 
 tsup.config.bundled_*.mjs
 
@@ -173,7 +180,7 @@ playwright-report/
 **/test-report*.json
 **/.nyc_output/
 
-# Local git worktrees of the cloud submodule (parallel CI/test branches)
+# Local git worktrees of cloud package work (parallel CI/test branches)
 /cloud-ci-playwright/
 /cloud-develop-playwright-ci/
 /cloud-develop-fix/
@@ -239,9 +246,9 @@ tasks/
 
 # Development database and tool directories
 **/data/
-# But cloud's frontend uses src/lib/data/ as legitimate source — un-ignore it
-!cloud/apps/frontend/src/lib/data/
-!cloud/apps/frontend/src/lib/data/**
+# But cloud-frontend uses src/lib/data/ as legitimate source — un-ignore it
+!packages/cloud-frontend/src/lib/data/
+!packages/cloud-frontend/src/lib/data/**
 # plugin-mysticism ships data/*.json fixtures alongside the engines —
 # tarot, iching, and astrology all import their data tables from those JSONs.
 !plugins/plugin-mysticism/src/engines/*/data/
@@ -249,6 +256,10 @@ tasks/
 # Benchmark fixture data is vendored, not generated.
 !packages/benchmarks/qwen-claw-bench/data/
 !packages/benchmarks/qwen-claw-bench/data/**
+!packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/airline/data/
+!packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/airline/data/**
+!packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/retail/data/
+!packages/benchmarks/tau-bench/elizaos_tau_bench/upstream/envs/retail/data/**
 !packages/benchmarks/swe-bench-multilingual/tests/test_data/
 !packages/benchmarks/swe-bench-multilingual/tests/test_data/**
 !packages/benchmarks/swe-bench-pro/helper_code/data/
@@ -301,8 +312,6 @@ packages/shared/src/i18n/generated/
 packages/core/src/i18n/generated/
 
 tsconfig.test.json
-# But cloud has a real source-tracked tsconfig.test.json — un-ignore it
-!cloud/tsconfig.test.json
 
 # Migration status docs (temporary)
 MIGRATION_*.md
@@ -570,6 +579,123 @@ packages/training/out/
 plugins/plugin-vision/eng.traineddata
 dev-desktop.pid
 reports/
-docs/yolov8n.pt
+docs/*
+!docs/ELIZA_1_BUNDLE_EXTRAS.json
 yolov8n.pt
 *.pt
+
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/.next-build/
+/.next-test-*/
+/out/
+
+# production
+/build
+/public/
+/apps/frontend/dist-ssr/
+
+# misc
+.DS_Store
+*.pem
+*.key
+*.key.*
+*.p8
+*.p12
+*.pkcs8
+*.jwk
+*.jwks
+id_dsa
+id_ecdsa
+id_ed25519
+id_rsa
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (keep live values out of git; use .env.example as the template)
+.env
+.env.local
+.env.dev
+.env.development
+.env.production
+.env.vercel*
+.env.staging*
+.dev.vars
+.dev.vars.*
+!apps/api/.dev.vars.example
+
+# vercel
+.vercel
+
+#local llm guides
+guides
+plan-files
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+test-results/
+apps/frontend/vite.config.ts.timestamp-*.mjs
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/apple/build/
+src-tauri/gen/apple/Externals/
+src-tauri/gen/android/
+src-tauri/Cargo.lock
+
+ignore/
+.env*.local
+
+.claude/*
+claudedocs
+
+# prr state file (auto-generated)
+.pr-resolver-state.json
+
+# Dev logs
+logs/
+!apps/api/**/logs/
+!apps/api/**/logs/**
+test_output.log
+ts_errors.log
+
+# Local runtime state and generated databases
+.eliza/
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+
+.prr/
+modelcontextprotocol/
+
+*storybook.log
+storybook-static
+.next-dev/
+DEV_TO_PROD_AUDIT.md
+TRIAGE_NOTES.md
+.env.preview
+.env.local.bak-*
+.wrangler
+.wrangler-dry-run

@@ -68,9 +68,17 @@ class TauBenchRunner:
                 _base_envs.load_user = original_loader
             return env
 
+        user_strategy = self.config.user_strategy
+        if self.config.use_sample_tasks and user_strategy == "llm":
+            # Sample mode is a harness smoke check. Keep official non-sample
+            # runs on the upstream LLM user simulator, but avoid sample
+            # failures from simulated-user hallucinations such as invented
+            # customer emails.
+            user_strategy = "grounded"
+
         return get_env(
             env_name=domain,
-            user_strategy=self.config.user_strategy,
+            user_strategy=user_strategy,
             user_model=self.config.user_model,
             user_provider=self.config.user_provider,
             task_split=self.config.task_split,
@@ -229,7 +237,14 @@ class TauBenchRunner:
         if self.config.use_sample_tasks:
             os.environ["TAU_BENCH_DATA_MODE"] = "smoke"
         if self.config.use_sample_tasks:
-            task_iter = iter_sample_tasks(self.config.domains, self.config.task_split)
+            task_iter = iter_sample_tasks(
+                self.config.domains,
+                self.config.task_split,
+                task_ids=self.config.task_ids,
+                start_index=self.config.start_index,
+                end_index=self.config.end_index,
+                max_per_domain=self.config.max_tasks_per_domain,
+            )
         else:
             task_iter = iter_tasks(
                 domains=self.config.domains,

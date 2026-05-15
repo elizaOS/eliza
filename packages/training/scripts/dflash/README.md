@@ -21,6 +21,10 @@ from `elizaos/eliza-1` under `bundles/<tier>/` on Hugging Face. Every other surf
 this repo (DFlash distill scripts, manifest plan, readiness doc, gates
 table) MUST refer to the same set.
 
+`0_8b` is training-supported so a drafter can be produced and validated for
+that tier. It is not required-by-manifest; keep that publish policy in the
+manifest layer rather than removing the tier from DFlash training scripts.
+
 ## Drafter vs target
 
 Two ideas not to conflate:
@@ -86,7 +90,7 @@ When the catalog adds a new tier (e.g. someone publishes
    `distill_dflash_drafter.py::DEFAULT_STUDENT_BASE` /
    `ACCEPTANCE_GATE` / `DEFAULT_TARGET_MODEL`.
 4. Add `KNOWN_TIERS` entry in `prepare_distill_dataset.py` (and the
-   gate map in `validate_drafter.py`).
+   validator will read the gate from `distill_dflash_drafter.py`).
 5. Copy one of the existing `jobs/distill_dflash_<tier>.sh` scripts and
    change the `TIER=` line + the hyperparameters.
 6. Regenerate `ELIZA_1_GGUF_READINESS.md` with

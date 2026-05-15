@@ -62,7 +62,11 @@ type CapabilityKey = (typeof CAPABILITY_KEYS)[number];
 
 const MODEL_SLOTS = ["nano", "small", "medium", "large", "mega"] as const;
 
+<<<<<<< HEAD
 const TRAINING_CONFIG_MODULE = "@elizaos/plugin-training";
+=======
+const TRAINING_CONFIG_MODULE = "@elizaos/app-training/core/training-config";
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 
 interface TrainingConfig {
   autoTrain: boolean;

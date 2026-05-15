@@ -56,6 +56,13 @@ def _maybe_make_bridge_factory(config: WebShopConfig):
 
         mgr = _ExternalBridgeManager(client)
     else:
+        # WebShop exposes its action space as text commands, not as normal
+        # app tools. Forcing the v5 planner to emit a native tool call causes
+        # repeated required-tool misses even when the model emits parseable
+        # benchmark JSON or action text. Keep the benchmark server in normal
+        # reply mode and let the WebShop adapter parse BENCHMARK_ACTION JSON,
+        # XML, or raw action strings from the response.
+        os.environ["ELIZA_BENCH_FORCE_TOOL_CALL"] = "0"
         mgr = ElizaServerManager()
         mgr.start()
     logger.info("[WebShopRunner] Eliza bridge ready at %s", mgr.client.base_url)

@@ -45,6 +45,12 @@ def quantization_kernel_fragments() -> list[dict[str, object]]:
     ]
 
 
+def text_file_for_tier(tier: str) -> FileEntry:
+    if tier == "27b-256k":
+        return FileEntry(path="text/eliza-1-27b-256k.gguf", sha256=SHA, ctx=262144)
+    return FileEntry(path=f"text/eliza-1-{tier}-128k.gguf", sha256=SHA, ctx=131072)
+
+
 def base_kwargs(tier: str = "4b") -> dict:
     kwargs = dict(
         tier=tier,
@@ -59,9 +65,7 @@ def base_kwargs(tier: str = "4b") -> dict:
             "vad": LineageEntry(base="eliza-1-vad", license="apache-2.0"),
         },
         files={
-            "text": [
-                FileEntry(path=f"text/eliza-1-{tier}-64k.gguf", sha256=SHA, ctx=65536)
-            ],
+            "text": [text_file_for_tier(tier)],
             "voice": [FileEntry(path="tts/omnivoice-base-Q4_K_M.gguf", sha256=SHA)],
             "asr": [FileEntry(path="asr/asr.gguf", sha256=SHA)],
             "vision": [FileEntry(path=f"vision/mmproj-{tier}.gguf", sha256=SHA)],
@@ -130,13 +134,14 @@ def test_eliza1_tier_ids_are_canonical():
         "turboquant_q4",
         "qjl",
         "polarquant",
-        "dflash",
+        "turbo3_tcq",
     )
     assert REQUIRED_KERNELS_BY_TIER["2b"] == (
         "turboquant_q4",
         "qjl",
         "polarquant",
         "dflash",
+        "turbo3_tcq",
     )
     assert REQUIRED_KERNELS_BY_TIER["4b"] == (
         "turboquant_q4",
@@ -148,7 +153,7 @@ def test_eliza1_tier_ids_are_canonical():
     assert VOICE_BACKENDS_BY_TIER["0_8b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["2b"] == ("kokoro",)
     assert VOICE_BACKENDS_BY_TIER["4b"] == ("kokoro",)
-    assert VOICE_BACKENDS_BY_TIER["9b"] == ("omnivoice", "kokoro")
+    assert VOICE_BACKENDS_BY_TIER["9b"] == ("kokoro", "omnivoice")
     assert VOICE_BACKENDS_BY_TIER["27b-256k"] == ("omnivoice",)
 
 
@@ -211,6 +216,71 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
     assert manifest["voice"]["cache"]["phraseCacheSeed"] == "cache/voice-preset-default.bin"
     assert manifest["voice"]["capabilities"] == ["tts", "emotion-tags"]
     assert validate_manifest(manifest) == ()
+
+
+def test_optional_eagle3_fields_do_not_change_required_tiers():
+    kwargs = base_kwargs("0_8b")
+    kwargs["eagle3_kernel"] = {
+        "enabled": True,
+        "capability": "eagle3",
+        "specType": "draft-eagle3",
+        "model": "RedHatAI/Qwen3.5-0.8B-EAGLE3-head",
+        "maxDraftTokens": 3,
+    }
+    kwargs["eagle3_eval"] = True
+    kwargs["eagle3_acceptance_rate"] = 0.64
+    kwargs["eagle3_speedup"] = 1.35
+    kwargs["eagle3_passed"] = True
+
+    manifest = build_manifest(**kwargs)
+
+    assert "eagle3" not in REQUIRED_KERNELS_BY_TIER["0_8b"]
+    assert manifest["kernels"]["eagle3"]["capability"] == "eagle3"
+    assert manifest["evals"]["eagle3"] == {
+        "acceptanceRate": 0.64,
+        "speedup": 1.35,
+        "passed": True,
+    }
+    assert validate_manifest(manifest) == ()
+
+
+def test_optional_eagle3_failure_eval_validates_without_default_gate():
+    kwargs = base_kwargs("4b")
+    kwargs["eagle3_eval"] = True
+    kwargs["eagle3_passed"] = False
+    kwargs["eagle3_failure"] = "not run on EAGLE3-capable runtime"
+
+    manifest = build_manifest(**kwargs)
+
+    assert manifest["evals"]["eagle3"] == {
+        "acceptanceRate": None,
+        "speedup": None,
+        "passed": False,
+        "failure": "not run on EAGLE3-capable runtime",
+    }
+    assert validate_manifest(manifest) == ()
+
+
+def test_eagle3_eval_rejects_passing_claim_without_measurements():
+    kwargs = base_kwargs("4b")
+    kwargs["eagle3_eval"] = True
+    kwargs["eagle3_passed"] = True
+
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+
+    assert any("evals.eagle3" in e for e in exc.value.errors)
+
+
+def test_eagle3_kernel_rejects_invalid_known_fields():
+    kwargs = base_kwargs("4b")
+    kwargs["eagle3_kernel"] = {"specType": "", "maxDraftTokens": 0}
+
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+
+    assert any("kernels.eagle3.specType" in e for e in exc.value.errors)
+    assert any("kernels.eagle3.maxDraftTokens" in e for e in exc.value.errors)
 
 
 @pytest.mark.parametrize(
@@ -459,6 +529,16 @@ def test_long_context_with_turbo3_tcq_in_required_passes():
     assert validate_manifest(manifest) == ()
 
 
+def test_text_context_below_128k_is_rejected():
+    kwargs = base_kwargs("2b")
+    kwargs["files"]["text"] = [
+        FileEntry(path="text/eliza-1-2b-64k.gguf", sha256=SHA, ctx=65536)
+    ]
+    with pytest.raises(Eliza1ManifestError) as exc:
+        build_manifest(**kwargs)
+    assert any("128k" in e for e in exc.value.errors)
+
+
 def test_validate_rejects_bad_sha256():
     manifest = build_manifest(**base_kwargs())
     manifest["files"]["text"][0]["sha256"] = "not-a-hash"
@@ -553,7 +633,7 @@ def test_write_manifest_allows_non_publishable_only_when_requested(
 @pytest.mark.parametrize(
     "value,expected",
     [
-        ("64k", 65536),
+        ("128k", 131072),
         ("256k", 262144),
         ("1k", 1024),
     ],
@@ -580,8 +660,8 @@ def test_parse_ctx_string_rejects_bad_input(bad: str):
 
 def test_parse_text_ctx_from_filename_finds_suffix_token():
     assert (
-        parse_text_ctx_from_filename(Path("text/eliza-1-4b-64k.gguf"))
-        == 65536
+        parse_text_ctx_from_filename(Path("text/eliza-1-4b-128k.gguf"))
+        == 131072
     )
     assert (
         parse_text_ctx_from_filename(Path("text/eliza-1-4b-256k.gguf"))
@@ -614,7 +694,7 @@ def _base_v1_provenance() -> dict:
             "asr": {"repo": "ggml-org/Qwen3-ASR-0.6B-GGUF"},
             "vad": {"repo": "ggml-org/whisper-vad"},
             "vision": {"repo": "unsloth/Qwen3.5-4B-GGUF", "file": "mmproj-F16.gguf"},
-            "drafter": {"repo": "elizaos/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
+            "drafter": {"repo": "elizalabs/eliza-1", "file": "bundles/4b/dflash/drafter-4b.gguf"},
         },
     }
 

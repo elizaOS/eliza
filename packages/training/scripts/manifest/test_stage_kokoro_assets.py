@@ -22,7 +22,7 @@ def _sha(data: bytes) -> str:
 def _write_bundle(root: Path) -> Path:
     bundle = root / "eliza-1-2b.bundle"
     files = {
-        "text/eliza-1-2b-32k.gguf": b"text",
+        "text/eliza-1-2b-128k.gguf": b"text",
         "tts/omnivoice-base-Q4_K_M.gguf": b"omni",
         "dflash/drafter-2b.gguf": b"draft",
         "cache/voice-preset-default.bin": b"cache",
@@ -45,9 +45,9 @@ def _write_bundle(root: Path) -> Path:
         "files": {
             "text": [
                 {
-                    "path": "text/eliza-1-2b-32k.gguf",
-                    "sha256": _sha(files["text/eliza-1-2b-32k.gguf"]),
-                    "ctx": 32768,
+                    "path": "text/eliza-1-2b-128k.gguf",
+                    "sha256": _sha(files["text/eliza-1-2b-128k.gguf"]),
+                    "ctx": 131072,
                 }
             ],
             "voice": [
@@ -72,7 +72,13 @@ def _write_bundle(root: Path) -> Path:
             ],
         },
         "kernels": {
-            "required": ["turboquant_q4", "qjl", "polarquant", "dflash"],
+            "required": [
+                "turboquant_q4",
+                "qjl",
+                "polarquant",
+                "dflash",
+                "turbo3_tcq",
+            ],
             "optional": [],
             "verifiedBackends": {
                 b: {"status": "skipped", "atCommit": "test", "report": "test"}

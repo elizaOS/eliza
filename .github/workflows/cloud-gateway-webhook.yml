@@ -6,12 +6,12 @@ on:
   push:
     branches: [main, develop]
     paths:
-      - "cloud/services/gateway-webhook/**"
+      - "packages/cloud-services/gateway-webhook/**"
       - ".github/workflows/cloud-gateway-webhook.yml"
   pull_request:
     branches: [main, develop]
     paths:
-      - "cloud/services/gateway-webhook/**"
+      - "packages/cloud-services/gateway-webhook/**"
       - ".github/workflows/cloud-gateway-webhook.yml"
 
 concurrency:
@@ -20,7 +20,7 @@ concurrency:
 
 defaults:
   run:
-    working-directory: cloud
+    working-directory: packages/cloud-shared
 
 env:
   BUN_VERSION: "1.3.13"
@@ -41,7 +41,7 @@ jobs:
         run: bun install --no-save && git diff --exit-code -- bun.lock
 
       - name: Run unit tests (isolated — mock.module is process-global in bun)
-        working-directory: cloud/services/gateway-webhook
+        working-directory: packages/cloud-services/gateway-webhook
         run: |
           bun test ./__tests__/build-forward-body.test.ts --timeout 60000
           bun test ./__tests__/internal-auth.test.ts --timeout 60000

@@ -1,5 +1,5 @@
 import { defineConfig } from "vitest/config";
-import baseConfig from "../../test/vitest/default.config";
+import baseConfig from "../../packages/test/vitest/default.config";
 
 const liveOnlyExcludes = [
   "dist/**",

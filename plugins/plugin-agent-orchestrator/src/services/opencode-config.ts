@@ -203,7 +203,13 @@ function candidateRoots(): string[] {
 export function resolveVendoredOpencodeShim(): string | undefined {
   const executable = process.platform === "win32" ? "opencode.cmd" : "opencode";
   for (const root of candidateRoots()) {
-    const shim = path.join(root, "bench-shim", executable);
+    const shim = path.join(
+      root,
+      "plugins",
+      "plugin-agent-orchestrator",
+      "bin",
+      executable,
+    );
     const sourceEntry = path.join(
       root,
       "vendor",

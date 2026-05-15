@@ -1,44 +1,24 @@
 #!/usr/bin/env node
 /**
- * 30-turn voice-loop endurance harness.
+ * 30-turn voice-loop readiness harness.
  *
- * AGENTS.md §8: "A 30-turn end-to-end voice loop runs without crash,
- * without leak, without exceeding `manifest.ramBudgetMb.recommended`."
- * This harness loops a synthetic conversation 30 times and asserts:
- *   - no crash / unhandled rejection,
- *   - no resident-memory leak (RSS growth over the run stays under the
- *     `--rss-growth-mb` cap; default 64 MB — a real leak grows linearly),
- *   - peak RSS stays under `--rss-cap-mb` when given (the bundle's
- *     `ramBudgetMb.recommended`).
- *
- * How it runs:
- *   - Against the *real* assembled voice path (`engine.startVoice` +
- *     turn controller + ASR/LLM/TTS backends), once W9 lands and a real
- *     backend is present, the harness drives 30 real turns and reads RSS
- *     between turns. Until then there is no assembled path to drive — but
- *     the harness still does a real 30-iteration *process-level* leak/RSS
- *     check around a representative allocation/GC cycle so a regression in
- *     the harness host itself is caught, and records `voiceLoopExercised:
- *     false` so the result is not mistaken for a true e2e pass.
- *
- * Output: a JSON report under `packages/inference/reports/endurance/`.
- * `thirtyTurnOk` (and the peak-RSS figure) feed the `thirty_turn_ok` gate
- * in `eliza1_gates.yaml`, the manifest `evals.thirtyTurnOk` flag, and the
- * `peak_rss_mb` gate. `thirtyTurnOk` is only `true` when the real voice
- * loop was exercised AND every assertion held.
- *
- * Usage:
- *   node packages/inference/verify/thirty_turn_endurance_harness.mjs \
- *     [--turns N] [--rss-growth-mb M] [--rss-cap-mb M] [--report PATH] [--json]
+ * Runs (or ingests) `e2e_loop_bench.mjs --turns 30` and records the
+ * `thirtyTurnOk` evidence only when the assembled local voice path completed
+ * 30 turns with the native requirements active. Missing bundles, missing
+ * fused builds, missing streaming TTS, or missing DFlash are hard failures
+ * with a report; they are not treated as a skipped pass.
  */
 
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const REPORTS_ROOT = path.join(__dirname, "..", "reports");
+const E2E_BENCH = path.join(__dirname, "e2e_loop_bench.mjs");
 
 function timestamp() {
   return new Date()
@@ -49,163 +29,495 @@ function timestamp() {
 
 function parseArgs(argv) {
   const args = {
-    turns: 30,
-    rssGrowthMb: 64,
-    rssCapMb: null,
+    tier: process.env.ELIZA_E2E_TIER || "",
+    bundle: process.env.ELIZA_E2E_BUNDLE || "",
+    backend: process.env.ELIZA_E2E_BACKEND || "cpu",
+    binDir: process.env.ELIZA_E2E_BIN_DIR || "",
+    e2eReport: process.env.ELIZA_ENDURANCE_E2E_REPORT || "",
+    turns: Number.parseInt(process.env.ELIZA_E2E_TURNS || "30", 10),
+    rssGrowthMb: Number(process.env.ELIZA_ENDURANCE_RSS_GROWTH_MB || "64"),
+    rssCapMb: process.env.ELIZA_ENDURANCE_RSS_CAP_MB
+      ? Number(process.env.ELIZA_ENDURANCE_RSS_CAP_MB)
+      : null,
+    nPredict: Number.parseInt(process.env.ELIZA_E2E_N_PREDICT || "40", 10),
+    enduranceNPredict: Number.parseInt(
+      process.env.ELIZA_E2E_ENDURANCE_N_PREDICT || "12",
+      10,
+    ),
+    ttsSteps: Number.parseInt(process.env.ELIZA_E2E_TTS_STEPS || "32", 10),
+    ctx: Number.parseInt(process.env.ELIZA_E2E_CTX || "2048", 10),
+    ngl: process.env.ELIZA_E2E_NGL || "0",
+    startTimeoutS: Number.parseInt(
+      process.env.ELIZA_E2E_START_TIMEOUT || "180",
+      10,
+    ),
+    turnTimeoutS: Number.parseInt(
+      process.env.ELIZA_E2E_TURN_TIMEOUT || "240",
+      10,
+    ),
     report: path.join(
-      __dirname,
-      "..",
-      "reports",
+      REPORTS_ROOT,
       "endurance",
       `thirty-turn-endurance-${timestamp()}.json`,
     ),
     json: false,
   };
+
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
-    if (a === "--turns") {
+    const next = () => {
       i += 1;
-      args.turns = Math.max(1, Number.parseInt(argv[i], 10) || 30);
-    } else if (a === "--rss-growth-mb") {
-      i += 1;
-      args.rssGrowthMb = Number(argv[i]);
-    } else if (a === "--rss-cap-mb") {
-      i += 1;
-      args.rssCapMb = Number(argv[i]);
-    } else if (a === "--report") {
-      i += 1;
-      args.report = argv[i];
-    } else if (a === "--json") {
-      args.json = true;
-    } else if (a === "--help" || a === "-h") {
+      if (i >= argv.length) throw new Error(`missing value for ${a}`);
+      return argv[i];
+    };
+    if (a === "--tier") args.tier = next();
+    else if (a === "--bundle" || a === "--bundle-dir") args.bundle = next();
+    else if (a === "--backend") args.backend = next();
+    else if (a === "--bin-dir") args.binDir = next();
+    else if (a === "--e2e-report") args.e2eReport = next();
+    else if (a === "--turns") args.turns = Number.parseInt(next(), 10);
+    else if (a === "--rss-growth-mb") args.rssGrowthMb = Number(next());
+    else if (a === "--rss-cap-mb") args.rssCapMb = Number(next());
+    else if (a === "--n-predict") args.nPredict = Number.parseInt(next(), 10);
+    else if (a === "--endurance-n-predict") {
+      args.enduranceNPredict = Number.parseInt(next(), 10);
+    } else if (a === "--tts-steps") args.ttsSteps = Number.parseInt(next(), 10);
+    else if (a === "--ctx") args.ctx = Number.parseInt(next(), 10);
+    else if (a === "--ngl") args.ngl = next();
+    else if (a === "--start-timeout") {
+      args.startTimeoutS = Number.parseInt(next(), 10);
+    } else if (a === "--turn-timeout") {
+      args.turnTimeoutS = Number.parseInt(next(), 10);
+    } else if (a === "--report") args.report = next();
+    else if (a === "--json") args.json = true;
+    else if (a === "--help" || a === "-h") {
       console.log(
-        "Usage: node thirty_turn_endurance_harness.mjs [--turns N] [--rss-growth-mb M] [--rss-cap-mb M] [--report PATH] [--json]",
+        "Usage: node thirty_turn_endurance_harness.mjs [--bundle DIR] [--tier TIER] [--backend cpu|metal|vulkan|cuda] [--bin-dir DIR] [--e2e-report PATH] [--turns N] [--report PATH] [--json]",
       );
       process.exit(0);
+    } else {
+      throw new Error(`unknown argument: ${a}`);
     }
   }
+  args.turns = Math.max(1, Number.isFinite(args.turns) ? args.turns : 30);
   return args;
 }
 
-const STATE_DIR =
-  process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
-const MODELS_ROOT = path.join(STATE_DIR, "local-inference", "models");
+function stateDir() {
+  return process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
+}
 
-function realBackendPresent() {
+function modelsRoot() {
+  return path.join(stateDir(), "local-inference", "models");
+}
+
+function readJson(file) {
+  return JSON.parse(fs.readFileSync(file, "utf8"));
+}
+
+function readManifestTier(bundleDir) {
+  const manifestPath = path.join(bundleDir, "eliza-1.manifest.json");
+  if (!fs.existsSync(manifestPath)) return "";
+  try {
+    return String(readJson(manifestPath)?.tier || "");
+  } catch {
+    return "";
+  }
+}
+
+function inferTierFromBundle(bundleDir) {
   return (
-    fs.existsSync(MODELS_ROOT) &&
-    fs.readdirSync(MODELS_ROOT).some((e) => e.endsWith(".bundle"))
+    readManifestTier(bundleDir) ||
+    path.basename(bundleDir).replace(/^eliza-1-/, "").replace(/\.bundle$/, "")
   );
 }
 
-function rssMb() {
-  return process.memoryUsage().rss / (1024 * 1024);
-}
-
-/**
- * One synthetic "turn": a small bounded allocate-then-release cycle so the
- * RSS sample between turns is meaningful even when the real voice loop is
- * not driven. NOT a stand-in for ASR/LLM/TTS — it is a host-level leak
- * sentinel only.
- */
-function syntheticTurn() {
-  // Allocate ~2 MB, touch it, drop it.
-  const buf = Buffer.allocUnsafe(2 * 1024 * 1024);
-  for (let i = 0; i < buf.length; i += 4096) buf[i] = i & 0xff;
-  return buf.length;
-}
-
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  const voiceLoopExercised = false; // flips true once W9's path is driven here
-  const backendPresent = realBackendPresent();
-
-  const rssSamples = [];
-  let crashed = false;
-  let crashError = null;
-  const onUnhandled = (err) => {
-    crashed = true;
-    crashError = err instanceof Error ? err.message : String(err);
-  };
-  process.on("unhandledRejection", onUnhandled);
-  process.on("uncaughtExceptionMonitor", onUnhandled);
-
-  rssSamples.push(rssMb());
-  try {
-    for (let t = 0; t < args.turns; t += 1) {
-      syntheticTurn();
-      if (typeof globalThis.gc === "function" && t % 5 === 0) globalThis.gc();
-      rssSamples.push(rssMb());
+function resolveBundle(args) {
+  if (args.bundle) {
+    const bundleDir = path.resolve(args.bundle);
+    if (!fs.existsSync(bundleDir)) {
+      return {
+        ok: false,
+        status: "needs-bundle",
+        reason: `bundle directory not found: ${bundleDir}`,
+      };
     }
-  } catch (err) {
-    crashed = true;
-    crashError = err instanceof Error ? err.message : String(err);
+    return {
+      ok: true,
+      bundleDir,
+      tier: args.tier || inferTierFromBundle(bundleDir),
+    };
   }
-  process.off("unhandledRejection", onUnhandled);
-  process.off("uncaughtExceptionMonitor", onUnhandled);
 
-  const first = rssSamples[0];
-  const last = rssSamples[rssSamples.length - 1];
-  const peak = Math.max(...rssSamples);
-  const growth = last - first;
-  const leakOk =
-    Number.isFinite(args.rssGrowthMb) && args.rssGrowthMb > 0
-      ? growth <= args.rssGrowthMb
-      : true;
-  const capOk =
-    args.rssCapMb && args.rssCapMb > 0 ? peak <= args.rssCapMb : true;
+  const root = modelsRoot();
+  if (!fs.existsSync(root)) {
+    return {
+      ok: false,
+      status: "needs-bundle",
+      reason: `no local model bundle root found at ${root}; pass --bundle`,
+    };
+  }
 
-  // `thirtyTurnOk` / `e2eLoopOk` are the strongest claims: they require the
-  // *real* voice loop to have been exercised. Until W9's path is wired here
-  // they are `null` ("not measured" — recorded, not faked), NOT `false` —
-  // `false` would mean "ran and failed", which is a different and stronger
-  // statement than "didn't run". The host-level leak/RSS facts are still
-  // reported in `assertions`.
-  const thirtyTurnOk = voiceLoopExercised ? !crashed && leakOk && capOk : null;
-  const e2eLoopOk = voiceLoopExercised ? !crashed : null;
+  if (args.tier) {
+    const bundleDir = path.join(root, `eliza-1-${args.tier}.bundle`);
+    if (!fs.existsSync(bundleDir)) {
+      return {
+        ok: false,
+        status: "needs-bundle",
+        reason: `installed bundle for tier ${args.tier} not found at ${bundleDir}; pass --bundle`,
+      };
+    }
+    return { ok: true, bundleDir, tier: args.tier };
+  }
 
-  const report = {
+  const bundles = fs
+    .readdirSync(root)
+    .filter((name) => name.endsWith(".bundle"))
+    .map((name) => path.join(root, name))
+    .filter((full) => fs.statSync(full).isDirectory())
+    .sort();
+
+  if (bundles.length === 0) {
+    return {
+      ok: false,
+      status: "needs-bundle",
+      reason: `no *.bundle directories found under ${root}; pass --bundle`,
+    };
+  }
+  if (bundles.length > 1) {
+    return {
+      ok: false,
+      status: "needs-bundle",
+      reason: `multiple installed bundles found under ${root}; pass --tier or --bundle (${bundles
+        .map((b) => path.basename(b))
+        .join(", ")})`,
+    };
+  }
+
+  return {
+    ok: true,
+    bundleDir: bundles[0],
+    tier: inferTierFromBundle(bundles[0]),
+  };
+}
+
+function latestLocalE2eReportPath(tier) {
+  const safeTier = tier || "unknown";
+  return path.join(
+    REPORTS_ROOT,
+    "local-e2e",
+    safeTier,
+    `e2e-loop-endurance-${safeTier}-${timestamp()}.json`,
+  );
+}
+
+function runE2eBench(args, bundle) {
+  const report = latestLocalE2eReportPath(bundle.tier);
+  const bun = process.env.BUN_BIN || "bun";
+  const childArgs = [
+    E2E_BENCH,
+    "--bundle",
+    bundle.bundleDir,
+    "--tier",
+    bundle.tier,
+    "--backend",
+    args.backend,
+    "--turns",
+    String(args.turns),
+    "--n-predict",
+    String(args.nPredict),
+    "--endurance-n-predict",
+    String(args.enduranceNPredict),
+    "--tts-steps",
+    String(args.ttsSteps),
+    "--ctx",
+    String(args.ctx),
+    "--ngl",
+    String(args.ngl),
+    "--start-timeout",
+    String(args.startTimeoutS),
+    "--turn-timeout",
+    String(args.turnTimeoutS),
+    "--report",
+    report,
+    "--quiet",
+  ];
+  if (args.binDir) childArgs.splice(7, 0, "--bin-dir", args.binDir);
+
+  const res = spawnSync(bun, childArgs, {
+    cwd: path.resolve(__dirname, "..", "..", ".."),
+    encoding: "utf8",
+    stdio: args.json ? "pipe" : "inherit",
+  });
+
+  if (res.error) {
+    return {
+      ok: false,
+      status: "needs-runtime",
+      reason: `${bun} executable could not run e2e_loop_bench.mjs: ${res.error.message}`,
+      e2eReportPath: report,
+    };
+  }
+  if (res.status !== 0) {
+    const stderr = typeof res.stderr === "string" ? res.stderr.trim() : "";
+    return {
+      ok: false,
+      status: "failed",
+      reason: `e2e_loop_bench.mjs exited ${res.status}${stderr ? `: ${stderr}` : ""}`,
+      e2eReportPath: report,
+    };
+  }
+  if (!fs.existsSync(report)) {
+    return {
+      ok: false,
+      status: "failed",
+      reason: `e2e_loop_bench.mjs completed without writing ${report}`,
+      e2eReportPath: report,
+    };
+  }
+  return { ok: true, e2eReportPath: report, e2eReport: readJson(report) };
+}
+
+function finite(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function round2(value) {
+  return value == null ? null : Math.round(value * 100) / 100;
+}
+
+function selectE2eRun(report, tier) {
+  const runs = Array.isArray(report?.runs) ? report.runs : [report];
+  return (
+    runs.find((run) => !tier || run?.request?.tier === tier || run?.bundle?.tier === tier) ??
+    runs[0] ??
+    null
+  );
+}
+
+function buildBlockedReport(args, block, bundle = null) {
+  return {
+    schemaVersion: 1,
     generatedAt: new Date().toISOString(),
     harness: path.relative(process.cwd(), __filename),
-    turns: args.turns,
-    voiceLoopExercised,
-    backendPresent,
-    reason: voiceLoopExercised
-      ? null
-      : "assembled voice path (engine.startVoice + turn controller) not yet wired to this harness — pending W9; host-level leak/RSS check still ran",
+    status: block.status || "failed",
+    voiceLoopExercised: false,
+    backendPresent: false,
+    reason: block.reason,
+    request: {
+      tier: bundle?.tier ?? args.tier ?? null,
+      backend: args.backend,
+      bundle: (bundle?.bundleDir ?? args.bundle) || null,
+      turns: args.turns,
+    },
+    backend: {
+      e2eReport: (block.e2eReportPath ?? args.e2eReport) || null,
+    },
+    evidence: {
+      passRecordable: false,
+      blockers: [{ key: block.status || "failed", reason: block.reason }],
+    },
     assertions: {
-      noCrash: !crashed,
-      crashError,
-      rssLeakWithinCap: leakOk,
-      rssGrowthMb: Number.isFinite(growth) ? Number(growth.toFixed(2)) : null,
+      noCrash: false,
+      crashError: block.reason,
+      rssLeakWithinCap: null,
+      rssGrowthMb: null,
       rssGrowthCapMb: args.rssGrowthMb,
-      peakRssWithinBundleCap: capOk,
-      peakRssMb: Number.isFinite(peak) ? Number(peak.toFixed(2)) : null,
+      peakRssWithinBundleCap: null,
+      peakRssMb: null,
       bundleRssCapMb: args.rssCapMb,
     },
-    // What the gates collector / manifest evals writer reads. Null = not
-    // measured (the voice loop was not driven) — never a fabricated value.
     summary: {
-      thirtyTurnOk,
-      e2eLoopOk,
-      peakRssMb: voiceLoopExercised ? Number(peak.toFixed(2)) : null,
+      thirtyTurnOk: false,
+      e2eLoopOk: false,
+      peakRssMb: null,
     },
   };
+}
 
-  fs.mkdirSync(path.dirname(args.report), { recursive: true });
-  fs.writeFileSync(args.report, `${JSON.stringify(report, null, 2)}\n`);
+function requiredOptimizationsOk(run) {
+  const required =
+    run?.summary?.requiredOptimizations ?? run?.requiredOptimizations ?? {};
+  return (
+    required.dflashDraftingActive === true &&
+    required.streamingTtsActive === true
+  );
+}
+
+function buildThirtyTurnReportFromE2e({
+  args,
+  e2eReport,
+  e2eReportPath = null,
+  bundle = null,
+}) {
+  const run = selectE2eRun(e2eReport, bundle?.tier ?? args.tier);
+  if (!run) {
+    return buildBlockedReport(
+      args,
+      {
+        status: "failed",
+        reason: "e2e report did not contain a run object",
+        e2eReportPath,
+      },
+      bundle,
+    );
+  }
+
+  const turns = finite(run.summary?.turns ?? run.request?.turns);
+  const peakRssMb = finite(run.summary?.serverPeakRssMb);
+  const ramWithinBudget = run.summary?.ramWithinBudget ?? null;
+  const leakSuspected = run.summary?.leakSuspected === true;
+  const optimizationsOk = requiredOptimizationsOk(run);
+  const rawThirtyTurnOk =
+    run.thirtyTurnOk === true || run.summary?.thirtyTurnOk === true;
+  const rawE2eLoopOk = run.e2eLoopOk === true;
+
+  const blockers = [];
+  if (turns === null || turns < 30) {
+    blockers.push({
+      key: "insufficient-turns",
+      reason: `e2e loop reported ${turns ?? "unknown"} turns; expected >= 30`,
+    });
+  }
+  if (!rawE2eLoopOk) {
+    blockers.push({
+      key: "e2e-loop-not-ok",
+      reason: run.reason || `e2e loop status is ${run.status ?? "unknown"}`,
+    });
+  }
+  if (!rawThirtyTurnOk) {
+    blockers.push({
+      key: "thirty-turn-not-ok",
+      reason:
+        run.reason ||
+        "e2e loop did not emit thirtyTurnOk=true for the 30-turn run",
+    });
+  }
+  if (leakSuspected) {
+    blockers.push({
+      key: "rss-leak-suspected",
+      reason: "e2e loop reported leakSuspected=true",
+    });
+  }
+  if (ramWithinBudget === false) {
+    blockers.push({
+      key: "rss-budget-exceeded",
+      reason: `peak RSS ${peakRssMb ?? "unknown"}MB exceeded bundle budget`,
+    });
+  }
+  if (!optimizationsOk) {
+    blockers.push({
+      key: "missing-native-optimization",
+      reason:
+        "required native voice optimizations were not active (DFlash drafting and streaming TTS must both be true)",
+    });
+  }
+
+  const passRecordable = blockers.length === 0;
+  const status = passRecordable ? "ok" : "failed";
+  const reason = passRecordable
+    ? null
+    : blockers.map((b) => `${b.key}: ${b.reason}`).join("; ");
+
+  return {
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    harness: path.relative(process.cwd(), __filename),
+    status,
+    voiceLoopExercised: rawE2eLoopOk,
+    backendPresent: run.status !== "needs-build" && run.status !== "needs-bundle",
+    reason,
+    request: {
+      tier: run.request?.tier ?? bundle?.tier ?? args.tier ?? null,
+      backend: run.request?.backend ?? args.backend,
+      bundle: (run.bundle?.dir ?? bundle?.bundleDir ?? args.bundle) || null,
+      turns: args.turns,
+    },
+    backend: {
+      e2eReport: e2eReportPath,
+      e2eStatus: run.status ?? null,
+      requiredOptimizations:
+        run.summary?.requiredOptimizations ?? run.requiredOptimizations ?? null,
+    },
+    evidence: {
+      passRecordable,
+      blockers,
+      source: "assembled-local-voice-e2e-loop",
+    },
+    assertions: {
+      noCrash: rawE2eLoopOk,
+      crashError: rawE2eLoopOk ? null : run.reason ?? null,
+      rssLeakWithinCap: !leakSuspected,
+      rssGrowthMb: null,
+      rssGrowthCapMb: args.rssGrowthMb,
+      peakRssWithinBundleCap: ramWithinBudget,
+      peakRssMb: round2(peakRssMb),
+      bundleRssCapMb:
+        finite(run.summary?.ramBudgetRecommendedMb) ?? args.rssCapMb ?? null,
+    },
+    summary: {
+      thirtyTurnOk: passRecordable,
+      e2eLoopOk: passRecordable,
+      peakRssMb: passRecordable ? round2(peakRssMb) : null,
+    },
+  };
+}
+
+function writeReport(reportPath, report) {
+  fs.mkdirSync(path.dirname(reportPath), { recursive: true });
+  fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+}
+
+async function runCli(argv = process.argv.slice(2)) {
+  const args = parseArgs(argv);
+  const bundle = args.e2eReport ? null : resolveBundle(args);
+  let report;
+
+  if (bundle && !bundle.ok) {
+    report = buildBlockedReport(args, bundle);
+  } else {
+    const e2e = args.e2eReport
+      ? { ok: true, e2eReportPath: path.resolve(args.e2eReport), e2eReport: readJson(args.e2eReport) }
+      : runE2eBench(args, bundle);
+    report = e2e.ok
+      ? buildThirtyTurnReportFromE2e({
+          args,
+          e2eReport: e2e.e2eReport,
+          e2eReportPath: e2e.e2eReportPath,
+          bundle,
+        })
+      : buildBlockedReport(args, e2e, bundle);
+  }
+
+  writeReport(args.report, report);
   if (args.json) {
     console.log(JSON.stringify(report, null, 2));
   } else {
     console.log(`wrote ${args.report}`);
     console.log(
-      `thirty-turn-endurance: thirtyTurnOk=${thirtyTurnOk} voiceLoopExercised=${voiceLoopExercised} ` +
-        `peakRss=${peak.toFixed(1)}MB growth=${growth.toFixed(1)}MB crashed=${crashed}`,
+      `thirty-turn-endurance: status=${report.status} thirtyTurnOk=${report.summary.thirtyTurnOk} reason=${report.reason ?? "ok"}`,
     );
   }
-  // Exit non-zero only when an assertion *that was actually checked* failed:
-  // a crash or a host-level RSS leak. "voice loop not yet wired" is exit 0.
-  process.exit(crashed || !leakOk || !capOk ? 1 : 0);
+  return report;
 }
 
-main();
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  runCli().then(
+    (report) => process.exit(report.status === "ok" ? 0 : 1),
+    (err) => {
+      console.error(err?.stack || String(err));
+      process.exit(1);
+    },
+  );
+}
+
+export {
+  buildBlockedReport,
+  buildThirtyTurnReportFromE2e,
+  parseArgs,
+  requiredOptimizationsOk,
+  resolveBundle,
+  runCli,
+  selectE2eRun,
+};

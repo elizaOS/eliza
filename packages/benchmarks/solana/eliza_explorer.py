@@ -335,7 +335,10 @@ class ElizaExplorer:
 
     async def run(self) -> Path:
         if self.max_messages <= 0:
-            return self.save_checkpoint()
+            raise ValueError(
+                "max_messages must be positive for a benchmark run; "
+                "zero-message Solana runs produce a vacuous 0.0 score."
+            )
 
         if str(GYM_ENV_DIR) not in sys.path:
             sys.path.insert(0, str(GYM_ENV_DIR))
@@ -414,9 +417,16 @@ async def async_main() -> None:
         help="Agent harness path: eliza, hermes, or openclaw",
     )
     args = parser.parse_args()
+    max_messages = int(os.getenv("MAX_MESSAGES", "50"))
+    if max_messages <= 0:
+        raise ValueError(
+            "MAX_MESSAGES must be positive for a benchmark run; "
+            "zero-message Solana runs produce a vacuous 0.0 score."
+        )
+
     explorer = ElizaExplorer(
         model_name=os.getenv("MODEL_NAME", os.getenv("BENCHMARK_MODEL_NAME", "openai/gpt-oss-120b")),
-        max_messages=int(os.getenv("MAX_MESSAGES", "50")),
+        max_messages=max_messages,
         run_index=int(os.getenv("RUN_INDEX", "0")),
         code_file=os.getenv("CODE_FILE"),
         environment_config=os.getenv("ENVIRONMENT_CONFIG"),

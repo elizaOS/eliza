@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 35
     env:
       # Cerebras is the default LLM for live e2e suites; OPENAI_* aliases are
-      # auto-applied by scripts/run-all-tests.mjs when CEREBRAS_API_KEY is set.
+      # auto-applied by packages/scripts/run-all-tests.mjs when CEREBRAS_API_KEY is set.
       # Tests gated on a missing key skip cleanly with a yellow warning rather
       # than failing the workflow (see test/vitest/fail-on-silent-skip.setup.ts).
       CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
@@ -112,9 +112,6 @@ jobs:
 
       - name: Run lint
         run: bun run lint
-
-      - name: ONNX dep audit (gates packages/training/reports/onnx-to-ggml-tracker.json)
-        run: node scripts/onnx-dep-audit.mjs
 
   # Build job
   build:

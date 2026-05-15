@@ -6,9 +6,9 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger } from "@elizaos/core";
-import { type LoadedRegistry, loadRegistryFromRawEntries } from "./loader";
+import { type LoadedRegistry, loadRegistryFromRawEntries } from "./loader.js";
 
-export * from "./app-registry";
+export * from "./app-registry.js";
 export {
   getApps,
   getConnectors,
@@ -19,8 +19,8 @@ export {
   type LoadedRegistry,
   mergeWithRuntime,
   type RegistryValidationError,
-} from "./loader";
-export * from "./schema";
+} from "./loader.js";
+export * from "./schema.js";
 
 // Bun.build collapses these top-level `const` declarations into `var`s
 // inside an `__esm` wrapper, and `import.meta.url` inside that wrapper

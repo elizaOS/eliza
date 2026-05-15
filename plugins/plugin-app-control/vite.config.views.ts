@@ -8,7 +8,7 @@
  * `ViewManagerView` as its named export (and `default`).
  */
 
-import { createViewBundleConfig } from "../../scripts/view-bundle-vite.config.ts";
+import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default createViewBundleConfig({
 	packageName: "@elizaos/plugin-app-control",

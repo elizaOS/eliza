@@ -41,7 +41,7 @@
 		"lineage": {
 			"type": "object",
 			"additionalProperties": false,
-			"required": ["text", "voice", "drafter"],
+			"required": ["text", "voice"],
 			"properties": {
 				"text": {
 					"$ref": "#/$defs/lineageEntry"
@@ -111,7 +111,6 @@
 				},
 				"dflash": {
 					"type": "array",
-					"minItems": 1,
 					"items": {
 						"$ref": "#/$defs/fileEntry"
 					}
@@ -226,6 +225,35 @@
 								"type": "number",
 								"exclusiveMinimum": 0
 							}
+						}
+					}
+				},
+				"eagle3": {
+					"description": "Optional EAGLE3 speculative-decoding capability metadata. This is independent from required tier kernel names.",
+					"type": "object",
+					"properties": {
+						"enabled": {
+							"type": "boolean"
+						},
+						"capability": {
+							"type": "string",
+							"minLength": 1
+						},
+						"specType": {
+							"type": "string",
+							"minLength": 1
+						},
+						"model": {
+							"type": "string",
+							"minLength": 1
+						},
+						"maxDraftTokens": {
+							"type": "integer",
+							"minimum": 1
+						},
+						"failure": {
+							"type": "string",
+							"minLength": 1
 						}
 					}
 				}
@@ -371,6 +399,32 @@
 						},
 						"passed": {
 							"type": "boolean"
+						}
+					}
+				},
+				"eagle3": {
+					"description": "Optional EAGLE3 speculative-decoding eval metadata. Passing claims require measured acceptanceRate and speedup in runtime validators.",
+					"type": "object",
+					"additionalProperties": false,
+					"properties": {
+						"acceptanceRate": {
+							"type": ["number", "null"],
+							"minimum": 0,
+							"maximum": 1
+						},
+						"speedup": {
+							"type": ["number", "null"],
+							"minimum": 0
+						},
+						"passed": {
+							"type": "boolean"
+						},
+						"pass": {
+							"type": "boolean"
+						},
+						"failure": {
+							"type": "string",
+							"minLength": 1
 						}
 					}
 				},
@@ -609,7 +663,7 @@
 				},
 				"ctx": {
 					"type": "integer",
-					"minimum": 1
+					"minimum": 131072
 				}
 			}
 		},

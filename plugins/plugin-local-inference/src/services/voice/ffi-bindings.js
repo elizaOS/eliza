@@ -39,7 +39,7 @@ import { VoiceLifecycleError } from "./lifecycle";
  *     uses to pre-encode reference WAVs into the preset file. A v3 caller
  *     remains source-compatible: every v3 entry point keeps its v3 shape.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 4;
+export const ELIZA_INFERENCE_ABI_VERSION = 5;
 /** Status codes mirrored from `ffi.h`. Negative = failure. */
 export const ELIZA_OK = 0;
 export const ELIZA_ERR_NOT_IMPLEMENTED = -1;
@@ -608,8 +608,19 @@ function bindWithBunFfi(dylibPath) {
 			try {
 				// Copy out of the library's malloc'ed buffer so we can free it
 				// before returning. Each int32 is 4 bytes.
-				const ab = ffi.toArrayBuffer(tokensRaw, 0, tokenCount * 4);
-				const tokens = new Int32Array(ab.slice(0));
+				const tokenBytes = tokenCount * 4;
+				const tokensPtr =
+					typeof tokensRaw === "bigint" ? Number(tokensRaw) : tokensRaw;
+				const nativeView = ffi.toArrayBuffer(tokensPtr, 0, tokenBytes);
+				const bytes = new Uint8Array(nativeView);
+				if (bytes.byteLength < tokenBytes) {
+					throw new VoiceLifecycleError(
+						"kernel-missing",
+						`[ffi-bindings] encodeReference returned an unreadable token buffer (K=${K}, refT=${refT}, got=${bytes.byteLength}, expected=${tokenBytes}, ctor=${nativeView.constructor.name})`,
+					);
+				}
+				const copied = bytes.slice(0, tokenBytes);
+				const tokens = new Int32Array(copied.buffer);
 				return { K, refT, tokens };
 			} finally {
 				loadedLib.symbols.eliza_inference_free_tokens(tokensRaw);

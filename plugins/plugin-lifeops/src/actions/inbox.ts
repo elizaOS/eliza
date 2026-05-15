@@ -27,8 +27,10 @@ import type {
   HandlerOptions,
   IAgentRuntime,
   Memory,
+  MessageRef,
+  MessageSource,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { getDefaultTriageService, logger } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 
 const ACTION_NAME = "INBOX";
@@ -95,11 +97,8 @@ export interface InboxResult {
 }
 
 /**
- * Per-platform fetcher hook. Default fetchers are empty stubs so unit tests
- * can inject scenario data.
- *
- * TODO: wire to `getDefaultTriageService().adapters` once cross-platform
- * connectors expose a recent-messages read primitive.
+ * Per-platform fetcher hook. Defaults read through the shared MESSAGE triage
+ * service; tests can still inject deterministic scenario data.
  */
 export type InboxFetcher = (args: {
   runtime: IAgentRuntime;
@@ -112,14 +111,80 @@ export type InboxFetchers = Record<InboxPlatform, InboxFetcher>;
 
 const noopFetcher: InboxFetcher = async () => [];
 
+const PLATFORM_TO_MESSAGE_SOURCE: Partial<Record<InboxPlatform, MessageSource>> =
+  {
+    gmail: "gmail",
+    discord: "discord",
+    telegram: "telegram",
+    signal: "signal",
+    imessage: "imessage",
+    whatsapp: "whatsapp",
+  };
+
+function mapMessageRefToInboxItem(ref: MessageRef): InboxItem | null {
+  const platform = normalizePlatform(ref.source);
+  if (!platform) return null;
+  return {
+    id: ref.id,
+    platform,
+    channel: ref.channelId ?? ref.worldId ?? "default",
+    senderName: ref.from.displayName ?? ref.from.identifier,
+    snippet: ref.snippet,
+    receivedAt: new Date(ref.receivedAtMs).toISOString(),
+    ...(ref.subject ? { threadTopic: ref.subject } : {}),
+    ...(typeof ref.metadata?.htmlLink === "string"
+      ? { deepLink: ref.metadata.htmlLink }
+      : {}),
+    unread: !ref.isRead,
+  };
+}
+
+function parseSinceMs(since: string | undefined): number | undefined {
+  if (!since) return undefined;
+  const parsed = Date.parse(since);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function createDefaultPlatformFetcher(platform: InboxPlatform): InboxFetcher {
+  const source = PLATFORM_TO_MESSAGE_SOURCE[platform];
+  if (!source) return noopFetcher;
+  return async ({ runtime, since, limit, query }) => {
+    if (typeof runtime.getService !== "function") return [];
+    try {
+      const service = getDefaultTriageService();
+      const refs = query
+        ? await service.search(runtime, {
+            sources: [source],
+            content: query,
+            sinceMs: parseSinceMs(since),
+            limit,
+          })
+        : await service.triage(runtime, {
+            sources: [source],
+            sinceMs: parseSinceMs(since),
+            limit,
+          });
+      return refs.flatMap((ref) => {
+        const item = mapMessageRefToInboxItem(ref);
+        return item ? [item] : [];
+      });
+    } catch (error) {
+      logger.warn(
+        `[INBOX] ${platform} fetch failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return [];
+    }
+  };
+}
+
 const defaultFetchers: InboxFetchers = {
-  gmail: noopFetcher,
+  gmail: createDefaultPlatformFetcher("gmail"),
   slack: noopFetcher,
-  discord: noopFetcher,
-  telegram: noopFetcher,
-  signal: noopFetcher,
-  imessage: noopFetcher,
-  whatsapp: noopFetcher,
+  discord: createDefaultPlatformFetcher("discord"),
+  telegram: createDefaultPlatformFetcher("telegram"),
+  signal: createDefaultPlatformFetcher("signal"),
+  imessage: createDefaultPlatformFetcher("imessage"),
+  whatsapp: createDefaultPlatformFetcher("whatsapp"),
 };
 
 let activeFetchers: InboxFetchers = { ...defaultFetchers };

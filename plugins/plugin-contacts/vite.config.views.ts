@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { createViewBundleConfig } from "../../scripts/view-bundle-vite.config.ts";
+import { createViewBundleConfig } from "../../packages/scripts/view-bundle-vite.config.ts";
 
 export default {
   ...createViewBundleConfig({

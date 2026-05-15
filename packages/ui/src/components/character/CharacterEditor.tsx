@@ -1133,10 +1133,8 @@ export function CharacterEditor({
 
         {/* ── Companion overlay: tabbed editor (identity | style | examples) */}
         {sceneOverlay && customizing && (
-          // biome-ignore lint/a11y/useSemanticElements: existing pattern
-          <div
+          <section
             className="flex flex-col flex-1 min-h-0 gap-2 overflow-hidden"
-            role="region"
             aria-label={t("charactereditor.TabbedEditorGroupLabel", {
               defaultValue: "Character editor — tabbed sections",
             })}
@@ -1277,7 +1275,7 @@ export function CharacterEditor({
                 <DocumentsView inModal />
               </div>
             </div>
-          </div>
+          </section>
         )}
 
         {/* ── Standalone page: character hub */}

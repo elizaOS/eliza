@@ -137,6 +137,9 @@ export function isStrictReleaseManifest(manifest) {
 // honours the release-state vocabulary instead of applying the auto-default
 // bar to every manifest).
 const STRICT_RELEASE_STATES = new Set(["base-v1", "finetuned-v2", "final"]);
+const DFLASH_TIERS = new Set(["2b", "4b", "9b", "27b", "27b-256k"]);
+const VISION_TIERS = new Set(["4b", "9b", "27b", "27b-256k"]);
+const MIN_TEXT_CONTEXT = 131072;
 function collectContractErrors(m) {
 	const errors = [];
 	const releaseState = m.provenance?.releaseState;
@@ -144,6 +147,7 @@ function collectContractErrors(m) {
 		m.defaultEligible === true ||
 		releaseState === undefined ||
 		STRICT_RELEASE_STATES.has(releaseState);
+	const dflashEnabled = DFLASH_TIERS.has(m.tier);
 	// Required-kernel coverage.
 	const declaredRequired = new Set(m.kernels.required);
 	const tierRequired = REQUIRED_KERNELS_BY_TIER[m.tier];
@@ -151,6 +155,20 @@ function collectContractErrors(m) {
 		if (!declaredRequired.has(k)) {
 			errors.push(
 				`kernels.required: missing required kernel for tier ${m.tier}: ${k}`,
+			);
+		}
+	}
+	for (const [i, entry] of m.files.text.entries()) {
+		if (typeof entry.ctx !== "number") {
+			errors.push(`files.text[${i}].ctx: required for text GGUFs`);
+		} else if (entry.ctx < MIN_TEXT_CONTEXT) {
+			errors.push(
+				`files.text[${i}].ctx: ${entry.ctx} is below the 128k text GGUF floor`,
+			);
+		}
+		if (/-(32k|64k)\.gguf$/i.test(entry.path)) {
+			errors.push(
+				`files.text[${i}].path: 32k/64k text GGUFs are below the Eliza-1 release floor`,
 			);
 		}
 	}
@@ -165,6 +183,41 @@ function collectContractErrors(m) {
 				"kernels.required: text variant with ctx > 64k requires turbo3_tcq",
 			);
 		}
+	}
+	const visionEnabled = VISION_TIERS.has(m.tier);
+	if (dflashEnabled) {
+		if (m.files.dflash.length === 0) {
+			errors.push(`files.dflash: required for DFlash-enabled tier ${m.tier}`);
+		}
+		if (m.files.dflash.length > 0 && !m.lineage.drafter) {
+			errors.push("lineage.drafter: required when files.dflash is non-empty");
+		}
+		if (m.lineage.drafter && m.files.dflash.length === 0) {
+			errors.push("files.dflash: required when lineage.drafter is present");
+		}
+	} else {
+		if (m.files.dflash.length > 0) {
+			errors.push(
+				`files.dflash: unsupported for DFlash-disabled tier ${m.tier}`,
+			);
+		}
+		if (declaredRequired.has("dflash")) {
+			errors.push(
+				`kernels.required: dflash is unsupported for DFlash-disabled tier ${m.tier}`,
+			);
+		}
+		if (m.lineage.drafter) {
+			errors.push(
+				`lineage.drafter: unsupported for DFlash-disabled tier ${m.tier}`,
+			);
+		}
+	}
+	if (visionEnabled) {
+		if (m.files.vision.length === 0) {
+			errors.push(`files.vision: required for vision-enabled tier ${m.tier}`);
+		}
+	} else if (m.files.vision.length > 0) {
+		errors.push(`files.vision: unsupported for text/voice-only tier ${m.tier}`);
 	}
 	// Backend kernel-verify coverage. A production release must verify every
 	// backend the tier supports; a candidate/staging bundle need only verify at
@@ -353,7 +406,8 @@ function collectContractErrors(m) {
 			);
 		}
 		if (m.provenance.releaseState === "base-v1") {
-			const requiredSlots = ["text", "voice", "drafter"];
+			const requiredSlots = ["text", "voice"];
+			if (dflashEnabled) requiredSlots.push("drafter");
 			for (const slot of ["asr", "vad", "embedding", "vision"]) {
 				if ((m.files[slot] ?? []).length > 0) requiredSlots.push(slot);
 			}
@@ -370,10 +424,15 @@ function collectContractErrors(m) {
 	// measurements, but a default bundle is not eligible unless speculative
 	// decoding was actually measured and passed.
 	if (!m.evals.dflash) {
-		if (m.defaultEligible) {
+		if (m.defaultEligible && dflashEnabled) {
 			errors.push("evals.dflash: required when defaultEligible=true");
 		}
 	} else {
+		if (!dflashEnabled) {
+			errors.push(
+				`evals.dflash: unsupported for DFlash-disabled tier ${m.tier}`,
+			);
+		}
 		if (
 			m.evals.dflash.passed &&
 			(m.evals.dflash.acceptanceRate === null ||
@@ -383,7 +442,7 @@ function collectContractErrors(m) {
 				"evals.dflash: passed=true but acceptanceRate/speedup is null — a needs-hardware bench cannot pass",
 			);
 		}
-		if (m.defaultEligible) {
+		if (m.defaultEligible && dflashEnabled) {
 			if (!m.evals.dflash.passed) {
 				errors.push("evals.dflash.passed: false for defaultEligible manifest");
 			}
@@ -395,6 +454,20 @@ function collectContractErrors(m) {
 					"evals.dflash: defaultEligible requires measured acceptanceRate and speedup",
 				);
 			}
+		}
+	}
+	// EAGLE3 bench metadata is always optional and independent from DFlash. When
+	// present, it may record a not-run/failure state; only a passing claim must
+	// include measured acceptance/speedup values.
+	if (m.evals.eagle3) {
+		const eagle3Passed = m.evals.eagle3.passed ?? m.evals.eagle3.pass;
+		if (
+			eagle3Passed === true &&
+			(m.evals.eagle3.acceptanceRate == null || m.evals.eagle3.speedup == null)
+		) {
+			errors.push(
+				"evals.eagle3: passed=true requires measured acceptanceRate and speedup",
+			);
 		}
 	}
 	// The strongest claim: defaultEligible. If anything above failed, this

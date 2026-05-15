@@ -58,7 +58,6 @@ const result = await Bun.build({
     "@node-llama-cpp/win-x64-cuda",
     "@node-llama-cpp/win-x64-cuda-ext",
     "@node-llama-cpp/win-x64-vulkan",
-    "@huggingface/transformers",
     "onnxruntime-node",
     "@napi-rs/keyring",
     "@reflink/reflink",

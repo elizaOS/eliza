@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
-import { createRequire } from "node:module";
 import path from "node:path";
 import type { PostWorkbenchVfsGitRequest } from "@elizaos/shared";
 import git, {
@@ -8,11 +7,8 @@ import git, {
   type ReadCommitResult,
   type StatusRow,
 } from "isomorphic-git";
+import http from "isomorphic-git/http/node";
 import type { VirtualFilesystemService } from "./virtual-filesystem.ts";
-
-const require = createRequire(import.meta.url);
-const http =
-  require("isomorphic-git/http/node") as typeof import("isomorphic-git/http/node");
 
 export interface VfsGitStatusEntry {
   filepath: string;

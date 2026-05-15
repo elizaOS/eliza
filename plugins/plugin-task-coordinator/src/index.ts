@@ -7,6 +7,7 @@ export * from "./GlobalPrefsSection";
 export * from "./LlmProviderSection";
 export * from "./ModelConfigSection";
 export * from "./PtyConsoleBase";
+export * from "./PtyConsoleDrawer";
 export * from "./PtyConsoleSidePanel";
 export * from "./PtyTerminalPane";
 export * from "./pty-status-dots";

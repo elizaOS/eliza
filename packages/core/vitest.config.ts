@@ -1,7 +1,7 @@
 import path from "node:path";
 import { defineConfig } from "vitest/config";
-import { repoRoot } from "../../test/vitest/repo-root";
-import { getElizaWorkspaceRoot } from "../../test/vitest/workspace-aliases";
+import { repoRoot } from "../../packages/test/vitest/repo-root";
+import { getElizaWorkspaceRoot } from "../../packages/test/vitest/workspace-aliases";
 
 const pluginSqlRoot = path.join(
 	getElizaWorkspaceRoot(repoRoot),

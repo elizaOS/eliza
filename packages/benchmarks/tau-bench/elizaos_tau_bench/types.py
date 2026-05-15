@@ -138,7 +138,7 @@ class TauBenchConfig:
     agent_max_turns: int = 30
 
     # User simulator (LLM-driven by default, matches upstream)
-    user_strategy: str = "llm"  # "human", "llm", "react", "verify", "reflection"
+    user_strategy: str = "llm"  # "grounded", "human", "llm", "react", "verify", "reflection"
     user_model: str = "gpt-4o"
     user_provider: str = "openai"
 

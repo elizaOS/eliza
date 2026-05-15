@@ -304,7 +304,7 @@ export function resolveRunnableTestFiles(testFiles, cwd = process.cwd()) {
 }
 
 export function buildRepoTestCommand(repoTests) {
-  return `bunx vitest run --config eliza/test/vitest/unit.config.ts ${repoTests.join(" ")}`;
+  return `bunx vitest run --config eliza/packages/test/vitest/unit.config.ts ${repoTests.join(" ")}`;
 }
 
 export function shouldRunTargetedRegressionTests({
@@ -506,7 +506,7 @@ export function runChecks() {
 
         if (repoE2eTests.length > 0) {
           testCommands.push(
-            `bunx vitest run --config eliza/test/vitest/e2e.config.ts ${repoE2eTests.join(" ")}`,
+            `bunx vitest run --config eliza/packages/test/vitest/e2e.config.ts ${repoE2eTests.join(" ")}`,
           );
         }
 

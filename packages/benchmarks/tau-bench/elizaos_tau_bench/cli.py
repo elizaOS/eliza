@@ -101,7 +101,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # User simulator
     p.add_argument(
         "--user-strategy",
-        choices=["llm", "react", "verify", "reflection", "human"],
+        choices=["grounded", "llm", "react", "verify", "reflection", "human"],
         default="llm",
     )
     p.add_argument("--user-model", default="gpt-4o")
@@ -131,6 +131,10 @@ def build_config(args: argparse.Namespace) -> TauBenchConfig:
         ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         output_dir = f"./benchmark_results/tau-bench/{ts}"
 
+    user_strategy = args.user_strategy
+    if args.use_sample_tasks and user_strategy == "llm":
+        user_strategy = "grounded"
+
     return TauBenchConfig(
         domains=domains,  # type: ignore[arg-type]
         task_split=args.task_split,
@@ -147,7 +151,7 @@ def build_config(args: argparse.Namespace) -> TauBenchConfig:
         agent_provider=args.agent_provider,
         agent_temperature=args.agent_temperature,
         agent_max_turns=args.agent_max_turns,
-        user_strategy=args.user_strategy,
+        user_strategy=user_strategy,
         user_model=args.user_model,
         user_provider=args.user_provider,
         use_llm_judge=not args.no_llm_judge,
@@ -164,16 +168,20 @@ def _check_keys(cfg: TauBenchConfig) -> int:
     if cfg.use_mock:
         return 0
     missing: list[str] = []
-    needed_providers = {cfg.agent_provider, cfg.user_provider}
+    needed_providers = {cfg.agent_provider}
+    if cfg.user_strategy != "grounded":
+        needed_providers.add(cfg.user_provider)
     if cfg.use_llm_judge:
         needed_providers.add(cfg.judge_provider)
     for prov in needed_providers:
         key_var = {
             "openai": "OPENAI_API_KEY",
+            "cerebras": "CEREBRAS_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
             "google": "GOOGLE_API_KEY",
             "groq": "GROQ_API_KEY",
             "openrouter": "OPENROUTER_API_KEY",
+            "vllm": None,
         }.get(prov)
         if key_var and not os.environ.get(key_var):
             missing.append(f"{prov}->{key_var}")

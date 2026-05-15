@@ -38,7 +38,7 @@
     "test": "vitest run --config vitest.config.ts",
     "test:app-state": "vitest run --config vitest.config.ts eliza/plugins/plugin-lifeops/test/lifeops-app-state.test.ts",
     "test:background-real": "vitest run --config vitest.background-real.config.ts test/scheduled-task-end-to-end.e2e.test.ts test/reminder-review-job.real.e2e.test.ts test/lifeops-scheduling.real.test.ts test/schedule-merged-state.real.test.ts",
-    "test:integration": "cd ../../.. && vitest run --config eliza/test/vitest/integration.config.ts eliza/plugins/plugin-lifeops/test/life-smoke.integration.test.ts",
+    "test:integration": "cd ../../.. && vitest run --config eliza/packages/test/vitest/integration.config.ts eliza/plugins/plugin-lifeops/test/life-smoke.integration.test.ts",
     "test:scenarios": "cd ../../.. && bun run scenarios:lifeops",
     "bench:work-threads": "cd ../.. && bun plugins/plugin-lifeops/scripts/work-thread-benchmark.ts",
     "verify:live-schedule": "bun run ./scripts/verify-live-schedule-data.ts",

@@ -11,6 +11,26 @@
 			"import": "./dist/index.js",
 			"default": "./dist/index.js"
 		},
+		"./android/bridge": {
+			"types": "./dist/android/bridge.d.ts",
+			"import": "./dist/android/bridge.js",
+			"default": "./dist/android/bridge.js"
+		},
+		"./ios/bridge": {
+			"types": "./dist/ios/bridge.d.ts",
+			"import": "./dist/ios/bridge.js",
+			"default": "./dist/ios/bridge.js"
+		},
+		"./mobile-device-bridge-bootstrap": {
+			"types": "./dist/mobile-device-bridge-bootstrap.d.ts",
+			"import": "./dist/mobile-device-bridge-bootstrap.js",
+			"default": "./dist/mobile-device-bridge-bootstrap.js"
+		},
+		"./shared/fs-shim": {
+			"types": "./dist/shared/fs-shim.d.ts",
+			"import": "./dist/shared/fs-shim.js",
+			"default": "./dist/shared/fs-shim.js"
+		},
 		"./*.css": "./dist/*.css",
 		"./*": {
 			"import": "./dist/*.js",
@@ -33,7 +53,6 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@elizaos/agent": "workspace:*",
 		"@elizaos/core": "workspace:*",
 		"ws": "^8.18.0"
 	},
@@ -43,6 +62,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",
+		"@elizaos/agent": "workspace:*",
 		"@types/bun": "^1.3.12",
 		"@types/node": "24.12.2",
 		"@types/ws": "^8.5.13",

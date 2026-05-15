@@ -38,7 +38,7 @@ function baseManifest(tier: Eliza1Tier = "9b"): Eliza1Manifest {
 		},
 		files: {
 			text: [
-				{ path: `text/eliza-1-${tier}-64k.gguf`, ctx: 65536, sha256: SHA },
+				{ path: `text/eliza-1-${tier}-128k.gguf`, ctx: 131072, sha256: SHA },
 			],
 			voice: [{ path: "tts/omnivoice-base-Q4_K_M.gguf", sha256: SHA }],
 			asr: [{ path: "asr/asr.gguf", sha256: SHA }],

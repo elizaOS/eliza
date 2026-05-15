@@ -1,0 +1,9 @@
+{
+  "extends": "../tsconfig.build.shared.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "./src"
+  },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx", "src/**/__tests__/**"]
+}

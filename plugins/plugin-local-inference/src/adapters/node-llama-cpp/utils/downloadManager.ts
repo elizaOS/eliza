@@ -351,7 +351,7 @@ export class DownloadManager {
 					},
 				];
 
-				let lastError = null;
+				let lastError: unknown = null;
 				let downloadSuccess = false;
 
 				for (const attempt of attempts) {

@@ -702,18 +702,52 @@ export class MessageManager {
     if (!text) {
       return chunks;
     }
+
     let currentChunk = "";
+
+    const appendSegment = (segment: string) => {
+      let remaining = segment;
+
+      while (remaining.length > 0) {
+        const availableLength = MAX_MESSAGE_LENGTH - currentChunk.length;
+
+        if (remaining.length <= availableLength) {
+          currentChunk += remaining;
+          return;
+        }
+
+        if (availableLength > 0) {
+          currentChunk += remaining.slice(0, availableLength);
+          remaining = remaining.slice(availableLength);
+        }
+
+        if (currentChunk) {
+          chunks.push(currentChunk);
+          currentChunk = "";
+        }
+      }
+    };
 
     const lines = text.split("\n");
     for (const line of lines) {
-      if (currentChunk.length + line.length + 1 <= MAX_MESSAGE_LENGTH) {
-        currentChunk += (currentChunk ? "\n" : "") + line;
-      } else {
-        if (currentChunk) {
-          chunks.push(currentChunk);
-        }
-        currentChunk = line;
+      let segment = currentChunk ? `\n${line}` : line;
+      if (!segment) {
+        continue;
       }
+
+      if (
+        currentChunk &&
+        currentChunk.length + segment.length > MAX_MESSAGE_LENGTH
+      ) {
+        chunks.push(currentChunk);
+        currentChunk = "";
+        segment = line;
+        if (!segment) {
+          continue;
+        }
+      }
+
+      appendSegment(segment);
     }
 
     if (currentChunk) {
@@ -877,12 +911,13 @@ export class MessageManager {
           if (content.channelType === "DM") {
             sentMessages = [];
             if (ctx.from) {
-              // FIXME split on 4096 chars
-              const res = await this.bot.telegram.sendMessage(
-                ctx.from.id,
-                content.text,
-              );
-              sentMessages.push(res);
+              for (const chunk of this.splitMessage(content.text)) {
+                const res = await this.bot.telegram.sendMessage(
+                  ctx.from.id,
+                  chunk,
+                );
+                sentMessages.push(res);
+              }
             }
           } else {
             sentMessages = await this.sendMessageInChunks(

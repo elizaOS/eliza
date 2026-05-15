@@ -54,6 +54,7 @@ import { handlerRegistry } from "../services/handler-registry";
 import { tryGetMemoryArbiter } from "../services/memory-arbiter";
 import { listInstalledModels } from "../services/registry";
 import { installRouterHandler } from "../services/router-handler";
+import { isLocalEmbeddingDisabledByEnv } from "./embedding-warmup-policy";
 import {
 	type ElizaHarnessSchema,
 	elizaHarnessSchemaFromSkeleton,

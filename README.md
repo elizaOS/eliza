@@ -191,7 +191,7 @@ bun install            # workspace install
 bun run dev            # API + Vite UI for apps/app
 bun run build          # turbo build across the workspace
 bun run lint           # turbo lint across the workspace
-bun run test           # full test suite (scripts/run-all-tests.mjs)
+bun run test           # full test suite (packages/scripts/run-all-tests.mjs)
 ```
 
 Key framework packages:

@@ -8,8 +8,9 @@
  * minimum bundle version each voice version is compatible with.
  *
  * The publish pipeline writes both this file AND the matching H3 in
- * `models/voice/CHANGELOG.md`. The publish gate refuses to land one
- * without the other. The runtime auto-update checker reads only this file.
+ * the sibling `voice-models/CHANGELOG.md`. The publish gate refuses to
+ * land one without the other. The runtime auto-update checker reads
+ * only this file.
  *
  * Spec: `.swarm/research/R5-versioning.md` §2.
  */
@@ -155,7 +156,7 @@ export interface VoiceModelVersion {
   readonly missingAssets?: ReadonlyArray<VoiceModelMissingAsset>;
   /** Eval gates vs parentVersion (or baseline for initial releases). */
   readonly evalDeltas: VoiceModelEvalDeltas;
-  /** First line of the matching H3 in `models/voice/CHANGELOG.md`. */
+  /** First line of the matching H3 in the sibling `voice-models/CHANGELOG.md`. */
   readonly changelogEntry: string;
   /** Minimum `eliza1Manifest.version` this voice version is compatible with. */
   readonly minBundleVersion: string;

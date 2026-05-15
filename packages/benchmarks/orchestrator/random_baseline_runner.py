@@ -222,6 +222,17 @@ def _evm_payload(score: float) -> dict[str, Any]:
     }
 
 
+def _solana_payload(score: float) -> dict[str, Any]:
+    return {
+        "final_reward": score,
+        "final_programs": _passed_count(score),
+        "messages": ["synthetic calibration rollout"],
+        "cumulative_rewards": [score],
+        "model": "synthetic-calibration",
+        "run_id": "synthetic-calibration",
+    }
+
+
 def _experience_payload(score: float) -> dict[str, Any]:
     return {
         "eliza_agent": {
@@ -666,7 +677,7 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "personality_bench": ("report.json", _personality_payload),
     "rlm_bench": ("rlm-results.json", _rlm_payload),
     "social_alpha": ("benchmark_results_random_v1.json", _social_alpha_payload),
-    "solana": ("eliza_random_v1_metrics.json", _evm_payload),
+    "solana": ("eliza_random_v1_metrics.json", _solana_payload),
     "swe_bench": ("swe-bench-results.json", _swe_bench_payload),
     "swe_bench_orchestrated": ("swe-bench-orchestrated-results.json", _swe_bench_orchestrated_payload),
     "tau_bench": ("tau-bench-results.json", _tau_bench_payload),

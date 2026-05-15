@@ -10,7 +10,11 @@ export type VisionContextBBox = [number, number, number, number];
 export interface VisionContextFocusedWindow {
   app: string;
   title: string;
+<<<<<<< HEAD
   bbox: VisionContextBBox;
+=======
+  bbox: VisionContextBBox | null;
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 }
 
 export interface VisionContextRecentAction {
@@ -71,10 +75,13 @@ function focusedWindowFromScene(
   };
 }
 
+<<<<<<< HEAD
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+=======
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
 export class VisionContextProvider extends Service {
   static override serviceType = VISION_CONTEXT_SERVICE_TYPE;
 
@@ -112,7 +119,11 @@ export class VisionContextProvider extends Service {
     try {
       return await source.refreshScene("agent-turn");
     } catch (error) {
+<<<<<<< HEAD
       logger.warn("[vision-context] refreshScene failed:", errorMessage(error));
+=======
+      logger.warn("[vision-context] refreshScene failed:", error);
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
       return null;
     }
   }
@@ -135,10 +146,14 @@ export class VisionContextProvider extends Service {
       );
       if (typeof cached === "string" && cached.trim()) return cached.trim();
     } catch (error) {
+<<<<<<< HEAD
       logger.debug(
         "[vision-context] task goal cache read failed:",
         errorMessage(error),
       );
+=======
+      logger.debug("[vision-context] task goal cache read failed:", error);
+>>>>>>> origin/codex/fused-local-inference-latest-20260515
     }
     try {
       const setting = this.runtime.getSetting("VISION_CONTEXT_TASK_GOAL");
