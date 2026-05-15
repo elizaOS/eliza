@@ -123,9 +123,9 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  * backend have a single-element array.
  *
  * Policy:
- *   - Small tiers (0_8b / 2b / 4b / 9b) → OmniVoice first with Kokoro
- *     fallback. The fused expressive TTS path stays default, while Kokoro
- *     remains available for low-latency/thermal fallback on constrained hosts.
+ *   - Small tiers (0_8b / 2b / 4b) → Kokoro only. Those bundles optimize
+ *     for install size, TTFA, and phone thermals.
+ *   - 9B → OmniVoice first with Kokoro bundled for hosts with enough memory.
  *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
@@ -134,9 +134,9 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   Eliza1TierId,
   ReadonlyArray<VoiceBackendId>
 > = {
-  "eliza-1-0_8b": ["omnivoice", "kokoro"],
-  "eliza-1-2b": ["omnivoice", "kokoro"],
-  "eliza-1-4b": ["omnivoice", "kokoro"],
+  "eliza-1-0_8b": ["kokoro"],
+  "eliza-1-2b": ["kokoro"],
+  "eliza-1-4b": ["kokoro"],
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
