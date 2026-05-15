@@ -178,7 +178,7 @@ function filterMemoriesByQuery(memories: Memory[], query: string, limit: number)
   }
   return memories
     .filter((memory) => {
-      const text = typeof memory.content?.text === "string" ? memory.content.text : "";
+      const text = typeof memory.content.text === "string" ? memory.content.text : "";
       return text.toLowerCase().includes(normalized);
     })
     .slice(0, limit);
@@ -333,7 +333,7 @@ export class LineService extends Service implements ILineService {
         leaveHandler: async (handlerRuntime, params) => {
           const target = params.target ?? ({ source: LINE_SERVICE_NAME } as TargetInfo);
           const room = target.roomId ? await handlerRuntime.getRoom(target.roomId) : null;
-          const channelId = String(params?.channelId ?? target.channelId ?? room?.channelId ?? "");
+          const channelId = String(params.channelId ?? target.channelId ?? room?.channelId ?? "");
           const chatType = getChatTypeFromId(channelId);
           if (chatType !== "group" && chatType !== "room") {
             throw new Error("LINE leaveHandler requires a group or room target");
@@ -415,7 +415,7 @@ export class LineService extends Service implements ILineService {
           }
           return {
             entityId,
-            label: entity.names?.[0],
+            label: entity.names[0],
             aliases: entity.names,
             handles: {},
             metadata: entity.metadata,
@@ -801,7 +801,7 @@ export class LineService extends Service implements ILineService {
     }
 
     const getStringSetting = (key: string): string => {
-      const value = this.runtime?.getSetting(key);
+      const value = this.runtime.getSetting(key);
       return typeof value === "string" ? value : "";
     };
 

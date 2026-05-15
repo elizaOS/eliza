@@ -60,7 +60,8 @@
     "lint:check": "bunx @biomejs/biome lint --config-path ./biome.json . --no-errors-on-unmatched",
     "format": "bunx @biomejs/biome format --write . --no-errors-on-unmatched",
     "format:check": "bunx @biomejs/biome format . --no-errors-on-unmatched",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config ./vitest.config.ts"
   },
   "publishConfig": {
     "access": "public"

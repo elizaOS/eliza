@@ -22,7 +22,7 @@ export async function handleTextEmbedding(
     const baseURL = getBaseURL(runtime);
     const customFetch = runtime.fetch ?? undefined;
     const ollama = createOllama({
-      fetch: customFetch,
+      ...(customFetch ? { fetch: customFetch } : {}),
       baseURL,
     });
 

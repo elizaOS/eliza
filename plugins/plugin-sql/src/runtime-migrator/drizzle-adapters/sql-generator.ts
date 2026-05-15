@@ -749,7 +749,7 @@ function formatDefaultValue(value: DefaultValue, type: string): string {
   }
 
   // Handle numeric types
-  if (type?.match(/^(integer|bigint|smallint|numeric|decimal|real|double)/i)) {
+  if (type.match(/^(integer|bigint|smallint|numeric|decimal|real|double)/i)) {
     return String(value);
   }
 

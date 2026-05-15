@@ -406,7 +406,7 @@ export async function getBrowserClickables(): Promise<ClickableElement[]> {
     for (const el of elements) {
       if (result.length >= 50) break;
       const tag = el.tagName.toLowerCase();
-      const text = (el.textContent ?? "").trim().slice(0, 100);
+      const text = el.textContent.trim().slice(0, 100);
       const id = el.id ? `#${el.id}` : "";
       const cls =
         el.className && typeof el.className === "string"
@@ -492,7 +492,7 @@ export async function waitBrowser(
     await page.waitForSelector(selector, { timeout });
   } else if (text) {
     await page.waitForFunction(
-      (t) => document.body.textContent?.includes(t),
+      (t) => document.body.textContent.includes(t),
       { timeout },
       text,
     );
@@ -531,8 +531,7 @@ export async function listBrowserTabs(): Promise<BrowserTab[]> {
   if (!browser) throw new Error("Browser not open.");
   const pages = await browser.pages();
   const tabs: BrowserTab[] = [];
-  for (let i = 0; i < pages.length; i++) {
-    const page = pages[i]!;
+  for (const [i, page] of pages.entries()) {
     tabs.push({
       id: String(i),
       url: page.url(),

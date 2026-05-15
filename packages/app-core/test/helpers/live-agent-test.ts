@@ -36,7 +36,6 @@ export type LiveProviderId =
   | "openrouter"
   | "ollama"
   | "xai"
-  | "nvidiacloud"
   | "elizacloud"
   | "cerebras";
 
@@ -113,12 +112,6 @@ const PROVIDER_CONFIG: Record<LiveProviderId, ProviderConfig> = {
     bareSpecifier: "@elizaos/plugin-xai",
     pluginExportNames: ["XAIPlugin", "default"],
     defaultRequiredEnv: ["XAI_API_KEY"],
-  },
-  nvidiacloud: {
-    pluginPath: "../../../../plugins/plugin-nvidiacloud/dist/index.js",
-    bareSpecifier: "@elizaos/plugin-nvidiacloud",
-    pluginExportNames: ["nvidiaCloudPlugin", "default"],
-    defaultRequiredEnv: ["NVIDIA_API_KEY"],
   },
   elizacloud: {
     pluginPath: "../../../../plugins/plugin-elizacloud/src/index.ts",
@@ -298,28 +291,6 @@ function applyProviderSettings(
       }
       if (process.env.XAI_SMALL_MODEL) {
         runtime.setSetting("XAI_SMALL_MODEL", process.env.XAI_SMALL_MODEL);
-      }
-      break;
-    case "nvidiacloud":
-      runtime.setSetting(
-        "NVIDIA_API_KEY",
-        process.env.NVIDIA_API_KEY ?? process.env.NVIDIA_CLOUD_API_KEY ?? "",
-        true,
-      );
-      if (process.env.NVIDIA_BASE_URL) {
-        runtime.setSetting("NVIDIA_BASE_URL", process.env.NVIDIA_BASE_URL);
-      }
-      if (process.env.NVIDIA_LARGE_MODEL) {
-        runtime.setSetting(
-          "NVIDIA_LARGE_MODEL",
-          process.env.NVIDIA_LARGE_MODEL,
-        );
-      }
-      if (process.env.NVIDIA_SMALL_MODEL) {
-        runtime.setSetting(
-          "NVIDIA_SMALL_MODEL",
-          process.env.NVIDIA_SMALL_MODEL,
-        );
       }
       break;
     case "elizacloud":

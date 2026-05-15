@@ -120,18 +120,18 @@ export function tierActionResults(
 			if (narrowSet.has(catalogParent.normalizedName)) {
 				return true;
 			}
-			for (const child of catalogParent.childNormalizedNames ?? []) {
+			for (const child of catalogParent.childNormalizedNames) {
 				if (narrowSet.has(child)) {
 					return true;
 				}
 			}
-			for (const simile of catalogParent.similes ?? []) {
+			for (const simile of catalogParent.similes) {
 				if (narrowSet.has(normalizeActionName(simile))) {
 					return true;
 				}
 			}
-			for (const child of catalogParent.children ?? []) {
-				for (const simile of child.similes ?? []) {
+			for (const child of catalogParent.children) {
+				for (const simile of child.similes) {
 					if (narrowSet.has(normalizeActionName(simile))) {
 						return true;
 					}
@@ -150,13 +150,13 @@ export function tierActionResults(
 		// (tier-B / tier-C entries are stored parent-only).
 		for (const lowerTier of [tierBParents, tierCParents]) {
 			for (let index = lowerTier.length - 1; index >= 0; index -= 1) {
-					const parent = lowerTier[index];
-					if (parent && matchesCandidate(parent)) {
-						lowerTier.splice(index, 1);
-						tierAParents.push(tieredParent(parent.result.parent, parent.result));
-					}
+				const parent = lowerTier[index];
+				if (parent && matchesCandidate(parent)) {
+					lowerTier.splice(index, 1);
+					tierAParents.push(tieredParent(parent.result.parent, parent.result));
 				}
 			}
+		}
 		tierAParents.sort(compareTieredParents);
 
 		const kept: TieredParentAction[] = [];

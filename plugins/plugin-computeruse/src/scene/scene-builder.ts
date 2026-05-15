@@ -444,7 +444,7 @@ function inferFocusedWindow(
   }
   if (!bestAx) return null;
   // Resolve display.
-  const display = displays.find((d) => d.id === bestAx?.displayId) ?? displays[0];
+  const display = displays.find((d) => d.id === bestAx.displayId) ?? displays[0];
   if (!display) return null;
   // Try to find a matching app via title contains.
   const lcLabel = (bestAx.label ?? "").toLowerCase();

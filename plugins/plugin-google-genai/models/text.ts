@@ -3,10 +3,10 @@ import type {
   IAgentRuntime,
   RecordLlmCallDetails,
 } from "@elizaos/core";
-import * as ElizaCore from "@elizaos/core";
 import {
   buildCanonicalSystemPrompt,
   logger,
+  ModelType,
   recordLlmCall,
   renderChatMessagesForPrompt,
   resolveEffectiveSystemPrompt,
@@ -25,22 +25,13 @@ import {
 import { emitModelUsageEvent } from "../utils/events";
 import { countTokens } from "../utils/tokenization";
 
-const CORE_MODEL_TYPES =
-  (ElizaCore as { ModelType?: Record<string, string> }).ModelType ?? {};
-const TEXT_NANO_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_NANO ??
-  "TEXT_NANO") as string;
-const TEXT_MEDIUM_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEDIUM ??
-  "TEXT_MEDIUM") as string;
-const TEXT_SMALL_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_SMALL ??
-  "TEXT_SMALL") as string;
-const TEXT_LARGE_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_LARGE ??
-  "TEXT_LARGE") as string;
-const TEXT_MEGA_MODEL_TYPE = (CORE_MODEL_TYPES.TEXT_MEGA ??
-  "TEXT_MEGA") as string;
-const RESPONSE_HANDLER_MODEL_TYPE = (CORE_MODEL_TYPES.RESPONSE_HANDLER ??
-  "RESPONSE_HANDLER") as string;
-const ACTION_PLANNER_MODEL_TYPE = (CORE_MODEL_TYPES.ACTION_PLANNER ??
-  "ACTION_PLANNER") as string;
+const TEXT_NANO_MODEL_TYPE = ModelType.TEXT_NANO as string;
+const TEXT_MEDIUM_MODEL_TYPE = ModelType.TEXT_MEDIUM as string;
+const TEXT_SMALL_MODEL_TYPE = ModelType.TEXT_SMALL as string;
+const TEXT_LARGE_MODEL_TYPE = ModelType.TEXT_LARGE as string;
+const TEXT_MEGA_MODEL_TYPE = ModelType.TEXT_MEGA as string;
+const RESPONSE_HANDLER_MODEL_TYPE = ModelType.RESPONSE_HANDLER as string;
+const ACTION_PLANNER_MODEL_TYPE = ModelType.ACTION_PLANNER as string;
 
 type ChatAttachment = {
   data: string | Uint8Array | URL;

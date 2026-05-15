@@ -183,7 +183,11 @@ export async function handleImageDescription(
     }
 
     const responseData = (await response.json()) as OpenAIChatCompletionResponse;
-    details.response = responseData.choices?.[0]?.message?.content ?? "";
+    const responseContent = responseData.choices[0]?.message.content;
+    if (!responseContent) {
+      throw new Error("OpenAI API returned empty image description");
+    }
+    details.response = responseContent;
     if (responseData.usage) {
       details.promptTokens = responseData.usage.prompt_tokens;
       details.completionTokens = responseData.usage.completion_tokens;
@@ -204,8 +208,8 @@ export async function handleImageDescription(
     );
   }
 
-  const firstChoice = data.choices?.[0];
-  const content = firstChoice?.message?.content;
+  const firstChoice = data.choices[0];
+  const content = firstChoice?.message.content;
 
   if (!content) {
     throw new Error("OpenAI API returned empty image description");

@@ -80,8 +80,8 @@
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config ./vitest.config.ts --passWithNoTests",
-    "test:ts": "vitest run --config ./vitest.config.ts --passWithNoTests",
+    "test": "vitest run --config ./vitest.config.ts",
+    "test:ts": "vitest run --config ./vitest.config.ts",
     "build": "bun run build.ts"
   },
   "publishConfig": {

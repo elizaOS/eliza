@@ -30,11 +30,6 @@ export interface RequestBodyOptions {
 	destroyOnTooLarge?: boolean;
 }
 
-export interface SendJsonOptions {
-	/** HTTP response status code. */
-	status?: number;
-}
-
 function defaultTooLargeMessage(maxBytes: number, explicit?: string): string {
 	return explicit ?? `Request body exceeds maximum size (${maxBytes} bytes)`;
 }

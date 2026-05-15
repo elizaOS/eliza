@@ -282,13 +282,13 @@ export class LogStore implements Store {
           GROUP BY body->>'runId'
         `);
 
-        const actionRows = actionSummary.rows ?? [];
+        const actionRows = actionSummary.rows;
         for (const row of actionRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
-          counts.actions += Number(row.actions ?? 0);
-          counts.errors += Number(row.errors ?? 0);
-          counts.modelCalls += Number(row.modelCalls ?? 0);
+          counts.actions += Number(row.actions);
+          counts.errors += Number(row.errors);
+          counts.modelCalls += Number(row.modelCalls);
         }
 
         const evaluatorSummary = await db.execute<EvaluatorSummaryRow>(sql`
@@ -301,11 +301,11 @@ export class LogStore implements Store {
           GROUP BY body->>'runId'
         `);
 
-        const evaluatorRows = evaluatorSummary.rows ?? [];
+        const evaluatorRows = evaluatorSummary.rows;
         for (const row of evaluatorRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
-          counts.evaluators += Number(row.evaluators ?? 0);
+          counts.evaluators += Number(row.evaluators);
         }
 
         const genericSummary = await db.execute<GenericSummaryRow>(sql`
@@ -319,12 +319,12 @@ export class LogStore implements Store {
           GROUP BY body->>'runId'
         `);
 
-        const genericRows = genericSummary.rows ?? [];
+        const genericRows = genericSummary.rows;
         for (const row of genericRows) {
           const counts = runCounts.get(row.runId);
           if (!counts) continue;
-          counts.modelCalls += Number(row.modelLogs ?? 0);
-          counts.errors += Number(row.embeddingErrors ?? 0);
+          counts.modelCalls += Number(row.modelLogs);
+          counts.errors += Number(row.embeddingErrors);
         }
       }
 

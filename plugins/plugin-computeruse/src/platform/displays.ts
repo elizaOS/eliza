@@ -70,7 +70,11 @@ export function getPrimaryDisplay(): DisplayInfo {
   if (all.length === 0) {
     return fallbackPrimary();
   }
-  return all.find((d) => d.primary) ?? all[0]!;
+  const first = all[0];
+  if (!first) {
+    return fallbackPrimary();
+  }
+  return all.find((d) => d.primary) ?? first;
 }
 
 /** Look up a display by id, or null if unknown. */
@@ -118,14 +122,22 @@ export function parseXrandrMonitors(output: string): DisplayInfo[] {
   for (const rawLine of output.split(/\r?\n/)) {
     const m = rawLine.match(XRANDR_LINE);
     if (!m) continue;
-    const id = Number.parseInt(m[1]!, 10);
+    const idText = m[1];
+    const widthText = m[3];
+    const heightText = m[4];
+    const xText = m[5];
+    const yText = m[6];
+    const name = m[7];
+    if (!idText || !widthText || !heightText || !xText || !yText || !name) {
+      continue;
+    }
+    const id = Number.parseInt(idText, 10);
     const primary = m[2] === "*";
-    const width = Number.parseInt(m[3]!, 10);
-    const height = Number.parseInt(m[4]!, 10);
+    const width = Number.parseInt(widthText, 10);
+    const height = Number.parseInt(heightText, 10);
     // m[5] / m[6] include the explicit sign (e.g. "-1920" or "+0").
-    const x = Number.parseInt(m[5]!, 10);
-    const y = Number.parseInt(m[6]!, 10);
-    const name = m[7]!;
+    const x = Number.parseInt(xText, 10);
+    const y = Number.parseInt(yText, 10);
     if (![id, width, height, x, y].every((n) => Number.isFinite(n))) continue;
     displays.push({
       id,
@@ -135,10 +147,7 @@ export function parseXrandrMonitors(output: string): DisplayInfo[] {
       name,
     });
   }
-  if (displays.length > 0 && !displays.some((d) => d.primary)) {
-    displays[0]!.primary = true;
-  }
-  return displays;
+  return ensurePrimary(displays);
 }
 
 function enumerateLinux(): DisplayInfo[] {
@@ -227,10 +236,7 @@ export function parseHyprlandMonitors(output: string): DisplayInfo[] {
     });
     idx += 1;
   }
-  if (displays.length > 0 && !displays.some((d) => d.primary)) {
-    displays[0]!.primary = true;
-  }
-  return displays;
+  return ensurePrimary(displays);
 }
 
 interface SwayOutput {
@@ -268,10 +274,7 @@ export function parseSwayOutputs(output: string): DisplayInfo[] {
     });
     idx += 1;
   }
-  if (displays.length > 0 && !displays.some((d) => d.primary)) {
-    displays[0]!.primary = true;
-  }
-  return displays;
+  return ensurePrimary(displays);
 }
 
 // ── macOS ───────────────────────────────────────────────────────────────────
@@ -331,10 +334,7 @@ export function parseDarwinDisplays(output: string): DisplayInfo[] {
     });
     idx += 1;
   }
-  if (displays.length > 0 && !displays.some((d) => d.primary)) {
-    displays[0]!.primary = true;
-  }
-  return displays;
+  return ensurePrimary(displays);
 }
 
 const DARWIN_JXA = `
@@ -445,7 +445,7 @@ export function parseSystemProfilerDisplays(output: string): DisplayInfo[] {
   // fall back to the JXA path or supply explicit positions via env.
   let xCursor = 0;
   for (const card of cards) {
-    const drivers = card?.spdisplays_ndrvs;
+    const drivers = card.spdisplays_ndrvs;
     if (!Array.isArray(drivers)) continue;
     for (const d of drivers) {
       const logicalText = d.spdisplays_resolution ?? d._spdisplays_resolution ?? "";
@@ -453,13 +453,14 @@ export function parseSystemProfilerDisplays(output: string): DisplayInfo[] {
       const logicalMatch = SP_RES.exec(logicalText);
       const pixelMatch = SP_RES.exec(pixelText);
       if (!logicalMatch && !pixelMatch) continue;
-      const logicalW = logicalMatch
-        ? Number.parseInt(logicalMatch[1]!, 10)
-        : Number.parseInt(pixelMatch![1]!, 10);
-      const logicalH = logicalMatch
-        ? Number.parseInt(logicalMatch[2]!, 10)
-        : Number.parseInt(pixelMatch![2]!, 10);
-      const pixelW = pixelMatch ? Number.parseInt(pixelMatch[1]!, 10) : logicalW;
+      const logicalWidthText = logicalMatch?.[1] ?? pixelMatch?.[1];
+      const logicalHeightText = logicalMatch?.[2] ?? pixelMatch?.[2];
+      if (!logicalWidthText || !logicalHeightText) continue;
+      const logicalW = Number.parseInt(logicalWidthText, 10);
+      const logicalH = Number.parseInt(logicalHeightText, 10);
+      const pixelW = pixelMatch?.[1]
+        ? Number.parseInt(pixelMatch[1], 10)
+        : logicalW;
       let scale = logicalW > 0 ? pixelW / logicalW : 1;
       if (!Number.isFinite(scale) || scale <= 0) scale = 1;
       const primary = d.spdisplays_main === "spdisplays_yes" || idx === 0;
@@ -474,10 +475,7 @@ export function parseSystemProfilerDisplays(output: string): DisplayInfo[] {
       idx += 1;
     }
   }
-  if (displays.length > 0 && !displays.some((d) => d.primary)) {
-    displays[0]!.primary = true;
-  }
-  return displays;
+  return ensurePrimary(displays);
 }
 
 // ── Windows ─────────────────────────────────────────────────────────────────
@@ -524,8 +522,16 @@ export function parseWindowsScreens(output: string): DisplayInfo[] {
     });
     idx += 1;
   }
-  if (displays.length > 0 && !displays.some((d) => d.primary)) {
-    displays[0]!.primary = true;
+  return ensurePrimary(displays);
+}
+
+function ensurePrimary(displays: DisplayInfo[]): DisplayInfo[] {
+  if (displays.length === 0 || displays.some((display) => display.primary)) {
+    return displays;
+  }
+  const first = displays[0];
+  if (first) {
+    first.primary = true;
   }
   return displays;
 }

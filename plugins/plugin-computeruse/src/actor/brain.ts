@@ -195,7 +195,13 @@ export function parseBrainOutput(raw: string): BrainOutput {
   const trimmed = raw.trim();
   let body = trimmed;
   const fenceMatch = FENCE_RE.exec(trimmed);
-  if (fenceMatch) body = fenceMatch[1]!.trim();
+  if (fenceMatch) {
+    const fencedBody = fenceMatch[1];
+    if (fencedBody === undefined) {
+      throw new BrainParseError("Brain response markdown fence was empty", raw);
+    }
+    body = fencedBody.trim();
+  }
   // Allow a leading prose paragraph by snipping to the first `{`.
   const firstBrace = body.indexOf("{");
   if (firstBrace > 0) body = body.slice(firstBrace);
@@ -246,9 +252,18 @@ export function parseBrainOutput(raw: string): BrainOutput {
         if (!Array.isArray(bb) || bb.length !== 4) return null;
         const nums = bb.map((n) => Number(n));
         if (!nums.every((n) => Number.isFinite(n))) return null;
+        const [x, y, width, height] = nums;
+        if (
+          x === undefined ||
+          y === undefined ||
+          width === undefined ||
+          height === undefined
+        ) {
+          return null;
+        }
         return {
           displayId: typeof ro.displayId === "number" ? ro.displayId : targetDisplay,
-          bbox: [nums[0]!, nums[1]!, nums[2]!, nums[3]!],
+          bbox: [x, y, width, height],
           reason: typeof ro.reason === "string" ? ro.reason : "",
         };
       })
@@ -276,7 +291,7 @@ function extractText(value: string | ImageDescriptionResult): string {
     if (typeof value.description === "string") return value.description;
     if (typeof value.title === "string") return value.title;
   }
-  return String(value ?? "");
+  return String(value);
 }
 
 /**
