@@ -35,6 +35,20 @@ if (
   );
 }
 
+// Bridge DATABASE_URL → POSTGRES_URL. Cloud provisioners (docker-sandbox-provider,
+// k8s manifests, Railway env) inject DATABASE_URL, but plugin-sql reads
+// POSTGRES_URL via runtime.getSetting("POSTGRES_URL"). Without this bridge,
+// sandboxes silently fall back to PGLite at /root/.eliza/.elizadb instead of
+// connecting to the injected Neon database — losing all memories on container
+// restart and breaking memory transfer / centralized observability.
+if (process.env.DATABASE_URL && !process.env.POSTGRES_URL) {
+  process.env.POSTGRES_URL = process.env.DATABASE_URL;
+  // Stderr only — logger isn't initialized yet at this point in boot.
+  process.stderr.write(
+    "[entry] DATABASE_URL detected: bridged to POSTGRES_URL for plugin-sql\n",
+  );
+}
+
 // Keep `npx elizaai` startup readable by default.
 // This runs before CLI/runtime imports so @elizaos/core logger picks it up.
 if (!process.env.LOG_LEVEL) {
