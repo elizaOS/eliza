@@ -105,3 +105,6 @@ void qjl_dequantize_row_neon(const qjl_block_qjl1_256 *blk, const float *prj,
 }
 
 #endif /* __ARM_NEON */
+
+/* Avoid ISO C "empty translation unit" pedantic diagnostics when NEON is undefined. */
+typedef int qjl_quantize_neon_iso_c_tu_stub;

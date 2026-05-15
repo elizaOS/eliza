@@ -3357,14 +3357,17 @@ function buildTarget({ target, args, ctx }) {
           `[dflash-build] omnivoice merged path: building tools/omnivoice/ in-fork (W3-3 v1.0.1-eliza)`,
         );
       }
-      // Merged path: just turn on the CMake option. The fork's
+      // Merged path: turn on the in-fork CMake option. The fork's
       // `tools/omnivoice/CMakeLists.txt` declares omnivoice_lib,
-      // elizainference, omnivoice-tts, omnivoice-codec, and the
-      // llama-server route mount.
+      // libelizainference, omnivoice-tts, omnivoice-codec, and the
+      // llama-server audio route wiring. The fused extras keep the legacy
+      // source-level ELIZA_FUSE_* guards enabled for one release while the
+      // runtime migrates to the canonical LLAMA_BUILD_OMNIVOICE path.
       flags.push(
         "-DLLAMA_BUILD_OMNIVOICE=ON",
         "-DOMNIVOICE_SHARED=ON",
         "-DBUILD_SHARED_LIBS=ON",
+        ...fusedExtraCmakeFlags(),
       );
     } else {
       // Legacy graft path (deprecated; one-release runway).

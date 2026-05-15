@@ -149,3 +149,6 @@ void qjl_score_qk_i8_avxvnni(const qjl_i8_sketch_256 *q_sketch_i8,
 }
 
 #endif /* AVX-VNNI */
+
+/* Avoid ISO C "empty translation unit" pedantic diagnostics when AVX-VNNI is undefined. */
+typedef int qjl_score_avxvnni_iso_c_tu_stub;
