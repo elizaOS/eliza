@@ -17,8 +17,10 @@ from typing import Final, Mapping, Sequence
 try:
     from scripts.manifest.eliza1_manifest import (
         ELIZA_1_HF_REPO,
+        ELIZA_1_DFLASH_TIERS,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
+        ELIZA_1_VISION_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
@@ -29,8 +31,10 @@ try:
 except ImportError:  # pragma: no cover - script execution path
     from eliza1_manifest import (
         ELIZA_1_HF_REPO,
+        ELIZA_1_DFLASH_TIERS,
         ELIZA_1_PUBLISHABLE_RELEASE_STATES,
         ELIZA_1_TIERS,
+        ELIZA_1_VISION_TIERS,
         SUPPORTED_BACKENDS_BY_TIER,
         VOICE_BACKENDS_BY_TIER,
         VOICE_PRESET_CACHE_PATH,
@@ -46,6 +50,7 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
     "27b-256k": "Q4_K_M",
+    "27b-1m": "Q4_K_M",
 }
 
 TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = ("Q4_K_M", "Q6_K", "Q8_0")
@@ -57,6 +62,7 @@ CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "9b": ("64k", "128k"),
     "27b": ("128k",),
     "27b-256k": ("256k",),
+    "27b-1m": ("1m",),
 }
 
 ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -68,7 +74,8 @@ VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.1.2.ggml.bin",)
 VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
     "vad/silero-vad-int8.onnx",
 )
-VISION_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
+VISION_TIERS: Final[frozenset[str]] = ELIZA_1_VISION_TIERS
+DFLASH_TIERS: Final[frozenset[str]] = ELIZA_1_DFLASH_TIERS
 
 COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     tier: (
@@ -76,8 +83,8 @@ COMPONENT_LICENSES_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "licenses/LICENSE.voice",
         "licenses/LICENSE.asr",
         "licenses/LICENSE.vad",
-        "licenses/LICENSE.dflash",
         "licenses/LICENSE.eliza-1",
+        *(("licenses/LICENSE.dflash",) if tier in DFLASH_TIERS else ()),
         *(("licenses/LICENSE.vision",) if tier in VISION_TIERS else ()),
     )
     for tier in ELIZA_1_TIERS
@@ -146,6 +153,7 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "linux-x64-rocm",
         "windows-x64-cuda",
     ),
+    "27b-1m": ("linux-x64-cuda",),
 }
 
 
@@ -185,7 +193,11 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
     dispatch_reports = tuple(
         f"evals/{backend}_dispatch.json" for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
     )
-    dflash_files = (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
+    dflash_files = (
+        (f"dflash/drafter-{tier}.gguf", "dflash/target-meta.json")
+        if tier in DFLASH_TIERS
+        else ()
+    )
     vision_files = (
         (f"vision/mmproj-{tier}.gguf",)
         if tier in VISION_TIERS
