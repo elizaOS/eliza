@@ -231,10 +231,12 @@ export const Eliza1FilesSchema = z.object({
 	cache: z.array(Eliza1FileEntrySchema).min(1),
 	// Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
 	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers) and
-	// a Silero-VAD ONNX + an optional openWakeWord ONNX. All three are
-	// optional in the schema — the 0_8b tier intentionally omits the
-	// dedicated embedding (pools from text backbone) and a tier may
-	// ship without wake-word support.
+	// a Silero-VAD ONNX + an optional openWakeWord GGUF (replacing the
+	// previous three-file ONNX layout — the combined GGUF carries the
+	// mel filterbank + speech embedding model + every per-phrase head).
+	// All three are optional in the schema — the 0_8b tier intentionally
+	// omits the dedicated embedding (pools from text backbone) and a
+	// tier may ship without wake-word support.
 	//
 	// Schema-level optionality: empty array = "this bundle does not
 	// ship this component"; the validator enforces tier-specific
@@ -258,6 +260,15 @@ export const Eliza1FilesSchema = z.object({
 	// 0_8b/2b ship the EN-only SmolLM2-135M distill (~66 MB Q8 ONNX);
 	// 4b/9b/27b ship the multilingual pruned Qwen2.5-0.5B (~396 MB Q8 ONNX).
 	turn: z.array(Eliza1FileEntrySchema).optional(),
+	// Eliza-1 EOT LoRA adapter — optional, complements `turn`. When
+	// present, the runtime layers this adapter onto the in-process
+	// drafter at voice-session start (`voice/eliza1-eot-scorer.ts`) so
+	// P(`<|im_end|>`) calibration matches a fine-tuned EOT head without
+	// shipping a second base model. When both `turn` and `eotLoraAdapter`
+	// are present the operator picks via `ELIZA_VOICE_EOT_BACKEND` or
+	// `startVoiceSession({ useEliza1Eot })`. Training recipe:
+	// `packages/training/scripts/turn_detector/configs/turn_detector_eliza1_drafter.yaml`.
+	eotLoraAdapter: z.array(Eliza1FileEntrySchema).optional(),
 	// Voice Wave 2 (2026-05-14): bundled acoustic-prosody emotion classifier
 	// (Wav2Small student, ~120 KB int8 ONNX). Optional — when omitted, the
 	// runtime falls back to the lexicon + audio-prosody heuristic path inside
@@ -409,6 +420,12 @@ export const Eliza1EvalsSchema = z.object({
 			f1: z.number().min(0).max(1),
 			meanLatencyMs: z.number().nonnegative(),
 			passed: z.boolean(),
+			// Which detector backend the eval was run against. Optional for
+			// back-compat with bundles staged before the eliza-1 EOT path;
+			// when absent, consumers should assume `livekit`.
+			kind: z
+				.enum(["livekit", "turnsense", "eliza-1-drafter"])
+				.optional(),
 		})
 		.optional(),
 	// Voice Wave 2 (2026-05-14): acoustic-emotion classifier eval gates.

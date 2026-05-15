@@ -76,6 +76,9 @@ export {
 	EOT_MID_CLAUSE_THRESHOLD,
 	EOT_TENTATIVE_SILENCE_MS,
 	EOT_TENTATIVE_THRESHOLD,
+	Eliza1EotClassifier,
+	type Eliza1EotScoreResult,
+	type Eliza1EotScorerOptions,
 	type EotClassifier,
 	HeuristicEotClassifier,
 	LEGACY_LIVEKIT_TURN_DETECTOR_ONNX,
@@ -94,6 +97,15 @@ export {
 	type VoiceNextSpeaker,
 	type VoiceTurnSignal,
 } from "./eot-classifier";
+export {
+	Eliza1EotScorer,
+	formatEotPrompt as formatEliza1EotPrompt,
+} from "./eliza1-eot-scorer";
+export type {
+	LlamaContextLike as Eliza1EotLlamaContext,
+	LlamaContextSequenceLike as Eliza1EotLlamaSequence,
+	LlamaModelLike as Eliza1EotLlamaModel,
+} from "./eliza1-eot-scorer";
 export { VoiceStartupError } from "./errors";
 export * from "./ffi-bindings";
 export {
@@ -300,6 +312,7 @@ export * from "./types";
 export {
 	createSileroVadDetector,
 	createVadDetector,
+	GgmlSileroVad,
 	NativeSileroVad,
 	type QwenToolkitVadAdapter,
 	type ResolvedVadProvider,
@@ -309,7 +322,6 @@ export {
 	resolveVadProvider,
 	rms,
 	SILERO_VAD_BUNDLE_REL_PATH,
-	SileroVad,
 	VadDetector,
 	type VadDetectorConfig,
 	type VadLike,
@@ -383,16 +395,14 @@ export {
 	type VoiceStateMachineOptions,
 } from "./voice-state-machine";
 export {
+	GgmlWakeWordModel,
 	isPlaceholderWakeWordHead,
 	loadBundledWakeWordModel,
 	OPENWAKEWORD_DEFAULT_HEAD,
-	OPENWAKEWORD_DEFAULT_HEAD_REL_PATH,
 	OPENWAKEWORD_DIR_REL_PATH,
-	OPENWAKEWORD_EMBEDDING_REL_PATH,
-	OPENWAKEWORD_MELSPEC_REL_PATH,
+	OPENWAKEWORD_GGUF_REL_PATH,
 	OPENWAKEWORD_PLACEHOLDER_HEADS,
 	OpenWakeWordDetector,
-	OpenWakeWordModel,
 	resolveWakeWordModel,
 	type WakeWordConfig,
 	type WakeWordModel,

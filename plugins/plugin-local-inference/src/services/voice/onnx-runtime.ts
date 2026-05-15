@@ -1,8 +1,12 @@
 /**
  * Shared `onnxruntime-node` loader for the voice front-end.
  *
- * Both the Silero VAD (`vad.ts`) and openWakeWord (`wake-word.ts`) models
- * run on the same CPU ONNX runtime. The dependency is *optional* — the
+ * openWakeWord (`wake-word.ts`), the EOT classifier
+ * (`eot-classifier.ts`), and the voice-emotion classifier
+ * (`voice-emotion-classifier.ts`) all run on the same CPU ONNX runtime.
+ * The Silero VAD has migrated off ONNX to the native GGML path on
+ * libelizainference (`vad.ts`); the optional dependency stays installed for
+ * the remaining ONNX-only graphs. The dependency is *optional* — the
  * server bundle declares `onnxruntime-node` in `optionalDependencies`, and
  * a build that did not install it must surface a structured error rather
  * than crash at import time. This module owns:

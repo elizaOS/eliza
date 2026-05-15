@@ -19,10 +19,9 @@ describe("YOLODetector availability + lifecycle", () => {
     expect(filtered).toBeInstanceOf(YOLODetector);
   });
 
-  it("init fails fast with a bad URL", async () => {
+  it("init fails fast when GGUF weights are missing", async () => {
     const yolo = new YOLODetector({
-      modelDir: `/tmp/yolo-test-${Date.now()}`,
-      modelUrl: "http://127.0.0.1:1/missing.onnx",
+      weightsPath: `/tmp/yolo-missing-${Date.now()}.gguf`,
     });
     await expect(yolo.initialize()).rejects.toBeInstanceOf(Error);
   });
@@ -41,18 +40,15 @@ describe("PersonDetector", () => {
   });
 });
 
-describe("MediaPipeFaceDetector", () => {
-  it("constructs and reports availability", async () => {
+describe("MediaPipeFaceDetector (deprecated stub)", () => {
+  it("constructs and reports unavailable until RetinaFace ggml port lands", async () => {
     const det = new MediaPipeFaceDetector();
     expect(det).toBeInstanceOf(MediaPipeFaceDetector);
-    expect(typeof (await MediaPipeFaceDetector.isAvailable())).toBe("boolean");
+    expect(await MediaPipeFaceDetector.isAvailable()).toBe(false);
   });
 
-  it("init fails fast with a bad URL", async () => {
-    const det = new MediaPipeFaceDetector({
-      modelDir: `/tmp/mp-face-${Date.now()}`,
-      modelUrl: "http://127.0.0.1:1/missing.onnx",
-    });
+  it("initialize() throws a migration-in-progress error", async () => {
+    const det = new MediaPipeFaceDetector();
     await expect(det.initialize()).rejects.toBeInstanceOf(Error);
   });
 });

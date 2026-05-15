@@ -139,6 +139,7 @@
     "@elizaos/plugin-mlx": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",
     "@elizaos/plugin-ollama": "workspace:*",
+    "@elizaos/plugin-registry": "workspace:*",
     "@elizaos/plugin-shell": "workspace:*",
     "@elizaos/plugin-signal": "workspace:*",
     "@elizaos/plugin-sql": "workspace:*",
