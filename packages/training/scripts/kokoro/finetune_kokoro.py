@@ -20,7 +20,7 @@ Mode = `full-finetune` (DEFAULT, publish path):
     plugins/plugin-local-inference/native/kokoro_training/ via
     plugins/plugin-local-inference/native/kokoro_training/milady_adapter/.
   - Trains a Kokoro-inspired encoder-decoder transformer end-to-end on the
-    samantha (or other) LJSpeech-format corpus. Vendor provides the model
+    sam (or other) LJSpeech-format corpus. Vendor provides the model
     architecture + dataset loader + training loop; the adapter swaps in our
     APOLLO optimizer and our manifest emission.
   - Output checkpoints are NOT drop-in for the hexgrad/Kokoro-82M runtime

@@ -59,6 +59,21 @@ export interface VoiceModelGgufAsset {
   readonly quant: VoiceModelQuant;
 }
 
+export type VoiceModelMissingAssetReason =
+  | "missing-from-local-staging"
+  | "missing-from-hf-repo";
+
+export interface VoiceModelMissingAsset {
+  /** Expected filename inside `hfRepo` at `hfRevision`. */
+  readonly filename: string;
+  /** Expected quantization label. */
+  readonly quant: VoiceModelQuant;
+  /** Approximate planned bytes from the staging manifest; not a verified size. */
+  readonly expectedSizeBytes?: number;
+  /** Why no sha256/sizeBytes are recorded in `ggufAssets`. */
+  readonly reason: VoiceModelMissingAssetReason;
+}
+
 /**
  * Per-metric improvement vs the parent version. Sign conventions:
  *
@@ -109,6 +124,8 @@ export interface VoiceModelVersion {
   readonly hfRevision: string;
   /** Per-asset SHA256 + size + quant. */
   readonly ggufAssets: ReadonlyArray<VoiceModelGgufAsset>;
+  /** Expected assets that were not available for sha256/size verification. */
+  readonly missingAssets?: ReadonlyArray<VoiceModelMissingAsset>;
   /** Eval gates vs parentVersion (or baseline for initial releases). */
   readonly evalDeltas: VoiceModelEvalDeltas;
   /** First line of the matching H3 in `models/voice/CHANGELOG.md`. */
@@ -133,8 +150,22 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-speaker",
-    hfRevision: "main",
+    hfRevision: "b73284e0cdb6ac439cac1885b8c14477e80ff96c",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "wespeaker-ecapa-tdnn-256-int8.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 7_340_032,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "wespeaker-ecapa-tdnn-256-fp32.onnx",
+        quant: "onnx-fp16",
+        expectedSizeBytes: 26_214_400,
+        reason: "missing-from-hf-repo",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — WeSpeaker ResNet34-LM 256-dim int8.",
     minBundleVersion: "0.0.0",
@@ -144,8 +175,22 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-diarizer",
-    hfRevision: "main",
+    hfRevision: "d09b316ddf46297e1cda8079fa621ff39d101631",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "pyannote-segmentation-3.0-int8.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 1_614_807,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "pyannote-segmentation-3.0-fp32.onnx",
+        quant: "onnx-fp16",
+        expectedSizeBytes: 6_291_456,
+        reason: "missing-from-hf-repo",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — Pyannote-segmentation-3.0 ONNX int8.",
     minBundleVersion: "0.0.0",
@@ -155,8 +200,28 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-turn",
-    hfRevision: "main",
+    hfRevision: "69cec917d74dc5ddc27f34f3ab69cef3fc6fe732",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "turn-detector-en-int8.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 65_700_000,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "turn-detector-intl-int8.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 396_000_000,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "turnsense-fallback-int8.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 8_000_000,
+        reason: "missing-from-hf-repo",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — LiveKit turn-detector (135M + intl).",
     minBundleVersion: "0.0.0",
@@ -166,8 +231,22 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-emotion",
-    hfRevision: "main",
+    hfRevision: "edfeb4e5704c8ca13eccf01cc78324d9422824d0",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "wav2small-msp-dim-int8.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 122_880,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "wav2small-msp-dim-fp32.onnx",
+        quant: "onnx-fp16",
+        expectedSizeBytes: 491_520,
+        reason: "missing-from-hf-repo",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — Wav2Small acoustic V-A-D classifier.",
     minBundleVersion: "0.0.0",
@@ -177,11 +256,31 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-kokoro",
-    hfRevision: "main",
+    hfRevision: "da4b5d73d4c1f8e37e86a4e0d51d7e4141e8f855",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "kokoro-v1.0-q4.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 326_144_000,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "voices/af_bella.bin",
+        quant: "fp16",
+        expectedSizeBytes: 524_288,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "voices/af_sam.bin",
+        quant: "fp16",
+        expectedSizeBytes: 524_288,
+        reason: "missing-from-hf-repo",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "Initial release — kokoro 82M voice-embedding samantha clone.",
+      "Initial release — kokoro 82M voice-embedding sam clone.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -189,10 +288,36 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-omnivoice",
-    hfRevision: "main",
+    hfRevision: "cc5e5d856fc5f05c1a01b787d3e8602d2f05ba9c",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "omnivoice-base-q4_k_m.gguf",
+        quant: "q4_k_m",
+        expectedSizeBytes: 388_000_000,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "omnivoice-tokenizer-q4_k_m.gguf",
+        quant: "q4_k_m",
+        expectedSizeBytes: 51_200_000,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "omnivoice-base-q8_0.gguf",
+        quant: "q8_0",
+        expectedSizeBytes: 620_000_000,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "presets/voice-preset-sam.bin",
+        quant: "fp16",
+        expectedSizeBytes: 8_192,
+        reason: "missing-from-hf-repo",
+      },
+    ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — OmniVoice frozen-conditioning samantha.",
+    changelogEntry: "Initial release — OmniVoice frozen-conditioning sam.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -200,8 +325,22 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-vad",
-    hfRevision: "main",
+    hfRevision: "feb778c5d13802f428f8846dcaea60318547e88d",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "silero-vad-int8.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 1_056_768,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "silero-vad-v5.1.2.ggml.bin",
+        quant: "onnx-fp16",
+        expectedSizeBytes: 2_093_056,
+        reason: "missing-from-hf-repo",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — Silero VAD v5.1.2.",
     minBundleVersion: "0.0.0",
@@ -211,8 +350,16 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-wakeword",
-    hfRevision: "main",
+    hfRevision: "d6fe9bfb2b9dac99e7f7c79cfdc60025bfaab721",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "hey-eliza-int8.onnx",
+        quant: "onnx-int8",
+        expectedSizeBytes: 1_048_576,
+        reason: "missing-from-hf-repo",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — hey-eliza wake-word head.",
     minBundleVersion: "0.0.0",
@@ -222,8 +369,16 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-embedding",
-    hfRevision: "main",
+    hfRevision: "eb96371b6d4b87eee6f84303408fd1603fa6cde2",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "eliza-1-embedding-q4_k_m.gguf",
+        quant: "q4_k_m",
+        expectedSizeBytes: 524_288_000,
+        reason: "missing-from-hf-repo",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — Eliza-1 BPE-vocab embedding tier.",
     minBundleVersion: "0.0.0",
@@ -233,8 +388,22 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     version: "0.1.0",
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1-voice-asr",
-    hfRevision: "main",
+    hfRevision: "0c1305f0618eb0a752f517a7cfd9ed65e42b760c",
     ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "eliza-1-asr-q4_k_m.gguf",
+        quant: "q4_k_m",
+        expectedSizeBytes: 918_748_160,
+        reason: "missing-from-hf-repo",
+      },
+      {
+        filename: "eliza-1-asr-mmproj.gguf",
+        quant: "fp16",
+        expectedSizeBytes: 52_428_800,
+        reason: "missing-from-hf-repo",
+      },
+    ],
     evalDeltas: { netImprovement: true },
     changelogEntry: "Initial release — Qwen3-ASR streaming transcriber Q4_K_M.",
     minBundleVersion: "0.0.0",

@@ -42,13 +42,13 @@ class TestOwnerLRUCache:
         self, encoder: SpeakerEncoder, manifest: dict
     ):
         """
-        Enroll samantha as the OWNER, then time repeated match calls.
+        Enroll sam as the OWNER, then time repeated match calls.
         Median latency must be < 50 ms.
         """
         store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.40)
 
         # Enroll owner profile
-        pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
+        pcm = load_fixture_audio(manifest["f1_sam_solo"]["path"])
         n = len(pcm) // 4
         enroll_embedding = encoder.encode(pcm[:n])
         prof = store.add_or_refine(enroll_embedding, entity_id="owner-entity-id")
@@ -88,7 +88,7 @@ class TestOwnerLRUCache:
         store = InMemoryVoiceProfileStore(hot_cache_size=5, match_threshold=0.40)
 
         # Enroll owner
-        pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
+        pcm = load_fixture_audio(manifest["f1_sam_solo"]["path"])
         n = len(pcm) // 4
         owner_emb = encoder.encode(pcm[:n])
         owner_prof = store.add_or_refine(owner_emb, entity_id="owner-entity-id")
@@ -132,7 +132,7 @@ class TestOwnerLRUCache:
         store = InMemoryVoiceProfileStore(hot_cache_size=capacity, match_threshold=0.40)
 
         # Enroll speaker A
-        pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
+        pcm = load_fixture_audio(manifest["f1_sam_solo"]["path"])
         n = len(pcm) // 4
         emb_a = encoder.encode(pcm[:n])
         prof_a = store.add_or_refine(emb_a, entity_id="speaker-a")
@@ -160,7 +160,7 @@ class TestOwnerLRUCache:
     ):
         """Write latency report to artifacts dir."""
         store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.40)
-        pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
+        pcm = load_fixture_audio(manifest["f1_sam_solo"]["path"])
         n = len(pcm) // 4
 
         enroll_emb = encoder.encode(pcm[:n])

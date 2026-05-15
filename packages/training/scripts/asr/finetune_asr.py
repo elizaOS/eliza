@@ -42,26 +42,26 @@ Usage
 
     # Smoke (CI):
     python3 finetune_asr.py \\
-        --run-dir /tmp/asr-runs/samantha \\
-        --config asr_samantha.yaml \\
+        --run-dir /tmp/asr-runs/sam \\
+        --config asr_sam.yaml \\
         --synthetic-smoke
 
     # Real training (requires GPU + transformers + datasets):
     python3 finetune_asr.py \\
-        --run-dir /tmp/asr-runs/samantha \\
-        --config asr_samantha.yaml \\
-        --data-dir packages/training/data/voice/samantha \\
+        --run-dir /tmp/asr-runs/sam \\
+        --config asr_sam.yaml \\
+        --data-dir packages/training/data/voice/sam \\
         --real-train
 
     # With eval + HF push:
     python3 finetune_asr.py \\
-        --run-dir /tmp/asr-runs/samantha \\
-        --config asr_samantha.yaml \\
-        --data-dir packages/training/data/voice/samantha \\
+        --run-dir /tmp/asr-runs/sam \\
+        --config asr_sam.yaml \\
+        --data-dir packages/training/data/voice/sam \\
         --real-train \\
         --baseline-eval artifacts/voice-fine-tune/asr-baseline/eval.json \\
         --hf-push-if beats-baseline \\
-        --hf-repo elizaos/eliza-1-asr-samantha-v01 \\
+        --hf-repo elizaos/eliza-1-asr-sam-v01 \\
         --operator-sign-off
 
 Outputs
@@ -99,7 +99,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 log = logging.getLogger("asr.finetune")
 
 # ---------------------------------------------------------------------------
-# Default config — matches what asr_samantha.yaml extends.
+# Default config — matches what asr_sam.yaml extends.
 # ---------------------------------------------------------------------------
 
 DEFAULT_CONFIG: dict[str, Any] = {
@@ -410,9 +410,9 @@ def _run_synthetic_smoke(args: argparse.Namespace, cfg: dict[str, Any]) -> int:
 
 
 def _load_corpus(data_dir: Path, cfg: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Load WAV+transcript pairs from the samantha corpus format.
+    """Load WAV+transcript pairs from the sam corpus format.
 
-    Corpus layout expected (matches packages/training/data/voice/samantha/):
+    Corpus layout expected (matches packages/training/data/voice/sam/):
 
         <data_dir>/
             manifest.jsonl    # one JSON record per line: {id, wav, transcript}
@@ -920,7 +920,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--hf-repo",
         default=None,
-        help="HuggingFace repo id to push to (e.g. elizaos/eliza-1-asr-samantha-v01).",
+        help="HuggingFace repo id to push to (e.g. elizaos/eliza-1-asr-sam-v01).",
     )
     parser.add_argument(
         "--hf-push-if",

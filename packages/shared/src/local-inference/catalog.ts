@@ -26,7 +26,6 @@ export const ELIZA_1_TIER_IDS = [
   "eliza-1-9b",
   "eliza-1-27b",
   "eliza-1-27b-256k",
-  "eliza-1-27b-1m",
 ] as const;
 
 export type Eliza1TierId = (typeof ELIZA_1_TIER_IDS)[number];
@@ -58,11 +57,6 @@ export function isDefaultEligibleId(id: string): boolean {
  * and for installs that depend on a private HF mirror).
  *
  * W3-12 audit (2026-05-14): the following tiers require publish attention:
- *   - `eliza-1-27b-1m`: bundle staged 2026-05-15 (F4). Q4_K_M primary GGUF
- *     (16.5 GB) converted from Qwen/Qwen3.6-27B on Nebius H200 with
- *     `--override-kv llama.context_length=int:1048576` (YaRN 1M context).
- *     Full quant ladder (Q3_K_M, Q4_K_M, Q5_K_M, Q6_K, Q8_0) uploaded to
- *     elizaos/eliza-1/bundles/27b-1m/. Eval gates pending (weights-staged).
  *   - `eliza-1-0_8b`: published but vision mmproj missing from bundle.
  *     `hasVision: true` in catalog but `vision/mmproj-0_8b.gguf` absent.
  *     Next step: quantize mmproj from Qwen3.5-0.8B VL variant, push to
@@ -74,16 +68,13 @@ export function isDefaultEligibleId(id: string): boolean {
  *     separate repos (elizaos/eliza-1-voice-*) per voice-models.ts; those
  *     repos are not yet created. Next step: run publish pipeline per
  *     models/voice/CHANGELOG.md entries once sub-model weights are finalized.
- *   - Kokoro samantha voice preset: `af_samantha.bin` absent from all
+ *   - Kokoro sam voice preset: `af_sam.bin` absent from all
  *     bundles; I7 eval showed regression. Current bundles ship af_bella
  *     and standard voices only.
  */
 export const ELIZA_1_TIER_PUBLISH_STATUS: Readonly<
   Partial<Record<Eliza1TierId, "published" | "pending">>
-> = {
-  // 27b-1m bundle staged 2026-05-15 (F4): weights-staged, eval gates pending.
-  // Remove entry once eval gates pass and bundle is promoted to published.
-};
+> = {};
 
 export function eliza1TierPublishStatus(
   id: Eliza1TierId | string,
@@ -135,7 +126,7 @@ export type VoiceBackendId = "kokoro" | "omnivoice";
  *   - Small tiers (0_8b / 2b / 4b / 9b) → OmniVoice first with Kokoro
  *     fallback. The fused expressive TTS path stays default, while Kokoro
  *     remains available for low-latency/thermal fallback on constrained hosts.
- *   - Large tiers (27b / 27b-256k / 27b-1m) → OmniVoice only. The RAM
+ *   - Large tiers (27b / 27b-256k) → OmniVoice only. The RAM
  *     and compute budget is large enough that the OmniVoice quality win
  *     dominates; Kokoro is not shipped in these bundles.
  */
@@ -149,7 +140,6 @@ export const ELIZA_1_VOICE_BACKENDS: Record<
   "eliza-1-9b": ["omnivoice", "kokoro"],
   "eliza-1-27b": ["omnivoice"],
   "eliza-1-27b-256k": ["omnivoice"],
-  "eliza-1-27b-1m": ["omnivoice"],
 };
 
 const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
@@ -180,7 +170,7 @@ interface TierSpec {
    * WS3: whether this tier ships a default image-gen model in the bundle
    * extras (`ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`). Mobile-class
    * tiers (0_8b/2b/4b) default to SD 1.5 Q5_0 (~1.0 GB); desktop-class
-   * tiers (9b/27b/27b-256k/27b-1m) default to Z-Image-Turbo Q4_K_M
+   * tiers (9b/27b/27b-256k) default to Z-Image-Turbo Q4_K_M
    * (~3.4 GB). The diffusion weights are runtime-downloaded — they are
    * NOT part of the base-v1 bundle.
    */
@@ -306,28 +296,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     hasVision: true,
     hasImageGen: true,
   },
-  "eliza-1-27b-1m": {
-    id: "eliza-1-27b-1m",
-    params: "27B",
-    parameterLabel: "27B 1M",
-    sizeGb: 16.8,
-    minRamGb: 160,
-    q4MinRamGb: 160,
-    bucket: "large",
-    contextLength: 1_048_576,
-    textFile: "text/eliza-1-27b-1m.gguf",
-    drafterParams: "4B",
-    drafterSizeGb: 2.6,
-    drafterMinRamGb: 160,
-    gpuProfile: "h200",
-    hasEmbedding: true,
-    // WS2: vision on the 1M-context tier is for server / workstation use
-    // (multi-GPU, document-pipeline scenarios where a screenshot of a
-    // 100-page PDF page is sandwiched into a million-token context). The
-    // mmproj is the same ~720 MB Q8_0 used by the 27b and 27b-256k tiers.
-    hasVision: true,
-    hasImageGen: true,
-  },
 };
 
 function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
@@ -420,7 +388,6 @@ const OMNIVOICE_QUANT_LADDER_BY_TIER: Readonly<
   "eliza-1-9b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
   "eliza-1-27b-256k": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
-  "eliza-1-27b-1m": ["Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"],
 };
 
 export function voiceQuantLadderForTier(
@@ -560,8 +527,6 @@ function blurbForTier(id: Eliza1TierId): string {
       return "eliza-1-27b - high-quality local tier for GPU workstations.";
     case "eliza-1-27b-256k":
       return "eliza-1-27b-256k - high-quality local tier with a 256k context window.";
-    case "eliza-1-27b-1m":
-      return "eliza-1-27b-1m - high-quality local tier with a 1M context window.";
   }
 }
 

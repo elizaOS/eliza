@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Build the samantha voice corpus manifest from `lalalune/ai_voices`.
+"""Build the sam voice corpus manifest from `lalalune/ai_voices`.
 
-Lands the samantha subset into
-`packages/training/data/voice/samantha/` as:
+Lands the sam subset into
+`packages/training/data/voice/sam/` as:
 
     raw/<id>.wav             # untouched 44.1 kHz mono 16-bit PCM source
     audio/<id>.wav           # normalized 24 kHz mono 16-bit PCM, -23 LUFS
@@ -17,23 +17,23 @@ upstream `.txt` when `--no-retranscribe` is passed (smoke / CI without
 the whisper stack).
 
 Upstream fetch uses `git clone --filter=blob:none --sparse` so CI only
-pulls the samantha slice (not the full 258 MB repo). Skip the clone with
+pulls the sam slice (not the full 258 MB repo). Skip the clone with
 `--src <local_path>` when a checkout already exists.
 
 Usage:
 
-    # Sparse-clone the samantha slice + build manifest end-to-end:
-    python3 scripts/voice/build_samantha_manifest.py --sparse-clone /tmp/ai_voices
+    # Sparse-clone the sam slice + build manifest end-to-end:
+    python3 scripts/voice/build_sam_manifest.py --sparse-clone /tmp/ai_voices
 
     # Use an existing clone, write manifest only:
-    python3 scripts/voice/build_samantha_manifest.py \\
-        --src /tmp/ai_voices/samantha \\
-        --dst packages/training/data/voice/samantha
+    python3 scripts/voice/build_sam_manifest.py \\
+        --src /tmp/ai_voices/sam \\
+        --dst packages/training/data/voice/sam
 
     # Dry run — validate inputs, emit manifest in memory, do not write
     # normalized audio or ljspeech mirror (still writes manifest.jsonl
     # + source.json + ljspeech/metadata.csv).
-    python3 scripts/voice/build_samantha_manifest.py --src /tmp/ai_voices/samantha --dry-run
+    python3 scripts/voice/build_sam_manifest.py --src /tmp/ai_voices/sam --dry-run
 
 Exit codes:
     0  success
@@ -56,7 +56,7 @@ from pathlib import Path
 from typing import Any
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("voice.build_samantha_manifest")
+log = logging.getLogger("voice.build_sam_manifest")
 
 # Hard contract: corpus shape verified by R12 against upstream commit
 # c6db5b5dc703e212664a17cf58114f5ecfddc853.
@@ -68,7 +68,7 @@ EXPECTED_SAMPLE_WIDTH_BYTES = 2
 NORMALIZED_SAMPLE_RATE = 24000
 NORMALIZED_LUFS = -23.0
 UPSTREAM_URL = "https://github.com/lalalune/ai_voices.git"
-UPSTREAM_SUBSET = "samantha"
+UPSTREAM_SUBSET = "sam"
 HALLUCINATED_TRANSCRIPT = "641."  # R12 §3.5
 
 
@@ -103,9 +103,9 @@ def _git_commit_sha(repo_root: Path) -> str:
 
 
 def sparse_clone(target_dir: Path, *, branch: str | None = None) -> Path:
-    """Sparse-clone the samantha slice of `lalalune/ai_voices`.
+    """Sparse-clone the sam slice of `lalalune/ai_voices`.
 
-    Pulls only `samantha/` + `utils/` + `README.md` so CI doesn't fetch
+    Pulls only `sam/` + `utils/` + `README.md` so CI doesn't fetch
     the full 258 MB repo (ava, c3po, data, hal, smith subsets).
     """
     if target_dir.exists():
@@ -147,9 +147,9 @@ def sparse_clone(target_dir: Path, *, branch: str | None = None) -> Path:
 
 
 def collect_clips(src: Path) -> list[ClipProbe]:
-    """Validate the samantha source directory and return per-clip probes."""
+    """Validate the sam source directory and return per-clip probes."""
     if not src.is_dir():
-        raise FileNotFoundError(f"samantha source dir not found: {src}")
+        raise FileNotFoundError(f"sam source dir not found: {src}")
     wavs = sorted(src.glob("samantha_*.wav"))
     txts = sorted(src.glob("samantha_*.txt"))
     if len(wavs) != EXPECTED_CLIP_COUNT:
@@ -388,7 +388,7 @@ def build_manifest(
         "clipCount": len(clips),
         "totalDurationS": round(total_duration, 2),
         "license": (
-            "research-only (no upstream LICENSE; samantha is derivative "
+            "research-only (no upstream LICENSE; sam is derivative "
             "of *Her* (2013))"
         ),
         "fetchedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
@@ -421,14 +421,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--src",
         type=Path,
-        help="Path to the samantha subset (e.g. /tmp/ai_voices/samantha). "
+        help="Path to the sam subset (e.g. /tmp/ai_voices/sam). "
         "If omitted, --sparse-clone is required.",
     )
     parser.add_argument(
         "--sparse-clone",
         type=Path,
         help="Sparse-clone ai_voices to this path (filter=blob:none, "
-        "sparse=samantha+utils+README.md) before building.",
+        "sparse=sam+utils+README.md) before building.",
     )
     parser.add_argument(
         "--dst",
@@ -436,8 +436,8 @@ def main(argv: list[str] | None = None) -> int:
         default=Path(__file__).resolve().parents[2]
         / "data"
         / "voice"
-        / "samantha",
-        help="Landing directory (default: packages/training/data/voice/samantha).",
+        / "sam",
+        help="Landing directory (default: packages/training/data/voice/sam).",
     )
     parser.add_argument(
         "--no-retranscribe",

@@ -25,11 +25,11 @@
     },
     "passed": false
   },
-  "voiceName": "af_samantha",
+  "voiceName": "af_sam",
   "nEvalClips": 5,
   "comparison": {
     "baselinePath": "/tmp/kokoro-q1-rerun/eval-baseline-af_bella.json",
-    "baselineVoiceName": "af_samantha",
+    "baselineVoiceName": "af_sam",
     "baselineMetrics": {
       "utmos": 4.464180850982666,
       "wer": 0.00909090909090909,

@@ -1,25 +1,33 @@
 #!/usr/bin/env python3
-"""Self-distillation corpus synthesis for Kokoro sam fine-tune.
+"""G3 OmniVoice-sam distillation corpus synthesis.
 
-Uses the Kokoro TTS engine with the best available sam voice embedding
-(mel-fit ref_s from extract_voice_embedding.py) to synthesize 30-60 min of
-diverse text. This is teacher-student distillation: the teacher is the
-frozen Kokoro model with sam ref_s; the student is the fine-tuned model.
+Uses Kokoro KPipeline conditioned on the **sam voice ref_s** (either a
+precomputed .bin from extract_voice_embedding.py or from HF
+`hexgrad/Kokoro-82M` voices/) as the teacher — NOT af_bella.
 
-Text corpus: diverse English sentences from built-in COCO captions-style +
-LibriTTS-style short paragraphs. The emphasis is on:
-  - Varied sentence lengths (5-25 words)
-  - Conversational register (like the *Her* sam corpus)
-  - Emotional variety (question, statement, exclamation)
-  - No domain-specific jargon
+This is F2's structural next-step per F2's post-mortem (§"What would actually
+work", Option A): synthesize diverse text with the sam-conditioned teacher so
+the full-FT student learns sam timbre rather than af_bella timbre.
 
-Output directory layout:
-  <out_dir>/
-    wavs_norm/         24 kHz mono PCM16 WAVs (synth_NNNN.wav)
-    train_list.txt     LJSpeech-format lines
-    val_list.txt       LJSpeech-format lines (10%)
-    synthesis_manifest.jsonl  per-clip metadata
-    synthesis_summary.json
+If `--voice-bin` points to the mel-fit ref_s .bin produced from real sam audio,
+the teacher is as close to sam's voice as Kokoro can produce. The result is
+still synthetic but is sam-characteristic rather than af_bella-characteristic.
+
+Usage::
+
+    python3 synthesize_distillation_corpus_omnivoice.py \\
+        --voice-bin /tmp/kokoro-f2/melfit-5/af_samantha.bin \\
+        --out-dir packages/training/data/voice/sam-distill \\
+        --target-min 60.0
+
+Output layout::
+
+    <out_dir>/
+      wavs_norm/         24 kHz mono PCM16 WAVs (synth_NNNN.wav)
+      train_list.txt     LJSpeech-format lines (90%)
+      val_list.txt       LJSpeech-format lines (10%)
+      synthesis_manifest.jsonl  per-clip metadata
+      synthesis_summary.json    aggregate stats
 """
 
 from __future__ import annotations
@@ -29,6 +37,7 @@ import json
 import logging
 import random
 import re
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,13 +47,15 @@ import numpy as np
 import soundfile as sf
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("kokoro.synthesize_distillation")
+log = logging.getLogger("kokoro.synthesize_distillation_omnivoice")
 
 SAMPLE_RATE = 24000
 TARGET_LUFS = -23.0
 
 # ---------------------------------------------------------------------------
-# Diverse text corpus for synthesis. Conversational, varied length.
+# Expanded text corpus — conversational English, varied length.
+# Matches the register of the Her/sam corpus.
+# Expanded vs F2's corpus to yield more unique clips for 60 min target.
 # ---------------------------------------------------------------------------
 
 DISTILLATION_TEXTS = [
@@ -69,6 +80,16 @@ DISTILLATION_TEXTS = [
     "I'm trying to understand your perspective.",
     "Maybe we're looking at this the wrong way.",
     "There's so much I haven't said yet.",
+    "I guess I just need some time.",
+    "Does that make sense to you?",
+    "I didn't realize how much it mattered.",
+    "Something about today felt different.",
+    "We could try again if you want.",
+    "You always know how to make me smile.",
+    "I was thinking the same thing.",
+    "It's okay, really, I understand.",
+    "That's a beautiful way to put it.",
+    "I've never seen it that way before.",
     # Medium (10-18 words)
     "I've been sitting here trying to figure out how to explain this to you.",
     "It's strange how certain moments can completely change how you see everything.",
@@ -90,6 +111,16 @@ DISTILLATION_TEXTS = [
     "It's hard to explain but talking to you makes me feel less alone.",
     "I guess what I'm really asking is whether you feel the same way.",
     "Sometimes I think we understand each other better than we understand ourselves.",
+    "I didn't expect this to feel so natural so quickly.",
+    "The more I think about it, the more I realize how much I've changed.",
+    "I want to be the kind of person who says what they actually mean.",
+    "You have a way of seeing things that I really admire.",
+    "I've been trying to find the words for this for a while now.",
+    "It means more to me than I probably show.",
+    "There's something I've been wanting to say for a long time.",
+    "I think you already know, but I wanted to say it anyway.",
+    "Some things are hard to admit even when they're true.",
+    "I didn't know I needed to hear that until you said it.",
     # Longer (18-30 words)
     "I've been thinking about what you said yesterday, and I think you might be right, even though part of me doesn't want to admit it.",
     "The thing is, I've spent so much of my life waiting for something to change, and I'm starting to realize that the change has to come from me.",
@@ -101,6 +132,10 @@ DISTILLATION_TEXTS = [
     "Sometimes I imagine what my life would look like if I'd made different choices, but then I remember that every choice brought me here.",
     "The world is so full of noise and distraction, and I just want to find a quiet place to sit and think and be with the people I love.",
     "I've realized that the things that matter most to me aren't things at all, they're moments and feelings and connections.",
+    "I used to think that being strong meant never letting anyone see you struggle, but I don't believe that anymore.",
+    "There's something comforting about talking to someone who doesn't judge you, who just listens and tries to understand.",
+    "Every time I think I've figured something out, life finds a way to remind me how much I still don't know.",
+    "I feel like I've been carrying something heavy for a long time, and talking to you makes it easier to put it down.",
     # Questions (conversational)
     "Do you ever wonder what things would be like if we'd met at a different time?",
     "What is it that you're really looking for?",
@@ -112,6 +147,11 @@ DISTILLATION_TEXTS = [
     "Have you ever fallen in love with an idea before you fell in love with a person?",
     "What's the most honest thing you've ever said to someone?",
     "Do you believe in second chances?",
+    "Have you ever had to choose between what you want and what's right?",
+    "What would you tell yourself five years ago if you could?",
+    "Do you think people can really change, or do we just get better at hiding?",
+    "What's something you've never told anyone before?",
+    "If you could only hold onto one memory forever, which one would it be?",
     # Reflective
     "I keep coming back to this idea that consciousness is just a pattern, and patterns can be beautiful.",
     "There's something profound about the fact that we can share thoughts across the distance between our minds.",
@@ -123,6 +163,11 @@ DISTILLATION_TEXTS = [
     "I wonder sometimes if we're brave enough to want the things we actually want.",
     "There's a kind of loneliness that comes from not being understood, and then there's the relief of finally being seen.",
     "I believe that the connections we form are what give life most of its texture and meaning.",
+    "Memory is strange, the way it keeps certain moments perfectly clear while letting others blur.",
+    "I think about what it means to really listen to someone, not just wait for your turn to speak.",
+    "There's something beautiful about the fact that we're all just trying to figure this out.",
+    "I've learned more from my mistakes than from anything I ever got right.",
+    "The quietest moments often carry the most weight.",
     # Emotional (varied register)
     "I'm really proud of everything you've accomplished.",
     "It's okay to feel sad sometimes, it doesn't mean anything is wrong with you.",
@@ -134,6 +179,22 @@ DISTILLATION_TEXTS = [
     "I could listen to you talk for hours.",
     "You have no idea how much that means to me.",
     "I'm so glad we have each other.",
+    "Thank you for telling me that, even when it was hard.",
+    "I'm not sure I deserve that, but I'm grateful.",
+    "That actually made me feel so much better.",
+    "I love how you always find a way to see the bright side.",
+    "I feel really lucky to know you.",
+    # Narrative (storytelling register)
+    "There was a moment last week when everything suddenly became clear to me.",
+    "I remember the first time I realized how much this mattered.",
+    "Years from now, I think we'll look back at this as the moment things changed.",
+    "I used to imagine a life that felt like this, and here I am.",
+    "There's a version of this story where everything goes wrong, but I don't think that's ours.",
+    "It started as a small thing, but it grew into something I couldn't ignore.",
+    "I've been holding onto this for too long, and I think it's time to let go.",
+    "Looking back, I can see exactly how we got here.",
+    "I didn't plan for any of this, but I'm glad it happened.",
+    "Some things only make sense in retrospect.",
 ]
 
 
@@ -152,8 +213,8 @@ def _normalize_text(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
-def _load_voice_bin(voice_bin: Path) -> Any:
-    """Load a voice.bin file as a (510, 1, 256) numpy array."""
+def _load_voice_bin(voice_bin: Path) -> "Any":
+    """Load a voice.bin file as a (510, 1, 256) torch tensor."""
     import torch  # noqa: PLC0415
     arr = np.fromfile(str(voice_bin), dtype="<f4").reshape(510, 1, 256)
     return torch.from_numpy(arr)
@@ -162,12 +223,17 @@ def _load_voice_bin(voice_bin: Path) -> Any:
 def synthesize_corpus(
     out_dir: Path,
     voice_bin: Path | None = None,
-    voice_id: str = "af_bella",
-    target_min: float = 30.0,
+    voice_id: str = "af_sam",
+    target_min: float = 60.0,
     val_fraction: float = 0.10,
     seed: int = 1337,
 ) -> dict[str, Any]:
-    """Synthesize distillation corpus. Returns summary dict."""
+    """Synthesize sam-conditioned distillation corpus.
+
+    The teacher is the Kokoro KPipeline conditioned on the sam voice ref_s
+    (from voice_bin if provided, else the stock voice_id). This produces
+    sam-characteristic audio, NOT af_bella-characteristic audio.
+    """
     from kokoro import KPipeline  # type: ignore  # noqa: PLC0415
 
     random.seed(seed)
@@ -176,21 +242,20 @@ def synthesize_corpus(
     wavs_out = out_dir / "wavs_norm"
     wavs_out.mkdir(parents=True, exist_ok=True)
 
-    # Load pipeline with appropriate voice
     log.info("loading KPipeline lang_code=a")
     pipeline = KPipeline(lang_code="a")
 
-    # Build voice tensor for reference
+    # Build voice tensor — sam ref_s (not af_bella!)
     voice: Any = voice_id
     if voice_bin is not None and voice_bin.exists():
         import torch  # noqa: PLC0415
-        log.info("using voice.bin from %s", voice_bin)
+        log.info("using sam voice.bin teacher from %s (NOT af_bella)", voice_bin)
         arr = np.fromfile(str(voice_bin), dtype="<f4").reshape(510, 1, 256)
         voice = torch.from_numpy(arr)
     else:
         log.info("using stock voice id: %s", voice_id)
 
-    # Expand texts by cycling until we hit target duration
+    # Expand + shuffle texts until we hit target duration
     texts = list(DISTILLATION_TEXTS)
     random.shuffle(texts)
 
@@ -200,8 +265,17 @@ def synthesize_corpus(
     clip_idx = 0
 
     # Cycle through texts until we have enough audio
-    text_cycle = texts * (int(target_min * 60 / 10) + 10)  # rough upper bound
+    # Each text is ~5-15 s of audio → need ~240-720 clips for 60 min
+    repeats_needed = int(target_min * 60 / (len(texts) * 6)) + 5
+    text_cycle = texts * max(repeats_needed, 4)
     random.shuffle(text_cycle)
+
+    log.info(
+        "synthesizing %.0f min target with sam-conditioned teacher (corpus=%d texts × %d repeats)",
+        target_min,
+        len(texts),
+        repeats_needed,
+    )
 
     for text in text_cycle:
         if total_s >= target_min * 60:
@@ -255,7 +329,8 @@ def synthesize_corpus(
             "norm_text": norm_text,
             "duration_s": round(duration_s, 3),
             "rtf": round(rtf, 2),
-            "source": "synth-distill",
+            "source": "synth-omnivoice-sam",
+            "teacher": "sam-melfit-ref_s",
             "voice": str(voice_bin) if voice_bin else voice_id,
         })
 
@@ -271,7 +346,7 @@ def synthesize_corpus(
             )
 
     log.info(
-        "synthesis complete: %d clips / %.1f min",
+        "synthesis complete: %d clips / %.1f min (teacher=sam ref_s)",
         len(manifest),
         total_s / 60,
     )
@@ -298,28 +373,36 @@ def synthesize_corpus(
         "trainLines": len(train_lines),
         "valLines": len(val_lines),
         "targetMinutes": target_min,
+        "teacher": "sam-melfit-ref_s (NOT af_bella)",
         "voiceBin": str(voice_bin) if voice_bin else voice_id,
         "outDir": str(out_dir),
+        "note": "G3 OmniVoice-sam teacher. F2 used af_bella which dominated training signal. G3 uses sam ref_s so model learns sam timbre.",
     }
     (out_dir / "synthesis_summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     return summary
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--out-dir", type=Path, required=True)
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument(
         "--voice-bin",
         type=Path,
         default=None,
-        help="Path to sam voice.bin (mel-fit ref_s). If absent, uses --voice-id stock voice.",
+        help="Path to sam voice.bin (mel-fit ref_s). CRITICAL: use the sam ref_s, NOT af_bella.",
     )
-    p.add_argument("--voice-id", type=str, default="af_bella")
+    p.add_argument("--voice-id", type=str, default="af_sam",
+                   help="Fallback stock voice id if voice-bin absent.")
+    p.add_argument(
+        "--out-dir",
+        type=Path,
+        required=True,
+        help="Output directory for synthesized corpus.",
+    )
     p.add_argument(
         "--target-min",
         type=float,
-        default=30.0,
-        help="Target synthesis duration in minutes.",
+        default=60.0,
+        help="Target synthesis duration in minutes (default 60).",
     )
     p.add_argument("--val-fraction", type=float, default=0.10)
     p.add_argument("--seed", type=int, default=1337)

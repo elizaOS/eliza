@@ -48,7 +48,7 @@
  *     call and applies the persisted `(instruct, ref_audio_tokens, ref_T,
  *     ref_text)` triple to `ov_tts_params`. v3 callers that passed
  *     `speaker_preset_id == NULL` (auto-voice) keep that behaviour;
- *     `speaker_preset_id == "default"` / `"samantha"` / etc. now resolve
+ *     `speaker_preset_id == "default"` / `"sam"` / etc. now resolve
  *     to a real preset file instead of being misread as a VoiceDesign
  *     attribute string.
  *   - `eliza_inference_encode_reference` is added so the freeze CLI can
@@ -233,8 +233,8 @@ int eliza_inference_cancel_tts(
  *
  * This is the encode-only half of the TTS pipeline that the freeze CLI
  * (`packages/app-core/scripts/omnivoice-fuse/freeze-voice.mjs`) uses to
- * persist a samantha-locked preset under
- * `<bundle_dir>/cache/voice-preset-samantha.bin`. At runtime the
+ * persist a sam-locked preset under
+ * `<bundle_dir>/cache/voice-preset-sam.bin`. At runtime the
  * synthesis path reads the preset back and feeds the persisted tokens
  * into `params.ref_audio_tokens` — there is no per-utterance encode
  * cost.

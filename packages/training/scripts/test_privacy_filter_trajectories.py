@@ -32,7 +32,7 @@ def test_filter_json_value_recurses_values_lists_and_keys(tmp_path: Path) -> Non
             "messages": [
                 "email bob@example.com or call +1 415-555-0123",
                 "key sk-AbCdEf0123456789xyz at 37.7749, -122.4194",
-                {"handle": "ping @samantha_ops"},
+                {"handle": "ping @sam_ops"},
             ],
         },
     }
@@ -53,7 +53,7 @@ def test_filter_json_value_recurses_values_lists_and_keys(tmp_path: Path) -> Non
     assert "+1 415-555-0123" not in dumped
     assert "sk-AbCdEf0123456789xyz" not in dumped
     assert "37.7749" not in dumped
-    assert "@samantha_ops" not in dumped
+    assert "@sam_ops" not in dumped
     assert "<REDACTED:contact-email>" in dumped
     assert "<REDACTED:contact-phone>" in dumped
     assert "<REDACTED:openai-key>" in dumped

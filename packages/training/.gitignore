@@ -7,8 +7,8 @@ data/*
 !data/final-eliza1-smoke/
 !data/final-eliza1-smoke/**
 # Voice training data — carve out manifest + docs for voice corpora
-# (e.g. samantha). Raw + normalized audio stays ignored (regenerable from
-# upstream via scripts/voice/build_samantha_manifest.py). Manifests,
+# (e.g. sam). Raw + normalized audio stays ignored (regenerable from
+# upstream via scripts/voice/build_sam_manifest.py). Manifests,
 # READMEs, source.json, LJSpeech metadata.csv, and per-corpus .gitignore
 # anchors are tracked so the corpus contract is durable in git.
 !data/voice/

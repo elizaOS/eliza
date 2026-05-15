@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage the `samantha` voice from `lalalune/ai_voices` into Kokoro LJSpeech form.
+"""Stage the `sam` voice from `lalalune/ai_voices` into Kokoro LJSpeech form.
 
 Voice Wave 2 / I7. The upstream corpus is **58 paired `samantha_NNN.{wav,txt}`
 files** at 44.1 kHz mono 16-bit, totaling 3.51 minutes of audio. This script
@@ -19,21 +19,21 @@ can decide whether to drop the clip.
 
 Usage:
 
-    python3 stage_samantha_corpus.py \\
-        --source /tmp/ai_voices/samantha \\
-        --out packages/training/data/voice/samantha \\
+    python3 stage_sam_corpus.py \\
+        --source /tmp/ai_voices/sam \\
+        --out packages/training/data/voice/sam \\
         --upstream-sha <git sha of the ai_voices clone>
 
     # Re-transcribe samantha_002 with whisper-large-v3 (requires GPU + the
     # `openai-whisper` package; falls back to flagging if unavailable):
-    python3 stage_samantha_corpus.py \\
-        --source /tmp/ai_voices/samantha \\
-        --out packages/training/data/voice/samantha \\
+    python3 stage_sam_corpus.py \\
+        --source /tmp/ai_voices/sam \\
+        --out packages/training/data/voice/sam \\
         --retranscribe-suspicious --whisper-model large-v3
 
     # CI smoke (no audio dependencies, 3 synthetic clips, validates schema):
-    python3 stage_samantha_corpus.py --synthetic-smoke \\
-        --out /tmp/samantha-smoke
+    python3 stage_sam_corpus.py --synthetic-smoke \\
+        --out /tmp/sam-smoke
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ from pathlib import Path
 from typing import Any
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger("kokoro.stage_samantha_corpus")
+log = logging.getLogger("kokoro.stage_sam_corpus")
 
 # The Whisper-base hallucination flagged in R12-ai_voices.md §3.5. If the
 # upstream transcript for samantha_002 still reads "641." we either re-
@@ -216,8 +216,8 @@ def _stage(args: argparse.Namespace) -> int:
     # records (kept tiny — 58 rows total).
     source_record = {
         "schemaVersion": 1,
-        "kind": "samantha-corpus-source",
-        "upstream": "https://github.com/lalalune/ai_voices/tree/main/samantha",
+        "kind": "sam-corpus-source",
+        "upstream": "https://github.com/lalalune/ai_voices/tree/main/sam",
         "commitSha": args.upstream_sha or "unknown",
         "clipCount": len(records),
         "totalDurationSeconds": round(sum(r["duration_s"] for r in records), 3),
@@ -257,7 +257,7 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
         clip_id = f"samantha_{i:03d}"
         wav_path = raw_dir / f"{clip_id}.wav"
         # 0.5 s of digital silence at 44.1 kHz mono 16-bit — matches the
-        # upstream samantha format and lets the downstream `wave` probe work.
+        # upstream sam format and lets the downstream `wave` probe work.
         with wave.open(str(wav_path), "wb") as w:
             w.setnchannels(1)
             w.setsampwidth(2)
@@ -292,7 +292,7 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
         json.dumps(
             {
                 "schemaVersion": 1,
-                "kind": "samantha-corpus-source",
+                "kind": "sam-corpus-source",
                 "upstream": "synthetic://smoke",
                 "commitSha": "synthetic",
                 "clipCount": len(records),
@@ -318,13 +318,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--source",
         type=Path,
-        default=Path("/tmp/ai_voices/samantha"),
+        default=Path("/tmp/ai_voices/sam"),
         help="Directory containing samantha_NNN.wav + samantha_NNN.txt pairs.",
     )
     p.add_argument(
         "--out",
         type=Path,
-        default=Path("packages/training/data/voice/samantha"),
+        default=Path("packages/training/data/voice/sam"),
         help="Destination dataset root (will contain metadata.csv + raw/ + wavs/ + source.json).",
     )
     p.add_argument(

@@ -1,6 +1,6 @@
-# Samantha corpus — audio NOT checked in. Raw + normalized audio is
+# Sam corpus — audio NOT checked in. Raw + normalized audio is
 # regenerable from upstream `lalalune/ai_voices` via
-# `packages/training/scripts/voice/build_samantha_manifest.py`.
+# `packages/training/scripts/voice/build_sam_manifest.py`.
 # Tracked in git: README.md, source.json, manifest.jsonl,
 # ljspeech/metadata.csv.
 audio/

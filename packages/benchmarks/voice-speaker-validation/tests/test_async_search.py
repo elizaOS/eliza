@@ -70,7 +70,7 @@ class TestAsyncSearch:
         Run ASR partial simulation and speaker embed concurrently.
         Assert that partial gaps are not significantly wider than baseline.
         """
-        pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
+        pcm = load_fixture_audio(manifest["f1_sam_solo"]["path"])
         n = min(TARGET_SR * 3, len(pcm))  # 3 s of audio max
         audio_window = pcm[:n]
 
@@ -197,7 +197,7 @@ class TestAsyncSearch:
         min_samples = int(MIN_SPEECH_MS * TARGET_SR / 1000)
 
         store = InMemoryVoiceProfileStore(hot_cache_size=30, match_threshold=0.35)
-        pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
+        pcm = load_fixture_audio(manifest["f1_sam_solo"]["path"])
 
         # Enroll the speaker
         enroll_emb = encoder.encode(pcm[:TARGET_SR])
@@ -235,7 +235,7 @@ class TestAsyncSearch:
         self, encoder: SpeakerEncoder, manifest: dict, artifacts_dir: Path
     ):
         """Write async search latency report to artifacts."""
-        pcm = load_fixture_audio(manifest["f1_samantha_solo"]["path"])
+        pcm = load_fixture_audio(manifest["f1_sam_solo"]["path"])
         n = min(TARGET_SR * 2, len(pcm))
         audio_window = pcm[:n]
 

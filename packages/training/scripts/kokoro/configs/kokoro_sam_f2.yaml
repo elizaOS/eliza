@@ -1,13 +1,13 @@
-# F2 Kokoro samantha full fine-tune config.
+# F2 Kokoro sam full fine-tune config.
 # Tuned for augmented+distilled corpus (~50+ min vs original 3.5 min).
 extends: base.yaml
 
-voice_name: af_samantha
-voice_display_name: Samantha (AI Voices) — F2 Full FT
+voice_name: af_sam
+voice_display_name: Sam (AI Voices) — F2 Full FT
 voice_lang: a
 voice_tags:
   - female
-  - samantha
+  - sam
   - eliza-1-voice
   - ai-voices-derived
   - research-only
@@ -37,7 +37,7 @@ mel_loss_weight: 1.0
 duration_loss_weight: 0.0
 f0_loss_weight: 0.0
 
-# Relaxed gates for F2 (self-distill corpus uses Kokoro voice not real samantha)
+# Relaxed gates for F2 (self-distill corpus uses Kokoro voice not real sam)
 # The beatsBaseline comparison vs af_bella is the real gate
 gates:
   utmos_min: 3.8

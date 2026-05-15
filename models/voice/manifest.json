@@ -2,10 +2,19 @@
   "$schema": "https://elizaos.dev/schemas/voice-manifest/v1.json",
   "version": 1,
   "generatedAt": "2026-05-14T00:00:00Z",
+  "assetAudit": {
+    "auditedAt": "2026-05-15T00:00:00Z",
+    "status": "missing-binaries",
+    "notes": [
+      "No binary voice sub-model assets were present under models/voice or artifacts/voice-sub-model-staging at audit time.",
+      "The public Hugging Face repos exposed only .gitattributes, README.md, and manifest.json; no LFS files were available for sha256/size verification.",
+      "sha256 and sizeBytes are null for missing assets; approxSizeBytes is the planned size from staging manifests and is not a verified file size."
+    ]
+  },
   "models": [
     {
       "id": "speaker-encoder",
-      "displayName": "WeSpeaker ResNet34-LM",
+      "displayName": "WeSpeaker ECAPA-TDNN distilled",
       "purpose": "voice-embedding (256-dim) for speaker identification",
       "runtime": "onnxruntime-node",
       "currentVersion": "0.1.0",
@@ -14,126 +23,37 @@
       "introducedIn": "R2/I2",
       "variants": [
         {
-          "variantId": "wespeaker-resnet34-lm-int8",
+          "variantId": "wespeaker-ecapa-tdnn-256-int8",
+          "filename": "wespeaker-ecapa-tdnn-256-int8.onnx",
           "format": "onnx",
           "precision": "int8",
           "approxSizeBytes": 7340032,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "embedding": {
-            "dim": 256,
-            "sampleRate": 16000,
-            "channelCount": 1,
-            "normalize": "l2"
-          },
-          "evalMetrics": {
-            "voxceleb1OEer": 0.0072
-          }
+          "sizeBytes": null,
+          "sha256": null,
+          "assetStatus": "missing",
+          "missingReason": "binary not present in local staging or public HF repo",
+          "embedding": { "dim": 256, "sampleRate": 16000, "channelCount": 1, "normalize": "l2" },
+          "evalMetrics": { "voxceleb1OEer": 0.0072 }
         },
         {
-          "variantId": "wespeaker-resnet34-lm-fp32",
+          "variantId": "wespeaker-ecapa-tdnn-256-fp32",
+          "filename": "wespeaker-ecapa-tdnn-256-fp32.onnx",
           "format": "onnx",
           "precision": "fp32",
           "approxSizeBytes": 26214400,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "embedding": {
-            "dim": 256,
-            "sampleRate": 16000,
-            "channelCount": 1,
-            "normalize": "l2"
-          },
-          "evalMetrics": {
-            "voxceleb1OEer": 0.0072
-          }
-        }
-      ]
-    },
-    {
-      "id": "voice-emotion",
-      "displayName": "Wav2Small acoustic emotion classifier",
-      "purpose": "continuous V-A-D emotion regression, projected to 7-class ExpressiveEmotion tags",
-      "runtime": "onnxruntime-node",
-      "currentVersion": "0.1.0",
-      "license": "Apache-2.0",
-      "attribution": "Student distilled from audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim (CC-BY-NC-SA-4.0 — teacher only, NEVER bundled). Wav2Small architecture from Wagner et al., arXiv:2408.13920.",
-      "introducedIn": "R3/I3",
-      "variants": [
-        {
-          "variantId": "wav2small-msp-dim-int8",
-          "format": "onnx",
-          "precision": "int8",
-          "approxSizeBytes": 122880,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "emotion": {
-            "sampleRate": 16000,
-            "channelCount": 1,
-            "minSeconds": 1.0,
-            "maxSeconds": 12.0,
-            "outputDims": 3,
-            "outputLabels": ["valence", "arousal", "dominance"],
-            "paramCount": 72256
-          },
-          "evalMetrics": {
-            "macroF1MeldTest": null,
-            "macroF1IemocapTest": null,
-            "mseMspPodcastVad": null,
-            "meanCpuLatencyMs": null
-          }
-        },
-        {
-          "variantId": "wav2small-msp-dim-fp32",
-          "format": "onnx",
-          "precision": "fp32",
-          "approxSizeBytes": 491520,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "emotion": {
-            "sampleRate": 16000,
-            "channelCount": 1,
-            "minSeconds": 1.0,
-            "maxSeconds": 12.0,
-            "outputDims": 3,
-            "outputLabels": ["valence", "arousal", "dominance"],
-            "paramCount": 72256
-          },
-          "evalMetrics": {
-            "macroF1MeldTest": null,
-            "macroF1IemocapTest": null,
-            "mseMspPodcastVad": null,
-            "meanCpuLatencyMs": null
-          }
-        }
-      ]
-    },
-    {
-      "id": "voice-emotion-text",
-      "displayName": "Roberta GoEmotions text classifier (optional fallback)",
-      "purpose": "text-only fallback when the Stage-1 LM `emotion` field-evaluator quality regresses; off by default",
-      "runtime": "onnxruntime-node",
-      "currentVersion": "0.1.0",
-      "license": "MIT",
-      "attribution": "https://huggingface.co/SamLowe/roberta-base-go_emotions-onnx",
-      "introducedIn": "R3/I3",
-      "variants": [
-        {
-          "variantId": "roberta-go-emotions-int8",
-          "format": "onnx",
-          "precision": "int8",
-          "approxSizeBytes": 125000000,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "emotion": {
-            "labelCount": 28,
-            "projectedLabelCount": 7,
-            "maxTokenLength": 512
-          },
-          "evalMetrics": {
-            "macroF1GoemotionsTest": 0.49
-          }
+          "sizeBytes": null,
+          "sha256": null,
+          "assetStatus": "missing",
+          "missingReason": "binary not present in local staging or public HF repo",
+          "embedding": { "dim": 256, "sampleRate": 16000, "channelCount": 1, "normalize": "l2" },
+          "evalMetrics": { "voxceleb1OEer": 0.0072 }
         }
       ]
     },
     {
       "id": "diarizer",
       "displayName": "pyannote-segmentation-3.0",
-      "purpose": "local speaker-activity segmentation (powerset, 3 local speakers, 5s window)",
+      "purpose": "local speaker-activity segmentation",
       "runtime": "onnxruntime-node",
       "currentVersion": "0.1.0",
       "license": "MIT",
@@ -142,43 +62,148 @@
       "variants": [
         {
           "variantId": "pyannote-segmentation-3.0-int8",
+          "filename": "pyannote-segmentation-3.0-int8.onnx",
           "format": "onnx",
           "precision": "int8",
           "approxSizeBytes": 1614807,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "diarizer": {
-            "windowSeconds": 5,
-            "framesPerWindow": 293,
-            "classCount": 7,
-            "maxLocalSpeakers": 3,
-            "sampleRate": 16000,
-            "channelCount": 1
-          }
+          "sizeBytes": null,
+          "sha256": null,
+          "assetStatus": "missing",
+          "missingReason": "binary not present in local staging or public HF repo",
+          "diarizer": { "windowSeconds": 5, "framesPerWindow": 293, "classCount": 7, "maxLocalSpeakers": 3, "sampleRate": 16000, "channelCount": 1 }
         },
         {
           "variantId": "pyannote-segmentation-3.0-fp32",
+          "filename": "pyannote-segmentation-3.0-fp32.onnx",
           "format": "onnx",
           "precision": "fp32",
           "approxSizeBytes": 6291456,
-          "sha256": "TBD-populated-by-publish-pipeline",
-          "diarizer": {
-            "windowSeconds": 5,
-            "framesPerWindow": 293,
-            "classCount": 7,
-            "maxLocalSpeakers": 3,
-            "sampleRate": 16000,
-            "channelCount": 1
-          }
+          "sizeBytes": null,
+          "sha256": null,
+          "assetStatus": "missing",
+          "missingReason": "binary not present in local staging or public HF repo",
+          "diarizer": { "windowSeconds": 5, "framesPerWindow": 293, "classCount": 7, "maxLocalSpeakers": 3, "sampleRate": 16000, "channelCount": 1 }
         }
+      ]
+    },
+    {
+      "id": "turn-detector",
+      "displayName": "LiveKit turn-detector + turnsense fallback",
+      "purpose": "end-of-turn detection for the voice pipeline",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "Based on livekit/turn-detector v1.2.2-en and v0.4.1-intl",
+      "introducedIn": "R1/I1",
+      "variants": [
+        { "variantId": "turn-detector-en-int8", "filename": "turn-detector-en-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 65700000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
+        { "variantId": "turn-detector-intl-int8", "filename": "turn-detector-intl-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 396000000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
+        { "variantId": "turnsense-fallback-int8", "filename": "turnsense-fallback-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 8000000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
+      ]
+    },
+    {
+      "id": "voice-emotion",
+      "displayName": "Wav2Small acoustic emotion classifier",
+      "purpose": "continuous V-A-D emotion regression",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "Student distilled from audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim; teacher weights are not bundled.",
+      "introducedIn": "R3/I3",
+      "variants": [
+        { "variantId": "wav2small-msp-dim-int8", "filename": "wav2small-msp-dim-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 122880, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo", "emotion": { "sampleRate": 16000, "channelCount": 1, "minSeconds": 1.0, "maxSeconds": 12.0, "outputDims": 3, "outputLabels": ["valence", "arousal", "dominance"], "paramCount": 72256 } },
+        { "variantId": "wav2small-msp-dim-fp32", "filename": "wav2small-msp-dim-fp32.onnx", "format": "onnx", "precision": "fp32", "approxSizeBytes": 491520, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo", "emotion": { "sampleRate": 16000, "channelCount": 1, "minSeconds": 1.0, "maxSeconds": 12.0, "outputDims": 3, "outputLabels": ["valence", "arousal", "dominance"], "paramCount": 72256 } }
+      ]
+    },
+    {
+      "id": "kokoro",
+      "displayName": "Kokoro 82M base + voice presets",
+      "purpose": "Kokoro TTS base weights and voice presets",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "https://huggingface.co/hexgrad/Kokoro-82M",
+      "introducedIn": "R7/I7",
+      "variants": [
+        { "variantId": "kokoro-v1.0-q4", "filename": "kokoro-v1.0-q4.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 326144000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
+        { "variantId": "kokoro-af-bella", "filename": "voices/af_bella.bin", "format": "bin", "precision": "fp16", "approxSizeBytes": 524288, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
+        { "variantId": "kokoro-af-sam", "filename": "voices/af_sam.bin", "format": "bin", "precision": "fp16", "approxSizeBytes": 524288, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
+      ]
+    },
+    {
+      "id": "omnivoice",
+      "displayName": "OmniVoice frozen conditioning",
+      "purpose": "primary TTS path with sam voice preset",
+      "runtime": "llama.cpp",
+      "currentVersion": "0.1.1",
+      "license": "Apache-2.0",
+      "attribution": "OmniVoice architecture; elizaOS llama.cpp fork integration",
+      "introducedIn": "R6/I6",
+      "variants": [
+        { "variantId": "omnivoice-base-q4_k_m", "filename": "omnivoice-base-q4_k_m.gguf", "format": "gguf", "precision": "q4_k_m", "approxSizeBytes": 388000000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
+        { "variantId": "omnivoice-tokenizer-q4_k_m", "filename": "omnivoice-tokenizer-q4_k_m.gguf", "format": "gguf", "precision": "q4_k_m", "approxSizeBytes": 51200000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
+        { "variantId": "omnivoice-base-q8_0", "filename": "omnivoice-base-q8_0.gguf", "format": "gguf", "precision": "q8_0", "approxSizeBytes": 620000000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
+        { "variantId": "omnivoice-sam-preset", "filename": "presets/voice-preset-sam.bin", "format": "bin", "precision": "fp16", "approxSizeBytes": 8192, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
+      ]
+    },
+    {
+      "id": "vad",
+      "displayName": "Silero VAD v5.1.2",
+      "purpose": "speech/silence endpoint detection",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "MIT",
+      "attribution": "https://github.com/snakers4/silero-vad",
+      "introducedIn": "R2/I2",
+      "variants": [
+        { "variantId": "silero-vad-int8", "filename": "silero-vad-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 1056768, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
+        { "variantId": "silero-vad-v5.1.2-ggml", "filename": "silero-vad-v5.1.2.ggml.bin", "format": "ggml", "precision": "fp16", "approxSizeBytes": 2093056, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
+      ]
+    },
+    {
+      "id": "wakeword",
+      "displayName": "hey-eliza wake-word head",
+      "purpose": "always-on wake-word detection",
+      "runtime": "onnxruntime-node",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "hey-eliza wake-word head",
+      "introducedIn": "R2/I2",
+      "variants": [
+        { "variantId": "hey-eliza-int8", "filename": "hey-eliza-int8.onnx", "format": "onnx", "precision": "int8", "approxSizeBytes": 1048576, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
+      ]
+    },
+    {
+      "id": "embedding",
+      "displayName": "Qwen3-Embedding GGUF",
+      "purpose": "text embedding for voice profile matching",
+      "runtime": "llama.cpp",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "Derived from Qwen/Qwen3-Embedding",
+      "introducedIn": "R2/I2",
+      "variants": [
+        { "variantId": "eliza-1-embedding-q4_k_m", "filename": "eliza-1-embedding-q4_k_m.gguf", "format": "gguf", "precision": "q4_k_m", "approxSizeBytes": 524288000, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
+      ]
+    },
+    {
+      "id": "asr",
+      "displayName": "Qwen3-ASR GGUF",
+      "purpose": "streaming speech recognition",
+      "runtime": "llama.cpp",
+      "currentVersion": "0.1.0",
+      "license": "Apache-2.0",
+      "attribution": "Derived from Qwen/Qwen3-ASR",
+      "introducedIn": "R2/I2",
+      "variants": [
+        { "variantId": "eliza-1-asr-q4_k_m", "filename": "eliza-1-asr-q4_k_m.gguf", "format": "gguf", "precision": "q4_k_m", "approxSizeBytes": 918748160, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" },
+        { "variantId": "eliza-1-asr-mmproj", "filename": "eliza-1-asr-mmproj.gguf", "format": "gguf", "precision": "fp16", "approxSizeBytes": 52428800, "sizeBytes": null, "sha256": null, "assetStatus": "missing", "missingReason": "binary not present in local staging or public HF repo" }
       ]
     }
   ],
   "notes": [
-    "This manifest is the asset-level registry for voice sub-models. Its",
-    "machine-readable twin is packages/shared/src/local-inference/voice-models.ts",
-    "(history + auto-updater metadata). The CHANGELOG.md at",
-    "models/voice/CHANGELOG.md is the human-readable counterpart.",
-    "Add per-variant entries here; do not edit a published variant — bump",
-    "the parent currentVersion and append a new variant row instead."
+    "This manifest is the asset-level registry for voice sub-models.",
+    "The machine-readable auto-updater registry is packages/shared/src/local-inference/voice-models.ts.",
+    "Only record sha256 and sizeBytes after verifying an actual file."
   ]
 }
