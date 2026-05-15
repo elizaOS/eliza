@@ -48,7 +48,7 @@ export const ELIZA_1_TOKENIZER_FAMILY = "qwen35" as const;
 export const ELIZA_1_TOKENIZER_VOCAB_SIZE = 248_320 as const;
 
 // Tiers — see packages/inference/AGENTS.md §2 (Tier matrix). Enum stays size-ordered.
-// G1 (2026-05-15): removed `27b-1m` — capped at `27b-256k` (262k natural context).
+// G1 (2026-05-15): capped explicit long-context tiers at `27b-256k`.
 export const ELIZA_1_TIERS = [
 	"0_8b",
 	"2b",
