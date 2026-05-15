@@ -869,3 +869,27 @@ coordinate here, don't kill peers.
   **W3-3 follow-up 1 DONE** (preset-aware logic in committed source): H2.c.
   **W3-3 follow-up 2 DONE** (slot-KV-pool real LRU impl): H2.c.
   **W3-3 follow-up 3** (stale verify-symbols.mjs): removed by H2.c.
+
+
+## V-verify-final (re-dispatch) — verify watcher (2026-05-15 04:57)
+
+Resuming as the verify watcher after rate-limit. Wave 2 was already
+closed by K-verify on 2026-05-14 (.swarm/voice-finish/WAVE_2_FINAL_SUMMARY.md
+remains canonical). The 5-parallel-agent wave noted in the brief
+(L-kokoro-distill / M-emotion-final / O-turn-intl / S-static-models / T-asr)
+appears to have already landed — no PIDs found, no active swarm dirs.
+
+Current Wave 3 Gauntlet / H/I-wave is still actively running. So my
+re-dispatched role is: keep `develop` green while peer agents
+push, fix transient lint/typecheck breakage, and write a final
+WAVE_2_GRIND_FINAL.md summarizing the post-Wave-2 grind state.
+
+Session fixes so far (all `fix(V-verify-final): ...`):
+- biome format fixes: packages/agent, packages/app-core/platforms/electrobun, packages/benchmarks/eliza-1
+- ui DynamicViewLoader biome-ignore for reloadKey hook dep
+- e2e.config.ts merge resolution (app-lifeops → plugin-lifeops rename + local-inference voice paths union)
+- packages/core/src/connectors/account-manager.ts: default accessGate/status in normalizeAccount
+- packages/agent/tsconfig.json: bump module ES2022 → ESNext (for `with { type: "json" }` import attributes in @elizaos/ui i18n)
+- packages/agent/src/api/conversation-routes.ts: replace bare `aborted` with `disconnectTracker.isAborted()` in stream handler
+- gitignore *.pt (after accidentally tracking yolov8n.pt in a peer-state checkpoint; untracked + ignored)
+
