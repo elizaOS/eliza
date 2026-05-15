@@ -1,7 +1,7 @@
 import {
   type KokoroEngineDiscoveryResult,
   KokoroMockRuntime,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import { describe, expect, it } from "vitest";
 import { makeKokoroTextToSpeechHandler } from "../src/aosp-local-inference-bootstrap";
 

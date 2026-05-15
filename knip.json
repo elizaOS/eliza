@@ -215,6 +215,9 @@
     "packages/native-plugins/activity-tracker": {
       "ignoreBinaries": ["swiftc"]
     },
+    "packages/native-plugins/websiteblocker": {
+      "ignoreBinaries": ["gradle"]
+    },
     "plugins/app-companion": {
       "ignore": [".storybook-smoke/**", "public/vrm-decoders/draco/*.js"]
     },

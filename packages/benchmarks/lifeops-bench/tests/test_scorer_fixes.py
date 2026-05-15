@@ -984,6 +984,66 @@ def test_compare_actions_scheduled_task_acknowledge_full_credit() -> None:
     assert compare_actions(predicted, gt) == pytest.approx(1.0)
 
 
+@pytest.mark.parametrize(
+    ("plural_name", "subaction"),
+    [
+        ("SCHEDULED_TASKS_ACKNOWLEDGE", "acknowledge"),
+        ("SCHEDULED_TASKS_CANCEL", "cancel"),
+        ("SCHEDULED_TASKS_COMPLETE", "complete"),
+        ("SCHEDULED_TASKS_CREATE", "create"),
+        ("SCHEDULED_TASKS_DISMISS", "dismiss"),
+        ("SCHEDULED_TASKS_GET", "get"),
+        ("SCHEDULED_TASKS_HISTORY", "history"),
+        ("SCHEDULED_TASKS_LIST", "list"),
+        ("SCHEDULED_TASKS_REOPEN", "reopen"),
+        ("SCHEDULED_TASKS_SKIP", "skip"),
+        ("SCHEDULED_TASKS_SNOOZE", "snooze"),
+        ("SCHEDULED_TASKS_UPDATE", "update"),
+    ],
+)
+def test_canonicalize_plural_scheduled_tasks_surface(
+    plural_name: str, subaction: str
+) -> None:
+    """Manifest plural SCHEDULED_TASKS_* names fold to SCHEDULED_TASK."""
+    canon = _canonicalize_action(Action(name=plural_name, kwargs={}))
+    assert canon.name == "SCHEDULED_TASK"
+    assert canon.kwargs["subaction"] == subaction
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "subaction"),
+    [
+        ("action", "complete", "complete"),
+        ("operation", "ack", "acknowledge"),
+        ("action", "list_tasks", "list"),
+    ],
+)
+def test_compare_actions_plural_scheduled_tasks_umbrella_full_credit(
+    field: str, value: str, subaction: str
+) -> None:
+    """The plural SCHEDULED_TASKS umbrella uses action/operation discriminators."""
+    gt = [Action(name="SCHEDULED_TASK", kwargs={"subaction": subaction})]
+    predicted = [Action(name="SCHEDULED_TASKS", kwargs={field: value})]
+    assert compare_actions(predicted, gt) == pytest.approx(1.0)
+
+
+def test_compare_actions_plural_scheduled_tasks_granular_full_credit() -> None:
+    """A plural granular scheduled-task mutation should not be a false negative."""
+    gt = [
+        Action(
+            name="SCHEDULED_TASK",
+            kwargs={"subaction": "complete", "taskId": "task_weekly_checkin"},
+        )
+    ]
+    predicted = [
+        Action(
+            name="SCHEDULED_TASKS_COMPLETE",
+            kwargs={"taskId": "task_weekly_checkin"},
+        )
+    ]
+    assert compare_actions(predicted, gt) == pytest.approx(1.0)
+
+
 def test_compare_actions_owner_todos_create_full_credit() -> None:
     """OWNER_TODOS_CREATE folds to LIFE(subaction=create) for full credit."""
     gt = [Action(name="LIFE", kwargs={"subaction": "create"})]
