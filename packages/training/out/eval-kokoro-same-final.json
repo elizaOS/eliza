@@ -1,0 +1,166 @@
+{
+  "kind": "kokoro-same-anchor-sweep-final",
+  "generatedAt": "2026-05-14T22:11:00Z",
+  "corpus": "packages/training/data/voice/same/ \u2014 58 paired wav/txt clips, 3.51 min, 44.1 kHz",
+  "evalProtocol": "eval_kokoro.py with Q1-quality fixes (SQUIM_SUBJECTIVE for UTMOS, 16 kHz resample for Whisper+ECAPA, text-normalized WER). Whisper model: medium (RTX 5080 Laptop 16 GB shared with other GPU tasks).",
+  "baseline": {
+    "voiceId": "af_bella",
+    "metrics": {
+      "utmos": 4.203006386756897,
+      "wer": 0.0,
+      "speaker_similarity": -0.07466538436710835,
+      "rtf": 62.476617308184
+    }
+  },
+  "gates": {
+    "utmos_min": 3.8,
+    "wer_max": 0.08,
+    "speaker_similarity_min": 0.55,
+    "rtf_min": 5.0,
+    "beatsBaseline": "utmos\u0394\u22650 \u2227 wer\u0394\u22640 \u2227 spkSim\u0394\u2265+0.05"
+  },
+  "candidates": [
+    {
+      "anchor_weight": 0.0,
+      "voiceBinPath": "packages/training/out/kokoro-same-sweep/anchor-0.0/af_same-anchor-0.0.bin",
+      "metrics": {
+        "utmos": 2.359347184499105,
+        "wer": 1.0,
+        "speaker_similarity": 0.09929967019706964,
+        "rtf": 67.65664182996137
+      },
+      "gateResult": {
+        "perMetric": {
+          "utmos": false,
+          "wer": false,
+          "speaker_similarity": false,
+          "rtf": true
+        },
+        "passed": false
+      },
+      "comparison": {
+        "baselinePath": "/home/shaw/milady/eliza/packages/training/out/kokoro-same-sweep/baseline/eval.json",
+        "baselineVoiceName": "af_same",
+        "baselineMetrics": {
+          "utmos": 4.203006386756897,
+          "wer": 0.0,
+          "speaker_similarity": -0.07466538436710835,
+          "rtf": 62.476617308184
+        },
+        "utmosDelta": -1.843659202257792,
+        "werDelta": 1.0,
+        "speakerSimDelta": 0.173965054564178,
+        "rtfDelta": 5.180024521777376,
+        "speakerSimBeatThreshold": 0.05,
+        "beatsBaseline": false
+      }
+    },
+    {
+      "anchor_weight": 0.05,
+      "voiceBinPath": "packages/training/out/kokoro-same-sweep/anchor-0.05/af_same-anchor-0.05.bin",
+      "metrics": {
+        "utmos": 2.3541133403778076,
+        "wer": 1.0,
+        "speaker_similarity": 0.13484358477095762,
+        "rtf": 118.32848263036524
+      },
+      "gateResult": {
+        "perMetric": {
+          "utmos": false,
+          "wer": false,
+          "speaker_similarity": false,
+          "rtf": true
+        },
+        "passed": false
+      },
+      "comparison": {
+        "baselinePath": "/home/shaw/milady/eliza/packages/training/out/kokoro-same-sweep/baseline/eval.json",
+        "baselineVoiceName": "af_same",
+        "baselineMetrics": {
+          "utmos": 4.203006386756897,
+          "wer": 0.0,
+          "speaker_similarity": -0.07466538436710835,
+          "rtf": 62.476617308184
+        },
+        "utmosDelta": -1.8488930463790894,
+        "werDelta": 1.0,
+        "speakerSimDelta": 0.20950896913806596,
+        "rtfDelta": 55.85186532218125,
+        "speakerSimBeatThreshold": 0.05,
+        "beatsBaseline": false
+      }
+    },
+    {
+      "anchor_weight": 0.1,
+      "voiceBinPath": "packages/training/out/kokoro-same-sweep/anchor-0.1/af_same-anchor-0.1.bin",
+      "metrics": {
+        "utmos": 2.270776073137919,
+        "wer": 1.0,
+        "speaker_similarity": 0.1431964673101902,
+        "rtf": 118.08472493048887
+      },
+      "gateResult": {
+        "perMetric": {
+          "utmos": false,
+          "wer": false,
+          "speaker_similarity": false,
+          "rtf": true
+        },
+        "passed": false
+      },
+      "comparison": {
+        "baselinePath": "/home/shaw/milady/eliza/packages/training/out/kokoro-same-sweep/baseline/eval.json",
+        "baselineVoiceName": "af_same",
+        "baselineMetrics": {
+          "utmos": 4.203006386756897,
+          "wer": 0.0,
+          "speaker_similarity": -0.07466538436710835,
+          "rtf": 62.476617308184
+        },
+        "utmosDelta": -1.932230313618978,
+        "werDelta": 1.0,
+        "speakerSimDelta": 0.21786185167729855,
+        "rtfDelta": 55.60810762230488,
+        "speakerSimBeatThreshold": 0.05,
+        "beatsBaseline": false
+      }
+    },
+    {
+      "anchor_weight": 0.2,
+      "voiceBinPath": "packages/training/out/kokoro-same-sweep/anchor-0.2/af_same-anchor-0.2.bin",
+      "metrics": {
+        "utmos": 2.3228043715159097,
+        "wer": 1.0,
+        "speaker_similarity": 0.1512628694375356,
+        "rtf": 124.76952352057191
+      },
+      "gateResult": {
+        "perMetric": {
+          "utmos": false,
+          "wer": false,
+          "speaker_similarity": false,
+          "rtf": true
+        },
+        "passed": false
+      },
+      "comparison": {
+        "baselinePath": "/home/shaw/milady/eliza/packages/training/out/kokoro-same-sweep/baseline/eval.json",
+        "baselineVoiceName": "af_same",
+        "baselineMetrics": {
+          "utmos": 4.203006386756897,
+          "wer": 0.0,
+          "speaker_similarity": -0.07466538436710835,
+          "rtf": 62.476617308184
+        },
+        "utmosDelta": -1.8802020152409873,
+        "werDelta": 1.0,
+        "speakerSimDelta": 0.22592825380464396,
+        "rtfDelta": 62.29290621238791,
+        "speakerSimBeatThreshold": 0.05,
+        "beatsBaseline": false
+      }
+    }
+  ],
+  "winner": null,
+  "reason": "No candidate beats baseline. All four anchor weights produce synth audio that is unintelligible to Whisper (WER=1.00) and below the UTMOS gate (~2.3 vs 3.8 gate). Speaker similarity moved in the right direction (+0.17 to +0.23 \u0394) but at the cost of catastrophic audio quality loss. See .swarm/impl/F-kokoro.md for the post-mortem."
+}
