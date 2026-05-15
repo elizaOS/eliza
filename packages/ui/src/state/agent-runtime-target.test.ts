@@ -40,23 +40,6 @@ describe("inferAgentRuntimeTarget", () => {
     ).toBe("local");
   });
 
-  it("keeps cloud-hybrid mobile mode eligible for on-device agents", () => {
-    const activeServer: PersistedActiveServer = {
-      id: "local:ios",
-      kind: "local",
-      label: "On-device agent",
-      apiBase: "eliza-local-agent://ipc",
-    };
-
-    expect(
-      inferAgentRuntimeTarget({
-        activeServer,
-        mobileRuntimeMode: "cloud-hybrid",
-        clientBaseUrl: activeServer.apiBase,
-      }),
-    ).toEqual({ kind: "local", label: "On-device agent" });
-  });
-
   it("defaults to remote for non-local remote API bases", () => {
     expect(
       inferAgentRuntimeTarget({

@@ -424,7 +424,7 @@ REGISTRY: dict[str, ModelEntry] = {
             "gguf-q8_0",
         ),
         notes="Canonical cloud tier for eliza-1-27b on the Qwen3.6 dense "
-              "27B backbone. Use this for the 27B and 27B-256k "
+              "27B backbone. Use this for the 27B, 27B-256k, and 27B-1m "
               "release families.",
         extra={"vast_gpu_target": "h200-2x", "fsdp_world_size": "2"},
     ),

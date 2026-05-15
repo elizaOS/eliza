@@ -105,7 +105,7 @@ function tierFromBundlePath(bundleDir) {
 }
 
 function tierSortKey(tier) {
-  const order = { "0_8b": "00", "2b": "01", "4b": "02", "9b": "03", "27b": "04", "27b-256k": "05" };
+  const order = { "0_8b": "00", "2b": "01", "4b": "02", "9b": "03", "27b": "04", "27b-256k": "05", "27b-1m": "06" };
   return `${order[tier] ?? "99"}-${tier}`;
 }
 

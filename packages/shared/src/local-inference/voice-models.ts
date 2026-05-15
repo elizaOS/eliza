@@ -146,6 +146,34 @@ export interface VoiceModelVersion {
  */
 export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   {
+    id: "turn-detector",
+    version: "0.2.0",
+    parentVersion: "0.1.0",
+    publishedToHfAt: "2026-05-15T05:17:55Z",
+    hfRepo: "elizaos/eliza-1-voice-turn",
+    hfRevision: "9eaff4947ebd87b1d811e27dec939e29362a9e42",
+    ggufAssets: [
+      {
+        filename: "onnx/model_q8.onnx",
+        sha256:
+          "52a132ed9c53fe41381cd97a800a9d36b7494d5ea608183de03adfc0723662f8",
+        sizeBytes: 37736316,
+        quant: "onnx-int8",
+      },
+      {
+        filename: "onnx/turn-detector-en-q8.gguf",
+        sha256:
+          "04bc18aeec5f59a94ae338aa66a48e204fc02785a6217d9055145f95d2192980",
+        sizeBytes: 41275296,
+        quant: "q8_0",
+      },
+    ],
+    evalDeltas: { f1Delta: 0.1411, netImprovement: true },
+    changelogEntry:
+      "LiveKit v1.2.2-en fine-tuned on DailyDialog (prefix-augmented EOU corpus, APOLLO-Mini, F1=0.9811 vs 0.84 baseline)",
+    minBundleVersion: "0.0.0",
+  },
+  {
     id: "omnivoice",
     version: "0.2.0",
     parentVersion: "0.1.0",

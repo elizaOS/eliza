@@ -43,7 +43,7 @@ export function isLocalAgentApiBase(value: string | null | undefined): boolean {
 }
 
 function isCloudMobileMode(mode: MobileRuntimeMode | null): boolean {
-  return mode === "cloud";
+  return mode === "cloud" || mode === "cloud-hybrid";
 }
 
 function isLocalActiveServer(server: PersistedActiveServer | null): boolean {
@@ -70,7 +70,6 @@ export function inferAgentRuntimeTarget(args: {
 
   if (
     mobileRuntimeMode === "local" ||
-    mobileRuntimeMode === "cloud-hybrid" ||
     isLocalActiveServer(activeServer) ||
     isLocalAgentApiBase(args.clientBaseUrl)
   ) {

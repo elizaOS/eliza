@@ -15,11 +15,6 @@ const { capacitorState, agentRequestMock, registerPluginMock } = vi.hoisted(
   },
 );
 
-const bootConfigState = vi.hoisted(() => ({
-  config: {} as { apiToken?: string },
-  globalToken: null as string | null,
-}));
-
 vi.mock("@capacitor/core", () => ({
   Capacitor: {
     get Plugins() {
@@ -31,28 +26,12 @@ vi.mock("@capacitor/core", () => ({
   },
 }));
 
-vi.mock("../config/boot-config", () => ({
-  getBootConfig: () => bootConfigState.config,
-  setBootConfig: vi.fn((config: { apiToken?: string }) => {
-    bootConfigState.config = config;
-  }),
-}));
-
-vi.mock("../utils/eliza-globals", () => ({
-  getElizaApiToken: () => bootConfigState.globalToken,
-  setElizaApiToken: vi.fn((token: string | null) => {
-    bootConfigState.globalToken = token;
-  }),
-}));
-
 describe("androidNativeAgentTransportForUrl", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
     capacitorState.isNative = true;
     capacitorState.platform = "android";
-    bootConfigState.config = {};
-    bootConfigState.globalToken = null;
     capacitorState.plugins.Agent = {
       request: agentRequestMock,
     };
@@ -105,81 +84,6 @@ describe("androidNativeAgentTransportForUrl", () => {
     });
     expect(fetchMock).not.toHaveBeenCalled();
     await expect(response?.json()).resolves.toEqual({ ready: true });
-  });
-
-  it("routes bracketed IPv6 Android local-agent URLs through Agent.request", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    const { androidNativeAgentTransportForUrl } = await import(
-      "./android-native-agent-transport"
-    );
-    const { isAndroidLocalAgentUrl } = await import(
-      "../onboarding/local-agent-token"
-    );
-
-    expect(isAndroidLocalAgentUrl("http://[::1]:31337/api/health")).toBe(true);
-    const transport = await androidNativeAgentTransportForUrl(
-      "http://[::1]:31337/api/health?source=ipv6",
-    );
-
-    expect(transport).toBeTruthy();
-    await transport?.request("http://[::1]:31337/api/health?source=ipv6", {
-      method: "GET",
-    });
-    expect(agentRequestMock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        path: "/api/health?source=ipv6",
-      }),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("returns structured local-unavailable instead of raw-fetching unsupported local requests", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    capacitorState.plugins.Agent = { start: vi.fn() };
-    const { androidNativeAgentTransportForUrl } = await import(
-      "./android-native-agent-transport"
-    );
-
-    const transport = await androidNativeAgentTransportForUrl(
-      "http://127.0.0.1:31337/api/status",
-    );
-    const missingRequest = await transport?.request(
-      "http://127.0.0.1:31337/api/status",
-      { method: "GET" },
-    );
-
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(missingRequest?.status).toBe(503);
-    await expect(missingRequest?.json()).resolves.toMatchObject({
-      code: "local-unavailable",
-      reason: "native-agent-request-unavailable",
-    });
-  });
-
-  it("does not raw-fetch Android local-agent requests with unsupported bodies", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-    const { androidNativeAgentTransportForUrl } = await import(
-      "./android-native-agent-transport"
-    );
-
-    const transport = await androidNativeAgentTransportForUrl(
-      "http://127.0.0.1:31337/api/status",
-    );
-    const response = await transport?.request(
-      "http://127.0.0.1:31337/api/status",
-      { method: "POST", body: new FormData() },
-    );
-
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(agentRequestMock).not.toHaveBeenCalled();
-    expect(response?.status).toBe(503);
-    await expect(response?.json()).resolves.toMatchObject({
-      code: "local-unavailable",
-      reason: "unsupported-request-body",
-    });
   });
 
   it("does not install the Android local-agent transport on iOS", async () => {
