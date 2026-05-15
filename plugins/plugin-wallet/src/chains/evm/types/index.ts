@@ -430,3 +430,14 @@ export function validateHash(hash: string): Hash {
 }
 
 export type { Address, Chain, Hash, Hex, Log } from "viem";
+export interface KyberSwapRouteData {
+  routeSummary: unknown;
+  routerAddress: string;
+  chainSlug: string;
+  fromToken: string;
+  toToken: string;
+  amountIn: string;
+  slippageBps: number;
+  fromAddress: string;
+}
+
