@@ -225,6 +225,15 @@ describe("normalizeChatResponseText", () => {
     );
   });
 
+  it("persists only replyText when a boolean response-handler fragment leaks through", () => {
+    const leakedPayload =
+      'true,"contexts":["general"],"intents":["general"],"replyText":"Hello, how are you?"}';
+
+    expect(normalizeChatResponseText(leakedPayload, [])).toBe(
+      "Hello, how are you?",
+    );
+  });
+
   it("leaves normal assistant text unchanged", () => {
     expect(normalizeChatResponseText("Plain chat reply.", [])).toBe(
       "Plain chat reply.",

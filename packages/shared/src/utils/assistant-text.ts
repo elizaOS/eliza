@@ -216,6 +216,9 @@ export function extractAssistantReplyText(input: string): string | null {
   const candidates = [trimmed];
   if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
     candidates.push(`{"shouldRespond":${trimmed}}`);
+    if (trimmed.endsWith("}")) {
+      candidates.push(`{"shouldRespond":${trimmed.slice(0, -1)}}`);
+    }
   }
 
   for (const candidate of candidates) {

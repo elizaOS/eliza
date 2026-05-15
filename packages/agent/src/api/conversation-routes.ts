@@ -287,7 +287,8 @@ function createRequestDisconnectAbortTracker({
     registrations.push({ source, event, listener });
   };
 
-  const onClientGone = () => abort(new Error(`${operation} client disconnected`));
+  const onClientGone = () =>
+    abort(new Error(`${operation} client disconnected`));
   const onResponseClose = () => {
     const ended = Boolean(
       (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
@@ -349,8 +350,9 @@ function createConversationStreamDisconnectTracker({
     : null;
 
   const responseEnded = () =>
-    Boolean((res as http.ServerResponse & { writableEnded?: boolean })
-      .writableEnded);
+    Boolean(
+      (res as http.ServerResponse & { writableEnded?: boolean }).writableEnded,
+    );
 
   const abort = (reason?: unknown) => {
     if (completed || aborted) return;
@@ -1197,13 +1199,19 @@ export async function handleConversationRoutes(
           const actionCallbackHistory = normalizeActionCallbackHistory(
             content.actionCallbackHistory,
           );
+          const role = m.entityId === agentId ? "assistant" : "user";
+          const rawText = formatConversationMessageText(
+            (m.content as { text?: string })?.text ?? "",
+            actionCallbackHistory,
+          );
+          const text =
+            role === "assistant"
+              ? normalizeChatResponseText(rawText, state.logBuffer, runtime)
+              : rawText;
           return {
             id: m.id ?? "",
-            role: m.entityId === agentId ? "assistant" : "user",
-            text: formatConversationMessageText(
-              (m.content as { text?: string })?.text ?? "",
-              actionCallbackHistory,
-            ),
+            role,
+            text,
             timestamp: m.createdAt ?? 0,
             source: normalizedSource,
             actionName,

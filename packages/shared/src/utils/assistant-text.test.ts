@@ -26,6 +26,14 @@ describe("assistant text helpers", () => {
     ).toBe("Hi there.");
   });
 
+  it("extracts replyText from leaked boolean response-handler fragments", () => {
+    expect(
+      extractAssistantReplyText(
+        'true,"contexts":["general"],"intents":["general"],"replyText":"Hello, how are you?"}',
+      ),
+    ).toBe("Hello, how are you?");
+  });
+
   it("does not rewrite ordinary assistant text that mentions replyText", () => {
     expect(
       extractAssistantReplyText(
