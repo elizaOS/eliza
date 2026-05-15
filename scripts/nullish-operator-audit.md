@@ -1,43 +1,60 @@
 # Nullish Operator Audit Report
 
-Generated: 2026-05-15T10:53:40.460Z
+Generated: 2026-05-15T11:01:03.893Z
 
 ## Summary
 
 | Metric | Count |
 | --- | ---: |
-| TypeScript files scanned | 348 |
-| Operators found | 10453 |
-| Type-obvious removable | 4 |
-| Applied edits | 0 |
+| TypeScript files scanned | 612 |
+| Operators found | 17323 |
+| Type-obvious removable | 12 |
+| Applied edits | 5 |
 
 ## By Kind
 
 | Kind | Count |
 | --- | ---: |
-| `binary-??` | 1959 |
-| `binary-&&` | 1922 |
-| `binary-\|\|` | 1707 |
-| `optional-chain` | 1974 |
-| `optional-declaration` | 2891 |
+| `binary-??` | 2356 |
+| `binary-&&` | 2618 |
+| `binary-\|\|` | 2528 |
+| `definite-assignment-assertion` | 23 |
+| `optional-chain` | 2055 |
+| `optional-declaration` | 7743 |
 
 ## By Classification
 
 | Classification | Count |
 | --- | ---: |
-| `review-required` | 3602 |
-| `truthy-left-review` | 27 |
-| `type-obvious-removable` | 4 |
-| `type-required-or-unknown` | 3929 |
-| `upstream-type-review` | 2891 |
+| `review-required` | 5081 |
+| `truthy-left-review` | 88 |
+| `type-obvious-removable` | 12 |
+| `type-required-or-unknown` | 4399 |
+| `upstream-type-review` | 7743 |
 
 ## Type-Obvious Removable Examples
 
-- `packages/agent/src/api/connector-account-routes.ts:863:38` binary-??: query.outcome ?? ""
+- `packages/core/src/runtime/planner-loop.ts:1818:18` binary-??: record.name ?? record.toolName ?? record.tool ?? record.action ?? record.actionName
   - left-hand type excludes null and undefined; type: `string`
-- `packages/agent/src/api/connector-account-routes.ts:871:37` binary-??: query.accountId ?? ""
+- `packages/core/src/runtime/planner-loop.ts:1817:16` binary-??: record.name ?? record.toolName ?? record.tool ?? record.action
   - left-hand type excludes null and undefined; type: `string`
-- `packages/agent/src/api/connector-account-routes.ts:872:31` binary-??: query.action ?? ""
+- `packages/core/src/runtime/planner-loop.ts:1816:20` binary-??: record.name ?? record.toolName ?? record.tool
   - left-hand type excludes null and undefined; type: `string`
-- `packages/agent/src/api/views-routes.ts:122:26` optional-chain: body?.payload
-  - receiver type excludes null and undefined; type: `Record<string, unknown>`
+- `packages/core/src/runtime/planner-loop.ts:1815:15` binary-??: record.name ?? record.toolName
+  - left-hand type excludes null and undefined; type: `string`
+- `packages/core/src/runtime/planner-loop.ts:1831:23` binary-??: record.input ?? record.args ?? record.arguments ?? record.params ?? record.parameters ?? rawFunction?.input ?? rawFunction?.args
+  - left-hand type excludes null and undefined; type: `string \| Record<string, JsonValue>`
+- `packages/core/src/runtime/planner-loop.ts:1830:22` binary-??: record.input ?? record.args ?? record.arguments ?? record.params ?? record.parameters ?? rawFunction?.input
+  - left-hand type excludes null and undefined; type: `string \| Record<string, JsonValue>`
+- `packages/core/src/runtime/planner-loop.ts:1829:18` binary-??: record.input ?? record.args ?? record.arguments ?? record.params ?? record.parameters
+  - left-hand type excludes null and undefined; type: `string \| Record<string, JsonValue>`
+- `packages/core/src/runtime/planner-loop.ts:1828:21` binary-??: record.input ?? record.args ?? record.arguments ?? record.params
+  - left-hand type excludes null and undefined; type: `string \| Record<string, JsonValue>`
+- `packages/core/src/services/message.ts:2629:15` binary-??: entry.name ?? entry.toolName
+  - left-hand type excludes null and undefined; type: `string`
+- `packages/core/src/services/message.ts:4468:15` binary-??: entry.name ?? entry.toolName
+  - left-hand type excludes null and undefined; type: `string`
+- `packages/core/src/runtime.ts:4524:56` binary-??: resolvedModel?.provider ?? provider
+  - left-hand type excludes null and undefined; type: `string`
+- `packages/core/src/runtime.ts:4524:45` optional-chain: resolvedModel?.provider
+  - receiver type excludes null and undefined; type: `{ handler: (runtime: IAgentRuntime, params: Record<string, object \| JsonValue>) => Promise<object \| JsonValue>; modelKey: string; provider: string; }`

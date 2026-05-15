@@ -9,9 +9,7 @@ export const deviceFilesystemPlugin: Plugin = {
 	services: [DeviceFilesystemBridge],
 	actions: [],
 	async dispose(runtime) {
-		const svc = runtime.getService<DeviceFilesystemBridge>(
-			DeviceFilesystemBridge.serviceType,
-		);
+		const svc = runtime.getService<DeviceFilesystemBridge>(DeviceFilesystemBridge.serviceType);
 		await svc?.stop();
 	},
 };

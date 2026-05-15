@@ -52,7 +52,8 @@ function defaultModel(provider: JudgeProvider): string {
 }
 
 const JUDGE_PROVIDER = detectProvider();
-const JUDGE_MODEL = process.env.VIEW_EVAL_MODEL ?? defaultModel(JUDGE_PROVIDER);
+const JUDGE_MODEL =
+  process.env.VIEW_EVAL_MODEL ?? defaultModel(JUDGE_PROVIDER);
 
 // ---------------------------------------------------------------------------
 // Evaluation types
@@ -78,11 +79,7 @@ interface EvalResult {
 function stubAgentResponse(userMessage: string): string {
   const lower = userMessage.toLowerCase();
 
-  if (
-    lower.includes("show me all") ||
-    lower.includes("list") ||
-    lower.includes("what views")
-  ) {
+  if (lower.includes("show me all") || lower.includes("list") || lower.includes("what views")) {
     return (
       "Here are the available views:\n" +
       "- **Wallet** — Manage your crypto assets and wallet\n" +
@@ -163,12 +160,14 @@ function stubAgentResponse(userMessage: string): string {
 // LLM judge
 // ---------------------------------------------------------------------------
 
-async function callCerebrasJudge(prompt: string): Promise<string> {
+async function callCerebrasJudge(
+  prompt: string,
+): Promise<string> {
   const baseUrl = process.env.CEREBRAS_BASE_URL ?? "https://api.cerebras.ai/v1";
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${process.env.CEREBRAS_API_KEY}`,
+      "Authorization": `Bearer ${process.env.CEREBRAS_API_KEY}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -184,13 +183,15 @@ async function callCerebrasJudge(prompt: string): Promise<string> {
     throw new Error(`Cerebras API error ${response.status}: ${text}`);
   }
 
-  const data = (await response.json()) as {
+  const data = await response.json() as {
     choices: { message: { content: string } }[];
   };
   return data.choices[0]?.message?.content ?? "";
 }
 
-async function callAnthropicJudge(prompt: string): Promise<string> {
+async function callAnthropicJudge(
+  prompt: string,
+): Promise<string> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -210,7 +211,7 @@ async function callAnthropicJudge(prompt: string): Promise<string> {
     throw new Error(`Anthropic API error ${response.status}: ${text}`);
   }
 
-  const data = (await response.json()) as {
+  const data = await response.json() as {
     content: { type: string; text: string }[];
   };
   return data.content.find((c) => c.type === "text")?.text ?? "";
@@ -337,15 +338,11 @@ describe.skipIf(!hasAnyCredential)(
       const withNavAssertion = results.filter(
         (r) => r.navigationCorrect !== null,
       );
-      const correct = withNavAssertion.filter(
-        (r) => r.navigationCorrect === true,
-      );
+      const correct = withNavAssertion.filter((r) => r.navigationCorrect === true);
 
       // At least 80% of applicable navigation scenarios should be correct.
       if (withNavAssertion.length > 0) {
-        expect(correct.length / withNavAssertion.length).toBeGreaterThanOrEqual(
-          0.8,
-        );
+        expect(correct.length / withNavAssertion.length).toBeGreaterThanOrEqual(0.8);
       }
     }, 120_000);
 
@@ -373,9 +370,7 @@ describe.skipIf(!hasAnyCredential)(
       if (failures.length > 0) {
         console.error(
           "Failing scenarios:",
-          failures.map(
-            (f) => `${f.scenarioId} (score=${f.score}): ${f.reasoning}`,
-          ),
+          failures.map((f) => `${f.scenarioId} (score=${f.score}): ${f.reasoning}`),
         );
       }
 
@@ -402,14 +397,8 @@ describe("view-user-journeys scenario library", () => {
   it("all scenarios have required fields", () => {
     for (const s of VIEW_USER_JOURNEYS) {
       expect(s.id, `scenario ${s.id} missing id`).toBeTruthy();
-      expect(
-        s.description,
-        `scenario ${s.id} missing description`,
-      ).toBeTruthy();
-      expect(
-        s.userMessage,
-        `scenario ${s.id} missing userMessage`,
-      ).toBeTruthy();
+      expect(s.description, `scenario ${s.id} missing description`).toBeTruthy();
+      expect(s.userMessage, `scenario ${s.id} missing userMessage`).toBeTruthy();
       expect(
         s.expectedBehavior,
         `scenario ${s.id} missing expectedBehavior`,
@@ -418,7 +407,10 @@ describe("view-user-journeys scenario library", () => {
         s.verificationCriteria.length,
         `scenario ${s.id} has no verification criteria`,
       ).toBeGreaterThan(0);
-      expect(s.tags.length, `scenario ${s.id} has no tags`).toBeGreaterThan(0);
+      expect(
+        s.tags.length,
+        `scenario ${s.id} has no tags`,
+      ).toBeGreaterThan(0);
     }
   });
 

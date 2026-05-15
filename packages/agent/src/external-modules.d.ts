@@ -248,7 +248,7 @@ declare module "@elizaos/plugin-video" {
   const plugin: Plugin;
   export default plugin;
 }
-// @elizaos/plugin-commands is a workspace package with full types — no stub needed.
+declare module "@elizaos/plugin-commands";
 declare module "@elizaos/plugin-signal" {
   export type SignalPairingStatus =
     | "idle"
@@ -570,8 +570,8 @@ declare module "isomorphic-git" {
     auth: { username?: string; password?: string },
   ) =>
     | { username?: string; password?: string }
-    | undefined
-    | Promise<{ username?: string; password?: string } | undefined>;
+    | void
+    | Promise<{ username?: string; password?: string } | void>;
   // biome-ignore lint/suspicious/noExplicitAny: loose ambient stub for optional dep
   const git: any;
   export default git;

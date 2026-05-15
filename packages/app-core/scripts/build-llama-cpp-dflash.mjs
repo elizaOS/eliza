@@ -1016,10 +1016,7 @@ function patchDflashSpeculativeDispatch(cacheDir, { dryRun = false } = {}) {
   );
 }
 
-function patchSpeculativeIncompatibleDraftFallback(
-  cacheDir,
-  { dryRun = false } = {},
-) {
+function patchSpeculativeIncompatibleDraftFallback(cacheDir, { dryRun = false } = {}) {
   const specPath = path.join(cacheDir, "common", "speculative.cpp");
   if (!fs.existsSync(specPath)) {
     throw new Error(
@@ -1060,60 +1057,10 @@ function patchSpeculativeIncompatibleDraftFallback(
     if (impls.empty()) {
 `,
   );
-  content = content.replace(
-    `common_speculative_draft_params & common_speculative_get_draft_params(
-        common_speculative * spec,
-        llama_seq_id seq_id) {
-    GGML_ASSERT(spec);
-    GGML_ASSERT(seq_id < (llama_seq_id) spec->dparams.size());
-
-    return spec->dparams[seq_id];
-}
-`,
-    `common_speculative_draft_params & common_speculative_get_draft_params(
-        common_speculative * spec,
-        llama_seq_id seq_id) {
-    static common_speculative_draft_params disabled_dparams;
-    if (spec == nullptr) {
-        return disabled_dparams;
-    }
-    GGML_ASSERT(seq_id < (llama_seq_id) spec->dparams.size());
-
-    return spec->dparams[seq_id];
-}
-`,
-  );
-  content = content.replace(
-    `void common_speculative_accept(common_speculative * spec, llama_seq_id seq_id, uint16_t n_accepted) {
-    if (n_accepted == 0) {
-        return;
-    }
-
-    common_speculative_impl * impl = spec->impl_last[seq_id];
-
-    GGML_ASSERT(impl);
-`,
-    `void common_speculative_accept(common_speculative * spec, llama_seq_id seq_id, uint16_t n_accepted) {
-    if (spec == nullptr || n_accepted == 0) {
-        return;
-    }
-
-    common_speculative_impl * impl = spec->impl_last[seq_id];
-    if (impl == nullptr) {
-        return;
-    }
-`,
-  );
   if (content === original) {
     return;
   }
-  if (
-    !content.includes("disabling speculative implementation") ||
-    !content.includes(
-      "static common_speculative_draft_params disabled_dparams",
-    ) ||
-    !content.includes("if (spec == nullptr || n_accepted == 0)")
-  ) {
+  if (!content.includes("disabling speculative implementation")) {
     throw new Error(
       `[dflash-build] patchSpeculativeIncompatibleDraftFallback: patch verification failed for ${specPath}`,
     );
@@ -2190,9 +2137,7 @@ function patchOmnivoiceCmakeConflictArtifact(root, { dryRun = false } = {}) {
   const cmakePath = path.join(root, "CMakeLists.txt");
   if (!fs.existsSync(cmakePath)) return;
   const source = fs.readFileSync(cmakePath, "utf8");
-  const begin = source.indexOf(
-    "<<<<<<< HEAD\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1",
-  );
+  const begin = source.indexOf("<<<<<<< HEAD\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1");
   const divider = source.indexOf(
     "=======\n# ELIZA-OMNIVOICE-FUSION-GRAFT-V1 (REMOVED",
     begin,

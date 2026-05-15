@@ -1825,9 +1825,9 @@ export class TrajectoriesService extends Service {
 				? stepIdOrAgentId
 				: null;
 		const agentId =
-			typeof options.agentId === "string" && options.agentId.length > 0
+			(typeof options.agentId === "string" && options.agentId.length > 0
 				? options.agentId
-				: stepIdOrAgentId;
+				: stepIdOrAgentId);
 
 		const trajectoryId = uuidv4();
 		const now = Date.now();

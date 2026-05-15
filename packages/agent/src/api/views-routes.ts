@@ -7,6 +7,7 @@
  * Routes:
  *   GET  /api/views                    — list all registered views (JSON)
  *   GET  /api/views/platform-info      — platform detection info (JSON)
+ *   GET  /api/views/search?q=&limit=   — hybrid keyword+semantic ranked search (JSON)
  *   GET  /api/views/:id                — single view metadata (JSON)
  *   GET  /api/views/:id/bundle.js      — compiled view bundle (JS)
  *   GET  /api/views/:id/hero           — hero image (image/*)

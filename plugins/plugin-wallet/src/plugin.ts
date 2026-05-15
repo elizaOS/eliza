@@ -120,17 +120,11 @@ export const walletPlugin: Plugin = {
   async dispose(runtime: IAgentRuntime) {
     await evmPlugin.dispose?.(runtime);
     await solanaPlugin.dispose?.(runtime);
-    const birdeye = runtime.getService<BirdeyeService>(
-      BirdeyeService.serviceType,
-    );
+    const birdeye = runtime.getService<BirdeyeService>(BirdeyeService.serviceType);
     await birdeye?.stop();
-    const dexscreener = runtime.getService<DexScreenerService>(
-      DexScreenerService.serviceType,
-    );
+    const dexscreener = runtime.getService<DexScreenerService>(DexScreenerService.serviceType);
     await dexscreener?.stop();
-    const tokenInfo = runtime.getService<TokenInfoService>(
-      TokenInfoService.serviceType,
-    );
+    const tokenInfo = runtime.getService<TokenInfoService>(TokenInfoService.serviceType);
     await tokenInfo?.stop();
     const walletBackend = runtime.getService<WalletBackendService>(
       WALLET_BACKEND_SERVICE_TYPE,

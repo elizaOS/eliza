@@ -18,10 +18,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // unregistering what we registered rather than mocking the module, so the
 // real implementation is exercised.
 import {
-  getView,
   listViews,
   registerPluginViews,
   unregisterPluginViews,
+  getView,
 } from "../api/views-registry.js";
 
 // ---------------------------------------------------------------------------
@@ -305,9 +305,7 @@ describe('scenario: "close / uninstall plugin removes its views"', () => {
   });
 
   it("unregistering an unknown plugin name is a no-op", () => {
-    expect(() =>
-      unregisterPluginViews("plugin-that-never-existed"),
-    ).not.toThrow();
+    expect(() => unregisterPluginViews("plugin-that-never-existed")).not.toThrow();
   });
 });
 
@@ -343,7 +341,10 @@ describe("scenario: plugin view update on re-registration", () => {
 describe("scenario: plugin with no views declared", () => {
   it("registerPluginViews with empty views array is a no-op", async () => {
     const countBefore = listViews({ developerMode: true }).length;
-    await registerPluginViews(makePlugin("test-wallet-plugin", []), undefined);
+    await registerPluginViews(
+      makePlugin("test-wallet-plugin", []),
+      undefined,
+    );
     const countAfter = listViews({ developerMode: true }).length;
     expect(countAfter).toBe(countBefore);
   });

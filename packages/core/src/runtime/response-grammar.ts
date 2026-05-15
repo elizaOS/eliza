@@ -864,7 +864,9 @@ export function buildResponseGrammar(
 	const contextIds = normalizeContextIds(options.contexts);
 	const actionNames = Array.from(
 		new Set(
-			(options.actions ?? runtime.actions).map((a) => a.name).filter(Boolean),
+			(options.actions ?? runtime.actions)
+				.map((a) => a.name)
+				.filter(Boolean),
 		),
 	).sort();
 	const fieldSignature =

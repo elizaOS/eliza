@@ -821,7 +821,8 @@ async function setRoutingForChat(provider: string): Promise<void> {
 		routingPath(),
 		defaultRoutingPreferences(),
 	);
-	const preferences = current.preferences;
+	const preferences =
+		current.preferences;
 	for (const slot of LOCAL_INFERENCE_TEXT_MODEL_TYPES) {
 		preferences.preferredProvider[slot] = provider;
 		preferences.policy[slot] = "manual";
@@ -1225,7 +1226,8 @@ export async function handleLocalInferenceRoutes(
 				priority: 0,
 				registeredAt: new Date().toISOString(),
 			})),
-			preferences: preferences.preferences,
+			preferences:
+				preferences.preferences,
 		});
 		return true;
 	}
@@ -1243,7 +1245,8 @@ export async function handleLocalInferenceRoutes(
 			routingPath(),
 			defaultRoutingPreferences(),
 		);
-		const preferences = current.preferences;
+		const preferences =
+			current.preferences;
 		const slot = body.slot;
 		if (pathname.endsWith("/preferred")) {
 			if (typeof body.provider === "string" && body.provider.trim()) {

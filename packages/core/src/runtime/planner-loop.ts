@@ -1282,7 +1282,7 @@ async function recordPlannerStage(args: {
 
 	try {
 		const responseText =
-			typeof args.raw === "string" ? args.raw : args.raw.text;
+			typeof args.raw === "string" ? args.raw : (args.raw.text);
 		const usage = extractUsage(args.raw);
 		const finishReason = extractFinishReason(args.raw);
 		const modelName = extractModelName(args.raw);
@@ -1815,8 +1815,7 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 		record.name ??
 			record.toolName ??
 			record.tool ??
-			record.action ??
-			record.actionName,
+			record.action,
 	);
 	if (!name) {
 		return null;
@@ -1828,8 +1827,7 @@ function normalizeToolCall(entry: unknown): PlannerToolCall | null {
 			record.arguments ??
 			record.params ??
 			record.parameters ??
-			rawFunction?.input ??
-			rawFunction?.args,
+			rawFunction?.input,
 	);
 
 	return {

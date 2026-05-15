@@ -1,32 +1,31 @@
 """Emotion classifier adapter for the roundtrip bench.
 
-Wraps the acoustic emotion classifier used by the runtime. Three modes,
-selected in priority order:
+Wraps the acoustic emotion classifier used by the runtime. Two modes:
 
-  1. **Wav2Small cls7 ONNX (production, H2.a default)**
-     When the bench can resolve the real `wav2small-cls7-int8.onnx` (either
-     via an explicit `onnx_path`, the bundle cache, or an HF download from
-     `elizaos/eliza-1-voice-emotion`), the adapter loads it through
-     `onnxruntime`. The model emits 7-class logits aligned with
-     `EXPRESSIVE_EMOTION_TAGS` — argmax over softmax gives the discrete
-     label directly (no VAD projection). This matches `interpretCls7Output`
-     in `plugins/plugin-local-inference/src/services/voice/voice-emotion-classifier.ts`.
+  **Wav2Small ONNX (production)**
+    The `elizaos/eliza-1` bundle ships a distilled Wav2Small ONNX (72K params,
+    ~120 KB int8). When `onnx_path` is provided and exists, the adapter loads
+    it via `onnxruntime` and calls our VAD-projection logic exactly as the TS
+    runtime does. This is the real production path.
 
-  2. **Wav2Small msp-dim VAD ONNX (production, legacy head)**
-     When only the `head=vad` variant is available, the adapter forwards
-     PCM through the ONNX and projects the V-A-D triple to a 7-class label
-     via `project_vad_to_expressive_emotion`. Same code path the TS runtime
-     uses for the `head=vad` contract.
+  **SUPERB proxy (development / CI)**
+    When Wav2Small ONNX is not available, the adapter loads
+    `superb/wav2vec2-base-superb-er` (IEMOCAP 4-class: neu/hap/ang/sad) as a
+    proxy acoustic classifier. Its output is mapped to V-A-D space using a
+    fixed correspondence table so the VAD projection logic is exercised.
 
-  3. **SUPERB proxy (development / CI fallback)**
-     Used only when neither cls7 nor vad ONNX can be resolved AND the
-     network is unavailable. Loads `superb/wav2vec2-base-superb-er`
-     (IEMOCAP 4-class) and re-scores into the 7-class space. Lower fidelity
-     than the production classifier; the H2.a brief expects this path to
-     be exercised only on disconnected dev machines.
+    Proxy V-A-D mapping:
+      neu (neutral) → V=0.55, A=0.35, D=0.50  → projects to `calm`
+      hap (happy)   → V=0.80, A=0.55, D=0.50  → projects to `happy`
+      ang (angry)   → V=0.15, A=0.80, D=0.80  → projects to `angry`
+      sad (sad)     → V=0.20, A=0.25, D=0.30  → projects to `sad`
+
+    The proxy classifier gives us real acoustic features from real audio —
+    the roundtrip is NOT mocked. Only the final classification model is
+    different from what ships in production.
 
 Regardless of mode, the adapter always:
-  - Returns scores aligned with `EXPRESSIVE_EMOTION_TAGS`.
+  - Returns `VadProjectionResult` from `elizaos_voice_emotion.vad_projection`.
   - Reports `latency_ms` for the bench latency metric.
   - Follows the same abstention contract (confidence < 0.35 → None).
 """
@@ -34,7 +33,6 @@ Regardless of mode, the adapter always:
 from __future__ import annotations
 
 import logging
-import os
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,71 +46,6 @@ from elizaos_voice_emotion.vad_projection import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# HF repo + canonical filenames for the production Wav2Small classifier.
-# Matches `packages/shared/src/local-inference/voice-models.ts:299-338`.
-_WAV2SMALL_HF_REPO = "elizaos/eliza-1-voice-emotion"
-_WAV2SMALL_CLS7_FILENAME = "wav2small-cls7-int8.onnx"
-_WAV2SMALL_VAD_FILENAME = "wav2small-msp-dim-int8.onnx"
-
-
-def _resolve_wav2small_onnx(
-    explicit_path: Path | None,
-) -> tuple[Path | None, str]:
-    """Resolve the production Wav2Small ONNX with this priority:
-
-      1. `explicit_path` if it exists.
-      2. `ELIZA_WAV2SMALL_CLS7_ONNX` / `ELIZA_WAV2SMALL_VAD_ONNX` env vars.
-      3. HuggingFace download from `elizaos/eliza-1-voice-emotion`
-         (cls7 head preferred). Requires `huggingface_hub` and either an
-         `HF_TOKEN` env or anonymous access (the repo is public).
-
-    Returns `(path, head)` where `head` is `"cls7"` | `"vad"` | `""` (no model).
-    The empty-head sentinel signals the caller to fall back to SUPERB.
-    """
-    if explicit_path is not None and explicit_path.exists():
-        # Infer head from the filename — both canonical names contain `cls7`
-        # or `msp-dim` (= vad head); anything else defaults to cls7 since
-        # auto-detection on the output shape is a TS-runtime concern.
-        head = "cls7" if "cls7" in explicit_path.name else "vad"
-        return explicit_path, head
-
-    for env_var, head in (
-        ("ELIZA_WAV2SMALL_CLS7_ONNX", "cls7"),
-        ("ELIZA_WAV2SMALL_VAD_ONNX", "vad"),
-    ):
-        env_val = os.environ.get(env_var)
-        if env_val:
-            p = Path(env_val)
-            if p.exists():
-                return p, head
-
-    # Attempt HF download. Cls7 preferred (matches macro-F1 ≥ 0.35 gate).
-    try:
-        from huggingface_hub import hf_hub_download  # type: ignore[import-not-found]
-    except ImportError:
-        return None, ""
-    token = os.environ.get("HF_TOKEN") or None
-    for filename, head in (
-        (_WAV2SMALL_CLS7_FILENAME, "cls7"),
-        (_WAV2SMALL_VAD_FILENAME, "vad"),
-    ):
-        try:
-            local_path = hf_hub_download(
-                repo_id=_WAV2SMALL_HF_REPO,
-                filename=filename,
-                token=token,
-            )
-            return Path(local_path), head
-        except Exception as err:  # noqa: BLE001 — network / permission errors
-            logger.warning(
-                "[classifier-adapter] hf_hub_download(%s/%s) failed: %s",
-                _WAV2SMALL_HF_REPO,
-                filename,
-                err,
-            )
-    return None, ""
 
 # ---------------------------------------------------------------------------
 # SUPERB proxy — IEMOCAP probabilities → 7-class scores
@@ -157,7 +90,7 @@ class ClassifierOutput:
     scores: dict[str, float]
     latency_ms: float
     backend: str
-    """'wav2small-cls7' | 'wav2small-vad' | 'superb-proxy'."""
+    """'wav2small-onnx' | 'superb-proxy'."""
     raw_vad: tuple[float, float, float] | None = None
     """(valence, arousal, dominance) when available."""
 
@@ -171,17 +104,9 @@ class ClassifierAdapter:
     """
 
     onnx_path: Path | None = None
-    """Optional explicit Wav2Small ONNX path. When None, the adapter
-    auto-resolves the production model from `ELIZA_WAV2SMALL_*_ONNX` env vars
-    or HuggingFace (`elizaos/eliza-1-voice-emotion`)."""
-
-    prefer_superb: bool = False
-    """When True, skip Wav2Small resolution and use the SUPERB proxy. The
-    bench uses this when the user explicitly requests the dev fallback."""
+    """Path to the Wav2Small ONNX. When None, falls back to SUPERB proxy."""
 
     _session: object | None = field(default=None, init=False, repr=False)
-    _input_name: str = field(default="", init=False, repr=False)
-    _head: str = field(default="", init=False, repr=False)
     _hf_model: object | None = field(default=None, init=False, repr=False)
     _hf_feat: object | None = field(default=None, init=False, repr=False)
     _backend: str = field(default="", init=False, repr=False)
@@ -189,52 +114,22 @@ class ClassifierAdapter:
     def _load(self) -> None:
         if self._backend:
             return
-        if self.prefer_superb:
-            self._load_superb_proxy()
-            return
-        resolved_path, head = _resolve_wav2small_onnx(self.onnx_path)
-        if resolved_path is not None:
-            self._load_wav2small(resolved_path, head)
+        if self.onnx_path and self.onnx_path.exists():
+            self._load_wav2small()
         else:
             self._load_superb_proxy()
 
-    def _load_wav2small(self, model_path: Path, head: str) -> None:
+    def _load_wav2small(self) -> None:
         """Load the Wav2Small ONNX via onnxruntime."""
         import onnxruntime as ort  # type: ignore[import-untyped]
 
         so = ort.SessionOptions()
         so.intra_op_num_threads = 2
-        self._session = ort.InferenceSession(str(model_path), sess_options=so)
-        self._input_name = self._session.get_inputs()[0].name  # type: ignore[attr-defined]
-
-        # Inspect the output shape to confirm the head contract — the same
-        # auto-detection the TS runtime does (3 → vad, 7 → cls7).
-        outs = self._session.get_outputs()  # type: ignore[attr-defined]
-        last_dim = outs[0].shape[-1] if outs else None
-        if last_dim == 3:
-            self._head = "vad"
-            self._backend = "wav2small-vad"
-        elif last_dim == len(EXPRESSIVE_EMOTION_TAGS):
-            self._head = "cls7"
-            self._backend = "wav2small-cls7"
-        else:
-            # Fall back to the filename-derived head when the ONNX uses a
-            # symbolic dim (e.g. `[1, 's7']`).
-            if head in ("cls7", "vad"):
-                self._head = head
-                self._backend = f"wav2small-{head}"
-            else:
-                raise RuntimeError(
-                    f"[classifier-adapter] cannot determine Wav2Small head from "
-                    f"output shape {outs[0].shape}; expected last dim 3 or "
-                    f"{len(EXPRESSIVE_EMOTION_TAGS)}",
-                )
-        self.onnx_path = model_path
-        logger.info(
-            "[classifier-adapter] loaded Wav2Small ONNX (head=%s) from %s",
-            self._head,
-            model_path,
+        self._session = ort.InferenceSession(
+            str(self.onnx_path), sess_options=so
         )
+        self._backend = "wav2small-onnx"
+        logger.info("[classifier-adapter] loaded Wav2Small ONNX from %s", self.onnx_path)
 
     def _load_superb_proxy(self) -> None:
         """Load superb/wav2vec2-base-superb-er as proxy classifier."""
@@ -274,66 +169,23 @@ class ClassifierAdapter:
             audio_16k = audio_16k[-192_000:]
 
         self._load()
-        if self._backend.startswith("wav2small"):
+        if self._backend == "wav2small-onnx":
             return self._classify_wav2small(audio_16k)
         return self._classify_superb_proxy(audio_16k)
 
     def _classify_wav2small(self, audio_16k: np.ndarray) -> ClassifierOutput:
-        """Wav2Small ONNX forward pass.
+        """Wav2Small ONNX forward pass + VAD projection."""
+        import onnxruntime as ort  # type: ignore[import-untyped]
 
-        For `head=cls7` the model emits 7-class logits aligned with
-        `EXPRESSIVE_EMOTION_TAGS`; we softmax + argmax directly (matches the
-        TS `interpretCls7Output`).
-
-        For `head=vad` the model emits a [1, 3] (valence, arousal, dominance)
-        triple; we project it via `project_vad_to_expressive_emotion`.
-        """
         session = self._session
         assert session is not None
+        input_name = session.get_inputs()[0].name  # type: ignore[attr-defined]
         inp = audio_16k.reshape(1, -1).astype(np.float32)
         t0 = time.perf_counter()
-        outputs = session.run(None, {self._input_name: inp})  # type: ignore[attr-defined]
+        outputs = session.run(None, {input_name: inp})  # type: ignore[attr-defined]
         latency_ms = (time.perf_counter() - t0) * 1000.0
 
-        if self._head == "cls7":
-            logits = np.asarray(outputs[0]).reshape(-1)
-            n = len(EXPRESSIVE_EMOTION_TAGS)
-            if logits.shape[0] != n:
-                raise RuntimeError(
-                    f"[classifier-adapter] cls7 head emitted {logits.shape[0]} "
-                    f"logits, expected {n}",
-                )
-            max_logit = float(np.max(logits))
-            if not np.isfinite(max_logit):
-                empty = {tag: 0.0 for tag in EXPRESSIVE_EMOTION_TAGS}
-                return ClassifierOutput(
-                    emotion=None,
-                    confidence=0.0,
-                    scores=empty,
-                    latency_ms=latency_ms,
-                    backend=self._backend,
-                    raw_vad=None,
-                )
-            shifted = logits - max_logit
-            exps = np.exp(shifted, dtype=np.float64)
-            denom = float(exps.sum())
-            probs = (exps / denom) if denom > 0 else np.zeros_like(exps)
-            scores = {
-                tag: float(probs[i]) for i, tag in enumerate(EXPRESSIVE_EMOTION_TAGS)
-            }
-            best_idx = int(np.argmax(probs))
-            best_emotion = EXPRESSIVE_EMOTION_TAGS[best_idx]
-            best_conf = float(probs[best_idx])
-            return ClassifierOutput(
-                emotion=best_emotion if best_conf >= 0.0 else None,
-                confidence=best_conf,
-                scores=scores,
-                latency_ms=latency_ms,
-                backend=self._backend,
-                raw_vad=None,
-            )
-
-        # head == "vad" — [1, 3] in (V, A, D) order.
+        # Wav2Small output: [1, 3] → (valence, arousal, dominance)
         vad_raw = outputs[0][0]
         v, a, d = float(vad_raw[0]), float(vad_raw[1]), float(vad_raw[2])
         result = project_vad_to_expressive_emotion(v, a, d)
@@ -342,7 +194,7 @@ class ClassifierAdapter:
             confidence=result.confidence,
             scores=result.scores,
             latency_ms=latency_ms,
-            backend=self._backend,
+            backend="wav2small-onnx",
             raw_vad=(v, a, d),
         )
 

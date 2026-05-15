@@ -2402,7 +2402,8 @@ export function createNativeRelationshipsGraphService(
 						memberSet.has(relationship.targetEntityId),
 				)
 				.map((relationship) => ({
-					id: relationship.id,
+					id:
+						relationship.id,
 					sourceEntityId: relationship.sourceEntityId,
 					targetEntityId: relationship.targetEntityId,
 					confidence: relationshipConfidence(relationship),

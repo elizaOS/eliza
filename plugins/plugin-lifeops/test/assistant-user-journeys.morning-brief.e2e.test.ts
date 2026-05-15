@@ -296,13 +296,6 @@ describeIf(LIVE_SUITE_ENABLED)(
         ].join(" "),
       });
 
-      if (response.trim().length === 0) {
-        console.warn(
-          "[assistant-user-journeys-morning-brief-live] skipping strict content assertions because the live provider returned an empty assistant response",
-        );
-        return;
-      }
-
       // The agent must produce a brief that actually surfaces the seeded
       // material — the seeded approval queue draft AND the seeded follow-up
       // reason — instead of just acknowledging the request. This replaces the

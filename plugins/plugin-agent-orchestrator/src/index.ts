@@ -139,9 +139,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
     async dispose(runtime) {
       const acp = runtime.getService<AcpService>(AcpService.serviceType);
       await acp?.stop();
-      const router = runtime.getService<SubAgentRouter>(
-        SubAgentRouter.serviceType,
-      );
+      const router = runtime.getService<SubAgentRouter>(SubAgentRouter.serviceType);
       await router?.stop();
       await CodingWorkspaceService.stopRuntime(runtime);
     },

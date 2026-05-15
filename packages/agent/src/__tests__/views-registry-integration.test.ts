@@ -16,8 +16,8 @@ import {
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.js";
-import type { ViewsRouteContext } from "../api/views-routes.js";
 import { handleViewsRoutes } from "../api/views-routes.js";
+import type { ViewsRouteContext } from "../api/views-routes.js";
 
 // ---------------------------------------------------------------------------
 // Context factory
@@ -28,11 +28,7 @@ function makeCtx(
   pathname: string,
   queryParams: Record<string, string> = {},
   developerMode?: boolean,
-): {
-  ctx: ViewsRouteContext;
-  json: ReturnType<typeof vi.fn>;
-  error: ReturnType<typeof vi.fn>;
-} {
+): { ctx: ViewsRouteContext; json: ReturnType<typeof vi.fn>; error: ReturnType<typeof vi.fn> } {
   const json = vi.fn();
   const error = vi.fn();
 
@@ -75,7 +71,10 @@ const DEV_VIEW = {
   order: 200,
 };
 
-const PLUGIN_NAMES = ["views-integration-wallet", "views-integration-dev"];
+const PLUGIN_NAMES = [
+  "views-integration-wallet",
+  "views-integration-dev",
+];
 
 // ---------------------------------------------------------------------------
 // Setup / teardown
@@ -99,12 +98,7 @@ afterEach(() => {
 describe("GET /api/views", () => {
   it("returns registered views with views key in response body", async () => {
     await registerPluginViews(
-      {
-        name: "views-integration-wallet",
-        description: "wallet",
-        actions: [],
-        views: [WALLET_VIEW],
-      },
+      { name: "views-integration-wallet", description: "wallet", actions: [], views: [WALLET_VIEW] },
       undefined,
     );
 
@@ -131,31 +125,18 @@ describe("GET /api/views", () => {
 
   it("excludes developerOnly views by default", async () => {
     await registerPluginViews(
-      {
-        name: "views-integration-wallet",
-        description: "wallet",
-        actions: [],
-        views: [WALLET_VIEW],
-      },
+      { name: "views-integration-wallet", description: "wallet", actions: [], views: [WALLET_VIEW] },
       undefined,
     );
     await registerPluginViews(
-      {
-        name: "views-integration-dev",
-        description: "dev",
-        actions: [],
-        views: [DEV_VIEW],
-      },
+      { name: "views-integration-dev", description: "dev", actions: [], views: [DEV_VIEW] },
       undefined,
     );
 
     const { ctx, json } = makeCtx("GET", "/api/views");
     await handleViewsRoutes(ctx);
 
-    const [, payload] = json.mock.calls[0] as [
-      unknown,
-      { views: { id: string }[] },
-    ];
+    const [, payload] = json.mock.calls[0] as [unknown, { views: { id: string }[] }];
     const ids = payload.views.map((v) => v.id);
     expect(ids).toContain("wallet.inventory");
     expect(ids).not.toContain("dev.logs");
@@ -163,36 +144,21 @@ describe("GET /api/views", () => {
 
   it("includes developerOnly views when developerMode query param is true", async () => {
     await registerPluginViews(
-      {
-        name: "views-integration-dev",
-        description: "dev",
-        actions: [],
-        views: [DEV_VIEW],
-      },
+      { name: "views-integration-dev", description: "dev", actions: [], views: [DEV_VIEW] },
       undefined,
     );
 
-    const { ctx, json } = makeCtx("GET", "/api/views", {
-      developerMode: "true",
-    });
+    const { ctx, json } = makeCtx("GET", "/api/views", { developerMode: "true" });
     await handleViewsRoutes(ctx);
 
-    const [, payload] = json.mock.calls[0] as [
-      unknown,
-      { views: { id: string }[] },
-    ];
+    const [, payload] = json.mock.calls[0] as [unknown, { views: { id: string }[] }];
     const ids = payload.views.map((v) => v.id);
     expect(ids).toContain("dev.logs");
   });
 
   it("includes developerOnly views when context developerMode flag is true", async () => {
     await registerPluginViews(
-      {
-        name: "views-integration-dev",
-        description: "dev",
-        actions: [],
-        views: [DEV_VIEW],
-      },
+      { name: "views-integration-dev", description: "dev", actions: [], views: [DEV_VIEW] },
       undefined,
     );
 
@@ -200,10 +166,7 @@ describe("GET /api/views", () => {
     const { ctx, json } = makeCtx("GET", "/api/views", {}, true);
     await handleViewsRoutes(ctx);
 
-    const [, payload] = json.mock.calls[0] as [
-      unknown,
-      { views: { id: string }[] },
-    ];
+    const [, payload] = json.mock.calls[0] as [unknown, { views: { id: string }[] }];
     const ids = payload.views.map((v) => v.id);
     expect(ids).toContain("dev.logs");
   });
@@ -232,10 +195,7 @@ describe("GET /api/views", () => {
     const { ctx, json } = makeCtx("GET", "/api/views");
     await handleViewsRoutes(ctx);
 
-    const [, payload] = json.mock.calls[0] as [
-      unknown,
-      { views: { id: string; order?: number }[] },
-    ];
+    const [, payload] = json.mock.calls[0] as [unknown, { views: { id: string; order?: number }[] }];
     const filtered = payload.views.filter((v) =>
       ["wallet.inventory", "chat.main"].includes(v.id),
     );
@@ -251,12 +211,7 @@ describe("GET /api/views", () => {
 describe("GET /api/views/:id", () => {
   it("returns 200 with view metadata for a known id", async () => {
     await registerPluginViews(
-      {
-        name: "views-integration-wallet",
-        description: "wallet",
-        actions: [],
-        views: [WALLET_VIEW],
-      },
+      { name: "views-integration-wallet", description: "wallet", actions: [], views: [WALLET_VIEW] },
       undefined,
     );
 
@@ -265,10 +220,7 @@ describe("GET /api/views/:id", () => {
 
     expect(handled).toBe(true);
     expect(json).toHaveBeenCalledOnce();
-    const [, payload] = json.mock.calls[0] as [
-      unknown,
-      { id: string; label: string },
-    ];
+    const [, payload] = json.mock.calls[0] as [unknown, { id: string; label: string }];
     expect(payload.id).toBe("wallet.inventory");
     expect(payload.label).toBe("Wallet");
   });
@@ -287,12 +239,7 @@ describe("GET /api/views/:id", () => {
   it("decodes percent-encoded view ids", async () => {
     const viewWithDots = { id: "wallet.inventory", label: "Wallet" };
     await registerPluginViews(
-      {
-        name: "views-integration-wallet",
-        description: "wallet",
-        actions: [],
-        views: [viewWithDots],
-      },
+      { name: "views-integration-wallet", description: "wallet", actions: [], views: [viewWithDots] },
       undefined,
     );
 
@@ -316,19 +263,11 @@ describe("GET /api/views/:id/bundle.js", () => {
   it("returns 404 when bundle path is not configured", async () => {
     // WALLET_VIEW has no bundlePath → no bundle configured
     await registerPluginViews(
-      {
-        name: "views-integration-wallet",
-        description: "wallet",
-        actions: [],
-        views: [WALLET_VIEW],
-      },
+      { name: "views-integration-wallet", description: "wallet", actions: [], views: [WALLET_VIEW] },
       undefined,
     );
 
-    const { ctx, error } = makeCtx(
-      "GET",
-      "/api/views/wallet.inventory/bundle.js",
-    );
+    const { ctx, error } = makeCtx("GET", "/api/views/wallet.inventory/bundle.js");
     const handled = await handleViewsRoutes(ctx);
 
     expect(handled).toBe(true);
@@ -344,19 +283,11 @@ describe("GET /api/views/:id/bundle.js", () => {
     };
     // pluginDir undefined → resolvePluginPackageDir will fail → available=false
     await registerPluginViews(
-      {
-        name: "views-integration-wallet",
-        description: "wallet",
-        actions: [],
-        views: [viewWithBundle],
-      },
+      { name: "views-integration-wallet", description: "wallet", actions: [], views: [viewWithBundle] },
       "/tmp/nonexistent-plugin-dir-abc123",
     );
 
-    const { ctx, error } = makeCtx(
-      "GET",
-      "/api/views/wallet.inventory/bundle.js",
-    );
+    const { ctx, error } = makeCtx("GET", "/api/views/wallet.inventory/bundle.js");
     const handled = await handleViewsRoutes(ctx);
 
     expect(handled).toBe(true);
@@ -366,10 +297,7 @@ describe("GET /api/views/:id/bundle.js", () => {
   });
 
   it("returns 404 for bundle request on unknown view", async () => {
-    const { ctx, error } = makeCtx(
-      "GET",
-      "/api/views/nonexistent.view/bundle.js",
-    );
+    const { ctx, error } = makeCtx("GET", "/api/views/nonexistent.view/bundle.js");
     const handled = await handleViewsRoutes(ctx);
 
     expect(handled).toBe(true);
@@ -386,19 +314,11 @@ describe("GET /api/views/:id/bundle.js", () => {
 describe("POST /api/views/:id/interact", () => {
   it("returns 400 for a known view when the JSON body is missing", async () => {
     await registerPluginViews(
-      {
-        name: "views-integration-wallet",
-        description: "wallet",
-        actions: [],
-        views: [WALLET_VIEW],
-      },
+      { name: "views-integration-wallet", description: "wallet", actions: [], views: [WALLET_VIEW] },
       undefined,
     );
 
-    const { ctx, error } = makeCtx(
-      "POST",
-      "/api/views/wallet.inventory/interact",
-    );
+    const { ctx, error } = makeCtx("POST", "/api/views/wallet.inventory/interact");
     const handled = await handleViewsRoutes(ctx);
 
     expect(handled).toBe(true);
@@ -425,12 +345,7 @@ describe("POST /api/views/:id/interact", () => {
 describe("registering and unregistering plugin views", () => {
   it("registering a plugin with views adds them to the registry", async () => {
     await registerPluginViews(
-      {
-        name: "views-integration-wallet",
-        description: "wallet",
-        actions: [],
-        views: [WALLET_VIEW],
-      },
+      { name: "views-integration-wallet", description: "wallet", actions: [], views: [WALLET_VIEW] },
       undefined,
     );
 
@@ -441,12 +356,7 @@ describe("registering and unregistering plugin views", () => {
 
   it("unregistering a plugin removes its views from the registry", async () => {
     await registerPluginViews(
-      {
-        name: "views-integration-wallet",
-        description: "wallet",
-        actions: [],
-        views: [WALLET_VIEW],
-      },
+      { name: "views-integration-wallet", description: "wallet", actions: [], views: [WALLET_VIEW] },
       undefined,
     );
 
@@ -457,12 +367,7 @@ describe("registering and unregistering plugin views", () => {
 
   it("filtering by developerMode works at registry level", async () => {
     await registerPluginViews(
-      {
-        name: "views-integration-dev",
-        description: "dev",
-        actions: [],
-        views: [DEV_VIEW],
-      },
+      { name: "views-integration-dev", description: "dev", actions: [], views: [DEV_VIEW] },
       undefined,
     );
 
@@ -490,7 +395,7 @@ describe("handleViewsRoutes route fallthrough", () => {
     const { ctx, json } = makeCtx("POST", "/api/views");
     // POST /api/views is not a registered route; should fall through or return handled=false
     // The actual handler only handles GET /api/views exactly.
-    const _handled = await handleViewsRoutes(ctx);
+    const handled = await handleViewsRoutes(ctx);
     // POST to /api/views should not be handled (no matching route)
     expect(json).not.toHaveBeenCalled();
     // handled may be true or false — the important thing is no json response on POST /api/views

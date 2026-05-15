@@ -6,7 +6,7 @@
  */
 
 import type { ActionResult, HandlerCallback } from "@elizaos/core";
-import type { ViewSummary, ViewsClient } from "./views-client.js";
+import type { ViewsClient, ViewSummary } from "./views-client.js";
 
 function formatViewTable(views: readonly ViewSummary[]): string {
 	if (views.length === 0) {

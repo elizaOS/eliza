@@ -274,9 +274,10 @@ async function saveAttachmentAsDocument(params: {
 	const filename = createDocumentNoteFilename(title);
 	const stored = await service.addDocument({
 		agentId: params.runtime.agentId as UUID,
-		worldId: (params.message.worldId ?? params.message.roomId) as UUID,
-		roomId: params.message.roomId as UUID,
-		entityId: params.message.entityId as UUID,
+		worldId: (params.message.worldId ??
+			params.message.roomId) as UUID,
+		roomId: (params.message.roomId) as UUID,
+		entityId: (params.message.entityId) as UUID,
 		clientDocumentId: "" as UUID,
 		contentType: "text/plain",
 		originalFilename: filename,

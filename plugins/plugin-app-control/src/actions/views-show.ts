@@ -9,8 +9,9 @@
  */
 
 import type { ActionResult, HandlerCallback, Memory } from "@elizaos/core";
-import { logger, resolveServerOnlyPort } from "@elizaos/core";
-import type { ViewSummary, ViewsClient } from "./views-client.js";
+import { logger } from "@elizaos/core";
+import { resolveServerOnlyPort } from "@elizaos/core";
+import type { ViewsClient, ViewSummary } from "./views-client.js";
 import { scoreView } from "./views-search.js";
 
 const SHOW_VERBS = [
@@ -86,10 +87,7 @@ function readStringOpt(
 function resolveView(
 	target: string,
 	views: readonly ViewSummary[],
-):
-	| { kind: "match"; view: ViewSummary }
-	| { kind: "ambiguous"; candidates: ViewSummary[] }
-	| { kind: "none" } {
+): { kind: "match"; view: ViewSummary } | { kind: "ambiguous"; candidates: ViewSummary[] } | { kind: "none" } {
 	const q = target.toLowerCase();
 
 	// Exact id match.

@@ -832,16 +832,21 @@ describe("runV5MessageRuntimeStage1", () => {
 							recentMessages: [
 								{
 									id: "00000000-0000-0000-0000-00000000aaa1" as UUID,
-									entityId: "00000000-0000-0000-0000-000000000002" as UUID,
-									roomId: "00000000-0000-0000-0000-000000000004" as UUID,
+									entityId:
+										"00000000-0000-0000-0000-000000000002" as UUID,
+									roomId:
+										"00000000-0000-0000-0000-000000000004" as UUID,
 									createdAt: 1,
 									content: { text: priorUserPrompt },
 								},
 								{
 									id: "00000000-0000-0000-0000-00000000aaa2" as UUID,
-									entityId: "00000000-0000-0000-0000-000000000003" as UUID,
-									agentId: "00000000-0000-0000-0000-000000000003" as UUID,
-									roomId: "00000000-0000-0000-0000-000000000004" as UUID,
+									entityId:
+										"00000000-0000-0000-0000-000000000003" as UUID,
+									agentId:
+										"00000000-0000-0000-0000-000000000003" as UUID,
+									roomId:
+										"00000000-0000-0000-0000-000000000004" as UUID,
 									createdAt: 2,
 									content: { text: staleAssistantAnswer },
 								},
@@ -854,10 +859,7 @@ describe("runV5MessageRuntimeStage1", () => {
 			text: "",
 		};
 		runtime.composeState = vi.fn(async () => plannerState);
-		const handler = vi.fn(async () => ({
-			success: true,
-			text: "fresh output",
-		}));
+		const handler = vi.fn(async () => ({ success: true, text: "fresh output" }));
 		runtime.actions = [
 			{
 				name: "CHECK_RUNTIME",

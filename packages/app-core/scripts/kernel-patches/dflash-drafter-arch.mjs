@@ -133,10 +133,7 @@ function patchTextFile(llamaCppRoot, rel, transform, touched) {
 }
 
 function patchCmake(source, rel) {
-  if (
-    source.includes("models/dflash_draft.cpp") ||
-    source.includes("models/dflash-draft.cpp")
-  ) {
+  if (source.includes("models/dflash_draft.cpp") || source.includes("models/dflash-draft.cpp")) {
     return source;
   }
   if (source.includes('file(GLOB LLAMA_MODELS_SOURCES "models/*.cpp")')) {
@@ -460,9 +457,7 @@ function verifyDflashDrafterArchPatch(llamaCppRoot) {
   ];
   const missing = [];
   const cmakePath = path.join(llamaCppRoot, "src/CMakeLists.txt");
-  const cmakeSource = fs.existsSync(cmakePath)
-    ? fs.readFileSync(cmakePath, "utf8")
-    : "";
+  const cmakeSource = fs.existsSync(cmakePath) ? fs.readFileSync(cmakePath, "utf8") : "";
   if (
     !cmakeSource.includes("models/dflash_draft.cpp") &&
     !cmakeSource.includes("models/dflash-draft.cpp") &&
@@ -493,9 +488,7 @@ function verifyDflashDrafterArchPatch(llamaCppRoot) {
           .includes("llm_build_dflash_draft::llm_build_dflash_draft"),
     )
   ) {
-    missing.push(
-      "src/models/dflash[-_]draft.cpp (missing dflash graph builder)",
-    );
+    missing.push("src/models/dflash[-_]draft.cpp (missing dflash graph builder)");
   }
   if (missing.length > 0) {
     throw new Error(
@@ -519,12 +512,7 @@ function verifyDflashDrafterArchPatch(llamaCppRoot) {
 export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
   const touched = [];
   const dashDest = path.join(llamaCppRoot, "src", "models", "dflash-draft.cpp");
-  const underscoreDest = path.join(
-    llamaCppRoot,
-    "src",
-    "models",
-    "dflash_draft.cpp",
-  );
+  const underscoreDest = path.join(llamaCppRoot, "src", "models", "dflash_draft.cpp");
   const dest = fs.existsSync(dashDest) ? dashDest : underscoreDest;
   if (!fs.existsSync(DFLASH_DRAFT_SOURCE)) {
     throw new Error(

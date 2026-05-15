@@ -983,7 +983,7 @@ export class DocumentService extends Service {
 				worldId: fragment.worldId,
 			}))
 			.filter((item) => item.similarity > 0)
-			.sort((a, b) => b.similarity - a.similarity)
+			.sort((a, b) => (b.similarity) - (a.similarity))
 			.slice(0, 20) as StoredDocument[];
 	}
 
@@ -1055,7 +1055,7 @@ export class DocumentService extends Service {
 					worldId: fragment.worldId,
 				};
 			})
-			.sort((a, b) => b.similarity - a.similarity)
+			.sort((a, b) => (b.similarity) - (a.similarity))
 			.slice(0, 20) as StoredDocument[];
 	}
 

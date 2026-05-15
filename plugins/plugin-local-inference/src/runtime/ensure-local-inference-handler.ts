@@ -925,7 +925,7 @@ export async function prewarmSystemPrefix(
 	if (!localInferenceEngine.hasLoadedModel()) return false;
 	if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
 	try {
-		const fixedRoomId = runtime.agentId as UUID;
+		const fixedRoomId = (runtime.agentId) as UUID;
 		const prefix = await renderMessageHandlerStablePrefix(runtime, fixedRoomId);
 		if (!prefix) return false;
 		return await localInferenceEngine.prewarmConversation(

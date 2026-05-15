@@ -115,21 +115,8 @@ export class RealDriver {
    * so the click stage is recorded as failed.
    */
   private async dispatchHostClick(target: AbsoluteClickTarget): Promise<void> {
-    // The published `@elizaos/plugin-computeruse` package.json declares
-    // `import` before `types` in its conditional exports, which makes tsc's
-    // bundler resolver reach for `dist/index.js` (no .d.ts twin in that
-    // resolution branch). The runtime import works fine — both bun and node
-    // honour the `default` condition. Cast the surface to the typed shape
-    // we depend on to keep `tsc --noEmit` clean without patching the
-    // upstream package.
-    const mod = (await import("@elizaos/plugin-computeruse")) as {
-      readonly performDesktopClick: (
-        x: number,
-        y: number,
-        button: "left" | "right" | "middle",
-      ) => void;
-    };
-    mod.performDesktopClick(target.absoluteX, target.absoluteY, "left");
+    const { performDesktopClick } = await import("@elizaos/plugin-computeruse");
+    performDesktopClick(target.absoluteX, target.absoluteY, "left");
   }
 }
 

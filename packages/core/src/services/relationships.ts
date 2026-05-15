@@ -1715,7 +1715,9 @@ export class RelationshipsService extends Service {
 		const skipped: Array<{ seed: PlatformContactSeed; reason: string }> = [];
 
 		for (const seed of contacts) {
-			const seedPlatform = seed.platform.trim().toLowerCase();
+			const seedPlatform = (seed.platform)
+				.trim()
+				.toLowerCase();
 			const identifier = seed.identifier.trim();
 			if (!identifier) {
 				skipped.push({ seed, reason: "missing identifier" });

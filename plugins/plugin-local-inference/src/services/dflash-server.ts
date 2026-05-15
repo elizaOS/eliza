@@ -640,7 +640,7 @@ export function resolveFusedDflashBinary(): string | null {
 	if (!caps) return null;
 	const fused =
 		caps.fused === true ||
-		caps.binaries.some(
+		(caps.binaries).some(
 			(b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
 		);
 	return fused ? bin : null;
@@ -831,7 +831,7 @@ function capabilitiesAdvertiseDflashSpecType(binaryPath: string): boolean {
 			caps.kernels.dflash === true &&
 			caps.dflashDraftArchitecture === true &&
 			(caps.missingRequiredKernels?.length ?? 0) === 0 &&
-			caps.binaries.includes("llama-server") &&
+			(caps.binaries).includes("llama-server") &&
 			((caps.supportedArchitectures ?? []).includes("dflash-draft") ||
 				(caps.draftArchitectures ?? []).includes("dflash-draft")),
 	);
@@ -2911,7 +2911,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		if (!caps) return null;
 		const fused =
 			caps.fused === true ||
-			caps.binaries.some(
+			(caps.binaries).some(
 				(b) => /omnivoice/i.test(b) || /libelizainference/i.test(b),
 			);
 		if (!fused) return null;
