@@ -1,10 +1,10 @@
-Start testing: May 15 05:07 PDT
+Start testing: May 15 05:22 PDT
 ----------------------------------------------------------
 1/5 Testing: wakeword_stub_smoke
 1/5 Test: wakeword_stub_smoke
 Command: "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/wakeword_stub_smoke"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build
-"wakeword_stub_smoke" start time: May 15 05:07 PDT
+"wakeword_stub_smoke" start time: May 15 05:22 PDT
 Output:
 ----------------------------------------------------------
 [wakeword-stub-smoke] failures=0
@@ -12,7 +12,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"wakeword_stub_smoke" end time: May 15 05:07 PDT
+"wakeword_stub_smoke" end time: May 15 05:22 PDT
 "wakeword_stub_smoke" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -20,17 +20,17 @@ Test Passed.
 2/5 Test: wakeword_melspec_test
 Command: "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/wakeword_melspec_test"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build
-"wakeword_melspec_test" start time: May 15 05:07 PDT
+"wakeword_melspec_test" start time: May 15 05:22 PDT
 Output:
 ----------------------------------------------------------
 [wakeword-melspec-test] 1kHz: modal bin=11 centre≈1025.6 Hz OK
 [wakeword-melspec-test] 4kHz: modal bin=24 centre≈4117.3 Hz OK
 [wakeword-melspec-test] failures=0
 <end of output>
-Test time =   0.38 sec
+Test time =   0.28 sec
 ----------------------------------------------------------
 Test Passed.
-"wakeword_melspec_test" end time: May 15 05:07 PDT
+"wakeword_melspec_test" end time: May 15 05:22 PDT
 "wakeword_melspec_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -38,7 +38,7 @@ Test Passed.
 3/5 Test: wakeword_window_test
 Command: "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/wakeword_window_test"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build
-"wakeword_window_test" start time: May 15 05:07 PDT
+"wakeword_window_test" start time: May 15 05:22 PDT
 Output:
 ----------------------------------------------------------
 [wakeword-window-test] failures=0
@@ -46,7 +46,7 @@ Output:
 Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"wakeword_window_test" end time: May 15 05:07 PDT
+"wakeword_window_test" end time: May 15 05:22 PDT
 "wakeword_window_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -54,25 +54,25 @@ Test Passed.
 4/5 Test: wakeword_runtime_test
 Command: "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/wakeword_runtime_test" "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/wakeword/hey-eliza.melspec.gguf" "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/wakeword/hey-eliza.embedding.gguf" "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/wakeword/hey-eliza.classifier.gguf"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build
-"wakeword_runtime_test" start time: May 15 05:07 PDT
+"wakeword_runtime_test" start time: May 15 05:22 PDT
 Output:
 ----------------------------------------------------------
 [wakeword-runtime-test] silence score = 0.5208 (placeholder head; real head trained for hey-eliza will lower this)
 [wakeword-runtime-test] chirp   score = 0.1304
 [wakeword-runtime-test] failures=0
 <end of output>
-Test time =   4.51 sec
+Test time =   2.72 sec
 ----------------------------------------------------------
 Test Passed.
-"wakeword_runtime_test" end time: May 15 05:07 PDT
-"wakeword_runtime_test" time elapsed: 00:00:04
+"wakeword_runtime_test" end time: May 15 05:22 PDT
+"wakeword_runtime_test" time elapsed: 00:00:02
 ----------------------------------------------------------
 
 5/5 Testing: wakeword_parity_test
 5/5 Test: wakeword_parity_test
 Command: "/usr/bin/python3" "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/test/wakeword_parity_test.py" "--libwakeword" "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/libwakeword.so" "--gguf-dir" "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build/wakeword" "--phrase-slug" "hey-eliza" "--onnx-dir" "/home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/../../../artifacts/hf-eliza1-voice-consolidation/voice/wakeword" "--classifier-onnx" "hey-eliza-int8.onnx"
 Directory: /home/shaw/milady/eliza/packages/native-plugins/wakeword-cpp/build
-"wakeword_parity_test" start time: May 15 05:07 PDT
+"wakeword_parity_test" start time: May 15 05:22 PDT
 Output:
 ----------------------------------------------------------
 [wakeword-parity] silence: peak |Δ| = 0.0240 at idx 25 (C=0.5208 ONNX=0.5448) [OK]
@@ -80,11 +80,11 @@ Output:
 [wakeword-parity] noise: peak |Δ| = 0.0103 at idx 53 (C=0.4651 ONNX=0.4754) [OK]
 [wakeword-parity] failures=0
 <end of output>
-Test time =  10.44 sec
+Test time =  10.66 sec
 ----------------------------------------------------------
 Test Passed.
-"wakeword_parity_test" end time: May 15 05:07 PDT
+"wakeword_parity_test" end time: May 15 05:22 PDT
 "wakeword_parity_test" time elapsed: 00:00:10
 ----------------------------------------------------------
 
-End testing: May 15 05:07 PDT
+End testing: May 15 05:22 PDT

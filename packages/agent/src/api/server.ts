@@ -38,6 +38,10 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
+import type {
+  AppManagerLike,
+  FavoriteAppsStore,
+} from "@elizaos/plugin-app-manager";
 import {
   getStylePresets,
   isMobilePlatform,
@@ -2700,7 +2704,7 @@ async function handleRequest(
         recordHeartbeat: (runId) => appManager.recordHeartbeat(runId),
         getInfo: (pluginManager, name) =>
           appManager.getInfo(pluginManager, name),
-      },
+      } satisfies AppManagerLike,
       getPluginManager: () => getPluginManagerForState(state),
       parseBoundedLimit,
       readJsonBody,
@@ -2710,7 +2714,7 @@ async function handleRequest(
       favoriteApps: {
         read: () => readFavoriteAppsFromConfig(state.config),
         write: (apps) => writeFavoriteAppsToConfig(state.config, apps),
-      },
+      } satisfies FavoriteAppsStore,
     })
   ) {
     return;

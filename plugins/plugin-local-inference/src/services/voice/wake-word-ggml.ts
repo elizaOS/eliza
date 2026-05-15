@@ -175,15 +175,15 @@ function loadLibrary(libraryPath: string): BoundLibrary {
 			returns: T.i32,
 		},
 		wakeword_close: {
-			args: [T.ptr],
+			args: [T.u64],
 			returns: T.i32,
 		},
 		wakeword_process: {
-			args: [T.ptr, T.ptr, T.u64, T.ptr],
+			args: [T.u64, T.ptr, T.u64, T.ptr],
 			returns: T.i32,
 		},
 		wakeword_set_threshold: {
-			args: [T.ptr, T.f32],
+			args: [T.u64, T.f32],
 			returns: T.i32,
 		},
 		wakeword_active_backend: {
@@ -227,7 +227,7 @@ export class OpenWakeWordGgmlModel implements WakeWordModel {
 		config?: WakeWordGgmlConfig;
 	}): Promise<OpenWakeWordGgmlModel> {
 		const lib = loadLibrary(args.libraryPath);
-		const out = new BigInt64Array(1);
+		const out = new BigUint64Array(1);
 		/* Each path string needs a NUL terminator; we encode through
 		 * Uint8Array and pass an explicit pointer because bun:ffi does
 		 * not auto-convert Buffer -> cstring on every binding shape. */
@@ -281,9 +281,9 @@ export class OpenWakeWordGgmlModel implements WakeWordModel {
 		const out = new Float32Array(1);
 		const rc = this.lib.bindings.wakeword_process(
 			this.handle,
-			frame,
+			this.lib.ptr(frame),
 			BigInt(frame.length),
-			out,
+			this.lib.ptr(out),
 		);
 		if (rc !== 0) {
 			throw new WakeWordGgmlUnavailableError(

@@ -100,7 +100,9 @@ class TestSWEBenchEvaluator:
 
     @pytest.mark.asyncio
     async def test_docker_unavailable_returns_incompatible(
-        self, evaluator: SWEBenchEvaluator, sample_instance: SWEBenchInstance
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        sample_instance: SWEBenchInstance,
     ) -> None:
         """Without Docker, evaluator must refuse to fall back to similarity scoring.
 
@@ -117,6 +119,13 @@ class TestSWEBenchEvaluator:
      pass
 +    return True
 """
+        evaluator = SWEBenchEvaluator(use_docker=True)
+
+        async def docker_unavailable() -> bool:
+            return False
+
+        monkeypatch.setattr(evaluator, "check_docker_available", docker_unavailable)
+
         result = await evaluator.evaluate_patch(sample_instance, patch)
         assert result.patch_status == PatchStatus.GENERATED
         assert result.success is False

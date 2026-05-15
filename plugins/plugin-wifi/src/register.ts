@@ -5,7 +5,7 @@
  * module never throws on those platforms.
  */
 
-import { isElizaOS } from "@elizaos/ui/platform";
+import { isElizaOS } from "@elizaos/ui";
 import { registerWifiApp } from "./components/wifi-app";
 
 if (isElizaOS()) {

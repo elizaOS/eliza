@@ -365,6 +365,56 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     minBundleVersion: "0.0.0",
   },
   {
+    // J2 (2026-05-15): Kokoro GGUF asset for the fork-side inference path.
+    // The fork's `tools/kokoro/` subtree implements a standalone StyleTTS-2
+    // + iSTFTNet inference pipeline (LLM_ARCH_KOKORO arch + GGML graph +
+    // CPU iSTFT vocoder). The runtime selector (`pickKokoroRuntimeBackend`)
+    // defaults `KOKORO_BACKEND=fork` and POSTs to llama-server's
+    // /v1/audio/speech route; ONNX path remains as one-release deprecation.
+    //
+    // Quality gap: the from-scratch port runs at lower acoustic quality
+    // vs the ONNX baseline (the predictor convs + ResBlock decoder need
+    // a follow-up per-tensor weight-mapping pass). Documented in
+    // .swarm/impl/J2-kokoro-port-notes.md; ship continues per brief override.
+    //
+    // missingAssets carries the planned ladder; the GGUF push to
+    // elizaos/eliza-1-voice-kokoro lands once the full PyTorch checkpoint
+    // walks through convert_kokoro_pth_to_gguf.py with the full _PTH_KEY_RULES
+    // map (Q3..Q8 ladder via gguf_kokoro_apply.py from W3-1).
+    id: "kokoro",
+    version: "0.3.0",
+    parentVersion: "0.2.0",
+    publishedToHfAt: "2026-05-15T05:00:00Z",
+    hfRepo: "elizaos/eliza-1-voice-kokoro",
+    hfRevision: "4b8809b197aa90ae486f83c1e0a5dc7effb6b285",
+    ggufAssets: [
+      {
+        filename: "voice/kokoro/voices/af_sam.bin",
+        sha256:
+          "6874670865ce984a5400afc87176706c5ed88671999c59ed0dff5dcde664277b",
+        sizeBytes: 522_240,
+        quant: "fp16",
+      },
+    ],
+    missingAssets: [
+      {
+        filename: "voice/kokoro/kokoro-v1.0-q4_k_m.gguf",
+        quant: "q4_k_m",
+        expectedSizeBytes: 60_000_000,
+        reason: "missing-from-local-staging",
+      },
+    ],
+    evalDeltas: {
+      // Same af_sam embedding ships as in 0.2.0. The version bump tracks
+      // the runtime path move (ONNX → fork llama-server) not an embedding
+      // change. netImprovement=false until the acoustic-quality gap closes.
+      netImprovement: false,
+    },
+    changelogEntry:
+      "0.3.0 — J2: fork-side Kokoro inference path (LLM_ARCH_KOKORO graph + tools/kokoro/). Runtime selector defaults to KOKORO_BACKEND=fork → llama-server /v1/audio/speech. ONNX path retained for one release. Quality gap vs ONNX baseline documented; compute-gated follow-up for full per-tensor weight mapping.",
+    minBundleVersion: "0.0.0",
+  },
+  {
     id: "kokoro",
     version: "0.2.0",
     parentVersion: "0.1.0",

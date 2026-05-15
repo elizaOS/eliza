@@ -930,3 +930,27 @@ Session fixes so far (all `fix(V-verify-final): ...`):
 - packages/agent/src/api/conversation-routes.ts: replace bare `aborted` with `disconnectTracker.isAborted()` in stream handler
 - gitignore *.pt (after accidentally tracking yolov8n.pt in a peer-state checkpoint; untracked + ignored)
 
+
+---
+
+## K-wave — final forward-graph ports + ONNX removal (2026-05-15)
+
+User: "issue sub agents to do all remaining". Sweep of remaining open items
+from J1.a/b/c (forward graphs deferred), J2 quality gap (predictor MLPs +
+decoder weight mapping), J3 ONNX dep removal (gated on K1..K4), H2.e
+per-tier eval, plus GGML_OP_ISTFT native op.
+
+Same hard rules: no worktrees, no stash, no branch hops, commit dirty,
+coordinate here, don't kill peers. **HF_TOKEN handling:** read from env.
+Never commit.
+
+- **K1** (Opus) — J1.a Wav2Small CNN+Transformer real forward + parity.
+- **K2** (Opus) — J1.b WeSpeaker ResNet34-LM real forward + parity.
+- **K3** (Opus) — J1.c pyannote-3 SincNet+LSTM+powerset real forward.
+- **K4** (Opus) — J2 Kokoro predictor + iSTFTNet decoder weight mapping.
+- **K5** — GGML_OP_ISTFT Vulkan + CUDA kernels.
+- **K6** — H2.e per-tier eval round → flip `publishEligible`.
+- **K7** — Final ONNX dep removal after K1..K4 done (waits via grep loop).
+- **K8** — Persistent verify watcher.
+- **C0-K** — coordinator; writes `VOICE_WAVE_3_K_SUMMARY.md`.
+
