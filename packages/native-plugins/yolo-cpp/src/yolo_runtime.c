@@ -48,6 +48,8 @@
  * sole implementation that ships in libyolo today.
  */
 
+#define _POSIX_C_SOURCE 200809L
+
 #include "yolo/yolo.h"
 #include "yolo_internal.h"
 
@@ -84,6 +86,8 @@ typedef struct {
     float   *data;        /* owned, fp32 */
     int      is_conv_w;   /* 4-D weight */
 } yolo_loaded_tensor;
+
+typedef struct yolo_session yolo_session;
 
 struct yolo_session {
     yolo_gguf          *gguf;

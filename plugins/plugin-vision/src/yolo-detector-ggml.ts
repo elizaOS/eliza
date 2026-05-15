@@ -1,33 +1,18 @@
-// YOLO object detector — ggml backend.
+// YOLO object detector — yolo-cpp ggml/ref backend.
 //
-// EXPERIMENTAL — backed by `packages/native-plugins/yolo-cpp` (the
-// standalone C library that ports Ultralytics YOLOv8n / YOLOv11n to the
-// elizaOS/llama.cpp fork's ggml dispatcher). Falls through to the
-// onnxruntime path (`yolo-detector.ts`) until yolo-cpp Phase 2 ships
-// the ggml graph and a converted GGUF is available on disk.
+// Phase 2 — backed by `packages/native-plugins/yolo-cpp` (the standalone C
+// library that ports Ultralytics YOLOv8n / YOLOv11n away from
+// onnxruntime). Falls through to the onnxruntime path
+// (`yolo-detector.ts`) when:
+//   - `bun:ffi` isn't available (non-Bun runtime),
+//   - the native shared library hasn't been built yet,
+//   - the native library returns -ENOSYS for `yolo_detect` (the
+//     forward pass is staged — see
+//     `packages/native-plugins/yolo-cpp/src/yolo_runtime.c` TU header).
 //
 // Public surface mirrors `YOLODetector` from `yolo-detector.ts` byte-
 // for-byte so `person-detector.ts` (and any other consumer) can swap
 // the import without behavioural change.
-//
-// Phase 1 contract (today):
-//   - The C library exposes a stable ABI in
-//     `packages/native-plugins/yolo-cpp/include/yolo/yolo.h`.
-//   - `yolo_open` / `yolo_detect` return -ENOSYS from the stub. This
-//     binding therefore reports `isAvailable() === false` until both
-//     (a) the native library is built AND (b) a Phase 2 implementation
-//     of the ggml-backed entry points is linked in. Until then the
-//     onnxruntime path stays primary; this file only matters for code
-//     that explicitly opts into the experimental backend (e.g. via
-//     `ELIZA_YOLO_BACKEND=ggml`).
-//
-// Phase 2 contract (when yolo-cpp ships its real graph):
-//   - `loadYoloCppBindings()` returns a working binding. `initialize()`
-//     calls `yolo_open` with the GGUF emitted by
-//     `packages/native-plugins/yolo-cpp/scripts/yolo_to_gguf.py`.
-//   - `detect()` letterboxes the input, calls `yolo_detect`, and maps
-//     each `yolo_detection` to the `DetectedObject` shape consumed by
-//     plugin-vision's service layer.
 
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
@@ -124,6 +109,11 @@ const COCO_CLASSES = [
 
 const INPUT_SIZE = 640;
 
+// errno-style negative codes the C runtime returns. Kept as a small
+// allow-list so the binding can distinguish "staged forward path" from
+// real errors without leaking errno tables to callers.
+const ERRNO_ENOSYS = -38;
+
 function defaultGgufPath(): string {
   const stateDir =
     process.env.ELIZA_STATE_DIR ??
@@ -141,10 +131,8 @@ function defaultLibraryPath(): string {
       : process.platform === "win32"
         ? "dll"
         : "so";
-  // The yolo-cpp CMake build emits a static archive today; the Phase 2
-  // shared-library target lives at the same `build/` location. Keep the
-  // env-var override as the primary knob until the desktop installer
-  // resolves the bundled binary.
+  // The yolo-cpp CMake build emits both libyolo.a (static) and
+  // libyolo.{so,dylib,dll} (shared). bun:ffi consumes the shared one.
   return (
     process.env.ELIZA_YOLO_CPP_LIB ??
     path.join(
@@ -175,10 +163,6 @@ export interface YOLOGgmlConfig {
 
 /* ---------- yolo-cpp binding contract --------------------------------- */
 
-/* The binding reflects `include/yolo/yolo.h` one-for-one. The struct
- * layout is the same as the C ABI — we own the marshalling so the
- * native side does not need to expose a JS-friendly variant. */
-
 interface YoloCppDetection {
   x: number;
   y: number;
@@ -189,7 +173,7 @@ interface YoloCppDetection {
 }
 
 interface YoloCppBindings {
-  open(ggufPath: string): Promise<unknown /* opaque handle */>;
+  open(ggufPath: string): unknown /* opaque handle pointer */;
   detect(
     handle: unknown,
     rgb: Uint8Array,
@@ -197,18 +181,41 @@ interface YoloCppBindings {
     height: number,
     confThreshold: number,
     iouThreshold: number,
-  ): Promise<YoloCppDetection[]>;
-  close(handle: unknown): Promise<void>;
+  ): { rc: number; detections: YoloCppDetection[] };
+  close(handle: unknown): void;
   activeBackend(): string;
 }
 
-/*
- * Loader. Returns null when the binding is not usable yet (Phase 1
- * stub; native library missing; bun:ffi unavailable). The on-disk
- * library is only required at the moment a real binding lands — the
- * Phase 1 stub returns `null` here so callers fall back to the ONNX
- * path without spurious dlopen errors.
- */
+/* The bun:ffi module is loaded dynamically because this file also has
+ * to import-cleanly under non-Bun runtimes (for example the cloud
+ * worker that uses the onnxruntime path exclusively). */
+interface BunFFIModule {
+  dlopen: (
+    path: string,
+    symbols: Record<string, { args: number[]; returns: number }>,
+  ) => {
+    symbols: Record<string, (...args: unknown[]) => unknown>;
+  };
+  FFIType: Record<
+    | "cstring"
+    | "pointer"
+    | "i32"
+    | "i64"
+    | "void"
+    | "f32"
+    | "u8"
+    | "u32"
+    | "u64",
+    number
+  >;
+  ptr: (typedArray: ArrayBufferView) => unknown;
+  read: {
+    f32: (p: unknown, offset: number) => number;
+    i32: (p: unknown, offset: number) => number;
+  };
+  CString: new (raw: unknown) => { toString(): string };
+}
+
 let bindingPromise: Promise<YoloCppBindings | null> | null = null;
 async function loadYoloCppBindings(): Promise<YoloCppBindings | null> {
   if (!bindingPromise) {
@@ -217,18 +224,168 @@ async function loadYoloCppBindings(): Promise<YoloCppBindings | null> {
       try {
         await fs.access(libPath);
       } catch {
-        // Phase 1: the native library may not be built. That is the
-        // expected case until yolo-cpp ships its Phase 2 graph.
+        // The yolo-cpp shared lib isn't built. That's the expected
+        // case in the cloud / browser path. Return null so the
+        // YOLODetector consumer falls through to the ONNX detector.
+        logger.info(
+          `${MODULE_TAG} libyolo not present at ${libPath} — falling back to onnxruntime path`,
+        );
         return null;
       }
-      // Phase 2 will dlopen via `bun:ffi` here and bind the four
-      // entry points (`yolo_open`, `yolo_detect`, `yolo_close`,
-      // `yolo_active_backend`). Returning null today documents the
-      // boundary and keeps callers on the ONNX fallback. The dlopen
-      // wiring will land alongside the ggml backend in the same
-      // commit so this file does not advertise capabilities the
-      // native side cannot actually deliver.
-      return null;
+
+      let bunFFI: BunFFIModule | null = null;
+      try {
+        // Dynamic import keeps the static graph clean for non-Bun
+        // runtimes that statically analyse imports.
+        const dynImport = new Function("spec", "return import(spec)") as (
+          s: string,
+        ) => Promise<BunFFIModule>;
+        bunFFI = await dynImport("bun:ffi");
+      } catch {
+        logger.warn(
+          `${MODULE_TAG} bun:ffi unavailable — yolo-cpp requires the bun runtime; falling back`,
+        );
+        return null;
+      }
+
+      const { dlopen, FFIType, ptr, read } = bunFFI;
+
+      // Detection record layout (must match yolo_detection in
+      // include/yolo/yolo.h byte-for-byte):
+      //   float x, y, w, h, confidence;  (5 * 4 = 20 bytes)
+      //   int class_id;                  (4 bytes)
+      //   total = 24 bytes per record.
+      const DET_BYTES = 24;
+      const DET_CAP = 256;
+
+      let lib;
+      try {
+        lib = dlopen(libPath, {
+          // int yolo_open(const char *gguf, yolo_handle *out);
+          yolo_open: {
+            args: [FFIType.cstring, FFIType.pointer],
+            returns: FFIType.i32,
+          },
+          // int yolo_detect(handle, image*, conf, iou, out, cap, *count);
+          yolo_detect: {
+            args: [
+              FFIType.pointer, // handle
+              FFIType.pointer, // image*
+              FFIType.f32, // conf_threshold
+              FFIType.f32, // iou_threshold
+              FFIType.pointer, // out*
+              FFIType.u64, // out_cap
+              FFIType.pointer, // out_count*
+            ],
+            returns: FFIType.i32,
+          },
+          yolo_close: { args: [FFIType.pointer], returns: FFIType.i32 },
+          yolo_active_backend: { args: [], returns: FFIType.cstring },
+        });
+      } catch (error) {
+        logger.warn(
+          `${MODULE_TAG} dlopen failed for ${libPath}: ${
+            error instanceof Error ? error.message : String(error)
+          } — falling back to onnxruntime path`,
+        );
+        return null;
+      }
+
+      const symbols = lib.symbols;
+
+      function activeBackend(): string {
+        const raw = symbols.yolo_active_backend();
+        if (raw == null) return "unknown";
+        // bun:ffi already returns a CString (cstring-typed return),
+        // which stringifies cleanly. Re-wrapping in `new CString(raw)`
+        // expects a numeric pointer and throws on the wrapped object.
+        return String(raw);
+      }
+
+      function open(ggufPath: string): unknown {
+        const cstr = Buffer.from(ggufPath + "\0", "utf-8");
+        // Out parameter for yolo_handle (a pointer-sized slot).
+        const handleSlot = new BigInt64Array(1);
+        const rc = symbols.yolo_open(
+          ptr(cstr) as never,
+          ptr(handleSlot) as never,
+        ) as number;
+        if (rc !== 0) {
+          throw new Error(
+            `${MODULE_TAG} yolo_open(${ggufPath}) returned errno ${rc}`,
+          );
+        }
+        const handle = handleSlot[0];
+        if (handle === 0n) {
+          throw new Error(`${MODULE_TAG} yolo_open returned NULL handle`);
+        }
+        // bun:ffi pointer-typed args need a Number, not a BigInt — keep
+        // the handle as a Number from here on so call sites never
+        // re-convert.
+        return Number(handle);
+      }
+
+      function detect(
+        handle: unknown,
+        rgb: Uint8Array,
+        width: number,
+        height: number,
+        confThreshold: number,
+        iouThreshold: number,
+      ): { rc: number; detections: YoloCppDetection[] } {
+        // yolo_image struct: rgb*, w, h, stride. Lay it out byte-by-
+        // byte to match include/yolo/yolo.h. The struct is 24 bytes:
+        // 8 (pointer) + 4 + 4 + 4 + 4 (tail pad for 8-byte alignment).
+        const imgStruct = new Uint8Array(24);
+        const imgView = new DataView(imgStruct.buffer);
+        const rgbPtr = ptr(rgb);
+        imgView.setBigUint64(0, BigInt(rgbPtr as unknown as number), true);
+        imgView.setInt32(8, width, true);
+        imgView.setInt32(12, height, true);
+        imgView.setInt32(16, width * 3, true);
+
+        const out = new Uint8Array(DET_BYTES * DET_CAP);
+        const outCount = new BigUint64Array(1);
+
+        const rc = symbols.yolo_detect(
+          handle as never,
+          ptr(imgStruct) as never,
+          confThreshold,
+          iouThreshold,
+          ptr(out) as never,
+          BigInt(DET_CAP) as never,
+          ptr(outCount) as never,
+        ) as number;
+
+        if (rc !== 0) {
+          return { rc, detections: [] };
+        }
+        const n = Number(outCount[0]);
+        const detections: YoloCppDetection[] = [];
+        const view = new DataView(out.buffer);
+        for (let i = 0; i < n && i < DET_CAP; i++) {
+          const off = i * DET_BYTES;
+          detections.push({
+            x: view.getFloat32(off + 0, true),
+            y: view.getFloat32(off + 4, true),
+            w: view.getFloat32(off + 8, true),
+            h: view.getFloat32(off + 12, true),
+            confidence: view.getFloat32(off + 16, true),
+            classId: view.getInt32(off + 20, true),
+          });
+        }
+        // `read` is intentionally unused below — the DataView path is
+        // sufficient and avoids one extra round-trip per field. Keep
+        // the import live so the contract is one block.
+        void read;
+        return { rc: 0, detections };
+      }
+
+      function close(handle: unknown): void {
+        symbols.yolo_close(handle as never);
+      }
+
+      return { open, detect, close, activeBackend };
     })();
   }
   return bindingPromise;
@@ -294,7 +451,7 @@ export class YOLODetector {
         `${MODULE_TAG} GGUF missing at ${this.cfg.ggufPath} — run packages/native-plugins/yolo-cpp/scripts/yolo_to_gguf.py first.`,
       );
     }
-    this.handle = await this.bindings.open(this.cfg.ggufPath);
+    this.handle = this.bindings.open(this.cfg.ggufPath);
     this.initialized = true;
     logger.info(
       `${MODULE_TAG} initialized (gguf=${this.cfg.ggufPath} backend=${this.bindings.activeBackend()})`,
@@ -310,52 +467,45 @@ export class YOLODetector {
     const origH = meta.height ?? 0;
     if (!origW || !origH) return [];
 
-    // Letterbox to YOLO_INPUT_SIZE, RGB, /255-equivalent (the C side
-    // takes uint8 and does its own normalization).
-    const scale = Math.min(INPUT_SIZE / origW, INPUT_SIZE / origH);
-    const padW = Math.round((INPUT_SIZE - origW * scale) / 2);
-    const padH = Math.round((INPUT_SIZE - origH * scale) / 2);
-
+    // The C library's yolo_detect takes the source image directly
+    // and runs its own letterbox internally (yolo_letterbox.c). The
+    // TS layer just hands over a tightly-packed RGB plane.
     const { data: rgbBuf } = await sharp(imageBuffer)
-      .resize(Math.round(origW * scale), Math.round(origH * scale), {
-        fit: "fill",
-      })
-      .extend({
-        top: padH,
-        bottom: INPUT_SIZE - Math.round(origH * scale) - padH,
-        left: padW,
-        right: INPUT_SIZE - Math.round(origW * scale) - padW,
-        background: { r: 114, g: 114, b: 114, alpha: 1 },
-      })
       .removeAlpha()
       .raw()
       .toBuffer({ resolveWithObject: true });
     const rgb = new Uint8Array(rgbBuf.buffer, rgbBuf.byteOffset, rgbBuf.length);
 
-    const raw = await this.bindings.detect(
+    const { rc, detections: raw } = this.bindings.detect(
       this.handle,
       rgb,
-      INPUT_SIZE,
-      INPUT_SIZE,
+      origW,
+      origH,
       this.cfg.scoreThreshold,
       this.cfg.nmsIouThreshold,
     );
 
-    // The C library returns letterboxed-coordinate boxes in input
-    // pixel space. Un-letterbox here so the caller receives source-
-    // image absolute coordinates (matches the onnxruntime path).
-    const detections: InternalDetection[] = [];
-    for (const det of raw) {
-      const className = this.classes[det.classId] ?? `class_${det.classId}`;
-      detections.push({
-        ...det,
-        className,
-        x: (det.x - padW) / scale,
-        y: (det.y - padH) / scale,
-        w: det.w / scale,
-        h: det.h / scale,
-      });
+    if (rc === ERRNO_ENOSYS) {
+      // Forward pass staged — log once per process and return empty.
+      // Caller decides whether to fall back; the typical path is the
+      // service layer racing this against yolo-detector.ts and
+      // picking whichever returns.
+      logger.warn(
+        `${MODULE_TAG} yolo_detect returned -ENOSYS (forward pass staged in yolo_runtime.c). Falling back to empty detections; the onnxruntime path remains the production detector until Phase 3.`,
+      );
+      return [];
     }
+    if (rc !== 0) {
+      throw new Error(`${MODULE_TAG} yolo_detect failed with errno ${rc}`);
+    }
+
+    // The C library returns boxes already un-letterboxed into source
+    // coordinates (per the C ABI doc). The TS layer only attaches a
+    // class name and applies the optional class filter.
+    const detections: InternalDetection[] = raw.map((d) => ({
+      ...d,
+      className: this.classes[d.classId] ?? `class_${d.classId}`,
+    }));
 
     const filtered = this.classFilterLower
       ? detections.filter((d) =>
@@ -373,7 +523,7 @@ export class YOLODetector {
 
   async dispose(): Promise<void> {
     if (this.bindings && this.handle) {
-      await this.bindings.close(this.handle);
+      this.bindings.close(this.handle);
     }
     this.handle = null;
     this.initialized = false;

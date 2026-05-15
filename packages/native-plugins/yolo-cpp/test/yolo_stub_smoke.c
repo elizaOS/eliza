@@ -1,14 +1,19 @@
 /*
- * Build-only smoke test for the yolo-cpp ENOSYS stub.
+ * ABI link probe for libyolo.
  *
  * Confirms the C ABI declared in `include/yolo/yolo.h` links and that
- * every graph-backed entry point reports the expected `-ENOSYS`. This
- * is intentionally not a behavioural test — once the real ggml-backed
- * implementation lands, the parity / quality tests will live next to
- * it and this smoke test stays as a "the ABI still compiles" guard.
+ * the lifecycle / NULL-safety contract holds:
+ *   - `yolo_active_backend` reports a non-NULL string.
+ *   - `yolo_open` against a nonexistent path returns a negative errno
+ *     (`-ENOENT` from the real runtime) and clears the out handle.
+ *   - `yolo_close(NULL)` is a no-op that returns 0.
+ *   - `yolo_detect` against a NULL handle drains `out_count` to 0 and
+ *     returns a negative errno (`-EINVAL` from the real runtime).
  *
- * `yolo_close` is a NULL-safe lifecycle release; it returns 0 even on
- * the stub. `yolo_active_backend` reports `"stub"` until Phase 2.
+ * This test was the Phase 1 ENOSYS probe; the file name is kept for
+ * git-history continuity. Phase 2 widens the contract to "the real
+ * runtime is now linked and reports the documented errno codes" — the
+ * stub-era `-ENOSYS` is no longer the expected value here.
  */
 
 #include "yolo/yolo.h"
@@ -21,32 +26,38 @@
 int main(void) {
     int failures = 0;
 
-    if (strcmp(yolo_active_backend(), "stub") != 0) {
-        fprintf(stderr, "[yolo-stub-smoke] unexpected backend: %s\n",
-                yolo_active_backend());
+    const char *backend = yolo_active_backend();
+    if (backend == NULL || backend[0] == '\0') {
+        fprintf(stderr, "[yolo-smoke] active_backend returned empty\n");
         ++failures;
+    } else {
+        fprintf(stderr, "[yolo-smoke] backend = %s\n", backend);
     }
 
-    yolo_handle handle = (yolo_handle)0x1; /* clobbered by yolo_open */
+    /* Missing GGUF path → real runtime returns -ENOENT after open()
+     * fails. We accept any negative errno here so the contract isn't
+     * brittle against the underlying syscall's return path. */
+    yolo_handle handle = (yolo_handle)0x1; /* must be cleared by yolo_open */
     int rc = yolo_open("/nonexistent.gguf", &handle);
-    if (rc != -ENOSYS) {
-        fprintf(stderr, "[yolo-stub-smoke] yolo_open returned %d, expected %d\n",
-                rc, -ENOSYS);
+    if (rc >= 0) {
+        fprintf(stderr, "[yolo-smoke] yolo_open against missing path returned %d, expected negative errno\n",
+                rc);
         ++failures;
     }
     if (handle != NULL) {
-        fprintf(stderr, "[yolo-stub-smoke] yolo_open did not clear out handle\n");
+        fprintf(stderr, "[yolo-smoke] yolo_open did not clear out handle\n");
         ++failures;
     }
 
     /* Safe with NULL — must not crash and must return 0. */
     rc = yolo_close(NULL);
     if (rc != 0) {
-        fprintf(stderr, "[yolo-stub-smoke] yolo_close(NULL) returned %d, expected 0\n",
+        fprintf(stderr, "[yolo-smoke] yolo_close(NULL) returned %d, expected 0\n",
                 rc);
         ++failures;
     }
 
+    /* yolo_detect with NULL handle — runtime returns -EINVAL today. */
     uint8_t pixels[3 * 4 * 4] = {0};
     yolo_image image = {
         .rgb = pixels,
@@ -57,17 +68,17 @@ int main(void) {
     yolo_detection dets[2] = {{0}};
     size_t count = 12345;
     rc = yolo_detect(NULL, &image, 0.25f, 0.45f, dets, 2, &count);
-    if (rc != -ENOSYS) {
-        fprintf(stderr, "[yolo-stub-smoke] yolo_detect returned %d, expected %d\n",
-                rc, -ENOSYS);
+    if (rc >= 0) {
+        fprintf(stderr, "[yolo-smoke] yolo_detect with NULL handle returned %d, expected negative\n",
+                rc);
         ++failures;
     }
     if (count != 0) {
-        fprintf(stderr, "[yolo-stub-smoke] yolo_detect did not zero out_count (%zu)\n",
+        fprintf(stderr, "[yolo-smoke] yolo_detect did not zero out_count (%zu)\n",
                 count);
         ++failures;
     }
 
-    printf("[yolo-stub-smoke] failures=%d\n", failures);
+    printf("[yolo-smoke] failures=%d\n", failures);
     return failures == 0 ? 0 : 1;
 }
