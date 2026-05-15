@@ -173,7 +173,12 @@ async function loadBindings(): Promise<FaceEmbedBindings | null> {
             `face_embed_open failed (rc=${rc}) — GGUF likely missing or invalid.`,
           );
         }
-        return handleSlot[0];
+        const handle = handleSlot[0];
+        if (handle === 0n) {
+          throw new Error("face_embed_open returned NULL handle");
+        }
+        // bun:ffi pointer-typed args expect a Number, not a BigInt.
+        return Number(handle);
       },
       embed(handle, rgb, w, h, stride, detection) {
         // Pack a face_detection record into a 17-float buffer matching

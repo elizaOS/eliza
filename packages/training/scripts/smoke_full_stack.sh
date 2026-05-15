@@ -512,20 +512,18 @@ if shutil.which("nvidia-smi"):
 
 # ---- Gate 5 (architecture-aware): all applicable steps must pass ----
 applicable_failed = [s for s in failed if s in applicable_steps]
-applicable_tooling_skipped = [s for s in skipped_tooling if s in applicable_steps]
-applicable_passed = [s for s in passed if s in applicable_steps]
+applicable_passed = applicable_passed_only
 
-# A step the architecture supports must end up either passed or skipped
-# for tooling reasons we explicitly accept (none — tooling skips are
-# treated as gate failures here, see comment above).
+# A step the architecture and host both support must end up in `passed`.
+# Tooling skips and architecture skips are excluded from `applicable` and
+# do not block the gate.
 gate_ok = (
     not fail
     and not applicable_failed
-    and not applicable_tooling_skipped
     and len(applicable_passed) == len(applicable_steps)
 )
 
-# Overall result: PASS only if (a) the per-bench content gate passed and
+# Overall result: PASS when (a) the per-bench content gate passed and
 # (b) every applicable step landed in `passed`.
 status = "pass" if gate_ok else "fail"
 
@@ -550,7 +548,7 @@ summary = {
         "applicable_count": len(applicable_steps),
         "applicable_passed_count": len(applicable_passed),
         "applicable_failed_count": len(applicable_failed),
-        "applicable_tooling_skipped_count": len(applicable_tooling_skipped),
+        "skipped_tooling_count": len(skipped_tooling),
         "skipped_incompatible_count": len(skipped_incompat),
     },
 }

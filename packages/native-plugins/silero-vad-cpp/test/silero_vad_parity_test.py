@@ -95,50 +95,35 @@ class CRuntime:
 # ── Reference (silero-vad ONNX) ───────────────────────────────────────────
 
 class OnnxReference:
+    """Drives the upstream Silero VAD `OnnxWrapper` (silero_vad/utils_vad.py)
+    one window at a time. The wrapper is the canonical reference: it
+    threads the LSTM `state` tensor across calls AND maintains a
+    64-sample `_context` carry that the C runtime mirrors. Calling the
+    bare ORT session without the wrapper produces a different
+    per-window probability for the second-and-later windows because the
+    model's STFT is missing the carry it was trained against."""
     def __init__(self) -> None:
         try:
-            import onnxruntime as ort
+            import torch
             from silero_vad import load_silero_vad as _load
-            from silero_vad.utils_vad import OnnxWrapper
         except ImportError as e:  # pragma: no cover
             raise SystemExit(
-                "[parity] reference path requires `pip install silero-vad onnxruntime` "
+                "[parity] reference path requires `pip install silero-vad onnxruntime torch` "
                 f"({e}). The parity test cannot meaningfully run without the upstream "
-                "ONNX session — it would be checking the C runtime against itself."
+                "OnnxWrapper — it would be checking the C runtime against itself."
             )
-        # Use the ONNX path via silero_vad's loader (it ships the ONNX bundle)
-        # but talk to it as a plain ORT session so we can drive (state, sr, audio)
-        # explicitly.
+        self._torch = torch
         self.model = _load(onnx=True)
-        # OnnxWrapper exposes the underlying session; use it directly so we can
-        # inject the same state every call and avoid any internal post-processing.
-        if hasattr(self.model, "session"):
-            self.session = self.model.session
-        else:
-            # Fallback: silero-vad bundles the .onnx; locate it on disk.
-            import silero_vad as _sv
-            onnx_path = Path(_sv.__file__).parent / "data" / "silero_vad.onnx"
-            self.session = ort.InferenceSession(
-                str(onnx_path), providers=["CPUExecutionProvider"]
-            )
-        self.state = np.zeros((2, 1, 128), dtype=np.float32)
 
     def reset(self) -> None:
-        self.state = np.zeros((2, 1, 128), dtype=np.float32)
+        self.model.reset_states(batch_size=1)
 
     def process(self, window: np.ndarray) -> float:
         if window.shape != (WINDOW_SAMPLES,) or window.dtype != np.float32:
             raise ValueError(f"window must be float32 (512,), got {window.dtype} {window.shape}")
-        out, state_n = self.session.run(
-            None,
-            {
-                "input": window.reshape(1, -1).astype(np.float32),
-                "state": self.state,
-                "sr": np.array(SAMPLE_RATE_HZ, dtype=np.int64),
-            },
-        )
-        self.state = state_n
-        return float(out.reshape(-1)[0])
+        x = self._torch.from_numpy(window.astype(np.float32))
+        prob = self.model(x, sr=SAMPLE_RATE_HZ)
+        return float(prob.reshape(-1)[0])
 
 
 # ── Fixture: 5 s mixed speech/silence ─────────────────────────────────────

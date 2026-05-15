@@ -489,7 +489,8 @@ static int load_embedding(ww_gguf *g, struct wakeword_session *s) {
     for (int i = 0; i < WW_EMB_NLAYERS; ++i) {
         char name[128];
         snprintf(name, sizeof(name), "wakeword.embedding.conv%d.weight", specs[i].idx);
-        const int64_t wshape[4] = { specs[i].cout, specs[i].cin, specs[i].kh, specs[i].kw };
+        /* numpy (cout, cin, kh, kw) -> GGUF dims (kw, kh, cin, cout). */
+        const int64_t wshape[4] = { specs[i].kw, specs[i].kh, specs[i].cin, specs[i].cout };
         int err = 0;
         s->emb[i].w = ww_load_fp16(g, name, wshape, 4, &err);
         if (!s->emb[i].w) return err == 0 ? -ENOENT : err;
@@ -834,14 +835,18 @@ int wakeword_open(const char *melspec_gguf,
     if (!s) { ww_gguf_close(gc); ww_gguf_close(ge); ww_gguf_close(gm); return -ENOMEM; }
     s->threshold = WAKEWORD_DEFAULT_THRESHOLD;
 
-    /* melspec tensors. */
+    /* melspec tensors. GGUF stores tensor dims in REVERSE of the
+     * numpy/PyTorch convention; the data layout is row-major in
+     * numpy order. So a numpy (257, 1, 512) tensor lands as GGUF
+     * dims (512, 1, 257) on disk; the byte layout is unchanged
+     * (last numpy dim = fastest-varying). */
     {
-        const int64_t r_shape[3] = { 257, 1, 512 };
+        const int64_t r_shape[3] = { 512, 1, 257 }; /* numpy (257, 1, 512) */
         s->stft_real = ww_load_fp16(gm, "wakeword.melspec.stft_real", r_shape, 3, &err);
         if (!s->stft_real) goto fail;
         s->stft_imag = ww_load_fp16(gm, "wakeword.melspec.stft_imag", r_shape, 3, &err);
         if (!s->stft_imag) goto fail;
-        const int64_t m_shape[2] = { 257, 32 };
+        const int64_t m_shape[2] = { 32, 257 }; /* numpy (257, 32) */
         s->mel_filter = ww_load_fp16(gm, "wakeword.melspec.melW", m_shape, 2, &err);
         if (!s->mel_filter) goto fail;
     }
@@ -849,25 +854,24 @@ int wakeword_open(const char *melspec_gguf,
     err = load_embedding(ge, s);
     if (err != 0) { ww_gguf_close(gc); ww_gguf_close(ge); ww_gguf_close(gm); session_free(s); return err; }
 
-    /* classifier tensors. */
+    /* classifier tensors. GGUF dim order is reversed from numpy. */
     {
-        const int64_t g0w[2] = { 96, 1536 };
+        const int64_t g0w[2] = { 1536, 96 }; /* numpy (96, 1536) */
         s->cls_gemm0_w = ww_load_fp16(gc, "wakeword.classifier.gemm0.weight", g0w, 2, &err);
         if (!s->cls_gemm0_w) goto fail;
-        const int64_t g0b[1] = { 96 };
-        s->cls_gemm0_b = ww_load_fp16(gc, "wakeword.classifier.gemm0.bias", g0b, 1, &err);
+        const int64_t b96[1] = { 96 };
+        s->cls_gemm0_b = ww_load_fp16(gc, "wakeword.classifier.gemm0.bias", b96, 1, &err);
         if (!s->cls_gemm0_b) goto fail;
-        const int64_t lnw[1] = { 96 };
-        s->cls_ln_w = ww_load_fp16(gc, "wakeword.classifier.ln.weight", lnw, 1, &err);
+        s->cls_ln_w = ww_load_fp16(gc, "wakeword.classifier.ln.weight", b96, 1, &err);
         if (!s->cls_ln_w) goto fail;
-        s->cls_ln_b = ww_load_fp16(gc, "wakeword.classifier.ln.bias", lnw, 1, &err);
+        s->cls_ln_b = ww_load_fp16(gc, "wakeword.classifier.ln.bias", b96, 1, &err);
         if (!s->cls_ln_b) goto fail;
-        const int64_t g1w[2] = { 96, 96 };
+        const int64_t g1w[2] = { 96, 96 }; /* numpy (96, 96) — reverse same */
         s->cls_gemm1_w = ww_load_fp16(gc, "wakeword.classifier.gemm1.weight", g1w, 2, &err);
         if (!s->cls_gemm1_w) goto fail;
-        s->cls_gemm1_b = ww_load_fp16(gc, "wakeword.classifier.gemm1.bias", g0b, 1, &err);
+        s->cls_gemm1_b = ww_load_fp16(gc, "wakeword.classifier.gemm1.bias", b96, 1, &err);
         if (!s->cls_gemm1_b) goto fail;
-        const int64_t g2w[2] = { 1, 96 };
+        const int64_t g2w[2] = { 96, 1 }; /* numpy (1, 96) */
         s->cls_gemm2_w = ww_load_fp16(gc, "wakeword.classifier.gemm2.weight", g2w, 2, &err);
         if (!s->cls_gemm2_w) goto fail;
         const int64_t g2b[1] = { 1 };
