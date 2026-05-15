@@ -57,7 +57,7 @@ import {
   type KokoroRuntime,
   KokoroTtsBackend,
   resolveKokoroEngineConfig,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
 import { registerAospLlamaLoader } from "./aosp-llama-adapter.js";
 
 const SERVICE_NAME = "localInferenceLoader";

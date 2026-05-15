@@ -40,4 +40,4 @@ export {
 	TEXT_GENERATION_SLOTS,
 	type TextGenerationSlot,
 	type TokenizerFamily,
-} from "@elizaos/shared/local-inference";
+} from "@elizaos/shared";
