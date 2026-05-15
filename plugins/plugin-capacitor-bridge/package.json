@@ -22,9 +22,9 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "bun run check:android-manifest && tsup src/index.ts --format esm --dts --clean",
+		"build": "bun run check:android-manifest && tsup src/index.ts --format esm --dts --clean --external @elizaos/agent --external @elizaos/core",
 		"check:android-manifest": "node scripts/check-android-manifest.mjs",
-		"dev": "tsup src/index.ts --format esm --dts --watch",
+		"dev": "tsup src/index.ts --format esm --dts --watch --external @elizaos/agent --external @elizaos/core",
 		"clean": "rm -rf dist .turbo node_modules",
 		"lint": "bunx @biomejs/biome check --write --unsafe .",
 		"lint:check": "bunx @biomejs/biome check .",

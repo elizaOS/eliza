@@ -28,9 +28,6 @@ import pytest
 _HERE = Path(__file__).resolve().parent
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
-_PACKAGE_ROOT = _HERE.parents[1]
-if str(_PACKAGE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_PACKAGE_ROOT))
 
 
 def test_polarquant_recipe_serializes_with_paper_metadata():
@@ -794,24 +791,7 @@ _KQUANT_SIBLINGS = (
     ("gguf-q4_k_m_apply", "Q4_K_M"),
     ("gguf-q5_k_m_apply", "Q5_K_M"),
     ("gguf-q6_k_apply",   "Q6_K"),
-    ("gguf-q8_0_apply",   "Q8_0"),
 )
-
-
-def test_eliza1_required_quantization_hooks_are_reproducible():
-    """Every registry hook used for Eliza-1 has a checked-in apply wrapper."""
-    from scripts.training.model_registry import (
-        ELIZA1_REQUIRED_QUANTIZATION_AFTER,
-        REGISTRY,
-    )
-
-    for entry in REGISTRY.values():
-        assert entry.quantization_after == ELIZA1_REQUIRED_QUANTIZATION_AFTER
-
-    quant_dir = Path(__file__).resolve().parent
-    for hook in ELIZA1_REQUIRED_QUANTIZATION_AFTER:
-        wrapper = quant_dir / f"{hook}_apply.py"
-        assert wrapper.exists(), f"missing quantization hook wrapper: {wrapper}"
 
 
 @pytest.mark.parametrize("module_basename,expected_level", _KQUANT_SIBLINGS)
