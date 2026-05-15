@@ -4588,7 +4588,7 @@ export class AgentRuntime implements IAgentRuntime {
 			shouldStream &&
 			resolvedProviderName &&
 			isLocalProvider(resolvedProviderName) &&
-			(paramsChunk || structuredExtractor)
+			(paramsChunk || ctxChunk || structuredExtractor)
 				? async (chunk) => {
 						handlerDeliveredStream = true;
 						await deliverModelStreamChunk(chunk);
