@@ -256,6 +256,7 @@ DFLASH_DRAFTER_BASE: dict[str, str] = {
 
 ELIZA1_REQUIRED_QUANTIZATION_AFTER: tuple[str, ...] = (
     "polarquant",
+    "turboquant",
     "fused_turboquant",
     "qjl",
     "gguf-q3_k_m",
