@@ -37,7 +37,7 @@ function makeCtx(
   const url = new URL(urlString);
 
   const ctx: ViewsRouteContext = {
-    req: {} as http.IncomingMessage,
+    req: { headers: {} } as http.IncomingMessage,
     res: {} as http.ServerResponse,
     method,
     pathname,

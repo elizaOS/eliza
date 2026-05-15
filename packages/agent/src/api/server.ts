@@ -236,6 +236,7 @@ import { discoverSkills } from "./skill-discovery-helpers.ts";
 import { handleSkillsRoutes } from "./skills-routes.ts";
 import { handleSubscriptionRoutes } from "./subscription-routes.ts";
 import { handleUpdateRoutes } from "./update-routes.ts";
+import { handleViewsRoutes } from "./views-routes.ts";
 import { getWalletAddresses, initStewardWalletCache } from "./wallet.ts";
 import {
   EVM_PLUGIN_PACKAGE,
@@ -244,7 +245,6 @@ import {
 } from "./wallet-capability.ts";
 import { handleWalletRoutes } from "./wallet-routes.ts";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
-import { handleViewsRoutes } from "./views-routes.ts";
 import { handleWorkbenchRoutes } from "./workbench-routes.ts";
 
 export {
@@ -2602,6 +2602,7 @@ async function handleRequest(
       url,
       json,
       error,
+      broadcastWs: state.broadcastWs ?? undefined,
     })
   ) {
     return;
