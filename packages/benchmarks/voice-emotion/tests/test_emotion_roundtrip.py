@@ -120,6 +120,47 @@ def artifact_tmpdir() -> Generator[pathlib.Path, None, None]:
         yield pathlib.Path(d)
 
 
+@pytest.fixture(scope="module")
+def cached_roundtrip_report(artifact_tmpdir: pathlib.Path) -> "Any":
+    """Run the full roundtrip once per test module and cache the result.
+
+    This avoids re-running the expensive TTS + classification pipeline
+    for every test that just needs to inspect the report structure.
+    Only invoked when both TTS and classifier backends are available.
+    """
+    if not (_tts_available() and _classifier_available()):
+        pytest.skip("TTS or classifier backend not available")
+    from elizaos_voice_emotion.roundtrip import run_roundtrip
+    return run_roundtrip(artifact_dir=artifact_tmpdir, tts_backend="auto")
+
+
+@pytest.fixture(scope="module")
+def cached_4class_synthesis(artifact_tmpdir: pathlib.Path) -> "Any":
+    """Synthesize + classify the 4 SUPERB-testable emotions once per module."""
+    if not (_tts_available() and _classifier_available()):
+        pytest.skip("TTS or classifier backend not available")
+    from elizaos_voice_emotion.classifier_adapter import ClassifierAdapter
+    from elizaos_voice_emotion.tts_adapter import synthesize_all_emotions
+
+    emotions = ("happy", "angry", "calm", "sad")
+    synth_results = synthesize_all_emotions(backend="auto", emotions=emotions)
+    clf = ClassifierAdapter()
+    rows = []
+    for sr in synth_results:
+        clf_out = clf.classify(sr.audio_16k)
+        rows.append((sr, clf_out))
+    return rows
+
+
+@pytest.fixture(scope="module")
+def cached_all_synthesis() -> "Any":
+    """Synthesize all 7 emotion labels once per module (TTS only, no classify)."""
+    if not _tts_available():
+        pytest.skip("No TTS backend available")
+    from elizaos_voice_emotion.tts_adapter import synthesize_all_emotions
+    return synthesize_all_emotions(backend="auto")
+
+
 # ---------------------------------------------------------------------------
 # 1. VAD projection corner tests — pure Python, always runnable
 # ---------------------------------------------------------------------------
@@ -192,10 +233,8 @@ class TestVadProjectionCorners:
 class TestRoundtripSynthesisSmoke:
     """Verify that TTS produces non-silent real audio for every emotion label."""
 
-    def test_synthesize_all_labels_non_silent(self, artifact_tmpdir: pathlib.Path) -> None:
-        from elizaos_voice_emotion.tts_adapter import synthesize_all_emotions
-
-        results = synthesize_all_emotions(backend="auto")
+    def test_synthesize_all_labels_non_silent(self, cached_all_synthesis: "Any") -> None:
+        results = cached_all_synthesis
         assert len(results) == len(EXPRESSIVE_EMOTION_TAGS), (
             f"Expected {len(EXPRESSIVE_EMOTION_TAGS)} results, got {len(results)}"
         )
@@ -228,18 +267,9 @@ class TestRoundtripClassificationPipeline:
     # The 4 emotions with clear SUPERB proxy mapping.
     _TESTABLE_EMOTIONS: tuple[str, ...] = ("happy", "angry", "calm", "sad")
 
-    def test_classifier_runs_on_real_audio(self, artifact_tmpdir: pathlib.Path) -> None:
+    def test_classifier_runs_on_real_audio(self, cached_4class_synthesis: "Any") -> None:
         """Classifier must not crash on real TTS audio for any tested label."""
-        from elizaos_voice_emotion.classifier_adapter import ClassifierAdapter
-        from elizaos_voice_emotion.tts_adapter import synthesize_all_emotions
-
-        results = synthesize_all_emotions(
-            backend="auto",
-            emotions=self._TESTABLE_EMOTIONS,
-        )
-        clf = ClassifierAdapter()
-        for sr in results:
-            clf_out = clf.classify(sr.audio_16k)
+        for sr, clf_out in cached_4class_synthesis:
             # Must return a structured result (not crash).
             assert clf_out is not None
             assert set(clf_out.scores.keys()) == set(EXPRESSIVE_EMOTION_TAGS)
@@ -249,25 +279,16 @@ class TestRoundtripClassificationPipeline:
                 sr.emotion, clf_out.emotion, clf_out.confidence, clf_out.backend,
             )
 
-    def test_classifier_discriminates_emotions(self, artifact_tmpdir: pathlib.Path) -> None:
+    def test_classifier_discriminates_emotions(self, cached_4class_synthesis: "Any") -> None:
         """The classifier must produce different top-1 outputs for at least 2 emotions.
 
         This asserts the channel is real (not a constant-output stub).
         """
-        from elizaos_voice_emotion.classifier_adapter import ClassifierAdapter
-        from elizaos_voice_emotion.tts_adapter import synthesize_all_emotions
-
-        results = synthesize_all_emotions(
-            backend="auto",
-            emotions=self._TESTABLE_EMOTIONS,
-        )
-        clf = ClassifierAdapter()
-        predicted_emotions = set()
-        for sr in results:
-            clf_out = clf.classify(sr.audio_16k)
-            if clf_out.emotion is not None:
-                predicted_emotions.add(clf_out.emotion)
-
+        predicted_emotions = {
+            clf_out.emotion
+            for _, clf_out in cached_4class_synthesis
+            if clf_out.emotion is not None
+        }
         assert len(predicted_emotions) >= 2, (
             f"Classifier returned the same top-1 output for all inputs: "
             f"{predicted_emotions}. The classifier must discriminate between at "
@@ -275,7 +296,7 @@ class TestRoundtripClassificationPipeline:
         )
         logger.info("Discriminated emotions: %s", predicted_emotions)
 
-    def test_top1_match_rate_above_baseline(self, artifact_tmpdir: pathlib.Path) -> None:
+    def test_top1_match_rate_above_baseline(self, cached_4class_synthesis: "Any") -> None:
         """Top-1 match rate ≥ 2/4 (50%) for the SUPERB-proxy-testable subset.
 
         Pass criteria per EMOTION_MAP.md §4:
@@ -284,18 +305,9 @@ class TestRoundtripClassificationPipeline:
           - When the real Wav2Small ONNX is available, the manifest threshold
             (macro-F1 ≥ 0.35) supersedes this check.
         """
-        from elizaos_voice_emotion.classifier_adapter import ClassifierAdapter
-        from elizaos_voice_emotion.tts_adapter import synthesize_all_emotions
-
-        results = synthesize_all_emotions(
-            backend="auto",
-            emotions=self._TESTABLE_EMOTIONS,
-        )
-        clf = ClassifierAdapter()
         matches = 0
         total = 0
-        for sr in results:
-            clf_out = clf.classify(sr.audio_16k)
+        for sr, clf_out in cached_4class_synthesis:
             total += 1
             if clf_out.emotion == sr.emotion:
                 matches += 1
@@ -328,13 +340,8 @@ class TestRoundtripClassificationPipeline:
 class TestRoundtripArtifacts:
     """Verify that the roundtrip runner writes all expected artifacts."""
 
-    def test_artifacts_written_for_all_labels(self, artifact_tmpdir: pathlib.Path) -> None:
-        from elizaos_voice_emotion.roundtrip import run_roundtrip
-
-        report = run_roundtrip(
-            artifact_dir=artifact_tmpdir,
-            tts_backend="auto",
-        )
+    def test_artifacts_written_for_all_labels(self, cached_roundtrip_report: "Any") -> None:
+        report = cached_roundtrip_report
 
         # One WAV per emotion
         for emotion in EXPRESSIVE_EMOTION_TAGS:
@@ -352,8 +359,8 @@ class TestRoundtripArtifacts:
         assert pathlib.Path(report.mix_wav_path).exists()
 
         # predictions.json
-        predictions = artifact_tmpdir / "predictions.json"
-        assert predictions.exists(), "predictions.json not written"
+        predictions_path = pathlib.Path(report.artifact_dir) / "predictions.json"
+        assert predictions_path.exists(), "predictions.json not written"
 
 
 # ---------------------------------------------------------------------------
@@ -387,44 +394,30 @@ class TestRoundtripReportSchema:
         "notes",
     )
 
-    def test_schema_has_all_required_fields(self, artifact_tmpdir: pathlib.Path) -> None:
-        from elizaos_voice_emotion.roundtrip import run_roundtrip
-
-        report = run_roundtrip(artifact_dir=artifact_tmpdir, tts_backend="auto")
-        d = report.as_dict()
-
+    def test_schema_has_all_required_fields(self, cached_roundtrip_report: "Any") -> None:
+        d = cached_roundtrip_report.as_dict()
         for field in self._REQUIRED_FIELDS:
             assert field in d, f"predictions.json missing required field: {field!r}"
 
-    def test_vad_projection_pass_is_true(self, artifact_tmpdir: pathlib.Path) -> None:
-        from elizaos_voice_emotion.roundtrip import run_roundtrip
-
-        report = run_roundtrip(artifact_dir=artifact_tmpdir, tts_backend="auto")
+    def test_vad_projection_pass_is_true(self, cached_roundtrip_report: "Any") -> None:
+        report = cached_roundtrip_report
         assert report.vad_projection_pass, (
             "VAD projection unit tests failed in roundtrip report. "
             f"Detail: {report.vad_projection_detail}"
         )
 
-    def test_per_class_f1_has_all_tags(self, artifact_tmpdir: pathlib.Path) -> None:
-        from elizaos_voice_emotion.roundtrip import run_roundtrip
-
-        report = run_roundtrip(artifact_dir=artifact_tmpdir, tts_backend="auto")
-        d = report.as_dict()
+    def test_per_class_f1_has_all_tags(self, cached_roundtrip_report: "Any") -> None:
+        d = cached_roundtrip_report.as_dict()
         for tag in EXPRESSIVE_EMOTION_TAGS:
             assert tag in d["perClassF17class"], (
                 f"perClassF17class missing tag {tag!r}"
             )
 
-    def test_rows_count_matches_emotion_count(self, artifact_tmpdir: pathlib.Path) -> None:
-        from elizaos_voice_emotion.roundtrip import run_roundtrip
-
-        report = run_roundtrip(artifact_dir=artifact_tmpdir, tts_backend="auto")
+    def test_rows_count_matches_emotion_count(self, cached_roundtrip_report: "Any") -> None:
+        report = cached_roundtrip_report
         assert report.n_total == len(EXPRESSIVE_EMOTION_TAGS), (
             f"Expected {len(EXPRESSIVE_EMOTION_TAGS)} rows, got {report.n_total}"
         )
 
-    def test_schema_version_is_1(self, artifact_tmpdir: pathlib.Path) -> None:
-        from elizaos_voice_emotion.roundtrip import run_roundtrip
-
-        report = run_roundtrip(artifact_dir=artifact_tmpdir, tts_backend="auto")
-        assert report.schema_version == 1
+    def test_schema_version_is_1(self, cached_roundtrip_report: "Any") -> None:
+        assert cached_roundtrip_report.schema_version == 1
