@@ -1,6 +1,6 @@
 import type http from "node:http";
-import type { Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
-import { PredictionMarketService, polymarketActions } from "./actions";
+import type { IAgentRuntime, Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import { PREDICTION_MARKET_SERVICE_TYPE, PredictionMarketService, polymarketActions } from "./actions";
 import { polymarketStatusProvider } from "./provider";
 import { handlePolymarketRoute } from "./routes";
 
@@ -92,4 +92,8 @@ export const polymarketPlugin: Plugin = {
   services: [PredictionMarketService],
   providers: [polymarketStatusProvider],
   routes: polymarketRoutes,
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<PredictionMarketService>(PREDICTION_MARKET_SERVICE_TYPE);
+    await svc?.stop();
+  },
 };
