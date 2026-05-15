@@ -256,8 +256,8 @@ export function googleGrantFromAccount(args: {
 }): LifeOpsConnectorGrant {
   const { account, agentId } = args;
   const capabilities = googleCapabilitiesForAccount(account);
-  const updatedAt = new Date(account.updatedAt ?? Date.now()).toISOString();
-  const createdAt = new Date(account.createdAt ?? Date.now()).toISOString();
+  const updatedAt = new Date(account.updatedAt).toISOString();
+  const createdAt = new Date(account.createdAt).toISOString();
   const meta = metadata(account);
   return {
     ...createLifeOpsConnectorGrant({
@@ -413,7 +413,7 @@ export async function resolveGoogleConnectorAccount(args: {
 export function requireGoogleWorkspaceService(
   runtime: RuntimeWithService,
 ): IGoogleWorkspaceService {
-  const service = runtime.getService?.("google");
+  const service = runtime.getService("google");
   if (!service || typeof service !== "object") {
     fail(
       503,
@@ -574,7 +574,7 @@ function lifeOpsCalendarAttendeeFromGoogle(
   attendee: GoogleEmailAddress,
 ): LifeOpsCalendarEventAttendee {
   return {
-    email: attendee.email ?? null,
+    email: attendee.email,
     displayName: attendee.name ?? null,
     responseStatus: null,
     self: false,

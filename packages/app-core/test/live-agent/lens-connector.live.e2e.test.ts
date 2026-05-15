@@ -1,44 +1,15 @@
-/**
- * Lens Protocol Connector Validation Tests
- *
- * Comprehensive E2E tests for validating the Lens Protocol connector (@elizaos/plugin-lens).
- *
- * Test Categories:
- *   1. Setup & Authentication
- *   2. Post Handling
- *   3. Lens-Specific Features
- *   4. Media & Attachments
- *   5. Error Handling
- *
- * Requirements for live tests:
- *   LENS_API_KEY         — Lens app Server API Key (from developer.lens.xyz)
- *   LENS_ACCOUNT_ADDRESS — Lens account address (EVM address, e.g. "0x...")
- *   LENS_PRIVATE_KEY     — Wallet private key for signing (0x + 64 hex)
- *   ELIZA_LIVE_TEST=1   — Enable live tests
- *
- * Or configure in ~/.eliza/eliza.json:
- *   { "connectors": { "lens": { "apiKey": "...", "accountAddress": "0x...", "privateKey": "0x..." } } }
- *
- * Uses Lens Protocol V3 API (api.lens.xyz/graphql).
- * NO MOCKS for live tests — all tests use real Lens Protocol API.
- */
-
 import crypto from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  extractPlugin,
-  resolveLensPluginImportSpecifier,
-} from "@elizaos/app-core";
 import { logger, type Plugin } from "@elizaos/core";
 import dotenv from "dotenv";
 import { ethers } from "ethers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 
-// ---------------------------------------------------------------------------
-// Environment Setup
-// ---------------------------------------------------------------------------
+const { extractPlugin, resolveLensPluginImportSpecifier } = await import(
+  "../../src/test-support/test-helpers.ts"
+);
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(testDir, "..");

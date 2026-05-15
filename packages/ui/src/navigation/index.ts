@@ -197,10 +197,11 @@ export const ALL_TAB_GROUPS: TabGroup[] = [
     description: "ElizaOS dialer, SMS, and contact book",
   },
   {
-    label: "Apps",
+    label: "Views",
     tabs: ["apps", ...APPS_TOOL_TABS],
     icon: Gamepad2,
-    description: "Games, LifeOps, integrations, and app tools",
+    description:
+      "Agent-provided views, games, LifeOps, integrations, and app tools",
   },
   {
     label: "Character",
@@ -265,7 +266,7 @@ export function getTabGroups(
 ): TabGroup[] {
   const groups = ALL_TAB_GROUPS.filter(
     (g) =>
-      (APPS_ENABLED || g.label !== "Apps") &&
+      (APPS_ENABLED || g.label !== "Views") &&
       (phoneSurfaceEnabled || g.label !== "Phone") &&
       (streamEnabled || g.label !== "Stream") &&
       (walletEnabled || g.label !== "Wallet") &&
@@ -514,7 +515,7 @@ export function titleForTab(tab: Tab): string {
     case "companion":
       return "Companion";
     case "apps":
-      return "Apps";
+      return "Views";
     case "character":
       return "Character";
     case "character-select":

@@ -2230,6 +2230,7 @@
       "version": "2.0.0-beta.2",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/skills": "workspace:*",
         "fflate": "^0.8.2",
       },
       "devDependencies": {

@@ -291,7 +291,7 @@ export class AutonomyService extends Service {
 		if (!existingEntity) {
 			const created = await this.runtime.createEntity(autonomyEntity);
 			if (!created) {
-				await runtimeWithUpsert.upsertEntities?.([autonomyEntity]);
+				await runtimeWithUpsert.upsertEntities([autonomyEntity]);
 			}
 			return;
 		}
@@ -440,8 +440,8 @@ export class AutonomyService extends Service {
 		for (const memory of recentMemories) {
 			if (
 				memory.entityId === agentEntity.id &&
-				memory.content?.text &&
-				memory.content?.metadata &&
+				memory.content.text &&
+				memory.content.metadata &&
 				(memory.content.metadata as Record<string, ContentValue>)
 					?.isAutonomous === true &&
 				(memory.content.metadata as Record<string, ContentValue>)?.type ===
@@ -691,8 +691,8 @@ export class AutonomyService extends Service {
 		for (const memory of recentMemories) {
 			if (
 				memory.entityId === agentEntity.id &&
-				memory.content?.text &&
-				memory.content?.metadata &&
+				memory.content.text &&
+				memory.content.metadata &&
 				(memory.content.metadata as Record<string, ContentValue>)
 					?.isAutonomous === true &&
 				(memory.content.metadata as Record<string, ContentValue>)?.type ===

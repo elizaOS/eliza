@@ -395,7 +395,7 @@ export async function handleSkillsRoutes(
         sorted.sort((a, b) => b.updatedAt - a.updatedAt);
       else if (sort === "name")
         sorted.sort((a, b) =>
-          (a.displayName ?? a.slug).localeCompare(b.displayName ?? b.slug),
+          (a.displayName).localeCompare(b.displayName),
         );
 
       // Resolve installed status from the AgentSkillsService

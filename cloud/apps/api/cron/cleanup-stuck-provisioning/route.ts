@@ -42,7 +42,7 @@ interface CleanupResult {
   stuckSinceMinutes: number;
 }
 
-async function handleCleanupStuckProvisioning(request: Request, env?: AppEnv["Bindings"]) {
+async function handleCleanupStuckProvisioning(request: Request, env: AppEnv["Bindings"]) {
   try {
     const authError = verifyCronSecret(request, "[Cleanup Stuck Provisioning]", env);
     if (authError) return authError;
@@ -124,7 +124,7 @@ async function handleCleanupStuckProvisioning(request: Request, env?: AppEnv["Bi
  * GET /api/cron/cleanup-stuck-provisioning
  * Cron endpoint — protected by CRON_SECRET.
  */
-async function __hono_GET(request: Request, env?: AppEnv["Bindings"]) {
+async function __hono_GET(request: Request, env: AppEnv["Bindings"]) {
   return handleCleanupStuckProvisioning(request, env);
 }
 
@@ -132,7 +132,7 @@ async function __hono_GET(request: Request, env?: AppEnv["Bindings"]) {
  * POST /api/cron/cleanup-stuck-provisioning
  * Manual trigger for testing — same auth requirement.
  */
-async function __hono_POST(request: Request, env?: AppEnv["Bindings"]) {
+async function __hono_POST(request: Request, env: AppEnv["Bindings"]) {
   return handleCleanupStuckProvisioning(request, env);
 }
 

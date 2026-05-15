@@ -664,7 +664,7 @@ function extractRequiredStateFragments(
 }
 
 function parseToolResultContent(content: string): {
-  toolName?: string;
+  toolName: string | undefined;
   value: string;
 } {
   const trimmed = content.trim();
@@ -672,17 +672,20 @@ function parseToolResultContent(content: string): {
   if (tagged) {
     return { toolName: tagged[1].trim(), value: tagged[2].trim() };
   }
-  return { value: trimmed };
+  return { toolName: undefined, value: trimmed };
 }
 
 function extractToolOutcomeFacts(region: CompactorMessage[]): string[] {
-  const callInfo = new Map<string, { name?: string; turn?: string | number }>();
+  const callInfo = new Map<
+    string,
+    { name: string | undefined; turn: string | number | undefined }
+  >();
 
   for (const message of region) {
     if (message.role !== "assistant" || !message.toolCalls) continue;
     for (const call of message.toolCalls) {
       if (!call.id) continue;
-      const turn = call.arguments?.turn;
+      const turn = call.arguments.turn;
       callInfo.set(call.id, {
         name: call.name,
         turn:
@@ -822,7 +825,9 @@ async function naiveCompact(
 
   const userBody = renderRegionForPrompt(region);
 
-  const callOnce = async (extraInstruction?: string): Promise<string> => {
+  const callOnce = async (
+    extraInstruction: string | undefined,
+  ): Promise<string> => {
     const sys =
       NAIVE_SYSTEM_PROMPT +
       (extraInstruction
@@ -840,7 +845,7 @@ async function naiveCompact(
     });
   };
 
-  let summary = (await callOnce()).trim();
+  let summary = (await callOnce(undefined)).trim();
   let retried = false;
   const counter = getCounter(options);
   if (counter(summary) > options.targetTokens) {
@@ -1341,8 +1346,10 @@ type HybridParsed = {
 function safeParseHybrid(raw: string): HybridParsed {
   const body = extractJsonBody(raw);
   const parsed = JSON.parse(body) as {
-    state?: Partial<StructuredState>;
-    ledger?: Array<{ index?: number; note?: string }>;
+    state: Partial<StructuredState> | undefined;
+    ledger:
+      | Array<{ index: number | undefined; note: string | undefined }>
+      | undefined;
   };
   const state: StructuredState = {
     facts: Array.isArray(parsed.state?.facts)

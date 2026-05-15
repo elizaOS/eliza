@@ -80,7 +80,7 @@ export const documentsProvider: Provider = {
 							? metadata.documentTitle
 							: undefined) ??
 						`Snippet ${index + 1}`,
-					text: fragment.content?.text ?? "",
+					text: fragment.content.text ?? "",
 					score: fragment.similarity,
 					scope: metadata?.scope ?? "global",
 				};

@@ -335,7 +335,7 @@ function buildDiscoveredEntry(
   packageJson: LocalPackageJson,
   manifest: LocalPluginManifest | null,
 ): RegistryPluginInfo | null {
-  if (!packageJson?.name || packageJson.name.length === 0) return null;
+  if (!packageJson.name || packageJson.name.length === 0) return null;
 
   const packageAppMeta = toLocalAppMeta(
     packageJson.elizaos?.app,

@@ -85,7 +85,7 @@ function contentHash(text: string): string {
 }
 
 function cacheKey(message: LifeOpsInboxMessage, modelId: string): string {
-  const text = `${message.subject ?? ""}|${message.snippet ?? ""}`;
+  const text = `${message.subject ?? ""}|${message.snippet}`;
   return `${modelId}::${message.id}::${contentHash(text)}`;
 }
 
@@ -151,7 +151,7 @@ function buildPrompt(
   for (const [index, message] of batch.entries()) {
     lines.push(
       `messages[${index}]:`,
-      `  from: ${promptValue(message.sender?.displayName ?? "unknown", 160)}`,
+      `  from: ${promptValue(message.sender.displayName, 160)}`,
       `  channel: ${promptValue(message.channel, 80)}`,
       `  chatType: ${promptValue(message.chatType ?? "dm", 40)}`,
       `  participantCount: ${

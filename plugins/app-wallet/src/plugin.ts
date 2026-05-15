@@ -20,6 +20,20 @@ export const walletAppPlugin: Plugin = {
       },
     ],
   },
+  views: [
+    {
+      id: "wallet",
+      label: "Wallet",
+      description: "Non-custodial wallet inventory and token balances",
+      icon: "Wallet",
+      path: "/wallet",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "InventoryView",
+      tags: ["finance", "crypto", "wallet"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
   widgets: [
     {
       id: "wallet.status",

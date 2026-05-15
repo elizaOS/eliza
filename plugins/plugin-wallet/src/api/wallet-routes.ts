@@ -1081,10 +1081,10 @@ export async function handleWalletRoutes(
             };
             const agent = agentBody.data ?? agentBody;
             agentEvm =
-              agent?.walletAddresses?.evm?.trim() ||
-              agent?.walletAddress?.trim() ||
+              agent.walletAddresses?.evm?.trim() ||
+              agent.walletAddress?.trim() ||
               null;
-            agentSolana = agent?.walletAddresses?.solana?.trim() || null;
+            agentSolana = agent.walletAddresses?.solana?.trim() || null;
           }
         } catch {
           // agent doesn't exist or fetch failed — will try to create
@@ -1116,10 +1116,10 @@ export async function handleWalletRoutes(
           };
           const created = createBody.data ?? createBody;
           agentEvm =
-            created?.walletAddresses?.evm?.trim() ||
-            created?.walletAddress?.trim() ||
+            created.walletAddresses?.evm?.trim() ||
+            created.walletAddress?.trim() ||
             null;
-          agentSolana = created?.walletAddresses?.solana?.trim() || null;
+          agentSolana = created.walletAddresses?.solana?.trim() || null;
 
           logger.info(
             `[wallet] Created steward agent "${agentId}" with wallets`,

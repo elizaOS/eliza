@@ -46,7 +46,7 @@ type CoreLifeOperation =
   | null;
 
 function messageText(message: Memory): string {
-  const text = message.content?.text;
+  const text = message.content.text;
   return typeof text === "string" ? text.trim() : "";
 }
 
@@ -302,7 +302,7 @@ async function recoverCoreLifeOperationWithLlm(args: {
     const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);
     return parsed ? normalizeCoreLifeOperationPlan(parsed) : null;
   } catch (error) {
-    args.runtime.logger?.warn?.(
+    args.runtime.logger.warn(
       {
         src: "action:life",
         error: error instanceof Error ? error.message : String(error),

@@ -453,7 +453,7 @@ export function withHealth<TBase extends Constructor<LifeOpsServiceBase>>(
           config.mode,
           side,
         ));
-      const token = readStoredHealthToken(grant?.tokenRef);
+      const token = readStoredHealthToken(grant.tokenRef);
       const syncState = grant
         ? await this.repository.getHealthSyncState(
             this.agentId(),
@@ -462,7 +462,7 @@ export function withHealth<TBase extends Constructor<LifeOpsServiceBase>>(
           )
         : null;
       const metadataAuthState =
-        typeof grant?.metadata.authState === "string"
+        typeof grant.metadata.authState === "string"
           ? grant.metadata.authState
           : null;
       const connected = Boolean(
@@ -480,27 +480,27 @@ export function withHealth<TBase extends Constructor<LifeOpsServiceBase>>(
       return {
         provider,
         side,
-        mode: grant?.mode ?? config.mode,
+        mode: grant.mode,
         defaultMode: config.defaultMode,
         availableModes: config.availableModes,
-        executionTarget: grant?.executionTarget ?? "local",
-        sourceOfTruth: grant?.sourceOfTruth ?? "local_storage",
+        executionTarget: grant.executionTarget,
+        sourceOfTruth: grant.sourceOfTruth,
         configured: config.configured,
         connected,
         reason,
-        identity: token?.identity ?? grant?.identity ?? null,
+        identity: token?.identity ?? grant.identity,
         grantedCapabilities: grant
           ? healthCapabilitiesFromGrant(grant.capabilities)
           : healthConnectorCapabilities(provider),
-        grantedScopes: token?.grantedScopes ?? grant?.grantedScopes ?? [],
+        grantedScopes: token?.grantedScopes ?? grant.grantedScopes,
         expiresAt: token?.expiresAt
           ? new Date(token.expiresAt).toISOString()
-          : typeof grant?.metadata.expiresAt === "string"
+          : typeof grant.metadata.expiresAt === "string"
             ? grant.metadata.expiresAt
             : null,
         hasRefreshToken:
           Boolean(token?.refreshToken) ||
-          Boolean(grant?.metadata.hasRefreshToken),
+          Boolean(grant.metadata.hasRefreshToken),
         lastSyncAt: syncState?.lastSyncedAt ?? null,
         grant,
         degradations: syncState?.lastSyncError

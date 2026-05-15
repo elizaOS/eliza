@@ -108,7 +108,7 @@ function buildCacheKey(
 }
 
 function readUserText(message: Memory): string {
-	const text = message.content?.text;
+	const text = message.content.text;
 	return typeof text === "string" ? text.trim() : "";
 }
 
@@ -136,7 +136,7 @@ export async function requireConfirmation(
 	const ttlMs = args.ttlMs ?? DEFAULT_TTL_MS;
 	const confirmRegex = args.confirmRegex ?? DEFAULT_CONFIRM_REGEX;
 	const cancelRegex = args.cancelRegex ?? DEFAULT_CANCEL_REGEX;
-	const userId = String(args.message.entityId ?? args.message.id ?? "anon");
+	const userId = String(args.message.entityId);
 	const cacheKey = buildCacheKey(userId, args.actionName, args.pendingKey);
 	const userText = readUserText(args.message);
 
@@ -156,7 +156,7 @@ export async function requireConfirmation(
 		if (args.callback) {
 			await args.callback({
 				text: args.prompt,
-				source: args.message.content?.source,
+				source: args.message.content.source,
 			});
 		}
 		return { status: "pending" };

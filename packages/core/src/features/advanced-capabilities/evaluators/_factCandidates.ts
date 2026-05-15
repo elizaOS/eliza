@@ -21,7 +21,7 @@ async function getRuntimeDb(
 ): Promise<RuntimeDbExecutor | null> {
 	const adapter = (runtime as IAgentRuntime & { adapter?: { db?: unknown } })
 		.adapter;
-	const db = adapter?.db as RuntimeDbExecutor | undefined;
+	const db = adapter.db as RuntimeDbExecutor | undefined;
 	if (!db || typeof db.execute !== "function") return null;
 	return db;
 }

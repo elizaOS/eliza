@@ -50,7 +50,7 @@ const DEFAULT_MAX_ACCUMULATION_MS = resolveDefaultMaxAccumulationMs();
 export type ClockMs = () => number;
 
 const DEFAULT_CLOCK: ClockMs = () =>
-	globalThis.performance?.now?.() ?? Date.now();
+	globalThis.performance.now();
 
 export class PhraseChunker {
 	private buffer: AcceptedToken[] = [];

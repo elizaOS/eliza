@@ -203,7 +203,7 @@ async function buildLinkRecord(
 			preview.bodyChunk,
 		);
 	} catch (error) {
-		runtime.logger?.warn?.(
+		runtime.logger.warn(
 			{
 				src: "evaluator:link-extraction",
 				agentId: runtime.agentId,
@@ -274,7 +274,7 @@ export const linkExtractionEvaluator: Evaluator<
 				links.push(record);
 				await persistLink(runtime, message, record);
 			} catch (error) {
-				runtime.logger?.warn?.(
+				runtime.logger.warn(
 					{
 						src: "evaluator:link-extraction",
 						agentId: runtime.agentId,

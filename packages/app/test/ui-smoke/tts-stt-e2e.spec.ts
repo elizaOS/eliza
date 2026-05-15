@@ -6,7 +6,7 @@
  *   1. **Voice provider matrix** — the picker that drives the advanced-
  *      settings TTS/ASR defaults returns the documented combos for
  *      desktop/local, mobile/local, cloud, and remote. If the matrix breaks,
- *      the UI silently picks the wrong TTS/ASR backend. Mirrors the canonical
+ *      the UI silently picks the wrong TTS/ASR backend. Mirrors
  *      `pickDefaultVoiceProvider` in
  *      `packages/ui/src/voice/voice-provider-defaults.ts`.
  *
@@ -184,7 +184,7 @@ async function installSpeechRecognitionShim(page: Page): Promise<void> {
       isFinal: boolean,
     ) => {
       const rec = instances[instances.length - 1];
-      if (!rec || !rec.started) return false;
+      if (!rec?.started) return false;
       rec.onresult?.({
         results: [
           {
@@ -215,7 +215,7 @@ test("voice provider matrix returns documented combos for each device + runtime 
   const result = await page.evaluate(async () => {
     // The bundled module map exposes the picker via the runtime — we eval
     // the same logic inline so this test stays decoupled from internal
-    // module IDs. This mirrors the canonical impl in
+    // module IDs. This mirrors the implementation in
     // packages/ui/src/voice/voice-provider-defaults.ts.
     type Mode = "local" | "local-only" | "cloud" | "remote";
     type Platform = "desktop" | "mobile" | "web";
@@ -294,6 +294,9 @@ test("chat SSE stream emits token + done events for assistant message", async ({
   };
   const conversationId = created.conversation?.id;
   expect(conversationId, "conversation create must return an id").toBeTruthy();
+  if (!conversationId) {
+    throw new Error("Conversation create did not return an id");
+  }
 
   // 2) Hit the stream endpoint with a user message. Use raw fetch so we
   //    can read the SSE body progressively (the test page already has CORS
@@ -329,7 +332,7 @@ test("chat SSE stream emits token + done events for assistant message", async ({
       if (dataLine) events.push(dataLine.slice(5).trim());
     }
     return { ok: res.ok, contentType, raw, events };
-  }, conversationId!);
+  }, conversationId);
 
   expect(sseEvents.ok, "SSE stream must return 2xx").toBe(true);
   expect(sseEvents.contentType).toMatch(/text\/event-stream/);

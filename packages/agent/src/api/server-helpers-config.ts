@@ -222,7 +222,7 @@ export function applyOnboardingVoicePreset(
   }
 
   const stylePreset = resolveOnboardingStylePreset(body, language);
-  const voicePresetId = stylePreset?.voicePresetId?.trim();
+  const voicePresetId = stylePreset.voicePresetId.trim();
   if (!voicePresetId) {
     return;
   }

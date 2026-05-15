@@ -100,6 +100,7 @@ function makeRuntime(responses: unknown[]): IAgentRuntime {
 			}
 			return queue.shift();
 		}),
+		getSetting: vi.fn(() => undefined),
 		logger: {
 			debug: vi.fn(),
 			info: vi.fn(),
@@ -1346,6 +1347,112 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "planned_reply") {
 			expect(result.result.responseContent?.text).toBe("Checked.");
 		}
+	});
+
+	it("keeps stale prior assistant tool answers out of tool-planner context", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				thought: "The current request needs fresh runtime inspection.",
+				contexts: ["general"],
+				candidateActionNames: ["CHECK_RUNTIME"],
+				extra: { requiresTool: true },
+			}),
+			{
+				text: "",
+				toolCalls: [
+					{
+						id: "call-1",
+						name: "CHECK_RUNTIME",
+						arguments: {},
+					},
+				],
+			},
+			JSON.stringify({
+				success: true,
+				decision: "FINISH",
+				thought: "Fresh check completed.",
+				messageToUser: "Fresh check completed.",
+			}),
+		]);
+		const staleAssistantAnswer =
+			"Root partition '/' is 58% used. The three largest safe cleanup candidates are /home/zo and /home/ubuntu.";
+		const priorUserPrompt =
+			"Can you check VPS disk usage and name cleanup candidates?";
+		const currentMessage: Memory = {
+			...makeMessage(),
+			content: {
+				...makeMessage().content,
+				text: "Check VPS disk usage again and inspect deeper this time.",
+			},
+		};
+		const plannerState: State = {
+			values: { availableContexts: "general" },
+			data: {
+				providerOrder: ["RECENT_MESSAGES"],
+				providers: {
+					RECENT_MESSAGES: {
+						text: `# Conversation Messages\nuser: ${priorUserPrompt}\nassistant: ${staleAssistantAnswer}`,
+						providerName: "RECENT_MESSAGES",
+						data: {
+							recentMessages: [
+								{
+									id: "00000000-0000-0000-0000-00000000aaa1" as UUID,
+									entityId:
+										"00000000-0000-0000-0000-000000000002" as UUID,
+									roomId:
+										"00000000-0000-0000-0000-000000000004" as UUID,
+									createdAt: 1,
+									content: { text: priorUserPrompt },
+								},
+								{
+									id: "00000000-0000-0000-0000-00000000aaa2" as UUID,
+									entityId:
+										"00000000-0000-0000-0000-000000000003" as UUID,
+									agentId:
+										"00000000-0000-0000-0000-000000000003" as UUID,
+									roomId:
+										"00000000-0000-0000-0000-000000000004" as UUID,
+									createdAt: 2,
+									content: { text: staleAssistantAnswer },
+								},
+								currentMessage,
+							],
+						},
+					},
+				},
+			},
+			text: "",
+		};
+		runtime.composeState = vi.fn(async () => plannerState);
+		const handler = vi.fn(async () => ({ success: true, text: "fresh output" }));
+		runtime.actions = [
+			{
+				name: "CHECK_RUNTIME",
+				description: "Check current runtime state.",
+				contexts: ["general"],
+				validate: vi.fn(async () => true),
+				handler,
+			},
+		] as IAgentRuntime["actions"];
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: currentMessage,
+			state: plannerState,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const firstPlannerParams = useModelCalls(runtime)[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const firstPlannerPrompt = JSON.stringify(firstPlannerParams.messages);
+		expect(firstPlannerPrompt).toContain(priorUserPrompt);
+		expect(firstPlannerPrompt).toContain(currentMessage.content.text);
+		expect(firstPlannerPrompt).toContain("prior_dialogue_policy");
+		expect(firstPlannerPrompt).not.toContain("provider:RECENT_MESSAGES");
+		expect(firstPlannerPrompt).not.toContain(staleAssistantAnswer);
+		expect(handler).toHaveBeenCalledTimes(1);
 	});
 
 	it("returns a simple no-context reply without calling the planner", async () => {

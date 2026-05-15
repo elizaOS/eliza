@@ -447,7 +447,7 @@ export function definitionTriggersEnforcement(
   ) {
     return true;
   }
-  return definition.metadata?.enforceRoutineWindow === true;
+  return definition.metadata.enforceRoutineWindow === true;
 }
 
 export function buildReminderEnforcementState(
@@ -1026,7 +1026,7 @@ function readReminderAttemptDeliveryRoomId(
 function readReminderAttemptAttemptedMs(
   attempt: LifeOpsReminderAttempt,
 ): number | null {
-  const attemptedAt = attempt.attemptedAt ?? attempt.scheduledFor ?? null;
+  const attemptedAt = attempt.attemptedAt ?? attempt.scheduledFor;
   const attemptedMs = attemptedAt ? Date.parse(attemptedAt) : Number.NaN;
   return Number.isFinite(attemptedMs) ? attemptedMs : null;
 }

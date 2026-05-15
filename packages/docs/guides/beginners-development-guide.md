@@ -90,7 +90,7 @@ Core areas (all under `eliza/packages/app-core/`):
 - `scripts/` — build/dev/release tooling
 - `test/` + colocated tests — verification
 
-> **Note:** The `eliza/` directory is a git submodule — these paths will not exist until you run `bun run setup:upstreams` or `git submodule update --init --recursive`. See [CONTRIBUTING.md](https://github.com/eliza-ai/eliza/blob/main/CONTRIBUTING.md) for submodule maintenance details.
+> **Note:** The `eliza/` directory is a git submodule — these paths will not exist until you run `bun run setup:upstreams` or `git submodule update --init --recursive`. See [CONTRIBUTING.md](https://github.com/elizaOS/eliza/blob/main/CONTRIBUTING.md) for submodule maintenance details.
 
 ---
 

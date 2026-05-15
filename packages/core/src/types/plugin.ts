@@ -436,6 +436,85 @@ export interface PluginAppUiExtension {
 	detailPanelId?: string;
 }
 
+/** Platform availability for a view. */
+export type ViewPlatform = "web" | "desktop" | "ios" | "android";
+
+/** A discrete capability the agent can exercise on a mounted view. */
+export interface ViewCapability {
+	/** Unique id within the view (e.g. "click-button", "fill-input"). */
+	id: string;
+	/** Human-readable description surfaced to the planner. */
+	description: string;
+	/** JSON Schema for any parameters this capability accepts. */
+	params?: Record<
+		string,
+		{ type: string; description: string; required?: boolean }
+	>;
+}
+
+/**
+ * A UI view contributed by a plugin.
+ *
+ * Views are compiled to JavaScript bundles, served by the agent router at
+ * `/api/views/<id>/bundle.js`, and loaded dynamically by the frontend shell
+ * via `import()`. On platforms where dynamic code loading is restricted (iOS
+ * App Store, Google Play store builds), bundles are pre-compiled into the app
+ * binary and the agent serves them from bundled assets — no remote download.
+ *
+ * The frontend shell:
+ *   1. Fetches `GET /api/views` to discover all registered views.
+ *   2. Calls `import(bundleUrl)` when a view is first requested.
+ *   3. Mounts `module[componentExport ?? "default"]` in an error boundary.
+ *   4. Calls the view's `cleanup()` export on unmount.
+ */
+export interface ViewDeclaration {
+	/**
+	 * Stable unique id scoped to the owning plugin (e.g. "wallet.inventory").
+	 * Used as the URL segment: `/api/views/<id>/bundle.js`.
+	 */
+	id: string;
+	/** Display label shown in the view manager and agent responses. */
+	label: string;
+	/** One-line description used for semantic view search. */
+	description?: string;
+	/** Lucide icon name (e.g. "Wallet", "MessageSquare"). */
+	icon?: string;
+	/** URL path this view occupies in the shell (e.g. "/wallet"). */
+	path?: string;
+	/** Sort priority in the view manager — lower appears first. Default 100. */
+	order?: number;
+	/** Tags for search and discovery (e.g. ["finance", "crypto"]). */
+	tags?: string[];
+	/** Relative path from the plugin's package root to its hero image. */
+	heroImagePath?: string;
+	/**
+	 * Platforms this view supports. Omit to support all platforms.
+	 * Dynamic plugin install is disabled on restricted store builds (ios, android).
+	 */
+	platforms?: ViewPlatform[];
+	/** Hidden unless developer mode is enabled. Default false. */
+	developerOnly?: boolean;
+	/**
+	 * Named export the shell mounts from the loaded bundle module.
+	 * Defaults to `"default"`.
+	 * Usage: `const mod = await import(bundleUrl); mount(mod[componentExport]);`
+	 */
+	componentExport?: string;
+	/**
+	 * Path from the plugin's package root to the compiled view bundle.
+	 * Convention: `"dist/views/bundle.js"` or `"dist/views/<id>/bundle.js"`.
+	 * The view registry resolves this to an absolute `/api/views/<id>/bundle.js`
+	 * URL at startup and on plugin hot-reload.
+	 */
+	bundlePath?: string;
+	/** Capabilities the agent can exercise on this view when it is mounted. */
+	capabilities?: ViewCapability[];
+	/** Allow this view to be pinned as a desktop tab. Default true. */
+	desktopTabEnabled?: boolean;
+	/** Show this view in the view manager grid. Default true. */
+	visibleInManager?: boolean;
+}
+
 export interface PluginApp {
 	displayName?: string;
 	category?: string;
@@ -584,6 +663,16 @@ export interface Plugin {
 
 	app?: PluginApp;
 	appBridge?: PluginAppBridge;
+
+	/**
+	 * UI views this plugin contributes. Views are compiled to bundles, served
+	 * by the agent at `/api/views/<id>/bundle.js`, and dynamically loaded by
+	 * the frontend shell. Replaces the static import pattern in `main.tsx`.
+	 *
+	 * The view registry scans loaded plugins for this field at startup and on
+	 * plugin hot-reload, resolving `bundlePath` entries to absolute serve URLs.
+	 */
+	views?: ViewDeclaration[];
 
 	/**
 	 * Widgets this plugin contributes. Replaces the hard-coded

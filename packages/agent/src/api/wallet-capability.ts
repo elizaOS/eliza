@@ -8,7 +8,6 @@ import {
 import { getWalletAddresses } from "./wallet.ts";
 import { resolveWalletRpcReadiness } from "./wallet-rpc.ts";
 
-/** Unified wallet package (bundles legacy EVM + Solana plugins). */
 export const EVM_PLUGIN_PACKAGE = "@elizaos/plugin-wallet";
 const EVM_PLUGIN_SERVICE_NAMES = ["evm", "evmService"] as const;
 

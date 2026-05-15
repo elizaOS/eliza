@@ -111,4 +111,18 @@ export const shopifyPlugin: Plugin = {
   description:
     "Shopify store management dashboard routes (extracted from app-core server.ts)",
   routes: shopifyRoutes,
+  views: [
+    {
+      id: "shopify",
+      label: "Shopify",
+      description: "Shopify store management — orders, products, customers, and inventory",
+      icon: "ShoppingBag",
+      path: "/shopify",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "ShopifyAppView",
+      tags: ["shopify", "ecommerce", "store"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };

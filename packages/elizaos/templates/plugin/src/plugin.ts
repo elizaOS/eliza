@@ -91,10 +91,6 @@ const helloWorldAction: Action = {
   ],
 };
 
-/**
- * Example Hello World Provider
- * This demonstrates the simplest possible provider implementation
- */
 const helloWorldProvider: Provider = {
   name: "HELLO_WORLD_PROVIDER",
   description: "A simple example provider",
@@ -112,11 +108,6 @@ const helloWorldProvider: Provider = {
   },
 };
 
-/**
- * Example Service
- * Services hold long-lived resources or background work tied to the agent's lifecycle.
- * Register them on the plugin's `services` array; access them via `runtime.getService(serviceType)`.
- */
 class StarterService extends Service {
   static serviceType = "starter";
   capabilityDescription =
@@ -142,7 +133,6 @@ export const starterPlugin: Plugin = {
     try {
       const validatedConfig = await configSchema.parseAsync(config);
 
-      // Set all environment variables at once
       for (const [key, value] of Object.entries(validatedConfig)) {
         if (value) process.env[key] = String(value);
       }
@@ -163,7 +153,7 @@ export const starterPlugin: Plugin = {
       _runtime,
       { prompt: _prompt, stopSequences: _stopSequences = [] }: GenerateTextParams,
     ) => {
-      return "Never gonna give you up, never gonna let you down, never gonna run around and desert you...";
+      return "Small text model fixture response.";
     },
     [ModelType.TEXT_LARGE]: async (
       _runtime,
@@ -176,7 +166,7 @@ export const starterPlugin: Plugin = {
         presencePenalty: _presencePenalty = 0.7,
       }: GenerateTextParams,
     ) => {
-      return "Never gonna make you cry, never gonna say goodbye, never gonna tell a lie and hurt you...";
+      return "Large text model fixture response.";
     },
   },
   routes: [

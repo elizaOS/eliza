@@ -126,6 +126,10 @@ export const blueSkyPlugin: Plugin = {
 		logger.log("BlueSky plugin initialized");
 	},
 
+	async dispose(runtime) {
+		await BlueSkyService.stop(runtime);
+	},
+
 	actions: [],
 
 	services: [BlueSkyService, BlueskyWorkflowCredentialProvider],

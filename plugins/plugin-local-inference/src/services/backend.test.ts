@@ -65,14 +65,14 @@ describe("gpuLayersForKvOffload", () => {
 });
 
 describe("decideBackend", () => {
-	it("defaults to node-llama-cpp for stock GGUFs", () => {
+	it("defaults to the custom llama-server when available", () => {
 		const decision = decideBackend({
 			override: "auto",
 			catalog: BASE_CATALOG,
 			llamaServerAvailable: true,
 			dflashRequired: false,
 		});
-		expect(decision.backend).toBe("node-llama-cpp");
+		expect(decision.backend).toBe("llama-server");
 		expect(decision.reason).toBe("default");
 	});
 
@@ -177,7 +177,7 @@ describe("decideBackend", () => {
 			llamaServerAvailable: true,
 			dflashRequired: false,
 		});
-		expect(decision.backend).toBe("node-llama-cpp");
+		expect(decision.backend).toBe("llama-server");
 		expect(decision.reason).toBe("default");
 	});
 });
@@ -219,7 +219,7 @@ class FakeBackend implements LocalInferenceBackend {
 }
 
 describe("BackendDispatcher", () => {
-	it("loads node-llama-cpp by default", async () => {
+	it("loads custom llama-server by default", async () => {
 		const node = new FakeBackend("node-llama-cpp");
 		const server = new FakeBackend("llama-server");
 		const d = new BackendDispatcher(
@@ -229,10 +229,10 @@ describe("BackendDispatcher", () => {
 			() => false,
 		);
 		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
-		expect(d.activeBackendId()).toBe("node-llama-cpp");
-		expect(node.loaded).toBe(true);
-		expect(server.loaded).toBe(false);
-		expect(await d.generate({ prompt: "hi" })).toBe("node-llama-cpp:reply");
+		expect(d.activeBackendId()).toBe("llama-server");
+		expect(node.loaded).toBe(false);
+		expect(server.loaded).toBe(true);
+		expect(await d.generate({ prompt: "hi" })).toBe("llama-server:reply");
 	});
 
 	it("switches backends when the decision differs and unloads the previous", async () => {
@@ -245,14 +245,14 @@ describe("BackendDispatcher", () => {
 			() => false,
 		);
 		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
-		expect(d.activeBackendId()).toBe("node-llama-cpp");
+		expect(d.activeBackendId()).toBe("llama-server");
 
 		const kernelCatalog = withRuntime(BASE_CATALOG, {
 			optimizations: { requiresKernel: ["dflash"] },
 		});
 		await d.load({ modelPath: "/m2.gguf", catalog: kernelCatalog });
 		expect(d.activeBackendId()).toBe("llama-server");
-		expect(node.unloads).toBe(1);
+		expect(node.unloads).toBe(0);
 		expect(server.loaded).toBe(true);
 	});
 

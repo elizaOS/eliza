@@ -79,11 +79,12 @@ export function generateNodeBuiltinStub(
     "export default stub;",
   ];
 
+  let realModule: Record<string, unknown> | null = null;
   let exportNames: string[] = [];
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const real = req(bareModule);
-    exportNames = Object.keys(real).filter(
+    realModule = req(bareModule) as Record<string, unknown>;
+    exportNames = Object.keys(realModule).filter(
       (k) => !k.startsWith("_") && k !== "default",
     );
   } catch {
@@ -134,32 +135,25 @@ export function generateNodeBuiltinStub(
     // Validate it's a valid JS identifier
     if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(name)) continue;
 
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const real = req(bareModule);
-      const val = real[name];
-      if (typeof val === "function") {
-        if (
-          /^[A-Z]/.test(name) &&
-          val.prototype &&
-          Object.getOwnPropertyNames(val.prototype).length > 1
-        ) {
-          lines.push(`export class ${name} { constructor() {} }`);
-        } else {
-          lines.push(`export const ${name} = noop;`);
-        }
-      } else if (typeof val === "object" && val !== null) {
-        // For objects like fs.constants, promises, etc. — wrap in Proxy
-        lines.push(`export const ${name} = new Proxy({}, handler);`);
-      } else if (typeof val === "string") {
-        lines.push(`export const ${name} = ${JSON.stringify(val)};`);
-      } else if (typeof val === "number" || typeof val === "boolean") {
-        lines.push(`export const ${name} = ${val};`);
+    const val = realModule?.[name];
+    if (typeof val === "function") {
+      if (
+        /^[A-Z]/.test(name) &&
+        val.prototype &&
+        Object.getOwnPropertyNames(val.prototype).length > 1
+      ) {
+        lines.push(`export class ${name} { constructor() {} }`);
       } else {
-        lines.push(`export const ${name} = undefined;`);
+        lines.push(`export const ${name} = noop;`);
       }
-    } catch {
-      lines.push(`export const ${name} = noop;`);
+    } else if (typeof val === "object" && val !== null) {
+      lines.push(`export const ${name} = new Proxy({}, handler);`);
+    } else if (typeof val === "string") {
+      lines.push(`export const ${name} = ${JSON.stringify(val)};`);
+    } else if (typeof val === "number" || typeof val === "boolean") {
+      lines.push(`export const ${name} = ${val};`);
+    } else {
+      lines.push(`export const ${name} = undefined;`);
     }
   }
 

@@ -196,7 +196,7 @@ async function threadOpsShouldRun(
   // Even with no active threads, if the runtime has an active turn for this
   // room (i.e., a prior handler is still running), the user may want to
   // abort it. Include the field so abort can be extracted.
-  return ctx.runtime.turnControllers?.hasActiveTurn?.(roomId) ?? false;
+  return ctx.runtime.turnControllers.hasActiveTurn(roomId);
 }
 
 // ---------------------------------------------------------------------------
@@ -280,7 +280,7 @@ async function threadOpsHandle(
         ? abortOp.reason
         : "user_requested_abort";
     let aborted = false;
-    if (roomId && ctx.runtime.turnControllers?.abortTurn) {
+    if (roomId && ctx.runtime.turnControllers.abortTurn) {
       aborted = ctx.runtime.turnControllers.abortTurn(roomId, reason);
     }
     debug.push(

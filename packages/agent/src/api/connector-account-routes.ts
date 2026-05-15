@@ -16,7 +16,7 @@ import type { infer as ZodInfer } from "zod";
 import * as zod from "zod";
 import { isBlockedObjectKey } from "./server-helpers-config.ts";
 
-const z = zod.z ?? zod;
+const z = zod.z;
 
 export interface ConnectorAccountRouteContext {
   req: http.IncomingMessage;
@@ -860,7 +860,7 @@ export async function handleConnectorAccountRoutes(
   if (namespace === "audit") {
     if (rest.length === 1 && rest[0] === "events" && method === "GET") {
       const query = queryRecord(req);
-      const outcome = query.outcome?.trim();
+      const outcome = query.outcome.trim();
       if (outcome && outcome !== "success" && outcome !== "failure") {
         error(res, "outcome must be success or failure", 400);
         return true;
@@ -868,8 +868,8 @@ export async function handleConnectorAccountRoutes(
       const events = await listConnectorAuditEvents({
         runtime: ctx.state.runtime,
         provider,
-        accountId: query.accountId?.trim() || undefined,
-        action: query.action?.trim() || undefined,
+        accountId: query.accountId.trim() || undefined,
+        action: query.action.trim() || undefined,
         outcome: outcome || undefined,
         limit: parseAuditLimit(query.limit),
       });
@@ -938,7 +938,7 @@ export async function handleConnectorAccountRoutes(
           : undefined;
       if (method === "POST" && !body) return true;
       const state =
-        typeof body?.state === "string" ? body.state : (query.state ?? rest[1]);
+        typeof body?.state === "string" ? body.state : (query.state);
       if (!state) {
         error(res, "Missing OAuth state", 400);
         return true;

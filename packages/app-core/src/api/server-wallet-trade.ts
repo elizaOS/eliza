@@ -100,7 +100,7 @@ export function runWithCompatAuthContext<T>(
 }
 
 function getClientIp(req: http.IncomingMessage): string | null {
-  return req.socket?.remoteAddress ?? null;
+  return req.socket.remoteAddress ?? null;
 }
 
 function getUserAgent(req: http.IncomingMessage): string {

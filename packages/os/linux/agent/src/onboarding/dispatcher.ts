@@ -24,7 +24,6 @@
  */
 
 import type { CalibrationBlock } from "../persona.ts";
-import { llmRepliesEnabled } from "../runtime/dispatch-llm.ts";
 import {
   completionMessage,
   ONBOARDING_GREETING,
@@ -293,10 +292,6 @@ async function rephraseOnboardingTurn(
   // sentinel; bypass LLM rephrase so the dispatcher.test.ts assertions
   // (which match preset prose verbatim) keep passing.
   if (process.env.USBELIZA_STATE_DIR !== undefined) return reply;
-  // No further gate. claude-cloud-plugin delegates to local-llama when
-  // not signed in, so useModel(TEXT_LARGE) always works. Onboarding
-  // questions get a real model voice from turn 1.
-  void llmRepliesEnabled; // referenced for the import; gate removed.
   try {
     const [{ getRuntime }, { rephraseAsEliza }] = await Promise.all([
       import("../runtime/eliza.ts"),

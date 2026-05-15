@@ -65,7 +65,7 @@ describe("inventory — categorization heuristics", () => {
 });
 
 describe("inventory — provider id inference", () => {
-  it("derives ids from canonical env-var names", () => {
+  it("derives ids from known env-var names", () => {
     expect(inferProviderId("OPENAI_API_KEY")).toBe("openai");
     expect(inferProviderId("ANTHROPIC_API_KEY")).toBe("anthropic");
     expect(inferProviderId("OPENROUTER_API_KEY")).toBe("openrouter");

@@ -41,7 +41,7 @@ export async function scheduleOnceTriggerTask(
     throw new Error("Triggers are disabled by configuration.");
   }
 
-  const creator = String(args.message.entityId ?? args.runtime.agentId);
+  const creator = String(args.message.entityId);
   const normalized = normalizeTriggerDraft({
     input: {
       displayName: args.displayName,
@@ -107,7 +107,7 @@ export async function scheduleOnceTriggerTask(
     throw new Error("Unable to compute trigger schedule.");
   }
 
-  const autonomy = args.runtime.getService?.(
+  const autonomy = args.runtime.getService(
     "AUTONOMY",
   ) as AutonomyServiceLike | null;
   const roomId = autonomy?.getAutonomousRoomId?.() ?? args.message.roomId;

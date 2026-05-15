@@ -55,8 +55,7 @@ export function occurrenceAnchorIso(
   return (
     occurrence.dueAt ??
     occurrence.scheduledAt ??
-    occurrence.relevanceStartAt ??
-    null
+    occurrence.relevanceStartAt
   );
 }
 

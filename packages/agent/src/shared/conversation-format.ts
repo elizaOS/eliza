@@ -30,7 +30,7 @@ export function formatSpeakerLabel(
   memory: Memory,
 ): string {
   if (memory.entityId === runtime.agentId) {
-    return runtime.character?.name ?? "agent";
+    return runtime.character.name ?? "agent";
   }
 
   const metadata = asRecord(memory.metadata);
@@ -62,8 +62,8 @@ export function formatSpeakerLabel(
  */
 export function roomSourceTag(room: Room | null): string {
   if (!room) return "[unknown]";
-  const source = room.source || (room.type ?? "chat");
-  const name = room.name || room.id?.slice(0, 8);
+  const source = room.source || (room.type);
+  const name = room.name || room.id.slice(0, 8);
   return `[${source}] ${name}`;
 }
 

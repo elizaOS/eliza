@@ -99,7 +99,7 @@ export function createHandoffStore(runtime: IAgentRuntime): HandoffStore {
           `[handoff] invalid resumeOn: ${JSON.stringify(opts.resumeOn)}`,
         );
       }
-      const reason = normalizeReason(opts.reason ?? "");
+      const reason = normalizeReason(opts.reason);
       if (reason.length === 0) {
         throw new Error("[handoff] reason is required");
       }

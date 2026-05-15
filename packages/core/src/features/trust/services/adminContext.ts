@@ -18,7 +18,7 @@ export async function resolveAdminContext(
 		return true;
 	}
 
-	const room = state?.data?.room ?? (await runtime.getRoom?.(message.roomId));
+	const room = state?.data?.room ?? (await runtime.getRoom(message.roomId));
 	if (!room) {
 		return false;
 	}

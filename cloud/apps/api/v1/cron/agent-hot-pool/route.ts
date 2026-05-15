@@ -12,7 +12,7 @@ import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
 import { verifyCronSecret } from "@/lib/auth/cron";
 import { forwardCronToContainerControlPlane } from "../../_container-control-plane-forward";
 
-async function handleAgentHotPool(c: AppContext, env?: AppEnv["Bindings"]) {
+async function handleAgentHotPool(c: AppContext, env: AppEnv["Bindings"]) {
   const authError = verifyCronSecret(c.req.raw, "[Agent Hot Pool]", env);
   if (authError) return authError;
   return forwardCronToContainerControlPlane(c);

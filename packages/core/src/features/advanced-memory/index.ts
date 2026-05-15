@@ -1,4 +1,4 @@
-import type { Plugin } from "../../types/index.ts";
+import type { IAgentRuntime, Plugin } from "../../types/index.ts";
 import { memoryItems } from "./evaluators/index.ts";
 import {
 	contextSummaryProvider,
@@ -44,5 +44,9 @@ export function createAdvancedMemoryPlugin(): Plugin {
 		services: [MemoryService],
 		evaluators: memoryItems,
 		providers: [longTermMemoryProvider, contextSummaryProvider],
+		async dispose(runtime: IAgentRuntime) {
+			const svc = runtime.getService<MemoryService>(MemoryService.serviceType);
+			await svc?.stop();
+		},
 	};
 }

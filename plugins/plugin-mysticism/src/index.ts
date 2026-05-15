@@ -209,6 +209,10 @@ export const mysticismPlugin: Plugin = {
   ],
 
   routes: createReadingRoutes(),
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<MysticismService>(MysticismService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default mysticismPlugin;

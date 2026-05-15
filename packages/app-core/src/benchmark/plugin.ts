@@ -615,7 +615,7 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
 
 function compactJson(value: unknown, maxLength = 500): string {
   const raw =
-    typeof value === "string" ? value : (JSON.stringify(value, null, 2) ?? "");
+    typeof value === "string" ? value : (JSON.stringify(value, null, 2));
   return raw.length > maxLength ? `${raw.slice(0, maxLength)}...` : raw;
 }
 
@@ -1043,7 +1043,7 @@ function extractActionParameters(options: unknown): Record<string, unknown> {
           { stringValue?: string; numberValue?: number }
         >;
         for (const [k, v] of Object.entries(fields)) {
-          params[k] = v?.stringValue ?? v?.numberValue ?? v;
+          params[k] = v.stringValue ?? v.numberValue ?? v;
         }
       } else {
         params = p;

@@ -324,7 +324,7 @@ export class SandboxManager {
         });
 
         // Start browser container if configured
-        if (this.config.browser?.enabled && this.config.browser?.autoStart) {
+        if (this.config.browser?.enabled && this.config.browser.autoStart) {
           try {
             this.browserContainerId = await this.createBrowserContainer();
           } catch (err) {

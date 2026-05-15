@@ -22,14 +22,9 @@
  *   - If absent: log + return `null` so the agent's chat handler can
  *     fall back to the Ollama HTTP provider transparently.
  *
- * **Cross-compile pipeline** lives separately —
- * `scripts/compile-libllama.mjs` (TODO; adapted from milady's
- * `eliza/packages/app-core/scripts/aosp/compile-libllama.mjs`). Until
- * that lands, this module is a structurally-complete skeleton: bun:ffi
- * symbol declarations, load-time probe, and the public surface the
- * chat handler talks to. The actual `complete()` and `embed()` bodies
- * throw `LocalLlamaNotImplementedError` so a misconfigured deployment
- * fails loudly instead of silently regressing chat quality.
+ * The cross-compile pipeline lives separately from this loader. Until the
+ * shared objects ship in the ISO, this module probes artifacts and fails
+ * loudly instead of silently regressing chat quality.
  *
  * The agent stays on Ollama via `USBELIZA_LOCAL_BACKEND=ollama` (the
  * current default — flipped to `llama` once the shim is shipping in
@@ -228,19 +223,9 @@ export function loadLocalLlama(
     );
   }
 
-  // TODO Phase 1.5: bun:ffi binding. The full implementation imports
-  // `bun:ffi` dynamically (Bun built-in; Node test bundlers can't
-  // resolve it statically) and dlopen()s libllama.so + the shim from
-  // `process.env.USBELIZA_LIBLLAMA_DIR ?? LIBLLAMA_DIR_DEFAULT`, then
-  // calls the symbol pin set listed in the module header. See milady's
-  // aosp-llama-adapter.ts (~1200 LOC) for the canonical shape.
-  //
-  // This stub validates all artifacts and inputs so the agent's
-  // bootstrap pipeline can be wired and tested end-to-end. Until the
-  // cross-compile pipeline lands and ships a real libllama.so to bind
-  // to, we throw `not-implemented` so the agent falls back to Ollama
-  // visibly rather than appearing to use local-llama while silently
-  // serving the wrong backend.
+  // The bun:ffi binding is intentionally absent until the ISO ships the
+  // matching libllama.so and shim. Artifact validation stays here so a
+  // selected llama backend fails visibly and the agent can route to Ollama.
   throw new LocalLlamaError(
     "local-llama adapter wired but libllama.so binding not yet compiled — staying on Ollama. " +
       "Track Phase 1.5 milestone for the cross-compile pipeline.",

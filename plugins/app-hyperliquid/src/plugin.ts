@@ -1,7 +1,8 @@
 import type http from "node:http";
-import type { Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import {
   hyperliquidActions,
+  PERPETUAL_MARKET_SERVICE_TYPE,
   PerpetualMarketService,
 } from "./actions/perpetual-market";
 import { handleHyperliquidRoute } from "./routes";
@@ -111,4 +112,22 @@ export const hyperliquidPlugin: Plugin = {
   actions: hyperliquidActions,
   services: [PerpetualMarketService],
   routes: hyperliquidRoutes,
+  views: [
+    {
+      id: "hyperliquid",
+      label: "Hyperliquid",
+      description: "Hyperliquid perpetual markets — positions, trading status, and market data",
+      icon: "TrendingUp",
+      path: "/hyperliquid",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "HyperliquidAppView",
+      tags: ["trading", "perps", "hyperliquid", "crypto"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<PerpetualMarketService>(PERPETUAL_MARKET_SERVICE_TYPE);
+    await svc?.stop();
+  },
 };

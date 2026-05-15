@@ -17,7 +17,7 @@
     "links": [
       {
         "label": "GitHub",
-        "href": "https://github.com/eliza-ai/eliza"
+        "href": "https://github.com/elizaOS/eliza"
       },
       {
         "label": "Discord",
@@ -622,8 +622,7 @@
               "connectors/github",
               "connectors/gmail-watch",
               "connectors/nextcloud-talk",
-              "connectors/tlon",
-              "connectors/zalouser"
+              "connectors/tlon"
             ]
           }
         ]
@@ -912,198 +911,6 @@
         ]
       },
       {
-        "tab": "Connectors",
-        "groups": [
-          {
-            "group": "Overview",
-            "pages": ["guides/connectors"]
-          },
-          {
-            "group": "Auto-Enabled",
-            "pages": [
-              "connectors/discord",
-              "connectors/telegram",
-              "connectors/slack",
-              "connectors/whatsapp",
-              "connectors/signal",
-              "connectors/imessage",
-              "connectors/blooio",
-              "connectors/msteams",
-              "connectors/googlechat",
-              "connectors/twitter",
-              "connectors/farcaster",
-              "connectors/twitch",
-              "connectors/mattermost",
-              "connectors/wechat",
-              "connectors/matrix",
-              "connectors/feishu",
-              "connectors/nostr",
-              "connectors/lens"
-            ]
-          },
-          {
-            "group": "Registry",
-            "pages": [
-              "connectors/bluebubbles",
-              "connectors/bluesky",
-              "connectors/instagram",
-              "connectors/line",
-              "connectors/zalo",
-              "connectors/zalouser",
-              "connectors/twilio",
-              "connectors/github",
-              "connectors/gmail-watch",
-              "connectors/nextcloud-talk",
-              "connectors/tlon"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Plugins",
-        "groups": [
-          {
-            "group": "Overview",
-            "pages": [
-              "plugins/overview",
-              "plugins/architecture",
-              "plugins/registry",
-              "plugins/decision-guide"
-            ]
-          },
-          {
-            "group": "Development",
-            "pages": [
-              "plugins/create-a-plugin",
-              "plugins/development",
-              "plugins/local-plugins",
-              "plugins/patterns",
-              "plugins/schemas",
-              "plugins/testing",
-              "plugins/publish",
-              "plugins/plugin-eject",
-              "plugins/skills"
-            ]
-          },
-          {
-            "group": "LLM Providers",
-            "pages": [
-              "plugin-registry/llm/anthropic",
-              "plugin-registry/llm/openai",
-              "plugin-registry/llm/google-genai",
-              "plugin-registry/llm/google-antigravity",
-              "plugin-registry/llm/groq",
-              "plugin-registry/llm/ollama",
-              "plugin-registry/llm/openrouter",
-              "plugin-registry/llm/xai",
-              "plugin-registry/llm/deepseek",
-              "plugin-registry/llm/mistral",
-              "plugin-registry/llm/together",
-              "plugin-registry/llm/cohere",
-              "plugin-registry/llm/perplexity",
-              "plugin-registry/llm/minimax",
-              "plugin-registry/llm/vercel-ai-gateway",
-              "plugin-registry/llm/zai"
-            ]
-          },
-          {
-            "group": "Platform Connectors",
-            "pages": [
-              "plugin-registry/platform/discord",
-              "plugin-registry/platform/telegram",
-              "plugin-registry/platform/slack",
-              "plugin-registry/platform/whatsapp",
-              "plugin-registry/platform/signal",
-              "plugin-registry/platform/imessage",
-              "plugin-registry/platform/blooio",
-              "plugin-registry/platform/msteams",
-              "plugin-registry/platform/googlechat",
-              "plugin-registry/platform/twitter",
-              "plugin-registry/platform/farcaster",
-              "plugin-registry/platform/twitch",
-              "plugin-registry/platform/mattermost",
-              "plugin-registry/platform/wechat",
-              "plugin-registry/platform/matrix",
-              "plugin-registry/platform/feishu",
-              "plugin-registry/platform/nostr",
-              "plugin-registry/platform/lens",
-              "plugin-registry/platform/bluebubbles",
-              "plugin-registry/platform/bluesky",
-              "plugin-registry/platform/instagram",
-              "plugin-registry/platform/line",
-              "plugin-registry/platform/zalo",
-              "plugin-registry/platform/twilio",
-              "plugin-registry/platform/github",
-              "plugin-registry/platform/gmail-watch",
-              "plugin-registry/platform/nextcloud-talk",
-              "plugin-registry/platform/tlon"
-            ]
-          },
-          {
-            "group": "DeFi & Blockchain",
-            "pages": ["plugin-registry/defi/evm", "plugin-registry/defi/solana"]
-          },
-          {
-            "group": "Utilities",
-            "pages": [
-              "plugin-registry/browser",
-              "plugin-registry/computeruse",
-              "plugin-registry/cron",
-              "plugin-registry/fal",
-              "plugin-registry/image-generation",
-              "plugin-registry/documents",
-              "plugin-registry/obsidian",
-              "plugin-registry/sql",
-              "plugin-registry/stt",
-              "plugin-registry/suno",
-              "plugin-registry/tts",
-              "plugin-registry/vision",
-              "plugin-registry/webhooks",
-              "plugin-registry/x402"
-            ]
-          },
-          {
-            "group": "Platform Connectors",
-            "pages": [
-              "plugin-registry/platform/discord",
-              "plugin-registry/platform/telegram",
-              "plugin-registry/platform/slack",
-              "plugin-registry/platform/whatsapp",
-              "plugin-registry/platform/signal",
-              "plugin-registry/platform/imessage",
-              "plugin-registry/platform/twitter",
-              "plugin-registry/platform/farcaster",
-              "plugin-registry/platform/bluesky",
-              "plugin-registry/platform/instagram",
-              "plugin-registry/platform/twitch",
-              "plugin-registry/platform/msteams",
-              "plugin-registry/platform/googlechat",
-              "plugin-registry/platform/matrix",
-              "plugin-registry/platform/mattermost",
-              "plugin-registry/platform/wechat",
-              "plugin-registry/platform/feishu",
-              "plugin-registry/platform/nostr",
-              "plugin-registry/platform/lens",
-              "plugin-registry/platform/blooio",
-              "plugin-registry/platform/bluebubbles",
-              "plugin-registry/platform/line",
-              "plugin-registry/platform/zalo",
-              "plugin-registry/platform/zalouser",
-              "plugin-registry/platform/twilio",
-              "plugin-registry/platform/github",
-              "plugin-registry/platform/gmail-watch",
-              "plugin-registry/platform/nextcloud-talk",
-              "plugin-registry/platform/tlon",
-              "plugin-registry/platform/zalouser"
-            ]
-          },
-          {
-            "group": "DeFi & Blockchain",
-            "pages": ["plugin-registry/defi/evm", "plugin-registry/defi/solana"]
-          }
-        ]
-      },
-      {
         "tab": "Guides",
         "groups": [
           {
@@ -1286,15 +1093,6 @@
         "tab": "Apps & Deploy",
         "groups": [
           {
-            "group": "Apps",
-            "pages": [
-              "apps/overview",
-              "apps/desktop",
-              "apps/dashboard",
-              "apps/mobile"
-            ]
-          },
-          {
             "group": "Desktop Development",
             "pages": [
               "apps/desktop-local-development",
@@ -1321,15 +1119,6 @@
               "eliza-cloud-deployment",
               "eliza-cloud-rollout",
               "build-and-release"
-            ]
-          },
-          {
-            "group": "Security & Stability",
-            "pages": [
-              "agents/character-interface",
-              "agents/runtime-and-lifecycle",
-              "agents/memory-and-state",
-              "agents/personality-and-behavior"
             ]
           },
           {
@@ -1484,10 +1273,5 @@
   },
   "contextual": {
     "options": ["copy", "view", "chatgpt", "claude", "perplexity"]
-  },
-  "analytics": {
-    "posthog": {
-      "apiKey": "phc_YOUR_POSTHOG_API_KEY"
-    }
   }
 }

@@ -1,13 +1,4 @@
 #!/usr/bin/env node
-/**
- * Action/Provider Docs Generator
- *
- * Reads canonical specs from packages/prompts/specs/** and generates
- * TypeScript docs modules under packages/core/src/generated.
- *
- * This is intentionally dependency-free (no zod/yup) to keep builds lightweight.
- */
-
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -327,10 +318,7 @@ function assertUniqueNames(docs, label) {
  */
 function loadSpecs(dir, corePath, kind) {
   if (!fs.existsSync(corePath)) {
-    return {
-      core: { version: "1.0.0", items: [] },
-      all: { version: "1.0.0", items: [] },
-    };
+    throw new Error(`Missing ${kind} core spec: ${corePath}`);
   }
 
   const coreRoot = readJson(corePath);
@@ -385,9 +373,9 @@ function loadSpecs(dir, corePath, kind) {
  * @returns {string | undefined}
  */
 function getCompressedAlias(doc) {
-  const canonical = doc.descriptionCompressed;
-  if (typeof canonical === "string" && canonical.trim()) {
-    return canonical;
+  const preferred = doc.descriptionCompressed;
+  if (typeof preferred === "string" && preferred.trim()) {
+    return preferred;
   }
   const alias = doc.compressedDescription;
   if (typeof alias === "string" && alias.trim()) {
@@ -482,7 +470,7 @@ function generateTypeScript(actionsSpec, providersSpec) {
   );
 
   const content = `/**
- * Auto-generated canonical action/provider docs.
+ * Auto-generated action/provider docs.
  * DO NOT EDIT - Generated from packages/prompts/specs/**.
  */
 
@@ -576,8 +564,8 @@ export const allProviderDocs: readonly ProviderDoc[] = allProvidersSpec.provider
       ["@biomejs/biome", "check", "--write", actionDocsPath],
       { cwd: REPO_ROOT, stdio: "pipe" },
     );
-  } catch {
-    // Biome may be unavailable in stripped-down environments.
+  } catch (error) {
+    throw new Error(`Failed to format ${actionDocsPath}`, { cause: error });
   }
 }
 

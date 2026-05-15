@@ -177,7 +177,7 @@ export async function loadSdCppImageGenBackend(
 					"[imagegen/sd-cpp] generate called after dispose()",
 				);
 			}
-			if (!req.prompt?.trim()) {
+			if (!req.prompt.trim()) {
 				throw new ImageGenBackendUnavailableError(
 					"sd-cpp",
 					"unsupported_request",

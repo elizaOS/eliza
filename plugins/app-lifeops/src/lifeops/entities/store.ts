@@ -173,7 +173,7 @@ export class EntityStore {
          ${sqlQuote(input.type)},
          ${sqlQuote(input.preferredName)},
          ${sqlText(input.fullName ?? null)},
-         ${sqlJson(input.tags ?? [])},
+         ${sqlJson(input.tags)},
          ${sqlQuote(input.visibility)},
          ${sqlText(input.state.lastObservedAt ?? null)},
          ${sqlText(input.state.lastInboundAt ?? null)},
@@ -529,7 +529,7 @@ export class EntityStore {
               identity.platform.toLowerCase() ===
                 query.identity?.platform.toLowerCase() &&
               identity.handle.toLowerCase() ===
-                query.identity?.handle.toLowerCase(),
+                query.identity.handle.toLowerCase(),
           );
           if (match) {
             confidence = match.confidence;

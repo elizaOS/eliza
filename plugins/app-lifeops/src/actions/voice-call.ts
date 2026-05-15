@@ -93,7 +93,7 @@ function normalizeLookup(value: string): string {
 }
 
 function messageText(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  return typeof message.content.text === "string" ? message.content.text : "";
 }
 
 function isStandingOwnerCallPolicy(message: Memory): boolean {

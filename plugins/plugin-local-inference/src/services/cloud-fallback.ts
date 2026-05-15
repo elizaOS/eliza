@@ -137,7 +137,7 @@ export function findCloudCandidate(
 	excludeProvider: string,
 ): CloudCandidate | null {
 	const r = runtime as RuntimeWithModelLookup;
-	const entries = r.models?.get(String(modelType));
+	const entries = r.models.get(String(modelType));
 	if (!entries || entries.length === 0) return null;
 	// Sorted highest priority first by the runtime's registration. We want
 	// the FIRST non-local provider; that's our cloud candidate.

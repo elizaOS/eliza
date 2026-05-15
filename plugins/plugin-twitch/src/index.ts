@@ -124,6 +124,9 @@ const twitchPlugin: Plugin = {
       logger.info(`  Allowed Roles: ${allowedRoles}`);
     }
   },
+  async dispose(runtime: IAgentRuntime) {
+    await TwitchService.stopRuntime(runtime);
+  },
 };
 
 export default twitchPlugin;

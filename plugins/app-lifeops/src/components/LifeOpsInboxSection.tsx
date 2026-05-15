@@ -1239,8 +1239,8 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
               key={ch}
               channel={ch}
               active={inbox.channel === ch}
-              count={counts?.total ?? 0}
-              unread={counts?.unread ?? 0}
+              count={counts?.total}
+              unread={counts?.unread}
               onClick={inbox.setChannel}
             />
           );

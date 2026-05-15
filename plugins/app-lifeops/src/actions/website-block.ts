@@ -122,7 +122,7 @@ function coerceConfirmedFlag(value: unknown): boolean {
 }
 
 function getMessageText(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  return typeof message.content.text === "string" ? message.content.text : "";
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -336,7 +336,7 @@ async function collectWebsiteBlockConversationTurns(args: {
       .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
       .map((memory) => {
         const text =
-          typeof memory?.content?.text === "string"
+          typeof memory.content.text === "string"
             ? memory.content.text.trim()
             : "";
         if (!text) return null;
@@ -423,7 +423,7 @@ async function resolveWebsiteBlockPlanWithLlm(args: {
       durationMinutes: normalizeDurationMinutes(parsed.durationMinutes),
     };
   } catch (error) {
-    args.runtime.logger?.warn?.(
+    args.runtime.logger.warn(
       {
         src: "action:website-block",
         error: error instanceof Error ? error.message : String(error),
@@ -480,7 +480,7 @@ async function recoverWebsiteContextWithLlm(args: {
     const parsed = parseJsonModelRecord<Record<string, unknown>>(rawResponse);
     return normalizeWebsiteCandidates(parsed?.websites);
   } catch (error) {
-    args.runtime.logger?.warn?.(
+    args.runtime.logger.warn(
       {
         src: "action:website-block",
         error: error instanceof Error ? error.message : String(error),
@@ -582,7 +582,7 @@ async function handleBlock(
             ? llmPlan?.websites
             : recoveredWebsites) ?? []);
 
-  const plannedWebsitesSafe: readonly string[] = plannedWebsites ?? [];
+  const plannedWebsitesSafe: readonly string[] = plannedWebsites;
   if (llmPlan?.shouldAct === false && trustedExplicitWebsites.length === 0) {
     return {
       success: false,

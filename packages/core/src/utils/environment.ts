@@ -307,7 +307,7 @@ export function findEnvFile(
 		return null;
 	}
 
-	const moduleBuiltin = process.getBuiltinModule?.("module") as
+	const moduleBuiltin = process.getBuiltinModule("module") as
 		| { createRequire?: (filename: string) => NodeJS.Require }
 		| undefined;
 	const nodeRequire = moduleBuiltin?.createRequire?.(import.meta.url);
@@ -352,7 +352,7 @@ export function loadEnvFile(envPath?: string): boolean {
 		return false;
 	}
 
-	const moduleBuiltin = process.getBuiltinModule?.("module") as
+	const moduleBuiltin = process.getBuiltinModule("module") as
 		| { createRequire?: (filename: string) => NodeJS.Require }
 		| undefined;
 	const nodeRequire = moduleBuiltin?.createRequire?.(import.meta.url);

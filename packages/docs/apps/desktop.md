@@ -10,7 +10,7 @@ The Eliza desktop app wraps the companion UI in a native Electrobun shell, addin
 
 ### macOS
 
-Download the `.dmg` file from the [GitHub releases page](https://github.com/eliza-ai/eliza/releases). Open the DMG and drag Eliza to your Applications folder.
+Download the `.dmg` file from the [GitHub releases page](https://github.com/elizaOS/eliza/releases). Open the DMG and drag Eliza to your Applications folder.
 
 - **Which file:** On Apple Silicon (M1/M2/M3/M4 and later), use **Eliza-arm64.dmg**. On Intel Macs, use **Eliza-x64.dmg**. If you pick the wrong architecture, the app may not run correctly; see [Build & release — why two DMGs](/build-and-release#macos-why-two-dmgs-arm64-and-x64).
 - **Build targets:** DMG and ZIP.
@@ -35,7 +35,7 @@ Download the `.AppImage` or `.deb` package from the releases page.
 ### Build from Source
 
 ```bash
-git clone https://github.com/eliza-ai/eliza.git && cd eliza
+git clone https://github.com/elizaOS/eliza.git && cd eliza
 bun install && bun run build
 bun run dev:desktop
 ```
@@ -371,7 +371,7 @@ File drag-and-drop from the OS is also supported via the desktop runtime `open-f
 
 ## Auto-Updater
 
-The desktop app checks for updates on launch via the Electrobun updater, publishing to GitHub releases under the `eliza-ai/eliza` repository.
+The desktop app checks for updates on launch via the Electrobun updater, publishing to GitHub releases under the `elizaOS/eliza` repository.
 
 ## Development Mode
 

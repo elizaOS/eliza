@@ -205,7 +205,7 @@ function getRuntimeActionCapabilityNames(runtime: AgentRuntime): Set<string> {
 
 function getRuntimePluginNames(runtime: AgentRuntime): Set<string> {
   return new Set(
-    (runtime.plugins ?? [])
+    (runtime.plugins)
       .map((plugin) => normalizeCapabilityName(plugin.name))
       .filter((name) => name.length > 0),
   );

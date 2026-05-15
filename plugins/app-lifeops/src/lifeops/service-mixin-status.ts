@@ -341,7 +341,7 @@ export function withStatus<TBase extends Constructor<StatusMixinDependencies>>(
         .map((result) => result.value);
 
       const workerRegistered = Boolean(
-        this.runtime.getTaskWorker?.(LIFEOPS_TASK_NAME),
+        this.runtime.getTaskWorker(LIFEOPS_TASK_NAME),
       );
       const schedulerTask = schedulerTasks.ok
         ? findSchedulerTask(schedulerTasks.value)

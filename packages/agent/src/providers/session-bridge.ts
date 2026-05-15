@@ -74,7 +74,7 @@ export function resolveSessionKeyFromRoom(
   room: Room,
   meta?: { threadId?: string; groupId?: string; channel?: string },
 ): string {
-  const channel = meta?.channel ?? room.source ?? "unknown";
+  const channel = meta?.channel ?? room.source;
 
   if (room.type === channelType.DM || room.type === channelType.SELF) {
     return buildAgentMainSessionKey({ agentId, mainKey: "main" });

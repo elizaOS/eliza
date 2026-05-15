@@ -155,6 +155,10 @@ const imessagePlugin: Plugin = {
 
     logger.info("iMessage plugin initialized");
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<IMessageService>(IMessageService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default imessagePlugin;

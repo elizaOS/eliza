@@ -367,7 +367,7 @@ function nowMs(): number {
 
 function randomId(prefix: string): string {
 	const random =
-		typeof globalThis.crypto?.randomUUID === "function"
+		typeof globalThis.crypto.randomUUID === "function"
 			? globalThis.crypto.randomUUID()
 			: Math.random().toString(36).slice(2);
 	return `${prefix}_${random}`;
@@ -470,18 +470,18 @@ function normalizeAccount(
 ): ConnectorAccount {
 	const now = nowMs();
 	const full = input as ConnectorAccount;
-	const id = (full.id ?? accountId ?? randomId("acct")).trim();
+	const id = (full.id).trim();
 	if (!id) {
 		throw new Error("Connector account requires an id");
 	}
 	return {
 		id,
-		provider: normalizeProvider(full.provider ?? provider),
+		provider: normalizeProvider(full.provider),
 		label: typeof full.label === "string" ? full.label : undefined,
 		role: normalizeConnectorAccountRole(full.role),
-		purpose: normalizeStringArray(full.purpose ?? "messaging"),
-		accessGate: full.accessGate ?? "open",
-		status: full.status ?? "connected",
+		purpose: normalizeStringArray(full.purpose),
+		accessGate: full.accessGate,
+		status: full.status,
 		externalId:
 			typeof full.externalId === "string" && full.externalId
 				? full.externalId
@@ -858,7 +858,7 @@ class DatabaseConnectorAccountStorage implements ConnectorAccountStorage {
 				? { accountId: patch.accountId }
 				: {}),
 			...(patch.redirectUri !== undefined
-				? { redirectUri: patch.redirectUri ?? null }
+				? { redirectUri: patch.redirectUri }
 				: {}),
 			...(codeVerifierRef !== undefined
 				? {
@@ -1026,8 +1026,8 @@ function oauthFlowPatchMetadata(
 	};
 	if (patch.id) metadata.flowId = patch.id;
 	if (patch.status) metadata.status = patch.status;
-	if (patch.authUrl !== undefined) metadata.authUrl = patch.authUrl ?? null;
-	if (patch.error !== undefined) metadata.error = patch.error ?? null;
+	if (patch.authUrl !== undefined) metadata.authUrl = patch.authUrl;
+	if (patch.error !== undefined) metadata.error = patch.error;
 	if (patch.codeVerifier) {
 		metadata.hasCodeVerifier = true;
 	}

@@ -405,7 +405,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 			options?: ActionOptions,
 		): Promise<boolean> => {
 			if (!(await canManagePlugins(runtime, message))) return false;
-			const text = message.content?.text ?? "";
+			const text = message.content.text ?? "";
 			const hasStructuredMode = Boolean(
 				readStringOption(options, "action") ||
 					readStringOption(options, "subaction") ||
@@ -444,7 +444,7 @@ export function createPluginAction(deps: PluginActionDeps = {}): Action {
 				return { success: false, text };
 			}
 
-			const text = message.content?.text ?? "";
+			const text = message.content.text ?? "";
 
 			if (isPluginCreateChoiceReply(text)) {
 				const roomId =

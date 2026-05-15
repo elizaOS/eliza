@@ -4,10 +4,6 @@ import { useMemo } from "react";
 import { CountryFlag } from "@/components/login/country-flag";
 import { Input } from "@/components/ui/input";
 
-// ============================================================================
-// Country helpers
-// ============================================================================
-
 const COUNTRY_LIST = getCountries();
 const DISPLAY_NAMES =
   typeof Intl !== "undefined"
@@ -28,9 +24,6 @@ export interface CountryOption {
   dialCode: string;
 }
 
-/**
- * Hook to get a sorted list of country options for the phone input.
- */
 export function useCountryOptions(): CountryOption[] {
   return useMemo(() => {
     return COUNTRY_LIST.map((code) => {
@@ -38,16 +31,13 @@ export function useCountryOptions(): CountryOption[] {
       try {
         dialCode = getCountryCallingCode(code);
       } catch {
-        // fallback
+        dialCode = "1";
       }
       return { code, name: getCountryName(code), dialCode };
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, []);
 }
 
-/**
- * Build a full E.164-ish phone number from country + local number.
- */
 export function buildFullPhoneNumber(
   phoneValue: string,
   selectedCountry: string,
@@ -59,26 +49,16 @@ export function buildFullPhoneNumber(
   return `+${dialCode}${cleanPhone}`;
 }
 
-// ============================================================================
-// Component
-// ============================================================================
-
 type PhoneInputVariant = "light" | "dark";
 
 interface PhoneNumberInputProps {
-  /** Country code (e.g. "US") */
   selectedCountry: string;
   onCountryChange: (country: string) => void;
-  /** Local phone number (without country code) */
   phoneValue: string;
   onPhoneChange: (value: string) => void;
-  /** Called when the user presses Enter */
   onSubmit?: () => void;
-  /** Visual variant: "light" for get-started page, "dark" for connected page */
   variant?: PhoneInputVariant;
-  /** Auto-focus the input */
   autoFocus?: boolean;
-  /** Country options list (from useCountryOptions hook) */
   countryOptions: CountryOption[];
 }
 
@@ -102,7 +82,6 @@ const variantStyles = {
       "relative flex h-12 shrink-0 cursor-pointer items-center gap-2 pl-3 pr-2 text-white/60 hover:text-white/80",
     flag: "size-5 rounded-sm overflow-hidden shrink-0 pointer-events-none",
     chevron: "size-3.5 shrink-0 pointer-events-none text-white/30",
-    // The select needs to be visible for the dropdown options to be readable on dark backgrounds
     select:
       "absolute inset-0 cursor-pointer appearance-none bg-transparent opacity-0",
     input:
@@ -110,13 +89,6 @@ const variantStyles = {
   },
 } as const;
 
-/**
- * Shared phone number input with country code selector.
- *
- * Supports two visual variants:
- * - "light": for the get-started onboarding pages (light glassmorphism background)
- * - "dark": for the connected page (dark background)
- */
 export function PhoneNumberInput({
   selectedCountry,
   onCountryChange,
@@ -134,12 +106,6 @@ export function PhoneNumberInput({
       <label className={styles.label}>
         <CountryFlag countryCode={selectedCountry} className={styles.flag} />
         <ChevronDown className={styles.chevron} />
-        {/*
-          The <select> is absolutely positioned over the label so
-          clicking anywhere on the flag/chevron opens the native dropdown.
-          We keep it transparent but set a dark background on <option>
-          so dropdown text is always readable regardless of page theme.
-        */}
         <select
           value={selectedCountry}
           onChange={(e) => onCountryChange(e.target.value)}

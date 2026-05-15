@@ -36,7 +36,7 @@ function appEntryToRegistryAppInfo(entry: AppEntry): RegistryAppInfo {
     launchUrl: entry.launch.url ?? null,
     icon: entry.render.icon ?? null,
     heroImage,
-    capabilities: entry.launch.capabilities ?? [],
+    capabilities: entry.launch.capabilities,
     stars: 0,
     repository: entry.resources.repository ?? "",
     latestVersion: entry.version ?? null,

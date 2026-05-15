@@ -105,7 +105,7 @@ function loadMapping(mappingPath?: string): Record<string, string> {
   const targetPath = mappingPath ?? DEFAULT_MAPPING_PATH;
   const raw = readFileSync(targetPath, "utf8");
   const parsed = JSON.parse(raw) as TypeMappingFile;
-  return parsed.mappings ?? {};
+  return parsed.mappings;
 }
 
 function mapRelationshipType(

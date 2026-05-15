@@ -241,13 +241,13 @@ export function normalizeWindowPolicy(
   const windows = Array.isArray(policy.windows)
     ? policy.windows
         .map((window) => {
-          const name = window?.name ?? "custom";
+          const name = window.name;
           const label =
-            typeof window?.label === "string" && window.label.trim().length > 0
+            typeof window.label === "string" && window.label.trim().length > 0
               ? window.label.trim()
               : name;
-          const startMinute = Number(window?.startMinute);
-          const endMinute = Number(window?.endMinute);
+          const startMinute = Number(window.startMinute);
+          const endMinute = Number(window.endMinute);
           if (!Number.isFinite(startMinute) || !Number.isFinite(endMinute)) {
             return null;
           }

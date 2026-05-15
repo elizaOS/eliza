@@ -196,9 +196,9 @@ function entryToPlugin(
 			v2CoreRange: e.npm.v2CoreRange,
 		},
 		git: {
-			v0Branch: e.git.v0?.branch ?? null,
-			v1Branch: e.git.v1?.branch ?? null,
-			v2Branch: e.git.v2?.branch ?? null,
+			v0Branch: e.git.v0.branch ?? null,
+			v1Branch: e.git.v1.branch ?? null,
+			v2Branch: e.git.v2.branch ?? null,
 		},
 		supports: e.supports,
 		kind: e.kind,

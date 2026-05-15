@@ -484,7 +484,7 @@ function LifeOpsWorkspaceInner() {
     appWindowRoute ||
     (startupCoordinator.phase === "ready" &&
       agentStatus?.state === "running" &&
-      backendConnection?.state === "connected");
+      backendConnection.state === "connected");
 
   const loadGithub = useCallback(async () => {
     if (!appEnabled || !elizaCloudConnected) {

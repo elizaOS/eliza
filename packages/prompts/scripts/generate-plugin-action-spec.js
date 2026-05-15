@@ -1,14 +1,4 @@
 #!/usr/bin/env node
-/**
- * Generate plugin action docs spec (best-effort).
- *
- * Scans plugins/** TypeScript action definitions and emits a merged spec file:
- *   packages/prompts/specs/actions/plugins.generated.json
- *
- * This is intentionally dependency-free and uses a small brace-aware extractor to
- * locate `export const X: Action = { ... }` blocks.
- */
-
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -115,8 +105,6 @@ const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
   "GET_LINEAR_ACTIVITY",
   "CLEAR_LINEAR_ACTIVITY",
   "SEARCH_LINEAR_ISSUES",
-  // Page-group umbrella parents collapsed into the single PAGE_DELEGATE action.
-  // PAGE_DELEGATE is registered in packages/agent and is not scanned here.
   "BROWSER_ACTIONS",
   "WALLET_ACTIONS",
   "CHARACTER_ACTIONS",
@@ -128,8 +116,6 @@ const RETIRED_IMPLEMENTATION_ONLY_ACTIONS = new Set([
 ]);
 
 /**
- * Template literals are extracted as raw source text; expand known `${...}` patterns
- * so generated JSON/docs contain real strings (Biome flags `${` inside quoted TS strings).
  * @param {string} description
  * @param {string} actionFilePath
  * @returns {string}
@@ -180,7 +166,6 @@ function listTsFiles(rootDir) {
     for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, ent.name);
       if (ent.isDirectory()) {
-        // ignore generated + dist trees
         if (
           ent.name === "dist" ||
           ent.name === "generated" ||
@@ -412,10 +397,6 @@ function isRegisteredActionObject(filePath, exportName) {
   );
 }
 
-/**
- * Extract object literal source for `export const X: Action = { ... }`.
- * Returns array of `{ filePath, exportName, objectText }`.
- */
 function extractActionObjects(filePath, src) {
   const results = [];
   const patterns = [
@@ -429,7 +410,6 @@ function extractActionObjects(filePath, src) {
       const exportName = m[1];
       const braceStart = m.index + m[0].lastIndexOf("{");
 
-      // Parse balanced braces, skipping strings and comments.
       let depth = 0;
       let j = braceStart;
       let inSingle = false;
@@ -554,7 +534,6 @@ function isWs(ch) {
 }
 
 function scanTopLevelPropertyValue(objText, propName) {
-  // objText is `{ ... }`
   let i = 0;
   let braceDepth = 0;
   let bracketDepth = 0;
@@ -639,7 +618,6 @@ function scanTopLevelPropertyValue(objText, propName) {
 
     // Top-level inside the object: braceDepth === 1
     if (braceDepth === 1 && bracketDepth === 0) {
-      // Look for `<propName>:` starting at identifier boundary.
       if (objText.startsWith(propName, i)) {
         const before = i > 0 ? objText[i - 1] : "";
         const after =
@@ -671,7 +649,6 @@ function scanTopLevelPropertyValue(objText, propName) {
 function extractTopLevelStringProp(objText, propName) {
   const tail = scanTopLevelPropertyValue(objText, propName);
   if (!tail) return null;
-  // Parse a single string literal token.
   const first = tail.trimStart();
   if (
     !(first.startsWith('"') || first.startsWith("'") || first.startsWith("`"))
@@ -679,7 +656,6 @@ function extractTopLevelStringProp(objText, propName) {
     return null;
   }
 
-  // Grab up to the end of the literal (best-effort, supports escaped quotes).
   const quote = first[0];
   let i = 1;
   let escaped = false;
@@ -1484,13 +1460,6 @@ function main() {
     ["slippage", { description: "Max slippage percentage.", example: 1 }],
   ]);
 
-  function humanizeKey(key) {
-    return key
-      .replaceAll(/[_-]+/g, " ")
-      .replaceAll(/([a-z0-9])([A-Z])/g, "$1 $2")
-      .toLowerCase();
-  }
-
   function inferParamType(objText, key) {
     const re = new RegExp(`state\\?\\.${key}\\s+as\\s+([A-Za-z0-9_]+)`, "g");
     const m = re.exec(objText);
@@ -1514,7 +1483,7 @@ function main() {
       const type = inferParamType(objText, key);
       const known = commonParamDocs.get(key);
       const description =
-        known?.description ?? `The ${humanizeKey(key)} to use.`;
+        known?.description ?? `The ${humanizeParamKey(key)} to use.`;
       const example =
         known?.example ??
         (type === "boolean" ? false : type === "number" ? 1 : "example");
@@ -1628,7 +1597,6 @@ function main() {
               : inferParameters(obj.objectText);
       const exampleCalls = buildExampleCallForAction(name, parameters);
 
-      // Do not overwrite existing entries; prefer the first seen (stable ordering).
       if (!actionDocsByName.has(name)) {
         actionDocsByName.set(name, {
           name,

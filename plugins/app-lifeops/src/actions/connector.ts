@@ -1487,7 +1487,7 @@ export const connectorAction: Action & {
       message,
       state,
       actionName: ACTION_NAME,
-      actionDescription: connectorAction.description ?? "",
+      actionDescription: connectorAction.description,
       paramSchema: connectorAction.parameters ?? [],
       existingParams: merged,
       requiredFields: ["action"],

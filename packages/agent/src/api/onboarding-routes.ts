@@ -297,7 +297,7 @@ export async function handleOnboardingRoutes(
     }
 
     logger.warn(
-      `[eliza-api] Wallet keys requested during onboarding (ip=${req.socket?.remoteAddress ?? "unknown"})`,
+      `[eliza-api] Wallet keys requested during onboarding (ip=${req.socket.remoteAddress ?? "unknown"})`,
     );
 
     ctx.ensureWalletKeysInEnvAndConfig(state.config);
@@ -583,7 +583,7 @@ export async function handleOnboardingRoutes(
         delete process.env.ELIZAOS_CLOUD_API_KEY;
       }
     }
-    if (hasCanonicalRuntimeConfig && config.agents?.defaults?.model) {
+    if (hasCanonicalRuntimeConfig && config.agents.defaults.model) {
       delete config.agents.defaults.model.primary;
     }
 

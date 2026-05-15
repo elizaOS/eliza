@@ -34,7 +34,7 @@ function readEdgeTtsSetting(
   key: string,
   fallback?: string,
 ): string | undefined {
-  const envValue = process?.env ? process.env[key] : undefined;
+  const envValue = process.env ? process.env[key] : undefined;
   const getSetting =
     typeof (runtime as { getSetting?: (k: string) => unknown }).getSetting ===
     "function"
@@ -64,7 +64,7 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
       "@elizaos/plugin-local-inference/services"
     )) as typeof import("@elizaos/plugin-local-inference/services");
   } catch (err) {
-    logger.debug?.(
+    logger.debug(
       `[tts-cache-wiring] @elizaos/plugin-local-inference/services unavailable; cache disabled: ${err instanceof Error ? err.message : String(err)}`,
     );
     return null;
@@ -160,7 +160,7 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
     },
   );
 
-  logger.debug?.(
+  logger.debug(
     `[tts-cache-wiring] edge-tts wrapped with first-line cache (algo ${FIRST_SENTENCE_SNIP_VERSION})`,
   );
 

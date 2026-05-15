@@ -106,4 +106,18 @@ export const vincentPlugin: Plugin = {
   description:
     "Vincent OAuth and Hyperliquid/Polymarket trading dashboard routes",
   routes: vincentRoutes,
+  views: [
+    {
+      id: "vincent",
+      label: "Vincent",
+      description: "Vincent trading dashboard — Hyperliquid/Polymarket strategy and wallet overview",
+      icon: "Zap",
+      path: "/vincent",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "VincentAppView",
+      tags: ["trading", "vincent", "strategy"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };

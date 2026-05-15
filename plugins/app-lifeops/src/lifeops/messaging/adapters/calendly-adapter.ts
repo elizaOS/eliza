@@ -46,7 +46,7 @@ export class CalendlyAdapter extends BaseMessageAdapter {
   readonly source: MessageSource = "calendly";
 
   isAvailable(runtime: IAgentRuntime): boolean {
-    const service = runtime.getService?.("calendly") as
+    const service = runtime.getService("calendly") as
       | { isConnected?: (accountId?: string) => boolean }
       | null
       | undefined;

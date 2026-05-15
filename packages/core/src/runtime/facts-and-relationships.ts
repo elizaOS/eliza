@@ -209,7 +209,7 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 		.map((memory) => {
 			const role = memory.entityId === args.runtime.agentId ? "agent" : "user";
 			const text =
-				typeof memory.content?.text === "string" ? memory.content.text : "";
+				typeof memory.content.text === "string" ? memory.content.text : "";
 			return text ? `${role}: ${args.runtime.redactSecrets(text)}` : "";
 		})
 		.filter(Boolean);
@@ -218,7 +218,7 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 	}
 
 	const currentText =
-		typeof args.message.content?.text === "string"
+		typeof args.message.content.text === "string"
 			? args.message.content.text
 			: "";
 	if (currentText) {
@@ -230,7 +230,7 @@ function buildFactsStageMessages(args: BuildMessagesArgs): ChatMessage[] {
 	if (args.similarFacts.length > 0) {
 		const lines = args.similarFacts
 			.map((memory) =>
-				typeof memory.content?.text === "string" ? memory.content.text : "",
+				typeof memory.content.text === "string" ? memory.content.text : "",
 			)
 			.filter(Boolean)
 			.map((text) => `- ${args.runtime.redactSecrets(text)}`);
@@ -279,7 +279,7 @@ type RoomEntityRef = {
 };
 
 function readRoomEntityRefs(state: State): RoomEntityRef[] {
-	const providers = state.data?.providers;
+	const providers = state.data.providers;
 	if (!providers || typeof providers !== "object") return [];
 	const entitiesEntry = (providers as Record<string, unknown>).ENTITIES;
 	if (!entitiesEntry || typeof entitiesEntry !== "object") return [];
@@ -311,8 +311,8 @@ function formatRelationshipForPrompt(relationship: Relationship): string {
 		? relationship.tags.filter((t): t is string => typeof t === "string")
 		: [];
 	const predicate = tags[0] ?? "related_to";
-	const source = String(relationship.sourceEntityId ?? "?");
-	const target = String(relationship.targetEntityId ?? "?");
+	const source = String(relationship.sourceEntityId);
+	const target = String(relationship.targetEntityId);
 	return `${source} ${predicate} ${target}`;
 }
 
@@ -673,7 +673,7 @@ function resolveRelationshipEntityId(
 	if (
 		normalized === "agent" ||
 		normalized === "assistant" ||
-		normalized === normalizeForComparison(runtime.character?.name ?? "")
+		normalized === normalizeForComparison(runtime.character.name ?? "")
 	) {
 		return runtime.agentId;
 	}

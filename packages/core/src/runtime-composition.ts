@@ -386,7 +386,7 @@ export async function createRuntimes(
 	for (const [adapter, ids] of adapterToAgentIds) {
 		const agents = await adapter.getAgentsByIds(ids);
 		for (const agent of agents) {
-			if (agent?.id)
+			if (agent.id)
 				agentIdToRecord.set(agent.id as UUID, agent as AgentRecordForMerge);
 		}
 	}

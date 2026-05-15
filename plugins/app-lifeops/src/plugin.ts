@@ -153,7 +153,7 @@ type LifeOpsMessageActionHookArgs = {
 };
 
 function getMessageText(message: Memory): string {
-  return typeof message.content?.text === "string" ? message.content.text : "";
+  return typeof message.content.text === "string" ? message.content.text : "";
 }
 
 function looksLikeMissedCallRepairApproval(text: string): boolean {
@@ -346,15 +346,13 @@ async function handleLifeOpsMessageAction(
   const recipient =
     match?.sourceRoomId ??
     match?.sourceEntityId ??
-    match?.channelName ??
-    hint ??
-    "owner-selected-thread";
+    match?.channelName;
   const body =
     match?.suggestedResponse ??
     (hint
       ? `Sorry I missed your call earlier. I can reschedule and make the walkthrough work this week if you send a couple of windows.`
       : `Sorry I missed your call earlier. I can reschedule this week if you send a couple of windows that work.`);
-  const channel = approvalChannelFromSource(match?.source ?? null);
+  const channel = approvalChannelFromSource(match?.source);
   const subjectUserId =
     typeof args.message.entityId === "string"
       ? args.message.entityId
@@ -453,13 +451,13 @@ async function ensureTaskWithRetries(args: {
       }
       const message = error instanceof Error ? error.message : String(error);
       if (attempt < delays.length) {
-        args.runtime.logger?.warn?.(
+        args.runtime.logger.warn(
           `${args.prefix} ${args.label} init failed (attempt ${attempt + 1}/${delays.length + 1}), retrying in ${delays[attempt]}ms: ${message}`,
         );
         await new Promise((resolve) => setTimeout(resolve, delays[attempt]));
         continue;
       }
-      args.runtime.logger?.error?.(
+      args.runtime.logger.error(
         `${args.prefix} ${args.label} init failed after ${delays.length + 1} attempts: ${message}`,
       );
       throw error instanceof Error
@@ -599,7 +597,7 @@ function scheduleTaskEnsureAfterRuntimeInit(args: {
         return;
       }
       const message = error instanceof Error ? error.message : String(error);
-      args.runtime.logger?.error?.(
+      args.runtime.logger.error(
         `${args.prefix} ${args.label} init failed after runtime initialization (plugin stays loaded, this subsystem is degraded): ${message}`,
       );
       void recordTaskInitFailure(args.runtime, args.label, message);
@@ -822,7 +820,7 @@ const rawAppLifeOpsPlugin: Plugin = {
         },
       });
     } else {
-      runtime.logger?.info(
+      runtime.logger.info(
         "[proactive] Proactive agent task skipped — ELIZA_DISABLE_PROACTIVE_AGENT=1",
       );
     }
@@ -863,7 +861,7 @@ const rawAppLifeOpsPlugin: Plugin = {
         },
       });
     } else {
-      runtime.logger?.info(
+      runtime.logger.info(
         "[lifeops] Scheduler task skipped — ELIZA_DISABLE_LIFEOPS_SCHEDULER=1",
       );
     }
@@ -903,7 +901,7 @@ const rawAppLifeOpsPlugin: Plugin = {
               await runtime.deleteTask(task.id);
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
-              runtime.logger?.warn?.(
+              runtime.logger.warn(
                 `[lifeops:dispose] Failed to delete task ${name} (${task.id}): ${msg}`,
               );
             }
@@ -911,7 +909,7 @@ const rawAppLifeOpsPlugin: Plugin = {
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        runtime.logger?.warn?.(
+        runtime.logger.warn(
           `[lifeops:dispose] Failed to list tasks for "${name}": ${msg}`,
         );
       }
@@ -920,15 +918,29 @@ const rawAppLifeOpsPlugin: Plugin = {
     // Unregister the in-memory worker functions.
     for (const name of taskNames) {
       try {
-        runtime.unregisterTaskWorker?.(name);
+        runtime.unregisterTaskWorker(name);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        runtime.logger?.warn?.(
+        runtime.logger.warn(
           `[lifeops:dispose] Failed to unregister task worker "${name}": ${msg}`,
         );
       }
     }
   },
+  views: [
+    {
+      id: "lifeops",
+      label: "LifeOps",
+      description: "Owner operations dashboard — routines, goals, inbox, calendar, and health",
+      icon: "LayoutDashboard",
+      path: "/lifeops",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "LifeOpsPageView",
+      tags: ["lifeops", "productivity", "health", "calendar"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };
 
 export const appLifeOpsPlugin: Plugin = rawAppLifeOpsPlugin;

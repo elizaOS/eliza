@@ -85,7 +85,7 @@ function getParams(options: HandlerOptions | undefined): EntityParameters {
 }
 
 function messageBodyText(message: Memory): string {
-  return (message?.content?.text ?? "").toString();
+  return (message.content.text ?? "").toString();
 }
 
 function normalizedNonEmpty(value: string | null | undefined): string | null {
@@ -365,7 +365,7 @@ async function resolveEntityPlanWithLlm(args: {
     })
   ).join("\n");
   const currentMessage =
-    typeof args.message.content?.text === "string"
+    typeof args.message.content.text === "string"
       ? args.message.content.text
       : "";
   const prompt = [

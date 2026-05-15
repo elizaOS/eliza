@@ -32,7 +32,7 @@ metadata:
 
 # spogo / spotify_player
 
-Use `spogo` **(preferred)** for Spotify playback/search. Fall back to `spotify_player` if needed.
+Use `spogo` **(preferred)** for Spotify playback/search. Use `spotify_player` when `spogo` is unavailable.
 
 Requirements
 
@@ -50,7 +50,7 @@ Common CLI commands
 - Devices: `spogo device list`, `spogo device set "<name|id>"`
 - Status: `spogo status`
 
-spotify_player commands (fallback)
+spotify_player commands
 
 - Search: `spotify_player search "query"`
 - Playback: `spotify_player playback play|pause|next|previous`

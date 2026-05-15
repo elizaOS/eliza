@@ -62,7 +62,7 @@ export const automationTerminalBridgeProvider: Provider = {
         limit: MAX_TERMINAL_MESSAGES,
       });
       const visibleMessages = memories
-        .filter((entry) => entry.content?.text)
+        .filter((entry) => entry.content.text)
         .sort((left, right) => (left.createdAt ?? 0) - (right.createdAt ?? 0))
         .slice(-MAX_TERMINAL_MESSAGES);
 

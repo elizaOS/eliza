@@ -321,4 +321,19 @@ export const trainingPlugin: Plugin = {
   description:
     "Training jobs, datasets, models, blueprints, and trajectory routes",
   routes: trainingRoutes,
+  views: [
+    {
+      id: "training",
+      label: "Training",
+      description: "Fine-tuning jobs, datasets, trained models, and trajectory management",
+      icon: "BrainCircuit",
+      path: "/training",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "FineTuningView",
+      tags: ["training", "fine-tuning", "models", "trajectories"],
+      developerOnly: true,
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
 };

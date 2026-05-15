@@ -2,7 +2,7 @@
   "name": "__APP_NAME__",
   "version": "0.0.0",
   "type": "module",
-  "description": "TODO: replace with a one-line description of __APP_DISPLAY_NAME__",
+  "description": "__APP_DISPLAY_NAME__ app scaffolded with elizaOS",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {

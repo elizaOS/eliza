@@ -1,4 +1,4 @@
-import type { Plugin } from "../../types";
+import type { IAgentRuntime, Plugin } from "../../types";
 import { documentActions } from "./actions";
 import { documentsProvider } from "./provider";
 import { DocumentService } from "./service";
@@ -20,6 +20,12 @@ export function createDocumentsPlugin(
 		services: [DocumentService],
 		providers: enableProviders ? [documentsProvider] : [],
 		actions: enableActions ? documentActions : [],
+		async dispose(runtime: IAgentRuntime) {
+			const svc = runtime.getService<DocumentService>(
+				DocumentService.serviceType,
+			);
+			await svc?.stop();
+		},
 	};
 }
 

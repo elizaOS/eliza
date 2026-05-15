@@ -88,7 +88,7 @@ export const recentConversationsProvider: Provider = {
 
       // Sort newest first
       const sorted = memories
-        .filter((m) => m.content?.text)
+        .filter((m) => m.content.text)
         .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
         .slice(0, MAX_RECENT_MESSAGES);
 

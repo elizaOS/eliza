@@ -367,7 +367,7 @@ export function collectPluginNames(
     ([pluginId]) => providerPluginIdSet.has(pluginId),
   );
   const hasExplicitEnabledProvider = explicitProviderEntries.some(
-    ([, entry]) => entry?.enabled === true,
+    ([, entry]) => entry.enabled === true,
   );
 
   // Allow-list entries are additive (extra plugins), not exclusive.

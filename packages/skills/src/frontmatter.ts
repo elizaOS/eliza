@@ -6,19 +6,11 @@ import type {
   SkillProvenance,
 } from "./types.js";
 
-/**
- * Result of parsing frontmatter from a file
- */
 export interface ParsedFrontmatter<T extends Record<string, unknown>> {
-  /** Parsed frontmatter object */
   frontmatter: T;
-  /** Remaining body content after frontmatter */
   body: string;
 }
 
-/**
- * Normalize line endings to Unix-style LF
- */
 function normalizeNewlines(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }
@@ -41,13 +33,10 @@ function stringList(value: unknown, transform: (value: string) => string) {
   }
   return value
     .filter((item): item is string => typeof item === "string")
-    .map(transform);
+    .map(transform)
+    .filter((item) => item.length > 0);
 }
 
-/**
- * Extract YAML frontmatter block from content
- * Frontmatter must start with --- on the first line and end with --- on its own line
- */
 function extractFrontmatter(content: string): {
   yamlString: string | null;
   body: string;
@@ -69,12 +58,6 @@ function extractFrontmatter(content: string): {
   };
 }
 
-/**
- * Parse YAML frontmatter from markdown content
- *
- * @param content - Raw file content with optional YAML frontmatter
- * @returns Parsed frontmatter object and remaining body
- */
 export function parseFrontmatter<
   T extends Record<string, unknown> = Record<string, unknown>,
 >(content: string): ParsedFrontmatter<T> {
@@ -86,22 +69,10 @@ export function parseFrontmatter<
   return { frontmatter: (parsed ?? {}) as T, body };
 }
 
-/**
- * Strip frontmatter from content and return only the body
- *
- * @param content - Raw file content with optional YAML frontmatter
- * @returns Content without frontmatter
- */
 export function stripFrontmatter(content: string): string {
   return parseFrontmatter(content).body;
 }
 
-/**
- * Resolve skill metadata from skill frontmatter
- *
- * @param frontmatter - Parsed skill frontmatter
- * @returns Normalized metadata object
- */
 export function resolveSkillMetadata(
   frontmatter: SkillFrontmatter,
 ): SkillMetadata {
@@ -143,12 +114,6 @@ export function resolveSkillMetadata(
   return metadata;
 }
 
-/**
- * Resolve skill invocation policy from frontmatter
- *
- * @param frontmatter - Parsed skill frontmatter
- * @returns Invocation policy
- */
 export function resolveSkillInvocationPolicy(
   frontmatter: SkillFrontmatter,
 ): SkillInvocationPolicy {

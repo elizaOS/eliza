@@ -186,7 +186,7 @@ function loadDatabaseSync(): SqliteDatabaseCtor | null {
 		const mod = requireFromHere("node:sqlite") as {
 			DatabaseSync?: SqliteDatabaseCtor;
 		};
-		DatabaseSyncCached = mod?.DatabaseSync ?? null;
+		DatabaseSyncCached = mod.DatabaseSync ?? null;
 	} catch {
 		DatabaseSyncCached = null;
 	}
@@ -198,14 +198,14 @@ function loadDatabaseSync(): SqliteDatabaseCtor | null {
 // ---------------------------------------------------------------------------
 
 function parseIntEnv(name: string): number | undefined {
-	const raw = process?.env?.[name];
+	const raw = process.env[name];
 	if (!raw) return undefined;
 	const v = Number.parseInt(raw, 10);
 	return Number.isFinite(v) && v > 0 ? v : undefined;
 }
 
 function envDisabled(): boolean {
-	const raw = process?.env?.ELIZA_TTS_CACHE_DISABLE;
+	const raw = process.env.ELIZA_TTS_CACHE_DISABLE;
 	if (!raw) return false;
 	const v = raw.trim().toLowerCase();
 	return v === "1" || v === "true" || v === "yes";
@@ -217,7 +217,7 @@ function envDisabled(): boolean {
  * Set `ELIZA_TTS_CACHE_BYPASS_PROVIDERS="omnivoice,kokoro"` to skip those.
  */
 export function firstLineCacheBypassFromEnv(): ReadonlySet<string> {
-	const raw = process?.env?.ELIZA_TTS_CACHE_BYPASS_PROVIDERS;
+	const raw = process.env.ELIZA_TTS_CACHE_BYPASS_PROVIDERS;
 	if (!raw) return new Set();
 	return new Set(
 		raw
@@ -343,7 +343,7 @@ export class FirstLineCache {
 	constructor(opts: FirstLineCacheOptions = {}) {
 		this.rootDir =
 			opts.rootDir ??
-			process?.env?.ELIZA_TTS_CACHE_DIR ??
+			process.env.ELIZA_TTS_CACHE_DIR ??
 			path.join(resolveStateDir(), "cache", "tts-first-line");
 		this.blobsDir = path.join(this.rootDir, "blobs");
 		this.indexPath = path.join(this.rootDir, "index.sqlite");

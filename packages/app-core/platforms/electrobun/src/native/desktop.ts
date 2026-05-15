@@ -700,7 +700,7 @@ export class DesktopManager {
 		// Electrobun emits ElectrobunEvent<TrayClickedData> for tray-clicked;
 		// the shape carries { data: { action, id, data? } }.
 		this.contextMenuHandler = ((e: { data?: { action?: string } }): void => {
-			const action = e?.data?.action;
+			const action = e.data?.action;
 			if (!action) return;
 
 			// Native actions — these must work even when the renderer RPC bridge
@@ -1451,7 +1451,7 @@ X-GNOME-Autostart-enabled=true
 				stdin: "ignore",
 			});
 			// Detach so the new instance survives the parent quitting
-			child.unref?.();
+			child.unref();
 		} catch (err) {
 			logger.error(
 				`[DesktopManager] relaunch: failed to spawn new instance: ${err instanceof Error ? err.message : String(err)}`,
@@ -1561,7 +1561,7 @@ X-GNOME-Autostart-enabled=true
 
 		try {
 			const result = await Updater.checkForUpdate();
-			if (result?.updateAvailable) {
+			if (result.updateAvailable) {
 				void this.downloadUpdateWithRetry().catch((error: unknown) => {
 					logger.warn(
 						`[Desktop] Update download failed after retries: ${error instanceof Error ? error.message : String(error)}`,
@@ -1629,7 +1629,7 @@ X-GNOME-Autostart-enabled=true
 		}
 
 		return {
-			visible: Utils.isDockIconVisible?.() ?? true,
+			visible: Utils.isDockIconVisible?.(),
 		};
 	}
 
@@ -1637,7 +1637,7 @@ X-GNOME-Autostart-enabled=true
 		visible: boolean;
 	}): Promise<{ visible: boolean }> {
 		if (process.platform === "darwin") {
-			Utils.setDockIconVisible?.(options.visible);
+			Utils.setDockIconVisible(options.visible);
 		}
 
 		return this.getDockIconVisibility();
@@ -1842,7 +1842,7 @@ X-GNOME-Autostart-enabled=true
 	}
 
 	async clipboardAvailableFormats(): Promise<{ formats: string[] }> {
-		const formats = Utils.clipboardAvailableFormats?.() ?? [];
+		const formats = Utils.clipboardAvailableFormats?.();
 		return { formats: Array.isArray(formats) ? formats : [] };
 	}
 
@@ -1939,11 +1939,11 @@ X-GNOME-Autostart-enabled=true
 	async getPrimaryDisplay(): Promise<DisplayInfo> {
 		const display = Screen.getPrimaryDisplay();
 		return {
-			id: display.id ?? 0,
+			id: display.id,
 			bounds: display.bounds,
 			workArea: display.workArea,
-			scaleFactor: display.scaleFactor ?? 1,
-			isPrimary: display.isPrimary ?? true,
+			scaleFactor: display.scaleFactor,
+			isPrimary: display.isPrimary,
 		};
 	}
 
@@ -1951,11 +1951,11 @@ X-GNOME-Autostart-enabled=true
 		const displays = Screen.getAllDisplays();
 		return {
 			displays: displays.map((d) => ({
-				id: d.id ?? 0,
+				id: d.id,
 				bounds: d.bounds,
 				workArea: d.workArea,
-				scaleFactor: d.scaleFactor ?? 1,
-				isPrimary: d.isPrimary ?? false,
+				scaleFactor: d.scaleFactor,
+				isPrimary: d.isPrimary,
 			})),
 		};
 	}
@@ -1982,7 +1982,7 @@ X-GNOME-Autostart-enabled=true
 			defaultId: options.defaultId ?? 0,
 			cancelId: options.cancelId,
 		});
-		return { response: result.response ?? result };
+		return { response: result.response };
 	}
 
 	// MARK: - File Dialogs
@@ -2212,14 +2212,14 @@ X-GNOME-Autostart-enabled=true
 		}
 
 		const updateInfo =
-			(Updater.updateInfo?.() as Partial<{
+			(Updater.updateInfo() as Partial<{
 				version: string;
 				hash: string;
 				updateAvailable: boolean;
 				updateReady: boolean;
 				error: string;
 			}>) ?? {};
-		const lastStatusEntry = Updater.getStatusHistory?.().at(-1) ?? null;
+		const lastStatusEntry = Updater.getStatusHistory().at(-1) ?? null;
 
 		return {
 			currentVersion,

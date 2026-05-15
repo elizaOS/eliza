@@ -183,7 +183,7 @@ export function validateTaskDefinition(
 
   if (
     definition.definitionKind === "approval" &&
-    (!definition.subject?.kind || !definition.subject.id)
+    (!definition.subject.kind || !definition.subject.id)
   ) {
     errors.push("approval task definitions require a typed subject.");
   }

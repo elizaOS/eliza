@@ -6,7 +6,7 @@ export function LifeOpsActivitySignalsEffect(): null {
   const enabled =
     startupCoordinator.phase === "ready" &&
     agentStatus?.state === "running" &&
-    backendConnection?.state === "connected";
+    backendConnection.state === "connected";
   useLifeOpsActivitySignals(enabled);
   return null;
 }

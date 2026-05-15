@@ -141,8 +141,9 @@ import { handleDatabaseRowsCompatRoute } from "./database-rows-compat-routes";
 import { handleDevCompatRoutes } from "./dev-compat-routes";
 import { handleInternalWakeRoute } from "./internal-routes";
 import { handleOnboardingCompatRoute } from "./onboarding-routes";
-// === Phase 4F: plugin compat routes moved to @elizaos/plugin-registry ===
-import { handlePluginsCompatRoutes } from "@elizaos/plugin-registry";
+
+const { handlePluginsCompatRoutes } = await import("@elizaos/plugin-registry");
+
 import { handleSecretsInventoryRoute } from "./secrets-inventory-routes";
 import { handleSecretsManagerRoute } from "./secrets-manager-routes";
 import { getCorsAllowedPorts, isAllowedOrigin } from "./server-cors";

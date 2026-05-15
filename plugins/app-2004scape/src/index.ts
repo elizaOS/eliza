@@ -1,5 +1,5 @@
 import { gatePluginSessionForHostedApp } from "@elizaos/agent/services/app-session-gate";
-import type { Plugin, ServiceClass } from "@elizaos/core";
+import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
 import { rsSdkActions } from "./actions/index.js";
 import { rsSdkProviders } from "./providers/index.js";
 import { RsSdkGameService } from "./services/game-service.js";
@@ -12,6 +12,24 @@ const rawRs2004scapePlugin: Plugin = {
   services: [RsSdkGameService as ServiceClass],
   actions: rsSdkActions,
   providers: rsSdkProviders,
+  views: [
+    {
+      id: "2004scape",
+      label: "2004scape",
+      description: "2004scape game operator surface — agent controls and session management",
+      icon: "Gamepad2",
+      path: "/2004scape",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "TwoThousandFourScapeOperatorSurface",
+      tags: ["game", "runescape", "2004scape"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+  ],
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<RsSdkGameService>(RsSdkGameService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export const rs2004scapePlugin: Plugin = gatePluginSessionForHostedApp(

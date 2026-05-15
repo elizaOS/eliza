@@ -76,7 +76,7 @@ export function registerConfigCli(program: Command) {
       }
 
       const { uiHints } = buildConfigSchema();
-      displayConfig(config ?? {}, uiHints, { showAdvanced: !!opts.all });
+      displayConfig(config, uiHints, { showAdvanced: !!opts.all });
     });
 }
 

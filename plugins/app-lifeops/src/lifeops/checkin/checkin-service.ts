@@ -767,7 +767,7 @@ async function collectXFeedSection(
     const feedItems = await source.getXFeedItems(feedType, { limit: 30 });
     const items = sortBriefingItems(
       feedItems.map((feedItem) => {
-        const raw = (feedItem.metadata?.raw ?? {}) as {
+        const raw = (feedItem.metadata.raw ?? {}) as {
           referenced_tweets?: Array<{ type?: string }>;
           public_metrics?: Record<string, number>;
         };
@@ -777,10 +777,10 @@ async function collectXFeedSection(
         const isReply = referenceTypes.includes("replied_to");
         const metrics = raw.public_metrics ?? {};
         const engagement =
-          (metrics.like_count ?? 0) +
-          (metrics.reply_count ?? 0) * 3 +
-          (metrics.retweet_count ?? 0) * 2 +
-          (metrics.quote_count ?? 0) * 2;
+          (metrics.like_count) +
+          (metrics.reply_count) * 3 +
+          (metrics.retweet_count) * 2 +
+          (metrics.quote_count) * 2;
         const ranked = rankTextSignal({
           text: feedItem.text,
           occurredAt: feedItem.createdAtSource,
@@ -1333,8 +1333,7 @@ export class CheckinService {
     const now = request.now ?? new Date();
     const timezone =
       request.timezone ??
-      Intl.DateTimeFormat().resolvedOptions().timeZone ??
-      "UTC";
+      Intl.DateTimeFormat().resolvedOptions().timeZone;
     const habitCollector = await collectHabitSummaries(this.runtime, now);
     const [overdueTodos, todaysMeetings, completedWins, briefingSections] =
       await Promise.all([

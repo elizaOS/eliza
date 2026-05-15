@@ -11,10 +11,6 @@
 #![deny(missing_docs)]
 
 mod agent_supervisor;
-// calibration_store module deleted in v10 — the agent (Bun side) owns
-// ~/.eliza/calibration.toml entirely now. Keep `eliza_types::CalibrationProfile`
-// in the type crate so app launchers can still read the file as metadata.
-mod cap_bus;
 mod sandbox_launcher;
 
 use std::sync::{Arc, Mutex};
@@ -110,13 +106,6 @@ async fn chat(
         .await
         .map_err(|e| format!("agent reply was not JSON: {e}"))
 }
-
-// load_calibration / save_calibration Tauri commands deleted in v10. The
-// agent (Bun, agent/src/onboarding/state.ts) is now the single source of
-// truth for ~/.eliza/calibration.toml writes — it persists answers as the
-// state machine advances. The UI never touches the file; it just renders
-// chat turns. The on-disk shape is unchanged and `eliza_types::CalibrationProfile`
-// is still used by the launcher to read pre-launch metadata for app windows.
 
 /// Launch a generated app in a bubblewrap-sandboxed window.
 ///

@@ -409,7 +409,7 @@ export function LifeOpsScreenTimeSection({
       value: formatDurationSeconds(totalSeconds),
       label: totalLabel,
       visible: totalSeconds > 0,
-      delta: showDeltas ? metrics?.deltas?.totalPercent : undefined,
+      delta: showDeltas ? metrics.deltas?.totalPercent : undefined,
     },
     {
       key: "apps",
@@ -417,7 +417,7 @@ export function LifeOpsScreenTimeSection({
       value: formatDurationSeconds(appSeconds),
       label: "Apps",
       visible: appSeconds > 0,
-      delta: showDeltas ? metrics?.deltas?.appPercent : undefined,
+      delta: showDeltas ? metrics.deltas?.appPercent : undefined,
     },
     {
       key: "web",
@@ -425,7 +425,7 @@ export function LifeOpsScreenTimeSection({
       value: formatDurationSeconds(webSeconds),
       label: "Web",
       visible: webSeconds > 0,
-      delta: showDeltas ? metrics?.deltas?.webPercent : undefined,
+      delta: showDeltas ? metrics.deltas?.webPercent : undefined,
     },
     {
       key: "phone",
@@ -433,7 +433,7 @@ export function LifeOpsScreenTimeSection({
       value: formatDurationSeconds(phoneSeconds),
       label: "Phone",
       visible: phoneSeconds > 0,
-      delta: showDeltas ? metrics?.deltas?.phonePercent : undefined,
+      delta: showDeltas ? metrics.deltas?.phonePercent : undefined,
     },
     {
       key: "social",
@@ -441,7 +441,7 @@ export function LifeOpsScreenTimeSection({
       value: formatDurationSeconds(socialSeconds),
       label: "Social",
       visible: socialSeconds > 0,
-      delta: showDeltas ? metrics?.deltas?.socialPercent : undefined,
+      delta: showDeltas ? metrics.deltas?.socialPercent : undefined,
     },
     {
       key: "youtube",
@@ -449,7 +449,7 @@ export function LifeOpsScreenTimeSection({
       value: formatDurationSeconds(youtubeSeconds),
       label: "YouTube",
       visible: youtubeSeconds > 0,
-      delta: showDeltas ? metrics?.deltas?.youtubePercent : undefined,
+      delta: showDeltas ? metrics.deltas?.youtubePercent : undefined,
     },
     {
       key: "x",
@@ -457,7 +457,7 @@ export function LifeOpsScreenTimeSection({
       value: formatDurationSeconds(xSeconds),
       label: "X",
       visible: xSeconds > 0,
-      delta: showDeltas ? metrics?.deltas?.xPercent : undefined,
+      delta: showDeltas ? metrics.deltas?.xPercent : undefined,
     },
     {
       key: "opened",
@@ -465,7 +465,7 @@ export function LifeOpsScreenTimeSection({
       value: String(messageOpened),
       label: "Opened",
       visible: messageOpened > 0,
-      delta: showDeltas ? metrics?.deltas?.messageOpenedPercent : undefined,
+      delta: showDeltas ? metrics.deltas?.messageOpenedPercent : undefined,
     },
   ].filter((item) => item.visible);
 

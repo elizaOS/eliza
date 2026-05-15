@@ -6,6 +6,7 @@ import type {
   Memory,
   UUID,
 } from "@elizaos/core";
+import { Service } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 
@@ -207,14 +208,14 @@ function appRoutePathPrefix(url: string): string | undefined {
  * The provider is the channel for live status; this router is the channel for
  * boundary events that warrant a decision.
  */
-export class SubAgentRouter {
+export class SubAgentRouter extends Service {
   static serviceType = "ACPX_SUB_AGENT_ROUTER";
   static dependencies = ["ACP_SUBPROCESS_SERVICE"];
 
   capabilityDescription =
     "Routes ACPX sub-agent terminal events back into the runtime as inbound messages so the main agent decides reply-to-user vs reply-to-agent vs both.";
 
-  private readonly runtime: IAgentRuntime;
+  protected override runtime: IAgentRuntime;
   private acp: AcpService | null = null;
   private unsubscribe: (() => void) | undefined;
   private readonly delivered = new Set<string>();
@@ -226,6 +227,7 @@ export class SubAgentRouter {
   private stopped = false;
 
   constructor(runtime: IAgentRuntime) {
+    super(runtime);
     this.runtime = runtime;
   }
 

@@ -545,9 +545,9 @@ async function deleteConversationRoomData(
     return;
   }
 
-  const dbDeleteRoom = runtimeWithDelete.adapter?.db?.deleteRoom;
+  const dbDeleteRoom = runtimeWithDelete.adapter.db.deleteRoom;
   if (typeof dbDeleteRoom === "function") {
-    await dbDeleteRoom.call(runtimeWithDelete.adapter?.db, roomId);
+    await dbDeleteRoom.call(runtimeWithDelete.adapter.db, roomId);
   }
 }
 
@@ -575,9 +575,9 @@ async function deleteConversationMemories(
     return memoryIds.length;
   }
 
-  const dbDeleteMany = runtimeWithDelete.adapter?.db?.deleteManyMemories;
+  const dbDeleteMany = runtimeWithDelete.adapter.db.deleteManyMemories;
   if (typeof dbDeleteMany === "function") {
-    await dbDeleteMany.call(runtimeWithDelete.adapter?.db, memoryIds);
+    await dbDeleteMany.call(runtimeWithDelete.adapter.db, memoryIds);
     return memoryIds.length;
   }
 
@@ -588,14 +588,14 @@ async function deleteConversationMemories(
     } else if (typeof runtimeWithDelete.removeMemory === "function") {
       await runtimeWithDelete.removeMemory(memoryId);
     } else if (
-      typeof runtimeWithDelete.adapter?.db?.deleteMemory === "function"
+      typeof runtimeWithDelete.adapter.db.deleteMemory === "function"
     ) {
       await runtimeWithDelete.adapter.db.deleteMemory.call(
         runtimeWithDelete.adapter.db,
         memoryId,
       );
     } else if (
-      typeof runtimeWithDelete.adapter?.db?.removeMemory === "function"
+      typeof runtimeWithDelete.adapter.db.removeMemory === "function"
     ) {
       await runtimeWithDelete.adapter.db.removeMemory.call(
         runtimeWithDelete.adapter.db,
@@ -757,7 +757,7 @@ export function buildPersistedAssistantContent(
   const responseMessageContent = Array.isArray(result?.responseMessages)
     ? (result.responseMessages
         .map((entry) =>
-          entry?.content && typeof entry.content === "object"
+          entry.content && typeof entry.content === "object"
             ? entry.content
             : null,
         )
@@ -909,7 +909,7 @@ async function ensureConversationGreetingStored(
   persisted: boolean;
 }> {
   const runtime = state.runtime;
-  const agentName = runtime?.character.name ?? state.agentName ?? "Eliza";
+  const agentName = runtime?.character.name ?? state.agentName;
   if (!runtime) {
     return {
       text: "",

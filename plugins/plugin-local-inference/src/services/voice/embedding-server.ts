@@ -246,8 +246,8 @@ export class EmbeddingServer {
 		});
 		this.child = child;
 		this.baseUrl = `http://${HOST}:${port}`;
-		child.stderr?.on("data", () => {});
-		child.stdout?.on("data", () => {});
+		child.stderr.on("data", () => {});
+		child.stdout.on("data", () => {});
 		child.on("exit", () => {
 			if (this.child === child) {
 				this.child = null;

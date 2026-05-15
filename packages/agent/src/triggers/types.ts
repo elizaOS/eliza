@@ -9,10 +9,6 @@ export {
   type TriggerType,
   type TriggerWakeMode,
 } from "@elizaos/core";
-// TriggerSummary, TriggerHealthSnapshot, CreateTriggerRequest, UpdateTriggerRequest
-// are canonical in @elizaos/shared. Re-export them here for backwards compat.
-// TriggerTaskMetadata from shared is the base shape. The agent-internal version
-// adds `idempotencyKey` for dedup of scheduled workflow fires.
 export type {
   CreateTriggerRequest,
   TriggerHealthSnapshot,
@@ -21,22 +17,12 @@ export type {
   UpdateTriggerRequest,
 } from "@elizaos/shared";
 
-/**
- * Agent-internal TriggerTaskMetadata: extends the shared base with the
- * `idempotencyKey` field used for dedup of scheduled workflow fires.
- */
 export interface TriggerTaskMetadata {
   updatedAt?: number;
   updateInterval?: number;
   blocking?: boolean;
   trigger?: TriggerConfig;
   triggerRuns?: TriggerRunRecord[];
-  /**
-   * Per-fire idempotency key. Workflow-kind scheduled triggers populate
-   * this with `${workflowId}:${minuteBucket}` so dispatch can dedup
-   * back-to-back fires inside the same minute. Refreshed on every
-   * persist so each scheduled fire gets a fresh window.
-   */
   idempotencyKey?: string;
   [key: string]:
     | string

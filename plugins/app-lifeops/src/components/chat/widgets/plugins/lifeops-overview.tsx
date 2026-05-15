@@ -1230,7 +1230,7 @@ export function LifeOpsOverviewSidebarWidget(_props: ChatSidebarWidgetProps) {
   const runtimeReady = isLifeOpsRuntimeReady({
     startupPhase: lifeOpsApp.enabled ? startupPhase : null,
     agentState: agentStatus?.state ?? null,
-    backendState: backendConnection?.state ?? null,
+    backendState: backendConnection.state,
   });
 
   const loadOverview = useCallback(

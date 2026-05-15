@@ -58,7 +58,7 @@ export async function getGoogleCapabilityStatus(
       hasGmailManage: false,
     };
   }
-  const capabilities = new Set(status.grantedCapabilities ?? []);
+  const capabilities = new Set(status.grantedCapabilities);
   return {
     status,
     connected: status.connected,

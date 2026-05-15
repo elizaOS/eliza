@@ -26,6 +26,12 @@ export const uniswapPlugin: Plugin = {
       }),
     );
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<UniswapV3LpService>(
+      UniswapV3LpService.serviceType,
+    );
+    await svc?.stop();
+  },
 };
 
 export * from "./types.ts";

@@ -159,7 +159,7 @@ async function defaultNotifyConfigChanged(
   runtime: AgentRuntime,
   change: { kind: string; detail?: Record<string, unknown> },
 ): Promise<void> {
-  const plugins: readonly Plugin[] = runtime.plugins ?? [];
+  const plugins: readonly Plugin[] = runtime.plugins;
   let notified = 0;
   let failures = 0;
 

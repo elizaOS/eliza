@@ -846,7 +846,7 @@ function summarizeCadence(cadence: LifeOpsCadence): string {
         : "every day";
     case "times_per_day":
       return cadence.slots
-        .map((slot) => slot.label?.trim() || `${slot.minuteOfDay}`)
+        .map((slot) => slot.label.trim() || `${slot.minuteOfDay}`)
         .filter(Boolean)
         .join(" and ");
     case "interval":
@@ -1538,7 +1538,7 @@ function buildCadenceFromLlmParams(
           kind: "times_per_day",
           slots: explicitSlots.map((slot) => ({
             ...slot,
-            durationMinutes: slot.durationMinutes ?? slotDuration,
+            durationMinutes: slot.durationMinutes,
           })),
           visibilityLeadMinutes: 90,
           visibilityLagMinutes: 180,
@@ -1605,7 +1605,7 @@ function buildCadenceFromLlmParams(
           kind: "times_per_day",
           slots: explicitSlots.map((slot) => ({
             ...slot,
-            durationMinutes: slot.durationMinutes ?? slotDuration,
+            durationMinutes: slot.durationMinutes,
           })),
           visibilityLeadMinutes: 90,
           visibilityLagMinutes: 180,
@@ -2427,7 +2427,7 @@ export async function runLifeOperationHandler(
         | undefined = editingDeferredDefinitionDraft
         ? ((detailObject(details, "windowPolicy") as unknown as
             | CreateLifeOpsDefinitionRequest["windowPolicy"]
-            | undefined) ?? deferredDefinitionDraft?.request.windowPolicy)
+            | undefined) ?? deferredDefinitionDraft.request.windowPolicy)
         : (deferredDefinitionDraft?.request.windowPolicy ??
           (detailObject(details, "windowPolicy") as unknown as
             | CreateLifeOpsDefinitionRequest["windowPolicy"]
@@ -2442,7 +2442,7 @@ export async function runLifeOperationHandler(
       // sources so the planner only fills genuine gaps.
       const hadExplicitCadence = Boolean(
         (editingDeferredDefinitionDraft
-          ? (explicitCadenceDetail ?? deferredDefinitionDraft?.request.cadence)
+          ? (explicitCadenceDetail ?? deferredDefinitionDraft.request.cadence)
           : deferredDefinitionDraft?.request.cadence) ?? explicitCadenceDetail,
       );
       const hadExplicitTitle = Boolean(
@@ -2468,10 +2468,10 @@ export async function runLifeOperationHandler(
           runtime,
           intent,
           state: state ?? undefined,
-          message: message ?? undefined,
+          message: message,
         });
         const shouldHonorPlannerResponse =
-          llmPlan?.mode === "respond" &&
+          llmPlan.mode === "respond" &&
           Boolean(llmPlan.response) &&
           !editingDeferredDefinitionDraft &&
           !params.title &&
@@ -2480,7 +2480,7 @@ export async function runLifeOperationHandler(
           !detailString(details, "goalId") &&
           !detailString(details, "goalTitle") &&
           !detailString(details, "kind");
-        if (shouldHonorPlannerResponse && llmPlan?.response) {
+        if (shouldHonorPlannerResponse && llmPlan.response) {
           return {
             success: true as const,
             text: llmPlan.response,
@@ -2546,7 +2546,7 @@ export async function runLifeOperationHandler(
           : undefined;
       const definitionMetadata = editingDeferredDefinitionDraft
         ? mergeMetadataRecords(
-            deferredDefinitionDraft?.request.metadata,
+            deferredDefinitionDraft.request.metadata,
             mergeMetadataRecords(explicitMetadata, nativeAppleMetadata),
           )
         : (deferredDefinitionDraft?.request.metadata ??
@@ -2636,7 +2636,7 @@ export async function runLifeOperationHandler(
             explicitDescription ??
             llmDescription ??
             (editingDeferredDefinitionDraft
-              ? deferredDefinitionDraft?.request.description
+              ? deferredDefinitionDraft.request.description
               : undefined),
           goalRef:
             detailString(details, "goalId") ??
@@ -2680,7 +2680,7 @@ export async function runLifeOperationHandler(
         shouldRequireLifeCreateConfirmation({
           confirmed: createConfirmed,
           messageSource:
-            typeof message.content?.source === "string"
+            typeof message.content.source === "string"
               ? message.content.source
               : undefined,
           requestKind: timedRequestKind,
@@ -2789,27 +2789,27 @@ export async function runLifeOperationHandler(
         | CreateLifeOpsGoalRequest["metadata"]
         | undefined;
       let title: string | null = editingDeferredGoalDraft
-        ? (params.title ?? deferredGoalDraft?.request.title ?? null)
+        ? (params.title ?? deferredGoalDraft.request.title)
         : (deferredGoalDraft?.request.title ?? params.title ?? null);
       let description: string | undefined = editingDeferredGoalDraft
-        ? (explicitDescription ?? deferredGoalDraft?.request.description)
+        ? (explicitDescription ?? deferredGoalDraft.request.description)
         : (deferredGoalDraft?.request.description ?? explicitDescription);
       let cadence = editingDeferredGoalDraft
-        ? (explicitCadence ?? deferredGoalDraft?.request.cadence)
+        ? (explicitCadence ?? deferredGoalDraft.request.cadence)
         : (deferredGoalDraft?.request.cadence ?? explicitCadence);
       let successCriteria = editingDeferredGoalDraft
         ? (explicitSuccessCriteria ??
-          deferredGoalDraft?.request.successCriteria)
+          deferredGoalDraft.request.successCriteria)
         : (deferredGoalDraft?.request.successCriteria ??
           explicitSuccessCriteria);
       let supportStrategy = editingDeferredGoalDraft
         ? (explicitSupportStrategy ??
-          deferredGoalDraft?.request.supportStrategy)
+          deferredGoalDraft.request.supportStrategy)
         : (deferredGoalDraft?.request.supportStrategy ??
           explicitSupportStrategy);
       let goalMetadata: CreateLifeOpsGoalRequest["metadata"] | undefined =
         editingDeferredGoalDraft
-          ? (explicitMetadata ?? deferredGoalDraft?.request.metadata)
+          ? (explicitMetadata ?? deferredGoalDraft.request.metadata)
           : (deferredGoalDraft?.request.metadata ?? explicitMetadata);
       let evaluationSummary: string | null = null;
 
@@ -2826,7 +2826,7 @@ export async function runLifeOperationHandler(
           runtime,
           intent,
           state: state ?? undefined,
-          message: message ?? undefined,
+          message: message,
         });
         if (!title && llmPlan.title) {
           title = llmPlan.title;
@@ -2932,7 +2932,7 @@ export async function runLifeOperationHandler(
         shouldRequireLifeCreateConfirmation({
           confirmed: createConfirmed,
           messageSource:
-            typeof message.content?.source === "string"
+            typeof message.content.source === "string"
               ? message.content.source
               : undefined,
         })
@@ -3058,7 +3058,7 @@ export async function runLifeOperationHandler(
           currentTitle: target.definition.title,
           currentCadenceKind: target.definition.cadence.kind,
           currentWindows:
-            target.definition.windowPolicy?.windows?.map((w) => w.name) ?? [],
+            target.definition.windowPolicy.windows.map((w) => w.name),
         });
         if (llmFields) {
           if (llmFields.title) request.title = llmFields.title;
@@ -3147,7 +3147,7 @@ export async function runLifeOperationHandler(
           currentGoal: target.goal,
           intent,
           state: state ?? undefined,
-          message: message ?? undefined,
+          message: message,
         });
         if (llmPlan.mode === "respond") {
           return {

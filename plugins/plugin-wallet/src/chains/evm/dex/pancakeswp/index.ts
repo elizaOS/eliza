@@ -26,6 +26,12 @@ export const pancakeswapPlugin: Plugin = {
       }),
     );
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<PancakeSwapV3LpService>(
+      PancakeSwapV3LpService.serviceType,
+    );
+    await svc?.stop();
+  },
 };
 
 export * from "./types.ts";

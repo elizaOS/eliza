@@ -100,6 +100,10 @@ const signalPlugin: Plugin = {
       "Signal plugin configuration validated successfully"
     );
   },
+  async dispose(runtime: IAgentRuntime) {
+    const svc = runtime.getService<SignalService>(SignalService.serviceType);
+    await svc?.stop();
+  },
 };
 
 export default signalPlugin;

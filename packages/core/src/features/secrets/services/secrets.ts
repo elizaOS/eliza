@@ -648,16 +648,16 @@ export class SecretsService extends Service {
 
 		if (filter?.context) {
 			logs = logs.filter((l) => {
-				if (filter.context?.level && l.context.level !== filter.context?.level)
+				if (filter.context?.level && l.context.level !== filter.context.level)
 					return false;
 				if (
 					filter.context?.worldId &&
-					l.context.worldId !== filter.context?.worldId
+					l.context.worldId !== filter.context.worldId
 				)
 					return false;
 				if (
 					filter.context?.userId &&
-					l.context.userId !== filter.context?.userId
+					l.context.userId !== filter.context.userId
 				)
 					return false;
 				return true;

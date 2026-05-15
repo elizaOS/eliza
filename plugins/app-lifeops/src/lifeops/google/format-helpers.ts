@@ -115,7 +115,7 @@ export async function runLifeOpsTextModel(
     );
     return typeof result === "string" ? result : "";
   } catch (error) {
-    args.runtime.logger?.warn?.(
+    args.runtime.logger.warn(
       {
         src: args.source,
         error: error instanceof Error ? error.message : String(error),

@@ -305,9 +305,9 @@ async function writeSourceStagedPackageManifest(params: {
   const rewrittenExports = rewriteDistExportTargetToSource(manifest.exports);
   const rewrittenManifest = {
     ...manifest,
-    main: rootEntrypoint?.path ?? "./src/index.ts",
-    module: rootEntrypoint?.path ?? "./src/index.ts",
-    types: rootEntrypoint?.path ?? "./src/index.ts",
+    main: rootEntrypoint?.path,
+    module: rootEntrypoint?.path,
+    types: rootEntrypoint?.path,
     exports:
       rootExport && rewrittenExports && typeof rewrittenExports === "object"
         ? { ...(rewrittenExports as Record<string, unknown>), ".": rootExport }

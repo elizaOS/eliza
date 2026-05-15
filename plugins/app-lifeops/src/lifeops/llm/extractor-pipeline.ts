@@ -101,7 +101,7 @@ export async function runExtractorPipeline<TParsed>(
     const repairParsed = parser(repairRaw);
     return { parsed: repairParsed, raw: repairRaw, repaired: true };
   } catch (error) {
-    runtime.logger?.warn?.(
+    runtime.logger.warn(
       {
         src: "lifeops:extractor-pipeline",
         error: error instanceof Error ? error.message : String(error),

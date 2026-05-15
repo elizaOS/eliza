@@ -215,35 +215,30 @@ function packageDirs() {
   if (!fs.existsSync(PLUGINS_DIR)) {
     throw new Error(`plugins directory not found: ${PLUGINS_DIR}`);
   }
-  try {
-    const tracked = execFileSync(
-      "git",
-      ["-C", ELIZA_REPO_ROOT, "ls-files", "plugins/*/package.json"],
-      { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
-    )
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((filePath) => path.dirname(filePath).split("/").pop())
-      .filter(
-        (dirName) =>
-          dirName &&
-          fs.existsSync(path.join(PLUGINS_DIR, dirName, "package.json")),
-      );
-    if (tracked.length > 0) {
-      return [...new Set(tracked)].sort((left, right) =>
-        left.localeCompare(right),
-      );
-    }
-  } catch {}
-  return fs
-    .readdirSync(PLUGINS_DIR, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .filter((dirName) =>
-      fs.existsSync(path.join(PLUGINS_DIR, dirName, "package.json")),
-    )
-    .sort((left, right) => left.localeCompare(right));
+  const tracked = execFileSync(
+    "git",
+    ["-C", ELIZA_REPO_ROOT, "ls-files", "plugins/*/package.json"],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] },
+  )
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((filePath) => path.dirname(filePath).split("/").pop())
+    .filter(
+      (dirName) =>
+        dirName &&
+        fs.existsSync(path.join(PLUGINS_DIR, dirName, "package.json")),
+    );
+
+  if (tracked.length === 0) {
+    throw new Error(
+      `no tracked plugin package.json files found under ${PLUGINS_DIR}`,
+    );
+  }
+
+  return [...new Set(tracked)].sort((left, right) =>
+    left.localeCompare(right),
+  );
 }
 
 function readOptionalPluginManifest(pluginDir) {

@@ -115,7 +115,7 @@ export function extractPartnerClaim(
   if (!text) return null;
   for (const { pattern, nameGroup, labelGroup } of PARTNER_CLAIM_PATTERNS) {
     const m = pattern.exec(text);
-    if (m?.[nameGroup] && m?.[labelGroup]) {
+    if (m?.[nameGroup] && m[labelGroup]) {
       const name = m[nameGroup].replace(/[.,;:!?]+$/, "").trim();
       const label = m[labelGroup].toLowerCase();
       if (name.length > 0) {

@@ -199,7 +199,7 @@ async function appendLlmCall(
   trajectory.updatedAt = new Date(now).toISOString();
 
   if (insights.length > 0) {
-    const meta = (trajectory.metadata ?? {}) as Record<string, unknown>;
+    const meta = (trajectory.metadata) as Record<string, unknown>;
     const existing = Array.isArray(meta.insights)
       ? (meta.insights as string[])
       : [];
@@ -222,7 +222,7 @@ async function appendLlmCall(
 
   if (orchestratorCtx) {
     trajectory.source = "orchestrator";
-    const meta = (trajectory.metadata ?? {}) as Record<string, unknown>;
+    const meta = (trajectory.metadata) as Record<string, unknown>;
     meta.orchestrator = {
       decisionType: orchestratorCtx.decisionType,
       ...(orchestratorCtx.sessionId && {
@@ -335,7 +335,7 @@ function notifyTrainingTrigger(
   }
   const trigger = entry as TrainingTriggerEntry;
   void trigger.notifyTrajectoryCompleted(trajectoryId).catch((err: unknown) => {
-    coreLogger.debug?.(
+    coreLogger.debug(
       `[trajectory-storage] training trigger notify failed for ${trajectoryId}: ${err instanceof Error ? err.message : String(err)}`,
     );
   });

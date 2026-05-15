@@ -68,7 +68,7 @@ import type { PluginEntry, PluginParamDef } from "./server-types.ts";
 
 export function getReleaseBundledPluginIds(): Set<string> {
   const packageRoot = findOwnPackageRoot(
-    import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url)),
+    import.meta.dirname,
   );
   const packageJsonPath = path.join(packageRoot, "package.json");
 
@@ -989,7 +989,7 @@ export function discoverInstalledPlugins(
  */
 export function discoverPluginsFromManifest(): PluginEntry[] {
   const thisDir =
-    import.meta.dirname ?? path.dirname(fileURLToPath(import.meta.url));
+    import.meta.dirname;
   const packageRoot = findOwnPackageRoot(thisDir);
   const manifestRoot = findPluginsManifestRoot(thisDir);
   const manifestPath = path.join(manifestRoot, "plugins.json");
@@ -1008,7 +1008,7 @@ export function discoverPluginsFromManifest(): PluginEntry[] {
             const inferredCategory = categorizePlugin(p.id);
             const category =
               inferredCategory === "feature"
-                ? (p.category ?? inferredCategory)
+                ? (p.category)
                 : inferredCategory;
             const bundledMeta = readBundledPluginPackageMetadata(
               packageRoot,

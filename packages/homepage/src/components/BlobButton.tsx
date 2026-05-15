@@ -1,6 +1,7 @@
 import { animated, useSpring } from "@react-spring/web";
 import type { ComponentType, HTMLAttributes } from "react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import QRCode from "@/components/QRCode";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
 
 type AnimatedDivProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
@@ -8,8 +9,6 @@ type AnimatedDivProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
 };
 
 const AnimatedDiv = animated.div as ComponentType<AnimatedDivProps>;
-
-import QRCode from "@/components/QRCode";
 
 interface BlobButtonProps {
   children: ReactNode;
@@ -39,7 +38,7 @@ export default function BlobButton({
   const PANEL_W = 185;
   const PANEL_H = 195;
   const GAP = 5;
-  const R = btnH / 2; // matches rounded-full on the pill
+  const R = btnH / 2;
 
   const { t } = useSpring({
     t: hovered ? 1 : 0,

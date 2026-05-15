@@ -13,10 +13,12 @@ fn temp_dir(label: &str) -> PathBuf {
     let nanos = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .map_or(0, |d| d.subsec_nanos());
-    let dir = std::env::temp_dir().join(format!(
-        "usbeliza-capbus-{label}-{}-{nanos:x}",
-        std::process::id(),
-    ));
+    let root = if cfg!(unix) {
+        PathBuf::from("/tmp")
+    } else {
+        std::env::temp_dir()
+    };
+    let dir = root.join(format!("uecb-{label}-{}-{nanos:x}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("mktemp");
     dir
 }

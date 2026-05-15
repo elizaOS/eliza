@@ -44,32 +44,14 @@ declare global {
   }
 }
 
-// ============================================================================
-// Constants
-// ============================================================================
-
-/**
- * Key used to store the Discord OAuth CSRF state in sessionStorage.
- */
 const DISCORD_OAUTH_STATE_KEY = "eliza_discord_oauth_state";
-
-/**
- * Key used to store link mode flag in sessionStorage (persists across OAuth redirect).
- */
 const DISCORD_LINK_MODE_KEY = "eliza_discord_link_mode";
 
-/**
- * Generate a cryptographically random string for OAuth2 state parameter (CSRF protection).
- */
 function generateOAuthState(): string {
   const array = new Uint8Array(32);
   crypto.getRandomValues(array);
   return Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
 }
-
-// ============================================================================
-// Types
-// ============================================================================
 
 type OnboardingMethod = "telegram" | "imessage" | "discord" | "whatsapp";
 
@@ -79,15 +61,9 @@ type OnboardingStep =
   | "PHONE_INPUT"
   | "IMESSAGE_DIRECT"
   | "WHATSAPP_DIRECT"
-  | "SUCCESS"
   | "DISCORD_CALLBACK"
-  | "DISCORD_PHONE_INPUT"
   | "DISCORD_SETUP_GUIDE"
   | "PROVISIONING_CHAT";
-
-// ============================================================================
-// Helpers
-// ============================================================================
 
 function getTelegramBotUsername(): string {
   return import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "ElizaCloudBot";
@@ -102,95 +78,8 @@ function getDiscordClientId(): string {
 }
 
 function getDiscordBotApplicationId(): string {
-  // Same as client ID for Discord
   return getDiscordClientId();
 }
-
-// ============================================================================
-// Success Redirect Component - Auto-opens Telegram after auth
-// ============================================================================
-
-function SuccessRedirect({
-  getTelegramBotUsername,
-  handleOpenMessages,
-}: {
-  getTelegramBotUsername: () => string;
-  handleOpenMessages: () => void;
-}) {
-  const [countdown, setCountdown] = useState(3);
-  const [redirected, setRedirected] = useState(false);
-
-  useEffect(() => {
-    // Countdown timer
-    const interval = setInterval(() => {
-      setCountdown((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    // Auto-redirect to Telegram after 3 seconds
-    const timeout = setTimeout(() => {
-      if (!redirected) {
-        setRedirected(true);
-        window.location.href = `https://t.me/${getTelegramBotUsername()}`;
-      }
-    }, 3000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-  }, [getTelegramBotUsername, redirected]);
-
-  const handleOpenTelegramNow = () => {
-    if (!redirected) {
-      setRedirected(true);
-      window.location.href = `https://t.me/${getTelegramBotUsername()}`;
-    }
-  };
-
-  return (
-    <>
-      <div className="w-16 h-16 rounded-full bg-[#34C759]/20 flex items-center justify-center mb-6">
-        <Check className="size-8 text-[#34C759]" />
-      </div>
-
-      <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
-        You&apos;re all set!
-      </h1>
-      <p className="text-sm text-neutral-500 text-center mb-6">
-        Opening Telegram in {countdown}...
-      </p>
-
-      {/* Primary action - Open Telegram now */}
-      <Button
-        type="button"
-        onClick={handleOpenTelegramNow}
-        className="w-full h-[52px] rounded-xl bg-[#229ED9] hover:bg-[#229ED9]/90 text-white font-medium gap-2 mb-4"
-      >
-        <TelegramIcon className="size-5" />
-        Open Telegram Now
-      </Button>
-
-      {/* Secondary option - iMessage */}
-      <button
-        type="button"
-        onClick={handleOpenMessages}
-        className="w-full text-sm text-neutral-500 hover:text-neutral-700"
-      >
-        Or use iMessage instead
-      </button>
-    </>
-  );
-}
-
-// ============================================================================
-// Provisioning Chat Step — live Cerebras chat while container warms up
-// ============================================================================
 
 const MONO = "'Courier New', 'Courier', 'Monaco', monospace";
 
@@ -203,7 +92,7 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, []);
+  });
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -227,7 +116,6 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
 
   return (
     <div style={{ width: "100%", maxWidth: "420px", fontFamily: MONO }}>
-      {/* Status bar */}
       <div className="flex items-center gap-2 mb-4">
         <span
           style={{
@@ -258,7 +146,6 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
         @keyframes gs-pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
       `}</style>
 
-      {/* Message list */}
       <div
         style={{
           height: "min(360px, 55vh)",
@@ -322,7 +209,6 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Input */}
       <div style={{ display: "flex", gap: 8 }}>
         <input
           ref={inputRef}
@@ -373,7 +259,6 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
         </button>
       </div>
 
-      {/* Continue button when ready */}
       {isReady && (
         <Button
           onClick={onContinue}
@@ -387,10 +272,6 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
   );
 }
 
-// ============================================================================
-// Inner Component that uses searchParams (needs Suspense boundary)
-// ============================================================================
-
 export default function GetStartedPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -402,40 +283,29 @@ export default function GetStartedPage() {
     loginWithDiscord,
   } = useAuth();
 
-  // Check for query params (method, Discord OAuth code, guide, link mode)
   const methodParam = searchParams.get("method") as OnboardingMethod | null;
   const discordCode = searchParams.get("code");
   const discordState = searchParams.get("state");
   const guideParam = searchParams.get("guide");
-  // link=true means user is adding a platform to their existing account (from /connected page).
-  // Also check sessionStorage for persisted link mode (survives Discord OAuth redirect).
-  // Fallback heuristic: if the user is already authenticated AND a Discord callback code is
-  // present, they must be linking Discord to their existing account — an unauthenticated user
-  // wouldn't have a valid session. This guards against sessionStorage losing the key.
   const isLinkMode =
     searchParams.get("link") === "true" ||
     (typeof window !== "undefined" &&
       sessionStorage.getItem(DISCORD_LINK_MODE_KEY) === "true") ||
     (isAuthenticated && !!discordCode);
 
-  // Flow state
   const [step, setStep] = useState<OnboardingStep>("SELECT_METHOD");
   const [, setSelectedMethod] = useState<OnboardingMethod | null>(null);
   const [initialMethodHandled, setInitialMethodHandled] = useState(false);
 
-  // True when we're about to redirect to an external OAuth page (e.g. Discord).
-  // Initialized eagerly so we never flash the get-started UI for programmatic redirects.
   const [isRedirectingToOAuth, setIsRedirectingToOAuth] = useState(
     () => methodParam === "discord" && !discordCode,
   );
 
-  // Telegram OAuth state (stored temporarily until phone is collected)
   const [pendingTelegramData, setPendingTelegramData] =
     useState<TelegramAuthData | null>(null);
   const [isTelegramLoading, setIsTelegramLoading] = useState(false);
   const [telegramError, setTelegramError] = useState<string | null>(null);
 
-  // Discord OAuth state
   const [pendingDiscordCode, setPendingDiscordCode] = useState<string | null>(
     null,
   );
@@ -445,28 +315,20 @@ export default function GetStartedPage() {
   const [discordError, setDiscordError] = useState<string | null>(null);
   const [isDiscordLoading, setIsDiscordLoading] = useState(false);
 
-  // Phone input state (shared for Telegram and Discord flows)
   const [selectedCountry, setSelectedCountry] = useState<string>("US");
   const [phoneValue, setPhoneValue] = useState("");
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
 
-  // Flag to suppress auto-redirect to /connected (e.g. when showing Discord setup guide)
   const [suppressRedirect, setSuppressRedirect] = useState(false);
-
-  // Copy state
   const [copied, setCopied] = useState(false);
-
-  // Entrance animation state
   const [showContent, setShowContent] = useState(false);
 
-  // Trigger entrance animation after mount
   useEffect(() => {
     const timer = setTimeout(() => setShowContent(true), 100);
     return () => clearTimeout(timer);
   }, []);
 
-  // Header animation
   const headerSpring = useSpring({
     opacity: showContent ? 1 : 0,
     transform: showContent ? "translateY(0px)" : "translateY(-20px)",
@@ -474,7 +336,6 @@ export default function GetStartedPage() {
     delay: 200,
   });
 
-  // Title animation
   const titleSpring = useSpring({
     opacity: showContent ? 1 : 0,
     transform: showContent ? "translateY(0px)" : "translateY(30px)",
@@ -482,7 +343,6 @@ export default function GetStartedPage() {
     delay: 400,
   });
 
-  // Cards staggered animation (trail)
   const cardTrail = useTrail(4, {
     opacity: showContent ? 1 : 0,
     transform: showContent
@@ -492,14 +352,10 @@ export default function GetStartedPage() {
     delay: 600,
   });
 
-  // Country options (from shared hook)
   const countryOptions = useCountryOptions();
 
   const hasPhoneNumber = phoneValue.trim().length > 0;
 
-  /**
-   * Redirect to Discord OAuth2 authorization page
-   */
   const handleDiscordOAuthRedirect = useCallback((): boolean => {
     const clientId = getDiscordClientId();
     if (!clientId) {
@@ -509,11 +365,9 @@ export default function GetStartedPage() {
       return false;
     }
 
-    // Generate and store a cryptographic random state for CSRF protection
     const state = generateOAuthState();
     sessionStorage.setItem(DISCORD_OAUTH_STATE_KEY, state);
 
-    // Persist link mode across OAuth redirect (query params are lost during Discord redirect)
     if (isLinkMode) {
       sessionStorage.setItem(DISCORD_LINK_MODE_KEY, "true");
     } else {
@@ -533,8 +387,6 @@ export default function GetStartedPage() {
     return true;
   }, [isLinkMode]);
 
-  // Redirect if already authenticated (unless suppressed for setup guide, link mode,
-  // provisioning chat, or an unprocessed Discord callback code is present in the URL).
   useEffect(() => {
     if (
       !authLoading &&
@@ -558,11 +410,9 @@ export default function GetStartedPage() {
     step,
   ]);
 
-  // Handle query params: method shortcut, Discord OAuth callback, or guide revisit
   useEffect(() => {
     if (initialMethodHandled || authLoading) return;
 
-    // Guide revisit: ?guide=discord (user is already authenticated)
     if (guideParam === "discord" && isAuthenticated) {
       setInitialMethodHandled(true);
       setSuppressRedirect(true);
@@ -571,15 +421,11 @@ export default function GetStartedPage() {
       return;
     }
 
-    // Don't handle other params if already authenticated (unless in link mode)
     if (isAuthenticated && !isLinkMode) return;
 
-    // Discord OAuth callback: ?code=xxx&state=<random>
-    // Validate state parameter against sessionStorage to prevent CSRF attacks
     if (discordCode && discordState) {
       const storedState = sessionStorage.getItem(DISCORD_OAUTH_STATE_KEY);
       if (!storedState || storedState !== discordState) {
-        // State mismatch — possible CSRF attack, reject the callback
         setInitialMethodHandled(true);
         setDiscordError(
           "Authentication failed: invalid state. Please try again.",
@@ -588,10 +434,7 @@ export default function GetStartedPage() {
         setStep("SELECT_METHOD");
         return;
       }
-      // State is valid — clear from storage to prevent replay, but keep in component state for backend
       sessionStorage.removeItem(DISCORD_OAUTH_STATE_KEY);
-      // Note: DISCORD_LINK_MODE_KEY is kept in sessionStorage and read via isLinkMode;
-      // it will be cleared when the auth call completes or user navigates away.
       setInitialMethodHandled(true);
       setPendingDiscordCode(discordCode);
       setPendingDiscordState(discordState);
@@ -600,7 +443,6 @@ export default function GetStartedPage() {
       return;
     }
 
-    // Method shortcut: ?method=telegram or ?method=imessage or ?method=discord
     if (methodParam) {
       setInitialMethodHandled(true);
       if (methodParam === "telegram") {
@@ -629,7 +471,6 @@ export default function GetStartedPage() {
     handleDiscordOAuthRedirect,
   ]);
 
-  // Load Telegram widget script on mount
   useEffect(() => {
     const script = document.createElement("script");
     script.src = "https://telegram.org/js/telegram-widget.js?22";
@@ -652,10 +493,6 @@ export default function GetStartedPage() {
     };
   }, []);
 
-  // ============================================================================
-  // Handlers
-  // ============================================================================
-
   const getFullPhoneNumber = useCallback(() => {
     return buildFullPhoneNumber(phoneValue, selectedCountry, countryOptions);
   }, [phoneValue, selectedCountry, countryOptions]);
@@ -676,7 +513,6 @@ export default function GetStartedPage() {
     } else if (method === "whatsapp") {
       setStep("WHATSAPP_DIRECT");
     } else {
-      // iMessage: Go directly to showing the number (no signup needed)
       setStep("IMESSAGE_DIRECT");
     }
   };
@@ -684,7 +520,6 @@ export default function GetStartedPage() {
   const handleBack = () => {
     if (step === "TELEGRAM_OAUTH") {
       if (isLinkMode) {
-        // In link mode, go back to connected page
         navigate("/connected");
       } else {
         setStep("SELECT_METHOD");
@@ -702,7 +537,7 @@ export default function GetStartedPage() {
         setStep("SELECT_METHOD");
         setSelectedMethod(null);
       }
-    } else if (step === "DISCORD_CALLBACK" || step === "DISCORD_PHONE_INPUT") {
+    } else if (step === "DISCORD_CALLBACK") {
       if (isLinkMode) {
         navigate("/connected");
       } else {
@@ -713,17 +548,10 @@ export default function GetStartedPage() {
         setPhoneError(null);
       }
     } else if (step === "DISCORD_SETUP_GUIDE") {
-      // Can't go back from guide - go to connected
-      navigate("/connected");
-    } else if (step === "SUCCESS") {
-      // Can't go back from success - redirect to connected
       navigate("/connected");
     }
   };
 
-  /**
-   * Handle Telegram OAuth callback - stores data and moves to phone input
-   */
   const handleTelegramAuthCallback = useCallback(
     (authData: TelegramAuthData) => {
       setPendingTelegramData(authData);
@@ -733,9 +561,6 @@ export default function GetStartedPage() {
     [],
   );
 
-  /**
-   * Trigger Telegram OAuth widget
-   */
   const handleTelegramClick = useCallback(() => {
     const botId = getTelegramBotId();
     if (!botId) {
@@ -761,10 +586,6 @@ export default function GetStartedPage() {
     }
   }, [handleTelegramAuthCallback]);
 
-  /**
-   * Submit Telegram OAuth + phone to backend.
-   * If in link mode, passes the existing session token for session-based linking.
-   */
   const handlePhoneSubmit = useCallback(async () => {
     if (!pendingTelegramData || !hasPhoneNumber) return;
 
@@ -772,7 +593,6 @@ export default function GetStartedPage() {
     setIsSubmittingPhone(true);
     setPhoneError(null);
 
-    // In link mode, pass the existing session token for session-based linking
     const existingToken = isLinkMode
       ? (getAuthToken() ?? undefined)
       : undefined;
@@ -790,7 +610,6 @@ export default function GetStartedPage() {
         setStep("PROVISIONING_CHAT");
       }
     } else {
-      // Handle specific error codes with user-friendly messages
       if (result.errorCode === "PHONE_ALREADY_LINKED") {
         setPhoneError(
           "This phone number is already linked to another account. Please use a different number.",
@@ -824,14 +643,6 @@ export default function GetStartedPage() {
     navigate,
   ]);
 
-  // ============================================================================
-  // Discord Handlers
-  // ============================================================================
-
-  /**
-   * Process Discord OAuth callback code - submit to backend with optional phone and CSRF state.
-   * If in link mode, passes the existing session token for session-based linking.
-   */
   const handleDiscordAuthSubmit = useCallback(
     async (phoneNumber?: string) => {
       if (!pendingDiscordCode || !pendingDiscordState) return;
@@ -840,10 +651,8 @@ export default function GetStartedPage() {
       setDiscordError(null);
 
       const redirectUri = `${window.location.origin}/get-started`;
-      // Suppress redirect so the setup guide can render before navigating away
       setSuppressRedirect(true);
 
-      // In link mode, pass the existing session token for session-based linking
       const existingToken = isLinkMode
         ? (getAuthToken() ?? undefined)
         : undefined;
@@ -856,7 +665,6 @@ export default function GetStartedPage() {
         existingToken,
       );
 
-      // Clear persisted link mode flag
       sessionStorage.removeItem(DISCORD_LINK_MODE_KEY);
 
       if (result.success) {
@@ -897,9 +705,6 @@ export default function GetStartedPage() {
     ],
   );
 
-  // Auto-skip phone input when linking Discord to an account that already has a phone number.
-  // This prevents showing the "Add your phone number" screen to users who already
-  // provided their phone during Telegram signup.
   useEffect(() => {
     if (
       step === "DISCORD_CALLBACK" &&
@@ -921,9 +726,6 @@ export default function GetStartedPage() {
     handleDiscordAuthSubmit,
   ]);
 
-  /**
-   * Handle Discord phone input submission (optional)
-   */
   const handleDiscordPhoneSubmit = useCallback(async () => {
     if (!hasPhoneNumber) return;
 
@@ -936,39 +738,23 @@ export default function GetStartedPage() {
     setIsSubmittingPhone(false);
   }, [hasPhoneNumber, getFullPhoneNumber, handleDiscordAuthSubmit]);
 
-  /**
-   * Skip phone and submit Discord auth without phone
-   */
   const handleDiscordSkipPhone = useCallback(async () => {
     await handleDiscordAuthSubmit();
   }, [handleDiscordAuthSubmit]);
 
-  /**
-   * Copy Eliza's phone number to clipboard
-   */
   const handleCopyNumber = async () => {
     await navigator.clipboard.writeText(ELIZA_PHONE_NUMBER);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
-  /**
-   * Open iMessage with pre-populated greeting
-   */
   const handleOpenMessages = () => {
     window.location.href = buildElizaSmsHref();
   };
 
-  /**
-   * Navigate to dashboard
-   */
   const handleContinueToConnected = () => {
     navigate("/connected");
   };
-
-  // ============================================================================
-  // Render
-  // ============================================================================
 
   if (authLoading) {
     return (
@@ -993,8 +779,6 @@ export default function GetStartedPage() {
     );
   }
 
-  // Show a minimal loading screen while we redirect to an external OAuth provider
-  // (prevents the get-started page from flashing when navigating from /connected)
   if (isRedirectingToOAuth) {
     return (
       <main className="min-h-screen bg-[#0d0d0f] flex flex-col items-center justify-center px-4">
@@ -1016,7 +800,6 @@ export default function GetStartedPage() {
           backgroundSize: "256px 256px",
         }}
       />
-      {/* Header */}
       <animated.header
         className="relative z-10 p-4 flex items-center justify-between"
         style={headerSpring}
@@ -1042,18 +825,13 @@ export default function GetStartedPage() {
           )}
         </div>
         <ElizaLogo className="h-8" />
-        <div className="w-16" /> {/* Spacer for centering */}
+        <div className="w-16" />
       </animated.header>
 
-      {/* Content */}
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-20">
         <div className="w-full max-w-[400px] flex flex-col items-center">
-          {/* ============================================================ */}
-          {/* STEP: SELECT_METHOD */}
-          {/* ============================================================ */}
           {step === "SELECT_METHOD" && (
             <>
-              {/* Chat teaser — shows the welcome message before login */}
               <animated.div style={titleSpring} className="w-full mb-6">
                 <div className="w-full px-4 py-3 rounded-xl bg-white/40 backdrop-blur-sm border border-white/60 flex items-start gap-3">
                   <div className="w-7 h-7 rounded-full bg-neutral-800 flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-bold text-white">
@@ -1075,7 +853,6 @@ export default function GetStartedPage() {
                 </p>
               </animated.div>
 
-              {/* Error banner (shown when returning from a failed OAuth or linking attempt) */}
               {(discordError || telegramError) && (
                 <div className="w-full mb-4 p-3 rounded-xl bg-red-50 border border-red-200">
                   <p className="text-sm text-red-600 text-center">
@@ -1085,7 +862,6 @@ export default function GetStartedPage() {
               )}
 
               <div className="w-full flex flex-col gap-3">
-                {/* Telegram */}
                 <animated.button
                   onClick={() => handleMethodSelect("telegram")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
@@ -1102,7 +878,6 @@ export default function GetStartedPage() {
                   </div>
                 </animated.button>
 
-                {/* iMessage */}
                 <animated.button
                   onClick={() => handleMethodSelect("imessage")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
@@ -1119,7 +894,6 @@ export default function GetStartedPage() {
                   </div>
                 </animated.button>
 
-                {/* WhatsApp */}
                 <animated.button
                   onClick={() => handleMethodSelect("whatsapp")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
@@ -1136,7 +910,6 @@ export default function GetStartedPage() {
                   </div>
                 </animated.button>
 
-                {/* Discord */}
                 <animated.button
                   onClick={() => handleMethodSelect("discord")}
                   className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
@@ -1156,9 +929,6 @@ export default function GetStartedPage() {
             </>
           )}
 
-          {/* ============================================================ */}
-          {/* STEP: TELEGRAM_OAUTH */}
-          {/* ============================================================ */}
           {step === "TELEGRAM_OAUTH" && (
             <>
               <div className="w-16 h-16 rounded-full bg-[#229ED9]/20 flex items-center justify-center mb-6">
@@ -1195,9 +965,6 @@ export default function GetStartedPage() {
             </>
           )}
 
-          {/* ============================================================ */}
-          {/* STEP: PHONE_INPUT (after Telegram OAuth) */}
-          {/* ============================================================ */}
           {step === "PHONE_INPUT" && (
             <>
               <div className="w-12 h-12 rounded-xl bg-[#229ED9]/20 flex items-center justify-center mb-6">
@@ -1248,9 +1015,6 @@ export default function GetStartedPage() {
             </>
           )}
 
-          {/* ============================================================ */}
-          {/* STEP: IMESSAGE_DIRECT (no signup needed) */}
-          {/* ============================================================ */}
           {step === "IMESSAGE_DIRECT" && (
             <>
               <div className="w-16 h-16 flex items-center justify-center mb-6">
@@ -1264,7 +1028,6 @@ export default function GetStartedPage() {
                 Just text this number to start talking with Eliza
               </p>
 
-              {/* Phone number display */}
               <div className="w-full p-4 bg-white/50 backdrop-blur-sm border border-white/60 rounded-xl mb-6">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-lg font-mono text-neutral-900">
@@ -1285,7 +1048,6 @@ export default function GetStartedPage() {
                 </div>
               </div>
 
-              {/* Open iMessage with pre-populated message */}
               <Button
                 onClick={handleOpenMessages}
                 className="w-full h-[52px] rounded-xl bg-[#34C759] hover:bg-[#2DB84D] text-white font-medium gap-2"
@@ -1294,7 +1056,6 @@ export default function GetStartedPage() {
                 Open iMessage
               </Button>
 
-              {/* Option to also connect Telegram */}
               <button
                 type="button"
                 onClick={() => {
@@ -1312,9 +1073,6 @@ export default function GetStartedPage() {
             </>
           )}
 
-          {/* ============================================================ */}
-          {/* STEP: WHATSAPP_DIRECT (no signup needed) */}
-          {/* ============================================================ */}
           {step === "WHATSAPP_DIRECT" && (
             <>
               <div className="w-16 h-16 rounded-full bg-[#25D366]/20 flex items-center justify-center mb-6">
@@ -1328,7 +1086,6 @@ export default function GetStartedPage() {
                 Message our WhatsApp number to start talking with Eliza
               </p>
 
-              {/* WhatsApp link */}
               <Button
                 onClick={() => {
                   const waNumber = getWhatsAppNumber().replace(/\D/g, "");
@@ -1341,7 +1098,6 @@ export default function GetStartedPage() {
                 <ExternalLink className="size-4 ml-1" />
               </Button>
 
-              {/* Option to use other platforms */}
               <button
                 type="button"
                 onClick={() => {
@@ -1359,27 +1115,10 @@ export default function GetStartedPage() {
             </>
           )}
 
-          {/* ============================================================ */}
-          {/* STEP: SUCCESS (after Telegram + phone signup, legacy fallback) */}
-          {/* ============================================================ */}
-          {step === "SUCCESS" && (
-            <SuccessRedirect
-              getTelegramBotUsername={getTelegramBotUsername}
-              handleOpenMessages={handleOpenMessages}
-            />
-          )}
-
-          {/* ============================================================ */}
-          {/* STEP: PROVISIONING_CHAT */}
-          {/* Live chat with Cerebras placeholder agent while container provisions */}
-          {/* ============================================================ */}
           {step === "PROVISIONING_CHAT" && (
             <ProvisioningChatStep onContinue={() => navigate("/connected")} />
           )}
 
-          {/* ============================================================ */}
-          {/* STEP: DISCORD_CALLBACK (processing OAuth return) */}
-          {/* ============================================================ */}
           {step === "DISCORD_CALLBACK" && (
             <>
               <div
@@ -1414,7 +1153,6 @@ export default function GetStartedPage() {
               )}
 
               {discordError ? (
-                /* Discord-level error: show retry / go back instead of phone form */
                 <>
                   <Button
                     onClick={() => handleMethodSelect("discord")}
@@ -1431,14 +1169,12 @@ export default function GetStartedPage() {
                   </button>
                 </>
               ) : isLinkMode && user?.phone_number ? (
-                /* Link mode with existing phone: auto-submitting, show spinner */
                 <div className="w-full flex flex-col items-center gap-3">
                   <div className="text-neutral-500 animate-pulse text-sm">
                     Setting up...
                   </div>
                 </div>
               ) : (
-                /* No discord error, no existing phone: show phone input form */
                 <>
                   <div className="w-full mb-4">
                     <PhoneNumberInput
@@ -1494,9 +1230,6 @@ export default function GetStartedPage() {
             </>
           )}
 
-          {/* ============================================================ */}
-          {/* STEP: DISCORD_SETUP_GUIDE (after auth success) */}
-          {/* ============================================================ */}
           {step === "DISCORD_SETUP_GUIDE" && (
             <>
               {guideParam ? (
@@ -1523,7 +1256,6 @@ export default function GetStartedPage() {
               </p>
 
               <div className="w-full flex flex-col gap-4">
-                {/* Step 1: Add bot to server (optional) */}
                 <div className="w-full p-4 bg-white/50 backdrop-blur-sm border border-white/60 rounded-xl">
                   <div className="flex items-start gap-3">
                     <div className="w-7 h-7 rounded-full bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
@@ -1561,7 +1293,6 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                {/* Step 2: Open DM */}
                 <div className="w-full p-4 bg-white/50 backdrop-blur-sm border border-white/60 rounded-xl">
                   <div className="flex items-start gap-3">
                     <div className="w-7 h-7 rounded-full bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
@@ -1599,7 +1330,6 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                {/* Step 3: Say hello */}
                 <div className="w-full p-4 bg-white/50 backdrop-blur-sm border border-white/60 rounded-xl">
                   <div className="flex items-start gap-3">
                     <div className="w-7 h-7 rounded-full bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
@@ -1624,7 +1354,6 @@ export default function GetStartedPage() {
                 </div>
               </div>
 
-              {/* Continue button */}
               <Button
                 onClick={handleContinueToConnected}
                 className="w-full h-[52px] rounded-xl bg-[#5865F2] hover:bg-[#5865F2]/90 text-white font-medium mt-6"
@@ -1636,7 +1365,6 @@ export default function GetStartedPage() {
         </div>
       </div>
 
-      {/* Footer */}
       <footer className="relative z-10 p-4 text-center">
         <p className="text-[10px] text-neutral-400">
           ElizaCloud Inc. {new Date().getFullYear()}

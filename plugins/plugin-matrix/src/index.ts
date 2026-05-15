@@ -104,6 +104,9 @@ const matrixPlugin: Plugin = {
       logger.info("  Require Mention: ✓ Enabled (will only respond to mentions in rooms)");
     }
   },
+  async dispose(runtime: IAgentRuntime) {
+    await MatrixService.stopRuntime(runtime);
+  },
 };
 
 export default matrixPlugin;

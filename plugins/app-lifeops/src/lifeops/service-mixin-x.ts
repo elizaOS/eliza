@@ -590,11 +590,11 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
               ? x.senderId
               : typeof sender.id === "string"
                 ? sender.id
-                : String(memory.entityId ?? "unknown");
+                : String(memory.entityId);
           const conversationId =
             typeof x.conversationId === "string"
               ? x.conversationId
-              : String(memory.roomId ?? `dm:${senderId}`);
+              : String(memory.roomId);
           await this.repository.upsertXDm({
             id: `${this.agentId()}:x:${externalDmId}`,
             agentId: this.agentId(),
@@ -611,7 +611,7 @@ export function withX<TBase extends Constructor<LifeOpsServiceBase>>(
               typeof x.isInbound === "boolean"
                 ? x.isInbound
                 : metadata.fromBot !== true,
-            text: memory.content?.text ?? "",
+            text: memory.content.text ?? "",
             receivedAt:
               Number.isFinite(Number(memory.createdAt)) &&
               Number(memory.createdAt) > 0

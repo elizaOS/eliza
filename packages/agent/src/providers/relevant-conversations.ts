@@ -46,7 +46,7 @@ export const relevantConversationsProvider: Provider = {
     message: Memory,
     _state: State,
   ): Promise<ProviderResult> {
-    const text = message.content?.text;
+    const text = message.content.text;
     if (!text || text.trim().length < 5) {
       return { text: "", values: {}, data: {} };
     }
@@ -88,7 +88,7 @@ export const relevantConversationsProvider: Provider = {
       // Filter out messages from the current conversation to avoid echo
       const currentRoomId = message.roomId;
       const filtered = results
-        .filter((m) => m.content?.text && m.roomId !== currentRoomId)
+        .filter((m) => m.content.text && m.roomId !== currentRoomId)
         .slice(0, MAX_RELEVANT_RESULTS);
 
       if (filtered.length === 0) {

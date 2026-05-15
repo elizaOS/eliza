@@ -77,7 +77,7 @@ async function askSecret(prompt: string): Promise<string> {
     const cleanup = () => {
       if (closed) return;
       closed = true;
-      process.stdin.setRawMode?.(false);
+      process.stdin.setRawMode(false);
       process.stdin.removeListener("data", handler);
       rl.close();
     };
@@ -110,7 +110,7 @@ async function askSecret(prompt: string): Promise<string> {
     };
 
     try {
-      process.stdin.setRawMode?.(true);
+      process.stdin.setRawMode(true);
       process.stdin.on("data", handler);
     } catch (error) {
       cleanup();

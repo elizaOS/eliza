@@ -329,7 +329,7 @@ export function resolveSensitiveRequestDelivery(
 	const cloudAvailable = Boolean(env.cloud?.available);
 	const tunnelAvailable = Boolean(env.tunnel?.available && tunnelUrl);
 	const tunnelAuthenticated = Boolean(
-		env.tunnel?.available && env.tunnel?.authenticated && tunnelUrl,
+		env.tunnel?.available && env.tunnel.authenticated && tunnelUrl,
 	);
 	const dmAvailable = env.dm?.available !== false;
 

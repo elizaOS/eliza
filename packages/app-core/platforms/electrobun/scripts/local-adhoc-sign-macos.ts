@@ -81,7 +81,7 @@ function readCodesignOutput(
 		);
 	}
 
-	return `${result.stdout ?? ""}${result.stderr ?? ""}`;
+	return `${result.stdout}${result.stderr}`;
 }
 
 function runCodesign(

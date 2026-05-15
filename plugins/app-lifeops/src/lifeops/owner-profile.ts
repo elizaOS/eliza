@@ -308,9 +308,9 @@ function normalizeCalendarFeedIdentifiers(
   const seen = new Set<string>();
   const result: CalendarFeedPreferenceIdentifier[] = [];
   for (const id of identifiers) {
-    const grantId = typeof id?.grantId === "string" ? id.grantId.trim() : "";
+    const grantId = typeof id.grantId === "string" ? id.grantId.trim() : "";
     const calendarId =
-      typeof id?.calendarId === "string" ? id.calendarId.trim() : "";
+      typeof id.calendarId === "string" ? id.calendarId.trim() : "";
     if (!grantId || !calendarId) {
       continue;
     }
@@ -359,7 +359,7 @@ export async function ensureLifeOpsCalendarFeedIncludes(
   };
   await runtime.updateTask(taskId, {
     metadata: {
-      ...(metadata ?? {}),
+      ...(metadata),
       calendarFeedPreferences: next,
     },
   });
@@ -372,9 +372,9 @@ export async function setLifeOpsCalendarFeedIncluded(
   included: boolean,
 ): Promise<LifeOpsCalendarFeedPreferences> {
   const grantId =
-    typeof identifier?.grantId === "string" ? identifier.grantId.trim() : "";
+    typeof identifier.grantId === "string" ? identifier.grantId.trim() : "";
   const calendarId =
-    typeof identifier?.calendarId === "string"
+    typeof identifier.calendarId === "string"
       ? identifier.calendarId.trim()
       : "";
   if (!grantId) {
@@ -400,7 +400,7 @@ export async function setLifeOpsCalendarFeedIncluded(
   };
   await runtime.updateTask(taskId, {
     metadata: {
-      ...(metadata ?? {}),
+      ...(metadata),
       calendarFeedPreferences: next,
     },
   });
@@ -554,7 +554,7 @@ export async function updateLifeOpsMeetingPreferences(
     updatedAt: new Date().toISOString(),
   };
   await runtime.updateTask(taskId, {
-    metadata: { ...(metadata ?? {}), meetingPreferences: next },
+    metadata: { ...(metadata), meetingPreferences: next },
   });
   return next;
 }
@@ -586,7 +586,7 @@ export async function updateLifeOpsOwnerProfile(
 
   await runtime.updateTask(taskId, {
     metadata: {
-      ...(metadata ?? {}),
+      ...(metadata),
       ownerProfile: nextProfile,
     },
   });

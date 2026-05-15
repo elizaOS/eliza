@@ -13,6 +13,20 @@ const rawCompanionPlugin: Plugin = {
   description:
     "Companion overlay: VRM avatar emotes and related runtime hooks. Actions apply only while the companion app session is active.",
   actions: [emoteAction],
+  views: [
+    {
+      id: "companion",
+      label: "Companion",
+      description: "VRM avatar companion — 3D character overlay with emotes",
+      icon: "Bot",
+      path: "/companion",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "CompanionView",
+      tags: ["companion", "avatar", "vrm"],
+      visibleInManager: true,
+      desktopTabEnabled: false,
+    },
+  ],
 };
 
 export const appCompanionPlugin: Plugin = gatePluginSessionForHostedApp(

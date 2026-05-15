@@ -671,7 +671,7 @@ function normalizePostConnector(
 function getServiceClassLabel(serviceClass: ServiceClass): string {
 	return (
 		(serviceClass as { name?: string }).name ||
-		serviceClass.constructor?.name ||
+		serviceClass.constructor.name ||
 		"anonymous service class"
 	);
 }
@@ -1326,7 +1326,7 @@ export class AgentRuntime implements IAgentRuntime {
 					PipelineHookContext,
 					{ phase: "incoming_before_compose" }
 				>;
-				const md = c.message.content?.metadata;
+				const md = c.message.content.metadata;
 				const meta =
 					typeof md === "object" && md !== null
 						? (md as Record<string, unknown>)
@@ -1355,7 +1355,7 @@ export class AgentRuntime implements IAgentRuntime {
 					PipelineHookContext,
 					{ phase: "pre_should_respond" }
 				>;
-				const md = c.message.content?.metadata;
+				const md = c.message.content.metadata;
 				const meta =
 					typeof md === "object" && md !== null
 						? (md as Record<string, unknown>)
@@ -1379,7 +1379,7 @@ export class AgentRuntime implements IAgentRuntime {
 					PipelineHookContext,
 					{ phase: "parallel_with_should_respond" }
 				>;
-				const md = c.message.content?.metadata;
+				const md = c.message.content.metadata;
 				const meta =
 					typeof md === "object" && md !== null
 						? (md as Record<string, unknown>)
@@ -1439,7 +1439,7 @@ export class AgentRuntime implements IAgentRuntime {
 					PipelineHookContext,
 					{ phase: "after_memory_persisted" }
 				>;
-				const md = c.memory.content?.metadata;
+				const md = c.memory.content.metadata;
 				const meta =
 					typeof md === "object" && md !== null
 						? (md as Record<string, unknown>)
@@ -2109,7 +2109,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const [participantsResult] = await this.adapter.getParticipantsForRooms([
 			this.agentId,
 		]);
-		const participantIds = participantsResult?.entityIds ?? [];
+		const participantIds = participantsResult.entityIds;
 		if (!participantIds.includes(this.agentId)) {
 			const added = await this.adapter.createRoomParticipants(
 				[this.agentId],
@@ -2855,7 +2855,7 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	getActionResults(messageId: UUID): ActionResult[] {
-		const cachedState = this.stateCache?.get(`${messageId}_action_results`);
+		const cachedState = this.stateCache.get(`${messageId}_action_results`);
 		return (
 			(cachedState?.data &&
 				(cachedState.data.actionResults as ActionResult[])) ||
@@ -2952,7 +2952,7 @@ export class AgentRuntime implements IAgentRuntime {
 					text: `Executing ${mode} action: ${action.name}`,
 					actions: [action.name],
 					actionStatus: "executing",
-					source: message.content?.source,
+					source: message.content.source,
 				},
 			}).catch(() => {});
 
@@ -2997,7 +2997,7 @@ export class AgentRuntime implements IAgentRuntime {
 						: `${mode} action ${action.name} failed: ${errorMsg ?? "unknown"}`,
 					actions: [action.name],
 					actionStatus: success ? "completed" : "failed",
-					source: message.content?.source,
+					source: message.content.source,
 					error: errorMsg,
 				},
 			}).catch(() => {});
@@ -3057,9 +3057,9 @@ export class AgentRuntime implements IAgentRuntime {
 		// Step 1: Create all rooms FIRST (before adding any participants)
 		const roomIds = rooms.map((r: { id: UUID }) => r.id);
 		const roomExistsCheck = await this.getRoomsByIds(roomIds);
-		const roomsIdExists = roomExistsCheck?.map((r: { id: UUID }) => r.id);
+		const roomsIdExists = roomExistsCheck.map((r: { id: UUID }) => r.id);
 		const roomsToCreate = roomIds.filter(
-			(id: UUID) => !roomsIdExists?.includes(id),
+			(id: UUID) => !roomsIdExists.includes(id),
 		);
 
 		const rf = {
@@ -3087,7 +3087,7 @@ export class AgentRuntime implements IAgentRuntime {
 		const entityExistsCheck = await this.adapter.getEntitiesByIds(entityIds);
 		const entitiesToUpdate =
 			entityExistsCheck
-				?.map((e) => e.id)
+				.map((e) => e.id)
 				.filter((id): id is UUID => id !== undefined) || [];
 		const entitiesToCreate = entities.filter(
 			(e) => e.id !== undefined && !entitiesToUpdate.includes(e.id),
@@ -3506,7 +3506,7 @@ export class AgentRuntime implements IAgentRuntime {
 
 		if (trajectoryStepId && trajLogger) {
 			const userText =
-				typeof message.content?.text === "string" ? message.content.text : "";
+				typeof message.content.text === "string" ? message.content.text : "";
 			const trajCtx = getTrajectoryContext();
 			const providerTraceId = this.getActiveTrace(this.getCurrentRunId())?.id;
 			for (const r of providerData) {
@@ -3536,7 +3536,7 @@ export class AgentRuntime implements IAgentRuntime {
 				providerName: string;
 			}
 		> = {
-			...(cachedState.data?.providers as
+			...(cachedState.data.providers as
 				| Record<
 						string,
 						{
@@ -4522,12 +4522,18 @@ export class AgentRuntime implements IAgentRuntime {
 		const abortSignal = streamingCtx?.abortSignal;
 		const explicitStream = paramsAsStreaming?.stream;
 		const resolvedProviderName = resolvedModel?.provider ?? provider;
+		const streamStructuredOnNonLocalProvider =
+			paramsAsStreaming?.streamStructured === true &&
+			explicitStream !== true &&
+			(!resolvedProviderName || !isLocalProvider(resolvedProviderName));
 
 		// stream: false = force no stream, otherwise stream if any callback exists
 		const shouldStream =
 			explicitStream === false
 				? false
-				: !!(paramsChunk || ctxChunk || explicitStream);
+				: streamStructuredOnNonLocalProvider
+					? false
+					: !!(paramsChunk || ctxChunk || explicitStream);
 		const structuredStreamFields =
 			shouldStream && paramsAsStreaming?.streamStructured === true
 				? resolveResponseSkeletonStreamFields(
@@ -4627,7 +4633,7 @@ export class AgentRuntime implements IAgentRuntime {
 			preModelPipelineHookContext({
 				requestedModelType: String(modelType),
 				resolvedModelKey,
-				provider: resolvedModel?.provider ?? provider,
+				provider: resolvedModel.provider,
 				roomId: getTrajectoryContext()?.roomId,
 				params: modelParams,
 			}),
@@ -4690,7 +4696,7 @@ export class AgentRuntime implements IAgentRuntime {
 				postModelPipelineHookContext({
 					requestedModelType: String(modelType),
 					resolvedModelKey,
-					provider: resolvedModel?.provider ?? provider,
+					provider: resolvedModel.provider,
 					roomId: getTrajectoryContext()?.roomId,
 					durationMs: Math.round(elapsedTime),
 					params: modelParams,
@@ -4718,7 +4724,7 @@ export class AgentRuntime implements IAgentRuntime {
 				promptContent,
 				effectiveSystemPrompt,
 				elapsedTime,
-				resolvedModel?.provider ?? provider,
+				resolvedModel.provider,
 				resultRef.current,
 			);
 
@@ -4726,7 +4732,7 @@ export class AgentRuntime implements IAgentRuntime {
 				await this.recordUseModelTrajectory({
 					modelType: String(modelType),
 					resolvedModelKey: String(resolvedModelKey),
-					provider: resolvedModel?.provider ?? provider,
+					provider: resolvedModel.provider,
 					modelParams,
 					promptContent,
 					result: resultRef.current,
@@ -4772,7 +4778,7 @@ export class AgentRuntime implements IAgentRuntime {
 			postModelPipelineHookContext({
 				requestedModelType: String(modelType),
 				resolvedModelKey,
-				provider: resolvedModel?.provider ?? provider,
+				provider: resolvedModel.provider,
 				roomId: getTrajectoryContext()?.roomId,
 				durationMs: Math.round(elapsedTime),
 				params: modelParams,
@@ -4799,7 +4805,7 @@ export class AgentRuntime implements IAgentRuntime {
 			promptContent,
 			effectiveSystemPrompt,
 			elapsedTime,
-			resolvedModel?.provider ?? provider,
+			resolvedModel.provider,
 			resultRef.current,
 		);
 
@@ -4807,7 +4813,7 @@ export class AgentRuntime implements IAgentRuntime {
 			await this.recordUseModelTrajectory({
 				modelType: String(modelType),
 				resolvedModelKey: String(resolvedModelKey),
-				provider: resolvedModel?.provider ?? provider,
+				provider: resolvedModel.provider,
 				modelParams,
 				promptContent,
 				result: resultRef.current,
@@ -4904,7 +4910,7 @@ export class AgentRuntime implements IAgentRuntime {
 				providerMetadata: resultRecord.providerMetadata,
 				temperature: typeof tempRaw === "number" ? tempRaw : 0,
 				maxTokens: typeof maxTokensRaw === "number" ? maxTokensRaw : 0,
-				purpose: trajCtx?.purpose ?? "action",
+				purpose: trajCtx.purpose ?? "action",
 				actionType: "runtime.useModel",
 				latencyMs: Math.max(0, Math.round(args.elapsedTime)),
 				promptTokens: asNumber(usageRecord.promptTokens),
@@ -4914,9 +4920,9 @@ export class AgentRuntime implements IAgentRuntime {
 					usageRecord.cacheCreationInputTokens,
 				),
 				modelSlot: args.modelType,
-				runId: trajCtx?.runId,
-				roomId: trajCtx?.roomId,
-				messageId: trajCtx?.messageId,
+				runId: trajCtx.runId,
+				roomId: trajCtx.roomId,
+				messageId: trajCtx.messageId,
 				executionTraceId: activeTrace?.id,
 			});
 		} catch {
@@ -4931,7 +4937,7 @@ export class AgentRuntime implements IAgentRuntime {
 		input: string,
 		options?: GenerateTextOptions,
 	): Promise<GenerateTextResult> {
-		if (!input?.trim()) {
+		if (!input.trim()) {
 			throw new Error("Input cannot be empty");
 		}
 
@@ -5099,13 +5105,13 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	private clearStructuredOutputFailureState(state: State): void {
-		if (state.values?.structuredOutputFailureSummary !== undefined) {
+		if (state.values.structuredOutputFailureSummary !== undefined) {
 			const { structuredOutputFailureSummary: _discard, ...restValues } =
 				state.values;
 			state.values = restValues;
 		}
 
-		if (state.data?.structuredOutputFailure !== undefined) {
+		if (state.data.structuredOutputFailure !== undefined) {
 			const { structuredOutputFailure: _discard, ...restData } = state.data;
 			state.data = restData;
 		}
@@ -5844,7 +5850,7 @@ ${section_end}`;
 							promptKey: tracePromptKey,
 							modelSlot: resolvedModelType,
 							modelId: traceModelId,
-							runId: this.getCurrentRunId?.() ?? undefined,
+							runId: this.getCurrentRunId(),
 							templateHash: computedTemplateHash,
 							schemaFingerprint: schemaKey,
 							artifactVersion: traceArtifactVersion,
@@ -6072,7 +6078,7 @@ ${section_end}`;
 					promptKey: tracePromptKey,
 					modelSlot: resolvedModelType,
 					modelId: traceModelId,
-					runId: this.getCurrentRunId?.() ?? undefined,
+					runId: this.getCurrentRunId(),
 					templateHash: failTemplateHash,
 					schemaFingerprint: schemaKey,
 					artifactVersion: traceArtifactVersion,
@@ -6968,7 +6974,7 @@ ${section_end}`;
 		event: string,
 		handler: (params: EventPayload) => Promise<void>,
 	): void {
-		const handlers = this.events?.[event];
+		const handlers = this.events[event];
 		if (!handlers) return;
 		const filtered = handlers.filter((h) => h !== handler);
 		if (filtered.length > 0) {
@@ -7036,7 +7042,7 @@ ${section_end}`;
 		// Pass null to get a test vector for dimension detection
 		// Model handlers should return a zero-filled vector of the correct dimension when null is passed
 		const embedding = await this.useModel(ModelType.TEXT_EMBEDDING, null);
-		if (!embedding?.length) {
+		if (!embedding.length) {
 			throw new Error("Invalid embedding received");
 		}
 
@@ -7211,7 +7217,7 @@ ${section_end}`;
 	}
 	async getEntityById(entityId: UUID): Promise<Entity | null> {
 		const entities = await this.adapter.getEntitiesByIds([entityId]);
-		if (!entities?.length) return null;
+		if (!entities.length) return null;
 		return entities[0];
 	}
 
@@ -7315,7 +7321,7 @@ ${section_end}`;
 		priority?: "high" | "normal" | "low",
 	): Promise<void> {
 		priority = priority || "normal";
-		if (!memory || memory.embedding || !memory.content?.text) {
+		if (!memory || memory.embedding || !memory.content.text) {
 			return;
 		}
 
@@ -7373,7 +7379,7 @@ ${section_end}`;
 		return this.adapter.getMemories({
 			...params,
 			limit: params.limit ?? params.count,
-			tableName: params.tableName ?? "messages",
+			tableName: params.tableName,
 		});
 	}
 	async getAllMemories(): Promise<Memory[]> {
@@ -7425,7 +7431,7 @@ ${section_end}`;
 	}): Promise<Memory[]> {
 		const memories = await this.adapter.searchMemories({
 			...params,
-			tableName: params.tableName ?? "messages",
+			tableName: params.tableName,
 		});
 		if (params.query) {
 			const rerankedMemories = await this.rerankMemories(
@@ -7450,7 +7456,7 @@ ${section_end}`;
 	 * Returns an empty object if no secrets are configured.
 	 */
 	private getSecretsForRedaction(): Record<string, string> {
-		const secrets = this.character?.settings?.secrets;
+		const secrets = this.character.settings?.secrets;
 		if (!secrets || typeof secrets !== "object") {
 			return {};
 		}
@@ -7608,7 +7614,7 @@ ${section_end}`;
 
 	async getRoom(roomId: UUID): Promise<Room | null> {
 		const rooms = await this.adapter.getRoomsByIds([roomId]);
-		if (!rooms?.length) return null;
+		if (!rooms.length) return null;
 		return rooms[0];
 	}
 
@@ -8003,7 +8009,7 @@ ${section_end}`;
 	): Promise<void> {
 		// Apply secret redaction (same as createMemory) to prevent plaintext secrets
 		const secrets = this.getSecretsForRedaction();
-		if (Object.keys(secrets).length > 0 && memory.content?.text) {
+		if (Object.keys(secrets).length > 0 && memory.content.text) {
 			memory = {
 				...memory,
 				content: {
@@ -8125,7 +8131,7 @@ ${section_end}`;
 
 		// Redact any secrets from memory content before storing
 		const secrets = this.getSecretsForRedaction();
-		if (Object.keys(secrets).length > 0 && memory.content?.text) {
+		if (Object.keys(secrets).length > 0 && memory.content.text) {
 			memory = {
 				...memory,
 				content: {
@@ -8629,7 +8635,7 @@ ${section_end}`;
 		return this.adapter.getMemoriesByWorldId(params);
 	}
 	async runMigrations(migrationsPaths?: string[]): Promise<void> {
-		if (this.adapter?.runMigrations) {
+		if (this.adapter.runMigrations) {
 			await this.adapter.runMigrations(migrationsPaths);
 		} else {
 			this.logger.warn(

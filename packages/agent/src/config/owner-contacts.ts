@@ -305,7 +305,7 @@ export async function loadOwnerContactRoutingHints(
 
     if (
       runtime?.getRoomsForParticipant &&
-      runtime?.getMemoriesByRoomIds &&
+      runtime.getMemoriesByRoomIds &&
       contact.entityId
     ) {
       try {
@@ -336,7 +336,7 @@ export async function loadOwnerContactRoutingHints(
             }
             return false;
           });
-          if (latest?.createdAt !== undefined && latest?.createdAt !== null) {
+          if (latest?.createdAt !== undefined && latest.createdAt !== null) {
             lastResponseAt = String(latest.createdAt);
             lastResponseChannel = source;
           }

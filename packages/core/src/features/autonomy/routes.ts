@@ -46,7 +46,7 @@ export const autonomyRoutes: Route[] = [
 					intervalSeconds: Math.round(status.interval / 1000),
 					autonomousRoomId: status.autonomousRoomId,
 					agentId: runtime.agentId,
-					characterName: runtime.character?.name || "Agent",
+					characterName: runtime.character.name || "Agent",
 				},
 			});
 		},

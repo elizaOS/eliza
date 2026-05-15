@@ -169,7 +169,7 @@ class InMemoryActivitySignalBus implements ActivitySignalBus {
         if (args.subject) {
           if (
             envelope.subject?.kind !== args.subject.kind ||
-            envelope.subject?.id !== args.subject.id
+            envelope.subject.id !== args.subject.id
           ) {
             continue;
           }

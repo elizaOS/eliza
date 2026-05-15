@@ -1198,8 +1198,8 @@ function SmartFeaturesCard() {
       try {
         const state = await client.getLifeOpsAppState();
         if (cancelled) return;
-        setEnabled(state.priorityScoring?.enabled !== false);
-        setModel(state.priorityScoring?.model ?? "");
+        setEnabled(state.priorityScoring.enabled !== false);
+        setModel(state.priorityScoring.model ?? "");
         setError(null);
       } catch (cause) {
         if (cancelled) return;

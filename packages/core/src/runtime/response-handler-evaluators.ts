@@ -99,7 +99,7 @@ function filterAvailableContexts(
 	const seen = new Set<string>();
 	const result: AgentContext[] = [];
 	for (const context of contexts) {
-		const id = String(context ?? "").trim();
+		const id = String(context).trim();
 		if (!id || seen.has(id)) continue;
 		if (available && !available.has(id)) continue;
 		seen.add(id);
@@ -194,8 +194,7 @@ export async function runResponseHandlerEvaluators(args: {
 	availableContexts: readonly ContextDefinition[];
 	evaluators?: readonly ResponseHandlerEvaluator[];
 }): Promise<ResponseHandlerEvaluationRunResult> {
-	const registered = (args.runtime.responseHandlerEvaluators ??
-		[]) as readonly ResponseHandlerEvaluator[];
+	const registered = (args.runtime.responseHandlerEvaluators) as readonly ResponseHandlerEvaluator[];
 	const candidates = [...(args.evaluators ?? []), ...registered].sort(
 		(a, b) =>
 			(a.priority ?? 100) - (b.priority ?? 100) || a.name.localeCompare(b.name),
@@ -239,7 +238,7 @@ export async function runResponseHandlerEvaluators(args: {
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			result.errors.push({ evaluatorName: evaluator.name, error: message });
-			args.runtime.logger?.warn?.(
+			args.runtime.logger.warn(
 				{
 					src: "response-handler-evaluator",
 					evaluator: evaluator.name,

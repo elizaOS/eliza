@@ -56,7 +56,7 @@ function isEmotionLabel(value: unknown): value is EmotionLabel {
 function readVoiceEmotion(
 	message: Memory,
 ): { label: EmotionLabel; confidence: number; method?: string } | null {
-	const metadata = asRecord(message.content?.metadata);
+	const metadata = asRecord(message.content.metadata);
 	if (!metadata) return null;
 	const voice = asRecord(metadata.voice);
 	if (!voice) return null;
@@ -82,7 +82,7 @@ function readTextEmotion(message: Memory): string | null {
 }
 
 function isOptedOut(runtime: IAgentRuntime): boolean {
-	const value = runtime.getSetting?.("ELIZA_VOICE_EMOTION_INTO_PLANNER");
+	const value = runtime.getSetting("ELIZA_VOICE_EMOTION_INTO_PLANNER");
 	if (value === undefined || value === null) return false;
 	const str = String(value).trim().toLowerCase();
 	return str === "0" || str === "false" || str === "off" || str === "no";

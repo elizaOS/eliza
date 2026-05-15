@@ -36,8 +36,7 @@ const CONTROL_PLANE_URL_KEYS = [
   "HETZNER_CONTAINER_CONTROL_PLANE_URL",
 ] as const;
 
-function readControlPlaneEnv(c: AppContext | undefined, keys: readonly string[]): string | null {
-  if (!c?.env) return null;
+function readControlPlaneEnv(c: AppContext, keys: readonly string[]): string | null {
   for (const key of keys) {
     const value = c.env[key];
     if (typeof value === "string" && value.trim()) return value.trim();
@@ -93,7 +92,7 @@ async function createFallbackStreamIfRunning(params: {
 }
 
 async function forwardStreamToControlPlane(params: {
-  ctx?: AppContext;
+  ctx: AppContext;
   request: Request;
   agentId: string;
   user: { id: string; organization_id: string };
@@ -138,7 +137,7 @@ async function forwardStreamToControlPlane(params: {
 async function __hono_POST(
   request: Request,
   { params }: { params: Promise<{ agentId: string }> },
-  ctx?: AppContext,
+  ctx: AppContext,
 ) {
   try {
     const { user } = await requireAuthOrApiKeyWithOrg(request);

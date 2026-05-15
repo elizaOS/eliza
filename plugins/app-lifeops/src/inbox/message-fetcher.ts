@@ -205,7 +205,7 @@ export async function fetchGmailMessages(
 ): Promise<InboundMessage[]> {
   const status = await source.getGoogleConnectorStatus(INTERNAL_URL);
   if (!status.connected) return [];
-  const capabilities = status.grantedCapabilities ?? [];
+  const capabilities = status.grantedCapabilities;
   if (!capabilities.includes("google.gmail.triage")) return [];
 
   const limit = opts.limit ?? 50;
@@ -253,10 +253,10 @@ export async function fetchGmailMessages(
       text: msg.snippet || msg.subject || "",
       snippet: (msg.snippet || msg.subject || "").slice(0, SNIPPET_MAX_LENGTH),
       timestamp: receivedMs,
-      deepLink: gmailLink ?? undefined,
+      deepLink: gmailLink,
       gmailMessageId: externalId,
-      gmailIsImportant: msg.isImportant ?? false,
-      gmailLikelyReplyNeeded: msg.likelyReplyNeeded ?? false,
+      gmailIsImportant: msg.isImportant,
+      gmailLikelyReplyNeeded: msg.likelyReplyNeeded,
       threadId: msg.threadId,
       chatType: "dm",
       gmailAccountId: msg.grantId,
@@ -288,7 +288,7 @@ export async function fetchXDmMessages(
     const receivedMs = parseRequiredTimestamp(dm.receivedAt, "X DM receivedAt");
     if (sinceMs > 0 && receivedMs < sinceMs) continue;
     const sender = dm.senderHandle ? `@${dm.senderHandle}` : dm.senderId;
-    const metadata = dm.metadata ?? {};
+    const metadata = dm.metadata;
     const participantIds = Array.isArray(metadata.participantIds)
       ? metadata.participantIds.filter(
           (participantId): participantId is string =>

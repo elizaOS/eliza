@@ -25,12 +25,12 @@ export const uiContextProvider: Provider = {
 	roleGate: { minRole: "USER" },
 
 	get: async (_runtime, message: Memory, state: State) => {
-		const metadata = asRecord(message.content?.metadata);
+		const metadata = asRecord(message.content.metadata);
 		const uiView = asString(metadata?.uiView);
 		const uiTab = asString(metadata?.uiTab);
 		const routing = parseContextRoutingMetadata(
 			metadata?.[CONTEXT_ROUTING_METADATA_KEY] ??
-				state.values?.[CONTEXT_ROUTING_STATE_KEY],
+				state.values[CONTEXT_ROUTING_STATE_KEY],
 		);
 		const activeContexts = getActiveRoutingContexts(routing);
 

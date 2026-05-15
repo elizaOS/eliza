@@ -317,7 +317,7 @@ export function withScheduling<TBase extends Constructor<LifeOpsServiceBase>>(
       timezone?: string;
       metadata?: Record<string, unknown>;
     }): Promise<LifeOpsSchedulingNegotiation> {
-      const subject = (input.subject ?? "").trim();
+      const subject = (input.subject).trim();
       if (!subject) {
         fail(400, "subject is required");
       }

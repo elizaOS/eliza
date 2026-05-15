@@ -632,6 +632,9 @@ function applyEdits(records) {
 
   for (const [rel, edits] of byFile.entries()) {
     const full = path.join(ROOT, rel);
+    if (!fs.existsSync(full)) {
+      continue;
+    }
     let text = fs.readFileSync(full, "utf8");
     edits.sort((a, b) => b.start - a.start);
     for (const edit of edits) {
