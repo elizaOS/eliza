@@ -38,6 +38,7 @@ export const REQUIRED_OMNIVOICE_SYMBOLS = Object.freeze([
   "ov_free",
   "ov_log_set",
   "ov_synthesize",
+  "ov_encode_reference",
   "ov_duration_sec_to_tokens",
 ]);
 
@@ -221,7 +222,7 @@ function hasElfNeededLlama(lib) {
  *   - The shared library MUST exist.
  *   - The library's exports MUST contain /llama_/ and /ov_/
  *     symbol families.
- *   - The library MUST export every `eliza_inference_*` ABI v3 symbol
+ *   - The library MUST export every `eliza_inference_*` ABI v4 symbol
  *     declared in `ffi.h`; otherwise the JS/Bun bridge can dlopen a
  *     half-fused artifact and only fail later at voice activation.
  *
@@ -253,6 +254,9 @@ export const REQUIRED_ELIZA_INFERENCE_SYMBOLS = Object.freeze([
   "eliza_inference_vad_process",
   "eliza_inference_vad_reset",
   "eliza_inference_vad_close",
+  // ABI v4 — frozen OmniVoice reference preset encoder.
+  "eliza_inference_encode_reference",
+  "eliza_inference_free_tokens",
   "eliza_inference_free_string",
 ]);
 

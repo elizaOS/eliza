@@ -184,6 +184,7 @@ export interface UseChatCallbacksDeps {
   activeConversationIdRef: MutableRefObject<string | null>;
   chatInputRef: MutableRefObject<string>;
   chatPendingImagesRef: MutableRefObject<ImageAttachment[]>;
+  conversationsRef: MutableRefObject<Conversation[]>;
   conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
   conversationHydrationEpochRef: MutableRefObject<number>;
   chatAbortRef: MutableRefObject<AbortController | null>;
@@ -314,6 +315,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     activeConversationIdRef,
     chatInputRef,
     chatPendingImagesRef,
+    conversationsRef,
     conversationMessagesRef,
     conversationHydrationEpochRef,
     chatAbortRef,
@@ -641,7 +643,6 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     t,
     uiLanguage,
     tab,
-    conversations,
     activeConversationId,
     ptySessionsRef,
     setChatInput,
@@ -658,6 +659,7 @@ export function useChatCallbacks(deps: UseChatCallbacksDeps) {
     activeConversationIdRef,
     chatInputRef,
     chatPendingImagesRef,
+    conversationsRef,
     conversationMessagesRef,
     chatAbortRef,
     chatSendBusyRef,

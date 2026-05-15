@@ -80,6 +80,7 @@ export * from "./types/onboarding";
 export * from "./types/plugin-manifest";
 export type { JsonObject, JsonValue, ProcessEnvLike } from "./types/primitives";
 export * from "./utils";
+export { addHeader, composePromptFromState, parseKeyValueXml } from "./utils";
 export { Semaphore } from "./utils/batch-queue/semaphore.js";
 export * from "./utils/buffer";
 export * from "./utils/channel-utils";

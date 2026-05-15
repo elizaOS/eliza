@@ -16,13 +16,13 @@ import { readJsonBody } from "@elizaos/shared";
 
 const EXPRESS_SHIM = Symbol("elizaExpressResponseShim");
 
+type RuntimePluginRouteHandler = NonNullable<Route["handler"]>;
 type X402RoutesModule = {
   createPaymentAwareHandler: (
     route: PaymentEnabledRoute,
-  ) => NonNullable<Route["handler"]>;
-  isRoutePaymentWrapped: (route: Route) => boolean;
+  ) => RuntimePluginRouteHandler;
+  isRoutePaymentWrapped: (route: unknown) => boolean;
 };
-type RuntimePluginRouteHandler = NonNullable<Route["handler"]>;
 
 let x402RoutesModulePromise: Promise<X402RoutesModule> | null = null;
 

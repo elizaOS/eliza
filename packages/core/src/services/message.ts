@@ -105,6 +105,7 @@ import {
 	isTrajectoryRecordingEnabled,
 	type TrajectoryRecorder,
 } from "../runtime/trajectory-recorder";
+import { TurnAbortedError } from "../runtime/turn-controller";
 import { isExplicitSelfModificationRequest } from "../should-respond";
 import {
 	getModelStreamChunkDeliveryDepth,
@@ -7613,6 +7614,12 @@ export class DefaultMessageService implements IMessageService {
 					state = outcome.result.state;
 				}
 			} catch (error) {
+				if (
+					error instanceof TurnAbortedError ||
+					(isRecord(error) && error.code === "TURN_ABORTED")
+				) {
+					throw error;
+				}
 				const errMsg = error instanceof Error ? error.message : String(error);
 				const errStack = error instanceof Error ? error.stack : undefined;
 				runtime.logger.warn(

@@ -157,4 +157,51 @@ describe("generateChatResponse token streaming", () => {
     expect(runningTotal).toBe("alpha beta gamma");
     expect(result.text).toBe("alpha beta gamma");
   });
+
+  it("aborts the message runtime when the chat generation timeout fires", async () => {
+    let signalFromOptions: AbortSignal | undefined;
+    let observedAbort: (() => void) | undefined;
+    const abortObserved = new Promise<void>((resolve) => {
+      observedAbort = resolve;
+    });
+
+    const runtime = createRuntime({
+      messageService: {
+        async handleMessage(_runtime, _message, _callback, options) {
+          signalFromOptions = options?.abortSignal;
+          await new Promise<void>((resolve) => {
+            options?.abortSignal?.addEventListener(
+              "abort",
+              () => {
+                observedAbort?.();
+                resolve();
+              },
+              { once: true },
+            );
+          });
+          return {
+            didRespond: false,
+            responseContent: null,
+            responseMessages: [],
+          };
+        },
+        shouldRespond: () => ({
+          shouldRespond: true,
+          skipEvaluation: true,
+          reason: "streaming-test",
+        }),
+        deleteMessage: async () => undefined,
+        clearChannel: async () => undefined,
+      },
+    });
+
+    await expect(
+      generateChatResponse(runtime, createChatMessage("timeout"), "Streaming Agent", {
+        timeoutDuration: 10,
+      }),
+    ).rejects.toThrow("Chat generation timed out after 10ms");
+
+    await abortObserved;
+    expect(signalFromOptions?.aborted).toBe(true);
+  });
 });
